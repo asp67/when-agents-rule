@@ -2190,11 +2190,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     executeHarvestResource(ai, game, resourceType) {
         const discovered = this.discoveredNodesOfType(ai, game, resourceType);
 
-        // Not scouted yet → automatically send a scout to reveal more map. We do
-        // NOT know where the resource is; the scout explores until it finds one.
+        // Not scouted yet → nothing is harvested. Flag it as a failed action (so it
+        // shows in the log and isn't counted as success) but auto-send a scout to
+        // help, and tell the model exactly what to do next.
         if (discovered.length === 0) {
             const msg = this.dispatchScoutToward(ai, game);
-            return `No ${resourceType} has been scouted yet. ${msg} Once it appears in "resourcesOnMap", call harvest_resource again.`;
+            return `[ERROR] No ${resourceType} has been discovered yet, so NOTHING was harvested. ${msg} It will appear in "resourcesOnMap" once a scout finds it — then call harvest_resource again. Spend the meantime on other useful work (don't keep re-issuing harvest).`;
         }
 
         const idleWorkers = ai.units.filter(u =>
@@ -2231,11 +2232,11 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
         const count = Math.max(1, Math.min(params.count || 3, 20));
 
-        // Discovered nodes? If not, scout instead.
+        // Discovered nodes? If not, nothing is reassigned — flag it and auto-scout.
         const discovered = this.discoveredNodesOfType(ai, game, resourceType);
         if (discovered.length === 0) {
             const msg = this.dispatchScoutToward(ai, game);
-            return `No ${resourceType} scouted yet. ${msg} Then call assign_workers again.`;
+            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. ${msg} Once it appears in "resourcesOnMap", call assign_workers again. Don't keep re-issuing it meanwhile.`;
         }
 
         // Candidates: any worker that is not currently a builder, preferring those
