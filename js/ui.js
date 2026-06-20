@@ -443,6 +443,8 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             google: 'https://generativelanguage.googleapis.com/v1beta'
         };
         const provSel = (v) => (m.provider || 'auto') === v ? 'selected' : '';
+        // Show Ollama-specific server advice when this model talks to Ollama.
+        const isOllama = (typeof OpenAIAIManager !== 'undefined') && OpenAIAIManager.resolveProvider(m) === 'ollama';
         const epPlaceholder = provPlaceholders[m.provider || 'auto'] || provPlaceholders.auto;
         const sub = e(m.model || m.endpoint || t('ar.notConfigured'));
         return `
@@ -498,6 +500,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             </div>
             <p class="auth-hint">${t('ar.maxTokensHint')}</p>
             <p class="auth-hint">${t('ar.modelLangHint')}</p>
+            ${isOllama ? `<p class="auth-hint ollama-hint">${t('ar.ollamaHint')}</p>` : ''}
             </div>
         </div>`;
     }

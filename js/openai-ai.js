@@ -215,12 +215,18 @@ class OpenAIAIManager {
             };
         }
         // openai-compatible (default)
+        const body = {
+            model, temperature, max_tokens: maxTokens,
+            messages: [{ role: 'system', content: systemPrompt }, ...turns]
+        };
+        // If this "OpenAI-compatible" endpoint is actually an Ollama server (user
+        // pointed at :11434 / picked OpenAI-compat), ask it to keep the model
+        // resident so it isn't unloaded between turns. Only do this for detected
+        // Ollama hosts — real OpenAI (and stricter gateways) reject unknown params.
+        if (OpenAIAIManager.detectProvider(endpoint) === 'ollama') body.keep_alive = '30m';
         return {
             url: OpenAIAIManager.stripSlash(endpoint) + '/chat/completions',
-            body: {
-                model, temperature, max_tokens: maxTokens,
-                messages: [{ role: 'system', content: systemPrompt }, ...turns]
-            }
+            body
         };
     }
 
@@ -1103,42 +1109,48 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         const systemPrompt = this.buildSystemPrompt(ai);
 
-        // Build user message with game state and action result feedback
-        let userMessage = `Here is your current game state. Analyze it and choose the best single action to take this turn.
+        // Assemble ONE coherent, chronological user message per turn. We rebuild the
+        // model's context from scratch each turn (the providers here are stateless),
+        // so the ordering must read as a single continuous session:
+        //   recent moves (oldest -> newest)  ->  current state (LAST)  ->  advice.
+        // (Previously the current state was placed FIRST and the history AFTER it,
+        // which scrambled past/present and made the model answer a stale old result.)
+        const parts = [];
 
-Game State JSON:
-${JSON.stringify(gameState, null, 2)}`;
-
-        // Include last action result feedback if available
-        if (controller.lastActionResult) {
-            userMessage += `\n\nLast action result: ${controller.lastActionResult}`;
+        // 1) Recent move history for continuity, oldest first.
+        const maxHistory = 4;
+        const recentHistory = controller.conversationHistory.slice(-maxHistory);
+        if (recentHistory.length) {
+            const lines = recentHistory
+                .filter(e => e && e.action && e.result)
+                .map((e, i) => `${i + 1}. You did: ${String(e.action)}\n   -> Result: ${String(e.result)}`)
+                .join('\n');
+            if (lines) parts.push(`Your recent moves THIS match (oldest first) — keep a consistent strategy and learn from the results:\n${lines}`);
         }
 
-        // Inject any spectator advice queued for this model, then clear it so it is
-        // delivered exactly once (on the NEXT response).
+        // 2) Feedback from a previous turn that produced NO valid action (e.g. a parse
+        //    failure) — that turn isn't in the history above, so surface it once.
+        const lastHistResult = recentHistory.length ? String(recentHistory[recentHistory.length - 1].result) : null;
+        if (controller.lastActionResult && controller.lastActionResult !== lastHistResult) {
+            parts.push(`Note on your previous response: ${controller.lastActionResult}`);
+        }
+
+        // 3) The CURRENT situation — last, so the model responds to the present.
+        parts.push(`Here is your CURRENT game state. Analyze it and choose the single best action for THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
+
+        // 4) Spectator advice queued for this model, delivered exactly once.
         if (controller.pendingAdvice && controller.pendingAdvice.length) {
             const advice = controller.pendingAdvice.join(' ');
             controller.pendingAdvice = [];
-            userMessage += `\n\nSPECTATOR ADVICE (a human observer suggests — weigh it, you still decide): ${advice}`;
+            parts.push(`SPECTATOR ADVICE (a human observer suggests — weigh it, you still decide): ${advice}`);
         }
 
-        // Build the conversation TURNS (user/assistant history; the system prompt is
-        // passed separately so each provider adapter can place it correctly).
+        const userMessage = parts.join('\n\n');
+
+        // A single user turn keeps the request valid for every provider (OpenAI,
+        // Anthropic, Ollama, Google all accept a lone user message after the system
+        // prompt) and avoids role-alternation pitfalls.
         const turns = [{ role: 'user', content: userMessage }];
-
-        // Append the last N action/result pairs, alternating assistant/user.
-        const maxHistory = 3;
-        const recentHistory = controller.conversationHistory.slice(-maxHistory);
-        for (const entry of recentHistory) {
-            if (!entry || !entry.action || !entry.result) continue;
-            turns.push({ role: 'assistant', content: String(entry.action) });
-            turns.push({ role: 'user', content: `Action result: ${String(entry.result)}` });
-        }
-        // Ensure every turn has non-null string content.
-        for (const t of turns) {
-            if (t.content === null || t.content === undefined) t.content = '';
-            else if (typeof t.content !== 'string') t.content = String(t.content);
-        }
 
         // Which protocol does this endpoint speak? (auto-detected when set to 'auto')
         const provider = OpenAIAIManager.resolveProvider(model);

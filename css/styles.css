@@ -1136,6 +1136,15 @@ body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
 .auth-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .auth-grid .arena-field.full { grid-column: 1 / -1; }
 .auth-hint { font-size: 0.85em; color: #8b97ad; padding: 2px; }
+.auth-hint.ollama-hint {
+    color: #cdd6e8;
+    background: rgba(240, 165, 0, 0.10);
+    border-left: 3px solid rgba(240, 165, 0, 0.6);
+    border-radius: 4px;
+    padding: 7px 10px;
+    margin-top: 4px;
+    line-height: 1.4;
+}
 .auth-divider { font-size: 0.8em; color: #8b97ad; text-transform: uppercase; letter-spacing: 1px; grid-column: 1 / -1; margin-top: 4px; }
 
 .header-rows { display: flex; flex-direction: column; gap: 8px; }
