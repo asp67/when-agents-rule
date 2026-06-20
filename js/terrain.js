@@ -86,28 +86,35 @@ class TerrainManager {
         this.addGridLines();
     }
 
+    // The map is split into four 90° wedges, one centred on each player's spawn
+    // direction (top/right/bottom/left). A random point inside player `area`'s
+    // wedge — used to spread food & wood evenly across players but randomly within.
+    randomPosInArea(area) {
+        const baseAngles = [-Math.PI / 2, 0, Math.PI / 2, Math.PI]; // matches the 4 spawn directions
+        const a = baseAngles[area % 4] + (Math.random() - 0.5) * (Math.PI / 2);
+        const maxR = this.size / 2 - 24; // keep off the beach/edge
+        const r = 24 + Math.random() * (maxR - 24);
+        return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+    }
+
     generateResources() {
-        // Food (animals) - create visual mesh for each food resource (doubled from 45 to 90)
-        for (let i = 0; i < 90; i++) {
-            const x = (Math.random() - 0.5) * (this.size - 20);
-            const z = (Math.random() - 0.5) * (this.size - 20);
-            
-            // Create animal mesh (small sphere to represent deer/rabbit)
-            const animalGeo = new THREE.SphereGeometry(0.6, 8, 6);
-            const animalMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
-            const animal = new THREE.Mesh(animalGeo, animalMat);
-            animal.position.set(x, 0.6, z);
-            animal.castShadow = false; // decorative; avoids shadow clutter
-            this.scene.add(animal);
-            
-            this.resources.push({
-                type: 'food',
-                x: x,
-                z: z,
-                amount: 300,
-                mesh: animal,
-                health: 300
-            });
+        // Food (animals): 180 total, spread EVENLY across the 4 player areas
+        // (45 each) but placed randomly within each area's wedge.
+        const perArea = 45;
+        for (let area = 0; area < 4; area++) {
+            for (let i = 0; i < perArea; i++) {
+                const { x, z } = this.randomPosInArea(area);
+
+                // Create animal mesh (small sphere to represent deer/rabbit)
+                const animalGeo = new THREE.SphereGeometry(0.6, 8, 6);
+                const animalMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+                const animal = new THREE.Mesh(animalGeo, animalMat);
+                animal.position.set(x, 0.6, z);
+                animal.castShadow = false; // decorative; avoids shadow clutter
+                this.scene.add(animal);
+
+                this.resources.push({ type: 'food', x, z, amount: 300, mesh: animal, health: 300 });
+            }
         }
     }
 
@@ -133,10 +140,13 @@ class TerrainManager {
     }
 
     generateTrees() {
-        for (let i = 0; i < 320; i++) {
-            const x = (Math.random() - 0.5) * (this.size - 20);
-            const z = (Math.random() - 0.5) * (this.size - 20);
-            
+        // Wood (trees): 640 total, spread EVENLY across the 4 player areas (160
+        // each) but placed randomly within each area's wedge.
+        const perArea = 160;
+        for (let area = 0; area < 4; area++) {
+          for (let t = 0; t < perArea; t++) {
+            const { x, z } = this.randomPosInArea(area);
+
             // Create tree
             const trunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
             const trunkMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
@@ -163,6 +173,7 @@ class TerrainManager {
                 mesh: { trunk, leaves },
                 health: 200
             });
+          }
         }
     }
 

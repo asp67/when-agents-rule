@@ -280,4 +280,16 @@ class FogOfWarManager {
             this.reveal(unit.x, unit.z, this.unitVisionRange * 1.5);
         });
     }
+
+    // Tear down the fog overlay so a new game doesn't layer a stale mesh over a
+    // fresh one (which left old discovered areas "burned in" across arena games).
+    destroy() {
+        if (this.fogMesh) {
+            this.scene.remove(this.fogMesh);
+            if (this.fogMesh.geometry) this.fogMesh.geometry.dispose();
+            if (this.fogMesh.material) this.fogMesh.material.dispose();
+            this.fogMesh = null;
+        }
+        if (this.fogTexture) { this.fogTexture.dispose(); this.fogTexture = null; }
+    }
 }

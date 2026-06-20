@@ -123,7 +123,7 @@ class Game {
         // Validate: every LLM slot must point at a model with an endpoint.
         for (let i = 0; i < setup.length; i++) {
             if (setup[i].type === 'llm' && !(setup[i].connection && setup[i].connection.endpoint)) {
-                alert(`Platz ${i + 1}: Bitte wähle ein Modell mit gültiger Endpoint-URL aus der Bibliothek, oder stelle die Steuerung auf "Regelbasierte KI".`);
+                alert(t('ar.slotNeedsModel', { n: i + 1 }));
                 return;
             }
         }
@@ -231,6 +231,7 @@ class Game {
         this.renderer.setTerrain(this.terrain);
 
         // Setup fog of war (natural fog for spectator mode, entities always visible)
+        if (this.fogOfWar) this.fogOfWar.destroy(); // drop the previous game's fog overlay
         this.fogOfWar = new FogOfWarManager(this);
 
         // Setup camera for spectator mode — angled overview that frames the battlefield
@@ -405,6 +406,7 @@ class Game {
         }
 
         // Initialize fog of war
+        if (this.fogOfWar) this.fogOfWar.destroy(); // drop the previous game's fog overlay
         this.fogOfWar = new FogOfWarManager(this);
         if (!this.spectatorMode) {
             this.fogOfWar.revealStartingArea();
