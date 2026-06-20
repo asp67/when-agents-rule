@@ -1502,7 +1502,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         switch (action) {
             case 'train_worker':
-                actionResult = this.executeTrainWorker(ai, game);
+                actionResult = this.executeTrainWorker(ai, game, params || {});
                 break;
 
             case 'train_unit':
@@ -1636,7 +1636,14 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return `Build houses to raise maxPopulation (up to the hard cap of ${cap}), or delete_unit to free room now.`;
     }
 
-    executeTrainWorker(ai, game) {
+    executeTrainWorker(ai, game, params = {}) {
+        // Models sometimes call train_worker but pass a military unit type. That's a
+        // tool-calling mismatch: train_worker ALWAYS makes a villager at the Town
+        // Center. Tell them the right action instead of silently training a worker.
+        const ut = params && params.unitType;
+        if (ut && ut !== 'worker') {
+            return `[ERROR] train_worker only trains a Villager (worker) at the Town Center — it ignores unitType. To train "${ut}", use action "train_unit" with params.unitType="${ut}" (military units come from a barracks/archery_range/stable, not the Town Center).`;
+        }
         const townCenters = ai.buildings.filter(b => b.type === 'town_center' && !b.isProducing && !b.underConstruction);
         if (townCenters.length === 0) {
             console.log(`[OpenAIAI] ${ai.id}: No available Town Center to train worker`);
