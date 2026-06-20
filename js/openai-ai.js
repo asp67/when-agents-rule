@@ -2078,7 +2078,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         if (!target) {
             console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" not found`);
-            return `[ERROR] Target "${targetId}" not found. Use "enemyUnits" or "enemyBuildings" from game state to find valid targets.`;
+            return `[ERROR] Target "${targetId}" not found. ${this.attackTargetHint(ai, game)}`;
+        }
+
+        // Friendly-fire guard: a model must not attack its own units/buildings.
+        if (this.isOwnedByAI(target, ai)) {
+            console.log(`[OpenAIAI] ${ai.id}: Refused self-attack on "${target.name || target.type}"`);
+            return `[ERROR] Target "${target.name || target.type}" is your own ${target.type}. You cannot attack your own units or buildings. ${this.attackTargetHint(ai, game)}`;
         }
 
         let unitsToAttack = ai.units.filter(u => u.type !== 'worker');
@@ -2374,6 +2380,33 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return entity.owner === ai.id ||
                ai.units.includes(entity) ||
                ai.buildings.includes(entity);
+    }
+
+    // Has this AI actually discovered any enemy worth attacking? Mirrors the
+    // fog-of-war filtering used to build the game state: an enemy counts only if
+    // it is currently visible — EXCEPT enemy wonders, which are always revealed
+    // to everyone, so a known wonder counts even with zero scouting.
+    hasVisibleEnemies(ai, game) {
+        for (const b of game.getAllBuildings()) {
+            if (this.isOwnedByAI(b, ai)) continue;
+            if (b.health <= 0) continue;
+            if (b.isWonder || this.isPositionVisibleToAI(ai, b.x, b.z, game)) return true;
+        }
+        for (const u of game.getAllUnits()) {
+            if (this.isOwnedByAI(u, ai)) continue;
+            if (u.health <= 0) continue;
+            if (this.isPositionVisibleToAI(ai, u.x, u.z, game)) return true;
+        }
+        return false;
+    }
+
+    // Shared guidance appended to attack errors so the model's next step is
+    // always actionable: scout first if nothing is known, otherwise pick a real
+    // target from the discovered lists.
+    attackTargetHint(ai, game) {
+        return this.hasVisibleEnemies(ai, game)
+            ? 'Use "enemyUnits" or "enemyBuildings" from game state to find valid targets.'
+            : 'No enemies have been discovered yet. Send a unit to explore/scout the map before attacking.';
     }
 
     // ----------------------------------------------------------------

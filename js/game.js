@@ -792,6 +792,14 @@ class Game {
                 }
             }
 
+            // Friendly-fire backstop: never damage a same-owner entity, even if a
+            // bad order slipped one through. Drop it and re-acquire next tick.
+            if (unit.isAttacking && unit.attackTarget &&
+                unit.attackTarget.owner != null && unit.attackTarget.owner === unit.owner) {
+                unit.attackTarget = null;
+                if (!unit.attackMove) unit.isAttacking = false;
+            }
+
             // If unit has an attack target
             if (unit.isAttacking && unit.attackTarget) {
                 const currentTarget = unit.attackTarget;
