@@ -750,7 +750,7 @@ class OpenAIAIManager {
         // --- Buildable structures for THIS civ (some civs lack e.g. the stable) ---
         // Only lists what your civilization can EVER build; if a type is missing,
         // your civ does not have it (don't waste turns trying).
-        const stdBuildings = ['house', 'farm', 'barracks', 'archery_range', 'stable', 'market', 'tower', 'temple'];
+        const stdBuildings = ['town_center', 'house', 'farm', 'barracks', 'archery_range', 'stable', 'market', 'tower', 'temple'];
         const buildableStructures = stdBuildings.map(t => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(t) : null;
             if (!def) return null;
@@ -1003,7 +1003,7 @@ class OpenAIAIManager {
                                 },
                                 buildingType: {
                                     type: 'string',
-                                    description: 'For build_structure: building type (e.g. "house", "farm", "barracks", "market", "tower").'
+                                    description: 'For build_structure: building type (e.g. "town_center", "house", "farm", "barracks", "market", "tower"). A 2nd town_center near a far resource is a valid drop-off point (workers deliver to the NEAREST one).'
                                 },
                                 techId: {
                                     type: 'string',
@@ -1011,11 +1011,11 @@ class OpenAIAIManager {
                                 },
                                 targetX: {
                                     type: 'number',
-                                    description: 'For move_units/build_structure/attack_target: X coordinate.'
+                                    description: 'For move_units/build_structure/attack_target: X coordinate. For train_unit/train_worker: OPTIONAL — train at the producing structure nearest this coordinate (e.g. a specific Town Center/barracks); if that one is busy or omitted, the next free structure is used.'
                                 },
                                 targetZ: {
                                     type: 'number',
-                                    description: 'For move_units/build_structure/attack_target: Z coordinate.'
+                                    description: 'For move_units/build_structure/attack_target: Z coordinate. For train_unit/train_worker: OPTIONAL — see targetX.'
                                 },
                                 targetId: {
                                     type: 'string',
@@ -1135,11 +1135,11 @@ Food (deer, berries, farms) - workers and units. Wood (trees) - buildings. Stone
 - Use the plan to keep sub-goals alive: e.g. objective "Crush red player", plan ["scout red's base","mass 6 cavalry","attack red TC"] — so a scout you sent or a resource you still need is not forgotten once it scrolls out of your recent moves. Rewrite the plan as steps complete or priorities shift; note progress in the text ("scouting red — in progress").
 
 ## Actions (choose ONE per turn)
-- train_worker: train a worker at your Town Center.
-- train_unit: params.unitType = "militia" | "archer" | "scout_cavalry" (needs the right building).
+- train_worker: train a worker at your Town Center. Optional params.targetX/targetZ trains at the Town Center nearest those coords — so with two Town Centers you can train a worker at each (in successive turns) for parallel growth; if that one is busy the next free Town Center is used.
+- train_unit: params.unitType = "militia" | "archer" | "scout_cavalry" (needs the right building). Optional params.targetX/targetZ picks WHICH structure trains it when you have several (e.g. two barracks); a busy/absent one falls back to the next free.
 - research_tech: params.techId = an exact id from "research.available".
 - upgrade_age: advance to the next epoch.
-- build_structure: params.buildingType = "house" | "farm" | "barracks" | "stable" | "archery_range" | "market" | "tower" (must be researched). Placing it pulls a worker to build a SITE over several seconds; it only works once "state":"complete".
+- build_structure: params.buildingType = "town_center" | "house" | "farm" | "barracks" | "stable" | "archery_range" | "market" | "tower" (most must be researched). Placing it pulls a worker to build a SITE over several seconds; it only works once "state":"complete". A SECOND town_center built (with targetX/targetZ) next to a far resource cluster is a strong move: workers drop resources at the NEAREST Town Center, so it shortens long hauls — and it lets you train workers from two places at once.
 - build_wonder: start your civ's Wonder (needs the Iron age); hold it (gameStats.wonderRequired s) after it finishes to WIN — but expect rivals to rush it.
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" (sends an idle worker; auto-scouts if undiscovered).
 - assign_workers: params.resourceType (+ optional count) - REASSIGN workers off their current task onto gathering that resource.
@@ -1595,7 +1595,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
             case 'train_unit':
                 if (params?.unitType) {
-                    actionResult = this.executeTrainUnit(ai, game, params.unitType);
+                    actionResult = this.executeTrainUnit(ai, game, params.unitType, params || {});
                 } else {
                     actionResult = `[ERROR] train_unit requires "unitType" parameter.`;
                 }
@@ -1729,6 +1729,24 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return `Build houses to raise maxPopulation (up to the hard cap of ${cap}), or delete_unit to free room now.`;
     }
 
+    // Pick which finished, non-busy building actually trains the unit. If the model
+    // gave params.targetX/targetZ, prefer the FREE trainer nearest that spot — so it
+    // can direct production to a specific structure (a 2nd Town Center by a far
+    // resource, a particular barracks…). If the structure nearest those coords is
+    // busy, fall back to the next free one and say so. No coords → first free.
+    chooseTrainer(freeList, finishedOfType, params) {
+        const tx = Number(params && params.targetX), tz = Number(params && params.targetZ);
+        if (!Number.isFinite(tx) || !Number.isFinite(tz)) return { b: freeList[0], note: '' };
+        const nearestIn = (list) => list.reduce((best, b) => {
+            const d = Math.hypot(b.x - tx, b.z - tz);
+            return (!best || d < best.d) ? { b, d } : best;
+        }, null);
+        const chosen = nearestIn(freeList);
+        const requested = nearestIn(finishedOfType);
+        const redirected = requested && chosen && requested.b !== chosen.b && requested.b.isProducing;
+        return { b: chosen.b, note: redirected ? ' (the structure nearest your coordinates was busy, so the next free one was used)' : '' };
+    }
+
     executeTrainWorker(ai, game, params = {}) {
         // Models sometimes call train_worker but pass a military unit type. That's a
         // tool-calling mismatch: train_worker ALWAYS makes a villager at the Town
@@ -1762,18 +1780,18 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] Cannot afford a worker (needs ${this.costString(workerDef.cost)}). You have ${this.haveString(ai)}.`;
         }
 
-        const tc = townCenters[0];
+        const { b: tc, note } = this.chooseTrainer(townCenters, allTCs.filter(b => !b.underConstruction), params);
         ai.resources.spendResources(workerDef.cost);
         tc.isProducing = true;
         tc.productionType = 'worker';
         tc.productionDuration = 5000;
         tc.productionProgress = 0;
-        console.log(`[OpenAIAI] ${ai.id}: Training worker at Town Center`);
-        return `OK - Training a worker at the Town Center (~5s to produce; ${Math.floor(ai.resources.food)} food left). The Town Center is busy until it finishes.`;
+        console.log(`[OpenAIAI] ${ai.id}: Training worker at Town Center (${Math.round(tc.x)}, ${Math.round(tc.z)})`);
+        return `OK - Training a worker at the Town Center (${Math.round(tc.x)}, ${Math.round(tc.z)}) (~5s to produce; ${Math.floor(ai.resources.food)} food left). That Town Center is busy until it finishes.${note}`;
     }
 
-    executeTrainUnit(ai, game, unitType) {
-        if (unitType === 'worker') return this.executeTrainWorker(ai, game);
+    executeTrainUnit(ai, game, unitType, params = {}) {
+        if (unitType === 'worker') return this.executeTrainWorker(ai, game, params);
 
         const civ = getCivilization(ai.civilization);
         const unitDef = getUnitDef(unitType) || (civ.uniqueUnits || []).find(u => u.id === unitType);
@@ -1832,8 +1850,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
 
         // 4) BUSY: a trainer exists but all are mid-production (transient).
-        const free = trainers.find(b => !b.isProducing);
-        if (!free) {
+        const freeTrainers = trainers.filter(b => !b.isProducing);
+        if (freeTrainers.length === 0) {
             const tName = trainers[0].type;
             return `[ERROR] Your ${tName} is busy producing right now. Wait for it to finish, or build another ${tName} to train in parallel.`;
         }
@@ -1844,14 +1862,16 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] Cannot afford ${unitType} (needs ${this.costString(unitDef.cost)}). You have ${this.haveString(ai)}.`;
         }
 
-        // TRAIN.
+        // TRAIN — at the structure the model targeted (params.targetX/Z), else the
+        // first free one; a busy targeted structure falls back to the next free.
+        const { b: free, note } = this.chooseTrainer(freeTrainers, trainers, params);
         ai.resources.spendResources(unitDef.cost);
         free.isProducing = true;
         free.productionType = unitType;
         free.productionDuration = 5000;
         free.productionProgress = 0;
-        console.log(`[OpenAIAI] ${ai.id}: Training ${unitType} at ${free.name}`);
-        return `OK - Training ${unitType} at ${free.name} (~5s to produce; that building is busy until it finishes).`;
+        console.log(`[OpenAIAI] ${ai.id}: Training ${unitType} at ${free.name} (${Math.round(free.x)}, ${Math.round(free.z)})`);
+        return `OK - Training ${unitType} at ${free.name} (${Math.round(free.x)}, ${Math.round(free.z)}) (~5s to produce; that building is busy until it finishes).${note}`;
     }
 
     executeResearchTech(ai, game, techId) {
