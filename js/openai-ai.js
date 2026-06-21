@@ -989,7 +989,7 @@ class OpenAIAIManager {
                             properties: {
                                 unitType: {
                                     type: 'string',
-                                    description: 'For train_unit: unit type to train (e.g. "militia", "archer", "scout_cavalry").'
+                                    description: 'For train_unit: unit type to train (e.g. "militia", "archer", "scout_cavalry"). For explore: OPTIONAL — name a unit type to scout with (id like "scout_cavalry" or category like "cavalry"/"worker"); omit to auto-pick the best free scout.'
                                 },
                                 buildingType: {
                                     type: 'string',
@@ -1132,7 +1132,7 @@ Food (deer, berries, farms) - workers and units. Wood (trees) - buildings. Stone
 - build_wonder: start your civ's Wonder (needs the Iron age); hold it (gameStats.wonderRequired s) after it finishes to WIN — but expect rivals to rush it.
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" (sends an idle worker; auto-scouts if undiscovered).
 - assign_workers: params.resourceType (+ optional count) - REASSIGN workers off their current task onto gathering that resource.
-- explore: params.targetX, params.targetZ (or none) - send a scout to reveal hidden map, resources and enemies.
+- explore: params.targetX, params.targetZ (or none) - send a scout to reveal hidden map, resources and enemies. Optional params.unitType picks which unit scouts (e.g. "scout_cavalry"); omit it to auto-pick your best free scout.
 - move_units: params.targetX, params.targetZ (reposition your army).
 - attack_target: params.targetX, params.targetZ (or params.targetId) - your army marches there and engages any enemy on the way, pursuing even if they move. This is how you destroy enemies and win.
 - delete_unit: params.unitType (+ optional count) - remove your own units to free population.
@@ -2260,7 +2260,24 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     //   5) last resort: any non-combat unit, then anything at all.
     // Workers are only used when no military is free — and military that is busy
     // fighting is never pulled.
-    pickScout(ai) {
+    //
+    // If `preferredType` is given (a unit id like "scout_cavalry" OR a category
+    // like "cavalry"), an idle unit of that type is chosen when one exists; if
+    // none is free we fall back to the automatic logic below.
+    pickScout(ai, preferredType = null) {
+        if (preferredType) {
+            const pt = String(preferredType).trim().toLowerCase();
+            const matches = ai.units.filter(u => !this.isInCombat(u) &&
+                ((u.type || '').toLowerCase() === pt || (u.unitType || '').toLowerCase() === pt));
+            if (matches.length) {
+                // Prefer a genuinely idle one (so we don't pull a working worker if a
+                // free one of the same type exists), else any non-combat match.
+                const idle = matches.find(u => u.type === 'worker' ? this.game.isIdleWorker(u) : !u.isMoving);
+                return idle || matches[0];
+            }
+            // requested type isn't free → fall through to the automatic pick
+        }
+
         const idleMilitary = ai.units.filter(u => u.type !== 'worker' && !this.isInCombat(u));
         const cav = idleMilitary.find(u => u.unitType === 'cavalry');
         if (cav) return cav;
@@ -2272,6 +2289,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (freeWorker) return freeWorker;
 
         return ai.units.find(u => !this.isInCombat(u)) || ai.units.find(u => u.type !== 'worker') || null;
+    }
+
+    // Did `scout` satisfy the model's explicit unit choice? (id or category match)
+    scoutMatchesChoice(scout, preferredType) {
+        if (!preferredType || !scout) return true; // no choice made → nothing to satisfy
+        const pt = String(preferredType).trim().toLowerCase();
+        return (scout.type || '').toLowerCase() === pt || (scout.unitType || '').toLowerCase() === pt;
     }
 
     // Strip a unit of its current job (harvesting/farm/combat) so it can cleanly
@@ -2295,7 +2319,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     // peek at hidden resource positions — the AI doesn't know where undiscovered
     // nodes are. We fan out from the base in a new direction each call (golden-angle
     // sweep) with an expanding radius, so repeated scouting covers the whole map.
-    dispatchScoutToward(ai, game) {
+    dispatchScoutToward(ai, game, preferredType = null) {
         const center = this.getAIBuildingCenter(ai);
         const half = (game.terrain.size / 2) - 30;
         ai._scoutAngle = (ai._scoutAngle == null) ? 0 : ai._scoutAngle + 2.399963; // golden angle
@@ -2306,16 +2330,18 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             center.z + Math.sin(ai._scoutAngle) * ai._scoutRadius
         );
 
-        const scout = this.pickScout(ai);
+        const scout = this.pickScout(ai, preferredType);
         if (!scout) return `You have no unit free to scout — train a worker first.`;
         const eta = this.travelEtaSec(scout, tx, tz);
         const wasBusy = scout.type === 'worker' && !this.game.isIdleWorker(scout);
+        const missedChoice = preferredType && !this.scoutMatchesChoice(scout, preferredType);
         this.releaseUnitForOrders(scout); // cleanly drop any harvest/farm/combat job
         scout.task = scout.type === 'worker' ? 'scouting' : null;
         scout.isMoving = true;
         scout.targetX = tx;
         scout.targetZ = tz;
-        return `Sent a scout to explore toward (${Math.round(tx)}, ${Math.round(tz)}) (~${eta}s to arrive, revealing the map as it goes)${wasBusy ? ' — no worker was idle, so one was pulled off gathering' : ''}.`;
+        const choiceNote = missedChoice ? ` (no idle "${preferredType}" was free, so your ${scout.type} was used instead)` : '';
+        return `Sent your ${scout.type} to explore toward (${Math.round(tx)}, ${Math.round(tz)}) (~${eta}s to arrive, revealing the map as it goes)${wasBusy ? ' — no worker was idle, so one was pulled off gathering' : ''}${choiceNote}.`;
     }
 
     executeHarvestResource(ai, game, resourceType) {
@@ -2419,6 +2445,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     }
 
     executeExplore(ai, game, params) {
+        // Optional: the model may name a unit to scout with (id like "scout_cavalry"
+        // or category like "cavalry"/"worker"); omit it to auto-pick the best scout.
+        const preferredType = params.unitType ? String(params.unitType).trim() : null;
+
         // Did the model attempt to specify a target at all?
         const gaveX = params.targetX !== undefined && params.targetX !== null && params.targetX !== '';
         const gaveZ = params.targetZ !== undefined && params.targetZ !== null && params.targetZ !== '';
@@ -2433,9 +2463,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds), or omit both to auto-scout the nearest unexplored frontier. Got targetX=${JSON.stringify(params.targetX)}, targetZ=${JSON.stringify(params.targetZ)}.`;
             }
 
-            const scout = this.pickScout(ai);
+            const scout = this.pickScout(ai, preferredType);
             if (!scout) return `[ERROR] No unit available to explore. Train a worker first.`;
             const wasBusy = scout.type === 'worker' && !this.game.isIdleWorker(scout);
+            const missedChoice = preferredType && !this.scoutMatchesChoice(scout, preferredType);
 
             // Clamp the target so the scout stays on land (no wandering into the ocean).
             const { x: tx, z: tz } = game.clampToMap(tx0, tz0);
@@ -2448,11 +2479,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
             const clamped = Math.round(tx) !== Math.round(tx0) || Math.round(tz) !== Math.round(tz0);
             const pulled = wasBusy ? ' (no worker was idle, so one was pulled off gathering — reassign it to a resource once scouting is done)' : '';
-            return `OK - Sent a scout to explore (${Math.round(tx)}, ${Math.round(tz)})${clamped ? ' — your target was outside the map and was clamped to the edge' : ''}. It will take ~${eta}s to get there; let it travel before exploring again.${pulled}`;
+            const choiceNote = missedChoice ? ` (no idle "${preferredType}" was free, so your ${scout.type} was used instead)` : '';
+            return `OK - Sent your ${scout.type} to explore (${Math.round(tx)}, ${Math.round(tz)})${clamped ? ' — your target was outside the map and was clamped to the edge' : ''}. It will take ~${eta}s to get there; let it travel before exploring again.${pulled}${choiceNote}`;
         }
 
         // No target → fan out toward the nearest unexplored frontier.
-        const msg = this.dispatchScoutToward(ai, game);
+        const msg = this.dispatchScoutToward(ai, game, preferredType);
         return msg.startsWith('You have no') ? `[ERROR] ${msg}` : `OK - ${msg}`;
     }
 
