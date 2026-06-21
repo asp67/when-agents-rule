@@ -19,6 +19,11 @@ class OpenAIAIManager {
         this.pendingRequests = new Map(); // controllerId -> Promise
         this.decisionLog = []; // Array of { timestamp, playerId, civName, action, reason }
         this.maxLogEntries = 400; // keep a deep decision history for the spectator log
+        this.historyLength = 20; // recent moves replayed to each model every turn, so it can
+                                 // follow a multi-step plan (e.g. need gold -> train worker ->
+                                 // send to gold) and not "forget" a scout it just dispatched.
+                                 // Each entry is one short sentence (action + reason + outcome),
+                                 // so 20 is only a few hundred tokens — cheap to raise if needed.
         this.modelsLoaded = false; // Prevent double-loading
     }
 
@@ -1143,15 +1148,23 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // which scrambled past/present and made the model answer a stale old result.)
         const parts = [];
 
-        // 1) Recent move history for continuity, oldest first.
-        const maxHistory = 4;
-        const recentHistory = controller.conversationHistory.slice(-maxHistory);
+        // 1) Recent move history for continuity, oldest first. A long-ish window
+        //    (historyLength) lets the model follow a multi-step plan across turns
+        //    instead of forgetting WHY it started something (e.g. it advanced-age,
+        //    found it lacked gold, trained a worker, sent it to gold). Each move is
+        //    one short sentence: action ("reason") -> OK/FAILED: outcome.
+        const recentHistory = controller.conversationHistory.slice(-this.historyLength);
         if (recentHistory.length) {
+            const trim = (s) => { s = String(s).replace(/^\[ERROR\]\s*/, '').replace(/^OK\s*-\s*/, '').trim(); return s.length > 200 ? s.slice(0, 197) + '…' : s; };
             const lines = recentHistory
                 .filter(e => e && e.action && e.result)
-                .map((e, i) => `${i + 1}. You did: ${String(e.action)}\n   -> Result: ${String(e.result)}`)
+                .map((e, i) => {
+                    const status = e.failed ? 'FAILED' : 'OK';
+                    const why = e.reason ? ` ("${String(e.reason).slice(0, 120)}")` : '';
+                    return `${i + 1}. ${e.action}${why} -> ${status}: ${trim(e.result)}`;
+                })
                 .join('\n');
-            if (lines) parts.push(`Your recent moves THIS match (oldest first) — keep a consistent strategy and learn from the results:\n${lines}`);
+            if (lines) parts.push(`Your recent moves THIS match (oldest first) — keep a consistent strategy, finish multi-step plans you started, and learn from the results:\n${lines}`);
         }
 
         // 2) Feedback from a previous turn that produced NO valid action (e.g. a parse
@@ -1616,16 +1629,20 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             }
         }
 
-        // Store action result in conversation history for feedback
+        // Store a COMPACT, human-readable record of this decision for the feedback
+        // loop: the action, the model's own stated reason, and the outcome. One
+        // short sentence per move keeps a long history (historyLength) affordable
+        // while preserving the "why" across a multi-step plan.
         if (actionResult) {
             controller.conversationHistory.push({
-                // Store as proper JSON arguments string (what the model would return in tool_calls)
-                action: JSON.stringify({ action, params: params || {} }),
-                result: actionResult
+                action: action,
+                reason: (params && params.reason) ? String(params.reason) : '',
+                result: actionResult,
+                failed: !!logEntry.failed
             });
             // Keep history manageable
-            if (controller.conversationHistory.length > 10) {
-                controller.conversationHistory = controller.conversationHistory.slice(-10);
+            if (controller.conversationHistory.length > this.historyLength) {
+                controller.conversationHistory = controller.conversationHistory.slice(-this.historyLength);
             }
             controller.lastActionResult = actionResult;
         }
