@@ -17,6 +17,9 @@ class OpenAIAIManager {
                                       // reasoning models on modest hardware may still exceed it —
                                       // use a smaller/faster model for the real-time arena.
         this.pendingRequests = new Map(); // controllerId -> Promise
+        this._orderSeq = 0; // monotonic token stamped on a unit each time it gets a new
+                            // move/attack order, so a deferred attack-arrival report can
+                            // tell which units are still on that order vs reassigned.
         this._stopped = false; // set true when the match ends/restarts: aborts in-flight
                                // requests and makes any late resolution a no-op, so the
                                // previous match's models can't mutate the next one.
@@ -422,6 +425,8 @@ class OpenAIAIManager {
                 pendingAdvice: [], // Spectator advice to inject into the next prompt
                 objective: '', // Model-authored standing goal ("why"), persists until it changes it
                 plan: [], // Model-authored short ordered sub-goals, persists until rewritten
+                pendingArrivalMessages: [], // deferred attack outcomes, delivered on arrival
+                pendingAttackReports: [], // open attack-move orders awaiting an arrival verdict
                 stats: this.newStats() // Behavior/performance metrics for the summary
             };
 
@@ -497,6 +502,8 @@ class OpenAIAIManager {
                 pendingAdvice: [], // Spectator advice to inject into the next prompt
                 objective: '', // Model-authored standing goal ("why"), persists until it changes it
                 plan: [], // Model-authored short ordered sub-goals, persists until rewritten
+                pendingArrivalMessages: [], // deferred attack outcomes, delivered on arrival
+                pendingAttackReports: [], // open attack-move orders awaiting an arrival verdict
                 stats: this.newStats() // Behavior/performance metrics for the summary
             };
 
@@ -1137,7 +1144,7 @@ Food (deer, berries, farms) - workers and units. Wood (trees) - buildings. Stone
 - assign_workers: params.resourceType (+ optional count) - REASSIGN workers off their current task onto gathering that resource.
 - explore: params.targetX, params.targetZ (or none) - send a scout to reveal hidden map, resources and enemies. Optional params.unitType picks which unit scouts (e.g. "scout_cavalry"); omit it to auto-pick your best free scout.
 - move_units: params.targetX, params.targetZ (reposition your army).
-- attack_target: params.targetX, params.targetZ (or params.targetId) - your army marches there and engages any enemy on the way, pursuing even if they move. This is how you destroy enemies and win.
+- attack_target: params.targetX, params.targetZ (or params.targetId) - your army marches there and engages any enemy on the way, pursuing even if they move. This is how you destroy enemies and win. With coordinates, the result (engaged an enemy, or found NO valid target there) is reported once your units ARRIVE — wait for that verdict instead of re-issuing. Attacking your own units/buildings or a resource node is rejected immediately.
 - delete_unit: params.unitType (+ optional count) - remove your own units to free population.
 - destroy_building: params.buildingType (+ optional targetX/targetZ) - demolish one of your own buildings (won't destroy your last Town Center).
 - build_wonder: start your civ's Wonder (needs the Iron age); hold it (gameStats.wonderRequired s) after it finishes to WIN — but expect rivals to rush it.
@@ -1200,6 +1207,15 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 })
                 .join('\n');
             if (lines) parts.push(`Your recent moves THIS match (oldest first) — keep a consistent strategy, finish multi-step plans you started, and learn from the results:\n${lines}`);
+        }
+
+        // 1b) Deferred attack outcomes: an attack to coordinates reports whether the
+        //     units engaged an enemy or found nothing only once they ARRIVE, so deliver
+        //     those verdicts now (exactly once).
+        if (controller.pendingArrivalMessages && controller.pendingArrivalMessages.length) {
+            const msgs = controller.pendingArrivalMessages;
+            controller.pendingArrivalMessages = [];
+            parts.push(`RESULTS OF YOUR EARLIER ATTACK ORDER(S) — your units have now arrived:\n` + msgs.map(m => `- ${m}`).join('\n'));
         }
 
         // 2) Feedback from a previous turn that produced NO valid action (e.g. a parse
@@ -2141,6 +2157,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             unit.attackTarget = null;
             unit.attackMove = null;
             unit.task = null;
+            unit._orderToken = ++this._orderSeq; // new order → leaves any prior attack report
         });
 
         console.log(`[OpenAIAI] ${ai.id}: Moving ${unitsToMove.length} units to (${Math.round(targetX)}, ${Math.round(targetZ)})`);
@@ -2187,6 +2204,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             unit.targetX = target.x;
             unit.targetZ = target.z;
             unit.task = null;
+            unit._orderToken = ++this._orderSeq; // new order → leaves any prior attack report
         });
 
         console.log(`[OpenAIAI] ${ai.id}: ${unitsToAttack.length} units attacking "${target.name || target.type}"`);
@@ -2194,28 +2212,53 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     }
 
     executeAttackPosition(ai, game, targetX, targetZ, unitIds) {
+        const controller = this.aiControllers.find(c => c.aiPlayer === ai);
         let unitsToAttack = ai.units.filter(u => u.type !== 'worker');
         if (unitIds && unitIds.length > 0) {
-            unitsToAttack = ai.units.filter(u => unitIds.includes(u.id));
+            const matched = ai.units.filter(u => unitIds.includes(u.id));
+            if (matched.length) unitsToAttack = matched; // else fall back to whole army (no IDs in state)
         }
         if (unitsToAttack.length === 0) {
             return `[ERROR] No military units available to attack. Train units first.`;
         }
 
+        const mx = Number(targetX), mz = Number(targetZ);
+        if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
+            return `[ERROR] attack needs numeric "targetX"/"targetZ" (or a "targetId"). Got targetX=${JSON.stringify(targetX)}, targetZ=${JSON.stringify(targetZ)}.`;
+        }
         // Keep the attack-move objective on solid ground.
-        ({ x: targetX, z: targetZ } = game.clampToMap(targetX, targetZ));
+        ({ x: targetX, z: targetZ } = game.clampToMap(mx, mz));
 
-        // Seed an initial target if anything is near the spot; otherwise the units
-        // attack-MOVE to the location and engage whatever they meet on the way (the
-        // order never fails just because the enemy has since moved).
+        // INSTANT checks on what sits AT the designated coordinates. Friendly target
+        // and resource node are rejected immediately (no move). Empty space and a
+        // valid enemy both dispatch the army and report the verdict ON ARRIVAL.
+        const HIT = 8, RES = 5;
+        let atSpot = null, nd = HIT;
+        for (const e of [...game.getAllUnits(), ...game.getAllBuildings()]) {
+            if (e.health <= 0) continue;
+            const d = Math.hypot(e.x - targetX, e.z - targetZ);
+            if (d <= nd) { nd = d; atSpot = e; }
+        }
+        if (atSpot && this.isOwnedByAI(atSpot, ai)) {
+            return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is on your own ${atSpot.type}. You cannot attack your own units/buildings. Pick an enemy from "enemyUnits"/"enemyBuildings".`;
+        }
+        if (!atSpot) {
+            const res = (game.terrain && game.terrain.resources) || [];
+            const node = res.find(r => r.amount > 0 && Math.hypot(r.x - targetX, r.z - targetZ) <= RES);
+            if (node) {
+                return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is a ${node.type} resource node, not an attack target. Workers gather it with harvest_resource; attack enemy units/buildings instead.`;
+            }
+        }
+
+        // Seed an initial target if an enemy is already near the spot; either way the
+        // units attack-MOVE to the location and engage whatever they meet on the way.
+        const token = ++this._orderSeq;
         let nearest = null, minDist = 40;
         for (const entity of [...game.getAllUnits(), ...game.getAllBuildings()]) {
-            if (this.isOwnedByAI(entity, ai)) continue;
-            if (entity.health <= 0) continue;
+            if (this.isOwnedByAI(entity, ai) || entity.health <= 0) continue;
             const d = Math.hypot(entity.x - targetX, entity.z - targetZ);
             if (d < minDist) { minDist = d; nearest = entity; }
         }
-
         unitsToAttack.forEach(unit => {
             unit.isAttacking = true;
             unit.attackTarget = nearest || null;
@@ -2225,11 +2268,74 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             unit.targetX = (nearest ? nearest.x : targetX);
             unit.targetZ = (nearest ? nearest.z : targetZ);
             unit.task = null;
+            unit._orderToken = token;
         });
+        if (controller) {
+            controller.pendingAttackReports = controller.pendingAttackReports || [];
+            controller.pendingAttackReports.push({ token, tx: targetX, tz: targetZ, units: unitsToAttack.slice(), startTime: Date.now() });
+        }
 
-        return nearest
-            ? `OK - ${unitsToAttack.length} units attacking enemy near (${Math.round(targetX)}, ${Math.round(targetZ)}).`
-            : `OK - ${unitsToAttack.length} units attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}); they will engage any enemy they encounter.`;
+        const eta = this.travelEtaSec(unitsToAttack[0], targetX, targetZ);
+        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s). You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
+    }
+
+    // Each frame, resolve open attack-move orders once the units arrive/engage and
+    // queue the verdict for the model's NEXT prompt (and the spectator log).
+    updateAttackReports(now) {
+        const ARRIVE = 7, ENGAGE = 30, MAXWAIT = 120000;
+        for (const controller of this.aiControllers) {
+            const reports = controller.pendingAttackReports;
+            if (!reports || !reports.length) continue;
+            const ai = controller.aiPlayer;
+            for (let i = reports.length - 1; i >= 0; i--) {
+                const r = reports[i];
+                const resolve = (msg, failed) => {
+                    controller.pendingArrivalMessages = controller.pendingArrivalMessages || [];
+                    controller.pendingArrivalMessages.push(msg);
+                    this.logArrival(ai, msg, failed);
+                    reports.splice(i, 1);
+                };
+                const onOrder = r.units.filter(u => u.health > 0 && ai.units.includes(u) && u._orderToken === r.token);
+                if (onOrder.length === 0) {
+                    if (r.units.every(u => u.health <= 0)) {
+                        resolve(`Your attack force sent to (${Math.round(r.tx)}, ${Math.round(r.tz)}) was destroyed before arriving.`, true);
+                    } else {
+                        reports.splice(i, 1); // those units got a new order — report superseded
+                    }
+                    continue;
+                }
+                const eng = onOrder.find(u => u.isAttacking && u.attackTarget && u.attackTarget.health > 0);
+                if (eng) {
+                    const tg = eng.attackTarget;
+                    resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and ENGAGED an enemy ${tg.type}${tg.owner ? ` (${tg.owner})` : ''}.`, false);
+                    continue;
+                }
+                const arrived = onOrder.some(u => Math.hypot(u.x - r.tx, u.z - r.tz) <= ARRIVE) || onOrder.every(u => !u.isMoving);
+                if (arrived) {
+                    const enemyNear = [...this.game.getAllUnits(), ...this.game.getAllBuildings()]
+                        .some(e => e.health > 0 && !this.isOwnedByAI(e, ai) && Math.hypot(e.x - r.tx, e.z - r.tz) <= ENGAGE);
+                    if (enemyNear) resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}); an enemy is there and they are engaging.`, false);
+                    else resolve(`[ERROR] Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) but found NO valid target — the spot is empty (the enemy moved or was already destroyed). Scout for the enemy's current position before attacking again.`, true);
+                    continue;
+                }
+                if (now - r.startTime > MAXWAIT) {
+                    resolve(`Your attack force did not reach (${Math.round(r.tx)}, ${Math.round(r.tz)}) in time (blocked or fighting along the way).`, true);
+                }
+            }
+        }
+    }
+
+    // Add a deferred attack outcome to the spectator decision log.
+    logArrival(ai, msg, failed) {
+        const civ = getCivilization(ai.civilization);
+        this.decisionLog.unshift({
+            timestamp: Date.now(), playerId: ai.id,
+            civName: civ?.name || ai.civilization,
+            color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
+            action: 'attack_target', reason: '', result: msg, params: {},
+            failed: !!failed, error: failed ? msg.replace(/^\[ERROR\]\s*/, '') : null
+        });
+        if (this.decisionLog.length > this.maxLogEntries) this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
     }
 
     // Resources are hidden until SCOUTED. Update the AI's discovery memory and
@@ -2335,6 +2441,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         u.isAttacking = false;
         u.attackTarget = null;
         u.attackMove = null;
+        u._orderToken = ++this._orderSeq; // reassigned → drops out of any prior attack report
     }
 
     // Send a scout toward an UNEXPLORED frontier to reveal the map. This must NOT
@@ -2622,6 +2729,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (this._stopped) return; // match ended/restarted — issue no more turns
 
         this.updateResourceDiscovery(now);
+        this.updateAttackReports(now);
 
         for (const controller of this.aiControllers) {
             if (controller.paused) continue;                                  // spectator paused it
@@ -2640,6 +2748,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         for (const c of this.aiControllers) {
             try { if (c._abort) c._abort.abort(); } catch (e) { /* already settled */ }
             c.pending = false;
+            c.pendingAttackReports = [];     // drop unresolved arrival reports
+            c.pendingArrivalMessages = [];   // and any undelivered verdicts
         }
         this.pendingRequests.clear();
     }
