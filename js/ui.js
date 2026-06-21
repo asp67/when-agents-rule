@@ -516,21 +516,21 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         if (a.type === 'none') return `<p class="auth-hint">${t('ar.authNoneHint')}</p>`;
         if (a.type === 'bearer') {
             return `<div class="arena-field"><label>${t('ar.fKey')}</label>
-                <input type="text" value="${e(a.key)}" oninput="game.ui.setAuthField(${m.id},'key',this.value)" placeholder="sk-…"></div>`;
+                <input type="password" autocomplete="off" value="${e(a.key)}" oninput="game.ui.setAuthField(${m.id},'key',this.value)" placeholder="sk-…"></div>`;
         }
         if (a.type === 'basic') {
             return `<div class="auth-grid">
                 <div class="arena-field"><label>${t('ar.fUser')}</label>
                     <input type="text" value="${e(a.username)}" oninput="game.ui.setAuthField(${m.id},'username',this.value)"></div>
                 <div class="arena-field"><label>${t('ar.fPass')}</label>
-                    <input type="text" value="${e(a.password)}" oninput="game.ui.setAuthField(${m.id},'password',this.value)"></div>
+                    <input type="password" autocomplete="off" value="${e(a.password)}" oninput="game.ui.setAuthField(${m.id},'password',this.value)"></div>
             </div>`;
         }
         if (a.type === 'header') {
             const rows = (a.headers.length ? a.headers : [{ name: '', value: '' }]).map((h, idx) => `
                 <div class="header-row">
                     <input type="text" value="${e(h.name)}" oninput="game.ui.setAuthHeaderField(${m.id},${idx},'name',this.value)" placeholder="${t('ar.fHeaderName')}">
-                    <input type="text" value="${e(h.value)}" oninput="game.ui.setAuthHeaderField(${m.id},${idx},'value',this.value)" placeholder="${t('ar.fHeaderVal')}">
+                    <input type="password" autocomplete="off" value="${e(h.value)}" oninput="game.ui.setAuthHeaderField(${m.id},${idx},'value',this.value)" placeholder="${t('ar.fHeaderVal')}">
                     <button class="hr-del" title="${t('ar.removeModel')}" onclick="game.ui.removeAuthHeader(${m.id},${idx})">✕</button>
                 </div>`).join('');
             return `<div class="arena-field"><label>${t('ar.fHeaders')}</label>
@@ -541,14 +541,14 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         if (a.type === 'oauth') {
             return `<div class="auth-grid">
                 <div class="arena-field full"><label>${t('ar.fToken')}</label>
-                    <input type="text" value="${e(a.accessToken)}" oninput="game.ui.setAuthField(${m.id},'accessToken',this.value)" placeholder="${t('ar.fTokenPh')}"></div>
+                    <input type="password" autocomplete="off" value="${e(a.accessToken)}" oninput="game.ui.setAuthField(${m.id},'accessToken',this.value)" placeholder="${t('ar.fTokenPh')}"></div>
                 <div class="auth-divider">${t('ar.oauthOr')}</div>
                 <div class="arena-field full"><label>${t('ar.fTokenUrl')}</label>
                     <input type="text" value="${e(a.tokenUrl)}" oninput="game.ui.setAuthField(${m.id},'tokenUrl',this.value)" placeholder="https://auth.example.com/oauth/token"></div>
                 <div class="arena-field"><label>${t('ar.fClientId')}</label>
                     <input type="text" value="${e(a.clientId)}" oninput="game.ui.setAuthField(${m.id},'clientId',this.value)"></div>
                 <div class="arena-field"><label>${t('ar.fClientSecret')}</label>
-                    <input type="text" value="${e(a.clientSecret)}" oninput="game.ui.setAuthField(${m.id},'clientSecret',this.value)"></div>
+                    <input type="password" autocomplete="off" value="${e(a.clientSecret)}" oninput="game.ui.setAuthField(${m.id},'clientSecret',this.value)"></div>
                 <div class="arena-field full"><label>${t('ar.fScope')}</label>
                     <input type="text" value="${e(a.scope)}" oninput="game.ui.setAuthField(${m.id},'scope',this.value)"></div>
             </div>`;
