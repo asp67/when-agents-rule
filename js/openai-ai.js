@@ -2282,6 +2282,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     }
 
     executeHarvestResource(ai, game, resourceType) {
+        resourceType = this.normalizeResourceType(resourceType);
+        if (!resourceType) {
+            return `[ERROR] harvest_resource needs a gatherable "resourceType": one of food, wood, stone, gold. (To construct a building, use build_structure instead.)`;
+        }
         const discovered = this.discoveredNodesOfType(ai, game, resourceType);
 
         // Not scouted yet → nothing is harvested. Flag it as a failed action (so it
@@ -2312,6 +2316,15 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return `OK - Sent worker to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}).`;
     }
 
+    // Normalize/validate a gatherable resource type. Returns the canonical lower-
+    // case type ('food'|'wood'|'stone'|'gold') or null if it isn't a real resource
+    // — so a stray "house"/"barracks" is rejected instead of triggering a pointless
+    // "no house discovered, scouting…" reply.
+    normalizeResourceType(resourceType) {
+        const rt = (resourceType || '').toString().trim().toLowerCase();
+        return ['food', 'wood', 'stone', 'gold'].includes(rt) ? rt : null;
+    }
+
     nearestNodeTo(unit, nodes) {
         let best = null, bd = Infinity;
         nodes.forEach(n => { const d = Math.hypot(n.x - unit.x, n.z - unit.z); if (d < bd) { bd = d; best = n; } });
@@ -2320,9 +2333,9 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
     // Reassign workers OFF their current tasks onto a new job (harvest a type).
     executeAssignWorkers(ai, game, params) {
-        const resourceType = params.resourceType;
+        const resourceType = this.normalizeResourceType(params.resourceType);
         if (!resourceType) {
-            return `[ERROR] assign_workers requires "resourceType" (food|wood|stone|gold) — the new job for the workers.`;
+            return `[ERROR] assign_workers requires a gatherable "resourceType" (food|wood|stone|gold) — the new job for the workers. (To construct a building, use build_structure instead.)`;
         }
         const count = Math.max(1, Math.min(params.count || 3, 20));
 
