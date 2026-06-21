@@ -2101,15 +2101,25 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     }
 
     executeMoveUnits(ai, game, unitIds, targetX, targetZ) {
-        let unitsToMove = ai.units.filter(u => u.type !== 'worker'); // Default: military units
+        const military = ai.units.filter(u => u.type !== 'worker'); // move_units = military
+        let unitsToMove = military;
 
+        // If the model named specific unitIds, use them — but the game state does NOT
+        // expose unit IDs, so a model often invents them. If none match, don't fail
+        // with a misleading "no units"; just move the whole army and say why.
+        let badIdsNote = '';
         if (unitIds && unitIds.length > 0) {
-            unitsToMove = ai.units.filter(u => unitIds.includes(u.id));
+            const matched = ai.units.filter(u => unitIds.includes(u.id));
+            if (matched.length > 0) {
+                unitsToMove = matched;
+            } else {
+                badIdsNote = ' (the unitIds you gave matched none of your units — the game state does not include unit IDs, so omit unitIds to move your whole army; moved all your military)';
+            }
         }
 
         if (unitsToMove.length === 0) {
-            console.log(`[OpenAIAI] ${ai.id}: No units to move`);
-            return `[ERROR] No military units available to move. Train units first.`;
+            console.log(`[OpenAIAI] ${ai.id}: No military units to move`);
+            return `[ERROR] You have no military units to move. (move_units repositions MILITARY; workers gather via harvest_resource/assign_workers.) Train military units first.`;
         }
 
         // Validate the destination so bad coords don't strand units at NaN.
@@ -2134,7 +2144,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         });
 
         console.log(`[OpenAIAI] ${ai.id}: Moving ${unitsToMove.length} units to (${Math.round(targetX)}, ${Math.round(targetZ)})`);
-        return `OK - Moving ${unitsToMove.length} unit(s) to (${Math.round(targetX)}, ${Math.round(targetZ)}) — ~${eta}s to arrive; let them march before re-issuing.`;
+        return `OK - Moving ${unitsToMove.length} unit(s) to (${Math.round(targetX)}, ${Math.round(targetZ)}) — ~${eta}s to arrive; let them march before re-issuing.${badIdsNote}`;
     }
 
     executeAttackTarget(ai, game, targetId, unitIds) {
