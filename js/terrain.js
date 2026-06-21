@@ -98,9 +98,9 @@ class TerrainManager {
     }
 
     generateResources() {
-        // Food (animals): 180 total, spread EVENLY across the 4 player areas
-        // (45 each) but placed randomly within each area's wedge.
-        const perArea = 45;
+        // Food (animals): 272 total (~50% more than the old 180), spread EVENLY
+        // across the 4 player areas (68 each) but placed randomly within each wedge.
+        const perArea = 68;
         for (let area = 0; area < 4; area++) {
             for (let i = 0; i < perArea; i++) {
                 const { x, z } = this.randomPosInArea(area);
