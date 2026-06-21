@@ -111,16 +111,6 @@ const BUILDING_DEFS = {
         description: 'Produziert Nahrung (benötigt Forschung: Farm)',
         buildTime: BASE_BUILD_TIME * 0.8  // 8 seconds to build
     },
-    wall: {
-        id: 'wall',
-        name: 'Mauer',
-        cost: { food: 10, wood: 20, stone: 0, gold: 0 },
-        health: 500,
-        type: 'defense',
-        requiredAge: 'stone',
-        description: 'Verteidigungsmauer',
-        buildTime: BASE_BUILD_TIME * 0.3  // 3 seconds to build
-    },
     tower: {
         id: 'tower',
         name: 'Wachtturm',

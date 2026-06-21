@@ -896,13 +896,6 @@ class GameRenderer {
         }
     }
 
-    buildWall(group) {
-        const stone = new THREE.MeshLambertMaterial({ color: 0x9a958c });
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(3, 2.3, 0.7), stone); wall.position.y = 1.15; wall.castShadow = true; group.add(wall);
-        const merlon = new THREE.MeshLambertMaterial({ color: 0x837e76 });
-        for (let x = -1.2; x <= 1.2 + 0.01; x += 0.6) { const m = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.55, 0.7), merlon); m.position.set(x, 2.55, 0); m.castShadow = true; group.add(m); }
-    }
-
     createBuildingMesh(building) {
         const group = new THREE.Group();
 
@@ -926,7 +919,6 @@ class GameRenderer {
                 case 'temple':        this.buildTemple(group, civColor); break;
                 case 'market':        this.buildMarket(group, civColor); break;
                 case 'tower':         this.buildTower(group, civColor, building.age); break;
-                case 'wall':          this.buildWall(group); break;
                 case 'pyramid':
                 case 'akropolis':
                 case 'firetemple':

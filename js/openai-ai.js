@@ -750,7 +750,7 @@ class OpenAIAIManager {
         // --- Buildable structures for THIS civ (some civs lack e.g. the stable) ---
         // Only lists what your civilization can EVER build; if a type is missing,
         // your civ does not have it (don't waste turns trying).
-        const stdBuildings = ['house', 'farm', 'barracks', 'archery_range', 'stable', 'market', 'tower', 'wall', 'temple'];
+        const stdBuildings = ['house', 'farm', 'barracks', 'archery_range', 'stable', 'market', 'tower', 'temple'];
         const buildableStructures = stdBuildings.map(t => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(t) : null;
             if (!def) return null;

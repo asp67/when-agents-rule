@@ -1150,7 +1150,6 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             BUILDING_DEFS.archery_range,
             BUILDING_DEFS.stable,
             BUILDING_DEFS.farm,
-            BUILDING_DEFS.wall,
             BUILDING_DEFS.tower,
             BUILDING_DEFS.market,
             BUILDING_DEFS.temple
@@ -1201,7 +1200,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 return filterByAge([BUILDING_DEFS.barracks, BUILDING_DEFS.archery_range, BUILDING_DEFS.farm, BUILDING_DEFS.house, BUILDING_DEFS.temple, BUILDING_DEFS.market]);
             case 'barracks':
             case 'stable':
-                return filterByAge([BUILDING_DEFS.wall, BUILDING_DEFS.tower]);
+                return filterByAge([BUILDING_DEFS.tower]);
             default:
                 return this.getDefaultBuildings();
         }
