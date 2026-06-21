@@ -1104,7 +1104,7 @@ You receive the game state as JSON and issue EXACTLY ONE command for your civili
 1. OPEN: train a couple of workers and send them to harvest food and wood; research and build a house early so population doesn't choke.
 2. GROW: build farms for steady food, keep workers busy, advance the epoch (stone -> neolithic -> bronze -> iron) for stronger units/tech.
 3. MILITARIZE: research and build a barracks, then train military units. Once the economy is stable, STOP over-investing in economy and build an army.
-4. ATTACK: send your army at the weakest rival, destroy their units and Town Center, then the next - until all rivals are gone, or hold a Wonder for the required time. ALWAYS break off to defend home when "threats.underAttack" fires, and to raze any enemy Wonder.
+4. ATTACK: send your army at the weakest rival and ELIMINATE it — a rival is only out when it has no army, no military building it can afford to produce from, and no Town Center (nor a worker + resources to rebuild one). So raze their Town Center AND mop up their remaining units/production, or they can come back. Then move to the next rival until all are gone — or hold a Wonder for the required time. ALWAYS break off to defend home when "threats.underAttack" fires, and to raze any enemy Wonder.
 If you have an economy but no army, your next move is military. If you have an army, use it to attack.
 
 ## Army counters (composition matters)
@@ -2782,13 +2782,17 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
     }
 
-    // A player is truly defeated only when it has NO units AND NO buildings left:
-    // as long as a single unit survives it could rebuild (e.g. a worker putting up a
-    // new Town Center), so losing only the Town Center is not elimination. A wiped-
-    // out model must stop sending requests — it can do nothing and cannot recover.
+    // A defeated model must stop sending requests. "Defeated" uses the SAME rule as
+    // arena win detection (game.isPlayerEliminated): no army, no military building it
+    // can afford to produce from, and no Town Center nor the means to rebuild one — so
+    // controller-stop and the last-player-standing check never disagree.
     isControllerDefeated(controller) {
         const ai = controller && controller.aiPlayer;
-        return !ai || (ai.units.length === 0 && ai.buildings.length === 0);
+        if (!ai) return true;
+        if (this.game && typeof this.game.isPlayerEliminated === 'function') {
+            return this.game.isPlayerEliminated(ai);
+        }
+        return ai.units.length === 0 && ai.buildings.length === 0; // fallback
     }
 
     // Permanently retire a defeated controller: abort its in-flight request, mark it

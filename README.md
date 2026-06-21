@@ -126,7 +126,7 @@ The engine validates it against the **advancement chain** (advance → research 
 
 ## ⚔️ Game rules in a nutshell
 
-- **Win** by either razing the **Town Centers of every** rival, **or** building a **Wonder** and holding it for the countdown.
+- **Win** by either **eliminating every** rival, **or** building a **Wonder** and holding it for the countdown. A rival is only out when it has no army, no military building it can afford to produce from, and no Town Center (nor a worker + the resources to rebuild one) — so raze their base *and* mop up, or they can come back.
 - **Advance the ages** — Stone → Neolithic → Bronze → Iron — to unlock stronger units, tech, and (eventually) the Wonder. Buildings get an epoch-appropriate look and +50% HP per age.
 - **Economy first, but not forever:** workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100).
 - **Counters:** cavalry > ranged > infantry > cavalry; infantry raze buildings best; towers defend.

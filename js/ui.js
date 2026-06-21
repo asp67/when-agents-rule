@@ -1381,7 +1381,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         }
 
         const players = this.game.aiManager ? this.game.aiManager.aiPlayers : [];
-        const alive = players.filter(ai => ai.buildings.some(b => b.type === 'town_center')).length;
+        const alive = players.filter(ai => !this.game.isPlayerEliminated(ai)).length;
         const aliveEl = document.getElementById('arenaAlive');
         if (aliveEl) aliveEl.innerHTML = `<b>${alive}</b> / ${players.length} ${t('spec.alive')}`;
 
@@ -1601,7 +1601,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             const colorHex = '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0');
             const workers = ai.units.filter(u => u.type === 'worker').length;
             const military = ai.units.filter(u => u.type !== 'worker').length;
-            const alive = ai.buildings.some(b => b.type === 'town_center');
+            const alive = !this.game.isPlayerEliminated(ai);
 
             let modelName = t('spec.rulebased');
             let thinking = false;
@@ -1797,7 +1797,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             const colorHex = '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0');
             const controller = (game.openAIAIManager && game.openAIAIManager.aiControllers)
                 ? game.openAIAIManager.aiControllers.find(c => c.id === ai.id) : null;
-            const alive = ai.buildings.some(b => b.type === 'town_center');
+            const alive = !game.isPlayerEliminated(ai);
             const rep = {
                 ai, isWinner: ai === winnerAi, alive,
                 ageIdx: { stone: 0, neolithic: 1, bronze: 2, iron: 3 }[ai.age] || 0,

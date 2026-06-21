@@ -2629,7 +2629,49 @@ class Game {
         }
     }
 
-    // Decide the arena: a held wonder, last town center standing, or wipeout.
+    // A player is ELIMINATED only when it has no way left to EVER field a military
+    // unit again. Used consistently for arena win detection AND for stopping a
+    // defeated model's LLM pipeline, so the two never disagree:
+    //   - still in if it has any military unit;
+    //   - still in if it has a finished military building it can afford to produce from;
+    //   - otherwise still in only if it can (re)start the chain — it has a Town
+    //     Center, OR a worker plus the resources to build a new Town Center.
+    isPlayerEliminated(ai) {
+        if (!ai) return true;
+        if (ai.units && ai.units.some(u => u.type !== 'worker')) return false;      // has an army
+        if (this.canAffordAnyMilitary(ai)) return false;                            // can build military now
+        if (ai.buildings && ai.buildings.some(b => b.type === 'town_center')) return false; // has a TC
+        const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
+        const tcCost = (tcDef && tcDef.cost) || { food: 100, wood: 100, stone: 100, gold: 100 };
+        if (ai.units && ai.units.some(u => u.type === 'worker') &&
+            ai.resources && ai.resources.hasResources(tcCost)) return false;        // can rebuild a TC
+        return true;
+    }
+
+    // Can this player afford at least one military unit that one of its FINISHED
+    // military buildings can train at its current age?
+    canAffordAnyMilitary(ai) {
+        if (!ai || !ai.buildings || !ai.resources) return false;
+        const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
+        const aIdx = ageOrder.indexOf(ai.age);
+        const trains = {
+            barracks: ['militia', 'warrior', 'champion'],
+            archery_range: ['archer', 'crossbowman', 'elite_archer'],
+            stable: ['scout_cavalry', 'cavalry', 'heavy_cavalry']
+        };
+        for (const b of ai.buildings) {
+            if (b.underConstruction || !trains[b.type]) continue;
+            for (const uid of trains[b.type]) {
+                const def = (typeof getUnitDef === 'function') ? getUnitDef(uid) : null;
+                if (!def) continue;
+                if (ageOrder.indexOf(def.tier || 'stone') > aIdx) continue; // not available at this age
+                if (ai.resources.hasResources(def.cost)) return true;
+            }
+        }
+        return false;
+    }
+
+    // Decide the arena: a held wonder, last player standing, or wipeout.
     checkArenaEnd(deltaTime) {
         const players = this.aiManager.aiPlayers;
         if (!players || players.length === 0) return;
@@ -2648,7 +2690,7 @@ class Game {
         });
         if (wonderHolder) { this.endArena(wonderHolder, 'wonder'); return; }
 
-        const alive = players.filter(ai => ai.buildings.some(b => b.type === 'town_center'));
+        const alive = players.filter(ai => !this.isPlayerEliminated(ai));
         if (alive.length === 1 && players.length > 1) { this.endArena(alive[0], 'last_standing'); return; }
         if (alive.length === 0) { this.endArena(null, 'mutual_destruction'); return; }
     }
@@ -2668,7 +2710,7 @@ class Game {
     endArenaManually() {
         if (!this.spectatorMode || !this.gameStarted) return;
         const players = this.aiManager.aiPlayers;
-        const alive = players.filter(ai => ai.buildings.some(b => b.type === 'town_center'));
+        const alive = players.filter(ai => !this.isPlayerEliminated(ai));
         const pool = alive.length ? alive : players;
         let winner = null, best = -Infinity;
         pool.forEach(ai => {
