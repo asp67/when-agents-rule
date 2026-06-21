@@ -1818,6 +1818,35 @@ class Game {
         }
     }
 
+    // An owner's construction site with NO live worker building it (its builder was
+    // killed or deleted, so it would otherwise sit half-built forever). Returns the
+    // one nearest `unit`, or null if every site already has a builder.
+    findOrphanedConstruction(owner, unit) {
+        if (!owner || !owner.buildings) return null;
+        const units = owner.units || [];
+        let best = null, bestD = Infinity;
+        for (const b of owner.buildings) {
+            if (!b.underConstruction || b.health <= 0) continue;
+            const hasBuilder = units.some(u => u && u.health > 0 && u.type === 'worker' &&
+                u.task === 'building' && u.buildTarget === b);
+            if (hasBuilder) continue;
+            if (!unit) return b;
+            const d = Math.hypot(b.x - unit.x, b.z - unit.z);
+            if (d < bestD) { bestD = d; best = b; }
+        }
+        return best;
+    }
+
+    // Send a worker to (continue) building a site.
+    assignWorkerToSite(unit, site) {
+        unit.task = 'building';
+        unit.buildTarget = site;
+        unit.isBuilding = false;
+        unit.isMoving = true;
+        unit.targetX = site.x;
+        unit.targetZ = site.z;
+    }
+
     // Free a worker after it finishes (or loses) a build: resume former task if it
     // was borrowed, become the farmer if it built a farm, otherwise go idle.
     releaseBuilder(unit, site) {
@@ -1859,6 +1888,11 @@ class Game {
             unit.targetZ = site.z + (Math.random() - 0.5) * 3;
             return;
         }
+        // A worker that just finished building looks for ANOTHER unfinished site with
+        // no builder (e.g. one whose worker was killed/deleted) and continues it,
+        // instead of going idle — so abandoned construction still gets completed.
+        const orphan = this.findOrphanedConstruction(this.getOwner(unit), unit);
+        if (orphan) { this.assignWorkerToSite(unit, orphan); return; }
         // Otherwise an idle builder simply goes idle again.
     }
 
@@ -2211,8 +2245,11 @@ class Game {
                 }
             }
             
-            // State 6: Idle worker — auto-assign to unassigned farms with food
+            // State 6: Idle worker — first resume any abandoned construction site
+            // (its builder died/was deleted), then auto-assign to unassigned farms.
             if (!unit.task && !unit.isMoving && !unit.farmRef) {
+                const orphanSite = this.findOrphanedConstruction(owner, unit);
+                if (orphanSite) { this.assignWorkerToSite(unit, orphanSite); return; }
                 // Check for unassigned, FINISHED farms (not still under construction)
                 const unassignedFarms = owner.buildings.filter(b =>
                     b.type === 'farm' && !b.assignedWorker && !b.underConstruction
