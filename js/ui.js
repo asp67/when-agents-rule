@@ -1671,6 +1671,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                     ${(r.isLLM && r.alive) ? `
                     <div class="lb-advice" onclick="event.stopPropagation()">
                         <input class="lb-advice-input" type="text" maxlength="400"
+                            data-ai="${ai.id}"
                             placeholder="${t('spec.advicePlaceholder')}"
                             value="${this.escapeHtml(this._adviceDrafts[ai.id] || '')}"
                             oninput="game.ui.onAdviceInput('${ai.id}', this.value)"
@@ -1692,8 +1693,12 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
 
     sendAdvice(aiId) {
         this._adviceDrafts = this._adviceDrafts || {};
-        const input = document.querySelector(`.lb-advice-input[oninput*="${aiId}"]`);
-        const text = (input ? input.value : this._adviceDrafts[aiId] || '').trim();
+        // Exact-match the card's input (data-ai) — never a substring query, so
+        // advice can't be read from or routed to the wrong model's card.
+        const input = document.querySelector(`.lb-advice-input[data-ai="${CSS.escape(aiId)}"]`);
+        // The draft is the source of truth (kept in sync on every keystroke); fall
+        // back to the live input value only if no draft exists yet.
+        const text = (this._adviceDrafts[aiId] || (input ? input.value : '') || '').trim();
         if (!text) return;
         const ok = this.game.openAIAIManager && this.game.openAIAIManager.addAdvice(aiId, text);
         this._adviceDrafts[aiId] = '';
