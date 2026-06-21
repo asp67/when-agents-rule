@@ -1107,6 +1107,7 @@ Food (deer, berries, farms) - workers and units. Wood (trees) - buildings. Stone
 - You only see what your units/buildings are near. Resources and enemies are HIDDEN until you scout them; "resourcesOnMap" lists only what you have already discovered (remembered even after you look away).
 - The whole world is "map.size" units wide, spanning "map.bounds" (minX/maxX/minZ/maxZ) centred on (0,0). Enemies can be ANYWHERE in those bounds — scout across the full map (far corners, the opposite side from your spawn), not just near home. Send explore/move targets toward unseen regions inside the bounds.
 - To find more resources or the enemy, use explore (or move a unit into the dark). If you harvest_resource a type you have not discovered yet, a scout is sent automatically — try again once it appears in "resourcesOnMap".
+- explore automatically uses your best available scout: an idle MILITARY unit if you have one (cavalry first — it is fast and sees farther), and only a worker if no military is free. Military scouts cost you no economy, so keeping a spare cavalry/scout_cavalry for exploration is strong; a worker sent to scout is one fewer worker gathering.
 
 ## Mechanics you MUST respect
 - Your civilization can only build what is in "buildableStructures". Some civs have no stable (no cavalry) — if "stable" is absent there, rely on barracks (infantry) and archery_range (archers). Don't keep trying to build what your civ lacks.
@@ -2246,13 +2247,31 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return out;
     }
 
-    // Pick a scout: prefer an idle worker, then any non-building worker, then a unit.
+    // True if a unit is committed to a fight (so we must NOT pull it off to scout).
+    isInCombat(u) {
+        return !!(u && (u.isAttacking || u.attackTarget || u.attackMove));
+    }
+
+    // Pick the best scout. A free MILITARY unit is the right scout — it doesn't cost
+    // you economy and (cavalry especially) is fast with extra vision. So:
+    //   1) an idle cavalry unit (fastest + widest sight),
+    //   2) any other idle military unit (not in combat),
+    //   3) an idle worker, 4) a non-building worker,
+    //   5) last resort: any non-combat unit, then anything at all.
+    // Workers are only used when no military is free — and military that is busy
+    // fighting is never pulled.
     pickScout(ai) {
-        const idle = ai.units.find(u => u.type === 'worker' && this.game.isIdleWorker(u));
-        if (idle) return idle;
+        const idleMilitary = ai.units.filter(u => u.type !== 'worker' && !this.isInCombat(u));
+        const cav = idleMilitary.find(u => u.unitType === 'cavalry');
+        if (cav) return cav;
+        if (idleMilitary.length) return idleMilitary[0];
+
+        const idleWorker = ai.units.find(u => u.type === 'worker' && this.game.isIdleWorker(u));
+        if (idleWorker) return idleWorker;
         const freeWorker = ai.units.find(u => u.type === 'worker' && u.task !== 'building' && !u.isBuilding);
         if (freeWorker) return freeWorker;
-        return ai.units.find(u => u.type !== 'worker') || null;
+
+        return ai.units.find(u => !this.isInCombat(u)) || ai.units.find(u => u.type !== 'worker') || null;
     }
 
     // Strip a unit of its current job (harvesting/farm/combat) so it can cleanly
