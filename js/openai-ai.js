@@ -682,6 +682,32 @@ class OpenAIAIManager {
             };
         });
 
+        // --- Worker breakdown: a live tally of what your villagers are doing, so the
+        //     model can rebalance the economy at a glance (counts workers only). ---
+        const wk = {
+            total: 0, idle: 0, building: 0, onFarms: 0, scouting: 0, returning: 0, moving: 0,
+            harvestingFood: 0, harvestingWood: 0, harvestingStone: 0, harvestingGold: 0
+        };
+        ai.units.forEach(u => {
+            if (u.type !== 'worker') return;
+            wk.total++;
+            if (u.task === 'building' || u.isBuilding) { wk.building++; return; }
+            if (u.task === 'scouting') { wk.scouting++; return; }
+            if (u.task === 'farm_work') { wk.onFarms++; return; }
+            if (u.carryingResource || u.task === 'carrying') { wk.returning++; return; }
+            if (u.task === 'harvesting' || u.isHarvesting || u.harvestTarget) {
+                const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
+                if (rt === 'food') wk.harvestingFood++;
+                else if (rt === 'wood') wk.harvestingWood++;
+                else if (rt === 'stone') wk.harvestingStone++;
+                else if (rt === 'gold') wk.harvestingGold++;
+                else wk.moving++; // harvesting but target not yet known (in transit)
+                return;
+            }
+            if (this.game.isIdleWorker(u)) { wk.idle++; return; }
+            wk.moving++; // in transit with no recognized job
+        });
+
         // Enemy units (very compact)
         const enemyUnits = [];
         game.getAllUnits().forEach(unit => {
@@ -820,6 +846,7 @@ class OpenAIAIManager {
             friendlyBuildings: friendlyBuildings,
             enemyBuildings: enemyBuildings,
             friendlyUnits: friendlyUnits,
+            workers: wk,
             enemyUnits: enemyUnits,
             research: researchObj,
             unlockedContent: unlockedContent,
@@ -1109,7 +1136,7 @@ You receive the game state as JSON and issue EXACTLY ONE command for your civili
 
 ## Path to victory (don't get stuck in the early phases)
 1. OPEN: train a couple of workers and send them to harvest food and wood; research and build a house early so population doesn't choke.
-2. GROW: build farms for steady food, keep workers busy, advance the epoch (stone -> neolithic -> bronze -> iron) for stronger units/tech.
+2. GROW: build farms for steady food, keep workers busy, advance the epoch (stone -> neolithic -> bronze -> iron) for stronger units/tech. Check "workers" for a live tally of what your villagers are doing (idle / harvestingFood/Wood/Stone/Gold / onFarms / building / scouting / returning) and rebalance: put idle workers to work, and shift them toward whatever resource your next goal needs.
 3. MILITARIZE: research and build a barracks, then train military units. Once the economy is stable, STOP over-investing in economy and build an army.
 4. ATTACK: send your army at the weakest rival and ELIMINATE it — a rival is only out when it has no army, no military building it can afford to produce from, and no Town Center (nor a worker + resources to rebuild one). So raze their Town Center AND mop up their remaining units/production, or they can come back. Then move to the next rival until all are gone — or hold a Wonder for the required time. ALWAYS break off to defend home when "threats.underAttack" fires, and to raze any enemy Wonder.
 If you have an economy but no army, your next move is military. If you have an army, use it to attack.
