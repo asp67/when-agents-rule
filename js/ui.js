@@ -1494,6 +1494,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                     </div>
                     ${entry.reason ? `<span class="log-reason">“${this.escapeHtml(entry.reason)}”</span>` : ''}
                     ${entry.failed && entry.error ? `<span class="log-error">⚠ ${this.escapeHtml(entry.error)}</span>` : ''}
+                    ${!entry.failed && !entry.reason && entry.result ? `<span class="log-outcome">${this.escapeHtml(entry.result.replace(/^OK\s*-\s*/, ''))}</span>` : ''}
                 </div>
             `;
         });

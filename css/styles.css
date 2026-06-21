@@ -895,6 +895,15 @@ body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
     border-left: 2px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Engine outcome shown on a successful action when the model gave no reason. */
+.ai-log-entry .log-outcome {
+    color: #7d8597;
+    display: block;
+    margin-top: 3px;
+    padding-left: 8px;
+    border-left: 2px solid rgba(255, 255, 255, 0.08);
+}
+
 /* Rejected-action marker + reason in the decision log */
 .ai-log-entry .log-x {
     color: #ff8597;

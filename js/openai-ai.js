@@ -1680,6 +1680,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // short sentence per move keeps a long history (historyLength) affordable
         // while preserving the "why" across a multi-step plan.
         if (actionResult) {
+            logEntry.result = actionResult; // so the spectator log can show the outcome
             controller.conversationHistory.push({
                 action: action,
                 reason: (params && params.reason) ? String(params.reason) : '',
