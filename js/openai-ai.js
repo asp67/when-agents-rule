@@ -2217,6 +2217,24 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
     // Resources are hidden until SCOUTED. Update the AI's discovery memory and
     // return the discovered (visible-or-remembered) nodes of a given type.
+    // Short summary of what this AI has ACTUALLY discovered, by type — used to
+    // ground a rejected harvest/assign so the model stops chasing a resource it
+    // only imagines (it cannot see the rendered map; only "resourcesOnMap").
+    discoveredResourceSummary(ai, game) {
+        if (!ai._knownResIdx) ai._knownResIdx = new Set();
+        const counts = {};
+        const list = (game.terrain && game.terrain.resources) || [];
+        list.forEach((res, idx) => {
+            if (ai._knownResIdx.has(idx) && res.amount > 0) {
+                counts[res.type] = (counts[res.type] || 0) + 1;
+            }
+        });
+        const parts = ['food', 'wood', 'stone', 'gold']
+            .filter(t => counts[t])
+            .map(t => `${t} (${counts[t]})`);
+        return parts.length ? parts.join(', ') : 'nothing yet';
+    }
+
     discoveredNodesOfType(ai, game, resourceType) {
         if (!ai._knownResIdx) ai._knownResIdx = new Set();
         const out = [];
@@ -2293,7 +2311,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // help, and tell the model exactly what to do next.
         if (discovered.length === 0) {
             const msg = this.dispatchScoutToward(ai, game);
-            return `[ERROR] No ${resourceType} has been discovered yet, so NOTHING was harvested. ${msg} It will appear in "resourcesOnMap" once a scout finds it — then call harvest_resource again. Spend the meantime on other useful work (don't keep re-issuing harvest).`;
+            const have = this.discoveredResourceSummary(ai, game);
+            return `[ERROR] No ${resourceType} has been discovered yet, so NOTHING was harvested. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. ${msg} It will appear in "resourcesOnMap" once a scout finds it — then call harvest_resource again. Spend the meantime on other useful work (don't keep re-issuing harvest).`;
         }
 
         const idleWorkers = ai.units.filter(u =>
@@ -2343,7 +2362,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const discovered = this.discoveredNodesOfType(ai, game, resourceType);
         if (discovered.length === 0) {
             const msg = this.dispatchScoutToward(ai, game);
-            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. ${msg} Once it appears in "resourcesOnMap", call assign_workers again. Don't keep re-issuing it meanwhile.`;
+            const have = this.discoveredResourceSummary(ai, game);
+            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. ${msg} Once it appears in "resourcesOnMap", call assign_workers again. Don't keep re-issuing it meanwhile.`;
         }
 
         // Candidates: any worker that is not currently a builder, preferring those
@@ -2538,9 +2558,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
     // Persistently remember every resource node any of a model's units/buildings
     // has had within vision range (matches the fog-of-war the spectator sees).
+    // Runs EVERY frame, in lockstep with the fog reveal — a 500ms sample used to
+    // miss a fast unit that only grazed a node's vision radius for a moment, so
+    // the node showed on the map (fog reveals per-frame) but never entered the
+    // model's known set. The `.has(idx)` skip keeps this cheap: each node is
+    // distance-checked only until it is first discovered, then skipped forever.
     updateResourceDiscovery(now) {
-        if (now - (this._lastDiscoveryScan || 0) < 500) return;
-        this._lastDiscoveryScan = now;
         const resources = (this.game.terrain && this.game.terrain.resources) || [];
         if (!resources.length) return;
         for (const controller of this.aiControllers) {
