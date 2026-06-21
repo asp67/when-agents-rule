@@ -2229,7 +2229,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         if (unitsToAttack.length === 0) {
             console.log(`[OpenAIAI] ${ai.id}: No units to attack with`);
-            return `[ERROR] No military units available to attack. Train units first.`;
+            return `[ERROR] No military units available to attack. Train units first. ${this.attackTargetHint(ai, game)}`;
         }
 
         unitsToAttack.forEach(unit => {
@@ -2258,12 +2258,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             if (matched.length) unitsToAttack = matched; // else fall back to whole army (no IDs in state)
         }
         if (unitsToAttack.length === 0) {
-            return `[ERROR] No military units available to attack. Train units first.`;
+            return `[ERROR] No military units available to attack. Train units first. ${this.attackTargetHint(ai, game)}`;
         }
 
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
-            return `[ERROR] attack needs numeric "targetX"/"targetZ" (or a "targetId"). Got targetX=${JSON.stringify(targetX)}, targetZ=${JSON.stringify(targetZ)}.`;
+            return `[ERROR] attack needs numeric "targetX"/"targetZ" (or a "targetId"). Got targetX=${JSON.stringify(targetX)}, targetZ=${JSON.stringify(targetZ)}. ${this.attackTargetHint(ai, game)}`;
         }
         // Keep the attack-move objective on solid ground.
         ({ x: targetX, z: targetZ } = game.clampToMap(mx, mz));
@@ -2279,13 +2279,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             if (d <= nd) { nd = d; atSpot = e; }
         }
         if (atSpot && this.isOwnedByAI(atSpot, ai)) {
-            return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is on your own ${atSpot.type}. You cannot attack your own units/buildings. Pick an enemy from "enemyUnits"/"enemyBuildings".`;
+            return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is on your own ${atSpot.type}. You cannot attack your own units/buildings. ${this.attackTargetHint(ai, game)}`;
         }
         if (!atSpot) {
             const res = (game.terrain && game.terrain.resources) || [];
             const node = res.find(r => r.amount > 0 && Math.hypot(r.x - targetX, r.z - targetZ) <= RES);
             if (node) {
-                return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is a ${node.type} resource node, not an attack target. Workers gather it with harvest_resource; attack enemy units/buildings instead.`;
+                return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is a ${node.type} resource node, not an attack target. Workers gather it with harvest_resource. ${this.attackTargetHint(ai, game)}`;
             }
         }
 
@@ -2354,7 +2354,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                     const enemyNear = [...this.game.getAllUnits(), ...this.game.getAllBuildings()]
                         .some(e => e.health > 0 && !this.isOwnedByAI(e, ai) && Math.hypot(e.x - r.tx, e.z - r.tz) <= ENGAGE);
                     if (enemyNear) resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}); an enemy is there and they are engaging.`, false);
-                    else resolve(`[ERROR] Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) but found NO valid target — the spot is empty (the enemy moved or was already destroyed). Scout for the enemy's current position before attacking again.`, true);
+                    else resolve(`[ERROR] Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) but found NO valid target — the spot is empty (the enemy moved or was already destroyed). ${this.attackTargetHint(ai, this.game)}`, true);
                     continue;
                 }
                 if (now - r.startTime > MAXWAIT) {
@@ -2739,13 +2739,14 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return false;
     }
 
-    // Shared guidance appended to attack errors so the model's next step is
-    // always actionable: scout first if nothing is known, otherwise pick a real
-    // target from the discovered lists.
+    // Shared guidance appended to attack errors so the model's next step is always
+    // actionable: how to LIST the valid, already-discovered targets — or scout if
+    // none are known yet. "enemyUnits"/"enemyBuildings" only ever contain enemies
+    // you have already discovered (fog hides the rest).
     attackTargetHint(ai, game) {
         return this.hasVisibleEnemies(ai, game)
-            ? 'Use "enemyUnits" or "enemyBuildings" from game state to find valid targets.'
-            : 'No enemies have been discovered yet. Send a unit to explore/scout the map before attacking.';
+            ? 'To list valid targets, read "enemyUnits" and "enemyBuildings" in the game state — those are the enemies you have DISCOVERED (each with its x,z and owner). Attack one of those coordinates, or pass its "targetId".'
+            : 'You have not discovered any enemies yet, so "enemyUnits" and "enemyBuildings" are empty. Scout first (explore); enemies appear in those lists once one of your units sees them, then you can attack them.';
     }
 
     // ----------------------------------------------------------------
