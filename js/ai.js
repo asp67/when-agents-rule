@@ -262,9 +262,16 @@ class AIManager {
         const idleWorkers = workers.filter(w => !w.isMoving && !w.isHarvesting && !w.carryingResource &&
             !w.isBuilding && w.task !== 'building' && w.task !== 'farm_work');
         
+        // What does the economy need most right now? Food gates workers, age-ups AND
+        // military, so keep it flowing; otherwise gather the scarcest resource. Without
+        // this the AI just grabbed the nearest node (often all wood) and could STARVE —
+        // food stuck at 0, unable to train, advance or go military.
+        const wantType = this.neededResourceType(ai);
+
         idleWorkers.forEach(worker => {
-            // Find nearest resource to harvest
-            const nearestResource = this.findNearestResource(worker);
+            // Prefer the needed resource type (anywhere on the map); fall back to the
+            // nearest node of any type if none of that type is left.
+            const nearestResource = this.findNearestResourceOfType(worker, wantType) || this.findNearestResource(worker);
             if (nearestResource) {
                 worker.task = 'harvesting';
                 worker.harvestTarget = nearestResource;
@@ -299,6 +306,32 @@ class AIManager {
         scout.isMoving = true;
         scout.targetX = (Math.random() - 0.5) * 2 * half;
         scout.targetZ = (Math.random() - 0.5) * 2 * half;
+    }
+
+    // Which resource the economy should gather next. Food gates workers, age-ups and
+    // military, so keep a buffer of it; once food is comfortable, gather the scarcest
+    // of the four so wood/stone/gold also come in for buildings and units.
+    neededResourceType(ai) {
+        const r = ai.resources;
+        if (r.food < 200) return 'food';
+        const stock = { food: r.food, wood: r.wood, gold: r.gold, stone: r.stone };
+        let best = 'wood', bestVal = Infinity;
+        for (const t of ['food', 'wood', 'gold', 'stone']) {
+            if (stock[t] < bestVal) { bestVal = stock[t]; best = t; }
+        }
+        return best;
+    }
+
+    // Nearest node of a specific type with anything left (no distance cap), or null.
+    findNearestResourceOfType(unit, type) {
+        if (!this.game.terrain || !this.game.terrain.resources) return null;
+        let nearest = null, minDist = Infinity;
+        this.game.terrain.resources.forEach(resource => {
+            if (resource.amount <= 0 || resource.type !== type) return;
+            const d = Math.hypot(resource.x - unit.x, resource.z - unit.z);
+            if (d < minDist) { minDist = d; nearest = resource; }
+        });
+        return nearest;
     }
 
     findNearestResource(unit) {
