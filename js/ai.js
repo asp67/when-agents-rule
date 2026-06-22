@@ -1,14 +1,25 @@
-// AI system for computer opponents
+// Rule-based AI for computer opponents.
+//
+// Design goals (rewrite):
+//  - FAIR vs LLM players: the rule-based AI is fog-limited just like the models.
+//    It only harvests resources it has DISCOVERED (vision), only attacks enemies
+//    it can currently SEE (or remembered enemy buildings / always-visible wonders),
+//    and must scout to find more. Age-ups and research run through the SAME timed
+//    game systems the models/human use (no instant ages, no double-speed research).
+//  - DEADLOCK-FREE: a single priority pass each think, every step gated by its own
+//    affordability/availability check so nothing oscillates or spends into deficit.
+//    Resources are never lost to a failed building placement (position is found
+//    BEFORE spending). Workers never strand: they gather the most-needed known
+//    resource, and a spare scout is sent out when something needed isn't discovered.
 class AIManager {
     constructor(game) {
         this.game = game;
         this.aiPlayers = [];
         this.thinkTimer = 0;
-        this.thinkInterval = 2000; // Think every 2 seconds
-        this.openAIControlled = new Set(); // Set of AI player IDs controlled by OpenAI
+        this.thinkInterval = 2000; // Run the decision pass every 2s.
+        this.openAIControlled = new Set();
     }
 
-    // Mark an AI player as controlled by OpenAI (skip rule-based AI for it)
     markAsOpenAIControlled(aiPlayerId) {
         this.openAIControlled.add(aiPlayerId);
     }
@@ -27,7 +38,7 @@ class AIManager {
             units: [],
             buildings: [],
             age: 'stone',
-            state: 'economic', // economic, military, wonder
+            state: 'economic',
             stateTimer: 0,
             buildQueue: [],
             attackTarget: null,
@@ -37,18 +48,27 @@ class AIManager {
             techCostMultiplier: 1.0,
             buildingHealthMultiplier: 1.0,
             pendingBuildings: [],
-            researchedTechs: {},  // Track researched techs (one-time purchase)
-            unlockedBuildings: {},  // Buildings unlocked by techs
-            unlockedUnits: {},       // Units unlocked by techs
-            currentResearch: null    // { techId, progress, duration }
+            researchedTechs: {},
+            unlockedBuildings: {},
+            unlockedUnits: {},
+            currentResearch: null,
+            currentAgeUpgrade: null,
+            _knownResIdx: new Set(),       // fog: resource node indices discovered
+            _knownEnemyBuildings: new Set()// fog: enemy buildings discovered (static, remembered)
         };
         this.aiPlayers.push(ai);
         return ai;
     }
 
     update(deltaTime) {
+        // Discovery runs EVERY frame (in lockstep with the fog), so a worker that
+        // sweeps past a node reveals it for the model exactly as it does on the map.
+        this.aiPlayers.forEach(ai => {
+            if (this.openAIControlled.has(ai.id)) return;
+            this.updateDiscovery(ai);
+        });
+
         this.thinkTimer += deltaTime;
-        
         if (this.thinkTimer >= this.thinkInterval) {
             this.thinkTimer = 0;
             this.think();
@@ -57,263 +77,114 @@ class AIManager {
 
     think() {
         this.aiPlayers.forEach(ai => {
-            // Skip AI players controlled by OpenAI
             if (this.openAIControlled.has(ai.id)) return;
-
-            // A rival Wonder is existential: switch to military so we train & march on it.
-            const enemyWonder = this.game.getAllBuildings().some(b => b.isWonder && b.health > 0 && !ai.buildings.includes(b));
-            if (enemyWonder) ai.state = 'military';
-
-            // Assign idle workers to harvest
-            this.assignWorkersToHarvest(ai);
-
-            // Occasionally send a spare unit to scout, revealing the map (and enemies).
-            this.exploreMap(ai);
-            
-            // Decide what to do based on current state
-            switch (ai.state) {
-                case 'economic':
-                    this.economicStrategy(ai);
-                    break;
-                case 'military':
-                    this.militaryStrategy(ai);
-                    break;
-                case 'wonder':
-                    this.wonderStrategy(ai);
-                    break;
-            }
-
-            // Check if we should change state
-            ai.stateTimer++;
-            if (ai.stateTimer > 20) {
-                ai.stateTimer = 0;
-                this.decideState(ai);
-            }
+            this.runTurn(ai);
         });
     }
 
-    decideState(ai) {
-        // Check if we should build wonder
-        const wonderDef = this.getWonderForCiv(ai.civilization);
-        if (wonderDef && ai.resources.food >= wonderDef.cost.food * 0.8 && 
-            ai.resources.wood >= wonderDef.cost.wood * 0.8) {
-            ai.state = 'wonder';
-            return;
+    // ---- Fog of war (same vision ranges the models/human use) -----------------
+    isVisibleTo(ai, x, z) {
+        for (const u of ai.units) {
+            if (u.health <= 0) continue;
+            const range = u.unitType === 'cavalry' ? 18 : 15;
+            if (Math.hypot(u.x - x, u.z - z) <= range) return true;
         }
-
-        // Check if we should upgrade age
-        const nextAge = this.getNextAge(ai.age);
-        if (nextAge && this.canAffordAgeUpgrade(ai, nextAge)) {
-            this.upgradeAge(ai, nextAge);
+        for (const b of ai.buildings) {
+            if (b.health <= 0) continue;
+            const range = b.type === 'tower' ? 20 : 12;
+            if (Math.hypot(b.x - x, b.z - z) <= range) return true;
         }
-        
-        // Research techs
-        this.researchTechs(ai);
-
-        // Decide between economic and military
-        const militaryUnits = ai.units.filter(u => u.type !== 'worker').length;
-        const workers = ai.units.filter(u => u.type === 'worker').length;
-        
-        if (militaryUnits < 5 || workers < 8) {
-            ai.state = 'economic';
-        } else if (ai.resources.food > 300 && ai.resources.wood > 200) {
-            ai.state = 'military';
-        } else {
-            ai.state = 'economic';
-        }
+        return false;
     }
 
-    researchTechs(ai) {
-        const civ = getCivilization(ai.civilization);
-        const techs = civ.techTree || {};
-        const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-        const currentAgeIndex = ageOrder.indexOf(ai.age);
-        
-        // If AI is currently researching, update progress
-        if (ai.currentResearch) {
-            ai.currentResearch.progress += this.thinkInterval;
-            if (ai.currentResearch.progress >= ai.currentResearch.duration) {
-                const tech = techs[ai.currentResearch.techId];
-                ai.researchedTechs[ai.currentResearch.techId] = true;
-                
-                // Apply unlocks
-                if (tech?.unlocks) {
-                    if (tech.unlocks.buildings) {
-                        for (const bldg of tech.unlocks.buildings) {
-                            ai.unlockedBuildings[bldg] = true;
-                        }
-                    }
-                }
-                
-                // Apply stat bonuses
-                if (tech?.bonus) {
-                    if (tech.bonus.harvestRate && tech.appliesTo === 'worker') {
-                        ai.workerHarvestBonus = (ai.workerHarvestBonus || 1) + tech.bonus.harvestRate;
-                    }
-                    if (tech.bonus.trainSpeed) {
-                        ai.trainSpeedBonus = (ai.trainSpeedBonus || 1) + tech.bonus.trainSpeed;
-                    }
-                    if (tech.appliesTo === 'all_military' || tech.appliesTo === 'infantry' || 
-                        tech.appliesTo === 'cavalry' || tech.appliesTo === 'ranged') {
-                        ai.units.forEach(unit => {
-                            if (unit.type === 'worker') return;
-                            const matches = tech.appliesTo === 'all_military' || tech.appliesTo === unit.unitType;
-                            if (matches) {
-                                if (tech.bonus.attack) unit.attack += tech.bonus.attack;
-                                if (tech.bonus.health) {
-                                    unit.health = Math.min(unit.health + tech.bonus.health, unit.maxHealth + tech.bonus.health);
-                                    unit.maxHealth += tech.bonus.health;
-                                }
-                                if (tech.bonus.range) unit.range += tech.bonus.range;
-                            }
-                        });
-                    }
-                }
-                
-                this.updateAITrainOptions(ai);
-                ai.currentResearch = null;
-            }
-            return; // Already researching, don't start new research
+    updateDiscovery(ai) {
+        if (!ai._knownResIdx) ai._knownResIdx = new Set();
+        if (!ai._knownEnemyBuildings) ai._knownEnemyBuildings = new Set();
+        const res = (this.game.terrain && this.game.terrain.resources) || [];
+        for (let i = 0; i < res.length; i++) {
+            if (ai._knownResIdx.has(i)) continue;
+            const r = res[i];
+            if (this.isVisibleTo(ai, r.x, r.z)) ai._knownResIdx.add(i);
         }
-        
-        // Get available techs for current age
-        const availableTechs = Object.keys(techs).filter(techId => {
-            const tech = techs[techId];
-            if (ai.researchedTechs[techId]) return false; // Already researched
-            
-            // Check age requirement
-            if (tech.requiredAge) {
-                const requiredAgeIndex = ageOrder.indexOf(tech.requiredAge);
-                if (requiredAgeIndex > currentAgeIndex) return false;
-            }
-            
-            // Check prerequisites
-            if (tech.requires && tech.requires.length > 0) {
-                for (const req of tech.requires) {
-                    if (!ai.researchedTechs[req]) return false;
+        // Remember enemy buildings once seen (buildings are static).
+        for (const other of this.enemyOwners(ai)) {
+            for (const b of other.buildings) {
+                if (b.health <= 0) { ai._knownEnemyBuildings.delete(b); continue; }
+                if (!ai._knownEnemyBuildings.has(b) && this.isVisibleTo(ai, b.x, b.z)) {
+                    ai._knownEnemyBuildings.add(b);
                 }
             }
-            
-            // Check if we have the building to research this tech
-            if (tech.researchAt === 'town_center') {
-                return ai.buildings.some(b => b.type === 'town_center');
-            } else if (tech.researchAt === 'market') {
-                return ai.buildings.some(b => b.type === 'market');
-            }
-            
-            return false;
-        });
-        
-        // Prioritize unlock techs first (horseback, longbow, marketTech), then stat bonuses
-        availableTechs.sort((a, b) => {
-            const aTech = techs[a];
-            const bTech = techs[b];
-            const aUnlocks = aTech.unlocks ? 1 : 0;
-            const bUnlocks = bTech.unlocks ? 1 : 0;
-            return bUnlocks - aUnlocks; // Unlock techs first
-        });
-        
-        // Try to research affordable techs
-        for (const techId of availableTechs) {
-            const tech = techs[techId];
-            const costMultiplier = ai.techCostMultiplier || 1;
-            const adjustedCost = {
-                food: Math.floor((tech.cost.food || 0) * costMultiplier),
-                wood: Math.floor((tech.cost.wood || 0) * costMultiplier),
-                stone: Math.floor((tech.cost.stone || 0) * costMultiplier),
-                gold: Math.floor((tech.cost.gold || 0) * costMultiplier)
-            };
-            
-            if (ai.resources.food >= adjustedCost.food &&
-                ai.resources.wood >= adjustedCost.wood &&
-                ai.resources.stone >= adjustedCost.stone &&
-                ai.resources.gold >= adjustedCost.gold) {
-                
-                // Research the tech (start progress)
-                ai.resources.food -= adjustedCost.food;
-                ai.resources.wood -= adjustedCost.wood;
-                ai.resources.stone -= adjustedCost.stone;
-                ai.resources.gold -= adjustedCost.gold;
-                
-                ai.currentResearch = {
-                    techId: techId,
-                    progress: 0,
-                    duration: tech.researchTime || 15000
-                };
-                
-                break; // Research one tech per think cycle
-            }
         }
     }
 
-    updateAITrainOptions(ai) {
-        ai.buildings.forEach(building => {
-            const options = getTrainOptionsForBuilding(building.type, ai.age);
-            if (options.length > 0) {
-                building.trainOptions = options;
-            }
-        });
+    enemyOwners(ai) {
+        const owners = [];
+        if (this.game.player) owners.push(this.game.player);
+        this.aiPlayers.forEach(o => { if (o !== ai) owners.push(o); });
+        return owners;
     }
 
-    assignWorkersToHarvest(ai) {
+    // ---- Per-turn priority brain ---------------------------------------------
+    runTurn(ai) {
+        const r = ai.resources;
         const workers = ai.units.filter(u => u.type === 'worker');
-        // A worker walking to a build site is not "isMoving"/"isBuilding" yet, so
-        // also exclude anyone already assigned to build or tend a farm.
-        const idleWorkers = workers.filter(w => !w.isMoving && !w.isHarvesting && !w.carryingResource &&
-            !w.isBuilding && w.task !== 'building' && w.task !== 'farm_work');
-        
-        // What does the economy need most right now? Food gates workers, age-ups AND
-        // military, so keep it flowing; otherwise gather the scarcest resource. Without
-        // this the AI just grabbed the nearest node (often all wood) and could STARVE —
-        // food stuck at 0, unable to train, advance or go military.
-        const wantType = this.neededResourceType(ai);
+        const military = ai.units.filter(u => u.type !== 'worker');
+        const popFree = Math.max(0, r.maxPopulation - r.population);
+        const enemyWonder = this.knownEnemyWonder(ai);
 
-        idleWorkers.forEach(worker => {
-            // Prefer the needed resource type (anywhere on the map); fall back to the
-            // nearest node of any type if none of that type is left.
-            const nearestResource = this.findNearestResourceOfType(worker, wantType) || this.findNearestResource(worker);
-            if (nearestResource) {
-                worker.task = 'harvesting';
-                worker.harvestTarget = nearestResource;
-                worker.isMoving = true;
-                worker.targetX = nearestResource.x + (Math.random() - 0.5) * 2;
-                worker.targetZ = nearestResource.z + (Math.random() - 0.5) * 2;
-                worker.carryingResource = false;
-                worker.harvestAmount = 0;
-            }
-        });
+        // Always keep idle workers gathering the most-needed discovered resource.
+        this.assignWorkersToHarvest(ai);
+
+        // 1) POPULATION: don't choke. Build a house when nearly capped (and below
+        //    the hard cap), so workers/military can keep being trained.
+        if (popFree <= 2 && r.maxPopulation < MAX_POPULATION_CAP &&
+            ai.buildings.filter(b => b.type === 'house').length < 6) {
+            this.buildStructure(ai, 'house');
+        }
+
+        // 2) ECONOMY: grow the worker base toward a target while there is pop room.
+        if (workers.length < 14 && popFree > 0) {
+            const tc = ai.buildings.find(b => b.type === 'town_center' && !b.underConstruction && !b.isProducing);
+            if (tc) this.trainUnit(ai, 'worker', tc);
+        }
+
+        // 3) FOOD SECURITY: a couple of farms once the base is going, so food never
+        //    dries up (farms regenerate and their builder becomes the farmer).
+        if (workers.length >= 5 && ai.buildings.filter(b => b.type === 'farm').length < 4) {
+            this.buildStructure(ai, 'farm');
+        }
+
+        // 4) RESEARCH: start one affordable tech (the GAME advances + completes it).
+        this.maybeStartResearch(ai);
+
+        // 5) ADVANCE AGE: when affordable and the economy can support it (the GAME
+        //    runs the timed upgrade — no instant ages).
+        this.maybeAdvanceAge(ai, workers.length);
+
+        // 6) MILITARY BUILDINGS: a barracks first; stable/archery once unlocked.
+        this.ensureMilitaryBuildings(ai);
+
+        // 7) TRAIN MILITARY once the economy is on its feet (or immediately if a
+        //    rival Wonder must be answered).
+        if (popFree > 0 && (workers.length >= 8 || enemyWonder)) {
+            this.trainMilitary(ai);
+        }
+
+        // 8) WONDER: in the Iron age with a real army and the resources, build it.
+        if (ai.age === 'iron' && military.length >= 6) this.maybeBuildWonder(ai);
+
+        // 9) COMMAND THE ARMY: rush a rival Wonder, attack visible enemies, or push
+        //    scouts/forces into the dark to find them.
+        this.commandArmy(ai, military, enemyWonder);
+
+        // 10) Keep revealing the map (esp. when a needed resource isn't discovered).
+        this.exploreMap(ai);
     }
 
-    // Periodically dispatch ONE spare scout toward an unexplored frontier so the map
-    // (and any hidden resources/enemies) gets revealed. Prefers an idle military unit
-    // so the economy is never disturbed; falls back to a genuinely idle worker only if
-    // no military is free. Throttled so it doesn't thrash a unit every tick.
-    exploreMap(ai) {
-        ai._exploreTimer = (ai._exploreTimer || 0) + 1;
-        if (ai._exploreTimer < 8) return;
-
-        const idleMilitary = ai.units.find(u => u.type !== 'worker' &&
-            !u.isAttacking && !u.attackTarget && !u.attackMove && !u.isMoving);
-        const idleWorker = ai.units.find(u => u.type === 'worker' &&
-            !u.isMoving && !u.isHarvesting && !u.carryingResource && !u.isBuilding &&
-            !u.farmRef && u.task !== 'building' && u.task !== 'farm_work');
-        const scout = idleMilitary || idleWorker;
-        if (!scout) return; // nothing to spare — try again next tick (keep workers gathering)
-
-        ai._exploreTimer = 0;
-        const half = (this.game.terrain ? this.game.terrain.size : 800) / 2 - 40;
-        scout.task = scout.type === 'worker' ? 'scouting' : null;
-        scout.isMoving = true;
-        scout.targetX = (Math.random() - 0.5) * 2 * half;
-        scout.targetZ = (Math.random() - 0.5) * 2 * half;
-    }
-
-    // Which resource the economy should gather next. Food gates workers, age-ups and
-    // military, so keep a buffer of it; once food is comfortable, gather the scarcest
-    // of the four so wood/stone/gold also come in for buildings and units.
+    // ---- Workers / resources (fog-limited) -----------------------------------
     neededResourceType(ai) {
         const r = ai.resources;
-        if (r.food < 200) return 'food';
+        if (r.food < 200) return 'food'; // food gates workers, age-ups and military
         const stock = { food: r.food, wood: r.wood, gold: r.gold, stone: r.stone };
         let best = 'wood', bestVal = Infinity;
         for (const t of ['food', 'wood', 'gold', 'stone']) {
@@ -322,226 +193,313 @@ class AIManager {
         return best;
     }
 
-    // Nearest node of a specific type with anything left (no distance cap), or null.
-    findNearestResourceOfType(unit, type) {
-        if (!this.game.terrain || !this.game.terrain.resources) return null;
+    // Nearest DISCOVERED node (optionally of a type) with anything left.
+    findKnownResource(ai, unit, type) {
+        const res = (this.game.terrain && this.game.terrain.resources) || [];
         let nearest = null, minDist = Infinity;
-        this.game.terrain.resources.forEach(resource => {
-            if (resource.amount <= 0 || resource.type !== type) return;
-            const d = Math.hypot(resource.x - unit.x, resource.z - unit.z);
-            if (d < minDist) { minDist = d; nearest = resource; }
+        ai._knownResIdx.forEach(idx => {
+            const r = res[idx];
+            if (!r || r.amount <= 0) return;
+            if (type && r.type !== type) return;
+            const d = Math.hypot(r.x - unit.x, r.z - unit.z);
+            if (d < minDist) { minDist = d; nearest = r; }
         });
         return nearest;
     }
 
-    findNearestResource(unit) {
-        if (!this.game.terrain || !this.game.terrain.resources) return null;
-
-        let nearest = null;
-        let minDist = Infinity;
-
-        // No distance cap: take the nearest node with anything left, ANYWHERE on the
-        // map. Capping at 50 stranded workers (idle forever) once the home cluster ran
-        // dry; without it they walk out to the next deposit — gathering from, and
-        // revealing, the rest of the map instead of deadlocking.
-        this.game.terrain.resources.forEach(resource => {
-            if (resource.amount <= 0) return;
-            const dx = resource.x - unit.x;
-            const dz = resource.z - unit.z;
-            const dist = Math.sqrt(dx * dx + dz * dz);
-            if (dist < minDist) {
-                minDist = dist;
-                nearest = resource;
-            }
+    assignWorkersToHarvest(ai) {
+        const idleWorkers = ai.units.filter(w => w.type === 'worker' &&
+            !w.isMoving && !w.isHarvesting && !w.carryingResource && !w.isBuilding &&
+            w.task !== 'building' && w.task !== 'farm_work' && w.task !== 'scouting');
+        if (!idleWorkers.length) return;
+        const wantType = this.neededResourceType(ai);
+        idleWorkers.forEach(worker => {
+            // Prefer the needed type among DISCOVERED nodes; fall back to any known
+            // node. If nothing is discovered yet, the worker waits — exploreMap will
+            // scout to reveal resources (fair: the models face the same fog).
+            const target = this.findKnownResource(ai, worker, wantType) || this.findKnownResource(ai, worker, null);
+            if (!target) return;
+            worker.task = 'harvesting';
+            worker.harvestTarget = target;
+            worker.isMoving = true;
+            worker.targetX = target.x + (Math.random() - 0.5) * 2;
+            worker.targetZ = target.z + (Math.random() - 0.5) * 2;
+            worker.carryingResource = false;
+            worker.harvestAmount = 0;
         });
-
-        return nearest;
     }
 
-    economicStrategy(ai) {
-        // Train workers if we have town centers and can afford them
-        const townCenters = ai.buildings.filter(b => b.type === 'town_center');
-        const workers = ai.units.filter(u => u.type === 'worker').length;
-        
-        townCenters.forEach(tc => {
-            if (!tc.isProducing && workers < 15 && ai.resources.food >= 50) {
-                this.trainUnit(ai, 'worker', tc);
-            }
+    // Send ONE spare unit to scout an unexplored frontier so resources/enemies get
+    // revealed. More eager when a NEEDED resource type is still undiscovered (so the
+    // economy isn't stuck). Prefers idle military, then a genuinely idle worker.
+    exploreMap(ai) {
+        const want = this.neededResourceType(ai);
+        const haveWanted = !!this.findKnownResource(ai, ai.buildings[0] || { x: 0, z: 0 }, want);
+        const interval = haveWanted ? 8 : 2; // scout urgently if we can't find what we need
+        ai._exploreTimer = (ai._exploreTimer || 0) + 1;
+        if (ai._exploreTimer < interval) return;
+
+        const idleMilitary = ai.units.find(u => u.type !== 'worker' &&
+            !u.isAttacking && !u.attackTarget && !u.attackMove && !u.isMoving);
+        const idleWorker = ai.units.find(u => u.type === 'worker' &&
+            !u.isMoving && !u.isHarvesting && !u.carryingResource && !u.isBuilding &&
+            !u.farmRef && u.task !== 'building' && u.task !== 'farm_work');
+        const scout = idleMilitary || idleWorker;
+        if (!scout) return;
+
+        ai._exploreTimer = 0;
+        const half = (this.game.terrain ? this.game.terrain.size : 800) / 2 - 40;
+        // Fan out using the golden angle so repeated scouting sweeps the whole map.
+        ai._scoutAngle = (ai._scoutAngle == null) ? Math.random() * Math.PI * 2 : ai._scoutAngle + 2.399963;
+        ai._scoutRadius = Math.min(half, (ai._scoutRadius || 60) + 40);
+        const c = ai.buildings[0] || { x: 0, z: 0 };
+        scout.task = scout.type === 'worker' ? 'scouting' : null;
+        scout.isMoving = true;
+        scout.targetX = Math.max(-half, Math.min(half, c.x + Math.cos(ai._scoutAngle) * ai._scoutRadius));
+        scout.targetZ = Math.max(-half, Math.min(half, c.z + Math.sin(ai._scoutAngle) * ai._scoutRadius));
+    }
+
+    // ---- Research (delegated to the game's timed system) ----------------------
+    maybeStartResearch(ai) {
+        if (ai.currentResearch) return; // the game advances/completes it
+        const civ = getCivilization(ai.civilization);
+        const techs = civ.techTree || {};
+        const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
+        const curAge = ageOrder.indexOf(ai.age);
+
+        const available = Object.keys(techs).filter(id => {
+            const tech = techs[id];
+            if (ai.researchedTechs[id]) return false;
+            if (tech.requiredAge && ageOrder.indexOf(tech.requiredAge) > curAge) return false;
+            if (tech.requires && tech.requires.some(req => !ai.researchedTechs[req])) return false;
+            if (tech.researchAt === 'town_center') return ai.buildings.some(b => b.type === 'town_center' && !b.underConstruction);
+            if (tech.researchAt === 'market') return ai.buildings.some(b => b.type === 'market' && !b.underConstruction);
+            return false;
         });
+        // Unlock techs first (they open new buildings/units), then the rest.
+        available.sort((a, b) => (techs[b].unlocks ? 1 : 0) - (techs[a].unlocks ? 1 : 0));
 
-        // Build farms if low on food and we have enough workers
-        if (ai.resources.food < 200 && workers >= 5) {
-            const farms = ai.buildings.filter(b => b.type === 'farm').length;
-            if (farms < 5 && ai.resources.wood >= 50) {
-                this.buildStructure(ai, 'farm');
-            }
-        }
-
-        // Build houses for population
-        if (ai.units.length >= 8) {
-            const houses = ai.buildings.filter(b => b.type === 'house').length;
-            if (houses < 3 && ai.resources.wood >= 20) {
-                this.buildStructure(ai, 'house');
-            }
-        }
-
-        // Build market for trading (only if marketTech is researched)
-        if (ai.buildings.filter(b => b.type === 'market').length === 0 && 
-            ai.researchedTechs['marketTech'] &&
-            ai.resources.food >= 100 && ai.resources.wood >= 100) {
-            this.buildStructure(ai, 'market');
-        }
-        
-        // Build stable if horseback tech is researched
-        if (ai.buildings.filter(b => b.type === 'stable').length === 0 && 
-            ai.researchedTechs['horseback'] &&
-            ai.resources.food >= 100 && ai.resources.wood >= 100 && ai.resources.gold >= 50) {
-            this.buildStructure(ai, 'stable');
-        }
-        
-        // Build archery range if longbow tech is researched
-        if (ai.buildings.filter(b => b.type === 'archery_range').length === 0 && 
-            ai.researchedTechs['longbow'] &&
-            ai.resources.food >= 50 && ai.resources.wood >= 100 && ai.resources.stone >= 50) {
-            this.buildStructure(ai, 'archery_range');
+        for (const id of available) {
+            const tech = techs[id];
+            const mult = ai.techCostMultiplier || 1;
+            const cost = {
+                food: Math.floor((tech.cost.food || 0) * mult),
+                wood: Math.floor((tech.cost.wood || 0) * mult),
+                stone: Math.floor((tech.cost.stone || 0) * mult),
+                gold: Math.floor((tech.cost.gold || 0) * mult)
+            };
+            if (!this.canAfford(ai, cost)) continue;
+            this.spend(ai, cost);
+            ai.currentResearch = { techId: id, progress: 0, duration: tech.researchTime || 15000 };
+            return; // one research at a time
         }
     }
 
-    militaryStrategy(ai) {
-        // Build military buildings if we don't have them
-        const barracks = ai.buildings.filter(b => b.type === 'barracks');
-        if (barracks.length === 0 && ai.resources.wood >= 150 && ai.resources.food >= 50) {
-            this.buildStructure(ai, 'barracks');
-            return;
-        }
+    // ---- Age advancement (delegated to the game's timed system) ---------------
+    ageCosts = {
+        neolithic: { food: 1000, wood: 800, stone: 0, gold: 0 },
+        bronze: { food: 2000, wood: 1500, stone: 400, gold: 200 },
+        iron: { food: 4000, wood: 3000, stone: 1000, gold: 600 }
+    };
 
-        const archeryRanges = ai.buildings.filter(b => b.type === 'archery_range');
-        if (archeryRanges.length === 0 && ai.researchedTechs['longbow'] && 
-            ai.resources.wood >= 100 && ai.resources.stone >= 50) {
-            this.buildStructure(ai, 'archery_range');
-            return;
-        }
-        
-        const stables = ai.buildings.filter(b => b.type === 'stable');
-        if (stables.length === 0 && ai.researchedTechs['horseback'] && 
-            ai.resources.food >= 100 && ai.resources.wood >= 100 && ai.resources.gold >= 50) {
-            this.buildStructure(ai, 'stable');
-            return;
-        }
+    maybeAdvanceAge(ai, workerCount) {
+        if (ai.currentAgeUpgrade) return;
+        const next = this.getNextAge(ai.age);
+        if (!next) return;
+        // Don't bankrupt the economy advancing — keep a worker base going first.
+        if (workerCount < 6) return;
+        const cost = this.ageCosts[next];
+        if (!cost || !this.canAfford(ai, cost)) return;
+        this.spend(ai, cost);
+        ai.currentAgeUpgrade = { targetAge: next, progress: 0, duration: 30000 };
+    }
 
-        // Train military units
-        const militaryBuildings = ai.buildings.filter(b => b.canTrain && b.type !== 'town_center');
-        militaryBuildings.forEach(building => {
-            if (!building.isProducing) {
-                // Train appropriate units based on age and tech requirements
-                const unitType = this.getUnitToTrain(ai, building);
-                if (unitType) {
-                    this.trainUnit(ai, unitType, building);
-                }
-            }
+    // ---- Military buildings + training ---------------------------------------
+    ensureMilitaryBuildings(ai) {
+        const has = (type) => ai.buildings.some(b => b.type === type);
+        if (!has('barracks')) { this.buildStructure(ai, 'barracks'); return; }
+        if (ai.researchedTechs['horseback'] && !has('stable')) { this.buildStructure(ai, 'stable'); return; }
+        if (ai.researchedTechs['longbow'] && !has('archery_range')) { this.buildStructure(ai, 'archery_range'); return; }
+        // A defensive tower once we have stone to spare.
+        if (!has('tower') && ai.resources.stone >= 120) this.buildStructure(ai, 'tower');
+    }
+
+    trainMilitary(ai) {
+        const trainers = ai.buildings.filter(b => b.canTrain && b.type !== 'town_center' &&
+            !b.underConstruction && !b.isProducing);
+        trainers.forEach(building => {
+            const unitType = this.getUnitToTrain(ai, building);
+            if (unitType) this.trainUnit(ai, unitType, building);
         });
-
-        // Attack once we have an army — OR immediately (even a tiny force) if a rival
-        // Wonder exists, since a finished Wonder loses the game for everyone else.
-        const militaryUnits = ai.units.filter(u => u.type !== 'worker');
-        const enemyWonder = this.game.getAllBuildings().some(b => b.isWonder && b.health > 0 && !ai.buildings.includes(b));
-        if (militaryUnits.length >= 8 || (enemyWonder && militaryUnits.length >= 1)) {
-            this.attackPlayer(ai, militaryUnits);
-        }
     }
 
     getUnitToTrain(ai, building) {
-        // Train appropriate units based on building type and age
         switch (building.type) {
-            case 'barracks':
-                if (ai.age === 'iron') return 'warrior';
-                return 'militia';
-            case 'archery_range':
-                if (ai.age === 'iron') return 'elite_archer';
-                return 'archer';
-            case 'stable':
-                if (ai.age === 'iron') return 'heavy_cavalry';
-                return 'scout_cavalry';
-            default:
-                return null;
+            case 'barracks':      return ai.age === 'iron' ? 'champion' : (ai.age === 'bronze' ? 'warrior' : 'militia');
+            case 'archery_range': return ai.age === 'iron' ? 'elite_archer' : (ai.age === 'neolithic' || ai.age === 'bronze' ? 'archer' : null);
+            case 'stable':        return ai.age === 'iron' ? 'heavy_cavalry' : (ai.age === 'bronze' ? 'cavalry' : 'scout_cavalry');
+            default:              return null;
         }
     }
 
-    attackPlayer(ai, militaryUnits) {
-        if (!militaryUnits.length) return;
-        const origin = militaryUnits[0];
-
-        // Gather all enemy entities: the human (empty in spectator/arena) + other AIs.
-        const enemyUnits = [];
-        const enemyBuildings = [];
-        if (this.game.player) {
-            this.game.player.units.forEach(u => enemyUnits.push(u));
-            this.game.player.buildings.forEach(b => enemyBuildings.push(b));
+    // ---- Combat (fog-limited targeting) --------------------------------------
+    knownEnemyWonder(ai) {
+        // Wonders are always visible to everyone (existential threat).
+        for (const other of this.enemyOwners(ai)) {
+            const w = other.buildings.find(b => b.isWonder && b.health > 0);
+            if (w) return w;
         }
-        this.aiPlayers.forEach(other => {
-            if (other === ai) return;
-            other.units.forEach(u => enemyUnits.push(u));
-            other.buildings.forEach(b => enemyBuildings.push(b));
-        });
+        return null;
+    }
 
-        // Priority 1: a rival WONDER is an existential threat — raze it above all else.
-        let target = enemyBuildings.find(b => b.isWonder && b.health > 0) || null;
-        // Otherwise hit the nearest enemy unit or building.
+    // Targets the AI is allowed to act on: visible enemy units, remembered enemy
+    // buildings (still alive), and any enemy wonder (always visible).
+    visibleEnemyTargets(ai) {
+        const out = new Set();
+        for (const other of this.enemyOwners(ai)) {
+            other.units.forEach(u => { if (u.health > 0 && this.isVisibleTo(ai, u.x, u.z)) out.add(u); });
+            other.buildings.forEach(b => { if (b.health > 0 && b.isWonder) out.add(b); });
+        }
+        ai._knownEnemyBuildings.forEach(b => { if (b && b.health > 0) out.add(b); else ai._knownEnemyBuildings.delete(b); });
+        return [...out];
+    }
+
+    commandArmy(ai, military, enemyWonder) {
+        if (!military.length) return;
+        // Only commit the army when it's a real force, unless a Wonder must be razed.
+        const ready = military.length >= 8 || (enemyWonder && military.length >= 1);
+        if (!ready) return;
+
+        const origin = military[0];
+        // A rival Wonder outranks everything.
+        let target = enemyWonder;
         if (!target) {
-            let minDist = Infinity;
-            const consider = (e) => {
-                if (!e || e.health <= 0) return;
+            let minD = Infinity;
+            for (const e of this.visibleEnemyTargets(ai)) {
                 const d = this.distance(origin, e);
-                if (d < minDist) { minDist = d; target = e; }
-            };
-            enemyUnits.forEach(consider);
-            enemyBuildings.forEach(consider);
+                if (d < minD) { minD = d; target = e; }
+            }
         }
 
         if (target) {
-            militaryUnits.forEach(unit => {
+            military.forEach(unit => {
                 unit.isAttacking = true;
                 unit.attackTarget = target;
-                unit.attackMove = { x: target.x, z: target.z }; // pursue + re-acquire nearby
+                unit.attackMove = { x: target.x, z: target.z };
                 unit.attackTimer = 0;
                 unit.isMoving = true;
                 unit.targetX = target.x;
                 unit.targetZ = target.z;
             });
+        } else {
+            // No enemy discovered yet: march the army outward (attack-move) to find
+            // one, engaging anything it meets — fair, same as a model that must scout.
+            const half = (this.game.terrain ? this.game.terrain.size : 800) / 2 - 60;
+            ai._armyScoutAngle = (ai._armyScoutAngle == null) ? Math.random() * Math.PI * 2 : ai._armyScoutAngle + 2.399963;
+            const tx = Math.max(-half, Math.min(half, Math.cos(ai._armyScoutAngle) * half));
+            const tz = Math.max(-half, Math.min(half, Math.sin(ai._armyScoutAngle) * half));
+            military.forEach(unit => {
+                if (unit.isAttacking && unit.attackTarget) return; // already engaged
+                unit.isAttacking = true;
+                unit.attackTarget = null;
+                unit.attackMove = { x: tx, z: tz };
+                unit.isMoving = true;
+                unit.targetX = tx;
+                unit.targetZ = tz;
+            });
         }
     }
 
-    wonderStrategy(ai) {
+    // ---- Wonder -------------------------------------------------------------
+    maybeBuildWonder(ai) {
         const wonderDef = this.getWonderForCiv(ai.civilization);
         if (!wonderDef) return;
-
-        // Only one wonder at a time, and only from the required age (Iron)
         if (ai.buildings.some(b => b.isWonder)) return;
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
         if (ageOrder.indexOf(ai.age) < ageOrder.indexOf(wonderDef.requiredAge || 'iron')) return;
+        if (!this.canAfford(ai, wonderDef.cost)) return;
 
-        // Check if we can build wonder
-        if (ai.resources.food >= wonderDef.cost.food &&
-            ai.resources.wood >= wonderDef.cost.wood &&
-            ai.resources.stone >= wonderDef.cost.stone &&
-            ai.resources.gold >= wonderDef.cost.gold) {
-            
-            // Build wonder near town center
-            const townCenters = ai.buildings.filter(b => b.type === 'town_center');
-            if (townCenters.length > 0) {
-                const tc = townCenters[0];
-                const wonder = createBuilding(wonderDef.id, tc.x + 10, tc.z + 10, 'ai', ai.civilization, { underConstruction: true, age: ai.age });
-                ai.buildings.push(wonder);
-                this.game.renderer.addBuilding(wonder);
-                this.game.assignBuilderTo(ai, wonder, { forceBorrow: true });
-                
-                // Deduct resources
-                ai.resources.food -= wonderDef.cost.food;
-                ai.resources.wood -= wonderDef.cost.wood;
-                ai.resources.stone -= wonderDef.cost.stone;
-                ai.resources.gold -= wonderDef.cost.gold;
+        const tc = ai.buildings.find(b => b.type === 'town_center');
+        if (!tc) return;
+        // Find a clear spot BEFORE spending (no leak on failure).
+        const pos = this.findBuildPosition(ai, tc, wonderDef.id, true);
+        if (!pos) return;
+        this.spend(ai, wonderDef.cost);
+        const wonder = createBuilding(wonderDef.id, pos.x, pos.z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
+        ai.buildings.push(wonder);
+        this.game.renderer.addBuilding(wonder);
+        this.game.assignBuilderTo(ai, wonder, { forceBorrow: true });
+    }
+
+    // ---- Generic build / train (no resource leaks) ---------------------------
+    // Returns a valid {x,z} near the town centre or null — WITHOUT spending.
+    findBuildPosition(ai, tc, buildingType, isWonder) {
+        for (let attempts = 0; attempts < 24; attempts++) {
+            const x = tc.x + (Math.random() - 0.5) * 60;
+            const z = tc.z + (Math.random() - 0.5) * 60;
+            let valid = true;
+            const others = [...ai.buildings];
+            if (this.game.player) others.push(...this.game.player.buildings);
+            for (const b of others) {
+                if (Math.hypot(b.x - x, b.z - z) < (isWonder ? 12 : 9)) { valid = false; break; }
             }
+            if (valid && this.game.isTooCloseToResource && this.game.isTooCloseToResource(x, z, buildingType, isWonder)) valid = false;
+            if (valid && this.game.clampToMap) {
+                const c = this.game.clampToMap(x, z);
+                if (Math.abs(c.x - x) > 0.5 || Math.abs(c.z - z) > 0.5) valid = false; // off-map
+            }
+            if (valid) return { x, z };
         }
+        return null;
+    }
+
+    buildStructure(ai, buildingType) {
+        const def = getBuildingDef(buildingType);
+        if (!def) return;
+        // Don't start a second of a one-per-build type already under construction.
+        if (ai.buildings.some(b => b.type === buildingType && b.underConstruction)) return;
+        if (!this.canAfford(ai, def.cost)) return;
+
+        const tc = ai.buildings.find(b => b.type === 'town_center');
+        if (!tc) return;
+        const pos = this.findBuildPosition(ai, tc, buildingType, false);
+        if (!pos) return; // no spot — DON'T spend (was a resource leak before)
+
+        this.spend(ai, def.cost);
+        const building = createBuilding(buildingType, pos.x, pos.z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
+        ai.buildings.push(building);
+        this.game.renderer.addBuilding(building);
+        this.game.assignBuilderTo(ai, building, { forceBorrow: true });
+    }
+
+    trainUnit(ai, unitType, building) {
+        if (!building || building.underConstruction || building.isProducing) return;
+        const unitDef = getUnitDef(unitType);
+        if (!unitDef || !unitDef.cost) return;
+        // Respect the population cap (build houses to raise it; never overflow).
+        if (ai.resources.population >= ai.resources.maxPopulation) return;
+        if (!this.canAfford(ai, unitDef.cost)) return;
+
+        this.spend(ai, unitDef.cost);
+        building.isProducing = true;
+        building.productionDuration = 5000;
+        building.productionProgress = 0;
+        building.productionType = unitType;
+    }
+
+    // ---- Small helpers -------------------------------------------------------
+    canAfford(ai, cost) {
+        const r = ai.resources;
+        return r.food >= (cost.food || 0) && r.wood >= (cost.wood || 0) &&
+               r.stone >= (cost.stone || 0) && r.gold >= (cost.gold || 0);
+    }
+
+    spend(ai, cost) {
+        const r = ai.resources;
+        r.food -= (cost.food || 0);
+        r.wood -= (cost.wood || 0);
+        r.stone -= (cost.stone || 0);
+        r.gold -= (cost.gold || 0);
     }
 
     getWonderForCiv(civId) {
@@ -556,141 +514,7 @@ class AIManager {
         return idx < ages.length - 1 ? ages[idx + 1] : null;
     }
 
-    canAffordAgeUpgrade(ai, nextAge) {
-        const ageCosts = {
-            'neolithic': { food: 1000, wood: 800, stone: 0, gold: 0 },
-            'bronze': { food: 2000, wood: 1500, stone: 400, gold: 200 },
-            'iron': { food: 4000, wood: 3000, stone: 1000, gold: 600 }
-        };
-        
-        const cost = ageCosts[nextAge];
-        if (!cost) return false;
-        
-        return ai.resources.food >= cost.food &&
-               ai.resources.wood >= cost.wood &&
-               ai.resources.stone >= cost.stone &&
-               ai.resources.gold >= cost.gold;
-    }
-
-    upgradeAge(ai, nextAge) {
-        const ageCosts = {
-            'neolithic': { food: 1000, wood: 800, stone: 0, gold: 0 },
-            'bronze': { food: 2000, wood: 1500, stone: 400, gold: 200 },
-            'iron': { food: 4000, wood: 3000, stone: 1000, gold: 600 }
-        };
-        
-        const cost = ageCosts[nextAge];
-        if (!cost) return;
-        
-        ai.resources.food -= cost.food;
-        ai.resources.wood -= cost.wood;
-        ai.resources.stone -= cost.stone;
-        ai.resources.gold -= cost.gold;
-        
-        ai.age = nextAge;
-
-        // Update train options for military buildings
-        ai.buildings.forEach(building => {
-            const options = getTrainOptionsForBuilding(building.type, nextAge);
-            if (options.length > 0) {
-                building.trainOptions = options;
-            }
-        });
-
-        // Morph existing buildings to the new epoch (look + HP)
-        if (this.game && this.game.morphBuildingsToAge) {
-            this.game.morphBuildingsToAge(ai.buildings, nextAge);
-        }
-    }
-
-    trainUnit(ai, unitType, building) {
-        const unitDef = getUnitDef(unitType);
-        if (!unitDef) return;
-
-        // Check if AI has resources
-        const cost = unitDef.cost;
-        if (!cost) return;
-        
-        const canAfford = (
-            ai.resources.food >= (cost.food || 0) &&
-            ai.resources.wood >= (cost.wood || 0) &&
-            ai.resources.stone >= (cost.stone || 0) &&
-            ai.resources.gold >= (cost.gold || 0)
-        );
-        
-        if (!canAfford) return;
-
-        ai.resources.food -= cost.food || 0;
-        ai.resources.wood -= cost.wood || 0;
-        ai.resources.stone -= cost.stone || 0;
-        ai.resources.gold -= cost.gold || 0;
-        
-        building.isProducing = true;
-        building.productionDuration = 5000; // 5 seconds to train
-        building.productionProgress = 0;
-        building.productionType = unitType;
-    }
-
-    buildStructure(ai, buildingType) {
-        const buildingDef = getBuildingDef(buildingType);
-        if (!buildingDef) return;
-
-        const cost = buildingDef.cost;
-        const canAfford = (
-            ai.resources.food >= (cost.food || 0) &&
-            ai.resources.wood >= (cost.wood || 0) &&
-            ai.resources.stone >= (cost.stone || 0) &&
-            ai.resources.gold >= (cost.gold || 0)
-        );
-        
-        if (!canAfford) return;
-
-        ai.resources.food -= cost.food || 0;
-        ai.resources.wood -= cost.wood || 0;
-        ai.resources.stone -= cost.stone || 0;
-        ai.resources.gold -= cost.gold || 0;
-
-        // Find valid placement position near town center
-        const townCenters = ai.buildings.filter(b => b.type === 'town_center');
-        if (townCenters.length === 0) return;
-        
-        const tc = townCenters[0];
-        let x, z, valid = false;
-        let attempts = 0;
-        while (!valid && attempts < 20) {
-            // Spread buildings over a larger footprint (~2x the old area).
-            x = tc.x + (Math.random() - 0.5) * 60;
-            z = tc.z + (Math.random() - 0.5) * 60;
-            valid = true;
-
-            // Check against all buildings
-            const allBuildings = [...ai.buildings, ...this.game.player.buildings];
-            for (const b of allBuildings) {
-                const dx = b.x - x;
-                const dz = b.z - z;
-                if (Math.sqrt(dx*dx + dz*dz) < 9) {
-                    valid = false;
-                    break;
-                }
-            }
-            // Keep an exclusion zone around resource nodes (harvesters must reach them).
-            if (valid && this.game.isTooCloseToResource(x, z, buildingType, false)) {
-                valid = false;
-            }
-            attempts++;
-        }
-
-        if (!valid) return;
-
-        const building = createBuilding(buildingType, x, z, 'ai', ai.civilization, { underConstruction: true, age: ai.age });
-        ai.buildings.push(building);
-        this.game.renderer.addBuilding(building);
-        this.game.assignBuilderTo(ai, building, { forceBorrow: true });
-    }
-
-    distance(unit1, unit2) {
-        const dx = unit1.x - unit2.x;
-        const dz = unit1.z - unit2.z;
-        return Math.sqrt(dx * dx + dz * dz);
+    distance(a, b) {
+        return Math.hypot(a.x - b.x, a.z - b.z);
     }
 }
