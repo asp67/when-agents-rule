@@ -465,18 +465,48 @@ class AIManager {
         } else {
             // No enemy discovered yet: march the army outward (attack-move) to find
             // one, engaging anything it meets — fair, same as a model that must scout.
+            // Commit to ONE destination per leg: only pick a new heading once the army
+            // has reached its current target (or has been stuck on it too long). Re-
+            // rolling the angle every think made the whole army pivot in unison without
+            // ever arriving — covering no ground.
             const half = (this.game.terrain ? this.game.terrain.size : 800) / 2 - 60;
-            ai._armyScoutAngle = (ai._armyScoutAngle == null) ? Math.random() * Math.PI * 2 : ai._armyScoutAngle + 2.399963;
-            const tx = Math.max(-half, Math.min(half, Math.cos(ai._armyScoutAngle) * half));
-            const tz = Math.max(-half, Math.min(half, Math.sin(ai._armyScoutAngle) * half));
+            const base = ai.buildings[0] || origin;
+            // Army centroid, to tell when this leg is done.
+            let cx = 0, cz = 0;
+            military.forEach(u => { cx += u.x; cz += u.z; });
+            cx /= military.length; cz /= military.length;
+
+            ai._armyScoutTicks = (ai._armyScoutTicks || 0) + 1;
+            const arrived = ai._armyScoutTarget &&
+                this.distance({ x: cx, z: cz }, ai._armyScoutTarget) < 25;
+            const stuck = ai._armyScoutTicks > 12; // ~24s without arriving → new leg
+
+            let newLeg = false;
+            if (!ai._armyScoutTarget || arrived || stuck) {
+                // Fan out from the base with the golden angle and a growing radius so
+                // repeated legs sweep the whole map instead of circling one ring.
+                ai._armyScoutAngle = (ai._armyScoutAngle == null) ? Math.random() * Math.PI * 2 : ai._armyScoutAngle + 2.399963;
+                ai._armyScoutRadius = Math.min(half, (ai._armyScoutRadius || 90) + 60);
+                ai._armyScoutTarget = {
+                    x: Math.max(-half, Math.min(half, base.x + Math.cos(ai._armyScoutAngle) * ai._armyScoutRadius)),
+                    z: Math.max(-half, Math.min(half, base.z + Math.sin(ai._armyScoutAngle) * ai._armyScoutRadius))
+                };
+                ai._armyScoutTicks = 0;
+                newLeg = true;
+            }
+
+            const tgt = ai._armyScoutTarget;
             military.forEach(unit => {
                 if (unit.isAttacking && unit.attackTarget) return; // already engaged
+                // Mid-leg, leave units that are already marching alone (no per-think
+                // reset); only (re)issue the order on a new leg or to idle stragglers.
+                if (!newLeg && unit.isMoving) return;
                 unit.isAttacking = true;
                 unit.attackTarget = null;
-                unit.attackMove = { x: tx, z: tz };
+                unit.attackMove = { x: tgt.x, z: tgt.z };
                 unit.isMoving = true;
-                unit.targetX = tx;
-                unit.targetZ = tz;
+                unit.targetX = tgt.x;
+                unit.targetZ = tgt.z;
             });
         }
     }
