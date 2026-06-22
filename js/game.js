@@ -34,7 +34,7 @@ class Game {
         this.wonderHeld = false;
         // Seconds a finished Wonder must be HELD to win. Long enough that rivals get a
         // real window to march over and destroy it (a Wonder is an existential threat).
-        this.wonderRequired = 480;
+        this.wonderRequired = 600;
         this.gameSpeed = 1;
         this.lastFrameTime = 0;
     }
