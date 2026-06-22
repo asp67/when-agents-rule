@@ -190,12 +190,13 @@ class Game {
         this.player.techCostMultiplier = 1;
         this.player.buildingHealthMultiplier = 1;
 
-        // Calculate spawn positions
+        // Calculate spawn positions (one per arena participant, 2–4)
         const mapSize = 800;
         const halfSize = mapSize / 2 - 40;
+        const numPlayers = setup.length;
         const spawnPositions = [];
-        for (let i = 0; i < 4; i++) {
-            const angle = (i / 4) * Math.PI * 2 - Math.PI / 2;
+        for (let i = 0; i < numPlayers; i++) {
+            const angle = (i / numPlayers) * Math.PI * 2 - Math.PI / 2;
             const radius = halfSize * 0.85;
             spawnPositions.push({
                 x: Math.cos(angle) * radius,
@@ -212,7 +213,7 @@ class Game {
 
         // Create AI players based on setup
         this.aiManager.aiPlayers = [];
-        for (let i = 0; i < 4; i++) {
+        for (let i = 0; i < numPlayers; i++) {
             const ai = this.aiManager.addAIPlayer(setup[i].civ, 'medium');
             const spawn = spawnPositions[i];
 

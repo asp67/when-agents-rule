@@ -295,15 +295,16 @@
                         <p id="setupStep2P" data-i18n="ar.step2.p">Wähle für jeden der vier Plätze eine Zivilisation und ein Modell (oder die regelbasierte KI).</p>
                     </div>
                 </div>
-                <!-- Campaign-only: the human's civ + how many opponents to face. -->
+                <!-- Setup options: opponent/participant count (both modes) + the
+                     human's civ (Campaign only). -->
                 <div id="campaignSetupRow" class="campaign-setup-row" style="display:none;">
-                    <div class="arena-field">
+                    <div class="arena-field" id="playerCivField">
                         <label data-i18n="cmp.you">Du spielst</label>
                         <select id="campaignPlayerCiv" onchange="game.ui.setCampaignPlayerCiv(this.value)"></select>
                     </div>
                     <div class="arena-field">
-                        <label data-i18n="cmp.count">Gegner</label>
-                        <select id="campaignCount" onchange="game.ui.setCampaignCount(this.value)"></select>
+                        <label id="setupCountLabel" data-i18n="cmp.count">Gegner</label>
+                        <select id="setupCount" onchange="game.ui.setSetupCount(this.value)"></select>
                     </div>
                 </div>
                 <div id="arenaSlotsList" class="arena-slots"></div>
@@ -545,18 +546,18 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="js/i18n.js?v=201"></script>
-    <script src="js/civilizations.js?v=201"></script>
-    <script src="js/buildings.js?v=201"></script>
-    <script src="js/units.js?v=201"></script>
-    <script src="js/resources.js?v=201"></script>
-    <script src="js/terrain.js?v=201"></script>
-    <script src="js/fogofwar.js?v=201"></script>
-    <script src="js/ai.js?v=201"></script>
-    <script src="js/openai-ai.js?v=201"></script>
-    <script src="js/renderer.js?v=201"></script>
-    <script src="js/input.js?v=201"></script>
-    <script src="js/ui.js?v=201"></script>
-    <script src="js/game.js?v=201"></script>
+    <script src="js/i18n.js?v=202"></script>
+    <script src="js/civilizations.js?v=202"></script>
+    <script src="js/buildings.js?v=202"></script>
+    <script src="js/units.js?v=202"></script>
+    <script src="js/resources.js?v=202"></script>
+    <script src="js/terrain.js?v=202"></script>
+    <script src="js/fogofwar.js?v=202"></script>
+    <script src="js/ai.js?v=202"></script>
+    <script src="js/openai-ai.js?v=202"></script>
+    <script src="js/renderer.js?v=202"></script>
+    <script src="js/input.js?v=202"></script>
+    <script src="js/ui.js?v=202"></script>
+    <script src="js/game.js?v=202"></script>
 </body>
 </html>

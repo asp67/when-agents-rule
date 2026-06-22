@@ -116,9 +116,7 @@ class UIManager {
         const campaign = this._setupMode === 'campaign';
         if (campaign && !this._campaignConfig) this._campaignConfig = this.loadCampaignConfig();
         this.applySetupLabels(campaign);
-        const row = document.getElementById('campaignSetupRow');
-        if (row) row.style.display = campaign ? '' : 'none';
-        if (campaign) this.renderCampaignControls();
+        this.renderSetupOptions();
         this.renderArenaSlots();
         this.updateLibrarySummary();
         const ta = document.getElementById('arenaSharedPrompt');
@@ -137,22 +135,38 @@ class UIManager {
         set('setupStartBtn', campaign ? 'cmp.start' : 'ar.start');
     }
 
-    // Render the campaign-only "You play" civ picker and the 1–5 opponent count.
-    renderCampaignControls() {
-        const cc = this._campaignConfig;
-        const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
-        const civSel = document.getElementById('campaignPlayerCiv');
-        if (civSel) civSel.innerHTML = Object.keys(civNames).map(c => `<option value="${c}" ${cc.playerCiv === c ? 'selected' : ''}>${civNames[c]}</option>`).join('');
-        const cntSel = document.getElementById('campaignCount');
-        if (cntSel) cntSel.innerHTML = [1, 2, 3, 4, 5].map(n => `<option value="${n}" ${cc.count === n ? 'selected' : ''}>${n}</option>`).join('');
+    // Render the setup options row: a participant/opponent count picker for both
+    // modes (Campaign 1–5 opponents, Arena 2–4 participants) plus, in Campaign
+    // only, the "You play" civ picker.
+    renderSetupOptions() {
+        const campaign = this._setupMode === 'campaign';
+        const row = document.getElementById('campaignSetupRow');
+        if (row) row.style.display = '';
+        const civField = document.getElementById('playerCivField');
+        if (civField) civField.style.display = campaign ? '' : 'none';
+        if (campaign) {
+            const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
+            const civSel = document.getElementById('campaignPlayerCiv');
+            if (civSel) civSel.innerHTML = Object.keys(civNames).map(c => `<option value="${c}" ${this._campaignConfig.playerCiv === c ? 'selected' : ''}>${civNames[c]}</option>`).join('');
+        }
+        // Count label text differs (Opponents vs Participants).
+        const lbl = document.getElementById('setupCountLabel');
+        if (lbl) { const key = campaign ? 'cmp.count' : 'ar.count'; lbl.setAttribute('data-i18n', key); lbl.textContent = t(key); }
+        const opts = campaign ? [1, 2, 3, 4, 5] : [2, 3, 4];
+        const cur = this.setupSlotCount();
+        const cntSel = document.getElementById('setupCount');
+        if (cntSel) cntSel.innerHTML = opts.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${n}</option>`).join('');
     }
 
     setCampaignPlayerCiv(v) { if (this._campaignConfig) { this._campaignConfig.playerCiv = v; this.saveSetup(); } }
-    setCampaignCount(v) {
-        if (!this._campaignConfig) return;
-        const n = Math.min(5, Math.max(1, parseInt(v, 10) || 3));
-        this._campaignConfig.count = n;
-        const sel = document.getElementById('campaignCount');
+    // Set the participant/opponent count for the active mode (clamped per mode).
+    setSetupCount(v) {
+        const campaign = this._setupMode === 'campaign';
+        const n = campaign
+            ? Math.min(5, Math.max(1, parseInt(v, 10) || 3))
+            : Math.min(4, Math.max(2, parseInt(v, 10) || 4));
+        if (campaign) this._campaignConfig.count = n; else this._arenaConfig.count = n;
+        const sel = document.getElementById('setupCount');
         if (sel && sel.value !== String(n)) sel.value = String(n);
         this.saveSetup();
         this.renderArenaSlots();
@@ -160,8 +174,9 @@ class UIManager {
 
     // Active participant-slot array for the current setup mode.
     setupSlots() { return this._setupMode === 'campaign' ? this._campaignConfig.slots : this._arenaConfig.slots; }
-    // How many of those slots are actually in play (campaign shows only `count`).
-    setupSlotCount() { return this._setupMode === 'campaign' ? this._campaignConfig.count : this._arenaConfig.slots.length; }
+    // How many of those slots are actually in play (Campaign `count` opponents,
+    // Arena `count` participants — defaults to 4 if unset).
+    setupSlotCount() { return this._setupMode === 'campaign' ? this._campaignConfig.count : (this._arenaConfig.count || 4); }
 
     saveSetup() { this.saveArenaConfig(); this.saveCampaignConfig(); }
 
@@ -350,6 +365,8 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 if (typeof s.prompt !== 'string' || !s.prompt.trim()) s.prompt = cfg.prompt;
             });
         }
+        // Number of participants actually in play (2–4; the pool is always 4 slots).
+        cfg.count = Math.min(4, Math.max(2, parseInt(cfg.count, 10) || 4));
         // Always start participant slots collapsed for a clean overview on load.
         cfg.slots.forEach(s => { s._collapsed = true; });
         return cfg;
@@ -846,13 +863,14 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         };
     }
 
-    // Collect the 4-slot setup the arena engine expects.
+    // Collect the setup the arena engine expects (first `count` participants, 2–4).
     collectArenaSetup() {
         const cfg = this._arenaConfig;
         const ta = document.getElementById('arenaSharedPrompt');
         if (ta) cfg.prompt = ta.value;
         this.saveArenaConfig();
-        return cfg.slots.map(slot => this.slotToSetupEntry(slot));
+        const n = Math.min(4, Math.max(2, cfg.count || 4));
+        return cfg.slots.slice(0, n).map(slot => this.slotToSetupEntry(slot));
     }
 
     // Collect the campaign setup: the human's civ + the chosen opponents.
