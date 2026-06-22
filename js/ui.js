@@ -1232,6 +1232,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
 
     showErrorMessage(message) {
         const infoDiv = document.getElementById('unitInfo');
+        if (!infoDiv) return;
         const original = infoDiv.innerHTML;
         infoDiv.innerHTML = `<p style="color: #e94560; font-weight: bold;">⚠️ ${message}</p>`;
         setTimeout(() => {

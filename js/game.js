@@ -34,7 +34,7 @@ class Game {
         this.wonderHeld = false;
         // Seconds a finished Wonder must be HELD to win. Long enough that rivals get a
         // real window to march over and destroy it (a Wonder is an existential threat).
-        this.wonderRequired = 240;
+        this.wonderRequired = 480;
         this.gameSpeed = 1;
         this.lastFrameTime = 0;
     }
@@ -1225,14 +1225,22 @@ class Game {
             return;
         }
 
-        // Find a building that can train this unit
-        const trainingBuilding = this.player.buildings.find(b => {
+        // Buildings (finished) that can train this unit.
+        const trainers = this.player.buildings.filter(b => {
+            if (b.underConstruction) return false;
             if (b.type === 'town_center' && unitType === 'worker') return true;
             return b.trainOptions && b.trainOptions.includes(unitType);
         });
 
-        if (!trainingBuilding) {
+        if (trainers.length === 0) {
             this.ui.showErrorMessage(t('msg.noTrainBuilding'));
+            return;
+        }
+
+        // Prefer a FREE one — never silently overwrite a building mid-production.
+        const trainingBuilding = trainers.find(b => !b.isProducing);
+        if (!trainingBuilding) {
+            this.ui.showErrorMessage(t('msg.buildingBusy'));
             return;
         }
 
