@@ -1241,9 +1241,16 @@ body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
     border-radius: 10px; padding: 12px 14px;
     display: flex; flex-direction: column; gap: 10px;
 }
-.arena-slot-title { font-weight: 800; color: #fff; font-size: 0.95em; }
-/* LLM slots carry a full system-prompt editor → give them the full row width. */
-.arena-slot.has-prompt { grid-column: 1 / -1; }
+.arena-slot-title { font-weight: 800; color: #fff; font-size: 0.95em; flex: 0 0 auto; }
+/* Collapsible header: caret + title + a compact summary of civ/controller. */
+.arena-slot-head { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.arena-slot-head:hover { color: #fff; }
+.arena-slot-caret { color: #9aa6bd; font-size: 0.8em; flex: 0 0 auto; transition: transform 0.15s; }
+.arena-slot.expanded .arena-slot-caret { transform: rotate(90deg); }
+.arena-slot-summary { color: #9aa6bd; font-size: 0.85em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arena-slot-body { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+/* A collapsed LLM slot shouldn't hog the full row — only expanded ones do. */
+.arena-slot.expanded.has-prompt { grid-column: 1 / -1; }
 .slot-prompt { margin-top: 2px; }
 .slot-prompt .arena-prompt-textarea { min-height: 110px; }
 

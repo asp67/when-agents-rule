@@ -285,6 +285,8 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 if (typeof s.prompt !== 'string' || !s.prompt.trim()) s.prompt = cfg.prompt;
             });
         }
+        // Always start participant slots collapsed for a clean overview on load.
+        cfg.slots.forEach(s => { s._collapsed = true; });
         return cfg;
     }
 
@@ -573,21 +575,40 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                     <textarea rows="6" class="arena-prompt-textarea" oninput="game.ui.setSlotPrompt(${i}, this.value)" placeholder="System prompt …">${e(slot.prompt || this._arenaConfig.prompt || '')}</textarea>
                     <button class="hdr-add-btn" style="margin-top:8px" onclick="game.ui.resetSlotPrompt(${i})">${t('ar.slotPromptReset')}</button>
                 </div>` : '';
+            const collapsed = slot._collapsed !== false; // default collapsed
+            // Compact summary shown on the collapsed header: civ + who controls it.
+            const ctrlModel = isLLM ? models.find(mm => mm.id === slot.control) : null;
+            const ctrlName = isLLM
+                ? (ctrlModel ? ((ctrlModel.name && ctrlModel.name.trim()) ? ctrlModel.name : t('ar.unnamed')) : t('ar.controlKi'))
+                : t('ar.controlKi');
+            const body = `
+                <div class="arena-slot-body">
+                    <div class="arena-field-row">
+                        <div class="arena-field"><label>${t('ar.fCiv')}</label>
+                            <select onchange="game.ui.setSlotCiv(${i}, this.value)">${civOpts}</select></div>
+                        <div class="arena-field"><label>${t('ar.fControl')}</label>
+                            <select onchange="game.ui.setSlotControl(${i}, this.value)">
+                                <option value="ki" ${slot.control === 'ki' ? 'selected' : ''}>${t('ar.controlKi')}</option>
+                                ${modelOpts}
+                            </select></div>
+                    </div>
+                    ${promptBlock}
+                </div>`;
             return `
-            <div class="arena-slot${isLLM ? ' has-prompt' : ''}" style="--civ:${civColor[slot.civ] || '#888'}">
-                <div class="arena-slot-title">${t('ar.slot', { n: i + 1 })}</div>
-                <div class="arena-field-row">
-                    <div class="arena-field"><label>${t('ar.fCiv')}</label>
-                        <select onchange="game.ui.setSlotCiv(${i}, this.value)">${civOpts}</select></div>
-                    <div class="arena-field"><label>${t('ar.fControl')}</label>
-                        <select onchange="game.ui.setSlotControl(${i}, this.value)">
-                            <option value="ki" ${slot.control === 'ki' ? 'selected' : ''}>${t('ar.controlKi')}</option>
-                            ${modelOpts}
-                        </select></div>
+            <div class="arena-slot ${collapsed ? 'collapsed' : 'expanded'}${isLLM ? ' has-prompt' : ''}" style="--civ:${civColor[slot.civ] || '#888'}">
+                <div class="arena-slot-head" onclick="game.ui.toggleArenaSlot(${i})">
+                    <span class="arena-slot-caret">▶</span>
+                    <span class="arena-slot-title">${t('ar.slot', { n: i + 1 })}</span>
+                    <span class="arena-slot-summary">${civNames[slot.civ] || slot.civ} · ${e(ctrlName)}</span>
                 </div>
-                ${promptBlock}
+                ${collapsed ? '' : body}
             </div>`;
         }).join('');
+    }
+
+    toggleArenaSlot(i) {
+        const s = this._arenaConfig.slots[i];
+        if (s) { s._collapsed = s._collapsed === false; this.renderArenaSlots(); }
     }
 
     // --- Handlers ---
