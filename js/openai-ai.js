@@ -1386,6 +1386,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 controller.lastActionResult = `[ERROR] Your last response could not be parsed. Please use the execute_action tool with valid JSON containing "action" and "params" fields. Example: {"action": "wait", "params": {"reason": "analyzing situation"}}`;
             }
 
+            controller._failStreak = 0; // endpoint reachable (parse problems aside)
             return result;
         } catch (err) {
             console.error(`[OpenAIAI] Request failed for ${ai.id}:`, err);
@@ -1395,6 +1396,14 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 s.requests++;
                 if (/timed out/i.test(err.message)) s.timeouts++;
                 else s.networkErrors++;
+            }
+            // In a PLAYER game (not the arena benchmark), an unreachable endpoint
+            // hands this opponent to the rule-based AI so the player still faces a
+            // real opponent. The arena keeps failures as-is (they're part of the eval).
+            controller._failStreak = (controller._failStreak || 0) + 1;
+            if (!this.game.spectatorMode && controller._failStreak >= 2) {
+                this.demoteToRuleBased(controller);
+                return null;
             }
             // Log network failures to decision log
             const civ = getCivilization(ai.civilization);
@@ -2874,6 +2883,31 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return this.game.isPlayerEliminated(ai);
         }
         return ai.units.length === 0 && ai.buildings.length === 0; // fallback
+    }
+
+    // Player game only: an LLM opponent whose endpoint is unreachable is handed to
+    // the rule-based AI so the human still has a real opponent. Removes the LLM
+    // controller and lets aiManager drive that player from now on.
+    demoteToRuleBased(controller) {
+        if (controller._demoted) return;
+        controller._demoted = true;
+        const ai = controller.aiPlayer;
+        this.aiControllers = this.aiControllers.filter(c => c !== controller);
+        try { if (controller._abort) controller._abort.abort(); } catch (e) { /* settled */ }
+        controller.pending = false;
+        if (ai) {
+            this.game.aiManager.openAIControlled.delete(ai.id); // rule-based brain takes over
+            const civ = getCivilization(ai.civilization);
+            this.decisionLog.unshift({
+                timestamp: Date.now(), playerId: ai.id,
+                civName: civ?.name || ai.civilization,
+                color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
+                action: 'fallback_rule_based', reason: '', params: {}, failed: true, error: null, isControl: true
+            });
+            if (this.decisionLog.length > this.maxLogEntries) this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
+        }
+        if (this.game.ui && this.game.ui.updateOpponentsPanel) this.game.ui.updateOpponentsPanel();
+        console.log(`[OpenAIAI] ${ai && ai.id}: endpoint unreachable — handed to the rule-based AI.`);
     }
 
     // Permanently retire a defeated controller: abort its in-flight request, mark it

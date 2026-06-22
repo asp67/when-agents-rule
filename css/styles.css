@@ -264,6 +264,22 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
     border-top: 1px solid var(--line);
     box-shadow: 0 -4px 18px rgba(0,0,0,0.35);
 }
+/* Single-player footer: who controls each rival (model / rule-based). */
+.opponents-bar {
+    position: absolute;
+    bottom: 128px; left: 50%; transform: translateX(-50%);
+    z-index: 100; pointer-events: none;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+    max-width: 90%;
+    padding: 7px 16px;
+    font-size: 0.85em; color: var(--text);
+    background: linear-gradient(180deg, rgba(14,20,38,0.92), rgba(11,16,32,0.92));
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--line); border-radius: 999px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+}
+.opponents-bar .opp-title { font-weight: 800; letter-spacing: 0.3px; opacity: 0.85; }
+.opponents-bar .opp-row { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .unit-info {
     padding: 12px 16px; max-width: 340px; font-size: 0.92em; color: var(--text);
     background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 12px;

@@ -257,6 +257,8 @@ class Game {
         // Hide normal HUD (but keep minimap visible for spectator mode)
         document.getElementById('topHUD').style.display = 'none';
         document.getElementById('bottomHUD').style.display = 'none';
+        const oppBar = document.getElementById('opponentsBar');
+        if (oppBar) oppBar.style.display = 'none';
 
         // Start game loop
         this.lastFrameTime = Date.now();
@@ -395,6 +397,7 @@ class Game {
         this.openAIAIManager = new OpenAIAIManager(this);
         this.openAIAIManager.initAndAssign().then(() => {
             console.log('[Game] OpenAI AI controllers ready');
+            if (this.ui.updateOpponentsPanel) this.ui.updateOpponentsPanel();
         }).catch(err => {
             console.error('[Game] OpenAI AI init failed:', err);
         });

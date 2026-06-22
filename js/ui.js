@@ -1271,6 +1271,30 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         }, 2500);
     }
 
+    // Single-player footer: shows who controls each rival (model name or rule-based),
+    // so the player knows what they're up against. Hidden in the arena (it has its
+    // own spectator dashboard). Refreshed when an opponent falls back to rule-based.
+    updateOpponentsPanel() {
+        const el = document.getElementById('opponentsBar');
+        if (!el) return;
+        const ais = this.game.aiManager ? this.game.aiManager.aiPlayers : [];
+        if (this.game.spectatorMode || !this.game.gameStarted || !ais.length) { el.style.display = 'none'; return; }
+        const mgr = this.game.openAIAIManager;
+        const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
+        const civColor = { egyptian: '#ffd700', greek: '#4ecca3', persian: '#e94560', yamato: '#9b8cff' };
+        const rows = ais.map(ai => {
+            const ctrl = (mgr && mgr.aiControllers) ? mgr.aiControllers.find(c => c.id === ai.id) : null;
+            const who = ctrl
+                ? ((ctrl.model && ctrl.model.name && ctrl.model.name.trim()) ? ctrl.model.name : t('ar.unnamed'))
+                : t('opp.ruleBased');
+            const civ = civNames[ai.civilization] || ai.civilization;
+            const color = civColor[ai.civilization] || '#888';
+            return `<span class="opp-row"><b style="color:${color}">${this.escapeHtml(civ)}</b>: ${this.escapeHtml(who)}</span>`;
+        }).join('');
+        el.innerHTML = `<span class="opp-title">${t('opp.title')}</span>${rows}`;
+        el.style.display = '';
+    }
+
     // --- Wonder victory countdown ---
     showWonderTimer(remainingMs, requiredMs) {
         const el = document.getElementById('wonderTimer');
