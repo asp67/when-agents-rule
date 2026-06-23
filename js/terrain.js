@@ -4,7 +4,7 @@
 //   medium = Winter Valley (-50% food, pale wintry ground)
 //   hard   = Desert        (-75% food, -75% wood, -50% stone, sandy ground)
 const DIFFICULTY_MODS = {
-    easy:   { food: 1.0,  wood: 1.0,  stone: 1.0, base: 0x79b94a, dry: 0xb2bd66 },
+    easy:   { food: 2.0,  wood: 1.0,  stone: 1.0, base: 0x79b94a, dry: 0xb2bd66 },
     medium: { food: 0.5,  wood: 1.0,  stone: 1.0, base: 0x9db9b3, dry: 0xcdd6d2 },
     hard:   { food: 0.25, wood: 0.25, stone: 0.5, base: 0xcdb886, dry: 0xc2a868 }
 };
