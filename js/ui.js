@@ -904,6 +904,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 provider: m.provider || 'auto',
                 maxTokens: (() => { const n = parseInt(m.maxTokens, 10); return (n && n >= 64) ? n : null; })(),
                 contextSize: (() => { const n = parseInt(m.contextSize, 10); return (n && n >= 512) ? n : null; })(),
+                maxContext: (() => { const n = parseInt(m.maxContext, 10); return (n && n >= 512) ? n : null; })(),
                 minimizeTokens: !!m.minimizeTokens,
                 language: m.language || 'en',
                 auth: this.cleanAuth(m.auth)

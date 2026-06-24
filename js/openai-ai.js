@@ -521,6 +521,7 @@ class OpenAIAIManager {
                 temperature: 0.7,
                 maxTokens: conn.maxTokens || 2000, // per-model cap on reply length (default 2000)
                 contextSize: conn.contextSize || null, // context budget (tokens); also Ollama num_ctx (null = 32768)
+                maxContext: conn.maxContext || null, // model's real max context — hard ceiling for the budget
                 minimizeTokens: !!conn.minimizeTokens, // true = compact one-line history (Option A)
                 language: conn.language || 'en', // language the model reasons/answers in (independent of GUI)
                 customSystemPrompt: playerSetup.systemPrompt || null
@@ -1404,15 +1405,20 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // ---- Rolling context sized to the model's context budget ----------------
         // The history window now scales with each model's context budget instead of a
         // fixed 20 moves, so big-context models actually remember more of the match.
-        const budget = (model.contextSize && model.contextSize >= 512) ? model.contextSize : 32768;
+        // Clamp the configured budget to the model's REAL max context if we discovered
+        // it, so a too-high setting can't overflow.
+        const hardMax = (model.maxContext && model.maxContext >= 512) ? model.maxContext : Infinity;
+        const budget = Math.min(hardMax, (model.contextSize && model.contextSize >= 512) ? model.contextSize : 32768);
         const reserve = (model.maxTokens || 2000) + 1500;        // leave room for the reply + margin
-        // Keep a 10% safety headroom on top of the reply reserve. The char/token
-        // estimate below is approximate and JSON/German tokenize DENSER than English,
-        // so without headroom a "full" context can really overflow — and the provider
-        // then silently truncates the OLDEST tokens (our system prompt), which strips
-        // the rules and makes the model loop. Headroom keeps the system prompt safe.
-        const inputBudget = Math.max(2000, Math.floor((budget - reserve) * 0.9));
-        const est = (s) => Math.ceil(String(s || '').length / 3.5); // conservative ~3.5 chars/token
+        // Only use a conservative SLICE of the window for the prompt. We can't run the
+        // model's tokenizer client-side, and dense JSON / non-English text tokenizes well
+        // under 3.5 chars/token — overestimating capacity overflows the real limit and the
+        // provider returns a 400 ("maximum context length …"), losing the turn. So we
+        // estimate at a pessimistic ~3 chars/token AND keep a big headroom. `_ctxShrink`
+        // ratchets this down further if an overflow ever still happens (self-healing).
+        const shrink = controller._ctxShrink || 1;
+        const inputBudget = Math.max(2000, Math.floor((budget - reserve) * 0.8 * shrink));
+        const est = (s) => Math.ceil(String(s || '').length / 3); // conservative ~3 chars/token
 
         // (0) Standing objective/plan — frames every turn (sent in the present message).
         const head = [];
@@ -1569,6 +1575,15 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return result;
         } catch (err) {
             console.error(`[OpenAIAI] Request failed for ${ai.id}:`, err);
+            // Context-length overflow (provider 400). The endpoint is FINE — our prompt
+            // was just too big for this model. Ratchet the budget down so subsequent
+            // turns fit, and DON'T count it as an endpoint failure (no demotion).
+            if (/context length|context window|maximum context|too many tokens|reduce the length/i.test(err.message || '')) {
+                controller._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
+                console.warn(`[OpenAIAI] ${ai.id}: context overflow — shrinking budget to ${Math.round(controller._ctxShrink * 100)}% and retrying next turn.`);
+                controller.lastActionResult = `[ERROR] Your previous request was too large for the model's context and was dropped; the history window has been trimmed. Continue normally.`;
+                return null;
+            }
             // Behavior metrics: classify the failure
             const s = controller.stats;
             if (s) {
