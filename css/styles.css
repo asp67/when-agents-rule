@@ -1061,6 +1061,12 @@ body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
     border-color: #4ecca3;
 }
 
+/* Secret fields (API keys, passwords, tokens) are masked text inputs, NOT
+   type="password" — so the browser's password manager never treats them as login
+   credentials and stops popping "save password?" while editing any field. The app
+   already persists these to localStorage / the export file. */
+.secret-input { -webkit-text-security: disc; }
+
 /* Keep the number field visually identical to the text fields (no spinner chrome). */
 .arena-field input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 .arena-field input[type="number"]::-webkit-outer-spin-button,
