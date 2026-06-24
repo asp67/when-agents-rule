@@ -1939,6 +1939,14 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 actionResult = `[ERROR] Unknown action: ${action}`;
         }
 
+        // Safety net: EVERY action must yield a feedback string so the model always
+        // learns the outcome and can't silently repeat a no-op. If a handler ever
+        // returns nothing, synthesize a result instead of dropping it (which would
+        // leave the model with no idea its command did anything).
+        if (actionResult == null || actionResult === '') {
+            actionResult = `[ERROR] Action "${action}" produced no result. Pick a different action.`;
+        }
+
         // Behavior metrics + flag the log entry if the action was rejected
         if (actionResult) {
             const rejected = actionResult.startsWith('[ERROR]');
