@@ -69,7 +69,10 @@ class FogOfWarManager {
 
         this.fogMesh = new THREE.Mesh(fogGeometry, fogMaterial);
         this.fogMesh.rotation.x = -Math.PI / 2;
-        this.fogMesh.position.y = 0.6; // Clearly above ground to avoid z-fighting
+        // Clearly above ground (no z-fighting) AND above the tallest ambient props:
+        // the biggest bushes/snow caps top out around y≈0.75, and unlike resource
+        // nodes they aren't visibility-managed — at 0.6 they poked out of the fog.
+        this.fogMesh.position.y = 0.95;
         this.fogMesh.renderOrder = 2;
         this.scene.add(this.fogMesh);
 
