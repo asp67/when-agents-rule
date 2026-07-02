@@ -665,24 +665,25 @@ class GameRenderer {
             lanceTip.position.set(0.22, 2.4, 0.24); group.add(lanceTip);
 
         } else {
-            // Non-cavalry: standard humanoid body
+            // Non-cavalry: standard humanoid body. Torsos taper toward the
+            // shoulders (top radius < bottom) for a less tin-can silhouette.
             let bodyGeometry;
 
             switch(unit.unitType) {
                 case 'worker':
-                    bodyGeometry = new THREE.CylinderGeometry(0.4, 0.4, 1, 8);
+                    bodyGeometry = new THREE.CylinderGeometry(0.3, 0.42, 1, 8);
                     break;
                 case 'infantry':
-                    bodyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.2, 8);
+                    bodyGeometry = new THREE.CylinderGeometry(0.4, 0.52, 1.2, 8);
                     break;
                 case 'ranged':
-                    bodyGeometry = new THREE.CylinderGeometry(0.4, 0.4, 1.1, 8);
+                    bodyGeometry = new THREE.CylinderGeometry(0.3, 0.42, 1.1, 8);
                     break;
                 case 'support':
-                    bodyGeometry = new THREE.CylinderGeometry(0.4, 0.4, 1.1, 8);
+                    bodyGeometry = new THREE.CylinderGeometry(0.32, 0.42, 1.1, 8);
                     break;
                 default:
-                    bodyGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1, 8);
+                    bodyGeometry = new THREE.CylinderGeometry(0.4, 0.5, 1, 8);
             }
 
             const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
@@ -705,31 +706,59 @@ class GameRenderer {
             head.castShadow = true;
             group.add(head);
 
-            // --- Simple 3D equipment for clearer silhouettes ---
+            // Simple arms: two angled sleeves from the shoulders. Cheap, but they
+            // break up the cylinder silhouette and "hold" the equipment visually.
+            const shoulderY = headY - 0.32;
+            const armGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.55, 5);
+            const armL = new THREE.Mesh(armGeo, bodyMaterial);
+            armL.position.set(-0.32, shoulderY - 0.18, 0);
+            armL.rotation.z = 0.5; armL.castShadow = true; group.add(armL);
+            const armR = new THREE.Mesh(armGeo, bodyMaterial);
+            armR.position.set(0.32, shoulderY - 0.18, 0);
+            armR.rotation.z = -0.5; armR.castShadow = true; group.add(armR);
+
+            // --- Equipment, each assembled as ONE sub-group so parts share a local
+            // frame and can never drift apart (the old worker axe positioned its
+            // head as a sibling of a ROTATED handle — it floated in mid-air). ---
             const metalMat = new THREE.MeshLambertMaterial({ color: 0x9aa3ad });
             const woodMat = new THREE.MeshLambertMaterial({ color: 0x7a5230 });
             if (unit.unitType === 'infantry') {
                 const helm = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), metalMat);
                 helm.position.set(0, headY + 0.04, 0); helm.castShadow = true; group.add(helm);
-                const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.8, 5), woodMat);
-                spear.position.set(0.45, 0.9, 0); spear.castShadow = true; group.add(spear);
+                const spear = new THREE.Group();
+                const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.8, 5), woodMat);
+                shaft.castShadow = true; spear.add(shaft);
                 const tip = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.28, 6), metalMat);
-                tip.position.set(0.45, 1.85, 0); group.add(tip);
+                tip.position.set(0, 1.0, 0); spear.add(tip); // seated on the shaft top (local frame)
+                spear.position.set(0.45, 0.9, 0);
+                group.add(spear);
                 const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.08, 12), new THREE.MeshLambertMaterial({ color: 0x6b4a2a }));
                 shield.rotation.z = Math.PI / 2; shield.position.set(-0.45, 0.7, 0); shield.castShadow = true; group.add(shield);
             } else if (unit.unitType === 'ranged') {
                 const bow = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 6, 14, Math.PI * 1.15), woodMat);
                 bow.rotation.y = Math.PI / 2; bow.position.set(0.42, 0.85, 0); bow.castShadow = true; group.add(bow);
+                const quiver = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.5, 6), new THREE.MeshLambertMaterial({ color: 0x6b4a2a }));
+                quiver.position.set(-0.28, 1.0, -0.22); quiver.rotation.x = 0.35; quiver.castShadow = true; group.add(quiver);
             } else if (unit.unitType === 'support') {
-                const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.7, 5), woodMat);
-                staff.position.set(0.38, 0.95, 0); staff.castShadow = true; group.add(staff);
+                const staff = new THREE.Group();
+                const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 1.7, 5), woodMat);
+                pole.castShadow = true; staff.add(pole);
                 const orb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshLambertMaterial({ color: 0xffe08a }));
-                orb.position.set(0.38, 1.85, 0); group.add(orb);
+                orb.position.set(0, 0.92, 0); staff.add(orb); // riding the pole top (local frame)
+                staff.position.set(0.38, 0.95, 0);
+                group.add(staff);
             } else if (unit.unitType === 'worker') {
+                // Axe as one rigid sub-group: head welded to the top of the handle
+                // in LOCAL coordinates, then the whole tool is posed once.
+                const axe = new THREE.Group();
                 const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.95, 5), woodMat);
-                handle.position.set(0.35, 0.75, 0); handle.rotation.z = 0.35; handle.castShadow = true; group.add(handle);
-                const toolHead = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.13, 0.1), metalMat);
-                toolHead.position.set(0.6, 1.1, 0); group.add(toolHead);
+                handle.castShadow = true; axe.add(handle);
+                const toolHead = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.1), metalMat);
+                toolHead.position.set(0.1, 0.42, 0); // hugs the handle top, blade forward
+                toolHead.castShadow = true; axe.add(toolHead);
+                axe.position.set(0.42, 0.72, 0);
+                axe.rotation.z = -0.25; // resting on the shoulder-side, head up & out
+                group.add(axe);
             }
         }
 
