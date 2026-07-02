@@ -2120,6 +2120,18 @@ class Game {
                         unit.targetZ = closestTC.z;
                         unit.isMoving = true;
                         unit.task = 'carrying';
+                    } else {
+                        // No finished Town Center to deliver to (destroyed, or the only
+                        // one is still under construction): the goods have nowhere to
+                        // go. Drop them and go IDLE — before this, the worker froze in a
+                        // state no branch processed (task 'harvesting' but not
+                        // isHarvesting, still carrying), which the owner's state
+                        // reported as "returning" forever, hiding a usable worker.
+                        unit.carryingResource = false;
+                        unit.carryingResourceType = null;
+                        unit.harvestAmount = 0;
+                        unit.task = null;
+                        unit.harvestTarget = null;
                     }
                 }
                 return;
@@ -2163,6 +2175,14 @@ class Game {
                     unit.isMoving = true;
                     unit.targetX = unit.farmRef.x + (Math.random() - 0.5) * 3;
                     unit.targetZ = unit.farmRef.z + (Math.random() - 0.5) * 3;
+                }
+                // Nothing resumed the job (harvestTarget was cleared mid-carry and there
+                // is no farm): become idle. Without this the worker lingered with
+                // task='carrying' and empty hands — a state no branch processes, which
+                // the game state reported as "returning" forever.
+                if (unit.task === 'carrying') {
+                    unit.task = null;
+                    unit.harvestTarget = null;
                 }
                 return;
             }
