@@ -12,6 +12,17 @@
 //   bonus: { attack: +2, health: +10, speed: +0.1, range: +1, harvestRate: +0.25 }  (stat bonuses applied to matching units)
 //   appliesTo: 'infantry' | 'cavalry' | 'ranged' | 'worker' | 'all' | 'all_military'  (which unit types get the bonus)
 
+// SINGLE SOURCE OF TRUTH for epoch-advance costs. Referenced by the human menu
+// (ui.js), the human charge path (game.js), the rule-based AI (ai.js) and the LLM
+// harness (openai-ai.js state + action handler). These previously drifted apart —
+// the human menu showed/gated on HIGHER costs than everyone actually paid, which
+// broke the fair-arena premise. Never redefine these locally.
+const AGE_COSTS = {
+    neolithic: { food: 1000, wood: 800,  stone: 0,    gold: 0 },
+    bronze:    { food: 2000, wood: 1500, stone: 400,  gold: 200 },
+    iron:      { food: 4000, wood: 3000, stone: 1000, gold: 600 }
+};
+
 const CIVILIZATIONS = {
     egyptian: {
         name: "Ägypter",

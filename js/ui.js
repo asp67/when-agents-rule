@@ -1228,12 +1228,14 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         const menu = document.getElementById('upgradeMenu');
         const content = document.getElementById('upgradeMenuContent');
         
-        // IMPROVEMENT 4: Upgrading age unlocks better enhancements
+        // Costs come from the shared AGE_COSTS table (civilizations.js) — this menu
+        // previously showed (and gated affordability on) HIGHER numbers than the
+        // engine actually charges, blocking the human while AI players advanced.
         const ages = [
             { id: 'stone', name: t('age.stone'), cost: null },
-            { id: 'neolithic', name: t('age.neolithic'), cost: { food: 1000, wood: 1000, stone: 0, gold: 0 } },
-            { id: 'bronze', name: t('age.bronze'), cost: { food: 2500, wood: 2500, stone: 1000, gold: 500 } },
-            { id: 'iron', name: t('age.iron'), cost: { food: 4000, wood: 4000, stone: 2000, gold: 1000 } }
+            { id: 'neolithic', name: t('age.neolithic'), cost: AGE_COSTS.neolithic },
+            { id: 'bronze', name: t('age.bronze'), cost: AGE_COSTS.bronze },
+            { id: 'iron', name: t('age.iron'), cost: AGE_COSTS.iron }
         ];
 
         let html = '';
@@ -2048,18 +2050,24 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 const st = controller.stats;
                 const lat = st.latencies;
                 const avg = lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0;
-                const responded = Math.max(0, st.requests - st.timeouts - st.networkErrors);
+                const ctxOv = st.contextOverflows || 0;
+                const responded = Math.max(0, st.requests - st.timeouts - st.networkErrors - ctxOv);
+                // Context overflows are lost turns caused by the HARNESS's budgeting,
+                // not the endpoint — count them visibly but keep them out of the
+                // model's reliability score (both numerator and denominator).
+                const reliabilityBase = Math.max(0, st.requests - ctxOv);
                 rep.metrics = {
                     decisions: st.requests, responded,
                     avgLatency: avg,
                     minLatency: lat.length ? Math.min(...lat) : 0,
                     maxLatency: lat.length ? Math.max(...lat) : 0,
                     timeouts: st.timeouts, networkErrors: st.networkErrors, parseFails: st.parseFails,
+                    contextOverflows: ctxOv,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
                     attempted: st.actionsAttempted, succeeded: st.actionsSucceeded,
                     successRate: st.actionsAttempted ? st.actionsSucceeded / st.actionsAttempted : 0,
                     formatOk: responded > 0 ? (responded - st.parseFails) / responded : 0,
-                    reliability: st.requests ? 1 - (st.timeouts + st.networkErrors) / st.requests : 0,
+                    reliability: reliabilityBase ? 1 - (st.timeouts + st.networkErrors) / reliabilityBase : 0,
                     reasonRate: st.actionsAttempted ? st.reasonsGiven / st.actionsAttempted : 0,
                     actionCounts: st.actionCounts
                 };
@@ -2109,7 +2117,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 return;
             }
             const avgS = m.avgLatency / 1000;
-            const errTotal = m.timeouts + m.networkErrors + m.parseFails + m.invalidActions + m.rejected;
+            const errTotal = m.timeouts + m.networkErrors + m.parseFails + m.invalidActions + m.rejected + (m.contextOverflows || 0);
             const tagsHtml = r.tags.map(t => `<span class="sum-tag ${t.cls}">${t.t}</span>`).join('');
             const topActions = Object.entries(m.actionCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
                 .map(([k, v]) => `<span class="sum-chip">${k.replace(/_/g, ' ')}·${v}</span>`).join('');
@@ -2131,7 +2139,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                         <div class="sum-metric"><span>✅ ${t('sum.mSuccess')}</span><b>${Math.round(m.successRate * 100)}%</b><i>${m.succeeded}/${m.attempted}</i></div>
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
-                        <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, inv: m.invalidActions, rej: m.rejected })}</i></div>
+                        <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
                     </div>
                     <div class="sum-actions">${topActions || `<span class="sum-chip">${t('sum.noActions')}</span>`}</div>
                     <div class="sum-final">${r.ageName} · \u{1F477} ${r.workers} · ⚔️ ${r.military} · \u{1F3DB}️ ${r.buildings} · \u{1F356}${r.food} \u{1F332}${r.wood} \u{1FAA8}${r.stone} \u{1F947}${r.gold}</div>
@@ -2186,7 +2194,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 L.push(`- Reasoning rate: ${Math.round(m.reasonRate * 100)}%`);
                 L.push(`- Reliability: ${Math.round(m.reliability * 100)}%`);
                 L.push(`- Latency: avg ${(m.avgLatency / 1000).toFixed(1)}s (min ${(m.minLatency / 1000).toFixed(1)}s, max ${(m.maxLatency / 1000).toFixed(1)}s)`);
-                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} · invalid ${m.invalidActions} · rejected ${m.rejected}`);
+                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} · invalid ${m.invalidActions} · rejected ${m.rejected} · context-overflows ${m.contextOverflows || 0}`);
                 if (r.tags && r.tags.length) L.push(`- Behavior: ${r.tags.map(x => x.t).join(', ')}`);
                 const actions = Object.entries(m.actionCounts || {}).sort((a, b) => b[1] - a[1])
                     .map(([k, v]) => `${k}·${v}`).join(', ');

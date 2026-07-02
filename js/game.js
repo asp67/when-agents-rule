@@ -1484,13 +1484,8 @@ class Game {
             return;
         }
 
-        const ageCosts = {
-            'neolithic': { food: 1000, wood: 800, stone: 0, gold: 0 },
-            'bronze': { food: 2000, wood: 1500, stone: 400, gold: 200 },
-            'iron': { food: 4000, wood: 3000, stone: 1000, gold: 600 }
-        };
-
-        const cost = ageCosts[newAge];
+        // Shared cost table (civilizations.js) — same numbers the AI/LLM players pay.
+        const cost = AGE_COSTS[newAge];
         if (!this.player.resources.hasResources(cost)) {
             this.ui.showErrorMessage(t('msg.notEnough'));
             return;

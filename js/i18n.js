@@ -110,7 +110,7 @@ const I18N = {
         'sum.ruleNote': 'Rule-based AI — no model metrics.', 'sum.endScore': 'Final score', 'sum.strategySuffix': '/100 strategy',
         'sum.mResponse': 'Response time', 'sum.mDecisions': 'Decisions', 'sum.mAnswered': '{n} answered', 'sum.mSuccess': 'Action success',
         'sum.mFormat': 'Format fidelity', 'sum.mJsonOk': 'JSON ok', 'sum.mReasons': 'Reasonings', 'sum.mOfMoves': 'of moves',
-        'sum.mErrors': 'Errors', 'sum.errBreak': 'TO {to} · Parse {parse} · Invalid {inv} · Rejected {rej}',
+        'sum.mErrors': 'Errors', 'sum.errBreak': 'TO {to} · Parse {parse} · Invalid {inv} · Rejected {rej} · Ctx {ctx}',
         'sum.noActions': 'no actions',
         'sum.legend': 'Strategy score = 34% action success · 20% progression (age/building/military) · 18% format fidelity · 15% reliability · 13% action diversity.',
 
@@ -389,7 +389,7 @@ const I18N = {
         'sum.ruleNote': 'Regelbasierte KI — keine Modellmetriken.', 'sum.endScore': 'Endpunktzahl', 'sum.strategySuffix': '/100 Strategie',
         'sum.mResponse': 'Antwortzeit', 'sum.mDecisions': 'Entscheidungen', 'sum.mAnswered': '{n} beantwortet', 'sum.mSuccess': 'Aktionserfolg',
         'sum.mFormat': 'Formattreue', 'sum.mJsonOk': 'JSON ok', 'sum.mReasons': 'Begründungen', 'sum.mOfMoves': 'der Züge',
-        'sum.mErrors': 'Fehler', 'sum.errBreak': 'TO {to} · Parse {parse} · Ungültig {inv} · Abgelehnt {rej}',
+        'sum.mErrors': 'Fehler', 'sum.errBreak': 'TO {to} · Parse {parse} · Ungültig {inv} · Abgelehnt {rej} · Ctx {ctx}',
         'sum.noActions': 'keine Aktionen',
         'sum.legend': 'Strategie-Score = 34% Aktionserfolg · 20% Fortschritt (Epoche/Bau/Militär) · 18% Formattreue · 15% Zuverlässigkeit · 13% Aktionsvielfalt.',
 
@@ -666,7 +666,7 @@ const I18N = {
         'sum.ruleNote': 'IA basada en reglas — sin métricas de modelo.', 'sum.endScore': 'Puntuación final', 'sum.strategySuffix': '/100 estrategia',
         'sum.mResponse': 'Tiempo de respuesta', 'sum.mDecisions': 'Decisiones', 'sum.mAnswered': '{n} respondidas', 'sum.mSuccess': 'Éxito de acciones',
         'sum.mFormat': 'Fidelidad de formato', 'sum.mJsonOk': 'JSON ok', 'sum.mReasons': 'Justificaciones', 'sum.mOfMoves': 'de las jugadas',
-        'sum.mErrors': 'Errores', 'sum.errBreak': 'TO {to} · Parse {parse} · Inválidas {inv} · Rechazadas {rej}',
+        'sum.mErrors': 'Errores', 'sum.errBreak': 'TO {to} · Parse {parse} · Inválidas {inv} · Rechazadas {rej} · Ctx {ctx}',
         'sum.noActions': 'sin acciones',
         'sum.legend': 'Puntuación de estrategia = 34% éxito de acciones · 20% progreso (edad/construcción/ejército) · 18% fidelidad de formato · 15% fiabilidad · 13% diversidad de acciones.',
 
@@ -935,7 +935,7 @@ const I18N = {
         'sum.ruleNote': '基于规则的 AI——无模型指标。', 'sum.endScore': '最终得分', 'sum.strategySuffix': '/100 战略',
         'sum.mResponse': '响应时间', 'sum.mDecisions': '决策数', 'sum.mAnswered': '已回复 {n}', 'sum.mSuccess': '动作成功率',
         'sum.mFormat': '格式规范度', 'sum.mJsonOk': 'JSON 正常', 'sum.mReasons': '理由', 'sum.mOfMoves': '占行动比例',
-        'sum.mErrors': '错误', 'sum.errBreak': '超时 {to} · 解析 {parse} · 无效 {inv} · 拒绝 {rej}',
+        'sum.mErrors': '错误', 'sum.errBreak': '超时 {to} · 解析 {parse} · 无效 {inv} · 拒绝 {rej} · 上下文 {ctx}',
         'sum.noActions': '无动作',
         'sum.legend': '战略评分 = 34% 动作成功率 · 20% 进展（时代/建造/军事）· 18% 格式规范度 · 15% 可靠性 · 13% 动作多样性。',
 

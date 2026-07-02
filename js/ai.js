@@ -367,19 +367,14 @@ class AIManager {
     }
 
     // ---- Age advancement (delegated to the game's timed system) ---------------
-    ageCosts = {
-        neolithic: { food: 1000, wood: 800, stone: 0, gold: 0 },
-        bronze: { food: 2000, wood: 1500, stone: 400, gold: 200 },
-        iron: { food: 4000, wood: 3000, stone: 1000, gold: 600 }
-    };
-
     maybeAdvanceAge(ai, workerCount) {
         if (ai.currentAgeUpgrade) return;
         const next = this.getNextAge(ai.age);
         if (!next) return;
         // Don't bankrupt the economy advancing — keep a worker base going first.
         if (workerCount < 6) return;
-        const cost = this.ageCosts[next];
+        // Shared cost table (civilizations.js) — identical for every player type.
+        const cost = AGE_COSTS[next];
         if (!cost || !this.canAfford(ai, cost)) return;
         this.spend(ai, cost);
         ai.currentAgeUpgrade = { targetAge: next, progress: 0, duration: 30000 };

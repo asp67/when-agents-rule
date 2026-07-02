@@ -39,6 +39,7 @@ class OpenAIAIManager {
             latencies: [],        // ms per request that produced a response
             timeouts: 0,
             networkErrors: 0,
+            contextOverflows: 0,  // request too big for the model's context (lost turn; endpoint fine)
             parseFails: 0,        // response returned but no action could be extracted
             actionsAttempted: 0,  // actions handed to executeAction
             actionsSucceeded: 0,  // executed OK
@@ -588,18 +589,13 @@ class OpenAIAIManager {
             isHuman: false
         };
 
-        // --- Epoch ---
-        const ageCosts = {
-            neolithic: { food: 1000, wood: 800, stone: 0, gold: 0 },
-            bronze: { food: 2000, wood: 1500, stone: 400, gold: 200 },
-            iron: { food: 4000, wood: 3000, stone: 1000, gold: 600 }
-        };
+        // --- Epoch --- (costs come from the shared AGE_COSTS table in civilizations.js)
         const nextEpoch = currentAgeIndex < ages.length - 1 ? ages[currentAgeIndex + 1] : null;
 
         const epochObj = {
             currentEpoch: ai.age,
             nextEpoch: nextEpoch,
-            nextEpochCost: nextEpoch ? ageCosts[nextEpoch] : null,
+            nextEpochCost: nextEpoch ? AGE_COSTS[nextEpoch] : null,
             upgradeInProgress: ai.currentAgeUpgrade ? {
                 targetEpoch: ai.currentAgeUpgrade.targetAge,
                 progressPercent: Math.round((ai.currentAgeUpgrade.progress / ai.currentAgeUpgrade.duration) * 100),
@@ -735,6 +731,7 @@ class OpenAIAIManager {
             if (seenNow) ai._knownEnemyBuildings.add(bldg);          // discover/refresh
             if (!seenNow && !ai._knownEnemyBuildings.has(bldg)) return; // never discovered → hidden
             const entry = {
+                id: bldg.id, // stable target handle for attack_target(params.targetId)
                 type: bldg.type,
                 x: Math.round(bldg.x),
                 z: Math.round(bldg.z),
@@ -805,6 +802,7 @@ class OpenAIAIManager {
             const vis = this.isPositionVisibleToAI(ai, unit.x, unit.z, game);
             if (!vis) return;
             enemyUnits.push({
+                id: unit.id, // target handle for attack_target(params.targetId); units move, so prefer this over stale coordinates
                 type: unit.type,
                 x: Math.round(unit.x),
                 z: Math.round(unit.z),
@@ -1144,7 +1142,7 @@ class OpenAIAIManager {
                                 },
                                 targetId: {
                                     type: 'string',
-                                    description: 'For attack_target: ID of the enemy unit/building to attack.'
+                                    description: 'For attack_target: the exact "id" of an enemy from enemyUnits[].id or enemyBuildings[].id in the game state.'
                                 },
                                 resourceType: {
                                     type: 'string',
@@ -1271,7 +1269,7 @@ Food (deer, berries, farms) - workers and units. Wood (trees) - buildings. Stone
 - assign_workers: params.resourceType (+ optional count) - REASSIGN workers off their current task onto gathering that resource.
 - explore: params.targetX, params.targetZ (or none) - send a scout to reveal hidden map, resources and enemies. Optional params.unitType picks which unit scouts (e.g. "scout_cavalry"); omit it to auto-pick your best free scout.
 - move_units: params.targetX, params.targetZ (reposition your army).
-- attack_target: params.targetX, params.targetZ (or params.targetId) - your army marches there and engages any enemy on the way, pursuing even if they move. This is how you destroy enemies and win. With coordinates, the result (engaged an enemy, or found NO valid target there) is reported once your units ARRIVE — wait for that verdict instead of re-issuing. Attacking your own units/buildings or a resource node is rejected immediately.
+- attack_target: params.targetX, params.targetZ — or params.targetId, the exact "id" of an enemy from "enemyUnits"/"enemyBuildings" (ids track moving units, so they beat stale coordinates). Your army marches there and engages any enemy on the way, pursuing even if they move. This is how you destroy enemies and win. With coordinates, the result (engaged an enemy, or found NO valid target there) is reported once your units ARRIVE — wait for that verdict instead of re-issuing. Attacking your own units/buildings or a resource node is rejected immediately.
 - delete_unit: params.unitType (+ optional count) - remove your own units to free population.
 - destroy_building: params.buildingType (+ optional targetX/targetZ) - demolish one of your own buildings (won't destroy your last Town Center).
 - build_wonder: start your civ's Wonder (needs the Iron age); hold it (gameStats.wonderRequired s) after it finishes to WIN — but expect rivals to rush it.
@@ -1566,9 +1564,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 if (!result) s.parseFails++;
             }
 
-            // If parsing failed, store error feedback for next turn
+            // If parsing failed, store error feedback for next turn — and stamp it as
+            // the OUTCOME of the turn pair we just pushed, so the rolling multi-turn
+            // history (Option C) replays the failure too instead of a blind null.
             if (!result) {
                 controller.lastActionResult = `[ERROR] Your last response could not be parsed. Please use the execute_action tool with valid JSON containing "action" and "params" fields. Example: {"action": "wait", "params": {"reason": "analyzing situation"}}`;
+                const lastTurn = controller.turnLog[controller.turnLog.length - 1];
+                if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
             }
 
             controller._failStreak = 0; // endpoint reachable (parse problems aside)
@@ -1582,6 +1584,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 controller._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
                 console.warn(`[OpenAIAI] ${ai.id}: context overflow — shrinking budget to ${Math.round(controller._ctxShrink * 100)}% and retrying next turn.`);
                 controller.lastActionResult = `[ERROR] Your previous request was too large for the model's context and was dropped; the history window has been trimmed. Continue normally.`;
+                // Count it — a lost turn is a lost turn. Tracked separately from
+                // network errors (the endpoint is fine, our prompt was too big) so
+                // the reliability metric stays honest without demoting the model.
+                if (controller.stats) {
+                    controller.stats.requests++;
+                    controller.stats.contextOverflows = (controller.stats.contextOverflows || 0) + 1;
+                }
                 return null;
             }
             // Behavior metrics: classify the failure
@@ -1700,7 +1709,11 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             logFailure('No valid JSON found in response');
             return null;
         } catch (err) {
-            console.error('[OpenAIAI] Failed to parse response:', err, data);
+            // NOTE: log only what's in scope. Referencing an undefined identifier here
+            // used to throw a ReferenceError INSIDE this catch, which escaped into
+            // sendToOpenAI's catch and was miscounted as an endpoint failure — enough
+            // of those could demote a perfectly healthy model to rule-based.
+            console.error('[OpenAIAI] Failed to parse response:', err, norm);
             logFailure('Unexpected error parsing response');
             return null;
         }
@@ -2263,13 +2276,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
 
         const nextAge = ages[currentIdx + 1];
-        const ageCosts = {
-            neolithic: { food: 1000, wood: 800, stone: 0, gold: 0 },
-            bronze: { food: 2000, wood: 1500, stone: 400, gold: 200 },
-            iron: { food: 4000, wood: 3000, stone: 1000, gold: 600 }
-        };
-
-        const cost = ageCosts[nextAge];
+        // Shared cost table (civilizations.js) — identical for every player type.
+        const cost = AGE_COSTS[nextAge];
         if (!ai.resources.hasResources(cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford upgrade to ${nextAge}`);
             return `[ERROR] Cannot afford the upgrade to ${nextAge} (needs ${this.costString(cost)}). You have ${this.haveString(ai)}.`;
@@ -3044,7 +3052,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     // you have already discovered (fog hides the rest).
     attackTargetHint(ai, game) {
         return this.hasVisibleEnemies(ai, game)
-            ? 'To list valid targets, read "enemyUnits" and "enemyBuildings" in the game state — those are the enemies you have DISCOVERED (each with its x,z and owner). Attack one of those coordinates, or pass its "targetId".'
+            ? 'To list valid targets, read "enemyUnits" and "enemyBuildings" in the game state — those are the enemies you have DISCOVERED (each with an "id", its x,z and owner). Attack one of those coordinates, or pass its exact "id" as params.targetId.'
             : 'You have not discovered any enemies yet, so "enemyUnits" and "enemyBuildings" are empty. Scout first (explore); enemies appear in those lists once one of your units sees them, then you can attack them.';
     }
 
