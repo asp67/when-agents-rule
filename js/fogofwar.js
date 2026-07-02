@@ -33,13 +33,22 @@ class FogOfWarManager {
     }
     
     init() {
-        // Create fog canvas and texture
+        // Grid canvas: exact 1 texel per fog cell (the data, drawn by updateFogTexture)
         this.fogCanvas = document.createElement('canvas');
         this.fogCanvas.width = this.numTiles;
         this.fogCanvas.height = this.numTiles;
         this.fogCtx = this.fogCanvas.getContext('2d');
-        
-        this.fogTexture = new THREE.CanvasTexture(this.fogCanvas);
+
+        // Display canvas: the grid blur-upscaled 4×. Sampling the tiny grid canvas
+        // directly gave hard-edged blocky reveal squares — the ugliest thing on
+        // screen while spectating. Feathering it here costs one blurred drawImage
+        // every fog update (~2/s) and turns the reveals into soft fog lobes.
+        this.fogDisplayCanvas = document.createElement('canvas');
+        this.fogDisplayCanvas.width = this.numTiles * 4;
+        this.fogDisplayCanvas.height = this.numTiles * 4;
+        this.fogDisplayCtx = this.fogDisplayCanvas.getContext('2d');
+
+        this.fogTexture = new THREE.CanvasTexture(this.fogDisplayCanvas);
         this.fogTexture.magFilter = THREE.LinearFilter;
         this.fogTexture.minFilter = THREE.LinearFilter;
         
@@ -196,6 +205,20 @@ class FogOfWarManager {
         }
         
         this.fogCtx.putImageData(imageData, 0, 0);
+
+        // Feather: blur-upscale the cell grid onto the display canvas. One display
+        // cell is 4px, so a ~3px blur bleeds roughly three quarters of a cell —
+        // soft fog edges instead of hard tile stairsteps. ctx.filter is supported
+        // in every current browser; if it ever isn't, the smoothed upscale alone
+        // still softens the blocks.
+        const d = this.fogDisplayCtx;
+        d.save();
+        d.clearRect(0, 0, this.fogDisplayCanvas.width, this.fogDisplayCanvas.height);
+        d.imageSmoothingEnabled = true;
+        try { d.filter = 'blur(3px)'; } catch (e) {}
+        d.drawImage(this.fogCanvas, 0, 0, this.fogDisplayCanvas.width, this.fogDisplayCanvas.height);
+        d.restore();
+
         this.fogTexture.needsUpdate = true;
     }
     

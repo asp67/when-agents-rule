@@ -1328,6 +1328,11 @@ class GameRenderer {
         // Update camera based on keyboard input
         this.updateCamera(deltaTime * 1000);
 
+        // Gentle water motion (cosmetic): the sea slowly breathes around the island.
+        if (this.terrain && this.terrain.water) {
+            this.terrain.water.position.y = -2.4 + Math.sin(time / 1700) * 0.14;
+        }
+
         // Update unit positions for AI units only (player units are moved by game.js updateWorkerTasks/moveUnits)
         this.units.forEach(unit => {
             // Skip player units - they are moved by game.js to avoid double-movement
