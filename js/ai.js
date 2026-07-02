@@ -61,12 +61,18 @@ class AIManager {
     }
 
     update(deltaTime) {
-        // Discovery runs EVERY frame (in lockstep with the fog), so a worker that
-        // sweeps past a node reveals it for the model exactly as it does on the map.
-        this.aiPlayers.forEach(ai => {
-            if (this.openAIControlled.has(ai.id)) return;
-            this.updateDiscovery(ai);
-        });
+        // Discovery is throttled to 4 Hz. Per-frame it was O(players × nodes × units)
+        // hypot checks (~100k/sec on easy maps) for no benefit: the rule-based brain
+        // only THINKS every 2s and the LLMs every 1.5s+, so a 250ms discovery
+        // latency is invisible to every consumer while cutting the cost ~15×.
+        this.discoveryTimer = (this.discoveryTimer || 0) + deltaTime;
+        if (this.discoveryTimer >= 250) {
+            this.discoveryTimer = 0;
+            this.aiPlayers.forEach(ai => {
+                if (this.openAIControlled.has(ai.id)) return;
+                this.updateDiscovery(ai);
+            });
+        }
 
         this.thinkTimer += deltaTime;
         if (this.thinkTimer >= this.thinkInterval) {

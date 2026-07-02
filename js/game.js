@@ -504,7 +504,11 @@ class Game {
 
     setupMinimapClickHandlers() {
         const canvas = document.getElementById('minimapCanvas');
-        
+        // This runs on EVERY match start but the canvas element persists across
+        // matches — without this guard the listeners stacked up, one more per game.
+        if (this._minimapHandlersInstalled) return;
+        this._minimapHandlersInstalled = true;
+
         // Prevent context menu on right-click
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
         
@@ -822,31 +826,43 @@ class Game {
             // far-away enemy (and none get "left behind" at an old corpse). On an
             // attack-move, if nothing is in range they keep marching to the objective.
             if (unit.isAttacking && !unit.attackTarget) {
-                const aggro = (unit.range > 1 ? unit.range + 20 : 24);
-                const found = this.findNearestEnemyInRange(unit, aggro, true);
-                if (found) {
-                    unit.attackTarget = found;
-                } else if (unit.attackMove) {
-                    const dx = unit.attackMove.x - unit.x;
-                    const dz = unit.attackMove.z - unit.z;
-                    const dist = Math.sqrt(dx*dx + dz*dz);
-                    if (dist > 1.5) {
-                        unit.isMoving = true;
-                        const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
-                        unit.x += (dx / dist) * moveSpeed;
-                        unit.z += (dz / dist) * moveSpeed;
-                        this.renderer.updateUnitPosition(unit);
-                    } else {
-                        // Reached the objective with nothing left to fight: hold.
-                        unit.isMoving = false;
-                        unit.attackMove = null;
+                // Target scans are O(all units + all buildings) — running one per unit
+                // per SUB-STEP melted frames in big battles (catch-up frames run up to
+                // 20 sub-steps). Scan at most every 150ms per unit; between scans the
+                // unit keeps marching on its attack-move. First scan is immediate.
+                unit._acquireTimer = (unit._acquireTimer == null) ? 150 : unit._acquireTimer + deltaTime;
+                if (unit._acquireTimer >= 150) {
+                    unit._acquireTimer = 0;
+                    const aggro = (unit.range > 1 ? unit.range + 20 : 24);
+                    const found = this.findNearestEnemyInRange(unit, aggro, true);
+                    if (found) {
+                        unit.attackTarget = found;
+                    } else if (!unit.attackMove) {
+                        // Plain attack and nothing nearby (verified by a real scan):
+                        // stop instead of chasing far off.
                         unit.isAttacking = false;
+                        return;
                     }
-                    return;
-                } else {
-                    // Plain attack and nothing nearby: stop instead of chasing far off.
-                    unit.isAttacking = false;
-                    return;
+                }
+                if (!unit.attackTarget) {
+                    if (unit.attackMove) {
+                        const dx = unit.attackMove.x - unit.x;
+                        const dz = unit.attackMove.z - unit.z;
+                        const dist = Math.sqrt(dx*dx + dz*dz);
+                        if (dist > 1.5) {
+                            unit.isMoving = true;
+                            const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
+                            unit.x += (dx / dist) * moveSpeed;
+                            unit.z += (dz / dist) * moveSpeed;
+                            this.renderer.updateUnitPosition(unit);
+                        } else {
+                            // Reached the objective with nothing left to fight: hold.
+                            unit.isMoving = false;
+                            unit.attackMove = null;
+                            unit.isAttacking = false;
+                        }
+                    }
+                    return; // no target yet — either marching or awaiting the next scan
                 }
             }
 

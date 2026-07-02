@@ -308,15 +308,33 @@ class GameRenderer {
         this.createUnitMesh(unit);
     }
 
+    // Free a removed object's GPU resources. Meshes here are Groups of sub-meshes,
+    // each with its own geometry/material — without disposal they accumulate in
+    // GPU memory forever (very noticeable across several back-to-back arenas).
+    disposeObject(obj) {
+        if (!obj || typeof obj.traverse !== 'function') return;
+        obj.traverse(child => {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+                (Array.isArray(child.material) ? child.material : [child.material]).forEach(m => {
+                    if (m.map) m.map.dispose();
+                    m.dispose();
+                });
+            }
+        });
+    }
+
     removeUnit(unit) {
         const idx = this.units.indexOf(unit);
         if (idx > -1) {
             this.units.splice(idx, 1);
             if (unit.mesh) {
                 this.scene.remove(unit.mesh);
+                this.disposeObject(unit.mesh);
             }
             if (unit.healthBar) {
                 this.scene.remove(unit.healthBar);
+                this.disposeObject(unit.healthBar);
             }
         }
     }
@@ -332,9 +350,11 @@ class GameRenderer {
             this.buildings.splice(idx, 1);
             if (building.mesh) {
                 this.scene.remove(building.mesh);
+                this.disposeObject(building.mesh);
             }
             if (building.healthBar) {
                 this.scene.remove(building.healthBar);
+                this.disposeObject(building.healthBar);
             }
         }
     }
@@ -1462,15 +1482,18 @@ class GameRenderer {
     }
 
     clearScene() {
-        // Remove all units
+        // Remove all units (and free their GPU resources — this runs on every
+        // rematch, so skipping disposal here leaked an entire match's meshes).
         this.units.forEach(unit => {
-            if (unit.mesh) this.scene.remove(unit.mesh);
+            if (unit.mesh) { this.scene.remove(unit.mesh); this.disposeObject(unit.mesh); }
+            if (unit.healthBar) { this.scene.remove(unit.healthBar); this.disposeObject(unit.healthBar); }
         });
         this.units = [];
 
         // Remove all buildings
         this.buildings.forEach(building => {
-            if (building.mesh) this.scene.remove(building.mesh);
+            if (building.mesh) { this.scene.remove(building.mesh); this.disposeObject(building.mesh); }
+            if (building.healthBar) { this.scene.remove(building.healthBar); this.disposeObject(building.healthBar); }
         });
         this.buildings = [];
 
