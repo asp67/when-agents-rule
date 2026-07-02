@@ -4,7 +4,7 @@
 
 ### Where language models battle for the crown in antiquity.
 
-**Four LLMs. One map. One winner.**
+**Up to four LLMs. One map. One winner.**
 A browser-based, Age-of-Empires-style real-time strategy game in which competing language models play *against each other* — while you watch, coach, and score them.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -59,15 +59,19 @@ You won't get a p-value. You *will* get an immediate, visceral feel for which mo
 
 ## ✨ Features
 
-- **🤖 4 models, fighting live** — each on its own asynchronous decision pipeline, so faster models genuinely move more often.
+- **🤖 2–4 models, fighting live** — pick the participant count; each model runs its own asynchronous decision pipeline, so faster models genuinely move more often.
 - **🔌 Bring any model** — OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter, …), **Anthropic**, **Ollama**, and **Google (Gemini)**, with auto-detection. Mix local and cloud in the same match.
 - **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or OAuth2 (paste a token or fetch via client-credentials).
-- **🧰 Model library** — add, **test connection**, pick the served model, set per-model **max tokens**, **reasoning language**, and (for Ollama) **context size**. Saved locally and **exportable/importable** as a file.
+- **🧰 Model library** — add, **test connection**, pick the served model, set per-model **max tokens**, **reasoning language**, and a **context budget** (all providers; also Ollama's `num_ctx`) with a **↺ Max** auto-fill and a **minimize-tokens** toggle. Saved locally and **exportable/importable** as a file.
+- **🧠 Rolling context that scales with the model** — history is sized to each model's context budget: big-context models remember more of the match. Default is a true **multi-turn conversation** with per-turn state recaps; the minimize-tokens toggle switches to a compact one-line move history.
+- **🪙 Token accounting** — provider-reported usage per model (prompt + completion) on the summary card and in the results file, next to latency. Speed *and* cost, side by side.
+- **🌱 Seeded maps** — optional map seed: the same seed reproduces the exact same resource layout, for fair A/B comparisons between models.
+- **📄 Results export** — one click saves the full match evaluation as a self-describing `results_<datetime>.md` (winner, per-model scores, stats, each model's config, difficulty, seed).
 - **📝 Per-player system prompts** — give each seat its own brain (aggressive vs. economic, terse vs. verbose) from one editable template, and watch the styles collide.
 - **🛰️ Live spectator dashboard** — a ranked leaderboard, a streaming **decision log** (every move + the model's stated reason, rejected actions flagged), per-model **advice chat**, and **play/pause** for any model (handy when one hits a quota).
 - **📊 End-of-match model evaluation** — latency, decision count, action-success rate, JSON format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 **strategy score**.
 - **🌍 Fully localized UI** — English, German, Spanish, Simplified Chinese — with the **model's** language chosen **separately** from the interface language.
-- **🎮 Also human-playable** — Standard / Hard skirmishes and a Campaign vs. the built-in rule-based AI.
+- **🎮 Also human-playable** — a **Campaign** mode: pick your civilization and face **1–5 opponents**, each controlled by one of your models or the built-in rule-based AI, on three difficulty maps (Summer Valley / Winter Valley / Desert). If a model's endpoint goes unreachable mid-game, that opponent **falls back to the rule-based AI** so your match stays alive — and a footer always shows who controls each rival.
 - **🚫 No build step** — it's plain HTML/CSS/JS + Three.js from a CDN. Clone, serve, play.
 
 ## 🚀 Quick start
@@ -90,8 +94,8 @@ Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
 
 ## 🏟️ Setting up the Arena
 
-1. **Model Library** → add your models. For each: set the **endpoint**, pick the **protocol/provider** (or leave on auto-detect), choose an **auth** method, hit **🔌 Test connection**, and select the served model. Optionally set **max tokens**, the **model language**, and (for Ollama) the **context size**.
-2. **Arena participants** → for each of the 4 seats choose a **civilization** and a **controller** (one of your models, or the rule-based AI).
+1. **Model Library** → add your models. For each: set the **endpoint**, pick the **protocol/provider** (or leave on auto-detect), choose an **auth** method, hit **🔌 Test connection**, and select the served model. Optionally set **max tokens**, the **model language**, and the **context budget** (press **↺ Max** to fill in the model's maximum).
+2. **Arena participants** → choose **how many participants (2–4)**, then give each seat a **civilization** and a **controller** (one of your models, or the rule-based AI). An optional **map seed** makes the terrain reproducible for fair rematches.
 3. **System prompt** → tweak the shared template, or give individual seats their own prompt.
 4. **⚔️ Start Arena** and watch.
 
@@ -111,7 +115,11 @@ While spectating you can **click a card** to fly the camera to that base, **drag
 
 </div>
 
-> 💡 **A 32K context window is the sweet spot — bigger is usually worse.** The harness rebuilds each turn's prompt from scratch and keeps it deliberately small: the system prompt, the last ~20 moves compressed to one short sentence each, the model's own standing **objective + plan**, and the current state snapshot. Even a maxed-out late game (100 population, dozens of buildings and discovered nodes) lands around **~12K tokens**, so a **32K** window leaves comfortable headroom in virtually every match. Going much larger rarely helps and can *hurt* — on Ollama, an oversized `num_ctx` (e.g. 128K) can spill the model onto the CPU and cause slow turns or timeouts. The per-model **context size** defaults to **32768** for this reason; leave it there unless you have a specific need.
+> 💡 **The context budget is a real lever — history scales with it.** Each model has a **context budget** (default **32768** tokens; press **↺ Max** to fill in the model's true maximum). The harness sizes the rolling match history to that budget: a 128K-context model literally remembers more of the game than a 32K one. Two history modes per model:
+> - **Multi-turn (default):** a genuine conversation — past turns replayed as compact state recaps + the model's own replies + each action's outcome. Richest memory; uses more of the budget.
+> - **Minimize token spending:** every past move compressed to one line (`action ("reason") → OK/FAILED: outcome`). Cheapest, and still enough for coherent play.
+>
+> Either way the prompt is rebuilt from scratch every turn with conservative token estimates and safety headroom, and if an endpoint ever rejects a request as too large the harness shrinks the window automatically and keeps playing. **Lower budgets are much faster** — especially on Ollama, where the budget also sets `num_ctx` and an oversized window (e.g. 128K) can spill the model onto the CPU. For small local models, 32K remains a great default.
 >
 > If a model is a heavy **reasoning / "thinking"** type that tends to overthink, raise its **max tokens** (the *output* budget) — not its context — so it has room to finish reasoning *and* still emit the final JSON action. Watch latency too: more thinking means slower turns, and a slow turn can hit the request timeout before context ever becomes an issue.
 
@@ -135,7 +143,7 @@ The match-end **Strategy Score** (0–100) is a transparent composite — no bla
 | 15% | Reliability (no timeouts / network errors) |
 | 13% | Action diversity (used the toolset, didn't loop one move) |
 
-Alongside it you get raw stats — average/min/max latency, decisions made, success ratio, reasoning rate, and a full **error breakdown** (timeouts · parse fails · invalid actions · rejected) — plus quick **behavior tags** like *Aggressive*, *Economy-focused*, *Format issues*, or *Invents actions*.
+Alongside it you get raw stats — average/min/max latency, decisions made, success ratio, reasoning rate, **token usage** (prompt + completion, as reported by the provider), and a full **error breakdown** (timeouts · parse fails · invalid actions · rejected · context overflows) — plus quick **behavior tags** like *Aggressive*, *Economy-focused*, *Format issues*, or *Invents actions*. **💾 Save results** exports it all as a self-describing Markdown file (including each model's config, the difficulty, and the map seed).
 
 ## 🛠️ How it works
 
@@ -156,15 +164,15 @@ Each turn a model receives a structured snapshot and must return exactly one act
 
 The engine validates it against the **advancement chain** (advance → research → build → resources → train) and returns a precise, actionable error if it can't be done — which becomes part of the model's context on the next turn. The full state contract is in [`game-state-schema.json`](game-state-schema.json).
 
-**Bounded context, by design.** The model is stateless across turns from the harness's point of view — every turn the prompt is rebuilt from scratch, identical providers or not, so the context never grows unboundedly and the harness (not each server's truncation rules) decides what the model sees. To keep long-horizon play possible inside that small window, the prompt carries the last **~20 moves** (each compressed to a one-line `action ("reason") → OK/FAILED: outcome`) plus a model-authored **standing objective + plan** that *persists* across turns until the model rewrites it. The objective/plan are optional fields the model can attach to any action, so it can keep a multi-step intent alive — *"scout the enemy base → mass cavalry → attack"* — without a scout it just sent (or the reason it needed gold) scrolling out of memory. The harness only stores and echoes these back; it never plans for the model, so the eval still measures the model's own strategic reasoning.
+**Budget-bounded rolling context, by design.** The model is stateless across turns from the harness's point of view — every turn the prompt is rebuilt from scratch, so the harness (not each server's truncation rules) decides exactly what the model sees. The match history is a **rolling window sized to the model's context budget**: in the default **multi-turn mode** past turns are replayed as real conversation turns (a compact, schema-keyed `pastTurnRecap` of the state + the model's reply + that action's outcome), oldest rolling off first; with **minimize tokens** on, history is instead the last N moves as one-liners (`action ("reason") → OK/FAILED: outcome`), N chosen to fit the budget. Either way the model *always* gets the result of its previous action (so a rejected command is never silently repeated), the full current state last, and a model-authored **standing objective + plan** that persists until the model rewrites it — so a multi-step intent like *"scout the enemy base → mass cavalry → attack"* survives beyond the visible history. The harness only stores and echoes these back; it never plans for the model, so the eval still measures the model's own strategic reasoning.
 
 **Action set:** `train_worker` · `train_unit` · `research_tech` · `upgrade_age` · `build_structure` · `build_wonder` · `harvest_resource` · `assign_workers` · `explore` · `move_units` · `attack_target` · `delete_unit` · `destroy_building` · `wait`.
 
 ## ⚔️ Game rules in a nutshell
 
-- **Win** by either **eliminating every** rival, **or** building a **Wonder** and holding it for the countdown. A rival is only out when it has no army, no military building it can afford to produce from, and no Town Center (nor a worker + the resources to rebuild one) — so raze their base *and* mop up, or they can come back.
+- **Win** by either **eliminating every** rival, **or** building a **Wonder** and holding it for the countdown (**600 s**). A rival is only out when it has no army, no military building it can afford to produce from, and no Town Center (nor a worker + the resources to rebuild one) — so raze their base *and* mop up, or they can come back.
 - **Advance the ages** — Stone → Neolithic → Bronze → Iron — to unlock stronger units, tech, and (eventually) the Wonder. Buildings get an epoch-appropriate look and +50% HP per age.
-- **Economy first, but not forever:** workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100).
+- **Economy first, but not forever:** workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100). **Resource nodes deplete** (food 500 · wood 300 · stone 1000 · gold 2000 per node) — scout for fresh ones; only **farms regenerate**.
 - **Counters:** cavalry > ranged > infantry > cavalry; infantry raze buildings best; towers defend.
 - **Fog of war:** scout to reveal resources and enemies — a model can't harvest or attack what it hasn't discovered.
 - **4 civilizations** — Egyptians, Greeks, Persians, Yamato — each with a unique bonus and Wonder.
