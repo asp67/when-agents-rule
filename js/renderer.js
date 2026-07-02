@@ -1059,6 +1059,21 @@ class GameRenderer {
         shield.rotation.x = Math.PI / 2; shield.position.set(0, 2.25, 2.42); group.add(shield);
         const metal = new THREE.MeshLambertMaterial({ color: 0xcfd6dd });
         [-1, 1].forEach(s => { const sw = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.5, 5), metal); sw.position.set(0, 2.25, 2.5); sw.rotation.z = s * Math.PI / 4; group.add(sw); });
+        // weapon rack beside the door: two spears leaning into an X on a low rail
+        // (one rigid sub-group, welded-parts pattern)
+        const rack = new THREE.Group();
+        const rackWood = new THREE.MeshLambertMaterial({ color: 0x6b4a2a });
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.1, 0.1), rackWood); rail.position.y = 0.95; rack.add(rail);
+        [-1, 1].forEach(s => {
+            const spear = new THREE.Group();
+            const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.9, 5), rackWood); shaft.castShadow = true; spear.add(shaft);
+            const tip = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.22, 6), metal); tip.position.y = 1.05; spear.add(tip);
+            spear.position.set(s * 0.28, 0.95, 0);
+            spear.rotation.z = s * 0.3;
+            rack.add(spear);
+        });
+        rack.position.set(-1.9, 0, 2.5);
+        group.add(rack);
     }
 
     buildStable(group, civ) {
@@ -1076,6 +1091,9 @@ class GameRenderer {
         for (let x = 3.4; x <= 6.4; x += 1.0) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1, 5), fenceMat); p.position.set(x, 0.5, 2.4); group.add(p); }
         const rail = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.1, 0.1), fenceMat); rail.position.set(4.9, 0.7, 2.4); group.add(rail);
         const hay = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.9, 10), new THREE.MeshLambertMaterial({ color: 0xd8b65a })); hay.rotation.z = Math.PI / 2; hay.position.set(4.6, 0.5, 1.2); hay.castShadow = true; group.add(hay);
+        // water trough inside the corral (dark wood box with a still-water surface)
+        const trough = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.4, 0.6), new THREE.MeshLambertMaterial({ color: 0x4a3320 })); trough.position.set(5.2, 0.2, 1.5); trough.castShadow = true; group.add(trough);
+        const tWater = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.06, 0.44), new THREE.MeshLambertMaterial({ color: 0x3a5a7a })); tWater.position.set(5.2, 0.38, 1.5); group.add(tWater);
     }
 
     buildArcheryRange(group, civ) {
@@ -1126,6 +1144,7 @@ class GameRenderer {
             const plinth = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.5, 3.2), new THREE.MeshLambertMaterial({ color: 0x8d877d })); plinth.position.y = 0.25; group.add(plinth);
             const roof = new THREE.Mesh(new THREE.ConeGeometry(2.5, 1.7, 4), new THREE.MeshLambertMaterial({ color: 0x7a4a3a })); roof.position.y = 2.85; roof.rotation.y = Math.PI / 4; roof.castShadow = true; group.add(roof);
             const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5), new THREE.MeshLambertMaterial({ color: 0x6f6960 })); chimney.position.set(0.85, 2.9, 0.85); chimney.castShadow = true; group.add(chimney);
+            const chimCap = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.4, 6), new THREE.MeshLambertMaterial({ color: 0x8d877d })); chimCap.position.set(0.85, 3.75, 0.85); group.add(chimCap); // seated on the chimney top (3.55)
             const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.2, 0.15), dark); door.position.set(0, 0.6, 1.55); group.add(door);
         }
         // Small civ-coloured banner so the owner stays identifiable at every age.
@@ -1165,6 +1184,13 @@ class GameRenderer {
         const entab = new THREE.Mesh(new THREE.BoxGeometry(5, 0.5, 5), sand); entab.position.y = 4.2; group.add(entab);
         const dome = new THREE.Mesh(new THREE.SphereGeometry(1.8, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0xdaa520 })); dome.position.y = 4.4; dome.castShadow = true; group.add(dome);
         const fin = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 8), new THREE.MeshLambertMaterial({ color: 0xffe08a })); fin.position.y = 6.3; group.add(fin);
+        // twin braziers flanking the entrance, with softly glowing flames
+        [-1.9, 1.9].forEach(x => {
+            const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, 0.45, 8), new THREE.MeshLambertMaterial({ color: 0x5a4226 }));
+            bowl.position.set(x, 0.22, 3.0); bowl.castShadow = true; group.add(bowl);
+            const flame = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 6), new THREE.MeshLambertMaterial({ color: 0xffa03c, emissive: 0xb34a00 }));
+            flame.position.set(x, 0.72, 3.0); group.add(flame);
+        });
     }
 
     buildMarket(group, civ) {
@@ -1177,8 +1203,14 @@ class GameRenderer {
         // crates + barrel
         const crate = new THREE.MeshLambertMaterial({ color: 0x9c6b3b });
         const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), crate); c1.position.set(-1.6, 0.35, 3.0); c1.castShadow = true; group.add(c1);
-        const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), crate); c2.position.set(-1.0, 0.28, 3.1); group.add(c2);
+        const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), crate); c2.position.set(-0.92, 0.28, 3.1); group.add(c2); // clear of c1's corner
         const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.8, 10), new THREE.MeshLambertMaterial({ color: 0x7a5230 })); barrel.position.set(1.7, 0.4, 3.0); barrel.castShadow = true; group.add(barrel);
+        // corner lamp post with a warm hanging lantern (market glow at a glance)
+        const postMat = new THREE.MeshLambertMaterial({ color: 0x523619 });
+        const lpost = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.6, 6), postMat); lpost.position.set(2.35, 1.3, 2.35); lpost.castShadow = true; group.add(lpost);
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.55), postMat); arm.position.set(2.35, 2.55, 2.6); group.add(arm);
+        const chain = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.04), new THREE.MeshLambertMaterial({ color: 0x9aa3ad })); chain.position.set(2.35, 2.42, 2.82); group.add(chain);
+        const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 8), new THREE.MeshLambertMaterial({ color: 0xffd98a, emissive: 0x9a6a10 })); lantern.position.set(2.35, 2.24, 2.82); group.add(lantern);
     }
 
     buildTower(group, civ, age) {
@@ -1219,7 +1251,9 @@ class GameRenderer {
             // Iron: solid stone tower with crenellations.
             const tower = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.5, 5, 10), stone); tower.position.y = 2.5; tower.castShadow = true; group.add(tower);
             for (let a = 0; a < Math.PI * 2 - 0.01; a += Math.PI / 5) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.5), merlonMat); b.position.set(Math.cos(a) * 1.2, 5.25, Math.sin(a) * 1.2); b.castShadow = true; group.add(b); }
-            const slit = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 0.1), new THREE.MeshLambertMaterial({ color: 0x1c1c1c })); slit.position.set(0, 3.2, 1.42); group.add(slit);
+            // Slit embedded into the tapered wall (facet sits at ~1.24-1.31 here;
+            // at z=1.42 it floated visibly OFF the curved face).
+            const slit = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.2, 0.1), new THREE.MeshLambertMaterial({ color: 0x1c1c1c })); slit.position.set(0, 3.2, 1.28); group.add(slit);
             this._flag(group, civ, 0, 5.3, 0, 1.8);
         }
     }
