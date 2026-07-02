@@ -359,6 +359,234 @@ class GameRenderer {
         }
     }
 
+    // ------------------------------------------------------------------
+    // Combat & death effects (purely cosmetic — pooled, no per-frame allocs)
+    // ------------------------------------------------------------------
+
+    // Arced projectile from attacker to victim (arrows for ranged units, a stone
+    // ball for towers). Pooled; excess requests during huge battles are dropped.
+    spawnProjectile(from, to, kind) {
+        if (!this._projectiles) this._projectiles = [];
+        let p = this._projectiles.find(q => !q.active);
+        if (!p) {
+            if (this._projectiles.length >= 64) return;
+            const geo = new THREE.CylinderGeometry(0.06, 0.06, 1.2, 4);
+            geo.rotateX(Math.PI / 2); // shaft along +Z so lookAt() aims it
+            const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x7a5230 }));
+            mesh.visible = false;
+            this.scene.add(mesh);
+            p = { mesh, active: false };
+            this._projectiles.push(p);
+        }
+        p.active = true;
+        p.t = 0;
+        const dist = Math.hypot(to.x - from.x, to.z - from.z);
+        p.dur = Math.max(0.16, dist / 42); // ~42 world units/s flight speed
+        p.sx = from.x; p.sy = from.y; p.sz = from.z;
+        p.tx = to.x; p.ty = to.y; p.tz = to.z;
+        p.arc = kind === 'stone' ? 2.0 : 3.0;
+        p.mesh.material.color.setHex(kind === 'stone' ? 0x9aa3ad : 0x7a5230);
+        p.mesh.scale.setScalar(kind === 'stone' ? 0.7 : 1);
+        p.mesh.visible = true;
+    }
+
+    // Brief red emissive flash on a struck entity (restores each material's own
+    // previous emissive, so selection highlights survive).
+    flashHit(entity) {
+        const mesh = entity && entity.mesh;
+        if (!mesh) return;
+        if (!this._flashing) this._flashing = new Set();
+        if (!mesh._flashMats) {
+            mesh._flashMats = [];
+            mesh.traverse(c => { if (c.material && c.material.emissive) mesh._flashMats.push(c.material); });
+        }
+        if (!mesh._flashUntil) { // don't re-snapshot mid-flash
+            mesh._flashMats.forEach(m => { m._preFlash = m.emissive.getHex(); m.emissive.setHex(0xff2818); });
+        }
+        mesh._flashUntil = Date.now() + 130;
+        this._flashing.add(mesh);
+    }
+
+    // Death: tip over, sink and fade instead of vanishing. Detaches the entity
+    // from tracking immediately (game logic is already done with it) and animates
+    // a ghost of the mesh, then disposes it.
+    killUnit(unit) {
+        const idx = this.units.indexOf(unit);
+        if (idx > -1) this.units.splice(idx, 1);
+        if (unit.healthBar) { this.scene.remove(unit.healthBar); this.disposeObject(unit.healthBar); unit.healthBar = null; }
+        const mesh = unit.mesh;
+        unit.mesh = null;
+        if (!mesh) return;
+        this._startDeath(mesh, 'unit', 0.9);
+        this.spawnDust(unit.x, 0.5, unit.z, 10, 0x9a8f7a);
+    }
+
+    // Destruction: crumple (y-scale down), sink and fade, with a dust burst.
+    killBuilding(building) {
+        const idx = this.buildings.indexOf(building);
+        if (idx > -1) this.buildings.splice(idx, 1);
+        if (building.healthBar) { this.scene.remove(building.healthBar); this.disposeObject(building.healthBar); building.healthBar = null; }
+        const mesh = building.mesh;
+        building.mesh = null;
+        if (!mesh) return;
+        this._startDeath(mesh, 'building', 1.25);
+        this.spawnDust(building.x, 1.4, building.z, 24, 0xb0a48e);
+    }
+
+    _startDeath(mesh, kind, dur) {
+        if (!this._dying) this._dying = [];
+        const mats = [];
+        mesh.traverse(c => {
+            if (c.material) { c.material.transparent = true; mats.push(c.material); }
+        });
+        this._flashing && this._flashing.delete(mesh);
+        this._dying.push({ mesh, mats, kind, dur, t: 0, baseY: mesh.position.y });
+    }
+
+    // Pooled dust burst (THREE.Points) for deaths/collapses.
+    spawnDust(x, y, z, count, color) {
+        if (!this._dustPool) this._dustPool = [];
+        let d = this._dustPool.find(q => !q.active);
+        if (!d) {
+            if (this._dustPool.length >= 16) return;
+            const N = 24;
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+            const mat = new THREE.PointsMaterial({ size: 0.9, transparent: true, opacity: 0.8, depthWrite: false });
+            const pts = new THREE.Points(geo, mat);
+            pts.visible = false;
+            pts.frustumCulled = false;
+            this.scene.add(pts);
+            d = { pts, vels: new Float32Array(N * 3), N, active: false };
+            this._dustPool.push(d);
+        }
+        d.active = true;
+        d.t = 0;
+        d.dur = 0.8;
+        d.pts.material.color.setHex(color || 0xb0a48e);
+        const pos = d.pts.geometry.attributes.position.array;
+        const n = Math.min(d.N, count || d.N);
+        for (let i = 0; i < d.N; i++) {
+            const j = i * 3;
+            if (i < n) {
+                pos[j] = x; pos[j + 1] = y; pos[j + 2] = z;
+                const a = Math.random() * Math.PI * 2, r = 1.5 + Math.random() * 3;
+                d.vels[j] = Math.cos(a) * r;
+                d.vels[j + 1] = 2.2 + Math.random() * 2.6;
+                d.vels[j + 2] = Math.sin(a) * r;
+            } else {
+                pos[j + 1] = -50; // park unused points below the world
+                d.vels[j] = d.vels[j + 1] = d.vels[j + 2] = 0;
+            }
+        }
+        d.pts.geometry.attributes.position.needsUpdate = true;
+        d.pts.material.opacity = 0.8;
+        d.pts.visible = true;
+    }
+
+    // Expanding ground ring marking a fresh battle (throttled by game.notifyCombat).
+    spawnBattleRing(x, z) {
+        if (!this._rings) this._rings = [];
+        let r = this._rings.find(q => !q.active);
+        if (!r) {
+            if (this._rings.length >= 8) return;
+            const mesh = new THREE.Mesh(
+                new THREE.RingGeometry(0.85, 1.0, 40),
+                new THREE.MeshBasicMaterial({ color: 0xff5a3c, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide })
+            );
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.renderOrder = 3; // above the fog plane so pings show through it
+            mesh.visible = false;
+            this.scene.add(mesh);
+            r = { mesh, active: false };
+            this._rings.push(r);
+        }
+        r.active = true;
+        r.t = 0;
+        r.dur = 0.9;
+        r.mesh.position.set(x, 0.7, z);
+        r.mesh.visible = true;
+    }
+
+    // Advance all pooled effects (called once per rendered frame).
+    updateEffects(dt, time) {
+        // Projectiles: lerp along the shot with a small arc.
+        if (this._projectiles) for (const p of this._projectiles) {
+            if (!p.active) continue;
+            p.t += dt / p.dur;
+            if (p.t >= 1) { p.active = false; p.mesh.visible = false; continue; }
+            const k = p.t;
+            const x = p.sx + (p.tx - p.sx) * k;
+            const z = p.sz + (p.tz - p.sz) * k;
+            const y = p.sy + (p.ty - p.sy) * k + Math.sin(Math.PI * k) * p.arc;
+            const prev = p.mesh.position;
+            p.mesh.lookAt(x, y, z); // aim along the flight path before moving
+            prev.set(x, y, z);
+        }
+
+        // Hit flashes: restore materials when the flash window ends.
+        if (this._flashing && this._flashing.size) {
+            const now = Date.now();
+            for (const mesh of this._flashing) {
+                if (now >= mesh._flashUntil) {
+                    mesh._flashMats.forEach(m => { if (m._preFlash !== undefined) m.emissive.setHex(m._preFlash); });
+                    mesh._flashUntil = 0;
+                    this._flashing.delete(mesh);
+                }
+            }
+        }
+
+        // Deaths: units tip over and sink; buildings crumple. Both fade out.
+        if (this._dying) for (let i = this._dying.length - 1; i >= 0; i--) {
+            const d = this._dying[i];
+            d.t += dt;
+            const k = Math.min(1, d.t / d.dur);
+            if (d.kind === 'unit') {
+                d.mesh.rotation.z = k * (Math.PI / 2) * 0.9;
+                d.mesh.position.y = d.baseY - 0.5 * k;
+            } else {
+                d.mesh.scale.y = Math.max(0.08, 1 - 0.92 * k);
+                d.mesh.position.y = d.baseY - 0.8 * k;
+            }
+            const op = 1 - k;
+            d.mats.forEach(m => { m.opacity = op; });
+            if (k >= 1) {
+                this.scene.remove(d.mesh);
+                this.disposeObject(d.mesh);
+                this._dying.splice(i, 1);
+            }
+        }
+
+        // Dust bursts: scatter, rise, settle, fade.
+        if (this._dustPool) for (const d of this._dustPool) {
+            if (!d.active) continue;
+            d.t += dt;
+            const k = d.t / d.dur;
+            if (k >= 1) { d.active = false; d.pts.visible = false; continue; }
+            const pos = d.pts.geometry.attributes.position.array;
+            for (let i = 0; i < d.N; i++) {
+                const j = i * 3;
+                pos[j] += d.vels[j] * dt;
+                pos[j + 1] += d.vels[j + 1] * dt;
+                pos[j + 2] += d.vels[j + 2] * dt;
+                d.vels[j + 1] -= 7 * dt; // gravity
+            }
+            d.pts.geometry.attributes.position.needsUpdate = true;
+            d.pts.material.opacity = 0.8 * (1 - k);
+        }
+
+        // Battle rings: expand and fade.
+        if (this._rings) for (const r of this._rings) {
+            if (!r.active) continue;
+            r.t += dt;
+            const k = r.t / r.dur;
+            if (k >= 1) { r.active = false; r.mesh.visible = false; continue; }
+            const s = 1 + k * 9;
+            r.mesh.scale.set(s, s, 1);
+            r.mesh.material.opacity = 0.7 * (1 - k);
+        }
+    }
+
     createUnitMesh(unit) {
         const group = new THREE.Group();
         const bodyMaterial = new THREE.MeshLambertMaterial({ color: unit.color });
@@ -1415,6 +1643,10 @@ class GameRenderer {
                 // Add carrying animation
                 const carryBob = Math.sin(time / 200) * 0.1;
                 unit.mesh.position.y = unit.baseY + carryBob;
+            } else if (unit.isBuilding && unit.mesh) {
+                // Hammering at a construction site: quick work-rock, no bob.
+                unit.mesh.position.y = unit.baseY;
+                unit.mesh.rotation.z = Math.sin(time / 130) * 0.13;
             } else if (unit.mesh && unit.baseY !== undefined) {
                 // Reset position when not harvesting
                 unit.mesh.position.y = unit.baseY;
@@ -1432,6 +1664,9 @@ class GameRenderer {
 
         // Animate construction sites (rise with build progress) + idle flourishes
         this.updateBuildingVisuals(time);
+
+        // Pooled combat/death effects (projectiles, flashes, dust, rings)
+        this.updateEffects(deltaTime, time);
 
         this.updateHealthBars();
         this.renderer.render(this.scene, this.camera);
@@ -1486,7 +1721,22 @@ class GameRenderer {
         }
     }
 
+    // Stop every in-flight effect (rematch): pooled meshes stay for reuse but go
+    // invisible; dying ghosts are disposed at once so a collapsing building from
+    // the LAST match can't linger into the next one.
+    resetEffects() {
+        (this._projectiles || []).forEach(p => { p.active = false; p.mesh.visible = false; });
+        (this._rings || []).forEach(r => { r.active = false; r.mesh.visible = false; });
+        (this._dustPool || []).forEach(d => { d.active = false; d.pts.visible = false; });
+        if (this._dying) {
+            this._dying.forEach(d => { this.scene.remove(d.mesh); this.disposeObject(d.mesh); });
+            this._dying = [];
+        }
+        if (this._flashing) this._flashing.clear();
+    }
+
     clearScene() {
+        this.resetEffects();
         // Remove all units (and free their GPU resources — this runs on every
         // rematch, so skipping disposal here leaked an entire match's meshes).
         this.units.forEach(unit => {

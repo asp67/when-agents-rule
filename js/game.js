@@ -932,6 +932,16 @@ class Game {
                         currentTarget._lastAttacker = unit;
                         currentTarget._lastDamageTime = Date.now();
 
+                        // Combat visuals: arrows for ranged shots, a hit flash on the
+                        // victim, and a (throttled) battle ping for spectators.
+                        if (unit.range > 1) {
+                            this.renderer.spawnProjectile(
+                                { x: unit.x, y: 1.5, z: unit.z },
+                                { x: currentTarget.x, y: 1.1, z: currentTarget.z }, 'arrow');
+                        }
+                        this.renderer.flashHit(currentTarget);
+                        this.notifyCombat(currentTarget.x, currentTarget.z);
+
                         // Visual feedback on health bar
                         if (currentTarget.healthBar) {
                             currentTarget.healthBar.material.color.setHex(0xff0000);
@@ -998,6 +1008,13 @@ class Game {
                 const dx = unit.x - tower.x, dz = unit.z - tower.z;
                 if (Math.sqrt(dx * dx + dz * dz) > range) return;
                 unit.health -= dmg;
+
+                // Combat visuals: a stone from the tower top + flash + battle ping.
+                this.renderer.spawnProjectile(
+                    { x: tower.x, y: 4.6, z: tower.z },
+                    { x: unit.x, y: 1.0, z: unit.z }, 'stone');
+                this.renderer.flashHit(unit);
+                this.notifyCombat(unit.x, unit.z);
 
                 // Brief red flash on the struck unit's health bar.
                 if (unit.healthBar) {
@@ -1105,6 +1122,28 @@ class Game {
     }
     
     // Destroy a target (unit or building)
+    // Called whenever damage lands. Purely presentational: spawns a throttled
+    // battle ring in the world (max one per ~35-unit area / 5s), queues a minimap
+    // ping, and records the event for the spectator action camera. No game effect.
+    notifyCombat(x, z) {
+        const now = Date.now();
+        // World ring — throttled per coarse map cell so a melee doesn't strobe.
+        this._pingCells = this._pingCells || {};
+        const key = Math.round(x / 35) + ':' + Math.round(z / 35);
+        if (!this._pingCells[key] || now - this._pingCells[key] > 5000) {
+            this._pingCells[key] = now;
+            this.renderer.spawnBattleRing(x, z);
+        }
+        // Minimap ping (drawn by updateMinimap, expires after 4s).
+        this._combatPings = this._combatPings || [];
+        this._combatPings.push({ x, z, until: now + 4000 });
+        if (this._combatPings.length > 30) this._combatPings.shift();
+        // Feed for the spectator action camera (recent-fight centroid).
+        this._combatEvents = this._combatEvents || [];
+        this._combatEvents.push({ x, z, t: now });
+        if (this._combatEvents.length > 120) this._combatEvents.shift();
+    }
+
     destroyTarget(target) {
         if (target.type && BUILDING_DEFS[target.type]) {
             // It's a building
@@ -1118,7 +1157,7 @@ class Game {
                     const idx = ai.buildings.indexOf(target);
                     if (idx > -1) ai.buildings.splice(idx, 1);
                 }
-                this.renderer.removeBuilding(target);
+                this.renderer.killBuilding(target); // crumble + dust instead of popping away
             }
         } else {
             // It's a unit
@@ -1132,7 +1171,7 @@ class Game {
                     const idx = ai.units.indexOf(target);
                     if (idx > -1) ai.units.splice(idx, 1);
                 }
-                this.renderer.removeUnit(target);
+                this.renderer.killUnit(target); // tip over + fade instead of vanishing
             }
         }
     }
@@ -1691,7 +1730,7 @@ class Game {
         const idx = this.player.units.indexOf(unit);
         if (idx > -1) {
             this.player.units.splice(idx, 1);
-            this.renderer.removeUnit(unit);
+            this.renderer.killUnit(unit); // animated death (tip over + fade)
             this.player.resources.updatePopulation(this.player.units.length);
         }
     }
@@ -1983,7 +2022,7 @@ class Game {
         const idx = this.player.buildings.indexOf(building);
         if (idx > -1) {
             this.player.buildings.splice(idx, 1);
-            this.renderer.removeBuilding(building);
+            this.renderer.killBuilding(building); // animated collapse (crumple + dust)
         }
     }
 
@@ -2740,6 +2779,23 @@ class Game {
                 ctx.fillRect(x - 2, z - 2, 4, 4);
             });
         });
+
+        // Combat pings on top: pulsing red rings where damage landed recently,
+        // so a spectator glancing at the minimap never misses a fight.
+        if (this._combatPings && this._combatPings.length) {
+            const now = Date.now();
+            this._combatPings = this._combatPings.filter(p => p.until > now);
+            const pulse = 2.5 + Math.sin(now / 120) * 1.5;
+            ctx.strokeStyle = 'rgba(255, 70, 40, 0.9)';
+            ctx.lineWidth = 1.5;
+            this._combatPings.forEach(p => {
+                const x = (p.x + terrainData.size / 2) * scale;
+                const z = (p.z + terrainData.size / 2) * scale;
+                ctx.beginPath();
+                ctx.arc(x, z, pulse, 0, Math.PI * 2);
+                ctx.stroke();
+            });
+        }
     }
 
     checkWinConditions(deltaTime = 16) {
