@@ -1,7 +1,0 @@
-{
-  "models": {
-    "OpenAIEndpoint": [
-      "http://localhost:11434/v1"
-    ]
-  }
-}

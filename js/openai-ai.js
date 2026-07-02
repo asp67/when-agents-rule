@@ -1,11 +1,11 @@
-﻿// OpenAI-powered AI controller for non-human players
-// Loads models from models.json, builds game state JSON, sends to LLM endpoints,
-// parses tool_call responses, and executes actions in round-robin fashion.
+﻿// LLM harness for non-human players: builds each model's per-turn game-state JSON,
+// shapes provider-specific requests (OpenAI / Anthropic / Ollama / Google), parses
+// the ONE action per reply, executes it, and feeds the outcome back next turn.
+// Controllers come from the setup screen via initFromSetup (Arena and Campaign).
 
 class OpenAIAIManager {
     constructor(game) {
         this.game = game;
-        this.models = [];
         this.aiControllers = []; // One per AI player
         this.currentControllerIndex = 0;
         this.turnInterval = 1500; // Small breather between a model's own turns. The real
@@ -25,11 +25,8 @@ class OpenAIAIManager {
                                // previous match's models can't mutate the next one.
         this.decisionLog = []; // Array of { timestamp, playerId, civName, action, reason }
         this.maxLogEntries = 400; // keep a deep decision history for the spectator log
-        this.historyLength = 20; // legacy fallback; the live window is now sized per
-                                 // model by its context budget (see sendToOpenAI).
         this.maxHistoryEntries = 400; // how many past moves we RETAIN in memory; how
                                  // many are actually SENT is chosen per turn by budget.
-        this.modelsLoaded = false; // Prevent double-loading
     }
 
     // Per-controller behavior metrics (reset each match)
@@ -401,101 +398,11 @@ class OpenAIAIManager {
     }
 
     // ----------------------------------------------------------------
-    // 1. Load models.json and fetch model names from each endpoint
+    // 2. Initialize from setup (per-player config; used by Arena AND Campaign)
     // ----------------------------------------------------------------
-    async loadModels() {
-        if (this.modelsLoaded) return; // Prevent double-loading
-        try {
-            const response = await fetch('models.json');
-            const data = await response.json();
-            const endpoints = data.models?.OpenAIEndpoint || [];
-
-            this.models = [];
-            for (let i = 0; i < endpoints.length; i++) {
-                const url = endpoints[i];
-                const modelInfo = {
-                    id: `openai-ai-${i}`,
-                    name: `AI Opponent ${i + 1}`,
-                    endpoint: url,
-                    apiKey: null,
-                    model: 'default',
-                    temperature: 0.7,
-                    maxTokens: 2000
-                };
-
-                // Fetch model name from endpoint
-                try {
-                    const modelsUrl = url.replace(/\/$/, '') + '/models';
-                    const modelsResp = await this.fetchWithTimeout(modelsUrl, { mode: 'cors' }, 6000);
-                    if (modelsResp.ok) {
-                        const modelsData = await modelsResp.json();
-                        const models = modelsData.data || [];
-                        if (models.length > 0) {
-                            modelInfo.name = models[0].id || models[0].name || modelInfo.name;
-                            modelInfo.model = models[0].id || models[0].name || 'default';
-                            console.log(`[OpenAIAI] Endpoint ${i}: Model "${modelInfo.name}" found`);
-                        }
-                    }
-                } catch (err) {
-                    console.warn(`[OpenAIAI] Could not fetch models from ${url}:`, err.message);
-                }
-
-                this.models.push(modelInfo);
-            }
-
-            this.modelsLoaded = true;
-            console.log(`[OpenAIAI] Loaded ${this.models.length} OpenAI endpoints`);
-        } catch (err) {
-            console.error('[OpenAIAI] Failed to load models.json:', err);
-            this.models = [];
-        }
-    }
-
-    // Wait for models to be loaded, then assign
-    async initAndAssign() {
-        await this.loadModels();
-        this.assignModelsToAIPlayers();
-    }
-
-    // ----------------------------------------------------------------
-    // 2. Assign models to AI players at game start
-    // ----------------------------------------------------------------
-    assignModelsToAIPlayers() {
-        const aiPlayers = this.game.aiManager.aiPlayers;
-        this.aiControllers = [];
-
-        for (let i = 0; i < aiPlayers.length; i++) {
-            const ai = aiPlayers[i];
-            const model = this.models[i % this.models.length]; // Round-robin assignment
-
-            const controller = {
-                id: ai.id,
-                aiPlayer: ai,
-                model: model,
-                lastTurnTime: 0,
-                turnCount: 0,
-                pending: false,
-                paused: false, // spectator can pause a model (e.g. when it runs out of quota)
-                conversationHistory: [], // Stores {action, result} for feedback loop
-                turnLog: [], // Rolling multi-turn pairs {user, assistant} for Option C
-                _pendingTurnUser: null, // compact state for THIS turn, stored after the reply
-                lastActionResult: null, // Most recent action result for next turn
-                pendingAdvice: [], // Spectator advice to inject into the next prompt
-                objective: '', // Model-authored standing goal ("why"), persists until it changes it
-                plan: [], // Model-authored short ordered sub-goals, persists until rewritten
-                pendingArrivalMessages: [], // deferred attack outcomes, delivered on arrival
-                pendingAttackReports: [], // open attack-move orders awaiting an arrival verdict
-                stats: this.newStats() // Behavior/performance metrics for the summary
-            };
-
-            this.aiControllers.push(controller);
-            console.log(`[OpenAIAI] Assigned model "${model.name}" (${model.endpoint}) to AI "${ai.civilization}" (${ai.id})`);
-        }
-    }
-
-    // ----------------------------------------------------------------
-    // 2b. Initialize from Arena setup (per-player config)
-    // ----------------------------------------------------------------
+    // (The legacy models.json round-robin path — loadModels/initAndAssign/
+    //  assignModelsToAIPlayers — became unreachable once Campaign switched to
+    //  explicit per-opponent configs and was removed.)
     async initFromSetup(setup) {
         this.aiControllers = [];
 
@@ -2002,7 +1909,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         // Store a COMPACT, human-readable record of this decision for the feedback
         // loop: the action, the model's own stated reason, and the outcome. One
-        // short sentence per move keeps a long history (historyLength) affordable
+        // short sentence per move keeps a long history affordable
         // while preserving the "why" across a multi-step plan.
         if (actionResult) {
             logEntry.result = actionResult; // so the spectator log can show the outcome

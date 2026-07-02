@@ -85,16 +85,6 @@ class Game {
         location.reload();
     }
 
-    selectCiv(civId) {
-        this.player.civilization = civId;
-        // Note: civ bonus is applied in startGame, no need to apply here
-        this.startGame('standard', 3);
-    }
-
-    showCampaignSelection() {
-        this.showCampaignSetup();
-    }
-
     showCampaignSetup() {
         this.ui.showCampaignSetup();
     }
@@ -119,11 +109,6 @@ class Game {
 
     showArenaSetup() {
         this.ui.showArenaSetup();
-    }
-
-    startSpectatorMode() {
-        this.spectatorMode = true;
-        this.startGame('spectator', 4); // 4 AI players, no human
     }
 
     // Start a Campaign (single-player) game from the setup screen: the human plays
@@ -439,16 +424,10 @@ class Game {
                 console.error('[Game] Campaign AI init failed:', err);
             });
         } else {
-            this.openAIAIManager.initAndAssign().then(() => {
-                console.log('[Game] OpenAI AI controllers ready');
-                if (this.ui.updateOpponentsPanel) this.ui.updateOpponentsPanel();
-            }).catch(err => {
-                console.error('[Game] OpenAI AI init failed:', err);
-            });
-            // Mark AI players as OpenAI-controlled so the rule-based AI skips them
-            this.aiManager.aiPlayers.forEach(ai => {
-                this.aiManager.markAsOpenAIControlled(ai.id);
-            });
+            // No explicit opponent configs (defensive fallback — every live caller
+            // passes them): all opponents stay rule-based. The legacy models.json
+            // round-robin path that used to live here was unreachable and removed.
+            if (this.ui.updateOpponentsPanel) this.ui.updateOpponentsPanel();
         }
 
         // Position camera

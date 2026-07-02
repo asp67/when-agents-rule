@@ -77,10 +77,6 @@ class UIManager {
         this.showScreen('startScreen');
     }
 
-    showCampaignSelection() {
-        this.showScreen('civilizationScreen');
-    }
-
     showGameModeSelection() {
         this.showScreen('gameModeScreen');
     }
@@ -265,9 +261,6 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
 {"action": "<action>", "params": { ...action params..., "reason": "<how this moves you toward winning>" }}`;
     }
 
-    // Legacy no-op kept so the (now-hidden) old grid's inline handlers never throw.
-    updateArenaPlayerFields() {}
-
     // ----------------------------------------------------------------
     // Arena model-library config
     // ----------------------------------------------------------------
@@ -335,16 +328,9 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         } catch (e) {}
 
         if (!cfg || !Array.isArray(cfg.models)) {
-            // First run: seed the library from models.json endpoints if available.
-            const endpoints = [];
-            try {
-                const resp = await fetch('models.json');
-                const data = await resp.json();
-                (data.models?.OpenAIEndpoint || []).forEach(u => { if (u) endpoints.push(u); });
-            } catch (e) {}
-            // Leave names empty — the UI shows a live translated "Unnamed model N".
-            const models = endpoints.map((u) => this.makeArenaModel({ endpoint: u }));
-            if (models.length === 0) models.push(this.makeArenaModel({}));
+            // First run: start with one empty model card ready to be configured.
+            // (The old models.json seeding is gone along with that legacy file.)
+            const models = [this.makeArenaModel({})];
             cfg = {
                 models,
                 slots: ['egyptian', 'greek', 'persian', 'yamato'].map((civ, i) => ({ civ, control: models[i] ? models[i].id : 'ki' })),
