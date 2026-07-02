@@ -18,12 +18,33 @@ class TerrainManager {
         this.numTiles = size / this.gridSize;
         this.resources = [];
         this.difficulty = 'easy'; // set by the game before each regenerate
+        this.seed = null;         // optional map seed: same seed => same resource layout
         this.generateTerrain();
     }
 
     diffMods() { return DIFFICULTY_MODS[this.difficulty] || DIFFICULTY_MODS.easy; }
 
+    // Deterministic PRNG (mulberry32) so a user-supplied seed reproduces the exact
+    // same map — the fair way to compare two models on identical terrain. With no
+    // seed, rand() falls through to Math.random (fresh map every game).
+    _initRand() {
+        if (this.seed == null || this.seed === '') { this.rand = Math.random; return; }
+        let h = 1779033703 ^ String(this.seed).length;
+        for (const ch of String(this.seed)) {
+            h = Math.imul(h ^ ch.charCodeAt(0), 3432918353);
+            h = (h << 13) | (h >>> 19);
+        }
+        let a = (h >>> 0) || 42;
+        this.rand = function () {
+            a |= 0; a = (a + 0x6D2B79F5) | 0;
+            let t = Math.imul(a ^ (a >>> 15), 1 | a);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+        };
+    }
+
     generateTerrain() {
+        this._initRand();
         // Idempotent: clear any terrain from a previous call (constructor + game both call this)
         if (this.ground) this.scene.remove(this.ground);
         if (this.water) this.scene.remove(this.water);
@@ -105,9 +126,9 @@ class TerrainManager {
     // wedge — used to spread food & wood evenly across players but randomly within.
     randomPosInArea(area) {
         const baseAngles = [-Math.PI / 2, 0, Math.PI / 2, Math.PI]; // matches the 4 spawn directions
-        const a = baseAngles[area % 4] + (Math.random() - 0.5) * (Math.PI / 2);
+        const a = baseAngles[area % 4] + (this.rand() - 0.5) * (Math.PI / 2);
         const maxR = this.size / 2 - 24; // keep off the beach/edge
-        const r = 24 + Math.random() * (maxR - 24);
+        const r = 24 + this.rand() * (maxR - 24);
         return { x: Math.cos(a) * r, z: Math.sin(a) * r };
     }
 
@@ -187,7 +208,7 @@ class TerrainManager {
 
             const leavesGeo = new THREE.ConeGeometry(2, 4, 8);
             // slight per-tree colour variation so the forest isn't uniform
-            const leafShade = new THREE.Color(0x2f8f2f).offsetHSL(0, 0, (Math.random() - 0.5) * 0.12);
+            const leafShade = new THREE.Color(0x2f8f2f).offsetHSL(0, 0, (this.rand() - 0.5) * 0.12);
             const leavesMat = new THREE.MeshLambertMaterial({ color: leafShade });
             const leaves = new THREE.Mesh(leavesGeo, leavesMat);
             leaves.position.set(x, 4, z);
@@ -211,8 +232,8 @@ class TerrainManager {
     generateStones() {
         const count = Math.max(1, Math.round(40 * this.diffMods().stone)); // Desert -50%
         for (let i = 0; i < count; i++) {
-            const x = (Math.random() - 0.5) * (this.size - 20);
-            const z = (Math.random() - 0.5) * (this.size - 20);
+            const x = (this.rand() - 0.5) * (this.size - 20);
+            const z = (this.rand() - 0.5) * (this.size - 20);
             
             // Create stone deposit
             const stoneGeo = new THREE.DodecahedronGeometry(1.5, 0);
@@ -250,8 +271,8 @@ class TerrainManager {
         for (let cx = 0; cx < cells; cx++) {
             for (let cz = 0; cz < cells; cz++) {
                 const inset = cellSize * 0.18; // jitter within the cell, off the borders
-                const x = start + cx * cellSize + inset + Math.random() * (cellSize - 2 * inset);
-                const z = start + cz * cellSize + inset + Math.random() * (cellSize - 2 * inset);
+                const x = start + cx * cellSize + inset + this.rand() * (cellSize - 2 * inset);
+                const z = start + cz * cellSize + inset + this.rand() * (cellSize - 2 * inset);
 
                 const gold = new THREE.Mesh(new THREE.OctahedronGeometry(1, 0), goldMat);
                 gold.position.set(x, 0.8, z);

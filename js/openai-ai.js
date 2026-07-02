@@ -37,6 +37,8 @@ class OpenAIAIManager {
             timeouts: 0,
             networkErrors: 0,
             contextOverflows: 0,  // request too big for the model's context (lost turn; endpoint fine)
+            promptTokens: 0,      // cumulative token usage as reported by the provider
+            completionTokens: 0,  // (0/0 when the endpoint doesn't report usage)
             parseFails: 0,        // response returned but no action could be extracted
             actionsAttempted: 0,  // actions handed to executeAction
             actionsSucceeded: 0,  // executed OK
@@ -278,6 +280,29 @@ class OpenAIAIManager {
         }
         const message = (data.choices && data.choices[0] && data.choices[0].message) || {};
         return { content: message.content, reasoning: message.reasoning, tool_calls: message.tool_calls, finish_reason: data.choices && data.choices[0] && data.choices[0].finish_reason };
+    }
+
+    // Pull token usage out of a provider response (field names differ everywhere).
+    // Returns { prompt, completion } or null when the provider didn't report usage.
+    static extractUsage(provider, data) {
+        try {
+            if (provider === 'anthropic' && data.usage) {
+                return { prompt: data.usage.input_tokens || 0, completion: data.usage.output_tokens || 0 };
+            }
+            if (provider === 'ollama') {
+                if (data.prompt_eval_count != null || data.eval_count != null) {
+                    return { prompt: data.prompt_eval_count || 0, completion: data.eval_count || 0 };
+                }
+                return null;
+            }
+            if (provider === 'google' && data.usageMetadata) {
+                return { prompt: data.usageMetadata.promptTokenCount || 0, completion: data.usageMetadata.candidatesTokenCount || 0 };
+            }
+            if (data.usage) { // openai-compatible
+                return { prompt: data.usage.prompt_tokens || 0, completion: data.usage.completion_tokens || 0 };
+            }
+        } catch (e) {}
+        return null;
     }
 
     // OAuth2 client-credentials grant. Token is cached on the auth object.
@@ -1455,6 +1480,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
             const data = await response.json();
             const norm = OpenAIAIManager.normalizeResponse(provider, data);
+            // Token accounting: latency tells you speed, this tells you COST.
+            const usage = OpenAIAIManager.extractUsage(provider, data);
+            if (usage && controller.stats) {
+                controller.stats.promptTokens += usage.prompt;
+                controller.stats.completionTokens += usage.completion;
+            }
             const result = this.parseResponse(norm, controller);
 
             // Record this exchange for the rolling multi-turn history (Option C):

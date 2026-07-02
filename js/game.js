@@ -193,6 +193,8 @@ class Game {
         // reflect it and the per-TC clearResourcesNear below acts on fresh nodes.
         this.difficulty = (typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy';
         this.terrain.difficulty = this.difficulty;
+        this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || null; // same seed = same map
+        this.mapSeed = this.terrain.seed;
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 
@@ -342,6 +344,8 @@ class Game {
         // scaled by difficulty) before placing Town Centers / clearing nodes under them.
         this.difficulty = (typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy';
         this.terrain.difficulty = this.difficulty;
+        this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || null; // same seed = same map
+        this.mapSeed = this.terrain.seed;
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 

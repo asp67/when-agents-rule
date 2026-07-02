@@ -152,6 +152,22 @@ class UIManager {
         const cur = this.setupSlotCount();
         const cntSel = document.getElementById('setupCount');
         if (cntSel) cntSel.innerHTML = opts.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${n}</option>`).join('');
+        // Optional map seed (per mode config): same seed => identical map, for fair
+        // A/B comparisons between models. Empty = a fresh random map every game.
+        const seedEl = document.getElementById('setupSeed');
+        if (seedEl) seedEl.value = (campaign ? this._campaignConfig.seed : this._arenaConfig.seed) || '';
+    }
+
+    setSetupSeed(v) {
+        const cfg = this._setupMode === 'campaign' ? this._campaignConfig : this._arenaConfig;
+        if (cfg) { cfg.seed = String(v || '').trim(); this.saveSetup(); }
+    }
+
+    // The active mode's map seed, or null for a random map.
+    setupSeed() {
+        const cfg = this._setupMode === 'campaign' ? this._campaignConfig : this._arenaConfig;
+        const s = cfg && typeof cfg.seed === 'string' ? cfg.seed.trim() : '';
+        return s || null;
     }
 
     setCampaignPlayerCiv(v) { if (this._campaignConfig) { this._campaignConfig.playerCiv = v; this.saveSetup(); } }
@@ -364,6 +380,8 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         }
         // Number of participants actually in play (2–4; the pool is always 4 slots).
         cfg.count = Math.min(4, Math.max(2, parseInt(cfg.count, 10) || 4));
+        // Optional map seed (persisted with the config).
+        cfg.seed = typeof cfg.seed === 'string' ? cfg.seed : '';
         // Always start participant slots collapsed for a clean overview on load.
         cfg.slots.forEach(s => { s._collapsed = true; });
         return cfg;
@@ -400,6 +418,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         cc.slots = cc.slots.slice(0, 5);
         cc.playerCiv = cc.playerCiv || 'egyptian';
         cc.count = Math.min(5, Math.max(1, parseInt(cc.count, 10) || 3));
+        cc.seed = typeof cc.seed === 'string' ? cc.seed : '';
         // Drop control ids that no longer match a model in the (shared) library.
         const ids = (this._arenaConfig ? this._arenaConfig.models : []).map(m => m.id);
         cc.slots.forEach(s => {
@@ -1783,6 +1802,15 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             .replace(/>/g, '&gt;');
     }
 
+    // Compact token counts for the summary: 830 -> "830", 12480 -> "12.5k", 1.2M.
+    fmtTokens(n) {
+        n = Math.max(0, Math.round(n || 0));
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+        if (n >= 100000) return Math.round(n / 1000) + 'k';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+        return String(n);
+    }
+
     // Lighten very dark civ colors (e.g. Yamato navy) so text/accents stay
     // legible on the dark dashboard background.
     legibleColor(hex) {
@@ -2034,6 +2062,15 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 color: this.legibleColor(colorHex),
                 isLLM: !!controller,
                 model: controller ? controller.model.name : t('spec.rulebased'),
+                // Config snapshot for the results export (self-describing runs).
+                // Deliberately NO endpoint/keys — results files get shared.
+                modelConfig: controller ? {
+                    provider: controller.model.provider || 'auto',
+                    modelId: controller.model.model || '',
+                    contextBudget: controller.model.contextSize || 32768,
+                    minimizeTokens: !!controller.model.minimizeTokens,
+                    language: controller.model.language || 'en'
+                } : null,
                 workers: ai.units.filter(u => u.type === 'worker').length,
                 military: ai.units.filter(u => u.type !== 'worker').length,
                 buildings: ai.buildings.length,
@@ -2059,6 +2096,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                     timeouts: st.timeouts, networkErrors: st.networkErrors, parseFails: st.parseFails,
                     contextOverflows: ctxOv,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
+                    promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
                     attempted: st.actionsAttempted, succeeded: st.actionsSucceeded,
                     successRate: st.actionsAttempted ? st.actionsSucceeded / st.actionsAttempted : 0,
                     formatOk: responded > 0 ? (responded - st.parseFails) / responded : 0,
@@ -2134,6 +2172,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                         <div class="sum-metric"><span>✅ ${t('sum.mSuccess')}</span><b>${Math.round(m.successRate * 100)}%</b><i>${m.succeeded}/${m.attempted}</i></div>
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
+                        <div class="sum-metric"><span>\u{1FA99} ${t('sum.mTokens')}</span><b>${this.fmtTokens(m.promptTokens + m.completionTokens)}</b><i>${(m.promptTokens + m.completionTokens) ? t('sum.mTokSplit', { p: this.fmtTokens(m.promptTokens), c: this.fmtTokens(m.completionTokens) }) : t('sum.mTokNone')}</i></div>
                         <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
                     </div>
                     <div class="sum-actions">${topActions || `<span class="sum-chip">${t('sum.noActions')}</span>`}</div>
@@ -2145,7 +2184,11 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         document.getElementById('summaryLegend').textContent = t('sum.legend');
 
         // Keep the computed report so the spectator can save it to a file.
-        this._lastSummary = { reports, reason, durStr, playerCount: players.length };
+        this._lastSummary = {
+            reports, reason, durStr, playerCount: players.length,
+            mapSeed: game.mapSeed || null,
+            difficulty: game.difficulty || 'easy'
+        };
 
         this.showScreen('arenaSummaryScreen');
     }
@@ -2164,6 +2207,8 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         L.push(`- **Outcome:** ${this.summaryReasonText(reason)}`);
         L.push(`- **Duration:** ${durStr}`);
         L.push(`- **Players:** ${playerCount}`);
+        L.push(`- **Difficulty:** ${summary.difficulty || 'easy'}`);
+        L.push(`- **Map seed:** ${summary.mapSeed ? `\`${summary.mapSeed}\` (reproducible)` : 'random'}`);
 
         const winner = reports.find(r => r.isWinner);
         L.push(`- **Winner:** ${winner ? `${winner.model} (${winner.civName}, ${winner.isLLM ? 'LLM' : 'rule-based'}) — ${winner.power} pts` : 'none (draw)'}`);
@@ -2177,6 +2222,10 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             L.push(`### ${rank}. ${r.model} — ${r.civName}${flags.length ? ` _(${flags.join(', ')})_` : ''}`);
             L.push('');
             L.push(`- Controller: ${r.isLLM ? 'LLM' : 'rule-based AI'}`);
+            if (r.modelConfig) {
+                const mc = r.modelConfig;
+                L.push(`- Model config: provider ${mc.provider} · model \`${mc.modelId || 'auto'}\` · context budget ${mc.contextBudget} · history ${mc.minimizeTokens ? 'compact (minimize tokens)' : 'multi-turn'} · language ${mc.language}`);
+            }
             L.push(`- End power score: ${r.power}`);
             L.push(`- Final state: ${r.ageName} age · ${r.workers} workers · ${r.military} military · ${r.buildings} buildings`);
             L.push(`- Resources: ${r.food} food · ${r.wood} wood · ${r.stone} stone · ${r.gold} gold`);
@@ -2190,6 +2239,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 L.push(`- Reliability: ${Math.round(m.reliability * 100)}%`);
                 L.push(`- Latency: avg ${(m.avgLatency / 1000).toFixed(1)}s (min ${(m.minLatency / 1000).toFixed(1)}s, max ${(m.maxLatency / 1000).toFixed(1)}s)`);
                 L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} · invalid ${m.invalidActions} · rejected ${m.rejected} · context-overflows ${m.contextOverflows || 0}`);
+            L.push(`- Tokens: ${(m.promptTokens + m.completionTokens) ? `${m.promptTokens} prompt + ${m.completionTokens} completion = ${m.promptTokens + m.completionTokens}` : 'not reported by endpoint'}`);
                 if (r.tags && r.tags.length) L.push(`- Behavior: ${r.tags.map(x => x.t).join(', ')}`);
                 const actions = Object.entries(m.actionCounts || {}).sort((a, b) => b[1] - a[1])
                     .map(([k, v]) => `${k}·${v}`).join(', ');
