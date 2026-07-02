@@ -133,56 +133,100 @@ class TerrainManager {
 
     // Theme-aware ambient ground cover (purely cosmetic). One InstancedMesh per
     // prop kind = one draw call for hundreds of instances. Themes follow the
-    // difficulty maps: Summer Valley is lush (grass tufts + flowers), Winter
-    // Valley is sparse and frosted (pale tufts + snow patches, NO flowers), the
-    // Desert is dry (shrubs + rocks, NO grass or flowers). Placement uses
-    // this.rand(), so a map seed reproduces the identical scatter.
+    // difficulty maps: Summer Valley is lush (bushes + flowers), Winter Valley is
+    // sparse and frosted (snow-capped bushes + snow patches, NO flowers), the
+    // Desert is dry (flat olive bushes + rust rocks, NO grass or flowers).
+    // Placement uses this.rand(), so a map seed reproduces the identical scatter.
     generateAmbientProps() {
         const half = this.size / 2 - 28; // keep off the beach ring
-        const scatter = (geo, colorHex, count, yBase, opts = {}) => {
-            if (count <= 0) return;
+
+        // Place one InstancedMesh from an explicit entry list ({x,y,z,ry,sx,sy,sz}).
+        const scatterAt = (geo, colorHex, entries, opts = {}) => {
+            if (!entries.length) return;
             const mat = new THREE.MeshLambertMaterial({ color: colorHex });
             if (opts.opacity != null) { mat.transparent = true; mat.opacity = opts.opacity; }
-            const inst = new THREE.InstancedMesh(geo, mat, count);
+            const inst = new THREE.InstancedMesh(geo, mat, entries.length);
             inst.frustumCulled = false; // instances span the whole map
             inst.receiveShadow = true;
             const dummy = new THREE.Object3D();
-            const sMin = opts.sMin || 0.7, sMax = opts.sMax || 1.4;
-            for (let i = 0; i < count; i++) {
-                const s = sMin + this.rand() * (sMax - sMin);
-                dummy.position.set((this.rand() * 2 - 1) * half, yBase * s, (this.rand() * 2 - 1) * half);
-                dummy.rotation.set(0, this.rand() * Math.PI * 2, 0);
-                dummy.scale.setScalar(s);
+            entries.forEach((e, i) => {
+                dummy.position.set(e.x, e.y, e.z);
+                dummy.rotation.set(0, e.ry || 0, 0);
+                dummy.scale.set(e.sx, e.sy, e.sz);
                 dummy.updateMatrix();
                 inst.setMatrixAt(i, dummy.matrix);
-            }
+            });
             inst.instanceMatrix.needsUpdate = true;
             this.scene.add(inst);
             this.propMeshes.push(inst);
         };
 
-        const tuftGeo = new THREE.ConeGeometry(0.17, 0.55, 5);
-        const pebbleGeo = new THREE.DodecahedronGeometry(0.16, 0);
+        // Random uniform scatter (uniform footprint, optional vertical flattening).
+        const scatter = (geo, colorHex, count, yBase, opts = {}) => {
+            const sMin = opts.sMin || 0.7, sMax = opts.sMax || 1.4, fl = opts.flatten || 1;
+            const entries = [];
+            for (let i = 0; i < count; i++) {
+                const s = sMin + this.rand() * (sMax - sMin);
+                entries.push({
+                    x: (this.rand() * 2 - 1) * half, y: yBase * s, z: (this.rand() * 2 - 1) * half,
+                    ry: this.rand() * Math.PI * 2, sx: s, sy: s * fl, sz: s
+                });
+            }
+            scatterAt(geo, colorHex, entries, opts);
+        };
+
+        // Low-poly BUSHES (the old cone "tufts" read as spikes): a squashed
+        // icosahedron blob, most with a smaller companion blob clumped beside it
+        // in a second shade, plus an optional snow cap (winter). 2–3 draw calls.
+        const bushGeo = new THREE.IcosahedronGeometry(0.36, 1);
+        const makeBushes = (count, colorMain, colorSide, opts = {}) => {
+            const main = [], side = [], caps = [];
+            const squash = opts.squash || 0.6;
+            const sMin = opts.sMin || 0.8, sMax = opts.sMax || 1.7;
+            for (let i = 0; i < count; i++) {
+                const x = (this.rand() * 2 - 1) * half, z = (this.rand() * 2 - 1) * half;
+                const s = sMin + this.rand() * (sMax - sMin);
+                main.push({ x, y: 0.36 * squash * s, z, ry: this.rand() * Math.PI * 2, sx: s, sy: s * squash, sz: s });
+                if (this.rand() < 0.7) {
+                    const a = this.rand() * Math.PI * 2, d = 0.34 * s;
+                    const s2 = s * (0.45 + this.rand() * 0.25);
+                    side.push({ x: x + Math.cos(a) * d, y: 0.36 * squash * s2, z: z + Math.sin(a) * d, ry: this.rand() * Math.PI * 2, sx: s2, sy: s2 * squash, sz: s2 });
+                }
+                if (opts.snowCaps) {
+                    caps.push({ x, y: 0.36 * squash * s * 1.55, z, ry: this.rand() * Math.PI * 2, sx: s * 0.72, sy: s * 0.24, sz: s * 0.72 });
+                }
+            }
+            scatterAt(bushGeo, colorMain, main);
+            scatterAt(bushGeo, colorSide, side);
+            if (caps.length) scatterAt(bushGeo, 0xf4f7f9, caps);
+        };
+
+        // Ambient STONES: flat, rounded, warm/dark-toned river pebbles —
+        // deliberately nothing like the harvestable stone nodes (big angular
+        // 0x808080 GRAY dodecahedra), so decoration can't be mistaken for a
+        // resource.
+        const pebbleGeo = new THREE.SphereGeometry(0.17, 6, 5);
+
         if (this.difficulty === 'hard') {
-            // Desert: dry shrubs, rocks, bleached pebbles.
-            scatter(new THREE.ConeGeometry(0.26, 0.4, 5), 0x8a7d43, 700, 0.2, { sMin: 0.9, sMax: 1.8 });
-            scatter(new THREE.DodecahedronGeometry(0.3, 0), 0xb09a6a, 420, 0.18);
-            scatter(pebbleGeo, 0xd8cfae, 220, 0.09);
+            // Desert: flat dry olive bushes, rust-brown rocks, dune-worn pebbles.
+            makeBushes(420, 0x8a7d43, 0x9c8f55, { squash: 0.5, sMin: 0.7, sMax: 1.5 });
+            scatter(new THREE.DodecahedronGeometry(0.3, 0), 0x9a7a58, 550, 0.16, { flatten: 0.7 });
+            scatter(pebbleGeo, 0x9c8a6b, 320, 0.07, { flatten: 0.45 });
         } else if (this.difficulty === 'medium') {
-            // Winter Valley: sparse frosted tufts, snow patches, cold pebbles.
-            scatter(tuftGeo, 0x6f8f7c, 900, 0.26, { sMin: 0.9, sMax: 1.7 });
+            // Winter Valley: frosted bushes with snow caps, snow patches, slate pebbles.
+            makeBushes(450, 0x5f8471, 0x6f957f, { snowCaps: true });
             const snowGeo = new THREE.CircleGeometry(0.9, 8);
             snowGeo.rotateX(-Math.PI / 2);
-            scatter(snowGeo, 0xf2f6f8, 420, 0.03, { opacity: 0.9, sMin: 0.6, sMax: 1.8 });
-            scatter(pebbleGeo, 0x8d949e, 300, 0.09);
+            scatter(snowGeo, 0xf2f6f8, 550, 0.03, { opacity: 0.9, sMin: 0.6, sMax: 1.8 });
+            scatter(pebbleGeo, 0x5d6672, 380, 0.07, { flatten: 0.45 });
         } else {
-            // Summer Valley: lush green tufts, flowers in three colours, pebbles.
-            scatter(tuftGeo, 0x4e9e45, 2400, 0.26, { sMin: 1.0, sMax: 1.9 });
+            // Summer Valley: lush green bushes, flowers in three colours, earth pebbles.
+            makeBushes(680, 0x3f8f3d, 0x55a84e);
             const flowerGeo = new THREE.SphereGeometry(0.11, 6, 5);
             scatter(flowerGeo, 0xf5f2e8, 220, 0.3, { sMin: 0.8, sMax: 1.2 });
             scatter(flowerGeo, 0xffd75e, 220, 0.3, { sMin: 0.8, sMax: 1.2 });
             scatter(flowerGeo, 0xe88bb0, 180, 0.3, { sMin: 0.8, sMax: 1.2 });
-            scatter(pebbleGeo, 0x8f938f, 260, 0.09);
+            scatter(pebbleGeo, 0x7d746a, 340, 0.07, { flatten: 0.45 });
         }
     }
 

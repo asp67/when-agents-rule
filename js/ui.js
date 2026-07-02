@@ -156,6 +156,9 @@ class UIManager {
         // A/B comparisons between models. Empty = a fresh random map every game.
         const seedEl = document.getElementById('setupSeed');
         if (seedEl) seedEl.value = (campaign ? this._campaignConfig.seed : this._arenaConfig.seed) || '';
+        // Map/difficulty lives on the setup screens (shared global setting).
+        const diffEl = document.getElementById('setupDifficulty');
+        if (diffEl && typeof getDifficulty === 'function') diffEl.value = getDifficulty();
     }
 
     setSetupSeed(v) {
