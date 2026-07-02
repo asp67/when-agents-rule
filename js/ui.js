@@ -815,6 +815,12 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         const cfg = this._arenaConfig;
         cfg.models = cfg.models.filter(m => m.id !== id);
         cfg.slots.forEach(s => { if (s.control === id) s.control = 'ki'; });
+        // The model library is SHARED with Campaign — sweep its opponent slots too,
+        // or they keep pointing at the deleted model until the next full reload.
+        if (this._campaignConfig) {
+            this._campaignConfig.slots.forEach(s => { if (s.control === id) s.control = 'ki'; });
+            this.saveCampaignConfig();
+        }
         this.saveArenaConfig();
         this.renderArenaLibrary();
         this.renderArenaSlots();
@@ -870,7 +876,10 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             const provNote = res.provider ? ` [${res.provider}]` : '';
             m._status = { cls: 'ok', text: n ? t('ar.testOk', { prov: provNote, n }) : t('ar.testOkNoList', { prov: provNote }) };
         } else {
-            m._status = { cls: 'err', text: '✗ ' + res.error };
+            // errorCode maps to a localized ar.err.* message; fall back to the raw
+            // (English) error string for anything unmapped.
+            const msg = res.errorCode ? t('ar.err.' + res.errorCode, { detail: res.errorDetail || '' }) : res.error;
+            m._status = { cls: 'err', text: '✗ ' + msg };
         }
         this.saveArenaConfig();
         this.renderArenaLibrary();

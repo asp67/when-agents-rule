@@ -307,14 +307,19 @@ class OpenAIAIManager {
 
     // Probe an endpoint: returns { ok, models:[], error }. Used by the setup UI's
     // "Test connection" button so beginners can verify auth and pick a model.
+    // Failures return { ok:false, errorCode, errorDetail?, error } — errorCode maps
+    // to an ar.err.* i18n key so the UI shows the message in the active GUI language
+    // (these used to be hardcoded German regardless of language); `error` stays an
+    // English fallback for logs/non-UI callers.
     static async testConnection(endpoint, auth, provider = 'auto', timeoutMs = 9000) {
-        if (!endpoint) return { ok: false, error: 'Keine Endpoint-URL angegeben.' };
+        if (!endpoint) return { ok: false, errorCode: 'noEndpoint', error: 'No endpoint URL set.' };
         const prov = provider === 'auto' ? OpenAIAIManager.detectProvider(endpoint) : provider;
         let headers;
         try {
             headers = await OpenAIAIManager.buildAuthHeaders(auth, prov);
         } catch (e) {
-            return { ok: false, error: 'Authentifizierung fehlgeschlagen: ' + (e.message || e) };
+            const detail = (e && e.message) || String(e);
+            return { ok: false, errorCode: 'authFailed', errorDetail: detail, error: 'Authentication failed: ' + detail };
         }
         // Each provider lists models from a different path.
         const url = prov === 'ollama'
@@ -323,9 +328,9 @@ class OpenAIAIManager {
         try {
             const resp = await OpenAIAIManager.fetchWithTimeout(url, { headers, mode: 'cors' }, timeoutMs);
             if (!resp.ok) {
-                let detail = `HTTP ${resp.status} ${resp.statusText || ''}`.trim();
-                if (resp.status === 401 || resp.status === 403) detail += ' — Authentifizierung abgelehnt. Prüfe Schlüssel/Header.';
-                return { ok: false, error: detail, provider: prov };
+                const detail = `${resp.status} ${resp.statusText || ''}`.trim();
+                const code = (resp.status === 401 || resp.status === 403) ? 'httpAuth' : 'http';
+                return { ok: false, errorCode: code, errorDetail: detail, error: 'HTTP ' + detail, provider: prov };
             }
             const data = await resp.json();
             let models;
@@ -350,9 +355,11 @@ class OpenAIAIManager {
             }
             return { ok: true, models, provider: prov, contextById };
         } catch (e) {
-            const msg = (e && e.name === 'AbortError') ? 'Zeitüberschreitung — Endpoint nicht erreichbar.'
-                : 'Verbindung fehlgeschlagen: ' + (e.message || e) + ' (CORS? Endpoint offline?)';
-            return { ok: false, error: msg, provider: prov };
+            if (e && e.name === 'AbortError') {
+                return { ok: false, errorCode: 'timeout', error: 'Timed out — endpoint unreachable.', provider: prov };
+            }
+            const detail = (e && e.message) || String(e);
+            return { ok: false, errorCode: 'network', errorDetail: detail, error: 'Connection failed: ' + detail + ' (CORS? Endpoint offline?)', provider: prov };
         }
     }
 

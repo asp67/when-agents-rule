@@ -2716,7 +2716,7 @@ class Game {
         );
 
         if (playerWonders.length > 0) {
-            const required = (this.wonderRequired || 240) * 1000;
+            const required = (this.wonderRequired || 600) * 1000;
             this.wonderTimer += deltaTime;
             // Spectacular one-time announcement the moment the Wonder is finished.
             if (!this._wonderAnnounced) {
@@ -2736,10 +2736,12 @@ class Game {
             if (this._wonderAnnounced) { this._wonderAnnounced = false; this.ui.hideWonderTimer(); }
         }
 
-        // Check if all AI players are defeated
-        const activeAI = this.aiManager.aiPlayers.filter(ai => 
-            ai.units.length > 0 || ai.buildings.length > 0
-        );
+        // Check if all AI players are defeated — SAME elimination rule as the arena
+        // (isPlayerEliminated: no army, no affordable military production, no TC and
+        // no way to rebuild one). Previously campaign required razing every last
+        // unit/building, so games dragged on hunting one fleeing worker while the
+        // identical board state would already have ended an arena match.
+        const activeAI = this.aiManager.aiPlayers.filter(ai => !this.isPlayerEliminated(ai));
 
         if (activeAI.length === 0 && this.aiManager.aiPlayers.length > 0) {
             this.ui.showVictory();
@@ -2747,8 +2749,8 @@ class Game {
             return;
         }
 
-        // Check if player is defeated (skip in spectator mode)
-        if (!this.spectatorMode && this.player.units.length === 0 && this.player.buildings.length === 0) {
+        // Check if player is defeated (skip in spectator mode) — same rule.
+        if (!this.spectatorMode && this.isPlayerEliminated(this.player)) {
             this.ui.showDefeat();
             this.gameStarted = false;
             return;
@@ -2803,7 +2805,7 @@ class Game {
         if (!players || players.length === 0) return;
 
         const wonderTypes = ['pyramid', 'akropolis', 'firetemple', 'shrine'];
-        const required = (this.wonderRequired || 180) * 1000;
+        const required = (this.wonderRequired || 600) * 1000;
         let wonderHolder = null;
         players.forEach(ai => {
             const hasWonder = ai.buildings.some(b => (b.isWonder || wonderTypes.includes(b.type)) && !b.underConstruction);
