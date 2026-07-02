@@ -1584,9 +1584,11 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         this.updateArenaStatus();
 
         // Periodic refresh
-        this._spectatorIntervals.push(setInterval(() => this.updateSpectatorPlayerList(), 1500));
-        this._spectatorIntervals.push(setInterval(() => this.updateDecisionLog(), 1000));
-        this._spectatorIntervals.push(setInterval(() => this.updateArenaStatus(), 1000));
+        // Skip dashboard DOM work while the tab is hidden — the background driver
+        // keeps the SIMULATION running, but nobody is looking at the leaderboard.
+        this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSpectatorPlayerList(); }, 1500));
+        this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateDecisionLog(); }, 1000));
+        this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateArenaStatus(); }, 1000));
     }
 
     // Stop spectator refresh timers (call when leaving the arena)

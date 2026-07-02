@@ -521,22 +521,28 @@ class Game {
 
     gameLoop() {
         if (!this.gameStarted) return;
+        this.initBackgroundDriver(); // idempotent; first call spins up the worker
+        this.tick();
+        requestAnimationFrame(() => this.gameLoop());
+    }
 
+    // One logic tick: advance the simulation by the real time elapsed since the
+    // previous tick. Driven by requestAnimationFrame while the tab is visible and
+    // by the background worker while it is hidden — both paths share
+    // lastFrameTime, so interleaved calls simply split the elapsed time between
+    // them (no double-simulation possible).
+    tick() {
         const currentTime = Date.now();
         let elapsed = currentTime - this.lastFrameTime;
         this.lastFrameTime = currentTime;
         if (!(elapsed > 0)) elapsed = 0;
-        // When the tab loses focus the browser throttles (or pauses) requestAnimationFrame,
-        // so frames arrive far apart. The OLD code clamped the step to 100ms and DISCARDED
-        // the rest, so the game clock fell behind real time — timed mechanics (age-up,
-        // research, production) lagged and only "caught up" once focus returned. Instead we
-        // keep the full elapsed time (capped so a long hidden period can't freeze us) and
-        // feed it to the simulation in safe ≤100ms slices, which keeps timers in sync with
-        // real time without a single giant step teleporting units.
-        const MAX_CATCHUP = 2000; // ms of real time we'll replay in one frame at most
+        // Keep the FULL elapsed time (don't discard like the old 100ms clamp did),
+        // but cap a single catch-up so an extreme gap (machine slept) can't freeze
+        // the tab replaying it. Fed to the sim in safe ≤100ms slices below.
+        const MAX_CATCHUP = 2000; // ms of real time we'll replay in one tick at most
         const simTime = Math.min(elapsed, MAX_CATCHUP);
 
-        // Coarse, once-per-frame work (AI decision cadence and population don't need slicing).
+        // Coarse, once-per-tick work (AI decision cadence and population don't need slicing).
         this.aiManager.update(simTime);
         if (this.openAIAIManager) {
             this.openAIAIManager.update(simTime);
@@ -554,21 +560,52 @@ class Game {
             remaining -= step;
         }
 
-        // UI / rendering: once per frame.
-        this.updateProgressBar();
-        this.ui.updateResources(this.player.resources);
-        this.ui.updateAge(this.player.age);
+        // HUD/minimap work is pointless while the tab is hidden (background ticks)
+        // — skip it. Win conditions ALWAYS run so a match can end unattended.
+        const hidden = (typeof document !== 'undefined') && document.hidden;
+        if (!hidden) {
+            this.updateProgressBar();
+            this.ui.updateResources(this.player.resources);
+            this.ui.updateAge(this.player.age);
+        }
         this.checkWinConditions(simTime);
 
-        // Update minimap periodically (every ~500ms)
-        if (!this.minimapUpdateTimer) this.minimapUpdateTimer = 0;
-        this.minimapUpdateTimer += simTime;
-        if (this.minimapUpdateTimer >= 500) {
-            this.minimapUpdateTimer = 0;
-            this.updateMinimap();
+        // Update minimap periodically (every ~500ms; skipped while hidden)
+        if (!hidden) {
+            if (!this.minimapUpdateTimer) this.minimapUpdateTimer = 0;
+            this.minimapUpdateTimer += simTime;
+            if (this.minimapUpdateTimer >= 500) {
+                this.minimapUpdateTimer = 0;
+                this.updateMinimap();
+            }
         }
+    }
 
-        requestAnimationFrame(() => this.gameLoop());
+    // Background-tab driver: browsers pause requestAnimationFrame in hidden tabs
+    // and clamp page timers to once a MINUTE after ~5 min (intensive throttling),
+    // which used to freeze a running match the moment you switched tabs. Timers
+    // inside a dedicated Web Worker are exempt from that clamp, so a tiny inline
+    // worker posts a tick every 250ms; we act on it only while the tab is hidden
+    // and a match is running. Rendering (the renderer's own rAF loop) stays
+    // paused — the SIMULATION and the models' turns keep going. When the tab
+    // becomes visible again the pending rAF fires and the normal loop resumes.
+    // Limits: a discarded/suspended tab or a sleeping machine still pauses play.
+    initBackgroundDriver() {
+        if (this._bgDriverTried) return;
+        this._bgDriverTried = true;
+        try {
+            const src = "setInterval(function(){ postMessage(0); }, 250);";
+            const url = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+            this._bgWorker = new Worker(url);
+            URL.revokeObjectURL(url);
+            this._bgWorker.onmessage = () => {
+                if (this.gameStarted && typeof document !== 'undefined' && document.hidden) this.tick();
+            };
+        } catch (e) {
+            // e.g. blocked by CSP — the game still runs, it just pauses when hidden.
+            console.warn('[Game] Background driver unavailable (worker blocked):', e);
+            this._bgWorker = null;
+        }
     }
 
     // One fixed simulation slice (dt ≤ 100ms). Called once for a normal 60fps frame,
