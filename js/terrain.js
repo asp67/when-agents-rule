@@ -110,6 +110,25 @@ class TerrainManager {
         this.water.receiveShadow = false;
         this.scene.add(this.water);
 
+        // --- Shoreline foam: soft white surf band hugging the island footprint,
+        // sitting just above the water. Its opacity pulses gently (renderer).
+        if (this.foam) { this.scene.remove(this.foam); this.foam.geometry.dispose(); this.foam.material.dispose(); }
+        const outer = this.size / 2 + 9, inner = this.size / 2 - 2;
+        const foamShape = new THREE.Shape();
+        foamShape.moveTo(-outer, -outer); foamShape.lineTo(outer, -outer);
+        foamShape.lineTo(outer, outer); foamShape.lineTo(-outer, outer); foamShape.closePath();
+        const foamHole = new THREE.Path();
+        foamHole.moveTo(-inner, -inner); foamHole.lineTo(inner, -inner);
+        foamHole.lineTo(inner, inner); foamHole.lineTo(-inner, inner); foamHole.closePath();
+        foamShape.holes.push(foamHole);
+        this.foam = new THREE.Mesh(
+            new THREE.ShapeGeometry(foamShape),
+            new THREE.MeshBasicMaterial({ color: 0xeef6f8, transparent: true, opacity: 0.4, depthWrite: false })
+        );
+        this.foam.rotation.x = -Math.PI / 2;
+        this.foam.position.y = -2.15;
+        this.scene.add(this.foam);
+
         // (Beach is baked into the ground edge vertices above — no separate plane.)
 
         // Generate resource nodes

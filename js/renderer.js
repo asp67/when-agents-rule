@@ -301,6 +301,57 @@ class GameRenderer {
         });
         this.skyDome = new THREE.Mesh(skyGeo, skyMat);
         this.scene.add(this.skyDome);
+
+        // Sun glow: a soft radial sprite fixed in the sun-light's direction (child
+        // of the dome, so it follows the camera like the sky itself).
+        const sunCanvas = document.createElement('canvas');
+        sunCanvas.width = sunCanvas.height = 128;
+        const sctx = sunCanvas.getContext('2d');
+        const grad = sctx.createRadialGradient(64, 64, 6, 64, 64, 64);
+        grad.addColorStop(0, 'rgba(255, 246, 220, 1)');
+        grad.addColorStop(0.25, 'rgba(255, 236, 190, 0.85)');
+        grad.addColorStop(0.6, 'rgba(255, 226, 170, 0.25)');
+        grad.addColorStop(1, 'rgba(255, 226, 170, 0)');
+        sctx.fillStyle = grad;
+        sctx.fillRect(0, 0, 128, 128);
+        const sun = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: new THREE.CanvasTexture(sunCanvas), depthWrite: false, depthTest: true, fog: false
+        }));
+        const sunDir = new THREE.Vector3(120, 180, 80).normalize();
+        sun.position.copy(sunDir.multiplyScalar(820));
+        sun.scale.set(260, 260, 1);
+        this.skyDome.add(sun);
+
+        // A few slow-drifting billboard clouds on a rotating child layer (the dome
+        // gradient is Y-rotation-invariant, but the SUN must not drift — so only
+        // this layer spins, see animate()).
+        const cloudCanvas = document.createElement('canvas');
+        cloudCanvas.width = 256; cloudCanvas.height = 128;
+        const cctx = cloudCanvas.getContext('2d');
+        const puff = (x, y, r) => {
+            const g = cctx.createRadialGradient(x, y, r * 0.15, x, y, r);
+            g.addColorStop(0, 'rgba(255,255,255,0.9)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            cctx.fillStyle = g;
+            cctx.fillRect(x - r, y - r, r * 2, r * 2);
+        };
+        puff(70, 72, 52); puff(120, 58, 62); puff(175, 74, 50); puff(135, 84, 44);
+        const cloudTex = new THREE.CanvasTexture(cloudCanvas);
+        this.cloudLayer = new THREE.Group();
+        for (let i = 0; i < 7; i++) {
+            const c = new THREE.Sprite(new THREE.SpriteMaterial({
+                map: cloudTex, depthWrite: false, depthTest: true, fog: false,
+                opacity: 0.4 + (i % 3) * 0.12
+            }));
+            const az = (i / 7) * Math.PI * 2 + (i * 1.7) % 1;   // spread around the sky
+            const el = 0.28 + ((i * 0.37) % 0.3);               // upper hemisphere band
+            const r = 700 + (i % 3) * 60;
+            c.position.set(Math.cos(az) * Math.cos(el) * r, Math.sin(el) * r, Math.sin(az) * Math.cos(el) * r);
+            const w = 220 + (i % 4) * 70;
+            c.scale.set(w, w * 0.45, 1);
+            this.cloudLayer.add(c);
+        }
+        this.skyDome.add(this.cloudLayer);
     }
 
     addUnit(unit) {
@@ -1241,6 +1292,41 @@ class GameRenderer {
         building.healthBarCtx = healthCtx;
         building.healthBarTexture = healthTexture;
         building.mesh = group;
+
+        // Floating civ banner over Town Centers: readable from any zoom, so a
+        // spectator can tell whose base is whose at a glance. Child of the group,
+        // so fog visibility toggling covers it too.
+        if (building.type === 'town_center' && typeof getCivilization === 'function') {
+            const civ = getCivilization(building.civilization);
+            if (civ) {
+                const bCanvas = document.createElement('canvas');
+                bCanvas.width = 256; bCanvas.height = 64;
+                const bctx = bCanvas.getContext('2d');
+                const colHex = '#' + (civ.color || 0xffffff).toString(16).padStart(6, '0');
+                bctx.fillStyle = 'rgba(10, 14, 24, 0.72)';
+                bctx.strokeStyle = colHex;
+                bctx.lineWidth = 5;
+                const r = 18;
+                bctx.beginPath();
+                bctx.moveTo(r, 3); bctx.lineTo(256 - r, 3); bctx.arcTo(253, 3, 253, 3 + r, r);
+                bctx.lineTo(253, 61 - r); bctx.arcTo(253, 61, 253 - r, 61, r);
+                bctx.lineTo(r, 61); bctx.arcTo(3, 61, 3, 61 - r, r);
+                bctx.lineTo(3, 3 + r); bctx.arcTo(3, 3, 3 + r, 3, r);
+                bctx.closePath(); bctx.fill(); bctx.stroke();
+                const name = (typeof t === 'function' ? t('civ.' + building.civilization + '.name') : null) || civ.name || building.civilization;
+                bctx.font = 'bold 30px sans-serif';
+                bctx.textAlign = 'center';
+                bctx.textBaseline = 'middle';
+                bctx.fillStyle = colHex;
+                bctx.fillText(name, 128, 34);
+                const banner = new THREE.Sprite(new THREE.SpriteMaterial({
+                    map: new THREE.CanvasTexture(bCanvas), depthTest: false, depthWrite: false
+                }));
+                banner.position.set(0, hbY + 2.6, 0);
+                banner.scale.set(7.5, 1.9, 1);
+                group.add(banner);
+            }
+        }
         
         // Food indicator for farms (Sprite above farm showing food level)
         if (building.type === 'farm') {
@@ -1585,10 +1671,15 @@ class GameRenderer {
         // Update camera based on keyboard input
         this.updateCamera(deltaTime * 1000);
 
-        // Gentle water motion (cosmetic): the sea slowly breathes around the island.
+        // Gentle water motion (cosmetic): the sea slowly breathes around the island,
+        // the surf band pulses with it, and the clouds drift.
         if (this.terrain && this.terrain.water) {
             this.terrain.water.position.y = -2.4 + Math.sin(time / 1700) * 0.14;
         }
+        if (this.terrain && this.terrain.foam) {
+            this.terrain.foam.material.opacity = 0.34 + 0.14 * Math.sin(time / 1100);
+        }
+        if (this.cloudLayer) this.cloudLayer.rotation.y += deltaTime * 0.004;
 
         // Spectator action camera: ease toward the hottest fight, or drift slowly
         // around the map when nothing is burning. Keeps the current zoom/angle
