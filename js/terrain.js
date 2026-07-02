@@ -54,6 +54,13 @@ class TerrainManager {
             else this.scene.remove(res.mesh);
         });
         this.resources = [];
+        // Ambient ground-cover props from the previous map (instanced; disposed fully)
+        (this.propMeshes || []).forEach(m => {
+            this.scene.remove(m);
+            if (m.geometry) m.geometry.dispose();
+            if (m.material) m.material.dispose();
+        });
+        this.propMeshes = [];
 
         // --- Ground: gently rolling, vertex-coloured grassland ---
         const seg = Math.min(140, Math.max(48, Math.floor(this.size / 7)));
@@ -117,8 +124,66 @@ class TerrainManager {
         // Add gold deposits
         this.generateGold();
 
+        // Ambient ground cover, themed per difficulty
+        this.generateAmbientProps();
+
         // Add grid lines
         this.addGridLines();
+    }
+
+    // Theme-aware ambient ground cover (purely cosmetic). One InstancedMesh per
+    // prop kind = one draw call for hundreds of instances. Themes follow the
+    // difficulty maps: Summer Valley is lush (grass tufts + flowers), Winter
+    // Valley is sparse and frosted (pale tufts + snow patches, NO flowers), the
+    // Desert is dry (shrubs + rocks, NO grass or flowers). Placement uses
+    // this.rand(), so a map seed reproduces the identical scatter.
+    generateAmbientProps() {
+        const half = this.size / 2 - 28; // keep off the beach ring
+        const scatter = (geo, colorHex, count, yBase, opts = {}) => {
+            if (count <= 0) return;
+            const mat = new THREE.MeshLambertMaterial({ color: colorHex });
+            if (opts.opacity != null) { mat.transparent = true; mat.opacity = opts.opacity; }
+            const inst = new THREE.InstancedMesh(geo, mat, count);
+            inst.frustumCulled = false; // instances span the whole map
+            inst.receiveShadow = true;
+            const dummy = new THREE.Object3D();
+            const sMin = opts.sMin || 0.7, sMax = opts.sMax || 1.4;
+            for (let i = 0; i < count; i++) {
+                const s = sMin + this.rand() * (sMax - sMin);
+                dummy.position.set((this.rand() * 2 - 1) * half, yBase * s, (this.rand() * 2 - 1) * half);
+                dummy.rotation.set(0, this.rand() * Math.PI * 2, 0);
+                dummy.scale.setScalar(s);
+                dummy.updateMatrix();
+                inst.setMatrixAt(i, dummy.matrix);
+            }
+            inst.instanceMatrix.needsUpdate = true;
+            this.scene.add(inst);
+            this.propMeshes.push(inst);
+        };
+
+        const tuftGeo = new THREE.ConeGeometry(0.17, 0.55, 5);
+        const pebbleGeo = new THREE.DodecahedronGeometry(0.16, 0);
+        if (this.difficulty === 'hard') {
+            // Desert: dry shrubs, rocks, bleached pebbles.
+            scatter(new THREE.ConeGeometry(0.26, 0.4, 5), 0x8a7d43, 700, 0.2, { sMin: 0.9, sMax: 1.8 });
+            scatter(new THREE.DodecahedronGeometry(0.3, 0), 0xb09a6a, 420, 0.18);
+            scatter(pebbleGeo, 0xd8cfae, 220, 0.09);
+        } else if (this.difficulty === 'medium') {
+            // Winter Valley: sparse frosted tufts, snow patches, cold pebbles.
+            scatter(tuftGeo, 0x6f8f7c, 900, 0.26, { sMin: 0.9, sMax: 1.7 });
+            const snowGeo = new THREE.CircleGeometry(0.9, 8);
+            snowGeo.rotateX(-Math.PI / 2);
+            scatter(snowGeo, 0xf2f6f8, 420, 0.03, { opacity: 0.9, sMin: 0.6, sMax: 1.8 });
+            scatter(pebbleGeo, 0x8d949e, 300, 0.09);
+        } else {
+            // Summer Valley: lush green tufts, flowers in three colours, pebbles.
+            scatter(tuftGeo, 0x4e9e45, 2400, 0.26, { sMin: 1.0, sMax: 1.9 });
+            const flowerGeo = new THREE.SphereGeometry(0.11, 6, 5);
+            scatter(flowerGeo, 0xf5f2e8, 220, 0.3, { sMin: 0.8, sMax: 1.2 });
+            scatter(flowerGeo, 0xffd75e, 220, 0.3, { sMin: 0.8, sMax: 1.2 });
+            scatter(flowerGeo, 0xe88bb0, 180, 0.3, { sMin: 0.8, sMax: 1.2 });
+            scatter(pebbleGeo, 0x8f938f, 260, 0.09);
+        }
     }
 
     // The map is split into four 90° wedges, one centred on each player's spawn

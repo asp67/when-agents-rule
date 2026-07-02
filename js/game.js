@@ -481,6 +481,7 @@ class Game {
         const target = ai.buildings.find(b => b.type === 'town_center')
             || ai.buildings[0] || (ai.units && ai.units[0]);
         if (!target) return;
+        this.disableActionCam(); // deliberate focus wins over the auto-director
         this.renderer.cameraTarget.set(target.x, 0, target.z);
         this.renderer.moveCameraTo(target.x, target.z);
     }
@@ -509,7 +510,9 @@ class Game {
             const worldZ = (y / rect.height) * terrainData.size - terrainData.size / 2;
 
             if (e.button === 0) {
-                // Left click: move camera to clicked position
+                // Left click: move camera to clicked position (manual input wins
+                // over the spectator action camera)
+                this.disableActionCam();
                 this.renderer.cameraTarget.set(worldX, 0, worldZ);
                 this.renderer.moveCameraTo(worldX, worldZ);
             } else if (e.button === 2) {
@@ -1142,6 +1145,30 @@ class Game {
         this._combatEvents = this._combatEvents || [];
         this._combatEvents.push({ x, z, t: now });
         if (this._combatEvents.length > 120) this._combatEvents.shift();
+    }
+
+    // Spectator action camera: toggled from the status bar. When on, the renderer
+    // eases the camera toward the hottest recent fight and drifts gently when the
+    // map is quiet. Any manual camera action switches it off — the user always wins.
+    toggleActionCam() {
+        this._actionCam = !this._actionCam;
+        const btn = document.getElementById('actionCamBtn');
+        if (btn) btn.classList.toggle('sb-on', this._actionCam);
+    }
+
+    disableActionCam() {
+        if (this._actionCam) this.toggleActionCam();
+    }
+
+    // Weighted centroid of the last 5s of combat events (fresh hits weigh more);
+    // null when nothing is burning.
+    getActionCamTarget() {
+        const now = Date.now();
+        const ev = (this._combatEvents || []).filter(e => now - e.t < 5000);
+        if (!ev.length) return null;
+        let sx = 0, sz = 0, sw = 0;
+        ev.forEach(e => { const w = 1 - (now - e.t) / 5000; sx += e.x * w; sz += e.z * w; sw += w; });
+        return sw > 0 ? { x: sx / sw, z: sz / sw } : null;
     }
 
     destroyTarget(target) {

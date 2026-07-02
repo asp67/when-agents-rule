@@ -1561,6 +1561,28 @@ class GameRenderer {
             this.terrain.water.position.y = -2.4 + Math.sin(time / 1700) * 0.14;
         }
 
+        // Spectator action camera: ease toward the hottest fight, or drift slowly
+        // around the map when nothing is burning. Keeps the current zoom/angle
+        // (only the look-at point moves); manual input turns the mode off.
+        if (typeof game !== 'undefined' && game && game._actionCam && game.spectatorMode && game.gameStarted) {
+            const offX = this.camera.position.x - this.cameraTarget.x;
+            const offY = this.camera.position.y - this.cameraTarget.y;
+            const offZ = this.camera.position.z - this.cameraTarget.z;
+            const hot = game.getActionCamTarget();
+            if (hot) {
+                const k = Math.min(1, deltaTime * 1.6);
+                this.cameraTarget.x += (hot.x - this.cameraTarget.x) * k;
+                this.cameraTarget.z += (hot.z - this.cameraTarget.z) * k;
+            } else {
+                const a = 0.00005 * (deltaTime * 1000); // slow cinematic drift
+                const cx = this.cameraTarget.x, cz = this.cameraTarget.z;
+                this.cameraTarget.x = cx * Math.cos(a) - cz * Math.sin(a);
+                this.cameraTarget.z = cx * Math.sin(a) + cz * Math.cos(a);
+            }
+            this.camera.position.set(this.cameraTarget.x + offX, this.cameraTarget.y + offY, this.cameraTarget.z + offZ);
+            this.camera.lookAt(this.cameraTarget);
+        }
+
         // Update unit positions for AI units only (player units are moved by game.js updateWorkerTasks/moveUnits)
         this.units.forEach(unit => {
             // Skip player units - they are moved by game.js to avoid double-movement
@@ -1766,6 +1788,7 @@ class GameRenderer {
             event.preventDefault();
         } else if (event.button === 0 && typeof game !== 'undefined' && game && game.spectatorMode) {
             // Spectator mode: left-click-drag pans the map (there are no units to select).
+            if (game.disableActionCam) game.disableActionCam(); // manual pan wins
             this.isPanDragging = true;
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;

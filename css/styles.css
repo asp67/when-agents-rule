@@ -1323,6 +1323,12 @@ body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
 /* ======================================================================
    ARENA "AUSWERTUNG" BUTTON + BENCHMARK SUMMARY SCREEN
    ====================================================================== */
+/* Action-camera toggle: teal while the auto-director is driving. */
+.sb-end.sb-on {
+    background: linear-gradient(145deg, #35b58c, #1f8d6b);
+    box-shadow: 0 0 10px rgba(78, 204, 163, 0.45);
+}
+
 .sb-end {
     pointer-events: auto;
     cursor: pointer;
