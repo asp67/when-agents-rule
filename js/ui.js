@@ -1466,7 +1466,7 @@ class UIManager {
                 id: wonderDef.id,
                 name: '🏛️ ' + tg(wonderDef.name),
                 cost: wonderDef.cost,
-                description: wonderDef.description ? tg(wonderDef.description) : t('wonder.descFallback', { s: (this.game.wonderRequired || 240) }),
+                description: wonderDef.description ? tg(wonderDef.description) : t('wonder.descFallback', { s: (this.game.wonderRequired || 600) }),
                 requiredAge: wonderDef.requiredAge || 'iron'
             });
         }
@@ -1566,7 +1566,7 @@ class UIManager {
     // Big one-time "Wonder built!" flash — it's a momentous event.
     announceWonder(wonder) {
         const name = (wonder && wonder.name) ? tg(wonder.name) : t('wonder.generic');
-        const holdSecs = this.game && this.game.wonderRequired ? this.game.wonderRequired : 240;
+        const holdSecs = this.game && this.game.wonderRequired ? this.game.wonderRequired : 600;
         const div = document.createElement('div');
         div.className = 'wonder-announce';
         div.innerHTML = `
@@ -1686,7 +1686,7 @@ class UIManager {
         // Wonder progress: show the furthest-along held Wonder among the AIs.
         const wEl = document.getElementById('arenaWonder');
         if (wEl) {
-            const reqMs = (this.game.wonderRequired || 240) * 1000;
+            const reqMs = (this.game.wonderRequired || 600) * 1000;
             let lead = null, leadHold = 0;
             players.forEach(ai => {
                 const holding = ai.buildings.some(b => b.isWonder && !b.underConstruction);

@@ -661,7 +661,7 @@ class OpenAIAIManager {
         if (!ai._knownEnemyBuildings) ai._knownEnemyBuildings = new Set();
         const enemyBuildings = [];
         const enemyWonders = [];
-        const required = (game.wonderRequired || 240);
+        const required = (game.wonderRequired || 600);
         game.getAllBuildings().forEach(bldg => {
             if (ai.buildings.includes(bldg)) return;
             if (bldg.health <= 0) { ai._knownEnemyBuildings.delete(bldg); return; } // destroyed
@@ -2323,7 +2323,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         game.renderer.addBuilding(wonder);
         game.applyBuilder(pick, wonder);
         const secs = Math.round((wonder.buildTime || 60000) / 1000);
-        return `OK - Started building the Wonder "${wonderDef.name}" (~${secs}s to build). Hold it for ${(game.wonderRequired || 240)}s after completion to WIN — defend it, rivals will rush it!`;
+        return `OK - Started building the Wonder "${wonderDef.name}" (~${secs}s to build). Hold it for ${(game.wonderRequired || 600)}s after completion to WIN — defend it, rivals will rush it!`;
     }
 
     executeMoveUnits(ai, game, unitIds, targetX, targetZ) {
