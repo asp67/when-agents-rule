@@ -240,6 +240,18 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
     background: rgba(78, 204, 163, 0.12);
     z-index: 6;
 }
+/* "✎ edited" chip on a setup slot whose system prompt deviates from the
+   shared template (derive-unless-edited model). */
+.slot-prompt-badge {
+    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.72em;
+    font-weight: 700;
+    color: #1a1a2e;
+    background: var(--gold-2, #ffd700);
+    white-space: nowrap;
+}
 
 /* Cheap post-processing without a compositor: a mild grade on the WebGL canvas
    (a touch more saturation/contrast) and a soft vignette overlay. Pure CSS —

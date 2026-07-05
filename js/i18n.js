@@ -271,6 +271,8 @@ const I18N = {
         'ar.controlKi': '🤖 Rule-based AI',
         'ar.slotPrompt': 'System prompt for this player',
         'ar.slotPromptReset': '↺ Reset to template',
+        'ar.promptEdited': 'edited',
+        'ar.promptEditedTitle': 'This opponent uses a custom system prompt (differs from the shared template)',
 
         // Benchmark summary
         'sum.title': '🏟️ Arena — Model evaluation',
@@ -536,6 +538,8 @@ const I18N = {
         'ar.controlKi': '🤖 Regelbasierte KI',
         'ar.slotPrompt': 'System-Prompt für diesen Spieler',
         'ar.slotPromptReset': '↺ Auf Vorlage zurücksetzen',
+        'ar.promptEdited': 'angepasst',
+        'ar.promptEditedTitle': 'Dieser Gegner nutzt einen angepassten System-Prompt (weicht von der Vorlage ab)',
 
         'sum.title': '🏟️ Arena — Modell-Auswertung',
         'sum.newArena': '⚔️ Neue Arena',
@@ -792,6 +796,8 @@ const I18N = {
         'ar.controlKi': '🤖 IA basada en reglas',
         'ar.slotPrompt': 'Prompt del sistema para este jugador',
         'ar.slotPromptReset': '↺ Restablecer a la plantilla',
+        'ar.promptEdited': 'editado',
+        'ar.promptEditedTitle': 'Este oponente usa un system prompt personalizado (difiere de la plantilla)',
 
         'sum.title': '🏟️ Arena — Evaluación de modelos',
         'sum.newArena': '⚔️ Nueva arena',
@@ -1056,6 +1062,8 @@ const I18N = {
         'ar.controlKi': '🤖 基于规则的 AI',
         'ar.slotPrompt': '该玩家的系统提示词',
         'ar.slotPromptReset': '↺ 重置为模板',
+        'ar.promptEdited': '已修改',
+        'ar.promptEditedTitle': '此对手使用自定义系统提示词（与模板不同）',
 
         'sum.title': '🏟️ 竞技场 — 模型评估',
         'sum.newArena': '⚔️ 新竞技场',

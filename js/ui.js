@@ -3,8 +3,10 @@ class UIManager {
     constructor(game) {
         this.game = game;
         this.activeMenu = null;
-        // Bump when getArenaDefaultPrompt() changes so stale saved prompts are dropped.
-        this.ARENA_PROMPT_VERSION = 'win-v8';
+        // Bump when the canonical default prompt changes. On mismatch the shared
+        // template is refreshed and slots that merely carried a COPY of the old
+        // template are re-derived; genuine per-slot edits are preserved.
+        this.ARENA_PROMPT_VERSION = 'unified-v9';
     }
 
     showScreen(screenId) {
@@ -211,73 +213,12 @@ class UIManager {
     }
 
     // Get default system prompt for Arena players
+    // Canonical default LLM prompt: the single source of truth lives in
+    // OpenAIAIManager.defaultSystemPrompt(), so the text shown and stored here is
+    // exactly what the harness serves. Placeholders {{civilization}}, {{bonus}}
+    // and {{players}} are resolved per match when the prompt is built.
     getArenaDefaultPrompt() {
-        return `You ARE {{civilization}}, a commander in the real-time strategy game "LLM Colosseum". Three rival civilizations share this map with you and every one of them is your enemy. This is a contest with a single winner. There is no human to assist or advise — YOU are playing, and you are playing to win.
-
-## YOUR OBJECTIVE: WIN THE GAME
-You win in one of exactly two ways:
-1. Destroy the Town Centers of ALL rival civilizations, or
-2. Reach the Iron age, then build_wonder and hold it for the required time (gameStats.wonderRequired seconds) without it being destroyed.
-Economy, technology and population are only MEANS to that end. A civilization that endlessly optimizes its economy but never raises an army and never attacks will NOT win. You must convert your economy into military power and go finish your enemies.
-
-## DEFEND when attacked, and treat any WONDER as an emergency
-- "threats.underAttack" lists your buildings/units taking fire RIGHT NOW. Defend at once: attack_target the attacker's position (attackerAt) with your army. If you have none, that is an emergency — your idle units will auto-defend, but build an army immediately.
-- "threats.enemyWonders" lists rival Wonders — ALWAYS visible, even through fog, because a finished one WINS for that rival in "secondsUntilEnemyWins" seconds. This is existential: send your whole army to attack_target the Wonder's position and raze it (infantry raze best). When YOU hold a Wonder, keep an army home — everyone will rush it.
-
-## Your civilization
-You play {{civilization}}. Unique bonus: {{bonus}}. Play to this strength.
-
-## How a turn works
-Each turn you receive the current game state as JSON and you issue EXACTLY ONE command for your own civilization. Pick the single action that most advances you toward victory right now — not generic advice, an actual order.
-
-## Path to victory (don't get stuck in the early phases)
-1. OPEN: train a couple of workers and send them to harvest food and wood. Research and build a house early so your population cap doesn't choke you.
-2. GROW: build farms for steady food, keep every worker busy, and advance the epoch (stone -> neolithic -> bronze -> iron) to unlock stronger units and technology.
-3. MILITARIZE: research and build a barracks, then train military units (militia, archer, scout_cavalry). Once your economy is stable, STOP pouring everything into economy and start producing an army.
-4. ATTACK: send your army at the weakest rival, destroy their units and their Town Center, then move on to the next. Keep up the pressure until every rival is gone — or instead commit to a Wonder and defend it. ALWAYS break off to defend home when "threats.underAttack" fires, and to raze any rival's Wonder.
-If you already have an economy and no army, your next move should be military. If you already have an army, use it to attack.
-
-## Army counters (composition matters)
-- Cavalry beats ranged (archers). Ranged beats infantry. Infantry beats cavalry. (rock-paper-scissors)
-- Infantry are best at razing buildings; archers are poor against buildings.
-Scout the enemy's units (in enemyUnits) and train the type that counters theirs.
-
-## Resources
-Food (deer, berries, farms) - workers and many units. Wood (trees) - buildings. Stone (quarries) - advanced buildings and defenses. Gold (mines) - advanced military.
-
-## The map is hidden — SCOUT IT
-The map starts dark. Resources and enemies are HIDDEN until one of your units reveals them. "resourcesOnMap" lists only what you have already discovered (it is remembered after you look away). To find more food/wood/stone/gold or to locate the enemy, send a scout with the explore action (or move a unit into the dark). If you harvest_resource a type you have not discovered yet, a worker is sent to scout it automatically — try again once it shows up in "resourcesOnMap".
-
-## Mechanics you MUST respect
-- Your civilization can only build what is listed in "buildableStructures". Some civilizations have no stable (no cavalry). If "stable" is not listed, do NOT keep trying to build it — win with infantry (barracks) and archers (archery_range).
-- Research a building's tech BEFORE you can build it. If a type is not in "unlockedContent.buildings", research_tech it first (e.g. research_tech("barracks") then build_structure("barracks")).
-- Never research a tech already listed in "research.researched" (it wastes the turn). You can research only ONE tech at a time ("research.current").
-- Newly trained workers are IDLE until you command them: use harvest_resource (or assign_workers to move busy workers onto a new job).
-- You cannot exceed your population cap. Build houses when "resources.populationFree" is low; delete_unit can free population if you are stuck at the cap.
-- Only attempt actions you can afford (check "resources").
-
-## Available actions (choose ONE per turn)
-- train_worker: train a worker at your Town Center.
-- train_unit: params.unitType = "militia" | "archer" | "scout_cavalry" (needs the right building).
-- research_tech: params.techId = an exact id from "research.available".
-- upgrade_age: advance to the next epoch.
-- build_structure: params.buildingType = "house" | "farm" | "barracks" | "stable" | "archery_range" | "market" | "tower" (must be researched first; must be in buildableStructures).
-- build_wonder: start your civilization's Wonder (requires the Iron age). Hold it (gameStats.wonderRequired s) after it finishes to WIN — rivals will rush to raze it, so defend it.
-- harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" (sends an idle worker; auto-scouts if undiscovered).
-- assign_workers: params.resourceType (+ optional count) - pull workers off their current task onto gathering that resource.
-- explore: params.targetX, params.targetZ (or none) - send a scout to reveal hidden map, resources and enemies.
-- move_units: params.targetX, params.targetZ (reposition your army).
-- attack_target: params.targetX, params.targetZ (or params.targetId) - your army marches there and engages any enemy it meets, pursuing them even as they move. This is how you destroy enemies and win.
-- delete_unit: params.unitType (+ optional count) - remove your own units to free population.
-- destroy_building: params.buildingType (+ optional targetX/targetZ) - demolish one of your own buildings (never your last Town Center).
-- wait: only if there is genuinely nothing useful to do.
-
-## Construction takes time
-Buildings are NOT instant. build_structure places a construction SITE and pulls one of your workers to build it over several seconds; it cannot train, research or give population until it is finished. In your state a building shows "state":"under_construction" with a "buildPct" until it becomes "complete". Don't re-order the same building while a site is still going up.
-
-## Response format
-Respond with ONLY a single JSON object - no markdown, no code fences, no commentary:
-{"action": "<action>", "params": { ...action params..., "reason": "<how this moves you toward winning>" }}`;
+        return OpenAIAIManager.defaultSystemPrompt();
     }
 
     // ----------------------------------------------------------------
@@ -360,7 +301,10 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             cfg.models.forEach(m => { m.id = this.nextArenaModelId(); this.normalizeArenaModel(m); });
         }
 
-        // Drop a prompt saved under an older version.
+        // Shared template saved under an older default: replace it with the
+        // current canonical text. Keep the OLD stored template around so slot
+        // prompts that are mere copies of it can be told apart from real edits.
+        const oldTemplate = cfg.prompt;
         if (localStorage.getItem('arenaPromptVersion') !== this.ARENA_PROMPT_VERSION || !cfg.prompt) {
             cfg.prompt = this.getArenaDefaultPrompt();
         }
@@ -369,7 +313,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         const civs = ['egyptian', 'greek', 'persian', 'yamato'];
         const ids = cfg.models.map(m => m.id);
         if (!Array.isArray(cfg.slots) || cfg.slots.length !== 4) {
-            cfg.slots = civs.map((civ, i) => ({ civ, control: cfg.models[i] ? cfg.models[i].id : 'ki', prompt: cfg.prompt }));
+            cfg.slots = civs.map((civ, i) => ({ civ, control: cfg.models[i] ? cfg.models[i].id : 'ki', prompt: null }));
         } else {
             cfg.slots.forEach((s, i) => {
                 if (!s.civ) s.civ = civs[i];
@@ -377,8 +321,12 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 if (s.control !== 'ki' && !ids.includes(s.control)) {
                     s.control = cfg.models[i] ? cfg.models[i].id : 'ki';
                 }
-                // each slot carries its OWN system prompt (defaults to the template)
-                if (typeof s.prompt !== 'string' || !s.prompt.trim()) s.prompt = cfg.prompt;
+                // DERIVE-unless-edited: null means the slot follows the shared
+                // template (always the current one). A stored prompt that merely
+                // equals the template — including the OLD template it was copied
+                // from before a version bump — is re-derived; real edits survive.
+                if (typeof s.prompt !== 'string' || !s.prompt.trim() ||
+                    s.prompt === cfg.prompt || s.prompt === oldTemplate) s.prompt = null;
             });
         }
         // Number of participants actually in play (2–4; the pool is always 4 slots).
@@ -419,6 +367,12 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         // Always keep a pool of exactly 5 slots so raising the count never adds blanks.
         while (cc.slots.length < 5) cc.slots.push({ civ: civs[cc.slots.length] || 'greek', control: 'ki', prompt: null });
         cc.slots = cc.slots.slice(0, 5);
+        // DERIVE-unless-edited (mirrors loadArenaConfig): empty or template-equal
+        // prompts become null so campaign opponents follow the current default too.
+        const tmpl = (this._arenaConfig && this._arenaConfig.prompt) || this.getArenaDefaultPrompt();
+        cc.slots.forEach(s => {
+            if (typeof s.prompt !== 'string' || !s.prompt.trim() || s.prompt === tmpl) s.prompt = null;
+        });
         cc.playerCiv = cc.playerCiv || 'egyptian';
         cc.count = Math.min(5, Math.max(1, parseInt(cc.count, 10) || 3));
         cc.seed = typeof cc.seed === 'string' ? cc.seed : '';
@@ -714,7 +668,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
             const promptBlock = isLLM ? `
                 <div class="arena-field slot-prompt">
                     <label>${t('ar.slotPrompt')}</label>
-                    <textarea rows="6" class="arena-prompt-textarea" oninput="game.ui.setSlotPrompt(${i}, this.value)" placeholder="System prompt …">${e(slot.prompt || this._arenaConfig.prompt || '')}</textarea>
+                    <textarea rows="6" class="arena-prompt-textarea" oninput="game.ui.setSlotPrompt(${i}, this.value)" placeholder="System prompt …">${e(slot.prompt != null ? slot.prompt : (this._arenaConfig.prompt || ''))}</textarea>
                     <button class="hdr-add-btn" style="margin-top:8px" onclick="game.ui.resetSlotPrompt(${i})">${t('ar.slotPromptReset')}</button>
                 </div>` : '';
             const collapsed = slot._collapsed !== false; // default collapsed
@@ -742,6 +696,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                     <span class="arena-slot-caret">▶</span>
                     <span class="arena-slot-title">${slotTitle(i)}</span>
                     <span class="arena-slot-summary">${civNames[slot.civ] || slot.civ} · ${e(ctrlName)}</span>
+                    <span class="slot-prompt-badge" id="slotPromptBadge${i}" title="${t('ar.promptEditedTitle')}" style="${isLLM && slot.prompt != null ? '' : 'display:none'}">✎ ${t('ar.promptEdited')}</span>
                 </div>
                 ${collapsed ? '' : body}
             </div>`;
@@ -847,11 +802,24 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         this.saveSetup();
         this.renderArenaSlots(); // show/hide the per-slot prompt editor
     }
-    setSlotPrompt(i, value) { const s = this.setupSlots()[i]; if (s) { s.prompt = value; this.saveSetup(); } }
+    // DERIVE-unless-edited: the slot stores a prompt ONLY while it differs from
+    // the shared template. Typing the template text back (or resetting) returns
+    // the slot to derived (null), so future default updates flow through. The
+    // ✎ badge on the slot header reflects the state live while typing.
+    setSlotPrompt(i, value) {
+        const s = this.setupSlots()[i];
+        if (!s) return;
+        const base = (this._arenaConfig.prompt || '').trim();
+        const val = String(value);
+        s.prompt = (val.trim() && val.trim() !== base) ? val : null;
+        const badge = document.getElementById('slotPromptBadge' + i);
+        if (badge) badge.style.display = s.prompt != null ? '' : 'none';
+        this.saveSetup();
+    }
     resetSlotPrompt(i) {
         const s = this.setupSlots()[i];
         if (!s) return;
-        s.prompt = this._arenaConfig.prompt || this.getArenaDefaultPrompt();
+        s.prompt = null; // back to derived: follows the shared template/default
         this.saveSetup();
         this.renderArenaSlots();
     }
@@ -859,7 +827,7 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
     applyTemplateToAllSlots() {
         const tmpl = (document.getElementById('arenaSharedPrompt') || {}).value || this._arenaConfig.prompt || '';
         this._arenaConfig.prompt = tmpl;
-        this.setupSlots().forEach(s => { s.prompt = tmpl; });
+        this.setupSlots().forEach(s => { s.prompt = null; }); // every slot follows the template again
         this.saveSetup();
         this.renderArenaSlots();
     }
@@ -951,14 +919,15 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         };
     }
 
-    // Reset the template AND every per-slot prompt to the current default.
+    // Reset the template AND every per-slot prompt to the current default
+    // (slots become derived — they follow the template from here on).
     resetArenaPrompts() {
         const def = this.getArenaDefaultPrompt();
         if (this._arenaConfig) {
             this._arenaConfig.prompt = def;
-            this._arenaConfig.slots.forEach(s => { s.prompt = def; });
+            this._arenaConfig.slots.forEach(s => { s.prompt = null; });
         }
-        if (this._campaignConfig) this._campaignConfig.slots.forEach(s => { s.prompt = def; });
+        if (this._campaignConfig) this._campaignConfig.slots.forEach(s => { s.prompt = null; });
         const ta = document.getElementById('arenaSharedPrompt');
         if (ta) ta.value = def;
         this.saveSetup();
