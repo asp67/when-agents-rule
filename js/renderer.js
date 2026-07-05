@@ -134,7 +134,7 @@ class GameRenderer {
         this.mouse = new THREE.Vector2();
         this.units = [];
         this.buildings = [];
-        this.selectionBox = null;
+        this._marqueeEl = null;   // screen-space drag-select rectangle (DOM overlay)
         this.selectionStart = null;
         this.isSelecting = false;
         this.selectedUnits = [];
@@ -227,18 +227,6 @@ class GameRenderer {
         const fillLight = new THREE.DirectionalLight(0x9db8e0, 0.18);
         fillLight.position.set(-100, 90, -120);
         this.scene.add(fillLight);
-
-        // Create selection box
-        const boxGeometry = new THREE.BoxGeometry(1, 0.1, 1);
-        const boxMaterial = new THREE.MeshBasicMaterial({ 
-            color: 0x00ff00, 
-            transparent: true, 
-            opacity: 0.3,
-            side: THREE.DoubleSide
-        });
-        this.selectionBox = new THREE.Mesh(boxGeometry, boxMaterial);
-        this.selectionBox.visible = false;
-        this.scene.add(this.selectionBox);
 
         // Handle window resize
         window.addEventListener('resize', () => this.onWindowResize());
@@ -1548,38 +1536,41 @@ class GameRenderer {
         });
     }
 
+    // Screen-space selection marquee (DOM overlay): the drawn rectangle is exactly
+    // what the player drags, under ANY camera rotation or tilt. The old version
+    // projected the two corners to the ground and drew a world-space plane, which
+    // was always axis-aligned to the map's X/Z — the moment the view was rotated
+    // it no longer matched the drag (and the selection test had the same flaw,
+    // see input.js onMouseUp). Coordinates are canvas-relative pixels.
     showSelectionBox(x1, y1, x2, y2) {
-        this.selectionBox.visible = true;
-        
-        // Convert screen-space drag coordinates to world-space for the selection box
-        const rect = this.renderer.domElement.getBoundingClientRect();
-        const screenX1 = x1 + rect.left;
-        const screenY1 = y1 + rect.top;
-        const screenX2 = x2 + rect.left;
-        const screenY2 = y2 + rect.top;
-        
-        const topLeft = this.getWorldPositionFromScreen(screenX1, screenY1);
-        const bottomRight = this.getWorldPositionFromScreen(screenX2, screenY2);
-        
-        if (!topLeft || !bottomRight) {
-            this.selectionBox.visible = false;
-            return;
+        if (!this._marqueeEl) {
+            const el = document.createElement('div');
+            el.className = 'selection-marquee';
+            this.container.appendChild(el);
+            this._marqueeEl = el;
         }
-        
-        const minX = Math.min(topLeft.x, bottomRight.x);
-        const maxX = Math.max(topLeft.x, bottomRight.x);
-        const minZ = Math.min(topLeft.z, bottomRight.z);
-        const maxZ = Math.max(topLeft.z, bottomRight.z);
-
-        const width = maxX - minX;
-        const depth = maxZ - minZ;
-
-        this.selectionBox.position.set(minX + width/2, 0.15, minZ + depth/2);
-        this.selectionBox.scale.set(Math.max(width, 0.1), 1, Math.max(depth, 0.1));
+        const el = this._marqueeEl;
+        el.style.left = Math.min(x1, x2) + 'px';
+        el.style.top = Math.min(y1, y2) + 'px';
+        el.style.width = Math.abs(x2 - x1) + 'px';
+        el.style.height = Math.abs(y2 - y1) + 'px';
+        el.style.display = 'block';
     }
 
     hideSelectionBox() {
-        this.selectionBox.visible = false;
+        if (this._marqueeEl) this._marqueeEl.style.display = 'none';
+    }
+
+    // Project a world point to canvas-relative pixel coordinates (null if behind
+    // the camera). Companion of the marquee: box selection tests each unit's
+    // PROJECTED position against the screen rectangle the player actually drew.
+    worldToScreen(x, y, z) {
+        const v = new THREE.Vector3(x, y, z).project(this.camera);
+        if (v.z > 1) return null;
+        return {
+            x: (v.x + 1) / 2 * this.renderer.domElement.clientWidth,
+            y: (-v.y + 1) / 2 * this.renderer.domElement.clientHeight
+        };
     }
 
     getWorldPositionFromScreen(screenX, screenY) {

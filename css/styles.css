@@ -229,7 +229,17 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 
 /* ---------- Game Screen ---------- */
 #gameScreen { position: relative; }
-#gameCanvas { width: 100%; height: 100%; }
+#gameCanvas { width: 100%; height: 100%; position: relative; }
+/* Drag-select rectangle: pure screen-space overlay, so it always matches the
+   player's viewpoint no matter how the camera is rotated. */
+.selection-marquee {
+    position: absolute;
+    display: none;
+    pointer-events: none;
+    border: 1.5px solid var(--teal);
+    background: rgba(78, 204, 163, 0.12);
+    z-index: 6;
+}
 
 /* Cheap post-processing without a compositor: a mild grade on the WebGL canvas
    (a touch more saturation/contrast) and a soft vignette overlay. Pure CSS —

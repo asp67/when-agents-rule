@@ -172,37 +172,31 @@ class InputManager {
                 }
             }
         } else if (this.isDragging && this.hasDragged) {
-            // Box selection - only select player-owned units
-            const rect = this.renderer.renderer.domElement.getBoundingClientRect();
-            const worldStart = this.renderer.getWorldPositionFromScreen(
-                this.dragStartX + rect.left,
-                this.dragStartY + rect.top
-            );
-            const worldEnd = this.renderer.getWorldPositionFromScreen(
-                this.dragEndX + rect.left,
-                this.dragEndY + rect.top
-            );
+            // Box selection in SCREEN space: a unit is selected when its projected
+            // position falls inside the rectangle the player actually drew — which
+            // holds under any camera rotation/tilt. (The old test built a world
+            // X/Z bounding box from the two projected corners, which only matched
+            // the drawn rectangle at the default camera orientation.)
+            const minSX = Math.min(this.dragStartX, this.dragEndX);
+            const maxSX = Math.max(this.dragStartX, this.dragEndX);
+            const minSY = Math.min(this.dragStartY, this.dragEndY);
+            const maxSY = Math.max(this.dragStartY, this.dragEndY);
 
-            if (worldStart && worldEnd) {
-                const minX = Math.min(worldStart.x, worldEnd.x);
-                const maxX = Math.max(worldStart.x, worldEnd.x);
-                const minZ = Math.min(worldStart.z, worldEnd.z);
-                const maxZ = Math.max(worldStart.z, worldEnd.z);
+            const selected = this.renderer.units.filter(unit => {
+                if (unit.owner !== 'player') return false;
+                // Project at torso height so the test matches the visible body,
+                // not the spot on the ground under it.
+                const p = this.renderer.worldToScreen(unit.x, 1.0, unit.z);
+                return p && p.x >= minSX && p.x <= maxSX && p.y >= minSY && p.y <= maxSY;
+            });
 
-                const selected = this.renderer.units.filter(unit =>
-                    unit.owner === 'player' &&
-                    unit.x >= minX && unit.x <= maxX &&
-                    unit.z >= minZ && unit.z <= maxZ
-                );
-
-                if (selected.length > 0) {
-                    this.renderer.selectMultipleUnits(selected);
-                    this.game.updateUnitInfo(selected[0], null);
-                } else {
-                    // No player units in box - deselect
-                    this.renderer.deselectAll();
-                    this.game.updateUnitInfo(null, null);
-                }
+            if (selected.length > 0) {
+                this.renderer.selectMultipleUnits(selected);
+                this.game.updateUnitInfo(selected[0], null);
+            } else {
+                // No player units in box - deselect
+                this.renderer.deselectAll();
+                this.game.updateUnitInfo(null, null);
             }
         }
 
