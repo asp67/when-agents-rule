@@ -134,7 +134,9 @@ class AIManager {
     runTurn(ai) {
         const r = ai.resources;
         const workers = ai.units.filter(u => u.type === 'worker');
-        const military = ai.units.filter(u => u.type !== 'worker');
+        // Support units (priests) are medics, not fighters — commandArmy must not
+        // march them into battle (matters for demoted LLM players who own some).
+        const military = ai.units.filter(u => u.type !== 'worker' && u.unitType !== 'support');
         const popFree = Math.max(0, r.maxPopulation - r.population);
         const enemyWonder = this.knownEnemyWonder(ai);
 
@@ -316,7 +318,7 @@ class AIManager {
         ai._exploreTimer = (ai._exploreTimer || 0) + 1;
         if (ai._exploreTimer < interval) return;
 
-        const idleMilitary = ai.units.find(u => u.type !== 'worker' &&
+        const idleMilitary = ai.units.find(u => u.type !== 'worker' && u.unitType !== 'support' &&
             !u.isAttacking && !u.attackTarget && !u.attackMove && !u.isMoving);
         const idleWorker = ai.units.find(u => u.type === 'worker' &&
             !u.isMoving && !u.isHarvesting && !u.carryingResource && !u.isBuilding &&

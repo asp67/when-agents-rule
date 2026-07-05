@@ -1211,8 +1211,9 @@ Food (deer, berries, farms) - workers and units. Wood (trees) - buildings. Stone
 - attack_target: params.targetX, params.targetZ — or params.targetId, the exact "id" of an enemy from "enemyUnits"/"enemyBuildings" (ids track moving units, so they beat stale coordinates). Your army marches there and engages any enemy on the way, pursuing even if they move. This is how you destroy enemies and win. With coordinates, the result (engaged an enemy, or found NO valid target there) is reported once your units ARRIVE — wait for that verdict instead of re-issuing. Attacking your own units/buildings or a resource node is rejected immediately.
 - delete_unit: params.unitType (+ optional count) - remove your own units to free population.
 - destroy_building: params.buildingType (+ optional targetX/targetZ) - demolish one of your own buildings (won't destroy your last Town Center).
-- build_wonder: start your civ's Wonder (needs the Iron age); hold it (gameStats.wonderRequired s) after it finishes to WIN — but expect rivals to rush it.
 - wait: only if nothing useful is possible.
+
+Priests (unitType "priest", trained at a temple) never fight — attack orders skip them. A priest automatically walks to and heals nearby wounded friendly units; keep one near your army or base and reposition it with move_units.
 
 ## Response format
 Return ONLY a single JSON object, no markdown, no code fences, no extra prose:
@@ -2467,14 +2468,18 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] Target "${target.name || target.type}" is your own ${target.type}. You cannot attack your own units or buildings. ${this.attackTargetHint(ai, game)}`;
         }
 
-        let unitsToAttack = ai.units.filter(u => u.type !== 'worker');
+        // Support units (priests) are healers: attack orders skip them.
+        const isCombatant = (u) => u.type !== 'worker' && u.unitType !== 'support';
+        let unitsToAttack = ai.units.filter(isCombatant);
         if (unitIds && unitIds.length > 0) {
-            unitsToAttack = ai.units.filter(u => unitIds.includes(u.id));
+            unitsToAttack = ai.units.filter(u => unitIds.includes(u.id) && isCombatant(u));
         }
 
         if (unitsToAttack.length === 0) {
             console.log(`[OpenAIAI] ${ai.id}: No units to attack with`);
-            return `[ERROR] No military units available to attack. Train units first. ${this.attackTargetHint(ai, game)}`;
+            const priestNote = ai.units.some(u => u.unitType === 'support')
+                ? ' Priests are healers — they ignore attack orders and heal nearby wounded units automatically.' : '';
+            return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
         unitsToAttack.forEach(unit => {
@@ -2497,13 +2502,17 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
     executeAttackPosition(ai, game, targetX, targetZ, unitIds) {
         const controller = this.aiControllers.find(c => c.aiPlayer === ai);
-        let unitsToAttack = ai.units.filter(u => u.type !== 'worker');
+        // Support units (priests) are healers: attack orders skip them.
+        const isCombatant = (u) => u.type !== 'worker' && u.unitType !== 'support';
+        let unitsToAttack = ai.units.filter(isCombatant);
         if (unitIds && unitIds.length > 0) {
-            const matched = ai.units.filter(u => unitIds.includes(u.id));
+            const matched = ai.units.filter(u => unitIds.includes(u.id) && isCombatant(u));
             if (matched.length) unitsToAttack = matched; // else fall back to whole army (no IDs in state)
         }
         if (unitsToAttack.length === 0) {
-            return `[ERROR] No military units available to attack. Train units first. ${this.attackTargetHint(ai, game)}`;
+            const priestNote = ai.units.some(u => u.unitType === 'support')
+                ? ' Priests are healers — they ignore attack orders and heal nearby wounded units automatically.' : '';
+            return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
         const mx = Number(targetX), mz = Number(targetZ);
@@ -2690,7 +2699,9 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             // requested type isn't present → fall through to the automatic pick
         }
 
-        const idleMilitary = ai.units.filter(u => u.type !== 'worker' && !this.isInCombat(u));
+        // Priests are excluded from the auto-pick: a healer wandering the dark
+        // alone is a wasted (and soon dead) medic. Explicit unitType still wins.
+        const idleMilitary = ai.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && !this.isInCombat(u));
         const cav = idleMilitary.find(u => u.unitType === 'cavalry');
         if (cav) return cav;
         if (idleMilitary.length) return idleMilitary[0];
@@ -2700,7 +2711,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const freeWorker = ai.units.find(u => u.type === 'worker' && u.task !== 'building' && !u.isBuilding);
         if (freeWorker) return freeWorker;
 
-        return ai.units.find(u => !this.isInCombat(u)) || ai.units.find(u => u.type !== 'worker') || null;
+        return ai.units.find(u => u.unitType !== 'support' && !this.isInCombat(u)) ||
+               ai.units.find(u => u.type !== 'worker' && u.unitType !== 'support') || null;
     }
 
     // Did `scout` satisfy the model's explicit unit choice? (id or category match)

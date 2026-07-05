@@ -622,6 +622,7 @@ class Game {
         this.updateFarmRegeneration(dt);
         // Combat
         this.updateCombat(dt);
+        this.updateHealing(dt);
         this.updateTowerAttack(dt);
         this.updateAutoDefense(dt);
         // Vision
@@ -798,6 +799,16 @@ class Game {
             .filter(u => u.owner === 'player');
         
         selectedUnits.forEach(unit => {
+            // Priests never take the attack order itself: they tag along to the
+            // fight and keep healing wounded friendlies (see updateHealing).
+            if (unit.unitType === 'support') {
+                unit.isAttacking = false;
+                unit.attackTarget = null;
+                unit.isMoving = true;
+                unit.targetX = target.x + (Math.random() - 0.5) * 4;
+                unit.targetZ = target.z + (Math.random() - 0.5) * 4;
+                return;
+            }
             unit.isAttacking = true;
             unit.attackTarget = target;
             unit.attackTimer = 0;
@@ -984,6 +995,50 @@ class Game {
         });
     }
 
+    // Support units (priests): pacifist medics. Every army sweep skips them
+    // (rule-based, LLM attack actions, auto-defense) — instead they seek the
+    // nearest wounded FRIENDLY unit: walk over when idle, then channel a steady
+    // heal standing beside it. Explicit move orders are respected — a marching
+    // priest heals whatever it happens to pass without stopping, and resumes
+    // seeking once idle. Per the unit description they heal OTHER units only —
+    // never themselves, never buildings (that's what repair is for).
+    updateHealing(deltaTime) {
+        const HEAL_SEARCH = 24;  // how far a priest looks for patients
+        const HEAL_RANGE  = 3.5; // close enough to channel the heal
+        const HEAL_RATE   = 6;   // HP per second
+        this.getAllUnits().forEach(u => {
+            if (u.unitType !== 'support' || u.health <= 0) return;
+            if (u.isAttacking) return; // an explicit attack order wins (safety)
+
+            const owner = this.getOwner(u);
+            if (!owner || !owner.units) return;
+
+            let patient = null, best = HEAL_SEARCH;
+            owner.units.forEach(o => {
+                if (o === u || o.health <= 0 || o.health >= o.maxHealth) return;
+                const d = Math.hypot(o.x - u.x, o.z - u.z);
+                if (d < best) { best = d; patient = o; }
+            });
+            if (!patient) return;
+
+            if (best <= HEAL_RANGE) {
+                patient.health = Math.min(patient.maxHealth,
+                    patient.health + (HEAL_RATE * deltaTime) / 1000);
+                // Soft green sparkle on the patient while the heal channels.
+                u._healFxTimer = (u._healFxTimer || 0) + deltaTime;
+                if (u._healFxTimer >= 900) {
+                    u._healFxTimer = 0;
+                    this.renderer.spawnDust(patient.x, 1.2, patient.z, 6, 0x8ef0a8);
+                }
+            } else if (!u.isMoving) {
+                // Idle with someone hurt nearby: walk over (generic mover drives it).
+                u.isMoving = true;
+                u.targetX = patient.x + (Math.random() - 0.5) * 2;
+                u.targetZ = patient.z + (Math.random() - 0.5) * 2;
+            }
+        });
+    }
+
     // Nearest living enemy entity (unit, and optionally building) within `range`.
     findNearestEnemyInRange(unit, range, includeBuildings = true) {
         let nearest = null;
@@ -1085,7 +1140,7 @@ class Game {
             const primary = threats[0];
             const atk = primary.atk;
 
-            const military = owner.units.filter(u => u.type !== 'worker' && u.health > 0);
+            const military = owner.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             let usingWorkers = false;
             // Idle/free military engage; units already attacking keep their orders.
             let defenders = military.filter(u => !u.isAttacking);
