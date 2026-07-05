@@ -471,12 +471,16 @@ class UIManager {
             const civs = ['egyptian', 'greek', 'persian', 'yamato'];
             const ids = cfg.models.map(m => m.id);
             if (!Array.isArray(cfg.slots) || cfg.slots.length !== 4) {
-                cfg.slots = civs.map((civ, i) => ({ civ, control: cfg.models[i] ? cfg.models[i].id : 'ki', prompt: cfg.prompt }));
+                cfg.slots = civs.map((civ, i) => ({ civ, control: cfg.models[i] ? cfg.models[i].id : 'ki', prompt: null }));
             } else {
                 cfg.slots.forEach((s, i) => {
                     if (!s.civ) s.civ = civs[i];
                     if (s.control !== 'ki' && !ids.includes(s.control)) s.control = cfg.models[i] ? cfg.models[i].id : 'ki';
-                    if (typeof s.prompt !== 'string' || !s.prompt.trim()) s.prompt = cfg.prompt;
+                    // DERIVE-unless-edited (mirrors loadArenaConfig): catalogues
+                    // exported under the old copy-in model carry template copies —
+                    // re-derive those; only genuine per-slot edits stay stored.
+                    if (typeof s.prompt !== 'string' || !s.prompt.trim() ||
+                        s.prompt === cfg.prompt || s.prompt === this.getArenaDefaultPrompt()) s.prompt = null;
                 });
             }
             this._arenaConfig = cfg;
@@ -801,10 +805,10 @@ class UIManager {
         const s = this.setupSlots()[i];
         if (!s) return;
         s.control = (value === 'ki') ? 'ki' : Number(value);
-        // Becoming an LLM slot? make sure it has a prompt (seed from the template).
-        if (s.control !== 'ki' && (typeof s.prompt !== 'string' || !s.prompt.trim())) {
-            s.prompt = this._arenaConfig.prompt || this.getArenaDefaultPrompt();
-        }
+        // DERIVE-unless-edited: switching the controlling model never touches the
+        // slot's prompt. A derived slot (null) keeps following the template — the
+        // old behavior seeded a full template COPY here, which lit the ✎ edited
+        // badge although nothing was edited. A real edit survives model changes.
         this.saveSetup();
         this.renderArenaSlots(); // show/hide the per-slot prompt editor
     }
