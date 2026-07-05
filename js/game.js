@@ -65,15 +65,26 @@ class Game {
         }
     }
 
-    // Stop the current game (with confirmation) and return to the former menu.
+    // Stop the current game (with confirmation). Arena: end the match and hand
+    // off to the evaluation screen (winner by power score, like a manual end) —
+    // the summary's own buttons lead on to a new arena or the menu from there.
+    // Campaign: reload back to the former menu as before.
     cancelGame() {
         if (!this.gameStarted) return;
         const inArena = !!this.spectatorMode;
         this.ui.showConfirm(
             inArena ? t('dlg.quitArena') : t('dlg.quitNormal'),
-            () => this.confirmCancelGame(),
+            () => inArena ? this.endArenaManually() : this.confirmCancelGame(),
             { title: t('dlg.quitTitle'), confirmLabel: t('dlg.quitConfirm'), cancelLabel: t('dlg.keepPlaying') }
         );
+    }
+
+    // Results button: a LIVE snapshot of the standings in the summary layout.
+    // Nothing stops — the match and the LLM pipeline keep running; the summary
+    // screen shows a Back button that returns to the game.
+    showArenaSnapshot() {
+        if (!this.gameStarted || !this.spectatorMode) return;
+        this.ui.showArenaSummary(null, 'snapshot', { snapshot: true });
     }
 
     confirmCancelGame() {

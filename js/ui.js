@@ -1645,6 +1645,7 @@ class UIManager {
         document.body.classList.remove('spectator-mode');
         if (this._spectatorIntervals) this._spectatorIntervals.forEach(id => clearInterval(id));
         this._spectatorIntervals = [];
+        if (this.closeLbFlyout) this.closeLbFlyout(); // no flyout floating over the summary
     }
 
     toggleDecisionLog() {
@@ -1947,7 +1948,7 @@ class UIManager {
             const pct = r.alive ? Math.round((r.score / maxScore) * 100) : 0;
 
             html += `
-                <div class="lb-card rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" onclick="game.focusCameraOnAI('${ai.id}')" title="${t('spec.cardHint')}">
+                <div class="lb-card rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" data-ai="${ai.id}" onclick="game.focusCameraOnAI('${ai.id}'); game.ui.openLbFlyout('${ai.id}')" title="${t('spec.cardHint')}">
                     <div class="lb-model-banner" title="${this.escapeHtml(r.modelName)}">
                         <span class="lb-model-name">${this.escapeHtml(r.modelName)}</span>
                         ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel('${ai.id}')" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
@@ -1992,6 +1993,113 @@ class UIManager {
         });
 
         listEl.innerHTML = html;
+
+        // Keep an open achievements flyout live: refresh its content and keep it
+        // anchored to its card (rank order can shuffle cards around).
+        if (this._lbFlyoutAi) {
+            const flyAi = this.game.aiManager.aiPlayers.find(a => a.id === this._lbFlyoutAi);
+            if (flyAi) { this.renderLbFlyout(flyAi); this.positionLbFlyout(); }
+            else this.closeLbFlyout();
+        }
+    }
+
+    // ---- Leaderboard achievement flyout --------------------------------------
+    // Click a card → flyout with that player's achievements (age, completed
+    // researches, unit and building breakdown). One at a time; clicking the same
+    // card toggles it, any click elsewhere closes it.
+    openLbFlyout(aiId) {
+        const ai = this.game.aiManager.aiPlayers.find(a => a.id === aiId);
+        if (!ai) return;
+        if (this._lbFlyoutAi === aiId) { this.closeLbFlyout(); return; } // toggle
+        this._lbFlyoutAi = aiId;
+        if (!this._lbFlyoutEl) {
+            const el = document.createElement('div');
+            el.className = 'lb-flyout';
+            document.body.appendChild(el);
+            this._lbFlyoutEl = el;
+            // Auto-close on any press elsewhere. Capture phase, so it runs before
+            // the pressed element's own handlers; presses inside the flyout or on
+            // a leaderboard card (whose own onclick opens/toggles) are exempt.
+            document.addEventListener('mousedown', (e) => {
+                if (!this._lbFlyoutAi) return;
+                if (this._lbFlyoutEl && this._lbFlyoutEl.contains(e.target)) return;
+                if (e.target.closest && e.target.closest('.lb-card')) return;
+                this.closeLbFlyout();
+            }, true);
+        }
+        this.renderLbFlyout(ai);
+        this._lbFlyoutEl.style.display = 'block';
+        this.positionLbFlyout();
+    }
+
+    renderLbFlyout(ai) {
+        const el = this._lbFlyoutEl;
+        if (!el) return;
+        const civ = getCivilization(ai.civilization);
+        const controller = (this.game.openAIAIManager && this.game.openAIAIManager.aiControllers)
+            ? this.game.openAIAIManager.aiControllers.find(c => c.id === ai.id) : null;
+        const model = controller ? controller.model.name : t('spec.rulebased');
+        const ageNames = { stone: t('age.stone'), neolithic: t('age.neolithic'), bronze: t('age.bronze'), iron: t('age.iron') };
+        const civKey = 'civ.' + ai.civilization + '.name';
+        const civName = t(civKey) !== civKey ? t(civKey) : ai.civilization;
+        const esc = s => this.escapeHtml(s);
+
+        // Completed researches (display names from the civ's tech tree)
+        const techs = Object.keys(ai.researchedTechs || {})
+            .map(id => (civ && civ.techTree && civ.techTree[id]) ? tg(civ.techTree[id].name) : id);
+
+        // Units grouped by class
+        const unitIcons = { worker: '👷', infantry: '⚔️', ranged: '🏹', cavalry: '🐎', support: '✚' };
+        const unitGroups = {};
+        ai.units.forEach(u => {
+            const k = u.type === 'worker' ? 'worker' : (u.unitType || 'infantry');
+            unitGroups[k] = (unitGroups[k] || 0) + 1;
+        });
+        const unitChips = Object.entries(unitGroups)
+            .map(([k, n]) => `<span class="lb-fly-chip">${unitIcons[k] || '⚔️'} ${esc(k)} ×${n}</span>`).join('');
+
+        // Buildings grouped by type; an "uc:" key prefix separates sites still
+        // under construction from finished ones (rendered with a 🏗 marker).
+        const bGroups = {};
+        ai.buildings.forEach(b => {
+            const def = (typeof getBuildingDef === 'function') ? getBuildingDef(b.type) : null;
+            const name = b.isWonder ? tg(b.name) : (def ? tg(def.name) : b.type);
+            const key = (b.underConstruction ? 'uc:' : 'ok:') + name;
+            bGroups[key] = (bGroups[key] || 0) + 1;
+        });
+        const bChips = Object.entries(bGroups)
+            .map(([k, n]) => {
+                const uc = k.startsWith('uc:');
+                return `<span class="lb-fly-chip">${uc ? '🏗 ' : ''}${esc(k.slice(3))} ×${n}</span>`;
+            }).join('');
+
+        const colorHex = '#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0');
+        el.innerHTML = `
+            <div class="lb-fly-head" style="--civ:${this.legibleColor(colorHex)}">
+                <b>${esc(model)}</b><span>${esc(civName)} · ${ageNames[ai.age] || ai.age}</span>
+            </div>
+            <div class="lb-fly-sec"><div class="lb-fly-h">🔬 ${t('spec.flyResearch')}</div>
+                <div class="lb-fly-body">${techs.length ? techs.map(x => `<span class="lb-fly-chip">${esc(x)}</span>`).join('') : `<i>${t('spec.flyNone')}</i>`}</div></div>
+            <div class="lb-fly-sec"><div class="lb-fly-h">👥 ${t('spec.flyUnits', { n: ai.units.length })}</div>
+                <div class="lb-fly-body">${unitChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
+            <div class="lb-fly-sec"><div class="lb-fly-h">🏛️ ${t('spec.flyBuildings', { n: ai.buildings.length })}</div>
+                <div class="lb-fly-body">${bChips || `<i>${t('spec.flyNone')}</i>`}</div></div>`;
+    }
+
+    positionLbFlyout() {
+        const el = this._lbFlyoutEl;
+        if (!el || !this._lbFlyoutAi) return;
+        const card = document.querySelector(`.lb-card[data-ai="${CSS.escape(this._lbFlyoutAi)}"]`);
+        if (!card) { this.closeLbFlyout(); return; }
+        const r = card.getBoundingClientRect();
+        el.style.right = (window.innerWidth - r.left + 10) + 'px';
+        el.style.left = 'auto';
+        el.style.top = Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, r.top)) + 'px';
+    }
+
+    closeLbFlyout() {
+        this._lbFlyoutAi = null;
+        if (this._lbFlyoutEl) this._lbFlyoutEl.style.display = 'none';
     }
 
     onAdviceInput(aiId, value) {
@@ -2084,8 +2192,12 @@ class UIManager {
         return tags;
     }
 
-    showArenaSummary(winnerAi, reason) {
+    showArenaSummary(winnerAi, reason, opts = {}) {
         const game = this.game;
+        // snapshot: a LIVE look at the standings mid-match (Results button). The
+        // same rendering, but no winner is declared, terminal navigation is
+        // hidden and a Back button returns to the still-running game.
+        const snapshot = !!opts.snapshot;
         const players = game.aiManager ? game.aiManager.aiPlayers : [];
 
         const durationMs = this.arenaStartTime ? (Date.now() - this.arenaStartTime) : 0;
@@ -2163,9 +2275,20 @@ class UIManager {
 
         reports.sort((a, b) => (b.isWinner - a.isWinner) || (b.alive - a.alive) || (b.power - a.power));
 
-        // Winner banner
+        // Winner banner — or, in snapshot mode, the CURRENT leader (no crown).
         const wEl = document.getElementById('summaryWinner');
-        if (winnerAi) {
+        if (snapshot) {
+            const lead = reports[0];
+            wEl.innerHTML = lead ? `
+                <div class="winner-card snapshot" style="--civ:${lead.color}">
+                    <div class="winner-crown">📊</div>
+                    <div class="winner-text">
+                        <div class="winner-model">${this.escapeHtml(lead.model)}</div>
+                        <div class="winner-civ">${lead.civName} · ${t('sum.snapLeader')}</div>
+                    </div>
+                    <div class="winner-score">${lead.power}<span>${t('sum.points')}</span></div>
+                </div>` : '';
+        } else if (winnerAi) {
             const wr = reports.find(r => r.ai === winnerAi);
             wEl.innerHTML = `
                 <div class="winner-card" style="--civ:${wr.color}">
@@ -2234,14 +2357,31 @@ class UIManager {
 
         document.getElementById('summaryLegend').textContent = t('sum.legend');
 
-        // Keep the computed report so the spectator can save it to a file.
+        // Keep the computed report so the spectator can save it to a file (a
+        // snapshot export is correctly labeled by its reason; a real match end
+        // re-renders and overwrites this with the final report).
         this._lastSummary = {
             reports, reason, durStr, playerCount: players.length,
             mapSeed: game.mapSeed || null,
             difficulty: game.difficulty || 'easy'
         };
 
+        // Snapshot: Back returns to the running game; hide the terminal
+        // navigation so a live match can't be abandoned by accident. A real end
+        // (also when it fires WHILE a snapshot is open) restores the buttons.
+        const backBtn = document.getElementById('summaryBackBtn');
+        const newBtn = document.getElementById('summaryNewArenaBtn');
+        const menuBtn = document.getElementById('summaryMenuBtn');
+        if (backBtn) backBtn.style.display = snapshot ? '' : 'none';
+        if (newBtn) newBtn.style.display = snapshot ? 'none' : '';
+        if (menuBtn) menuBtn.style.display = snapshot ? 'none' : '';
+
         this.showScreen('arenaSummaryScreen');
+    }
+
+    // Back from a snapshot to the (still running) match.
+    closeArenaSnapshot() {
+        if (this.game && this.game.gameStarted) this.showScreen('gameScreen');
     }
 
     // Build a human-readable Markdown report of the last match.

@@ -252,6 +252,30 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
     background: var(--gold-2, #ffd700);
     white-space: nowrap;
 }
+/* Achievements flyout on leaderboard cards (opens to the left of the card;
+   fixed-positioned singleton so leaderboard re-renders can't wipe it). */
+.lb-flyout {
+    position: fixed;
+    display: none;
+    z-index: 260;
+    width: 300px;
+    max-height: 62vh;
+    overflow: auto;
+    background: rgba(16, 20, 34, 0.97);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+    padding: 10px 12px;
+    font-size: 0.85em;
+    text-align: left;
+}
+.lb-flyout .lb-fly-head { display: flex; flex-direction: column; gap: 2px; border-left: 3px solid var(--civ, #888); padding-left: 8px; margin-bottom: 6px; }
+.lb-flyout .lb-fly-head b { color: var(--civ, #fff); }
+.lb-flyout .lb-fly-head span { color: var(--muted); font-size: 0.85em; }
+.lb-flyout .lb-fly-h { color: var(--teal); font-weight: 700; margin: 8px 0 4px; font-size: 0.9em; }
+.lb-flyout .lb-fly-body { display: flex; flex-wrap: wrap; gap: 4px; }
+.lb-flyout .lb-fly-body i { color: var(--muted); }
+.lb-fly-chip { background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 /* Read-only line diff of an edited slot prompt vs. the shared template
    (unified-diff style: changed lines ±2 context, hunks separated by ⋯). */
 .slot-prompt-btns { display: flex; gap: 8px; margin-top: 8px; }
