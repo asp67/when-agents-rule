@@ -834,13 +834,20 @@ class Game {
     }
 
     updateCombat(deltaTime) {
-        this.getAllUnits().forEach(unit => {
+        // Iterate a SNAPSHOT: destroyTarget() splices renderer.units mid-loop, and a
+        // live-array forEach then skips the unit that slides into the freed index —
+        // after every kill one unit silently missed its combat tick. Units that die
+        // during this pass are skipped by the health guard instead.
+        this.getAllUnits().slice().forEach(unit => {
+            if (unit.health <= 0) return;
             // Skip workers - they don't attack unless explicitly ordered
             if (unit.type === 'worker' && !unit.isAttacking) return;
-            
-            // Drop a dead/destroyed target so we re-acquire below.
+
+            // Drop a dead/destroyed target so we re-acquire below — immediately
+            // (full scan interval), not after the 150ms throttle.
             if (unit.isAttacking && unit.attackTarget && unit.attackTarget.health <= 0) {
                 unit.attackTarget = null;
+                unit._acquireTimer = 150;
             }
 
             // No target but ordered to fight: acquire the nearest enemy, but ONLY
@@ -962,9 +969,14 @@ class Game {
                         if (currentTarget.health <= 0) {
                             this.destroyTarget(currentTarget);
                             unit.attackTarget = null;
-                            // On an attack-move, stay aggressive and re-acquire next
-                            // tick; a plain attack ends once its target is gone.
-                            if (!unit.attackMove) unit.isAttacking = false;
+                            // The killer stays in the fight and re-acquires through
+                            // the SAME scan as its squadmates. It used to stand down
+                            // here on a plain attack while everyone else re-targeted
+                            // via the stale-target path above — so after every kill
+                            // exactly one unit (whoever landed the killing blow)
+                            // dropped out of the battle. The scan already ends the
+                            // fight cleanly when no enemy is left within aggro range.
+                            unit._acquireTimer = 150;
                         }
                     }
                 }
@@ -995,7 +1007,7 @@ class Game {
     // range each volley (area suppression), so a tower line is a real deterrent.
     updateTowerAttack(deltaTime) {
         const towers = this.getAllBuildings().filter(b => b.type === 'tower' && !b.underConstruction && b.health > 0);
-        const units = this.getAllUnits();
+        const units = this.getAllUnits().slice(); // snapshot: volleys kill mid-loop
         towers.forEach(tower => {
             if (!tower.attackTimer) tower.attackTimer = 0;
             tower.attackTimer += deltaTime;
@@ -2080,6 +2092,39 @@ class Game {
         this.aiManager.update(deltaTime);
     }
 
+    // A worker's node ran dry: send it to the nearest node of the SAME type that
+    // its owner has actually DISCOVERED; it only goes idle when none is left.
+    // Discovery honours each owner's own knowledge — fog exploration for the human
+    // player, the _knownResIdx scouting memory for AI players (rule-based and LLM
+    // alike) — so nobody walks to a node they have never seen.
+    retargetDepletedWorker(unit, owner) {
+        const wantType = unit.harvestTarget && unit.harvestTarget.type;
+        unit.task = null;
+        unit.harvestTarget = null;
+        unit.isHarvesting = false;
+        unit.harvestTimer = 0;
+        if (!wantType || !this.terrain || !this.terrain.resources) return;
+
+        const isHuman = owner === this.player;
+        let best = null, bestDist = Infinity;
+        this.terrain.resources.forEach((r, idx) => {
+            if (r.type !== wantType || r.amount === undefined || r.amount <= 0) return;
+            const known = isHuman
+                ? (!this.fogOfWar || this.fogOfWar.isPositionVisible(r.x, r.z))
+                : !!(owner._knownResIdx && owner._knownResIdx.has(idx));
+            if (!known) return;
+            const d = Math.hypot(r.x - unit.x, r.z - unit.z);
+            if (d < bestDist) { bestDist = d; best = r; }
+        });
+        if (!best) return; // nothing of this type discovered & left → idle
+
+        unit.task = 'harvesting';
+        unit.harvestTarget = best;
+        unit.isMoving = true;
+        unit.targetX = best.x + (Math.random() - 0.5) * 2;
+        unit.targetZ = best.z + (Math.random() - 0.5) * 2;
+    }
+
     updateWorkerTasks(deltaTime) {
         this.getAllUnits().forEach(unit => {
             if (unit.type !== 'worker') return;
@@ -2128,12 +2173,10 @@ class Game {
             
             // State 2: Harvesting at resource (not moving)
             if (unit.task === 'harvesting' && unit.isHarvesting && unit.harvestTarget) {
-                // Node emptied (e.g. by another worker) while we stood on it: stop and
-                // go idle so the owner can reassign us to a node that still has goods.
+                // Node emptied (e.g. by another worker) while we stood on it: walk
+                // on to the nearest DISCOVERED node of the same type (idle if none).
                 if (!unit.harvestTarget.isFarm && unit.harvestTarget.amount !== undefined && unit.harvestTarget.amount <= 0) {
-                    unit.task = null;
-                    unit.harvestTarget = null;
-                    unit.isHarvesting = false;
+                    this.retargetDepletedWorker(unit, owner);
                     return;
                 }
                 unit.harvestTimer = (unit.harvestTimer || 0) + deltaTime;
@@ -2229,8 +2272,13 @@ class Game {
                         unit.targetZ = unit.harvestTarget.z + (Math.random() - 0.5) * 2;
                         unit.isMoving = true;
                         unit.task = 'harvesting';
+                    } else if (!unit.harvestTarget.isFarm) {
+                        // Node ran dry while we were delivering: continue on the
+                        // nearest discovered node of the same type (idle if none).
+                        this.retargetDepletedWorker(unit, owner);
                     } else {
-                        // Resource depleted, find new one
+                        // Empty farm wrapper: idle (the farm branch below may still
+                        // re-assign a dedicated farmhand).
                         unit.task = null;
                         unit.harvestTarget = null;
                     }
