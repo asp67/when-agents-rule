@@ -1373,7 +1373,7 @@ class Game {
         this.ui.hideBuildingPlacementHint();
     }
 
-    trainUnit(unitType) {
+    trainUnit(unitType, trainerId = null) {
         const unitDef = getUnitDef(unitType) || getCivilization(this.player.civilization).uniqueUnits.find(u => u.id === unitType);
         if (!unitDef) return;
 
@@ -1395,8 +1395,24 @@ class Game {
             return;
         }
 
-        // Prefer a FREE one — never silently overwrite a building mid-production.
-        const trainingBuilding = trainers.find(b => !b.isProducing);
+        // The train menu passes the id of the building it was opened for: honour
+        // that choice — the unit spawns at the producing building, so with several
+        // Town Centers (or barracks/stables/archery ranges) it must be the one the
+        // player actually selected, not the first free one in build order. If the
+        // chosen building is busy, say so instead of silently producing elsewhere.
+        let trainingBuilding = null;
+        const requested = trainerId ? trainers.find(b => b.id === trainerId) : null;
+        if (requested) {
+            if (requested.isProducing) {
+                this.ui.showErrorMessage(t('msg.buildingBusy'));
+                return;
+            }
+            trainingBuilding = requested;
+        } else {
+            // No building context (or it no longer exists): first FREE trainer —
+            // never silently overwrite a building mid-production.
+            trainingBuilding = trainers.find(b => !b.isProducing);
+        }
         if (!trainingBuilding) {
             this.ui.showErrorMessage(t('msg.buildingBusy'));
             return;

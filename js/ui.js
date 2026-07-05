@@ -1092,7 +1092,10 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 if (unitDef) {
                     const canAfford = this.game.player.resources.hasResources(unitDef.cost);
                     const tierLabel = unitDef.tier ? ` (${this.getAgeName(unitDef.tier)})` : '';
-                    const action = `game.trainUnit('${unitId}')`;
+                    // Pass THIS building's instance id: with several Town Centers /
+                    // barracks the unit must be produced (and spawn) at the one whose
+                    // menu the player is using, not at the first free one found.
+                    const action = `game.trainUnit('${unitId}', '${building.id}')`;
                     html += `
                         <div class="menu-item ${canAfford ? '' : 'disabled'}" onclick="${canAfford ? action : ''}" data-locked="0" data-action="${action}" data-cost='${JSON.stringify(unitDef.cost)}'>
                             <h4>${tg(unitDef.name)}${tierLabel}</h4>
