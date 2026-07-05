@@ -1768,7 +1768,7 @@ class UIManager {
                     <div class="ai-log-entry is-advice${newCls}" data-key="${key}" style="border-left-color: ${civColor}">
                         <div class="log-line1">
                             <span class="log-time">${timeStr}</span>
-                            <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(entry.civName)}</span>
+                            <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(tg(entry.civName))}</span>
                             <span class="log-action">${t('log.advice')}</span>
                         </div>
                         <span class="log-reason">“${this.escapeHtml(entry.reason)}”</span>
@@ -1792,7 +1792,7 @@ class UIManager {
                 <div class="ai-log-entry${isError ? ' is-error' : ''}${newCls}" data-key="${key}" style="border-left-color: ${civColor}">
                     <div class="log-line1">
                         <span class="log-time">${timeStr}</span>
-                        <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(entry.civName)}</span>
+                        <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(tg(entry.civName))}</span>
                         <span class="log-action">${actionLabel}${this.escapeHtml(detail)}${entry.failed ? ` <span class="log-x">✗ ${t('log.rejected')}</span>` : ''}</span>
                     </div>
                     ${entry.reason ? `<span class="log-reason">“${this.escapeHtml(entry.reason)}”</span>` : ''}
