@@ -273,6 +273,9 @@ const I18N = {
         'ar.slotPromptReset': '↺ Reset to template',
         'ar.promptEdited': 'edited',
         'ar.promptEditedTitle': 'This opponent uses a custom system prompt (differs from the shared template)',
+        'ar.slotDiffShow': '🔍 Show changes',
+        'ar.slotDiffHide': 'Hide changes',
+        'ar.slotDiffEmpty': 'No line-level differences from the template.',
 
         // Benchmark summary
         'sum.title': '🏟️ Arena — Model evaluation',
@@ -540,6 +543,9 @@ const I18N = {
         'ar.slotPromptReset': '↺ Auf Vorlage zurücksetzen',
         'ar.promptEdited': 'angepasst',
         'ar.promptEditedTitle': 'Dieser Gegner nutzt einen angepassten System-Prompt (weicht von der Vorlage ab)',
+        'ar.slotDiffShow': '🔍 Änderungen anzeigen',
+        'ar.slotDiffHide': 'Änderungen ausblenden',
+        'ar.slotDiffEmpty': 'Keine zeilenweisen Unterschiede zur Vorlage.',
 
         'sum.title': '🏟️ Arena — Modell-Auswertung',
         'sum.newArena': '⚔️ Neue Arena',
@@ -798,6 +804,9 @@ const I18N = {
         'ar.slotPromptReset': '↺ Restablecer a la plantilla',
         'ar.promptEdited': 'editado',
         'ar.promptEditedTitle': 'Este oponente usa un system prompt personalizado (difiere de la plantilla)',
+        'ar.slotDiffShow': '🔍 Mostrar cambios',
+        'ar.slotDiffHide': 'Ocultar cambios',
+        'ar.slotDiffEmpty': 'Sin diferencias por líneas respecto a la plantilla.',
 
         'sum.title': '🏟️ Arena — Evaluación de modelos',
         'sum.newArena': '⚔️ Nueva arena',
@@ -1064,6 +1073,9 @@ const I18N = {
         'ar.slotPromptReset': '↺ 重置为模板',
         'ar.promptEdited': '已修改',
         'ar.promptEditedTitle': '此对手使用自定义系统提示词（与模板不同）',
+        'ar.slotDiffShow': '🔍 显示改动',
+        'ar.slotDiffHide': '隐藏改动',
+        'ar.slotDiffEmpty': '与模板没有按行差异。',
 
         'sum.title': '🏟️ 竞技场 — 模型评估',
         'sum.newArena': '⚔️ 新竞技场',

@@ -333,8 +333,9 @@ class UIManager {
         cfg.count = Math.min(4, Math.max(2, parseInt(cfg.count, 10) || 4));
         // Optional map seed (persisted with the config).
         cfg.seed = typeof cfg.seed === 'string' ? cfg.seed : '';
-        // Always start participant slots collapsed for a clean overview on load.
-        cfg.slots.forEach(s => { s._collapsed = true; });
+        // Always start participant slots collapsed (and diff panels closed) for a
+        // clean overview on load.
+        cfg.slots.forEach(s => { s._collapsed = true; s._diffOpen = false; });
         return cfg;
     }
 
@@ -372,6 +373,7 @@ class UIManager {
         const tmpl = (this._arenaConfig && this._arenaConfig.prompt) || this.getArenaDefaultPrompt();
         cc.slots.forEach(s => {
             if (typeof s.prompt !== 'string' || !s.prompt.trim() || s.prompt === tmpl) s.prompt = null;
+            s._diffOpen = false; // diff panels always start closed
         });
         cc.playerCiv = cc.playerCiv || 'egyptian';
         cc.count = Math.min(5, Math.max(1, parseInt(cc.count, 10) || 3));
@@ -668,8 +670,12 @@ class UIManager {
             const promptBlock = isLLM ? `
                 <div class="arena-field slot-prompt">
                     <label>${t('ar.slotPrompt')}</label>
-                    <textarea rows="6" class="arena-prompt-textarea" oninput="game.ui.setSlotPrompt(${i}, this.value)" placeholder="System prompt …">${e(slot.prompt != null ? slot.prompt : (this._arenaConfig.prompt || ''))}</textarea>
-                    <button class="hdr-add-btn" style="margin-top:8px" onclick="game.ui.resetSlotPrompt(${i})">${t('ar.slotPromptReset')}</button>
+                    <textarea id="slotPromptTa${i}" rows="6" class="arena-prompt-textarea" oninput="game.ui.setSlotPrompt(${i}, this.value)" placeholder="System prompt …">${e(slot.prompt != null ? slot.prompt : (this._arenaConfig.prompt || ''))}</textarea>
+                    <div class="slot-prompt-btns">
+                        <button class="hdr-add-btn" onclick="game.ui.resetSlotPrompt(${i})">${t('ar.slotPromptReset')}</button>
+                        <button class="hdr-add-btn" id="slotDiffBtn${i}" style="${slot.prompt != null ? '' : 'display:none'}" onclick="game.ui.toggleSlotDiff(${i})">${slot._diffOpen ? t('ar.slotDiffHide') : t('ar.slotDiffShow')}</button>
+                    </div>
+                    ${(slot._diffOpen && slot.prompt != null) ? `<div class="slot-diff" id="slotDiff${i}">${this.renderSlotDiffHtml(slot)}</div>` : ''}
                 </div>` : '';
             const collapsed = slot._collapsed !== false; // default collapsed
             // Compact summary shown on the collapsed header: civ + who controls it.
@@ -802,18 +808,101 @@ class UIManager {
         this.saveSetup();
         this.renderArenaSlots(); // show/hide the per-slot prompt editor
     }
+    // Line-based LCS diff (zero-dependency). Returns ops over the two texts:
+    // {t:'same'|'add'|'del', s:line} — 'add' = line only in the edited text,
+    // 'del' = template line the edit removed. Inputs are ~130 lines, so the
+    // O(n·m) table is trivial (runs comfortably on every keystroke).
+    diffLines(aText, bText) {
+        const a = String(aText).split('\n'), b = String(bText).split('\n');
+        const n = a.length, m = b.length;
+        const L = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+        for (let i = n - 1; i >= 0; i--)
+            for (let j = m - 1; j >= 0; j--)
+                L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+        const ops = [];
+        let i = 0, j = 0;
+        while (i < n && j < m) {
+            if (a[i] === b[j]) { ops.push({ t: 'same', s: a[i] }); i++; j++; }
+            else if (L[i + 1][j] >= L[i][j + 1]) { ops.push({ t: 'del', s: a[i] }); i++; }
+            else { ops.push({ t: 'add', s: b[j] }); j++; }
+        }
+        while (i < n) ops.push({ t: 'del', s: a[i++] });
+        while (j < m) ops.push({ t: 'add', s: b[j++] });
+        return ops;
+    }
+
+    // Unified-diff-style HTML for an edited slot vs. the CURRENT shared template:
+    // changed lines ±2 context, hunks separated by ⋯ — so the panel answers
+    // "what exactly does this opponent do differently?" without the full wall.
+    renderSlotDiffHtml(slot) {
+        const base = this._arenaConfig.prompt || '';
+        const ops = this.diffLines(base, slot.prompt != null ? slot.prompt : base);
+        if (!ops.some(o => o.t !== 'same')) return `<div class="diff-empty">${t('ar.slotDiffEmpty')}</div>`;
+        const esc = (s) => this.escapeHtml(s);
+        const CTX = 2;
+        const show = new Array(ops.length).fill(false);
+        ops.forEach((o, k) => {
+            if (o.t === 'same') return;
+            for (let d = -CTX; d <= CTX; d++) {
+                const x = k + d;
+                if (x >= 0 && x < ops.length) show[x] = true;
+            }
+        });
+        let html = '', gap = false;
+        ops.forEach((o, k) => {
+            if (!show[k]) { gap = true; return; }
+            if (gap) { html += `<div class="diff-sep">⋯</div>`; gap = false; }
+            const cls = o.t === 'add' ? 'diff-add' : o.t === 'del' ? 'diff-del' : 'diff-ctx';
+            const sign = o.t === 'add' ? '+' : o.t === 'del' ? '−' : '&nbsp;';
+            html += `<div class="${cls}">${sign} ${esc(o.s) || '&nbsp;'}</div>`;
+        });
+        return html;
+    }
+
+    // Toggle the read-only diff panel under an edited slot's prompt. On open,
+    // scroll the textarea to the first line that differs, so the user lands
+    // directly on their edit.
+    toggleSlotDiff(i) {
+        const s = this.setupSlots()[i];
+        if (!s) return;
+        s._diffOpen = !s._diffOpen;
+        this.renderArenaSlots();
+        if (s._diffOpen && s.prompt != null) {
+            const ops = this.diffLines(this._arenaConfig.prompt || '', s.prompt);
+            let line = 0, first = -1;
+            for (const o of ops) {
+                if (o.t !== 'same' && first < 0) first = line;
+                if (o.t !== 'del') line++; // 'same'/'add' advance the edited-text line counter
+            }
+            const ta = document.getElementById('slotPromptTa' + i);
+            if (ta && first > 0) {
+                const lh = parseFloat(getComputedStyle(ta).lineHeight) || 18;
+                ta.scrollTop = Math.max(0, (first - 1) * lh);
+            }
+        }
+    }
+
     // DERIVE-unless-edited: the slot stores a prompt ONLY while it differs from
     // the shared template. Typing the template text back (or resetting) returns
     // the slot to derived (null), so future default updates flow through. The
-    // ✎ badge on the slot header reflects the state live while typing.
+    // ✎ badge, the diff button and an open diff panel all track the state live
+    // while typing.
     setSlotPrompt(i, value) {
         const s = this.setupSlots()[i];
         if (!s) return;
         const base = (this._arenaConfig.prompt || '').trim();
         const val = String(value);
         s.prompt = (val.trim() && val.trim() !== base) ? val : null;
+        const edited = s.prompt != null;
         const badge = document.getElementById('slotPromptBadge' + i);
-        if (badge) badge.style.display = s.prompt != null ? '' : 'none';
+        if (badge) badge.style.display = edited ? '' : 'none';
+        const diffBtn = document.getElementById('slotDiffBtn' + i);
+        if (diffBtn) diffBtn.style.display = edited ? '' : 'none';
+        const panel = document.getElementById('slotDiff' + i);
+        if (panel) {
+            if (edited) panel.innerHTML = this.renderSlotDiffHtml(s);
+            else { panel.style.display = 'none'; s._diffOpen = false; }
+        }
         this.saveSetup();
     }
     resetSlotPrompt(i) {
