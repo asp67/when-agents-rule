@@ -1243,7 +1243,7 @@ class Game {
 
     // Spectator DIRECTOR camera target.
     //  1. Fresh combat (last 5s): its weighted centroid — fights are the show.
-    //  2. Peace: a TOUR of real subjects, ~7s each, round-robin across ALIVE
+    //  2. Peace: a TOUR of real subjects, ~15s each, round-robin across ALIVE
     //     players so everyone gets airtime. Per player the most interesting
     //     subject wins: Wonder > biggest army cluster > newest construction
     //     site > Town Center > anything they still own. The camera therefore
@@ -1267,7 +1267,7 @@ class Game {
                 this._camTourIdx = ((this._camTourIdx == null ? -1 : this._camTourIdx) + 1) % players.length;
                 const subject = this._pickCamSubject(players[this._camTourIdx]);
                 if (subject) {
-                    this._camPOI = { subject, until: now + 7000 };
+                    this._camPOI = { subject, until: now + 15000 }; // 15s per tour stop
                     pos = this._resolveCamSubject(subject);
                 }
             }
