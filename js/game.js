@@ -1230,6 +1230,9 @@ class Game {
     // map is quiet. Any manual camera action switches it off — the user always wins.
     toggleActionCam() {
         this._actionCam = !this._actionCam;
+        // Fresh tour every time it's switched on.
+        this._camPOI = null;
+        this._camTourIdx = null;
         const btn = document.getElementById('actionCamBtn');
         if (btn) btn.classList.toggle('sb-on', this._actionCam);
     }
@@ -1238,15 +1241,84 @@ class Game {
         if (this._actionCam) this.toggleActionCam();
     }
 
-    // Weighted centroid of the last 5s of combat events (fresh hits weigh more);
-    // null when nothing is burning.
+    // Spectator DIRECTOR camera target.
+    //  1. Fresh combat (last 5s): its weighted centroid — fights are the show.
+    //  2. Peace: a TOUR of real subjects, ~7s each, round-robin across ALIVE
+    //     players so everyone gets airtime. Per player the most interesting
+    //     subject wins: Wonder > biggest army cluster > newest construction
+    //     site > Town Center > anything they still own. The camera therefore
+    //     always looks AT something — never at empty ground or the void (the
+    //     old idle mode orbited the world origin regardless of content).
     getActionCamTarget() {
         const now = Date.now();
         const ev = (this._combatEvents || []).filter(e => now - e.t < 5000);
-        if (!ev.length) return null;
-        let sx = 0, sz = 0, sw = 0;
-        ev.forEach(e => { const w = 1 - (now - e.t) / 5000; sx += e.x * w; sz += e.z * w; sw += w; });
-        return sw > 0 ? { x: sx / sw, z: sz / sw } : null;
+        if (ev.length) {
+            this._camPOI = null; // a fight interrupts the tour; it restarts after
+            let sx = 0, sz = 0, sw = 0;
+            ev.forEach(e => { const w = 1 - (now - e.t) / 5000; sx += e.x * w; sz += e.z * w; sw += w; });
+            if (sw > 0) return { x: sx / sw, z: sz / sw };
+        }
+
+        // Current tour subject still valid and fresh? follow it (it may move).
+        let pos = (this._camPOI && now < this._camPOI.until) ? this._resolveCamSubject(this._camPOI.subject) : null;
+        if (!pos) {
+            const players = this.aiManager.aiPlayers.filter(a => !this.isPlayerEliminated(a));
+            for (let i = 0; i < players.length && !pos; i++) {
+                this._camTourIdx = ((this._camTourIdx == null ? -1 : this._camTourIdx) + 1) % players.length;
+                const subject = this._pickCamSubject(players[this._camTourIdx]);
+                if (subject) {
+                    this._camPOI = { subject, until: now + 7000 };
+                    pos = this._resolveCamSubject(subject);
+                }
+            }
+            if (!pos) this._camPOI = null;
+        }
+        return pos;
+    }
+
+    // The most watch-worthy thing a player owns right now.
+    _pickCamSubject(ai) {
+        const wonder = ai.buildings.find(b => b.isWonder && b.health > 0);
+        if (wonder) return { kind: 'ent', ent: wonder };
+        const cluster = this._biggestArmyCluster(ai);
+        if (cluster) return { kind: 'units', units: cluster };
+        const site = [...ai.buildings].reverse().find(b => b.underConstruction && b.health > 0);
+        if (site) return { kind: 'ent', ent: site };
+        const tc = ai.buildings.find(b => b.type === 'town_center' && b.health > 0);
+        if (tc) return { kind: 'ent', ent: tc };
+        if (ai.buildings.length) return { kind: 'ent', ent: ai.buildings[0] };
+        if (ai.units.length) return { kind: 'units', units: [ai.units[0]] };
+        return null;
+    }
+
+    // Densest 40x40 cell of a player's military — "the army", camped or marching.
+    _biggestArmyCluster(ai) {
+        const mil = ai.units.filter(u => u.type !== 'worker' && u.health > 0);
+        if (mil.length < 2) return null;
+        const cells = new Map();
+        mil.forEach(u => {
+            const key = Math.round(u.x / 40) + ':' + Math.round(u.z / 40);
+            if (!cells.has(key)) cells.set(key, []);
+            cells.get(key).push(u);
+        });
+        let best = null;
+        cells.forEach(list => { if (!best || list.length > best.length) best = list; });
+        return best;
+    }
+
+    // Live position of a tour subject; null once it died/finished (advance tour).
+    _resolveCamSubject(subject) {
+        if (!subject) return null;
+        if (subject.kind === 'ent') {
+            const e = subject.ent;
+            return (e && e.health > 0) ? { x: e.x, z: e.z } : null;
+        }
+        const live = (subject.units || []).filter(u => u.health > 0);
+        if (!live.length) return null;
+        return {
+            x: live.reduce((a, u) => a + u.x, 0) / live.length,
+            z: live.reduce((a, u) => a + u.z, 0) / live.length
+        };
     }
 
     destroyTarget(target) {

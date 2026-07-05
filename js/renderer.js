@@ -1710,20 +1710,28 @@ class GameRenderer {
         // around the map when nothing is burning. Keeps the current zoom/angle
         // (only the look-at point moves); manual input turns the mode off.
         if (typeof game !== 'undefined' && game && game._actionCam && game.spectatorMode && game.gameStarted) {
-            const offX = this.camera.position.x - this.cameraTarget.x;
+            let offX = this.camera.position.x - this.cameraTarget.x;
             const offY = this.camera.position.y - this.cameraTarget.y;
-            const offZ = this.camera.position.z - this.cameraTarget.z;
+            let offZ = this.camera.position.z - this.cameraTarget.z;
+
+            // Gentle cinematic orbit around the SUBJECT: rotate the camera's
+            // OFFSET, never the look-at point. (The old idle mode rotated the
+            // target around the WORLD ORIGIN, which swept the view across empty
+            // map and open sea whenever nothing was fighting.)
+            const a = 0.045 * deltaTime; // ~2.6°/s — a full circle takable in ~2.3min
+            const ox = offX * Math.cos(a) - offZ * Math.sin(a);
+            const oz = offX * Math.sin(a) + offZ * Math.cos(a);
+            offX = ox; offZ = oz;
+
+            // The director picks the subject: a live fight, else the base tour.
             const hot = game.getActionCamTarget();
             if (hot) {
                 const k = Math.min(1, deltaTime * 1.6);
                 this.cameraTarget.x += (hot.x - this.cameraTarget.x) * k;
                 this.cameraTarget.z += (hot.z - this.cameraTarget.z) * k;
-            } else {
-                const a = 0.00005 * (deltaTime * 1000); // slow cinematic drift
-                const cx = this.cameraTarget.x, cz = this.cameraTarget.z;
-                this.cameraTarget.x = cx * Math.cos(a) - cz * Math.sin(a);
-                this.cameraTarget.z = cx * Math.sin(a) + cz * Math.cos(a);
             }
+            // No subject at all (nothing left to show): hold position.
+
             this.camera.position.set(this.cameraTarget.x + offX, this.cameraTarget.y + offY, this.cameraTarget.z + offZ);
             this.camera.lookAt(this.cameraTarget);
         }
