@@ -276,6 +276,13 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .lb-flyout .lb-fly-body { display: flex; flex-wrap: wrap; gap: 4px; }
 .lb-flyout .lb-fly-body i { color: var(--muted); }
 .lb-fly-chip { background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+/* Snapshot variant of the summary: a translucent backdrop OVER the still-active
+   game screen — the running match shimmering through says "in-game stats". */
+#arenaSummaryScreen.snapshot {
+    background: rgba(8, 12, 26, 0.72);
+    z-index: 300;
+    overflow-y: auto;
+}
 /* Read-only line diff of an edited slot prompt vs. the shared template
    (unified-diff style: changed lines ±2 context, hunks separated by ⋯). */
 .slot-prompt-btns { display: flex; gap: 8px; margin-top: 8px; }
@@ -604,16 +611,38 @@ body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
     flex: 0 0 auto;         /* never shrink — shrinking would clip the advice input */
     pointer-events: auto;   /* parent is none; cards are clickable to focus the base */
     cursor: pointer;
-    padding: 8px 11px 9px;
+    /* left padding clears the .lb-fly-tab, which replaces the old 4px colored
+       border as a WIDER, clickable civ-colored edge */
+    padding: 8px 11px 9px 29px;
     border-radius: 11px;
     background: linear-gradient(160deg, rgba(26, 34, 62, 0.94), rgba(13, 17, 33, 0.94));
     border: 1px solid rgba(255, 255, 255, 0.06);
-    border-left: 4px solid var(--civ, #888);
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
     backdrop-filter: blur(7px);
     overflow: hidden;
     transition: transform 0.45s cubic-bezier(.2,.7,.3,1), box-shadow 0.3s, opacity 0.4s;
 }
+/* The card's colored edge, widened into a real button: ONLY this tab opens the
+   achievements flyout (arrow points where it appears); the rest of the card
+   keeps focusing the camera and does NOT open it. */
+.lb-fly-tab {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 18px;
+    background: var(--civ, #888);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(10, 14, 26, 0.82);
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    transition: filter 0.15s;
+}
+.lb-fly-tab:hover { filter: brightness(1.3); }
 
 .lb-card.leader {
     border-color: rgba(255, 212, 94, 0.55);

@@ -1948,7 +1948,8 @@ class UIManager {
             const pct = r.alive ? Math.round((r.score / maxScore) * 100) : 0;
 
             html += `
-                <div class="lb-card rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" data-ai="${ai.id}" onclick="game.focusCameraOnAI('${ai.id}'); game.ui.openLbFlyout('${ai.id}')" title="${t('spec.cardHint')}">
+                <div class="lb-card rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" data-ai="${ai.id}" onclick="game.focusCameraOnAI('${ai.id}')" title="${t('spec.cardHint')}">
+                    <div class="lb-fly-tab" title="${t('spec.flyTabTitle')}" onclick="event.stopPropagation(); game.ui.openLbFlyout('${ai.id}')">◀</div>
                     <div class="lb-model-banner" title="${this.escapeHtml(r.modelName)}">
                         <span class="lb-model-name">${this.escapeHtml(r.modelName)}</span>
                         ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel('${ai.id}')" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
@@ -2018,12 +2019,13 @@ class UIManager {
             document.body.appendChild(el);
             this._lbFlyoutEl = el;
             // Auto-close on any press elsewhere. Capture phase, so it runs before
-            // the pressed element's own handlers; presses inside the flyout or on
-            // a leaderboard card (whose own onclick opens/toggles) are exempt.
+            // the pressed element's own handlers; only presses inside the flyout
+            // or on a flyout TAB (whose own onclick opens/toggles) are exempt —
+            // a press on the card body counts as "elsewhere" and closes it.
             document.addEventListener('mousedown', (e) => {
                 if (!this._lbFlyoutAi) return;
                 if (this._lbFlyoutEl && this._lbFlyoutEl.contains(e.target)) return;
-                if (e.target.closest && e.target.closest('.lb-card')) return;
+                if (e.target.closest && e.target.closest('.lb-fly-tab')) return;
                 this.closeLbFlyout();
             }, true);
         }
@@ -2376,12 +2378,25 @@ class UIManager {
         if (newBtn) newBtn.style.display = snapshot ? 'none' : '';
         if (menuBtn) menuBtn.style.display = snapshot ? 'none' : '';
 
-        this.showScreen('arenaSummaryScreen');
+        // Snapshot: OVERLAY the running game — gameScreen stays active underneath
+        // and the .snapshot variant has a translucent backdrop, so the live match
+        // shimmering through makes it unmistakable that this is an in-game stat
+        // view. A real end keeps the normal exclusive screen switch.
+        const sumEl = document.getElementById('arenaSummaryScreen');
+        if (snapshot) {
+            sumEl.classList.add('snapshot', 'active');
+        } else {
+            sumEl.classList.remove('snapshot');
+            this.showScreen('arenaSummaryScreen');
+        }
     }
 
-    // Back from a snapshot to the (still running) match.
+    // Back from a snapshot overlay to the (still running) match.
     closeArenaSnapshot() {
-        if (this.game && this.game.gameStarted) this.showScreen('gameScreen');
+        const sumEl = document.getElementById('arenaSummaryScreen');
+        if (sumEl) sumEl.classList.remove('snapshot', 'active');
+        const gs = document.getElementById('gameScreen');
+        if (gs && this.game && this.game.gameStarted) gs.classList.add('active');
     }
 
     // Build a human-readable Markdown report of the last match.
