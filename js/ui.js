@@ -1015,17 +1015,19 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
         return t(key) !== key ? t(key) : '';
     }
 
-    showBuildMenu(buildingType = null) {
+    showBuildMenu() {
         this.closeMenus();
         const menu = document.getElementById('buildMenu');
         const content = document.getElementById('buildMenuContent');
-        
+
         let html = '';
-        
-        // Get available buildings based on selected building or default
-        const buildings = buildingType ? 
-            this.getBuildingsForBuilding(buildingType) : 
-            this.getDefaultBuildings();
+
+        // ALWAYS the full catalogue, regardless of what is selected. This used to
+        // switch to a per-building subset (TC selected → no tower/town center/
+        // wonder; barracks/stable selected → tower only), which read as "the build
+        // list sometimes doesn't appear". Locked entries render greyed with a 🔒
+        // and their unlock condition instead of being hidden.
+        const buildings = this.getDefaultBuildings();
 
         buildings.forEach(b => {
             const canAfford = this.game.player.resources.hasResources(b.cost);
@@ -1096,10 +1098,26 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                     // barracks the unit must be produced (and spawn) at the one whose
                     // menu the player is using, not at the first free one found.
                     const action = `game.trainUnit('${unitId}', '${building.id}')`;
+                    // Combat-relevant stats so the pick isn't blind: HP, attack,
+                    // speed, range (support units heal — no attack figure shown).
+                    const isSupport = unitDef.type === 'support';
+                    const stats = [
+                        `❤️${unitDef.health}`,
+                        ...(isSupport ? [] : [`⚔️${unitDef.attack}`]),
+                        `💨${unitDef.speed}`,
+                        ...(unitDef.range > 1 ? [`🎯${unitDef.range}`] : [])
+                    ].join('  ');
+                    const statsTitle = [
+                        t('ui.health'),
+                        ...(isSupport ? [] : [t('ui.attack')]),
+                        t('ui.speed'),
+                        ...(unitDef.range > 1 ? [t('ui.range')] : [])
+                    ].join(' · ');
                     html += `
                         <div class="menu-item ${canAfford ? '' : 'disabled'}" onclick="${canAfford ? action : ''}" data-locked="0" data-action="${action}" data-cost='${JSON.stringify(unitDef.cost)}'>
                             <h4>${tg(unitDef.name)}${tierLabel}</h4>
                             <p>${tg(unitDef.description)}</p>
+                            <p class="unit-stats" title="${statsTitle}">${stats}</p>
                             <p class="cost">🍖${unitDef.cost.food} 🌲${unitDef.cost.wood} 🪨${unitDef.cost.stone} 🥇${unitDef.cost.gold}</p>
                         </div>
                     `;
@@ -1370,7 +1388,6 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
     }
 
     getDefaultBuildings() {
-        const age = this.game.player.age;
         const allBuildings = [
             BUILDING_DEFS.town_center,
             BUILDING_DEFS.house,
@@ -1395,43 +1412,11 @@ Respond with ONLY a single JSON object - no markdown, no code fences, no comment
                 requiredAge: wonderDef.requiredAge || 'iron'
             });
         }
-        // Filter by age requirement AND tech requirements
-        return allBuildings.filter(b => {
-            if (!b.requiredAge) return true;
-            const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-            if (ageOrder.indexOf(b.requiredAge) > ageOrder.indexOf(age)) return false;
-            
-            // Check if building requires a tech
-            if (b.requiresTech) {
-                return this.game.player.researchedTechs[b.requiresTech];
-            }
-            return true;
-        });
-    }
-
-    getBuildingsForBuilding(type) {
-        const age = this.game.player.age;
-        const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-        const filterByAge = (buildings) => buildings.filter(b => {
-            if (!b.requiredAge) return true;
-            if (ageOrder.indexOf(b.requiredAge) > ageOrder.indexOf(age)) return false;
-            
-            // Check if building requires a tech
-            if (b.requiresTech) {
-                return this.game.player.researchedTechs[b.requiresTech];
-            }
-            return true;
-        });
-        
-        switch(type) {
-            case 'town_center':
-                return filterByAge([BUILDING_DEFS.barracks, BUILDING_DEFS.archery_range, BUILDING_DEFS.farm, BUILDING_DEFS.house, BUILDING_DEFS.temple, BUILDING_DEFS.market]);
-            case 'barracks':
-            case 'stable':
-                return filterByAge([BUILDING_DEFS.tower]);
-            default:
-                return this.getDefaultBuildings();
-        }
+        // Show the WHOLE catalogue: entries locked by age or an unresearched tech
+        // stay in the list and render greyed with a 🔒 + their unlock condition
+        // (the menu renderer handles that). Only buildings this civilization can
+        // NEVER unlock (required tech absent from its tech tree) are dropped.
+        return allBuildings.filter(b => !(b.requiresTech && !(civ?.techTree || {})[b.requiresTech]));
     }
 
     showVictory() {

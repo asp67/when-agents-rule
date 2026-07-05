@@ -1814,8 +1814,8 @@ class Game {
     }
 
     showBuildMenu() {
-        const selectedBuilding = this.player.buildings.find(b => b.selected);
-        this.ui.showBuildMenu(selectedBuilding?.type);
+        // The build menu always shows the full catalogue — selection never filters it.
+        this.ui.showBuildMenu();
     }
 
     showUpgradeMenu() {

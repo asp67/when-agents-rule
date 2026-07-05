@@ -357,6 +357,7 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .menu-item h4 { color: var(--teal); margin-bottom: 6px; font-size: 1.02em; }
 .menu-item p { font-size: 0.82em; color: var(--muted); margin: 3px 0; }
 .menu-item .cost { color: var(--gold-2); font-weight: 700; }
+.menu-item .unit-stats { color: #cfd8d3; font-weight: 600; letter-spacing: .3px; }
 .close-btn {
     position: absolute; top: 12px; right: 14px; width: 30px; height: 30px; border-radius: 8px;
     background: rgba(255,255,255,0.06); border: 1px solid var(--line); color: var(--muted);
