@@ -357,9 +357,9 @@ const CIVILIZATIONS = {
         color: 0xff6347,
         bonus: {
             name: "Satrapie",
-            description: "Dorfbewohner ernten 20% schneller",
+            description: "Dorfbewohner sammeln 20% mehr Ressourcen",
             effect: (game) => {
-                game.workerHarvestBonus = 1.2;
+                game.workerHarvestBonus = 1.2; // +20% carried per trip (applied ONCE, to the amount)
             }
         },
         uniqueUnits: [

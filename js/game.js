@@ -2251,7 +2251,10 @@ class Game {
                     return;
                 }
                 unit.harvestTimer = (unit.harvestTimer || 0) + deltaTime;
-                const harvestTime = 2000 / (owner.workerHarvestBonus || 1);
+                // Harvest bonuses (civ + techs) apply ONCE, to the AMOUNT per trip.
+                // They used to scale the tick time AND the amount — Persia's "20%"
+                // compounded to 1.44x (and stacked further with harvest techs).
+                const harvestTime = 2000;
 
                 if (unit.harvestTimer >= harvestTime) {
                     // Collect resource - store it on the worker, don't add to resources yet
@@ -2483,8 +2486,9 @@ class Game {
                 if (farm.foodAmount >= 10 && !unit.carryingResource && !unit.isMoving) {
                     // Harvest from farm
                     unit.harvestTimer = (unit.harvestTimer || 0) + deltaTime;
-                    const harvestTime = 2000 / (owner.workerHarvestBonus || 1);
-                    
+                    // Same single application as node harvesting: bonus on AMOUNT only.
+                    const harvestTime = 2000;
+
                     if (unit.harvestTimer >= harvestTime) {
                         const amount = 10 * (owner.workerHarvestBonus || 1);
                         farm.foodAmount = Math.max(0, farm.foodAmount - amount);

@@ -2243,12 +2243,16 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         // Decide who will build it BEFORE spending. Only idle workers build; a busy
         // worker is borrowed (and resumes its task) only when at the population cap.
-        const pick = game.pickBuilder(ai, { x, z });
+        // forceBorrow: like the rule-based AI, a busy harvester is pulled to build
+        // and returns to its old task afterwards. Without it, LLM players whose
+        // workers were all gathering had their builds rejected while rule-based
+        // rivals borrowed freely — an unfair asymmetry between controller types.
+        const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
         if (pick.error === 'no_workers') {
             return `[ERROR] You have no workers to build ${buildingType}. Train a worker first.`;
         }
         if (pick.error === 'no_idle') {
-            return `[ERROR] No idle worker to build ${buildingType}. Train another worker or wait until one is idle (you are below your population cap).`;
+            return `[ERROR] No worker available to build ${buildingType} — all your workers are already constructing other sites. Wait for one to finish.`;
         }
 
         ai.resources.spendResources(buildingDef.cost);
@@ -2290,9 +2294,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         let x = tc ? tc.x + (Math.random() - 0.5) * 20 : 0;
         let z = tc ? tc.z + (Math.random() - 0.5) * 20 : 0;
 
-        const pick = game.pickBuilder(ai, { x, z });
+        // forceBorrow: parity with the rule-based AI (see executeBuildStructure).
+        // This exact rejection blocked a Persian Iron-age player from starting an
+        // affordable Wonder because all its workers were out gathering.
+        const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
         if (pick.error === 'no_workers') return `[ERROR] You have no workers to build the Wonder.`;
-        if (pick.error === 'no_idle') return `[ERROR] No idle worker to start the Wonder. Free or train a worker first.`;
+        if (pick.error === 'no_idle') return `[ERROR] No worker available to start the Wonder — all your workers are already constructing other sites. Wait for one to finish.`;
 
         ai.resources.spendResources(wonderDef.cost);
         const wonder = createBuilding(wonderDef.id, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
