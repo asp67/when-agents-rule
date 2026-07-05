@@ -2196,8 +2196,50 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         // Validate position: keep walkable gaps between buildings AND an exclusion
         // zone around resource nodes (so harvesters can still reach them).
+        const spot = this.findClearSpot(ai, game, buildingType, buildingDef.type === 'wonder', x, z);
+        if (!spot) {
+            console.log(`[OpenAIAI] ${ai.id}: Could not find valid position for ${buildingType}`);
+            return `[ERROR] Could not find a clear spot for ${buildingType} (too crowded by buildings or resource nodes). Try a different targetX/targetZ.`;
+        }
+        ({ x, z } = spot);
+
+        // Decide who will build it BEFORE spending. Only idle workers build; a busy
+        // worker is borrowed (and resumes its task) only when at the population cap.
+        // forceBorrow: like the rule-based AI, a busy harvester is pulled to build
+        // and returns to its old task afterwards. Without it, LLM players whose
+        // workers were all gathering had their builds rejected while rule-based
+        // rivals borrowed freely — an unfair asymmetry between controller types.
+        const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
+        if (pick.error === 'no_workers') {
+            return `[ERROR] You have no workers to build ${buildingType}. Train a worker first.`;
+        }
+        if (pick.error === 'no_idle') {
+            return `[ERROR] No worker available to build ${buildingType} — all your workers are already constructing other sites. Wait for one to finish.`;
+        }
+
+        ai.resources.spendResources(buildingDef.cost);
+        // Place a construction site and send the chosen worker to build it (pop bonus
+        // is granted on completion via game.completeConstruction).
+        const building = createBuilding(buildingType, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
+        ai.buildings.push(building);
+        game.renderer.addBuilding(building);
+        game.applyBuilder(pick, building);
+
+        console.log(`[OpenAIAI] ${ai.id}: Started ${buildingDef.name} at (${Math.round(x)}, ${Math.round(z)})`);
+        const secs = Math.round((building.buildTime || 10000) / 1000);
+        return pick.restore
+            ? `OK - Construction of ${buildingDef.name} started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.`
+            : `OK - Construction of ${buildingDef.name} started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).`;
+    }
+
+    // Build this civ's Wonder. Win by holding it for the required time.
+    // Shared placement validation: nudge (x, z) until it keeps a walkable gap to
+    // EVERY existing building (11 to Town Centers/Wonders, 9 otherwise) and stays
+    // outside every live resource node's clearance ring. Up to 40 nudge attempts;
+    // returns {x, z} or null. Used by build_structure AND build_wonder — the
+    // Wonder used to skip validation entirely and could land on top of the base.
+    findClearSpot(ai, game, buildingType, isWonderBuild, x, z) {
         const reqGap = b => (b.type === 'town_center' || b.isWonder) ? 11 : 9;
-        const isWonderBuild = buildingDef.type === 'wonder';
         const resClr = game.resourceClearance(buildingType, isWonderBuild);
         let valid = false;
         let attempts = 0;
@@ -2235,42 +2277,9 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             }
             attempts++;
         }
-
-        if (!valid) {
-            console.log(`[OpenAIAI] ${ai.id}: Could not find valid position for ${buildingType}`);
-            return `[ERROR] Could not find a clear spot for ${buildingType} (too crowded by buildings or resource nodes). Try a different targetX/targetZ.`;
-        }
-
-        // Decide who will build it BEFORE spending. Only idle workers build; a busy
-        // worker is borrowed (and resumes its task) only when at the population cap.
-        // forceBorrow: like the rule-based AI, a busy harvester is pulled to build
-        // and returns to its old task afterwards. Without it, LLM players whose
-        // workers were all gathering had their builds rejected while rule-based
-        // rivals borrowed freely — an unfair asymmetry between controller types.
-        const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
-        if (pick.error === 'no_workers') {
-            return `[ERROR] You have no workers to build ${buildingType}. Train a worker first.`;
-        }
-        if (pick.error === 'no_idle') {
-            return `[ERROR] No worker available to build ${buildingType} — all your workers are already constructing other sites. Wait for one to finish.`;
-        }
-
-        ai.resources.spendResources(buildingDef.cost);
-        // Place a construction site and send the chosen worker to build it (pop bonus
-        // is granted on completion via game.completeConstruction).
-        const building = createBuilding(buildingType, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
-        ai.buildings.push(building);
-        game.renderer.addBuilding(building);
-        game.applyBuilder(pick, building);
-
-        console.log(`[OpenAIAI] ${ai.id}: Started ${buildingDef.name} at (${Math.round(x)}, ${Math.round(z)})`);
-        const secs = Math.round((building.buildTime || 10000) / 1000);
-        return pick.restore
-            ? `OK - Construction of ${buildingDef.name} started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.`
-            : `OK - Construction of ${buildingDef.name} started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).`;
+        return valid ? { x, z } : null;
     }
 
-    // Build this civ's Wonder. Win by holding it for the required time.
     executeBuildWonder(ai, game) {
         const civ = getCivilization(ai.civilization);
         const wonderDef = (civ.uniqueBuildings || []).find(b => b.type === 'wonder');
@@ -2289,10 +2298,17 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] Cannot afford the Wonder (needs ${this.costString(c)}). You have ${this.haveString(ai)}.`;
         }
 
-        // Place near the town center
+        // Place near the town center — through the SAME placement validation as
+        // build_structure (building gaps + resource clearance). The Wonder used to
+        // be dropped blindly at TC ± 10 and could overlap whatever stood there.
         const tc = ai.buildings.find(b => b.type === 'town_center');
-        let x = tc ? tc.x + (Math.random() - 0.5) * 20 : 0;
-        let z = tc ? tc.z + (Math.random() - 0.5) * 20 : 0;
+        const seedX = tc ? tc.x + (Math.random() - 0.5) * 20 : 0;
+        const seedZ = tc ? tc.z + (Math.random() - 0.5) * 20 : 0;
+        const spot = this.findClearSpot(ai, game, wonderDef.id, true, seedX, seedZ);
+        if (!spot) {
+            return `[ERROR] No clear spot for the Wonder near your Town Center — the base is too crowded. destroy_building an old structure to make room, then build_wonder again.`;
+        }
+        const { x, z } = spot;
 
         // forceBorrow: parity with the rule-based AI (see executeBuildStructure).
         // This exact rejection blocked a Persian Iron-age player from starting an

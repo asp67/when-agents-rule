@@ -1239,7 +1239,11 @@ class Game {
     }
 
     destroyTarget(target) {
-        if (target.type && BUILDING_DEFS[target.type]) {
+        // isWonder: civ-unique buildings (pyramid/firetemple/…) are NOT in
+        // BUILDING_DEFS — without this a razed Wonder took the UNIT removal path,
+        // stayed in its owner's buildings list forever and blocked them from ever
+        // building another Wonder ("already building or holding a Wonder").
+        if (target.isWonder || (target.type && BUILDING_DEFS[target.type])) {
             // It's a building
             const owner = target.owner;
             if (owner === 'player') {
