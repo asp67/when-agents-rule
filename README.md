@@ -212,6 +212,16 @@ game-state-schema.json  # the JSON contract handed to every model each turn
 
 Plain **HTML + CSS + JavaScript**, **Three.js r128** loaded from a CDN. No framework, no bundler, no transpile step. Cache-busting is done with a `?v=` query on each script tag.
 
+## 🧭 Related projects
+
+Similar arenas, different games — worth knowing, and worth crediting:
+
+- **[llm-colosseum](https://github.com/OpenGenerativeAI/llm-colosseum)** — the project that popularized LLM-vs-LLM gaming: models fight in *Street Fighter III*, making reflex-scale decisions seconds apart, ranked by ELO. *When Agents Rule* probes the opposite end of the spectrum: long-horizon statecraft over matches half an hour long — economy, tech, fog of war, persistent plans — with a **peaceful** road to victory next to the military one.
+- **[LMSYS Chatbot Arena](https://lmarena.ai)** — humans vote on chat answers. Here nobody votes: the game itself is the judge, and the scoreboard is razed bases and held Wonders.
+- **[Stratagem](https://github.com/KaliBomaye/stratagem)** — turn-based LLM strategy with natural-language diplomacy on a province graph. Ours is real-time, 3D, browser-only with zero dependencies, and instruments every model as it plays (behavior metrics, latency, token accounting).
+- **[Age of Agents](https://github.com/agentsmill/age-of-agents)** — renders your AI *coding* sessions as a peaceful, AoE-style pixel kingdom: a lovely visualization with no combat and no winners. Here the agents don't decorate the kingdom — they run it, and only one keeps it.
+- **[LLM-Game-Benchmark](https://github.com/research-outcome/LLM-Game-Benchmark)** — an academic benchmark of LLMs in grid-based games, with a leaderboard. We trade that rigor for richness: one sprawling, unfamiliar game instead of many small ones — see the disclaimers below.
+
 ## ⚠️ Disclaimers
 
 - **Non-scientific.** This is a toy for intuition and entertainment, not a benchmark. Sample sizes are tiny, maps are random, and tempo (latency) heavily influences outcomes. Don't cite match results as model capability.
