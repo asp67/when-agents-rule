@@ -828,16 +828,24 @@ class OpenAIAIManager {
         // --- Pending buildings ---
         const pendingBuildings = (ai.pendingBuildings || []).map(pb => pb.type);
 
-        // --- Opponents ---
-        const aiOpponents = this.aiControllers
-            .filter(c => c.id !== ai.id)
-            .map(c => ({
-                id: c.id,
-                civilization: c.aiPlayer.civilization,
-                age: c.aiPlayer.age,
-                units: c.aiPlayer.units.length,
-                buildings: c.aiPlayer.buildings.length
-            }));
+        // --- Opponents: ALL rivals — rule-based ones and, in campaign, the human
+        // too (the old list was built from LLM controllers only, leaving blind
+        // spots for everyone else). Epochs are PUBLIC: heralds announce age-ups.
+        // Army/building counts are scouting rewards — they appear only after
+        // FIRST CONTACT (this player has seen any unit or building of that
+        // rival; see game.updateRivalContacts).
+        const met = ai._metRivals || new Set();
+        const aiOpponents = [];
+        const pushRival = (o, key) => {
+            const entry = { id: key, civilization: o.civilization, age: o.age, discovered: met.has(key) };
+            if (entry.discovered) {
+                entry.units = o.units.length;
+                entry.buildings = o.buildings.length;
+            }
+            aiOpponents.push(entry);
+        };
+        game.aiManager.aiPlayers.forEach(o => { if (o !== ai) pushRival(o, o.id); });
+        if (!game.spectatorMode && game.player) pushRival(game.player, 'player');
 
         // --- Threats (what is attacking YOU right now — go defend!) ---
         const nowMs = Date.now();
@@ -1057,6 +1065,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - FOG: you see only near your own units/buildings. "resourcesOnMap" and "enemyBuildings" are remembered discoveries (each enemy building carries "visible": true = in sight now, false = last known spot; both are attackable). "enemyUnits" lists only enemies in sight RIGHT NOW. Exception: rival Wonders are always visible ("threats.enemyWonders", with secondsUntilEnemyWins — a finished rival Wonder ends the game).
 - All {{players}} players start far apart, evenly spaced around the map edge ("map.bounds", centred on 0,0). Your rivals are never beside you — they are found by scouting toward the far parts of the map.
 - "map.exploration" scores how much of each map NINTH you have ever seen (0-100%). Section centres: NW(-267,-267) N(0,-267) NE(267,-267) W(-267,0) C(0,0) E(267,0) SW(-267,267) S(0,267) SE(267,267). Low percentages are dark ground — send explore there to find resources and rivals instead of re-scouting known land. Cavalry units see 50% farther than everything else, making them the best scouts.
+- "gameStats.opponents" lists every rival. Civilization and epoch are ALWAYS known (heralds announce age-ups). Army and building counts are scouting rewards: they appear only once you have DISCOVERED that rival ("discovered": true after you have seen any of its units or buildings) — size up an unknown rival by scouting, not by assumption.
 - "threats.underAttack" lists your units/buildings taking fire right now, with "attackerAt" coordinates. Idle military auto-defend your home (workers only as a last resort); auto-defense only repels — it never wins the game.
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
 - Priests (temple) never fight — attack orders skip them. A priest walks to and heals nearby wounded friendlies on its own; reposition it with move_units.

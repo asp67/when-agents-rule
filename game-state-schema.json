@@ -4,43 +4,115 @@
   "description": "The JSON object handed to every model each turn (built by buildGameStateJSON in js/openai-ai.js). Everything is fog-limited: the model only sees what its own units/buildings have discovered. Coordinates are world units on a square map centred on (0,0). In multi-turn history mode, PAST turns are replayed as compact 'pastTurnRecap' objects (see $defs.pastTurnRecap) — the CURRENT full state is always the last message.",
   "type": "object",
   "required": [
-    "player", "epoch", "resources", "bonuses", "map", "resourcesOnMap",
-    "friendlyBuildings", "buildings", "enemyBuildings", "friendlyUnits",
-    "workers", "enemyUnits", "research", "unlockedContent",
-    "buildableStructures", "pendingBuildings", "threats", "gameStats"
+    "player",
+    "epoch",
+    "resources",
+    "bonuses",
+    "map",
+    "resourcesOnMap",
+    "friendlyBuildings",
+    "buildings",
+    "enemyBuildings",
+    "friendlyUnits",
+    "workers",
+    "enemyUnits",
+    "research",
+    "unlockedContent",
+    "buildableStructures",
+    "pendingBuildings",
+    "threats",
+    "gameStats"
   ],
   "properties": {
     "player": {
       "type": "object",
       "description": "Who you are.",
-      "required": ["id", "civilization", "civilizationName", "isHuman"],
+      "required": [
+        "id",
+        "civilization",
+        "civilizationName",
+        "isHuman"
+      ],
       "properties": {
-        "id": { "type": "string" },
-        "civilization": { "type": "string", "enum": ["egyptian", "greek", "persian", "yamato"] },
-        "civilizationName": { "type": "string" },
-        "isHuman": { "type": "boolean", "const": false }
+        "id": {
+          "type": "string"
+        },
+        "civilization": {
+          "type": "string",
+          "enum": [
+            "egyptian",
+            "greek",
+            "persian",
+            "yamato"
+          ]
+        },
+        "civilizationName": {
+          "type": "string"
+        },
+        "isHuman": {
+          "type": "boolean",
+          "const": false
+        }
       }
     },
     "epoch": {
       "type": "object",
       "description": "Age progression. Costs come from the shared AGE_COSTS table — identical for every player type.",
-      "required": ["currentEpoch", "nextEpoch", "nextEpochCost", "upgradeInProgress"],
+      "required": [
+        "currentEpoch",
+        "nextEpoch",
+        "nextEpochCost",
+        "upgradeInProgress"
+      ],
       "properties": {
-        "currentEpoch": { "$ref": "#/$defs/age" },
-        "nextEpoch": { "oneOf": [{ "$ref": "#/$defs/age" }, { "type": "null" }], "description": "null at the final age (iron)." },
-        "nextEpochCost": { "oneOf": [{ "$ref": "#/$defs/cost" }, { "type": "null" }] },
+        "currentEpoch": {
+          "$ref": "#/$defs/age"
+        },
+        "nextEpoch": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/age"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null at the final age (iron)."
+        },
+        "nextEpochCost": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/cost"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "upgradeInProgress": {
           "oneOf": [
             {
               "type": "object",
-              "required": ["targetEpoch", "progressPercent", "secondsRemaining"],
+              "required": [
+                "targetEpoch",
+                "progressPercent",
+                "secondsRemaining"
+              ],
               "properties": {
-                "targetEpoch": { "$ref": "#/$defs/age" },
-                "progressPercent": { "type": "integer" },
-                "secondsRemaining": { "type": "integer" }
+                "targetEpoch": {
+                  "$ref": "#/$defs/age"
+                },
+                "progressPercent": {
+                  "type": "integer"
+                },
+                "secondsRemaining": {
+                  "type": "integer"
+                }
               }
             },
-            { "type": "null" }
+            {
+              "type": "null"
+            }
           ],
           "description": "null when no age-up is running. Do NOT re-issue upgrade_age while non-null."
         }
@@ -49,59 +121,167 @@
     "resources": {
       "type": "object",
       "description": "Your stockpile and population.",
-      "required": ["food", "wood", "stone", "gold", "population", "maxPopulation", "populationFree", "populationHardCap"],
+      "required": [
+        "food",
+        "wood",
+        "stone",
+        "gold",
+        "population",
+        "maxPopulation",
+        "populationFree",
+        "populationHardCap"
+      ],
       "properties": {
-        "food": { "type": "integer" },
-        "wood": { "type": "integer" },
-        "stone": { "type": "integer" },
-        "gold": { "type": "integer" },
-        "population": { "type": "integer" },
-        "maxPopulation": { "type": "integer", "description": "Raised by houses, up to populationHardCap." },
-        "populationFree": { "type": "integer" },
-        "populationHardCap": { "type": "integer", "description": "Hard ceiling (100); houses cannot raise maxPopulation past it." }
+        "food": {
+          "type": "integer"
+        },
+        "wood": {
+          "type": "integer"
+        },
+        "stone": {
+          "type": "integer"
+        },
+        "gold": {
+          "type": "integer"
+        },
+        "population": {
+          "type": "integer"
+        },
+        "maxPopulation": {
+          "type": "integer",
+          "description": "Raised by houses, up to populationHardCap."
+        },
+        "populationFree": {
+          "type": "integer"
+        },
+        "populationHardCap": {
+          "type": "integer",
+          "description": "Hard ceiling (100); houses cannot raise maxPopulation past it."
+        }
       }
     },
     "bonuses": {
       "type": "object",
       "description": "Only NON-DEFAULT multipliers appear (empty object = no active bonuses).",
       "properties": {
-        "harvest": { "type": "number" },
-        "attack": { "type": "number" },
-        "health": { "type": "number" },
-        "mining": { "type": "number" },
-        "techCostMult": { "type": "number" }
+        "harvest": {
+          "type": "number"
+        },
+        "attack": {
+          "type": "number"
+        },
+        "health": {
+          "type": "number"
+        },
+        "mining": {
+          "type": "number"
+        },
+        "techCostMult": {
+          "type": "number"
+        }
       },
       "additionalProperties": false
     },
     "map": {
       "type": "object",
       "description": "World geometry. The map is a square centred on (0,0); enemies can be anywhere inside bounds.",
-      "required": ["size", "bounds", "yourSpawnArea"],
+      "required": [
+        "size",
+        "bounds",
+        "yourSpawnArea"
+      ],
       "properties": {
-        "size": { "type": "number" },
+        "size": {
+          "type": "number"
+        },
         "bounds": {
           "type": "object",
-          "required": ["minX", "maxX", "minZ", "maxZ"],
+          "required": [
+            "minX",
+            "maxX",
+            "minZ",
+            "maxZ"
+          ],
           "properties": {
-            "minX": { "type": "number" }, "maxX": { "type": "number" },
-            "minZ": { "type": "number" }, "maxZ": { "type": "number" }
+            "minX": {
+              "type": "number"
+            },
+            "maxX": {
+              "type": "number"
+            },
+            "minZ": {
+              "type": "number"
+            },
+            "maxZ": {
+              "type": "number"
+            }
           }
         },
         "yourSpawnArea": {
           "oneOf": [
-            { "type": "object", "required": ["x", "z"], "properties": { "x": { "type": "number" }, "z": { "type": "number" } } },
-            { "type": "null" }
+            {
+              "type": "object",
+              "required": [
+                "x",
+                "z"
+              ],
+              "properties": {
+                "x": {
+                  "type": "number"
+                },
+                "z": {
+                  "type": "number"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
           ],
           "description": "Centre of your buildings (your base)."
         },
         "exploration": {
           "type": "object",
           "description": "Percent (0-100) of each map NINTH this player has ever seen (3x3 compass grid). Section centres on the 800 map: NW(-267,-267) N(0,-267) NE(267,-267) W(-267,0) C(0,0) E(267,0) SW(-267,267) S(0,267) SE(267,267). Low = unscouted ground.",
-          "required": ["NW", "N", "NE", "W", "C", "E", "SW", "S", "SE"],
+          "required": [
+            "NW",
+            "N",
+            "NE",
+            "W",
+            "C",
+            "E",
+            "SW",
+            "S",
+            "SE"
+          ],
           "properties": {
-            "NW": { "type": "integer" }, "N": { "type": "integer" }, "NE": { "type": "integer" },
-            "W": { "type": "integer" }, "C": { "type": "integer" }, "E": { "type": "integer" },
-            "SW": { "type": "integer" }, "S": { "type": "integer" }, "SE": { "type": "integer" }
+            "NW": {
+              "type": "integer"
+            },
+            "N": {
+              "type": "integer"
+            },
+            "NE": {
+              "type": "integer"
+            },
+            "W": {
+              "type": "integer"
+            },
+            "C": {
+              "type": "integer"
+            },
+            "E": {
+              "type": "integer"
+            },
+            "SW": {
+              "type": "integer"
+            },
+            "S": {
+              "type": "integer"
+            },
+            "SE": {
+              "type": "integer"
+            }
           }
         }
       }
@@ -111,13 +291,31 @@
       "description": "Only nodes you have DISCOVERED (remembered once seen) and that still hold resources. Nodes deplete permanently; scout for fresh ones.",
       "items": {
         "type": "object",
-        "required": ["type", "x", "z", "amount", "visible"],
+        "required": [
+          "type",
+          "x",
+          "z",
+          "amount",
+          "visible"
+        ],
         "properties": {
-          "type": { "$ref": "#/$defs/resourceType" },
-          "x": { "type": "integer" },
-          "z": { "type": "integer" },
-          "amount": { "type": "integer", "description": "Remaining amount on the node." },
-          "visible": { "type": "boolean", "description": "true = a unit sees it right now; false = remembered from an earlier look." }
+          "type": {
+            "$ref": "#/$defs/resourceType"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "z": {
+            "type": "integer"
+          },
+          "amount": {
+            "type": "integer",
+            "description": "Remaining amount on the node."
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "true = a unit sees it right now; false = remembered from an earlier look."
+          }
         }
       }
     },
@@ -126,36 +324,119 @@
       "description": "Every building you own, with its live activity.",
       "items": {
         "type": "object",
-        "required": ["type", "x", "z", "healthPct", "state", "busy", "activity", "producing"],
+        "required": [
+          "type",
+          "x",
+          "z",
+          "healthPct",
+          "state",
+          "busy",
+          "activity",
+          "producing"
+        ],
         "properties": {
-          "type": { "type": "string" },
-          "x": { "type": "integer" },
-          "z": { "type": "integer" },
-          "healthPct": { "type": "integer" },
-          "state": { "type": "string", "enum": ["under_construction", "complete"] },
-          "busy": { "type": "boolean", "description": "true while producing, under construction, or hosting research/age-up." },
-          "activity": { "type": "string", "enum": ["under_construction", "producing", "researching", "idle"] },
-          "producing": { "oneOf": [{ "type": "string" }, { "type": "null" }], "description": "Unit type in production, else null." },
-          "producingSecondsRemaining": { "type": "integer" },
-          "buildPct": { "type": "integer", "description": "Only while under construction." },
-          "buildSecondsRemaining": { "type": "integer", "description": "Only while under construction." },
-          "wonder": { "type": "boolean", "description": "Present (true) on your Wonder." },
-          "food": { "type": "integer", "description": "Farms only: food currently stocked in the farm." }
+          "type": {
+            "type": "string"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "z": {
+            "type": "integer"
+          },
+          "healthPct": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "under_construction",
+              "complete"
+            ]
+          },
+          "busy": {
+            "type": "boolean",
+            "description": "true while producing, under construction, or hosting research/age-up."
+          },
+          "activity": {
+            "type": "string",
+            "enum": [
+              "under_construction",
+              "producing",
+              "researching",
+              "idle"
+            ]
+          },
+          "producing": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Unit type in production, else null."
+          },
+          "producingSecondsRemaining": {
+            "type": "integer"
+          },
+          "buildPct": {
+            "type": "integer",
+            "description": "Only while under construction."
+          },
+          "buildSecondsRemaining": {
+            "type": "integer",
+            "description": "Only while under construction."
+          },
+          "wonder": {
+            "type": "boolean",
+            "description": "Present (true) on your Wonder."
+          },
+          "food": {
+            "type": "integer",
+            "description": "Farms only: food currently stocked in the farm."
+          }
         }
       }
     },
     "buildings": {
       "type": "object",
       "description": "Aggregate of friendlyBuildings, for at-a-glance rebalancing.",
-      "required": ["total", "idle", "busy", "underConstruction", "producing", "researching", "byType"],
+      "required": [
+        "total",
+        "idle",
+        "busy",
+        "underConstruction",
+        "producing",
+        "researching",
+        "byType"
+      ],
       "properties": {
-        "total": { "type": "integer" },
-        "idle": { "type": "integer" },
-        "busy": { "type": "integer" },
-        "underConstruction": { "type": "integer" },
-        "producing": { "type": "integer" },
-        "researching": { "type": "integer" },
-        "byType": { "type": "object", "additionalProperties": { "type": "integer" } }
+        "total": {
+          "type": "integer"
+        },
+        "idle": {
+          "type": "integer"
+        },
+        "busy": {
+          "type": "integer"
+        },
+        "underConstruction": {
+          "type": "integer"
+        },
+        "producing": {
+          "type": "integer"
+        },
+        "researching": {
+          "type": "integer"
+        },
+        "byType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        }
       }
     },
     "enemyBuildings": {
@@ -163,18 +444,61 @@
       "description": "Every enemy building you have EVER discovered (buildings are static, so they are remembered). Wonders ignore fog — always listed. Attack by coordinates or pass the exact `id` as attack_target's params.targetId.",
       "items": {
         "type": "object",
-        "required": ["id", "type", "x", "z", "owner", "healthPct", "visible"],
+        "required": [
+          "id",
+          "type",
+          "x",
+          "z",
+          "owner",
+          "healthPct",
+          "visible"
+        ],
         "properties": {
-          "id": { "type": "string", "description": "Stable target handle for attack_target(params.targetId)." },
-          "type": { "type": "string" },
-          "x": { "type": "integer" },
-          "z": { "type": "integer" },
-          "owner": { "type": "string" },
-          "healthPct": { "type": "integer" },
-          "visible": { "type": "boolean", "description": "true = in sight now; false = remembered last-seen location (still a valid target)." },
-          "isWonder": { "type": "boolean" },
-          "state": { "type": "string", "enum": ["under_construction", "complete"], "description": "Wonders only." },
-          "secondsUntilEnemyWins": { "oneOf": [{ "type": "integer" }, { "type": "null" }], "description": "Wonders only: time until this wonder WINS for its owner. null while under construction." }
+          "id": {
+            "type": "string",
+            "description": "Stable target handle for attack_target(params.targetId)."
+          },
+          "type": {
+            "type": "string"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "z": {
+            "type": "integer"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "healthPct": {
+            "type": "integer"
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "true = in sight now; false = remembered last-seen location (still a valid target)."
+          },
+          "isWonder": {
+            "type": "boolean"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "under_construction",
+              "complete"
+            ],
+            "description": "Wonders only."
+          },
+          "secondsUntilEnemyWins": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wonders only: time until this wonder WINS for its owner. null while under construction."
+          }
         }
       }
     },
@@ -183,32 +507,91 @@
       "description": "Every unit you own and what it is doing right now.",
       "items": {
         "type": "object",
-        "required": ["type", "x", "z", "healthPct", "action"],
+        "required": [
+          "type",
+          "x",
+          "z",
+          "healthPct",
+          "action"
+        ],
         "properties": {
-          "type": { "type": "string" },
-          "x": { "type": "integer" },
-          "z": { "type": "integer" },
-          "healthPct": { "type": "integer" },
-          "action": { "type": "string", "enum": ["idle", "attacking", "harvesting", "returning", "building", "farm_work", "moving"] }
+          "type": {
+            "type": "string"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "z": {
+            "type": "integer"
+          },
+          "healthPct": {
+            "type": "integer"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "attacking",
+              "harvesting",
+              "returning",
+              "building",
+              "farm_work",
+              "moving"
+            ]
+          }
         }
       }
     },
     "workers": {
       "type": "object",
       "description": "Live tally of what your villagers are doing — use it to rebalance the economy at a glance.",
-      "required": ["total", "idle", "building", "onFarms", "scouting", "returning", "moving", "harvestingFood", "harvestingWood", "harvestingStone", "harvestingGold"],
+      "required": [
+        "total",
+        "idle",
+        "building",
+        "onFarms",
+        "scouting",
+        "returning",
+        "moving",
+        "harvestingFood",
+        "harvestingWood",
+        "harvestingStone",
+        "harvestingGold"
+      ],
       "properties": {
-        "total": { "type": "integer" },
-        "idle": { "type": "integer" },
-        "building": { "type": "integer" },
-        "onFarms": { "type": "integer" },
-        "scouting": { "type": "integer" },
-        "returning": { "type": "integer" },
-        "moving": { "type": "integer" },
-        "harvestingFood": { "type": "integer" },
-        "harvestingWood": { "type": "integer" },
-        "harvestingStone": { "type": "integer" },
-        "harvestingGold": { "type": "integer" }
+        "total": {
+          "type": "integer"
+        },
+        "idle": {
+          "type": "integer"
+        },
+        "building": {
+          "type": "integer"
+        },
+        "onFarms": {
+          "type": "integer"
+        },
+        "scouting": {
+          "type": "integer"
+        },
+        "returning": {
+          "type": "integer"
+        },
+        "moving": {
+          "type": "integer"
+        },
+        "harvestingFood": {
+          "type": "integer"
+        },
+        "harvestingWood": {
+          "type": "integer"
+        },
+        "harvestingStone": {
+          "type": "integer"
+        },
+        "harvestingGold": {
+          "type": "integer"
+        }
       }
     },
     "enemyUnits": {
@@ -216,46 +599,97 @@
       "description": "Enemy units CURRENTLY in your sight (units move, so old positions are not kept). The `id` is a target handle for attack_target — ids track a moving unit better than stale coordinates.",
       "items": {
         "type": "object",
-        "required": ["id", "type", "x", "z", "owner"],
+        "required": [
+          "id",
+          "type",
+          "x",
+          "z",
+          "owner"
+        ],
         "properties": {
-          "id": { "type": "string" },
-          "type": { "type": "string" },
-          "x": { "type": "integer" },
-          "z": { "type": "integer" },
-          "owner": { "type": "string" }
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "x": {
+            "type": "integer"
+          },
+          "z": {
+            "type": "integer"
+          },
+          "owner": {
+            "type": "string"
+          }
         }
       }
     },
     "research": {
       "type": "object",
       "description": "Tech tree status. Only ONE research at a time; never re-research something in `researched`.",
-      "required": ["researched", "current", "available"],
+      "required": [
+        "researched",
+        "current",
+        "available"
+      ],
       "properties": {
-        "researched": { "type": "array", "items": { "type": "string" } },
+        "researched": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "current": {
           "oneOf": [
             {
               "type": "object",
-              "required": ["techId", "progressPercent", "secondsRemaining"],
+              "required": [
+                "techId",
+                "progressPercent",
+                "secondsRemaining"
+              ],
               "properties": {
-                "techId": { "type": "string" },
-                "progressPercent": { "type": "integer" },
-                "secondsRemaining": { "type": "integer" }
+                "techId": {
+                  "type": "string"
+                },
+                "progressPercent": {
+                  "type": "integer"
+                },
+                "secondsRemaining": {
+                  "type": "integer"
+                }
               }
             },
-            { "type": "null" }
+            {
+              "type": "null"
+            }
           ]
         },
         "available": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "cost", "researchAt", "canAfford"],
+            "required": [
+              "id",
+              "cost",
+              "researchAt",
+              "canAfford"
+            ],
             "properties": {
-              "id": { "type": "string" },
-              "cost": { "$ref": "#/$defs/cost" },
-              "researchAt": { "type": "string", "description": "Building type that hosts this research (e.g. town_center, market)." },
-              "canAfford": { "type": "boolean" }
+              "id": {
+                "type": "string"
+              },
+              "cost": {
+                "$ref": "#/$defs/cost"
+              },
+              "researchAt": {
+                "type": "string",
+                "description": "Building type that hosts this research (e.g. town_center, market)."
+              },
+              "canAfford": {
+                "type": "boolean"
+              }
             }
           }
         }
@@ -263,10 +697,23 @@
     },
     "unlockedContent": {
       "type": "object",
-      "required": ["buildings", "units"],
+      "required": [
+        "buildings",
+        "units"
+      ],
       "properties": {
-        "buildings": { "type": "array", "items": { "type": "string" } },
-        "units": { "type": "array", "items": { "type": "string" } }
+        "buildings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "buildableStructures": {
@@ -274,41 +721,107 @@
       "description": "What your civilization can EVER build. If a type is absent (e.g. stable for some civs), your civ does not have it — do not keep trying.",
       "items": {
         "type": "object",
-        "required": ["type", "requiresTech", "researched", "readyToBuild"],
+        "required": [
+          "type",
+          "requiresTech",
+          "researched",
+          "readyToBuild"
+        ],
         "properties": {
-          "type": { "type": "string" },
-          "requiresTech": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
-          "researched": { "type": "boolean" },
-          "readyToBuild": { "type": "boolean" }
+          "type": {
+            "type": "string"
+          },
+          "requiresTech": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "researched": {
+            "type": "boolean"
+          },
+          "readyToBuild": {
+            "type": "boolean"
+          }
         }
       }
     },
     "pendingBuildings": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Building types queued but not yet placed."
     },
     "threats": {
       "type": "object",
       "description": "What demands an immediate response.",
-      "required": ["underAttack", "enemyWonders"],
+      "required": [
+        "underAttack",
+        "enemyWonders"
+      ],
       "properties": {
         "underAttack": {
           "type": "array",
           "description": "YOUR units/buildings that took damage in the last few seconds — defend now (attack the attackerAt position).",
           "items": {
             "type": "object",
-            "required": ["kind", "type", "x", "z", "healthPct", "attackerAt"],
+            "required": [
+              "kind",
+              "type",
+              "x",
+              "z",
+              "healthPct",
+              "attackerAt"
+            ],
             "properties": {
-              "kind": { "type": "string", "enum": ["building", "unit"] },
-              "type": { "type": "string" },
-              "x": { "type": "integer" },
-              "z": { "type": "integer" },
-              "healthPct": { "type": "integer" },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "building",
+                  "unit"
+                ]
+              },
+              "type": {
+                "type": "string"
+              },
+              "x": {
+                "type": "integer"
+              },
+              "z": {
+                "type": "integer"
+              },
+              "healthPct": {
+                "type": "integer"
+              },
               "attackerAt": {
                 "oneOf": [
-                  { "type": "object", "required": ["x", "z", "owner"], "properties": { "x": { "type": "integer" }, "z": { "type": "integer" }, "owner": { "type": "string" } } },
-                  { "type": "null" }
+                  {
+                    "type": "object",
+                    "required": [
+                      "x",
+                      "z",
+                      "owner"
+                    ],
+                    "properties": {
+                      "x": {
+                        "type": "integer"
+                      },
+                      "z": {
+                        "type": "integer"
+                      },
+                      "owner": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
                 ]
               }
             }
@@ -317,29 +830,61 @@
         "enemyWonders": {
           "type": "array",
           "description": "Rival Wonders (always visible, even through fog). A complete one WINS for its owner in secondsUntilEnemyWins — existential threat.",
-          "items": { "$ref": "#/properties/enemyBuildings/items" }
+          "items": {
+            "$ref": "#/properties/enemyBuildings/items"
+          }
         }
       }
     },
     "gameStats": {
       "type": "object",
-      "required": ["wonderTimer", "wonderRequired", "wonderHeld", "opponents"],
+      "required": [
+        "wonderTimer",
+        "wonderRequired",
+        "wonderHeld",
+        "opponents"
+      ],
       "properties": {
-        "wonderTimer": { "type": "number" },
-        "wonderRequired": { "type": "number", "description": "Seconds a finished Wonder must be held to win (600 by default)." },
-        "wonderHeld": { "type": "boolean" },
+        "wonderTimer": {
+          "type": "number"
+        },
+        "wonderRequired": {
+          "type": "number",
+          "description": "Seconds a finished Wonder must be held to win (600 by default)."
+        },
+        "wonderHeld": {
+          "type": "boolean"
+        },
         "opponents": {
           "type": "array",
-          "description": "Coarse public info about the LLM-controlled rivals (id, civ, age, unit/building counts).",
+          "description": "Every rival (rule-based ones and, in campaign, the human with id 'player'). civilization and age are ALWAYS present (epochs are public). units/buildings counts appear only once this player has DISCOVERED that rival (seen any of its units or buildings); until then discovered=false and the count fields are absent.",
           "items": {
             "type": "object",
-            "required": ["id", "civilization", "age", "units", "buildings"],
+            "required": [
+              "id",
+              "civilization",
+              "age",
+              "discovered"
+            ],
             "properties": {
-              "id": { "type": "string" },
-              "civilization": { "type": "string" },
-              "age": { "$ref": "#/$defs/age" },
-              "units": { "type": "integer" },
-              "buildings": { "type": "integer" }
+              "id": {
+                "type": "string"
+              },
+              "civilization": {
+                "type": "string"
+              },
+              "age": {
+                "type": "string"
+              },
+              "discovered": {
+                "type": "boolean"
+              },
+              "units": {
+                "type": "integer"
+              },
+              "buildings": {
+                "type": "integer"
+              }
             }
           }
         }
@@ -347,65 +892,171 @@
     }
   },
   "$defs": {
-    "age": { "type": "string", "enum": ["stone", "neolithic", "bronze", "iron"] },
-    "resourceType": { "type": "string", "enum": ["food", "wood", "stone", "gold"] },
+    "age": {
+      "type": "string",
+      "enum": [
+        "stone",
+        "neolithic",
+        "bronze",
+        "iron"
+      ]
+    },
+    "resourceType": {
+      "type": "string",
+      "enum": [
+        "food",
+        "wood",
+        "stone",
+        "gold"
+      ]
+    },
     "cost": {
       "type": "object",
       "properties": {
-        "food": { "type": "integer" },
-        "wood": { "type": "integer" },
-        "stone": { "type": "integer" },
-        "gold": { "type": "integer" }
+        "food": {
+          "type": "integer"
+        },
+        "wood": {
+          "type": "integer"
+        },
+        "stone": {
+          "type": "integer"
+        },
+        "gold": {
+          "type": "integer"
+        }
       }
     },
     "pastTurnRecap": {
       "type": "object",
       "description": "NOT part of the live state: in multi-turn history mode, each PAST turn is replayed to the model as this condensed snapshot (flagged by pastTurnRecap:true). Field names mirror the live state; long per-entity arrays are replaced by counts. The current, complete state is always the LAST message.",
-      "required": ["pastTurnRecap"],
+      "required": [
+        "pastTurnRecap"
+      ],
       "properties": {
-        "pastTurnRecap": { "type": "boolean", "const": true },
+        "pastTurnRecap": {
+          "type": "boolean",
+          "const": true
+        },
         "epoch": {
           "type": "object",
           "properties": {
-            "currentEpoch": { "$ref": "#/$defs/age" },
-            "advancingTo": { "oneOf": [{ "$ref": "#/$defs/age" }, { "type": "null" }] }
+            "currentEpoch": {
+              "$ref": "#/$defs/age"
+            },
+            "advancingTo": {
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/age"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
           }
         },
         "resources": {
           "type": "object",
           "properties": {
-            "food": { "type": "integer" }, "wood": { "type": "integer" },
-            "stone": { "type": "integer" }, "gold": { "type": "integer" },
-            "population": { "type": "integer" }, "maxPopulation": { "type": "integer" }
+            "food": {
+              "type": "integer"
+            },
+            "wood": {
+              "type": "integer"
+            },
+            "stone": {
+              "type": "integer"
+            },
+            "gold": {
+              "type": "integer"
+            },
+            "population": {
+              "type": "integer"
+            },
+            "maxPopulation": {
+              "type": "integer"
+            }
           }
         },
-        "workers": { "type": "object", "description": "Same keys as the live workers tally." },
-        "militaryUnitCount": { "type": "integer" },
-        "buildingsByType": { "type": "object", "additionalProperties": { "type": "integer" } },
-        "buildingsUnderConstruction": { "type": "integer" },
-        "currentResearch": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+        "workers": {
+          "type": "object",
+          "description": "Same keys as the live workers tally."
+        },
+        "militaryUnitCount": {
+          "type": "integer"
+        },
+        "buildingsByType": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "buildingsUnderConstruction": {
+          "type": "integer"
+        },
+        "currentResearch": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "discoveredResourceNodeCounts": {
           "type": "object",
           "properties": {
-            "food": { "type": "integer" }, "wood": { "type": "integer" },
-            "stone": { "type": "integer" }, "gold": { "type": "integer" }
+            "food": {
+              "type": "integer"
+            },
+            "wood": {
+              "type": "integer"
+            },
+            "stone": {
+              "type": "integer"
+            },
+            "gold": {
+              "type": "integer"
+            }
           }
         },
         "enemySeen": {
           "type": "object",
-          "properties": { "units": { "type": "integer" }, "buildings": { "type": "integer" } }
+          "properties": {
+            "units": {
+              "type": "integer"
+            },
+            "buildings": {
+              "type": "integer"
+            }
+          }
         },
         "threats": {
           "type": "object",
           "properties": {
-            "underAttack": { "type": "integer" },
+            "underAttack": {
+              "type": "integer"
+            },
             "enemyWonders": {
               "type": "array",
               "items": {
                 "type": "object",
                 "properties": {
-                  "state": { "type": "string" },
-                  "secondsUntilEnemyWins": { "oneOf": [{ "type": "integer" }, { "type": "null" }] }
+                  "state": {
+                    "type": "string"
+                  },
+                  "secondsUntilEnemyWins": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
                 }
               }
             }

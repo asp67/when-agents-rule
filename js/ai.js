@@ -73,9 +73,16 @@ class AIManager {
                 // discovery runs only when they take a turn, which would miss the
                 // ground their units sweep while marching between turns).
                 if (this.game.markExploration) this.game.markExploration(ai);
+                // First-contact memory (gates rival army/building counts).
+                if (this.game.updateRivalContacts) this.game.updateRivalContacts(ai);
                 if (this.openAIControlled.has(ai.id)) return;
                 this.updateDiscovery(ai);
             });
+            // The human is a viewer too (campaign): its contacts gate the
+            // opponents footer the same way.
+            if (this.game.updateRivalContacts && !this.game.spectatorMode && this.game.player) {
+                this.game.updateRivalContacts(this.game.player);
+            }
         }
 
         this.thinkTimer += deltaTime;

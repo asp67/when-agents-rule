@@ -584,6 +584,14 @@ class Game {
             this.updateProgressBar();
             this.ui.updateResources(this.player.resources);
             this.ui.updateAge(this.player.age);
+            // Rival intel footer (campaign): epochs are public, counts appear on
+            // first contact — refresh every ~2s so both stay current. (No-op in
+            // the arena: updateOpponentsPanel hides itself in spectator mode.)
+            this._oppPanelTimer = (this._oppPanelTimer || 0) + simTime;
+            if (this._oppPanelTimer >= 2000) {
+                this._oppPanelTimer = 0;
+                if (this.ui.updateOpponentsPanel) this.ui.updateOpponentsPanel();
+            }
         }
         this.checkWinConditions(simTime);
 
@@ -2175,6 +2183,28 @@ class Game {
             }
         }
         return out;
+    }
+
+    // Persistent first-contact memory: has `viewer` ever SEEN any unit or
+    // building of each rival? Drives the discovery gate on rival army/building
+    // counts (epochs stay public — heralds announce age-ups). Monotonic: once
+    // met, always met. The human viewer uses its fog (what was actually shown
+    // on screen); AI viewers use the same live vision as their discovery.
+    updateRivalContacts(viewer) {
+        if (!viewer) return;
+        if (!viewer._metRivals) viewer._metRivals = new Set();
+        const isHuman = viewer === this.player;
+        const canSee = (x, z) => isHuman
+            ? !!(this.fogOfWar && this.fogOfWar.isPositionVisible(x, z))
+            : this.aiManager.isVisibleTo(viewer, x, z);
+        const consider = (owner, key) => {
+            if (owner === viewer || viewer._metRivals.has(key)) return;
+            const spotted = (owner.units || []).some(u => u.health > 0 && canSee(u.x, u.z)) ||
+                            (owner.buildings || []).some(b => b.health > 0 && canSee(b.x, b.z));
+            if (spotted) viewer._metRivals.add(key);
+        };
+        this.aiManager.aiPlayers.forEach(o => consider(o, o.id));
+        if (!this.spectatorMode && this.player) consider(this.player, 'player');
     }
 
     // Centre of this player's least-explored ninth — where a scout learns the

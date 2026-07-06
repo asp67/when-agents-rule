@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v11';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v12';
     }
 
     showScreen(screenId) {
@@ -1536,6 +1536,8 @@ class UIManager {
         const mgr = this.game.openAIAIManager;
         const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
         const civColor = { egyptian: '#ffd700', greek: '#4ecca3', persian: '#e94560', yamato: '#9b8cff' };
+        const ageNames = { stone: t('age.stone'), neolithic: t('age.neolithic'), bronze: t('age.bronze'), iron: t('age.iron') };
+        const met = (this.game.player && this.game.player._metRivals) || new Set();
         const rows = ais.map(ai => {
             const ctrl = (mgr && mgr.aiControllers) ? mgr.aiControllers.find(c => c.id === ai.id) : null;
             const who = ctrl
@@ -1543,7 +1545,13 @@ class UIManager {
                 : t('opp.ruleBased');
             const civ = civNames[ai.civilization] || ai.civilization;
             const color = civColor[ai.civilization] || '#888';
-            return `<span class="opp-row"><b style="color:${color}">${this.escapeHtml(civ)}</b>: ${this.escapeHtml(who)}</span>`;
+            // Same intel rule as the models get: the rival's EPOCH is public
+            // (heralds announce age-ups), army/building counts only appear once
+            // the player has actually seen one of its units or buildings.
+            const intel = met.has(ai.id)
+                ? `⚔️ ${ai.units.filter(u => u.type !== 'worker').length} · 👷 ${ai.units.filter(u => u.type === 'worker').length} · 🏛️ ${ai.buildings.length}`
+                : `<i class="opp-unscouted">${t('opp.unscouted')}</i>`;
+            return `<span class="opp-row"><b style="color:${color}">${this.escapeHtml(civ)}</b>: ${this.escapeHtml(who)} · ${ageNames[ai.age] || ai.age} · ${intel}</span>`;
         }).join('');
         el.innerHTML = `<span class="opp-title">${t('opp.title')}</span>${rows}`;
         el.style.display = '';
