@@ -35,6 +35,9 @@ class Game {
         // Seconds a finished Wonder must be HELD to win. Long enough that rivals get a
         // real window to march over and destroy it (a Wonder is an existential threat).
         this.wonderRequired = 600;
+        // Exploration bitmap resolution: 42×42 cells (~19 units each) = a 3×3
+        // compass summary of 14×14 cells per section (see markExploration).
+        this.EXPLORE_GRID = 42;
         this.gameSpeed = 1;
         this.lastFrameTime = 0;
     }
@@ -2113,6 +2116,84 @@ class Game {
             if (Math.hypot(r.x - x, r.z - z) < clr) return true;
         }
         return false;
+    }
+
+    // Sight radius of a single unit. Cavalry sees 50% farther (22.5 vs 15) — the
+    // scouting edge mounted units are supposed to have. Used consistently by the
+    // human fog overlay, both AI visibility checks and the exploration tracker.
+    unitVision(unit) {
+        return unit && unit.unitType === 'cavalry' ? 22.5 : 15;
+    }
+
+    // ---- Exploration tracking (per player) ------------------------------------
+    // A coarse "ground I have ever seen" bitmap per player, marked every
+    // discovery sweep (250ms) around every living unit and building. Aggregated
+    // into a 3×3 compass summary (NW…SE) that the LLM state exposes as
+    // map.exploration — small enough to send every turn, precise enough to
+    // steer scouting toward genuinely dark parts of the map.
+    markExploration(owner) {
+        if (!owner) return;
+        const G = this.EXPLORE_GRID;
+        if (!owner._explored || owner._explored.length !== G * G) owner._explored = new Uint8Array(G * G);
+        const size = (this.terrain && this.terrain.size) || 800;
+        const cell = size / G;
+        const half = size / 2;
+        const grid = owner._explored;
+        const mark = (x, z, range) => {
+            const cr = Math.ceil(range / cell);
+            const cx = Math.floor((x + half) / cell);
+            const cz = Math.floor((z + half) / cell);
+            for (let dz = -cr; dz <= cr; dz++) {
+                for (let dx = -cr; dx <= cr; dx++) {
+                    const gx = cx + dx, gz = cz + dz;
+                    if (gx < 0 || gx >= G || gz < 0 || gz >= G) continue;
+                    const wx = (gx + 0.5) * cell - half;
+                    const wz = (gz + 0.5) * cell - half;
+                    if (Math.hypot(wx - x, wz - z) <= range) grid[gz * G + gx] = 1;
+                }
+            }
+        };
+        (owner.units || []).forEach(u => { if (u.health > 0) mark(u.x, u.z, this.unitVision(u)); });
+        (owner.buildings || []).forEach(b => {
+            if (b.health > 0) mark(b.x, b.z, b.type === 'tower' ? 20 : 12);
+        });
+    }
+
+    // Percent of each map NINTH this player has ever seen: {NW,N,NE,W,C,E,SW,S,SE}.
+    explorationSummary(owner) {
+        const out = { NW: 0, N: 0, NE: 0, W: 0, C: 0, E: 0, SW: 0, S: 0, SE: 0 };
+        if (!owner || !owner._explored) return out;
+        const G = this.EXPLORE_GRID, S = G / 3; // 14 cells per section side
+        const names = [['NW', 'N', 'NE'], ['W', 'C', 'E'], ['SW', 'S', 'SE']];
+        for (let sz = 0; sz < 3; sz++) {
+            for (let sx = 0; sx < 3; sx++) {
+                let seen = 0;
+                for (let z = sz * S; z < (sz + 1) * S; z++) {
+                    for (let x = sx * S; x < (sx + 1) * S; x++) seen += owner._explored[z * G + x];
+                }
+                out[names[sz][sx]] = Math.round((seen / (S * S)) * 100);
+            }
+        }
+        return out;
+    }
+
+    // Centre of this player's least-explored ninth — where a scout learns the
+    // most. Ties break in reading order (NW first); callers add jitter so
+    // repeated picks spread within the section.
+    leastExploredSection(owner) {
+        const sum = this.explorationSummary(owner);
+        const size = (this.terrain && this.terrain.size) || 800;
+        const third = Math.round(size / 3);
+        const centers = {
+            NW: [-third, -third], N: [0, -third], NE: [third, -third],
+            W: [-third, 0], C: [0, 0], E: [third, 0],
+            SW: [-third, third], S: [0, third], SE: [third, third]
+        };
+        let best = null;
+        for (const k of Object.keys(centers)) {
+            if (best === null || sum[k] < sum[best]) best = k;
+        }
+        return { name: best, pct: sum[best], x: centers[best][0], z: centers[best][1] };
     }
 
     // Finish a construction site: full HP, becomes functional, grants pop bonus.

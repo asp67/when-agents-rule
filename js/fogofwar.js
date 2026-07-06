@@ -142,11 +142,9 @@ class FogOfWarManager {
             }
         }
         
-        // Reveal fog around player units
+        // Reveal fog around player units (game.unitVision: cavalry sees 50% farther)
         this.game.player.units.forEach(unit => {
-            const range = unit.type === 'worker' ? this.unitVisionRange : 
-                         (unit.unitType === 'cavalry' ? this.unitVisionRange * 1.2 : this.unitVisionRange);
-            this.reveal(unit.x, unit.z, range);
+            this.reveal(unit.x, unit.z, this.game.unitVision(unit));
         });
         
         // Reveal fog around player buildings
@@ -160,8 +158,7 @@ class FogOfWarManager {
         if (this.game.spectatorMode && this.game.aiManager) {
             this.game.aiManager.aiPlayers.forEach(ai => {
                 ai.units.forEach(unit => {
-                    const range = unit.unitType === 'cavalry' ? this.unitVisionRange * 1.2 : this.unitVisionRange;
-                    this.reveal(unit.x, unit.z, range);
+                    this.reveal(unit.x, unit.z, this.game.unitVision(unit));
                 });
                 ai.buildings.forEach(building => {
                     const range = building.type === 'tower' ? this.towerVisionRange : this.buildingVisionRange;

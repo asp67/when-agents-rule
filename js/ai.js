@@ -69,6 +69,10 @@ class AIManager {
         if (this.discoveryTimer >= 250) {
             this.discoveryTimer = 0;
             this.aiPlayers.forEach(ai => {
+                // Exploration bitmap for EVERY player (LLM ones too — their own
+                // discovery runs only when they take a turn, which would miss the
+                // ground their units sweep while marching between turns).
+                if (this.game.markExploration) this.game.markExploration(ai);
                 if (this.openAIControlled.has(ai.id)) return;
                 this.updateDiscovery(ai);
             });
@@ -92,7 +96,7 @@ class AIManager {
     isVisibleTo(ai, x, z) {
         for (const u of ai.units) {
             if (u.health <= 0) continue;
-            const range = u.unitType === 'cavalry' ? 18 : 15;
+            const range = this.game.unitVision(u); // cavalry sees 50% farther
             if (Math.hypot(u.x - x, u.z - z) <= range) return true;
         }
         for (const b of ai.buildings) {
@@ -328,14 +332,26 @@ class AIManager {
 
         ai._exploreTimer = 0;
         const half = (this.game.terrain ? this.game.terrain.size : 800) / 2 - 40;
-        // Fan out using the golden angle so repeated scouting sweeps the whole map.
-        ai._scoutAngle = (ai._scoutAngle == null) ? Math.random() * Math.PI * 2 : ai._scoutAngle + 2.399963;
-        ai._scoutRadius = Math.min(half, (ai._scoutRadius || 60) + 40);
-        const c = ai.buildings[0] || { x: 0, z: 0 };
+        // Head for the least-explored map ninth (the same 3×3 summary the LLMs
+        // see) with jitter so successive scouts spread within the section —
+        // controller-type parity. Golden-angle fan-out remains as the fallback
+        // when no exploration data exists yet or the whole map is known.
+        const sec = this.game.leastExploredSection ? this.game.leastExploredSection(ai) : null;
+        let tx, tz;
+        if (sec && sec.pct < 100) {
+            tx = sec.x + (Math.random() - 0.5) * 160;
+            tz = sec.z + (Math.random() - 0.5) * 160;
+        } else {
+            ai._scoutAngle = (ai._scoutAngle == null) ? Math.random() * Math.PI * 2 : ai._scoutAngle + 2.399963;
+            ai._scoutRadius = Math.min(half, (ai._scoutRadius || 60) + 40);
+            const c = ai.buildings[0] || { x: 0, z: 0 };
+            tx = c.x + Math.cos(ai._scoutAngle) * ai._scoutRadius;
+            tz = c.z + Math.sin(ai._scoutAngle) * ai._scoutRadius;
+        }
         scout.task = scout.type === 'worker' ? 'scouting' : null;
         scout.isMoving = true;
-        scout.targetX = Math.max(-half, Math.min(half, c.x + Math.cos(ai._scoutAngle) * ai._scoutRadius));
-        scout.targetZ = Math.max(-half, Math.min(half, c.z + Math.sin(ai._scoutAngle) * ai._scoutRadius));
+        scout.targetX = Math.max(-half, Math.min(half, tx));
+        scout.targetZ = Math.max(-half, Math.min(half, tz));
     }
 
     // ---- Research (delegated to the game's timed system) ----------------------

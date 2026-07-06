@@ -93,6 +93,16 @@
             { "type": "null" }
           ],
           "description": "Centre of your buildings (your base)."
+        },
+        "exploration": {
+          "type": "object",
+          "description": "Percent (0-100) of each map NINTH this player has ever seen (3x3 compass grid). Section centres on the 800 map: NW(-267,-267) N(0,-267) NE(267,-267) W(-267,0) C(0,0) E(267,0) SW(-267,267) S(0,267) SE(267,267). Low = unscouted ground.",
+          "required": ["NW", "N", "NE", "W", "C", "E", "SW", "S", "SE"],
+          "properties": {
+            "NW": { "type": "integer" }, "N": { "type": "integer" }, "NE": { "type": "integer" },
+            "W": { "type": "integer" }, "C": { "type": "integer" }, "E": { "type": "integer" },
+            "SW": { "type": "integer" }, "S": { "type": "integer" }, "SE": { "type": "integer" }
+          }
         }
       }
     },

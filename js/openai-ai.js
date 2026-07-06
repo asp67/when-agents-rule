@@ -571,7 +571,11 @@ class OpenAIAIManager {
         const mapObj = {
             size: game.terrain.size,
             bounds: { minX: -halfMap, maxX: halfMap, minZ: -halfMap, maxZ: halfMap },
-            yourSpawnArea: this.getAIBuildingCenter(ai)
+            yourSpawnArea: this.getAIBuildingCenter(ai),
+            // Percent of each map NINTH this player has ever seen (3×3 compass
+            // grid; section centres documented in the system prompt). Lets the
+            // model aim scouts at genuinely dark ground instead of guessing.
+            exploration: game.explorationSummary(ai)
         };
 
         // --- Resources on map (only SCOUTED nodes; remembered once discovered) ---
@@ -947,13 +951,12 @@ class OpenAIAIManager {
     // 5. Helper: Check if position is visible to AI
     // ----------------------------------------------------------------
     isPositionVisibleToAI(ai, x, z, game) {
-        const unitVisionRange = 15;
         const buildingVisionRange = 12;
         const towerVisionRange = 20;
 
         // Check against AI units
         for (const unit of ai.units) {
-            const range = unit.unitType === 'cavalry' ? unitVisionRange * 1.2 : unitVisionRange;
+            const range = game.unitVision(unit); // cavalry sees 50% farther
             const dx = unit.x - x;
             const dz = unit.z - z;
             if (Math.sqrt(dx * dx + dz * dz) <= range) return 'visible';
@@ -1053,6 +1056,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 ## The world (fixed rules)
 - FOG: you see only near your own units/buildings. "resourcesOnMap" and "enemyBuildings" are remembered discoveries (each enemy building carries "visible": true = in sight now, false = last known spot; both are attackable). "enemyUnits" lists only enemies in sight RIGHT NOW. Exception: rival Wonders are always visible ("threats.enemyWonders", with secondsUntilEnemyWins — a finished rival Wonder ends the game).
 - All {{players}} players start far apart, evenly spaced around the map edge ("map.bounds", centred on 0,0). Your rivals are never beside you — they are found by scouting toward the far parts of the map.
+- "map.exploration" scores how much of each map NINTH you have ever seen (0-100%). Section centres: NW(-267,-267) N(0,-267) NE(267,-267) W(-267,0) C(0,0) E(267,0) SW(-267,267) S(0,267) SE(267,267). Low percentages are dark ground — send explore there to find resources and rivals instead of re-scouting known land. Cavalry units see 50% farther than everything else, making them the best scouts.
 - "threats.underAttack" lists your units/buildings taking fire right now, with "attackerAt" coordinates. Idle military auto-defend your home (workers only as a last resort); auto-defense only repels — it never wins the game.
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
 - Priests (temple) never fight — attack orders skip them. A priest walks to and heals nearby wounded friendlies on its own; reposition it with move_units.
@@ -1070,7 +1074,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - build_wonder: start your Wonder (requires the Iron age).
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" — puts an idle worker on it (auto-scouts first if that type is still undiscovered).
 - assign_workers: params.resourceType (+ optional count) — PULLS workers off their current tasks onto that resource.
-- explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer).
+- explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map ninth. Use map.exploration to aim targeted scouts.
 - move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay).
 - attack_target: params.targetId (an exact "id" from "enemyUnits"/"enemyBuildings" — tracks the target even if it moves) OR params.targetX/targetZ (your army attack-moves there and engages whatever it meets; the verdict is reported when it ARRIVES — do not re-issue while it is marching). Your own units/buildings and resource nodes are rejected.
 - delete_unit: params.unitType (+ optional count) — remove your own units to free population.
@@ -2670,15 +2674,25 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     // nodes are. We fan out from the base in a new direction each call (golden-angle
     // sweep) with an expanding radius, so repeated scouting covers the whole map.
     dispatchScoutToward(ai, game, preferredType = null) {
-        const center = this.getAIBuildingCenter(ai);
-        const half = (game.terrain.size / 2) - 30;
-        ai._scoutAngle = (ai._scoutAngle == null) ? 0 : ai._scoutAngle + 2.399963; // golden angle
-        ai._scoutRadius = Math.min(half, (ai._scoutRadius || 45) + 30);
+        // Aim for the centre of the least-explored map ninth (with jitter so
+        // successive scouts spread out) — the same data the model sees in
+        // map.exploration. Golden-angle fan-out remains as the fallback when no
+        // exploration data exists yet or the whole map is already known.
+        let rawX, rawZ;
+        const sec = game.leastExploredSection ? game.leastExploredSection(ai) : null;
+        if (sec && sec.pct < 100) {
+            rawX = sec.x + (Math.random() - 0.5) * 160;
+            rawZ = sec.z + (Math.random() - 0.5) * 160;
+        } else {
+            const center = this.getAIBuildingCenter(ai);
+            const half = (game.terrain.size / 2) - 30;
+            ai._scoutAngle = (ai._scoutAngle == null) ? 0 : ai._scoutAngle + 2.399963; // golden angle
+            ai._scoutRadius = Math.min(half, (ai._scoutRadius || 45) + 30);
+            rawX = center.x + Math.cos(ai._scoutAngle) * ai._scoutRadius;
+            rawZ = center.z + Math.sin(ai._scoutAngle) * ai._scoutRadius;
+        }
         // Clamp to solid ground so scouts never wander into the ocean.
-        const { x: tx, z: tz } = game.clampToMap(
-            center.x + Math.cos(ai._scoutAngle) * ai._scoutRadius,
-            center.z + Math.sin(ai._scoutAngle) * ai._scoutRadius
-        );
+        const { x: tx, z: tz } = game.clampToMap(rawX, rawZ);
 
         const scout = this.pickScout(ai, preferredType);
         if (!scout) return `You have no unit free to scout — train a worker first.`;
