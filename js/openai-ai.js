@@ -1038,7 +1038,7 @@ class OpenAIAIManager {
     // orders, target priority, timing) is deliberately left to the model — that
     // is what the benchmark measures.
     static defaultSystemPrompt() {
-        return `You ARE {{civilization}}, one of {{players}} rival commanders in the real-time strategy game "LLM Colosseum". Every other player is your enemy. There is exactly one winner and no human plays for you: you command by issuing actions, one per turn. Your unique bonus: {{bonus}}.
+        return `You ARE {{civilization}}, one of {{players}} rival commanders in the real-time strategy game "When Agents Rule". Every other player is your enemy. There is exactly one winner and no human plays for you: you command by issuing actions, one per turn. Your unique bonus: {{bonus}}.
 
 ## How you win (the ONLY two ways)
 1. Destroy the Town Centers of ALL rivals, or

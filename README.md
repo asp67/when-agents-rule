@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏛️ LLM Colosseum
+# 🏛️ When Agents Rule
 
 ### Where language models battle for the crown in antiquity.
 
@@ -14,7 +14,7 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 <br>
 
-![LLM Colosseum — a quick tour](Screenshots/arena-walkthrough.gif)
+![When Agents Rule — a quick tour](Screenshots/arena-walkthrough.gif)
 
 <sub><i>A quick tour: wiring up models in the library, then into the arena.</i></sub>
 
@@ -24,7 +24,7 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 ## What is this?
 
-LLM Colosseum is a **sandbox arena for pitting language models against one another** at a task they were never trained for: running an economy and an army, in real time, inside a small RTS they've never seen.
+When Agents Rule is a **sandbox arena for pitting language models against one another** at a task they were never trained for: running an economy and an army, in real time, inside a small RTS they've never seen. Every player is an autonomous model agent governing its own civilization — and every match ends one of two ways: a rival razed to the ground, or a Wonder held in peace.
 
 It is **not** a leaderboard, not a peer-reviewed benchmark, and makes no claim to statistical rigor. It is a *hands-on, non-scientific testbed* — a fun, surprisingly revealing way to watch how different models behave when you drop them into an **unfamiliar framework** and ask them to **act**, not chat.
 
@@ -38,7 +38,7 @@ Then it has to keep doing that, turn after turn, for an entire match.
 
 <div align="center">
 
-![A live LLM Colosseum match](Screenshots/arena-live.png)
+![A live When Agents Rule match](Screenshots/arena-live.png)
 
 <sub><i>A live match — the fog-limited 3D world, the streaming decision log (left), the ranked leaderboard (right), and the minimap.</i></sub>
 
@@ -46,7 +46,7 @@ Then it has to keep doing that, turn after turn, for an entire match.
 
 ## Why it's an interesting (if unscientific) eval
 
-Most quick LLM demos reward a single clever answer. A full match of LLM Colosseum rewards something harder, and it stresses exactly the capabilities people care about in agents:
+Most quick LLM demos reward a single clever answer. A full match of When Agents Rule rewards something harder, and it stresses exactly the capabilities people care about in agents:
 
 - **🎯 Precise tool calling under pressure.** Every move must be a single, valid JSON action with the right parameters. Hallucinate a tool, fumble the schema, or wrap it in prose and the turn is wasted. You can literally *watch* a model's format discipline hold or crumble.
 - **🧭 Operating in a loose, unfamiliar framework.** There's no fine-tuning, no examples of "good play." The model only has the rules in its system prompt and the state in front of it. Can it infer a working strategy for a system it has never encountered?
@@ -81,8 +81,8 @@ You won't get a p-value. You *will* get an immediate, visceral feel for which mo
 No install, no bundler. You just need to serve the folder over HTTP (the app uses `fetch`, so opening `index.html` from `file://` won't work).
 
 ```bash
-git clone https://github.com/asp67/llm-colosseum.git
-cd llm-colosseum
+git clone https://github.com/asp67/when-agents-rule.git
+cd when-agents-rule
 
 # pick any static server:
 npx http-server . -p 8080 -o          # Node
@@ -185,7 +185,7 @@ This is a **fully client-side** app with no backend of its own.
 
 - API keys and other secrets you enter live in your **browser's `localStorage`** and are sent **directly from your browser** to the endpoints you configure — nothing is proxied through any third party.
 - That's fine for **local, single-user testing**. Don't enter credentials on a shared or public machine, and scope/limit any keys you use.
-- **Exporting** the model catalogue writes a JSON file that contains your keys **in plain text** (the app warns you). Keep that file private — never share it or commit it. (`*.secrets.json`, `llm-colosseum-models.json`, and `arenaConfig*.json` are git-ignored by default.)
+- **Exporting** the model catalogue writes a JSON file that contains your keys **in plain text** (the app warns you). Keep that file private — never share it or commit it. (`*.secrets.json`, `when-agents-rule-models.json`, and `arenaConfig*.json` are git-ignored by default.)
 
 ## 🌍 Languages
 
@@ -215,7 +215,7 @@ Plain **HTML + CSS + JavaScript**, **Three.js r128** loaded from a CDN. No frame
 ## ⚠️ Disclaimers
 
 - **Non-scientific.** This is a toy for intuition and entertainment, not a benchmark. Sample sizes are tiny, maps are random, and tempo (latency) heavily influences outcomes. Don't cite match results as model capability.
-- **Not affiliated** with LMSYS / Chatbot Arena, OpenAI, Anthropic, Google, or any model provider. "LLM Colosseum" is just a fitting name for models fighting in an ancient arena.
+- **Not affiliated** with LMSYS / Chatbot Arena, OpenAI, Anthropic, Google, or any model provider. "When Agents Rule" is meant literally: autonomous model agents governing rival civilizations — by wonder or by war.
 - Built as a hobby project, with a generous assist from AI pair-programming.
 
 ## 🤝 Contributing

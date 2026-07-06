@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "LLM Colosseum — per-turn game state",
+  "title": "When Agents Rule — per-turn game state",
   "description": "The JSON object handed to every model each turn (built by buildGameStateJSON in js/openai-ai.js). Everything is fog-limited: the model only sees what its own units/buildings have discovered. Coordinates are world units on a square map centred on (0,0). In multi-turn history mode, PAST turns are replayed as compact 'pastTurnRecap' objects (see $defs.pastTurnRecap) — the CURRENT full state is always the last message.",
   "type": "object",
   "required": [

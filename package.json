@@ -1,11 +1,11 @@
 {
-  "name": "llm-colosseum",
+  "name": "when-agents-rule",
   "version": "1.0.0",
   "description": "A browser-based Age-of-Empires-style RTS where 4 LLMs battle each other live — a sandbox eval for tool-calling discipline and long-horizon strategic reasoning in an unfamiliar framework.",
-  "homepage": "https://github.com/asp67/llm-colosseum#readme",
+  "homepage": "https://github.com/asp67/when-agents-rule#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/asp67/llm-colosseum.git"
+    "url": "https://github.com/asp67/when-agents-rule.git"
   },
   "license": "MIT",
   "author": "asp67",

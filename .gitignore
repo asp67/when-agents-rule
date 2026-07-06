@@ -17,5 +17,6 @@ error.md
 
 # Exported model catalogues — these can contain API keys in plain text. NEVER commit.
 llm-colosseum-models.json
+when-agents-rule-models.json
 arenaConfig*.json
 *.secrets.json

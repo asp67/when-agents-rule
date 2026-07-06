@@ -1,4 +1,4 @@
-// Lightweight i18n for LLM Colosseum.
+// Lightweight i18n for When Agents Rule.
 // GUI language is global (default English). Each model has its OWN language for
 // what the LLM is told to think/answer in (also default English) — set in the
 // model library, independent of the GUI language.
