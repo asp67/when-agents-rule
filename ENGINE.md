@@ -34,6 +34,7 @@ dependency-free claim becomes literally true.
 | js/engine/mesh.js | `EngineMesh` | UV'd primitive builders: plane grid, box, cylinder (positions/normals/uvs/indices) |
 | js/engine/buildings.js | `EngineBuildings` | building compositions: parts as {primitive, material, transform} |
 | js/engine/units.js | `EngineUnits` | unit compositions (team-color + bone tags) and the cosmetic pose system |
+| js/engine/gamerenderer.js | `EngineRenderer` | GameRenderer's full public surface on the new pipeline (M4) |
 | engine-test.html | — | standalone pipeline demo + `window.__engineStats` for programmatic verification |
 
 ## Migration contract
@@ -65,9 +66,21 @@ built behind it, `main` stays on Three.js until the swap milestone.
   camera-facing quads (M3D.billboard) drawn in the blended pass. Placement
   note: with the locked camera a unit dead-behind a prop is invisible —
   scenes flank, never stack, along the view diagonal.
-- **M4 — integration**: implement the renderer API on the new engine — fog
-  plane (existing canvas), picking (ground-plane ray + radius, already
-  math-only), instanced props, selection rings.
+- **M4 — integration (done)**: EngineRenderer implements GameRenderer's whole
+  public surface — entity bookkeeping, embedded sim duties (AI movement lerp,
+  separation, building clearance — copied bit-identical), ortho ground-plane
+  picking, screen-space marquee, selection rings, building previews +
+  validity, camera intents (position/lookAt map onto dimetric target + ortho
+  zoom), health/food bars, projectiles, battle pings, flash-hit tints,
+  collapse ghosts. Opt-in via `?engine=1` (game.js constructs EngineRenderer
+  instead of GameRenderer); `main`'s Three.js path is untouched. Shim layer:
+  `renderer`/`scene`/`camera` stand-ins plus inert THREE-shaped entity
+  handles (`mesh.visible`, `healthBar.material.color.setHex`,
+  `mesh.children`) let terrain.js / fogofwar.js / game.js run UNMODIFIED —
+  fog's never-consumed `fogTexture.needsUpdate` doubles as our dirty bit for
+  re-uploading the fog display canvas (NPOT: clamp + no mipmaps, the
+  GL_INVALID_OPERATION lesson). Deferred to M5: dust particles, TC name
+  banners, priest halos, carried-resource icons, per-age building variants.
 - **M5 — atmosphere**: water + foam, sky backdrop, day tint, effects pools
   (projectiles, rings, dust, death animations).
 - **M6 — swap**: game runs on the in-house engine, Three.js script tag

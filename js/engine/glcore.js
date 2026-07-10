@@ -71,13 +71,16 @@
     // A canvas painted by TexGen becomes a mipmapped texture. Materials repeat
     // by default; pass { clamp: true } for one-shot maps like the terrain
     // mega-texture (repeat would bleed the far edge into the near one).
+    // Pass { nomip: true } for non-power-of-two canvases (e.g. the fog display
+    // canvas): WebGL1 forbids generateMipmap on NPOT — LINEAR + clamp only.
     GLCore.createTextureFromCanvas = (gl, canvas, opts) => {
         const wrap = (opts && opts.clamp) ? gl.CLAMP_TO_EDGE : gl.REPEAT;
+        const nomip = !!(opts && opts.nomip);
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
-        gl.generateMipmap(gl.TEXTURE_2D);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        if (!nomip) gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, nomip ? gl.LINEAR : gl.LINEAR_MIPMAP_LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);

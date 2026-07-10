@@ -501,10 +501,27 @@
     };
 
     // Solid: flat color swatch — health-bar quads and other tinted UI geometry.
-    TexGen.solid = (r = 255, g = 255, b = 255) => {
+    // Optional alpha (0..255) makes it a translucent ghost (building previews).
+    TexGen.solid = (r = 255, g = 255, b = 255, a = 255) => {
         const c = canvas(8), ctx = c.getContext('2d');
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.clearRect(0, 0, 8, 8);
+        ctx.fillStyle = `rgba(${r},${g},${b},${a / 255})`;
         ctx.fillRect(0, 0, 8, 8);
+        return c;
+    };
+
+    // Ring: a soft-edged annulus on transparent ground — selection rings and
+    // battle pings, colored at draw time via uTint. Maps onto EngineMesh.disc.
+    TexGen.ring = (size = 128) => {
+        const c = canvas(size), ctx = c.getContext('2d');
+        const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(0.72, 'rgba(255,255,255,0)');
+        g.addColorStop(0.8, 'rgba(255,255,255,0.95)');
+        g.addColorStop(0.92, 'rgba(255,255,255,0.95)');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, size, size);
         return c;
     };
 
