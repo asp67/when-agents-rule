@@ -32,6 +32,8 @@ dependency-free claim becomes literally true.
 | js/engine/glcore.js | `GLCore` | context, program compile/link, mesh→buffers, canvas→texture, draw |
 | js/engine/texgen.js | `TexGen` | seeded rng/value-noise + material painters (canvas 2D) |
 | js/engine/mesh.js | `EngineMesh` | UV'd primitive builders: plane grid, box, cylinder (positions/normals/uvs/indices) |
+| js/engine/buildings.js | `EngineBuildings` | building compositions: parts as {primitive, material, transform} |
+| js/engine/units.js | `EngineUnits` | unit compositions (team-color + bone tags) and the cosmetic pose system |
 | engine-test.html | — | standalone pipeline demo + `window.__engineStats` for programmatic verification |
 
 ## Migration contract
@@ -54,8 +56,15 @@ built behind it, `main` stays on Three.js until the swap milestone.
   and tier meshes (pyramid, gabled prism, rectangular frustum, disc). The
   winding audit (EngineMesh.auditWinding) passes 0-bad across the whole
   library and back-face culling is ON.
-- **M3 — units**: composed primitives, team-color masking, walk/harvest/attack
-  cosmetic animation, health bars (billboards).
+- **M3 — units (done)**: EngineUnits composes the roster (worker, infantry,
+  ranged, cavalry, priest) from primitives with near-white cloth that a
+  uTint uniform multiplies into the player color (team masking). Cosmetic
+  pose system: named bones (legs/arms) swing around per-type pivots
+  (M3D.rotateAround) for walk/harvest/attack/idle cycles plus body bob;
+  weapons share the arm bone so they swing along. Health bars are
+  camera-facing quads (M3D.billboard) drawn in the blended pass. Placement
+  note: with the locked camera a unit dead-behind a prop is invisible —
+  scenes flank, never stack, along the view diagonal.
 - **M4 — integration**: implement the renderer API on the new engine — fog
   plane (existing canvas), picking (ground-plane ray + radius, already
   math-only), instanced props, selection rings.

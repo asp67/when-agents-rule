@@ -45,6 +45,30 @@
         return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, 0, 0, 0, 1]);
     };
 
+    M3D.rotationX = (t) => {
+        const c = Math.cos(t), s = Math.sin(t);
+        return new Float32Array([1, 0, 0, 0, 0, c, s, 0, 0, -s, c, 0, 0, 0, 0, 1]);
+    };
+
+    M3D.rotationZ = (t) => {
+        const c = Math.cos(t), s = Math.sin(t);
+        return new Float32Array([c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    };
+
+    // Rotation about an arbitrary pivot point: T(p) * R * T(−p). The pose
+    // system swings limbs around shoulders/hips with this.
+    M3D.rotateAround = (R, px, py, pz) =>
+        M3D.multiply(M3D.translation(px, py, pz), M3D.multiply(R, M3D.translation(-px, -py, -pz)));
+
+    // Billboard basis for a fixed camera: the transpose of the view rotation —
+    // a quad multiplied by this always faces the camera (health bars).
+    M3D.billboard = (view) => new Float32Array([
+        view[0], view[4], view[8], 0,
+        view[1], view[5], view[9], 0,
+        view[2], view[6], view[10], 0,
+        0, 0, 0, 1
+    ]);
+
     // Orthographic projection (the locked isometric camera uses this).
     M3D.ortho = (l, r, b, t, n, f) => new Float32Array([
         2 / (r - l), 0, 0, 0,

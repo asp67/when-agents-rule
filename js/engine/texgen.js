@@ -429,6 +429,85 @@
         return c;
     };
 
+    // Cloth: light woven fabric, deliberately near-white — team color arrives at
+    // draw time via the uTint uniform multiplying this base (the team-color mask).
+    TexGen.cloth = (seed = 13, size = 64) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [212, 206, 194], [
+            { noise: TexGen.valueNoise(size, 8, rand), amp: 12 },
+            { noise: TexGen.valueNoise(size, 24, rand), amp: 7 }
+        ]);
+        // weave: faint warp/weft lines
+        ctx.fillStyle = 'rgba(120,110,96,0.10)';
+        for (let i = 0; i < size; i += 3) { ctx.fillRect(0, i, size, 1); ctx.fillRect(i, 0, 1, size); }
+        const g = ctx.createLinearGradient(0, 0, 0, size);
+        g.addColorStop(0, 'rgba(255,252,240,0.10)');
+        g.addColorStop(1, 'rgba(70,58,44,0.22)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, size, size);
+        return c;
+    };
+
+    // Skin: warm tan with gentle mottling — faces and hands.
+    TexGen.skin = (seed = 14, size = 32) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [212, 170, 128], [
+            { noise: TexGen.valueNoise(size, 6, rand), amp: 10 }
+        ]);
+        return c;
+    };
+
+    // Leather: smooth mottled brown — horse hides, boots, caps.
+    TexGen.leather = (seed = 15, size = 64) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [126, 90, 56], [
+            { noise: TexGen.valueNoise(size, 6, rand), amp: 18 },
+            { noise: TexGen.valueNoise(size, 18, rand), amp: 9 }
+        ]);
+        for (let i = 0; i < 20; i++) {
+            const x = rand() * size, y = rand() * size, r = 3 + rand() * 8;
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+            const dark = rand() < 0.5;
+            g.addColorStop(0, dark ? 'rgba(70,46,26,0.22)' : 'rgba(180,140,96,0.20)');
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        }
+        return c;
+    };
+
+    // Iron: brushed blue-gray metal with a cool top sheen — weapons and helmets.
+    TexGen.iron = (seed = 16, size = 64) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [168, 172, 182], [
+            { noise: TexGen.valueNoise(size, 10, rand), amp: 12 }
+        ]);
+        for (let i = 0; i < 40; i++) {
+            const y = rand() * size;
+            const light = rand() < 0.4;
+            ctx.fillStyle = light ? 'rgba(230,236,246,0.18)' : 'rgba(70,76,90,0.16)';
+            ctx.fillRect(0, y, size, 0.9);
+        }
+        const g = ctx.createLinearGradient(0, 0, 0, size);
+        g.addColorStop(0, 'rgba(240,246,255,0.20)');
+        g.addColorStop(1, 'rgba(40,46,60,0.24)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, size, size);
+        return c;
+    };
+
+    // Solid: flat color swatch — health-bar quads and other tinted UI geometry.
+    TexGen.solid = (r = 255, g = 255, b = 255) => {
+        const c = canvas(8), ctx = c.getContext('2d');
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(0, 0, 8, 8);
+        return c;
+    };
+
     // Soft round contact shadow (real alpha) — the blob that grounds buildings
     // and units on any terrain. Drawn blended, not lit.
     TexGen.shadowBlob = (size = 128) => {
