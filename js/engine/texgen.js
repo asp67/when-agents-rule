@@ -23,6 +23,25 @@
         return c;
     };
 
+    // Wrapped-bilinear noise SAMPLER in [0,1]: query by (u, v) in [0,1) without
+    // precomputing a full-resolution array — the terrain mega-texture samples
+    // millions of pixels, so per-pixel lattice lookups beat 16MB temporaries.
+    TexGen.noiseSampler = (cells, rand) => {
+        const lat = new Float32Array(cells * cells);
+        for (let i = 0; i < lat.length; i++) lat[i] = rand();
+        return (u, v) => {
+            const gx = ((u % 1) + 1) % 1 * cells, gy = ((v % 1) + 1) % 1 * cells;
+            const x0 = Math.floor(gx), y0 = Math.floor(gy);
+            const fx = gx - x0, fy = gy - y0;
+            const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+            const i00 = lat[(y0 % cells) * cells + (x0 % cells)];
+            const i10 = lat[(y0 % cells) * cells + ((x0 + 1) % cells)];
+            const i01 = lat[((y0 + 1) % cells) * cells + (x0 % cells)];
+            const i11 = lat[((y0 + 1) % cells) * cells + ((x0 + 1) % cells)];
+            return (i00 * (1 - sx) + i10 * sx) * (1 - sy) + (i01 * (1 - sx) + i11 * sx) * sy;
+        };
+    };
+
     // Tileable value noise in [0,1]: a coarse random lattice sampled with
     // bilinear interpolation and wrapped indices (so textures repeat cleanly).
     TexGen.valueNoise = (size, cells, rand) => {
@@ -165,6 +184,185 @@
             ctx.fillStyle = 'rgba(255,226,180,0.12)';
             ctx.fillRect(x + 1.4, 0, 1, size);
         }
+        return c;
+    };
+
+    // Bark: rough vertical ridges, darker and busier than plank wood.
+    TexGen.bark = (seed = 4, size = 128) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [92, 68, 46], [
+            { noise: TexGen.valueNoise(size, 10, rand), amp: 22 }
+        ]);
+        for (let i = 0; i < 42; i++) {
+            const x = rand() * size;
+            const light = rand() < 0.35;
+            ctx.strokeStyle = light ? 'rgba(150,116,80,0.35)' : `rgba(44,30,18,${0.25 + rand() * 0.3})`;
+            ctx.lineWidth = 1 + rand() * 1.6;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.bezierCurveTo(x + (rand() - 0.5) * 10, size * 0.33, x + (rand() - 0.5) * 10, size * 0.66, x + (rand() - 0.5) * 8, size);
+            ctx.stroke();
+        }
+        return c;
+    };
+
+    // Foliage: leafy clusters over a base green — canopies, bushes; optional
+    // berry speckle turns it into the food bush.
+    TexGen.foliage = (seed, base, opts = {}) => {
+        const rand = TexGen.rng(seed || 5);
+        const size = opts.size || 128;
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, base || [74, 112, 58], [
+            { noise: TexGen.valueNoise(size, 9, rand), amp: 26 },
+            { noise: TexGen.valueNoise(size, 28, rand), amp: 14 }
+        ]);
+        // shadowed leaf clumps
+        for (let i = 0; i < 26; i++) {
+            const x = rand() * size, y = rand() * size, r = 5 + rand() * 12;
+            const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+            g.addColorStop(0, 'rgba(20,36,16,0.28)');
+            g.addColorStop(1, 'rgba(20,36,16,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(x - r, y - r, r * 2, r * 2);
+        }
+        // lit leaf flecks
+        for (let i = 0; i < size * 6; i++) {
+            const v = 120 + rand() * 90;
+            ctx.fillStyle = `rgba(${v * 0.62 | 0},${v | 0},${v * 0.45 | 0},0.45)`;
+            ctx.fillRect(rand() * size, rand() * size, 1.5, 1.5);
+        }
+        // berries
+        if (opts.berries) {
+            for (let i = 0; i < 42; i++) {
+                const x = rand() * size, y = rand() * size, r = 1.6 + rand() * 1.6;
+                ctx.fillStyle = 'rgba(90,20,26,0.9)';
+                ctx.beginPath(); ctx.arc(x + 0.6, y + 0.6, r, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = 'rgba(196,44,52,0.95)';
+                ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = 'rgba(255,180,180,0.8)';
+                ctx.fillRect(x - r * 0.35, y - r * 0.35, 1, 1);
+            }
+        }
+        return c;
+    };
+
+    // Rock: cracked gray stone; opts.gold laces it with bright ore veins.
+    TexGen.rock = (seed, opts = {}) => {
+        const rand = TexGen.rng(seed || 6);
+        const size = opts.size || 128;
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, opts.base || [138, 138, 142], [
+            { noise: TexGen.valueNoise(size, 7, rand), amp: 26 },
+            { noise: TexGen.valueNoise(size, 24, rand), amp: 12 }
+        ]);
+        // cracks
+        for (let i = 0; i < 14; i++) {
+            let x = rand() * size, y = rand() * size;
+            ctx.strokeStyle = `rgba(52,52,58,${0.3 + rand() * 0.3})`;
+            ctx.lineWidth = 0.8 + rand() * 0.8;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            for (let s = 0; s < 4; s++) {
+                x += (rand() - 0.5) * 34; y += (rand() - 0.5) * 34;
+                ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+        // speckle
+        for (let i = 0; i < size * 5; i++) {
+            const v = 100 + rand() * 90;
+            ctx.fillStyle = `rgba(${v | 0},${v | 0},${(v * 1.04) | 0},0.35)`;
+            ctx.fillRect(rand() * size, rand() * size, 1.4, 1.4);
+        }
+        if (opts.gold) {
+            for (let i = 0; i < 9; i++) {
+                let x = rand() * size, y = rand() * size;
+                ctx.strokeStyle = 'rgba(238,192,80,0.9)';
+                ctx.lineWidth = 1.4 + rand() * 1.4;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                for (let s = 0; s < 3; s++) {
+                    x += (rand() - 0.5) * 30; y += (rand() - 0.5) * 30;
+                    ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.strokeStyle = 'rgba(255,232,150,0.5)';
+                ctx.lineWidth = 0.7;
+                ctx.stroke();
+            }
+        }
+        return c;
+    };
+
+    // ---- Terrain mega-texture ---------------------------------------------------
+    // One big canvas covering the whole map (classic pre-baked look): deep water
+    // at the rim, a noise-wobbled coastline, wet + dry beach bands, then the
+    // themed interior with patch/grain variation. Sampled once per pixel via
+    // noise SAMPLERS (no full-res temporaries).
+    TexGen.TERRAIN_PALETTES = {
+        summer: {
+            waterDeep: [22, 54, 84], water: [38, 86, 118], wetSand: [166, 148, 108],
+            sand: [214, 196, 148], soil: [124, 98, 60],
+            grass: [98, 140, 76], grassDark: [76, 116, 60]
+        },
+        winter: {
+            waterDeep: [26, 52, 74], water: [44, 84, 108], wetSand: [148, 158, 166],
+            sand: [186, 194, 200], soil: [148, 152, 158],
+            grass: [214, 224, 230], grassDark: [180, 198, 208]
+        },
+        desert: {
+            waterDeep: [30, 76, 92], water: [50, 108, 120], wetSand: [178, 148, 102],
+            sand: [224, 194, 138], soil: [188, 148, 94],
+            grass: [198, 170, 112], grassDark: [170, 142, 90]
+        }
+    };
+
+    TexGen.terrain = (theme, seed, size = 2048, worldSize = 1000, landHalf = 400) => {
+        const P = TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
+        const rand = TexGen.rng(seed || 7);
+        const nCoast = TexGen.noiseSampler(24, rand);
+        const nPatch = TexGen.noiseSampler(10, rand);
+        const nGrain = TexGen.noiseSampler(56, rand);
+        const c = canvas(size), ctx = c.getContext('2d');
+        const img = ctx.createImageData(size, size);
+        const d = img.data;
+        const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+        for (let py = 0; py < size; py++) {
+            const v = py / size;
+            const wz = (v - 0.5) * worldSize;
+            for (let px = 0; px < size; px++) {
+                const u = px / size;
+                const wx = (u - 0.5) * worldSize;
+                // square island: chebyshev distance from centre + coast wobble
+                const dist = Math.max(Math.abs(wx), Math.abs(wz)) + (nCoast(u, v) - 0.5) * 26;
+                let col;
+                if (dist > landHalf + 42) {
+                    col = P.waterDeep;
+                } else if (dist > landHalf + 10) {
+                    col = mix(P.water, P.waterDeep, (dist - landHalf - 10) / 32);
+                } else if (dist > landHalf + 3) {
+                    col = mix(P.wetSand, P.water, (dist - landHalf - 3) / 7);
+                } else if (dist > landHalf - 15) {
+                    col = mix(P.sand, P.wetSand, (dist - (landHalf - 15)) / 18);
+                } else {
+                    // interior: grass/dark patches with soil breaks
+                    const p = nPatch(u, v);
+                    col = p < 0.32
+                        ? mix(P.soil, P.grassDark, p / 0.32)
+                        : mix(P.grassDark, P.grass, (p - 0.32) / 0.68);
+                    // fade the last few units toward the beach so the edge breathes
+                    if (dist > landHalf - 26) col = mix(col, P.sand, (dist - (landHalf - 26)) / 11 * 0.5);
+                }
+                const g = (nGrain(u, v) - 0.5) * 16;
+                const i = (py * size + px) * 4;
+                d[i] = clamp255(col[0] + g);
+                d[i + 1] = clamp255(col[1] + g);
+                d[i + 2] = clamp255(col[2] + g * 0.9);
+                d[i + 3] = 255;
+            }
+        }
+        ctx.putImageData(img, 0, 0);
         return c;
     };
 

@@ -2,27 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>When Agents Rule — engine M0 demo</title>
+    <title>When Agents Rule — engine M1 demo</title>
     <style>
         html, body { margin: 0; height: 100%; background: #10141f; overflow: hidden; }
         canvas { display: block; }
         #tag { position: fixed; left: 10px; bottom: 8px; color: #9aa6bf; font: 12px monospace; }
+        #tag a { color: #4ecca3; }
     </style>
 </head>
 <body>
     <canvas id="c"></canvas>
-    <div id="tag">engine M0 — dependency-free WebGL: procedural textures · dimetric ortho camera · warm sun / cool ambient</div>
+    <div id="tag">engine M1 — terrain mega-texture · nature scatter · arrows pan, +/− zoom · theme:
+        <a href="?theme=summer">summer</a> · <a href="?theme=winter">winter</a> · <a href="?theme=desert">desert</a></div>
     <script src="js/engine/math3d.js"></script>
     <script src="js/engine/glcore.js"></script>
     <script src="js/engine/texgen.js"></script>
     <script src="js/engine/mesh.js"></script>
     <script>
     (function () {
+        const THEME = new URLSearchParams(location.search).get('theme') || 'summer';
+        const SEED = 12345;
+        const WORLD = 1000, LAND_HALF = 400;
+
         const canvas = document.getElementById('c');
-        // Real drawing-buffer size even if the layout viewport is broken/hidden.
         const W = window.innerWidth || 1280, H = window.innerHeight || 720;
         canvas.width = W; canvas.height = H;
-        // preserveDrawingBuffer so verification can readPixels after the frame.
         const gl = GLCore.createContext(canvas, { preserveDrawingBuffer: true });
 
         const VS = `
@@ -40,7 +44,7 @@
         const FS = `
             precision mediump float;
             uniform sampler2D uTex;
-            uniform vec3 uSunDir;   // surface -> sun
+            uniform vec3 uSunDir;
             uniform vec3 uSunColor;
             uniform vec3 uAmbient;
             varying vec3 vNormal;
@@ -48,47 +52,126 @@
             void main() {
                 vec3 n = normalize(vNormal);
                 vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
-                vec4 tex = texture2D(uTex, vUv);
-                gl_FragColor = vec4(tex.rgb * light, 1.0);
+                gl_FragColor = vec4(texture2D(uTex, vUv).rgb * light, 1.0);
             }`;
         const prog = GLCore.compileProgram(gl, VS, FS);
 
-        // ---- Materials (painted, not loaded) ----------------------------------
-        const texGrass = GLCore.createTextureFromCanvas(gl, TexGen.grass(11));
-        const texMasonry = GLCore.createTextureFromCanvas(gl, TexGen.masonry(22));
-        const texWood = GLCore.createTextureFromCanvas(gl, TexGen.wood(33));
+        // ---- Materials (all painted) -------------------------------------------
+        const isWinter = THEME === 'winter', isDesert = THEME === 'desert';
+        const canopyBase = isWinter ? [58, 92, 66] : (isDesert ? [110, 116, 62] : [74, 112, 58]);
+        const tex = {
+            terrain: GLCore.createTextureFromCanvas(gl, TexGen.terrain(THEME, SEED), { clamp: true }),
+            masonry: GLCore.createTextureFromCanvas(gl, TexGen.masonry(22)),
+            wood: GLCore.createTextureFromCanvas(gl, TexGen.wood(33)),
+            bark: GLCore.createTextureFromCanvas(gl, TexGen.bark(44)),
+            foliage: GLCore.createTextureFromCanvas(gl, TexGen.foliage(55, canopyBase)),
+            berries: GLCore.createTextureFromCanvas(gl, TexGen.foliage(66, [64, 100, 52], { berries: true })),
+            rock: GLCore.createTextureFromCanvas(gl, TexGen.rock(77)),
+            gold: GLCore.createTextureFromCanvas(gl, TexGen.rock(88, { gold: true }))
+        };
 
-        // ---- Scene -------------------------------------------------------------
+        // ---- Mesh library --------------------------------------------------------
         const M = M3D;
-        const scene = [
-            { buf: GLCore.createMeshBuffers(gl, EngineMesh.gridPlane(80, 1, 10)), tex: texGrass,
-              model: () => M.identity() },
-            { buf: GLCore.createMeshBuffers(gl, EngineMesh.box(8, 5, 6)), tex: texMasonry,
-              model: () => M.translation(0, 2.5, 0) },
-            // Flat overhanging slab roof (classic mudbrick look). A cone-as-pyramid
-            // hack showed an apex-face bug in the cylinder builder — real pitched
-            // roofs get purpose-built pyramid/prism meshes in M2.
-            { buf: GLCore.createMeshBuffers(gl, EngineMesh.box(8.8, 0.6, 6.8)), tex: texWood,
-              model: () => M.translation(0, 5.3, 0) },
-            { buf: GLCore.createMeshBuffers(gl, EngineMesh.cylinder(1.6, 2.0, 7, 14)), tex: texMasonry,
-              model: () => M.translation(-9, 3.5, 6) },
-            { buf: GLCore.createMeshBuffers(gl, EngineMesh.box(2.5, 2.5, 2.5)), tex: texWood,
-              model: (t) => M.multiply(M.translation(8, 1.25, 8), M.rotationY(t * 0.0004)) }
-        ];
+        const lib = {
+            terrain: GLCore.createMeshBuffers(gl, EngineMesh.gridPlane(WORLD, 1, 1)),
+            box: GLCore.createMeshBuffers(gl, EngineMesh.box(1, 1, 1)),
+            trunk: GLCore.createMeshBuffers(gl, EngineMesh.cylinder(0.24, 0.4, 2.4, 7)),
+            cone: GLCore.createMeshBuffers(gl, EngineMesh.cylinder(0, 1, 1, 8)),
+            tower: GLCore.createMeshBuffers(gl, EngineMesh.cylinder(1.6, 2.0, 7, 14)),
+            canopy: GLCore.createMeshBuffers(gl, EngineMesh.sphere(1, 10, 7, { jitter: 0.28, seed: 9 })),
+            boulder: GLCore.createMeshBuffers(gl, EngineMesh.sphere(1, 9, 6, { jitter: 0.5, seed: 10 }))
+        };
+        const TRS = (x, y, z, sx, sy, sz, ry) => {
+            let m = M.translation(x, y, z);
+            if (ry) m = M.multiply(m, M.rotationY(ry));
+            return M.multiply(m, M.scaling(sx, sy, sz));
+        };
 
-        // Locked classic camera: dimetric view, orthographic projection.
-        const cam = M.dimetricView(0, 0, 90);
-        const halfH = 14, aspect = W / H;
-        const proj = M.ortho(-halfH * aspect, halfH * aspect, -halfH, halfH, 1, 400);
-        // Sun from the SCREEN's top-left, slightly toward the viewer (classic RTS
-        // key light) — with the locked yaw-45° camera that is world (-X, +Y, +Z).
-        // Faces the spectator sees are lit; the away slopes carry the shade.
+        // ---- Scene ---------------------------------------------------------------
+        const scene = [];
+        const add = (buf, texture, model) => scene.push({ buf, tex: texture, model });
+        add(lib.terrain, tex.terrain, M.identity());
+
+        // small settlement (M0 carry-over, proves buildings sit in the world)
+        add(lib.box, tex.masonry, TRS(0, 2.5, 0, 8, 5, 6));
+        add(lib.box, tex.wood, TRS(0, 5.3, 0, 8.8, 0.6, 6.8));
+        add(lib.tower, tex.masonry, TRS(-11, 3.5, 7, 1, 1, 1));
+        add(lib.cone, tex.wood, TRS(-11, 7.9, 7, 2.4, 1.8, 2.4)); // the M2-bugfix cone, now a roof
+
+        // nature scatter (seeded; kept off the settlement)
+        const rand = TexGen.rng(SEED + 1);
+        const spot = (min, max) => {
+            for (let tries = 0; tries < 40; tries++) {
+                const x = (rand() * 2 - 1) * (LAND_HALF - 40);
+                const z = (rand() * 2 - 1) * (LAND_HALF - 40);
+                const d = Math.hypot(x, z);
+                if (d > min && d < max) return { x, z };
+            }
+            return null;
+        };
+        const tree = (x, z) => {
+            const s = 0.85 + rand() * 0.5;
+            add(lib.trunk, tex.bark, TRS(x, 1.2 * s, z, s, s, s, rand() * 6.28));
+            if (isWinter) {
+                add(lib.cone, tex.foliage, TRS(x, (2.6 + 1.5) * s * 0.8, z, 2.2 * s, 3.4 * s, 2.2 * s));
+                add(lib.cone, tex.foliage, TRS(x, (2.6 + 3.1) * s * 0.8, z, 1.5 * s, 2.4 * s, 1.5 * s));
+            } else {
+                add(lib.canopy, tex.foliage, TRS(x, 3.3 * s, z, 1.9 * s, 1.6 * s, 1.9 * s, rand() * 6.28));
+            }
+        };
+        // clustered woods
+        const clusters = isDesert ? 4 : 8;
+        for (let ci = 0; ci < clusters; ci++) {
+            const c0 = spot(40, LAND_HALF - 60);
+            if (!c0) continue;
+            const n = isDesert ? 2 + (rand() * 2 | 0) : 3 + (rand() * 4 | 0);
+            for (let i = 0; i < n; i++) tree(c0.x + (rand() - 0.5) * 26, c0.z + (rand() - 0.5) * 26);
+        }
+        // boulders: plain stone + gold-veined
+        for (let i = 0; i < 4; i++) {
+            const p = spot(30, LAND_HALF - 50);
+            if (p) add(lib.boulder, tex.rock, TRS(p.x, 0.9, p.z, 1.7, 1.15, 1.5, rand() * 6.28));
+        }
+        for (let i = 0; i < 4; i++) {
+            const p = spot(30, LAND_HALF - 50);
+            if (p) add(lib.boulder, tex.gold, TRS(p.x, 0.8, p.z, 1.5, 1.05, 1.4, rand() * 6.28));
+        }
+        // berry bushes (fewer in winter/desert)
+        const bushes = isWinter ? 3 : (isDesert ? 4 : 6);
+        for (let i = 0; i < bushes; i++) {
+            const p = spot(25, LAND_HALF - 60);
+            if (p) add(lib.canopy, tex.berries, TRS(p.x, 0.55, p.z, 1.15, 0.7, 1.15, rand() * 6.28));
+        }
+
+        // ---- Locked camera with pan/zoom ----------------------------------------
+        const target = { x: 0, z: 0 };
+        let halfH = 30;
+        const aspect = W / H;
         const sunDir = M.normalize([-0.35, 0.9, 0.45]);
+        const keys = {};
+        window.addEventListener('keydown', e => { keys[e.key] = true; });
+        window.addEventListener('keyup', e => { keys[e.key] = false; });
 
-        const stats = { frames: 0, glError: -1 };
+        const stats = { frames: 0, glError: -1, theme: THEME, objects: scene.length };
         window.__engineStats = stats;
 
+        let last = 0;
         function renderFrame(t) {
+            const dt = Math.min(0.1, (t - last) / 1000 || 0.016);
+            last = t;
+            // camera-aligned pan (screen right = world (+x,−z)/√2 at yaw 45°)
+            const sp = halfH * 1.4 * dt;
+            const R = 0.70710678;
+            if (keys.ArrowRight) { target.x += sp * R; target.z -= sp * R; }
+            if (keys.ArrowLeft) { target.x -= sp * R; target.z += sp * R; }
+            if (keys.ArrowUp) { target.x -= sp * R; target.z -= sp * R; }
+            if (keys.ArrowDown) { target.x += sp * R; target.z += sp * R; }
+            if (keys['+'] || keys['=']) halfH = Math.max(10, halfH - 40 * dt);
+            if (keys['-']) halfH = Math.min(220, halfH + 40 * dt);
+
+            const cam = M.dimetricView(target.x, target.z, 300);
+            const proj = M.ortho(-halfH * aspect, halfH * aspect, -halfH, halfH, 1, 900);
+
             gl.viewport(0, 0, W, H);
             gl.clearColor(0.09, 0.11, 0.16, 1);
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -97,22 +180,18 @@
             gl.uniformMatrix4fv(prog.uniforms.uView, false, cam.view);
             gl.uniform3fv(prog.uniforms.uSunDir, sunDir);
             gl.uniform3f(prog.uniforms.uSunColor, 0.85, 0.78, 0.66);
-            // Generous cool ambient: shade sides stay readable (classic-RTS soft
-            // look) instead of collapsing toward black.
             gl.uniform3f(prog.uniforms.uAmbient, 0.52, 0.55, 0.62);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(prog.uniforms.uTex, 0);
             for (const obj of scene) {
                 gl.bindTexture(gl.TEXTURE_2D, obj.tex);
-                gl.uniformMatrix4fv(prog.uniforms.uModel, false, obj.model(t));
+                gl.uniformMatrix4fv(prog.uniforms.uModel, false, obj.model);
                 GLCore.drawMesh(gl, prog, obj.buf);
             }
             stats.frames++;
             stats.glError = gl.getError();
         }
 
-        // Verification helper: distinct colors in the centre block — a textured,
-        // lit scene yields hundreds; a broken pipeline yields 1 (clear color).
         stats.sample = () => {
             const S = 96, buf = new Uint8Array(S * S * 4);
             gl.readPixels((W - S) >> 1, (H - S) >> 1, S, S, gl.RGBA, gl.UNSIGNED_BYTE, buf);
@@ -125,9 +204,9 @@
             }
             return { distinct: seen.size, nonBgFraction: nonBg / (S * S) };
         };
+        // For verification: teleport the camera + zoom without keyboard input.
+        stats.look = (x, z, hh) => { target.x = x; target.z = z; if (hh) halfH = hh; renderFrame(last + 16); };
 
-        // Boot: render a few frames synchronously (works even when the tab is
-        // hidden and rAF is paused), then hand off to the animation loop.
         renderFrame(0); renderFrame(16); renderFrame(32);
         const loop = (t) => { renderFrame(t); requestAnimationFrame(loop); };
         requestAnimationFrame(loop);
