@@ -15,7 +15,7 @@ class FogOfWarManager {
         // Visibility range
         this.unitVisionRange = 15;
         this.buildingVisionRange = 12;
-        this.towerVisionRange = 20;
+        this.towerVisionRange = 60; // tripled — towers are long-range sentinels
 
         // Fog grid: 0 = unexplored (black), 1 = explored (dark), 2 = visible (clear)
         this.fogGrid = new Float32Array(this.numTiles * this.numTiles);

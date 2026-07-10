@@ -900,10 +900,17 @@ class Game {
                     const found = this.findNearestEnemyInRange(unit, aggro, true);
                     if (found) {
                         unit.attackTarget = found;
+                    } else if (unit._draftReturn) {
+                        // Drafted worker and the area is clear: skip the march to
+                        // the rally point — straight back to the economy job.
+                        unit.isAttacking = false;
+                        this.resumeWorkerAfterCombat(unit);
+                        return;
                     } else if (!unit.attackMove) {
                         // Plain attack and nothing nearby (verified by a real scan):
                         // stop instead of chasing far off.
                         unit.isAttacking = false;
+                        this.resumeWorkerAfterCombat(unit); // clears any stale worker combat state
                         return;
                     }
                 }
@@ -919,10 +926,12 @@ class Game {
                             unit.z += (dz / dist) * moveSpeed;
                             this.renderer.updateUnitPosition(unit);
                         } else {
-                            // Reached the objective with nothing left to fight: hold.
+                            // Reached the objective with nothing left to fight: hold —
+                            // except drafted workers, who return to their economy job.
                             unit.isMoving = false;
                             unit.attackMove = null;
                             unit.isAttacking = false;
+                            this.resumeWorkerAfterCombat(unit);
                         }
                     }
                     return; // no target yet — either marching or awaiting the next scan
@@ -1174,8 +1183,20 @@ class Game {
             }
             if (!defenders.length) return;
 
+            // Battle report (throttled): the defender learns it is being raided.
+            if (!owner._lastRaidEventAt || now - owner._lastRaidEventAt > 10000) {
+                owner._lastRaidEventAt = now;
+                const entLabel = primary.ent.type || primary.ent.unitType || 'unit';
+                this.logPlayerEvent(owner,
+                    `UNDER ATTACK: your ${entLabel} at (${Math.round(primary.ent.x)}, ${Math.round(primary.ent.z)}) is taking damage from ${this.ownerName(this.getOwner(atk))}${usingWorkers ? ' — workers drafted to defend' : ''}`);
+            }
+
             defenders.forEach(d => {
                 if (usingWorkers) {
+                    // Remember the economy job so the worker RETURNS to it after
+                    // the fight (resumeWorkerAfterCombat) instead of idling in a
+                    // tangled pile at the battle site.
+                    d._draftReturn = { task: d.task, harvestTarget: d.harvestTarget || null, farmRef: d.farmRef || null };
                     if (d.farmRef && d.farmRef.assignedWorker === d) d.farmRef.assignedWorker = null;
                     d.farmRef = null;
                     d.isHarvesting = false;
@@ -1184,13 +1205,52 @@ class Game {
                 d.task = null;
                 d.isAttacking = true;
                 d.attackTarget = atk;
-                d.attackMove = { x: atk.x, z: atk.z }; // pursue & re-acquire nearby threats
+                // Small spread on the rally point so a worker mob doesn't try to
+                // occupy one exact spot when the fight ends (the old jam).
+                d.attackMove = { x: atk.x + (Math.random() - 0.5) * 5, z: atk.z + (Math.random() - 0.5) * 5 };
                 d.attackTimer = 0;
                 d.isMoving = true;
                 d.targetX = atk.x;
                 d.targetZ = atk.z;
             });
         });
+    }
+
+    // A worker's fight is over: send it back to the economy job it was drafted
+    // from (or the nearest surviving node of that type). Also clears combat
+    // state for non-drafted workers so none is left half-fighting, half-gathering.
+    resumeWorkerAfterCombat(unit) {
+        if (unit.type !== 'worker') return;
+        const r = unit._draftReturn;
+        unit._draftReturn = null;
+        unit.attackMove = null;
+        unit.isAttacking = false;
+        unit.attackTarget = null;
+        if (!r) return;
+        if (r.farmRef && r.farmRef.health > 0 && !r.farmRef.assignedWorker) {
+            unit.task = 'farm_work';
+            unit.farmRef = r.farmRef;
+            r.farmRef.assignedWorker = unit;
+            unit.isMoving = true;
+            unit.targetX = r.farmRef.x + (Math.random() - 0.5) * 3;
+            unit.targetZ = r.farmRef.z + (Math.random() - 0.5) * 3;
+            return;
+        }
+        if (r.harvestTarget && r.harvestTarget.amount > 0) {
+            unit.task = 'harvesting';
+            unit.harvestTarget = r.harvestTarget;
+            unit.isHarvesting = false;
+            unit.harvestTimer = 0;
+            unit.isMoving = true;
+            unit.targetX = r.harvestTarget.x + (Math.random() - 0.5) * 2;
+            unit.targetZ = r.harvestTarget.z + (Math.random() - 0.5) * 2;
+            return;
+        }
+        if (r.harvestTarget) {
+            // The node ran dry during the fight: nearest discovered same-type node.
+            unit.harvestTarget = r.harvestTarget;
+            this.retargetDepletedWorker(unit, this.getOwner(unit));
+        }
     }
 
     // Find nearest enemy unit to a given unit
@@ -1332,15 +1392,53 @@ class Game {
         };
     }
 
+    // Rolling per-player battle report. Serialized into the LLM game state as
+    // "recentEvents" so a model learns about losses, kills and raids it can't
+    // otherwise see (the state is a snapshot; deaths between turns were silent).
+    logPlayerEvent(ownerObj, text) {
+        if (!ownerObj) return;
+        ownerObj.events = ownerObj.events || [];
+        ownerObj.events.push({ at: Date.now(), text });
+        if (ownerObj.events.length > 14) ownerObj.events.shift();
+    }
+
+    ownerName(o) {
+        if (!o) return 'an unknown force';
+        if (o === this.player) return 'the human player';
+        return o.civilization || o.id || 'an enemy';
+    }
+
     destroyTarget(target) {
         // isWonder: civ-unique buildings (pyramid/firetemple/…) are NOT in
         // BUILDING_DEFS — without this a razed Wonder took the UNIT removal path,
         // stayed in its owner's buildings list forever and blocked them from ever
         // building another Wonder ("already building or holding a Wonder").
-        if (target.isWonder || (target.type && BUILDING_DEFS[target.type])) {
-            // It's a building
-            const owner = target.owner;
-            if (owner === 'player') {
+        const isBuilding = target.isWonder || (target.type && BUILDING_DEFS[target.type]);
+
+        // Battle report for both sides, before any list surgery.
+        const victimOwner = isBuilding ? this.getOwnerByBuilding(target) : this.getOwner(target);
+        const killerOwner = target._lastAttacker ? this.getOwner(target._lastAttacker) : null;
+        const at = `(${Math.round(target.x)}, ${Math.round(target.z)})`;
+        const label = isBuilding ? (target.isWonder ? 'Wonder' : target.type) : (target.unitType || target.type);
+        if (victimOwner) {
+            const by = (killerOwner && killerOwner !== victimOwner) ? ` — destroyed by ${this.ownerName(killerOwner)}` : '';
+            this.logPlayerEvent(victimOwner, `LOSS: your ${label} at ${at}${by}`);
+        }
+        if (killerOwner && killerOwner !== victimOwner) {
+            this.logPlayerEvent(killerOwner, `KILL: you destroyed ${this.ownerName(victimOwner)}'s ${label} at ${at}`);
+        }
+
+        // A finished house/Town Center going down takes its population bonus
+        // with it (demolition and combat destruction alike end up here).
+        if (isBuilding && victimOwner && victimOwner.resources && !target.underConstruction) {
+            const def = getBuildingDef(target.type);
+            if (def && def.popBonus) {
+                victimOwner.resources.maxPopulation = Math.max(0, victimOwner.resources.maxPopulation - def.popBonus);
+            }
+        }
+
+        if (isBuilding) {
+            if (target.owner === 'player') {
                 this.removeBuilding(target);
             } else {
                 // AI building
@@ -1352,9 +1450,7 @@ class Game {
                 this.renderer.killBuilding(target); // crumble + dust instead of popping away
             }
         } else {
-            // It's a unit
-            const owner = target.owner;
-            if (owner === 'player') {
+            if (target.owner === 'player') {
                 this.removeUnit(target);
             } else {
                 // AI unit
@@ -2072,18 +2168,11 @@ class Game {
         return true;
     }
 
-    // Demolish one of `owner`'s own buildings. Reverses its population bonus and
-    // frees any farmer. Works for the human player and AI players.
+    // Demolish one of `owner`'s own buildings and free any farmer. The population
+    // bonus is reversed inside destroyTarget (one source for demolition AND
+    // combat destruction — it used to be missed entirely when a house fell in war).
     destroyOwnBuilding(building) {
         if (!building) return false;
-        const owner = this.getOwnerByBuilding(building);
-        // Reverse the population bonus a FINISHED building granted.
-        if (owner && owner.resources && !building.underConstruction) {
-            const def = getBuildingDef(building.type);
-            if (def && def.popBonus) {
-                owner.resources.maxPopulation = Math.max(0, owner.resources.maxPopulation - def.popBonus);
-            }
-        }
         // Free a farmer tied to this building.
         if (building.assignedWorker) {
             const w = building.assignedWorker;
@@ -2163,7 +2252,7 @@ class Game {
         };
         (owner.units || []).forEach(u => { if (u.health > 0) mark(u.x, u.z, this.unitVision(u)); });
         (owner.buildings || []).forEach(b => {
-            if (b.health > 0) mark(b.x, b.z, b.type === 'tower' ? 20 : 12);
+            if (b.health > 0) mark(b.x, b.z, b.type === 'tower' ? 60 : 12);
         });
     }
 

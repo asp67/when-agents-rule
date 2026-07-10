@@ -160,6 +160,13 @@
         }
       }
     },
+    "recentEvents": {
+      "type": "array",
+      "description": "Your battle report: up to 8 recent one-line events (losses, kills, raids), each prefixed with its age, e.g. \"12s ago: LOSS: your house at (140, -80) — destroyed by egyptian\".",
+      "items": {
+        "type": "string"
+      }
+    },
     "bonuses": {
       "type": "object",
       "description": "Only NON-DEFAULT multipliers appear (empty object = no active bonuses).",

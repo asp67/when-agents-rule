@@ -555,6 +555,12 @@ class OpenAIAIManager {
             populationHardCap: (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100
         };
 
+        // --- Battle report: losses, kills and raids since a while back ---
+        // (game.logPlayerEvent feeds this; without it deaths between turns were
+        // completely invisible to the model.)
+        const recentEvents = (ai.events || []).slice(-8).map(e =>
+            `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
+
         // --- Bonuses (only non-default) ---
         const bonusesObj = {};
         if (ai.workerHarvestBonus !== 1.0) bonusesObj.harvest = ai.workerHarvestBonus;
@@ -879,6 +885,7 @@ class OpenAIAIManager {
             player: playerObj,
             epoch: epochObj,
             resources: resourcesObj,
+            recentEvents: recentEvents,
             bonuses: bonusesObj,
             map: mapObj,
             resourcesOnMap: resourcesOnMap,
@@ -917,7 +924,7 @@ class OpenAIAIManager {
         // Vision ranges
         const unitVisionRange = 15;
         const buildingVisionRange = 12;
-        const towerVisionRange = 20;
+        const towerVisionRange = 60;
 
         // Reveal around AI's units
         ai.units.forEach(unit => {
@@ -960,7 +967,7 @@ class OpenAIAIManager {
     // ----------------------------------------------------------------
     isPositionVisibleToAI(ai, x, z, game) {
         const buildingVisionRange = 12;
-        const towerVisionRange = 20;
+        const towerVisionRange = 60;
 
         // Check against AI units
         for (const unit of ai.units) {
@@ -1074,6 +1081,8 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - Houses raise maxPopulation only up to "resources.populationHardCap". At the hard cap, only delete_unit frees room.
 - Resources: food (animals, berries, farms), wood (trees), stone (quarries), gold (mines).
 
+- "recentEvents" is your battle report: losses, kills and raids of the last moments. React to it — repel raids, repair_building damage, rebuild what fell.
+
 ## Actions (issue exactly ONE per turn)
 - train_worker: a villager at your Town Center. Optional targetX/targetZ: train at the Town Center nearest those coords (a busy one falls back to the next free).
 - train_unit: params.unitType. Roster by building and epoch — barracks: militia -> warrior (bronze) -> champion (iron); archery_range: archer (neolithic) -> elite_archer (iron); stable: scout_cavalry -> cavalry (bronze) -> heavy_cavalry (iron); temple: priest (bronze). Your civ may add unique units ([ERROR] replies name your valid options). Optional targetX/targetZ picks WHICH structure trains when you have several.
@@ -1083,6 +1092,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - build_wonder: start your Wonder (requires the Iron age).
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" — puts an idle worker on it (auto-scouts first if that type is still undiscovered).
 - assign_workers: params.resourceType (+ optional count) — PULLS workers off their current tasks onto that resource.
+- repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairing workers rejoin the idle pool when done.
 - explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map ninth. Use map.exploration to aim targeted scouts.
 - move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay).
 - attack_target: params.targetId (an exact "id" from "enemyUnits"/"enemyBuildings" — tracks the target even if it moves) OR params.targetX/targetZ (your army attack-moves there and engages whatever it meets; the verdict is reported when it ARRIVES — do not re-issue while it is marching). Your own units/buildings and resource nodes are rejected.
@@ -1097,7 +1107,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 ## Response format
 Reply with ONLY one JSON object — no markdown, no code fences, no prose around it:
 {"action":"<name>","params":{ ...action params..., "reason":"<one line: how this advances victory>"}}
-Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_structure, build_wonder, harvest_resource, assign_workers, explore, move_units, attack_target, delete_unit, destroy_building, wait`;
+Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_structure, build_wonder, harvest_resource, assign_workers, repair_building, explore, move_units, attack_target, delete_unit, destroy_building, wait`;
     }
 
     // ----------------------------------------------------------------
@@ -1802,6 +1812,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
             case 'assign_workers':
                 actionResult = this.executeAssignWorkers(ai, game, params || {});
+                break;
+
+            case 'repair_building':
+                actionResult = this.executeRepairBuilding(ai, game, params || {});
                 break;
 
             case 'explore':
@@ -2717,11 +2731,22 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return `Sent your ${scout.type} to explore toward (${Math.round(tx)}, ${Math.round(tz)}) (~${eta}s to arrive, revealing the map as it goes)${wasBusy ? ' — no worker was idle, so one was pulled off gathering' : ''}${choiceNote}.`;
     }
 
+    // Without a finished Town Center gathered goods can never be delivered —
+    // say so instead of letting the model burn turns on pointless harvesting.
+    noTownCenterAdvice(ai) {
+        if (ai.buildings.some(b => b.type === 'town_center' && !b.underConstruction)) return null;
+        const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
+        const costStr = tcDef ? Object.entries(tcDef.cost || {}).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${k}`).join(', ') : 'its cost';
+        return `[ERROR] You have NO finished Town Center, so workers have nowhere to DELIVER what they gather — harvesting is pointless right now. FIRST rebuild one: build_structure with buildingType="town_center" and targetX/targetZ on open ground (costs ${costStr}). Once it stands, reassign your workers to resources.`;
+    }
+
     executeHarvestResource(ai, game, resourceType) {
         resourceType = this.normalizeResourceType(resourceType);
         if (!resourceType) {
             return `[ERROR] harvest_resource needs a gatherable "resourceType": one of food, wood, stone, gold. (To construct a building, use build_structure instead.)`;
         }
+        const noTC = this.noTownCenterAdvice(ai);
+        if (noTC) return noTC;
         const discovered = this.discoveredNodesOfType(ai, game, resourceType);
 
         // Not scouted yet → nothing is harvested. Flag it as a failed action (so it
@@ -2774,6 +2799,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (!resourceType) {
             return `[ERROR] assign_workers requires a gatherable "resourceType" (food|wood|stone|gold) — the new job for the workers. (To construct a building, use build_structure instead.)`;
         }
+        const noTC = this.noTownCenterAdvice(ai);
+        if (noTC) return noTC;
         const count = Math.max(1, Math.min(params.count || 3, 20));
 
         // Discovered nodes? If not, nothing is reassigned — flag it and auto-scout.
@@ -2815,6 +2842,52 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             moved++;
         }
         return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType}.`;
+    }
+
+    // Put workers on fixing a damaged own building (free; uses the build task's
+    // machinery — game.assignWorkersToBuilding routes to task 'repairing').
+    executeRepairBuilding(ai, game, params) {
+        const damaged = ai.buildings.filter(b => !b.underConstruction && b.health > 0 && b.health < b.maxHealth);
+        if (damaged.length === 0) {
+            return `[ERROR] None of your buildings are damaged — nothing to repair. (Construction SITES are finished automatically by the worker build_structure assigned.)`;
+        }
+        let target;
+        const gaveX = params.targetX !== undefined && params.targetX !== null && params.targetX !== '';
+        const gaveZ = params.targetZ !== undefined && params.targetZ !== null && params.targetZ !== '';
+        if (gaveX || gaveZ) {
+            const tx = Number(params.targetX), tz = Number(params.targetZ);
+            if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
+                return `[ERROR] repair_building needs BOTH numeric "targetX" and "targetZ" (of YOUR damaged building), or omit both to repair your most damaged one.`;
+            }
+            let best = null, bd = Infinity;
+            damaged.forEach(b => {
+                const d = Math.hypot(b.x - tx, b.z - tz);
+                if (d < bd) { bd = d; best = b; }
+            });
+            if (!best || bd > 12) {
+                const list = damaged.map(b => `${b.type} at (${Math.round(b.x)}, ${Math.round(b.z)}) ${Math.round(b.health / b.maxHealth * 100)}% HP`).join('; ');
+                return `[ERROR] No damaged building of yours near (${Math.round(tx)}, ${Math.round(tz)}). Damaged now: ${list}.`;
+            }
+            target = best;
+        } else {
+            target = damaged.reduce((a, b) => (a.health / a.maxHealth <= b.health / b.maxHealth ? a : b));
+        }
+        const count = Math.max(1, Math.min(params.count || 1, 5));
+        const workers = ai.units
+            .filter(u => u.type === 'worker' && u.health > 0 && u.task !== 'building' && !u.isBuilding)
+            .sort((a, b) => Math.hypot(a.x - target.x, a.z - target.z) - Math.hypot(b.x - target.x, b.z - target.z))
+            .slice(0, count);
+        if (workers.length === 0) {
+            return `[ERROR] No workers available to repair (all are constructing). Train a worker or wait for a build to finish.`;
+        }
+        workers.forEach(w => {
+            if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
+            w.farmRef = null;
+        });
+        const mode = game.assignWorkersToBuilding(workers, target);
+        if (!mode) return `[ERROR] Could not start the repair (the building may have just been destroyed).`;
+        const pct = Math.round(target.health / target.maxHealth * 100);
+        return `OK - ${workers.length} worker(s) repairing your ${target.type} at (${Math.round(target.x)}, ${Math.round(target.z)}), currently ${pct}% HP. They idle when it is fully repaired — reassign them to resources afterwards.`;
     }
 
     executeExplore(ai, game, params) {

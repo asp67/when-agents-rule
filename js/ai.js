@@ -108,7 +108,7 @@ class AIManager {
         }
         for (const b of ai.buildings) {
             if (b.health <= 0) continue;
-            const range = b.type === 'tower' ? 20 : 12;
+            const range = b.type === 'tower' ? 60 : 12;
             if (Math.hypot(b.x - x, b.z - z) <= range) return true;
         }
         return false;

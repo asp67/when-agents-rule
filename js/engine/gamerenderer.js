@@ -1088,9 +1088,14 @@
             }
             const UNIT_BUILDING_CLEARANCE = 4.5;
             this.units.forEach(unit => {
+                // Combatants are exempt: the push used to referee fights near
+                // buildings — an attacking worker could never close to melee
+                // range and just shoved its target around the walls forever.
+                if (unit.isAttacking && unit.attackTarget) return;
                 this.buildings.forEach(building => {
                     if (building.type === 'farm') return;
                     if (unit.task === 'building' && unit.buildTarget === building) return;
+                    if (unit.task === 'repairing' && unit.repairTarget === building) return;
                     const dx = unit.x - building.x, dz = unit.z - building.z;
                     const dist = Math.sqrt(dx * dx + dz * dz);
                     if (dist < UNIT_BUILDING_CLEARANCE && dist > 0.01) {

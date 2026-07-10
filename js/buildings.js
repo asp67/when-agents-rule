@@ -118,7 +118,7 @@ const BUILDING_DEFS = {
         health: 600,
         type: 'defense',
         attack: 10,
-        range: 6,
+        range: 18,   // tripled: a real deterrent zone, matching the long vision
         requiredAge: 'stone',
         description: 'Verteidigungsturm',
         buildTime: BASE_BUILD_TIME * 1.2  // 12 seconds to build
