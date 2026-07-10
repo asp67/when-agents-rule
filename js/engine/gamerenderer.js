@@ -48,6 +48,8 @@
             this._projectiles = [];
             this._rings = [];
             this._ghosts = [];
+            this._dustPool = [];
+            this._bannerTex = new Map();
             this._lastTime = performance.now();
 
             // canvas + GL
@@ -91,11 +93,12 @@
                 attribute vec3 aNormal;
                 attribute vec2 aUv;
                 uniform mat4 uProj, uView, uModel;
+                uniform vec2 uUvOffset;   // slow drift for foam/water
                 varying vec3 vNormal;
                 varying vec2 vUv;
                 void main() {
                     vNormal = mat3(uModel) * aNormal;
-                    vUv = aUv;
+                    vUv = aUv + uUvOffset;
                     gl_Position = uProj * uView * uModel * vec4(aPosition, 1.0);
                 }`;
             const FS = `
@@ -103,6 +106,7 @@
                 uniform sampler2D uTex;
                 uniform vec3 uSunDir, uSunColor, uAmbient, uTint;
                 uniform float uUnlit;
+                uniform float uAlpha;     // fades: ghosts, dust, foam pulse
                 varying vec3 vNormal;
                 varying vec2 vUv;
                 void main() {
@@ -110,7 +114,7 @@
                     vec3 base = t.rgb * uTint;
                     vec3 n = normalize(vNormal);
                     vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
-                    gl_FragColor = vec4(mix(base * light, base, uUnlit), t.a);
+                    gl_FragColor = vec4(mix(base * light, base, uUnlit), t.a * uAlpha);
                 }`;
             this.prog = GLCore.compileProgram(this.gl, VS, FS);
             this.sunDir = M().normalize([-0.35, 0.9, 0.45]);
@@ -167,8 +171,14 @@
                 iron: T(TexGen.iron(188)),
                 white: T(TexGen.solid(), { clamp: true }),
                 ghost: T(TexGen.solid(255, 255, 255, 115), { clamp: true }),
-                ring: T(TexGen.ring(), { clamp: true })
+                ring: T(TexGen.ring(), { clamp: true }),
+                foam: T(TexGen.foam(199))
             };
+            // theme atmosphere: beyond-the-map "sky" (deep sea) + sun character
+            this._sky = theme === 'winter' ? [0.10, 0.20, 0.29]
+                : (theme === 'desert' ? [0.12, 0.30, 0.36] : [0.086, 0.212, 0.329]);
+            this._sun = theme === 'winter' ? [0.74, 0.78, 0.88]
+                : (theme === 'desert' ? [0.95, 0.84, 0.60] : [0.85, 0.78, 0.66]);
         }
 
         _buf(kind, args) {
@@ -245,6 +255,20 @@
                     ? { trunk: { visible: true }, leaves: { visible: true } }
                     : { visible: true };
             });
+            // shoreline foam: four surf strips just past the coast band, pulsing
+            // and drifting (alpha/uvOff animated per frame)
+            const m3 = M();
+            const foamBuf = this._buf('quad', [840, 7, 46]);
+            const flat = (x, z, ry) => m3.multiply(
+                m3.multiply(m3.translation(x, 0.18, z), m3.rotationY(ry)),
+                m3.rotationX(-Math.PI / 2));
+            const LH = 401.5;
+            this._foam = [
+                { buf: foamBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(0, LH, 0) },
+                { buf: foamBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(0, -LH, 0) },
+                { buf: foamBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(LH, 0, Math.PI / 2) },
+                { buf: foamBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(-LH, 0, Math.PI / 2) }
+            ];
         }
 
         _resourceEntries(res, i) {
@@ -335,7 +359,7 @@
             } else {
                 const type = building.isWonder ? 'wonder'
                     : (EngineBuildings.TYPES.indexOf(building.type) >= 0 ? building.type : 'house');
-                parts = EngineBuildings.parts(type);
+                parts = EngineBuildings.parts(type, { age: building.age });
             }
             const eb = { opaque: [], blended: [], shell: null, world };
             parts.forEach((p, i) => {
@@ -414,12 +438,14 @@
             this._ghostFrom(unit, 'unit');
             this.removeUnit(unit);
             unit.healthBar = null;
+            this.spawnDust(unit.x, 0.5, unit.z, 10, 0x9a8f7a);
         }
 
         killBuilding(building) {
             this._ghostFrom(building, 'building');
             this.removeBuilding(building);
             building.healthBar = null;
+            this.spawnDust(building.x, 1.4, building.z, 24, 0xb0a48e);
         }
 
         spawnProjectile(from, to, kind) {
@@ -453,11 +479,33 @@
             if (entity) entity._flashUntil = performance.now() + 130;
         }
 
-        spawnDust() { /* particle pools arrive with M5 (atmosphere) */ }
+        // Pooled dust burst: N billboarded motes scattering under gravity.
+        spawnDust(x, y, z, count, color) {
+            let d = this._dustPool.find(q => !q.active);
+            if (!d) {
+                if (this._dustPool.length >= 16) return;
+                d = { N: 24, pos: new Float32Array(72), vel: new Float32Array(72) };
+                this._dustPool.push(d);
+            }
+            d.active = true;
+            d.t = 0;
+            d.dur = 0.8;
+            d.n = Math.min(d.N, count || d.N);
+            d.tint = this._tintOf(color == null ? 0xb0a48e : color);
+            for (let i = 0; i < d.n; i++) {
+                const j = i * 3;
+                d.pos[j] = x; d.pos[j + 1] = y; d.pos[j + 2] = z;
+                const a = Math.random() * Math.PI * 2, r = 1.5 + Math.random() * 3;
+                d.vel[j] = Math.cos(a) * r;
+                d.vel[j + 1] = 2.2 + Math.random() * 2.6;
+                d.vel[j + 2] = Math.sin(a) * r;
+            }
+        }
 
         resetEffects() {
             this._projectiles.forEach(p => { p.active = false; });
             this._rings.forEach(r => { r.active = false; });
+            this._dustPool.forEach(d => { d.active = false; });
             this._ghosts = [];
         }
 
@@ -728,6 +776,17 @@
 
             if (this._ground) dl.opaque.push(this._ground);
 
+            // shoreline foam: pulse (old sea rhythm: sin(t/1100ms)) + slow drift
+            if (this._foam) {
+                const pulse = 0.34 + 0.14 * Math.sin(tSec * 0.91);
+                const drift = (tSec * 0.012) % 1;
+                for (const f of this._foam) {
+                    f.alpha = pulse;
+                    f.uvOff = [drift, 0];
+                    dl.blended.push(f);
+                }
+            }
+
             // resources (fog toggles handle visibility; depletion nulls res.mesh)
             if (this.terrain && this.terrain.resources) {
                 const rs = this.terrain.resources;
@@ -764,6 +823,20 @@
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: [0.35, 0.95, 0.55],
                         model: m3.multiply(m3.translation(b.x, 0.1, b.z), m3.scaling(6, 1, 6))
+                    });
+                }
+                if (b.isWonder && !b.underConstruction) { // pulsing claim ring
+                    dl.blended.push({
+                        buf: ringBuf, tex: this.tex.ring, tint: this._tintOf(b.color),
+                        alpha: 0.35 + 0.25 * Math.sin(tSec * 2),
+                        model: m3.multiply(m3.translation(b.x, 0.12, b.z), m3.scaling(8.4, 1, 8.4))
+                    });
+                }
+                if (b.type === 'town_center' && !b.underConstruction) {
+                    const bt = this._bannerFor(b);
+                    if (bt) dl.bars.push({
+                        buf: quad, tex: bt, tint: this.WHITE,
+                        model: m3.multiply(m3.multiply(m3.translation(b.x, by + 2.4, b.z), bb), m3.scaling(7.5, 1.9, 1))
                     });
                 }
             }
@@ -803,6 +876,24 @@
                         model: m3.multiply(m3.translation(u.x, 0.08, u.z), m3.scaling(r, 1, r))
                     });
                 }
+                if (ue.type === 'priest') { // golden halo
+                    dl.blended.push({
+                        buf: ringBuf, tex: this.tex.ring, tint: [1, 0.85, 0.25], alpha: 0.9,
+                        model: m3.multiply(m3.translation(u.x, 1.95 + pose.bob, u.z), m3.scaling(0.42, 1, 0.42))
+                    });
+                }
+                if (u.carryingResource && u.carryingResourceType) { // carried-goods diamond
+                    const cc = {
+                        wood: [0.45, 0.30, 0.15], food: [0.85, 0.22, 0.20],
+                        stone: [0.62, 0.62, 0.66], gold: [1, 0.80, 0.20]
+                    }[u.carryingResourceType] || this.WHITE;
+                    dl.bars.push({
+                        buf: quad, tex: this.tex.white, tint: cc,
+                        model: m3.multiply(
+                            m3.multiply(m3.translation(u.x, 2.3 + Math.sin(tSec * 3 + ue.phase) * 0.07, u.z), bb),
+                            m3.multiply(m3.rotationZ(Math.PI / 4), m3.scaling(0.4, 0.4, 1)))
+                    });
+                }
                 const hpct = u.health / u.maxHealth;
                 if (hpct < 0.999) {
                     pushBar(u.x, EngineUnits.META[ue.type].barY, u.z, 1.5, hpct, this._barColor(hpct));
@@ -824,7 +915,29 @@
                         m3.multiply(m3.scaling(1 - 0.2 * k, Math.max(0.06, 1 - k), 1 - 0.2 * k), m3.translation(-g.px, 0, -g.pz)));
                 }
                 for (const e of g.entries) {
-                    dl.opaque.push({ buf: e.buf, tex: e.tex, tint: e.tint, model: m3.multiply(A, e.model) });
+                    dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, alpha: 1 - k, model: m3.multiply(A, e.model) });
+                }
+            }
+
+            // dust motes: scatter, rise, settle, fade
+            for (const d of this._dustPool) {
+                if (!d.active) continue;
+                d.t += dt;
+                const k = d.t / d.dur;
+                if (k >= 1) { d.active = false; continue; }
+                const a = 0.8 * (1 - k);
+                for (let i = 0; i < d.n; i++) {
+                    const j = i * 3;
+                    d.pos[j] += d.vel[j] * dt;
+                    d.pos[j + 1] += d.vel[j + 1] * dt;
+                    d.pos[j + 2] += d.vel[j + 2] * dt;
+                    d.vel[j + 1] -= 7 * dt; // gravity
+                    dl.blended.push({
+                        buf: quad, tex: this.tex.white, tint: d.tint, alpha: a,
+                        model: m3.multiply(
+                            m3.multiply(m3.translation(d.pos[j], Math.max(0.12, d.pos[j + 1]), d.pos[j + 2]), bb),
+                            m3.scaling(0.55, 0.55, 1))
+                    });
                 }
             }
 
@@ -869,6 +982,38 @@
                     model: m3.multiply(m3.translation(bp.x, (bp.big ? 4 : 1.5), bp.z), m3.scaling(s, bp.big ? 8 : 3, s))
                 });
             }
+        }
+
+        // Floating civ name plate above Town Centers (canvas → texture, cached
+        // per civ) — the spectator's whose-base-is-whose anchor.
+        _bannerFor(building) {
+            const key = building.civilization || 'x';
+            if (this._bannerTex.has(key)) return this._bannerTex.get(key);
+            const civ = (typeof getCivilization === 'function') ? getCivilization(key) : null;
+            if (!civ) return null;
+            const c = document.createElement('canvas');
+            c.width = 256; c.height = 64;
+            const ctx = c.getContext('2d');
+            const colHex = '#' + (civ.color || 0xffffff).toString(16).padStart(6, '0');
+            ctx.fillStyle = 'rgba(10, 14, 24, 0.72)';
+            ctx.strokeStyle = colHex;
+            ctx.lineWidth = 5;
+            const r = 18;
+            ctx.beginPath();
+            ctx.moveTo(r, 3); ctx.lineTo(253 - r, 3); ctx.arcTo(253, 3, 253, 3 + r, r);
+            ctx.lineTo(253, 61 - r); ctx.arcTo(253, 61, 253 - r, 61, r);
+            ctx.lineTo(r, 61); ctx.arcTo(3, 61, 3, 61 - r, r);
+            ctx.lineTo(3, 3 + r); ctx.arcTo(3, 3, 3 + r, 3, r);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            const name = (typeof t === 'function' ? t('civ.' + key + '.name') : null) || civ.name || key;
+            ctx.font = 'bold 30px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = colHex;
+            ctx.fillText(name, 128, 34);
+            const tex = GLCore.createTextureFromCanvas(this.gl, c, { clamp: true, nomip: true });
+            this._bannerTex.set(key, tex);
+            return tex;
         }
 
         // fog display canvas → GL texture (uploaded only when fog marked it dirty)
@@ -967,13 +1112,13 @@
             this._syncFog();
 
             gl.viewport(0, 0, this.W, this.H);
-            gl.clearColor(0.09, 0.11, 0.16, 1);
+            gl.clearColor(this._sky[0], this._sky[1], this._sky[2], 1); // deep sea beyond the map
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             gl.useProgram(this.prog);
             gl.uniformMatrix4fv(this.prog.uniforms.uProj, false, cam.proj);
             gl.uniformMatrix4fv(this.prog.uniforms.uView, false, cam.view);
             gl.uniform3fv(this.prog.uniforms.uSunDir, this.sunDir);
-            gl.uniform3f(this.prog.uniforms.uSunColor, 0.85, 0.78, 0.66);
+            gl.uniform3fv(this.prog.uniforms.uSunColor, this._sun);
             gl.uniform3f(this.prog.uniforms.uAmbient, 0.52, 0.55, 0.62);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(this.prog.uniforms.uTex, 0);
@@ -982,6 +1127,9 @@
                 for (const obj of list) {
                     gl.bindTexture(gl.TEXTURE_2D, obj.tex);
                     gl.uniform3fv(this.prog.uniforms.uTint, obj.tint || this.WHITE);
+                    gl.uniform1f(this.prog.uniforms.uAlpha, obj.alpha == null ? 1 : obj.alpha);
+                    gl.uniform2f(this.prog.uniforms.uUvOffset,
+                        obj.uvOff ? obj.uvOff[0] : 0, obj.uvOff ? obj.uvOff[1] : 0);
                     gl.uniformMatrix4fv(this.prog.uniforms.uModel, false, obj.model);
                     GLCore.drawMesh(gl, this.prog, obj.buf);
                 }

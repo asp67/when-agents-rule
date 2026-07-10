@@ -299,12 +299,13 @@
 
     // Single quad centred at the origin facing +Z — health bars and other
     // billboarded rectangles (pair with M3D.billboard so it faces the camera).
-    EngineMesh.quad = (w, h) => {
+    // repU tiles the texture along the width (shoreline foam strips).
+    EngineMesh.quad = (w, h, repU = 1) => {
         const x = w / 2, y = h / 2;
         return {
             positions: [-x, -y, 0, x, -y, 0, x, y, 0, -x, y, 0],
             normals: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
-            uvs: [0, 1, 1, 1, 1, 0, 0, 0],
+            uvs: [0, 1, repU, 1, repU, 0, 0, 0],
             indices: [0, 1, 2, 0, 2, 3] // CCW seen from +Z
         };
     };

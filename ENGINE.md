@@ -81,7 +81,15 @@ built behind it, `main` stays on Three.js until the swap milestone.
   re-uploading the fog display canvas (NPOT: clamp + no mipmaps, the
   GL_INVALID_OPERATION lesson). Deferred to M5: dust particles, TC name
   banners, priest halos, carried-resource icons, per-age building variants.
-- **M5 — atmosphere**: water + foam, sky backdrop, day tint, effects pools
-  (projectiles, rings, dust, death animations).
+- **M5 — atmosphere (done)**: pulsing/drifting shoreline foam strips (new
+  uUvOffset + uAlpha shader uniforms; alpha fades now also soften death
+  ghosts), pooled billboard dust bursts wired into kills, theme-tinted sun
+  and a deep-sea clear color standing in for the sky (the locked ortho
+  camera never sees a horizon — the sea IS the backdrop). Deferred M4 polish
+  landed: TC name banners (canvas → cached texture per civ), priest halos,
+  carried-goods diamonds over workers, pulsing wonder claim rings, and
+  early/late material eras for town center, house and tower (timber + thatch
+  → plaster + fired tile, gold finial at iron). A fixed noon is a deliberate
+  part of the one-angle art direction — no day tint cycle.
 - **M6 — swap**: game runs on the in-house engine, Three.js script tag
   deleted, README updated; Three.js path retired with the branch merge.

@@ -16,22 +16,30 @@
     };
     const shadow = (arr, r) => part(arr, 'disc', [r, 18], 'shadow', { y: 0.06, blend: true });
 
+    // Ages 'stone'/'neolithic' read as early (timber + thatch), 'bronze'/'iron'
+    // as late (plaster + fired tile). One material era per pair keeps the epoch
+    // readable at a glance without a whole second building set.
+    const early = (age) => !age || age === 'stone' || age === 'neolithic';
+
     const builders = {
-        town_center: () => {
+        town_center: (o = {}) => {
             const p = [];
+            const e = early(o.age);
             shadow(p, 8.2);
             part(p, 'frustum', [11, 11, 9.8, 9.8, 0.9], 'masonry');
-            part(p, 'box', [9, 3.4, 9], 'plaster', { y: 2.6 });
-            part(p, 'box', [1.9, 2.2, 0.3], 'wood', { y: 2.0, z: 4.6 });
-            part(p, 'pyramid', [11, 11, 3.6], 'rooftile', { y: 4.3 });
+            part(p, 'box', [9, 3.4, 9], e ? 'wood' : 'plaster', { y: 2.6 });
+            part(p, 'box', [1.9, 2.2, 0.3], e ? 'bark' : 'wood', { y: 2.0, z: 4.6 });
+            part(p, 'pyramid', [11, 11, 3.6], e ? 'thatch' : 'rooftile', { y: 4.3 });
+            if (o.age === 'iron') part(p, 'pyramid', [2.4, 2.4, 1.5], 'gold', { y: 7.85 }); // iron-age finial
             return p;
         },
-        house: () => {
+        house: (o = {}) => {
             const p = [];
+            const e = early(o.age);
             shadow(p, 4.4);
-            part(p, 'box', [4.6, 2.5, 4.2], 'plaster', { y: 1.25 });
-            part(p, 'box', [1.2, 1.7, 0.25], 'wood', { y: 0.85, z: 2.16 });
-            part(p, 'prism', [5.6, 5.0, 2.0], 'thatch', { y: 2.5 });
+            part(p, 'box', [4.6, 2.5, 4.2], e ? 'wood' : 'plaster', { y: 1.25 });
+            part(p, 'box', [1.2, 1.7, 0.25], e ? 'bark' : 'wood', { y: 0.85, z: 2.16 });
+            part(p, 'prism', [5.6, 5.0, 2.0], e ? 'thatch' : 'rooftile', { y: 2.5 });
             return p;
         },
         barracks: () => {
@@ -83,12 +91,13 @@
                 part(p, 'cylinder', [0.08, 0.1, 0.9, 5], 'bark', { x, y: 0.45, z }));
             return p;
         },
-        tower: () => {
+        tower: (o = {}) => {
             const p = [];
+            const e = early(o.age);
             shadow(p, 3.8);
-            part(p, 'frustum', [3.6, 3.6, 2.7, 2.7, 6.5], 'masonry');
-            part(p, 'box', [3.4, 0.7, 3.4], 'masonry', { y: 6.85 });
-            part(p, 'pyramid', [3.9, 3.9, 1.7], 'rooftile', { y: 7.2 });
+            part(p, 'frustum', [3.6, 3.6, 2.7, 2.7, 6.5], e ? 'wood' : 'masonry');
+            part(p, 'box', [3.4, 0.7, 3.4], e ? 'wood' : 'masonry', { y: 6.85 });
+            part(p, 'pyramid', [3.9, 3.9, 1.7], e ? 'thatch' : 'rooftile', { y: 7.2 });
             part(p, 'box', [0.5, 1.3, 0.22], 'bark', { y: 4.6, z: 1.62 });
             return p;
         },

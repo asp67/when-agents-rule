@@ -510,6 +510,30 @@
         return c;
     };
 
+    // Foam: broken white surf streaks on transparent ground, tileable along X —
+    // the shoreline ring. Drawn blended with a pulsing alpha + slow UV drift.
+    TexGen.foam = (seed = 17, size = 128) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        for (let band = 0; band < 3; band++) {
+            const y = size * (0.25 + band * 0.25);
+            for (let i = 0; i < 30; i++) {
+                const x = rand() * size;
+                const w = 8 + rand() * 26, h = 1.5 + rand() * 2.5;
+                ctx.fillStyle = `rgba(255,255,255,${0.25 + rand() * 0.45})`;
+                ctx.beginPath();
+                ctx.ellipse((x + w / 2) % size, y + (rand() - 0.5) * 10, w / 2, h, 0, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        // fleck spray
+        for (let i = 0; i < size * 2; i++) {
+            ctx.fillStyle = `rgba(255,255,255,${0.15 + rand() * 0.3})`;
+            ctx.fillRect(rand() * size, rand() * size, 1.4, 1.2);
+        }
+        return c;
+    };
+
     // Ring: a soft-edged annulus on transparent ground — selection rings and
     // battle pings, colored at draw time via uTint. Maps onto EngineMesh.disc.
     TexGen.ring = (size = 128) => {
