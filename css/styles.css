@@ -1065,8 +1065,11 @@ body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
     overflow-wrap: anywhere;
 }
 
-/* Arena Setup Screen */
-#arenaSetupScreen {
+/* Arena Setup + Model Library screens. The library reuses the setup content
+   styles but sat on the bare .screen (fixed 100vh, no overflow), so expanding
+   several model cards clipped past the bottom with no way to scroll. */
+#arenaSetupScreen,
+#modelLibraryScreen {
     background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
     justify-content: center;
     align-items: flex-start;
