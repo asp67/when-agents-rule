@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>When Agents Rule — engine M0 demo</title>
+    <style>
+        html, body { margin: 0; height: 100%; background: #10141f; overflow: hidden; }
+        canvas { display: block; }
+        #tag { position: fixed; left: 10px; bottom: 8px; color: #9aa6bf; font: 12px monospace; }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+    <div id="tag">engine M0 — dependency-free WebGL: procedural textures · dimetric ortho camera · warm sun / cool ambient</div>
+    <script src="js/engine/math3d.js"></script>
+    <script src="js/engine/glcore.js"></script>
+    <script src="js/engine/texgen.js"></script>
+    <script src="js/engine/mesh.js"></script>
+    <script>
+    (function () {
+        const canvas = document.getElementById('c');
+        // Real drawing-buffer size even if the layout viewport is broken/hidden.
+        const W = window.innerWidth || 1280, H = window.innerHeight || 720;
+        canvas.width = W; canvas.height = H;
+        // preserveDrawingBuffer so verification can readPixels after the frame.
+        const gl = GLCore.createContext(canvas, { preserveDrawingBuffer: true });
+
+        const VS = `
+            attribute vec3 aPosition;
+            attribute vec3 aNormal;
+            attribute vec2 aUv;
+            uniform mat4 uProj, uView, uModel;
+            varying vec3 vNormal;
+            varying vec2 vUv;
+            void main() {
+                vNormal = mat3(uModel) * aNormal;
+                vUv = aUv;
+                gl_Position = uProj * uView * uModel * vec4(aPosition, 1.0);
+            }`;
+        const FS = `
+            precision mediump float;
+            uniform sampler2D uTex;
+            uniform vec3 uSunDir;   // surface -> sun
+            uniform vec3 uSunColor;
+            uniform vec3 uAmbient;
+            varying vec3 vNormal;
+            varying vec2 vUv;
+            void main() {
+                vec3 n = normalize(vNormal);
+                vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
+                vec4 tex = texture2D(uTex, vUv);
+                gl_FragColor = vec4(tex.rgb * light, 1.0);
+            }`;
+        const prog = GLCore.compileProgram(gl, VS, FS);
+
+        // ---- Materials (painted, not loaded) ----------------------------------
+        const texGrass = GLCore.createTextureFromCanvas(gl, TexGen.grass(11));
+        const texMasonry = GLCore.createTextureFromCanvas(gl, TexGen.masonry(22));
+        const texWood = GLCore.createTextureFromCanvas(gl, TexGen.wood(33));
+
+        // ---- Scene -------------------------------------------------------------
+        const M = M3D;
+        const scene = [
+            { buf: GLCore.createMeshBuffers(gl, EngineMesh.gridPlane(80, 1, 10)), tex: texGrass,
+              model: () => M.identity() },
+            { buf: GLCore.createMeshBuffers(gl, EngineMesh.box(8, 5, 6)), tex: texMasonry,
+              model: () => M.translation(0, 2.5, 0) },
+            // Flat overhanging slab roof (classic mudbrick look). A cone-as-pyramid
+            // hack showed an apex-face bug in the cylinder builder — real pitched
+            // roofs get purpose-built pyramid/prism meshes in M2.
+            { buf: GLCore.createMeshBuffers(gl, EngineMesh.box(8.8, 0.6, 6.8)), tex: texWood,
+              model: () => M.translation(0, 5.3, 0) },
+            { buf: GLCore.createMeshBuffers(gl, EngineMesh.cylinder(1.6, 2.0, 7, 14)), tex: texMasonry,
+              model: () => M.translation(-9, 3.5, 6) },
+            { buf: GLCore.createMeshBuffers(gl, EngineMesh.box(2.5, 2.5, 2.5)), tex: texWood,
+              model: (t) => M.multiply(M.translation(8, 1.25, 8), M.rotationY(t * 0.0004)) }
+        ];
+
+        // Locked classic camera: dimetric view, orthographic projection.
+        const cam = M.dimetricView(0, 0, 90);
+        const halfH = 14, aspect = W / H;
+        const proj = M.ortho(-halfH * aspect, halfH * aspect, -halfH, halfH, 1, 400);
+        // Sun from the SCREEN's top-left, slightly toward the viewer (classic RTS
+        // key light) — with the locked yaw-45° camera that is world (-X, +Y, +Z).
+        // Faces the spectator sees are lit; the away slopes carry the shade.
+        const sunDir = M.normalize([-0.35, 0.9, 0.45]);
+
+        const stats = { frames: 0, glError: -1 };
+        window.__engineStats = stats;
+
+        function renderFrame(t) {
+            gl.viewport(0, 0, W, H);
+            gl.clearColor(0.09, 0.11, 0.16, 1);
+            gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+            gl.useProgram(prog);
+            gl.uniformMatrix4fv(prog.uniforms.uProj, false, proj);
+            gl.uniformMatrix4fv(prog.uniforms.uView, false, cam.view);
+            gl.uniform3fv(prog.uniforms.uSunDir, sunDir);
+            gl.uniform3f(prog.uniforms.uSunColor, 0.85, 0.78, 0.66);
+            // Generous cool ambient: shade sides stay readable (classic-RTS soft
+            // look) instead of collapsing toward black.
+            gl.uniform3f(prog.uniforms.uAmbient, 0.52, 0.55, 0.62);
+            gl.activeTexture(gl.TEXTURE0);
+            gl.uniform1i(prog.uniforms.uTex, 0);
+            for (const obj of scene) {
+                gl.bindTexture(gl.TEXTURE_2D, obj.tex);
+                gl.uniformMatrix4fv(prog.uniforms.uModel, false, obj.model(t));
+                GLCore.drawMesh(gl, prog, obj.buf);
+            }
+            stats.frames++;
+            stats.glError = gl.getError();
+        }
+
+        // Verification helper: distinct colors in the centre block — a textured,
+        // lit scene yields hundreds; a broken pipeline yields 1 (clear color).
+        stats.sample = () => {
+            const S = 96, buf = new Uint8Array(S * S * 4);
+            gl.readPixels((W - S) >> 1, (H - S) >> 1, S, S, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+            const seen = new Set();
+            let nonBg = 0;
+            for (let i = 0; i < S * S; i++) {
+                const r = buf[i * 4], g = buf[i * 4 + 1], b = buf[i * 4 + 2];
+                seen.add(r + ',' + g + ',' + b);
+                if (Math.abs(r - 23) + Math.abs(g - 28) + Math.abs(b - 41) > 12) nonBg++;
+            }
+            return { distinct: seen.size, nonBgFraction: nonBg / (S * S) };
+        };
+
+        // Boot: render a few frames synchronously (works even when the tab is
+        // hidden and rAF is paused), then hand off to the animation loop.
+        renderFrame(0); renderFrame(16); renderFrame(32);
+        const loop = (t) => { renderFrame(t); requestAnimationFrame(loop); };
+        requestAnimationFrame(loop);
+    })();
+    </script>
+</body>
+</html>
