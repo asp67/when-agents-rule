@@ -1,23 +1,22 @@
-// EngineRenderer — the in-house engine behind the game's renderer API (M4).
-// A drop-in replacement for GameRenderer (js/renderer.js): same public methods,
-// same entity bookkeeping, same embedded sim duties (AI unit movement lerp,
-// separation, building clearance — game correctness depends on them), but the
-// drawing is our own WebGL pipeline: locked dimetric camera, procedural
-// textures, EngineBuildings/EngineUnits compositions, canvas-fog plane.
+// EngineRenderer — the game's renderer, in-house since M6 (it replaced the
+// Three.js GameRenderer as a drop-in at M4, and the old path is now retired):
+// same public methods, same entity bookkeeping, same embedded sim duties (AI
+// unit movement lerp, separation, building clearance — game correctness
+// depends on them), drawn by our own WebGL pipeline: locked dimetric camera,
+// procedural textures, EngineBuildings/EngineUnits compositions, fog plane.
 //
 // Compatibility shims (the freeze line, documented in ENGINE.md):
 // - this.renderer = { domElement, setSize, render } — input.js binds events to
 //   renderer.renderer.domElement; render() is a no-op (we self-drive).
-// - this.scene = { add, remove } no-ops — terrain.js and fogofwar.js still
-//   construct THREE meshes into it on this branch; nothing renders them, and
-//   setTerrain() replaces every resource's mesh with an engine handle. M6
-//   deletes those THREE bits.
+// - this.scene = { add, remove } no-ops — legacy callers (e.g. game.js death
+//   cleanup) may still hand it objects; nothing needs a scene graph anymore.
 // - this.camera / this.cameraTarget accept the game's position.set/lookAt
 //   calls; distance from target maps onto the ortho zoom.
 // - Entity handles: unit.mesh = {visible, position, rotation}, unit.healthBar =
 //   {material:{color:{setHex}}}, building.mesh = {visible, children: []} — the
 //   exact property surface game.js/fogofwar.js touch, all inert; the engine
-//   derives visuals from entity state each frame instead.
+//   derives visuals from entity state each frame instead. Fog hands us its
+//   display canvas + a fogDirty flag; we own the texture and the fog plane.
 (function () {
     const M = () => window.M3D;
     const HALF_PER_DIST = 0.3;   // camera.position.set(distance) → ortho halfH
@@ -1031,10 +1030,8 @@
                     tex: this._fogTex, tint: this.WHITE,
                     model: M().translation(0, 0.95, 0)
                 };
-            } else if (fow.fogTexture && fow.fogTexture.needsUpdate) {
-                // nothing else consumes the THREE CanvasTexture on this path, so its
-                // needsUpdate flag doubles as our dirty bit
-                fow.fogTexture.needsUpdate = false;
+            } else if (fow.fogDirty) {
+                fow.fogDirty = false;
                 gl.bindTexture(gl.TEXTURE_2D, this._fogTex);
                 gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this._fogCanvas);
             }

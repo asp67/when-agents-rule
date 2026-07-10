@@ -361,31 +361,26 @@
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script>
-        // In-house engine opt-in (branch `engine`, milestone M4): ?engine=1 runs
-        // the game on our own renderer; without it Three.js stays in charge.
-        window.USE_ENGINE = /[?&]engine=1/.test(location.search);
-    </script>
-    <script src="js/engine/math3d.js?v=252"></script>
-    <script src="js/engine/glcore.js?v=252"></script>
-    <script src="js/engine/texgen.js?v=252"></script>
-    <script src="js/engine/mesh.js?v=252"></script>
-    <script src="js/engine/buildings.js?v=252"></script>
-    <script src="js/engine/units.js?v=252"></script>
-    <script src="js/engine/gamerenderer.js?v=252"></script>
-    <script src="js/i18n.js?v=252"></script>
-    <script src="js/civilizations.js?v=252"></script>
-    <script src="js/buildings.js?v=252"></script>
-    <script src="js/units.js?v=252"></script>
-    <script src="js/resources.js?v=252"></script>
-    <script src="js/terrain.js?v=252"></script>
-    <script src="js/fogofwar.js?v=252"></script>
-    <script src="js/ai.js?v=252"></script>
-    <script src="js/openai-ai.js?v=252"></script>
-    <script src="js/renderer.js?v=252"></script>
-    <script src="js/input.js?v=252"></script>
-    <script src="js/ui.js?v=252"></script>
-    <script src="js/game.js?v=252"></script>
+    <!-- The in-house engine (js/engine/*) is the only renderer — no external
+         libraries, no CDN: everything below ships in this repository. -->
+    <script src="js/engine/math3d.js?v=253"></script>
+    <script src="js/engine/glcore.js?v=253"></script>
+    <script src="js/engine/texgen.js?v=253"></script>
+    <script src="js/engine/mesh.js?v=253"></script>
+    <script src="js/engine/buildings.js?v=253"></script>
+    <script src="js/engine/units.js?v=253"></script>
+    <script src="js/engine/gamerenderer.js?v=253"></script>
+    <script src="js/i18n.js?v=253"></script>
+    <script src="js/civilizations.js?v=253"></script>
+    <script src="js/buildings.js?v=253"></script>
+    <script src="js/units.js?v=253"></script>
+    <script src="js/resources.js?v=253"></script>
+    <script src="js/terrain.js?v=253"></script>
+    <script src="js/fogofwar.js?v=253"></script>
+    <script src="js/ai.js?v=253"></script>
+    <script src="js/openai-ai.js?v=253"></script>
+    <script src="js/input.js?v=253"></script>
+    <script src="js/ui.js?v=253"></script>
+    <script src="js/game.js?v=253"></script>
 </body>
 </html>

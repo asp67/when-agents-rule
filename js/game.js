@@ -45,11 +45,7 @@ class Game {
     init() {
         this.ui = new UIManager(this);
         const container = document.getElementById('gameCanvas');
-        // ?engine=1 opts into the in-house renderer (engine branch M4); the
-        // public surface is identical, so everything downstream is agnostic.
-        this.renderer = (window.USE_ENGINE && window.EngineRenderer)
-            ? new EngineRenderer(container)
-            : new GameRenderer(container);
+        this.renderer = new EngineRenderer(container); // the in-house engine (M6: only renderer)
         this.renderer.game = this; // back-reference (used for civ-aware placement/preview)
         this.terrain = new TerrainManager(this.renderer.scene, 800); // Quadrupled map size
         this.renderer.setTerrain(this.terrain);

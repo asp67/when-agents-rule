@@ -91,5 +91,12 @@ built behind it, `main` stays on Three.js until the swap milestone.
   early/late material eras for town center, house and tower (timber + thatch
   → plaster + fired tile, gold finial at iron). A fixed noon is a deliberate
   part of the one-angle art direction — no day tint cycle.
-- **M6 — swap**: game runs on the in-house engine, Three.js script tag
-  deleted, README updated; Three.js path retired with the branch merge.
+- **M6 — swap (done)**: EngineRenderer is the only renderer — the Three.js
+  CDN tag, the `?engine=1` opt-in and js/renderer.js (~2200 lines) are gone.
+  terrain.js is pure data now (resource layout + walkability + minimap;
+  resources carry plain visibility handles from birth); fogofwar.js owns only
+  its grid + canvases and raises a `fogDirty` flag the renderer consumes. The
+  old instanced ambient-prop scatter (bushes/flowers/snow/pebbles) is baked
+  into the terrain mega-texture as painted flecks — same charm, zero draw
+  calls. `grep THREE js/` outside js/engine returns nothing; the README's
+  dependency-free claim is literally true.

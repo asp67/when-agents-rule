@@ -630,6 +630,37 @@
             }
         }
         ctx.putImageData(img, 0, 0);
+
+        // Ambient ground cover baked straight into the mega-texture (M6): the
+        // bushes/flowers/snow/pebbles that used to be instanced props are now
+        // painted flecks — the classic pre-rendered read, zero runtime cost.
+        const texPerUnit = size / worldSize;
+        const landTexHalf = (landHalf - 30) * texPerUnit; // stay off the beach
+        const cx = size / 2;
+        const fleck = (colors, count, rMin, rMax, alpha) => {
+            for (let i = 0; i < count; i++) {
+                const px = cx + (rand() * 2 - 1) * landTexHalf;
+                const py = cx + (rand() * 2 - 1) * landTexHalf;
+                const r = rMin + rand() * (rMax - rMin);
+                const col = colors[(rand() * colors.length) | 0];
+                ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
+                ctx.beginPath();
+                ctx.ellipse(px, py, r, r * (0.6 + rand() * 0.4), rand() * 3.14, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        };
+        if (theme === 'winter') {
+            fleck([[242, 246, 248]], 800, 2, 6, 0.7);                                  // snow patches
+            fleck([[95, 132, 113], [111, 149, 127]], 420, 1.6, 3.4, 0.75);             // frosted bushes
+            fleck([[93, 102, 114]], 260, 0.9, 2.0, 0.8);                               // slate pebbles
+        } else if (theme === 'desert') {
+            fleck([[154, 122, 88]], 480, 1.4, 3.0, 0.8);                               // rust rocks
+            fleck([[138, 125, 67], [156, 143, 85]], 380, 1.6, 3.2, 0.8);               // dry bushes
+        } else {
+            fleck([[63, 143, 61], [85, 168, 78]], 950, 1.6, 3.6, 0.8);                 // lush bushes
+            fleck([[245, 242, 232], [255, 215, 94], [232, 139, 176]], 520, 0.9, 1.6, 0.9); // flowers
+            fleck([[125, 116, 106]], 300, 0.9, 1.8, 0.7);                              // pebbles
+        }
         return c;
     };
 

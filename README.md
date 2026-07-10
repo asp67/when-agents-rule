@@ -9,7 +9,7 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![No build step](https://img.shields.io/badge/build-none%20required-success)
-![Three.js](https://img.shields.io/badge/three.js-r128-blue)
+![Zero dependencies](https://img.shields.io/badge/dependencies-zero%20%C2%B7%20in--house%20engine-blue)
 ![Providers](https://img.shields.io/badge/providers-OpenAI%20%C2%B7%20Anthropic%20%C2%B7%20Ollama%20%C2%B7%20Google-purple)
 
 <br>
@@ -74,7 +74,7 @@ You won't get a p-value. You *will* get an immediate, visceral feel for which mo
 - **📊 End-of-match model evaluation** — latency, decision count, action-success rate, JSON format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 **strategy score**.
 - **🌍 Fully localized UI** — English, German, Spanish, Simplified Chinese — with the **model's** language chosen **separately** from the interface language.
 - **🎮 Also human-playable** — a **Campaign** mode: pick your civilization and face **1–5 opponents**, each controlled by one of your models or the built-in rule-based AI, on three difficulty maps (Summer Valley / Winter Valley / Desert). If a model's endpoint goes unreachable mid-game, that opponent **falls back to the rule-based AI** so your match stays alive — and a footer always shows who controls each rival.
-- **🚫 No build step** — it's plain HTML/CSS/JS + Three.js from a CDN. Clone, serve, play.
+- **🚫 No build step, no dependencies** — plain HTML/CSS/JS with an **in-house WebGL engine** (every texture painted procedurally at load — no asset downloads, no CDN, no external code at all). Clone, serve, play.
 
 ## 🚀 Quick start
 
@@ -150,8 +150,9 @@ Alongside it you get raw stats — average/min/max latency, decisions made, succ
 ## 🛠️ How it works
 
 ```
-Browser (no backend)
-├── Three.js (r128, via CDN)  — renders the 3D world
+Browser (no backend, no external code)
+├── In-house engine (js/engine) — WebGL: locked dimetric camera, procedural textures,
+│                                 composed meshes, fog plane, effects
 ├── Game engine               — economy, combat, fog of war, ages, win conditions
 ├── Provider adapters         — OpenAI / Anthropic / Ollama / Google request shaping + auth
 └── Per-model agent loop       — builds the JSON game-state, calls the model, parses ONE action,
@@ -201,7 +202,8 @@ js/
 ├── openai-ai.js        # LLM arena harness: provider adapters, agent loop, metrics
 ├── ai.js               # rule-based AI opponent
 ├── ui.js               # menus, model library, spectator dashboard
-├── renderer.js         # Three.js scene, meshes, camera
+├── engine/             # the in-house WebGL engine: math3d, glcore, texgen,
+│                       #   mesh, buildings, units, gamerenderer
 ├── i18n.js             # 4-language UI dictionary + game-content translations
 ├── civilizations.js    # civs, units, buildings, tech trees
 ├── buildings.js / units.js / resources.js / terrain.js / fogofwar.js / input.js
@@ -210,7 +212,7 @@ game-state-schema.json  # the JSON contract handed to every model each turn
 
 ## 🧰 Tech stack
 
-Plain **HTML + CSS + JavaScript**, **Three.js r128** loaded from a CDN. No framework, no bundler, no transpile step. Cache-busting is done with a `?v=` query on each script tag.
+Plain **HTML + CSS + JavaScript** — and nothing else. The 3D world is drawn by an **in-house WebGL engine** (`js/engine/`): a locked dimetric camera in the classic RTS style, every material **painted procedurally** into canvases at load (masonry, thatch, roof tiles, cloth, the whole terrain mega-texture), meshes composed from first-principles primitives. No framework, no bundler, no transpile step, no CDN, no assets to download. Cache-busting is done with a `?v=` query on each script tag.
 
 ## 🧭 Related projects
 
@@ -218,7 +220,7 @@ Similar arenas, different games — worth knowing, and worth crediting:
 
 - **[llm-colosseum](https://github.com/OpenGenerativeAI/llm-colosseum)** — the project that popularized LLM-vs-LLM gaming: models fight in *Street Fighter III*, making reflex-scale decisions seconds apart, ranked by ELO. *When Agents Rule* probes the opposite end of the spectrum: long-horizon statecraft over matches half an hour long — economy, tech, fog of war, persistent plans — with a **peaceful** road to victory next to the military one.
 - **[LMSYS Chatbot Arena](https://lmarena.ai)** — humans vote on chat answers. Here nobody votes: the game itself is the judge, and the scoreboard is razed bases and held Wonders.
-- **[Stratagem](https://github.com/KaliBomaye/stratagem)** — turn-based LLM strategy with natural-language diplomacy on a province graph. Ours is real-time, 3D, browser-only with no install and no build step (a single CDN script — Three.js — is the only external code), and instruments every model as it plays (behavior metrics, latency, token accounting).
+- **[Stratagem](https://github.com/KaliBomaye/stratagem)** — turn-based LLM strategy with natural-language diplomacy on a province graph. Ours is real-time, 3D, browser-only with no install, no build step and **zero external code** (the WebGL engine is in-house), and instruments every model as it plays (behavior metrics, latency, token accounting).
 - **[Age of Agents](https://github.com/agentsmill/age-of-agents)** — renders your AI *coding* sessions as a peaceful, AoE-style pixel kingdom: a lovely visualization with no combat and no winners. Here the agents don't decorate the kingdom — they run it, and only one keeps it.
 - **[LLM-Game-Benchmark](https://github.com/research-outcome/LLM-Game-Benchmark)** — an academic benchmark of LLMs in grid-based games, with a leaderboard. We trade that rigor for richness: one sprawling, unfamiliar game instead of many small ones — see the disclaimers below.
 

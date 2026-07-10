@@ -1,37 +1,37 @@
-// Fog of War system
+// Fog of War system. Since the in-house engine (M6) this class owns only the
+// fog DATA and its canvases: the grid, the blur-upscaled display canvas, and a
+// `fogDirty` flag. EngineRenderer uploads the display canvas as a texture on
+// its fog plane whenever the flag is set (and clears it).
 class FogOfWarManager {
     constructor(game) {
         this.game = game;
         this.renderer = game.renderer;
-        this.scene = game.renderer.scene;
-        
+
         // Grid settings
         this.gridSize = 2; // Size of each fog cell
         this.mapSize = game.terrain.size;
         this.numTiles = this.mapSize / this.gridSize;
-        
+
         // Visibility range
         this.unitVisionRange = 15;
         this.buildingVisionRange = 12;
         this.towerVisionRange = 20;
-        
+
         // Fog grid: 0 = unexplored (black), 1 = explored (dark), 2 = visible (clear)
         this.fogGrid = new Float32Array(this.numTiles * this.numTiles);
         this.fogGrid.fill(0); // Start with all unexplored
-        
-        // Fog mesh
-        this.fogMesh = null;
-        this.fogTexture = null;
+
         this.fogCanvas = null;
         this.fogCtx = null;
-        
+        this.fogDirty = false; // renderer's re-upload signal
+
         // Update timer
         this.updateTimer = 0;
         this.updateInterval = 500; // Update fog every 500ms
-        
+
         this.init();
     }
-    
+
     init() {
         // Grid canvas: exact 1 texel per fog cell (the data, drawn by updateFogTexture)
         this.fogCanvas = document.createElement('canvas');
@@ -47,34 +47,6 @@ class FogOfWarManager {
         this.fogDisplayCanvas.width = this.numTiles * 4;
         this.fogDisplayCanvas.height = this.numTiles * 4;
         this.fogDisplayCtx = this.fogDisplayCanvas.getContext('2d');
-
-        this.fogTexture = new THREE.CanvasTexture(this.fogDisplayCanvas);
-        this.fogTexture.magFilter = THREE.LinearFilter;
-        this.fogTexture.minFilter = THREE.LinearFilter;
-        
-        // Create fog plane (slightly above ground)
-        const fogGeometry = new THREE.PlaneGeometry(this.mapSize, this.mapSize);
-        const fogMaterial = new THREE.MeshBasicMaterial({
-            map: this.fogTexture,
-            transparent: true,
-            opacity: 1,
-            depthWrite: false,
-            // polygonOffset + a larger height gap stop the fog z-fighting the ground
-            // when zoomed out (low depth precision at distance)
-            polygonOffset: true,
-            polygonOffsetFactor: -2,
-            polygonOffsetUnits: -2,
-            side: THREE.DoubleSide
-        });
-
-        this.fogMesh = new THREE.Mesh(fogGeometry, fogMaterial);
-        this.fogMesh.rotation.x = -Math.PI / 2;
-        // Clearly above ground (no z-fighting) AND above the tallest ambient props:
-        // the biggest bushes/snow caps top out around y≈0.75, and unlike resource
-        // nodes they aren't visibility-managed — at 0.6 they poked out of the fog.
-        this.fogMesh.position.y = 0.95;
-        this.fogMesh.renderOrder = 2;
-        this.scene.add(this.fogMesh);
 
         // Initialize fog texture + hide resources that start unexplored
         this.updateFogTexture();
@@ -219,7 +191,7 @@ class FogOfWarManager {
         d.drawImage(this.fogCanvas, 0, 0, this.fogDisplayCanvas.width, this.fogDisplayCanvas.height);
         d.restore();
 
-        this.fogTexture.needsUpdate = true;
+        this.fogDirty = true; // renderer re-uploads the display canvas next frame
     }
     
     // Hide resource nodes (trees, animals, stone, gold) until their tile is explored.
@@ -304,15 +276,12 @@ class FogOfWarManager {
         });
     }
 
-    // Tear down the fog overlay so a new game doesn't layer a stale mesh over a
-    // fresh one (which left old discovered areas "burned in" across arena games).
+    // Tear down the fog overlay so a new game doesn't layer stale state over a
+    // fresh one. Dropping the display canvas is enough: the renderer keys its
+    // fog texture on the canvas identity and rebuilds for the next manager.
     destroy() {
-        if (this.fogMesh) {
-            this.scene.remove(this.fogMesh);
-            if (this.fogMesh.geometry) this.fogMesh.geometry.dispose();
-            if (this.fogMesh.material) this.fogMesh.material.dispose();
-            this.fogMesh = null;
-        }
-        if (this.fogTexture) { this.fogTexture.dispose(); this.fogTexture = null; }
+        this.fogDisplayCanvas = null;
+        this.fogCanvas = null;
+        this.fogDirty = false;
     }
 }
