@@ -69,13 +69,27 @@
         0, 0, 0, 1
     ]);
 
-    // Orthographic projection (the locked isometric camera uses this).
+    // Orthographic projection (engine-test's locked demo camera uses this).
     M3D.ortho = (l, r, b, t, n, f) => new Float32Array([
         2 / (r - l), 0, 0, 0,
         0, 2 / (t - b), 0, 0,
         0, 0, -2 / (f - n), 0,
         -(r + l) / (r - l), -(t + b) / (t - b), -(f + n) / (f - n), 1
     ]);
+
+    // Narrow-FOV perspective — the game camera. Pure ortho made the map read
+    // REVERSE-perspective when zoomed out (equal near/far edges, and the eye
+    // insists the far one is wider); a gentle real perspective kills the
+    // illusion and adds depth without losing the classic look.
+    M3D.perspective = (fovY, aspect, near, far) => {
+        const f = 1 / Math.tan(fovY / 2);
+        return new Float32Array([
+            f / aspect, 0, 0, 0,
+            0, f, 0, 0,
+            0, 0, (far + near) / (near - far), -1,
+            0, 0, (2 * far * near) / (near - far), 0
+        ]);
+    };
 
     M3D.lookAt = (eye, target, up) => {
         const z = M3D.normalize(M3D.sub(eye, target));
@@ -89,14 +103,12 @@
         ]);
     };
 
-    // Classic dimetric RTS camera: pitch locked at atan(1/2) ≈ 26.57°, yaw
-    // defaults to the classic 45° but is a parameter — middle-mouse drag turns
-    // the map around the look-at point (pitch never changes, so the one-angle
-    // art tuning holds at any heading).
+    // Classic dimetric RTS camera. Defaults: yaw 45°, pitch atan(1/2) ≈ 26.57°
+    // — both are parameters now: middle-drag turns (yaw) and tilts (pitch,
+    // clamped by the caller; keep it under 90° or lookAt's up vector degenerates).
     // Returns { view, dir } — dir is the normalized eye→target direction
     // (handy for shading and for placing the eye far along the reverse ray).
-    M3D.dimetricView = (targetX, targetZ, dist, yaw = Math.PI / 4) => {
-        const pitch = Math.atan(0.5);
+    M3D.dimetricView = (targetX, targetZ, dist, yaw = Math.PI / 4, pitch = Math.atan(0.5)) => {
         const dx = Math.cos(pitch) * Math.sin(yaw);
         const dy = Math.sin(pitch);
         const dz = Math.cos(pitch) * Math.cos(yaw);

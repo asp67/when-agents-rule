@@ -8,13 +8,13 @@ dependency-free claim becomes literally true.
 
 ## Art direction
 
-- **Dimetric camera, pitch-locked**: orthographic projection, pitch
-  ≈ 26.57° (atan ½ — the classic 2:1 pixel diamond). Pan + zoom + yaw
-  rotation (middle-drag turns the map around the look-at point; default
-  heading 45°). The pitch never changes, so lighting, texture contrast and
-  silhouettes stay tuned for one viewing angle, like the pre-rendered
-  classics — the yaw-agnostic materials (radial shadows, vertical AO
-  gradients, world-fixed sun) hold at any heading.
+- **Classic RTS camera, narrow-FOV perspective**: 20° FOV with the eye far
+  out along the view ray — reads like the dimetric classics but with real
+  depth (pure ortho made the far map edge LOOK wider than the near one when
+  zoomed out; a gentle perspective kills that illusion). Middle-drag turns
+  (yaw, free) and tilts (pitch, 10°–89°; default atan ½ ≈ 26.57°). The
+  materials are view-agnostic by construction (radial shadows, vertical AO
+  gradients, world-fixed sun), so the art holds at any heading and tilt.
 - **Procedural textures, no assets**: all materials are painted into offscreen
   canvases at load (wood grain, mudbrick, stone masonry, thatch, roof tiles,
   terrain splats) and uploaded as GPU textures. No downloads, no copyright

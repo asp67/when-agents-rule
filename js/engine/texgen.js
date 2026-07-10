@@ -404,13 +404,44 @@
         return c;
     };
 
-    // Tilled field: dark furrow rows with young sprout lines.
-    TexGen.field = (seed = 12, size = 128) => {
+    // Tilled field in three growth stages matching the farm's epoch look:
+    // 'dirt' (stone age: bare turned soil + clods), 'patchy' (neolithic:
+    // unorganized crop tufts), 'rows' (bronze/iron: proper furrows + grain).
+    TexGen.field = (seed = 12, size = 128, stage = 'rows') => {
         const rand = TexGen.rng(seed);
         const c = canvas(size), ctx = c.getContext('2d');
-        noisyFill(ctx, size, [126, 96, 60], [
+        noisyFill(ctx, size, stage === 'dirt' ? [112, 84, 50] : [126, 96, 60], [
             { noise: TexGen.valueNoise(size, 16, rand), amp: 16 }
         ]);
+        if (stage === 'dirt') {
+            // bare soil: clods and a few pale stones, no crops yet
+            for (let i = 0; i < 16; i++) {
+                const x = rand() * size, y = rand() * size, r = 3 + rand() * 7;
+                ctx.fillStyle = `rgba(58,40,22,${0.3 + rand() * 0.25})`;
+                ctx.beginPath();
+                ctx.ellipse(x, y, r, r * 0.6, rand() * 3.14, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            for (let i = 0; i < 8; i++) {
+                ctx.fillStyle = 'rgba(180,164,140,0.5)';
+                ctx.fillRect(rand() * size, rand() * size, 2.5, 2);
+            }
+            return c;
+        }
+        if (stage === 'patchy') {
+            // scattered irregular tufts — visible crops, no order
+            for (let i = 0; i < 22; i++) {
+                const x = rand() * size, y = rand() * size, r = 4 + rand() * 9;
+                for (let j = 0; j < 10; j++) {
+                    const v = 105 + rand() * 75;
+                    ctx.fillStyle = `rgba(${(v * 0.5) | 0},${v | 0},${(v * 0.38) | 0},0.8)`;
+                    const a = rand() * Math.PI * 2, rr = rand() * r;
+                    ctx.fillRect(x + Math.cos(a) * rr, y + Math.sin(a) * rr, 1.5, 2.5 + rand() * 2);
+                }
+            }
+            return c;
+        }
+        // 'rows': dark furrow rows with grain lines
         const rows = 9, rh = size / rows;
         for (let r = 0; r < rows; r++) {
             const y = r * rh + rh / 2;
@@ -418,7 +449,7 @@
             ctx.fillRect(0, y - 1.6, size, 3.2);
             ctx.fillStyle = 'rgba(210,180,130,0.18)';
             ctx.fillRect(0, y - 3.2, size, 1.4);
-            // sprouts along the furrow
+            // grain along the furrow
             for (let i = 0; i < 26; i++) {
                 const x = rand() * size;
                 const v = 110 + rand() * 70;

@@ -148,7 +148,7 @@ function createUnit(type, x, z, owner, civilization, age) {
     const uniqueUnit = civ.uniqueUnits.find(u => u.id === type);
     const unitDef = uniqueUnit || def;
 
-    return {
+    const unit = {
         id: 'unit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
         type: type,
         name: unitDef.name,
@@ -181,6 +181,15 @@ function createUnit(type, x, z, owner, civilization, age) {
         harvestRate: unitDef.harvestRate || 1.0,
         buildSpeed: unitDef.buildSpeed || 1.0
     };
+
+    // Researched bonuses (Quick Hands & co.) apply at spawn too — otherwise a
+    // research quietly split the roster into boosted veterans and raw recruits.
+    if (typeof game !== 'undefined' && game && game.applyResearchedBonusesToUnit) {
+        const ownerObj = owner === 'player' ? game.player
+            : (game.aiManager ? game.aiManager.aiPlayers.find(a => a.id === owner) : null);
+        if (ownerObj) game.applyResearchedBonusesToUnit(unit, ownerObj);
+    }
+    return unit;
 }
 
 // Create a building instance.

@@ -22,7 +22,6 @@
     const HALF_PER_DIST = 0.3;   // camera.position.set(distance) → ortho halfH
     const MIN_HALF = 10, MAX_HALF = 190;
     const BSCALE = 0.78;         // engine building set → game footprint scale
-    const PITCH_SIN = Math.sin(Math.atan(0.5)); // ground foreshortening when panning
 
     class EngineRenderer {
         constructor(container) {
@@ -43,7 +42,8 @@
             this.keysPressed = {};
             this._marqueeEl = null;
             this._halfH = 34;
-            this._yaw = Math.PI / 4; // middle-drag rotates; pitch stays dimetric
+            this._yaw = Math.PI / 4;          // middle-drag horizontal turns the map
+            this._pitch = Math.atan(0.5);     // middle-drag vertical tilts (10°..89°)
             this._panDrag = null;
             this._rotateDrag = null;
             this._projectiles = [];
@@ -164,7 +164,9 @@
                 thatch: T(TexGen.thatch(111)),
                 rooftile: T(TexGen.rooftile(122)),
                 awning: T(TexGen.awning(133)),
-                field: T(TexGen.field(144)),
+                field: T(TexGen.field(144, 128, 'rows')),
+                field_dirt: T(TexGen.field(144, 128, 'dirt')),
+                field_patchy: T(TexGen.field(144, 128, 'patchy')),
                 shadow: T(TexGen.shadowBlob(), { clamp: true }),
                 cloth: T(TexGen.cloth(155)),
                 skin: T(TexGen.skin(166)),
@@ -199,16 +201,23 @@
 
         _computeCam() {
             const m3 = M();
-            const cam = m3.dimetricView(this.cameraTarget.x, this.cameraTarget.z, 400, this._yaw);
-            const v = cam.view;
             const aspect = (this.W || 1) / (this.H || 1);
+            // Narrow-FOV perspective: the eye sits far enough away that the frame
+            // still covers ±halfH world units at the target — same zoom feel as
+            // the old ortho, minus its reverse-perspective illusion at max zoom.
+            const FOVY = 20 * Math.PI / 180;
+            const tanHalf = Math.tan(FOVY / 2);
+            const dist = this._halfH / tanHalf;
+            const cam = m3.dimetricView(this.cameraTarget.x, this.cameraTarget.z, dist, this._yaw, this._pitch);
+            const v = cam.view;
             this._cam = {
                 view: v, eye: cam.eye, dir: cam.dir,
                 right: [v[0], v[4], v[8]],
                 up: [v[1], v[5], v[9]],
                 halfH: this._halfH,
                 halfW: this._halfH * aspect,
-                proj: m3.ortho(-this._halfH * aspect, this._halfH * aspect, -this._halfH, this._halfH, 1, 1600)
+                tanHalf, aspect, dist,
+                proj: m3.perspective(FOVY, aspect, Math.max(2, dist - 700), dist + 1100)
             };
             return this._cam;
         }
@@ -257,18 +266,21 @@
                     : { visible: true };
             });
             // shoreline foam: four surf strips just past the coast band, pulsing
-            // and drifting (alpha/uvOff animated per frame)
+            // and drifting (alpha/uvOff animated per frame). The x-side strips are
+            // shortened by the strip WIDTH so they butt against the z-side strips
+            // instead of crossing them (the corners used to double up and glow).
             const m3 = M();
-            const foamBuf = this._buf('quad', [840, 7, 46]);
+            const LH = 401.5, FW = 7;
+            const longBuf = this._buf('quad', [2 * LH + FW, FW, 46]);
+            const shortBuf = this._buf('quad', [2 * LH - FW - 2, FW, 45]);
             const flat = (x, z, ry) => m3.multiply(
                 m3.multiply(m3.translation(x, 0.18, z), m3.rotationY(ry)),
                 m3.rotationX(-Math.PI / 2));
-            const LH = 401.5;
             this._foam = [
-                { buf: foamBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(0, LH, 0) },
-                { buf: foamBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(0, -LH, 0) },
-                { buf: foamBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(LH, 0, Math.PI / 2) },
-                { buf: foamBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(-LH, 0, Math.PI / 2) }
+                { buf: longBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(0, LH, 0) },
+                { buf: longBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(0, -LH, 0) },
+                { buf: shortBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(LH, 0, Math.PI / 2) },
+                { buf: shortBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(-LH, 0, Math.PI / 2) }
             ];
         }
 
@@ -354,9 +366,18 @@
                 m3.scaling(BSCALE, BSCALE, BSCALE));
             let parts, shellIdx = -1;
             if (building.underConstruction) {
+                // The rising shell previews the FINAL height — it used to top out
+                // at waist height while the progress said 100%, which read as the
+                // build finishing at a third of the promised size.
+                const H = {
+                    town_center: 7.9, house: 4.5, barracks: 5.6, stable: 4.5,
+                    archery_range: 4.6, market: 4.4, farm: 1.2, tower: 8.9, temple: 6
+                };
                 const foot = (building.isWonder ? 12 : 7);
-                parts = EngineBuildings.site(foot, foot);
-                shellIdx = 2; // the waist-wall box — rises with build progress
+                const h = building.isWonder ? 8.6 : (H[building.type] || 5);
+                parts = EngineBuildings.site(foot, foot, h);
+                shellIdx = 2; // the shell box — grows to full height with progress
+                building._shellH = h;
             } else {
                 const type = building.isWonder ? 'wonder'
                     : (EngineBuildings.TYPES.indexOf(building.type) >= 0 ? building.type : 'house');
@@ -559,15 +580,19 @@
             if (this._marqueeEl) this._marqueeEl.style.display = 'none';
         }
 
-        // ---- picking (pure math: ortho ray onto the y=0 plane) -----------------
+        // ---- picking (perspective ray onto the y=0 plane) -----------------------
         worldToScreen(x, y, z) {
             const c = this._cam || this._computeCam();
             const v = c.view;
             const vx = v[0] * x + v[4] * y + v[8] * z + v[12];
             const vy = v[1] * x + v[5] * y + v[9] * z + v[13];
+            const vz = v[2] * x + v[6] * y + v[10] * z + v[14];
+            if (vz > -0.5) return null; // behind the eye
+            const ndcX = (vx / -vz) / (c.tanHalf * c.aspect);
+            const ndcY = (vy / -vz) / c.tanHalf;
             return {
-                x: (vx / c.halfW + 1) / 2 * this.canvas.clientWidth,
-                y: (-vy / c.halfH + 1) / 2 * this.canvas.clientHeight
+                x: (ndcX + 1) / 2 * this.canvas.clientWidth,
+                y: (1 - ndcY) / 2 * this.canvas.clientHeight
             };
         }
 
@@ -577,12 +602,14 @@
             if (!rect.width || !rect.height) return null;
             const nx = ((screenX - rect.left) / rect.width) * 2 - 1;
             const ny = -((screenY - rect.top) / rect.height) * 2 + 1;
-            const ox = c.eye[0] + c.right[0] * nx * c.halfW + c.up[0] * ny * c.halfH;
-            const oy = c.eye[1] + c.right[1] * nx * c.halfW + c.up[1] * ny * c.halfH;
-            const oz = c.eye[2] + c.right[2] * nx * c.halfW + c.up[2] * ny * c.halfH;
-            if (!c.dir[1]) return null;
-            const t = -oy / c.dir[1];
-            const x = ox + c.dir[0] * t, z = oz + c.dir[2] * t;
+            // ray from the eye through the pixel
+            const kx = nx * c.tanHalf * c.aspect, ky = ny * c.tanHalf;
+            let dx = c.dir[0] + c.right[0] * kx + c.up[0] * ky;
+            let dy = c.dir[1] + c.right[1] * kx + c.up[1] * ky;
+            let dz = c.dir[2] + c.right[2] * kx + c.up[2] * ky;
+            if (dy > -0.005) return null; // looking at/above the horizon
+            const t = -c.eye[1] / dy;
+            const x = c.eye[0] + dx * t, z = c.eye[2] + dz * t;
             const half = (this.terrain ? this.terrain.size : 800) / 2 + 90;
             if (x < -half || x > half || z < -half || z > half) return null;
             return { x, z };
@@ -710,8 +737,13 @@
         onCanvasMouseMove(event) {
             if (this._rotateDrag) {
                 const dx = event.clientX - this._rotateDrag.x;
+                const dy = event.clientY - this._rotateDrag.y;
                 this._rotateDrag = { x: event.clientX, y: event.clientY };
-                this._yaw -= dx * 0.006; // horizontal drag spins around the look-at point
+                this._yaw -= dx * 0.006;   // horizontal: turn around the look-at point
+                // vertical: tilt between near-flat and (almost) top-down; 89° keeps
+                // lookAt's up vector from degenerating
+                this._pitch = Math.max(10 * Math.PI / 180,
+                    Math.min(89 * Math.PI / 180, this._pitch + dy * 0.004));
                 return;
             }
             if (!this._panDrag) return;
@@ -719,10 +751,10 @@
             const dy = event.clientY - this._panDrag.y;
             this._panDrag = { x: event.clientX, y: event.clientY };
             const wpp = (2 * this._halfH) / (this.canvas.clientHeight || 1);
-            // grab-and-drag: world follows the cursor (basis follows the yaw)
+            // grab-and-drag: world follows the cursor (basis follows yaw + pitch)
             const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
             const right = -dx * wpp;
-            const fwd = dy * wpp / PITCH_SIN;
+            const fwd = dy * wpp / Math.max(0.17, Math.sin(this._pitch));
             this.cameraTarget.x += right * cy + fwd * -sy;
             this.cameraTarget.z += right * -sy + fwd * -cy;
         }
@@ -762,8 +794,9 @@
             const dx = x - this.cameraTarget.x, dz = z - this.cameraTarget.z;
             const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
             const u = dx * cy - dz * sy;
-            const v = (dx * sy + dz * cy) * PITCH_SIN; // ground foreshortened on screen-y
-            return Math.abs(u) > c.halfW + margin || Math.abs(v) > c.halfH + margin;
+            const v = (dx * sy + dz * cy) * Math.sin(this._pitch); // ground foreshortening
+            // Perspective widens coverage beyond the target plane — generous slack.
+            return Math.abs(u) > c.halfW * 1.25 + margin || Math.abs(v) > c.halfH * 1.25 + margin;
         }
 
         _barColor(pct) {
@@ -820,9 +853,12 @@
                 const eb = b._engine;
                 if (!eb || (b.mesh && b.mesh.visible === false) || this._cull(b.x, b.z, 18)) continue;
                 if (b.underConstruction && eb.shell) {
+                    // Unit-height shell box grown from the plinth to pct of the
+                    // final building height (b._shellH, set in _composeBuilding).
                     const pct = Math.min(1, (b.buildProgress || 0) / (b.buildTime || 10000));
+                    const hNow = Math.max(0.15, (b._shellH || 4) * pct);
                     eb.shell.model = m3.multiply(eb.world,
-                        m3.multiply(eb.shell.base, m3.scaling(1, Math.max(0.08, pct), 1)));
+                        m3.multiply(m3.translation(0, 0.5 + hNow / 2, 0), m3.scaling(1, hNow, 1)));
                 }
                 const flash = b._flashUntil && now < b._flashUntil;
                 for (const en of eb.opaque) dl.opaque.push(flash ? { buf: en.buf, tex: en.tex, tint: FLASH, model: en.model } : en);

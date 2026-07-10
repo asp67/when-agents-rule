@@ -1646,6 +1646,17 @@ class Game {
             return;
         }
 
+        // Epoch gate: a bronze warrior must not come out of a neolithic barracks.
+        // (The LLM path already checks its train tiers; this human path didn't.)
+        const unitTier = unitDef.tier || unitDef.requiredAge;
+        if (unitTier) {
+            const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
+            if (ageOrder.indexOf(unitTier) > ageOrder.indexOf(this.player.age)) {
+                this.ui.showErrorMessage(t('msg.unitNeedsAge', { age: this.ui.getAgeName(unitTier) }));
+                return;
+            }
+        }
+
         // The train menu passes the id of the building it was opened for: honour
         // that choice — the unit spawns at the producing building, so with several
         // Town Centers (or barracks/stables/archery ranges) it must be the one the
@@ -1807,24 +1818,43 @@ class Game {
         }
     }
 
+    // One unit, one tech bonus — shared by the research-time retrofit
+    // (applyBonusToUnits) and the spawn-time catch-up (applyResearchedBonusesToUnit).
+    applyBonusToOneUnit(bonus, appliesTo, unit) {
+        if (unit.type === 'worker' && appliesTo === 'worker') {
+            if (bonus.speed) unit.speed *= (1 + bonus.speed);
+            if (bonus.harvestRate) unit.harvestRate *= (1 + bonus.harvestRate);
+            if (bonus.buildSpeed) unit.buildSpeed *= (1 + bonus.buildSpeed);
+        } else if (appliesTo === 'all_military' || appliesTo === unit.unitType) {
+            if (bonus.attack) unit.attack += bonus.attack;
+            if (bonus.health) {
+                unit.health = Math.min(unit.health + bonus.health, unit.maxHealth + bonus.health);
+                unit.maxHealth += bonus.health;
+            }
+            if (bonus.range) unit.range += bonus.range;
+            if (bonus.speed) unit.speed *= (1 + bonus.speed);
+        }
+    }
+
+    // A freshly trained unit gets every already-researched bonus applied, so
+    // "Quick Hands" & co. hold for the WHOLE eligible population — createUnit
+    // bakes raw def stats, which silently split the roster into fast veterans
+    // and slow recruits after a research.
+    applyResearchedBonusesToUnit(unit, owner) {
+        if (!unit || !owner || !owner.researchedTechs) return;
+        const civ = getCivilization(owner.civilization || this.player.civilization);
+        if (!civ || !civ.techTree) return;
+        Object.keys(owner.researchedTechs).forEach(techId => {
+            if (!owner.researchedTechs[techId]) return;
+            const tech = civ.techTree[techId];
+            if (tech && tech.bonus) this.applyBonusToOneUnit(tech.bonus, tech.appliesTo, unit);
+        });
+    }
+
     applyBonusToUnits(bonus, appliesTo, owner) {
         owner = owner || this.player;
         owner.units.forEach(unit => {
-            if (unit.type === 'worker' && appliesTo === 'worker') {
-                // Apply worker bonuses
-                if (bonus.speed) unit.speed *= (1 + bonus.speed);
-                if (bonus.harvestRate) unit.harvestRate *= (1 + bonus.harvestRate);
-                if (bonus.buildSpeed) unit.buildSpeed *= (1 + bonus.buildSpeed);
-            } else if (appliesTo === 'all_military' || appliesTo === unit.unitType) {
-                // Apply military bonuses
-                if (bonus.attack) unit.attack += bonus.attack;
-                if (bonus.health) {
-                    unit.health = Math.min(unit.health + bonus.health, unit.maxHealth + bonus.health);
-                    unit.maxHealth += bonus.health;
-                }
-                if (bonus.range) unit.range += bonus.range;
-                if (bonus.speed) unit.speed *= (1 + bonus.speed);
-            }
+            this.applyBonusToOneUnit(bonus, appliesTo, unit);
         });
         
         // Also update health bars in renderer
@@ -2460,6 +2490,12 @@ class Game {
     // alike) — so nobody walks to a node they have never seen.
     retargetDepletedWorker(unit, owner) {
         const wantType = unit.harvestTarget && unit.harvestTarget.type;
+        // Continue nearest to the DEPLETED NODE, not to wherever the worker
+        // happens to stand (often the Town Center mid-delivery — measuring from
+        // there sent miners to a "nearest to base" node far across the map
+        // instead of the next rock in their quarry).
+        const fromX = unit.harvestTarget ? unit.harvestTarget.x : unit.x;
+        const fromZ = unit.harvestTarget ? unit.harvestTarget.z : unit.z;
         unit.task = null;
         unit.harvestTarget = null;
         unit.isHarvesting = false;
@@ -2474,7 +2510,7 @@ class Game {
                 ? (!this.fogOfWar || this.fogOfWar.isPositionVisible(r.x, r.z))
                 : !!(owner._knownResIdx && owner._knownResIdx.has(idx));
             if (!known) return;
-            const d = Math.hypot(r.x - unit.x, r.z - unit.z);
+            const d = Math.hypot(r.x - fromX, r.z - fromZ);
             if (d < bestDist) { bestDist = d; best = r; }
         });
         if (!best) return; // nothing of this type discovered & left → idle
@@ -3111,8 +3147,10 @@ class Game {
         const terrainData = this.terrain.getMinimapData();
         const scale = 300 / terrainData.size;
 
-        // Clear with bright green (visible terrain color matching playing field)
-        ctx.fillStyle = '#4a8c3f';
+        // Themed ground color (summer/winter/desert), tuned so every node color
+        // keeps contrast: wood #228B22, stone #808080, gold #FFD700, food #8B4513.
+        const MINIMAP_GROUND = { easy: '#4a8c3f', medium: '#5c7480', hard: '#8f7448' };
+        ctx.fillStyle = MINIMAP_GROUND[this.terrain.difficulty] || MINIMAP_GROUND.easy;
         ctx.fillRect(0, 0, 300, 300);
 
         // Draw fog of war overlay FIRST (so resources appear on top)
