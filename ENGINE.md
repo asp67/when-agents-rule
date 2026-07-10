@@ -8,10 +8,13 @@ dependency-free claim becomes literally true.
 
 ## Art direction
 
-- **Locked dimetric camera**: orthographic projection, yaw 45°, pitch
-  ≈ 26.57° (atan ½ — the classic 2:1 pixel diamond). Pan + zoom, no rotation.
-  One fixed view angle means lighting, texture contrast and silhouettes are
-  tuned for exactly one perspective, like the pre-rendered classics.
+- **Dimetric camera, pitch-locked**: orthographic projection, pitch
+  ≈ 26.57° (atan ½ — the classic 2:1 pixel diamond). Pan + zoom + yaw
+  rotation (middle-drag turns the map around the look-at point; default
+  heading 45°). The pitch never changes, so lighting, texture contrast and
+  silhouettes stay tuned for one viewing angle, like the pre-rendered
+  classics — the yaw-agnostic materials (radial shadows, vertical AO
+  gradients, world-fixed sun) hold at any heading.
 - **Procedural textures, no assets**: all materials are painted into offscreen
   canvases at load (wood grain, mudbrick, stone masonry, thatch, roof tiles,
   terrain splats) and uploaded as GPU textures. No downloads, no copyright

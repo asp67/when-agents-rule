@@ -43,7 +43,9 @@
             this.keysPressed = {};
             this._marqueeEl = null;
             this._halfH = 34;
+            this._yaw = Math.PI / 4; // middle-drag rotates; pitch stays dimetric
             this._panDrag = null;
+            this._rotateDrag = null;
             this._projectiles = [];
             this._rings = [];
             this._ghosts = [];
@@ -197,7 +199,7 @@
 
         _computeCam() {
             const m3 = M();
-            const cam = m3.dimetricView(this.cameraTarget.x, this.cameraTarget.z, 400);
+            const cam = m3.dimetricView(this.cameraTarget.x, this.cameraTarget.z, 400, this._yaw);
             const v = cam.view;
             const aspect = (this.W || 1) / (this.H || 1);
             this._cam = {
@@ -693,29 +695,41 @@
 
         onCanvasMouseDown(event) {
             const spectator = typeof game !== 'undefined' && game && game.spectatorMode;
-            if (event.button === 1 || (event.button === 0 && spectator)) {
+            if (event.button === 1) {
+                // middle mouse TURNS the map (yaw only — pitch stays dimetric)
                 if (spectator && game.disableActionCam) game.disableActionCam();
+                this._rotateDrag = { x: event.clientX, y: event.clientY };
+                event.preventDefault();
+            } else if (event.button === 0 && spectator) {
+                if (game.disableActionCam) game.disableActionCam();
                 this._panDrag = { x: event.clientX, y: event.clientY };
                 event.preventDefault();
             }
         }
 
         onCanvasMouseMove(event) {
+            if (this._rotateDrag) {
+                const dx = event.clientX - this._rotateDrag.x;
+                this._rotateDrag = { x: event.clientX, y: event.clientY };
+                this._yaw -= dx * 0.006; // horizontal drag spins around the look-at point
+                return;
+            }
             if (!this._panDrag) return;
             const dx = event.clientX - this._panDrag.x;
             const dy = event.clientY - this._panDrag.y;
             this._panDrag = { x: event.clientX, y: event.clientY };
             const wpp = (2 * this._halfH) / (this.canvas.clientHeight || 1);
-            const R = 0.70710678;
-            // grab-and-drag: world follows the cursor
+            // grab-and-drag: world follows the cursor (basis follows the yaw)
+            const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
             const right = -dx * wpp;
             const fwd = dy * wpp / PITCH_SIN;
-            this.cameraTarget.x += right * R + fwd * -R;
-            this.cameraTarget.z += right * -R + fwd * -R;
+            this.cameraTarget.x += right * cy + fwd * -sy;
+            this.cameraTarget.z += right * -sy + fwd * -cy;
         }
 
         onCanvasMouseUp() {
             this._panDrag = null;
+            this._rotateDrag = null;
         }
 
         onCanvasWheel(e) {
@@ -730,9 +744,9 @@
             const fwd = ((keys['w'] || keys['arrowup']) ? 1 : 0) - ((keys['s'] || keys['arrowdown']) ? 1 : 0);
             const right = ((keys['d'] || keys['arrowright']) ? 1 : 0) - ((keys['a'] || keys['arrowleft']) ? 1 : 0);
             if (fwd || right) {
-                const R = 0.70710678;
-                this.cameraTarget.x += (right * R - fwd * R) * speed;
-                this.cameraTarget.z += (-right * R - fwd * R) * speed;
+                const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
+                this.cameraTarget.x += (right * cy - fwd * sy) * speed;
+                this.cameraTarget.z += (-right * sy - fwd * cy) * speed;
             }
         }
 
@@ -746,8 +760,9 @@
         _cull(x, z, margin) {
             const c = this._cam;
             const dx = x - this.cameraTarget.x, dz = z - this.cameraTarget.z;
-            const u = (dx - dz) * 0.70710678;
-            const v = (dx + dz) * 0.31622777; // horizontal component after pitch
+            const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
+            const u = dx * cy - dz * sy;
+            const v = (dx * sy + dz * cy) * PITCH_SIN; // ground foreshortened on screen-y
             return Math.abs(u) > c.halfW + margin || Math.abs(v) > c.halfH + margin;
         }
 

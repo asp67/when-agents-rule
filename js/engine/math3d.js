@@ -89,11 +89,13 @@
         ]);
     };
 
-    // Classic dimetric RTS camera: yaw 45°, pitch atan(1/2) ≈ 26.57°.
+    // Classic dimetric RTS camera: pitch locked at atan(1/2) ≈ 26.57°, yaw
+    // defaults to the classic 45° but is a parameter — middle-mouse drag turns
+    // the map around the look-at point (pitch never changes, so the one-angle
+    // art tuning holds at any heading).
     // Returns { view, dir } — dir is the normalized eye→target direction
     // (handy for shading and for placing the eye far along the reverse ray).
-    M3D.dimetricView = (targetX, targetZ, dist) => {
-        const yaw = Math.PI / 4;
+    M3D.dimetricView = (targetX, targetZ, dist, yaw = Math.PI / 4) => {
         const pitch = Math.atan(0.5);
         const dx = Math.cos(pitch) * Math.sin(yaw);
         const dy = Math.sin(pitch);

@@ -1604,6 +1604,8 @@ class Game {
         const building = createBuilding(pendingBuilding.type, x, z, 'player', this.player.civilization, { underConstruction: true, age: this.player.age });
         this.addBuilding(building);
         this.applyBuilder(pick, building);
+        // Borrowed a gatherer (no one was idle): say so — it returns by itself.
+        if (pick.restore) this.ui.showInfoMessage(t('msg.builderBorrowed'));
 
         // Remove from pending
         this.player.pendingBuildings.shift();
@@ -2083,10 +2085,11 @@ class Game {
         const idle = workers.filter(u => this.isIdleWorker(u));
         if (idle.length) return { worker: closest(idle), restore: false };
 
-        // No idle worker: borrow a busy one only at the population cap, OR when the
-        // caller forces it (the rule-based AI keeps all workers busy, so it must borrow).
-        const atMaxPop = owner.resources.population >= owner.resources.maxPopulation;
-        if (!atMaxPop && !opts.forceBorrow) return { error: 'no_idle' };
+        // No idle worker: BORROW the closest gatherer — it resumes its old task
+        // once the build is done (applyBuilder saves it). Refusing to borrow
+        // below the population cap made early-game placement fail exactly when
+        // it matters most: every starting worker is gathering, so a farm order
+        // just fizzled.
         const borrowable = workers.filter(u => u.task !== 'building' && !u.isBuilding);
         if (!borrowable.length) return { error: 'no_idle' };
         return { worker: closest(borrowable), restore: true };
