@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>When Agents Rule — engine M1 demo</title>
+    <title>When Agents Rule — engine M2 demo</title>
     <style>
         html, body { margin: 0; height: 100%; background: #10141f; overflow: hidden; }
         canvas { display: block; }
@@ -12,12 +12,13 @@
 </head>
 <body>
     <canvas id="c"></canvas>
-    <div id="tag">engine M1 — terrain mega-texture · nature scatter · arrows pan, +/− zoom · theme:
+    <div id="tag">engine M2 — textured buildings · contact shadows · culling on · arrows pan, +/− zoom · theme:
         <a href="?theme=summer">summer</a> · <a href="?theme=winter">winter</a> · <a href="?theme=desert">desert</a></div>
     <script src="js/engine/math3d.js"></script>
     <script src="js/engine/glcore.js"></script>
     <script src="js/engine/texgen.js"></script>
     <script src="js/engine/mesh.js"></script>
+    <script src="js/engine/buildings.js"></script>
     <script>
     (function () {
         const THEME = new URLSearchParams(location.search).get('theme') || 'summer';
@@ -47,12 +48,15 @@
             uniform vec3 uSunDir;
             uniform vec3 uSunColor;
             uniform vec3 uAmbient;
+            uniform float uUnlit;   // 1.0 for shadow blobs: keep them pure darkness
             varying vec3 vNormal;
             varying vec2 vUv;
             void main() {
+                vec4 t = texture2D(uTex, vUv);
                 vec3 n = normalize(vNormal);
                 vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
-                gl_FragColor = vec4(texture2D(uTex, vUv).rgb * light, 1.0);
+                vec3 rgb = mix(t.rgb * light, t.rgb, uUnlit);
+                gl_FragColor = vec4(rgb, t.a);
             }`;
         const prog = GLCore.compileProgram(gl, VS, FS);
 
@@ -67,38 +71,56 @@
             foliage: GLCore.createTextureFromCanvas(gl, TexGen.foliage(55, canopyBase)),
             berries: GLCore.createTextureFromCanvas(gl, TexGen.foliage(66, [64, 100, 52], { berries: true })),
             rock: GLCore.createTextureFromCanvas(gl, TexGen.rock(77)),
-            gold: GLCore.createTextureFromCanvas(gl, TexGen.rock(88, { gold: true }))
+            gold: GLCore.createTextureFromCanvas(gl, TexGen.rock(88, { gold: true })),
+            plaster: GLCore.createTextureFromCanvas(gl, TexGen.plaster(99)),
+            thatch: GLCore.createTextureFromCanvas(gl, TexGen.thatch(111)),
+            rooftile: GLCore.createTextureFromCanvas(gl, TexGen.rooftile(122)),
+            awning: GLCore.createTextureFromCanvas(gl, TexGen.awning(133)),
+            field: GLCore.createTextureFromCanvas(gl, TexGen.field(144)),
+            shadow: GLCore.createTextureFromCanvas(gl, TexGen.shadowBlob(), { clamp: true })
         };
 
-        // ---- Mesh library --------------------------------------------------------
+        // ---- Geometry cache + scene ----------------------------------------------
         const M = M3D;
-        const lib = {
-            terrain: GLCore.createMeshBuffers(gl, EngineMesh.gridPlane(WORLD, 1, 1)),
-            box: GLCore.createMeshBuffers(gl, EngineMesh.box(1, 1, 1)),
-            trunk: GLCore.createMeshBuffers(gl, EngineMesh.cylinder(0.24, 0.4, 2.4, 7)),
-            cone: GLCore.createMeshBuffers(gl, EngineMesh.cylinder(0, 1, 1, 8)),
-            tower: GLCore.createMeshBuffers(gl, EngineMesh.cylinder(1.6, 2.0, 7, 14)),
-            canopy: GLCore.createMeshBuffers(gl, EngineMesh.sphere(1, 10, 7, { jitter: 0.28, seed: 9 })),
-            boulder: GLCore.createMeshBuffers(gl, EngineMesh.sphere(1, 9, 6, { jitter: 0.5, seed: 10 }))
-        };
-        const TRS = (x, y, z, sx, sy, sz, ry) => {
-            let m = M.translation(x, y, z);
-            if (ry) m = M.multiply(m, M.rotationY(ry));
-            return M.multiply(m, M.scaling(sx, sy, sz));
+        const geoCache = new Map();
+        let auditBad = 0, auditTris = 0;
+        const buffersFor = (kind, args) => {
+            const key = kind + ':' + args.join(',');
+            if (!geoCache.has(key)) {
+                const mesh = EngineMesh[kind](...args);
+                auditBad += EngineMesh.auditWinding(mesh);
+                auditTris += mesh.indices.length / 3;
+                geoCache.set(key, GLCore.createMeshBuffers(gl, mesh));
+            }
+            return geoCache.get(key);
         };
 
-        // ---- Scene ---------------------------------------------------------------
-        const scene = [];
-        const add = (buf, texture, model) => scene.push({ buf, tex: texture, model });
-        add(lib.terrain, tex.terrain, M.identity());
+        const opaque = [], blended = [];
+        const add = (kind, args, texture, model, blend) =>
+            (blend ? blended : opaque).push({ buf: buffersFor(kind, args), tex: texture, model });
 
-        // small settlement (M0 carry-over, proves buildings sit in the world)
-        add(lib.box, tex.masonry, TRS(0, 2.5, 0, 8, 5, 6));
-        add(lib.box, tex.wood, TRS(0, 5.3, 0, 8.8, 0.6, 6.8));
-        add(lib.tower, tex.masonry, TRS(-11, 3.5, 7, 1, 1, 1));
-        add(lib.cone, tex.wood, TRS(-11, 7.9, 7, 2.4, 1.8, 2.4)); // the M2-bugfix cone, now a roof
+        add('gridPlane', [WORLD, 1, 1], tex.terrain, M.identity());
 
-        // nature scatter (seeded; kept off the settlement)
+        // The whole building roster + a construction site, arranged as a village.
+        const placeBuilding = (type, x, z, ry) => {
+            const world = M.multiply(M.translation(x, 0, z), M.rotationY(ry || 0));
+            const parts = type === '__site' ? EngineBuildings.site(8, 6) : EngineBuildings.parts(type);
+            parts.forEach(p => add(p.kind, p.args, tex[p.tex], M.multiply(world, p.m), p.blend));
+        };
+        placeBuilding('town_center', 0, 0);
+        placeBuilding('house', -22, 10, 0.4);
+        placeBuilding('house', -18, -14, -0.2);
+        placeBuilding('barracks', 22, -8, 0.15);
+        placeBuilding('stable', 18, 16, -0.3);
+        placeBuilding('archery_range', -4, 26);
+        placeBuilding('market', 24, 28, 0.2);
+        placeBuilding('farm', -28, 26);
+        placeBuilding('tower', 14, -28);
+        placeBuilding('temple', -26, -28, 0.1);
+        placeBuilding('wonder', 48, 4);
+        placeBuilding('__site', 2, -42);
+
+        // nature scatter (kept clear of the village)
         const rand = TexGen.rng(SEED + 1);
         const spot = (min, max) => {
             for (let tries = 0; tries < 40; tries++) {
@@ -109,57 +131,77 @@
             }
             return null;
         };
+        const TRS = (x, y, z, sx, sy, sz, ry) => {
+            let m = M.translation(x, y, z);
+            if (ry) m = M.multiply(m, M.rotationY(ry));
+            return M.multiply(m, M.scaling(sx, sy, sz));
+        };
         const tree = (x, z) => {
             const s = 0.85 + rand() * 0.5;
-            add(lib.trunk, tex.bark, TRS(x, 1.2 * s, z, s, s, s, rand() * 6.28));
+            add('disc', [2.2, 14], tex.shadow, TRS(x, 0.05, z, s, 1, s), true);
+            add('cylinder', [0.24, 0.4, 2.4, 7], tex.bark, TRS(x, 1.2 * s, z, s, s, s, rand() * 6.28));
             if (isWinter) {
-                add(lib.cone, tex.foliage, TRS(x, (2.6 + 1.5) * s * 0.8, z, 2.2 * s, 3.4 * s, 2.2 * s));
-                add(lib.cone, tex.foliage, TRS(x, (2.6 + 3.1) * s * 0.8, z, 1.5 * s, 2.4 * s, 1.5 * s));
+                add('cylinder', [0, 1, 1, 8], tex.foliage, TRS(x, 3.1 * s, z, 2.2 * s, 3.4 * s, 2.2 * s));
+                add('cylinder', [0, 1, 1, 8], tex.foliage, TRS(x, 4.6 * s, z, 1.5 * s, 2.4 * s, 1.5 * s));
             } else {
-                add(lib.canopy, tex.foliage, TRS(x, 3.3 * s, z, 1.9 * s, 1.6 * s, 1.9 * s, rand() * 6.28));
+                add('sphere', [1, 10, 7], tex.foliage, TRS(x, 3.3 * s, z, 1.9 * s, 1.6 * s, 1.9 * s, rand() * 6.28));
             }
         };
-        // clustered woods
         const clusters = isDesert ? 4 : 8;
         for (let ci = 0; ci < clusters; ci++) {
-            const c0 = spot(40, LAND_HALF - 60);
+            const c0 = spot(80, LAND_HALF - 60);
             if (!c0) continue;
             const n = isDesert ? 2 + (rand() * 2 | 0) : 3 + (rand() * 4 | 0);
             for (let i = 0; i < n; i++) tree(c0.x + (rand() - 0.5) * 26, c0.z + (rand() - 0.5) * 26);
         }
-        // boulders: plain stone + gold-veined
         for (let i = 0; i < 4; i++) {
-            const p = spot(30, LAND_HALF - 50);
-            if (p) add(lib.boulder, tex.rock, TRS(p.x, 0.9, p.z, 1.7, 1.15, 1.5, rand() * 6.28));
+            const p = spot(70, LAND_HALF - 50);
+            if (p) {
+                add('disc', [2.0, 14], tex.shadow, TRS(p.x, 0.05, p.z, 1, 1, 1), true);
+                add('sphere', [1, 9, 6], tex.rock, TRS(p.x, 0.9, p.z, 1.7, 1.15, 1.5, rand() * 6.28));
+            }
         }
         for (let i = 0; i < 4; i++) {
-            const p = spot(30, LAND_HALF - 50);
-            if (p) add(lib.boulder, tex.gold, TRS(p.x, 0.8, p.z, 1.5, 1.05, 1.4, rand() * 6.28));
+            const p = spot(70, LAND_HALF - 50);
+            if (p) {
+                add('disc', [1.8, 14], tex.shadow, TRS(p.x, 0.05, p.z, 1, 1, 1), true);
+                add('sphere', [1, 9, 6], tex.gold, TRS(p.x, 0.8, p.z, 1.5, 1.05, 1.4, rand() * 6.28));
+            }
         }
-        // berry bushes (fewer in winter/desert)
         const bushes = isWinter ? 3 : (isDesert ? 4 : 6);
         for (let i = 0; i < bushes; i++) {
-            const p = spot(25, LAND_HALF - 60);
-            if (p) add(lib.canopy, tex.berries, TRS(p.x, 0.55, p.z, 1.15, 0.7, 1.15, rand() * 6.28));
+            const p = spot(60, LAND_HALF - 60);
+            if (p) add('sphere', [1, 9, 6], tex.berries, TRS(p.x, 0.55, p.z, 1.15, 0.7, 1.15, rand() * 6.28));
         }
 
         // ---- Locked camera with pan/zoom ----------------------------------------
-        const target = { x: 0, z: 0 };
-        let halfH = 30;
+        const target = { x: 8, z: 0 };
+        let halfH = 38;
         const aspect = W / H;
         const sunDir = M.normalize([-0.35, 0.9, 0.45]);
         const keys = {};
         window.addEventListener('keydown', e => { keys[e.key] = true; });
         window.addEventListener('keyup', e => { keys[e.key] = false; });
 
-        const stats = { frames: 0, glError: -1, theme: THEME, objects: scene.length };
+        const stats = {
+            frames: 0, glError: -1, theme: THEME,
+            opaque: opaque.length, blended: blended.length,
+            auditBadTriangles: auditBad, auditTriangles: auditTris
+        };
         window.__engineStats = stats;
+
+        const drawList = (list) => {
+            for (const obj of list) {
+                gl.bindTexture(gl.TEXTURE_2D, obj.tex);
+                gl.uniformMatrix4fv(prog.uniforms.uModel, false, obj.model);
+                GLCore.drawMesh(gl, prog, obj.buf);
+            }
+        };
 
         let last = 0;
         function renderFrame(t) {
             const dt = Math.min(0.1, (t - last) / 1000 || 0.016);
             last = t;
-            // camera-aligned pan (screen right = world (+x,−z)/√2 at yaw 45°)
             const sp = halfH * 1.4 * dt;
             const R = 0.70710678;
             if (keys.ArrowRight) { target.x += sp * R; target.z -= sp * R; }
@@ -183,11 +225,19 @@
             gl.uniform3f(prog.uniforms.uAmbient, 0.52, 0.55, 0.62);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(prog.uniforms.uTex, 0);
-            for (const obj of scene) {
-                gl.bindTexture(gl.TEXTURE_2D, obj.tex);
-                gl.uniformMatrix4fv(prog.uniforms.uModel, false, obj.model);
-                GLCore.drawMesh(gl, prog, obj.buf);
-            }
+
+            // Pass 1: opaque, lit.
+            gl.uniform1f(prog.uniforms.uUnlit, 0.0);
+            drawList(opaque);
+            // Pass 2: blended contact shadows — unlit darkness, no depth writes.
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+            gl.depthMask(false);
+            gl.uniform1f(prog.uniforms.uUnlit, 1.0);
+            drawList(blended);
+            gl.depthMask(true);
+            gl.disable(gl.BLEND);
+
             stats.frames++;
             stats.glError = gl.getError();
         }
@@ -204,7 +254,6 @@
             }
             return { distinct: seen.size, nonBgFraction: nonBg / (S * S) };
         };
-        // For verification: teleport the camera + zoom without keyboard input.
         stats.look = (x, z, hh) => { target.x = x; target.z = z; if (hh) halfH = hh; renderFrame(last + 16); };
 
         renderFrame(0); renderFrame(16); renderFrame(32);

@@ -8,12 +8,11 @@
         const gl = canvas.getContext('webgl', Object.assign({ antialias: true }, opts || {}));
         if (!gl) throw new Error('WebGL not available');
         gl.enable(gl.DEPTH_TEST);
-        // Back-face culling stays OFF for now: depth testing renders our closed
-        // primitives correctly regardless of winding, and the M0 screenshot
-        // proved mixed winding in the first builders (culled pyramid sides,
-        // inside-out tower silhouette). Revisit with a winding audit once the
-        // real building/unit builders land (M2) — then flip culling on for the
-        // fill-rate win.
+        // Back-face culling is ON since the M2 winding audit: every builder's
+        // triangle winding provably agrees with its outward normals
+        // (EngineMesh.auditWinding returns 0 for the whole library).
+        gl.enable(gl.CULL_FACE);
+        gl.cullFace(gl.BACK);
         return gl;
     };
 

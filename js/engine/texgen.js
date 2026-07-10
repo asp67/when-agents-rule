@@ -295,6 +295,153 @@
         return c;
     };
 
+    // Thatch: layered straw courses with ragged row shadows — house/farm roofs.
+    TexGen.thatch = (seed = 8, size = 128) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [186, 152, 88], [
+            { noise: TexGen.valueNoise(size, 12, rand), amp: 20 }
+        ]);
+        const rows = 7, rh = size / rows;
+        for (let r = 0; r < rows; r++) {
+            const y = r * rh;
+            // straw strokes
+            for (let i = 0; i < 60; i++) {
+                const x = rand() * size;
+                const v = 150 + rand() * 70;
+                ctx.strokeStyle = `rgba(${v | 0},${(v * 0.8) | 0},${(v * 0.42) | 0},0.5)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(x, y + 1 + rand() * 2);
+                ctx.lineTo(x + (rand() - 0.5) * 4, y + rh - 1);
+                ctx.stroke();
+            }
+            // course shadow (baked AO under each layer)
+            ctx.fillStyle = 'rgba(74,52,24,0.4)';
+            ctx.fillRect(0, y + rh - 2.2, size, 2.2);
+            ctx.fillStyle = 'rgba(255,230,160,0.16)';
+            ctx.fillRect(0, y, size, 1.6);
+        }
+        return c;
+    };
+
+    // Roof tiles: scalloped terracotta rows with per-tile tint and row shade.
+    TexGen.rooftile = (seed = 9, size = 128) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [172, 96, 66], [
+            { noise: TexGen.valueNoise(size, 14, rand), amp: 14 }
+        ]);
+        const rows = 6, rh = size / rows, tiles = 8, tw = size / tiles;
+        for (let r = 0; r < rows; r++) {
+            const y = r * rh;
+            const off = (r % 2) * (tw / 2);
+            for (let i = -1; i <= tiles; i++) {
+                const x = i * tw + off;
+                const tint = (rand() - 0.5) * 28;
+                ctx.fillStyle = `rgba(${clamp255(176 + tint)},${clamp255(98 + tint * 0.7)},${clamp255(64 + tint * 0.5)},0.75)`;
+                ctx.beginPath();
+                ctx.arc(x + tw / 2, y + rh, tw / 2 - 0.6, Math.PI, 0);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(84,40,26,0.55)';
+                ctx.lineWidth = 1.1;
+                ctx.stroke();
+            }
+            ctx.fillStyle = 'rgba(70,32,20,0.35)';
+            ctx.fillRect(0, y + rh - 1.6, size, 1.6);
+        }
+        return c;
+    };
+
+    // Plaster: warm whitewash with hairline cracks and a strong vertical baked-AO
+    // gradient (lit near the eaves, grounded at the footing).
+    TexGen.plaster = (seed = 10, size = 128) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [226, 214, 192], [
+            { noise: TexGen.valueNoise(size, 9, rand), amp: 12 },
+            { noise: TexGen.valueNoise(size, 30, rand), amp: 7 }
+        ]);
+        for (let i = 0; i < 6; i++) {
+            let x = rand() * size, y = rand() * size * 0.6;
+            ctx.strokeStyle = 'rgba(120,104,84,0.35)';
+            ctx.lineWidth = 0.7;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            for (let s = 0; s < 3; s++) { x += (rand() - 0.5) * 18; y += 8 + rand() * 14; ctx.lineTo(x, y); }
+            ctx.stroke();
+        }
+        // baked AO: light wash at the top, earthy grounding at the bottom
+        let g = ctx.createLinearGradient(0, 0, 0, size);
+        g.addColorStop(0, 'rgba(255,248,230,0.16)');
+        g.addColorStop(0.75, 'rgba(0,0,0,0)');
+        g.addColorStop(1, 'rgba(88,70,50,0.38)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, size, size);
+        return c;
+    };
+
+    // Market awning: bold striped cloth with fabric grain and sag shading.
+    TexGen.awning = (seed = 11, colA = [196, 60, 60], colB = [232, 222, 200], size = 128) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        const stripes = 8, sw = size / stripes;
+        for (let i = 0; i < stripes; i++) {
+            const col = i % 2 === 0 ? colA : colB;
+            ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+            ctx.fillRect(i * sw, 0, sw, size);
+        }
+        // fabric grain + sag shadows
+        for (let i = 0; i < size * 4; i++) {
+            ctx.fillStyle = `rgba(60,40,30,${0.04 + rand() * 0.05})`;
+            ctx.fillRect(rand() * size, rand() * size, 1.5, 1);
+        }
+        const g = ctx.createLinearGradient(0, 0, 0, size);
+        g.addColorStop(0, 'rgba(255,255,255,0.14)');
+        g.addColorStop(1, 'rgba(60,30,20,0.22)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, size, size);
+        return c;
+    };
+
+    // Tilled field: dark furrow rows with young sprout lines.
+    TexGen.field = (seed = 12, size = 128) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [126, 96, 60], [
+            { noise: TexGen.valueNoise(size, 16, rand), amp: 16 }
+        ]);
+        const rows = 9, rh = size / rows;
+        for (let r = 0; r < rows; r++) {
+            const y = r * rh + rh / 2;
+            ctx.fillStyle = 'rgba(66,46,26,0.55)';
+            ctx.fillRect(0, y - 1.6, size, 3.2);
+            ctx.fillStyle = 'rgba(210,180,130,0.18)';
+            ctx.fillRect(0, y - 3.2, size, 1.4);
+            // sprouts along the furrow
+            for (let i = 0; i < 26; i++) {
+                const x = rand() * size;
+                const v = 110 + rand() * 70;
+                ctx.fillStyle = `rgba(${(v * 0.5) | 0},${v | 0},${(v * 0.38) | 0},0.8)`;
+                ctx.fillRect(x, y - 3 - rand() * 2.4, 1.4, 3 + rand() * 2.4);
+            }
+        }
+        return c;
+    };
+
+    // Soft round contact shadow (real alpha) — the blob that grounds buildings
+    // and units on any terrain. Drawn blended, not lit.
+    TexGen.shadowBlob = (size = 128) => {
+        const c = canvas(size), ctx = c.getContext('2d');
+        const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size / 2);
+        g.addColorStop(0, 'rgba(10,10,16,0.5)');
+        g.addColorStop(0.7, 'rgba(10,10,16,0.32)');
+        g.addColorStop(1, 'rgba(10,10,16,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, size, size);
+        return c;
+    };
+
     // ---- Terrain mega-texture ---------------------------------------------------
     // One big canvas covering the whole map (classic pre-baked look): deep water
     // at the rim, a noise-wobbled coastline, wet + dry beach bands, then the

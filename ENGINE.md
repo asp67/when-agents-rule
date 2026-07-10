@@ -47,11 +47,13 @@ built behind it, `main` stays on Three.js until the swap milestone.
   UV'd primitives + locked-camera demo scene, verified end to end.
 - **M1 — terrain**: splatted ground (grass/dirt/sand by noise + theme),
   shorelines, resource-node meshes, per-theme palettes.
-- **M2 — buildings**: textured builders for all building types with baked AO;
-  construction-site state. Includes purpose-built pyramid/prism roof meshes
-  (the M0 cone-as-pyramid hack exposed an apex-face bug in the cylinder
-  builder for rTop=0 — fix or supersede it here) and a winding audit so
-  back-face culling can be switched on.
+- **M2 — buildings (done)**: EngineBuildings composes every building type from
+  primitives + painted materials (plaster/thatch/rooftile/awning/field with
+  baked AO), each grounded by a blended contact-shadow disc; generic
+  construction site (plinth, waist walls, scaffold). New purpose-built roof
+  and tier meshes (pyramid, gabled prism, rectangular frustum, disc). The
+  winding audit (EngineMesh.auditWinding) passes 0-bad across the whole
+  library and back-face culling is ON.
 - **M3 — units**: composed primitives, team-color masking, walk/harvest/attack
   cosmetic animation, health bars (billboards).
 - **M4 — integration**: implement the renderer API on the new engine — fog
