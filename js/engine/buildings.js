@@ -14,7 +14,7 @@
         if (t.rx) m = m3.multiply(m, m3.rotationX(t.rx));
         if (t.rz) m = m3.multiply(m, m3.rotationZ(t.rz));
         if (t.sx || t.sy || t.sz) m = m3.multiply(m, m3.scaling(t.sx || 1, t.sy || 1, t.sz || 1));
-        arr.push({ kind, args, tex, m, blend: !!t.blend, key: kind + ':' + args.join(',') });
+        arr.push({ kind, args, tex, m, blend: !!t.blend, team: !!t.team, key: kind + ':' + args.join(',') });
     };
     const shadow = (arr, r) => part(arr, 'disc', [r, 18], 'shadow', { y: 0.06, blend: true });
 
@@ -24,6 +24,36 @@
     // proper crop rows; IRON = stone houses, stone towers, a small castle TC
     // and a fenced, organized farm.
     const ageOf = (o) => (o && o.age) || 'stone';
+    const civOf = (o) => (o && o.civ) || null;
+    const TIER = { stone: 0, neolithic: 1, bronze: 2, iron: 3 };
+
+    // Cultural entrance trim, from bronze on (earlier eras carry only tiny
+    // markers — cultures diverge as they mature). Facade faces +Z at `z`.
+    // egyptian: battered pylon posts + gold lintel; greek: columned porch with
+    // a pediment; yamato: a torii gate one step out (team-tinted beam);
+    // persian: a glazed team-color lintel band.
+    const doorTrim = (p, civ, tier, z, doorW = 1.4, doorH = 2.0, x = 0) => {
+        if (!civ || tier < 2) return;
+        if (civ === 'egyptian') {
+            const px = doorW / 2 + 0.45;
+            part(p, 'frustum', [0.66, 0.5, 0.4, 0.32, doorH + 0.3], 'masonry', { x: x - px, z });
+            part(p, 'frustum', [0.66, 0.5, 0.4, 0.32, doorH + 0.3], 'masonry', { x: x + px, z });
+            part(p, 'box', [doorW + 1.9, 0.28, 0.5], 'gold', { x, y: doorH + 0.45, z });
+        } else if (civ === 'greek') {
+            const px = doorW / 2 + 0.42;
+            part(p, 'cylinder', [0.16, 0.19, doorH + 0.2, 8], 'plaster', { x: x - px, y: (doorH + 0.2) / 2, z });
+            part(p, 'cylinder', [0.16, 0.19, doorH + 0.2, 8], 'plaster', { x: x + px, y: (doorH + 0.2) / 2, z });
+            part(p, 'prism', [doorW + 1.7, 0.7, 0.9], 'plaster', { x, y: doorH + 0.28, z: z - 0.12 });
+        } else if (civ === 'yamato') {
+            const px = doorW / 2 + 0.55, tz = z + 1.15, th = doorH + 0.7;
+            part(p, 'cylinder', [0.09, 0.11, th, 5], 'bark', { x: x - px, y: th / 2, z: tz });
+            part(p, 'cylinder', [0.09, 0.11, th, 5], 'bark', { x: x + px, y: th / 2, z: tz });
+            part(p, 'box', [doorW + 2.3, 0.17, 0.22], 'cloth', { x, y: th + 0.06, z: tz, team: true });
+            if (tier >= 3) part(p, 'box', [doorW + 1.5, 0.13, 0.16], 'wood', { x, y: th - 0.42, z: tz });
+        } else if (civ === 'persian') {
+            part(p, 'box', [doorW + 1.6, 0.3, 0.24], 'cloth', { x, y: doorH + 0.32, z, team: true });
+        }
+    };
 
     // Teepee: hide cone + poles poking out the apex + door flap.
     const teepee = (p, r, h, poles) => {
@@ -50,14 +80,38 @@
         town_center: (o = {}) => {
             const p = [];
             const age = ageOf(o);
+            const civ = civOf(o);
+            const tier = TIER[age] || 0;
             shadow(p, 8.2);
             if (age === 'stone') {
-                // Big Teepee: an oversized hide tent with a patterned base band.
+                // Big Teepee — near-universal; cultures show only a tiny marker.
                 teepee(p, 5.2, 7.6, 5);
-                part(p, 'cylinder', [4.35, 4.7, 0.9, 10], 'awning', { y: 0.75 });
+                part(p, 'cylinder', [4.35, 4.7, 0.9, 10], civ === 'persian' ? 'cloth' : 'awning',
+                    { y: 0.75, team: civ === 'persian' }); // Persia dyes the band its own color
+                if (civ === 'egyptian') { // a votive gold pot by the flap
+                    part(p, 'sphere', [1, 8, 6], 'gold', { x: 1.9, y: 0.24, z: 4.6, sx: 0.24, sy: 0.24, sz: 0.24 });
+                }
+                if (civ === 'greek') { // whitewashed threshold stones
+                    part(p, 'sphere', [1, 8, 6], 'plaster', { x: -1.8, y: 0.2, z: 4.7, sx: 0.3, sy: 0.2, sz: 0.3 });
+                    part(p, 'sphere', [1, 8, 6], 'plaster', { x: -2.4, y: 0.16, z: 4.3, sx: 0.22, sy: 0.16, sz: 0.22 });
+                }
+                if (civ === 'yamato') { // shimenawa-like rope ring around the tent
+                    part(p, 'cylinder', [3.72, 3.72, 0.16, 10], 'bark', { y: 2.3 });
+                }
             } else if (age === 'neolithic') {
-                // Community dome hut.
+                // Community dome hut + the first small trait at the entrance.
                 domeHut(p, 4.9, 2.2, 'thatch');
+                if (civ === 'egyptian') part(p, 'box', [1.7, 0.24, 0.3], 'gold', { y: 2.1, z: 4.8 });
+                if (civ === 'greek') {
+                    part(p, 'cylinder', [0.12, 0.15, 1.9, 7], 'plaster', { x: -1.05, y: 0.95, z: 4.75 });
+                    part(p, 'cylinder', [0.12, 0.15, 1.9, 7], 'plaster', { x: 1.05, y: 0.95, z: 4.75 });
+                }
+                if (civ === 'yamato') { // a first small torii
+                    part(p, 'cylinder', [0.08, 0.1, 2.1, 5], 'bark', { x: -1.1, y: 1.05, z: 5.7 });
+                    part(p, 'cylinder', [0.08, 0.1, 2.1, 5], 'bark', { x: 1.1, y: 1.05, z: 5.7 });
+                    part(p, 'box', [3.0, 0.15, 0.2], 'cloth', { y: 2.16, z: 5.7, team: true });
+                }
+                if (civ === 'persian') part(p, 'cylinder', [4.66, 4.94, 0.34, 12], 'cloth', { y: 1.95, team: true });
             } else if (age === 'bronze') {
                 // Longhouse: a long timber hall under a big thatch gable.
                 part(p, 'frustum', [11, 8, 10.4, 7.4, 0.6], 'masonry');
@@ -65,8 +119,21 @@
                 part(p, 'prism', [10.6, 6.4, 2.8], 'thatch', { y: 3.8 });
                 part(p, 'box', [10.6, 0.22, 0.22], 'bark', { y: 6.6 });
                 part(p, 'box', [1.8, 2.2, 0.3], 'bark', { y: 1.7, z: 3.32 });
+                doorTrim(p, civ, tier, 3.15, 1.8, 2.3);
+                if (civ === 'yamato') { // crossed ridge finials (chigi) at the gable ends
+                    [-5.0, 5.0].forEach(x => {
+                        part(p, 'box', [0.12, 1.0, 0.12], 'bark', { x, y: 6.7, rz: 0.45 });
+                        part(p, 'box', [0.12, 1.0, 0.12], 'bark', { x, y: 6.7, rz: -0.45 });
+                    });
+                }
+                if (civ === 'persian') { // stepped merlons along the plinth facade
+                    for (let i = 0; i < 5; i++) {
+                        part(p, 'box', [0.6, 0.45, 0.4], 'masonry', { x: -4.4 + i * 2.2, y: 0.82, z: 3.55 });
+                    }
+                }
             } else {
-                // Iron: a small castle — keep, corner turrets, tiled caps.
+                // Iron: a small castle — keep, corner turrets, tiled caps, and the
+                // culture in full voice.
                 part(p, 'frustum', [11, 11, 9.8, 9.8, 0.9], 'masonry');
                 part(p, 'box', [8.2, 3.6, 8.2], 'masonry', { y: 2.7 });
                 [[-4.1, -4.1], [4.1, -4.1], [4.1, 4.1], [-4.1, 4.1]].forEach(([x, z]) => {
@@ -74,18 +141,35 @@
                     part(p, 'cylinder', [0, 1.15, 1.5, 8], 'rooftile', { x, y: 5.95, z });
                 });
                 part(p, 'box', [3.6, 2.6, 3.6], 'masonry', { y: 5.8 });
-                part(p, 'pyramid', [4.2, 4.2, 1.6], 'rooftile', { y: 7.1 });
+                if (civ === 'persian') {
+                    // a pointed team-glazed dome crowns the keep instead of tiles
+                    part(p, 'cylinder', [1.5, 1.7, 0.9, 9], 'cloth', { y: 7.55, team: true });
+                    part(p, 'cylinder', [0, 1.5, 1.6, 9], 'cloth', { y: 8.75, team: true });
+                    part(p, 'sphere', [1, 8, 6], 'gold', { y: 9.7, sx: 0.26, sy: 0.26, sz: 0.26 });
+                } else {
+                    part(p, 'pyramid', [4.2, 4.2, 1.6], 'rooftile', { y: 7.1 });
+                    part(p, 'pyramid', [1.6, 1.6, 1.1], 'gold', { y: 8.7 }); // iron finial
+                }
                 part(p, 'box', [1.9, 2.2, 0.3], 'wood', { y: 1.9, z: 4.12 });
-                part(p, 'pyramid', [1.6, 1.6, 1.1], 'gold', { y: 8.7 }); // iron finial
+                doorTrim(p, civ, tier, 4.25, 1.9, 2.3);
+                if (civ === 'egyptian') { // an obelisk in the yard
+                    part(p, 'frustum', [0.75, 0.75, 0.36, 0.36, 3.9], 'masonry', { x: 6.5, z: 3.2 });
+                    part(p, 'pyramid', [0.44, 0.44, 0.6], 'gold', { x: 6.5, y: 3.9, z: 3.2 });
+                }
+                if (civ === 'yamato') { // wide layered eave skirt around the keep base
+                    part(p, 'pyramid', [10.4, 10.4, 1.1], 'rooftile', { y: 4.35 });
+                }
             }
             return p;
         },
         house: (o = {}) => {
             const p = [];
             const age = ageOf(o);
+            const civ = civOf(o);
+            const tier = TIER[age] || 0;
             shadow(p, 4.4);
             if (age === 'stone') {
-                teepee(p, 2.6, 4.3, 4);
+                teepee(p, 2.6, 4.3, 4); // universal — culture hasn't reached the hearth yet
             } else if (age === 'neolithic') {
                 domeHut(p, 2.5, 1.4, 'leather');
             } else if (age === 'bronze') {
@@ -94,11 +178,25 @@
                     part(p, 'box', [0.26, 2.3, 0.26], 'bark', { x, y: 1.15, z }));
                 part(p, 'prism', [5.2, 4.6, 1.9], 'thatch', { y: 2.2 });
                 part(p, 'box', [1.1, 1.5, 0.22], 'bark', { y: 0.75, z: 1.96 });
+                doorTrim(p, civ, tier, 2.0, 1.1, 1.6);
+                if (civ === 'yamato') {
+                    [-2.55, 2.55].forEach(x => {
+                        part(p, 'box', [0.1, 0.7, 0.1], 'bark', { x, y: 4.15, rz: 0.45 });
+                        part(p, 'box', [0.1, 0.7, 0.1], 'bark', { x, y: 4.15, rz: -0.45 });
+                    });
+                }
             } else {
                 part(p, 'box', [4.9, 0.5, 4.5], 'masonry', { y: 0.25 }); // plinth
                 part(p, 'box', [4.6, 2.5, 4.2], 'plaster', { y: 1.65 });
                 part(p, 'box', [1.2, 1.7, 0.25], 'wood', { y: 1.15, z: 2.16 });
                 part(p, 'prism', [5.6, 5.0, 2.0], 'rooftile', { y: 2.9 });
+                doorTrim(p, civ, tier, 2.3, 1.2, 1.8);
+                if (civ === 'yamato') {
+                    [-2.75, 2.75].forEach(x => {
+                        part(p, 'box', [0.1, 0.7, 0.1], 'bark', { x, y: 4.95, rz: 0.45 });
+                        part(p, 'box', [0.1, 0.7, 0.1], 'bark', { x, y: 4.95, rz: -0.45 });
+                    });
+                }
             }
             return p;
         },
@@ -164,6 +262,7 @@
                 part(p, 'box', [2.4, 0.14, 1.5], 'awning', { x: 1.6, y: 2.35, z: 3.2, rx: 0.35 });
                 part(p, 'box', [0.8, 0.8, 0.8], 'wood', { x: 2.6, y: 0.4, z: 3.7 });
                 part(p, 'cylinder', [0.4, 0.4, 0.9, 8], 'bark', { x: -2.7, y: 0.45, z: 3.8 });
+                doorTrim(p, civOf(o), 3, 2.62, 1.4, 1.9);
             }
             return p;
         },
@@ -228,23 +327,43 @@
                 part(p, 'box', [3.1, 0.3, 3.1], 'wood', { y: 5.75 });
                 part(p, 'pyramid', [3.4, 3.4, 1.5], 'thatch', { y: 5.9 });
                 part(p, 'box', [0.4, 1.1, 0.2], 'bark', { y: 3.7, z: 1.22 });
+                const civB = civOf(o);
+                if (civB === 'egyptian') part(p, 'box', [2.7, 0.2, 2.7], 'gold', { y: 5.52 });
+                if (civB === 'greek') part(p, 'box', [2.7, 0.24, 2.7], 'plaster', { y: 5.52 });
+                if (civB === 'persian') part(p, 'box', [2.7, 0.24, 2.7], 'cloth', { y: 5.52, team: true });
+                if (civB === 'yamato') part(p, 'pyramid', [4.0, 4.0, 0.6], 'thatch', { y: 5.45 }); // second eave layer
             } else {
                 // Iron: solid stone sentinel with a tiled cap.
                 part(p, 'frustum', [3.6, 3.6, 2.7, 2.7, 6.5], 'masonry');
                 part(p, 'box', [3.4, 0.7, 3.4], 'masonry', { y: 6.85 });
                 part(p, 'pyramid', [3.9, 3.9, 1.7], 'rooftile', { y: 7.2 });
                 part(p, 'box', [0.5, 1.3, 0.22], 'bark', { y: 4.6, z: 1.62 });
+                const civI = civOf(o);
+                if (civI === 'egyptian') part(p, 'box', [3.0, 0.22, 3.0], 'gold', { y: 6.62 });
+                if (civI === 'greek') part(p, 'box', [3.0, 0.26, 3.0], 'plaster', { y: 6.62 });
+                if (civI === 'persian') part(p, 'box', [3.0, 0.26, 3.0], 'cloth', { y: 6.62, team: true });
+                if (civI === 'yamato') part(p, 'pyramid', [4.6, 4.6, 0.65], 'rooftile', { y: 6.55 }); // layered eaves
             }
             return p;
         },
-        temple: () => {
+        temple: (o = {}) => {
             const p = [];
+            const civ = civOf(o);
             shadow(p, 6.8);
             part(p, 'frustum', [8, 7, 7.4, 6.4, 0.8], 'masonry');
             part(p, 'box', [5.6, 3.0, 4.6], 'plaster', { y: 2.3 });
             [-2.4, -0.8, 0.8, 2.4].forEach(x =>
                 part(p, 'cylinder', [0.26, 0.3, 3.0, 8], 'plaster', { x, y: 2.3, z: 2.85 }));
             part(p, 'prism', [8, 6.6, 2.2], 'rooftile', { y: 3.8 });
+            // The colonnade is already Greece's voice; the others add their own.
+            if (civ === 'egyptian') {
+                part(p, 'box', [4.2, 0.3, 0.5], 'gold', { y: 4.0, z: 2.9 });
+                part(p, 'sphere', [1, 8, 6], 'gold', { x: 2.9, y: 0.3, z: 4.1, sx: 0.28, sy: 0.28, sz: 0.28 });
+            } else if (civ === 'yamato') {
+                doorTrim(p, 'yamato', 3, 4.0, 2.6, 2.6);
+            } else if (civ === 'persian') {
+                part(p, 'box', [5.8, 0.3, 0.24], 'cloth', { y: 3.65, z: 2.36, team: true });
+            }
             return p;
         },
         wonder: () => {

@@ -384,13 +384,13 @@
             } else {
                 const type = building.isWonder ? 'wonder'
                     : (EngineBuildings.TYPES.indexOf(building.type) >= 0 ? building.type : 'house');
-                parts = EngineBuildings.parts(type, { age: building.age });
+                parts = EngineBuildings.parts(type, { age: building.age, civ: building.civilization });
             }
             const eb = { opaque: [], blended: [], shell: null, world };
             parts.forEach((p, i) => {
                 const entry = {
                     buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
-                    tint: this.WHITE,
+                    tint: p.team ? tint : this.WHITE, // cultural trim in the player color
                     model: m3.multiply(world, p.m), base: p.m
                 };
                 if (i === shellIdx) { entry.tint = tint; eb.shell = entry; }
