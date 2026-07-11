@@ -217,7 +217,10 @@
                 halfH: this._halfH,
                 halfW: this._halfH * aspect,
                 tanHalf, aspect, dist,
-                proj: m3.perspective(FOVY, aspect, Math.max(2, dist - 700), dist + 1100)
+                // Generous clip slack: at low pitch the visible ground stretches far
+                // past the look-at point (and close under the eye) — the tighter
+                // planes made units pop out of sight at the frame edges.
+                proj: m3.perspective(FOVY, aspect, Math.max(2, dist - 1400), dist + 2200)
             };
             return this._cam;
         }
