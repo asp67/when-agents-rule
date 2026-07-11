@@ -2847,21 +2847,22 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. ${msg} Once it appears in "resourcesOnMap", call assign_workers again. Don't keep re-issuing it meanwhile.`;
         }
 
-        // Candidates: any worker that is not currently a builder, preferring those
-        // NOT already harvesting this resource type.
+        // Candidates in fairness order: IDLE workers first (free labor — never
+        // disturb the economy while unused hands stand around); then gatherers
+        // on OTHER resources; workers already harvesting the requested type come
+        // last (moving them is a near no-op). Builders are never touched.
         const candidates = ai.units.filter(u => u.type === 'worker' && u.task !== 'building' && !u.isBuilding);
         if (candidates.length === 0) {
             return `[ERROR] You have no workers to reassign. Train workers first.`;
         }
-        candidates.sort((a, b) => {
-            const aOn = (a.harvestTarget && a.harvestTarget.type === resourceType) ? 1 : 0;
-            const bOn = (b.harvestTarget && b.harvestTarget.type === resourceType) ? 1 : 0;
-            return aOn - bOn;
-        });
+        const rank = u => game.isIdleWorker(u) ? 0
+            : ((u.harvestTarget && u.harvestTarget.type === resourceType) ? 2 : 1);
+        candidates.sort((a, b) => rank(a) - rank(b));
 
-        let moved = 0;
+        let moved = 0, idleUsed = 0;
         for (const w of candidates) {
             if (moved >= count) break;
+            if (game.isIdleWorker(w)) idleUsed++;
             if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
             w.farmRef = null;
             w._formerTask = null;
@@ -2877,7 +2878,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             w.harvestAmount = 0;
             moved++;
         }
-        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType}.`;
+        const pulled = moved - idleUsed;
+        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} (${idleUsed} idle, ${pulled} pulled off other work).`;
     }
 
     // Put workers on fixing a damaged own building (free; uses the build task's

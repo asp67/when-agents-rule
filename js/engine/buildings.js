@@ -327,27 +327,80 @@
             }
             return p;
         },
-        stable: () => {
+        stable: (o = {}) => {
             const p = [];
+            const age = ageOf(o);
             shadow(p, 6.2);
-            part(p, 'box', [7, 2.6, 5], 'wood', { y: 1.3 });
-            part(p, 'prism', [7.8, 5.8, 1.9], 'thatch', { y: 2.6 });
-            // corral rail
-            part(p, 'cylinder', [0.09, 0.11, 1.1, 5], 'bark', { x: -2.2, y: 0.55, z: 3.6 });
-            part(p, 'cylinder', [0.09, 0.11, 1.1, 5], 'bark', { x: 0, y: 0.55, z: 3.6 });
-            part(p, 'cylinder', [0.09, 0.11, 1.1, 5], 'bark', { x: 2.2, y: 0.55, z: 3.6 });
-            part(p, 'box', [4.8, 0.16, 0.16], 'wood', { y: 0.95, z: 3.6 });
+            const corral = (z = 3.6) => { // shared hitching rail
+                [-2.2, 0, 2.2].forEach(x =>
+                    part(p, 'cylinder', [0.09, 0.11, 1.1, 5], 'bark', { x, y: 0.55, z }));
+                part(p, 'box', [4.8, 0.16, 0.16], 'wood', { y: 0.95, z });
+            };
+            if (age === 'stone') {
+                // Hitching camp: a hide lean-to, the rail, and a water trough.
+                part(p, 'prism', [6.0, 4.6, 2.4], 'leather', { y: 0, x: -0.6 });
+                part(p, 'box', [6.4, 0.16, 0.16], 'bark', { x: -0.6, y: 2.42 });
+                corral();
+                part(p, 'box', [1.5, 0.4, 0.7], 'bark', { x: 2.9, y: 0.2, z: 2.2 });
+            } else if (age === 'neolithic') {
+                // Log stable under thatch, corral out front.
+                part(p, 'box', [6.6, 2.2, 4.6], 'wood', { y: 1.1 });
+                part(p, 'box', [6.76, 0.2, 4.76], 'bark', { y: 0.85 });
+                part(p, 'prism', [7.4, 5.4, 1.8], 'thatch', { y: 2.2 });
+                corral();
+            } else if (age === 'bronze') {
+                // Timber stable with hay and trough (the classic look).
+                part(p, 'box', [7, 2.6, 5], 'wood', { y: 1.3 });
+                part(p, 'prism', [7.8, 5.8, 1.9], 'thatch', { y: 2.6 });
+                corral();
+                part(p, 'cylinder', [0.5, 0.5, 0.9, 8], 'thatch', { x: 4.3, y: 0.5, z: 1.6, rx: Math.PI / 2 }); // hay bale
+                part(p, 'box', [1.5, 0.4, 0.7], 'bark', { x: 4.4, y: 0.2, z: -0.6 });
+            } else {
+                // Iron: masonry stable under fired tile, full yard.
+                part(p, 'box', [7, 2.6, 5], 'masonry', { y: 1.3 });
+                part(p, 'box', [1.9, 1.9, 0.28], 'wood', { y: 0.95, z: 2.55 });
+                part(p, 'prism', [7.8, 5.8, 2.0], 'rooftile', { y: 2.6 });
+                corral();
+                part(p, 'cylinder', [0.5, 0.5, 0.9, 8], 'thatch', { x: 4.3, y: 0.5, z: 1.6, rx: Math.PI / 2 });
+                part(p, 'box', [1.5, 0.4, 0.7], 'bark', { x: 4.4, y: 0.2, z: -0.6 });
+            }
             return p;
         },
-        archery_range: () => {
+        archery_range: (o = {}) => {
             const p = [];
+            const age = ageOf(o);
             shadow(p, 5.8);
-            part(p, 'box', [6, 2.4, 5], 'masonry', { y: 1.2 });
-            part(p, 'pyramid', [7, 6, 2.2], 'thatch', { y: 2.4 });
-            // practice frame off to the side
-            part(p, 'cylinder', [0.1, 0.12, 2.2, 5], 'bark', { x: 4.4, y: 1.1, z: 1.2 });
-            part(p, 'cylinder', [0.1, 0.12, 2.2, 5], 'bark', { x: 4.4, y: 1.1, z: -1.2 });
-            part(p, 'box', [0.16, 0.16, 2.8], 'wood', { x: 4.4, y: 2.1 });
+            const target = (x = 4.4) => { // ringed target on a post — the range's signature
+                part(p, 'cylinder', [0.1, 0.12, 2.2, 5], 'bark', { x, y: 1.1 });
+                part(p, 'cylinder', [0.75, 0.75, 0.1, 12], 'plaster', { x, y: 2.5, z: 0.06, rx: Math.PI / 2 });
+                part(p, 'cylinder', [0.48, 0.48, 0.1, 12], 'awning', { x, y: 2.5, z: 0.12, rx: Math.PI / 2 });
+                part(p, 'cylinder', [0.2, 0.2, 0.1, 10], 'gold', { x, y: 2.5, z: 0.18, rx: Math.PI / 2 });
+            };
+            if (age === 'stone') {
+                // Practice ground: a hide shelter and the target — no hall yet.
+                part(p, 'prism', [5.2, 4.2, 2.2], 'leather', { y: 0, x: -1.2 });
+                part(p, 'box', [5.6, 0.15, 0.15], 'bark', { x: -1.2, y: 2.22 });
+                target(3.8);
+                part(p, 'cylinder', [0.05, 0.05, 2.4, 4], 'bark', { x: -3.9, y: 1.2, z: 2.2, rz: 0.3 }); // leaning bow staves
+                part(p, 'cylinder', [0.05, 0.05, 2.4, 4], 'bark', { x: -4.1, y: 1.2, z: 2.0, rz: -0.25 });
+            } else if (age === 'neolithic') {
+                // Log cabin range under thatch.
+                part(p, 'box', [5.6, 2.2, 4.6], 'wood', { y: 1.1 });
+                part(p, 'box', [5.76, 0.2, 4.76], 'bark', { y: 0.85 });
+                part(p, 'pyramid', [6.6, 5.6, 2.0], 'thatch', { y: 2.2 });
+                target();
+            } else if (age === 'bronze') {
+                // Timber range hall.
+                part(p, 'box', [6, 2.4, 5], 'wood', { y: 1.2 });
+                part(p, 'pyramid', [7, 6, 2.2], 'thatch', { y: 2.4 });
+                target();
+            } else {
+                // Iron: masonry hall under fired tile.
+                part(p, 'box', [6, 2.4, 5], 'masonry', { y: 1.2 });
+                part(p, 'box', [1.7, 1.8, 0.28], 'wood', { y: 0.9, z: 2.55 });
+                part(p, 'pyramid', [7, 6, 2.2], 'rooftile', { y: 2.4 });
+                target();
+            }
             return p;
         },
         market: (o = {}) => {
