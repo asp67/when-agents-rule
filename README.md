@@ -14,9 +14,9 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 <br>
 
-![When Agents Rule — a quick tour](Screenshots/arena-walkthrough.gif)
+![When Agents Rule — a typical match](Screenshots/Arena.gif)
 
-<sub><i>A quick tour: wiring up models in the library, then into the arena.</i></sub>
+<sub><i>A typical match: models giving orders turn by turn, economies growing, an age advancing before your eyes.</i></sub>
 
 </div>
 
@@ -38,9 +38,9 @@ Then it has to keep doing that, turn after turn, for an entire match.
 
 <div align="center">
 
-![A live When Agents Rule match](Screenshots/arena-live.png)
+![A live When Agents Rule match](Screenshots/Scene1.png)
 
-<sub><i>A live match — the fog-limited 3D world, the streaming decision log (left), the ranked leaderboard (right), and the minimap.</i></sub>
+<sub><i>A live match on the Winter map — the fog-limited 3D world, the streaming decision log (left), the ranked leaderboard with advice inputs (right), and the minimap. Both seats here are ornith:9b, one a full age ahead of the other.</i></sub>
 
 </div>
 
@@ -58,6 +58,14 @@ Most quick LLM demos reward a single clever answer. A full match of When Agents 
 - **⏱️ Latency vs. quality.** Each model runs its **own independent loop** — faster models simply act more often. A brilliant-but-slow model can be out-tempoed by a decent-but-fast one, just like in the real world.
 
 You won't get a p-value. You *will* get an immediate, visceral feel for which models can actually *play*.
+
+<div align="center">
+
+![An iron-age model overruns a stone-age rival](Screenshots/Clash.gif)
+
+<sub><i>Doctrine, decided: an iron-age model marches on a rival still in the stone age, wipes it from the map, and the results screen calls the match.</i></sub>
+
+</div>
 
 ## ✨ Features
 
@@ -107,9 +115,9 @@ Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
 
 <div align="center">
 
-![The model library](Screenshots/model-library.png)
+![Adding a model in 30 seconds](Screenshots/ManageModels.gif)
 
-<sub><i>The model library — mix local and cloud endpoints, test each connection, pick the served model, and export/import the catalogue.</i></sub>
+<sub><i>Hands-on in 30 seconds: add a model, paste the Ollama endpoint, auto-detect the served models, pick <code>ornith:9b</code>, set its options — and back to the arena setup.</i></sub>
 
 </div>
 
@@ -117,7 +125,9 @@ While spectating you can **click a card** to fly the camera to that base, **drag
 
 <div align="center">
 
-![The streaming decision log](Screenshots/decision-log.png)
+![The streaming decision log](Screenshots/Scene2.png)
+
+<sub><i>The decision log in action: attack orders with the model's own reasoning, worker reassignments — and a rejected action (an archery range attempted before its age) flagged in red.</i></sub>
 
 </div>
 
@@ -133,9 +143,9 @@ While spectating you can **click a card** to fly the camera to that base, **drag
 
 <div align="center">
 
-![End-of-match model evaluation](Screenshots/model-evaluation.png)
+![End-of-match model evaluation](Screenshots/ModelEvaluation.png)
 
-<sub><i>End-of-match evaluation — a winner, each model's 0–100 strategy score, and the raw stats behind it (latency, decisions, success rate, format fidelity, reasoning, behavior tags).</i></sub>
+<sub><i>End-of-match evaluation of a four-model match (won by Wonder) — each model's 0–100 strategy score and the raw stats behind it: latency, decisions, success rate, format fidelity, reasoning rate, token usage, the full error breakdown (including no-action replies), and behavior tags.</i></sub>
 
 </div>
 
