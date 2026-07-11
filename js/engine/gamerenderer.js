@@ -444,8 +444,11 @@
                 shellIdx = 2; // the shell box — grows to full height with progress
                 building._shellH = h;
             } else {
-                const type = building.isWonder ? 'wonder'
-                    : (EngineBuildings.TYPES.indexOf(building.type) >= 0 ? building.type : 'house');
+                // Wonders resolve by their real type (pyramid / akropolis /
+                // firetemple / shrine — each has its own builder now); anything
+                // unknown falls back to the generic wonder or a house.
+                const known = EngineBuildings.TYPES.indexOf(building.type) >= 0;
+                const type = known ? building.type : (building.isWonder ? 'wonder' : 'house');
                 parts = EngineBuildings.parts(type, { age: building.age, civ: building.civilization });
             }
             const eb = { opaque: [], blended: [], shell: null, world };

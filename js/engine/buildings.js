@@ -590,7 +590,74 @@
             }
             return p;
         },
-        wonder: () => {
+        // ---- The four Wonders (game types: pyramid / akropolis / firetemple /
+        // shrine). During the engine swap they all borrowed the generic ziggurat
+        // — Yamato's "shrine" rendered as a pyramid. Each is its own again.
+        pyramid: () => { // Egypt: stepped pyramid, gold capstone, obelisk pair
+            const p = [];
+            shadow(p, 10);
+            part(p, 'frustum', [13, 13, 10.4, 10.4, 2.2], 'masonry');
+            part(p, 'frustum', [10.4, 10.4, 7.8, 7.8, 2.0], 'masonry', { y: 2.2 });
+            part(p, 'frustum', [7.8, 7.8, 5.2, 5.2, 1.8], 'masonry', { y: 4.2 });
+            part(p, 'pyramid', [5.2, 5.2, 2.6], 'gold', { y: 6.0 });
+            [[-5.9, 6.0], [5.9, 6.0]].forEach(([x, z]) => {
+                part(p, 'frustum', [0.7, 0.7, 0.34, 0.34, 4.0], 'masonry', { x, z });
+                part(p, 'pyramid', [0.42, 0.42, 0.55], 'gold', { x, y: 4.0, z });
+            });
+            return p;
+        },
+        akropolis: () => { // Greece: great marble hall on a stepped crepidoma
+            const p = [];
+            shadow(p, 10);
+            part(p, 'frustum', [13, 10, 12.2, 9.2, 1.0], 'masonry');
+            part(p, 'frustum', [12.2, 9.2, 11.4, 8.4, 0.8], 'masonry', { y: 1.0 });
+            part(p, 'box', [7.4, 4.2, 4.6], 'plaster', { y: 3.9 });
+            [-4.9, -2.94, -0.98, 0.98, 2.94, 4.9].forEach(x => {
+                part(p, 'cylinder', [0.3, 0.35, 4.4, 8], 'plaster', { x, y: 4.0, z: 3.5 });
+                part(p, 'cylinder', [0.3, 0.35, 4.4, 8], 'plaster', { x, y: 4.0, z: -3.5 });
+            });
+            part(p, 'prism', [12.4, 9.6, 2.6], 'plaster', { y: 6.1 });
+            part(p, 'pyramid', [0.9, 0.9, 0.7], 'gold', { y: 8.7 }); // acroterion
+            return p;
+        },
+        firetemple: () => { // Persia: tiered round tower, the great flame on top
+            const p = [];
+            shadow(p, 10);
+            part(p, 'cylinder', [5.0, 5.6, 2.6, 10], 'masonry', { y: 1.3 });
+            part(p, 'cylinder', [3.5, 3.5, 0.6, 10], 'cloth', { y: 2.75, team: true }); // glazed band
+            part(p, 'cylinder', [3.4, 4.2, 3.4, 10], 'masonry', { y: 4.4 });
+            part(p, 'cylinder', [2.6, 2.6, 0.5, 10], 'cloth', { y: 6.0, team: true });
+            part(p, 'cylinder', [3.0, 1.9, 1.1, 10], 'masonry', { y: 6.75 }); // fire bowl
+            part(p, 'cylinder', [0, 1.6, 2.6, 8], 'gold', { y: 8.6 });        // the flame
+            [[-4.6, 0], [4.6, 0], [0, -4.6], [0, 4.6]].forEach(([x, z]) =>
+                part(p, 'cylinder', [0.45, 0.62, 3.2, 7], 'masonry', { x, y: 1.6, z }));
+            return p;
+        },
+        shrine: () => { // Yamato: the great torii before a raised honden
+            const p = [];
+            shadow(p, 10);
+            part(p, 'frustum', [13, 10, 12, 9, 1.0], 'masonry');
+            // great torii
+            part(p, 'cylinder', [0.55, 0.65, 7.2, 8], 'bark', { x: -3.4, y: 4.6, z: 3.0 });
+            part(p, 'cylinder', [0.55, 0.65, 7.2, 8], 'bark', { x: 3.4, y: 4.6, z: 3.0 });
+            part(p, 'box', [9.4, 0.55, 0.7], 'cloth', { y: 8.35, z: 3.0, team: true }); // kasagi
+            part(p, 'box', [7.6, 0.4, 0.5], 'wood', { y: 7.1, z: 3.0 });                // nuki
+            part(p, 'box', [0.4, 0.85, 0.4], 'wood', { y: 7.72, z: 3.0 });              // strut
+            // honden behind, raised on posts
+            [[-2.2, -3.2], [2.2, -3.2], [-2.2, -0.8], [2.2, -0.8]].forEach(([x, z]) =>
+                part(p, 'cylinder', [0.16, 0.18, 1.6, 6], 'bark', { x, y: 1.8, z }));
+            part(p, 'box', [5.2, 0.4, 3.8], 'wood', { y: 2.7, z: -2.0 });
+            part(p, 'box', [4.4, 2.4, 3.0], 'wood', { y: 4.1, z: -2.0 });
+            part(p, 'prism', [6.6, 4.8, 2.4], 'thatch', { y: 5.3, z: -2.0 });
+            [-3.15, 3.15].forEach(x => {
+                part(p, 'box', [0.12, 1.1, 0.12], 'bark', { x, y: 7.9, z: -2.0, rz: 0.45 });
+                part(p, 'box', [0.12, 1.1, 0.12], 'bark', { x, y: 7.9, z: -2.0, rz: -0.45 });
+            });
+            [-1.2, 0, 1.2].forEach(x =>
+                part(p, 'box', [0.24, 0.24, 1.2], 'bark', { x, y: 7.8, z: -2.0 }));
+            return p;
+        },
+        wonder: () => { // generic fallback (engine-test / unknown wonder ids)
             const p = [];
             shadow(p, 10);
             part(p, 'frustum', [13, 13, 10.4, 10.4, 2.2], 'masonry');
