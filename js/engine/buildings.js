@@ -133,15 +133,38 @@
             part(p, 'box', [0.16, 0.16, 2.8], 'wood', { x: 4.4, y: 2.1 });
             return p;
         },
-        market: () => {
+        market: (o = {}) => {
             const p = [];
+            const age = ageOf(o);
             shadow(p, 6.6);
-            part(p, 'box', [5.4, 2.0, 5.4], 'plaster', { y: 1.0 });
-            part(p, 'cylinder', [0.1, 0.1, 2.7, 5], 'wood', { x: 3.7, y: 1.35, z: 3.7 });
-            part(p, 'cylinder', [0.1, 0.1, 2.7, 5], 'wood', { x: -3.7, y: 1.35, z: 3.7 });
-            part(p, 'cylinder', [0.1, 0.1, 2.7, 5], 'wood', { x: 3.7, y: 1.35, z: -3.7 });
-            part(p, 'cylinder', [0.1, 0.1, 2.7, 5], 'wood', { x: -3.7, y: 1.35, z: -3.7 });
-            part(p, 'pyramid', [8.6, 8.6, 1.7], 'awning', { y: 2.7 });
+            if (age === 'stone' || age === 'neolithic') {
+                // Trading post: rough posts under a hide canopy, goods on a mat.
+                part(p, 'box', [5.8, 0.14, 5], 'thatch', { y: 0.07 }); // woven ground mat
+                [[-2.6, -2.2], [2.6, -2.2], [-2.6, 2.2], [2.6, 2.2]].forEach(([x, z]) =>
+                    part(p, 'cylinder', [0.1, 0.13, 2.6, 5], 'bark', { x, y: 1.3, z }));
+                part(p, 'box', [6.4, 0.16, 5.6], 'leather', { y: 2.72, rx: 0.09 }); // hide canopy
+                part(p, 'sphere', [1, 8, 6], 'leather', { x: -1.4, y: 0.5, z: 0.6, sx: 0.55, sy: 0.5, sz: 0.55 });  // sacks
+                part(p, 'sphere', [1, 8, 6], 'leather', { x: -0.5, y: 0.4, z: 1.3, sx: 0.45, sy: 0.4, sz: 0.45 });
+                part(p, 'cylinder', [0.3, 0.4, 0.7, 8], 'leather', { x: 1.5, y: 0.35, z: 0.9 }); // clay pot
+            } else if (age === 'bronze') {
+                // Timber stall under the striped awning — the classic signature.
+                part(p, 'box', [5.4, 2.0, 5.4], 'wood', { y: 1.0 });
+                [[3.7, 3.7], [-3.7, 3.7], [3.7, -3.7], [-3.7, -3.7]].forEach(([x, z]) =>
+                    part(p, 'cylinder', [0.1, 0.1, 2.7, 5], 'wood', { x, y: 1.35, z }));
+                part(p, 'pyramid', [8.6, 8.6, 1.7], 'awning', { y: 2.7 });
+                part(p, 'box', [0.8, 0.8, 0.8], 'wood', { x: 2.4, y: 0.4, z: 3.1 });        // crate
+                part(p, 'cylinder', [0.4, 0.4, 0.9, 8], 'bark', { x: -2.5, y: 0.45, z: 3.1 }); // barrel
+            } else {
+                // Iron: a stone trading house, striped awnings over the stalls out front.
+                part(p, 'box', [5.9, 0.5, 5.7], 'masonry', { y: 0.25 });
+                part(p, 'box', [5.4, 2.4, 5.0], 'plaster', { y: 1.7 });
+                part(p, 'prism', [6.4, 5.8, 2.0], 'rooftile', { y: 2.9 });
+                part(p, 'box', [1.4, 1.8, 0.24], 'wood', { y: 1.15, z: 2.56 }); // door
+                part(p, 'box', [2.4, 0.14, 1.5], 'awning', { x: -1.6, y: 2.35, z: 3.2, rx: 0.35 });
+                part(p, 'box', [2.4, 0.14, 1.5], 'awning', { x: 1.6, y: 2.35, z: 3.2, rx: 0.35 });
+                part(p, 'box', [0.8, 0.8, 0.8], 'wood', { x: 2.6, y: 0.4, z: 3.7 });
+                part(p, 'cylinder', [0.4, 0.4, 0.9, 8], 'bark', { x: -2.7, y: 0.45, z: 3.8 });
+            }
             return p;
         },
         farm: (o = {}) => {
