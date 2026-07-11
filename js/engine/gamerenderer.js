@@ -1225,6 +1225,13 @@
                 }
             }
             const UNIT_BUILDING_CLEARANCE = 4.5;
+            // Wonders are far bigger than ordinary buildings (largest footprint:
+            // the 13×13 pyramid — faces at 5.07, corners at 7.17 world units), so
+            // the flat 4.5 let units walk straight THROUGH them. One uniform
+            // radius for ALL wonders keeps the four civs balanced. Attackability
+            // is unaffected: combatants are exempt from the push below, and
+            // ranged reach (7.5+) out-ranges the zone anyway.
+            const WONDER_CLEARANCE = 7.0;
             this.units.forEach(unit => {
                 // Combatants are exempt: the push used to referee fights near
                 // buildings — an attacking worker could never close to melee
@@ -1234,10 +1241,11 @@
                     if (building.type === 'farm') return;
                     if (unit.task === 'building' && unit.buildTarget === building) return;
                     if (unit.task === 'repairing' && unit.repairTarget === building) return;
+                    const clr = building.isWonder ? WONDER_CLEARANCE : UNIT_BUILDING_CLEARANCE;
                     const dx = unit.x - building.x, dz = unit.z - building.z;
                     const dist = Math.sqrt(dx * dx + dz * dz);
-                    if (dist < UNIT_BUILDING_CLEARANCE && dist > 0.01) {
-                        const push = (UNIT_BUILDING_CLEARANCE - dist) * 0.05;
+                    if (dist < clr && dist > 0.01) {
+                        const push = (clr - dist) * 0.05;
                         unit.x += (dx / dist) * push;
                         unit.z += (dz / dist) * push;
                     }
