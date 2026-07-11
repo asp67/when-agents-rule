@@ -113,51 +113,132 @@
                 }
                 if (civ === 'persian') part(p, 'cylinder', [4.66, 4.94, 0.34, 12], 'cloth', { y: 1.95, team: true });
             } else if (age === 'bronze') {
-                // Longhouse: a long timber hall under a big thatch gable.
-                part(p, 'frustum', [11, 8, 10.4, 7.4, 0.6], 'masonry');
-                part(p, 'box', [9.6, 3.2, 5.4], 'wood', { y: 2.2 });
-                part(p, 'prism', [10.6, 6.4, 2.8], 'thatch', { y: 3.8 });
-                part(p, 'box', [10.6, 0.22, 0.22], 'bark', { y: 6.6 });
-                part(p, 'box', [1.8, 2.2, 0.3], 'bark', { y: 1.7, z: 3.32 });
-                doorTrim(p, civ, tier, 3.15, 1.8, 2.3);
-                if (civ === 'yamato') { // crossed ridge finials (chigi) at the gable ends
-                    [-5.0, 5.0].forEach(x => {
-                        part(p, 'box', [0.12, 1.0, 0.12], 'bark', { x, y: 6.7, rz: 0.45 });
-                        part(p, 'box', [0.12, 1.0, 0.12], 'bark', { x, y: 6.7, rz: -0.45 });
-                    });
-                }
-                if (civ === 'persian') { // stepped merlons along the plinth facade
+                // Bronze: each culture raises its own great hall.
+                if (civ === 'greek') {
+                    // Megaron: stone platform, white hall, columned porch, tiled gable.
+                    part(p, 'frustum', [10, 8, 9.4, 7.4, 0.8], 'masonry');
+                    part(p, 'box', [7.6, 3.0, 5.2], 'plaster', { y: 2.3 });
+                    part(p, 'prism', [8.6, 6.0, 2.2], 'rooftile', { y: 3.8 });
+                    [-2.4, -0.8, 0.8, 2.4].forEach(x =>
+                        part(p, 'cylinder', [0.22, 0.26, 2.8, 8], 'plaster', { x, y: 2.2, z: 3.5 }));
+                    part(p, 'prism', [7.4, 1.8, 1.4], 'plaster', { y: 3.62, z: 3.4 });
+                    part(p, 'box', [1.6, 2.0, 0.3], 'bark', { y: 1.8, z: 2.7 });
+                } else if (civ === 'yamato') {
+                    // Raised hall under double eaves, a torii before the gate.
+                    part(p, 'frustum', [10, 8, 9.2, 7.2, 0.7], 'masonry');
+                    part(p, 'box', [7.4, 2.8, 5.0], 'wood', { y: 2.1 });
+                    part(p, 'pyramid', [10.8, 8.4, 0.9], 'thatch', { y: 3.4 });  // lower eave skirt
+                    part(p, 'pyramid', [8.4, 6.2, 2.0], 'thatch', { y: 4.05 }); // upper roof
+                    part(p, 'box', [0.12, 1.0, 0.12], 'bark', { y: 6.35, rz: 0.45 });
+                    part(p, 'box', [0.12, 1.0, 0.12], 'bark', { y: 6.35, rz: -0.45 });
+                    part(p, 'box', [1.7, 2.0, 0.3], 'bark', { y: 1.7, z: 2.58 });
+                    doorTrim(p, 'yamato', 2, 2.7, 1.8, 2.2);
+                } else if (civ === 'persian') {
+                    // Walled mud-brick compound: tapered walls, buttresses, first dome.
+                    part(p, 'frustum', [10.5, 8.5, 8.8, 7.0, 3.4], 'masonry');
+                    [[-4.7, -3.8], [4.7, -3.8], [-4.7, 3.8], [4.7, 3.8]].forEach(([x, z]) =>
+                        part(p, 'cylinder', [0.5, 0.68, 3.8, 7], 'masonry', { x, y: 1.9, z }));
+                    part(p, 'box', [6.2, 1.8, 4.4], 'plaster', { y: 4.2 });
+                    part(p, 'cylinder', [0, 1.35, 1.5, 9], 'cloth', { y: 5.85, team: true });
+                    part(p, 'sphere', [1, 8, 6], 'gold', { y: 7.4, sx: 0.2, sy: 0.2, sz: 0.2 });
                     for (let i = 0; i < 5; i++) {
-                        part(p, 'box', [0.6, 0.45, 0.4], 'masonry', { x: -4.4 + i * 2.2, y: 0.82, z: 3.55 });
+                        part(p, 'box', [0.55, 0.45, 0.4], 'masonry', { x: -4.0 + i * 2.0, y: 3.6, z: 4.05 });
                     }
+                    part(p, 'box', [1.6, 2.4, 0.3], 'wood', { y: 1.3, z: 4.72 });
+                    doorTrim(p, 'persian', 2, 4.75, 1.6, 2.5);
+                } else if (civ === 'egyptian') {
+                    // Temple hall: battered walls, small pylon gate, gold cornice.
+                    part(p, 'frustum', [10, 8, 9.0, 7.2, 3.0], 'masonry');
+                    part(p, 'box', [6.8, 1.6, 5.0], 'plaster', { y: 3.7 });
+                    part(p, 'box', [9.4, 0.28, 0.34], 'gold', { y: 3.05, z: 3.62 });
+                    part(p, 'frustum', [1.5, 1.1, 1.0, 0.8, 3.6], 'masonry', { x: -2.1, z: 4.0 });
+                    part(p, 'frustum', [1.5, 1.1, 1.0, 0.8, 3.6], 'masonry', { x: 2.1, z: 4.0 });
+                    part(p, 'box', [2.9, 0.4, 0.7], 'gold', { y: 3.75, z: 4.0 });
+                    part(p, 'box', [1.5, 2.4, 0.3], 'bark', { y: 1.3, z: 4.35 });
+                } else {
+                    // Generic longhouse (no civ — engine-test).
+                    part(p, 'frustum', [11, 8, 10.4, 7.4, 0.6], 'masonry');
+                    part(p, 'box', [9.6, 3.2, 5.4], 'wood', { y: 2.2 });
+                    part(p, 'prism', [10.6, 6.4, 2.8], 'thatch', { y: 3.8 });
+                    part(p, 'box', [10.6, 0.22, 0.22], 'bark', { y: 6.6 });
+                    part(p, 'box', [1.8, 2.2, 0.3], 'bark', { y: 1.7, z: 3.32 });
                 }
             } else {
-                // Iron: a small castle — keep, corner turrets, tiled caps, and the
-                // culture in full voice.
-                part(p, 'frustum', [11, 11, 9.8, 9.8, 0.9], 'masonry');
-                part(p, 'box', [8.2, 3.6, 8.2], 'masonry', { y: 2.7 });
-                [[-4.1, -4.1], [4.1, -4.1], [4.1, 4.1], [-4.1, 4.1]].forEach(([x, z]) => {
-                    part(p, 'cylinder', [0.95, 1.1, 5.2, 8], 'masonry', { x, y: 2.6, z });
-                    part(p, 'cylinder', [0, 1.15, 1.5, 8], 'rooftile', { x, y: 5.95, z });
-                });
-                part(p, 'box', [3.6, 2.6, 3.6], 'masonry', { y: 5.8 });
-                if (civ === 'persian') {
-                    // a pointed team-glazed dome crowns the keep instead of tiles
-                    part(p, 'cylinder', [1.5, 1.7, 0.9, 9], 'cloth', { y: 7.55, team: true });
-                    part(p, 'cylinder', [0, 1.5, 1.6, 9], 'cloth', { y: 8.75, team: true });
-                    part(p, 'sphere', [1, 8, 6], 'gold', { y: 9.7, sx: 0.26, sy: 0.26, sz: 0.26 });
+                // Iron: four castle archetypes, each unmistakably its culture's.
+                if (civ === 'greek') {
+                    // KASTRO: white fortress walls, corner towers, a temple-keep
+                    // with colonnade and pediment on top.
+                    part(p, 'frustum', [11, 11, 9.8, 9.8, 1.0], 'masonry');
+                    part(p, 'box', [8.6, 3.2, 8.6], 'plaster', { y: 2.6 });
+                    [[-4.2, -4.2], [4.2, -4.2], [4.2, 4.2], [-4.2, 4.2]].forEach(([x, z]) => {
+                        part(p, 'box', [1.8, 4.4, 1.8], 'plaster', { x, y: 2.4, z });
+                        part(p, 'pyramid', [2.2, 2.2, 0.9], 'rooftile', { x, y: 4.6, z });
+                    });
+                    part(p, 'box', [5.0, 0.6, 4.0], 'masonry', { y: 4.5 });
+                    [[-1.8, -1.3], [-1.8, 1.3], [0, -1.3], [0, 1.3], [1.8, -1.3], [1.8, 1.3]].forEach(([x, z]) =>
+                        part(p, 'cylinder', [0.2, 0.24, 2.2, 8], 'plaster', { x, y: 5.9, z }));
+                    part(p, 'prism', [5.6, 4.4, 1.7], 'plaster', { y: 7.0 });
+                    part(p, 'box', [1.8, 2.2, 0.3], 'wood', { y: 1.9, z: 4.32 });
+                    doorTrim(p, 'greek', 3, 4.45, 1.8, 2.3);
+                } else if (civ === 'yamato') {
+                    // SHIRO: sloped stone base, stacked white floors, each under a
+                    // wider dark-tiled eave, gold shachi on the crest.
+                    part(p, 'frustum', [11, 11, 8.8, 8.8, 1.8], 'masonry');
+                    part(p, 'box', [7.2, 2.2, 7.2], 'plaster', { y: 2.9 });
+                    part(p, 'pyramid', [9.6, 9.6, 1.2], 'rooftile', { y: 4.0 });
+                    part(p, 'box', [5.4, 1.9, 5.4], 'plaster', { y: 5.05 });
+                    part(p, 'pyramid', [7.4, 7.4, 1.1], 'rooftile', { y: 5.95 });
+                    part(p, 'box', [3.9, 1.7, 3.9], 'plaster', { y: 6.85 });
+                    part(p, 'pyramid', [5.5, 5.5, 1.7], 'rooftile', { y: 7.65 });
+                    part(p, 'box', [0.16, 0.55, 0.16], 'gold', { x: -0.7, y: 9.35, rz: 0.35 });
+                    part(p, 'box', [0.16, 0.55, 0.16], 'gold', { x: 0.7, y: 9.35, rz: -0.35 });
+                    part(p, 'box', [1.7, 2.0, 0.3], 'wood', { y: 1.6, z: 4.85 });
+                    doorTrim(p, 'yamato', 3, 4.95, 1.7, 2.4);
+                } else if (civ === 'persian') {
+                    // KASBAH (Alamut): one massive tapered fortress body, stepped
+                    // merlons, round towers under pointed team-glazed caps, a great
+                    // gold-tipped dome over the inner keep.
+                    part(p, 'frustum', [11.5, 11.5, 9.0, 9.0, 4.2], 'masonry');
+                    [[-4.9, -4.9], [4.9, -4.9], [4.9, 4.9], [-4.9, 4.9]].forEach(([x, z]) => {
+                        part(p, 'cylinder', [0.9, 1.15, 5.6, 8], 'masonry', { x, y: 2.8, z });
+                        part(p, 'cylinder', [0, 1.05, 1.5, 8], 'cloth', { x, y: 6.35, z, team: true });
+                    });
+                    for (let i = 0; i < 5; i++) {
+                        part(p, 'box', [0.6, 0.5, 0.4], 'masonry', { x: -4.0 + i * 2.0, y: 4.45, z: 4.35 });
+                    }
+                    part(p, 'box', [4.2, 2.0, 4.2], 'plaster', { y: 5.2 });
+                    part(p, 'cylinder', [1.7, 1.9, 1.0, 9], 'cloth', { y: 6.7, team: true });
+                    part(p, 'cylinder', [0, 1.7, 1.9, 9], 'cloth', { y: 8.15, team: true });
+                    part(p, 'sphere', [1, 8, 6], 'gold', { y: 9.3, sx: 0.28, sy: 0.28, sz: 0.28 });
+                    part(p, 'box', [1.6, 3.0, 0.4], 'wood', { y: 1.5, z: 5.4 });
+                    doorTrim(p, 'persian', 3, 5.45, 1.6, 3.1);
+                } else if (civ === 'egyptian') {
+                    // MENNU: a temple-fortress — twin battered pylons bridge a gold
+                    // lintel over the gate, battered enclosure walls behind, gold
+                    // pyramidion over the sanctuary, obelisks flanking the approach.
+                    part(p, 'frustum', [11, 9, 9.4, 7.6, 3.6], 'masonry', { z: -0.9 });
+                    part(p, 'box', [6.6, 1.8, 4.8], 'plaster', { y: 4.4, z: -0.9 });
+                    part(p, 'pyramid', [2.4, 2.4, 1.5], 'gold', { y: 5.3, z: -0.9 });
+                    part(p, 'frustum', [3.0, 1.6, 2.2, 1.2, 5.4], 'masonry', { x: -2.8, z: 3.4 });
+                    part(p, 'frustum', [3.0, 1.6, 2.2, 1.2, 5.4], 'masonry', { x: 2.8, z: 3.4 });
+                    part(p, 'box', [3.2, 0.5, 0.9], 'gold', { y: 4.95, z: 3.4 });
+                    part(p, 'box', [1.6, 2.6, 0.34], 'bark', { y: 1.4, z: 4.1 });
+                    [[-5.4, 4.4], [5.4, 4.4]].forEach(([x, z]) => {
+                        part(p, 'frustum', [0.66, 0.66, 0.32, 0.32, 4.2], 'masonry', { x, z });
+                        part(p, 'pyramid', [0.42, 0.42, 0.55], 'gold', { x, y: 4.2, z });
+                    });
                 } else {
+                    // Generic castle (no civ — engine-test).
+                    part(p, 'frustum', [11, 11, 9.8, 9.8, 0.9], 'masonry');
+                    part(p, 'box', [8.2, 3.6, 8.2], 'masonry', { y: 2.7 });
+                    [[-4.1, -4.1], [4.1, -4.1], [4.1, 4.1], [-4.1, 4.1]].forEach(([x, z]) => {
+                        part(p, 'cylinder', [0.95, 1.1, 5.2, 8], 'masonry', { x, y: 2.6, z });
+                        part(p, 'cylinder', [0, 1.15, 1.5, 8], 'rooftile', { x, y: 5.95, z });
+                    });
+                    part(p, 'box', [3.6, 2.6, 3.6], 'masonry', { y: 5.8 });
                     part(p, 'pyramid', [4.2, 4.2, 1.6], 'rooftile', { y: 7.1 });
-                    part(p, 'pyramid', [1.6, 1.6, 1.1], 'gold', { y: 8.7 }); // iron finial
-                }
-                part(p, 'box', [1.9, 2.2, 0.3], 'wood', { y: 1.9, z: 4.12 });
-                doorTrim(p, civ, tier, 4.25, 1.9, 2.3);
-                if (civ === 'egyptian') { // an obelisk in the yard
-                    part(p, 'frustum', [0.75, 0.75, 0.36, 0.36, 3.9], 'masonry', { x: 6.5, z: 3.2 });
-                    part(p, 'pyramid', [0.44, 0.44, 0.6], 'gold', { x: 6.5, y: 3.9, z: 3.2 });
-                }
-                if (civ === 'yamato') { // wide layered eave skirt around the keep base
-                    part(p, 'pyramid', [10.4, 10.4, 1.1], 'rooftile', { y: 4.35 });
+                    part(p, 'pyramid', [1.6, 1.6, 1.1], 'gold', { y: 8.7 });
+                    part(p, 'box', [1.9, 2.2, 0.3], 'wood', { y: 1.9, z: 4.12 });
                 }
             }
             return p;
