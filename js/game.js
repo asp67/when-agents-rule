@@ -2555,17 +2555,41 @@ class Game {
                     unit.z += (dz / dist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
                 } else {
-                    // Arrived at target
+                    // Arrived at target. Only PLAIN moves snap onto the exact point —
+                    // harvesters and carriers used to be teleported ONTO their target
+                    // (the node center ±1 / the TC center), which put workers INSIDE
+                    // rocks, gold and bushes while mining, and inside the TC for a
+                    // frame when delivering.
                     unit.isMoving = false;
-                    unit.x = unit.targetX;
-                    unit.z = unit.targetZ;
-                    this.renderer.updateUnitPosition(unit);
-                    
-                    // If harvesting task and at resource, start harvesting
+                    if (arrivalThreshold <= 0.5) {
+                        unit.x = unit.targetX;
+                        unit.z = unit.targetZ;
+                    }
+
+                    // If harvesting task and at resource, start harvesting — from the
+                    // node's RIM: if the stop position landed inside the node's visual
+                    // radius, project it outward along the approach direction (every
+                    // assignment path funnels through here, so one fix covers all).
                     if (unit.task === 'harvesting' && unit.harvestTarget && !unit.carryingResource) {
+                        const n = unit.harvestTarget;
+                        if (!n.isFarm) {
+                            const RIM = { stone: 2.1, gold: 1.9, food: 1.45, wood: 0.9 };
+                            const rim = RIM[n.type] || 1.2;
+                            let rx = unit.x - n.x, rz = unit.z - n.z;
+                            let rd = Math.hypot(rx, rz);
+                            if (rd < rim) {
+                                if (rd < 0.01) { // dead-center: spread by a stable per-unit angle
+                                    const a = ((unit.id || '').length * 2.4 + n.x * 0.13 + n.z * 0.17) % 6.283;
+                                    rx = Math.cos(a); rz = Math.sin(a); rd = 1;
+                                }
+                                unit.x = n.x + (rx / rd) * rim;
+                                unit.z = n.z + (rz / rd) * rim;
+                            }
+                        }
                         unit.isHarvesting = true;
                         unit.harvestTimer = 0;
                     }
+                    this.renderer.updateUnitPosition(unit);
                 }
                 // While moving, skip other task logic
                 return;
