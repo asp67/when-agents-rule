@@ -953,10 +953,13 @@ class Game {
                 const dz = currentTarget.z - unit.z;
                 const dist = Math.sqrt(dx*dx + dz*dz);
                 
-                // Determine attack range (melee = 1.5, ranged = unit.range)
-                // For buildings, add building radius so units attack from outside the mesh
-                const isBuilding = currentTarget.type && BUILDING_DEFS[currentTarget.type];
-                const buildingRadius = isBuilding ? 3.5 : 0; // Approximate building half-size
+                // Determine attack range (melee = 1.5, ranged = unit.range).
+                // For buildings, add a radius so units strike from OUTSIDE the mesh.
+                // Wonders are NOT in BUILDING_DEFS (civ-unique buildings) — without
+                // the isWonder check they were treated as units, so melee attackers
+                // burrowed to 1.5 of the monument's CENTER, deep inside the walls.
+                const isBuilding = currentTarget.isWonder || !!(currentTarget.type && BUILDING_DEFS[currentTarget.type]);
+                const buildingRadius = isBuilding ? (currentTarget.isWonder ? 4.6 : 3.5) : 0;
                 const attackRange = (unit.range > 1 ? unit.range : 1.5) + buildingRadius;
                 
                 if (dist > attackRange) {
