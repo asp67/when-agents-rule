@@ -854,14 +854,24 @@
         updateBuildingPosition() {}
         updateHealthBars() { /* bars are assembled per frame in _assembleFrame */ }
 
+        // Exact frustum test in VIEW space (the old screen-space estimate treated
+        // the visible ground as a rectangle at the target distance — but the
+        // perspective frustum on the ground is a trapezoid, so objects near the
+        // screen edges popped in and out while panning). margin is world units;
+        // the bottom edge gets extra headroom because a tall object's top can
+        // lean into view while its ground point is already below the frustum.
         _cull(x, z, margin) {
             const c = this._cam;
-            const dx = x - this.cameraTarget.x, dz = z - this.cameraTarget.z;
-            const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
-            const u = dx * cy - dz * sy;
-            const v = (dx * sy + dz * cy) * Math.sin(this._pitch); // ground foreshortening
-            // Perspective widens coverage beyond the target plane — generous slack.
-            return Math.abs(u) > c.halfW * 1.25 + margin || Math.abs(v) > c.halfH * 1.25 + margin;
+            const v = c.view;
+            const vx = v[0] * x + v[8] * z + v[12];   // (x, 0, z) — ground point
+            const vy = v[1] * x + v[9] * z + v[13];
+            const vz = v[2] * x + v[10] * z + v[14];
+            if (vz > -2) return true;                 // at or behind the eye
+            const d = -vz;
+            if (Math.abs(vx) > d * c.tanHalf * c.aspect + margin) return true;
+            if (vy > d * c.tanHalf + margin) return true;             // above the top edge
+            if (vy < -(d * c.tanHalf) - margin - 14) return true;     // below, +14 tall-object headroom
+            return false;
         }
 
         _barColor(pct) {
