@@ -39,7 +39,8 @@ class OpenAIAIManager {
             contextOverflows: 0,  // request too big for the model's context (lost turn; endpoint fine)
             promptTokens: 0,      // cumulative token usage as reported by the provider
             completionTokens: 0,  // (0/0 when the endpoint doesn't report usage)
-            parseFails: 0,        // response returned but no action could be extracted
+            parseFails: 0,        // response unusable: empty, truncated, or parser crashed
+            noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
             actionsAttempted: 0,  // actions handed to executeAction
             actionsSucceeded: 0,  // executed OK
             actionsRejected: 0,   // understood but failed (cost, pop, duplicate, ...)
@@ -1432,8 +1433,20 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             if (s) {
                 s.requests++;
                 s.latencies.push(Date.now() - reqStart);
-                if (!result) s.parseFails++;
             }
+
+            // The model ANSWERED, but with prose and no JSON action anywhere.
+            // Fair-eval rule: nothing is executed and nothing is guessed (the old
+            // keyword inference laundered format failures into valid-looking
+            // moves). Counted separately from parse failures — the endpoint and
+            // the reply are fine, the model just didn't issue an action.
+            if (result && result.noAction) {
+                this.registerNoActionReturn(controller);
+                controller._failStreak = 0;
+                return null;
+            }
+
+            if (s && !result) s.parseFails++;
 
             // If parsing failed, store error feedback for next turn — and stamp it as
             // the OUTCOME of the turn pair we just pushed, so the rolling multi-turn
@@ -1499,6 +1512,17 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
     }
 
+    // A reply arrived but carried no JSON action: count it as its own outcome
+    // (a valid RETURN — it keeps its latency — but a wasted turn) and tell the
+    // model unambiguously that nothing was done.
+    registerNoActionReturn(controller) {
+        const s = controller.stats;
+        if (s) s.noActionReturns = (s.noActionReturns || 0) + 1;
+        controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: your reply contained no valid JSON action object. Reply with EXACTLY ONE JSON object, e.g. {"action":"wait","params":{"reason":"..."}} — plain prose wastes the turn.`;
+        const lastTurn = controller.turnLog[controller.turnLog.length - 1];
+        if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
+    }
+
     // ----------------------------------------------------------------
     // 10. Parse LLM response (primary: plain JSON, fallback: tool_calls)
     // ----------------------------------------------------------------
@@ -1517,6 +1541,24 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 color: colorHex,
                 action: '⚠️ tool_call_failed',
                 reason: `Tool call could not be interpreted: ${reason}`,
+                params: {}
+            });
+            if (this.decisionLog.length > this.maxLogEntries) {
+                this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
+            }
+        };
+
+        // The model replied in prose without any JSON action: the decision log
+        // shows the model's OWN words under a no-action tag — not a guessed move,
+        // not a parse error.
+        const logNoAction = (text) => {
+            this.decisionLog.unshift({
+                timestamp: Date.now(),
+                playerId: ai.id,
+                civName: civName,
+                color: colorHex,
+                action: '💬 no_action_provided',
+                reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
                 params: {}
             });
             if (this.decisionLog.length > this.maxLogEntries) {
@@ -1557,16 +1599,24 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 const fromTool = this.extractActionFromText(args);
                 if (fromTool && fromTool.action) return fromTool;
                 if (typeof args === 'string' && args.trim()) {
-                    return { action: this.inferActionFromText(args), params: { reason: args.trim().slice(0, 200) } };
+                    // A tool call whose arguments carry no parseable action is
+                    // still no action — we don't guess one from the text.
+                    logNoAction(args);
+                    return { noAction: true };
                 }
             }
 
-            // 3) Last resort: infer an action from free text so the player keeps
-            //    moving even when the model ignored the JSON format.
+            // 3) Prose with NO JSON action anywhere. The old harness guessed an
+            //    action from keywords here — charitable, but unfair: other
+            //    agentic harnesses aren't that forgiving, and acting on inferred
+            //    intent laundered format failures into valid-looking moves. Now:
+            //    log the model's own words, execute nothing, report a no-action
+            //    turn (counted separately in the results).
             const freeText = (message.content || message.reasoning || '').toString().trim();
             if (freeText) {
-                console.warn(`[OpenAIAI] Free-text response, inferring action:`, freeText.substring(0, 160));
-                return { action: this.inferActionFromText(freeText), params: { reason: freeText.slice(0, 200) } };
+                console.warn(`[OpenAIAI] Reply without JSON action — nothing executed:`, freeText.substring(0, 160));
+                logNoAction(freeText);
+                return { noAction: true };
             }
 
             // Truncated reasoning model with no usable output (OpenAI 'length',
@@ -1653,20 +1703,6 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             }
         }
         return objs;
-    }
-
-    // Guess an action from free-text when no JSON could be parsed.
-    inferActionFromText(text) {
-        const lower = (text || '').toLowerCase();
-        if (lower.includes('harvest') || lower.includes('gather') || lower.includes('sammel')) return 'harvest_resource';
-        if (lower.includes('research') || lower.includes('forsch') || lower.includes('tech')) return 'research_tech';
-        if (lower.includes('attack') || lower.includes('angri')) return 'attack_target';
-        if (lower.includes('upgrade') || lower.includes('advance') || lower.includes('epoch') || lower.includes('age')) return 'upgrade_age';
-        if (lower.includes('build') || lower.includes('bau')) return 'build_structure';
-        if (lower.includes('move') || lower.includes('beweg')) return 'move_units';
-        if (lower.includes('militia') || lower.includes('archer') || lower.includes('cavalry') || lower.includes('soldier')) return 'train_unit';
-        if (lower.includes('worker') || lower.includes('train') || lower.includes('villager')) return 'train_worker';
-        return 'wait';
     }
 
     // ----------------------------------------------------------------

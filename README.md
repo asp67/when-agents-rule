@@ -149,7 +149,7 @@ The match-end **Strategy Score** (0–100) is a transparent composite — no bla
 | 15% | Reliability (no timeouts / network errors) |
 | 13% | Action diversity (used the toolset, didn't loop one move) |
 
-Alongside it you get raw stats — average/min/max latency, decisions made, success ratio, reasoning rate, **token usage** (prompt + completion, as reported by the provider), and a full **error breakdown** (timeouts · parse fails · invalid actions · rejected · context overflows) — plus quick **behavior tags** like *Aggressive*, *Economy-focused*, *Format issues*, or *Invents actions*. **💾 Save results** exports it all as a self-describing Markdown file (including each model's config, the difficulty, and the map seed).
+Alongside it you get raw stats — average/min/max latency, decisions made, success ratio, reasoning rate, **token usage** (prompt + completion, as reported by the provider), and a full **error breakdown** (timeouts · parse fails · **no-action replies** (the model answered in prose without a JSON action — nothing is guessed or executed) · invalid actions · rejected · context overflows) — plus quick **behavior tags** like *Aggressive*, *Economy-focused*, *Format issues*, or *Invents actions*. **💾 Save results** exports it all as a self-describing Markdown file (including each model's config, the difficulty, and the map seed).
 
 ## 🛠️ How it works
 

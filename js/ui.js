@@ -2271,12 +2271,15 @@ class UIManager {
                     minLatency: lat.length ? Math.min(...lat) : 0,
                     maxLatency: lat.length ? Math.max(...lat) : 0,
                     timeouts: st.timeouts, networkErrors: st.networkErrors, parseFails: st.parseFails,
+                    noAction: st.noActionReturns || 0,
                     contextOverflows: ctxOv,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
                     promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
                     attempted: st.actionsAttempted, succeeded: st.actionsSucceeded,
                     successRate: st.actionsAttempted ? st.actionsSucceeded / st.actionsAttempted : 0,
-                    formatOk: responded > 0 ? (responded - st.parseFails) / responded : 0,
+                    // Format fidelity: prose-only replies (no JSON action) are format
+                    // failures too — they just get their own counter.
+                    formatOk: responded > 0 ? (responded - st.parseFails - (st.noActionReturns || 0)) / responded : 0,
                     reliability: reliabilityBase ? 1 - (st.timeouts + st.networkErrors) / reliabilityBase : 0,
                     reasonRate: st.actionsAttempted ? st.reasonsGiven / st.actionsAttempted : 0,
                     actionCounts: st.actionCounts
@@ -2338,7 +2341,7 @@ class UIManager {
                 return;
             }
             const avgS = m.avgLatency / 1000;
-            const errTotal = m.timeouts + m.networkErrors + m.parseFails + m.invalidActions + m.rejected + (m.contextOverflows || 0);
+            const errTotal = m.timeouts + m.networkErrors + m.parseFails + (m.noAction || 0) + m.invalidActions + m.rejected + (m.contextOverflows || 0);
             const tagsHtml = r.tags.map(t => `<span class="sum-tag ${t.cls}">${t.t}</span>`).join('');
             const topActions = Object.entries(m.actionCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
                 .map(([k, v]) => `<span class="sum-chip">${k.replace(/_/g, ' ')}·${v}</span>`).join('');
@@ -2361,7 +2364,7 @@ class UIManager {
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
                         <div class="sum-metric"><span>\u{1FA99} ${t('sum.mTokens')}</span><b>${this.fmtTokens(m.promptTokens + m.completionTokens)}</b><i>${(m.promptTokens + m.completionTokens) ? t('sum.mTokSplit', { p: this.fmtTokens(m.promptTokens), c: this.fmtTokens(m.completionTokens) }) : t('sum.mTokNone')}</i></div>
-                        <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
+                        <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, na: m.noAction || 0, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
                     </div>
                     <div class="sum-actions">${topActions || `<span class="sum-chip">${t('sum.noActions')}</span>`}</div>
                     <div class="sum-final">${r.ageName} · \u{1F477} ${r.workers} · ⚔️ ${r.military} · \u{1F3DB}️ ${r.buildings} · \u{1F356}${r.food} \u{1F332}${r.wood} \u{1FAA8}${r.stone} \u{1F947}${r.gold}</div>
@@ -2456,7 +2459,7 @@ class UIManager {
                 L.push(`- Reasoning rate: ${Math.round(m.reasonRate * 100)}%`);
                 L.push(`- Reliability: ${Math.round(m.reliability * 100)}%`);
                 L.push(`- Latency: avg ${(m.avgLatency / 1000).toFixed(1)}s (min ${(m.minLatency / 1000).toFixed(1)}s, max ${(m.maxLatency / 1000).toFixed(1)}s)`);
-                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} · invalid ${m.invalidActions} · rejected ${m.rejected} · context-overflows ${m.contextOverflows || 0}`);
+                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} · no-action ${m.noAction || 0} · invalid ${m.invalidActions} · rejected ${m.rejected} · context-overflows ${m.contextOverflows || 0}`);
             L.push(`- Tokens: ${(m.promptTokens + m.completionTokens) ? `${m.promptTokens} prompt + ${m.completionTokens} completion = ${m.promptTokens + m.completionTokens}` : 'not reported by endpoint'}`);
                 if (r.tags && r.tags.length) L.push(`- Behavior: ${r.tags.map(x => x.t).join(', ')}`);
                 const actions = Object.entries(m.actionCounts || {}).sort((a, b) => b[1] - a[1])
