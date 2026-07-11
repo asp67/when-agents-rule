@@ -522,19 +522,71 @@
             const p = [];
             const civ = civOf(o);
             shadow(p, 6.8);
-            part(p, 'frustum', [8, 7, 7.4, 6.4, 0.8], 'masonry');
-            part(p, 'box', [5.6, 3.0, 4.6], 'plaster', { y: 2.3 });
-            [-2.4, -0.8, 0.8, 2.4].forEach(x =>
-                part(p, 'cylinder', [0.26, 0.3, 3.0, 8], 'plaster', { x, y: 2.3, z: 2.85 }));
-            part(p, 'prism', [8, 6.6, 2.2], 'rooftile', { y: 3.8 });
-            // The colonnade is already Greece's voice; the others add their own.
-            if (civ === 'egyptian') {
-                part(p, 'box', [4.2, 0.3, 0.5], 'gold', { y: 4.0, z: 2.9 });
-                part(p, 'sphere', [1, 8, 6], 'gold', { x: 2.9, y: 0.3, z: 4.1, sx: 0.28, sy: 0.28, sz: 0.28 });
+            if (civ === 'greek') {
+                // Peripteral marble temple: stepped stylobate, a colonnade all
+                // around the cella, gabled roof with pediments — the Parthenon
+                // silhouette in miniature.
+                part(p, 'frustum', [8.6, 7, 8.0, 6.4, 0.9], 'masonry');
+                part(p, 'box', [4.6, 2.8, 3.4], 'plaster', { y: 2.35 });
+                [-2.7, -0.9, 0.9, 2.7].forEach(x => {
+                    part(p, 'cylinder', [0.24, 0.28, 2.9, 8], 'plaster', { x, y: 2.35, z: 2.5 });
+                    part(p, 'cylinder', [0.24, 0.28, 2.9, 8], 'plaster', { x, y: 2.35, z: -2.5 });
+                });
+                [-0.9, 0.9].forEach(z => {
+                    part(p, 'cylinder', [0.24, 0.28, 2.9, 8], 'plaster', { x: -2.7, y: 2.35, z });
+                    part(p, 'cylinder', [0.24, 0.28, 2.9, 8], 'plaster', { x: 2.7, y: 2.35, z });
+                });
+                part(p, 'prism', [8.8, 7.2, 1.9], 'plaster', { y: 3.95 });
+            } else if (civ === 'egyptian') {
+                // Pylon temple: battered hall, gold cornice, twin pylons over the
+                // gate, flag masts flying the player color.
+                part(p, 'frustum', [8.4, 6.6, 7.6, 6.0, 2.6], 'masonry', { z: -0.6 });
+                part(p, 'box', [5.2, 1.4, 4.2], 'plaster', { y: 3.2, z: -0.6 });
+                part(p, 'box', [5.6, 0.24, 0.34], 'gold', { y: 2.75, z: 2.72 });
+                part(p, 'frustum', [2.2, 1.3, 1.6, 1.0, 4.2], 'masonry', { x: -2.0, z: 2.9 });
+                part(p, 'frustum', [2.2, 1.3, 1.6, 1.0, 4.2], 'masonry', { x: 2.0, z: 2.9 });
+                part(p, 'box', [2.4, 0.4, 0.7], 'gold', { y: 4.4, z: 2.9 });
+                part(p, 'box', [1.3, 2.2, 0.3], 'bark', { y: 1.2, z: 3.32 });
+                [[-3.5, 3.4], [3.5, 3.4]].forEach(([x, z]) => {
+                    part(p, 'cylinder', [0.06, 0.07, 5.2, 4], 'bark', { x, y: 2.6, z });
+                    part(p, 'box', [0.34, 0.95, 0.05], 'cloth', { x: x + 0.2, y: 4.6, z, team: true });
+                });
             } else if (civ === 'yamato') {
-                doorTrim(p, 'yamato', 3, 4.0, 2.6, 2.6);
+                // Shrine: a raised honden on posts under a steep thatch roof with
+                // chigi finials and katsuogi ridge billets, torii before it.
+                [[-1.8, -1.2], [1.8, -1.2], [-1.8, 1.2], [1.8, 1.2]].forEach(([x, z]) =>
+                    part(p, 'cylinder', [0.14, 0.16, 1.4, 6], 'bark', { x, y: 0.7, z }));
+                part(p, 'box', [4.6, 0.3, 3.4], 'wood', { y: 1.5 });
+                part(p, 'box', [3.8, 1.9, 2.6], 'wood', { y: 2.75 });
+                part(p, 'prism', [6.2, 4.6, 2.0], 'thatch', { y: 3.7 });
+                [-2.9, 2.9].forEach(x => {
+                    part(p, 'box', [0.1, 1.0, 0.1], 'bark', { x, y: 5.85, rz: 0.45 });
+                    part(p, 'box', [0.1, 1.0, 0.1], 'bark', { x, y: 5.85, rz: -0.45 });
+                });
+                [-1.1, 0, 1.1].forEach(x =>
+                    part(p, 'box', [0.22, 0.22, 1.0], 'bark', { x, y: 5.78 }));
+                part(p, 'box', [1.4, 0.7, 0.9], 'wood', { y: 0.35, z: 2.0 }); // steps
+                doorTrim(p, 'yamato', 3, 3.4, 2.0, 2.6);
             } else if (civ === 'persian') {
-                part(p, 'box', [5.8, 0.3, 0.24], 'cloth', { y: 3.65, z: 2.36, team: true });
+                // Fire temple (chahar taqi): four pillars carrying a team-glazed
+                // dome over the open sanctuary, the sacred flame burning within.
+                part(p, 'frustum', [7.4, 7.4, 6.8, 6.8, 0.8], 'masonry');
+                [[-2.4, -2.4], [2.4, -2.4], [-2.4, 2.4], [2.4, 2.4]].forEach(([x, z]) =>
+                    part(p, 'box', [1.3, 3.2, 1.3], 'masonry', { x, y: 2.4, z }));
+                part(p, 'box', [6.2, 0.8, 6.2], 'masonry', { y: 4.4 });
+                part(p, 'box', [6.3, 0.28, 0.24], 'cloth', { y: 4.4, z: 3.14, team: true });
+                part(p, 'cylinder', [2.2, 2.5, 1.0, 9], 'cloth', { y: 5.3, team: true });
+                part(p, 'cylinder', [0, 2.2, 2.0, 9], 'cloth', { y: 6.8, team: true });
+                part(p, 'sphere', [1, 8, 6], 'gold', { y: 8.0, sx: 0.24, sy: 0.24, sz: 0.24 });
+                part(p, 'cylinder', [0.5, 0.7, 0.9, 8], 'masonry', { y: 1.25 });
+                part(p, 'cylinder', [0, 0.42, 0.9, 7], 'gold', { y: 2.15 }); // the flame
+            } else {
+                // Generic sanctuary (no civ — engine-test).
+                part(p, 'frustum', [8, 7, 7.4, 6.4, 0.8], 'masonry');
+                part(p, 'box', [5.6, 3.0, 4.6], 'plaster', { y: 2.3 });
+                [-2.4, -0.8, 0.8, 2.4].forEach(x =>
+                    part(p, 'cylinder', [0.26, 0.3, 3.0, 8], 'plaster', { x, y: 2.3, z: 2.85 }));
+                part(p, 'prism', [8, 6.6, 2.2], 'rooftile', { y: 3.8 });
             }
             return p;
         },
