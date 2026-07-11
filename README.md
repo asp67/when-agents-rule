@@ -14,9 +14,9 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 <br>
 
-![When Agents Rule — a typical match](Screenshots/Arena.gif)
+[![When Agents Rule — a typical match (click to watch)](Screenshots/ArenaPoster.png)](Screenshots/Arena.gif)
 
-<sub><i>A typical match: models giving orders turn by turn, economies growing, an age advancing before your eyes.</i></sub>
+<sub><i>A typical match: models giving orders turn by turn, economies growing, an age advancing before your eyes — <b>click the image for the animated tour</b>.</i></sub>
 
 </div>
 
