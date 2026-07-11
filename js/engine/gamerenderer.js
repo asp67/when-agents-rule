@@ -285,6 +285,64 @@
                 { buf: shortBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(LH, 0, Math.PI / 2) },
                 { buf: shortBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(-LH, 0, Math.PI / 2) }
             ];
+
+            // Ambient ground cover: real 3D shrubbery again — the flecks painted
+            // into the mega-texture were too subtle alone and the map read bleak.
+            // Prebaked entries, themed, seeded (a map seed reproduces the scatter),
+            // drawn only below halfH 90 (sub-pixel beyond) and culled per prop.
+            let pSeed = 424242;
+            if (terrain.seed != null && terrain.seed !== '') {
+                pSeed = 0;
+                for (const ch of String(terrain.seed)) pSeed = (pSeed * 31 + ch.charCodeAt(0)) >>> 0;
+            }
+            const rng = TexGen.rng(pSeed);
+            const props = [];
+            const HALF = 340; // keep off the beach ring
+            const TRSp = (x, y, z, sx, sy, sz, ry) => {
+                let m = m3.translation(x, y, z);
+                if (ry) m = m3.multiply(m, m3.rotationY(ry));
+                return m3.multiply(m, m3.scaling(sx, sy, sz));
+            };
+            const prop = (kind, args, tex, tint, x, y, z, sx, sy, sz, ry) =>
+                props.push({ buf: this._buf(kind, args), tex: this.tex[tex], tint, model: TRSp(x, y, z, sx, sy, sz, ry), x, z });
+            const bush = (snowCap) => {
+                const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
+                const s = 0.45 + rng() * 0.5;
+                prop('sphere', [1, 7, 5], 'foliage', this.WHITE, x, s * 0.5, z, s, s * 0.55, s, rng() * 6.28);
+                if (rng() < 0.7) {
+                    const a = rng() * 6.28, d = s * 0.8, s2 = s * (0.45 + rng() * 0.3);
+                    prop('sphere', [1, 7, 5], 'foliage', [0.88, 0.95, 0.85], x + Math.cos(a) * d, s2 * 0.5, z + Math.sin(a) * d, s2, s2 * 0.55, s2, rng() * 6.28);
+                }
+                if (snowCap) prop('sphere', [1, 7, 5], 'white', [0.93, 0.96, 1], x, s * 0.78, z, s * 0.72, s * 0.2, s * 0.72);
+            };
+            const pebble = (tint) => {
+                const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
+                const s = 0.14 + rng() * 0.14;
+                prop('sphere', [1, 6, 4], 'rock', tint, x, s * 0.5, z, s * 1.4, s * 0.6, s, rng() * 6.28);
+            };
+            if (theme === 'winter') {
+                for (let i = 0; i < 220; i++) bush(true);
+                for (let i = 0; i < 120; i++) { // snow patches
+                    const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
+                    const s = 0.6 + rng() * 1.1;
+                    prop('disc', [1, 10], 'white', [0.93, 0.96, 0.98], x, 0.04, z, s, 1, s * (0.7 + rng() * 0.5), rng() * 6.28);
+                }
+                for (let i = 0; i < 150; i++) pebble([0.62, 0.68, 0.76]);
+            } else if (theme === 'desert') {
+                for (let i = 0; i < 180; i++) bush(false);
+                for (let i = 0; i < 150; i++) pebble([0.82, 0.6, 0.42]); // rust rocks
+                for (let i = 0; i < 90; i++) pebble([0.9, 0.8, 0.62]);
+            } else {
+                for (let i = 0; i < 260; i++) bush(false);
+                const petals = [[1, 0.98, 0.9], [1, 0.83, 0.35], [0.93, 0.55, 0.7]];
+                for (let i = 0; i < 200; i++) { // flower tufts
+                    const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
+                    const s = 0.11 + rng() * 0.08;
+                    prop('sphere', [1, 5, 4], 'white', petals[(rng() * 3) | 0], x, 0.16, z, s, s, s);
+                }
+                for (let i = 0; i < 150; i++) pebble([0.72, 0.68, 0.62]);
+            }
+            this._props = props;
         }
 
         _resourceEntries(res, i) {
@@ -298,6 +356,10 @@
             };
             const rot = (i * 2.399) % 6.283; // deterministic per-node variation
             const s = 0.85 + ((i * 37) % 100) / 200;
+            // Sink food/stone/gold nodes 5–20% of their height into the ground —
+            // per-node character while shape and texture stay instantly readable.
+            const sink01 = ((i * 53) % 100) / 100;
+            const sink = h => (0.05 + sink01 * 0.15) * h;
             e = { opaque: [], blended: [] };
             const add = (kind, args, tex, model, blend) =>
                 (blend ? e.blended : e.opaque).push({ buf: this._buf(kind, args), tex: this.tex[tex], model });
@@ -311,12 +373,12 @@
                 }
             } else if (res.type === 'stone') {
                 add('disc', [2.0, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
-                add('sphere', [1, 9, 6], 'rock', TRS(res.x, 0.9, res.z, 1.7, 1.15, 1.5, rot));
+                add('sphere', [1, 9, 6], 'rock', TRS(res.x, 0.9 - sink(2.3), res.z, 1.7, 1.15, 1.5, rot));
             } else if (res.type === 'gold') {
                 add('disc', [1.8, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
-                add('sphere', [1, 9, 6], 'gold', TRS(res.x, 0.8, res.z, 1.5, 1.05, 1.4, rot));
+                add('sphere', [1, 9, 6], 'gold', TRS(res.x, 0.8 - sink(2.1), res.z, 1.5, 1.05, 1.4, rot));
             } else { // food: berry bush
-                add('sphere', [1, 9, 6], 'berries', TRS(res.x, 0.55, res.z, 1.15, 0.7, 1.15, rot));
+                add('sphere', [1, 9, 6], 'berries', TRS(res.x, 0.55 - sink(1.4), res.z, 1.15, 0.7, 1.15, rot));
             }
             this._resEntries.set(res, e);
             return e;
@@ -834,6 +896,15 @@
                     f.alpha = pulse;
                     f.uvOff = [drift, 0];
                     dl.blended.push(f);
+                }
+            }
+
+            // ambient shrubbery/flowers/pebbles — skipped when zoomed far out
+            // (sub-pixel at halfH 90+, and the draw-call budget thanks us)
+            if (this._props && this._halfH < 90) {
+                for (const pr of this._props) {
+                    if (this._cull(pr.x, pr.z, 3)) continue;
+                    dl.opaque.push(pr);
                 }
             }
 
