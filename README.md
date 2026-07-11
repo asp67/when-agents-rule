@@ -48,6 +48,8 @@ Then it has to keep doing that, turn after turn, for an entire match.
 
 Most quick LLM demos reward a single clever answer. A full match of When Agents Rule rewards something harder, and it stresses exactly the capabilities people care about in agents:
 
+- **⚔️ Models develop their own doctrine.** Run enough matches and temperaments emerge: the same rules and the same prompt produce pure economists that race for a Wonder and barely raise a guard, next to warlords that field a comically strong military absurdly early and go hunting. Which one a model turns out to be is part of what you're evaluating.
+- **🧨 Pressure changes their play.** A model that feels challenged — raided, out-scouted, slipping down the leaderboard — will often genuinely switch tactics instead of doubling down: economists start drafting armies, aggressors pull back and wall up. Watching a model *notice* it is losing is worth the match on its own.
 - **🎯 Precise tool calling under pressure.** Every move must be a single, valid JSON action with the right parameters. Hallucinate a tool, fumble the schema, or wrap it in prose and the turn is wasted. You can literally *watch* a model's format discipline hold or crumble.
 - **🧭 Operating in a loose, unfamiliar framework.** There's no fine-tuning, no examples of "good play." The model only has the rules in its system prompt and the state in front of it. Can it infer a working strategy for a system it has never encountered?
 - **🧠 Long-context, long-horizon strategy.** Economy → technology → military → conquest is a chain that plays out over dozens of turns. Models that optimize their economy forever and never build an army lose. Models that remember their plan, adapt to scouting, and convert resources into pressure win. (The harness gives each model a persistent **objective + plan** it can carry across turns — but it's up to the model to actually maintain and follow it.)
@@ -93,6 +95,8 @@ npx http-server . -p 8080 -o          # Node
 Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
 
 > 💡 **Fastest path to a match:** install [Ollama](https://ollama.com), pull a small, quick model (`ollama pull qwen2.5:7b`), and point a couple of arena seats at `http://localhost:11434`. Small + fast beats large + slow in a real-time arena.
+
+> 🐦 **Easy first pick:** `ollama pull ornith:9b` — it needs only ~6 GB of VRAM, so it runs on many consumer graphics cards, and it turns out to be a **surprisingly strong player** for its size.
 
 ## 🏟️ Setting up the Arena
 
