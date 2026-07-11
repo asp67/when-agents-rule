@@ -281,12 +281,50 @@
             }
             return p;
         },
-        barracks: () => {
+        barracks: (o = {}) => {
             const p = [];
+            const age = ageOf(o);
             shadow(p, 6.6);
-            part(p, 'box', [8, 3.2, 6], 'masonry', { y: 1.6 });
-            part(p, 'box', [2.4, 2.3, 0.3], 'wood', { y: 1.15, z: 3.05 });
-            part(p, 'prism', [8.8, 6.8, 2.4], 'rooftile', { y: 3.2 });
+            if (age === 'stone') {
+                // War camp: a big hide A-tent over a ridge pole, a rack of spears
+                // leaning beside it, sharpened stakes marking the muster ground.
+                part(p, 'prism', [7.2, 5.6, 3.0], 'leather', { y: 0 });
+                part(p, 'box', [7.6, 0.18, 0.18], 'bark', { y: 3.02 });
+                part(p, 'cylinder', [0.05, 0.05, 2.6, 4], 'bark', { x: 4.6, y: 1.3, z: 1.2, rz: 0.35 });
+                part(p, 'cylinder', [0.05, 0.05, 2.6, 4], 'bark', { x: 4.4, y: 1.3, z: 0.2, rz: -0.3 });
+                part(p, 'cylinder', [0.05, 0.05, 2.6, 4], 'bark', { x: 4.7, y: 1.3, z: -0.8, rz: 0.2 });
+                [[-4.3, 2.6], [-4.6, 1.2], [-4.4, -0.4]].forEach(([x, z]) =>
+                    part(p, 'cylinder', [0.02, 0.11, 1.5, 5], 'bark', { x, y: 0.75, z }));
+            } else if (age === 'neolithic') {
+                // War lodge: lashed log walls under thatch, a palisade row out front.
+                part(p, 'box', [7.6, 2.4, 5.6], 'wood', { y: 1.2 });
+                part(p, 'box', [7.76, 0.2, 5.76], 'bark', { y: 0.9 });
+                part(p, 'prism', [8.6, 6.4, 2.2], 'thatch', { y: 2.4 });
+                part(p, 'box', [2.2, 2.0, 0.3], 'bark', { y: 1.0, z: 2.86 });
+                [[-2.4, 3.6], [-1.2, 3.8], [0, 3.7], [1.2, 3.8], [2.4, 3.6]].forEach(([x, z]) =>
+                    part(p, 'cylinder', [0.03, 0.13, 1.7, 5], 'bark', { x, y: 0.85, z }));
+            } else if (age === 'bronze') {
+                // Training hall: timber on a stone footing, a practice dummy in the yard.
+                part(p, 'box', [8, 1.0, 6], 'masonry', { y: 0.5 });
+                part(p, 'box', [7.6, 2.4, 5.6], 'wood', { y: 2.2 });
+                part(p, 'prism', [8.8, 6.6, 2.3], 'thatch', { y: 3.4 });
+                part(p, 'box', [2.4, 2.2, 0.3], 'bark', { y: 1.5, z: 2.86 });
+                part(p, 'cylinder', [0.09, 0.11, 2.2, 5], 'bark', { x: 4.9, y: 1.1, z: 1.4 });
+                part(p, 'box', [1.5, 0.14, 0.14], 'wood', { x: 4.9, y: 1.7, z: 1.4 });
+                part(p, 'sphere', [1, 8, 6], 'thatch', { x: 4.9, y: 2.4, z: 1.4, sx: 0.28, sy: 0.3, sz: 0.28 });
+            } else {
+                // Iron: the stone garrison — masonry hall under fired tile, a
+                // gold-rimmed shield with crossed swords over the gate, spears
+                // racked by the door.
+                part(p, 'box', [8, 3.2, 6], 'masonry', { y: 1.6 });
+                part(p, 'box', [2.4, 2.3, 0.3], 'wood', { y: 1.15, z: 3.05 });
+                part(p, 'prism', [8.8, 6.8, 2.4], 'rooftile', { y: 3.2 });
+                part(p, 'cylinder', [0.55, 0.55, 0.1, 10], 'gold', { y: 2.72, z: 3.08, rx: Math.PI / 2 });
+                part(p, 'box', [0.09, 1.3, 0.09], 'iron', { y: 2.72, z: 3.16, rz: 0.6 });
+                part(p, 'box', [0.09, 1.3, 0.09], 'iron', { y: 2.72, z: 3.16, rz: -0.6 });
+                part(p, 'cylinder', [0.05, 0.05, 2.4, 4], 'bark', { x: -3.2, y: 1.2, z: 3.3, rz: 0.3 });
+                part(p, 'cylinder', [0.05, 0.05, 2.4, 4], 'bark', { x: -3.5, y: 1.2, z: 3.3, rz: -0.25 });
+            }
             return p;
         },
         stable: () => {
