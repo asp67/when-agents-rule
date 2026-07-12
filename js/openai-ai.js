@@ -1097,7 +1097,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - build_structure: params.buildingType ("town_center" | "house" | "farm" | "barracks" | "stable" | "archery_range" | "market" | "tower" | "temple"; availability and research state per "buildableStructures") + optional targetX/targetZ. Placing pulls a worker to construct a SITE over several seconds; it works only once "state":"complete".
 - build_wonder: start your Wonder (requires the Iron age).
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" — puts an idle worker on it (auto-scouts first if that type is still undiscovered).
-- assign_workers: params.resourceType (+ optional count) — PULLS workers off their current tasks onto that resource.
+- assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen.
 - repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairing workers rejoin the idle pool when done.
 - explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map ninth. Use map.exploration to aim targeted scouts.
 - move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay).
@@ -2851,29 +2851,75 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. ${msg} Once it appears in "resourcesOnMap", call assign_workers again. Don't keep re-issuing it meanwhile.`;
         }
 
-        // Candidates in fairness order: IDLE workers first (free labor — never
-        // disturb the economy while unused hands stand around); then gatherers
-        // on OTHER resources; workers already harvesting the requested type come
-        // last (moving them is a near no-op). Builders are never touched.
-        const candidates = ai.units.filter(u => u.type === 'worker' && u.task !== 'building' && !u.isBuilding);
-        if (candidates.length === 0) {
-            return `[ERROR] You have no workers to reassign. Train workers first.`;
+        // Which node? Explicit targetX/targetZ picks the discovered node nearest
+        // that point; otherwise the node nearest ANY finished Town Center wins —
+        // the shortest delivery loop is the fastest economy.
+        const gaveX = params.targetX !== undefined && params.targetX !== null && params.targetX !== '';
+        const gaveZ = params.targetZ !== undefined && params.targetZ !== null && params.targetZ !== '';
+        let node;
+        let nodeNote;
+        if (gaveX || gaveZ) {
+            const tx = Number(params.targetX), tz = Number(params.targetZ);
+            if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
+                return `[ERROR] assign_workers takes BOTH numeric "targetX" and "targetZ" (a discovered ${resourceType} node from "resourcesOnMap"), or neither — then the node nearest your Town Center is used.`;
+            }
+            node = this.nearestNodeTo({ x: tx, z: tz }, discovered);
+            nodeNote = 'nearest your target';
+        } else {
+            const tcs = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction);
+            let bd = Infinity;
+            node = discovered[0];
+            for (const n of discovered) {
+                for (const tc of tcs) {
+                    const d = Math.hypot(n.x - tc.x, n.z - tc.z);
+                    if (d < bd) { bd = d; node = n; }
+                }
+            }
+            nodeNote = 'nearest your Town Center';
         }
-        const rank = u => game.isIdleWorker(u) ? 0
-            : ((u.harvestTarget && u.harvestTarget.type === resourceType) ? 2 : 1);
+
+        // Pull order, cheapest disruption first: idle hands, then gatherers from
+        // the fattest stockpile down to the leanest (surplus labor is the most
+        // expendable), then scouts, then repairers, then farmers — steady food is
+        // the last thing to cannibalize. Builders are never pulled, nor are
+        // workers already on the requested resource: assign_workers ADDS to it.
+        const candidates = ai.units.filter(u =>
+            u.type === 'worker' && u.health > 0 &&
+            u.task !== 'building' && !u.isBuilding &&
+            !((u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget && u.harvestTarget.type === resourceType));
+        if (candidates.length === 0) {
+            const already = ai.units.filter(u => u.type === 'worker' && (u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget && u.harvestTarget.type === resourceType).length;
+            const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
+            return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing (builders are never pulled). Train more workers.`;
+        }
+        const stockOrder = ['food', 'wood', 'stone', 'gold']
+            .sort((a, b) => (ai.resources[b] || 0) - (ai.resources[a] || 0));
+        const rank = u => {
+            // scouting/repairing before the idle check — isIdleWorker() counts them as free
+            if (u.task === 'scouting') return 5;
+            if (u.task === 'repairing') return 6;
+            if (u.farmRef || u.task === 'farm_work') return 7;
+            if ((u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget) {
+                return 1 + stockOrder.indexOf(u.harvestTarget.type); // 1 fattest … 4 leanest
+            }
+            return 0; // idle (or aimless)
+        };
         candidates.sort((a, b) => rank(a) - rank(b));
 
-        let moved = 0, idleUsed = 0;
+        let moved = 0;
+        const pulledFrom = {};
         for (const w of candidates) {
             if (moved >= count) break;
-            if (game.isIdleWorker(w)) idleUsed++;
+            const r = rank(w);
+            const label = r === 0 ? 'idle' : r === 5 ? 'scouting' : r === 6 ? 'repairing' : r === 7 ? 'farming' : `from ${w.harvestTarget.type}`;
+            pulledFrom[label] = (pulledFrom[label] || 0) + 1;
             if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
             w.farmRef = null;
             w._formerTask = null;
-            const node = this.nearestNodeTo(w, discovered);
             w.task = 'harvesting';
             w.harvestTarget = node;
             w.buildTarget = null;
+            w.repairTarget = null;
             w.isMoving = true;
             w.targetX = node.x + (Math.random() - 0.5) * 2;
             w.targetZ = node.z + (Math.random() - 0.5) * 2;
@@ -2882,8 +2928,9 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             w.harvestAmount = 0;
             moved++;
         }
-        const pulled = moved - idleUsed;
-        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} (${idleUsed} idle, ${pulled} pulled off other work).`;
+        const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
+        const short = moved < count ? ` Fewer than requested: the others are constructing buildings (never pulled), already on ${resourceType}, or you don't have that many workers.` : '';
+        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${short}`;
     }
 
     // Put workers on fixing a damaged own building (free; uses the build task's
