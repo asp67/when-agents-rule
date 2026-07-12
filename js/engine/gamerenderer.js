@@ -395,7 +395,7 @@
             const engineType = unit.unitType === 'support' ? 'priest'
                 : (EngineUnits.META[unit.unitType] ? unit.unitType : 'infantry');
             const tint = this._tintOf(unit.color);
-            const entries = EngineUnits.parts(engineType, { civ: unit.civilization }).map(p => ({
+            const entries = EngineUnits.parts(engineType, { civ: unit.civilization, unit: unit.type }).map(p => ({
                 buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
                 tint: p.team ? tint : this.WHITE,
                 base: p.m, bone: p.bone, blend: p.blend, model: p.m
