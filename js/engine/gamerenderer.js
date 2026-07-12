@@ -1004,7 +1004,12 @@
                     let d = want - dir;
                     while (d > Math.PI) d -= Math.PI * 2;
                     while (d < -Math.PI) d += Math.PI * 2;
-                    dir += d * Math.min(1, dt * 10);
+                    // Small corrections steer smoothly (error-proportional rate);
+                    // past ~100° it isn't steering, it's an about-face — pivot on
+                    // the spot. At the old flat dt·10 rate a 180° turn took ~0.3s
+                    // and cavalry visibly rode BACKWARDS through every U-turn.
+                    if (Math.abs(d) > 1.8) dir = want;
+                    else dir += d * Math.min(1, dt * (10 + 12 * Math.abs(d)));
                     this._unitDir.set(u, dir);
                 }
                 const anim = (u.isHarvesting || u.isBuilding) ? 'harvest' : (u.isMoving ? 'walk' : 'idle');
