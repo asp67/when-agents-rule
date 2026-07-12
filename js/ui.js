@@ -722,18 +722,23 @@ class UIManager {
     setModelField(id, field, value) { const m = this.getArenaModel(id); if (m) { m[field] = value; this.saveArenaConfig(); } }
     setModelBool(id, field, value) { const m = this.getArenaModel(id); if (m) { m[field] = !!value; this.saveArenaConfig(); } }
 
-    // Fill the context budget with the model's maximum context window. Tries (in
-    // order) the per-model context map captured during the last connection test, a
-    // built-in table of known commercial-model windows, then a live Ollama /api/show.
+    // Fill the context budget with the model's maximum context window. The
+    // endpoint's own answers win: first the per-model context map captured during
+    // the last connection test, then a live Ollama /api/show — authoritative for
+    // local models, and tried under 'auto' too, because the URL heuristic misses
+    // Ollama servers on custom ports/proxies (a non-Ollama server just 404s and
+    // we fall through). The built-in table of known commercial windows is the
+    // last resort, so a table guess can never mask the real loaded context.
     async resetModelContextToMax(id) {
         const m = this.getArenaModel(id);
         if (!m) return;
-        const prov = (m.provider && m.provider !== 'auto') ? m.provider : OpenAIAIManager.detectProvider(m.endpoint);
-        let max = (m.availableModelContext && m.availableModelContext[m.model]) ||
-                  OpenAIAIManager.knownContextWindow(m.model, prov);
-        if (!max && prov === 'ollama' && (m.model || '').trim()) {
+        const explicit = m.provider && m.provider !== 'auto';
+        const prov = explicit ? m.provider : OpenAIAIManager.detectProvider(m.endpoint);
+        let max = (m.availableModelContext && m.availableModelContext[m.model]) || null;
+        if (!max && (m.model || '').trim() && (prov === 'ollama' || !explicit)) {
             max = await OpenAIAIManager.fetchOllamaContext(m.endpoint, m.model, this.cleanAuth(m.auth));
         }
+        if (!max) max = OpenAIAIManager.knownContextWindow(m.model, prov);
         if (max && max >= 512) {
             m.contextSize = max;
             m.maxContext = max;
