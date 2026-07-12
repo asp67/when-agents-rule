@@ -1094,7 +1094,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - train_unit: params.unitType. Roster by building and epoch — barracks: militia -> warrior (bronze) -> champion (iron); archery_range: archer (neolithic) -> elite_archer (iron); stable: scout_cavalry -> cavalry (bronze) -> heavy_cavalry (iron); temple: priest (bronze). Your civ may add unique units ([ERROR] replies name your valid options). Optional targetX/targetZ picks WHICH structure trains when you have several.
 - research_tech: params.techId, an exact id from "research.available". One tech at a time; never research one already in "research.researched".
 - upgrade_age: advance the epoch (stone -> neolithic -> bronze -> iron); cost in "epoch.nextEpochCost". Ages unlock stronger units, buildings and techs.
-- build_structure: params.buildingType ("town_center" | "house" | "farm" | "barracks" | "stable" | "archery_range" | "market" | "tower" | "temple"; availability and research state per "buildableStructures") + optional targetX/targetZ. Placing pulls a worker to construct a SITE over several seconds; it works only once "state":"complete".
+- build_structure: params.buildingType ("town_center" | "house" | "farm" | "barracks" | "stable" | "archery_range" | "market" | "tower" | "temple"; availability and research state per "buildableStructures") + optional targetX/targetZ. Placing pulls a worker to construct a SITE over several seconds (least-disruptive first — same triage as assign_workers — and of that tier the one closest to the site); it works only once "state":"complete".
 - build_wonder: start your Wonder (requires the Iron age).
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" — puts an idle worker on it (auto-scouts first if that type is still undiscovered).
 - assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders, fighting workers and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen.
@@ -2281,7 +2281,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] You have no workers to build ${buildingType}. Train a worker first.`;
         }
         if (pick.error === 'no_idle') {
-            return `[ERROR] No worker available to build ${buildingType} — all your workers are already constructing other sites. Wait for one to finish.`;
+            return `[ERROR] No worker available to build ${buildingType} — all your workers are constructing other sites or fighting (neither is ever pulled). Wait for one to finish.`;
         }
 
         ai.resources.spendResources(buildingDef.cost);
@@ -2419,7 +2419,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // affordable Wonder because all its workers were out gathering.
         const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
         if (pick.error === 'no_workers') return `[ERROR] You have no workers to build the Wonder.`;
-        if (pick.error === 'no_idle') return `[ERROR] No worker available to start the Wonder — all your workers are already constructing other sites. Wait for one to finish.`;
+        if (pick.error === 'no_idle') return `[ERROR] No worker available to start the Wonder — all your workers are constructing other sites or fighting (neither is ever pulled). Wait for one to finish.`;
 
         ai.resources.spendResources(wonderDef.cost);
         const wonder = createBuilding(wonderDef.id, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
@@ -2932,18 +2932,9 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
             return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing, ${fighting} are fighting (builders and fighting workers are never pulled). Train more workers.`;
         }
-        const stockOrder = ['food', 'wood', 'stone', 'gold']
-            .sort((a, b) => (ai.resources[b] || 0) - (ai.resources[a] || 0));
-        const rank = u => {
-            // scouting/repairing before the idle check — isIdleWorker() counts them as free
-            if (u.task === 'scouting') return 5;
-            if (u.task === 'repairing') return 6;
-            if (u.farmRef || u.task === 'farm_work') return 7;
-            if ((u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget) {
-                return 1 + stockOrder.indexOf(u.harvestTarget.type); // 1 fattest … 4 leanest
-            }
-            return 0; // idle (or aimless)
-        };
+        // Tier policy lives in game.workerPullRank — the same triage that picks
+        // builders, so every kind of pull disturbs the economy the same way.
+        const rank = u => game.workerPullRank(ai, u);
         candidates.sort((a, b) => rank(a) - rank(b));
 
         let moved = 0;

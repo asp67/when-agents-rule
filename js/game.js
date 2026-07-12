@@ -2108,30 +2108,42 @@ class Game {
             !u.isHarvesting && !u.carryingResource && !u.farmRef;
     }
 
-    // Decide who builds `site`:
-    //   - prefer the closest IDLE worker (never pulls a busy one)
-    //   - if there is no idle worker, only borrow the closest busy worker when the
-    //     player is at the population cap (can't just train a new one); that worker
-    //     resumes its former task afterwards.
+    // Shared labor triage — which worker hurts least to pull off its task?
+    //   0 idle · 1-4 gatherers (fattest stockpile first, surplus labor is the
+    //   most expendable) · 5 scouts · 6 repairers · 7 farmers (steady food goes
+    //   last). Builders and FIGHTING workers return Infinity: never pulled.
+    // Used by pickBuilder (construction) and assign_workers (harvest orders) so
+    // both kinds of pull follow one policy. Scouts/repairers need explicit
+    // tiers — isIdleWorker() counts both as free.
+    workerPullRank(owner, u) {
+        if (u.task === 'building' || u.isBuilding) return Infinity;
+        if (u.isAttacking || u.attackTarget || u.attackMove) return Infinity;
+        if (u.task === 'scouting') return 5;
+        if (u.task === 'repairing') return 6;
+        if (u.farmRef || u.task === 'farm_work') return 7;
+        if ((u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget) {
+            const stockOrder = ['food', 'wood', 'stone', 'gold']
+                .sort((a, b) => (owner.resources[b] || 0) - (owner.resources[a] || 0));
+            return 1 + stockOrder.indexOf(u.harvestTarget.type); // 1 fattest … 4 leanest
+        }
+        return 0; // idle (or aimless)
+    }
+
+    // Decide who builds `site`: triage-rank every worker (workerPullRank), take
+    // the best tier present, and from that tier the worker CLOSEST to the site.
+    // Idle workers build outright; anyone else is borrowed and resumes its
+    // former task afterwards (applyBuilder saves it). Builders and fighting
+    // workers are never pulled.
     pickBuilder(owner, site, opts = {}) {
         const workers = (owner.units || []).filter(u => u.type === 'worker' && u.health > 0);
         if (!workers.length) return { error: 'no_workers' };
-        const closest = arr => {
-            let best = null, bd = Infinity;
-            arr.forEach(u => { const d = Math.hypot(u.x - site.x, u.z - site.z); if (d < bd) { bd = d; best = u; } });
-            return best;
-        };
-        const idle = workers.filter(u => this.isIdleWorker(u));
-        if (idle.length) return { worker: closest(idle), restore: false };
-
-        // No idle worker: BORROW the closest gatherer — it resumes its old task
-        // once the build is done (applyBuilder saves it). Refusing to borrow
-        // below the population cap made early-game placement fail exactly when
-        // it matters most: every starting worker is gathering, so a farm order
-        // just fizzled.
-        const borrowable = workers.filter(u => u.task !== 'building' && !u.isBuilding);
-        if (!borrowable.length) return { error: 'no_idle' };
-        return { worker: closest(borrowable), restore: true };
+        let bestRank = Infinity;
+        for (const u of workers) bestRank = Math.min(bestRank, this.workerPullRank(owner, u));
+        if (bestRank === Infinity) return { error: 'no_idle' };
+        const pool = workers.filter(u => this.workerPullRank(owner, u) === bestRank);
+        let best = null, bd = Infinity;
+        pool.forEach(u => { const d = Math.hypot(u.x - site.x, u.z - site.z); if (d < bd) { bd = d; best = u; } });
+        return { worker: best, restore: bestRank > 0 };
     }
 
     // Configure the chosen worker to build `site`, remembering its task if borrowed.
