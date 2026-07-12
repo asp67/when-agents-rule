@@ -474,6 +474,18 @@
                     buf: this._buf('box', [0.85, 0.55, 0.07]), tex: this.tex.cloth, tint,
                     model: m3.multiply(world, m3.translation(off + 0.45, 2.25, off))
                 });
+                // …and a team-color runner out the FRONT door: the walls are
+                // near-symmetric in the early ages, so this ground strip is the
+                // orientation cue that reads at any zoom. Long enough (z 3.2→7)
+                // to emerge past every civ's front wall; plinths hide the rest.
+                if (building.type !== 'farm') {
+                    const rz = building.isWonder ? 6.8 : 5.1;
+                    const rw = building.isWonder ? 2.2 : 1.7;
+                    eb.opaque.push({
+                        buf: this._buf('box', [rw, 0.05, 3.8]), tex: this.tex.cloth, tint,
+                        model: m3.multiply(world, m3.translation(0, 0.08, rz))
+                    });
+                }
             }
             building._engine = eb;
             building.mesh = building.mesh && building.mesh.visible !== undefined
@@ -1230,7 +1242,11 @@
                 // Combatants are exempt: the push used to referee fights near
                 // buildings — an attacking worker could never close to melee
                 // range and just shoved its target around the walls forever.
-                if (unit.isAttacking && unit.attackTarget) return;
+                // Attack-MOVE marchers count too: before acquiring a target
+                // (attackTarget still null) the push could pin them against a
+                // packed base's clearance rings, sliding along walls instead
+                // of closing in — "can't reach the barracks from the side".
+                if (unit.isAttacking && (unit.attackTarget || unit.attackMove)) return;
                 this.buildings.forEach(building => {
                     if (building.type === 'farm') return;
                     if (unit.task === 'building' && unit.buildTarget === building) return;
