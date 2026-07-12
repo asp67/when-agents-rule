@@ -1106,12 +1106,22 @@ class Game {
             const range = tower.range || 6;
             const dmg = tower.attack || 10;
 
-            // Hit every enemy unit in range this volley.
+            // Hit the CLOSEST enemies in range — at most 5 per volley, so one
+            // tower thins a wave instead of erasing it in a single flight.
+            const inRange = [];
             units.forEach(unit => {
                 if (!unit || unit.owner === tower.owner || unit.health <= 0) return;
                 const dx = unit.x - tower.x, dz = unit.z - tower.z;
-                if (Math.sqrt(dx * dx + dz * dz) > range) return;
+                const d = Math.sqrt(dx * dx + dz * dz);
+                if (d <= range) inRange.push({ unit, d });
+            });
+            inRange.sort((a, b) => a.d - b.d);
+            inRange.slice(0, 5).forEach(({ unit }) => {
                 unit.health -= dmg;
+                // Credit the shooter: the casualty report names the tower, and
+                // the auto-defense reflex knows what to retaliate against.
+                unit._lastAttacker = tower;
+                unit._lastDamageTime = Date.now();
 
                 // Combat visuals: a stone from the tower top + flash + battle ping.
                 this.renderer.spawnProjectile(
@@ -1418,17 +1428,23 @@ class Game {
         // building another Wonder ("already building or holding a Wonder").
         const isBuilding = target.isWonder || (target.type && BUILDING_DEFS[target.type]);
 
-        // Battle report for both sides, before any list surgery.
+        // Battle report for both sides, before any list surgery. Specific types
+        // on BOTH ends ("your warrior was eliminated by X's tower"), so a model
+        // reads exactly what it lost and what killed it — workers, military and
+        // buildings alike all die through here.
         const victimOwner = isBuilding ? this.getOwnerByBuilding(target) : this.getOwner(target);
         const killerOwner = target._lastAttacker ? this.getOwner(target._lastAttacker) : null;
         const at = `(${Math.round(target.x)}, ${Math.round(target.z)})`;
-        const label = isBuilding ? (target.isWonder ? 'Wonder' : target.type) : (target.unitType || target.type);
+        const label = isBuilding ? (target.isWonder ? 'Wonder' : target.type) : target.type;
+        const killer = target._lastAttacker;
+        const killerLabel = killer ? (killer.isWonder ? 'Wonder' : killer.type) : null;
         if (victimOwner) {
-            const by = (killerOwner && killerOwner !== victimOwner) ? ` — destroyed by ${this.ownerName(killerOwner)}` : '';
-            this.logPlayerEvent(victimOwner, `LOSS: your ${label} at ${at}${by}`);
+            const by = (killerOwner && killerOwner !== victimOwner)
+                ? ` by ${this.ownerName(killerOwner)}'s ${killerLabel || 'forces'}` : '';
+            this.logPlayerEvent(victimOwner, `LOSS: your ${label} was eliminated${by} at ${at}`);
         }
         if (killerOwner && killerOwner !== victimOwner) {
-            this.logPlayerEvent(killerOwner, `KILL: you destroyed ${this.ownerName(victimOwner)}'s ${label} at ${at}`);
+            this.logPlayerEvent(killerOwner, `KILL: your ${killerLabel || 'forces'} eliminated ${this.ownerName(victimOwner)}'s ${label} at ${at}`);
         }
 
         // A finished house/Town Center going down takes its population bonus
