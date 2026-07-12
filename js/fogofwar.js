@@ -119,8 +119,12 @@ class FogOfWarManager {
             this.reveal(unit.x, unit.z, this.game.unitVision(unit));
         });
         
-        // Reveal fog around player buildings
+        // Reveal fog around player buildings. Construction plots grant NOTHING —
+        // scaffolding doesn't see; the tower's 60-radius sweep switches on only
+        // when the build completes (the builders' own unit vision covers the
+        // site while they work).
         this.game.player.buildings.forEach(building => {
+            if (building.underConstruction) return;
             const range = building.type === 'tower' ? this.towerVisionRange : this.buildingVisionRange;
             this.reveal(building.x, building.z, range);
         });
@@ -133,6 +137,7 @@ class FogOfWarManager {
                     this.reveal(unit.x, unit.z, this.game.unitVision(unit));
                 });
                 ai.buildings.forEach(building => {
+                    if (building.underConstruction) return; // plots don't see (same rule as the player's)
                     const range = building.type === 'tower' ? this.towerVisionRange : this.buildingVisionRange;
                     this.reveal(building.x, building.z, range);
                 });

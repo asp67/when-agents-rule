@@ -933,8 +933,11 @@ class OpenAIAIManager {
             this.revealGridArea(grid, numTiles, unit.x, unit.z, range, halfSize, gridSize, 2);
         });
 
-        // Reveal around AI's buildings
+        // Reveal around AI's buildings — FINISHED ones only. A construction plot
+        // grants no vision (same rule as the human fog): a tower's 60-radius
+        // sweep is the reward for completing it, not for placing the stakes.
         ai.buildings.forEach(bldg => {
+            if (bldg.underConstruction) return;
             const range = bldg.type === 'tower' ? towerVisionRange : buildingVisionRange;
             this.revealGridArea(grid, numTiles, bldg.x, bldg.z, range, halfSize, gridSize, 2);
         });
@@ -978,8 +981,9 @@ class OpenAIAIManager {
             if (Math.sqrt(dx * dx + dz * dz) <= range) return 'visible';
         }
 
-        // Check against AI buildings
+        // Check against AI buildings (finished only — plots don't see)
         for (const bldg of ai.buildings) {
+            if (bldg.underConstruction) continue;
             const range = bldg.type === 'tower' ? towerVisionRange : buildingVisionRange;
             const dx = bldg.x - x;
             const dz = bldg.z - z;
