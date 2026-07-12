@@ -1190,8 +1190,16 @@ class Game {
             let defenders = military.filter(u => !u.isAttacking);
             if (military.length === 0) {
                 // No army: pull nearby workers (interrupting their economy) to defend.
+                // Only workers NOT already fighting — this reflex re-runs every ~600ms
+                // while the raid lasts, and re-drafting an engaged worker reset its
+                // attackTimer below the 1000ms swing threshold FOREVER: drafted mobs
+                // surrounded the raider and never landed a single blow until the
+                // building fell and the threat list finally emptied. (It also
+                // overwrote _draftReturn with the already-drafted state, losing the
+                // economy job the worker should return to.)
                 usingWorkers = true;
                 defenders = owner.units.filter(u => u.type === 'worker' && u.health > 0 &&
+                    !u.isAttacking &&
                     Math.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= 28);
             }
             if (!defenders.length) return;
@@ -2565,7 +2573,12 @@ class Game {
     updateWorkerTasks(deltaTime) {
         this.getAllUnits().forEach(unit => {
             if (unit.type !== 'worker') return;
-            
+            // A fighting worker belongs to updateCombat (same rule as
+            // updateUnitMovement) — the economy mover otherwise drives it a
+            // SECOND time per tick toward the combat targetX, doubling its
+            // chase speed and shoving it onto the enemy's exact spot.
+            if (unit.isAttacking) return;
+
             // Get owner's resources and buildings
             const owner = this.getOwner(unit);
             if (!owner) return;
