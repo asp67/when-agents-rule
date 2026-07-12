@@ -427,7 +427,9 @@
             building.color = civColor;
             const tint = this._tintOf(civColor);
             const world = m3.multiply(
-                m3.translation(building.x, 0, building.z),
+                m3.multiply(
+                    m3.translation(building.x, 0, building.z),
+                    m3.rotationY(building.rotationY || 0)),
                 m3.scaling(BSCALE, BSCALE, BSCALE));
             let parts, shellIdx = -1;
             if (building.underConstruction) {

@@ -248,6 +248,10 @@ function createBuilding(type, x, z, owner, civilization, options) {
         age: age, // epoch this building was constructed in (drives its look + HP)
         x: x,
         z: z,
+        // Face the map center (doors sit on a mesh's +Z side), snapped to 90°
+        // steps so walls stay parallel to the map edges. Purely visual —
+        // collision gaps and vision are all radial.
+        rotationY: Math.round(Math.atan2(-x, -z) / (Math.PI / 2)) * (Math.PI / 2),
         // Construction sites start partially built and ramp up as workers build them
         underConstruction: underConstruction,
         buildProgress: 0,
