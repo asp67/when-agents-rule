@@ -1194,22 +1194,14 @@
                 }
             }
 
-            // embedded sim duties, kept bit-identical to the old renderer ------
-            this.units.forEach(unit => {
-                if (unit.owner === 'player') return;
-                if (unit.isMoving && unit.targetX !== undefined) {
-                    const dx = unit.targetX - unit.x;
-                    const dz = unit.targetZ - unit.z;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
-                    if (dist > 0.5) {
-                        const speed = unit.speed * deltaTime;
-                        unit.x += (dx / dist) * speed;
-                        unit.z += (dz / dist) * speed;
-                    } else {
-                        unit.isMoving = false;
-                    }
-                }
-            });
+            // embedded sim duties (positional refereeing only) ---------------
+            // NOTE: no unit MOVEMENT happens here. An earlier "kept bit-identical"
+            // port carried over a legacy mover that advanced every non-player unit
+            // a SECOND time (game.js integrates at 3×speed/s, this added 1× more),
+            // so AI armies ran 33% hot on plain moves and — because it steered
+            // toward a STALE targetX/Z during attack-marches — dragged them 33%
+            // slow. Infantry visibly outpaced cavalry. game.js (updateUnitMovement /
+            // updateWorkerTasks / updateCombat) is the single source of movement.
             const SEPARATION_DIST = 1.2, SEPARATION_FORCE = 0.03;
             for (let i = 0; i < this.units.length; i++) {
                 for (let j = i + 1; j < this.units.length; j++) {
