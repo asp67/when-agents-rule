@@ -391,6 +391,12 @@
         }
 
         addUnit(unit) {
+            // Re-add-safe: this.units doubles as the game's unit list
+            // (game.getAllUnits), and a duplicate entry means duplicate combat
+            // ticks — a re-added unit (e.g. a field upgrade recomposing its
+            // mesh) must replace its old entry, never stack a second one.
+            const prev = this.units.indexOf(unit);
+            if (prev > -1) this.units.splice(prev, 1);
             this.units.push(unit);
             const engineType = unit.unitType === 'support' ? 'priest'
                 : (EngineUnits.META[unit.unitType] ? unit.unitType : 'infantry');

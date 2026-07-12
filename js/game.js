@@ -2008,10 +2008,13 @@ class Game {
             if (upgradedType && upgradedType !== unit.type) {
                 const newDef = getUnitDef(upgradedType);
                 if (newDef) {
-                    // Remove old mesh
-                    if (unit.mesh) {
-                        this.renderer.scene.remove(unit.mesh);
-                    }
+                    // REALLY remove the unit from the renderer before re-adding:
+                    // scene.remove() is a legacy no-op shim, and renderer.units IS
+                    // the simulation list (getAllUnits) — the old remove+add pair
+                    // duplicated every upgraded veteran, giving it one combat tick
+                    // PER COPY each frame: triple-listed champions moved (and hit)
+                    // at 3x and "flew over the map".
+                    this.renderer.removeUnit(unit);
 
                     // Upgrade the unit
                     unit.type = upgradedType;
