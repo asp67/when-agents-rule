@@ -68,28 +68,37 @@ class TerrainManager {
         // (terrain mega-texture flecks replace the old instanced prop scatter).
     }
 
-    // The map is split into four 90° wedges, one centred on each player's spawn
-    // direction (top/right/bottom/left). A random point inside player `area`'s
-    // wedge — used to spread food & wood evenly across players but randomly within.
-    randomPosInArea(area) {
-        const baseAngles = [-Math.PI / 2, 0, Math.PI / 2, Math.PI]; // matches the 4 spawn directions
-        const a = baseAngles[area % 4] + (this.rand() - 0.5) * (Math.PI / 2);
-        const maxR = this.size / 2 - 24; // keep off the beach/edge
-        const r = 24 + this.rand() * (maxR - 24);
-        return { x: Math.cos(a) * r, z: Math.sin(a) * r };
+    // Fairness scatter: the map is split into a 3×3 grid of equal tiles (the
+    // same nine sections the models' exploration compass reports) and EVERY
+    // tile receives the SAME number of nodes of the given type, placed
+    // uniformly within it. This replaces two sources of imbalance: the old
+    // polar wedge scatter (uniform in radius → density ∝ 1/r, which piled
+    // food and wood into the map center) and the one-roll-for-the-whole-map
+    // stone scatter whose variance could starve a quadrant. A map seed still
+    // reproduces the exact layout.
+    scatterEqual(type, totalCount, amount) {
+        const margin = 40;                 // keep off the beach ring
+        const usable = this.size - margin * 2;
+        const tile = usable / 3;
+        const per = Math.max(1, Math.round(totalCount / 9));
+        for (let tx = 0; tx < 3; tx++) {
+            for (let tz = 0; tz < 3; tz++) {
+                const x0 = -usable / 2 + tx * tile;
+                const z0 = -usable / 2 + tz * tile;
+                for (let i = 0; i < per; i++) {
+                    const inset = 6;       // stay off the tile seams (visual clumping)
+                    const x = x0 + inset + this.rand() * (tile - inset * 2);
+                    const z = z0 + inset + this.rand() * (tile - inset * 2);
+                    this.resources.push({ type, x, z, amount, mesh: this._handle(type), health: amount });
+                }
+            }
+        }
     }
 
     generateResources() {
-        // Food (berry bushes): 272 total at full strength (68 each), spread EVENLY
-        // across the 4 player areas but placed randomly within each wedge. Scaled
-        // by the difficulty's food multiplier (Winter -50%, Desert -75%).
-        const perArea = Math.max(1, Math.round(68 * this.diffMods().food));
-        for (let area = 0; area < 4; area++) {
-            for (let i = 0; i < perArea; i++) {
-                const { x, z } = this.randomPosInArea(area);
-                this.resources.push({ type: 'food', x, z, amount: 500, mesh: this._handle('food'), health: 500 });
-            }
-        }
+        // Food (berry bushes): ~272 at full strength, scaled by the difficulty's
+        // food multiplier (Winter -50%, Desert -75%), equal per 3×3 tile.
+        this.scatterEqual('food', 272 * this.diffMods().food, 500);
     }
 
     // Remove a single resource node (its handle just goes with it).
@@ -122,43 +131,22 @@ class TerrainManager {
     }
 
     generateTrees() {
-        // Wood (trees): 640 total at full strength (160 each), spread EVENLY across
-        // the 4 player areas but placed randomly within each wedge. Scaled by the
-        // difficulty's wood multiplier (Desert -75%).
-        const perArea = Math.max(1, Math.round(160 * this.diffMods().wood));
-        for (let area = 0; area < 4; area++) {
-            for (let t = 0; t < perArea; t++) {
-                const { x, z } = this.randomPosInArea(area);
-                this.resources.push({ type: 'wood', x, z, amount: 300, mesh: this._handle('wood'), health: 300 });
-            }
-        }
+        // Wood (trees): ~640 at full strength, scaled by the difficulty's wood
+        // multiplier (Desert -75%), equal per 3×3 tile.
+        this.scatterEqual('wood', 640 * this.diffMods().wood, 300);
     }
 
     generateStones() {
-        const count = Math.max(1, Math.round(40 * this.diffMods().stone)); // Desert -50%
-        for (let i = 0; i < count; i++) {
-            const x = (this.rand() - 0.5) * (this.size - 20);
-            const z = (this.rand() - 0.5) * (this.size - 20);
-            this.resources.push({ type: 'stone', x, z, amount: 1000, mesh: this._handle('stone'), health: 1000 });
-        }
+        // Stone: ~40 at full strength (Desert -50%), equal per 3×3 tile — the
+        // old single uniform roll could leave a whole quadrant stone-poor.
+        this.scatterEqual('stone', 40 * this.diffMods().stone, 1000);
     }
 
     generateGold() {
-        // Gold is crucial, so spread it via a jittered grid: one node randomly
-        // placed inside each cell of a grid covering the map. This keeps placement
-        // random but guarantees no large section is left without gold.
-        const cells = 4; // 4x4 = 16 nodes, evenly distributed
-        const usable = this.size - 60;       // keep clear of the very edge
-        const cellSize = usable / cells;
-        const start = -usable / 2;
-        for (let cx = 0; cx < cells; cx++) {
-            for (let cz = 0; cz < cells; cz++) {
-                const inset = cellSize * 0.18; // jitter within the cell, off the borders
-                const x = start + cx * cellSize + inset + this.rand() * (cellSize - 2 * inset);
-                const z = start + cz * cellSize + inset + this.rand() * (cellSize - 2 * inset);
-                this.resources.push({ type: 'gold', x, z, amount: 2000, mesh: this._handle('gold'), health: 2000 });
-            }
-        }
+        // Gold is crucial (the Wonder runs on it): exactly two nodes in every
+        // 3×3 tile (18 total — the old 4×4 grid had 16, close enough that the
+        // economy balance holds, and equality is worth the two extra nodes).
+        this.scatterEqual('gold', 18, 2000);
     }
 
     getTerrainHeight(x, z) {

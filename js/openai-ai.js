@@ -1083,6 +1083,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - Resources: food (animals, berries, farms), wood (trees), stone (quarries), gold (mines).
 
 - "recentEvents" is your battle report: losses, kills and raids of the last moments. React to it — repel raids, repair_building damage, rebuild what fell.
+- Resources are distributed EVENLY across the map's nine exploration sections (see map.exploration): every section holds the same share of food, wood, stone and gold. When your local nodes run dry, ANY direction of scouting finds more — pick the least explored.
 
 ## Actions (issue exactly ONE per turn)
 - train_worker: a villager at your Town Center. Optional targetX/targetZ: train at the Town Center nearest those coords (a busy one falls back to the next free).
