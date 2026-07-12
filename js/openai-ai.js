@@ -1097,7 +1097,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - build_structure: params.buildingType ("town_center" | "house" | "farm" | "barracks" | "stable" | "archery_range" | "market" | "tower" | "temple"; availability and research state per "buildableStructures") + optional targetX/targetZ. Placing pulls a worker to construct a SITE over several seconds; it works only once "state":"complete".
 - build_wonder: start your Wonder (requires the Iron age).
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" — puts an idle worker on it (auto-scouts first if that type is still undiscovered).
-- assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen.
+- assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders, fighting workers and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen.
 - repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairing workers rejoin the idle pool when done.
 - explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map ninth. Use map.exploration to aim targeted scouts.
 - move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay).
@@ -2881,16 +2881,19 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // Pull order, cheapest disruption first: idle hands, then gatherers from
         // the fattest stockpile down to the leanest (surplus labor is the most
         // expendable), then scouts, then repairers, then farmers — steady food is
-        // the last thing to cannibalize. Builders are never pulled, nor are
-        // workers already on the requested resource: assign_workers ADDS to it.
+        // the last thing to cannibalize. Builders and fighting workers (also by
+        // auto-retaliation) are never pulled, nor are workers already on the
+        // requested resource: assign_workers ADDS to it.
+        const isFighting = u => u.isAttacking || u.attackTarget || u.attackMove;
         const candidates = ai.units.filter(u =>
             u.type === 'worker' && u.health > 0 &&
-            u.task !== 'building' && !u.isBuilding &&
+            u.task !== 'building' && !u.isBuilding && !isFighting(u) &&
             !((u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget && u.harvestTarget.type === resourceType));
         if (candidates.length === 0) {
             const already = ai.units.filter(u => u.type === 'worker' && (u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget && u.harvestTarget.type === resourceType).length;
             const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
-            return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing (builders are never pulled). Train more workers.`;
+            const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
+            return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing, ${fighting} are fighting (builders and fighting workers are never pulled). Train more workers.`;
         }
         const stockOrder = ['food', 'wood', 'stone', 'gold']
             .sort((a, b) => (ai.resources[b] || 0) - (ai.resources[a] || 0));
@@ -2929,7 +2932,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             moved++;
         }
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
-        const short = moved < count ? ` Fewer than requested: the others are constructing buildings (never pulled), already on ${resourceType}, or you don't have that many workers.` : '';
+        const short = moved < count ? ` Fewer than requested: the others are constructing or fighting (never pulled), already on ${resourceType}, or you don't have that many workers.` : '';
         return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${short}`;
     }
 
