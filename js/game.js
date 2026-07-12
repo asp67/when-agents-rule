@@ -2007,6 +2007,12 @@ class Game {
                     unit.range = newDef.range;
                     unit.currentTier = newAge;
 
+                    // The raw def stats above just wiped every researched bonus
+                    // (Bushido, Iron Working, …) — re-apply them, same catch-up
+                    // a freshly trained unit gets, so an age-up never weakens
+                    // a veteran relative to a new recruit.
+                    this.applyResearchedBonusesToUnit(unit, owner);
+
                     // Recreate mesh with new type
                     this.renderer.addUnit(unit);
                 }
