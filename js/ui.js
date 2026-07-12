@@ -1717,6 +1717,42 @@ class UIManager {
         }
     }
 
+    // Localized display name for a decision-log id (techId 'stable', unitType
+    // 'warrior', …) — the same names the menus show via tg(). Tech and
+    // unique-unit defs are per-civ, so resolve through the acting player's civ
+    // first, then any civ that defines the id; unknown ids stay raw.
+    logDetailName(kind, id, playerId) {
+        const aiPlayers = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        const ai = aiPlayers.find(a => a.id === playerId);
+        const civ = ai ? getCivilization(ai.civilization) : null;
+        if (kind === 'tech') {
+            let def = (civ && civ.techTree) ? civ.techTree[id] : null;
+            if (!def) {
+                for (const key of Object.keys(CIVILIZATIONS)) {
+                    const tree = CIVILIZATIONS[key].techTree;
+                    if (tree && tree[id]) { def = tree[id]; break; }
+                }
+            }
+            return def ? tg(def.name) : id;
+        }
+        if (kind === 'unit') {
+            const unique = (civ && civ.uniqueUnits) ? civ.uniqueUnits.find(u => u.id === id) : null;
+            const def = unique || getUnitDef(id);
+            return def ? tg(def.name) : id;
+        }
+        if (kind === 'building') {
+            const def = getBuildingDef(id);
+            return def ? tg(def.name) : id;
+        }
+        if (kind === 'resource') {
+            const label = t('res.' + id);
+            // res.* labels carry a leading emoji ('🍖 Food'); the log action
+            // has its own icon already, so show only the word.
+            return label === 'res.' + id ? id : label.replace(/^[^ ]+ /, '');
+        }
+        return id;
+    }
+
     updateDecisionLog() {
         const entriesEl = document.getElementById('aiLogEntries');
         const countEl = document.getElementById('aiLogCount');
@@ -1788,10 +1824,10 @@ class UIManager {
             const actionLabel = actionNames[entry.action] || this.escapeHtml(entry.action);
             const p = entry.params || {};
             const hasTarget = p.targetX !== undefined && p.targetZ !== undefined;
-            const detail = p.unitType ? ` (${p.unitType})`
-                : p.buildingType ? ` (${p.buildingType})`
-                : p.techId ? ` (${p.techId})`
-                : p.resourceType ? ` (${p.resourceType})`
+            const detail = p.unitType ? ` (${this.logDetailName('unit', p.unitType, entry.playerId)})`
+                : p.buildingType ? ` (${this.logDetailName('building', p.buildingType, entry.playerId)})`
+                : p.techId ? ` (${this.logDetailName('tech', p.techId, entry.playerId)})`
+                : p.resourceType ? ` (${this.logDetailName('resource', p.resourceType, entry.playerId)})`
                 : hasTarget ? ` (→ ${Math.round(p.targetX)}, ${Math.round(p.targetZ)})`
                 : '';
             const isError = entry.failed || (typeof entry.action === 'string' && (entry.action.includes('failed') || entry.action.includes('⚠')));

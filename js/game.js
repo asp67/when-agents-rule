@@ -3124,7 +3124,7 @@ class Game {
             progressBar.style.display = 'flex';
             progressFill.style.width = percentage + '%';
             progressFill.style.background = 'linear-gradient(90deg, #ffd700, #ff8c00)';
-            progressText.textContent = `Aufrüstung: ${percentage}%`;
+            progressText.textContent = t('hud.ageUpProgress', { pct: percentage });
             return;
         }
         
@@ -3137,7 +3137,7 @@ class Game {
             progressBar.style.display = 'flex';
             progressFill.style.width = percentage + '%';
             progressFill.style.background = 'linear-gradient(90deg, #4ecca3, #0f3460)';
-            progressText.textContent = `Forschung (${tech?.name || '...'}): ${percentage}%`;
+            progressText.textContent = t('hud.researchProgress', { name: tech ? tg(tech.name) : '…', pct: percentage });
             return;
         }
         
@@ -3165,7 +3165,7 @@ class Game {
             const percentage = Math.min(100, Math.floor(maxProgress * 100));
             progressFill.style.width = percentage + '%';
             progressFill.style.background = 'linear-gradient(90deg, #e94560, #c23152)';
-            progressText.textContent = `Produktion: ${percentage}%`;
+            progressText.textContent = t('hud.productionProgress', { pct: percentage });
         } else {
             progressBar.style.display = 'none';
         }

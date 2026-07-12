@@ -2175,7 +2175,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         };
         console.log(`[OpenAIAI] ${ai.id}: Researching "${tech.name}" (${techId})`);
         const researchSecs = Math.round((tech.researchTime || 15000) / 1000);
-        return `OK - Researching "${tech.name}" (${techId}) — ~${researchSecs}s to complete. Only one tech at a time; don't re-issue until "research.current" is empty (it shows secondsRemaining).`;
+        return `OK - Researching "${techId}" — ~${researchSecs}s to complete. Only one tech at a time; don't re-issue until "research.current" is empty (it shows secondsRemaining).`;
     }
 
     executeUpgradeAge(ai, game) {
@@ -2235,8 +2235,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             if (!civTree[buildingDef.requiresTech]) {
                 return `[ERROR] Your civilization cannot build ${buildingType} — it has no "${buildingDef.requiresTech}" technology. Use a different building. See "buildableStructures" for what you CAN build (e.g. barracks for infantry, archery_range for archers).`;
             }
-            const techName = civTree[buildingDef.requiresTech]?.name;
-            return `[ERROR] You must research "${buildingDef.requiresTech}"${techName ? ` (${techName})` : ''} before you can build ${buildingType}. Use research_tech first (it should appear in "research.available"), then build.`;
+            return `[ERROR] You must research "${buildingDef.requiresTech}" before you can build ${buildingType}. Use research_tech first (it should appear in "research.available"), then build.`;
         }
 
         if (!ai.resources.hasResources(buildingDef.cost)) {
@@ -2296,8 +2295,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         console.log(`[OpenAIAI] ${ai.id}: Started ${buildingDef.name} at (${Math.round(x)}, ${Math.round(z)})`);
         const secs = Math.round((building.buildTime || 10000) / 1000);
         return pick.restore
-            ? `OK - Construction of ${buildingDef.name} started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.`
-            : `OK - Construction of ${buildingDef.name} started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).`;
+            ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.`
+            : `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).`;
     }
 
     // Build this civ's Wonder. Win by holding it for the required time.
@@ -2391,7 +2390,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         game.renderer.addBuilding(wonder);
         game.applyBuilder(pick, wonder);
         const secs = Math.round((wonder.buildTime || 60000) / 1000);
-        return `OK - Started building the Wonder "${wonderDef.name}" (~${secs}s to build). Hold it for ${(game.wonderRequired || 600)}s after completion to WIN — defend it, rivals will rush it!`;
+        return `OK - Started building the Wonder (~${secs}s to build). Hold it for ${(game.wonderRequired || 600)}s after completion to WIN — defend it, rivals will rush it!`;
     }
 
     executeMoveUnits(ai, game, unitIds, targetX, targetZ) {

@@ -110,6 +110,7 @@ const I18N = {
         'menu.upgrade': 'Upgrade',
 
         'res.food': '🍖 Food', 'res.wood': '🌲 Wood', 'res.stone': '🪨 Stone', 'res.gold': '🥇 Gold', 'res.pop': '👥 Population',
+        'hud.ageUpProgress': 'Advancing age: {pct}%', 'hud.researchProgress': 'Research ({name}): {pct}%', 'hud.productionProgress': 'Production: {pct}%',
         'age.stone': '🏺 Stone Age', 'age.neolithic': '🌾 Neolithic', 'age.bronze': '⚒️ Bronze Age', 'age.iron': '🗡️ Iron Age',
 
         'spec.leaderboard': '🏆 Leaderboard',
@@ -392,6 +393,7 @@ const I18N = {
         'menu.upgrade': 'Aufrüsten',
 
         'res.food': '🍖 Nahrung', 'res.wood': '🌲 Holz', 'res.stone': '🪨 Stein', 'res.gold': '🥇 Gold', 'res.pop': '👥 Bevölkerung',
+        'hud.ageUpProgress': 'Aufrüstung: {pct}%', 'hud.researchProgress': 'Forschung ({name}): {pct}%', 'hud.productionProgress': 'Produktion: {pct}%',
         'age.stone': '🏺 Altsteinzeit', 'age.neolithic': '🌾 Jungsteinzeit', 'age.bronze': '⚒️ Bronzezeit', 'age.iron': '🗡️ Eisenzeit',
 
         'spec.leaderboard': '🏆 Rangliste',
@@ -672,6 +674,7 @@ const I18N = {
         'menu.upgrade': 'Mejorar',
 
         'res.food': '🍖 Comida', 'res.wood': '🌲 Madera', 'res.stone': '🪨 Piedra', 'res.gold': '🥇 Oro', 'res.pop': '👥 Población',
+        'hud.ageUpProgress': 'Avance de era: {pct}%', 'hud.researchProgress': 'Investigación ({name}): {pct}%', 'hud.productionProgress': 'Producción: {pct}%',
         'age.stone': '🏺 Edad de Piedra', 'age.neolithic': '🌾 Neolítico', 'age.bronze': '⚒️ Edad de Bronce', 'age.iron': '🗡️ Edad de Hierro',
 
         'spec.leaderboard': '🏆 Clasificación',
@@ -944,6 +947,7 @@ const I18N = {
         'menu.upgrade': '升级',
 
         'res.food': '🍖 食物', 'res.wood': '🌲 木材', 'res.stone': '🪨 石头', 'res.gold': '🥇 黄金', 'res.pop': '👥 人口',
+        'hud.ageUpProgress': '时代升级：{pct}%', 'hud.researchProgress': '研究（{name}）：{pct}%', 'hud.productionProgress': '生产：{pct}%',
         'age.stone': '🏺 旧石器时代', 'age.neolithic': '🌾 新石器时代', 'age.bronze': '⚒️ 青铜时代', 'age.iron': '🗡️ 铁器时代',
 
         'spec.leaderboard': '🏆 排行榜',
