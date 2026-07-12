@@ -2347,6 +2347,27 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return valid ? { x, z } : null;
     }
 
+    // One candidate, judged in place (no nudging): far enough from every building,
+    // outside every live node's clearance ring, and on solid map ground.
+    // Constants mirror findClearSpot — keep the two in sync.
+    isSpotClear(ai, game, buildingType, isWonderBuild, x, z) {
+        if (game.clampToMap) {
+            const c = game.clampToMap(x, z);
+            if (Math.abs(c.x - x) > 0.5 || Math.abs(c.z - z) > 0.5) return false; // off-map
+        }
+        const reqGap = b => (b.type === 'town_center' || b.isWonder) ? 11 : 9;
+        const allBuildings = [...ai.buildings, ...game.player.buildings, ...game.aiManager.aiPlayers.flatMap(a => a.buildings)];
+        for (const b of allBuildings) {
+            if (Math.hypot(x - b.x, z - b.z) < reqGap(b)) return false;
+        }
+        const resClr = game.resourceClearance(buildingType, isWonderBuild);
+        for (const r of (game.terrain && game.terrain.resources) || []) {
+            if (r.amount !== undefined && r.amount <= 0) continue;
+            if (Math.hypot(x - r.x, z - r.z) < resClr) return false;
+        }
+        return true;
+    }
+
     executeBuildWonder(ai, game) {
         const civ = getCivilization(ai.civilization);
         const wonderDef = (civ.uniqueBuildings || []).find(b => b.type === 'wonder');
@@ -2371,9 +2392,25 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const tc = ai.buildings.find(b => b.type === 'town_center');
         const seedX = tc ? tc.x + (Math.random() - 0.5) * 20 : 0;
         const seedZ = tc ? tc.z + (Math.random() - 0.5) * 20 : 0;
-        const spot = this.findClearSpot(ai, game, wonderDef.id, true, seedX, seedZ);
+        let spot = this.findClearSpot(ai, game, wonderDef.id, true, seedX, seedZ);
+        // Late game means a full base: when the nudge search finds no room in the
+        // center, sweep expanding rings around the TC (out to ~90 units) and take
+        // the first clear spot — the Wonder gets a suburb before it gets refused.
+        if (!spot && tc) {
+            outer:
+            for (let radius = 14; radius <= 90; radius += 8) {
+                const steps = Math.max(8, Math.round((2 * Math.PI * radius) / 12));
+                const a0 = Math.random() * Math.PI * 2;
+                for (let s = 0; s < steps; s++) {
+                    const ang = a0 + (s / steps) * 2 * Math.PI;
+                    const cx = tc.x + Math.cos(ang) * radius;
+                    const cz = tc.z + Math.sin(ang) * radius;
+                    if (this.isSpotClear(ai, game, wonderDef.id, true, cx, cz)) { spot = { x: cx, z: cz }; break outer; }
+                }
+            }
+        }
         if (!spot) {
-            return `[ERROR] No clear spot for the Wonder near your Town Center — the base is too crowded. destroy_building an old structure to make room, then build_wonder again.`;
+            return `[ERROR] No clear spot for the Wonder within ~90 units of your Town Center — even the outskirts are packed. destroy_building an old structure to make room, then build_wonder again.`;
         }
         const { x, z } = spot;
 

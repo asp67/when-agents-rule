@@ -559,23 +559,43 @@ class AIManager {
     }
 
     // ---- Generic build / train (no resource leaks) ---------------------------
+    // One candidate judged in place: far enough from own + player buildings, not
+    // inside a resource node's clearance, and on solid map ground.
+    isClearBuildSpot(ai, buildingType, isWonder, x, z) {
+        const others = [...ai.buildings];
+        if (this.game.player) others.push(...this.game.player.buildings);
+        for (const b of others) {
+            if (Math.hypot(b.x - x, b.z - z) < (isWonder ? 12 : 9)) return false;
+        }
+        if (this.game.isTooCloseToResource && this.game.isTooCloseToResource(x, z, buildingType, isWonder)) return false;
+        if (this.game.clampToMap) {
+            const c = this.game.clampToMap(x, z);
+            if (Math.abs(c.x - x) > 0.5 || Math.abs(c.z - z) > 0.5) return false; // off-map
+        }
+        return true;
+    }
+
     // Returns a valid {x,z} near the town centre or null — WITHOUT spending.
     findBuildPosition(ai, tc, buildingType, isWonder) {
         for (let attempts = 0; attempts < 24; attempts++) {
             const x = tc.x + (Math.random() - 0.5) * 60;
             const z = tc.z + (Math.random() - 0.5) * 60;
-            let valid = true;
-            const others = [...ai.buildings];
-            if (this.game.player) others.push(...this.game.player.buildings);
-            for (const b of others) {
-                if (Math.hypot(b.x - x, b.z - z) < (isWonder ? 12 : 9)) { valid = false; break; }
+            if (this.isClearBuildSpot(ai, buildingType, isWonder, x, z)) return { x, z };
+        }
+        // A Wonder doesn't give up with the centre block: late-game bases fill the
+        // whole 60-box, so sweep expanding rings (out to ~90 units) and take the
+        // first clear spot — same widening the LLM build_wonder action gets.
+        if (isWonder) {
+            for (let radius = 14; radius <= 90; radius += 8) {
+                const steps = Math.max(8, Math.round((2 * Math.PI * radius) / 12));
+                const a0 = Math.random() * Math.PI * 2;
+                for (let s = 0; s < steps; s++) {
+                    const ang = a0 + (s / steps) * 2 * Math.PI;
+                    const x = tc.x + Math.cos(ang) * radius;
+                    const z = tc.z + Math.sin(ang) * radius;
+                    if (this.isClearBuildSpot(ai, buildingType, isWonder, x, z)) return { x, z };
+                }
             }
-            if (valid && this.game.isTooCloseToResource && this.game.isTooCloseToResource(x, z, buildingType, isWonder)) valid = false;
-            if (valid && this.game.clampToMap) {
-                const c = this.game.clampToMap(x, z);
-                if (Math.abs(c.x - x) > 0.5 || Math.abs(c.z - z) > 0.5) valid = false; // off-map
-            }
-            if (valid) return { x, z };
         }
         return null;
     }
