@@ -44,6 +44,7 @@ const BUILDING_DEFS = {
         type: 'religious',
         canTrain: true,
         trainOptions: ['priest'],
+        canResearch: true, // hosts temple research (Heilkunde)
         requiredAge: 'bronze',
         description: 'Ausbildung von Priestern',
         buildTime: BASE_BUILD_TIME * 2  // 20 seconds to build

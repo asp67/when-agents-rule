@@ -55,6 +55,8 @@ const CIVILIZATIONS = {
                 attack: 6,
                 range: 4,
                 type: 'ranged',
+                tier: 'neolithic',
+                trainAt: 'archery_range',
                 description: 'Starker Bogenschütze'
             },
             {
@@ -205,6 +207,17 @@ const CIVILIZATIONS = {
                 researchTime: 20000,  // 20 seconds
                 unlocks: { buildings: ['stable'], unitTypes: ['horse_carriage'] }
             },
+            // === Bronzezeit - am Tempel ===
+            healing: {
+                name: 'Heilkunde',
+                cost: { food: 150, wood: 0, stone: 0, gold: 100 },
+                researchAt: 'temple',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Stellt die volle Heilkraft der Priester wieder her',
+                researchTime: 20000,
+                bonus: { healPower: 0.2 }
+            },
             // === Eisenzeit - am Markt ===
             ironWorking: {
                 name: 'Eisenverarbeitung',
@@ -239,6 +252,8 @@ const CIVILIZATIONS = {
                 attack: 10,
                 range: 1,
                 type: 'infantry',
+                tier: 'neolithic',
+                trainAt: 'barracks',
                 description: 'Schwerer Infanterist mit Schild'
             },
             {
@@ -250,6 +265,8 @@ const CIVILIZATIONS = {
                 attack: 8,
                 range: 2,
                 type: 'infantry',
+                tier: 'bronze',
+                trainAt: 'barracks',
                 description: 'Speerträger, stark gegen Kavallerie'
             }
         ],
@@ -374,6 +391,17 @@ const CIVILIZATIONS = {
                 researchTime: 25000,
                 bonus: { health: 20 },
                 appliesTo: 'infantry'
+            },
+            // === Bronzezeit - am Tempel ===
+            healing: {
+                name: 'Heilkunde',
+                cost: { food: 150, wood: 0, stone: 0, gold: 100 },
+                researchAt: 'temple',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Stellt die volle Heilkraft der Priester wieder her',
+                researchTime: 20000,
+                bonus: { healPower: 0.2 }
             },
             // === Eisenzeit - am Markt ===
             ironWorking: {
@@ -522,6 +550,17 @@ const CIVILIZATIONS = {
                 bonus: { health: 25 },
                 appliesTo: 'cavalry'
             },
+            // === Bronzezeit - am Tempel ===
+            healing: {
+                name: 'Heilkunde',
+                cost: { food: 150, wood: 0, stone: 0, gold: 100 },
+                researchAt: 'temple',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Stellt die volle Heilkraft der Priester wieder her',
+                researchTime: 20000,
+                bonus: { healPower: 0.2 }
+            },
             archery: {
                 name: 'Bogenschützen-Ausbildung',
                 cost: { food: 100, wood: 100, stone: 0, gold: 50 },
@@ -567,6 +606,8 @@ const CIVILIZATIONS = {
                 attack: 14,
                 range: 1,
                 type: 'infantry',
+                tier: 'bronze',
+                trainAt: 'barracks',
                 description: 'Elitewarrior mit starkem Schwert'
             },
             {
@@ -635,6 +676,17 @@ const CIVILIZATIONS = {
                 researchTime: 15000,
                 bonus: { attack: 2 },
                 appliesTo: 'all_military'
+            },
+            // === Bronzezeit - am Tempel ===
+            healing: {
+                name: 'Heilkunde',
+                cost: { food: 150, wood: 0, stone: 0, gold: 100 },
+                researchAt: 'temple',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Stellt die volle Heilkraft der Priester wieder her',
+                researchTime: 20000,
+                bonus: { healPower: 0.2 }
             },
             speed: {
                 name: 'Schnelle Hände',

@@ -374,9 +374,10 @@ class AIManager {
             if (ai.researchedTechs[id]) return false;
             if (tech.requiredAge && ageOrder.indexOf(tech.requiredAge) > curAge) return false;
             if (tech.requires && tech.requires.some(req => !ai.researchedTechs[req])) return false;
-            if (tech.researchAt === 'town_center') return ai.buildings.some(b => b.type === 'town_center' && !b.underConstruction);
-            if (tech.researchAt === 'market') return ai.buildings.some(b => b.type === 'market' && !b.underConstruction);
-            return false;
+            // Generic host check: the tech's researchAt building must stand
+            // finished — covers town_center, market AND temple research.
+            const at = tech.researchAt || 'town_center';
+            return ai.buildings.some(b => b.type === at && !b.underConstruction);
         });
         // Unlock techs first (they open new buildings/units), then the rest.
         available.sort((a, b) => (techs[b].unlocks ? 1 : 0) - (techs[a].unlocks ? 1 : 0));

@@ -1056,8 +1056,11 @@ class Game {
             if (!patient) return;
 
             if (best <= HEAL_RANGE) {
+                // Priests channel at 80% since the Heilkunde split — the temple
+                // tech (bonus.healPower 0.2) buys the last fifth back.
+                const healMult = 0.8 + (owner.healPowerBonus || 0);
                 patient.health = Math.min(patient.maxHealth,
-                    patient.health + (HEAL_RATE * deltaTime) / 1000);
+                    patient.health + (HEAL_RATE * healMult * deltaTime) / 1000);
                 // Soft green sparkle on the patient while the heal channels.
                 u._healFxTimer = (u._healFxTimer || 0) + deltaTime;
                 if (u._healFxTimer >= 900) {
@@ -1841,6 +1844,9 @@ class Game {
             }
             if (tech.bonus.trainSpeed) {
                 owner.trainSpeedBonus = (owner.trainSpeedBonus || 1) + tech.bonus.trainSpeed;
+            }
+            if (tech.bonus.healPower) {
+                owner.healPowerBonus = (owner.healPowerBonus || 0) + tech.bonus.healPower;
             }
         }
     }

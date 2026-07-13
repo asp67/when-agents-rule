@@ -2141,17 +2141,18 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             }
         }
 
-        // Check if we have the building
-        if (tech.researchAt === 'town_center') {
-            if (!ai.buildings.some(b => b.type === 'town_center' && !b.underConstruction)) return `[ERROR] Need a finished Town Center to research "${techId}".`;
-        } else if (tech.researchAt === 'market') {
-            if (!ai.buildings.some(b => b.type === 'market' && !b.underConstruction)) {
-                console.log(`[OpenAIAI] ${ai.id}: Need a finished Market to research "${techId}"`);
+        // Check we have the FINISHED building this tech is researched at —
+        // generic, so temple research works like town_center and market.
+        const hostType = tech.researchAt || 'town_center';
+        if (!ai.buildings.some(b => b.type === hostType && !b.underConstruction)) {
+            console.log(`[OpenAIAI] ${ai.id}: Need a finished ${hostType} to research "${techId}"`);
+            if (hostType === 'market') {
                 const hasMarketTech = !!ai.researchedTechs['marketTech'];
                 const step = hasMarketTech ? 'build a Market (build_structure "market") and wait for it to finish'
                     : 'first research "marketTech", then build a Market and wait for it to finish';
                 return `[ERROR] "${techId}" is researched at a Market, which you don't have. To enable it: ${step}.`;
             }
+            return `[ERROR] "${techId}" is researched at a finished ${hostType}, which you don't have. Build it first (build_structure "${hostType}"), then research again.`;
         }
 
         const costMultiplier = ai.techCostMultiplier || 1;
