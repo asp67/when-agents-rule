@@ -1099,8 +1099,12 @@ class UIManager {
         buildings.forEach(b => {
             const canAfford = this.game.player.resources.hasResources(b.cost);
             const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-            const isLocked = b.requiredAge && ageOrder.indexOf(b.requiredAge) > ageOrder.indexOf(this.game.player.age);
-            const ageLabel = b.requiredAge ? ` (${this.getAgeName(b.requiredAge)})` : '';
+            // Per-civ EFFECTIVE age: Egypt's stable unlocks with a bronze tech,
+            // so its card must say Bronze even though the def says neolithic.
+            const effAge = (typeof effectiveBuildingAge === 'function')
+                ? effectiveBuildingAge(this.game.player.civilization, b) : b.requiredAge;
+            const isLocked = effAge && ageOrder.indexOf(effAge) > ageOrder.indexOf(this.game.player.age);
+            const ageLabel = effAge ? ` (${this.getAgeName(effAge)})` : '';
             
             // Check if building requires a tech
             let techLocked = false;

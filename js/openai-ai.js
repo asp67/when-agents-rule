@@ -829,7 +829,10 @@ class OpenAIAIManager {
             const civSupports = !reqTech || !!techs[reqTech];
             if (!civSupports) return null; // civ can never build this
             const techDone = !reqTech || !!ai.researchedTechs[reqTech];
-            return { type: t, requiresTech: reqTech, researched: techDone, readyToBuild: techDone };
+            // requiredAge is the CIV-effective age (unlock tech may come later
+            // than the def's own age — Egypt's stable is bronze, not neolithic).
+            const reqAge = (typeof effectiveBuildingAge === 'function') ? effectiveBuildingAge(ai.civilization, def) : (def.requiredAge || 'stone');
+            return { type: t, requiredAge: reqAge, requiresTech: reqTech, researched: techDone, readyToBuild: techDone };
         }).filter(Boolean);
 
         // --- Pending buildings ---
@@ -2222,9 +2225,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // age-gated buildings also need a tech, but some — e.g. the temple — only
         // need the age, so check it before the tech/resource steps.)
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-        if (buildingDef.requiredAge && ageOrder.indexOf(ai.age) < ageOrder.indexOf(buildingDef.requiredAge)) {
-            console.log(`[OpenAIAI] ${ai.id}: ${buildingType} needs ${buildingDef.requiredAge}`);
-            return `[ERROR] ${buildingType} needs the ${buildingDef.requiredAge} age (you are in ${ai.age}). Advance your age first (upgrade_age), then build it.`;
+        const effAge = (typeof effectiveBuildingAge === 'function') ? effectiveBuildingAge(ai.civilization, buildingDef) : buildingDef.requiredAge;
+        if (effAge && ageOrder.indexOf(ai.age) < ageOrder.indexOf(effAge)) {
+            console.log(`[OpenAIAI] ${ai.id}: ${buildingType} needs ${effAge}`);
+            return `[ERROR] ${buildingType} needs the ${effAge} age (you are in ${ai.age}). Advance your age first (upgrade_age), then build it.`;
         }
 
         // RESEARCH next: the building's enabling tech.

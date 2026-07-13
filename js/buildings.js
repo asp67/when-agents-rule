@@ -72,7 +72,9 @@ const BUILDING_DEFS = {
         trainOptions: [], // Filled dynamically based on age
         requiredAge: 'neolithic',
         requiresTech: 'horseback',  // Requires horseback riding tech
-        description: 'Ausbildung von Kavallerie (benötigt Pferdezucht)',
+        // No tech name in the text: the unlocking tech differs per civ (Persia's
+        // Horse Breeding vs Egypt's Horse carriage) — menus append it dynamically.
+        description: 'Ausbildung von Kavallerie',
         buildTime: BASE_BUILD_TIME * 1.5  // 15 seconds to build
     },
     archery_range: {
@@ -184,6 +186,21 @@ function getTrainOptionsForBuilding(buildingType, age, civilization) {
         }
     }
     return result;
+}
+
+// The age a civilization can ACTUALLY build this at: the def's own requiredAge
+// or, if its unlocking tech comes later in that civ's tree (Egypt's bronze-age
+// horse carriage vs the stable's neolithic), the tech's requiredAge. Keeps the
+// build menu and the LLM state honest per civ.
+function effectiveBuildingAge(civilization, buildingDef) {
+    const order = ['stone', 'neolithic', 'bronze', 'iron'];
+    let idx = Math.max(0, order.indexOf(buildingDef.requiredAge || 'stone'));
+    if (buildingDef.requiresTech && typeof getCivilization === 'function') {
+        const civ = getCivilization(civilization);
+        const tech = (civ && civ.techTree) ? civ.techTree[buildingDef.requiresTech] : null;
+        if (tech && tech.requiredAge) idx = Math.max(idx, order.indexOf(tech.requiredAge));
+    }
+    return order[idx];
 }
 
 function getBuildingDef(id) {
