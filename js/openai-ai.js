@@ -88,9 +88,9 @@ class OpenAIAIManager {
     }
 
     // True if a finished building of the right type/age can produce this unit.
-    buildingTrains(b, unitType, age) {
+    buildingTrains(b, unitType, age, civilization) {
         if (b.type === 'town_center') return unitType === 'worker';
-        let opts = (typeof getTrainOptionsForBuilding === 'function') ? getTrainOptionsForBuilding(b.type, age) : null;
+        let opts = (typeof getTrainOptionsForBuilding === 'function') ? getTrainOptionsForBuilding(b.type, age, civilization || b.civilization) : null;
         if (!opts || !opts.length) opts = b.trainOptions || [];
         return opts.includes(unitType);
     }
@@ -2048,7 +2048,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             }
 
             // 2) ADVANCE: the building exists but the unit is gated to a later epoch.
-            if (!this.buildingTrains(finishedOfType[0], unitType, ai.age)) {
+            if (!this.buildingTrains(finishedOfType[0], unitType, ai.age, ai.civilization)) {
                 const minAge = this.minAgeForUnit(unitType);
                 if (minAge && ageOrder.indexOf(minAge) > ageOrder.indexOf(ai.age)) {
                     return `[ERROR] ${unitType} needs the ${minAge} age (you are in ${ai.age}). Advance your age first (upgrade_age); your ${reqB} will train it then.`;
@@ -2058,7 +2058,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
 
         // From here a finished, age-capable building exists. Trainers for this unit:
-        const trainers = ai.buildings.filter(b => !b.underConstruction && this.buildingTrains(b, unitType, ai.age));
+        const trainers = ai.buildings.filter(b => !b.underConstruction && this.buildingTrains(b, unitType, ai.age, ai.civilization));
         if (trainers.length === 0) {
             // Only reached for unique units with no tier mapping (reqB null).
             return `[ERROR] No finished building can train ${unitType}. Build the matching military building first (barracks=infantry, archery_range=archers, stable=cavalry).`;

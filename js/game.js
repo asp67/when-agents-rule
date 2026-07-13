@@ -1848,6 +1848,11 @@ class Game {
     // One unit, one tech bonus — shared by the research-time retrofit
     // (applyBonusToUnits) and the spawn-time catch-up (applyResearchedBonusesToUnit).
     applyBonusToOneUnit(bonus, appliesTo, unit) {
+        // 'all_units' bonuses hit workers AND military alike (Greek Farsight).
+        if (appliesTo === 'all_units') {
+            if (bonus.visionRange) unit.visionBonus = (unit.visionBonus || 1) + bonus.visionRange;
+            return;
+        }
         if (unit.type === 'worker' && appliesTo === 'worker') {
             if (bonus.speed) unit.speed *= (1 + bonus.speed);
             if (bonus.harvestRate) unit.harvestRate *= (1 + bonus.harvestRate);
@@ -1951,7 +1956,7 @@ class Game {
         } else {
             // Update AI building train options
             owner.buildings.forEach(building => {
-                const options = getTrainOptionsForBuilding(building.type, targetAge);
+                const options = getTrainOptionsForBuilding(building.type, targetAge, owner.civilization);
                 if (options.length > 0) {
                     building.trainOptions = options;
                 }
@@ -1985,7 +1990,7 @@ class Game {
     updateMilitaryTrainOptions() {
         const age = this.player.age;
         this.player.buildings.forEach(building => {
-            const options = getTrainOptionsForBuilding(building.type, age);
+            const options = getTrainOptionsForBuilding(building.type, age, this.player.civilization);
             if (options.length > 0) {
                 building.trainOptions = options;
             }
@@ -2032,6 +2037,7 @@ class Game {
                     unit.speed = newDef.speed;
                     unit.attack = newDef.attack;
                     unit.range = newDef.range;
+                    unit.visionBonus = 1; // reset with the def stats — the catch-up below re-applies it
                     unit.currentTier = newAge;
 
                     // The raw def stats above just wiped every researched bonus
@@ -2299,8 +2305,10 @@ class Game {
     // Sight radius of a single unit. Cavalry sees 50% farther (22.5 vs 15) — the
     // scouting edge mounted units are supposed to have. Used consistently by the
     // human fog overlay, both AI visibility checks and the exploration tracker.
+    // unit.visionBonus is a researched multiplier (e.g. Greek Farsight = 1.2),
+    // applied per unit so this hot path never has to look up the owner.
     unitVision(unit) {
-        return unit && unit.unitType === 'cavalry' ? 22.5 : 15;
+        return (unit && unit.unitType === 'cavalry' ? 22.5 : 15) * ((unit && unit.visionBonus) || 1);
     }
 
     // ---- Exploration tracking (per player) ------------------------------------
@@ -2410,7 +2418,7 @@ class Game {
         // Populate train options for military buildings (barracks/stable/archery_range)
         // for THIS owner's age — otherwise LLM/freshly-built buildings can't train.
         if (typeof getTrainOptionsForBuilding === 'function') {
-            const opts = getTrainOptionsForBuilding(building.type, owner ? owner.age : 'stone');
+            const opts = getTrainOptionsForBuilding(building.type, owner ? owner.age : 'stone', building.civilization);
             if (opts && opts.length) building.trainOptions = opts;
         }
         if (this.renderer && this.renderer.onBuildingCompleted) {

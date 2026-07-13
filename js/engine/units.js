@@ -194,6 +194,28 @@
             return p;
         },
         cavalry: (o = {}) => {
+            if (o.unit === 'horse_carriage') {
+                // Egypt's chariot: a light horse pulling a two-wheeled cart with
+                // a standing, helmeted spearman. Rider and cart are rigid; the
+                // horse keeps its leg/head bones so the trot reads normally.
+                const p = [];
+                horse(p, 1);
+                part(p, 'disc', [0.7, 12], 'shadow', { y: 0.05, z: -1.15, blend: true });
+                part(p, 'cylinder', [0.035, 0.035, 0.86, 5], 'bark', { y: 0.34, z: -1.15, rz: Math.PI / 2 }); // axle
+                part(p, 'cylinder', [0.34, 0.34, 0.08, 10], 'wood', { x: -0.42, y: 0.34, z: -1.15, rz: Math.PI / 2 });
+                part(p, 'cylinder', [0.34, 0.34, 0.08, 10], 'wood', { x: 0.42, y: 0.34, z: -1.15, rz: Math.PI / 2 });
+                part(p, 'box', [0.55, 0.34, 0.62], 'wood', { y: 0.66, z: -1.18 });          // cart tub
+                part(p, 'box', [0.5, 0.14, 0.05], 'wood', { y: 0.87, z: -0.88 });           // front rail
+                part(p, 'cylinder', [0.022, 0.022, 0.62, 4], 'bark', { x: -0.2, y: 0.5, z: -0.72, rx: 1.45 }); // hitch shafts
+                part(p, 'cylinder', [0.022, 0.022, 0.62, 4], 'bark', { x: 0.2, y: 0.5, z: -0.72, rx: 1.45 });
+                part(p, 'cylinder', [0.14, 0.17, 0.44, 6], 'cloth', { y: 1.06, z: -1.18, team: true });        // rider
+                part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.41, z: -1.18, sx: 0.13, sy: 0.13, sz: 0.13 });
+                headgear(p, o.civ, 'military', 0, 1.44, -1.18, 0.75);                                          // helmet
+                part(p, 'cylinder', [0.045, 0.055, 0.36, 4], 'skin', { x: 0.18, y: 1.22, z: -1.02, rz: 0.2, rx: 0.3 });
+                part(p, 'cylinder', [0.018, 0.018, 1.5, 4], 'wood', { x: 0.24, y: 1.32, z: -0.8, rx: 0.5 });   // spear
+                part(p, 'cylinder', [0, 0.028, 0.12, 4], 'iron', { x: 0.24, y: 1.98, z: -0.44, rx: 0.5 });     // spear tip
+                return p;
+            }
             const tier = o.tier || 2;
             const p = [];
             horse(p, tier);

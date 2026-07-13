@@ -157,7 +157,7 @@ const UNIT_UPGRADE_PATHS = {
     archer: { bronze: 'archer', iron: 'crossbowman' }
 };
 
-function getTrainOptionsForBuilding(buildingType, age) {
+function getTrainOptionsForBuilding(buildingType, age, civilization) {
     const tiers = BUILDING_TRAIN_TIERS[buildingType];
     if (!tiers) return [];
     // Get the highest tier available for current age
@@ -168,6 +168,18 @@ function getTrainOptionsForBuilding(buildingType, age) {
         const a = ageOrder[i];
         if (tiers[a]) {
             result = tiers[a]; // Overwrite with each tier, keeping the latest (superset)
+        }
+    }
+    // Civ-unique units train here too (e.g. Egypt's horse carriage at the
+    // stable): append any unique whose trainAt matches and whose tier age is
+    // reached. Copy first — `result` aliases the shared tier table.
+    if (civilization && typeof getCivilization === 'function') {
+        const civ = getCivilization(civilization);
+        const uniques = (civ && civ.uniqueUnits) || [];
+        for (const u of uniques) {
+            if (u.trainAt !== buildingType) continue;
+            if (u.tier && ageOrder.indexOf(u.tier) > currentIdx) continue;
+            if (!result.includes(u.id)) result = result.slice().concat(u.id);
         }
     }
     return result;

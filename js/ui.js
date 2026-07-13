@@ -1151,7 +1151,7 @@ class UIManager {
             
             // For barracks, stable, archery_range - get options based on current age
             if (['barracks', 'stable', 'archery_range'].includes(building.type)) {
-                trainOptions = getTrainOptionsForBuilding(building.type, this.game.player.age);
+                trainOptions = getTrainOptionsForBuilding(building.type, this.game.player.age, this.game.player.civilization);
                 // Sync the building's trainOptions
                 building.trainOptions = trainOptions;
             }

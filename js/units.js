@@ -141,12 +141,13 @@ function getUnitDef(id) {
 
 // Create a unit instance
 function createUnit(type, x, z, owner, civilization, age) {
-    const def = getUnitDef(type);
-    if (!def) return null;
-
+    // Civ-unique defs resolve FIRST: a unique-only id (e.g. Egypt's
+    // horse_carriage) has no UNIT_DEFS entry at all — bailing on getUnitDef
+    // before this lookup made such units impossible to create.
     const civ = getCivilization(civilization);
-    const uniqueUnit = civ.uniqueUnits.find(u => u.id === type);
-    const unitDef = uniqueUnit || def;
+    const uniqueUnit = ((civ && civ.uniqueUnits) || []).find(u => u.id === type);
+    const unitDef = uniqueUnit || getUnitDef(type);
+    if (!unitDef) return null;
 
     const unit = {
         id: 'unit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),

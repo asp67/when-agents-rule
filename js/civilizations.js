@@ -56,6 +56,19 @@ const CIVILIZATIONS = {
                 range: 4,
                 type: 'ranged',
                 description: 'Starker Bogenschütze'
+            },
+            {
+                id: 'horse_carriage',
+                name: 'Pferdewagen',
+                cost: { food: 60, wood: 20, stone: 40, gold: 40 },
+                health: 100,
+                speed: 2.0,
+                attack: 8,
+                range: 2,
+                type: 'cavalry',
+                tier: 'bronze',      // trainable from the Bronze age on…
+                trainAt: 'stable',   // …at the stable (unlocked by the horseback tech)
+                description: 'Speerkämpfer im Wagen hinter dem Pferd'
             }
         ],
         uniqueBuildings: [
@@ -179,6 +192,19 @@ const CIVILIZATIONS = {
                 bonus: { health: 15 },
                 appliesTo: 'all_military'
             },
+            // Reuses the id 'horseback' on purpose: the stable's requiresTech and
+            // every unlock gate key on that id, so Egypt's late chariot route
+            // works through the exact same plumbing as Persia's and Yamato's.
+            horseback: {
+                name: 'Pferdewagen',
+                cost: { food: 200, wood: 150, stone: 0, gold: 50 },
+                researchAt: 'market',
+                requiredAge: 'bronze',
+                requires: ['marketTech'],
+                description: 'Schaltet Stall und Pferdewagen frei',
+                researchTime: 20000,  // 20 seconds
+                unlocks: { buildings: ['stable'], unitTypes: ['horse_carriage'] }
+            },
             // === Eisenzeit - am Markt ===
             ironWorking: {
                 name: 'Eisenverarbeitung',
@@ -281,6 +307,17 @@ const CIVILIZATIONS = {
                 researchTime: 15000,
                 bonus: { attack: 3 },
                 appliesTo: 'infantry'
+            },
+            farsight: {
+                name: 'Weitblick',
+                cost: { food: 100, wood: 50, stone: 0, gold: 30 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Alle Einheiten +20% Sichtweite',
+                researchTime: 20000,
+                bonus: { visionRange: 0.2 },
+                appliesTo: 'all_units'
             },
             longbow: {
                 name: 'Langbogen',
