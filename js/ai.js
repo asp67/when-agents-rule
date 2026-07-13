@@ -432,12 +432,21 @@ class AIManager {
     }
 
     getUnitToTrain(ai, building) {
-        switch (building.type) {
-            case 'barracks':      return ai.age === 'iron' ? 'champion' : (ai.age === 'bronze' ? 'warrior' : 'militia');
-            case 'archery_range': return ai.age === 'iron' ? 'elite_archer' : (ai.age === 'neolithic' || ai.age === 'bronze' ? 'archer' : null);
-            case 'stable':        return ai.age === 'iron' ? 'heavy_cavalry' : (ai.age === 'bronze' ? 'cavalry' : 'scout_cavalry');
-            default:              return null;
-        }
+        // Preferred picks per age, best first — but only what THIS building
+        // actually offers (civ exclusions and uniques reshape the list: Egypt's
+        // stable fields chariots, not generic cavalry). If nothing from the
+        // ladder is offered, take the building's last option — uniques append
+        // after the standard tiers, so that is the most advanced one.
+        const ladders = {
+            barracks: ai.age === 'iron' ? ['champion', 'warrior', 'militia'] : (ai.age === 'bronze' ? ['warrior', 'militia'] : ['militia']),
+            archery_range: ai.age === 'iron' ? ['elite_archer', 'crossbowman', 'archer'] : ['archer'],
+            stable: ai.age === 'iron' ? ['heavy_cavalry', 'cavalry', 'scout_cavalry'] : (ai.age === 'bronze' ? ['cavalry', 'scout_cavalry'] : ['scout_cavalry'])
+        };
+        const ladder = ladders[building.type];
+        if (!ladder) return null;
+        const opts = building.trainOptions || [];
+        for (const id of ladder) if (opts.includes(id)) return id;
+        return opts.length ? opts[opts.length - 1] : null;
     }
 
     // ---- Combat (fog-limited targeting) --------------------------------------
@@ -622,7 +631,9 @@ class AIManager {
 
     trainUnit(ai, unitType, building) {
         if (!building || building.underConstruction || building.isProducing) return;
-        const unitDef = getUnitDef(unitType);
+        // Unique units (horse_carriage, hoplite, …) have no UNIT_DEFS entry.
+        const civ = getCivilization(ai.civilization);
+        const unitDef = ((civ && civ.uniqueUnits) || []).find(u => u.id === unitType) || getUnitDef(unitType);
         if (!unitDef || !unitDef.cost) return;
         // Respect the population cap (build houses to raise it; never overflow).
         if (ai.resources.population >= ai.resources.maxPopulation) return;

@@ -34,6 +34,9 @@ const CIVILIZATIONS = {
                 game.buildingHealthMultiplier = 1.5;
             }
         },
+        // Egypt's stable fields chariots only — the generic cavalry line
+        // belongs to the horse-breeding civilizations.
+        excludedUnits: ['scout_cavalry', 'cavalry', 'heavy_cavalry'],
         uniqueUnits: [
             {
                 id: 'priest',

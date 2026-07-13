@@ -128,12 +128,15 @@ const BUILDING_DEFS = {
     }
 };
 
-// Unit tiers per age for military buildings
+// Unit tiers per age for military buildings. INVARIANT: a unit appears here
+// no earlier than its def `tier` — the age on its build card and the age its
+// field-upgrade path fires. The table used to run an age ahead (champions and
+// crossbowmen trainable in bronze under an "Iron age" card label).
 const BUILDING_TRAIN_TIERS = {
     barracks: {
         stone: ['militia'],
-        neolithic: ['militia', 'warrior'],
-        bronze: ['militia', 'warrior', 'champion'],
+        neolithic: ['militia'],
+        bronze: ['militia', 'warrior'],
         iron: ['militia', 'warrior', 'champion']
     },
     stable: {
@@ -143,7 +146,7 @@ const BUILDING_TRAIN_TIERS = {
     },
     archery_range: {
         neolithic: ['archer'],
-        bronze: ['archer', 'crossbowman'],
+        bronze: ['archer'],
         iron: ['archer', 'crossbowman', 'elite_archer']
     }
 };
@@ -175,7 +178,9 @@ function getTrainOptionsForBuilding(buildingType, age, civilization) {
     }
     // Civ-unique units train here too (e.g. Egypt's horse carriage at the
     // stable): append any unique whose trainAt matches and whose tier age is
-    // reached. Copy first — `result` aliases the shared tier table.
+    // reached. Copy first — `result` aliases the shared tier table. A civ's
+    // excludedUnits then drop standard entries it fields uniquely (Egypt
+    // rides chariots, not generic cavalry).
     if (civilization && typeof getCivilization === 'function') {
         const civ = getCivilization(civilization);
         const uniques = (civ && civ.uniqueUnits) || [];
@@ -183,6 +188,9 @@ function getTrainOptionsForBuilding(buildingType, age, civilization) {
             if (u.trainAt !== buildingType) continue;
             if (u.tier && ageOrder.indexOf(u.tier) > currentIdx) continue;
             if (!result.includes(u.id)) result = result.slice().concat(u.id);
+        }
+        if (civ && civ.excludedUnits && civ.excludedUnits.length) {
+            result = result.filter(id => !civ.excludedUnits.includes(id));
         }
     }
     return result;
