@@ -3307,11 +3307,16 @@ class Game {
 
         // Draw player buildings (only in explored/visible areas)
         // In spectator mode, skip player (no human player exists)
+        // The minimap speaks the WORLD's color language: every owner draws in
+        // its civilization color. Player dots used to be a hardcoded blue —
+        // Greece's blue — no matter which civ the human actually played.
         if (!this.spectatorMode) {
+            const myCiv = getCivilization(this.player.civilization);
+            const myColor = '#' + ((myCiv && myCiv.color) || 0x4ecca3).toString(16).padStart(6, '0');
             this.player.buildings.forEach(building => {
                 const x = (building.x + terrainData.size / 2) * scale;
                 const z = (building.z + terrainData.size / 2) * scale;
-                ctx.fillStyle = '#4ecca3';
+                ctx.fillStyle = myColor;
                 ctx.fillRect(x - 3, z - 3, 6, 6);
             });
 
@@ -3319,18 +3324,18 @@ class Game {
             this.player.units.forEach(unit => {
                 const x = (unit.x + terrainData.size / 2) * scale;
                 const z = (unit.z + terrainData.size / 2) * scale;
-                ctx.fillStyle = '#4169e1';
+                ctx.fillStyle = myColor;
                 ctx.fillRect(x - 2, z - 2, 4, 4);
             });
         }
 
-        // Draw AI players (only in visible areas)
-        // In spectator mode, use each AI's civilization color
+        // Draw AI players (only in visible areas) — always their civ color,
+        // matching the world view's team tints in campaign AND spectator mode.
         this.aiManager.aiPlayers.forEach(ai => {
             const civ = getCivilization(ai.civilization);
             const colorHex = '#' + (civ?.color || 0xff0000).toString(16).padStart(6, '0');
-            const unitColor = this.spectatorMode ? colorHex : '#ff4444';
-            const buildingColor = this.spectatorMode ? colorHex : '#ff4444';
+            const unitColor = colorHex;
+            const buildingColor = colorHex;
 
             ai.buildings.forEach(building => {
                 if (this.fogOfWar && !this.fogOfWar.isPositionVisible(building.x, building.z)) return;
