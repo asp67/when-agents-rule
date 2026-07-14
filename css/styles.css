@@ -681,6 +681,15 @@ body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
 .lb-card.rank-2 .lb-rank { background: linear-gradient(145deg, #eef2f7, #b5c0cf); }
 .lb-card.rank-3 .lb-rank { background: linear-gradient(145deg, #e2a26a, #b9702f); color: #fff; }
 
+/* Team-badge chip — the UI twin of the ownership mark on building flags and
+   unit chests: an inline SVG whose per-seat shape, fill and rim stroke arrive
+   from ui.teamDotHtml; the rim keeps every fill legible on any background. */
+.team-dot {
+    display: inline-block;
+    vertical-align: -1px;
+    flex: 0 0 auto;
+}
+
 .lb-civ {
     font-weight: 700;
     font-size: 0.98em;

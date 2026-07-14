@@ -772,3 +772,26 @@ const DEFAULT_CIV = {
 function getCivilization(id) {
     return CIVILIZATIONS[id] || DEFAULT_CIV;
 }
+
+// Team badges — the per-SEAT ownership marks (building flags, unit chests,
+// UI chips). Civ colors can't tell players apart once two seats pick the same
+// civilization, so ownership gets its own channel keyed by seat: arena slot
+// order; in campaign the human is seat 0, opponents follow. Each seat pairs a
+// COLOR with a SHAPE (double-coded, so it survives color blindness and any
+// backdrop), and every fill ships with a contrast rim — white-on-gold (and
+// charcoal-on-shadow) is unreadable without one. Entries 5-6 only ever appear
+// in 5-6 player campaigns. Shape names are interpreted by
+// EngineUnits.badgeParts (world) and ui.teamDotHtml (chips).
+const TEAM_BADGES = [
+    { fill: '#222222', rim: '#FFFFFF', shape: 'circle' },   // charcoal
+    { fill: '#FFFFFF', rim: '#222222', shape: 'square' },   // white
+    { fill: '#009E60', rim: '#FFFFFF', shape: 'triangle' }, // emerald
+    { fill: '#E0F7FA', rim: '#222222', shape: 'diamond' },  // ice blue
+    { fill: '#7B1FA2', rim: '#FFFFFF', shape: 'star' },     // purple
+    { fill: '#FF8F00', rim: '#222222', shape: 'cross' }     // amber
+];
+
+function getTeamBadge(seat) {
+    if (seat == null || seat < 0) return null;
+    return TEAM_BADGES[seat % TEAM_BADGES.length];
+}

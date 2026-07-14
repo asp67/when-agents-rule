@@ -390,6 +390,20 @@
             return [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255];
         }
 
+        // '#RRGGBB' → tint vec3 (team-badge colors are authored as CSS hex).
+        _hexTint(hex) {
+            return this._tintOf(parseInt(String(hex).replace('#', ''), 16));
+        }
+
+        // Fill/rim tints of an entity's team badge (per-seat ownership circle).
+        // No seat (engine-test, defensive) → both fall back to the team tint so
+        // the badge dissolves into the cloth instead of showing a wrong color.
+        _badgeTints(seat, fallback) {
+            const b = (typeof getTeamBadge === 'function') ? getTeamBadge(seat) : null;
+            return b ? { fill: this._hexTint(b.fill), rim: this._hexTint(b.rim) }
+                : { fill: fallback, rim: fallback };
+        }
+
         addUnit(unit) {
             // Re-add-safe: this.units doubles as the game's unit list
             // (game.getAllUnits), and a duplicate entry means duplicate combat
@@ -401,9 +415,14 @@
             const engineType = unit.unitType === 'support' ? 'priest'
                 : (EngineUnits.META[unit.unitType] ? unit.unitType : 'infantry');
             const tint = this._tintOf(unit.color);
-            const entries = EngineUnits.parts(engineType, { civ: unit.civilization, unit: unit.type }).map(p => ({
+            const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(unit.seat) : null;
+            const badge = this._badgeTints(unit.seat, tint);
+            const entries = EngineUnits.parts(engineType, {
+                civ: unit.civilization, unit: unit.type,
+                badge: bdef ? bdef.shape : null // per-seat badge shape on the chest
+            }).map(p => ({
                 buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
-                tint: p.team ? tint : this.WHITE,
+                tint: p.accent ? badge[p.accent] : (p.team ? tint : this.WHITE),
                 base: p.m, bone: p.bone, blend: p.blend, model: p.m
             }));
             unit._engine = { type: engineType, entries, phase: (this.units.length * 1.37) % 6.28 };
@@ -480,6 +499,22 @@
                     buf: this._buf('box', [0.85, 0.55, 0.07]), tex: this.tex.cloth, tint,
                     model: m3.multiply(world, m3.translation(off + 0.45, 2.25, off))
                 });
+                // Team badge on the flag: the seat's ownership mark (per-seat
+                // SHAPE + color, fill + contrast rim) — the same prism shapes
+                // units wear on the chest (EngineUnits.badgeParts), so their
+                // caps read on BOTH flag faces. The flag cloth stays civ-
+                // colored — the mark is what separates same-civ players.
+                const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(building.seat) : null;
+                if (bdef) {
+                    const bt = this._badgeTints(building.seat, tint);
+                    const flagT = m3.translation(off + 0.45, 2.25, off);
+                    EngineUnits.badgeParts(bdef.shape, { r: 0.14, lenFill: 0.13, lenRim: 0.10 }).forEach(p => {
+                        eb.opaque.push({
+                            buf: this._buf(p.kind, p.args), tex: this.tex[p.tex], tint: bt[p.accent],
+                            model: m3.multiply(world, m3.multiply(flagT, p.m))
+                        });
+                    });
+                }
                 // …and a team-color runner out the FRONT door: the walls are
                 // near-symmetric in the early ages, so this ground strip is the
                 // orientation cue that reads at any zoom. Long enough (z 3.2→7)

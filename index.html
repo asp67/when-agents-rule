@@ -259,7 +259,9 @@
                      human's civ (Campaign only). -->
                 <div id="campaignSetupRow" class="campaign-setup-row" style="display:none;">
                     <div class="arena-field" id="playerCivField">
-                        <label data-i18n="cmp.you">Du spielst</label>
+                        <!-- data-i18n swaps textContent, so it lives on an inner span —
+                             the team-badge chip (seat 0) would be wiped off the label. -->
+                        <label><span id="playerCivDot"></span><span data-i18n="cmp.you">Du spielst</span></label>
                         <select id="campaignPlayerCiv" onchange="game.ui.setCampaignPlayerCiv(this.value)"></select>
                     </div>
                     <div class="arena-field">
@@ -363,24 +365,24 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=290"></script>
-    <script src="js/engine/glcore.js?v=290"></script>
-    <script src="js/engine/texgen.js?v=290"></script>
-    <script src="js/engine/mesh.js?v=290"></script>
-    <script src="js/engine/buildings.js?v=290"></script>
-    <script src="js/engine/units.js?v=290"></script>
-    <script src="js/engine/gamerenderer.js?v=290"></script>
-    <script src="js/i18n.js?v=290"></script>
-    <script src="js/civilizations.js?v=290"></script>
-    <script src="js/buildings.js?v=290"></script>
-    <script src="js/units.js?v=290"></script>
-    <script src="js/resources.js?v=290"></script>
-    <script src="js/terrain.js?v=290"></script>
-    <script src="js/fogofwar.js?v=290"></script>
-    <script src="js/ai.js?v=290"></script>
-    <script src="js/openai-ai.js?v=290"></script>
-    <script src="js/input.js?v=290"></script>
-    <script src="js/ui.js?v=290"></script>
-    <script src="js/game.js?v=290"></script>
+    <script src="js/engine/math3d.js?v=292"></script>
+    <script src="js/engine/glcore.js?v=292"></script>
+    <script src="js/engine/texgen.js?v=292"></script>
+    <script src="js/engine/mesh.js?v=292"></script>
+    <script src="js/engine/buildings.js?v=292"></script>
+    <script src="js/engine/units.js?v=292"></script>
+    <script src="js/engine/gamerenderer.js?v=292"></script>
+    <script src="js/i18n.js?v=292"></script>
+    <script src="js/civilizations.js?v=292"></script>
+    <script src="js/buildings.js?v=292"></script>
+    <script src="js/units.js?v=292"></script>
+    <script src="js/resources.js?v=292"></script>
+    <script src="js/terrain.js?v=292"></script>
+    <script src="js/fogofwar.js?v=292"></script>
+    <script src="js/ai.js?v=292"></script>
+    <script src="js/openai-ai.js?v=292"></script>
+    <script src="js/input.js?v=292"></script>
+    <script src="js/ui.js?v=292"></script>
+    <script src="js/game.js?v=292"></script>
 </body>
 </html>

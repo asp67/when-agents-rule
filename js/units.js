@@ -149,6 +149,13 @@ function createUnit(type, x, z, owner, civilization, age) {
     const unitDef = uniqueUnit || getUnitDef(type);
     if (!unitDef) return null;
 
+    // Resolve the owner object once, up front: its seat drives the team badge
+    // (the per-player ownership circle) and it feeds the bonus catch-up below.
+    const ownerObj = (typeof game !== 'undefined' && game)
+        ? (owner === 'player' ? game.player
+            : (game.aiManager ? game.aiManager.aiPlayers.find(a => a.id === owner) : null))
+        : null;
+
     const unit = {
         id: 'unit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
         type: type,
@@ -164,6 +171,7 @@ function createUnit(type, x, z, owner, civilization, age) {
         owner: owner,
         civilization: civilization,
         color: civ.color, // Always use civilization color (important for spectator mode)
+        seat: (ownerObj && ownerObj.seat != null) ? ownerObj.seat : null, // team badge (ownership circle)
         currentTier: age || 'stone', // Track the age/tier this unit was created at
         targetX: x,
         targetZ: z,
@@ -185,10 +193,8 @@ function createUnit(type, x, z, owner, civilization, age) {
 
     // Researched bonuses (Quick Hands & co.) apply at spawn too — otherwise a
     // research quietly split the roster into boosted veterans and raw recruits.
-    if (typeof game !== 'undefined' && game && game.applyResearchedBonusesToUnit) {
-        const ownerObj = owner === 'player' ? game.player
-            : (game.aiManager ? game.aiManager.aiPlayers.find(a => a.id === owner) : null);
-        if (ownerObj) game.applyResearchedBonusesToUnit(unit, ownerObj);
+    if (ownerObj && typeof game !== 'undefined' && game && game.applyResearchedBonusesToUnit) {
+        game.applyResearchedBonusesToUnit(unit, ownerObj);
     }
     return unit;
 }
@@ -233,6 +239,12 @@ function createBuilding(type, x, z, owner, civilization, options) {
 
     if (!buildingDef) return null;
 
+    // Owner's seat → team badge (the ownership circle on the banner flag).
+    const ownerObj = (typeof game !== 'undefined' && game)
+        ? (owner === 'player' ? game.player
+            : (game.aiManager ? game.aiManager.aiPlayers.find(a => a.id === owner) : null))
+        : null;
+
     // The epoch this building is constructed in drives both its look and its HP.
     // Owners morph their buildings to the new epoch when they age up (see
     // upgradeBuildingToAge / game.morphBuildingsToAge).
@@ -263,6 +275,7 @@ function createBuilding(type, x, z, owner, civilization, options) {
         owner: owner,
         civilization: civilization,
         color: owner === 'player' ? 0x4ecca3 : 0xff4444,
+        seat: (ownerObj && ownerObj.seat != null) ? ownerObj.seat : null, // team badge (ownership circle)
         selected: false,
         mesh: null,
         healthBar: null,

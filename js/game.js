@@ -179,6 +179,7 @@ class Game {
         this.player.unlockedUnits = {};
         this.player.currentResearch = null;
         this.player.currentAgeUpgrade = null;
+        this.player.seat = 0; // the human always wears team badge 0 (charcoal)
         this.player.workerHarvestBonus = 1.0;
         this.player.trainSpeedBonus = 1.0;
         this.player.miningBonus = 1.0;
@@ -216,6 +217,7 @@ class Game {
         this.aiManager.aiPlayers = [];
         for (let i = 0; i < numPlayers; i++) {
             const ai = this.aiManager.addAIPlayer(setup[i].civ, 'medium');
+            ai.seat = i; // arena slot order → team badge (must be set BEFORE any create*)
             const spawn = spawnPositions[i];
 
             // Create town center
@@ -336,6 +338,7 @@ class Game {
         this.player.unlockedUnits = {};
         this.player.currentResearch = null;
         this.player.currentAgeUpgrade = null;
+        this.player.seat = 0; // the human always wears team badge 0 (charcoal)
 
         // Calculate spawn positions for all players
         // In spectator mode: 4 AI players only. In standard mode: 1 human + numAI
@@ -402,7 +405,10 @@ class Game {
                 ? opponentConfigs[i].civ
                 : aiCivs[i % aiCivs.length];
             const ai = this.aiManager.addAIPlayer(aiCiv, 'medium');
-            
+            // Seat → team badge: campaign opponents start at 1 (the human is 0);
+            // the legacy spectator path through here starts at 0. Set BEFORE create*.
+            ai.seat = aiStartIndex + i;
+
             // Create AI town center at their spawn position
             const aiSpawn = spawnPositions[aiStartIndex + i];
             const aiTC = createBuilding('town_center', aiSpawn.x, aiSpawn.z, ai.id, aiCiv, { age: ai.age });

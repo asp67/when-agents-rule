@@ -146,6 +146,9 @@ class UIManager {
             const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
             const civSel = document.getElementById('campaignPlayerCiv');
             if (civSel) civSel.innerHTML = Object.keys(civNames).map(c => `<option value="${c}" ${this._campaignConfig.playerCiv === c ? 'selected' : ''}>${civNames[c]}</option>`).join('');
+            // The human is seat 0 — show their team badge next to "You play".
+            const dot = document.getElementById('playerCivDot');
+            if (dot) dot.innerHTML = this.teamDotHtml(0, 12);
         }
         // Count label text differs (Opponents vs Participants).
         const lbl = document.getElementById('setupCountLabel');
@@ -700,10 +703,14 @@ class UIManager {
                     </div>
                     ${promptBlock}
                 </div>`;
+            // Seat → team badge: arena slots are seats 0-3; campaign opponents
+            // start at seat 1 (the human is seat 0, shown next to the civ picker).
+            const seat = campaign ? i + 1 : i;
             return `
             <div class="arena-slot ${collapsed ? 'collapsed' : 'expanded'}${isLLM ? ' has-prompt' : ''}" style="--civ:${civColor[slot.civ] || '#888'}">
                 <div class="arena-slot-head" onclick="game.ui.toggleArenaSlot(${i})">
                     <span class="arena-slot-caret">▶</span>
+                    ${this.teamDotHtml(seat, 12)}
                     <span class="arena-slot-title">${slotTitle(i)}</span>
                     <span class="arena-slot-summary">${civNames[slot.civ] || slot.civ} · ${e(ctrlName)}</span>
                     <span class="slot-prompt-badge" id="slotPromptBadge${i}" title="${t('ar.promptEditedTitle')}" style="${isLLM && slot.prompt != null ? '' : 'display:none'}">✎ ${t('ar.promptEdited')}</span>
@@ -1804,6 +1811,11 @@ class UIManager {
             destroy_building: t('log.destroy_building')
         };
 
+        // playerId → seat for the team-badge chip on each entry: entries only
+        // carry the civ name, which is ambiguous once two seats play the same civ.
+        const seatOf = {};
+        ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).forEach(a => { seatOf[a.id] = a.seat; });
+
         let html = '';
         const now = Date.now();
         log.slice(0, 160).forEach((entry, idx) => {
@@ -1821,6 +1833,7 @@ class UIManager {
                     <div class="ai-log-entry is-advice${newCls}" data-key="${key}" style="border-left-color: ${civColor}">
                         <div class="log-line1">
                             <span class="log-time">${timeStr}</span>
+                            ${this.teamDotHtml(seatOf[entry.playerId], 9)}
                             <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(tg(entry.civName))}</span>
                             <span class="log-action">${t('log.advice')}</span>
                         </div>
@@ -1845,6 +1858,7 @@ class UIManager {
                 <div class="ai-log-entry${isError ? ' is-error' : ''}${newCls}" data-key="${key}" style="border-left-color: ${civColor}">
                     <div class="log-line1">
                         <span class="log-time">${timeStr}</span>
+                        ${this.teamDotHtml(seatOf[entry.playerId], 9)}
                         <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(tg(entry.civName))}</span>
                         <span class="log-action">${actionLabel}${this.escapeHtml(detail)}${entry.failed ? ` <span class="log-x">✗ ${t('log.rejected')}</span>` : ''}</span>
                     </div>
@@ -1918,6 +1932,24 @@ class UIManager {
         if (n >= 100000) return Math.round(n / 1000) + 'k';
         if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
         return String(n);
+    }
+
+    // Team-badge chip: the UI twin of the ownership mark worn on building
+    // flags and unit chests — same per-seat fill, SHAPE and contrast rim,
+    // drawn as a tiny inline SVG. Returns '' when the seat is unknown so
+    // callers can inline it unconditionally.
+    teamDotHtml(seat, px = 11) {
+        const b = (typeof getTeamBadge === 'function') ? getTeamBadge(seat) : null;
+        if (!b) return '';
+        const shapes = {
+            circle: '<circle cx="12" cy="12" r="8.5"/>',
+            square: '<rect x="4.5" y="4.5" width="15" height="15"/>',
+            triangle: '<path d="M12 3 L21.5 20.5 L2.5 20.5 Z"/>',
+            diamond: '<path d="M12 2 L22 12 L12 22 L2 12 Z"/>',
+            star: '<path d="M12 1 L14.6 9.4 L23 12 L14.6 14.6 L12 23 L9.4 14.6 L1 12 L9.4 9.4 Z"/>',
+            cross: '<path d="M5.2 2 L12 8.8 L18.8 2 L22 5.2 L15.2 12 L22 18.8 L18.8 22 L12 15.2 L5.2 22 L2 18.8 L8.8 12 L2 5.2 Z"/>'
+        };
+        return `<svg class="team-dot" style="width:${px}px;height:${px}px" viewBox="0 0 24 24" fill="${b.fill}" stroke="${b.rim}" stroke-width="2.4" stroke-linejoin="round"><title>${t('ui.teamColor')}</title>${shapes[b.shape] || shapes.circle}</svg>`;
     }
 
     // Lighten very dark civ colors (e.g. Yamato navy) so text/accents stay
@@ -2013,6 +2045,7 @@ class UIManager {
                     </div>
                     <div class="lb-card-top">
                         <span class="lb-rank">${rank}</span>
+                        ${this.teamDotHtml(ai.seat, 10)}
                         <span class="lb-civ">${civNames[ai.civilization] || ai.civilization}</span>
                         <span class="lb-age">${ageNames[ai.age] || ai.age}</span>
                         ${!r.alive ? `<span class="lb-tag-elim">${t('spec.defeated')}</span>`
@@ -2346,7 +2379,7 @@ class UIManager {
                     <div class="winner-crown">📊</div>
                     <div class="winner-text">
                         <div class="winner-model">${this.escapeHtml(lead.model)}</div>
-                        <div class="winner-civ">${lead.civName} · ${t('sum.snapLeader')}</div>
+                        <div class="winner-civ">${this.teamDotHtml(lead.ai.seat, 10)}${lead.civName} · ${t('sum.snapLeader')}</div>
                     </div>
                     <div class="winner-score">${lead.power}<span>${t('sum.points')}</span></div>
                 </div>` : '';
@@ -2357,7 +2390,7 @@ class UIManager {
                     <div class="winner-crown">\u{1F451}</div>
                     <div class="winner-text">
                         <div class="winner-model">${this.escapeHtml(wr.model)}</div>
-                        <div class="winner-civ">${wr.civName} · ${wr.isLLM ? 'LLM' : t('spec.rulebased')}</div>
+                        <div class="winner-civ">${this.teamDotHtml(wr.ai.seat, 10)}${wr.civName} · ${wr.isLLM ? 'LLM' : t('spec.rulebased')}</div>
                     </div>
                     <div class="winner-score">${wr.power}<span>${t('sum.points')}</span></div>
                 </div>`;
@@ -2377,7 +2410,7 @@ class UIManager {
                     <div class="sum-card${r.isWinner ? ' winner' : ''}${r.alive ? '' : ' dead'}" style="--civ:${r.color}">
                         <div class="sum-card-head">
                             <span class="sum-rank">${rank}</span>
-                            <div class="sum-id"><div class="sum-model">${this.escapeHtml(r.model)}</div><div class="sum-civ">${r.civName}</div></div>
+                            <div class="sum-id"><div class="sum-model">${this.escapeHtml(r.model)}</div><div class="sum-civ">${this.teamDotHtml(r.ai.seat, 9)}${r.civName}</div></div>
                             <span class="sum-power">${r.power}</span>
                         </div>
                         <div class="sum-note">${t('sum.ruleNote')}</div>
@@ -2394,7 +2427,7 @@ class UIManager {
                 <div class="sum-card${r.isWinner ? ' winner' : ''}${r.alive ? '' : ' dead'}" style="--civ:${r.color}">
                     <div class="sum-card-head">
                         <span class="sum-rank">${rank}</span>
-                        <div class="sum-id"><div class="sum-model">${this.escapeHtml(r.model)}</div><div class="sum-civ">${r.civName}${r.alive ? '' : ` · <b style="color:#ff6b81">${t('spec.defeated')}</b>`}</div></div>
+                        <div class="sum-id"><div class="sum-model">${this.escapeHtml(r.model)}</div><div class="sum-civ">${this.teamDotHtml(r.ai.seat, 9)}${r.civName}${r.alive ? '' : ` · <b style="color:#ff6b81">${t('spec.defeated')}</b>`}</div></div>
                         <span class="sum-power" title="${t('sum.endScore')}">${r.power}</span>
                     </div>
                     <div class="sum-sound">

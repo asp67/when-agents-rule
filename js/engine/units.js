@@ -18,10 +18,61 @@
         if (t.sx || t.sy || t.sz) m = m3.multiply(m, m3.scaling(t.sx || 1, t.sy || 1, t.sz || 1));
         arr.push({
             kind, args, tex, m, blend: !!t.blend, team: !!t.team,
+            accent: t.accent || null, // 'fill' | 'rim' — tinted per SEAT (team badge), not per civ
             bone: t.bone || null, key: kind + ':' + args.join(',')
         });
     };
     const shadow = (arr, r) => part(arr, 'disc', [r, 14], 'shadow', { y: 0.05, blend: true });
+
+    // Team badge: the per-seat ownership MARK (color + shape) on chests and
+    // flags, front AND back — each shape is a short prism pushed through the
+    // host along Z, so its two caps read as the filled shape from either side;
+    // a slightly wider, slightly recessed copy behind it is the contrast rim.
+    // The renderer tints 'fill'/'rim' parts per SEAT (getTeamBadge), never per
+    // civ — this is what tells two same-civ players apart at unit scale.
+    //
+    // Prism orientation: a box's length is already along Z, so `rz` alone spins
+    // its cap in the view plane. A cylinder's axis is +Y, so polygonal caps
+    // (triangle/star) go through rz(π/2)·[rx spin]·ry(π/2): part() applies
+    // Rz first (tips +Y onto X, cap into the YZ plane), rx then ROLLS the cap
+    // in its own plane, ry(π/2) finally lays the axis along Z. With vertex 0 at
+    // angle 0, a 3-segment cap lands point-up with no roll at all.
+    const HPI = Math.PI / 2;
+    const badgeParts = (shape, o) => {
+        const p = [];
+        const y = o.y || 0, z = o.z || 0;
+        const emit = (accent, R, L) => {
+            switch (shape) {
+                case 'square':
+                    part(p, 'box', [R * 1.7, R * 1.7, L], 'white', { y, z, accent });
+                    break;
+                case 'diamond':
+                    part(p, 'box', [R * 1.8, R * 1.8, L], 'white', { y, z, rz: Math.PI / 4, accent });
+                    break;
+                case 'triangle':
+                    part(p, 'cylinder', [R * 1.4, R * 1.4, L, 3], 'white', { y, z, ry: HPI, rz: HPI, accent });
+                    break;
+                case 'star': // two thin diamonds crossed — reads as a 4-point sparkle
+                    part(p, 'cylinder', [R * 1.6, R * 1.6, L, 4], 'white', { y, z, ry: HPI, rz: HPI, sz: 0.32, accent });
+                    part(p, 'cylinder', [R * 1.6, R * 1.6, L, 4], 'white', { y, z, ry: HPI, rx: HPI, rz: HPI, sz: 0.32, accent });
+                    break;
+                case 'cross': // two bars at ±45°
+                    part(p, 'box', [R * 0.9, R * 2.5, L], 'white', { y, z, rz: Math.PI / 4, accent });
+                    part(p, 'box', [R * 0.9, R * 2.5, L], 'white', { y, z, rz: -Math.PI / 4, accent });
+                    break;
+                default: // circle
+                    part(p, 'cylinder', [R, R, L, 12], 'white', { y, z, rx: HPI, accent });
+            }
+        };
+        emit('rim', o.r * 1.35, o.lenRim);
+        emit('fill', o.r, o.lenFill);
+        return p;
+    };
+    // Shared with the building renderer: flag badges use the exact same shapes.
+    EngineUnits.badgeParts = badgeParts;
+    const badge = (p, shape, y, z, r, lenFill, lenRim) => {
+        badgeParts(shape, { y, z, r, lenFill, lenRim }).forEach(e => p.push(e));
+    };
 
     // Civ-identifying HEADGEAR — the most readable identity channel at unit
     // scale. kind: 'civil' (workers/archers), 'military' (infantry + cavalry
@@ -78,6 +129,7 @@
         part(p, 'cylinder', [0.075, 0.09, 0.62, 5], 'leather', { x: -0.13, y: 0.37, bone: 'legL' });
         part(p, 'cylinder', [0.075, 0.09, 0.62, 5], 'leather', { x: 0.13, y: 0.37, bone: 'legR' });
         part(p, 'cylinder', [0.23, 0.3, 0.62, 7], 'cloth', { y: 0.99, team: true });
+        badge(p, opts.badge, 1.08, 0, 0.085, 0.60, 0.57); // torso r≈0.255 at chest height — caps sit proud
         part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.47, sx: 0.17, sy: 0.17, sz: 0.17 });
         part(p, 'cylinder', [0.06, 0.07, 0.52, 5], opts.sleeves || 'skin', { x: -0.34, y: 0.96, rz: -0.1, bone: 'armL' });
         part(p, 'cylinder', [0.06, 0.07, 0.52, 5], opts.sleeves || 'skin', { x: 0.34, y: 0.96, rz: 0.1, bone: 'armR' });
@@ -125,7 +177,7 @@
     const builders = {
         worker: (o = {}) => {
             const p = [];
-            humanoid(p);
+            humanoid(p, { badge: o.badge });
             headgear(p, o.civ, 'civil', 0, 1.5, 0);
             part(p, 'cylinder', [0.028, 0.028, 0.55, 4], 'bark', { x: 0.37, y: 0.86, z: 0.08, bone: 'armR' });
             part(p, 'box', [0.06, 0.18, 0.26], 'iron', { x: 0.37, y: 1.1, z: 0.18, bone: 'armR' }); // axe head
@@ -134,7 +186,7 @@
         infantry: (o = {}) => {
             const tier = o.tier || 2;
             const p = [];
-            humanoid(p, tier >= 3 ? { sleeves: 'leather' } : {});
+            humanoid(p, { sleeves: tier >= 3 ? 'leather' : undefined, badge: o.badge });
             headgear(p, o.civ, 'military', 0, 1.47, 0);
             if (tier === 1) {
                 // militia: a knobbed wooden club and no shield — a levy, not a soldier
@@ -162,7 +214,7 @@
         ranged: (o = {}) => {
             const tier = o.tier || 1;
             const p = [];
-            humanoid(p, tier >= 2 ? { sleeves: 'leather' } : {});
+            humanoid(p, { sleeves: tier >= 2 ? 'leather' : undefined, badge: o.badge });
             if (tier >= 2) headgear(p, o.civ, 'military', 0, 1.47, 0);
             else if (o.civ) headgear(p, o.civ, 'civil', 0, 1.5, 0);
             else part(p, 'sphere', [1, 8, 6], 'leather', { y: 1.53, sx: 0.18, sy: 0.11, sz: 0.18 }); // generic cap
@@ -185,6 +237,7 @@
             shadow(p, 0.78);
             part(p, 'cylinder', [0.21, 0.37, 1.25, 8], 'cloth', { y: 0.67 }); // cream robe (no legs)
             part(p, 'box', [0.42, 0.5, 0.06], 'cloth', { y: 0.98, z: 0.2, team: true }); // sash
+            badge(p, o.badge, 1.05, 0, 0.085, 0.60, 0.57); // clears robe (r≈0.24) and sash (z 0.23)
             part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.47, sx: 0.17, sy: 0.17, sz: 0.17 });
             headgear(p, o.civ, 'priest', 0, 1.5, 0);
             part(p, 'cylinder', [0.06, 0.07, 0.52, 5], 'cloth', { x: -0.34, y: 0.96, rz: -0.1, bone: 'armL' });
@@ -209,6 +262,7 @@
                 part(p, 'cylinder', [0.022, 0.022, 0.62, 4], 'bark', { x: -0.2, y: 0.5, z: -0.72, rx: 1.45 }); // hitch shafts
                 part(p, 'cylinder', [0.022, 0.022, 0.62, 4], 'bark', { x: 0.2, y: 0.5, z: -0.72, rx: 1.45 });
                 part(p, 'cylinder', [0.14, 0.17, 0.44, 6], 'cloth', { y: 1.06, z: -1.18, team: true });        // rider
+                badge(p, o.badge, 1.10, -1.18, 0.06, 0.41, 0.38);                                              // rider chest badge
                 part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.41, z: -1.18, sx: 0.13, sy: 0.13, sz: 0.13 });
                 headgear(p, o.civ, 'military', 0, 1.44, -1.18, 0.75);                                          // helmet
                 part(p, 'cylinder', [0.045, 0.055, 0.36, 4], 'skin', { x: 0.18, y: 1.22, z: -1.02, rz: 0.2, rx: 0.3 });
@@ -221,6 +275,7 @@
             horse(p, tier);
             // rider: torso seated over the blanket, legs hugging the barrel
             part(p, 'cylinder', [0.16, 0.2, 0.46, 6], 'cloth', { y: 1.47, team: true });
+            badge(p, o.badge, 1.52, 0, 0.07, 0.48, 0.45); // rider chest — torso r≈0.18 here
             part(p, 'cylinder', [0.05, 0.06, 0.4, 4], 'leather', { x: -0.28, y: 1.18, z: 0.05, rz: -0.35 });
             part(p, 'cylinder', [0.05, 0.06, 0.4, 4], 'leather', { x: 0.28, y: 1.18, z: 0.05, rz: 0.35 });
             part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.85, sx: 0.14, sy: 0.14, sz: 0.14 });
