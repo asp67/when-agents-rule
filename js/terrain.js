@@ -68,10 +68,10 @@ class TerrainManager {
         // (terrain mega-texture flecks replace the old instanced prop scatter).
     }
 
-    // Fairness scatter: the map is split into a 3×3 grid of equal tiles (the
-    // same nine sections the models' exploration compass reports) and EVERY
-    // tile receives the SAME number of nodes of the given type, placed
-    // uniformly within it. This replaces two sources of imbalance: the old
+    // Fairness scatter: the map is split into a 3×3 grid of equal tiles and
+    // EVERY tile receives the SAME number of nodes of the given type, placed
+    // uniformly within it. (Deliberately coarser than the 7×7 exploration
+    // grid the models see — 3×3 is about spawn fairness, not scouting.) This replaces two sources of imbalance: the old
     // polar wedge scatter (uniform in radius → density ∝ 1/r, which piled
     // food and wood into the map center) and the one-roll-for-the-whole-map
     // stone scatter whose variance could starve a quadrant. A map seed still

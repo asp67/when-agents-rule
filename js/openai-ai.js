@@ -579,9 +579,10 @@ class OpenAIAIManager {
             size: game.terrain.size,
             bounds: { minX: -halfMap, maxX: halfMap, minZ: -halfMap, maxZ: halfMap },
             yourSpawnArea: this.getAIBuildingCenter(ai),
-            // Percent of each map NINTH this player has ever seen (3×3 compass
-            // grid; section centres documented in the system prompt). Lets the
-            // model aim scouts at genuinely dark ground instead of guessing.
+            // Percent of each map tile this player has ever seen, as a 7×7
+            // row-major grid ([row][col], row 0 = north, col 0 = west; tile
+            // centre formula documented in the system prompt). Lets the model
+            // aim scouts at genuinely dark ground instead of guessing.
             exploration: game.explorationSummary(ai)
         };
 
@@ -1079,7 +1080,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 ## The world (fixed rules)
 - FOG: you see only near your own units/buildings. "resourcesOnMap" and "enemyBuildings" are remembered discoveries (each enemy building carries "visible": true = in sight now, false = last known spot; both are attackable). "enemyUnits" lists only enemies in sight RIGHT NOW. Exception: rival Wonders are always visible ("threats.enemyWonders", with secondsUntilEnemyWins — a finished rival Wonder ends the game).
 - All {{players}} players start far apart, evenly spaced around the map edge ("map.bounds", centred on 0,0). Your rivals are never beside you — they are found by scouting toward the far parts of the map.
-- "map.exploration" scores how much of each map NINTH you have ever seen (0-100%). Section centres: NW(-267,-267) N(0,-267) NE(267,-267) W(-267,0) C(0,0) E(267,0) SW(-267,267) S(0,267) SE(267,267). Low percentages are dark ground — send explore there to find resources and rivals instead of re-scouting known land. Cavalry units see 50% farther than everything else, making them the best scouts.
+- "map.exploration" is a 7x7 grid scoring how much of each map tile you have ever seen (0-100%): exploration[row][col], row 0 = the NORTH edge, col 0 = the WEST edge. Each tile is ~114 units wide; the centre of tile [row][col] is x=(col-3)*114.3, z=(row-3)*114.3 — e.g. [0][0] → (-343,-343) NW corner, [3][3] → (0,0) map centre, [6][6] → (343,343) SE corner. Low percentages are dark ground — send explore there to find resources and rivals instead of re-scouting known land. Cavalry units see 50% farther than everything else, making them the best scouts.
 - "gameStats.opponents" lists every rival. Civilization and epoch are ALWAYS known (heralds announce age-ups). Army and building counts are scouting rewards: they appear only once you have DISCOVERED that rival ("discovered": true after you have seen any of its units or buildings) — size up an unknown rival by scouting, not by assumption.
 - "threats.underAttack" lists your units/buildings taking fire right now, with "attackerAt" coordinates. Idle military auto-defend your home (workers only as a last resort); auto-defense only repels — it never wins the game.
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
@@ -1090,7 +1091,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - Resources: food (animals, berries, farms), wood (trees), stone (quarries), gold (mines).
 
 - "recentEvents" is your battle report: losses, kills and raids of the last moments. React to it — repel raids, repair_building damage, rebuild what fell.
-- Resources are distributed EVENLY across the map's nine exploration sections (see map.exploration): every section holds the same share of food, wood, stone and gold. When your local nodes run dry, ANY direction of scouting finds more — pick the least explored.
+- Resources are distributed EVENLY across the map (each of its nine regions holds the same share of food, wood, stone and gold). When your local nodes run dry, ANY direction of scouting finds more — head for the lowest-scoring tiles in map.exploration.
 
 ## Actions (issue exactly ONE per turn)
 - train_worker: a villager at your Town Center. Optional targetX/targetZ: train at the Town Center nearest those coords (a busy one falls back to the next free).
@@ -1102,7 +1103,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" — puts an idle worker on it (auto-scouts first if that type is still undiscovered).
 - assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders, fighting workers and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen.
 - repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairing workers rejoin the idle pool when done.
-- explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map ninth. Use map.exploration to aim targeted scouts.
+- explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map tile. Use map.exploration to aim targeted scouts.
 - move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay).
 - attack_target: params.targetId (an exact "id" from "enemyUnits"/"enemyBuildings" — tracks the target even if it moves) OR params.targetX/targetZ (your army attack-moves there and engages whatever it meets; the verdict is reported when it ARRIVES — do not re-issue while it is marching). Your own units/buildings and resource nodes are rejected.
 - delete_unit: params.unitType (+ optional count) — remove your own units to free population.
@@ -2779,15 +2780,16 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     // nodes are. We fan out from the base in a new direction each call (golden-angle
     // sweep) with an expanding radius, so repeated scouting covers the whole map.
     dispatchScoutToward(ai, game, preferredType = null) {
-        // Aim for the centre of the least-explored map ninth (with jitter so
-        // successive scouts spread out) — the same data the model sees in
-        // map.exploration. Golden-angle fan-out remains as the fallback when no
-        // exploration data exists yet or the whole map is already known.
+        // Aim for the centre of the least-explored map tile (7×7 grid, with
+        // jitter so successive scouts spread within the ~114-unit tile) — the
+        // same data the model sees in map.exploration. Golden-angle fan-out
+        // remains as the fallback when no exploration data exists yet or the
+        // whole map is already known.
         let rawX, rawZ;
         const sec = game.leastExploredSection ? game.leastExploredSection(ai) : null;
         if (sec && sec.pct < 100) {
-            rawX = sec.x + (Math.random() - 0.5) * 160;
-            rawZ = sec.z + (Math.random() - 0.5) * 160;
+            rawX = sec.x + (Math.random() - 0.5) * 100;
+            rawZ = sec.z + (Math.random() - 0.5) * 100;
         } else {
             const center = this.getAIBuildingCenter(ai);
             const half = (game.terrain.size / 2) - 30;

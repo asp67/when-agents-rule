@@ -248,46 +248,18 @@
           "description": "Centre of your buildings (your base)."
         },
         "exploration": {
-          "type": "object",
-          "description": "Percent (0-100) of each map NINTH this player has ever seen (3x3 compass grid). Section centres on the 800 map: NW(-267,-267) N(0,-267) NE(267,-267) W(-267,0) C(0,0) E(267,0) SW(-267,267) S(0,267) SE(267,267). Low = unscouted ground.",
-          "required": [
-            "NW",
-            "N",
-            "NE",
-            "W",
-            "C",
-            "E",
-            "SW",
-            "S",
-            "SE"
-          ],
-          "properties": {
-            "NW": {
-              "type": "integer"
-            },
-            "N": {
-              "type": "integer"
-            },
-            "NE": {
-              "type": "integer"
-            },
-            "W": {
-              "type": "integer"
-            },
-            "C": {
-              "type": "integer"
-            },
-            "E": {
-              "type": "integer"
-            },
-            "SW": {
-              "type": "integer"
-            },
-            "S": {
-              "type": "integer"
-            },
-            "SE": {
-              "type": "integer"
+          "type": "array",
+          "description": "Percent (0-100) of each map tile this player has ever seen, as a 7x7 row-major grid: exploration[row][col], row 0 = north edge, col 0 = west edge. Each tile is ~114 units wide; the centre of tile [row][col] on the 800 map is x=(col-3)*114.3, z=(row-3)*114.3 (e.g. [0][0] → (-343,-343), [3][3] → (0,0), [6][6] → (343,343)). Low = unscouted ground.",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "type": "array",
+            "minItems": 7,
+            "maxItems": 7,
+            "items": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100
             }
           }
         }

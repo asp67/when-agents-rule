@@ -35,9 +35,11 @@ class Game {
         // Seconds a finished Wonder must be HELD to win. Long enough that rivals get a
         // real window to march over and destroy it (a Wonder is an existential threat).
         this.wonderRequired = 600;
-        // Exploration bitmap resolution: 42×42 cells (~19 units each) = a 3×3
-        // compass summary of 14×14 cells per section (see markExploration).
+        // Exploration bitmap resolution: 42×42 cells (~19 units each), summarised
+        // for the models as a 7×7 tile grid of 6×6 cells per tile (see
+        // markExploration / explorationSummary).
         this.EXPLORE_GRID = 42;
+        this.EXPLORE_TILES = 7;
         this.gameSpeed = 1;
         this.lastFrameTime = 0;
     }
@@ -2326,9 +2328,9 @@ class Game {
     // ---- Exploration tracking (per player) ------------------------------------
     // A coarse "ground I have ever seen" bitmap per player, marked every
     // discovery sweep (250ms) around every living unit and building. Aggregated
-    // into a 3×3 compass summary (NW…SE) that the LLM state exposes as
-    // map.exploration — small enough to send every turn, precise enough to
-    // steer scouting toward genuinely dark parts of the map.
+    // into a 7×7 tile summary that the LLM state exposes as map.exploration —
+    // small enough to send every turn, granular enough to steer scouting
+    // toward genuinely dark parts of the map.
     markExploration(owner) {
         if (!owner) return;
         const G = this.EXPLORE_GRID;
@@ -2357,19 +2359,22 @@ class Game {
         });
     }
 
-    // Percent of each map NINTH this player has ever seen: {NW,N,NE,W,C,E,SW,S,SE}.
+    // Percent (0-100) of each map tile this player has ever seen, as a 7×7
+    // row-major grid: out[row][col], row 0 = north edge (z=-half), col 0 =
+    // west edge (x=-half). Finer than the old 3×3 compass so models can aim
+    // scouts at genuinely dark tiles instead of whole map ninths.
     explorationSummary(owner) {
-        const out = { NW: 0, N: 0, NE: 0, W: 0, C: 0, E: 0, SW: 0, S: 0, SE: 0 };
+        const T = this.EXPLORE_TILES;
+        const out = Array.from({ length: T }, () => new Array(T).fill(0));
         if (!owner || !owner._explored) return out;
-        const G = this.EXPLORE_GRID, S = G / 3; // 14 cells per section side
-        const names = [['NW', 'N', 'NE'], ['W', 'C', 'E'], ['SW', 'S', 'SE']];
-        for (let sz = 0; sz < 3; sz++) {
-            for (let sx = 0; sx < 3; sx++) {
+        const G = this.EXPLORE_GRID, S = G / T; // 6 bitmap cells per tile side
+        for (let tz = 0; tz < T; tz++) {
+            for (let tx = 0; tx < T; tx++) {
                 let seen = 0;
-                for (let z = sz * S; z < (sz + 1) * S; z++) {
-                    for (let x = sx * S; x < (sx + 1) * S; x++) seen += owner._explored[z * G + x];
+                for (let z = tz * S; z < (tz + 1) * S; z++) {
+                    for (let x = tx * S; x < (tx + 1) * S; x++) seen += owner._explored[z * G + x];
                 }
-                out[names[sz][sx]] = Math.round((seen / (S * S)) * 100);
+                out[tz][tx] = Math.round((seen / (S * S)) * 100);
             }
         }
         return out;
@@ -2397,23 +2402,27 @@ class Game {
         if (!this.spectatorMode && this.player) consider(this.player, 'player');
     }
 
-    // Centre of this player's least-explored ninth — where a scout learns the
-    // most. Ties break in reading order (NW first); callers add jitter so
-    // repeated picks spread within the section.
+    // Centre of this player's least-explored map tile (7×7 — the same grid the
+    // models see) — where a scout learns the most. Ties break in reading order
+    // (NW corner first); callers add jitter so repeated picks spread within
+    // the tile.
     leastExploredSection(owner) {
         const sum = this.explorationSummary(owner);
+        const T = this.EXPLORE_TILES;
         const size = (this.terrain && this.terrain.size) || 800;
-        const third = Math.round(size / 3);
-        const centers = {
-            NW: [-third, -third], N: [0, -third], NE: [third, -third],
-            W: [-third, 0], C: [0, 0], E: [third, 0],
-            SW: [-third, third], S: [0, third], SE: [third, third]
-        };
-        let best = null;
-        for (const k of Object.keys(centers)) {
-            if (best === null || sum[k] < sum[best]) best = k;
+        const tile = size / T;
+        let br = 0, bc = 0;
+        for (let r = 0; r < T; r++) {
+            for (let c = 0; c < T; c++) {
+                if (sum[r][c] < sum[br][bc]) { br = r; bc = c; }
+            }
         }
-        return { name: best, pct: sum[best], x: centers[best][0], z: centers[best][1] };
+        return {
+            name: `tile[${br}][${bc}]`,
+            pct: sum[br][bc],
+            x: Math.round((bc + 0.5) * tile - size / 2),
+            z: Math.round((br + 0.5) * tile - size / 2)
+        };
     }
 
     // Finish a construction site: full HP, becomes functional, grants pop bonus.

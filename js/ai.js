@@ -339,15 +339,15 @@ class AIManager {
 
         ai._exploreTimer = 0;
         const half = (this.game.terrain ? this.game.terrain.size : 800) / 2 - 40;
-        // Head for the least-explored map ninth (the same 3×3 summary the LLMs
-        // see) with jitter so successive scouts spread within the section —
-        // controller-type parity. Golden-angle fan-out remains as the fallback
-        // when no exploration data exists yet or the whole map is known.
+        // Head for the least-explored map tile (the same 7×7 summary the LLMs
+        // see) with jitter so successive scouts spread within the ~114-unit
+        // tile — controller-type parity. Golden-angle fan-out remains as the
+        // fallback when no exploration data exists yet or the whole map is known.
         const sec = this.game.leastExploredSection ? this.game.leastExploredSection(ai) : null;
         let tx, tz;
         if (sec && sec.pct < 100) {
-            tx = sec.x + (Math.random() - 0.5) * 160;
-            tz = sec.z + (Math.random() - 0.5) * 160;
+            tx = sec.x + (Math.random() - 0.5) * 100;
+            tz = sec.z + (Math.random() - 0.5) * 100;
         } else {
             ai._scoutAngle = (ai._scoutAngle == null) ? Math.random() * Math.PI * 2 : ai._scoutAngle + 2.399963;
             ai._scoutRadius = Math.min(half, (ai._scoutRadius || 60) + 40);
