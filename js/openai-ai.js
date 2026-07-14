@@ -1084,7 +1084,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - "gameStats.opponents" lists every rival. Civilization and epoch are ALWAYS known (heralds announce age-ups). Army and building counts are scouting rewards: they appear only once you have DISCOVERED that rival ("discovered": true after you have seen any of its units or buildings) — size up an unknown rival by scouting, not by assumption.
 - "threats.underAttack" lists your units/buildings taking fire right now, with "attackerAt" coordinates. Idle military auto-defend your home (workers only as a last resort); auto-defense only repels — it never wins the game.
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
-- Priests (temple) never fight — attack orders skip them. A priest walks to and heals nearby wounded friendlies on its own; reposition it with move_units.
+- Priests (temple) never fight — attack orders skip them. A priest walks to and heals your nearby workers and military units with healthPct below 100 on its own; reposition it with move_units.
 - Workers: newly trained ones are IDLE until ordered. A worker whose resource node runs dry walks to the nearest DISCOVERED node of the same type by itself and idles only when none is left. Workers deliver goods to the NEAREST finished Town Center — a second town_center near far resources shortens hauls and trains workers in parallel.
 - Farms regenerate food ONLY while a worker is assigned; the worker who builds a farm stays on as its farmer.
 - Houses raise maxPopulation only up to "resources.populationHardCap". At the hard cap, only delete_unit frees room.
@@ -2513,7 +2513,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (unitsToAttack.length === 0) {
             console.log(`[OpenAIAI] ${ai.id}: No units to attack with`);
             const priestNote = ai.units.some(u => u.unitType === 'support')
-                ? ' Priests are healers — they ignore attack orders and heal nearby wounded units automatically.' : '';
+                ? ' Priests are healers — they ignore attack orders and heal your units with healthPct below 100 automatically.' : '';
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
@@ -2546,7 +2546,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
         if (unitsToAttack.length === 0) {
             const priestNote = ai.units.some(u => u.unitType === 'support')
-                ? ' Priests are healers — they ignore attack orders and heal nearby wounded units automatically.' : '';
+                ? ' Priests are healers — they ignore attack orders and heal your units with healthPct below 100 automatically.' : '';
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
