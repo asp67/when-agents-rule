@@ -2308,6 +2308,14 @@ class Game {
         return pick.restore ? 'borrowed' : 'assigned';
     }
 
+    // Repairs are locked while a building is under fire: only 10 seconds after
+    // the LAST hit may workers patch it up — no heal-tanking a live siege.
+    // Returns the remaining lockout in ms (0 = repairs allowed).
+    repairBarrierMsLeft(building) {
+        if (!building || !building._lastDamageTime) return 0;
+        return Math.max(0, 10000 - (Date.now() - building._lastDamageTime));
+    }
+
     // Assign specific workers to a friendly building: finish its construction if it
     // is a site, otherwise repair it if damaged. Returns 'building' | 'repairing' | null.
     assignWorkersToBuilding(workers, building) {
@@ -2954,6 +2962,13 @@ class Game {
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
+                    return;
+                }
+                // Repair barrier: a building hit within the last 10s cannot be
+                // patched. The worker STAYS on the job (task/repairTarget kept)
+                // and resumes automatically the moment the barrier lifts.
+                if (this.repairBarrierMsLeft(b) > 0) {
+                    unit.isBuilding = false;
                     return;
                 }
                 // At the building: restore health (~50 HP/s, workers stack).

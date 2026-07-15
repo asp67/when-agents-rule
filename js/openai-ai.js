@@ -1103,7 +1103,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - build_wonder: start your Wonder (requires the Iron age).
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" — puts an idle worker on it (auto-scouts first if that type is still undiscovered).
 - assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders, fighting workers and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen.
-- repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairing workers rejoin the idle pool when done.
+- repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairs are LOCKED while the building keeps taking hits and begin 10s after the last hit — workers wait on site and start automatically. Repairing workers rejoin the idle pool when done.
 - explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map tile. Use map.exploration to aim targeted scouts.
 - move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay).
 - attack_target: params.targetId (an exact "id" from "enemyUnits"/"enemyBuildings" — tracks the target even if it moves) OR params.targetX/targetZ (your army attack-moves there and engages whatever it meets; the verdict is reported when it ARRIVES — do not re-issue while it is marching). Your own units/buildings and resource nodes are rejected.
@@ -3019,7 +3019,11 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const mode = game.assignWorkersToBuilding(workers, target);
         if (!mode) return `[ERROR] Could not start the repair (the building may have just been destroyed).`;
         const pct = Math.round(target.health / target.maxHealth * 100);
-        return `OK - ${workers.length} worker(s) repairing your ${target.type} at (${Math.round(target.x)}, ${Math.round(target.z)}), currently ${pct}% HP. They idle when it is fully repaired — reassign them to resources afterwards.`;
+        const barrier = game.repairBarrierMsLeft ? game.repairBarrierMsLeft(target) : 0;
+        const barrierNote = barrier > 0
+            ? ` NOTE: it is still under fire — repairs are locked until 10s after the LAST hit; the workers wait on site and start automatically.`
+            : '';
+        return `OK - ${workers.length} worker(s) repairing your ${target.type} at (${Math.round(target.x)}, ${Math.round(target.z)}), currently ${pct}% HP.${barrierNote} They idle when it is fully repaired — reassign them to resources afterwards.`;
     }
 
     executeExplore(ai, game, params) {
