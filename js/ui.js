@@ -1648,8 +1648,13 @@ class UIManager {
         const aiDecisionLog = document.getElementById('aiDecisionLog');
         if (aiDecisionLog) aiDecisionLog.style.display = 'flex';
 
+        // #unitInfo lives inside the now-hidden bottomHUD, and a child of a
+        // display:none parent never renders — the click-to-inspect card was
+        // invisible. Float it out to the body as a bottom-centre spectator card.
         const infoDiv = document.getElementById('unitInfo');
         if (infoDiv) {
+            infoDiv.classList.add('spectator-card');
+            document.body.appendChild(infoDiv);
             infoDiv.innerHTML = `<p style="color: #4ecca3; font-weight: bold;">${t('spec.hint')}</p>`;
         }
 

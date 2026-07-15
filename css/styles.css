@@ -572,6 +572,17 @@ body.spectator-mode .minimap { bottom: 16px; }
 body.spectator-mode #minimapCanvas { width: 210px; height: 210px; }
 body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
 
+/* Click-to-inspect card: #unitInfo is reparented out of the hidden bottom HUD
+   and floated bottom-centre (minimap is bottom-right, leaderboard top-right, so
+   the centre is clear). Read-only, so pointer-events:none lets clicks fall
+   through to the canvas beneath it. */
+body.spectator-mode #unitInfo.spectator-card {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: 18px; display: block; z-index: 60; pointer-events: none;
+    min-width: 180px; max-width: 300px; text-align: left;
+    background: rgba(12,16,28,0.86); backdrop-filter: blur(4px);
+}
+
 .lb-header {
     display: flex;
     align-items: center;

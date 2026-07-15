@@ -1523,7 +1523,11 @@ class Game {
             if (score < bestScore) { bestScore = score; best = ent; bestIsUnit = isUnit; }
         };
         this.aiManager.aiPlayers.forEach(o => {
-            o.buildings.forEach(b => consider(b, false, 3, 46));
+            // Anchor buildings at the GROUND BASE (y≈0), not the elevated centre:
+            // in the isometric view the base is where a human instinctively
+            // clicks, and the mesh centre projects well above it. Generous radius
+            // since footprints are large.
+            o.buildings.forEach(b => consider(b, false, 0.5, 60));
             o.units.forEach(u => consider(u, true, 1.2, 26));
         });
         this._clearSpectatorSelection();
