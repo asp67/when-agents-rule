@@ -490,6 +490,7 @@ class AIManager {
 
         if (target) {
             military.forEach(unit => {
+                this.game.clearRetaliation(unit); // explicit order overrides the reflex
                 unit.isAttacking = true;
                 unit.attackTarget = target;
                 unit.attackMove = { x: target.x, z: target.z };
@@ -537,6 +538,7 @@ class AIManager {
                 // Mid-leg, leave units that are already marching alone (no per-think
                 // reset); only (re)issue the order on a new leg or to idle stragglers.
                 if (!newLeg && unit.isMoving) return;
+                this.game.clearRetaliation(unit);
                 unit.isAttacking = true;
                 unit.attackTarget = null;
                 unit.attackMove = { x: tgt.x, z: tgt.z };

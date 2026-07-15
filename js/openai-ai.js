@@ -1083,6 +1083,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - "map.exploration" is a 7x7 grid scoring how much of each map tile you have ever seen (0-100%): exploration[row][col], row 0 = the NORTH edge, col 0 = the WEST edge. Each tile is ~114 units wide; the centre of tile [row][col] is x=(col-3)*114.3, z=(row-3)*114.3 — e.g. [0][0] → (-343,-343) NW corner, [3][3] → (0,0) map centre, [6][6] → (343,343) SE corner. Low percentages are dark ground — send explore there to find resources and rivals instead of re-scouting known land. Cavalry units see 50% farther than everything else, making them the best scouts.
 - "gameStats.opponents" lists every rival. Civilization and epoch are ALWAYS known (heralds announce age-ups). Army and building counts are scouting rewards: they appear only once you have DISCOVERED that rival ("discovered": true after you have seen any of its units or buildings) — size up an unknown rival by scouting, not by assumption.
 - "threats.underAttack" lists your units/buildings taking fire right now, with "attackerAt" coordinates. Idle military auto-defend your home (workers only as a last resort); auto-defense only repels — it never wins the game.
+- Your ATTACKING units also defend themselves between your turns: when one of a fighting group takes damage, the whole group focus-fires that attacker, then the next, and returns to your ordered target once no attackers are left — you don't need to micro a siege against defenders.
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
 - Priests (temple) never fight — attack orders skip them. A priest walks to and heals your nearby workers and military units with healthPct below 100 on its own; reposition it with move_units.
 - Workers: newly trained ones are IDLE until ordered. A worker whose resource node runs dry walks to the nearest DISCOVERED node of the same type by itself and idles only when none is left. Workers deliver goods to the NEAREST finished Town Center — a second town_center near far resources shortens hauls and trains workers in parallel.
@@ -2518,6 +2519,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
 
         unitsToAttack.forEach(unit => {
+            game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
             unit.attackTarget = target;
             // attack-move: if the target dies or slips away, keep pushing to its
@@ -2588,6 +2590,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             if (d < minDist) { minDist = d; nearest = entity; }
         }
         unitsToAttack.forEach(unit => {
+            game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
             unit.attackTarget = nearest || null;
             unit.attackMove = { x: targetX, z: targetZ };
@@ -2772,6 +2775,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         u.isAttacking = false;
         u.attackTarget = null;
         u.attackMove = null;
+        u._origTarget = null;  // retaliation ladder ends with the combat job
+        u._retalQueue = null;
         u._orderToken = ++this._orderSeq; // reassigned → drops out of any prior attack report
     }
 

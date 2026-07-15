@@ -839,6 +839,7 @@ class Game {
                 unit.targetZ = target.z + (Math.random() - 0.5) * 4;
                 return;
             }
+            this.clearRetaliation(unit); // an explicit order overrides the reflex
             unit.isAttacking = true;
             unit.attackTarget = target;
             unit.attackTimer = 0;
@@ -874,6 +875,80 @@ class Game {
         return 1.0;
     }
 
+    // ---- Retaliation focus-fire -------------------------------------------
+    // LLM replies take up to ~30s, so ordered armies must defend themselves
+    // between turns: when a unit besieging a target takes damage, its whole
+    // squad (units on the SAME original target) switches to the damage dealer,
+    // kills it, advances to the next attacker in line, and only returns to the
+    // original target when none are left. One dealer at a time — a unit never
+    // re-switches while its current one lives — so alternating ranged hits
+    // can't ping-pong the squad.
+    clearRetaliation(unit) {
+        if (!unit) return;
+        unit._origTarget = null;
+        unit._retalQueue = null;
+    }
+
+    noteRetaliation(victim, attacker) {
+        if (!victim || !victim.unitType || victim.unitType === 'support' || victim.type === 'worker') return;
+        if (!victim.isAttacking || !victim.attackTarget) return;
+        if (!attacker || attacker.health <= 0) return;
+        if (victim.attackTarget === attacker) return; // already fighting back
+        if (!victim._origTarget) victim._origTarget = victim.attackTarget;
+        victim._retalQueue = victim._retalQueue || [];
+        if (!victim._retalQueue.includes(attacker)) victim._retalQueue.push(attacker);
+        // Still pounding the original target → take up the FIRST living dealer
+        // now and pull the squad along. Already retaliating → it just queues.
+        if (victim.attackTarget === victim._origTarget) {
+            const first = victim._retalQueue.find(a => a && a.health > 0);
+            if (first) {
+                victim.attackTarget = first;
+                this.spreadRetaliation(victim, first);
+            }
+        }
+    }
+
+    // Focus fire: squadmates on the same original target join in. Units may
+    // join from the shared siege target or from a DEAD retaliation target —
+    // never off a LIVING one (that would reopen the ping-pong).
+    spreadRetaliation(unit, target) {
+        const owner = this.getOwner(unit);
+        const orig = unit._origTarget;
+        if (!owner || !owner.units || !orig) return;
+        owner.units.forEach(w => {
+            if (w === unit || !w.unitType || w.unitType === 'support' || w.type === 'worker') return;
+            if (!w.isAttacking || w.attackTarget === target) return;
+            const onOrig = w.attackTarget === orig;
+            const onDeadRetal = w._origTarget === orig && w.attackTarget && w.attackTarget.health <= 0;
+            if (!onOrig && !onDeadRetal) return;
+            w._origTarget = orig;
+            w._retalQueue = w._retalQueue || [];
+            const qi = w._retalQueue.indexOf(target);
+            if (qi > 0) w._retalQueue.splice(qi, 1);
+            if (qi !== 0) w._retalQueue.unshift(target); // squad focus = queue head
+            w.attackTarget = target;
+        });
+    }
+
+    // The current dealer fell: next living one in line, else back to the
+    // original siege target, else null (the normal nearby scan takes over).
+    nextRetaliationTarget(unit) {
+        const q = unit._retalQueue;
+        if (q) {
+            while (q.length) {
+                const cand = q[0];
+                if (cand && cand.health > 0) {
+                    this.spreadRetaliation(unit, cand);
+                    return cand;
+                }
+                q.shift();
+            }
+        }
+        const orig = unit._origTarget;
+        this.clearRetaliation(unit);
+        return (orig && orig.health > 0) ? orig : null;
+    }
+
     updateCombat(deltaTime) {
         // Iterate a SNAPSHOT: destroyTarget() splices renderer.units mid-loop, and a
         // live-array forEach then skips the unit that slides into the freed index —
@@ -884,11 +959,18 @@ class Game {
             // Skip workers - they don't attack unless explicitly ordered
             if (unit.type === 'worker' && !unit.isAttacking) return;
 
-            // Drop a dead/destroyed target so we re-acquire below — immediately
-            // (full scan interval), not after the 150ms throttle.
+            // Drop a dead/destroyed target — the retaliation ladder decides what
+            // comes next: the next living damage dealer in line, then the
+            // original siege target, and only then the nearby re-acquire scan.
             if (unit.isAttacking && unit.attackTarget && unit.attackTarget.health <= 0) {
-                unit.attackTarget = null;
-                unit._acquireTimer = 150;
+                unit.attackTarget = this.nextRetaliationTarget(unit);
+                if (!unit.attackTarget) unit._acquireTimer = 150;
+            }
+
+            // Pending retaliation state with no live target (any path that nulled
+            // the target) resolves through the ladder before the generic scan.
+            if (unit.isAttacking && !unit.attackTarget && (unit._retalQueue || unit._origTarget)) {
+                unit.attackTarget = this.nextRetaliationTarget(unit);
             }
 
             // No target but ordered to fight: acquire the nearest enemy, but ONLY
@@ -918,6 +1000,7 @@ class Game {
                         // Plain attack and nothing nearby (verified by a real scan):
                         // stop instead of chasing far off.
                         unit.isAttacking = false;
+                        this.clearRetaliation(unit);
                         this.resumeWorkerAfterCombat(unit); // clears any stale worker combat state
                         return;
                     }
@@ -939,6 +1022,7 @@ class Game {
                             unit.isMoving = false;
                             unit.attackMove = null;
                             unit.isAttacking = false;
+                            this.clearRetaliation(unit);
                             this.resumeWorkerAfterCombat(unit);
                         }
                     }
@@ -951,6 +1035,7 @@ class Game {
             if (unit.isAttacking && unit.attackTarget &&
                 unit.attackTarget.owner != null && unit.attackTarget.owner === unit.owner) {
                 unit.attackTarget = null;
+                this.clearRetaliation(unit);
                 if (!unit.attackMove) unit.isAttacking = false;
             }
 
@@ -994,6 +1079,8 @@ class Game {
                         // Remember who hit this target & when, for the auto-defense reflex.
                         currentTarget._lastAttacker = unit;
                         currentTarget._lastDamageTime = Date.now();
+                        // A besieging squad answers back: focus-fire the dealer.
+                        this.noteRetaliation(currentTarget, unit);
 
                         // Combat visuals: arrows for ranged shots, a hit flash on the
                         // victim, and a (throttled) battle ping for spectators.
@@ -1021,15 +1108,13 @@ class Game {
                         // Check if target died
                         if (currentTarget.health <= 0) {
                             this.destroyTarget(currentTarget);
-                            unit.attackTarget = null;
-                            // The killer stays in the fight and re-acquires through
-                            // the SAME scan as its squadmates. It used to stand down
-                            // here on a plain attack while everyone else re-targeted
-                            // via the stale-target path above — so after every kill
-                            // exactly one unit (whoever landed the killing blow)
-                            // dropped out of the battle. The scan already ends the
-                            // fight cleanly when no enemy is left within aggro range.
-                            unit._acquireTimer = 150;
+                            // The killer walks the SAME retaliation ladder as its
+                            // squadmates (next dealer → original siege target),
+                            // and only then falls back to the re-acquire scan —
+                            // otherwise whoever landed the killing blow dropped
+                            // out of the ladder and stood down mid-siege.
+                            unit.attackTarget = this.nextRetaliationTarget(unit);
+                            if (!unit.attackTarget) unit._acquireTimer = 150;
                         }
                     }
                 }
@@ -1133,6 +1218,8 @@ class Game {
                 // the auto-defense reflex knows what to retaliate against.
                 unit._lastAttacker = tower;
                 unit._lastDamageTime = Date.now();
+                // Besieging squads turn on the tower shooting them.
+                this.noteRetaliation(unit, tower);
 
                 // Combat visuals: a stone from the tower top + flash + battle ping.
                 this.renderer.spawnProjectile(
@@ -1235,6 +1322,7 @@ class Game {
                     d.carryingResource = false;
                 }
                 d.task = null;
+                this.clearRetaliation(d); // fresh draft, fresh focus
                 d.isAttacking = true;
                 d.attackTarget = atk;
                 // Small spread on the rally point so a worker mob doesn't try to
