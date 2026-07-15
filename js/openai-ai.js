@@ -1088,7 +1088,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - Priests (temple) never fight, but they MARCH WITH your army on an attack — escorting to the fight and healing from the back, never engaging. A priest also walks to and heals your nearby workers and military units with healthPct below 100 on its own; reposition it alone with move_units.
 - Workers: newly trained ones are IDLE until ordered. A worker whose resource node runs dry walks to the nearest DISCOVERED node of the same type by itself and idles only when none is left. Workers deliver goods to the NEAREST finished Town Center — a second town_center near far resources shortens hauls and trains workers in parallel.
 - Farms regenerate food ONLY while a worker is assigned; the worker who builds a farm stays on as its farmer.
-- Houses raise maxPopulation only up to "resources.populationHardCap". At the hard cap, only delete_unit frees room.
+- Houses (+5 each) and Town Centers (+10 each) raise maxPopulation, up to "resources.populationHardCap"; losing a Town Center drops your cap by 10. At the hard cap, only delete_unit frees room.
 - Resources: food (animals, berries, farms), wood (trees), stone (quarries), gold (mines).
 
 - "recentEvents" is your battle report: losses, kills and raids of the last moments. React to it — repel raids, repair_building damage, rebuild what fell.
@@ -1963,7 +1963,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (ai.resources.maxPopulation >= cap) {
             return `You are at the HARD population cap of ${cap} — building houses will NOT raise it. delete_unit to cull weaker/idle units and free room.`;
         }
-        return `Build houses to raise maxPopulation (up to the hard cap of ${cap}), or delete_unit to free room now.`;
+        return `Build houses (+5 each) or a Town Center (+10) to raise maxPopulation (up to the hard cap of ${cap}), or delete_unit to free room now.`;
     }
 
     // Pick which finished, non-busy building actually trains the unit. If the model

@@ -16,6 +16,12 @@ const BUILDING_DEFS = {
         cost: { food: 100, wood: 100, stone: 100, gold: 100 },
         health: 1000,
         type: 'economic',
+        // +10 population per Town Center. The ResourceManager's base cap of 10 IS
+        // the STARTING TC's contribution, so the mechanics stay symmetric with no
+        // spawn-seeding: completeConstruction adds this for a newly built TC and
+        // destroyTarget subtracts it for a destroyed one — the cap always reflects
+        // 10 × (Town Centers owned), plus 5 per house.
+        popBonus: 10,
         canTrain: true,
         trainOptions: ['worker'],
         canResearch: true,
