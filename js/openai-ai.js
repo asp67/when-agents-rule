@@ -1085,7 +1085,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - "threats.underAttack" lists your units/buildings taking fire right now, with "attackerAt" coordinates. Idle military auto-defend your home (workers only as a last resort); auto-defense only repels — it never wins the game.
 - Your ATTACKING units also defend themselves between your turns: when one of a fighting group takes damage, the whole group focus-fires that attacker, then the next, and returns to your ordered target once no attackers are left — you don't need to micro a siege against defenders.
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
-- Priests (temple) never fight — attack orders skip them. A priest walks to and heals your nearby workers and military units with healthPct below 100 on its own; reposition it with move_units.
+- Priests (temple) never fight, but they MARCH WITH your army on an attack — escorting to the fight and healing from the back, never engaging. A priest also walks to and heals your nearby workers and military units with healthPct below 100 on its own; reposition it alone with move_units.
 - Workers: newly trained ones are IDLE until ordered. A worker whose resource node runs dry walks to the nearest DISCOVERED node of the same type by itself and idles only when none is left. Workers deliver goods to the NEAREST finished Town Center — a second town_center near far resources shortens hauls and trains workers in parallel.
 - Farms regenerate food ONLY while a worker is assigned; the worker who builds a farm stays on as its farmer.
 - Houses raise maxPopulation only up to "resources.populationHardCap". At the hard cap, only delete_unit frees room.
@@ -1106,7 +1106,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairs are LOCKED while the building keeps taking hits and begin 10s after the last hit — workers wait on site and start automatically. Repairing workers rejoin the idle pool when done.
 - explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map tile. Use map.exploration to aim targeted scouts.
 - move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay).
-- attack_target: params.targetId (an exact "id" from "enemyUnits"/"enemyBuildings" — tracks the target even if it moves) OR params.targetX/targetZ (your army attack-moves there and engages whatever it meets; the verdict is reported when it ARRIVES — do not re-issue while it is marching). Your own units/buildings and resource nodes are rejected.
+- attack_target: params.targetId (an exact "id" from "enemyUnits"/"enemyBuildings" — tracks the target even if it moves) OR params.targetX/targetZ (your army attack-moves there and engages whatever it meets; the verdict is reported when it ARRIVES — do not re-issue while it is marching). Any priests you own escort the attack and heal from the back. Your own units/buildings and resource nodes are rejected.
 - delete_unit: params.unitType (+ optional count) — remove your own units to free population.
 - destroy_building: params.buildingType (+ optional targetX/targetZ) — demolish your own building (never your last Town Center).
 - wait: only if nothing useful is possible.
@@ -2515,7 +2515,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] Target "${target.name || target.type}" is your own ${target.type}. You cannot attack your own units or buildings. ${this.attackTargetHint(ai, game)}`;
         }
 
-        // Support units (priests) are healers: attack orders skip them.
+        // Support units (priests) don't engage, but they DO escort the attack
+        // (moved below) — combatants are everything that actually fights.
         const isCombatant = (u) => u.type !== 'worker' && u.unitType !== 'support';
         let unitsToAttack = ai.units.filter(isCombatant);
         if (unitIds && unitIds.length > 0) {
@@ -2525,7 +2526,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (unitsToAttack.length === 0) {
             console.log(`[OpenAIAI] ${ai.id}: No units to attack with`);
             const priestNote = ai.units.some(u => u.unitType === 'support')
-                ? ' Priests are healers — they ignore attack orders and heal your units with healthPct below 100 automatically.' : '';
+                ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send. Train some first.' : '';
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
@@ -2543,14 +2544,17 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             unit.task = null;
             unit._orderToken = ++this._orderSeq; // new order → leaves any prior attack report
         });
+        // Priests march along as healers (never engage) — like a human attack.
+        const escorted = game.escortSupportUnits(ai.units, target.x, target.z);
+        const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
 
         console.log(`[OpenAIAI] ${ai.id}: ${unitsToAttack.length} units attacking "${target.name || target.type}"`);
-        return `OK - ${unitsToAttack.length} units attacking "${target.name || target.type}".`;
+        return `OK - ${unitsToAttack.length} units attacking "${target.name || target.type}".${escortNote}`;
     }
 
     executeAttackPosition(ai, game, targetX, targetZ, unitIds) {
         const controller = this.aiControllers.find(c => c.aiPlayer === ai);
-        // Support units (priests) are healers: attack orders skip them.
+        // Support units (priests) don't engage, but they DO escort (moved below).
         const isCombatant = (u) => u.type !== 'worker' && u.unitType !== 'support';
         let unitsToAttack = ai.units.filter(isCombatant);
         if (unitIds && unitIds.length > 0) {
@@ -2559,7 +2563,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
         if (unitsToAttack.length === 0) {
             const priestNote = ai.units.some(u => u.unitType === 'support')
-                ? ' Priests are healers — they ignore attack orders and heal your units with healthPct below 100 automatically.' : '';
+                ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send. Train some first.' : '';
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
@@ -2616,9 +2620,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             controller.pendingAttackReports = controller.pendingAttackReports || [];
             controller.pendingAttackReports.push({ token, tx: targetX, tz: targetZ, units: unitsToAttack.slice(), startTime: Date.now() });
         }
+        // Priests march along as healers (never engage) — like a human attack.
+        const escorted = game.escortSupportUnits(ai.units, targetX, targetZ);
+        const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
 
         const eta = this.travelEtaSec(unitsToAttack[0], targetX, targetZ);
-        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s). You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
+        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${escortNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
     }
 
     // Each frame, resolve open attack-move orders once the units arrive/engage and

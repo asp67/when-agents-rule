@@ -848,7 +848,30 @@ class Game {
             unit.targetZ = target.z;
         });
     }
-    
+
+    // Priests are pacifist medics. An attack order marches the given support
+    // units along as ESCORTS: they move toward the fight (jittered so they
+    // don't stack) and heal via updateHealing, but never take a target and
+    // never engage. Shared by every attack path — the human right-click escort
+    // (inline above), the LLM attack_target/attack-move, and the rule-based
+    // army — so priests behave identically no matter who gives the order.
+    escortSupportUnits(units, x, z) {
+        let n = 0;
+        (units || []).forEach(u => {
+            if (!u || u.unitType !== 'support' || u.health <= 0) return;
+            this.clearRetaliation(u);
+            u.isAttacking = false;
+            u.attackTarget = null;
+            u.attackMove = null;
+            u.task = null;
+            u.isMoving = true;
+            u.targetX = x + (Math.random() - 0.5) * 4;
+            u.targetZ = z + (Math.random() - 0.5) * 4;
+            n++;
+        });
+        return n;
+    }
+
     // Combat execution for all units (player + AI)
     // Rock-paper-scissors damage multiplier (resolved in the simulation, so the
     // LLM action surface stays small — army composition is what matters).

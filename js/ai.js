@@ -499,6 +499,9 @@ class AIManager {
                 unit.targetX = target.x;
                 unit.targetZ = target.z;
             });
+            // Priests escort the assault as healers (never engage) — same as the
+            // human and LLM attack paths.
+            this.game.escortSupportUnits(ai.units, target.x, target.z);
         } else {
             // No enemy discovered yet: march the army outward (attack-move) to find
             // one, engaging anything it meets — fair, same as a model that must scout.
