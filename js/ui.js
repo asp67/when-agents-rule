@@ -1058,9 +1058,19 @@ class UIManager {
 
     updateUnitInfo(unit, building) {
         const infoDiv = document.getElementById('unitInfo');
-        
+        const spectator = this.game && this.game.spectatorMode;
+        // In spectator every entity belongs to a rival civ — badge it in the
+        // civ color so the card says WHOSE unit/building this is.
+        const ownerLine = (ent) => {
+            if (!spectator || !ent || typeof getCivilization !== 'function') return '';
+            const civ = getCivilization(ent.civilization);
+            if (!civ) return '';
+            const col = '#' + ((civ.color != null ? civ.color : 0xffffff)).toString(16).padStart(6, '0');
+            return `<span style="color:${col};font-weight:bold;">● ${tg(civ.name)}</span><br>`;
+        };
         if (unit) {
-            let html = `<strong>${tg(unit.name)}</strong><br>`;
+            let html = ownerLine(unit);
+            html += `<strong>${tg(unit.name)}</strong><br>`;
             html += `❤️ ${t('ui.health')}: ${Math.floor(unit.health)}/${unit.maxHealth}<br>`;
             html += `⚔️ ${t('ui.attack')}: ${unit.attack}<br>`;
             html += `💨 ${t('ui.speed')}: ${unit.speed}<br>`;
@@ -1070,12 +1080,15 @@ class UIManager {
             html += `<em>${this.getUnitTypeDescription(unit.unitType)}</em>`;
             infoDiv.innerHTML = html;
         } else if (building) {
-            let html = `<strong>${tg(building.name)}</strong><br>`;
+            let html = ownerLine(building);
+            html += `<strong>${tg(building.name)}</strong><br>`;
             html += `❤️ ${t('ui.health')}: ${Math.floor(building.health)}/${building.maxHealth}<br>`;
             html += `<em>${this.getBuildingTypeDescription(building.type)}</em>`;
             infoDiv.innerHTML = html;
         } else {
-            infoDiv.innerHTML = `<p>${t('hud.selectHint')}</p>`;
+            infoDiv.innerHTML = spectator
+                ? `<p style="color:#4ecca3;font-weight:bold;">${t('spec.hint')}</p>`
+                : `<p>${t('hud.selectHint')}</p>`;
         }
     }
 

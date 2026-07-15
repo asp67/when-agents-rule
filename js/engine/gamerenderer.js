@@ -851,8 +851,10 @@
                 this._rotateDrag = { x: event.clientX, y: event.clientY };
                 event.preventDefault();
             } else if (event.button === 0 && spectator) {
-                if (game.disableActionCam) game.disableActionCam();
-                this._panDrag = { x: event.clientX, y: event.clientY };
+                // Defer the manual-cam takeover until this becomes a real DRAG.
+                // A press-release without movement is a pick (mouseup handles it),
+                // which inspects the entity and KEEPS the action cam following.
+                this._panDrag = { x: event.clientX, y: event.clientY, ox: event.clientX, oy: event.clientY, moved: false };
                 event.preventDefault();
             }
         }
@@ -870,9 +872,16 @@
                 return;
             }
             if (!this._panDrag) return;
+            if (!this._panDrag.moved) {
+                // Below the click threshold it's still a potential pick — don't pan.
+                if (Math.hypot(event.clientX - this._panDrag.ox, event.clientY - this._panDrag.oy) < 5) return;
+                this._panDrag.moved = true; // real drag → the user takes the camera
+                if (typeof game !== 'undefined' && game && game.disableActionCam) game.disableActionCam();
+            }
             const dx = event.clientX - this._panDrag.x;
             const dy = event.clientY - this._panDrag.y;
-            this._panDrag = { x: event.clientX, y: event.clientY };
+            this._panDrag.x = event.clientX;
+            this._panDrag.y = event.clientY;
             const wpp = (2 * this._halfH) / (this.canvas.clientHeight || 1);
             // grab-and-drag: world follows the cursor (basis follows yaw + pitch)
             const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
@@ -882,13 +891,20 @@
             this.cameraTarget.z += right * -sy + fwd * -cy;
         }
 
-        onCanvasMouseUp() {
+        onCanvasMouseUp(event) {
+            const pd = this._panDrag;
             this._panDrag = null;
             this._rotateDrag = null;
+            // A left press that never dragged is a click → inspect that entity.
+            if (pd && !pd.moved && typeof game !== 'undefined' && game && game.spectatorMode && game.spectatorPick) {
+                game.spectatorPick(pd.ox, pd.oy);
+            }
         }
 
         onCanvasWheel(e) {
             e.preventDefault();
+            // Manual zoom is a manual camera action — hand control back to the user.
+            if (typeof game !== 'undefined' && game && game.spectatorMode && game.disableActionCam) game.disableActionCam();
             const factor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
             this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, this._halfH * factor));
         }
@@ -1251,6 +1267,12 @@
                     const k = Math.min(1, deltaTime * 1.6);
                     this.cameraTarget.x += (hot.x - this.cameraTarget.x) * k;
                     this.cameraTarget.z += (hot.z - this.cameraTarget.z) * k;
+                    // The director controls zoom too: ease the frame height toward
+                    // the subject's desired size (tight on a unit, wide on an army).
+                    if (hot.zoom != null) {
+                        const want = Math.max(MIN_HALF, Math.min(MAX_HALF, hot.zoom));
+                        this._halfH += (want - this._halfH) * k;
+                    }
                 }
             }
 

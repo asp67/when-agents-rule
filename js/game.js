@@ -1421,9 +1421,10 @@ class Game {
     // map is quiet. Any manual camera action switches it off — the user always wins.
     toggleActionCam() {
         this._actionCam = !this._actionCam;
-        // Fresh tour every time it's switched on.
+        // Fresh tour every time it's switched on (drop any click-follow subject).
         this._camPOI = null;
         this._camTourIdx = null;
+        this._camFollow = null;
         const btn = document.getElementById('actionCamBtn');
         if (btn) btn.classList.toggle('sb-on', this._actionCam);
     }
@@ -1440,31 +1441,111 @@ class Game {
     //     site > Town Center > anything they still own. The camera therefore
     //     always looks AT something — never at empty ground or the void (the
     //     old idle mode orbited the world origin regardless of content).
+    // Returns { x, z, zoom } — zoom is the desired camera half-height (world
+    // units framed vertically): the renderer eases toward BOTH position and
+    // zoom, so the view tightens on a lone unit and pulls back for an army or a
+    // sprawling brawl. See _subjectZoom / MIN_HALF..MAX_HALF in the renderer.
     getActionCamTarget() {
         const now = Date.now();
+
+        // 0. Click-follow: the spectator picked a subject while the cam is on.
+        //    Track it (it moves) and frame it tightly until it dies.
+        if (this._camFollow) {
+            const pos = this._resolveCamSubject(this._camFollow);
+            if (pos) { pos.zoom = this._subjectZoom(this._camFollow); return pos; }
+            this._camFollow = null; // subject gone → hand back to the director
+        }
+
+        // 1. Fresh combat: weighted centroid, zoomed to frame the whole brawl.
         const ev = (this._combatEvents || []).filter(e => now - e.t < 5000);
         if (ev.length) {
             this._camPOI = null; // a fight interrupts the tour; it restarts after
             let sx = 0, sz = 0, sw = 0;
             ev.forEach(e => { const w = 1 - (now - e.t) / 5000; sx += e.x * w; sz += e.z * w; sw += w; });
-            if (sw > 0) return { x: sx / sw, z: sz / sw };
+            if (sw > 0) {
+                const cx = sx / sw, cz = sz / sw;
+                let spread = 0;
+                ev.forEach(e => { spread = Math.max(spread, Math.hypot(e.x - cx, e.z - cz)); });
+                return { x: cx, z: cz, zoom: Math.max(26, Math.min(80, spread * 1.4 + 16)) };
+            }
         }
 
-        // Current tour subject still valid and fresh? follow it (it may move).
-        let pos = (this._camPOI && now < this._camPOI.until) ? this._resolveCamSubject(this._camPOI.subject) : null;
+        // 2. Peace tour: round-robin real subjects, framed to their size.
+        let subject = (this._camPOI && now < this._camPOI.until) ? this._camPOI.subject : null;
+        let pos = subject ? this._resolveCamSubject(subject) : null;
         if (!pos) {
             const players = this.aiManager.aiPlayers.filter(a => !this.isPlayerEliminated(a));
             for (let i = 0; i < players.length && !pos; i++) {
                 this._camTourIdx = ((this._camTourIdx == null ? -1 : this._camTourIdx) + 1) % players.length;
-                const subject = this._pickCamSubject(players[this._camTourIdx]);
+                subject = this._pickCamSubject(players[this._camTourIdx]);
                 if (subject) {
                     this._camPOI = { subject, until: now + 15000 }; // 15s per tour stop
                     pos = this._resolveCamSubject(subject);
                 }
             }
-            if (!pos) this._camPOI = null;
+            if (!pos) { this._camPOI = null; subject = null; }
         }
+        if (pos && subject) pos.zoom = this._subjectZoom(subject);
         return pos;
+    }
+
+    // Desired camera half-height for a director/follow subject: tight on a lone
+    // unit, framed to the bounding radius of a group, medium on a building.
+    _subjectZoom(subject) {
+        if (!subject) return 34;
+        if (subject.kind === 'ent') return (subject.ent && subject.ent.isWonder) ? 44 : 30;
+        const live = (subject.units || []).filter(u => u.health > 0);
+        if (live.length <= 1) return 17; // a single followed unit → close-up
+        const cx = live.reduce((a, u) => a + u.x, 0) / live.length;
+        const cz = live.reduce((a, u) => a + u.z, 0) / live.length;
+        let r = 0;
+        live.forEach(u => { r = Math.max(r, Math.hypot(u.x - cx, u.z - cz)); });
+        return Math.max(22, Math.min(60, r * 1.5 + 14));
+    }
+
+    // Spectator click-to-inspect: pick the entity whose on-screen dot is
+    // nearest the click (units win ties inside a building footprint), show its
+    // stat card, and — when the action cam is on — follow it. Empty ground
+    // clears the selection. Mirrors a player match's select-to-inspect.
+    spectatorPick(clientX, clientY) {
+        const rnd = this.renderer;
+        if (!rnd || !rnd.worldToScreen || !rnd.canvas) return;
+        const rect = rnd.canvas.getBoundingClientRect();
+        const px = clientX - rect.left, py = clientY - rect.top;
+        let best = null, bestIsUnit = false, bestScore = Infinity;
+        const consider = (ent, isUnit, anchorY, radius) => {
+            if (!ent || ent.health <= 0) return;
+            const s = rnd.worldToScreen(ent.x, anchorY, ent.z);
+            if (!s) return;
+            const d = Math.hypot(s.x - px, s.y - py);
+            if (d > radius) return;
+            const score = d - (isUnit ? 8 : 0); // a unit standing on a building wins
+            if (score < bestScore) { bestScore = score; best = ent; bestIsUnit = isUnit; }
+        };
+        this.aiManager.aiPlayers.forEach(o => {
+            o.buildings.forEach(b => consider(b, false, 3, 46));
+            o.units.forEach(u => consider(u, true, 1.2, 26));
+        });
+        this._clearSpectatorSelection();
+        if (!best) {
+            this._camFollow = null;
+            this.ui.updateUnitInfo(null, null);
+            return;
+        }
+        if (bestIsUnit) {
+            best.selected = true;
+            this.ui.updateUnitInfo(best, null);
+            this._camFollow = { kind: 'units', units: [best] };
+        } else {
+            this.selectedBuilding = best;
+            this.ui.updateUnitInfo(null, best);
+            this._camFollow = { kind: 'ent', ent: best };
+        }
+    }
+
+    _clearSpectatorSelection() {
+        this.getAllUnits().forEach(u => { if (u.selected) u.selected = false; });
+        this.selectedBuilding = null;
     }
 
     // The most watch-worthy thing a player owns right now.
