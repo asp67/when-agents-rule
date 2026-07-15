@@ -1446,7 +1446,10 @@ class UIManager {
         });
     }
 
-    refreshActiveMenu() {
+    // force=true: a discrete user action changed what the menu should show (e.g.
+    // selecting a building), so rebuild NOW — skip the anti-flicker throttle and
+    // the hover guard. Periodic/economy-driven calls pass no force and stay lazy.
+    refreshActiveMenu(force) {
         if (!this.activeMenu) return;
 
         // 1) Always keep affordability live in-place (cheap, no flicker, works while
@@ -1454,13 +1457,16 @@ class UIManager {
         this.refreshMenuAffordability();
 
         // 2) A FULL rebuild is only needed when the item SET changes (e.g. a new tech
-        //    or age unlocks something). Rebuilding replaces the DOM, so never do it
-        //    while the cursor is over the menu (flicker/false clicks), and throttle it.
-        const panel = document.querySelector('.menu-panel:not(.hidden)');
-        if (panel && panel.matches(':hover')) return;
-        const now = Date.now();
-        if (this._lastMenuRefresh && (now - this._lastMenuRefresh) < 250) return;
-        this._lastMenuRefresh = now;
+        //    or age unlocks something, or the selected building changed). Rebuilding
+        //    replaces the DOM, so outside a forced refresh never do it while the
+        //    cursor is over the menu (flicker/false clicks), and throttle it.
+        if (!force) {
+            const panel = document.querySelector('.menu-panel:not(.hidden)');
+            if (panel && panel.matches(':hover')) return;
+            const now = Date.now();
+            if (this._lastMenuRefresh && (now - this._lastMenuRefresh) < 250) return;
+            this._lastMenuRefresh = now;
+        }
 
         switch(this.activeMenu) {
             case 'build':
@@ -2154,11 +2160,15 @@ class UIManager {
         const civName = t(civKey) !== civKey ? t(civKey) : ai.civilization;
         const esc = s => this.escapeHtml(s);
 
-        // Completed researches (display names from the civ's tech tree)
-        const techs = Object.keys(ai.researchedTechs || {})
-            .map(id => (civ && civ.techTree && civ.techTree[id]) ? tg(civ.techTree[id].name) : id);
+        // Completed researches — each chip carries the tech's own description as a
+        // hover tip, mirroring the build-menu cards in player mode.
+        const techs = Object.keys(ai.researchedTechs || {}).map(id => {
+            const def = civ && civ.techTree && civ.techTree[id];
+            return { name: def ? tg(def.name) : id, desc: def ? tg(def.description || '') : '' };
+        });
 
-        // Units grouped by class
+        // Units grouped by class; the tip describes the class (utype.* strings,
+        // the same short descriptions used on selected-unit cards).
         const unitIcons = { worker: '👷', infantry: '⚔️', ranged: '🏹', cavalry: '🐎', support: '✚' };
         const unitGroups = {};
         ai.units.forEach(u => {
@@ -2166,21 +2176,23 @@ class UIManager {
             unitGroups[k] = (unitGroups[k] || 0) + 1;
         });
         const unitChips = Object.entries(unitGroups)
-            .map(([k, n]) => `<span class="lb-fly-chip">${unitIcons[k] || '⚔️'} ${esc(k)} ×${n}</span>`).join('');
+            .map(([k, n]) => `<span class="lb-fly-chip" title="${esc(this.getUnitTypeDescription(k))}">${unitIcons[k] || '⚔️'} ${esc(k)} ×${n}</span>`).join('');
 
         // Buildings grouped by type; an "uc:" key prefix separates sites still
-        // under construction from finished ones (rendered with a 🏗 marker).
+        // under construction from finished ones (rendered with a 🏗 marker). Each
+        // chip's tip is the building's description, like the build menu.
         const bGroups = {};
         ai.buildings.forEach(b => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(b.type) : null;
             const name = b.isWonder ? tg(b.name) : (def ? tg(def.name) : b.type);
             const key = (b.underConstruction ? 'uc:' : 'ok:') + name;
-            bGroups[key] = (bGroups[key] || 0) + 1;
+            if (!bGroups[key]) bGroups[key] = { n: 0, desc: def ? tg(def.description || '') : (b.isWonder ? tg(b.description || '') : '') };
+            bGroups[key].n++;
         });
         const bChips = Object.entries(bGroups)
-            .map(([k, n]) => {
+            .map(([k, g]) => {
                 const uc = k.startsWith('uc:');
-                return `<span class="lb-fly-chip">${uc ? '🏗 ' : ''}${esc(k.slice(3))} ×${n}</span>`;
+                return `<span class="lb-fly-chip" title="${esc(g.desc)}">${uc ? '🏗 ' : ''}${esc(k.slice(3))} ×${g.n}</span>`;
             }).join('');
 
         const colorHex = '#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0');
@@ -2189,7 +2201,7 @@ class UIManager {
                 <b>${esc(model)}</b><span>${esc(civName)} · ${ageNames[ai.age] || ai.age}</span>
             </div>
             <div class="lb-fly-sec"><div class="lb-fly-h">🔬 ${t('spec.flyResearch')}</div>
-                <div class="lb-fly-body">${techs.length ? techs.map(x => `<span class="lb-fly-chip">${esc(x)}</span>`).join('') : `<i>${t('spec.flyNone')}</i>`}</div></div>
+                <div class="lb-fly-body">${techs.length ? techs.map(x => `<span class="lb-fly-chip" title="${esc(x.desc)}">${esc(x.name)}</span>`).join('') : `<i>${t('spec.flyNone')}</i>`}</div></div>
             <div class="lb-fly-sec"><div class="lb-fly-h">👥 ${t('spec.flyUnits', { n: ai.units.length })}</div>
                 <div class="lb-fly-body">${unitChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
             <div class="lb-fly-sec"><div class="lb-fly-h">🏛️ ${t('spec.flyBuildings', { n: ai.buildings.length })}</div>

@@ -1607,7 +1607,14 @@ body.spectator-mode #unitInfo.spectator-card {
 .sum-sound-val span { font-size: 0.72em; font-weight: 600; color: #8a93a8; }
 
 /* Behavior tags */
-.sum-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 11px; }
+/* Fixed TWO-LINE tag row: every model card reserves exactly two rows so long
+   matches (which trigger more behaviour tags) keep a stable card height and the
+   grid never jumps or truncates unevenly. Tags pack top-left; any beyond two
+   rows clip cleanly at the row boundary (flex-wrap never splits a pill). */
+.sum-tags {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 11px;
+    align-content: flex-start; min-height: 46px; max-height: 46px; overflow: hidden;
+}
 .sum-tag {
     font-size: 0.72em; font-weight: 700; padding: 2px 9px; border-radius: 999px;
     border: 1px solid transparent;

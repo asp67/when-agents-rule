@@ -1683,7 +1683,7 @@ class Game {
 
     selectUnit(unit) {
         this.renderer.selectUnit(unit);
-        this.ui.updateUnitInfo(unit, null);
+        this.updateUnitInfo(unit, null); // routes through the menu-refresh hook
     }
 
     selectBuilding(building) {
@@ -1711,7 +1711,7 @@ class Game {
                 }
             });
         }
-        this.ui.updateUnitInfo(null, building);
+        this.updateUnitInfo(null, building); // routes through the menu-refresh hook
     }
 
     buildStructure(buildingType) {
@@ -2283,6 +2283,10 @@ class Game {
 
     updateUnitInfo(unit, building) {
         this.ui.updateUnitInfo(unit, building);
+        // Selection just changed — rebuild any open build/train/research menu NOW
+        // (forced past the throttle) so a freshly selected building's card fills
+        // instantly instead of waiting for the next economy refresh tick.
+        if (this.ui) this.ui.refreshActiveMenu(true);
     }
 
     addUnit(unit) {
