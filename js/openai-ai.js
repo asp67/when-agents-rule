@@ -1105,8 +1105,8 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders, fighting workers and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen.
 - repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairs are LOCKED while the building keeps taking hits and begin 10s after the last hit — workers wait on site and start automatically. Repairing workers rejoin the idle pool when done.
 - explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map tile. Use map.exploration to aim targeted scouts.
-- move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay).
-- attack_target: params.targetId (an exact "id" from "enemyUnits"/"enemyBuildings" — tracks the target even if it moves) OR params.targetX/targetZ (your army attack-moves there and engages whatever it meets; the verdict is reported when it ARRIVES — do not re-issue while it is marching). Any priests you own escort the attack and heal from the back. Your own units/buildings and resource nodes are rejected.
+- move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay). Optional params.units, a {type: count} map (e.g. {"champion":3,"cavalry":2}), moves only that detachment — the units of each named type CLOSEST to the destination; omit it to move your whole army. Counts clamp to what you own and unknown types are skipped (reported back).
+- attack_target: params.targetId (an exact "id" from "enemyUnits"/"enemyBuildings" — tracks the target even if it moves) OR params.targetX/targetZ (your army attack-moves there and engages whatever it meets; the verdict is reported when it ARRIVES — do not re-issue while it is marching). Optional params.units {type: count} sends only that detachment (closest to the target); omit to send your whole army. Any priests you send escort and heal from the back. Your own units/buildings and resource nodes are rejected.
 - delete_unit: params.unitType (+ optional count) — remove your own units to free population.
 - destroy_building: params.buildingType (+ optional targetX/targetZ) — demolish your own building (never your last Town Center).
 - wait: only if nothing useful is possible.
@@ -1839,7 +1839,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
             case 'move_units':
                 if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeMoveUnits(ai, game, params.unitIds || [], params.targetX, params.targetZ);
+                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ);
                 } else {
                     actionResult = `[ERROR] move_units requires "targetX" and "targetZ" parameters.`;
                 }
@@ -1847,9 +1847,9 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
             case 'attack_target':
                 if (params?.targetId) {
-                    actionResult = this.executeAttackTarget(ai, game, params.targetId, params?.unitIds || []);
+                    actionResult = this.executeAttackTarget(ai, game, params.targetId, params.units);
                 } else if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.unitIds || []);
+                    actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.units);
                 } else {
                     actionResult = `[ERROR] attack_target requires "targetId" or ("targetX" and "targetZ") parameters.`;
                 }
@@ -2448,39 +2448,78 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         return `OK - Started building the Wonder (~${secs}s to build). Hold it for ${(game.wonderRequired || 600)}s after completion to WIN — defend it, rivals will rush it!`;
     }
 
-    executeMoveUnits(ai, game, unitIds, targetX, targetZ) {
-        const military = ai.units.filter(u => u.type !== 'worker'); // move_units = military
-        let unitsToMove = military;
+    // Resolve an optional { type: count } selection into concrete units for a
+    // move/attack order. No map → the WHOLE army (all non-worker units). With a
+    // map, take the `count` units of each named type CLOSEST to (dx,dz) — clamp
+    // to what the player actually owns and skip types it doesn't, reporting the
+    // delta in `note`; never hard-fail on a too-big count or an unowned type.
+    // Types match a unit's specific id-type ("champion") OR its category
+    // ("cavalry"), like delete_unit. Support units (priests) are split out so
+    // callers escort them rather than send them to fight. Because the no-map
+    // case returns every priest in `support`, escortSupportUnits(sel.support,…)
+    // escorts the whole clergy on a full-army order and only the named priests
+    // on a detachment — no special-casing needed.
+    selectOrderedUnits(ai, unitsMap, dx, dz) {
+        const live = ai.units.filter(u => u.type !== 'worker' && u.health > 0);
+        const split = (arr) => ({
+            combat: arr.filter(u => u.unitType !== 'support'),
+            support: arr.filter(u => u.unitType === 'support')
+        });
+        const hasMap = unitsMap && typeof unitsMap === 'object' && !Array.isArray(unitsMap) && Object.keys(unitsMap).length > 0;
+        if (!hasMap) return Object.assign(split(live), { note: '' });
 
-        // If the model named specific unitIds, use them — but the game state does NOT
-        // expose unit IDs, so a model often invents them. If none match, don't fail
-        // with a misleading "no units"; just move the whole army and say why.
-        let badIdsNote = '';
-        if (unitIds && unitIds.length > 0) {
-            const matched = ai.units.filter(u => unitIds.includes(u.id));
-            if (matched.length > 0) {
-                unitsToMove = matched;
-            } else {
-                badIdsNote = ' (the unitIds you gave matched none of your units — the game state does not include unit IDs, so omit unitIds to move your whole army; moved all your military)';
-            }
+        const chosen = new Set();
+        const clamped = [], skipped = [];
+        for (const rawType of Object.keys(unitsMap)) {
+            const type = String(rawType).trim().toLowerCase();
+            const want = Math.floor(Number(unitsMap[rawType]));
+            if (!Number.isFinite(want) || want <= 0) { skipped.push(`${rawType} (bad count)`); continue; }
+            const pool = live.filter(u => !chosen.has(u) &&
+                ((u.type || '').toLowerCase() === type || (u.unitType || '').toLowerCase() === type));
+            if (!pool.length) { skipped.push(`${rawType} (own none)`); continue; }
+            pool.sort((a, b) => Math.hypot(a.x - dx, a.z - dz) - Math.hypot(b.x - dx, b.z - dz));
+            const take = Math.min(want, pool.length);
+            if (want > pool.length) clamped.push(`${rawType} ${want}->${pool.length}`);
+            for (let i = 0; i < take; i++) chosen.add(pool[i]);
         }
+        let note = '';
+        if (clamped.length) note += ` (clamped to what you own: ${clamped.join(', ')})`;
+        if (skipped.length) note += ` (skipped: ${skipped.join(', ')})`;
+        return Object.assign(split([...chosen]), { note });
+    }
 
-        if (unitsToMove.length === 0) {
-            console.log(`[OpenAIAI] ${ai.id}: No military units to move`);
-            return `[ERROR] You have no military units to move. (move_units repositions MILITARY; workers gather via harvest_resource/assign_workers.) Train military units first.`;
-        }
+    // Human-readable tally of a player's non-worker force, for mismatch feedback.
+    forceComposition(ai) {
+        const counts = {};
+        ai.units.forEach(u => { if (u.type !== 'worker' && u.health > 0) counts[u.type] = (counts[u.type] || 0) + 1; });
+        const parts = Object.entries(counts).map(([t, n]) => `${t}×${n}`);
+        return parts.length ? parts.join(', ') : '(no military)';
+    }
 
-        // Validate the destination so bad coords don't strand units at NaN.
+    executeMoveUnits(ai, game, unitsMap, targetX, targetZ) {
+        // Validate the destination first so bad coords never strand units at NaN.
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
             return `[ERROR] move_units needs numeric "targetX" and "targetZ" (map coordinates inside map.bounds). Got targetX=${JSON.stringify(targetX)}, targetZ=${JSON.stringify(targetZ)}.`;
         }
-
         // Keep the destination on solid ground (no marching into the ocean).
         ({ x: targetX, z: targetZ } = game.clampToMap(mx, mz));
 
+        // Optional {type:count} detachment; a move order repositions the whole
+        // named force, priests included (they come along on a move as always).
+        const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ);
+        const unitsToMove = [...sel.combat, ...sel.support];
+        if (unitsToMove.length === 0) {
+            const ownsMilitary = ai.units.some(u => u.type !== 'worker' && u.health > 0);
+            if (ownsMilitary) {
+                return `[ERROR] move_units matched none of your units${sel.note}. Name unit types you actually own (e.g. {"champion":3}), or omit "units" to move your whole army. Your military: ${this.forceComposition(ai)}.`;
+            }
+            return `[ERROR] You have no military units to move. (move_units repositions MILITARY; workers gather via harvest_resource/assign_workers.) Train military units first.`;
+        }
+
         let eta = 0;
         unitsToMove.forEach(unit => {
+            game.clearRetaliation(unit);
             eta = Math.max(eta, this.travelEtaSec(unit, targetX, targetZ));
             unit.isMoving = true;
             unit.targetX = targetX;
@@ -2493,10 +2532,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         });
 
         console.log(`[OpenAIAI] ${ai.id}: Moving ${unitsToMove.length} units to (${Math.round(targetX)}, ${Math.round(targetZ)})`);
-        return `OK - Moving ${unitsToMove.length} unit(s) to (${Math.round(targetX)}, ${Math.round(targetZ)}) — ~${eta}s to arrive; let them march before re-issuing.${badIdsNote}`;
+        return `OK - Moving ${unitsToMove.length} unit(s) to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note} — ~${eta}s to arrive; let them march before re-issuing.`;
     }
 
-    executeAttackTarget(ai, game, targetId, unitIds) {
+    executeAttackTarget(ai, game, targetId, unitsMap) {
         // Find target in all units and buildings
         let target = null;
         target = game.getAllUnits().find(u => (u.id || '') === targetId);
@@ -2515,18 +2554,19 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             return `[ERROR] Target "${target.name || target.type}" is your own ${target.type}. You cannot attack your own units or buildings. ${this.attackTargetHint(ai, game)}`;
         }
 
-        // Support units (priests) don't engage, but they DO escort the attack
-        // (moved below) — combatants are everything that actually fights.
-        const isCombatant = (u) => u.type !== 'worker' && u.unitType !== 'support';
-        let unitsToAttack = ai.units.filter(isCombatant);
-        if (unitIds && unitIds.length > 0) {
-            unitsToAttack = ai.units.filter(u => unitIds.includes(u.id) && isCombatant(u));
-        }
+        // Optional {type:count} detachment closest to the target; no map → the
+        // whole combat force. Support units are split out to escort, not fight.
+        const sel = this.selectOrderedUnits(ai, unitsMap, target.x, target.z);
+        const unitsToAttack = sel.combat;
 
         if (unitsToAttack.length === 0) {
             console.log(`[OpenAIAI] ${ai.id}: No units to attack with`);
+            const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
+            if (ownsCombat) {
+                return `[ERROR] attack matched none of your COMBAT units${sel.note}. Name types you own (e.g. {"champion":3}) or omit "units" to send your whole army. Your military: ${this.forceComposition(ai)}. ${this.attackTargetHint(ai, game)}`;
+            }
             const priestNote = ai.units.some(u => u.unitType === 'support')
-                ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send. Train some first.' : '';
+                ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send.' : '';
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
@@ -2544,28 +2584,17 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             unit.task = null;
             unit._orderToken = ++this._orderSeq; // new order → leaves any prior attack report
         });
-        // Priests march along as healers (never engage) — like a human attack.
-        const escorted = game.escortSupportUnits(ai.units, target.x, target.z);
+        // Priests march along as healers (never engage) — the whole clergy on a
+        // full-army order, only the named priests on a detachment.
+        const escorted = game.escortSupportUnits(sel.support, target.x, target.z);
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
 
         console.log(`[OpenAIAI] ${ai.id}: ${unitsToAttack.length} units attacking "${target.name || target.type}"`);
-        return `OK - ${unitsToAttack.length} units attacking "${target.name || target.type}".${escortNote}`;
+        return `OK - ${unitsToAttack.length} units attacking "${target.name || target.type}".${sel.note}${escortNote}`;
     }
 
-    executeAttackPosition(ai, game, targetX, targetZ, unitIds) {
+    executeAttackPosition(ai, game, targetX, targetZ, unitsMap) {
         const controller = this.aiControllers.find(c => c.aiPlayer === ai);
-        // Support units (priests) don't engage, but they DO escort (moved below).
-        const isCombatant = (u) => u.type !== 'worker' && u.unitType !== 'support';
-        let unitsToAttack = ai.units.filter(isCombatant);
-        if (unitIds && unitIds.length > 0) {
-            const matched = ai.units.filter(u => unitIds.includes(u.id) && isCombatant(u));
-            if (matched.length) unitsToAttack = matched; // else fall back to whole army (no IDs in state)
-        }
-        if (unitsToAttack.length === 0) {
-            const priestNote = ai.units.some(u => u.unitType === 'support')
-                ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send. Train some first.' : '';
-            return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
-        }
 
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
@@ -2573,6 +2602,20 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
         // Keep the attack-move objective on solid ground.
         ({ x: targetX, z: targetZ } = game.clampToMap(mx, mz));
+
+        // Optional {type:count} detachment closest to the destination; no map →
+        // the whole combat force. Support units split out to escort, not fight.
+        const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ);
+        const unitsToAttack = sel.combat;
+        if (unitsToAttack.length === 0) {
+            const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
+            if (ownsCombat) {
+                return `[ERROR] attack matched none of your COMBAT units${sel.note}. Name types you own (e.g. {"champion":3}) or omit "units" to send your whole army. Your military: ${this.forceComposition(ai)}. ${this.attackTargetHint(ai, game)}`;
+            }
+            const priestNote = ai.units.some(u => u.unitType === 'support')
+                ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send.' : '';
+            return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
+        }
 
         // INSTANT checks on what sits AT the designated coordinates. Friendly target
         // and resource node are rejected immediately (no move). Empty space and a
@@ -2620,12 +2663,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             controller.pendingAttackReports = controller.pendingAttackReports || [];
             controller.pendingAttackReports.push({ token, tx: targetX, tz: targetZ, units: unitsToAttack.slice(), startTime: Date.now() });
         }
-        // Priests march along as healers (never engage) — like a human attack.
-        const escorted = game.escortSupportUnits(ai.units, targetX, targetZ);
+        // Priests march along as healers (never engage) — the whole clergy on a
+        // full-army order, only the named priests on a detachment.
+        const escorted = game.escortSupportUnits(sel.support, targetX, targetZ);
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
 
         const eta = this.travelEtaSec(unitsToAttack[0], targetX, targetZ);
-        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${escortNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
+        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${escortNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
     }
 
     // Each frame, resolve open attack-move orders once the units arrive/engage and
