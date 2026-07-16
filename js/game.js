@@ -1754,6 +1754,53 @@ class Game {
         return idled;
     }
 
+    // The mirror of onTownCenterLost: a Town Center stands again, so the delivery
+    // economy can restart. Anyone still holding goods walks them to the new
+    // centre, and idle hands go back onto fields that lost their farmhand when
+    // the drop-off vanished — a farm only produces while a worker is assigned,
+    // and NO model action can staff one (the builder normally becomes its
+    // farmer), so without this a rebuilt base would leave its fields dead.
+    onTownCenterBuilt(owner) {
+        if (!owner || !owner.units || !owner.buildings) return 0;
+        const drops = owner.buildings.filter(b => b.type === 'town_center' && !b.underConstruction && b.health > 0);
+        if (!drops.length) return 0;
+        const nearestTC = (x, z) => drops.reduce((best, tc) =>
+            (!best || Math.hypot(tc.x - x, tc.z - z) < Math.hypot(best.x - x, best.z - z)) ? tc : best, null);
+        const busy = u => u.isAttacking || u.attackTarget || u.isBuilding || u.task === 'building' || u.task === 'repairing';
+        let resumed = 0;
+
+        // Still holding goods with nowhere to put them → deliver to the new centre.
+        owner.units.forEach(u => {
+            if (u.type !== 'worker' || u.health <= 0 || busy(u)) return;
+            if (!u.carryingResource || !(u.harvestAmount > 0)) return;
+            const tc = nearestTC(u.x, u.z);
+            if (!tc) return;
+            u.task = 'carrying';
+            u.targetX = tc.x;
+            u.targetZ = tc.z;
+            u.isMoving = true;
+            resumed++;
+        });
+
+        // Idle hands back onto unmanned fields.
+        owner.buildings.forEach(f => {
+            if (f.type !== 'farm' || f.underConstruction || f.health <= 0) return;
+            if (f.assignedWorker && f.assignedWorker.health > 0 && f.assignedWorker.farmRef === f) return;
+            const hand = owner.units.find(u => u.type === 'worker' && u.health > 0 && !u.farmRef && this.isIdleWorker(u));
+            if (!hand) return;
+            f.assignedWorker = hand;
+            hand.farmRef = f;
+            hand.task = 'farm_work';
+            hand.isMoving = true;
+            hand.targetX = f.x + (Math.random() - 0.5) * 3;
+            hand.targetZ = f.z + (Math.random() - 0.5) * 3;
+            resumed++;
+        });
+
+        if (resumed) console.log(`[Game] ${this.ownerName(owner)} has a Town Center again — ${resumed} worker(s) back to work.`);
+        return resumed;
+    }
+
     isResourceNode(x, z) {
         return this.terrain.resources.some(r => 
             Math.abs(r.x - x) < 3 && Math.abs(r.z - z) < 3
@@ -2755,6 +2802,8 @@ class Game {
         if (this.renderer && this.renderer.onBuildingCompleted) {
             this.renderer.onBuildingCompleted(building);
         }
+        // A drop-off exists again: wake the economy that stalled without one.
+        if (building.type === 'town_center' && owner) this.onTownCenterBuilt(owner);
     }
 
     // An owner's construction site with NO live worker building it (its builder was
@@ -3231,6 +3280,22 @@ class Game {
                     farm.assignedWorker = unit;
                 }
 
+                // No finished Town Center = nowhere to put the food, so don't work
+                // the field at all: release it and go IDLE. Farming on regardless
+                // only filled the pack with produce that had to be thrown away.
+                if (!buildings.some(b => b.type === 'town_center' && !b.underConstruction && b.health > 0)) {
+                    if (farm.assignedWorker === unit) farm.assignedWorker = null;
+                    unit.farmRef = null;
+                    unit.task = null;
+                    unit.isMoving = false;
+                    unit.isHarvesting = false;
+                    unit.harvestTimer = 0;
+                    unit.carryingResource = false;
+                    unit.carryingResourceType = null;
+                    unit.harvestAmount = 0;
+                    return;
+                }
+
                 // If farm has food to harvest and worker is not carrying
                 if (farm.foodAmount >= 10 && !unit.carryingResource && !unit.isMoving) {
                     // Harvest from farm
@@ -3266,6 +3331,19 @@ class Game {
                             unit.targetZ = closestTC.z;
                             unit.isMoving = true;
                             unit.task = 'carrying';
+                        } else {
+                            // Backstop: the last Town Center fell between the check
+                            // above and this harvest tick. Drop the load and idle —
+                            // holding it froze the farmhand in a state NO branch
+                            // processes (task 'farm_work' while carrying), so it
+                            // never delivered again even once a new centre went up.
+                            unit.carryingResource = false;
+                            unit.carryingResourceType = null;
+                            unit.harvestAmount = 0;
+                            if (farm.assignedWorker === unit) farm.assignedWorker = null;
+                            unit.farmRef = null;
+                            unit.task = null;
+                            unit.isMoving = false;
                         }
                     }
                     return;
@@ -3306,6 +3384,13 @@ class Game {
             if (!unit.task && !unit.isMoving && !unit.farmRef) {
                 const orphanSite = this.findOrphanedConstruction(owner, unit);
                 if (orphanSite) { this.assignWorkerToSite(unit, orphanSite); return; }
+                // Farms need a drop-off to be worth working. Without a finished Town
+                // Center this auto-assign fought the farm branch's release — it
+                // re-hired the very hand that had just walked off the field, so the
+                // pair oscillated and the worker kept "attending" a farm whose
+                // produce could never be delivered. Stay idle until a centre stands
+                // (onTownCenterBuilt re-staffs the fields the moment one does).
+                if (!buildings.some(b => b.type === 'town_center' && !b.underConstruction && b.health > 0)) return;
                 // Check for unassigned, FINISHED farms (not still under construction)
                 const unassignedFarms = owner.buildings.filter(b =>
                     b.type === 'farm' && !b.assignedWorker && !b.underConstruction
