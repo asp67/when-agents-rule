@@ -1211,8 +1211,8 @@ class Game {
         return nearest;
     }
     
-    // Tower auto-attack: every finished tower fires on EVERY enemy unit within its
-    // range each volley (area suppression), so a tower line is a real deterrent.
+    // Tower auto-attack: a finished tower looses a volley at the closest enemies
+    // in range, so a tower line is a real deterrent without erasing an army.
     updateTowerAttack(deltaTime) {
         const towers = this.getAllBuildings().filter(b => b.type === 'tower' && !b.underConstruction && b.health > 0);
         const units = this.getAllUnits().slice(); // snapshot: volleys kill mid-loop
@@ -1223,10 +1223,14 @@ class Game {
             tower.attackTimer = 0;
 
             const range = tower.range || 6;
-            const dmg = tower.attack || 10;
+            // Volley width and bite both scale with the tower's epoch (TOWER_POWER).
+            // tower.age morphs on age-up, so a watchtower raised in the stone age
+            // grows into a proper iron fortress on its own.
+            const power = towerPower(tower.age);
+            const dmg = tower.attack || power.attack;
 
-            // Hit the CLOSEST enemies in range — at most 5 per volley, so one
-            // tower thins a wave instead of erasing it in a single flight.
+            // Hit the CLOSEST enemies in range — 2 arrows in the stone age up to 5
+            // in iron, so one tower thins a wave instead of erasing it outright.
             const inRange = [];
             units.forEach(unit => {
                 if (!unit || unit.owner === tower.owner || unit.health <= 0) return;
@@ -1235,7 +1239,7 @@ class Game {
                 if (d <= range) inRange.push({ unit, d });
             });
             inRange.sort((a, b) => a.d - b.d);
-            inRange.slice(0, 5).forEach(({ unit }) => {
+            inRange.slice(0, power.arrows).forEach(({ unit }) => {
                 unit.health -= dmg;
                 // Credit the shooter: the casualty report names the tower, and
                 // the auto-defense reflex knows what to retaliate against.

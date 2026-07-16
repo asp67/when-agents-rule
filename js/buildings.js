@@ -126,13 +126,38 @@ const BUILDING_DEFS = {
         cost: { food: 50, wood: 50, stone: 100, gold: 0 },
         health: 600,
         type: 'defense',
-        attack: 10,
+        attack: 10,  // Stone-age baseline; TOWER_POWER ramps it per epoch
         range: 18,   // tripled: a real deterrent zone, matching the long vision
         requiredAge: 'stone',
         description: 'Verteidigungsturm',
         buildTime: BASE_BUILD_TIME * 1.2  // 12 seconds to build
     }
 };
+
+// Tower firepower per epoch. Its HP already rides the generic x1.5-per-age
+// building multiplier, but firepower never scaled AT ALL — a flat 10 damage and
+// a flat 5 arrows in every age. That inverted the tower: a stone watchtower
+// suppressed an entire opening rush and killed a militia in 10.5s, while an iron
+// one needed 30s to kill ONE champion. Arrows say how many attackers a volley
+// can answer; damage keeps it lethal against the era's HP. Together these hold
+// "time to kill one era-standard attacker" at a roughly flat 9-15s.
+//
+// Deliberately CIV-NEUTRAL: every attack tech declares appliesTo a UNIT class,
+// and no civ owns a matching set — Persia has no all_military tech at all,
+// Greece and Yamato have no ranged tech — so inheriting unit techs would freeze
+// some civs' towers while doubling others'. Yamato's Bushido would also make
+// STONE towers stronger, the opposite of the intent. Civ flavour already lives
+// in tower HP through the civ bonus (Pyramide x1.5, Akropolis x1.3).
+const TOWER_POWER = {
+    stone:     { arrows: 2, attack: 10 },
+    neolithic: { arrows: 3, attack: 12 },
+    bronze:    { arrows: 4, attack: 15 },
+    iron:      { arrows: 5, attack: 20 }
+};
+
+function towerPower(age) {
+    return TOWER_POWER[age] || TOWER_POWER.stone;
+}
 
 // Unit tiers per age for military buildings. INVARIANT: a unit appears here
 // no earlier than its def `tier` — the age on its build card and the age its

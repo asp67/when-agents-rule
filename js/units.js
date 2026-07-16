@@ -229,6 +229,10 @@ function upgradeBuildingToAge(building, newAge) {
     building.age = newAge;
     building.maxHealth = buildingMaxHealth(buildingDef, civ, newAge);
     building.health = Math.max(1, Math.round(building.maxHealth * ratio));
+    // A tower's bite morphs with the epoch too — not just its walls.
+    if (building.type === 'tower' && typeof towerPower === 'function') {
+        building.attack = towerPower(newAge).attack;
+    }
     return true;
 }
 
@@ -288,7 +292,9 @@ function createBuilding(type, x, z, owner, civilization, options) {
         productionProgress: 0,
         productionTime: 0,
         productionDuration: 0,
-        attack: buildingDef.attack || 0,
+        // Towers bite harder each epoch (TOWER_POWER), like their HP already does.
+        attack: (type === 'tower' && typeof towerPower === 'function')
+            ? towerPower(age).attack : (buildingDef.attack || 0),
         range: buildingDef.range || 0,
         // Farm-specific properties
         foodAmount: type === 'farm' ? 300 : 0,
