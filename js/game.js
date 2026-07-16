@@ -1306,11 +1306,15 @@ class Game {
             const atk = primary.atk;
 
             const military = owner.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
-            let usingWorkers = false;
             // Idle/free military engage; units already attacking keep their orders.
             let defenders = military.filter(u => !u.isAttacking);
-            if (military.length === 0) {
-                // No army: pull nearby workers (interrupting their economy) to defend.
+            // A WONDER under attack is existential — it IS the win condition — so it
+            // is ALL HANDS ON DECK: every worker downs tools and fights ALONGSIDE the
+            // army, from anywhere on the map. For anything else workers stay a last
+            // resort: only those nearby, and only when there is no army at all.
+            const wonderRaid = !!primary.ent.isWonder;
+            let hands = [];
+            if (wonderRaid || military.length === 0) {
                 // Only workers NOT already fighting — this reflex re-runs every ~600ms
                 // while the raid lasts, and re-drafting an engaged worker reset its
                 // attackTimer below the 1000ms swing threshold FOREVER: drafted mobs
@@ -1318,23 +1322,29 @@ class Game {
                 // building fell and the threat list finally emptied. (It also
                 // overwrote _draftReturn with the already-drafted state, losing the
                 // economy job the worker should return to.)
-                usingWorkers = true;
-                defenders = owner.units.filter(u => u.type === 'worker' && u.health > 0 &&
+                hands = owner.units.filter(u => u.type === 'worker' && u.health > 0 &&
                     !u.isAttacking &&
-                    Math.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= 28);
+                    (wonderRaid || Math.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= 28));
+                defenders = defenders.concat(hands);
             }
+            const usingWorkers = hands.length > 0;
             if (!defenders.length) return;
 
             // Battle report (throttled): the defender learns it is being raided.
             if (!owner._lastRaidEventAt || now - owner._lastRaidEventAt > 10000) {
                 owner._lastRaidEventAt = now;
-                const entLabel = primary.ent.type || primary.ent.unitType || 'unit';
+                const entLabel = primary.ent.isWonder ? 'WONDER' : (primary.ent.type || primary.ent.unitType || 'unit');
+                const draftNote = !usingWorkers ? ''
+                    : (wonderRaid ? ' — ALL HANDS: every worker downed tools to defend it'
+                                  : ' — workers drafted to defend');
                 this.logPlayerEvent(owner,
-                    `UNDER ATTACK: your ${entLabel} at (${Math.round(primary.ent.x)}, ${Math.round(primary.ent.z)}) is taking damage from ${this.ownerName(this.getOwner(atk))}${usingWorkers ? ' — workers drafted to defend' : ''}`);
+                    `UNDER ATTACK: your ${entLabel} at (${Math.round(primary.ent.x)}, ${Math.round(primary.ent.z)}) is taking damage from ${this.ownerName(this.getOwner(atk))}${draftNote}`);
             }
 
+            // defenders can MIX military and drafted workers now (a wonder raid pulls
+            // both), so the economy bookkeeping is per unit, not per batch.
             defenders.forEach(d => {
-                if (usingWorkers) {
+                if (d.type === 'worker') {
                     // Remember the economy job so the worker RETURNS to it after
                     // the fight (resumeWorkerAfterCombat) instead of idling in a
                     // tangled pile at the battle site.
