@@ -1696,6 +1696,62 @@ class Game {
                 this.renderer.killUnit(target); // tip over + fade instead of vanishing
             }
         }
+
+        // A Town Center just fell (razed or demolished — destroyOwnBuilding comes
+        // through here too). Run this AFTER the list surgery above so the wreck no
+        // longer counts as a drop-off.
+        if (isBuilding && target.type === 'town_center' && victimOwner) {
+            this.onTownCenterLost(victimOwner);
+        }
+    }
+
+    // Keep an owner's economy honest after a Town Center dies.
+    //   - One still standing: re-aim every hauler at the nearest SURVIVING
+    //     drop-off, so nobody marches on to deliver into a crater.
+    //   - None left: the delivery economy is pointless, so idle every worker
+    //     whose job ends at a drop-off (harvesting, hauling, farming). They stop
+    //     hauling to a hole / mining into a full pack and read as IDLE — free to
+    //     be re-tasked (e.g. to rebuild). Goods in hand are lost, same as the
+    //     fill-up-with-no-Town-Center path already does.
+    // Builders are spared (one may be putting up the replacement Town Center), as
+    // are repairers, scouts and drafted fighters — their work still means something.
+    onTownCenterLost(owner) {
+        if (!owner || !owner.units || !owner.buildings) return 0;
+        const drops = owner.buildings.filter(b => b.type === 'town_center' && !b.underConstruction && b.health > 0);
+        if (drops.length) {
+            owner.units.forEach(u => {
+                if (u.type !== 'worker' || u.health <= 0) return;
+                if (u.task !== 'carrying' || !u.carryingResource) return;
+                let best = null, bd = Infinity;
+                drops.forEach(tc => { const d = Math.hypot(tc.x - u.x, tc.z - u.z); if (d < bd) { bd = d; best = tc; } });
+                if (best) { u.targetX = best.x; u.targetZ = best.z; u.isMoving = true; }
+            });
+            return 0;
+        }
+        let idled = 0;
+        owner.units.forEach(u => {
+            if (u.type !== 'worker' || u.health <= 0) return;
+            if (u.task === 'building' || u.isBuilding) return;   // may be rebuilding the Town Center
+            if (u.task === 'repairing') return;
+            if (u.isAttacking || u.attackTarget) return;         // drafted defenders keep fighting
+            const economic = u.task === 'harvesting' || u.task === 'carrying' || u.task === 'farm_work' || !!u.farmRef;
+            if (!economic) return;
+            if (u.farmRef && u.farmRef.assignedWorker === u) u.farmRef.assignedWorker = null;
+            u.farmRef = null;
+            u.task = null;
+            u.harvestTarget = null;
+            u.isHarvesting = false;
+            u.harvestTimer = 0;
+            u.carryingResource = false;
+            u.carryingResourceType = null;
+            u.harvestAmount = 0;
+            u.isMoving = false;
+            u.targetX = u.x;
+            u.targetZ = u.z;
+            idled++;
+        });
+        if (idled) console.log(`[Game] ${this.ownerName(owner)} lost its last Town Center — ${idled} worker(s) idled (nowhere to deliver).`);
+        return idled;
     }
 
     isResourceNode(x, z) {
