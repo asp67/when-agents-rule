@@ -217,13 +217,21 @@ const BUILDING_AGE_ORDER = ['stone', 'neolithic', 'bronze', 'iron'];
 
 // Max HP for a building of a given def/civ/age. Each epoch adds 50% over the
 // previous one (×1.5 per age), rounded to the nearest 50 for clean numbers.
-// Wonders are exempt (their iron-age HP is tuned separately).
+//
+// WONDERS ARE EXEMPT FROM BOTH multipliers. A wonder is the win condition — you
+// hold it for 180s under an all-hands assault — so its HP IS the endgame matchup
+// and it gets balanced on its own terms, not as a side effect of a bonus meant
+// for barracks. The civ health bonus used to land here and spread final wonder HP
+// across 2.44x: Persia's Fire Temple stood at 800 while Greece's Akropolis stood
+// at 1950, and the def said 800 and 1500. Now the number in the def is the number
+// on the field, and every civ defends the same wall. Pyramide/Akropolis still
+// govern every other building those civs own.
 function buildingMaxHealth(buildingDef, civ, age) {
+    if (buildingDef.type === 'wonder') return Math.max(50, buildingDef.health);
     const healthMultiplier = (civ && civ.bonus && civ.bonus.name === 'Pyramide') ? 1.5 :
                              (civ && civ.bonus && civ.bonus.name === 'Akropolis') ? 1.3 : 1.0;
     const idx = Math.max(0, BUILDING_AGE_ORDER.indexOf(age));
-    const ageMultiplier = (buildingDef.type === 'wonder') ? 1 : Math.pow(1.5, idx);
-    return Math.max(50, Math.round(buildingDef.health * ageMultiplier * healthMultiplier / 50) * 50);
+    return Math.max(50, Math.round(buildingDef.health * Math.pow(1.5, idx) * healthMultiplier / 50) * 50);
 }
 
 // Morph an existing building to a newer epoch: bump its age, rescale max HP

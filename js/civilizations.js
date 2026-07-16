@@ -77,12 +77,35 @@ const CIVILIZATIONS = {
                 description: 'Speerkämpfer im Wagen hinter dem Pferd'
             }
         ],
+        // WONDER COSTS ARE ONE VECTOR, NOT FOUR (see every civ's uniqueBuildings).
+        // Equal SUMS are not equal prices: the map carries 270k food across 540
+        // nodes (and farms regrow, so food is renewable) and 191k wood across 638
+        // nodes, but only 36k stone across 36 nodes and 36k gold across just 18.
+        // Gold and stone are the hard caps; food and wood are not. So a wonder
+        // wanting 4000 gold and 2000 wood cost FAR more than one wanting 2000 gold
+        // and 4000 wood, though both sum to 6000 — and the old table lived that
+        // bug: by the raw sum Persia's Fire Temple was the bargain at 14500, but
+        // weighted by scarcity it was DEARER than Yamato's, because 4000 of it was
+        // gold. Weighted prices ran 6701 (Yamato) to 9973 (Greece), a 49% spread,
+        // and disagreed with the sum about who was cheapest.
+        //
+        // No fixed weighting can fix that — scarcity moves with difficulty, tier
+        // and map. An IDENTICAL vector makes the weighting irrelevant: the same
+        // bill cannot be unfairly shaped. {4500, 4500, 4000, 2500} = 15500 is the
+        // rounded average of the four the designers already chose, so overall
+        // wonder difficulty is unchanged; only the unfairness is gone.
+        //
+        // Egypt alone pays ~6.5% more, and pays it PROPORTIONALLY (x1.06-x1.067 on
+        // every resource) so the surcharge cannot smuggle a harder MIX back in.
+        // It earns that as the only civ with an economy tech suite — Agriculture
+        // and Mining (+25% harvest each) plus Pottery — while Greece and Persia
+        // have no worker techs at all and Yamato has only move speed.
         uniqueBuildings: [
             {
                 id: 'pyramid',
                 name: 'Pyramide',
-                cost: { food: 5000, wood: 3500, stone: 5000, gold: 2000 },
-                health: 1000,
+                cost: { food: 4800, wood: 4800, stone: 4250, gold: 2650 }, // 16500
+                health: 1500,
                 type: 'wonder',
                 requiredAge: 'iron',
                 buildTime: 60000,
@@ -278,7 +301,10 @@ const CIVILIZATIONS = {
             {
                 id: 'akropolis',
                 name: 'Akropolis',
-                cost: { food: 4000, wood: 5000, stone: 6000, gold: 2500 },
+                // Shared wonder vector — see the Egyptian block for why. Its 1500
+                // used to become 1950 through Akropolis; wonders are exempt now,
+                // so this number is what actually stands on the field.
+                cost: { food: 4500, wood: 4500, stone: 4000, gold: 2500 }, // 15500
                 health: 1500,
                 type: 'wonder',
                 requiredAge: 'iron',
@@ -484,8 +510,11 @@ const CIVILIZATIONS = {
             {
                 id: 'firetemple',
                 name: 'Feuertempel',
-                cost: { food: 4000, wood: 4000, stone: 2500, gold: 4000 },
-                health: 800,
+                // Shared wonder vector — see the Egyptian block for why. Its gold
+                // fell 4000 -> 2500: on a map with 18 gold nodes that was the
+                // heaviest wonder in the game, not the cheapest as the sum claimed.
+                cost: { food: 4500, wood: 4500, stone: 4000, gold: 2500 }, // 15500
+                health: 1500,
                 type: 'wonder',
                 requiredAge: 'iron',
                 buildTime: 60000,
@@ -671,8 +700,9 @@ const CIVILIZATIONS = {
             {
                 id: 'shrine',
                 name: 'Schrein',
-                cost: { food: 5000, wood: 5500, stone: 2500, gold: 2500 },
-                health: 900,
+                // Shared wonder vector — see the Egyptian block for why.
+                cost: { food: 4500, wood: 4500, stone: 4000, gold: 2500 }, // 15500
+                health: 1500,
                 type: 'wonder',
                 requiredAge: 'iron',
                 buildTime: 60000,
