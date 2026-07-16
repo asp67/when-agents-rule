@@ -1672,14 +1672,8 @@ class Game {
             this.logPlayerEvent(killerOwner, `KILL: your ${killerLabel || 'forces'} eliminated ${this.ownerName(victimOwner)}'s ${label} at ${at}`);
         }
 
-        // A finished house/Town Center going down takes its population bonus
-        // with it (demolition and combat destruction alike end up here).
-        if (isBuilding && victimOwner && victimOwner.resources && !target.underConstruction) {
-            const def = getBuildingDef(target.type);
-            if (def && def.popBonus) {
-                victimOwner.resources.maxPopulation = Math.max(0, victimOwner.resources.maxPopulation - def.popBonus);
-            }
-        }
+        // (The population cap is re-derived AFTER the list surgery below, once
+        // this building is really gone — see recomputeMaxPopulation.)
 
         if (isBuilding) {
             if (target.owner === 'player') {
@@ -1706,6 +1700,11 @@ class Game {
                 this.renderer.killUnit(target); // tip over + fade instead of vanishing
             }
         }
+
+        // Losing a house/Town Center takes its population slots with it. Re-derive
+        // the cap from what is LEFT standing (never subtract) — run after the list
+        // surgery above so the wreck is already out of the count.
+        if (isBuilding && victimOwner) this.recomputeMaxPopulation(victimOwner);
 
         // A Town Center just fell (razed or demolished — destroyOwnBuilding comes
         // through here too). Run this AFTER the list surgery above so the wreck no
@@ -2444,14 +2443,10 @@ class Game {
         this.player.buildings.push(building);
         this.renderer.addBuilding(building);
 
-        // Population bonus is granted on completion (see completeConstruction),
-        // not while the building is still a construction site.
-        if (building.type === 'house' && !building.underConstruction) {
-            const def = getBuildingDef('house');
-            if (def && def.popBonus) {
-                this.player.resources.maxPopulation = Math.min(MAX_POPULATION_CAP, this.player.resources.maxPopulation + def.popBonus);
-            }
-        }
+        // Population slots come from what STANDS: a construction site contributes
+        // nothing until completeConstruction re-derives the cap. Placing an
+        // already-finished building (spawn/debug) re-derives it right away.
+        if (!building.underConstruction) this.recomputeMaxPopulation(this.player);
     }
 
     // Owner (player or AI) that owns a given building
@@ -2660,6 +2655,25 @@ class Game {
         return 12;
     }
 
+    // The population cap is DERIVED from what an owner actually has standing —
+    // never accumulated. A running +/- drifted, and badly: an addition ABOVE the
+    // hard cap was silently clamped away, but the later demolition still
+    // subtracted its bonus in FULL. Overbuild to a true 160 slots (stored as
+    // 100), lose enough buildings, and the cap was driven below the truth — even
+    // to 0 with Town Centers still standing. Recomputing from the buildings
+    // cannot drift, and it self-heals any total already corrupted.
+    recomputeMaxPopulation(owner) {
+        if (!owner || !owner.resources) return 0;
+        let slots = 0;
+        (owner.buildings || []).forEach(b => {
+            if (!b || b.underConstruction || b.health <= 0) return;
+            const def = (typeof getBuildingDef === 'function') ? getBuildingDef(b.type) : null;
+            if (def && def.popBonus) slots += def.popBonus;
+        });
+        owner.resources.maxPopulation = Math.min(MAX_POPULATION_CAP, slots);
+        return owner.resources.maxPopulation;
+    }
+
     // Spectator probe: WHO actually knows this spot? The rendered fog cannot
     // answer that — in spectator mode it is the UNION of every player's sight
     // and it never fades, so lit ground only proves SOMEONE has been there.
@@ -2799,10 +2813,8 @@ class Game {
         building.buildProgress = building.buildTime || 0;
         building.health = building.maxHealth;
         const owner = this.getOwnerByBuilding(building);
-        const def = getBuildingDef(building.type);
-        if (def && def.popBonus) {
-            if (owner && owner.resources) owner.resources.maxPopulation = Math.min(MAX_POPULATION_CAP, owner.resources.maxPopulation + def.popBonus);
-        }
+        // Re-derive the cap from everything standing (never accumulate).
+        if (owner) this.recomputeMaxPopulation(owner);
         // Populate train options for military buildings (barracks/stable/archery_range)
         // for THIS owner's age — otherwise LLM/freshly-built buildings can't train.
         if (typeof getTrainOptionsForBuilding === 'function') {
