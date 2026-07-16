@@ -2030,7 +2030,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (unitType === 'worker') return this.executeTrainWorker(ai, game, params);
 
         const civ = getCivilization(ai.civilization);
-        const unitDef = getUnitDef(unitType) || (civ.uniqueUnits || []).find(u => u.id === unitType);
+        const unitDef = getUnitDefFor(ai.civilization, unitType);
         if (!unitDef) {
             console.log(`[OpenAIAI] ${ai.id}: Unknown unit type "${unitType}"`);
             return `[ERROR] Unknown unit type "${unitType}".`;

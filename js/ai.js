@@ -637,8 +637,7 @@ class AIManager {
     trainUnit(ai, unitType, building) {
         if (!building || building.underConstruction || building.isProducing) return;
         // Unique units (horse_carriage, hoplite, …) have no UNIT_DEFS entry.
-        const civ = getCivilization(ai.civilization);
-        const unitDef = ((civ && civ.uniqueUnits) || []).find(u => u.id === unitType) || getUnitDef(unitType);
+        const unitDef = getUnitDefFor(ai.civilization, unitType);
         if (!unitDef || !unitDef.cost) return;
         // Respect the population cap (build houses to raise it; never overflow).
         if (ai.resources.population >= ai.resources.maxPopulation) return;

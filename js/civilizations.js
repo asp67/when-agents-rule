@@ -47,6 +47,7 @@ const CIVILIZATIONS = {
                 attack: 3,
                 range: 3,
                 type: 'support',
+                tier: 'bronze',  // mirrors the shared def — getUnitDefFor returns THIS one
                 description: 'Heilt andere Einheiten in der Nähe'
             },
             {
@@ -430,6 +431,13 @@ const CIVILIZATIONS = {
                 game.workerHarvestBonus = 1.2; // +20% carried per trip (applied ONCE, to the amount)
             }
         },
+        // Persia rides where the others march. It is the only civ with no
+        // infantry tech whatsoever — its champion never gains a point of attack
+        // or health — so the cavalry line IS its high-tier army, and it is
+        // priced below everyone else's to earn that role: 150 against the shared
+        // rider's 170, 270 against the shared heavy cavalry's 310 and a
+        // champion's 350. Every entry repeats its shared `tier`: getUnitDefFor
+        // returns THESE defs now, and the age gates read the tier off them.
         uniqueUnits: [
             {
                 id: 'archer',
@@ -440,18 +448,36 @@ const CIVILIZATIONS = {
                 attack: 7,
                 range: 7.5,
                 type: 'ranged',
+                tier: 'neolithic',
                 description: 'Schneller Bogenschütze'
             },
             {
                 id: 'cavalry',
                 name: 'Kavallerist',
-                cost: { food: 120, wood: 0, stone: 0, gold: 50 },
-                health: 120,
+                // health was 120 against the shared rider's 140 at an identical
+                // price — the cavalry civ silently fielded the worst horsemen in
+                // the game, because the charge read the shared def and the spawn
+                // read this one. Back to parity, and cheaper.
+                cost: { food: 110, wood: 0, stone: 0, gold: 40 },
+                health: 140,
                 speed: 2.0,
                 attack: 12,
                 range: 1,
                 type: 'cavalry',
+                tier: 'bronze',
                 description: 'Schneller Reiter'
+            },
+            {
+                id: 'heavy_cavalry',
+                name: 'Kataphrakt',
+                cost: { food: 160, wood: 0, stone: 40, gold: 70 },
+                health: 200,
+                speed: 1.8,
+                attack: 18,
+                range: 1,
+                type: 'cavalry',
+                tier: 'iron',
+                description: 'Gepanzerter Reiter, Persiens Elite'
             }
         ],
         uniqueBuildings: [
@@ -552,6 +578,22 @@ const CIVILIZATIONS = {
                 researchTime: 25000,
                 bonus: { health: 25 },
                 appliesTo: 'cavalry'
+            },
+            // Persia's ONE all_military tech. It had none at all, and health is
+            // the only armour in this game — so its infantry and archers never
+            // grew a single hit point while every rival's attack climbed every
+            // age, i.e. they got relatively WEAKER over a match. Priced at
+            // Egypt's Bronze Armor exactly: identical effect, identical bill.
+            immortals: {
+                name: 'Unsterbliche',
+                cost: { food: 0, wood: 0, stone: 150, gold: 100 },
+                researchAt: 'market',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Alle Militäreinheiten +15 Gesundheit',
+                researchTime: 25000,
+                bonus: { health: 15 },
+                appliesTo: 'all_military'
             },
             // === Bronzezeit - am Tempel ===
             healing: {
@@ -743,6 +785,23 @@ const CIVILIZATIONS = {
                 description: 'Infanterie +20 Gesundheit',
                 bonus: { health: 20 },
                 appliesTo: 'infantry'
+            },
+            // Yamato's two all_military techs (Bushido, Iron Working) are BOTH
+            // attack, and Sword Armor covers infantry only — so its archers and
+            // cavalry never grew a hit point, and health is the only armour in
+            // this game. Same effect and same bill as Egypt's Bronze Armor; the
+            // Shrine's -30% still comes off on top, as it does for every Yamato
+            // tech.
+            lamellarArmor: {
+                name: 'Lamellenrüstung',
+                cost: { food: 0, wood: 0, stone: 150, gold: 100 },
+                researchAt: 'market',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Alle Militäreinheiten +15 Gesundheit',
+                researchTime: 25000,
+                bonus: { health: 15 },
+                appliesTo: 'all_military'
             },
             // === Eisenzeit - am Markt ===
             ironWorking: {

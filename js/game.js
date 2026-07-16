@@ -1975,7 +1975,7 @@ class Game {
     }
 
     trainUnit(unitType, trainerId = null) {
-        const unitDef = getUnitDef(unitType) || getCivilization(this.player.civilization).uniqueUnits.find(u => u.id === unitType);
+        const unitDef = getUnitDefFor(this.player.civilization, unitType);
         if (!unitDef) return;
 
         // Check population limit
@@ -2345,7 +2345,9 @@ class Game {
             }
 
             if (upgradedType && upgradedType !== unit.type) {
-                const newDef = getUnitDef(upgradedType);
+                // Civ-aware: an ageing-up Persian rider must become Persia's OWN
+                // heavy cavalry, not the shared one.
+                const newDef = getUnitDefFor(owner.civilization, upgradedType);
                 if (newDef) {
                     // REALLY remove the unit from the renderer before re-adding:
                     // scene.remove() is a legacy no-op shim, and renderer.units IS
@@ -3903,7 +3905,7 @@ class Game {
         for (const b of ai.buildings) {
             if (b.underConstruction || !trains[b.type]) continue;
             for (const uid of trains[b.type]) {
-                const def = (typeof getUnitDef === 'function') ? getUnitDef(uid) : null;
+                const def = (typeof getUnitDefFor === 'function') ? getUnitDefFor(ai.civilization, uid) : null;
                 if (!def) continue;
                 if (ageOrder.indexOf(def.tier || 'stone') > aIdx) continue; // not available at this age
                 if (ai.resources.hasResources(def.cost)) return true;

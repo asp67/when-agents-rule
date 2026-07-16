@@ -1181,7 +1181,7 @@ class UIManager {
             }
             
             trainOptions.forEach(unitId => {
-                const unitDef = getUnitDef(unitId) || civ.uniqueUnits.find(u => u.id === unitId);
+                const unitDef = getUnitDefFor(this.game.player.civilization, unitId);
                 if (unitDef) {
                     const canAfford = this.game.player.resources.hasResources(unitDef.cost);
                     const tierLabel = unitDef.tier ? ` (${this.getAgeName(unitDef.tier)})` : '';
@@ -1776,8 +1776,7 @@ class UIManager {
             return def ? tg(def.name) : id;
         }
         if (kind === 'unit') {
-            const unique = (civ && civ.uniqueUnits) ? civ.uniqueUnits.find(u => u.id === id) : null;
-            const def = unique || getUnitDef(id);
+            const def = ai ? getUnitDefFor(ai.civilization, id) : getUnitDef(id);
             return def ? tg(def.name) : id;
         }
         if (kind === 'building') {

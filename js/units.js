@@ -139,14 +139,25 @@ function getUnitDef(id) {
     return UNIT_DEFS[id] || null;
 }
 
+// The def a CIVILIZATION actually fields for `id`: its unique override wins over
+// the shared entry, and unique-only ids (Egypt's horse_carriage) resolve too.
+// EVERY cost/stat/label/tier lookup must come through here. The codebase used to
+// split — unique-first when SPAWNING (createUnit) but shared-first when CHARGING
+// (trainUnit, the LLM handler), DISPLAYING (the train card) and AGEING UP
+// (upgradeFieldUnits) — so for any id present in BOTH tables the two disagreed:
+// Persia was charged the shared archer's 90 but fielded its own 50 HP / 7 atk /
+// 7.5 range one, and paid the shared cavalry's 170 for a unique carrying 20 LESS
+// health. A unique must therefore repeat its shared entry's `tier`; the age gates
+// read it from whatever this returns.
+function getUnitDefFor(civilization, id) {
+    const civ = (typeof getCivilization === 'function') ? getCivilization(civilization) : null;
+    return ((civ && civ.uniqueUnits) || []).find(u => u.id === id) || getUnitDef(id);
+}
+
 // Create a unit instance
 function createUnit(type, x, z, owner, civilization, age) {
-    // Civ-unique defs resolve FIRST: a unique-only id (e.g. Egypt's
-    // horse_carriage) has no UNIT_DEFS entry at all — bailing on getUnitDef
-    // before this lookup made such units impossible to create.
     const civ = getCivilization(civilization);
-    const uniqueUnit = ((civ && civ.uniqueUnits) || []).find(u => u.id === type);
-    const unitDef = uniqueUnit || getUnitDef(type);
+    const unitDef = getUnitDefFor(civilization, type);
     if (!unitDef) return null;
 
     // Resolve the owner object once, up front: its seat drives the team badge
