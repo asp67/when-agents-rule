@@ -2618,8 +2618,11 @@ class Game {
             const d = Math.hypot(r.x - x, r.z - z);
             if (d < best) { best = d; idx = i; }
         });
+        // Report civ AND seat: two players can field the SAME civilization, so
+        // the seat badge is the only conclusive identifier.
+        const idOf = p => ({ civ: p.civilization, seat: p.seat });
         if (idx >= 0) {
-            const knowers = players.filter(p => p._knownResIdx && p._knownResIdx.has(idx)).map(p => this.ownerName(p));
+            const knowers = players.filter(p => p._knownResIdx && p._knownResIdx.has(idx)).map(idOf);
             return { what: res[idx].type + ' node', knowers };
         }
         const G = this.EXPLORE_GRID;
@@ -2628,7 +2631,7 @@ class Game {
         const gx = Math.floor((x + half) / cell), gz = Math.floor((z + half) / cell);
         const knowers = players.filter(p =>
             p._explored && gx >= 0 && gx < G && gz >= 0 && gz < G && p._explored[gz * G + gx] === 1
-        ).map(p => this.ownerName(p));
+        ).map(idOf);
         return { what: 'ground', knowers };
     }
 

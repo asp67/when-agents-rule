@@ -95,16 +95,26 @@ class InputManager {
             // The lit ground is every player's sight UNIONed and never fades, so it
             // can't tell you who KNOWS this spot — spell that out per player, since
             // node knowledge is exactly what a model's harvest/assign choices run on.
+            // One row per knower, each wearing its SEAT badge: civ names alone are
+            // ambiguous the moment two players field the same civilization.
             const d = this.game.discoveryAt ? this.game.discoveryAt(world.x, world.z) : null;
-            flag.textContent = `🚩 ${Math.round(world.x)}, ${Math.round(world.z)}`;
+            const ui = this.game.ui;
+            const civLabel = (civ) => {
+                const k = 'civ.' + civ + '.name';
+                return (typeof t === 'function' && t(k) !== k) ? t(k) : civ;
+            };
+            let html = `<span class="cf-pos">🚩 ${Math.round(world.x)}, ${Math.round(world.z)}</span>`;
             if (d) {
-                const line = document.createElement('span');
-                line.className = 'cf-disc';
-                line.textContent = d.knowers.length
-                    ? `${d.what} — discovered by: ${d.knowers.join(', ')}`
-                    : `${d.what} — undiscovered`;
-                flag.appendChild(line);
+                if (d.knowers.length) {
+                    html += `<span class="cf-head">${d.what} — discovered by:</span>`;
+                    html += d.knowers.map(k =>
+                        `<span class="cf-row">${(ui && ui.teamDotHtml) ? ui.teamDotHtml(k.seat, 11) : ''}${civLabel(k.civ)}</span>`
+                    ).join('');
+                } else {
+                    html += `<span class="cf-head">${d.what} — undiscovered</span>`;
+                }
             }
+            flag.innerHTML = html;
         }
         flag.style.left = (clientX + 14) + 'px';
         flag.style.top = (clientY - 12) + 'px';
