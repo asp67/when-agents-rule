@@ -1067,6 +1067,15 @@ body.spectator-mode #unitInfo.spectator-card {
     white-space: nowrap;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
 }
+/* Second line: who actually KNOWS this spot (the fog can't say — it's the union
+   of everyone's sight). Dimmer and lighter than the coordinates above it. */
+.coord-flag .cf-disc {
+    display: block;
+    margin-top: 3px;
+    font-weight: 400;
+    font-size: 11px;
+    color: #9fb0c8;
+}
 
 /* Rejected-action marker + reason in the decision log */
 .ai-log-entry .log-x {

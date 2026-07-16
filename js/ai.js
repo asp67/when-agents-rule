@@ -108,8 +108,8 @@ class AIManager {
         }
         for (const b of ai.buildings) {
             if (b.health <= 0) continue;
-            const range = b.type === 'tower' ? 60 : 12;
-            if (Math.hypot(b.x - x, b.z - z) <= range) return true;
+            const range = this.game.buildingVision(b); // 0 while under construction
+            if (range > 0 && Math.hypot(b.x - x, b.z - z) <= range) return true;
         }
         return false;
     }

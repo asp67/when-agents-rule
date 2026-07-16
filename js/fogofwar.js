@@ -125,8 +125,7 @@ class FogOfWarManager {
         // site while they work).
         this.game.player.buildings.forEach(building => {
             if (building.underConstruction) return;
-            const range = building.type === 'tower' ? this.towerVisionRange : this.buildingVisionRange;
-            this.reveal(building.x, building.z, range);
+            this.reveal(building.x, building.z, this.game.buildingVision(building));
         });
 
         // In spectator mode, also reveal fog around ALL AI units and buildings
@@ -138,8 +137,7 @@ class FogOfWarManager {
                 });
                 ai.buildings.forEach(building => {
                     if (building.underConstruction) return; // plots don't see (same rule as the player's)
-                    const range = building.type === 'tower' ? this.towerVisionRange : this.buildingVisionRange;
-                    this.reveal(building.x, building.z, range);
+                    this.reveal(building.x, building.z, this.game.buildingVision(building));
                 });
             });
         }
@@ -272,7 +270,7 @@ class FogOfWarManager {
         // Reveal around player's town center
         const townCenter = this.game.player.buildings.find(b => b.type === 'town_center');
         if (townCenter) {
-            this.reveal(townCenter.x, townCenter.z, this.buildingVisionRange * 1.5);
+            this.reveal(townCenter.x, townCenter.z, this.game.buildingVision(townCenter) * 1.5);
         }
         
         // Reveal around player's units

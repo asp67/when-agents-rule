@@ -942,8 +942,7 @@ class OpenAIAIManager {
         // sweep is the reward for completing it, not for placing the stakes.
         ai.buildings.forEach(bldg => {
             if (bldg.underConstruction) return;
-            const range = bldg.type === 'tower' ? towerVisionRange : buildingVisionRange;
-            this.revealGridArea(grid, numTiles, bldg.x, bldg.z, range, halfSize, gridSize, 2);
+            this.revealGridArea(grid, numTiles, bldg.x, bldg.z, game.buildingVision(bldg), halfSize, gridSize, 2);
         });
 
         // Mark visible as explored (simplified - in real game this decays)
@@ -988,7 +987,7 @@ class OpenAIAIManager {
         // Check against AI buildings (finished only — plots don't see)
         for (const bldg of ai.buildings) {
             if (bldg.underConstruction) continue;
-            const range = bldg.type === 'tower' ? towerVisionRange : buildingVisionRange;
+            const range = game.buildingVision(bldg);
             const dx = bldg.x - x;
             const dz = bldg.z - z;
             if (Math.sqrt(dx * dx + dz * dz) <= range) return 'visible';
@@ -1086,7 +1085,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - Your ATTACKING units also defend themselves between your turns: when one of a fighting group takes damage, the whole group focus-fires that attacker, then the next, and returns to your ordered target once no attackers are left — you don't need to micro a siege against defenders.
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
 - Priests (temple) never fight, but they MARCH WITH your army on an attack — escorting to the fight and healing from the back, never engaging. A priest also walks to and heals your nearby workers and military units with healthPct below 100 on its own; reposition it alone with move_units.
-- Workers: newly trained ones are IDLE until ordered. A worker whose resource node runs dry walks to the nearest DISCOVERED node of the same type by itself and idles only when none is left. Workers deliver goods to the NEAREST finished Town Center — a second town_center near far resources shortens hauls and trains workers in parallel.
+- Workers: newly trained ones are IDLE until ordered. A worker whose resource node runs dry walks to the nearest DISCOVERED node of the same type by itself and idles only when none is left. Workers deliver goods to the NEAREST finished Town Center — a second town_center near far resources shortens hauls, trains workers in parallel, adds +10 population and SEES far (sight 30 — half a tower's 60, versus 12 for other buildings), revealing the resources around it.
 - Farms regenerate food ONLY while a worker is assigned; the worker who builds a farm stays on as its farmer.
 - Houses (+5 each) and Town Centers (+10 each) raise maxPopulation, up to "resources.populationHardCap"; losing a Town Center drops your cap by 10. At the hard cap, only delete_unit frees room.
 - Resources: food (animals, berries, farms), wood (trees), stone (quarries), gold (mines).

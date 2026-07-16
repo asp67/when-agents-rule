@@ -89,7 +89,23 @@ class InputManager {
         }
         const flag = this._coordFlag;
         const world = this.renderer.getWorldPositionFromScreen(clientX, clientY);
-        flag.textContent = world ? `🚩 ${Math.round(world.x)}, ${Math.round(world.z)}` : '🚩 off map';
+        if (!world) {
+            flag.textContent = '🚩 off map';
+        } else {
+            // The lit ground is every player's sight UNIONed and never fades, so it
+            // can't tell you who KNOWS this spot — spell that out per player, since
+            // node knowledge is exactly what a model's harvest/assign choices run on.
+            const d = this.game.discoveryAt ? this.game.discoveryAt(world.x, world.z) : null;
+            flag.textContent = `🚩 ${Math.round(world.x)}, ${Math.round(world.z)}`;
+            if (d) {
+                const line = document.createElement('span');
+                line.className = 'cf-disc';
+                line.textContent = d.knowers.length
+                    ? `${d.what} — discovered by: ${d.knowers.join(', ')}`
+                    : `${d.what} — undiscovered`;
+                flag.appendChild(line);
+            }
+        }
         flag.style.left = (clientX + 14) + 'px';
         flag.style.top = (clientY - 12) + 'px';
         flag.style.display = 'block';

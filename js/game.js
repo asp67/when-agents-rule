@@ -2589,6 +2589,49 @@ class Game {
         return (unit && unit.unitType === 'cavalry' ? 22.5 : 15) * ((unit && unit.visionBonus) || 1);
     }
 
+    // Sight radius of a building — the twin of unitVision(), and the ONE place
+    // every vision system asks (human fog, spectator fog, the rule-based check,
+    // the models' exploration grid and their spotting check). Towers stay the
+    // long-range sentinels at 60; a Town Center sees HALF a tower (30) — enough
+    // to watch its own working area, and one more reason to plant another —
+    // while every other building keeps a short 12. Scaffolding is blind: a plot
+    // grants nothing until it is finished.
+    buildingVision(b) {
+        if (!b || b.underConstruction) return 0;
+        if (b.type === 'tower') return 60;
+        if (b.type === 'town_center') return 30; // 50% of the tower's sweep
+        return 12;
+    }
+
+    // Spectator probe: WHO actually knows this spot? The rendered fog cannot
+    // answer that — in spectator mode it is the UNION of every player's sight
+    // and it never fades, so lit ground only proves SOMEONE has been there.
+    // This reports per-player knowledge instead: for a resource node, the very
+    // set that drives a model's harvest/assign choices (_knownResIdx); for bare
+    // ground, that player's explored bitmap.
+    discoveryAt(x, z) {
+        const players = (this.aiManager && this.aiManager.aiPlayers) || [];
+        const res = (this.terrain && this.terrain.resources) || [];
+        let idx = -1, best = 6;
+        res.forEach((r, i) => {
+            if (r.amount !== undefined && r.amount <= 0) return;
+            const d = Math.hypot(r.x - x, r.z - z);
+            if (d < best) { best = d; idx = i; }
+        });
+        if (idx >= 0) {
+            const knowers = players.filter(p => p._knownResIdx && p._knownResIdx.has(idx)).map(p => this.ownerName(p));
+            return { what: res[idx].type + ' node', knowers };
+        }
+        const G = this.EXPLORE_GRID;
+        const size = (this.terrain && this.terrain.size) || 800;
+        const cell = size / G, half = size / 2;
+        const gx = Math.floor((x + half) / cell), gz = Math.floor((z + half) / cell);
+        const knowers = players.filter(p =>
+            p._explored && gx >= 0 && gx < G && gz >= 0 && gz < G && p._explored[gz * G + gx] === 1
+        ).map(p => this.ownerName(p));
+        return { what: 'ground', knowers };
+    }
+
     // ---- Exploration tracking (per player) ------------------------------------
     // A coarse "ground I have ever seen" bitmap per player, marked every
     // discovery sweep (250ms) around every living unit and building. Aggregated
@@ -2619,7 +2662,7 @@ class Game {
         };
         (owner.units || []).forEach(u => { if (u.health > 0) mark(u.x, u.z, this.unitVision(u)); });
         (owner.buildings || []).forEach(b => {
-            if (b.health > 0) mark(b.x, b.z, b.type === 'tower' ? 60 : 12);
+            if (b.health > 0) mark(b.x, b.z, this.buildingVision(b));
         });
     }
 
