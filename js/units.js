@@ -56,7 +56,7 @@ const UNIT_DEFS = {
         health: 40,
         speed: 1.0,
         attack: 6,
-        range: 4,
+        range: 6,
         type: 'ranged',
         tier: 'neolithic',
         description: 'Fernkampf-Einheit'
@@ -68,7 +68,7 @@ const UNIT_DEFS = {
         health: 60,
         speed: 0.9,
         attack: 12,
-        range: 4.5,
+        range: 6.75,
         type: 'ranged',
         tier: 'iron',
         description: 'Starker Fernkämpfer mit Armbrust'
@@ -80,7 +80,7 @@ const UNIT_DEFS = {
         health: 80,
         speed: 1.1,
         attack: 16,
-        range: 5,
+        range: 7.5,
         type: 'ranged',
         tier: 'iron',
         description: 'Elite Fernkampf-Einheit'

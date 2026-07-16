@@ -56,7 +56,7 @@ const CIVILIZATIONS = {
                 health: 45,
                 speed: 1.0,
                 attack: 6,
-                range: 4,
+                range: 6,
                 type: 'ranged',
                 tier: 'neolithic',
                 trainAt: 'archery_range',
@@ -438,7 +438,7 @@ const CIVILIZATIONS = {
                 health: 50,
                 speed: 1.1,
                 attack: 7,
-                range: 5,
+                range: 7.5,
                 type: 'ranged',
                 description: 'Schneller Bogenschütze'
             },
@@ -620,7 +620,7 @@ const CIVILIZATIONS = {
                 health: 200,
                 speed: 1.5,
                 attack: 8,
-                range: 4,
+                range: 6,
                 type: 'ranged',
                 description: 'Schiff mit Bogenschützen'
             }
