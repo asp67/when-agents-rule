@@ -1659,6 +1659,51 @@ const I18N_OUTCOMES_2 = {
     }
 };
 Object.keys(I18N_OUTCOMES_2).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_OUTCOMES_2[l]); });
+
+// Controls-reference card (the "?" button in both HUDs).
+const I18N_HELP = {
+    en: {
+        'help.title': 'Controls', 'help.close': 'Close', 'help.camera': 'Camera',
+        'help.lmb': 'Left click', 'help.lmbDrag': 'Left drag', 'help.rmb': 'Right click',
+        'help.rmbHold': 'Right (hold)', 'help.mmb': 'Middle drag', 'help.wheel': 'Mouse wheel',
+        'help.act.inspect': 'Inspect a unit or building', 'help.act.pan': 'Pan the camera',
+        'help.act.coord': 'Coordinate flag — who discovered a spot',
+        'help.act.select': 'Select a unit or building', 'help.act.box': 'Box-select units',
+        'help.act.command': 'Move · attack · build / repair · place',
+        'help.act.rotate': 'Rotate & tilt the view', 'help.act.zoom': 'Zoom in / out'
+    },
+    de: {
+        'help.title': 'Steuerung', 'help.close': 'Schließen', 'help.camera': 'Kamera',
+        'help.lmb': 'Linksklick', 'help.lmbDrag': 'Links ziehen', 'help.rmb': 'Rechtsklick',
+        'help.rmbHold': 'Rechts halten', 'help.mmb': 'Mittlere Taste ziehen', 'help.wheel': 'Mausrad',
+        'help.act.inspect': 'Einheit oder Gebäude ansehen', 'help.act.pan': 'Kamera schwenken',
+        'help.act.coord': 'Koordinaten-Fähnchen – wer einen Ort entdeckt hat',
+        'help.act.select': 'Einheit oder Gebäude auswählen', 'help.act.box': 'Einheiten mit Rahmen wählen',
+        'help.act.command': 'Bewegen · angreifen · bauen / reparieren · platzieren',
+        'help.act.rotate': 'Ansicht drehen & neigen', 'help.act.zoom': 'Hinein-/Herauszoomen'
+    },
+    es: {
+        'help.title': 'Controles', 'help.close': 'Cerrar', 'help.camera': 'Cámara',
+        'help.lmb': 'Clic izquierdo', 'help.lmbDrag': 'Arrastrar izq.', 'help.rmb': 'Clic derecho',
+        'help.rmbHold': 'Der. (mantener)', 'help.mmb': 'Arrastrar central', 'help.wheel': 'Rueda del ratón',
+        'help.act.inspect': 'Inspeccionar unidad o edificio', 'help.act.pan': 'Desplazar la cámara',
+        'help.act.coord': 'Bandera de coordenadas: quién descubrió un lugar',
+        'help.act.select': 'Seleccionar unidad o edificio', 'help.act.box': 'Selección por recuadro',
+        'help.act.command': 'Mover · atacar · construir / reparar · colocar',
+        'help.act.rotate': 'Girar e inclinar la vista', 'help.act.zoom': 'Acercar / alejar'
+    },
+    zh: {
+        'help.title': '操作说明', 'help.close': '关闭', 'help.camera': '镜头',
+        'help.lmb': '左键单击', 'help.lmbDrag': '左键拖动', 'help.rmb': '右键单击',
+        'help.rmbHold': '右键按住', 'help.mmb': '中键拖动', 'help.wheel': '鼠标滚轮',
+        'help.act.inspect': '查看单位或建筑', 'help.act.pan': '平移镜头',
+        'help.act.coord': '坐标旗——谁发现了此处',
+        'help.act.select': '选择单位或建筑', 'help.act.box': '框选单位',
+        'help.act.command': '移动·攻击·建造/维修·放置',
+        'help.act.rotate': '旋转与俯仰视角', 'help.act.zoom': '放大/缩小'
+    }
+};
+Object.keys(I18N_HELP).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_HELP[l]); });
 function getUiLang() { return _uiLang; }
 function setUiLang(lang) {
     if (!I18N[lang]) return;

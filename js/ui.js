@@ -1796,6 +1796,51 @@ class UIManager {
         return id;
     }
 
+    // A quick controls reference, opened by the "?" button in either HUD. Content
+    // is mode-aware: the same mouse buttons do different things in the arena (watch
+    // + inspect) versus a player match (select + command), so each gets its own
+    // rows; the camera controls are shared. Verified against input.js and the
+    // renderer's key/mouse handlers.
+    showControlsCard(mode) {
+        this.hideControlsCard();
+        const row = (k, v) => `<div class="ck">${k}</div><div class="cv">${v}</div>`;
+        const specific = (mode === 'arena')
+            ? [
+                ['🖱️ ' + t('help.lmb'), t('help.act.inspect')],
+                ['🖱️ ' + t('help.lmbDrag'), t('help.act.pan')],
+                ['🖱️ ' + t('help.rmbHold'), t('help.act.coord')]
+              ]
+            : [
+                ['🖱️ ' + t('help.lmb'), t('help.act.select')],
+                ['🖱️ ' + t('help.lmbDrag'), t('help.act.box')],
+                ['🖱️ ' + t('help.rmb'), t('help.act.command')]
+              ];
+        const camera = [
+            ['⌨️ W A S D / ↑ ↓ ← →', t('help.act.pan')],
+            ['🖱️ ' + t('help.mmb'), t('help.act.rotate')],
+            ['🖱️ ' + t('help.wheel'), t('help.act.zoom')]
+        ];
+        const grid = specific.map(([k, v]) => row(k, v)).join('')
+            + `<div class="controls-sub">${t('help.camera')}</div>`
+            + camera.map(([k, v]) => row(k, v)).join('');
+        const el = document.createElement('div');
+        el.className = 'controls-overlay';
+        el.id = 'controlsOverlay';
+        el.onclick = (e) => { if (e.target === el) this.hideControlsCard(); };
+        el.innerHTML = `<div class="controls-card">
+                <div class="controls-head"><span>❓ ${t('help.title')}</span><button class="controls-close" onclick="game.ui.hideControlsCard()" aria-label="${t('help.close')}">✕</button></div>
+                <div class="controls-grid">${grid}</div>
+            </div>`;
+        document.body.appendChild(el);
+        this._controlsEsc = (e) => { if (e.key === 'Escape') this.hideControlsCard(); };
+        document.addEventListener('keydown', this._controlsEsc);
+    }
+    hideControlsCard() {
+        const el = document.getElementById('controlsOverlay');
+        if (el) el.remove();
+        if (this._controlsEsc) { document.removeEventListener('keydown', this._controlsEsc); this._controlsEsc = null; }
+    }
+
     // Localize a harness action outcome into the ENTRY'S MODEL language for the log
     // (the "Reassigned…", "Cannot afford…" bodies). Returns null when it can't —
     // English model, no structured code, or that code not translated yet — so the
