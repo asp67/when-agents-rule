@@ -1961,7 +1961,17 @@ class UIManager {
     // flags and unit chests — same per-seat fill, SHAPE and contrast rim,
     // drawn as a tiny inline SVG. Returns '' when the seat is unknown so
     // callers can inline it unconditionally.
+    //
+    // Every caller passes the size it wants for its row; BADGE_UI_SCALE then
+    // multiplies them ALL in one place, so the whole UI's badges resize together
+    // without touching ten call sites. Bumped to 2 because at the base 9–12px the
+    // shapes were hard to tell apart in a same-civ match (e.g. 4× Egypt), where
+    // the seat badge is the ONLY thing distinguishing players. The in-world flags
+    // and unit chests are a separate engine path (EngineUnits.badgeParts) and are
+    // unaffected.
     teamDotHtml(seat, px = 11) {
+        const BADGE_UI_SCALE = 2;
+        px = Math.round(px * BADGE_UI_SCALE);
         const b = (typeof getTeamBadge === 'function') ? getTeamBadge(seat) : null;
         if (!b) return '';
         const shapes = {
