@@ -1828,7 +1828,7 @@ class UIManager {
         el.id = 'controlsOverlay';
         el.onclick = (e) => { if (e.target === el) this.hideControlsCard(); };
         el.innerHTML = `<div class="controls-card">
-                <div class="controls-head"><span>❓ ${t('help.title')}</span><button class="controls-close" onclick="game.ui.hideControlsCard()" aria-label="${t('help.close')}">✕</button></div>
+                <div class="controls-head"><span>${t('help.title')}</span><button class="controls-close" onclick="game.ui.hideControlsCard()" aria-label="${t('help.close')}">✕</button></div>
                 <div class="controls-grid">${grid}</div>
             </div>`;
         document.body.appendChild(el);
