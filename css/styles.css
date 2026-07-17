@@ -697,7 +697,16 @@ body.spectator-mode #unitInfo.spectator-card {
    from ui.teamDotHtml; the rim keeps every fill legible on any background. */
 .team-dot {
     display: inline-block;
-    vertical-align: -1px;
+    /* Center the badge in EVERY context in one place. The old fixed -1px nudge was
+       tuned for a ~10px badge; at the doubled size it left the badge riding high.
+       vertical-align:middle centers it in inline rows (winner / summary cards);
+       align-self:center centers it in flex rows regardless of the row's own
+       align-items — the decision log uses align-items:baseline, which pinned the
+       badge's bottom to the text baseline and shoved it upward (the "all over the
+       place, shifted up" look). Leaderboard rows already center, so they're
+       unchanged. */
+    vertical-align: middle;
+    align-self: center;
     flex: 0 0 auto;
 }
 

@@ -1974,6 +1974,12 @@ class UIManager {
         px = Math.round(px * BADGE_UI_SCALE);
         const b = (typeof getTeamBadge === 'function') ? getTeamBadge(seat) : null;
         if (!b) return '';
+        // On the dark dashboard a near-black rim (#222222) sinks into the backdrop,
+        // so a LIGHT-filled badge (white square, ice diamond, amber cross) looked
+        // like its outline vanished on some edges — a false shift in size/shape.
+        // Lift that one rim to a ~66% gray for the UI only. The in-world flags keep
+        // the true near-black rim: they sit on bright terrain, where it reads fine.
+        const rim = (b.rim === '#222222') ? '#575757' : b.rim;
         const shapes = {
             circle: '<circle cx="12" cy="12" r="8.5"/>',
             square: '<rect x="4.5" y="4.5" width="15" height="15"/>',
@@ -1982,7 +1988,7 @@ class UIManager {
             star: '<path d="M12 1 L14.6 9.4 L23 12 L14.6 14.6 L12 23 L9.4 14.6 L1 12 L9.4 9.4 Z"/>',
             cross: '<path d="M5.2 2 L12 8.8 L18.8 2 L22 5.2 L15.2 12 L22 18.8 L18.8 22 L12 15.2 L5.2 22 L2 18.8 L8.8 12 L2 5.2 Z"/>'
         };
-        return `<svg class="team-dot" style="width:${px}px;height:${px}px" viewBox="0 0 24 24" fill="${b.fill}" stroke="${b.rim}" stroke-width="2.4" stroke-linejoin="round"><title>${t('ui.teamColor')}</title>${shapes[b.shape] || shapes.circle}</svg>`;
+        return `<svg class="team-dot" style="width:${px}px;height:${px}px" viewBox="0 0 24 24" fill="${b.fill}" stroke="${rim}" stroke-width="2.4" stroke-linejoin="round"><title>${t('ui.teamColor')}</title>${shapes[b.shape] || shapes.circle}</svg>`;
     }
 
     // Lighten very dark civ colors (e.g. Yamato navy) so text/accents stay
