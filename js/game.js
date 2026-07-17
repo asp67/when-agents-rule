@@ -212,6 +212,9 @@ class Game {
         this.terrain.difficulty = this.difficulty;
         this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || null; // same seed = same map
         this.mapSeed = this.terrain.seed;
+        // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
+        // generator needs the spawns before it runs (they are already computed above).
+        this.terrain.spawns = spawnPositions;
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 
@@ -365,6 +368,9 @@ class Game {
         this.terrain.difficulty = this.difficulty;
         this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || null; // same seed = same map
         this.mapSeed = this.terrain.seed;
+        // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
+        // generator needs the spawns before it runs (they are already computed above).
+        this.terrain.spawns = spawnPositions;
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 

@@ -24,6 +24,8 @@ class TerrainManager {
         this.resources = [];
         this.difficulty = 'easy'; // set by the game before each regenerate
         this.seed = null;         // optional map seed: same seed => same resource layout
+        this.spawns = [];         // Town Center positions, set by the game BEFORE generateTerrain:
+                                  // scatterRotational rotates one sector onto each of them
         this.generateTerrain();
     }
 
@@ -68,21 +70,27 @@ class TerrainManager {
         // (terrain mega-texture flecks replace the old instanced prop scatter).
     }
 
-    // Fairness scatter: the map is split into a 3×3 grid of equal tiles and
-    // EVERY tile receives the SAME number of nodes of the given type, placed
-    // uniformly within it. (Deliberately coarser than the 7×7 exploration
-    // grid the models see — 3×3 is about spawn fairness, not scouting.) This replaces two sources of imbalance: the old
-    // polar wedge scatter (uniform in radius → density ∝ 1/r, which piled
-    // food and wood into the map center) and the one-roll-for-the-whole-map
-    // stone scatter whose variance could starve a quadrant. A map seed still
-    // reproduces the exact layout.
+    // Fairness scatter for the PLENTIFUL types (food, wood): the map is split
+    // into a 7×7 grid of equal tiles and EVERY tile receives the SAME number of
+    // nodes, placed uniformly within it. Matches the 7×7 grid the models already
+    // reason about when exploring. A map seed still reproduces the exact layout.
+    //
+    // Was 3×3. Counts were equal per tile even then, but a 240-unit tile left so
+    // much room for the within-tile roll that two players could still draw very
+    // different hauls at the same distance from home — the residual randomness
+    // that flawed same-civ arena results. A 102-unit tile cuts that jitter to
+    // roughly a third. (The 3×3 itself had replaced a polar wedge scatter that
+    // drew radius uniformly — density ∝ 1/r — and piled everything into the map
+    // centre; see scatterRotational, which fixes that sampling rather than
+    // abandoning the idea.)
     scatterEqual(type, totalCount, amount) {
         const margin = 40;                 // keep off the beach ring
         const usable = this.size - margin * 2;
-        const tile = usable / 3;
-        const per = Math.max(1, Math.round(totalCount / 9));
-        for (let tx = 0; tx < 3; tx++) {
-            for (let tz = 0; tz < 3; tz++) {
+        const G = 7;
+        const tile = usable / G;
+        const per = Math.max(1, Math.round(totalCount / (G * G)));
+        for (let tx = 0; tx < G; tx++) {
+            for (let tz = 0; tz < G; tz++) {
                 const x0 = -usable / 2 + tx * tile;
                 const z0 = -usable / 2 + tz * tile;
                 for (let i = 0; i < per; i++) {
@@ -95,10 +103,65 @@ class TerrainManager {
         }
     }
 
+    // Fairness placement for the SCARCE types (stone, gold). Two dozen nodes
+    // cannot fill 49 cells at any player count: forcing gold onto the grid would
+    // have meant one per cell — 45 nodes, as many as Desert has food bushes. Gold
+    // would stop being worth fighting over, and the Wonder runs on gold.
+    //
+    // Their equality is not per-CELL but per-PLAYER: lay `k` nodes in one player's
+    // sector and rotate that sector onto every other. Spawns sit evenly spaced on
+    // a circle, so one rotation maps a player's surroundings onto the next
+    // player's node for node — same count, same radii, same angles. total = N*k is
+    // EXACTLY equal for any N, needs no divisibility, and leaves the counts at
+    // their intended 40 / 18 instead of inflating them.
+    //
+    // Radius is drawn as r = √(rMin² + u·(R² − rMin²)) — uniform by AREA. Drawing
+    // r uniformly (density ∝ 1/r) is precisely the bug that discredited the old
+    // wedge scatter: the idea was sound, the sampling wasn't.
+    //
+    // The keep-out is a RADIUS around every Town Center, not a list of grid cells:
+    // spawns move with the player count (they are a circle, not four fixed
+    // squares), so a hardcoded cell list only ever matched the 4-player case.
+    // Testing against all spawns stays rotation-invariant, because rotating by one
+    // sector maps the spawn set onto itself.
+    scatterRotational(type, totalCount, amount) {
+        const spawns = (this.spawns && this.spawns.length) ? this.spawns : null;
+        if (!spawns) return this.scatterEqual(type, totalCount, amount); // no match context: grid it
+        const N = spawns.length;
+        const per = Math.max(1, Math.round(totalCount / N));
+        const R = this.size / 2 - 40;   // same usable radius the grid's box spans
+        const rMin = 60;                // nothing on the map's navel
+        const KEEPOUT = 95;             // no stone/gold this close to ANY Town Center
+        const sector = (Math.PI * 2) / N;
+        const a0 = Math.atan2(spawns[0].z, spawns[0].x);
+        const tooClose = (x, z) => spawns.some(s => Math.hypot(x - s.x, z - s.z) < KEEPOUT);
+        for (let i = 0; i < per; i++) {
+            let r = rMin, t = a0;
+            for (let tries = 0; tries < 60; tries++) {
+                const u = this.rand();
+                r = Math.sqrt(rMin * rMin + u * (R * R - rMin * rMin));
+                t = a0 + (this.rand() - 0.5) * sector;
+                if (!tooClose(Math.cos(t) * r, Math.sin(t) * r)) break;
+            }
+            for (let p = 0; p < N; p++) {   // …and every player gets the same node
+                const ang = t + p * sector;
+                this.resources.push({
+                    type, x: Math.cos(ang) * r, z: Math.sin(ang) * r,
+                    amount, mesh: this._handle(type), health: amount
+                });
+            }
+        }
+    }
+
     generateResources() {
-        // Food (berry bushes): ~272 at full strength, scaled by the difficulty's
-        // food multiplier (Winter -50%, Desert -75%), equal per 3×3 tile.
-        this.scatterEqual('food', 272 * this.diffMods().food, 500);
+        // Food (berry bushes): base 196 → 392 / 98 / 49 nodes, EXACT on the 49-cell
+        // grid at every difficulty (8 / 2 / 1 per tile — the old 272 base divided
+        // into neither 9 nor 49, so the rounding quietly overshot Winter and
+        // undershot Desert). Deliberately scarcer than before: bushes alone no
+        // longer carry a match, which turns farms from a nicety into a real
+        // tactical choice — and on Desert (114% of the food needed to reach Iron)
+        // into a requirement.
+        this.scatterEqual('food', 196 * this.diffMods().food, 500);
     }
 
     // Remove a single resource node (its handle just goes with it).
@@ -131,22 +194,29 @@ class TerrainManager {
     }
 
     generateTrees() {
-        // Wood (trees): ~640 at full strength, scaled by the difficulty's wood
-        // multiplier (Desert -75%), equal per 3×3 tile.
-        this.scatterEqual('wood', 640 * this.diffMods().wood, 300);
+        // Wood (trees): base 784 → 784 / 784 / 196, EXACT on the grid (16 / 16 / 4
+        // per tile). Up from 640: wood was never the binding constraint (5300 buys
+        // every age-up against ~58k available), it pairs with the food cut to make
+        // farms affordable, and it costs nothing to draw — the map's total node
+        // budget is flat at ~1236, the same as before. It just reads greener.
+        this.scatterEqual('wood', 784 * this.diffMods().wood, 300);
     }
 
     generateStones() {
-        // Stone: ~40 at full strength (Desert -50%), equal per 3×3 tile — the
-        // old single uniform roll could leave a whole quadrant stone-poor.
-        this.scatterEqual('stone', 40 * this.diffMods().stone, 1000);
+        // Stone: base 40 (Desert -50%), placed ROTATIONALLY — every player gets the
+        // same stone at the same distances. Count is unchanged; the 3×3 grid used to
+        // round 40/9 → 4 and deliver only 36, so this also repays the 4 nodes that
+        // rounding had been quietly eating.
+        this.scatterRotational('stone', 40 * this.diffMods().stone, 1000);
     }
 
     generateGold() {
-        // Gold is crucial (the Wonder runs on it): exactly two nodes in every
-        // 3×3 tile (18 total — the old 4×4 grid had 16, close enough that the
-        // economy balance holds, and equality is worth the two extra nodes).
-        this.scatterEqual('gold', 18, 2000);
+        // Gold is the Wonder's fuel and the one thing worth fighting a war over, so
+        // it stays SCARCE at 18 — rotational placement makes every player's share
+        // identical without diluting it. On the 49-cell grid the smallest equal
+        // share would have been one per cell: 45 nodes, as many as Desert has food
+        // bushes. Equal, and worthless.
+        this.scatterRotational('gold', 18, 2000);
     }
 
     getTerrainHeight(x, z) {

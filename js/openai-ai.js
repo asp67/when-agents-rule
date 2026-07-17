@@ -1056,7 +1056,8 @@ class OpenAIAIManager {
     // stores THIS text (ui.getArenaDefaultPrompt delegates here), per-slot edits
     // override it, and buildSystemPrompt() falls back to it — so the prompt the
     // user reads in the textarea is exactly the prompt the harness serves.
-    // Placeholders resolved at match time: {{civilization}}, {{bonus}}, {{players}}.
+    // Placeholders resolved at match time: {{civilization}}, {{bonus}}, {{players}},
+    // {{terrain}} (the difficulty preset's map brief — summer / winter / desert).
     //
     // Design: rules of the WORLD, not a strategy recipe. The prompt states what
     // exists, what things do and how they interact; the live state JSON says what
@@ -1079,6 +1080,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 ## The world (fixed rules)
 - FOG: you see only near your own units/buildings. "resourcesOnMap" and "enemyBuildings" are remembered discoveries (each enemy building carries "visible": true = in sight now, false = last known spot; both are attackable). "enemyUnits" lists only enemies in sight RIGHT NOW. Exception: rival Wonders are always visible ("threats.enemyWonders", with secondsUntilEnemyWins — a finished rival Wonder ends the game).
 - All {{players}} players start far apart, evenly spaced around the map edge ("map.bounds", centred on 0,0). Your rivals are never beside you — they are found by scouting toward the far parts of the map.
+- {{terrain}} Stone and gold are placed so that every player's share is identical in count and distance, and none sits beside a Town Center; food and wood are spread evenly across the whole map. Where you started is neither an advantage nor an excuse.
 - "map.exploration" is a 7x7 grid scoring how much of each map tile you have ever seen (0-100%): exploration[row][col], row 0 = the NORTH edge, col 0 = the WEST edge. Each tile is ~114 units wide; the centre of tile [row][col] is x=(col-3)*114.3, z=(row-3)*114.3 — e.g. [0][0] → (-343,-343) NW corner, [3][3] → (0,0) map centre, [6][6] → (343,343) SE corner. Low percentages are dark ground — send explore there to find resources and rivals instead of re-scouting known land. Cavalry units see 50% farther than everything else, making them the best scouts.
 - "gameStats.opponents" lists every rival. Civilization and epoch are ALWAYS known (heralds announce age-ups). Army and building counts are scouting rewards: they appear only once you have DISCOVERED that rival ("discovered": true after you have seen any of its units or buildings) — size up an unknown rival by scouting, not by assumption.
 - "threats.underAttack" lists your units/buildings taking fire right now, with "attackerAt" coordinates. Idle military auto-defend your home (workers only as a last resort, when you have no army) — EXCEPT when your WONDER is attacked: that is all hands on deck, every worker downs tools and fights alongside the army from anywhere on the map, then returns to its job once the raid is repelled. Auto-defense only repels — it never wins the game.
@@ -1143,10 +1145,23 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // The setup UI always passes a prompt (the canonical default, or the
         // user's per-slot edit); the static default is the safety net. Either
         // way the SAME placeholder resolution applies, so custom prompts can
-        // use {{civilization}}/{{bonus}}/{{players}} too.
+        // use {{civilization}}/{{bonus}}/{{players}}/{{terrain}} too.
         const base = (controller && controller.model?.customSystemPrompt)
             ? controller.model.customSystemPrompt
             : OpenAIAIManager.defaultSystemPrompt();
+
+        // The map's character, per difficulty preset. Same principle as the rest of
+        // the prompt: state what the world IS, never what to do about it. The food
+        // presets differ by 8x between Summer and Desert, and bushes alone cannot
+        // reach the Iron age on Desert — noticing that and reaching for farms is
+        // precisely the adaptation the arena is meant to measure, so it is not
+        // spelled out here.
+        const TERRAIN_BRIEF = {
+            easy:   'The playing field is a summer valley: food and wood are both abundant.',
+            medium: 'The playing field is a winter valley: food is scarce; wood and stone are normal.',
+            hard:   'The playing field is a desert valley: food and wood are both extremely scarce, and stone is half as common.'
+        };
+        const terrain = TERRAIN_BRIEF[(this.game && this.game.difficulty)] || TERRAIN_BRIEF.easy;
 
         // Players in THIS match: all AI players, plus the human in campaign mode.
         const players = ((this.game && this.game.aiManager && this.game.aiManager.aiPlayers.length) || 0)
@@ -1156,6 +1171,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             .replace(/\{\{civilization\}\}/g, civ?.name || ai.civilization)
             .replace(/\{\{bonus\}\}/g, civ?.bonus?.description || 'None')
             .replace(/\{\{players\}\}/g, String(players || 2))
+            .replace(/\{\{terrain\}\}/g, terrain)
             + langDirective;
     }
 

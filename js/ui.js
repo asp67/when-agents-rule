@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v25';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v26';
     }
 
     showScreen(screenId) {
@@ -218,8 +218,8 @@ class UIManager {
     // Get default system prompt for Arena players
     // Canonical default LLM prompt: the single source of truth lives in
     // OpenAIAIManager.defaultSystemPrompt(), so the text shown and stored here is
-    // exactly what the harness serves. Placeholders {{civilization}}, {{bonus}}
-    // and {{players}} are resolved per match when the prompt is built.
+    // exactly what the harness serves. Placeholders {{civilization}}, {{bonus}},
+    // {{players}} and {{terrain}} are resolved per match when the prompt is built.
     getArenaDefaultPrompt() {
         return OpenAIAIManager.defaultSystemPrompt();
     }
