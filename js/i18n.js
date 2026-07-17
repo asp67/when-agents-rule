@@ -1330,21 +1330,95 @@ try {
     if (saved && I18N[saved]) _uiLang = saved;
 } catch (e) {}
 
-function t(key, vars) {
-    const dict = I18N[_uiLang] || I18N.en;
+// Render a UI key in an EXPLICIT language (not the global UI language). The
+// decision log uses this to show a model's action outcome in THAT model's chosen
+// language while the rest of the UI stays in the viewer's language.
+function tIn(lang, key, vars) {
+    const dict = I18N[lang] || I18N.en;
     let s = (dict[key] != null) ? dict[key] : (I18N.en[key] != null ? I18N.en[key] : key);
     if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
     return s;
 }
-// Translate a piece of game CONTENT (a German source string from the data files).
-// Returns the source unchanged for German or when no translation exists.
-function tg(str) {
+function t(key, vars) { return tIn(_uiLang, key, vars); }
+// True when a key actually exists for `lang` (not just the English fallback) — the
+// log uses this to decide whether it can localize an outcome or must show the raw
+// English string.
+function hasI18n(lang, key) { return !!(I18N[lang] && I18N[lang][key] != null); }
+// Translate game CONTENT (a German source string) into an EXPLICIT language.
+function tgIn(lang, str) {
     if (str == null) return '';
     str = String(str);
-    if (_uiLang === 'de') return str;
-    const map = I18N_GAME[_uiLang];
+    if (lang === 'de') return str;
+    const map = I18N_GAME[lang];
     return (map && map[str] != null) ? map[str] : str;
 }
+// Translate a piece of game CONTENT (a German source string from the data files).
+// Returns the source unchanged for German or when no translation exists.
+function tg(str) { return tgIn(_uiLang, str); }
+
+// Decision-log OUTCOME templates: the model-language rendering of the harness's
+// action results (the "Reassigned…", "Cannot afford…", "Researching…" bodies).
+// Only de/es/zh — an English-language model shows the raw harness string verbatim
+// (identical to what the model itself receives), so there is no English template
+// to drift out of sync. Merged into I18N so tIn()/hasI18n() find them. Coverage is
+// incremental: an outcome with no code here simply falls back to the English body.
+const I18N_OUTCOMES = {
+    de: {
+        'log.out.reassigned': '{count} Arbeiter zu {res} bei ({x}, {z}) umverteilt ({near}). Abgezogen: {pulled}.',
+        'log.out.notDiscovered': 'Noch kein {res} entdeckt – niemand umverteilt. Ein Kundschafter wurde losgeschickt.',
+        'log.out.farmAllManned': 'Alle {count} Farm(en) sind bereits besetzt – nichts zu tun. Eine Farm wächst nur nach, solange ihr Arbeiter dort steht.',
+        'log.out.farmManned': '{count} Arbeiter zu {count} Farm(en) geschickt. Abgezogen: {pulled}.{remaining}',
+        'log.out.farmLeft': ' {left} Farm(en) bleiben unbesetzt.',
+        'log.out.cannotAfford': '{what} nicht leistbar (benötigt {need}). Vorrätig: {have}.',
+        'log.out.trainWorker': 'Arbeiter wird im Dorfzentrum ({x}, {z}) ausgebildet (~5 s). {food} Nahrung übrig.',
+        'log.out.trainUnit': '{unit} wird bei ({x}, {z}) ausgebildet (~5 s).',
+        'log.out.buildStarted': 'Bau von {building} bei ({x}, {z}) begonnen (~{secs} s).',
+        'log.out.researchStarted': '{tech} wird erforscht (~{secs} s). Nur eine Technologie gleichzeitig.',
+        'log.out.researchedElsewhere': '{tech} wird an einem {host} erforscht, den du nicht hast. Baue ihn zuerst.',
+        'log.out.ageUpStarted': 'Aufstieg in die {age} läuft (~{secs} s).',
+        'log.out.populationLimit': 'Bevölkerungslimit erreicht ({pop}/{max}). Baue Häuser oder ein weiteres Dorfzentrum.',
+        'log.near.tc': 'nächstes Dorfzentrum', 'log.near.target': 'nächste beim Ziel',
+        'res.food': 'Nahrung', 'res.wood': 'Holz', 'res.stone': 'Stein', 'res.gold': 'Gold',
+        'pull.idle': 'Leerlauf', 'pull.scout': 'Kundschafter', 'pull.repair': 'Reparatur', 'pull.farm': 'Farm', 'pull.spare': 'übrig'
+    },
+    es: {
+        'log.out.reassigned': '{count} trabajador(es) reasignados a {res} en ({x}, {z}) ({near}). Retirados: {pulled}.',
+        'log.out.notDiscovered': 'Aún no se ha descubierto {res}; nadie fue reasignado. Se envió un explorador.',
+        'log.out.farmAllManned': 'Las {count} granja(s) ya están atendidas; nada que hacer. Una granja solo regenera comida mientras su trabajador está en ella.',
+        'log.out.farmManned': '{count} trabajador(es) enviados a {count} granja(s). Retirados: {pulled}.{remaining}',
+        'log.out.farmLeft': ' {left} granja(s) siguen sin atender.',
+        'log.out.cannotAfford': 'No puedes permitirte {what} (necesita {need}). Tienes: {have}.',
+        'log.out.trainWorker': 'Entrenando un trabajador en el Centro urbano ({x}, {z}) (~5 s). Quedan {food} de comida.',
+        'log.out.trainUnit': 'Entrenando {unit} en ({x}, {z}) (~5 s).',
+        'log.out.buildStarted': 'Construcción de {building} iniciada en ({x}, {z}) (~{secs} s).',
+        'log.out.researchStarted': 'Investigando {tech} (~{secs} s). Solo una tecnología a la vez.',
+        'log.out.researchedElsewhere': '{tech} se investiga en {host}, que no tienes. Constrúyelo primero.',
+        'log.out.ageUpStarted': 'Avanzando a {age} (~{secs} s).',
+        'log.out.populationLimit': 'Límite de población alcanzado ({pop}/{max}). Construye casas o otro Centro urbano.',
+        'log.near.tc': 'el más cercano a tu Centro urbano', 'log.near.target': 'el más cercano a tu objetivo',
+        'res.food': 'comida', 'res.wood': 'madera', 'res.stone': 'piedra', 'res.gold': 'oro',
+        'pull.idle': 'inactivos', 'pull.scout': 'exploradores', 'pull.repair': 'reparación', 'pull.farm': 'granja', 'pull.spare': 'de reserva'
+    },
+    zh: {
+        'log.out.reassigned': '已将 {count} 名工人重新分配到 ({x}, {z}) 的{res}（{near}）。抽调自：{pulled}。',
+        'log.out.notDiscovered': '尚未发现{res}，未重新分配工人。已派出侦察兵。',
+        'log.out.farmAllManned': '全部 {count} 座农场都已有人耕作，无需操作。农场只有在工人驻守时才会产出食物。',
+        'log.out.farmManned': '已派 {count} 名工人耕作 {count} 座农场。抽调自：{pulled}。{remaining}',
+        'log.out.farmLeft': ' 还有 {left} 座农场无人耕作。',
+        'log.out.cannotAfford': '无法负担{what}（需要 {need}）。你拥有：{have}。',
+        'log.out.trainWorker': '正在镇中心 ({x}, {z}) 训练工人（约 5 秒）。剩余食物 {food}。',
+        'log.out.trainUnit': '正在 ({x}, {z}) 训练{unit}（约 5 秒）。',
+        'log.out.buildStarted': '已在 ({x}, {z}) 开始建造{building}（约 {secs} 秒）。',
+        'log.out.researchStarted': '正在研究{tech}（约 {secs} 秒）。一次只能研究一项。',
+        'log.out.researchedElsewhere': '{tech} 需在你尚未拥有的{host}研究。请先建造它。',
+        'log.out.ageUpStarted': '正在进入{age}（约 {secs} 秒）。',
+        'log.out.populationLimit': '人口已达上限（{pop}/{max}）。请建造房屋或再建一个镇中心。',
+        'log.near.tc': '最靠近你的镇中心', 'log.near.target': '最靠近你的目标',
+        'res.food': '食物', 'res.wood': '木材', 'res.stone': '石头', 'res.gold': '黄金',
+        'pull.idle': '空闲', 'pull.scout': '侦察', 'pull.repair': '维修', 'pull.farm': '农场', 'pull.spare': '闲置'
+    }
+};
+Object.keys(I18N_OUTCOMES).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_OUTCOMES[l]); });
 function getUiLang() { return _uiLang; }
 function setUiLang(lang) {
     if (!I18N[lang]) return;

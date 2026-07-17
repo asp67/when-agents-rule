@@ -1796,6 +1796,57 @@ class UIManager {
         return id;
     }
 
+    // Localize a harness action outcome into the ENTRY'S MODEL language for the log
+    // (the "Reassigned…", "Cannot afford…" bodies). Returns null when it can't —
+    // English model, no structured code, or that code not translated yet — so the
+    // caller shows the raw English body. This is the "game's voice in the model's
+    // language" half; the reason (the model's own words) is already in that language,
+    // and the headline stays in the UI language as chrome.
+    renderOutcome(entry) {
+        const lang = entry && entry.lang;
+        const code = entry && entry.outcomeCode;
+        if (!lang || lang === 'en' || !code) return null;
+        if (typeof hasI18n !== 'function' || !hasI18n(lang, code)) return null;
+        const p = entry.outcomeParams || {};
+        const v = Object.assign({}, p);
+        const EMO = { food: '🍖', wood: '🌲', stone: '🪨', gold: '🥇' };
+        const emojiCost = c => {
+            if (!c) return '—';
+            const parts = ['food', 'wood', 'stone', 'gold'].filter(r => c[r]).map(r => `${EMO[r]}${c[r]}`);
+            return parts.length ? parts.join(' ') : '—';
+        };
+        const resName = r => (hasI18n(lang, 'res.' + r) ? tIn(lang, 'res.' + r) : r);
+        // Pull breakdown {idle:3, wood:2}: resource keys get the resource word, the
+        // rest (idle/scout/repair/farm) their own label; unknown keys pass through.
+        const pulledClause = obj => Object.keys(obj || {}).map(k =>
+            `${obj[k]} ${EMO[k] ? resName(k) : (hasI18n(lang, 'pull.' + k) ? tIn(lang, 'pull.' + k) : k)}`
+        ).join(', ') || '—';
+        switch (code) {
+            case 'log.out.reassigned':
+                v.res = resName(p.res); v.near = tIn(lang, 'log.near.' + (p.near || 'tc')); v.pulled = pulledClause(p.pulled); break;
+            case 'log.out.notDiscovered':
+                v.res = resName(p.res); break;
+            case 'log.out.farmManned':
+                v.pulled = pulledClause(p.pulled);
+                v.remaining = (p.left > 0) ? tIn(lang, 'log.out.farmLeft', { left: p.left }) : ''; break;
+            case 'log.out.cannotAfford':
+                v.what = p.age ? tIn(lang, 'age.' + p.age) : tgIn(lang, p.whatName || '');
+                v.need = emojiCost(p.need); v.have = emojiCost(p.have); break;
+            case 'log.out.trainUnit':
+                v.unit = tgIn(lang, p.unitName || ''); break;
+            case 'log.out.buildStarted':
+                v.building = tgIn(lang, p.buildingName || ''); break;
+            case 'log.out.researchStarted':
+                v.tech = tgIn(lang, p.techName || ''); break;
+            case 'log.out.researchedElsewhere':
+                v.tech = tgIn(lang, p.techName || ''); v.host = tgIn(lang, p.hostName || ''); break;
+            case 'log.out.ageUpStarted':
+                v.age = tIn(lang, 'age.' + p.age); break;
+            // trainWorker / farmAllManned / populationLimit: params already primitive
+        }
+        return tIn(lang, code, v);
+    }
+
     updateDecisionLog() {
         const entriesEl = document.getElementById('aiLogEntries');
         const countEl = document.getElementById('aiLogCount');
@@ -1880,6 +1931,8 @@ class UIManager {
                 : hasTarget ? ` (→ ${Math.round(p.targetX)}, ${Math.round(p.targetZ)})`
                 : '';
             const isError = entry.failed || (typeof entry.action === 'string' && (entry.action.includes('failed') || entry.action.includes('⚠')));
+            // The outcome body in the model's language (null → raw English fallback).
+            const locOutcome = this.renderOutcome(entry);
 
             html += `
                 <div class="ai-log-entry${isError ? ' is-error' : ''}${newCls}" data-key="${key}" style="border-left-color: ${civColor}">
@@ -1890,8 +1943,8 @@ class UIManager {
                         <span class="log-action">${actionLabel}${this.escapeHtml(detail)}${entry.failed ? ` <span class="log-x">✗ ${t('log.rejected')}</span>` : ''}</span>
                     </div>
                     ${entry.reason ? `<span class="log-reason">“${this.escapeHtml(entry.reason)}”</span>` : ''}
-                    ${entry.failed && entry.error ? `<span class="log-error">⚠ ${this.escapeHtml(entry.error)}</span>` : ''}
-                    ${!entry.failed && !entry.reason && entry.result ? `<span class="log-outcome">${this.escapeHtml(entry.result.replace(/^OK\s*-\s*/, ''))}</span>` : ''}
+                    ${entry.failed && (locOutcome || entry.error) ? `<span class="log-error">⚠ ${this.escapeHtml(locOutcome || entry.error)}</span>` : ''}
+                    ${!entry.failed && !entry.reason && (locOutcome || entry.result) ? `<span class="log-outcome">${this.escapeHtml(locOutcome || entry.result.replace(/^OK\s*-\s*/, ''))}</span>` : ''}
                 </div>
             `;
         });

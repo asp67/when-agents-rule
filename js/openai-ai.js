@@ -56,9 +56,34 @@ class OpenAIAIManager {
         ['food', 'wood', 'stone', 'gold'].forEach(r => { if (cost && cost[r]) parts.push(`${cost[r]} ${r}`); });
         return parts.length ? parts.join(', ') : 'nothing';
     }
+    // Record a structured, localizable version of the outcome the decision log will
+    // show in the MODEL's language. The English string the caller RETURNS is
+    // unchanged and still goes to the model verbatim — this is display-only
+    // metadata, read once per action in executeAction. Covered outcomes call this
+    // right before returning; uncovered ones don't, and the log falls back to the
+    // English text. See ui.renderOutcome / I18N_OUTCOMES.
+    outcome(code, params) { this._pendingOutcome = { code, params: params || {} }; return true; }
     haveString(ai) {
         const r = ai.resources;
         return `${Math.floor(r.food)} food, ${Math.floor(r.wood)} wood, ${Math.floor(r.stone)} stone, ${Math.floor(r.gold)} gold`;
+    }
+    // Stock as a {food,wood,stone,gold} object — the localized log renders it as
+    // language-neutral emoji, so no resource words to translate.
+    haveObj(ai) {
+        const r = ai.resources;
+        return { food: Math.floor(r.food), wood: Math.floor(r.wood), stone: Math.floor(r.stone), gold: Math.floor(r.gold) };
+    }
+    // Convert a worker "pulledFrom" label map (idle / scouting / repairing / farming
+    // / spare / "from wood") into the {idle,scout,repair,farm,spare,<resource>} shape
+    // the log localizes (resource keys → the resource word, the rest → a pull label).
+    pulledCounts(pulledFrom) {
+        const out = {};
+        Object.keys(pulledFrom || {}).forEach(k => {
+            const key = k === 'scouting' ? 'scout' : k === 'repairing' ? 'repair' : k === 'farming' ? 'farm'
+                : k.startsWith('from ') ? k.slice(5) : k;
+            out[key] = (out[key] || 0) + pulledFrom[k];
+        });
+        return out;
     }
     // Which building type trains a given unit (for precise "build X first" messages)
     requiredBuildingForUnit(unitType) {
@@ -1800,6 +1825,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             failed: false,
             error: null
         };
+        // The log renders this entry's outcome body in the MODEL's language; record
+        // which language, and clear any structured outcome from the previous action.
+        logEntry.lang = (controller && controller.model && controller.model.language) || 'en';
+        this._pendingOutcome = null;
         this.decisionLog.unshift(logEntry);
         // Trim log
         if (this.decisionLog.length > this.maxLogEntries) {
@@ -1955,6 +1984,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // while preserving the "why" across a multi-step plan.
         if (actionResult) {
             logEntry.result = actionResult; // so the spectator log can show the outcome
+            // Attach the structured outcome a covered handler recorded, for the log's
+            // model-language rendering (the English `result`/`error` remain the fallback).
+            if (this._pendingOutcome) {
+                logEntry.outcomeCode = this._pendingOutcome.code;
+                logEntry.outcomeParams = this._pendingOutcome.params;
+                this._pendingOutcome = null;
+            }
             controller.conversationHistory.push({
                 action: action,
                 reason: (params && params.reason) ? String(params.reason) : '',
@@ -2032,12 +2068,14 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // Check population limit before training worker
         if (ai.resources.population >= ai.resources.maxPopulation) {
             console.log(`[OpenAIAI] ${ai.id}: Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation})`);
+            this.outcome('log.out.populationLimit', { pop: Math.floor(ai.resources.population), max: ai.resources.maxPopulation });
             return `[ERROR] Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation}). ${this.popCapAdvice(ai)}`;
         }
 
         const workerDef = getUnitDef('worker');
         if (!ai.resources.hasResources(workerDef.cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford worker`);
+            this.outcome('log.out.cannotAfford', { whatName: 'Dorfbewohner', need: workerDef.cost, have: this.haveObj(ai) });
             return `[ERROR] Cannot afford a worker (needs ${this.costString(workerDef.cost)}). You have ${this.haveString(ai)}.`;
         }
 
@@ -2048,6 +2086,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         tc.productionDuration = 5000;
         tc.productionProgress = 0;
         console.log(`[OpenAIAI] ${ai.id}: Training worker at Town Center (${Math.round(tc.x)}, ${Math.round(tc.z)})`);
+        this.outcome('log.out.trainWorker', { x: Math.round(tc.x), z: Math.round(tc.z), food: Math.floor(ai.resources.food) });
         return `OK - Training a worker at the Town Center (${Math.round(tc.x)}, ${Math.round(tc.z)}) (~5s to produce; ${Math.floor(ai.resources.food)} food left). That Town Center is busy until it finishes.${note}`;
     }
 
@@ -2107,6 +2146,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // 3) POPULATION (structural train-time gate).
         if (ai.resources.population >= ai.resources.maxPopulation) {
             console.log(`[OpenAIAI] ${ai.id}: Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation})`);
+            this.outcome('log.out.populationLimit', { pop: Math.floor(ai.resources.population), max: ai.resources.maxPopulation });
             return `[ERROR] Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation}). ${this.popCapAdvice(ai)}`;
         }
 
@@ -2120,6 +2160,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // 5) RESOURCES.
         if (!ai.resources.hasResources(unitDef.cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${unitType}`);
+            this.outcome('log.out.cannotAfford', { whatName: unitDef.name, need: unitDef.cost, have: this.haveObj(ai) });
             return `[ERROR] Cannot afford ${unitType} (needs ${this.costString(unitDef.cost)}). You have ${this.haveString(ai)}.`;
         }
 
@@ -2132,6 +2173,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         free.productionDuration = 5000;
         free.productionProgress = 0;
         console.log(`[OpenAIAI] ${ai.id}: Training ${unitType} at ${free.name} (${Math.round(free.x)}, ${Math.round(free.z)})`);
+        this.outcome('log.out.trainUnit', { unitName: unitDef.name, x: Math.round(free.x), z: Math.round(free.z) });
         return `OK - Training ${unitType} at ${free.name} (${Math.round(free.x)}, ${Math.round(free.z)}) (~5s to produce; that building is busy until it finishes).${note}`;
     }
 
@@ -2190,8 +2232,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 const hasMarketTech = !!ai.researchedTechs['marketTech'];
                 const step = hasMarketTech ? 'build a Market (build_structure "market") and wait for it to finish'
                     : 'first research "marketTech", then build a Market and wait for it to finish';
+                this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
                 return `[ERROR] "${techId}" is researched at a Market, which you don't have. To enable it: ${step}.`;
             }
+            this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
             return `[ERROR] "${techId}" is researched at a finished ${hostType}, which you don't have. Build it first (build_structure "${hostType}"), then research again.`;
         }
 
@@ -2205,6 +2249,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         if (!ai.resources.hasResources(adjustedCost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford tech "${techId}"`);
+            this.outcome('log.out.cannotAfford', { whatName: tech.name, need: adjustedCost, have: this.haveObj(ai) });
             return `[ERROR] Cannot afford tech "${techId}" (needs ${this.costString(adjustedCost)}). You have ${this.haveString(ai)}.`;
         }
 
@@ -2216,6 +2261,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         };
         console.log(`[OpenAIAI] ${ai.id}: Researching "${tech.name}" (${techId})`);
         const researchSecs = Math.round((tech.researchTime || 15000) / 1000);
+        this.outcome('log.out.researchStarted', { techName: tech.name, secs: researchSecs });
         return `OK - Researching "${techId}" — ~${researchSecs}s to complete. Only one tech at a time; don't re-issue until "research.current" is empty (it shows secondsRemaining).`;
     }
 
@@ -2237,6 +2283,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const cost = AGE_COSTS[nextAge];
         if (!ai.resources.hasResources(cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford upgrade to ${nextAge}`);
+            this.outcome('log.out.cannotAfford', { age: nextAge, need: cost, have: this.haveObj(ai) });
             return `[ERROR] Cannot afford the upgrade to ${nextAge} (needs ${this.costString(cost)}). You have ${this.haveString(ai)}.`;
         }
 
@@ -2248,6 +2295,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         };
         console.log(`[OpenAIAI] ${ai.id}: Upgrading to ${nextAge}`);
         const ageSecs = Math.round((ai.currentAgeUpgrade.duration || 30000) / 1000);
+        this.outcome('log.out.ageUpStarted', { age: nextAge, secs: ageSecs });
         return `OK - Advancing to the ${nextAge} age — ~${ageSecs}s to complete. Keep developing meanwhile; "epoch.upgradeInProgress" shows secondsRemaining, so don't re-issue upgrade_age until it is done.`;
     }
 
@@ -2282,6 +2330,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         if (!ai.resources.hasResources(buildingDef.cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${buildingType}`);
+            this.outcome('log.out.cannotAfford', { whatName: buildingDef.name, need: buildingDef.cost, have: this.haveObj(ai) });
             return `[ERROR] Cannot afford ${buildingType} (needs ${this.costString(buildingDef.cost)}). You have ${this.haveString(ai)}.`;
         }
 
@@ -2336,6 +2385,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         console.log(`[OpenAIAI] ${ai.id}: Started ${buildingDef.name} at (${Math.round(x)}, ${Math.round(z)})`);
         const secs = Math.round((building.buildTime || 10000) / 1000);
+        this.outcome('log.out.buildStarted', { buildingName: buildingDef.name, x: Math.round(x), z: Math.round(z), secs });
         return pick.restore
             ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.`
             : `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).`;
@@ -2990,6 +3040,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
         const open = farms.filter(f => !game.farmFarmer(f));
         if (open.length === 0) {
+            this.outcome('log.out.farmAllManned', { count: farms.length });
             return `OK - All ${farms.length} of your farm(s) are already manned; nothing to do. A farm only regrows food while its worker stands on it.`;
         }
 
@@ -3051,6 +3102,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const left = open.length - manned;
         const short = left > 0 ? ` ${left} farm(s) still stand unmanned — you ran out of spare workers.` : '';
+        this.outcome('log.out.farmManned', { count: manned, pulled: this.pulledCounts(pulledFrom), left: Math.max(0, open.length - manned) });
         return `OK - Sent ${manned} worker(s) to man ${manned} farm(s) — pulled: ${src}. Each regrows food only while its worker stays on it.${short}`;
     }
 
@@ -3075,6 +3127,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (discovered.length === 0) {
             const msg = this.dispatchScoutToward(ai, game);
             const have = this.discoveredResourceSummary(ai, game);
+            this.outcome('log.out.notDiscovered', { res: resourceType });
             return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. ${msg} Once it appears in "resourcesOnMap", call assign_workers again. Don't keep re-issuing it meanwhile.`;
         }
 
@@ -3151,6 +3204,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         }
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const short = moved < count ? ` Fewer than requested: the others are constructing or fighting (never pulled), already on ${resourceType}, or you don't have that many workers.` : '';
+        this.outcome('log.out.reassigned', { count: moved, res: resourceType, x: Math.round(node.x), z: Math.round(node.z), near: (gaveX || gaveZ) ? 'target' : 'tc', pulled: this.pulledCounts(pulledFrom) });
         return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${short}`;
     }
 
