@@ -1256,9 +1256,15 @@
         // Floating civ name plate above Town Centers (canvas → texture, cached
         // per civ) — the spectator's whose-base-is-whose anchor.
         _bannerFor(building) {
-            const key = building.civilization || 'x';
+            const civId = building.civilization || 'x';
+            // Cache per (civ, SEAT), not per civ: with two seats on the same civ (a
+            // 4× Egypt arena) a civ-only key gave every Town Center one identical
+            // banner, so the map couldn't tell them apart — the exact problem the
+            // seat badge on this banner now solves.
+            const seat = building.seat != null ? building.seat : '?';
+            const key = civId + ':' + seat;
             if (this._bannerTex.has(key)) return this._bannerTex.get(key);
-            const civ = (typeof getCivilization === 'function') ? getCivilization(key) : null;
+            const civ = (typeof getCivilization === 'function') ? getCivilization(civId) : null;
             if (!civ) return null;
             const c = document.createElement('canvas');
             c.width = 256; c.height = 64;
@@ -1274,12 +1280,20 @@
             ctx.lineTo(r, 61); ctx.arcTo(3, 61, 3, 61 - r, r);
             ctx.lineTo(3, 3 + r); ctx.arcTo(3, 3, 3 + r, 3, r);
             ctx.closePath(); ctx.fill(); ctx.stroke();
-            const name = (typeof t === 'function' ? t('civ.' + key + '.name') : null) || civ.name || key;
-            ctx.font = 'bold 30px sans-serif';
+            // Seat badge at the left; the civ name fills the rest, shrinking to fit
+            // beside it so it never collides with the mark or the border.
+            const hasBadge = typeof drawTeamBadgeOnCanvas === 'function' && building.seat != null;
+            if (hasBadge) drawTeamBadgeOnCanvas(ctx, building.seat, 36, 32, 44, true);
+            const name = (typeof t === 'function' ? t('civ.' + civId + '.name') : null) || civ.name || civId;
+            const nameLeft = hasBadge ? 62 : 12, nameRight = 250;
+            const cx = (nameLeft + nameRight) / 2, maxW = nameRight - nameLeft;
+            let fs = 30;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillStyle = colHex;
-            ctx.fillText(name, 128, 34);
+            ctx.font = `bold ${fs}px sans-serif`;
+            while (fs > 16 && ctx.measureText(name).width > maxW) { fs -= 2; ctx.font = `bold ${fs}px sans-serif`; }
+            ctx.fillText(name, cx, 34);
             const tex = GLCore.createTextureFromCanvas(this.gl, c, { clamp: true, nomip: true });
             this._bannerTex.set(key, tex);
             return tex;

@@ -884,3 +884,45 @@ function getTeamBadge(seat) {
     if (seat == null || seat < 0) return null;
     return TEAM_BADGES[seat % TEAM_BADGES.length];
 }
+
+// SVG path data for each badge SHAPE, in a 24×24 box. SINGLE SOURCE, shared by the
+// DOM chip (ui.teamDotHtml) and the 2D-canvas drawer below (the Town Center map
+// banner), so the marks can never drift apart between the UI and the world label.
+// The circle is expressed as two arcs so every shape is one uniform <path>/Path2D.
+const TEAM_BADGE_SHAPES = {
+    circle:   'M3.5 12 A8.5 8.5 0 1 1 20.5 12 A8.5 8.5 0 1 1 3.5 12 Z',
+    square:   'M4.5 4.5 H19.5 V19.5 H4.5 Z',
+    triangle: 'M12 3 L21.5 20.5 L2.5 20.5 Z',
+    diamond:  'M12 2 L22 12 L12 22 L2 12 Z',
+    star:     'M12 1 L14.6 9.4 L23 12 L14.6 14.6 L12 23 L9.4 14.6 L1 12 L9.4 9.4 Z',
+    cross:    'M5.2 2 L12 8.8 L18.8 2 L22 5.2 L15.2 12 L22 18.8 L18.8 22 L12 15.2 L5.2 22 L2 18.8 L8.8 12 L2 5.2 Z'
+};
+
+// The rim to use on a DARK backdrop. The near-black #222222 rim (square, diamond,
+// cross) sinks into a dark panel, so a light-filled badge looks edge-shifted; lift
+// it to a ~66% gray. Used by the UI chip and the banner (both dark); the in-world
+// flags/unit chests keep the true rim — they sit on bright terrain.
+function teamBadgeRimOnDark(badge) {
+    return (badge && badge.rim === '#222222') ? '#575757' : (badge ? badge.rim : '#000000');
+}
+
+// Draw a seat's team badge centered at (cx,cy) at `size` px onto a 2D canvas — the
+// world twin of ui.teamDotHtml, used on the Town Center banner. onDark lifts the
+// near-black rim as above (the banner's backdrop is a dark plate).
+function drawTeamBadgeOnCanvas(ctx, seat, cx, cy, size, onDark = true) {
+    const b = getTeamBadge(seat);
+    if (!b || !ctx || typeof Path2D === 'undefined') return;
+    const d = TEAM_BADGE_SHAPES[b.shape] || TEAM_BADGE_SHAPES.circle;
+    const s = size / 24;
+    ctx.save();
+    ctx.translate(cx - 12 * s, cy - 12 * s);
+    ctx.scale(s, s);
+    const p = new Path2D(d);
+    ctx.fillStyle = b.fill;
+    ctx.fill(p);
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 2.4;                       // in 24-box units, so it scales with s — matches the SVG chip
+    ctx.strokeStyle = onDark ? teamBadgeRimOnDark(b) : b.rim;
+    ctx.stroke(p);
+    ctx.restore();
+}

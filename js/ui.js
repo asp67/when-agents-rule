@@ -1059,14 +1059,18 @@ class UIManager {
     updateUnitInfo(unit, building) {
         const infoDiv = document.getElementById('unitInfo');
         const spectator = this.game && this.game.spectatorMode;
-        // In spectator every entity belongs to a rival civ — badge it in the
-        // civ color so the card says WHOSE unit/building this is.
+        // In spectator every entity belongs to a rival civ — lead with the SEAT
+        // BADGE (the same mark worn on flags and shown in the leaderboard) plus the
+        // civ name in the civ colour, so the card says WHOSE unit/building this is
+        // even when two seats share a civ. The old plain "●" only carried colour,
+        // which is identical across same-civ seats — you had to zoom to the flag.
         const ownerLine = (ent) => {
             if (!spectator || !ent || typeof getCivilization !== 'function') return '';
             const civ = getCivilization(ent.civilization);
             if (!civ) return '';
             const col = '#' + ((civ.color != null ? civ.color : 0xffffff)).toString(16).padStart(6, '0');
-            return `<span style="color:${col};font-weight:bold;">● ${tg(civ.name)}</span><br>`;
+            const badge = (ent.seat != null && this.teamDotHtml) ? this.teamDotHtml(ent.seat, 9) : '●';
+            return `<span style="color:${col};font-weight:bold;">${badge} ${tg(civ.name)}</span><br>`;
         };
         if (unit) {
             let html = ownerLine(unit);
@@ -1974,21 +1978,13 @@ class UIManager {
         px = Math.round(px * BADGE_UI_SCALE);
         const b = (typeof getTeamBadge === 'function') ? getTeamBadge(seat) : null;
         if (!b) return '';
-        // On the dark dashboard a near-black rim (#222222) sinks into the backdrop,
-        // so a LIGHT-filled badge (white square, ice diamond, amber cross) looked
-        // like its outline vanished on some edges — a false shift in size/shape.
-        // Lift that one rim to a ~66% gray for the UI only. The in-world flags keep
-        // the true near-black rim: they sit on bright terrain, where it reads fine.
-        const rim = (b.rim === '#222222') ? '#575757' : b.rim;
-        const shapes = {
-            circle: '<circle cx="12" cy="12" r="8.5"/>',
-            square: '<rect x="4.5" y="4.5" width="15" height="15"/>',
-            triangle: '<path d="M12 3 L21.5 20.5 L2.5 20.5 Z"/>',
-            diamond: '<path d="M12 2 L22 12 L12 22 L2 12 Z"/>',
-            star: '<path d="M12 1 L14.6 9.4 L23 12 L14.6 14.6 L12 23 L9.4 14.6 L1 12 L9.4 9.4 Z"/>',
-            cross: '<path d="M5.2 2 L12 8.8 L18.8 2 L22 5.2 L15.2 12 L22 18.8 L18.8 22 L12 15.2 L5.2 22 L2 18.8 L8.8 12 L2 5.2 Z"/>'
-        };
-        return `<svg class="team-dot" style="width:${px}px;height:${px}px" viewBox="0 0 24 24" fill="${b.fill}" stroke="${rim}" stroke-width="2.4" stroke-linejoin="round"><title>${t('ui.teamColor')}</title>${shapes[b.shape] || shapes.circle}</svg>`;
+        // Rim lifted to ~66% gray on the dark dashboard (near-black #222222 sinks
+        // in); shape paths both come from the shared TEAM_BADGE_SHAPES so the DOM
+        // chip and the world banner can never disagree. See civilizations.js.
+        const rim = (typeof teamBadgeRimOnDark === 'function') ? teamBadgeRimOnDark(b) : b.rim;
+        const d = (typeof TEAM_BADGE_SHAPES !== 'undefined' && TEAM_BADGE_SHAPES[b.shape])
+            || (typeof TEAM_BADGE_SHAPES !== 'undefined' ? TEAM_BADGE_SHAPES.circle : '');
+        return `<svg class="team-dot" style="width:${px}px;height:${px}px" viewBox="0 0 24 24" fill="${b.fill}" stroke="${rim}" stroke-width="2.4" stroke-linejoin="round"><title>${t('ui.teamColor')}</title><path d="${d}"/></svg>`;
     }
 
     // Lighten very dark civ colors (e.g. Yamato navy) so text/accents stay
