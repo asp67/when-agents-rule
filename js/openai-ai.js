@@ -619,7 +619,7 @@ class OpenAIAIManager {
         const ageUpActive = !!ai.currentAgeUpgrade; // hosted at a Town Center
         let researchAssigned = false, ageAssigned = false;
 
-        const bSummary = { total: 0, idle: 0, busy: 0, underConstruction: 0, producing: 0, researching: 0, byType: {} };
+        const bSummary = { total: 0, idle: 0, busy: 0, underConstruction: 0, producing: 0, researching: 0, farmsUnmanned: 0, byType: {} };
 
         const friendlyBuildings = ai.buildings.map(b => {
             const constructing = !!b.underConstruction;
@@ -652,6 +652,12 @@ class OpenAIAIManager {
             if (b.isWonder) obj.wonder = true;
             if (b.type === 'farm') {
                 obj.food = Math.floor(b.foodAmount || 0);
+                // A farm grows food ONLY while a worker mans it. "busy"/"activity"
+                // above describe production and research, which a farm never does —
+                // so they always read "idle" and say NOTHING about whether it works.
+                // This flag is the farm's real status, straight from the same
+                // predicate the simulation gates regrowth on.
+                obj.farmed = !!game.farmFarmer(b);
             }
 
             // accumulate the aggregate
@@ -661,6 +667,9 @@ class OpenAIAIManager {
             if (producing) bSummary.producing++;
             if (researching) bSummary.researching++;
             if (busy) bSummary.busy++; else bSummary.idle++;
+            // Standing idle costs nothing; a farm standing UNMANNED costs food every
+            // second, and nothing else in this summary would ever say so.
+            if (b.type === 'farm' && !constructing && !game.farmFarmer(b)) bSummary.farmsUnmanned++;
 
             return obj;
         });
@@ -1088,7 +1097,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
 - Priests (temple) never fight, but they MARCH WITH your army on an attack — escorting to the fight and healing from the back, never engaging. A priest also walks to and heals your nearby workers and military units with healthPct below 100 on its own; reposition it alone with move_units.
 - Workers: newly trained ones are IDLE until ordered. A worker whose resource node runs dry walks to the nearest DISCOVERED node of the same type by itself and idles only when none is left. Workers deliver goods to the NEAREST finished Town Center — a second town_center near far resources shortens hauls, trains workers in parallel, adds +10 population and SEES far (sight 30 — half a tower's 60, versus 12 for other buildings), revealing the resources around it.
-- Farms regenerate food ONLY while a worker is assigned; the worker who builds a farm stays on as its farmer.
+- Farms regenerate food ONLY while a worker is assigned; the worker who builds a farm stays on as its farmer. Pulling that farmer away with assign_workers stops the farm dead — its "farmed" flag goes false and "buildings.summary.farmsUnmanned" counts it. A farm's "activity" always reads "idle" (farms never produce or research), so "farmed" is the only field that tells you it is working. Restart it with assign_workers resourceType "farm". Unlike berry bushes, farms never run out.
 - Houses (+5 each) and Town Centers (+10 each) raise maxPopulation, up to "resources.populationHardCap"; losing a Town Center drops your cap by 10. At the hard cap, only delete_unit frees room.
 - Resources: food (animals, berries, farms), wood (trees), stone (quarries), gold (mines).
 
@@ -1103,7 +1112,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - build_structure: params.buildingType ("town_center" | "house" | "farm" | "barracks" | "stable" | "archery_range" | "market" | "tower" | "temple"; availability and research state per "buildableStructures") + optional targetX/targetZ. Placing pulls a worker to construct a SITE over several seconds (least-disruptive first — same triage as assign_workers — and of that tier the one closest to the site); it works only once "state":"complete".
 - build_wonder: start your Wonder (requires the Iron age).
 - harvest_resource: params.resourceType = "food" | "wood" | "stone" | "gold" — puts an idle worker on it (auto-scouts first if that type is still undiscovered).
-- assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders, fighting workers and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen.
+- assign_workers: params.resourceType (+ optional count, optional targetX/targetZ to pick a specific discovered node) — PULLS workers onto that resource. Pull order: idle first, then gatherers from your fattest stockpile down to the leanest, then scouts, repairers, farmers last; builders, fighting workers and workers already on that resource are never pulled. Without targetX/targetZ the discovered node nearest your Town Center is chosen. resourceType "farm" instead mans your own UNMANNED farms (nearest Town Center first, or targetX/targetZ to pick one) — farmers are never taken to staff another farm.
 - repair_building: heal a DAMAGED own building for free. Optional targetX/targetZ (of your building) and count of workers (default 1); omit the target to fix your most damaged one. Repairs are LOCKED while the building keeps taking hits and begin 10s after the last hit — workers wait on site and start automatically. Repairing workers rejoin the idle pool when done.
 - explore: optional targetX/targetZ and unitType; without them your best free scout is auto-picked (idle military first — a worker sent scouting is one fewer gatherer) and heads for your least-explored map tile. Use map.exploration to aim targeted scouts.
 - move_units: params.targetX/targetZ — reposition your military (priests come along; workers stay). Optional params.units, a {type: count} map (e.g. {"champion":3,"cavalry":2}), moves only that detachment — the units of each named type CLOSEST to the destination; omit it to move your whole army. Counts clamp to what you own and unknown types are skipped (reported back).
@@ -2960,10 +2969,102 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     }
 
     // Reassign workers OFF their current tasks onto a new job (harvest a type).
+    // assign_workers {"resourceType":"farm"} — put workers back on UNMANNED farms.
+    // A farm regrows food only while a hand stands on it, and pulling every worker
+    // onto one resource is a legitimate call that silently darkens every farm you
+    // own. Before this there was no way to SEE that (a farm's "activity" always
+    // reads "idle") and no way to undo it: farms were only ever staffed by the
+    // worker who built one, or by the idle-worker sweep — which never fires while
+    // every hand is busy. Same pull triage as the resource path, so a rescue
+    // disturbs the economy exactly as predictably as any other reassignment.
+    executeAssignFarmers(ai, game, params) {
+        const noTC = this.noTownCenterAdvice(ai);
+        if (noTC) return noTC;
+
+        const farms = ai.buildings.filter(b => b.type === 'farm' && !b.underConstruction && b.health > 0);
+        if (farms.length === 0) {
+            const site = ai.buildings.some(b => b.type === 'farm' && b.underConstruction);
+            return site
+                ? `[ERROR] Your farm is still under construction — the worker building it stays on as its farmer once it finishes. Nothing to staff yet.`
+                : `[ERROR] You own no finished farms. Build one with build_structure {"buildingType":"farm"} (needs the "farm" research); its builder stays on as the farmer. Farms regrow food indefinitely — berry bushes do not.`;
+        }
+        const open = farms.filter(f => !game.farmFarmer(f));
+        if (open.length === 0) {
+            return `OK - All ${farms.length} of your farm(s) are already manned; nothing to do. A farm only regrows food while its worker stands on it.`;
+        }
+
+        // Which farm first? An explicit target picks one; otherwise the shortest
+        // delivery loop wins — same rule as the resource path.
+        const gaveX = params.targetX !== undefined && params.targetX !== null && params.targetX !== '';
+        const gaveZ = params.targetZ !== undefined && params.targetZ !== null && params.targetZ !== '';
+        if (gaveX || gaveZ) {
+            const tx = Number(params.targetX), tz = Number(params.targetZ);
+            if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
+                return `[ERROR] assign_workers to "farm" takes BOTH numeric "targetX" and "targetZ" (one of your farms in "buildings"), or neither — then your unmanned farms are staffed nearest-Town-Center first.`;
+            }
+            open.sort((a, b) => Math.hypot(a.x - tx, a.z - tz) - Math.hypot(b.x - tx, b.z - tz));
+        } else {
+            const tcs = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction);
+            const dTC = f => tcs.reduce((m, tc) => Math.min(m, Math.hypot(f.x - tc.x, f.z - tc.z)), Infinity);
+            open.sort((a, b) => dTC(a) - dTC(b));
+        }
+        const want = Math.max(1, Math.min(params.count || open.length, open.length));
+
+        // Never cannibalize a farm to feed a farm, and never take a builder or a
+        // fighter — the same exclusions the resource path applies.
+        const isFighting = u => u.isAttacking || u.attackTarget || u.attackMove;
+        const candidates = ai.units.filter(u =>
+            u.type === 'worker' && u.health > 0 &&
+            u.task !== 'building' && !u.isBuilding && !isFighting(u) && !u.farmRef);
+        if (candidates.length === 0) {
+            const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
+            const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
+            return `[ERROR] No workers can be spared for your ${open.length} unmanned farm(s): ${building} are constructing, ${fighting} are fighting (neither is ever pulled), and the rest already man farms. Train a worker.`;
+        }
+        const rank = u => game.workerPullRank(ai, u);
+        candidates.sort((a, b) => rank(a) - rank(b));
+
+        let manned = 0;
+        const pulledFrom = {};
+        for (const f of open.slice(0, want)) {
+            const w = candidates[manned];
+            if (!w) break;
+            const r = rank(w);
+            const label = r === 0 ? 'idle' : r === 5 ? 'scouting' : r === 6 ? 'repairing'
+                : (w.harvestTarget ? `from ${w.harvestTarget.type}` : 'spare');
+            pulledFrom[label] = (pulledFrom[label] || 0) + 1;
+            w._formerTask = null;
+            w.task = 'farm_work';
+            w.farmRef = f;
+            f.assignedWorker = w;
+            w.harvestTarget = null;
+            w.buildTarget = null;
+            w.repairTarget = null;
+            w.isHarvesting = false;
+            w.carryingResource = false;
+            w.harvestAmount = 0;
+            w.isMoving = true;
+            w.targetX = f.x + (Math.random() - 0.5) * 3;
+            w.targetZ = f.z + (Math.random() - 0.5) * 3;
+            manned++;
+        }
+        const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
+        const left = open.length - manned;
+        const short = left > 0 ? ` ${left} farm(s) still stand unmanned — you ran out of spare workers.` : '';
+        return `OK - Sent ${manned} worker(s) to man ${manned} farm(s) — pulled: ${src}. Each regrows food only while its worker stays on it.${short}`;
+    }
+
     executeAssignWorkers(ai, game, params) {
+        // "farm" is a JOB, not a node type: it staffs your own farms rather than
+        // sending workers to a spot on the map. Routed before normalizeResourceType
+        // so the gatherable vocabulary (and harvest_resource, which shares it) stays
+        // exactly food|wood|stone|gold.
+        const raw = String(params.resourceType || '').toLowerCase().trim();
+        if (raw === 'farm' || raw === 'farms') return this.executeAssignFarmers(ai, game, params);
+
         const resourceType = this.normalizeResourceType(params.resourceType);
         if (!resourceType) {
-            return `[ERROR] assign_workers requires a gatherable "resourceType" (food|wood|stone|gold) — the new job for the workers. (To construct a building, use build_structure instead.)`;
+            return `[ERROR] assign_workers requires a "resourceType": food|wood|stone|gold to gather, or "farm" to man your own farms. (To construct a building, use build_structure instead.)`;
         }
         const noTC = this.noTownCenterAdvice(ai);
         if (noTC) return noTC;

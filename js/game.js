@@ -3563,18 +3563,31 @@ class Game {
         });
     }
     
+    // The worker actually WORKING this farm, or null — the ONE place "is this farm
+    // manned" is decided. updateFarmRegeneration gates regen on it and the LLM game
+    // state reports it, so the two can never drift apart and tell a model its farm
+    // is fine while it quietly grows nothing. assignedWorker alone is not enough:
+    // the hand may since have been pulled onto a resource by assign_workers,
+    // drafted to fight, or killed — and a farm with a deserted post feeds no one.
+    farmFarmer(farm) {
+        if (!farm || farm.type !== 'farm' || farm.underConstruction || farm.health <= 0) return null;
+        const w = farm.assignedWorker;
+        if (!w || w.health <= 0) return null;
+        if (w.task !== 'farm_work' && w.task !== 'carrying') return null;
+        if (w.farmRef !== farm) return null;
+        return w;
+    }
+
     updateFarmRegeneration(deltaTime) {
         // Farms regenerate food over time, but only if a worker is assigned
         const farms = this.getAllBuildings().filter(b => b.type === 'farm' && !b.underConstruction);
         farms.forEach(farm => {
             if (!farm.regenTimer) farm.regenTimer = 0;
 
-            // Farm only regenerates food when a worker is assigned to it
-            if (!farm.assignedWorker) return;
-            
-            // Check if the assigned worker is still alive and still assigned to this farm
-            const worker = farm.assignedWorker;
-            if (!worker || (worker.task !== 'farm_work' && worker.task !== 'carrying') || !worker.farmRef || worker.farmRef !== farm) {
+            // Post deserted (pulled away, drafted, or dead)? Drop the stale claim so
+            // the farm reads as unmanned EVERYWHERE, and grow nothing.
+            const worker = this.farmFarmer(farm);
+            if (!worker) {
                 farm.assignedWorker = null;
                 return;
             }
