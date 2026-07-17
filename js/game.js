@@ -2867,6 +2867,12 @@ class Game {
     // was borrowed, become the farmer if it built a farm, otherwise go idle.
     releaseBuilder(unit, site) {
         unit.isBuilding = false;
+        // State 4's walk raises isMoving now, so drop it here: without this a
+        // builder released mid-walk (site destroyed under it) would keep the flag,
+        // fall through to State 1 once its task is cleared, and march off after
+        // whatever stale targetX it happened to be carrying. Every restore branch
+        // below re-raises it WITH a fresh target of its own.
+        unit.isMoving = false;
         unit.task = null;
         unit.buildTarget = null;
 
@@ -3003,8 +3009,19 @@ class Game {
             
             // --- STATE MACHINE: moving, harvesting, carrying, dropping ---
             
-            // State 1: Moving to target (resource, town center, or move command)
-            if (unit.isMoving) {
+            // State 1: Moving to target (resource, town center, or move command).
+            // Builders and repairers are EXCLUDED: they do their own walking in
+            // States 4/4b, toward a live buildTarget/repairTarget rather than the
+            // targetX/targetZ this state chases. `isMoving` doubles as this state's
+            // SELECTOR, which is why applyBuilder sets it false — that was the only
+            // way to hand a worker to State 4, and the renderer (which reads the
+            // same flag for animation) therefore saw a builder as idle and hovered
+            // it to the site with frozen legs. Naming the task here lets the walk
+            // states raise isMoving honestly without being hijacked back into this
+            // one, where a stale targetX would drag them the wrong way entirely.
+            // No-op for today's states: a builder always arrived here with
+            // isMoving false anyway.
+            if (unit.isMoving && unit.task !== 'building' && unit.task !== 'repairing') {
                 const dx = unit.targetX - unit.x;
                 const dz = unit.targetZ - unit.z;
                 const dist = Math.sqrt(dx*dx + dz*dz);
@@ -3016,6 +3033,7 @@ class Game {
                                          (unit.task === 'harvesting') ? 2 : 0.5;
                 
                 if (dist > arrivalThreshold) {
+                    unit.isMoving = true; // the mover owns the flag, not whichever caller assigned the task
                     const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
@@ -3212,6 +3230,14 @@ class Game {
                 // Walk to the site (handled inline so it doesn't fight the move state)
                 if (dist > reach) {
                     unit.isBuilding = false;
+                    // A mover OWNS the flags its motion implies. applyBuilder sets
+                    // isMoving=false when it hands out the job and nothing here ever
+                    // set it back, so the renderer saw isHarvesting/isBuilding/isMoving
+                    // all false, picked 'idle', and the builder slid to the site with
+                    // frozen legs — it hovered. (Harvesting only escaped this because
+                    // its assigner happens to set isMoving itself; the animation
+                    // depended on which caller remembered.) Facing reads isMoving too.
+                    unit.isMoving = true;
                     const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
@@ -3221,6 +3247,7 @@ class Game {
 
                 // At the site: contribute build progress (multiple workers stack)
                 unit.isBuilding = true;
+                unit.isMoving = false; // arrived — drop the walk flag the mover raised
                 const rate = (unit.buildSpeed || 1.0) * (owner.workerBuildSpeedBonus || 1.0);
                 site.buildProgress = (site.buildProgress || 0) + deltaTime * rate;
                 const pct = Math.min(1, site.buildProgress / (site.buildTime || 10000));
@@ -3239,6 +3266,7 @@ class Game {
                 // Gone, destroyed, or already at full health -> done
                 if (!b || b.health <= 0 || b.underConstruction || b.health >= b.maxHealth) {
                     unit.isBuilding = false;
+                    unit.isMoving = false; // same reason as releaseBuilder: don't leak the walk flag into State 1
                     unit.task = null;
                     unit.repairTarget = null;
                     return;
@@ -3249,6 +3277,7 @@ class Game {
                 const reach = 3.5;
                 if (dist > reach) {
                     unit.isBuilding = false;
+                    unit.isMoving = true; // same as the build walk above — the mover owns the flag
                     const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
@@ -3260,10 +3289,12 @@ class Game {
                 // and resumes automatically the moment the barrier lifts.
                 if (this.repairBarrierMsLeft(b) > 0) {
                     unit.isBuilding = false;
+                    unit.isMoving = false; // standing by at the wall, not walking on the spot
                     return;
                 }
                 // At the building: restore health (~50 HP/s, workers stack).
                 unit.isBuilding = true;
+                unit.isMoving = false; // arrived — drop the walk flag the mover raised
                 b.health = Math.min(b.maxHealth, b.health + deltaTime / 1000 * 50);
                 if (b.health >= b.maxHealth) {
                     b.health = b.maxHealth;
