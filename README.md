@@ -26,7 +26,7 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 When Agents Rule is a **sandbox arena for pitting language models against one another** at a task they were never trained for: running an economy and an army, in real time, inside a small RTS they've never seen. Every player is an autonomous model agent governing its own civilization — and every match ends one of two ways: a rival razed to the ground, or a Wonder held in peace.
 
-It is **not** a leaderboard, not a peer-reviewed benchmark, and makes no claim to statistical rigor. It is a *hands-on, non-scientific testbed* — a fun, surprisingly revealing way to watch how different models behave when you drop them into an **unfamiliar framework** and ask them to **act**, not chat.
+It is **not** a leaderboard and not a peer-reviewed benchmark. It *is* a hands-on testbed — non-scientific, but more than a toy: with the setup held steady (same civilization, a fixed map seed, and a resource layout that is now equal for every player), a match isolates the model as the variable well enough for **narrow, controlled comparisons**. Loosen those controls and it stays a fun, surprisingly revealing way to watch how different models behave when you drop them into an **unfamiliar framework** and ask them to **act**, not chat.
 
 Each model is handed:
 
@@ -57,7 +57,7 @@ Most quick LLM demos reward a single clever answer. A full match of When Agents 
 - **🗺️ Spatial & resource reasoning.** Fog of war hides the map. Resources and enemies must be **scouted** before they can be used or attacked. Good play means exploring, not guessing.
 - **⏱️ Latency vs. quality.** Each model runs its **own independent loop** — faster models simply act more often. A brilliant-but-slow model can be out-tempoed by a decent-but-fast one, just like in the real world.
 
-You won't get a p-value. You *will* get an immediate, visceral feel for which models can actually *play*.
+You won't get a p-value, and a single match is an anecdote. But the map is no longer a confound — pin the civilization and the seed, and what's left to explain the result is mostly the models themselves. Within those bounds it stands up as a *comparative* testbed for narrow questions; outside them, it's still an immediate, surprisingly revealing feel for which models can actually *play*.
 
 <div align="center">
 
@@ -76,6 +76,7 @@ You won't get a p-value. You *will* get an immediate, visceral feel for which mo
 - **🧠 Rolling context that scales with the model** — history is sized to each model's context budget: big-context models remember more of the match. Default is a true **multi-turn conversation** with per-turn state recaps; the minimize-tokens toggle switches to a compact one-line move history.
 - **🪙 Token accounting** — provider-reported usage per model (prompt + completion) on the summary card and in the results file, next to latency. Speed *and* cost, side by side.
 - **🌱 Seeded maps** — optional map seed: the same seed reproduces the exact same resource layout, for fair A/B comparisons between models.
+- **⚖️ Fair resource placement** — food and wood fill an even 7×7 grid, while the scarce **stone and gold are laid out identically for every player** (same counts, same distances from home, never beside a Town Center). With same-civ seats and a fixed seed, the map stops being a confounding variable — the outcome is left to the models.
 - **🌙 Keeps running in a background tab** — a Web-Worker driver keeps the simulation and the models' turns going while the tab is hidden (rendering pauses, the match doesn't). A discarded tab or a sleeping machine still pauses play.
 - **🎬 A battlefield worth watching** — soft feathered fog of war, visible arrows and tower stones, hit flashes, animated deaths and crumbling buildings, battle pings in the world and on the minimap, themed ground cover per map (lush summer, frosted winter, dry desert), and an optional **action camera** that automatically follows the fighting.
 - **📄 Results export** — one click saves the full match evaluation as a self-describing `results_<datetime>.md` (winner, per-model scores, stats, each model's config, difficulty, seed).
@@ -189,7 +190,7 @@ The engine validates it against the **advancement chain** (advance → research 
 
 - **Win** by either **eliminating every** rival, **or** building a **Wonder** and holding it for the countdown (**600 s**). A rival is only out when it has no army, no military building it can afford to produce from, and no Town Center (nor a worker + the resources to rebuild one) — so raze their base *and* mop up, or they can come back.
 - **Advance the ages** — Stone → Neolithic → Bronze → Iron — to unlock stronger units, tech, and (eventually) the Wonder. Buildings get an epoch-appropriate look and +50% HP per age.
-- **Economy first, but not forever:** workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100). **Resource nodes deplete** (food 500 · wood 300 · stone 1000 · gold 2000 per node) — scout for fresh ones; only **farms regenerate**. Nodes are distributed **evenly across the map's nine sections**, so no start is resource-starved and scouting any direction pays.
+- **Economy first, but not forever:** workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100). **Resource nodes deplete** (food 500 · wood 300 · stone 1000 · gold 2000 per node) — scout for fresh ones; only **farms regenerate**, and only while a worker mans them. Placement is built for fairness: food and wood fill an even **7×7 grid**, while scarce **stone and gold are placed identically for every player** — same counts, same distances from home, none beside a Town Center. No start is advantaged, and scouting any direction pays.
 - **Counters:** cavalry > ranged > infantry > cavalry; infantry raze buildings best; towers defend.
 - **Fog of war:** scout to reveal resources and enemies — a model can't harvest or attack what it hasn't discovered.
 - **4 civilizations** — Egyptians, Greeks, Persians, Yamato — each with a unique bonus and Wonder.
@@ -240,7 +241,7 @@ Similar arenas, different games — worth knowing, and worth crediting:
 
 ## ⚠️ Disclaimers
 
-- **Non-scientific.** This is a toy for intuition and entertainment, not a benchmark. Sample sizes are tiny, maps are random, and tempo (latency) heavily influences outcomes. Don't cite match results as model capability.
+- **Non-scientific.** Not a peer-reviewed benchmark, and no single match is evidence of anything: sample sizes are tiny and tempo (latency) heavily influences who wins. Don't cite match results as model capability. Within a **controlled setup** — same civilization, a fixed seed, and the resource layout now equal for every player — a match does isolate the model as the main variable and gives a genuine, if narrow, comparative read. Treat that as informed intuition, not data.
 - **Not affiliated** with LMSYS / Chatbot Arena, OpenAI, Anthropic, Google, or any model provider. "When Agents Rule" is meant literally: autonomous model agents governing rival civilizations — by wonder or by war.
 - Built as a hobby project, with a generous assist from AI pair-programming.
 
