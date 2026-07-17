@@ -124,6 +124,7 @@
             this._resEntries = new WeakMap(); // resource → prebaked entries
             this._unitDir = new WeakMap();    // unit → smoothed facing
             this._unitPrev = new WeakMap();   // unit → last frame's x/z (facing reads REAL motion)
+            this._footprint = new Map();      // 'type|age|civ' → measured mesh half-extents
             this.tex = null;                  // built on setTerrain (theme-aware)
             this._theme = null;
             this._fogTex = null;              // GL texture wrapping the fog canvas
@@ -191,6 +192,36 @@
                 this._geo.set(key, GLCore.createMeshBuffers(this.gl, EngineMesh[kind](...args)));
             }
             return this._geo.get(key);
+        }
+
+        // True XZ half-extents of a composed building, measured from the geometry
+        // the builder actually emitted: every vertex pushed through its own part
+        // transform. Nothing else knows a building's real size — the codebase
+        // carries five different guesses at it (the site footprint 7/12,
+        // resourceClearance 3.5/5, the spawn footRadius 3.5/5, the unit clearance
+        // 4.5/7, and the banner's 3.4/5.4) and no two agree. Cached per
+        // type|age|civ, so it runs once per LOOK, not per building and not per
+        // frame.
+        _meshFootprint(parts, key) {
+            if (this._footprint.has(key)) return this._footprint.get(key);
+            let ex = 0, ez = 0;
+            for (const p of parts) {
+                if (p.blend || p.tex === 'shadow') continue; // the contact shadow isn't structure
+                const gen = EngineMesh[p.kind];
+                if (!gen) continue;
+                const P = gen(...p.args).positions;
+                const m = p.m; // column-major: translation at 12/13/14
+                for (let i = 0; i < P.length; i += 3) {
+                    const x = P[i], y = P[i + 1], z = P[i + 2];
+                    const wx = Math.abs(m[0] * x + m[4] * y + m[8] * z + m[12]);
+                    const wz = Math.abs(m[2] * x + m[6] * y + m[10] * z + m[14]);
+                    if (wx > ex) ex = wx;
+                    if (wz > ez) ez = wz;
+                }
+            }
+            const fp = { ex, ez };
+            this._footprint.set(key, fp);
+            return fp;
         }
 
         // ---- camera ----------------------------------------------------------
@@ -491,14 +522,22 @@
             });
             // a team-color banner post at the corner so ownership reads at a glance
             if (!building.underConstruction) {
-                const off = building.isWonder ? 5.4 : 3.4;
+                // Plant the post clear of the ACTUAL mesh. The old flat 3.4 (5.4 for
+                // wonders) was a footprint no building ever agreed to: a tower reaches
+                // ~3.2, but a town centre, house or archery range reaches ~6 and a
+                // wonder more — and the pole is only 2.6 tall with its cloth at 2.25,
+                // far below those roofs. So every large building simply swallowed its
+                // own flag, and ownership stopped reading at a glance exactly where it
+                // mattered most.
+                const fp = this._meshFootprint(parts, `${building.type}|${building.age}|${building.civilization}`);
+                const offX = fp.ex + 0.55, offZ = fp.ez + 0.55;
                 eb.opaque.push({
                     buf: this._buf('cylinder', [0.07, 0.09, 2.6, 5]), tex: this.tex.bark, tint: this.WHITE,
-                    model: m3.multiply(world, m3.translation(off, 1.3, off))
+                    model: m3.multiply(world, m3.translation(offX, 1.3, offZ))
                 });
                 eb.opaque.push({
                     buf: this._buf('box', [0.85, 0.55, 0.07]), tex: this.tex.cloth, tint,
-                    model: m3.multiply(world, m3.translation(off + 0.45, 2.25, off))
+                    model: m3.multiply(world, m3.translation(offX + 0.45, 2.25, offZ))
                 });
                 // Team badge on the flag: the seat's ownership mark (per-seat
                 // SHAPE + color, fill + contrast rim) — the same prism shapes
@@ -508,7 +547,7 @@
                 const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(building.seat) : null;
                 if (bdef) {
                     const bt = this._badgeTints(building.seat, tint);
-                    const flagT = m3.translation(off + 0.45, 2.25, off);
+                    const flagT = m3.translation(offX + 0.45, 2.25, offZ);
                     EngineUnits.badgeParts(bdef.shape, { r: 0.14, lenFill: 0.13, lenRim: 0.10 }).forEach(p => {
                         eb.opaque.push({
                             buf: this._buf(p.kind, p.args), tex: this.tex[p.tex], tint: bt[p.accent],
