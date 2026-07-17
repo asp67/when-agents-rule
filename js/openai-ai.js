@@ -2050,6 +2050,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // Center. Tell them the right action instead of silently training a worker.
         const ut = params && params.unitType;
         if (ut && ut !== 'worker') {
+            this.outcome('log.out.trainWorkerNotUnit', { unitType: ut });
             return `[ERROR] train_worker only trains a Villager (worker) at the Town Center — it ignores unitType. To train "${ut}", use action "train_unit" with params.unitType="${ut}" (military units come from a barracks/archery_range/stable, not the Town Center).`;
         }
         const allTCs = ai.buildings.filter(b => b.type === 'town_center');
@@ -2057,11 +2058,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             console.log(`[OpenAIAI] ${ai.id}: No Town Center at all to train worker`);
             const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
             const costStr = tcDef ? this.costString(tcDef.cost) : '100 food, 100 wood, 100 stone, 100 gold';
+            this.outcome('log.out.noTCTrain', {});
             return `[ERROR] You have NO Town Center, so you cannot train workers. Rebuild one: build_structure with buildingType="town_center" and a targetX/targetZ on open ground (costs ${costStr}; one of your existing workers constructs it). Until a Town Center stands you cannot make new workers.`;
         }
         const townCenters = allTCs.filter(b => !b.isProducing && !b.underConstruction);
         if (townCenters.length === 0) {
             console.log(`[OpenAIAI] ${ai.id}: Town Center busy/under construction`);
+            this.outcome('log.out.tcBusy', {});
             return `[ERROR] Your Town Center is busy producing or still under construction — wait for it to finish, then train the worker.`;
         }
 
@@ -2097,6 +2100,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const unitDef = getUnitDefFor(ai.civilization, unitType);
         if (!unitDef) {
             console.log(`[OpenAIAI] ${ai.id}: Unknown unit type "${unitType}"`);
+            this.outcome('log.out.unknownUnit', { unitType });
             return `[ERROR] Unknown unit type "${unitType}".`;
         }
 
@@ -2112,17 +2116,21 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             // 1) RESEARCH / BUILD: no finished building of the right type yet.
             if (finishedOfType.length === 0) {
                 if (ai.buildings.some(b => rightType(b) && b.underConstruction)) {
+                    this.outcome('log.out.buildingUnderConstr', { building: reqB, unitType });
                     return `[ERROR] Your ${reqB} is still under construction. Wait for it to finish, then train ${unitType}.`;
                 }
                 const bdef = getBuildingDef(reqB);
                 const tech = bdef && bdef.requiresTech;
                 const civTree = civ.techTree || {};
                 if (tech && !civTree[tech]) {
+                    this.outcome('log.out.civCannotTrain', { unitType, building: reqB });
                     return `[ERROR] Your civilization cannot train ${unitType} — it has no ${reqB} (no "${tech}" technology). Train a different unit class (barracks=infantry, archery_range=archers, stable=cavalry; see "buildableStructures").`;
                 }
                 if (tech && !ai.researchedTechs[tech]) {
+                    this.outcome('log.out.unitBuildingNotUnlocked', { unitType, building: reqB, tech });
                     return `[ERROR] ${unitType} is trained at a ${reqB}, which you have not unlocked. research_tech "${tech}" first, then build_structure "${reqB}", then train.`;
                 }
+                this.outcome('log.out.unitBuildingNotBuilt', { unitType, building: reqB });
                 return `[ERROR] ${unitType} is trained at a ${reqB}, which you have not built yet. build_structure "${reqB}" and wait for it to finish, then train.`;
             }
 
@@ -2130,8 +2138,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             if (!this.buildingTrains(finishedOfType[0], unitType, ai.age, ai.civilization)) {
                 const minAge = this.minAgeForUnit(unitType);
                 if (minAge && ageOrder.indexOf(minAge) > ageOrder.indexOf(ai.age)) {
+                    this.outcome('log.out.unitNeedsAge', { unitType, minAge, age: ai.age });
                     return `[ERROR] ${unitType} needs the ${minAge} age (you are in ${ai.age}). Advance your age first (upgrade_age); your ${reqB} will train it then.`;
                 }
+                this.outcome('log.out.buildingCannotTrainTier', { building: reqB, unitType });
                 return `[ERROR] Your ${reqB} cannot train ${unitType} at your current tier. Check what it can produce for your age.`;
             }
         }
@@ -2140,6 +2150,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const trainers = ai.buildings.filter(b => !b.underConstruction && this.buildingTrains(b, unitType, ai.age, ai.civilization));
         if (trainers.length === 0) {
             // Only reached for unique units with no tier mapping (reqB null).
+            this.outcome('log.out.noBuildingTrains', { unitType });
             return `[ERROR] No finished building can train ${unitType}. Build the matching military building first (barracks=infantry, archery_range=archers, stable=cavalry).`;
         }
 
@@ -2154,6 +2165,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const freeTrainers = trainers.filter(b => !b.isProducing);
         if (freeTrainers.length === 0) {
             const tName = trainers[0].type;
+            this.outcome('log.out.trainerBusy', { building: tName });
             return `[ERROR] Your ${tName} is busy producing right now. Wait for it to finish, or build another ${tName} to train in parallel.`;
         }
 
@@ -2191,18 +2203,22 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             // techs. No word boundaries — they don't fire inside camelCase or across "_".
             const ageLike = /age|epoch|advance|stone|neolithic|bronze|iron/i.test(String(techId));
             if (ageLike) {
+                this.outcome('log.out.notAResearchTech', { techId });
                 return `[ERROR] "${techId}" is not a research tech — advancing AGES is a separate action.${ageNote} For actual technologies, use an exact ID from "research.available".`;
             }
+            this.outcome('log.out.unknownTech', { techId });
             return `[ERROR] Unknown tech "${techId}". Use an exact tech ID from "research.available".${ageNote}`;
         }
 
         if (ai.researchedTechs[techId]) {
             console.log(`[OpenAIAI] ${ai.id}: Tech "${techId}" already researched`);
+            this.outcome('log.out.alreadyResearched', { techId });
             return `[ERROR] Tech "${techId}" already researched! Check "research.researched" list before researching.`;
         }
 
         if (ai.currentResearch) {
             console.log(`[OpenAIAI] ${ai.id}: Already researching a tech`);
+            this.outcome('log.out.alreadyResearching', { techId: ai.currentResearch.techId });
             return `[ERROR] Already researching "${ai.currentResearch.techId}". Wait for it to complete first.`;
         }
 
@@ -2210,6 +2226,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
         if (ageOrder.indexOf(tech.requiredAge) > ageOrder.indexOf(ai.age)) {
             console.log(`[OpenAIAI] ${ai.id}: Tech "${techId}" requires ${tech.requiredAge}`);
+            this.outcome('log.out.techNeedsAge', { techId, reqAge: tech.requiredAge, age: ai.age });
             return `[ERROR] "${techId}" needs the ${tech.requiredAge} age, but you are in ${ai.age}. Advance your age first (upgrade_age).`;
         }
 
@@ -2218,6 +2235,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             for (const req of tech.requires) {
                 if (!ai.researchedTechs[req]) {
                     console.log(`[OpenAIAI] ${ai.id}: Missing prerequisite "${req}" for "${techId}"`);
+                    this.outcome('log.out.missingPrereq', { req, techId });
                     return `[ERROR] Missing prerequisite "${req}" for "${techId}". Research "${req}" first.`;
                 }
             }
@@ -2270,11 +2288,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const currentIdx = ages.indexOf(ai.age);
         if (currentIdx >= ages.length - 1) {
             console.log(`[OpenAIAI] ${ai.id}: Already at max age`);
+            this.outcome('log.out.maxAge', {});
             return `[ERROR] Already at max age (Iron Age).`;
         }
 
         if (ai.currentAgeUpgrade) {
             console.log(`[OpenAIAI] ${ai.id}: Already upgrading age`);
+            this.outcome('log.out.alreadyUpgrading', { age: ai.currentAgeUpgrade.targetAge });
             return `[ERROR] Already upgrading age to "${ai.currentAgeUpgrade.targetAge}". Wait for completion.`;
         }
 
@@ -2303,6 +2323,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const buildingDef = getBuildingDef(buildingType);
         if (!buildingDef) {
             console.log(`[OpenAIAI] ${ai.id}: Unknown building "${buildingType}"`);
+            this.outcome('log.out.unknownBuilding', { buildingType });
             return `[ERROR] Unknown building "${buildingType}". Check "unlockedContent.buildings" for valid types.`;
         }
 
@@ -2313,6 +2334,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const effAge = (typeof effectiveBuildingAge === 'function') ? effectiveBuildingAge(ai.civilization, buildingDef) : buildingDef.requiredAge;
         if (effAge && ageOrder.indexOf(ai.age) < ageOrder.indexOf(effAge)) {
             console.log(`[OpenAIAI] ${ai.id}: ${buildingType} needs ${effAge}`);
+            this.outcome('log.out.buildingNeedsAge', { buildingType, effAge, age: ai.age });
             return `[ERROR] ${buildingType} needs the ${effAge} age (you are in ${ai.age}). Advance your age first (upgrade_age), then build it.`;
         }
 
@@ -2323,8 +2345,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             // Some civilizations simply do not have the tech (e.g. no stable). Say so
             // clearly so the model stops retrying and switches strategy.
             if (!civTree[buildingDef.requiresTech]) {
+                this.outcome('log.out.civCannotBuild', { buildingType, tech: buildingDef.requiresTech });
                 return `[ERROR] Your civilization cannot build ${buildingType} — it has no "${buildingDef.requiresTech}" technology. Use a different building. See "buildableStructures" for what you CAN build (e.g. barracks for infantry, archery_range for archers).`;
             }
+            this.outcome('log.out.buildNeedsTech', { tech: buildingDef.requiresTech, buildingType });
             return `[ERROR] You must research "${buildingDef.requiresTech}" before you can build ${buildingType}. Use research_tech first (it should appear in "research.available"), then build.`;
         }
 
@@ -2349,6 +2373,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             x = tc.x + Math.cos(ang) * rad;
             z = tc.z + Math.sin(ang) * rad;
         } else {
+            this.outcome('log.out.noTCPlacement', {});
             return `[ERROR] No Town Center found for placement reference.`;
         }
 
@@ -2357,6 +2382,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const spot = this.findClearSpot(ai, game, buildingType, buildingDef.type === 'wonder', x, z);
         if (!spot) {
             console.log(`[OpenAIAI] ${ai.id}: Could not find valid position for ${buildingType}`);
+            this.outcome('log.out.noClearSpot', { buildingType });
             return `[ERROR] Could not find a clear spot for ${buildingType} (too crowded by buildings or resource nodes). Try a different targetX/targetZ.`;
         }
         ({ x, z } = spot);
@@ -2369,9 +2395,11 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // rivals borrowed freely — an unfair asymmetry between controller types.
         const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
         if (pick.error === 'no_workers') {
+            this.outcome('log.out.noWorkersBuild', { buildingType });
             return `[ERROR] You have no workers to build ${buildingType}. Train a worker first.`;
         }
         if (pick.error === 'no_idle') {
+            this.outcome('log.out.noWorkerIdleBuild', { buildingType });
             return `[ERROR] No worker available to build ${buildingType} — all your workers are constructing other sites or fighting (neither is ever pulled). Wait for one to finish.`;
         }
 
@@ -2463,18 +2491,21 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     executeBuildWonder(ai, game) {
         const civ = getCivilization(ai.civilization);
         const wonderDef = (civ.uniqueBuildings || []).find(b => b.type === 'wonder');
-        if (!wonderDef) return `[ERROR] Your civilization has no Wonder.`;
+        if (!wonderDef) { this.outcome('log.out.noWonder', {}); return `[ERROR] Your civilization has no Wonder.`; }
 
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
         const reqAge = wonderDef.requiredAge || 'iron';
         if (ageOrder.indexOf(ai.age) < ageOrder.indexOf(reqAge)) {
+            this.outcome('log.out.wonderNeedsAge', { reqAge, age: ai.age });
             return `[ERROR] The Wonder requires the ${reqAge} age. You are in ${ai.age}. Advance your age first.`;
         }
         if (ai.buildings.some(b => b.isWonder)) {
+            this.outcome('log.out.alreadyWonder', {});
             return `[ERROR] You are already building or holding a Wonder.`;
         }
         if (!ai.resources.hasResources(wonderDef.cost)) {
             const c = wonderDef.cost;
+            this.outcome('log.out.cannotAfford', { whatName: wonderDef.name, need: c, have: this.haveObj(ai) });
             return `[ERROR] Cannot afford the Wonder (needs ${this.costString(c)}). You have ${this.haveString(ai)}.`;
         }
 
@@ -2502,6 +2533,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             }
         }
         if (!spot) {
+            this.outcome('log.out.noClearSpotWonder', {});
             return `[ERROR] No clear spot for the Wonder within ~90 units of your Town Center — even the outskirts are packed. destroy_building an old structure to make room, then build_wonder again.`;
         }
         const { x, z } = spot;
@@ -2510,8 +2542,8 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // This exact rejection blocked a Persian Iron-age player from starting an
         // affordable Wonder because all its workers were out gathering.
         const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
-        if (pick.error === 'no_workers') return `[ERROR] You have no workers to build the Wonder.`;
-        if (pick.error === 'no_idle') return `[ERROR] No worker available to start the Wonder — all your workers are constructing other sites or fighting (neither is ever pulled). Wait for one to finish.`;
+        if (pick.error === 'no_workers') { this.outcome('log.out.noWorkersWonder', {}); return `[ERROR] You have no workers to build the Wonder.`; }
+        if (pick.error === 'no_idle') { this.outcome('log.out.noWorkerIdleWonder', {}); return `[ERROR] No worker available to start the Wonder — all your workers are constructing other sites or fighting (neither is ever pulled). Wait for one to finish.`; }
 
         ai.resources.spendResources(wonderDef.cost);
         const wonder = createBuilding(wonderDef.id, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
@@ -2519,6 +2551,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         game.renderer.addBuilding(wonder);
         game.applyBuilder(pick, wonder);
         const secs = Math.round((wonder.buildTime || 60000) / 1000);
+        this.outcome('log.out.wonderStarted', { secs, hold: (game.wonderRequired || 600) });
         return `OK - Started building the Wonder (~${secs}s to build). Hold it for ${(game.wonderRequired || 600)}s after completion to WIN — defend it, rivals will rush it!`;
     }
 
@@ -2574,6 +2607,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // Validate the destination first so bad coords never strand units at NaN.
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
+            this.outcome('log.out.moveNeedsCoords', {});
             return `[ERROR] move_units needs numeric "targetX" and "targetZ" (map coordinates inside map.bounds). Got targetX=${JSON.stringify(targetX)}, targetZ=${JSON.stringify(targetZ)}.`;
         }
         // Keep the destination on solid ground (no marching into the ocean).
@@ -2586,8 +2620,10 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (unitsToMove.length === 0) {
             const ownsMilitary = ai.units.some(u => u.type !== 'worker' && u.health > 0);
             if (ownsMilitary) {
+                this.outcome('log.out.moveNoMatch', {});
                 return `[ERROR] move_units matched none of your units${sel.note}. Name unit types you actually own (e.g. {"champion":3}), or omit "units" to move your whole army. Your military: ${this.forceComposition(ai)}.`;
             }
+            this.outcome('log.out.noMilitaryMove', {});
             return `[ERROR] You have no military units to move. (move_units repositions MILITARY; workers gather via harvest_resource/assign_workers.) Train military units first.`;
         }
 
@@ -2606,6 +2642,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         });
 
         console.log(`[OpenAIAI] ${ai.id}: Moving ${unitsToMove.length} units to (${Math.round(targetX)}, ${Math.round(targetZ)})`);
+        this.outcome('log.out.moveUnits', { count: unitsToMove.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
         return `OK - Moving ${unitsToMove.length} unit(s) to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note} — ~${eta}s to arrive; let them march before re-issuing.`;
     }
 
@@ -2619,12 +2656,14 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         if (!target) {
             console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" not found`);
+            this.outcome('log.out.targetNotFound', { targetId });
             return `[ERROR] Target "${targetId}" not found. ${this.attackTargetHint(ai, game)}`;
         }
 
         // Friendly-fire guard: a model must not attack its own units/buildings.
         if (this.isOwnedByAI(target, ai)) {
             console.log(`[OpenAIAI] ${ai.id}: Refused self-attack on "${target.name || target.type}"`);
+            this.outcome('log.out.targetIsOwn', { target: target.name || target.type });
             return `[ERROR] Target "${target.name || target.type}" is your own ${target.type}. You cannot attack your own units or buildings. ${this.attackTargetHint(ai, game)}`;
         }
 
@@ -2637,10 +2676,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             console.log(`[OpenAIAI] ${ai.id}: No units to attack with`);
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             if (ownsCombat) {
+                this.outcome('log.out.attackNoMatch', {});
                 return `[ERROR] attack matched none of your COMBAT units${sel.note}. Name types you own (e.g. {"champion":3}) or omit "units" to send your whole army. Your military: ${this.forceComposition(ai)}. ${this.attackTargetHint(ai, game)}`;
             }
             const priestNote = ai.units.some(u => u.unitType === 'support')
                 ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send.' : '';
+            this.outcome('log.out.noMilitaryAttack', {});
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
@@ -2672,6 +2713,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
+            this.outcome('log.out.attackNeedsCoords', {});
             return `[ERROR] attack needs numeric "targetX"/"targetZ" (or a "targetId"). Got targetX=${JSON.stringify(targetX)}, targetZ=${JSON.stringify(targetZ)}. ${this.attackTargetHint(ai, game)}`;
         }
         // Keep the attack-move objective on solid ground.
@@ -2684,10 +2726,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (unitsToAttack.length === 0) {
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             if (ownsCombat) {
+                this.outcome('log.out.attackNoMatch', {});
                 return `[ERROR] attack matched none of your COMBAT units${sel.note}. Name types you own (e.g. {"champion":3}) or omit "units" to send your whole army. Your military: ${this.forceComposition(ai)}. ${this.attackTargetHint(ai, game)}`;
             }
             const priestNote = ai.units.some(u => u.unitType === 'support')
                 ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send.' : '';
+            this.outcome('log.out.noMilitaryAttack', {});
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
@@ -2702,12 +2746,14 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             if (d <= nd) { nd = d; atSpot = e; }
         }
         if (atSpot && this.isOwnedByAI(atSpot, ai)) {
+            this.outcome('log.out.attackOwnGround', { x: Math.round(targetX), z: Math.round(targetZ), type: atSpot.type });
             return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is on your own ${atSpot.type}. You cannot attack your own units/buildings. ${this.attackTargetHint(ai, game)}`;
         }
         if (!atSpot) {
             const res = (game.terrain && game.terrain.resources) || [];
             const node = res.find(r => r.amount > 0 && Math.hypot(r.x - targetX, r.z - targetZ) <= RES);
             if (node) {
+                this.outcome('log.out.attackResourceNode', { x: Math.round(targetX), z: Math.round(targetZ), res: node.type });
                 return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is a ${node.type} resource node, not an attack target. Workers gather it with harvest_resource. ${this.attackTargetHint(ai, game)}`;
             }
         }
@@ -2962,12 +3008,14 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (ai.buildings.some(b => b.type === 'town_center' && !b.underConstruction)) return null;
         const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
         const costStr = tcDef ? Object.entries(tcDef.cost || {}).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${k}`).join(', ') : 'its cost';
+        this.outcome('log.out.noTCWorkers', {});
         return `[ERROR] You have NO finished Town Center, so workers have nowhere to DELIVER what they gather — harvesting is pointless right now. FIRST rebuild one: build_structure with buildingType="town_center" and targetX/targetZ on open ground (costs ${costStr}). Once it stands, reassign your workers to resources.`;
     }
 
     executeHarvestResource(ai, game, resourceType) {
         resourceType = this.normalizeResourceType(resourceType);
         if (!resourceType) {
+            this.outcome('log.out.harvestNeedsResource', {});
             return `[ERROR] harvest_resource needs a gatherable "resourceType": one of food, wood, stone, gold. (To construct a building, use build_structure instead.)`;
         }
         const noTC = this.noTownCenterAdvice(ai);
@@ -2980,6 +3028,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (discovered.length === 0) {
             const msg = this.dispatchScoutToward(ai, game);
             const have = this.discoveredResourceSummary(ai, game);
+            this.outcome('log.out.harvestNotDiscovered', { res: resourceType });
             return `[ERROR] No ${resourceType} has been discovered yet, so NOTHING was harvested. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. ${msg} It will appear in "resourcesOnMap" once a scout finds it — then call harvest_resource again. Spend the meantime on other useful work (don't keep re-issuing harvest).`;
         }
 
@@ -2988,6 +3037,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             !u.isBuilding && u.task !== 'building' && !u.farmRef
         );
         if (idleWorkers.length === 0) {
+            this.outcome('log.out.noIdleWorkers', { res: resourceType });
             return `[ERROR] No idle workers to harvest ${resourceType}. Train a worker, or use assign_workers to pull one off its current task.`;
         }
 
@@ -3000,6 +3050,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         worker.targetZ = node.z + (Math.random() - 0.5) * 2;
         worker.carryingResource = false;
         worker.harvestAmount = 0;
+        this.outcome('log.out.harvestStarted', { res: resourceType, x: Math.round(node.x), z: Math.round(node.z) });
         return `OK - Sent worker to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}).`;
     }
 
@@ -3034,6 +3085,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const farms = ai.buildings.filter(b => b.type === 'farm' && !b.underConstruction && b.health > 0);
         if (farms.length === 0) {
             const site = ai.buildings.some(b => b.type === 'farm' && b.underConstruction);
+            this.outcome(site ? 'log.out.farmUnderConstr' : 'log.out.noFinishedFarms', {});
             return site
                 ? `[ERROR] Your farm is still under construction — the worker building it stays on as its farmer once it finishes. Nothing to staff yet.`
                 : `[ERROR] You own no finished farms. Build one with build_structure {"buildingType":"farm"} (needs the "farm" research); its builder stays on as the farmer. Farms regrow food indefinitely — berry bushes do not.`;
@@ -3051,6 +3103,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (gaveX || gaveZ) {
             const tx = Number(params.targetX), tz = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
+                this.outcome('log.out.farmNeedsCoords', {});
                 return `[ERROR] assign_workers to "farm" takes BOTH numeric "targetX" and "targetZ" (one of your farms in "buildings"), or neither — then your unmanned farms are staffed nearest-Town-Center first.`;
             }
             open.sort((a, b) => Math.hypot(a.x - tx, a.z - tz) - Math.hypot(b.x - tx, b.z - tz));
@@ -3070,6 +3123,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (candidates.length === 0) {
             const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
             const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
+            this.outcome('log.out.noWorkersForFarms', { open: open.length });
             return `[ERROR] No workers can be spared for your ${open.length} unmanned farm(s): ${building} are constructing, ${fighting} are fighting (neither is ever pulled), and the rest already man farms. Train a worker.`;
         }
         const rank = u => game.workerPullRank(ai, u);
@@ -3116,6 +3170,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
 
         const resourceType = this.normalizeResourceType(params.resourceType);
         if (!resourceType) {
+            this.outcome('log.out.assignNeedsResource', {});
             return `[ERROR] assign_workers requires a "resourceType": food|wood|stone|gold to gather, or "farm" to man your own farms. (To construct a building, use build_structure instead.)`;
         }
         const noTC = this.noTownCenterAdvice(ai);
@@ -3141,6 +3196,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (gaveX || gaveZ) {
             const tx = Number(params.targetX), tz = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
+                this.outcome('log.out.assignNeedsCoords', { res: resourceType });
                 return `[ERROR] assign_workers takes BOTH numeric "targetX" and "targetZ" (a discovered ${resourceType} node from "resourcesOnMap"), or neither — then the node nearest your Town Center is used.`;
             }
             node = this.nearestNodeTo({ x: tx, z: tz }, discovered);
@@ -3173,6 +3229,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             const already = ai.units.filter(u => u.type === 'worker' && (u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget && u.harvestTarget.type === resourceType).length;
             const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
             const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
+            this.outcome('log.out.noWorkersReassign', { already, res: resourceType, building, fighting });
             return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing, ${fighting} are fighting (builders and fighting workers are never pulled). Train more workers.`;
         }
         // Tier policy lives in game.workerPullRank — the same triage that picks
@@ -3213,6 +3270,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     executeRepairBuilding(ai, game, params) {
         const damaged = ai.buildings.filter(b => !b.underConstruction && b.health > 0 && b.health < b.maxHealth);
         if (damaged.length === 0) {
+            this.outcome('log.out.nothingToRepair', {});
             return `[ERROR] None of your buildings are damaged — nothing to repair. (Construction SITES are finished automatically by the worker build_structure assigned.)`;
         }
         let target;
@@ -3221,6 +3279,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         if (gaveX || gaveZ) {
             const tx = Number(params.targetX), tz = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
+                this.outcome('log.out.repairNeedsCoords', {});
                 return `[ERROR] repair_building needs BOTH numeric "targetX" and "targetZ" (of YOUR damaged building), or omit both to repair your most damaged one.`;
             }
             let best = null, bd = Infinity;
@@ -3230,6 +3289,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             });
             if (!best || bd > 12) {
                 const list = damaged.map(b => `${b.type} at (${Math.round(b.x)}, ${Math.round(b.z)}) ${Math.round(b.health / b.maxHealth * 100)}% HP`).join('; ');
+                this.outcome('log.out.noDamagedNear', { x: Math.round(tx), z: Math.round(tz) });
                 return `[ERROR] No damaged building of yours near (${Math.round(tx)}, ${Math.round(tz)}). Damaged now: ${list}.`;
             }
             target = best;
@@ -3242,6 +3302,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             .sort((a, b) => Math.hypot(a.x - target.x, a.z - target.z) - Math.hypot(b.x - target.x, b.z - target.z))
             .slice(0, count);
         if (workers.length === 0) {
+            this.outcome('log.out.noWorkersRepair', {});
             return `[ERROR] No workers available to repair (all are constructing). Train a worker or wait for a build to finish.`;
         }
         workers.forEach(w => {
@@ -3249,12 +3310,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             w.farmRef = null;
         });
         const mode = game.assignWorkersToBuilding(workers, target);
-        if (!mode) return `[ERROR] Could not start the repair (the building may have just been destroyed).`;
+        if (!mode) { this.outcome('log.out.repairFailed', {}); return `[ERROR] Could not start the repair (the building may have just been destroyed).`; }
         const pct = Math.round(target.health / target.maxHealth * 100);
         const barrier = game.repairBarrierMsLeft ? game.repairBarrierMsLeft(target) : 0;
         const barrierNote = barrier > 0
             ? ` NOTE: it is still under fire — repairs are locked until 10s after the LAST hit; the workers wait on site and start automatically.`
             : '';
+        this.outcome('log.out.repairStarted', { count: workers.length, type: target.type, x: Math.round(target.x), z: Math.round(target.z), pct });
         return `OK - ${workers.length} worker(s) repairing your ${target.type} at (${Math.round(target.x)}, ${Math.round(target.z)}), currently ${pct}% HP.${barrierNote} They idle when it is fully repaired — reassign them to resources afterwards.`;
     }
 
@@ -3274,11 +3336,12 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             const tx0 = Number(params.targetX);
             const tz0 = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx0) || !Number.isFinite(tz0)) {
+                this.outcome('log.out.exploreNeedsCoords', {});
                 return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds), or omit both to auto-scout the nearest unexplored frontier. Got targetX=${JSON.stringify(params.targetX)}, targetZ=${JSON.stringify(params.targetZ)}.`;
             }
 
             const scout = this.pickScout(ai, preferredType);
-            if (!scout) return `[ERROR] No unit available to explore. Train a worker first.`;
+            if (!scout) { this.outcome('log.out.noUnitExplore', {}); return `[ERROR] No unit available to explore. Train a worker first.`; }
             const wasBusy = scout.type === 'worker' && !this.game.isIdleWorker(scout);
             const missedChoice = preferredType && !this.scoutMatchesChoice(scout, preferredType);
 
@@ -3319,6 +3382,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             const counts = {};
             ai.units.forEach(u => { counts[u.type] = (counts[u.type] || 0) + 1; });
             const have = Object.entries(counts).map(([t, n]) => `${t}×${n}`).join(', ') || '(no units)';
+            this.outcome('log.out.noUnitDelete', { raw, have });
             return `[ERROR] You have no "${raw}" unit to delete. Your units: ${have}. Pass one of those "type" values (the "type" field shown for each unit in "friendlyUnits").`;
         }
 
@@ -3341,12 +3405,13 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             removed++;
         }
         const what = Object.entries(removedTypes).map(([t, n]) => `${n} ${t}`).join(', ');
+        this.outcome('log.out.deleted', { what });
         return `OK - Deleted ${what}, freeing population.`;
     }
 
     executeDestroyBuilding(ai, game, buildingType, targetX, targetZ) {
         let pool = ai.buildings.filter(b => b.type === buildingType);
-        if (pool.length === 0) return `[ERROR] You have no "${buildingType}" to destroy.`;
+        if (pool.length === 0) { this.outcome('log.out.noBuildingDestroy', { buildingType }); return `[ERROR] You have no "${buildingType}" to destroy.`; }
         let victim = pool[0];
         if (targetX !== undefined && targetZ !== undefined) {
             let bd = Infinity;
@@ -3355,9 +3420,11 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const wasTC = victim.type === 'town_center';
         const remainingTC = ai.buildings.filter(b => b.type === 'town_center').length;
         if (wasTC && remainingTC <= 1) {
+            this.outcome('log.out.refuseDestroyLastTC', {});
             return `[ERROR] Refusing to destroy your last Town Center — that would eliminate you.`;
         }
         game.destroyOwnBuilding(victim);
+        this.outcome('log.out.destroyed', { buildingType, x: Math.round(victim.x), z: Math.round(victim.z) });
         return `OK - Destroyed your ${buildingType} at (${Math.round(victim.x)}, ${Math.round(victim.z)}).`;
     }
 
