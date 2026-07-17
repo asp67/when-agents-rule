@@ -1498,7 +1498,10 @@ const I18N_OUTCOMES_2 = {
         'log.out.repairStarted': '{count} Arbeiter reparieren „{type}" bei ({x}, {z}) ({pct}% HP).',
         'log.out.deleted': '{what} gelöscht – Bevölkerung frei.',
         'log.out.destroyed': '„{buildingType}" bei ({x}, {z}) abgerissen.',
-        'log.out.noTCPlacement': 'Kein Dorfzentrum als Platzierungsreferenz gefunden.'
+        'log.out.noTCPlacement': 'Kein Dorfzentrum als Platzierungsreferenz gefunden.',
+        'log.out.attackDispatched': '{count} Einheit(en) greifen „{target}" an.',
+        'log.out.attackMoving': '{count} Einheit(en) rücken auf ({x}, {z}) vor (~{eta}s).',
+        'log.out.exploreSent': 'Kundschafter erkundet ({x}, {z}) (~{eta}s).'
     },
     es: {
         'log.out.trainWorkerNotUnit': '«{unitType}» no es una unidad del Centro urbano; usa train_unit.',
@@ -1572,7 +1575,10 @@ const I18N_OUTCOMES_2 = {
         'log.out.repairStarted': '{count} trabajador(es) reparan «{type}» en ({x}, {z}) ({pct}% HP).',
         'log.out.deleted': '{what} eliminado; población liberada.',
         'log.out.destroyed': '«{buildingType}» derribado en ({x}, {z}).',
-        'log.out.noTCPlacement': 'Sin Centro urbano como referencia de colocación.'
+        'log.out.noTCPlacement': 'Sin Centro urbano como referencia de colocación.',
+        'log.out.attackDispatched': '{count} unidad(es) atacan «{target}».',
+        'log.out.attackMoving': '{count} unidad(es) avanzan hacia ({x}, {z}) (~{eta}s).',
+        'log.out.exploreSent': 'Explorador va a ({x}, {z}) (~{eta}s).'
     },
     zh: {
         'log.out.trainWorkerNotUnit': '“{unitType}”不是镇中心单位，请用 train_unit。',
@@ -1646,7 +1652,10 @@ const I18N_OUTCOMES_2 = {
         'log.out.repairStarted': '{count} 名工人在 ({x}, {z}) 维修“{type}”（{pct}% 生命）。',
         'log.out.deleted': '已删除 {what}，释放人口。',
         'log.out.destroyed': '已在 ({x}, {z}) 拆除“{buildingType}”。',
-        'log.out.noTCPlacement': '没有可作为放置参照的镇中心。'
+        'log.out.noTCPlacement': '没有可作为放置参照的镇中心。',
+        'log.out.attackDispatched': '{count} 个单位正在攻击“{target}”。',
+        'log.out.attackMoving': '{count} 个单位向 ({x}, {z}) 进攻推进（约 {eta} 秒）。',
+        'log.out.exploreSent': '侦察兵前往 ({x}, {z})（约 {eta} 秒）。'
     }
 };
 Object.keys(I18N_OUTCOMES_2).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_OUTCOMES_2[l]); });

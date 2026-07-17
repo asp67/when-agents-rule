@@ -2705,6 +2705,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
 
         console.log(`[OpenAIAI] ${ai.id}: ${unitsToAttack.length} units attacking "${target.name || target.type}"`);
+        this.outcome('log.out.attackDispatched', { count: unitsToAttack.length, target: target.name || target.type });
         return `OK - ${unitsToAttack.length} units attacking "${target.name || target.type}".${sel.note}${escortNote}`;
     }
 
@@ -2789,6 +2790,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
 
         const eta = this.travelEtaSec(unitsToAttack[0], targetX, targetZ);
+        this.outcome('log.out.attackMoving', { count: unitsToAttack.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
         return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${escortNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
     }
 
@@ -3357,6 +3359,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             const clamped = Math.round(tx) !== Math.round(tx0) || Math.round(tz) !== Math.round(tz0);
             const pulled = wasBusy ? ' (no worker was idle, so one was pulled off gathering — reassign it to a resource once scouting is done)' : '';
             const choiceNote = missedChoice ? ` (no idle "${preferredType}" was free, so your ${scout.type} was used instead)` : '';
+            this.outcome('log.out.exploreSent', { x: Math.round(tx), z: Math.round(tz), eta });
             return `OK - Sent your ${scout.type} to explore (${Math.round(tx)}, ${Math.round(tz)})${clamped ? ' — your target was outside the map and was clamped to the edge' : ''}. It will take ~${eta}s to get there; let it travel before exploring again.${pulled}${choiceNote}`;
         }
 
