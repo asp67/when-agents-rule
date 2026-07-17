@@ -123,6 +123,7 @@
             this._geo = new Map();          // 'kind:args' → GPU buffers
             this._resEntries = new WeakMap(); // resource → prebaked entries
             this._unitDir = new WeakMap();    // unit → smoothed facing
+            this._unitPrev = new WeakMap();   // unit → last frame's x/z (facing reads REAL motion)
             this.tex = null;                  // built on setTerrain (theme-aware)
             this._theme = null;
             this._fogTex = null;              // GL texture wrapping the fog canvas
@@ -1053,22 +1054,38 @@
             for (const u of this.units) {
                 const ue = u._engine;
                 if (!ue || (u.mesh && u.mesh.visible === false) || this._cull(u.x, u.z, 6)) continue;
-                // smoothed facing from motion
+                // Smoothed facing from ACTUAL motion — never from intent. Only
+                // SOME movers maintain targetX/targetZ: game.js's attack-move march
+                // sets isMoving and advances the unit without ever touching it, and
+                // the separation/clearance passes move units too. Steering by a
+                // stale target is what left a unit that had just WON a fight
+                // marching off to its rally point with its face still on the dead
+                // enemy — walking backwards. Where a unit actually went is the one
+                // signal every mover updates by definition. (The renderer's legacy
+                // MOVER was deleted for this same stale-target reason; its facing
+                // was left reading the same rotten value.)
                 let dir = this._unitDir.get(u);
                 if (dir === undefined) { dir = 0; this._unitDir.set(u, dir); }
-                if (u.isMoving && u.targetX !== undefined) {
-                    const want = Math.atan2(u.targetX - u.x, u.targetZ - u.z);
-                    let d = want - dir;
-                    while (d > Math.PI) d -= Math.PI * 2;
-                    while (d < -Math.PI) d += Math.PI * 2;
-                    // Small corrections steer smoothly (error-proportional rate);
-                    // past ~100° it isn't steering, it's an about-face — pivot on
-                    // the spot. At the old flat dt·10 rate a 180° turn took ~0.3s
-                    // and cavalry visibly rode BACKWARDS through every U-turn.
-                    if (Math.abs(d) > 1.8) dir = want;
-                    else dir += d * Math.min(1, dt * (10 + 12 * Math.abs(d)));
-                    this._unitDir.set(u, dir);
+                const prev = this._unitPrev.get(u);
+                // isMoving gates it so the separation nudges can't spin an idle
+                // unit on the spot; the delta then says which way it truly went.
+                if (u.isMoving && prev) {
+                    const mx = u.x - prev.x, mz = u.z - prev.z;
+                    if (mx * mx + mz * mz > 1e-6) {
+                        const want = Math.atan2(mx, mz);
+                        let d = want - dir;
+                        while (d > Math.PI) d -= Math.PI * 2;
+                        while (d < -Math.PI) d += Math.PI * 2;
+                        // Small corrections steer smoothly (error-proportional rate);
+                        // past ~100° it isn't steering, it's an about-face — pivot on
+                        // the spot. At the old flat dt·10 rate a 180° turn took ~0.3s
+                        // and cavalry visibly rode BACKWARDS through every U-turn.
+                        if (Math.abs(d) > 1.8) dir = want;
+                        else dir += d * Math.min(1, dt * (10 + 12 * Math.abs(d)));
+                        this._unitDir.set(u, dir);
+                    }
                 }
+                this._unitPrev.set(u, { x: u.x, z: u.z });
                 const anim = (u.isHarvesting || u.isBuilding) ? 'harvest' : (u.isMoving ? 'walk' : 'idle');
                 const pose = EngineUnits.pose(ue.type, anim, tSec, ue.phase);
                 const spin = m3.rotationY(dir);
@@ -1284,14 +1301,30 @@
             // toward a STALE targetX/Z during attack-marches — dragged them 33%
             // slow. Infantry visibly outpaced cavalry. game.js (updateUnitMovement /
             // updateWorkerTasks / updateCombat) is the single source of movement.
+            // Separation stops an army stacking into one pillar. It applies ONLY
+            // between units of the SAME owner — an enemy is not a wall. All-pairs
+            // separation meant a charging unit had to out-shove the entire enemy
+            // front to reach anything: the mover advances ~0.072/frame at speed
+            // 1.5 while each neighbour pushes ~0.018 back, so six defenders
+            // (0.108) simply repelled it and it never landed a blow, however the
+            // LLM ordered it. Enemies interpenetrate now and melee always
+            // connects; the cost is that opposing armies merge instead of holding
+            // a front line, which is the deliberate trade.
+            //
+            // dt-SCALED: the push used to be a flat per-FRAME amount, so a 144Hz
+            // display separated ~2.4x harder than a 60Hz one — the framerate
+            // silently tuned the combat. Normalised to 60Hz so the constants keep
+            // their old meaning; clamped so one long frame can't fling anyone.
             const SEPARATION_DIST = 1.2, SEPARATION_FORCE = 0.03;
+            const sepK = Math.min(3, Math.max(0, deltaTime) * 60);
             for (let i = 0; i < this.units.length; i++) {
                 for (let j = i + 1; j < this.units.length; j++) {
                     const a = this.units[i], b = this.units[j];
+                    if (a.owner !== b.owner) continue; // an enemy is not a wall
                     const dx = b.x - a.x, dz = b.z - a.z;
                     const dist = Math.sqrt(dx * dx + dz * dz);
                     if (dist < SEPARATION_DIST && dist > 0.01) {
-                        const push = (SEPARATION_DIST - dist) * SEPARATION_FORCE;
+                        const push = (SEPARATION_DIST - dist) * SEPARATION_FORCE * sepK;
                         const nx = dx / dist, nz = dz / dist;
                         a.x -= nx * push; a.z -= nz * push;
                         b.x += nx * push; b.z += nz * push;
@@ -1307,23 +1340,29 @@
             // ranged reach (7.5+) out-ranges the zone anyway.
             const WONDER_CLEARANCE = 7.0;
             this.units.forEach(unit => {
-                // Combatants are exempt: the push used to referee fights near
-                // buildings — an attacking worker could never close to melee
-                // range and just shoved its target around the walls forever.
-                // Attack-MOVE marchers count too: before acquiring a target
-                // (attackTarget still null) the push could pin them against a
-                // packed base's clearance rings, sliding along walls instead
-                // of closing in — "can't reach the barracks from the side".
-                if (unit.isAttacking && (unit.attackTarget || unit.attackMove)) return;
+                // A marcher that has NOT yet acquired a target still ghosts every
+                // building: the radial clearance rings around a packed base overlap
+                // into channels it cannot thread, and it used to pin against them
+                // and slide along the walls forever instead of closing in —
+                // "can't reach the barracks from the side".
+                if (unit.isAttacking && !unit.attackTarget && unit.attackMove) return;
                 this.buildings.forEach(building => {
                     if (building.type === 'farm') return;
                     if (unit.task === 'building' && unit.buildTarget === building) return;
                     if (unit.task === 'repairing' && unit.repairTarget === building) return;
+                    // Ghost through the ONE building you're attacking, so melee can
+                    // close on it — the same per-target shape as the build/repair
+                    // exemptions above. This used to exempt a combatant from EVERY
+                    // building on the map, so the instant a unit retaliated it lost
+                    // all clearance and its own squadmates' separation shoved it
+                    // bodily THROUGH the nearest wall. Two pushes, one exempting
+                    // fighters and one exempting nobody, disagreeing.
+                    if (unit.isAttacking && unit.attackTarget === building) return;
                     const clr = building.isWonder ? WONDER_CLEARANCE : UNIT_BUILDING_CLEARANCE;
                     const dx = unit.x - building.x, dz = unit.z - building.z;
                     const dist = Math.sqrt(dx * dx + dz * dz);
                     if (dist < clr && dist > 0.01) {
-                        const push = (clr - dist) * 0.05;
+                        const push = (clr - dist) * 0.05 * sepK; // dt-scaled, like the pass above
                         unit.x += (dx / dist) * push;
                         unit.z += (dz / dist) * push;
                     }
