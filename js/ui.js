@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v36';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v37';
     }
 
     showScreen(screenId) {
@@ -2033,7 +2033,6 @@ class UIManager {
             build_structure: t('log.build_structure'),
             move_units: t('log.move_units'),
             attack_target: t('log.attack_target'),
-            harvest_resource: t('log.harvest_resource'),
             wait: t('log.wait'),
             paused: t('log.paused'),
             resumed: t('log.resumed'),
@@ -2549,7 +2548,7 @@ class UIManager {
         else if (m.attempted >= 4 && distinct <= 2) tags.push({ t: t('tag.monotonous'), cls: 'warn' });
         const ac = m.actionCounts;
         const mil = (ac.train_unit || 0) + (ac.attack_target || 0) + (ac.move_units || 0);
-        const eco = (ac.train_worker || 0) + (ac.harvest_resource || 0) + (ac.build_structure || 0);
+        const eco = (ac.train_worker || 0) + (ac.assign_workers || 0) + (ac.build_structure || 0);
         if (mil > eco && mil > 0) tags.push({ t: t('tag.aggressive'), cls: 'neutral' });
         else if (eco > mil && eco > 0) tags.push({ t: t('tag.ecoFocus'), cls: 'neutral' });
         if (!tags.length) tags.push({ t: '—', cls: 'neutral' });

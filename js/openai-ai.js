@@ -1271,7 +1271,6 @@ research_tech      techId                       id from research.available
 upgrade_age
 build_structure    buildingType [targetX targetZ]   type from buildableStructures
 build_wonder
-harvest_resource   resourceType [targetX targetZ]
 assign_workers     resourceType [count targetX targetZ]
 repair_building    [count targetX targetZ]      no coords = your most damaged building
 explore            targetX targetZ [unitType]   coordinates from map.exploration
@@ -2046,14 +2045,6 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
                 }
                 break;
 
-            case 'harvest_resource':
-                if (params?.resourceType) {
-                    actionResult = this.executeHarvestResource(ai, game, params.resourceType);
-                } else {
-                    actionResult = `[ERROR] harvest_resource requires "resourceType" parameter.`;
-                }
-                break;
-
             case 'build_wonder':
                 actionResult = this.executeBuildWonder(ai, game);
                 break;
@@ -2094,7 +2085,7 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
                 // exist" and sends a model hunting for a different one.
                 const bare = String(action).replace(/\s*\(.*\)\s*$/, '').trim();
                 const KNOWN = ['train_worker', 'train_unit', 'research_tech', 'upgrade_age',
-                    'build_structure', 'build_wonder', 'harvest_resource', 'assign_workers',
+                    'build_structure', 'build_wonder', 'assign_workers',
                     'repair_building', 'explore', 'move_units', 'attack_target',
                     'delete_unit', 'destroy_building', 'wait'];
                 actionResult = (bare !== action && KNOWN.includes(bare))
@@ -2823,7 +2814,7 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
                 return `[ERROR] move_units matched none of your units${sel.note}. Name unit types you actually own (e.g. {"champion":3}), or omit "units" to move your whole army. Your military: ${this.forceComposition(ai)}.`;
             }
             this.outcome('log.out.noMilitaryMove', {});
-            return `[ERROR] You have no military units to move. (move_units repositions MILITARY; workers gather via harvest_resource/assign_workers.) Train military units first.`;
+            return `[ERROR] You have no military units to move. (move_units repositions MILITARY; workers gather via assign_workers.) Train military units first.`;
         }
 
         let eta = 0;
@@ -2954,7 +2945,7 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
             const node = res.find(r => r.amount > 0 && Math.hypot(r.x - targetX, r.z - targetZ) <= RES);
             if (node) {
                 this.outcome('log.out.attackResourceNode', { x: Math.round(targetX), z: Math.round(targetZ), res: node.type });
-                return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is a ${node.type} resource node, not an attack target. Workers gather it with harvest_resource. ${this.attackTargetHint(ai, game)}`;
+                return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is a ${node.type} resource node, not an attack target. Workers gather it with assign_workers. ${this.attackTargetHint(ai, game)}`;
             }
         }
 
@@ -3195,46 +3186,11 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
         return `[ERROR] You have NO finished Town Center, so workers have nowhere to DELIVER what they gather — harvesting is pointless right now. FIRST rebuild one: build_structure with buildingType="town_center" and targetX/targetZ on open ground (costs ${costStr}). Once it stands, reassign your workers to resources.`;
     }
 
-    executeHarvestResource(ai, game, resourceType) {
-        resourceType = this.normalizeResourceType(resourceType);
-        if (!resourceType) {
-            this.outcome('log.out.harvestNeedsResource', {});
-            return `[ERROR] harvest_resource needs a gatherable "resourceType": one of food, wood, stone, gold. (To construct a building, use build_structure instead.)`;
-        }
-        const noTC = this.noTownCenterAdvice(ai);
-        if (noTC) return noTC;
-        const discovered = this.discoveredNodesOfType(ai, game, resourceType);
-
-        // Not scouted yet → nothing is harvested, and nothing is scouted on the
-        // model's behalf either. A failed action that quietly did useful work was
-        // the harness hiding its own move: the model never learned it had delegated.
-        if (discovered.length === 0) {
-            const have = this.discoveredResourceSummary(ai, game);
-            this.outcome('log.out.harvestNotDiscovered', { res: resourceType });
-            return `[ERROR] No ${resourceType} has been discovered yet, so NOTHING was harvested. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. Send a scout yourself with explore and coordinates picked from "map.exploration"; once ${resourceType} appears in "resourcesOnMap", call harvest_resource again.`;
-        }
-
-        const idleWorkers = ai.units.filter(u =>
-            u.type === 'worker' && !u.isMoving && !u.isHarvesting && !u.carryingResource &&
-            !u.isBuilding && u.task !== 'building' && !u.farmRef
-        );
-        if (idleWorkers.length === 0) {
-            this.outcome('log.out.noIdleWorkers', { res: resourceType });
-            return `[ERROR] No idle workers to harvest ${resourceType}. Train a worker, or use assign_workers to pull one off its current task.`;
-        }
-
-        const worker = idleWorkers[0];
-        const node = this.nearestNodeTo(worker, discovered);
-        worker.task = 'harvesting';
-        worker.harvestTarget = node;
-        worker.isMoving = true;
-        worker.targetX = node.x + (Math.random() - 0.5) * 2;
-        worker.targetZ = node.z + (Math.random() - 0.5) * 2;
-        worker.carryingResource = false;
-        worker.harvestAmount = 0;
-        this.outcome('log.out.harvestStarted', { res: resourceType, x: Math.round(node.x), z: Math.round(node.z) });
-        return `OK - Sent worker to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}).`;
-    }
+    // executeHarvestResource lived here. Removed: it was assign_workers with the
+    // options taken away — one worker, no count, and the targetX/targetZ the prompt
+    // advertised were never even passed to it, so a model aiming at a chosen node
+    // silently got the one nearest its worker. assign_workers already prefers idle
+    // workers (workerPullRank scores idle 0), so nothing it guaranteed was lost.
 
     // Normalize/validate a gatherable resource type. Returns the canonical lower-
     // case type ('food'|'wood'|'stone'|'gold') or null if it isn't a real resource
@@ -3345,7 +3301,7 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
     executeAssignWorkers(ai, game, params) {
         // "farm" is a JOB, not a node type: it staffs your own farms rather than
         // sending workers to a spot on the map. Routed before normalizeResourceType
-        // so the gatherable vocabulary (and harvest_resource, which shares it) stays
+        // so the gatherable vocabulary stays
         // exactly food|wood|stone|gold.
         const raw = String(params.resourceType || '').toLowerCase().trim();
         if (raw === 'farm' || raw === 'farms') return this.executeAssignFarmers(ai, game, params);
@@ -3360,8 +3316,7 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
         const count = Math.max(1, Math.min(params.count || 3, 20));
 
         // Discovered nodes? If not, nothing is reassigned — and no scout goes out on
-        // the model's behalf (see executeHarvestResource: a failed action must not
-        // quietly play a turn for it).
+        // the model's behalf: a failed action must not quietly play a turn for it.
         const discovered = this.discoveredNodesOfType(ai, game, resourceType);
         if (discovered.length === 0) {
             const have = this.discoveredResourceSummary(ai, game);
