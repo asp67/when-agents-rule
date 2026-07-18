@@ -298,6 +298,51 @@
         }
       }
     },
+    "battles": {
+      "type": "array",
+      "description": "Fighting you could not watch, one entry per ENGAGEMENT (clustered by location), CUMULATIVE since it began — a fight outlasts several turns. Absent entirely when nothing is happening. Only engagements you took part in. Numbers only: 'their 2 heavy_cavalry dealt 1800 to my 3 archers' is the counter lesson, drawing it is your job.",
+      "items": {
+        "type": "object",
+        "required": ["at", "ongoing", "secondsElapsed", "you", "enemy"],
+        "properties": {
+          "at": { "type": "array", "items": { "type": "integer" }, "description": "[x, z] centre of the fighting." },
+          "ongoing": { "type": "boolean", "description": "true while blows are still landing." },
+          "secondsElapsed": { "type": "integer" },
+          "you": { "$ref": "#/properties/battles/items/definitions/side" },
+          "enemy": {
+            "type": "array",
+            "description": "One entry per rival involved — three-way fights are not merged.",
+            "items": { "$ref": "#/properties/battles/items/definitions/side" }
+          }
+        },
+        "definitions": {
+          "side": {
+            "type": "object",
+            "properties": {
+              "owner": { "type": "string", "description": "Present on enemy entries only." },
+              "involved": {
+                "type": "object",
+                "description": "Keyed by unit/building type — towers, drafted workers and priests all appear as themselves. Zero fields are omitted, so a priest row is just {n, healed}.",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "n": { "type": "integer", "description": "Distinct units of this type that fought or healed." },
+                    "dmgUnits": { "type": "integer", "description": "Damage dealt to UNITS." },
+                    "dmgBuildings": { "type": "integer", "description": "Damage dealt to BUILDINGS — never summed with dmgUnits, since infantry raze at 1.5x and ranged at 0.5x." },
+                    "healed": { "type": "integer", "description": "HP restored (priests). Replaces damage for support units." }
+                  }
+                }
+              },
+              "lost": {
+                "type": "object",
+                "description": "Units of yours (or theirs) that died here, by type. Absent if none.",
+                "additionalProperties": { "type": "integer" }
+              }
+            }
+          }
+        }
+      }
+    },
     "friendlyBuildings": {
       "type": "array",
       "description": "Every building you own, with its live activity.",

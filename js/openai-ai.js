@@ -587,6 +587,47 @@ class OpenAIAIManager {
         const recentEvents = (ai.events || []).slice(-8).map(e =>
             `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
 
+        // --- Battles: what actually happened in the fighting ---
+        // A model cannot watch a fight — it decides between snapshots. Each entry is
+        // ONE engagement (clustered by location), CUMULATIVE since it began, so the
+        // same battle grows turn over turn instead of arriving as fragments. Only
+        // engagements this player took part in; the numbers are stated and never
+        // interpreted — "their 2 heavy cavalry dealt 1800 to my 3 archers" IS the
+        // counter lesson, and drawing it is the model's job, not the harness's.
+        const battleNow = Date.now();
+        const sideJson = (side) => {
+            const involved = {};
+            Object.entries(side.involved).forEach(([type, e]) => {
+                const o = { n: e.ids.size };
+                if (e.dmgUnits > 0) o.dmgUnits = Math.round(e.dmgUnits);
+                if (e.dmgBuildings > 0) o.dmgBuildings = Math.round(e.dmgBuildings);
+                if (e.healed > 0) o.healed = Math.round(e.healed);
+                involved[type] = o;
+            });
+            const out = { involved };
+            if (Object.keys(side.lost).length) out.lost = side.lost;
+            return out;
+        };
+        const battles = (game._battles || [])
+            .filter(b => b.sides[ai.id])
+            .slice(-3)
+            .map(b => {
+                const enemy = Object.keys(b.sides)
+                    .filter(oid => oid !== ai.id)
+                    .map(oid => {
+                        const foe = (game.aiManager && game.aiManager.aiPlayers.find(a => a.id === oid)) ||
+                                    (oid === 'player' ? game.player : null);
+                        return Object.assign({ owner: foe ? game.ownerName(foe) : String(oid) }, sideJson(b.sides[oid]));
+                    });
+                return {
+                    at: [Math.round(b.x), Math.round(b.z)],
+                    ongoing: (battleNow - b.lastAt) < 10000,
+                    secondsElapsed: Math.max(0, Math.round((b.lastAt - b.startedAt) / 1000)),
+                    you: sideJson(b.sides[ai.id]),
+                    enemy
+                };
+            });
+
         // --- Bonuses (only non-default) ---
         const bonusesObj = {};
         if (ai.workerHarvestBonus !== 1.0) bonusesObj.harvest = ai.workerHarvestBonus;
@@ -947,6 +988,9 @@ class OpenAIAIManager {
             epoch: epochObj,
             resources: resourcesObj,
             recentEvents: recentEvents,
+            // Omitted entirely in peacetime — this rides the per-turn channel, so a
+            // quiet game should pay nothing for it.
+            ...(battles.length ? { battles } : {}),
             bonuses: bonusesObj,
             map: mapObj,
             resourcesOnMap: resourcesOnMap,

@@ -215,6 +215,7 @@ class Game {
         // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
         // generator needs the spawns before it runs (they are already computed above).
         this.terrain.spawns = spawnPositions;
+        this._battles = []; // fresh match, no carried-over engagements
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 
@@ -371,6 +372,7 @@ class Game {
         // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
         // generator needs the spawns before it runs (they are already computed above).
         this.terrain.spawns = spawnPositions;
+        this._battles = []; // fresh match, no carried-over engagements
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 
@@ -1104,7 +1106,9 @@ class Game {
                         unit.attackTimer = 0;
 
                         // Deal damage (with rock-paper-scissors counter bonus)
-                        currentTarget.health -= unit.attack * this.combatMultiplier(unit, currentTarget);
+                        const dealt = unit.attack * this.combatMultiplier(unit, currentTarget);
+                        currentTarget.health -= dealt;
+                        this.recordBattleDamage(unit, currentTarget, dealt);
                         // Remember who hit this target & when, for the auto-defense reflex.
                         currentTarget._lastAttacker = unit;
                         currentTarget._lastDamageTime = Date.now();
@@ -1181,8 +1185,13 @@ class Game {
                 // Priests channel at 80% since the Heilkunde split — the temple
                 // tech (bonus.healPower 0.2) buys the last fifth back.
                 const healMult = 0.8 + (owner.healPowerBonus || 0);
+                const beforeHeal = patient.health;
                 patient.health = Math.min(patient.maxHealth,
                     patient.health + (HEAL_RATE * healMult * deltaTime) / 1000);
+                // Credit the ACTUAL restore, not the channel rate — the maxHealth
+                // clamp truncates the last tick, and a priest should not be reported
+                // healing more than it really put back.
+                this.recordBattleHealing(u, patient.health - beforeHeal);
                 // Soft green sparkle on the patient while the heal channels.
                 u._healFxTimer = (u._healFxTimer || 0) + deltaTime;
                 if (u._healFxTimer >= 900) {
@@ -1247,6 +1256,7 @@ class Game {
             inRange.sort((a, b) => a.d - b.d);
             inRange.slice(0, power.arrows).forEach(({ unit }) => {
                 unit.health -= dmg;
+                this.recordBattleDamage(tower, unit, dmg);
                 // Credit the shooter: the casualty report names the tower, and
                 // the auto-defense reflex knows what to retaliate against.
                 unit._lastAttacker = tower;
@@ -1640,6 +1650,77 @@ class Game {
         };
     }
 
+    // ---- Battle ledger -------------------------------------------------------
+    // A model never watches a fight: the state is a snapshot and the shooting
+    // happens while it is thinking. Damage, healing and losses accumulate into
+    // location-clustered ENGAGEMENTS, serialized per player as "battles".
+    //
+    // CUMULATIVE per engagement, not per turn. A fight outlasts several turns
+    // (a 5v5 runs 20-40s, a turn is 5-20s), and with the history compressed a
+    // model cannot re-assemble per-turn fragments — it would only ever see
+    // splinters of a battle it is trying to decide about.
+    //
+    // This also replaces the per-unit LOSS/KILL prose: two events per death
+    // flooded the 14-slot recentEvents buffer in any real battle and evicted the
+    // UNDER ATTACK warnings along with everything else.
+    _battleAt(x, z, open) {
+        const now = Date.now();
+        // Retire engagements nobody has touched in a while — kept a little past
+        // the last blow so the next state still reports how it ended.
+        this._battles = (this._battles || []).filter(b => (now - b.lastAt) <= 25000);
+        let b = this._battles.find(e => (now - e.lastAt) <= 10000 && Math.hypot(e.x - x, e.z - z) <= 40);
+        if (!b && open) {
+            b = { x, z, startedAt: now, lastAt: now, sides: {} };
+            this._battles.push(b);
+            if (this._battles.length > 4) this._battles.shift();
+        }
+        return b || null;
+    }
+
+    _battleEntry(battle, ownerId, type) {
+        const side = battle.sides[ownerId] || (battle.sides[ownerId] = { involved: {}, lost: {} });
+        return side.involved[type] ||
+            (side.involved[type] = { ids: new Set(), dmgUnits: 0, dmgBuildings: 0, healed: 0 });
+    }
+
+    // Damage OPENS an engagement — it is what a battle is made of. Attributed by
+    // the attacker's own type, so towers and drafted workers show up as themselves.
+    recordBattleDamage(attacker, target, amount) {
+        if (!attacker || !target || !(amount > 0) || attacker.owner == null) return;
+        const b = this._battleAt(target.x, target.z, true);
+        if (!b) return;
+        const e = this._battleEntry(b, attacker.owner, attacker.type);
+        e.ids.add(attacker.id);
+        // Razing a building is not the same achievement as killing an army, so the
+        // two are never summed — infantry hit buildings at 1.5x and ranged at 0.5x,
+        // which would make a siege look like a won field battle.
+        const isBuilding = target.isWonder || !!(target.type && BUILDING_DEFS[target.type]);
+        if (isBuilding) e.dmgBuildings += amount; else e.dmgUnits += amount;
+        b.lastAt = Date.now();
+        // Drift toward where the blows land so a rolling fight stays ONE engagement.
+        b.x += (target.x - b.x) * 0.05;
+        b.z += (target.z - b.z) * 0.05;
+    }
+
+    // Healing only JOINS a fight, never opens one — otherwise priests topping units
+    // up between battles would spawn phantom engagements across the map.
+    recordBattleHealing(healer, amount) {
+        if (!healer || !(amount > 0) || healer.owner == null) return;
+        const b = this._battleAt(healer.x, healer.z, false);
+        if (!b) return;
+        const e = this._battleEntry(b, healer.owner, healer.type);
+        e.ids.add(healer.id);
+        e.healed += amount;
+    }
+
+    recordBattleLoss(victim) {
+        if (!victim || victim.owner == null) return;
+        const b = this._battleAt(victim.x, victim.z, false);
+        if (!b) return;
+        const side = b.sides[victim.owner] || (b.sides[victim.owner] = { involved: {}, lost: {} });
+        side.lost[victim.type] = (side.lost[victim.type] || 0) + 1;
+    }
+
     // Rolling per-player battle report. Serialized into the LLM game state as
     // "recentEvents" so a model learns about losses, kills and raids it can't
     // otherwise see (the state is a snapshot; deaths between turns were silent).
@@ -1673,13 +1754,21 @@ class Game {
         const label = isBuilding ? (target.isWonder ? 'Wonder' : target.type) : target.type;
         const killer = target._lastAttacker;
         const killerLabel = killer ? (killer.isWonder ? 'Wonder' : killer.type) : null;
-        if (victimOwner) {
-            const by = (killerOwner && killerOwner !== victimOwner)
-                ? ` by ${this.ownerName(killerOwner)}'s ${killerLabel || 'forces'}` : '';
-            this.logPlayerEvent(victimOwner, `LOSS: your ${label} was eliminated${by} at ${at}`);
-        }
-        if (killerOwner && killerOwner !== victimOwner) {
-            this.logPlayerEvent(killerOwner, `KILL: your ${killerLabel || 'forces'} eliminated ${this.ownerName(victimOwner)}'s ${label} at ${at}`);
+        // Unit casualties go to the battle ledger (aggregated per engagement, for
+        // BOTH sides). They used to be two prose events per death, which flooded the
+        // 14-slot recentEvents buffer in any real fight and evicted the UNDER ATTACK
+        // warnings with it. BUILDINGS still get prose: losing one is rare, singular
+        // and strategically distinct, so it deserves to be said out loud.
+        this.recordBattleLoss(target);
+        if (isBuilding) {
+            if (victimOwner) {
+                const by = (killerOwner && killerOwner !== victimOwner)
+                    ? ` by ${this.ownerName(killerOwner)}'s ${killerLabel || 'forces'}` : '';
+                this.logPlayerEvent(victimOwner, `LOSS: your ${label} was destroyed${by} at ${at}`);
+            }
+            if (killerOwner && killerOwner !== victimOwner) {
+                this.logPlayerEvent(killerOwner, `KILL: your ${killerLabel || 'forces'} destroyed ${this.ownerName(victimOwner)}'s ${label} at ${at}`);
+            }
         }
 
         // (The population cap is re-derived AFTER the list surgery below, once
