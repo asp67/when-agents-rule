@@ -644,18 +644,28 @@ class OpenAIAIManager {
         const ageUpActive = !!ai.currentAgeUpgrade; // hosted at a Town Center
         let researchAssigned = false, ageAssigned = false;
 
-        const bSummary = { total: 0, idle: 0, busy: 0, underConstruction: 0, producing: 0, researching: 0, farmsUnmanned: 0, byType: {} };
+        const bSummary = { total: 0, idle: 0, busy: 0, underConstruction: 0, producing: 0, researching: 0, advancingAge: 0, farmsUnmanned: 0, byType: {} };
 
         const friendlyBuildings = ai.buildings.map(b => {
             const constructing = !!b.underConstruction;
             const producing = !!b.isProducing && !constructing;
-            let researching = false;
+            // Age-up and tech research are DIFFERENT tasks that can run AT THE SAME
+            // TIME (executeResearchTech only guards on currentResearch, executeUpgradeAge
+            // only on currentAgeUpgrade). They used to share the "researching" label, so
+            // a Town Center advancing an epoch reported activity "researching" while
+            // research.current was null — models read that as a contradiction and sat
+            // waiting for a research that did not exist. Kept apart now, each bound to
+            // ONE host building, each carrying its own countdown below.
+            let researching = false, advancing = false;
             if (!constructing) {
-                if (ageUpActive && !ageAssigned && b.type === 'town_center') { researching = true; ageAssigned = true; }
+                if (ageUpActive && !ageAssigned && b.type === 'town_center') { advancing = true; ageAssigned = true; }
                 else if (researchHostType && !researchAssigned && b.type === researchHostType) { researching = true; researchAssigned = true; }
             }
-            const busy = constructing || producing || researching;
-            const activity = constructing ? 'under_construction' : producing ? 'producing' : researching ? 'researching' : 'idle';
+            const busy = constructing || producing || researching || advancing;
+            const activity = constructing ? 'under_construction'
+                : producing ? 'producing'
+                : advancing ? 'advancing_age'
+                : researching ? 'researching' : 'idle';
 
             const obj = {
                 type: b.type,
@@ -674,6 +684,17 @@ class OpenAIAIManager {
                 obj.buildPct = Math.round(Math.min(1, (b.buildProgress || 0) / (b.buildTime || 10000)) * 100);
                 obj.buildSecondsRemaining = this.secsLeft(b.buildProgress, b.buildTime);
             }
+            // Say WHAT the host is busy with and WHEN it frees up, right here — a
+            // model asking "when can this Town Center train again" should not have to
+            // cross-reference research.current / epoch.upgradeInProgress to find out.
+            if (researching && ai.currentResearch) {
+                obj.researchingTech = ai.currentResearch.techId;
+                obj.researchSecondsRemaining = this.secsLeft(ai.currentResearch.progress, ai.currentResearch.duration);
+            }
+            if (advancing && ai.currentAgeUpgrade) {
+                obj.advancingTo = ai.currentAgeUpgrade.targetAge;
+                obj.ageSecondsRemaining = this.secsLeft(ai.currentAgeUpgrade.progress, ai.currentAgeUpgrade.duration);
+            }
             if (b.isWonder) obj.wonder = true;
             if (b.type === 'farm') {
                 obj.food = Math.floor(b.foodAmount || 0);
@@ -691,6 +712,7 @@ class OpenAIAIManager {
             if (constructing) bSummary.underConstruction++;
             if (producing) bSummary.producing++;
             if (researching) bSummary.researching++;
+            if (advancing) bSummary.advancingAge++;
             if (busy) bSummary.busy++; else bSummary.idle++;
             // Standing idle costs nothing; a farm standing UNMANNED costs food every
             // second, and nothing else in this summary would ever say so.

@@ -339,12 +339,30 @@
           },
           "activity": {
             "type": "string",
+            "description": "researching = hosting a TECH (see research.current); advancing_age = hosting the epoch upgrade (see epoch.upgradeInProgress). They are separate tasks and can run at the same time, in different buildings.",
             "enum": [
               "under_construction",
               "producing",
               "researching",
+              "advancing_age",
               "idle"
             ]
+          },
+          "researchingTech": {
+            "type": "string",
+            "description": "Tech id this building is researching. Only while activity is researching."
+          },
+          "researchSecondsRemaining": {
+            "type": "integer",
+            "description": "Seconds until this building finishes its tech. Only while activity is researching."
+          },
+          "advancingTo": {
+            "type": "string",
+            "description": "Epoch this Town Center is advancing to. Only while activity is advancing_age."
+          },
+          "ageSecondsRemaining": {
+            "type": "integer",
+            "description": "Seconds until the epoch upgrade completes. Only while activity is advancing_age."
           },
           "producing": {
             "oneOf": [
