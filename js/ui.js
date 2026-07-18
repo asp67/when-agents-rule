@@ -1720,18 +1720,26 @@ class UIManager {
     // Two independent filters that AND together: a player and a free-text term.
     // Both narrow the SOURCE list before the 160-entry render cap, so filtering
     // reaches back through the whole history rather than only the visible slice.
+    logFilter() {
+        if (!this._logFilter) this._logFilter = { players: new Set(), text: '' };
+        return this._logFilter;
+    }
+
+    // Independent on/off toggles rather than a radio group: watching two rivals at
+    // once is the point during a fight, and switching back and forth loses the
+    // interleaving that makes a conflict readable. No selection means no filter,
+    // so turning the last one off returns to showing everyone.
     setLogPlayerFilter(playerId) {
-        this._logFilter = this._logFilter || { playerId: null, text: '' };
-        // Clicking the active player clears it — no separate "all" round-trip.
-        this._logFilter.playerId = (this._logFilter.playerId === playerId) ? null : playerId;
+        const f = this.logFilter();
+        if (f.players.has(playerId)) f.players.delete(playerId);
+        else f.players.add(playerId);
         this._lastLogSig = null;   // filter changed → force a rebuild
         this.renderLogPlayerChips();
         this.updateDecisionLog();
     }
 
     setLogTextFilter(text) {
-        this._logFilter = this._logFilter || { playerId: null, text: '' };
-        this._logFilter.text = String(text || '').trim().toLowerCase();
+        this.logFilter().text = String(text || '').trim().toLowerCase();
         this._lastLogSig = null;
         this.updateDecisionLog();
     }
@@ -1743,20 +1751,30 @@ class UIManager {
         const el = document.getElementById('aiLogPlayers');
         if (!el) return;
         const players = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
-        const active = (this._logFilter && this._logFilter.playerId) || null;
-        const sig = players.map(p => `${p.id}:${p.seat}`).join('|') + '#' + active + '#' + getUiLang();
+        const on = this.logFilter().players;
+        // Player ids are per-match. A selection carried into the NEXT match would
+        // match nobody and silently hide the whole log, so drop anything that is not
+        // on the current roster.
+        if (on.size && players.length) {
+            const live = new Set(players.map(p => p.id));
+            [...on].forEach(id => { if (!live.has(id)) on.delete(id); });
+        }
+        const sig = players.map(p => `${p.id}:${p.seat}`).join('|')
+            + '#' + [...on].sort().join(',') + '#' + getUiLang();
         if (sig === this._logChipSig) return;
         this._logChipSig = sig;
         el.innerHTML = players.map(p => {
-            const on = active === p.id;
+            const isOn = on.has(p.id);
             const civ = this.escapeHtml(tg((getCivilization(p.civilization) || {}).name || p.civilization));
             // Badge + civ ICON only: the names wrapped the row onto two lines for no
             // information gain, since the badge already identifies the seat. The full
             // name stays as the tooltip.
             const icon = this.civIcon(p.civilization);
-            return `<button class="ai-log-chip${on ? ' is-on' : ''}" data-player="${this.escapeHtml(p.id)}"
+            // aria-pressed, not aria-checked: these are independent toggles, not a
+            // radio group, and a screen reader should say so.
+            return `<button class="ai-log-chip${isOn ? ' is-on' : ''}" data-player="${this.escapeHtml(p.id)}"
                         onclick="game.ui.setLogPlayerFilter('${this.escapeHtml(p.id)}')"
-                        aria-label="${civ}" title="${civ}">${this.teamDotHtml(p.seat, 9)}<span class="ai-log-chip-icon">${icon || civ}</span></button>`;
+                        aria-pressed="${isOn}" aria-label="${civ}" title="${civ}">${this.teamDotHtml(p.seat, 9)}<span class="ai-log-chip-icon">${icon || civ}</span></button>`;
         }).join('');
     }
 
@@ -1986,8 +2004,8 @@ class UIManager {
 
         const log = this.game.openAIAIManager.decisionLog;
         this.renderLogPlayerChips();
-        const f = this._logFilter || { playerId: null, text: '' };
-        const filtering = !!(f.playerId || f.text);
+        const f = this.logFilter();
+        const filtering = !!(f.players.size || f.text);
 
         if (log.length === 0) {
             if (countEl) countEl.textContent = '';
@@ -2003,7 +2021,7 @@ class UIManager {
         // filter is part of the signature: without it, typing in the search box
         // would not repaint until the next decision arrived.
         const sig = [getUiLang(), log.length, (log[0] ? log[0].timestamp : 0),
-                     f.playerId || '', f.text].join(':');
+                     [...f.players].sort().join(','), f.text].join(':');
         if (sig === this._lastLogSig) return;
         this._lastLogSig = sig;
 
@@ -2037,7 +2055,7 @@ class UIManager {
         // 160 entries that would have been rendered anyway.
         const view = [];
         for (const entry of log) {
-            if (f.playerId && entry.playerId !== f.playerId) continue;
+            if (f.players.size && !f.players.has(entry.playerId)) continue;
             const pp = entry.params || {};
             const hasT = pp.targetX !== undefined && pp.targetZ !== undefined;
             const actionLabel = entry.isAdvice ? t('log.advice')
