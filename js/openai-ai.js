@@ -1197,9 +1197,8 @@ Parameters are validated for you: a missing or wrong one comes back as an [ERROR
 You keep a STANDING objective and plan, echoed back every turn: set them with the optional "objective" (one line) and "plan" (up to 5 short steps) params on ANY action, omit them to keep the current ones. Use them so a multi-turn intention survives.
 
 ## Response format
-Reply with ONLY one JSON object — no markdown, no code fences, no prose around it:
-{"action":"<name>","params":{ ...action params..., "reason":"<one line: how this advances victory>"}}
-Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_structure, build_wonder, harvest_resource, assign_workers, repair_building, explore, move_units, attack_target, delete_unit, destroy_building, wait`;
+Reply with ONLY one JSON object — no markdown, no code fences, no prose around it, using one action name from the list above:
+{"action":"<name>","params":{ ...action params..., "reason":"<one line: how this advances victory>"}}`;
     }
 
     // ----------------------------------------------------------------
