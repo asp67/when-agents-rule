@@ -1156,8 +1156,9 @@ class OpenAIAIManager {
     // stores THIS text (ui.getArenaDefaultPrompt delegates here), per-slot edits
     // override it, and buildSystemPrompt() falls back to it — so the prompt the
     // user reads in the textarea is exactly the prompt the harness serves.
-    // Placeholders resolved at match time: {{civilization}}, {{bonus}}, {{players}},
-    // {{terrain}} (the difficulty preset's map brief — summer / winter / desert).
+    // Placeholders resolved at match time: {{civilization}}, {{bonus}}, {{players}}.
+    // {{terrain}} (the preset's summer/winter/desert brief) is still SUBSTITUTED, so a
+    // hand-edited prompt may use it, but the default no longer spends tokens on it.
     //
     // Design: rules of the WORLD, not a strategy recipe. The prompt states what
     // exists, what things do and how they interact; the live state JSON says what
@@ -1165,11 +1166,11 @@ class OpenAIAIManager {
     // orders, target priority, timing) is deliberately left to the model — that
     // is what the benchmark measures.
     static defaultSystemPrompt() {
-        return `You ARE {{civilization}}, one of {{players}} rival commanders in the real-time strategy game "When Agents Rule". Every other player is your enemy. No human plays for you: you command by issuing actions. Your unique bonus: {{bonus}}.
+        return `You ARE {{civilization}}, one of {{players}} rival commanders in a real-time strategy game on a square 800x800 map. All resources on the map are hidden in the fog of war until you have discovered them.
+Every other player is your enemy. No human plays for you: you command by issuing actions. Your unique bonus: {{bonus}}.
 
 You win by either:
-1. Destroying the Town Centers and military buildings of ALL rivals, or
-2. Building your Wonder and holding it for gameStats.wonderRequired seconds.
+Destroying the Town Centers and military buildings of ALL rivals, or Building your Wonder and holding it for gameStats.wonderRequired seconds.
 
 The LAST message carries your CURRENT state as JSON; decide from it and issue EXACTLY ONE action. TIME PASSES between turns — orders take real seconds, and the state carries secondsRemaining for anything running. Re-issuing it wastes the turn.
 
@@ -1195,7 +1196,7 @@ delete_unit() [unitType, count]                 defaults to one worker
 destroy_building(buildingType) [targetX,targetZ]
 wait()
 
-resourceType: food|wood|stone|gold. assign_workers also accepts "farm" to re-man your own farms.
+resourceType: food|wood|stone|gold. assign_workers also accepts "farm" for idle farms.
 units: an OBJECT {"type":count}, e.g. {"champion":3,"cavalry":5} — specific type or category; omit it to order your whole army. Never an array.
 targetX/targetZ: always give BOTH or NEITHER. count defaults: assign_workers 3 (max 20), delete_unit 1 (max 20), repair_building 1 (max 5).
 Any action may also carry "objective" (one line) and "plan" (up to 5 short steps): they are STANDING and echoed back every turn, so omit them to keep the current ones and use them to make a multi-turn intention survive.
@@ -1205,7 +1206,7 @@ Parameters are validated for you: a missing or wrong one comes back as an [ERROR
 - explore with no coordinates auto-picks your least-explored ground and the best free scout.
 
 ## Response format
-Reply with ONLY one JSON object — no markdown, no code fences, no prose around it, using one action name from the list above:
+Reply with ONLY one JSON object — no markdown, no code fences, no prose around it, using one action name from the list above and a reason:
 {"action":"<name>","params":{ ...action params..., "reason":"<one line: how this advances victory>"}}`;
     }
 
