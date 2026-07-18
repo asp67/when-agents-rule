@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v28';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v29';
     }
 
     showScreen(screenId) {
