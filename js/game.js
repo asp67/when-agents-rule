@@ -1348,6 +1348,30 @@ class Game {
                 defenders = defenders.concat(hands);
             }
             const usingWorkers = hands.length > 0;
+
+            // Priests march to a DEFENSE exactly as they march to an attack. This was
+            // the one order path that never called escortSupportUnits, so the clergy
+            // stood at home while the army rode out — the single case that contradicted
+            // "they march with an attack and heal wounded units from the back".
+            // It sits ABOVE the no-defenders return on purpose: `defenders` holds only
+            // units mobilizing THIS tick, so once the army is swinging that list is
+            // empty and a priest trained mid-raid would never be sent. Escort whenever
+            // a defense exists on site — forming now, or already fighting. No force
+            // means no escort: a lone medic walking into a raid is a free kill.
+            // Two exclusions, both because this reflex re-runs every ~600ms while the
+            // raid lasts: a priest already marching to THIS fight keeps its jittered
+            // rally point instead of being handed a new one every tick (the twitch the
+            // drafted-worker note above warns about), and a priest tending another live
+            // battle is not recalled off an ongoing assault to answer a scratch at home.
+            const defenceOnSite = defenders.length > 0 || military.some(u =>
+                u.isAttacking && Math.hypot(u.x - atk.x, u.z - atk.z) <= Game.BATTLE_RADIUS);
+            if (defenceOnSite) {
+                this.escortSupportUnits(owner.units.filter(u =>
+                    u.unitType === 'support' && u.health > 0 &&
+                    !(u.isMoving && Math.hypot(u.targetX - atk.x, u.targetZ - atk.z) < 12) &&
+                    !this.tendingOtherBattle(u, atk)), atk.x, atk.z);
+            }
+
             if (!defenders.length) return;
 
             // Battle report (throttled): the defender learns it is being raided.
@@ -1387,6 +1411,17 @@ class Game {
                 d.targetZ = atk.z;
             });
         });
+    }
+
+    // Is this unit already tending a live engagement somewhere OTHER than the one at
+    // (atk)? Reuses the battle ledger so auto-defense can tell "idle at home" from
+    // "healing at the front" without inventing a second piece of bookkeeping.
+    tendingOtherBattle(unit, atk) {
+        const now = Date.now();
+        return (this._battles || []).some(b =>
+            (now - b.lastAt) < Game.BATTLE_QUIET_MS &&
+            Math.hypot(b.x - atk.x, b.z - atk.z) > Game.BATTLE_RADIUS &&
+            Math.hypot(unit.x - b.x, unit.z - b.z) <= Game.BATTLE_RADIUS);
     }
 
     // A worker's fight is over: send it back to the economy job it was drafted
