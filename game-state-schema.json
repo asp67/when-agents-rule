@@ -248,41 +248,17 @@
           ],
           "description": "Centre of your buildings (your base)."
         },
+        "yourBaseTile": {
+          "type": "string",
+          "description": "The map tile your base sits in, in the same A1-G7 labelling as exploration (e.g. \"D1\")."
+        },
         "exploration": {
           "type": "object",
-          "description": "How much of the map this player has seen, and where each tile is. Tile [row][col] covers x from xEdges[col] to xEdges[col+1] and z from zEdges[row] to zEdges[row+1], so any coordinates inside those ranges scout that tile — no arithmetic needed. The edges are given once per axis rather than per cell: repeating bounds on all 49 cells would cost 676 tokens a turn against 53 this way.",
-          "required": ["xEdges", "zEdges", "seen"],
-          "properties": {
-            "xEdges": {
-              "type": "array",
-              "description": "West-to-east tile boundaries, 8 values for a 7x7 grid (e.g. [-400,-286,-171,-57,57,171,286,400]).",
-              "minItems": 8,
-              "maxItems": 8,
-              "items": { "type": "integer" }
-            },
-            "zEdges": {
-              "type": "array",
-              "description": "North-to-south tile boundaries, same form as xEdges.",
-              "minItems": 8,
-              "maxItems": 8,
-              "items": { "type": "integer" }
-            },
-            "seen": {
-              "type": "array",
-              "description": "Percent (0-100) of each tile ever seen, row-major: seen[row][col], row 0 = north edge, col 0 = west edge.",
-              "minItems": 7,
-              "maxItems": 7,
-              "items": {
-                "type": "array",
-                "minItems": 7,
-                "maxItems": 7,
-                "items": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 100
-                }
-              }
-            }
+          "description": "Percent (0-100) of each map tile you have ever seen, keyed by tile label: column letter A-G running west to east, then row number 1-7 running north to south (\"C5\" = third column, fifth row). Pass one of these labels as explore's \"tile\". map.yourBaseTile tells you which one you start in. A tile is ~114 units across and a scout sees ~15, so one pass raises a tile by only a few percent.",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
           }
         }
       }

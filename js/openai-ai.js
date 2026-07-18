@@ -116,6 +116,50 @@ class OpenAIAIManager {
         return null;
     }
 
+    // ---- Map grid ("A1".."G7") -------------------------------------------------
+    // Columns A..G run west→east (x), rows 1..7 north→south (z). One label instead
+    // of a (row, col) pair or a pair of coordinate arrays: every intermediate form
+    // we tried invited a transposition that was legal, silent and wrong — a mirrored
+    // target is still a valid map position, so nothing could ever report it.
+    tileLabel(row, col) {
+        return String.fromCharCode(65 + col) + (row + 1);
+    }
+
+    // "c5" / "C5" → {row, col}, or null. Deliberately strict about SHAPE (letter then
+    // digit) so "5C" fails loudly rather than being quietly reinterpreted.
+    parseTile(label, T) {
+        const m = /^\s*([A-Za-z])\s*(\d+)\s*$/.exec(String(label || ''));
+        if (!m) return null;
+        const col = m[1].toUpperCase().charCodeAt(0) - 65;
+        const row = parseInt(m[2], 10) - 1;
+        if (!(col >= 0 && col < T && row >= 0 && row < T)) return null;
+        return { row, col };
+    }
+
+    // Which tile is this world position in?
+    tileAt(game, x, z) {
+        const T = game.EXPLORE_TILES || 7;
+        const size = (game.terrain && game.terrain.size) || 800;
+        const cell = size / T, half = size / 2;
+        const col = Math.min(T - 1, Math.max(0, Math.floor((x + half) / cell)));
+        const row = Math.min(T - 1, Math.max(0, Math.floor((z + half) / cell)));
+        return this.tileLabel(row, col);
+    }
+
+    // A point inside tile {row,col}, inset so the scout sits well within the tile
+    // rather than straddling its border. Random rather than the centre on purpose:
+    // one stop reveals only a few percent of a 114-unit tile, so repeated explores
+    // of the same tile need to land in different parts of it to fill it in.
+    pointInTile(game, row, col, inset) {
+        const T = game.EXPLORE_TILES || 7;
+        const size = (game.terrain && game.terrain.size) || 800;
+        const cell = size / T, half = size / 2;
+        const pad = Math.min(inset || 0, cell / 2 - 1);
+        const x0 = col * cell - half + pad, x1 = (col + 1) * cell - half - pad;
+        const z0 = row * cell - half + pad, z1 = (row + 1) * cell - half - pad;
+        return game.clampToMap(x0 + Math.random() * (x1 - x0), z0 + Math.random() * (z1 - z0));
+    }
+
     // Every unit this civilization can EVER train: the id, the building that makes
     // it, and the earliest age it appears. Mirrors buildingTrains() deliberately —
     // per-age tier options first, static trainOptions as the fallback — so the
@@ -701,21 +745,27 @@ class OpenAIAIManager {
             size: game.terrain.size,
             bounds: { minX: -halfMap, maxX: halfMap, minZ: -halfMap, maxZ: halfMap },
             yourSpawnArea: this.getAIBuildingCenter(ai),
-            // Percent of each map tile this player has ever seen, row-major
-            // ([row][col], row 0 = north, col 0 = west), plus the axis edges that
-            // say where each tile IS. Cell [r][c] spans xEdges[c]..xEdges[c+1] by
-            // zEdges[r]..zEdges[r+1], so picking somewhere to scout is an index
-            // lookup rather than arithmetic the model has to get right.
+            // Which tile your own base sits in. Without it the model had a grid and
+            // no idea where it stood on it — every scouting decision was relative to
+            // nothing.
+            yourBaseTile: (b => this.tileAt(game, b.x, b.z))(this.getAIBuildingCenter(ai)),
+            // Percent of each tile this player has ever seen, keyed by the same label
+            // explore() takes: column A..G west→east, row 1..7 north→south.
             //
-            // The edges are stated once per axis, not once per cell: describing all
-            // 49 cells individually costs 676 tokens a turn against 53 this way, and
-            // would make this one field the majority of the whole state message.
+            // Was a 7x7 matrix plus two coordinate-edge arrays. That asked the model
+            // to find a cell by position, pair [row][col] with the right axis array,
+            // and do the arithmetic — and a transposition produced a mirrored target
+            // that was still a legal map position, so it returned OK and the scout
+            // walked somewhere pointless. Nothing could report it. One label per tile
+            // removes the pairing, the arithmetic and the silent failure together.
             exploration: (() => {
                 const seen = game.explorationSummary(ai);
                 const T = seen.length || 1;
-                const edges = Array.from({ length: T + 1 },
-                    (_, i) => Math.round((i * game.terrain.size / T) - halfMap));
-                return { xEdges: edges, zEdges: edges, seen };
+                const out = {};
+                for (let r = 0; r < T; r++) {
+                    for (let c = 0; c < T; c++) out[this.tileLabel(r, c)] = seen[r][c];
+                }
+                return out;
             })()
         };
 
@@ -1281,7 +1331,7 @@ build_structure: buildingType (from buildableStructures), targetX?, targetZ?
 build_wonder: (None)
 assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), targetX?, targetZ?
 repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
-explore: targetX, targetZ (from map.exploration), unitType?
+explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7), unitType?
 move_units: targetX, targetZ, units?
 attack_target: targetId (from enemyUnits/enemyBuildings) OR targetX, targetZ. Optional: units?. (Coords trigger attack-move; do not reissue while marching)
 delete_unit: unitType? (from friendlyUnits, def: worker), count? (def:1, max:20)
@@ -1289,7 +1339,7 @@ destroy_building: buildingType (from friendlyBuildings), targetX?, targetZ?
 wait: (None)
 
 PARAMETER CONSTRAINTS:
-units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array.`;
+units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array. move_units also accepts {"worker":N} when named explicitly — that is how you place a unit on an exact spot; attack_target never takes workers.`;
     }
 
     // ----------------------------------------------------------------
@@ -2756,13 +2806,19 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // escorts the whole clergy on a full-army order and only the named priests
     // on a detachment — no special-casing needed.
     selectOrderedUnits(ai, unitsMap, dx, dz) {
-        const live = ai.units.filter(u => u.type !== 'worker' && u.health > 0);
+        // Workers are a THIRD bucket, not combat: move_units takes them along, attack
+        // never does. Naming "worker" explicitly is how a model puts a unit on an
+        // exact spot now that explore works in whole tiles — but omitting "units"
+        // still means the army alone, so a bare move order never drags the economy
+        // across the map.
         const split = (arr) => ({
-            combat: arr.filter(u => u.unitType !== 'support'),
-            support: arr.filter(u => u.unitType === 'support')
+            combat: arr.filter(u => u.type !== 'worker' && u.unitType !== 'support'),
+            support: arr.filter(u => u.type !== 'worker' && u.unitType === 'support'),
+            workers: arr.filter(u => u.type === 'worker')
         });
         const hasMap = unitsMap && typeof unitsMap === 'object' && !Array.isArray(unitsMap) && Object.keys(unitsMap).length > 0;
-        if (!hasMap) return Object.assign(split(live), { note: '' });
+        if (!hasMap) return Object.assign(split(ai.units.filter(u => u.type !== 'worker' && u.health > 0)), { note: '' });
+        const live = ai.units.filter(u => u.health > 0);
 
         const chosen = new Set();
         const clamped = [], skipped = [];
@@ -2805,20 +2861,24 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // Optional {type:count} detachment; a move order repositions the whole
         // named force, priests included (they come along on a move as always).
         const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ);
-        const unitsToMove = [...sel.combat, ...sel.support];
+        const unitsToMove = [...sel.combat, ...sel.support, ...sel.workers];
         if (unitsToMove.length === 0) {
             const ownsMilitary = ai.units.some(u => u.type !== 'worker' && u.health > 0);
             if (ownsMilitary) {
                 this.outcome('log.out.moveNoMatch', {});
-                return `[ERROR] move_units matched none of your units${sel.note}. Name unit types you actually own (e.g. {"champion":3}), or omit "units" to move your whole army. Your military: ${this.forceComposition(ai)}.`;
+                return `[ERROR] move_units matched none of your units${sel.note}. Name unit types you actually own (e.g. {"champion":3}, or {"worker":1} to place a worker exactly), or omit "units" to move your whole army. Your military: ${this.forceComposition(ai)}.`;
             }
             this.outcome('log.out.noMilitaryMove', {});
-            return `[ERROR] You have no military units to move. (move_units repositions MILITARY; workers gather via assign_workers.) Train military units first.`;
+            return `[ERROR] You have no military units to move. Omitting "units" moves your army, and you have none yet — name {"worker":1} to reposition a worker instead, or train military units first.`;
         }
 
         let eta = 0;
         unitsToMove.forEach(unit => {
             game.clearRetaliation(unit);
+            // A worker may be carrying, mid-harvest, or standing on a farm. Setting
+            // task=null alone would leave the farm's assignedWorker pointing at a unit
+            // that has walked away, so the farm would look manned and grow nothing.
+            if (unit.type === 'worker') this.releaseUnitForOrders(unit);
             eta = Math.max(eta, this.travelEtaSec(unit, targetX, targetZ));
             unit.isMoving = true;
             unit.targetX = targetX;
@@ -3398,8 +3458,19 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const short = moved < count ? ` Fewer than requested: the others are constructing or fighting (never pulled), already on ${resourceType}, or you don't have that many workers.` : '';
+        // Gathering is a ROUND TRIP: walk out, gather, carry it back to a Town Center.
+        // The state gives node coordinates and nothing about what distance costs, and
+        // models were picking far nodes as if delivery were free. Report the haul on
+        // the turn the choice is made — cheaper than an eta on every node every turn,
+        // and it lands exactly where the decision happens.
+        const tcs = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction);
+        const nearTC = tcs.reduce((best, b) => {
+            const d = Math.hypot(b.x - node.x, b.z - node.z);
+            return (!best || d < best.d) ? { b, d } : best;
+        }, null);
+        const haul = nearTC ? ` Each load is a ~${Math.max(1, Math.round(nearTC.d / (3 * 1.0)))}s walk back to your nearest Town Center, so a closer node gathers faster.` : '';
         this.outcome('log.out.reassigned', { count: moved, res: resourceType, x: Math.round(node.x), z: Math.round(node.z), near: (gaveX || gaveZ) ? 'target' : 'tc', pulled: this.pulledCounts(pulledFrom) });
-        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${short}`;
+        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${haul}${short}`;
     }
 
     // Put workers on fixing a damaged own building (free; uses the build task's
@@ -3458,54 +3529,58 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     }
 
     executeExplore(ai, game, params) {
-        // Optional: the model may name a unit to scout with (id like "scout_cavalry"
-        // or category like "cavalry"/"worker"); omit it to auto-pick the best scout.
+        const T = game.EXPLORE_TILES || 7;
+        const lastCol = String.fromCharCode(64 + T);
+        // Optional: name a unit to scout with (id like "scout_cavalry" or a category
+        // like "cavalry"/"worker"); omit it to auto-pick the best scout.
         const preferredType = params.unitType ? String(params.unitType).trim() : null;
+        const raw = params.tile;
+        const gave = raw !== undefined && raw !== null && String(raw).trim() !== '';
 
-        // Did the model attempt to specify a target at all?
-        const gaveX = params.targetX !== undefined && params.targetX !== null && params.targetX !== '';
-        const gaveZ = params.targetZ !== undefined && params.targetZ !== null && params.targetZ !== '';
-
-        if (gaveX || gaveZ) {
-            // A target was attempted — it must be BOTH coords and numeric, otherwise
-            // tell the model exactly what went wrong instead of silently mis-scouting
-            // or sending the scout to NaN (which strands it).
-            const tx0 = Number(params.targetX);
-            const tz0 = Number(params.targetZ);
-            if (!gaveX || !gaveZ || !Number.isFinite(tx0) || !Number.isFinite(tz0)) {
-                this.outcome('log.out.exploreNeedsCoords', {});
-                return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds). Got targetX=${JSON.stringify(params.targetX)}, targetZ=${JSON.stringify(params.targetZ)}.`;
-            }
-
-            const scout = this.pickScout(ai, preferredType);
-            if (!scout) { this.outcome('log.out.noUnitExplore', {}); return `[ERROR] No unit available to explore. Train a worker first.`; }
-            const wasBusy = scout.type === 'worker' && !this.game.isIdleWorker(scout);
-            const missedChoice = preferredType && !this.scoutMatchesChoice(scout, preferredType);
-
-            // Clamp the target so the scout stays on land (no wandering into the ocean).
-            const { x: tx, z: tz } = game.clampToMap(tx0, tz0);
-            const eta = this.travelEtaSec(scout, tx, tz);
-            this.releaseUnitForOrders(scout); // cleanly drop any harvest/farm/combat job
-            scout.task = scout.type === 'worker' ? 'scouting' : null;
-            scout.isMoving = true;
-            scout.targetX = tx;
-            scout.targetZ = tz;
-
-            const clamped = Math.round(tx) !== Math.round(tx0) || Math.round(tz) !== Math.round(tz0);
-            const pulled = wasBusy ? ' (no worker was idle, so one was pulled off gathering — reassign it to a resource once scouting is done)' : '';
-            const choiceNote = missedChoice ? ` (no idle "${preferredType}" was free, so your ${scout.type} was used instead)` : '';
-            this.outcome('log.out.exploreSent', { x: Math.round(tx), z: Math.round(tz), eta });
-            return `OK - Sent your ${scout.type} to explore (${Math.round(tx)}, ${Math.round(tz)})${clamped ? ' — your target was outside the map and was clamped to the edge' : ''}. It will take ~${eta}s to get there; let it travel before exploring again.${pulled}${choiceNote}`;
+        // Coordinates used to be the input here. Catch them by name: a model that
+        // sends targetX/targetZ has the right intent and the wrong shape, and saying
+        // so beats a generic "tile required".
+        if (!gave && (params.targetX !== undefined || params.targetZ !== undefined)) {
+            this.outcome('log.out.exploreNeedsTile', {});
+            return `[ERROR] explore takes a map "tile", not coordinates. Pass one label from "map.exploration" — column A-${lastCol} then row 1-${T}, e.g. "tile":"C5". Your base is in tile ${this.tileAt(game, ...(b => [b.x, b.z])(this.getAIBuildingCenter(ai)))}.`;
+        }
+        if (!gave) {
+            this.outcome('log.out.exploreNeedsTile', {});
+            return `[ERROR] explore needs a "tile": one label from "map.exploration" — column A-${lastCol} then row 1-${T}, e.g. "tile":"C5". "map.exploration" gives the percent of each tile you have already seen. Your base is in tile ${this.tileAt(game, ...(b => [b.x, b.z])(this.getAIBuildingCenter(ai)))}.`;
         }
 
-        // No target → refuse. "map.exploration" already says how much of each tile
-        // has been seen AND where each tile is, so choosing where to look needs no
-        // help from us; auto-picking was the harness playing that part of the game.
-        // No formula here any more: the state carries the edges, so this only has to
-        // point at them. Which tile is worth scouting is the model's call.
-        const T = game.EXPLORE_TILES || 7;
-        this.outcome('log.out.exploreNeedsCoords', {});
-        return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds). Take them from "map.exploration": "seen" is a ${T}x${T} row-major grid of how much of each tile you have already seen, and tile [row][col] covers x from xEdges[col] to xEdges[col+1] and z from zEdges[row] to zEdges[row+1] — any coordinates inside a tile will scout it.`;
+        const t = this.parseTile(raw, T);
+        if (!t) {
+            this.outcome('log.out.exploreBadTile', { tile: String(raw) });
+            return `[ERROR] "${raw}" is not a map tile. Use a COLUMN LETTER then a ROW NUMBER: A-${lastCol} and 1-${T}, e.g. "C5" (not "5C", and not coordinates). The tiles and how much of each you have seen are in "map.exploration".`;
+        }
+
+        const scout = this.pickScout(ai, preferredType);
+        if (!scout) { this.outcome('log.out.noUnitExplore', {}); return `[ERROR] No unit available to explore. Train a worker first.`; }
+        const wasBusy = scout.type === 'worker' && !this.game.isIdleWorker(scout);
+        const missedChoice = preferredType && !this.scoutMatchesChoice(scout, preferredType);
+
+        // Aim somewhere inside the tile, inset by the scout's own sight radius so it
+        // reveals ground rather than hugging the border.
+        const vision = game.unitVision ? game.unitVision(scout) : 15;
+        const { x: tx, z: tz } = this.pointInTile(game, t.row, t.col, vision);
+        const eta = this.travelEtaSec(scout, tx, tz);
+        this.releaseUnitForOrders(scout); // cleanly drop any harvest/farm/combat job
+        scout.task = scout.type === 'worker' ? 'scouting' : null;
+        scout.isMoving = true;
+        scout.targetX = tx;
+        scout.targetZ = tz;
+
+        // Report what the tile is at NOW. A tile is ~114 units across and a scout
+        // sees ~15, so one pass moves it a few percent: without this the model sends
+        // a scout, sees the number barely move, and concludes explore did nothing.
+        const sum = game.explorationSummary ? game.explorationSummary(ai) : null;
+        const pct = (sum && sum[t.row] && sum[t.row][t.col]) | 0;
+        const label = this.tileLabel(t.row, t.col);
+        const pulled = wasBusy ? ' (no worker was idle, so one was pulled off gathering — give it a job again once it arrives)' : '';
+        const choiceNote = missedChoice ? ` (no idle "${preferredType}" was free, so your ${scout.type} was used instead)` : '';
+        this.outcome('log.out.exploreSent', { tile: label, pct, eta });
+        return `OK - Sent your ${scout.type} to scout tile ${label} (~${eta}s to arrive). ${label} is ${pct}% explored so far; one pass uncovers only part of a tile, so expect to send scouts there again.${pulled}${choiceNote}`;
     }
 
     executeDeleteUnit(ai, game, params) {
