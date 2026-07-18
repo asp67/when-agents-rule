@@ -2021,9 +2021,22 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
     popCapAdvice(ai) {
         const cap = (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100;
         if (ai.resources.maxPopulation >= cap) {
-            return `You are at the HARD population cap of ${cap} — building houses will NOT raise it. delete_unit to cull weaker/idle units and free room.`;
+            return `You are at the HARD population cap of ${cap} — houses and Town Centers can NOT raise it any further. The only way to free a slot is delete_unit: remove a worker or a military unit you can spare.`;
         }
         return `Build houses (+5 each) or a Town Center (+10) to raise maxPopulation (up to the hard cap of ${cap}), or delete_unit to free room now.`;
+    }
+
+    // Log the population rejection with the RIGHT advice: at the hard cap, houses
+    // and Town Centers are useless and only delete_unit frees a slot. Mirrors the
+    // branch in popCapAdvice above so the log never contradicts what the model was
+    // told. (The localized log line used to flatten both cases into "build houses",
+    // which read as bad advice at 100/100 even though the model's English text was
+    // correct.)
+    popCapOutcome(ai) {
+        const cap = (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100;
+        const hard = ai.resources.maxPopulation >= cap;
+        this.outcome(hard ? 'log.out.populationHardCap' : 'log.out.populationLimit',
+            { pop: Math.floor(ai.resources.population), max: ai.resources.maxPopulation, cap });
     }
 
     // Pick which finished, non-busy building actually trains the unit. If the model
@@ -2071,7 +2084,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // Check population limit before training worker
         if (ai.resources.population >= ai.resources.maxPopulation) {
             console.log(`[OpenAIAI] ${ai.id}: Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation})`);
-            this.outcome('log.out.populationLimit', { pop: Math.floor(ai.resources.population), max: ai.resources.maxPopulation });
+            this.popCapOutcome(ai);
             return `[ERROR] Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation}). ${this.popCapAdvice(ai)}`;
         }
 
@@ -2157,7 +2170,7 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
         // 3) POPULATION (structural train-time gate).
         if (ai.resources.population >= ai.resources.maxPopulation) {
             console.log(`[OpenAIAI] ${ai.id}: Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation})`);
-            this.outcome('log.out.populationLimit', { pop: Math.floor(ai.resources.population), max: ai.resources.maxPopulation });
+            this.popCapOutcome(ai);
             return `[ERROR] Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation}). ${this.popCapAdvice(ai)}`;
         }
 

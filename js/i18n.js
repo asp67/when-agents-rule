@@ -1376,7 +1376,8 @@ const I18N_OUTCOMES = {
         'log.out.researchStarted': '{tech} wird erforscht (~{secs} s). Nur eine Technologie gleichzeitig.',
         'log.out.researchedElsewhere': '{tech} wird an einem {host} erforscht, den du nicht hast. Baue ihn zuerst.',
         'log.out.ageUpStarted': 'Aufstieg in die {age} läuft (~{secs} s).',
-        'log.out.populationLimit': 'Bevölkerungslimit erreicht ({pop}/{max}). Baue Häuser oder ein weiteres Dorfzentrum.',
+        'log.out.populationLimit': 'Bevölkerungslimit erreicht ({pop}/{max}). Baue Häuser (+5) oder ein Dorfzentrum (+10).',
+        'log.out.populationHardCap': 'Harte Bevölkerungsgrenze erreicht ({pop}/{max}). Häuser und Dorfzentren helfen nicht mehr – entferne einen Arbeiter oder eine Militäreinheit, um einen Platz frei zu machen.',
         'log.near.tc': 'nächstes Dorfzentrum', 'log.near.target': 'nächste beim Ziel',
         'res.food': 'Nahrung', 'res.wood': 'Holz', 'res.stone': 'Stein', 'res.gold': 'Gold',
         'pull.idle': 'Leerlauf', 'pull.scout': 'Kundschafter', 'pull.repair': 'Reparatur', 'pull.farm': 'Farm', 'pull.spare': 'übrig'
@@ -1394,7 +1395,8 @@ const I18N_OUTCOMES = {
         'log.out.researchStarted': 'Investigando {tech} (~{secs} s). Solo una tecnología a la vez.',
         'log.out.researchedElsewhere': '{tech} se investiga en {host}, que no tienes. Constrúyelo primero.',
         'log.out.ageUpStarted': 'Avanzando a {age} (~{secs} s).',
-        'log.out.populationLimit': 'Límite de población alcanzado ({pop}/{max}). Construye casas o otro Centro urbano.',
+        'log.out.populationLimit': 'Límite de población alcanzado ({pop}/{max}). Construye casas (+5) o un Centro urbano (+10).',
+        'log.out.populationHardCap': 'Límite máximo de población alcanzado ({pop}/{max}). Las casas y los Centros urbanos ya no ayudan: elimina un trabajador o una unidad militar para liberar un espacio.',
         'log.near.tc': 'el más cercano a tu Centro urbano', 'log.near.target': 'el más cercano a tu objetivo',
         'res.food': 'comida', 'res.wood': 'madera', 'res.stone': 'piedra', 'res.gold': 'oro',
         'pull.idle': 'inactivos', 'pull.scout': 'exploradores', 'pull.repair': 'reparación', 'pull.farm': 'granja', 'pull.spare': 'de reserva'
@@ -1412,7 +1414,8 @@ const I18N_OUTCOMES = {
         'log.out.researchStarted': '正在研究{tech}（约 {secs} 秒）。一次只能研究一项。',
         'log.out.researchedElsewhere': '{tech} 需在你尚未拥有的{host}研究。请先建造它。',
         'log.out.ageUpStarted': '正在进入{age}（约 {secs} 秒）。',
-        'log.out.populationLimit': '人口已达上限（{pop}/{max}）。请建造房屋或再建一个镇中心。',
+        'log.out.populationLimit': '人口已达上限（{pop}/{max}）。请建造房屋（+5）或镇中心（+10）。',
+        'log.out.populationHardCap': '已达人口硬上限（{pop}/{max}）。再建房屋或镇中心都无效——请删除一名工人或一个军事单位来腾出人口。',
         'log.near.tc': '最靠近你的镇中心', 'log.near.target': '最靠近你的目标',
         'res.food': '食物', 'res.wood': '木材', 'res.stone': '石头', 'res.gold': '黄金',
         'pull.idle': '空闲', 'pull.scout': '侦察', 'pull.repair': '维修', 'pull.farm': '农场', 'pull.spare': '闲置'
