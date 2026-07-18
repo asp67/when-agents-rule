@@ -111,6 +111,7 @@ const I18N = {
         'menu.upgrade': 'Upgrade',
 
         'res.food': '🍖 Food', 'res.wood': '🌲 Wood', 'res.stone': '🪨 Stone', 'res.gold': '🥇 Gold', 'res.pop': '👥 Population',
+        'cf.offMap': 'off map', 'cf.node': 'Node: {res}', 'cf.ground': 'Ground', 'cf.discoveredBy': 'discovered by:', 'cf.undiscovered': 'undiscovered',
         'hud.ageUpProgress': 'Advancing age: {pct}%', 'hud.researchProgress': 'Research ({name}): {pct}%', 'hud.productionProgress': 'Production: {pct}%',
         'age.stone': '🏺 Stone Age', 'age.neolithic': '🌾 Neolithic', 'age.bronze': '⚒️ Bronze Age', 'age.iron': '🗡️ Iron Age',
 
@@ -395,6 +396,7 @@ const I18N = {
         'menu.upgrade': 'Aufrüsten',
 
         'res.food': '🍖 Nahrung', 'res.wood': '🌲 Holz', 'res.stone': '🪨 Stein', 'res.gold': '🥇 Gold', 'res.pop': '👥 Bevölkerung',
+        'cf.offMap': 'außerhalb der Karte', 'cf.node': 'Vorkommen: {res}', 'cf.ground': 'Boden', 'cf.discoveredBy': 'entdeckt von:', 'cf.undiscovered': 'unentdeckt',
         'hud.ageUpProgress': 'Aufrüstung: {pct}%', 'hud.researchProgress': 'Forschung ({name}): {pct}%', 'hud.productionProgress': 'Produktion: {pct}%',
         'age.stone': '🏺 Altsteinzeit', 'age.neolithic': '🌾 Jungsteinzeit', 'age.bronze': '⚒️ Bronzezeit', 'age.iron': '🗡️ Eisenzeit',
 
@@ -677,6 +679,7 @@ const I18N = {
         'menu.upgrade': 'Mejorar',
 
         'res.food': '🍖 Comida', 'res.wood': '🌲 Madera', 'res.stone': '🪨 Piedra', 'res.gold': '🥇 Oro', 'res.pop': '👥 Población',
+        'cf.offMap': 'fuera del mapa', 'cf.node': 'Yacimiento: {res}', 'cf.ground': 'Terreno', 'cf.discoveredBy': 'descubierto por:', 'cf.undiscovered': 'sin descubrir',
         'hud.ageUpProgress': 'Avance de era: {pct}%', 'hud.researchProgress': 'Investigación ({name}): {pct}%', 'hud.productionProgress': 'Producción: {pct}%',
         'age.stone': '🏺 Edad de Piedra', 'age.neolithic': '🌾 Neolítico', 'age.bronze': '⚒️ Edad de Bronce', 'age.iron': '🗡️ Edad de Hierro',
 
@@ -951,6 +954,7 @@ const I18N = {
         'menu.upgrade': '升级',
 
         'res.food': '🍖 食物', 'res.wood': '🌲 木材', 'res.stone': '🪨 石头', 'res.gold': '🥇 黄金', 'res.pop': '👥 人口',
+        'cf.offMap': '地图之外', 'cf.node': '资源点：{res}', 'cf.ground': '地面', 'cf.discoveredBy': '发现者：', 'cf.undiscovered': '未发现',
         'hud.ageUpProgress': '时代升级：{pct}%', 'hud.researchProgress': '研究（{name}）：{pct}%', 'hud.productionProgress': '生产：{pct}%',
         'age.stone': '🏺 旧石器时代', 'age.neolithic': '🌾 新石器时代', 'age.bronze': '⚒️ 青铜时代', 'age.iron': '🗡️ 铁器时代',
 
@@ -1383,7 +1387,7 @@ const I18N_OUTCOMES = {
         'log.out.populationLimit': 'Bevölkerungslimit erreicht ({pop}/{max}). Baue Häuser (+5) oder ein Dorfzentrum (+10).',
         'log.out.populationHardCap': 'Harte Bevölkerungsgrenze erreicht ({pop}/{max}). Häuser und Dorfzentren helfen nicht mehr – entferne einen Arbeiter, wenn du mehr Militäreinheiten brauchst, oder eine Militäreinheit, wenn du mehr Arbeiter brauchst.',
         'log.near.tc': 'nächstes Dorfzentrum', 'log.near.target': 'nächste beim Ziel',
-        'res.food': 'Nahrung', 'res.wood': 'Holz', 'res.stone': 'Stein', 'res.gold': 'Gold',
+        'resPlain.food': 'Nahrung', 'resPlain.wood': 'Holz', 'resPlain.stone': 'Stein', 'resPlain.gold': 'Gold',
         'pull.idle': 'Leerlauf', 'pull.scout': 'Kundschafter', 'pull.repair': 'Reparatur', 'pull.farm': 'Farm', 'pull.spare': 'übrig'
     },
     es: {
@@ -1402,7 +1406,7 @@ const I18N_OUTCOMES = {
         'log.out.populationLimit': 'Límite de población alcanzado ({pop}/{max}). Construye casas (+5) o un Centro urbano (+10).',
         'log.out.populationHardCap': 'Límite máximo de población alcanzado ({pop}/{max}). Las casas y los Centros urbanos ya no ayudan: elimina un trabajador si necesitas más unidades militares, o una unidad militar si necesitas más trabajadores.',
         'log.near.tc': 'el más cercano a tu Centro urbano', 'log.near.target': 'el más cercano a tu objetivo',
-        'res.food': 'comida', 'res.wood': 'madera', 'res.stone': 'piedra', 'res.gold': 'oro',
+        'resPlain.food': 'comida', 'resPlain.wood': 'madera', 'resPlain.stone': 'piedra', 'resPlain.gold': 'oro',
         'pull.idle': 'inactivos', 'pull.scout': 'exploradores', 'pull.repair': 'reparación', 'pull.farm': 'granja', 'pull.spare': 'de reserva'
     },
     zh: {
@@ -1421,7 +1425,7 @@ const I18N_OUTCOMES = {
         'log.out.populationLimit': '人口已达上限（{pop}/{max}）。请建造房屋（+5）或镇中心（+10）。',
         'log.out.populationHardCap': '已达人口硬上限（{pop}/{max}）。再建房屋或镇中心都无效——需要更多军事单位就删除一名工人，需要更多工人就删除一个军事单位。',
         'log.near.tc': '最靠近你的镇中心', 'log.near.target': '最靠近你的目标',
-        'res.food': '食物', 'res.wood': '木材', 'res.stone': '石头', 'res.gold': '黄金',
+        'resPlain.food': '食物', 'resPlain.wood': '木材', 'resPlain.stone': '石头', 'resPlain.gold': '黄金',
         'pull.idle': '空闲', 'pull.scout': '侦察', 'pull.repair': '维修', 'pull.farm': '农场', 'pull.spare': '闲置'
     }
 };

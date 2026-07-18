@@ -90,7 +90,7 @@ class InputManager {
         const flag = this._coordFlag;
         const world = this.renderer.getWorldPositionFromScreen(clientX, clientY);
         if (!world) {
-            flag.textContent = '🚩 off map';
+            flag.textContent = `🚩 ${t('cf.offMap')}`;
         } else {
             // The lit ground is every player's sight UNIONed and never fades, so it
             // can't tell you who KNOWS this spot — spell that out per player, since
@@ -103,15 +103,21 @@ class InputManager {
                 const k = 'civ.' + civ + '.name';
                 return (typeof t === 'function' && t(k) !== k) ? t(k) : civ;
             };
+            // discoveryAt reports WHAT is here (kind + resource type); the wording is
+            // the UI's job, in the UI language — this flag is spectator furniture, not
+            // part of the model-facing log.
+            const whatLabel = (d && d.kind === 'node')
+                ? t('cf.node', { res: t('res.' + d.res) })
+                : t('cf.ground');
             let html = `<span class="cf-pos">🚩 ${Math.round(world.x)}, ${Math.round(world.z)}</span>`;
             if (d) {
                 if (d.knowers.length) {
-                    html += `<span class="cf-head">${d.what} — discovered by:</span>`;
+                    html += `<span class="cf-head">${whatLabel} — ${t('cf.discoveredBy')}</span>`;
                     html += d.knowers.map(k =>
                         `<span class="cf-row">${(ui && ui.teamDotHtml) ? ui.teamDotHtml(k.seat, 11) : ''}${civLabel(k.civ)}</span>`
                     ).join('');
                 } else {
-                    html += `<span class="cf-head">${d.what} — undiscovered</span>`;
+                    html += `<span class="cf-head">${whatLabel} — ${t('cf.undiscovered')}</span>`;
                 }
             }
             flag.innerHTML = html;

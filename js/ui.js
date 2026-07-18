@@ -1957,7 +1957,11 @@ class UIManager {
             const parts = ['food', 'wood', 'stone', 'gold'].filter(r => c[r]).map(r => `${EMO[r]}${c[r]}`);
             return parts.length ? parts.join(' ') : '—';
         };
-        const resName = r => (hasI18n(lang, 'res.' + r) ? tIn(lang, 'res.' + r) : r);
+        // resPlain.*, NOT res.*: the UI's res.* carry an emoji for the HUD, and these
+        // words go inside a sentence. They used to be the same key, so whichever i18n
+        // block merged last won — which silently stripped the emoji off the German,
+        // Spanish and Chinese resource bar while English kept it.
+        const resName = r => (hasI18n(lang, 'resPlain.' + r) ? tIn(lang, 'resPlain.' + r) : r);
         // Generic localization for the common primitive params, so the ~60 terse
         // rejection codes need no per-code case: any age id → the localized age
         // name, and a bare resource id → the resource word.
@@ -1965,7 +1969,7 @@ class UIManager {
         ['age', 'reqAge', 'minAge', 'effAge', 'targetAge', 'curAge'].forEach(k => {
             if (AGES.includes(v[k])) v[k] = tIn(lang, 'age.' + v[k]);
         });
-        if (AGES.includes(v.res) === false && hasI18n(lang, 'res.' + v.res)) v.res = tIn(lang, 'res.' + v.res);
+        if (AGES.includes(v.res) === false && hasI18n(lang, 'resPlain.' + v.res)) v.res = tIn(lang, 'resPlain.' + v.res);
         // Pull breakdown {idle:3, wood:2}: resource keys get the resource word, the
         // rest (idle/scout/repair/farm) their own label; unknown keys pass through.
         const pulledClause = obj => Object.keys(obj || {}).map(k =>

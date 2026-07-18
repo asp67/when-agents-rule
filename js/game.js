@@ -2865,9 +2865,13 @@ class Game {
         // Report civ AND seat: two players can field the SAME civilization, so
         // the seat badge is the only conclusive identifier.
         const idOf = p => ({ civ: p.civilization, seat: p.seat });
+        // Return WHAT it is, not a sentence about it: this used to hand back
+        // "food node" as English prose, which the spectator flag then printed
+        // untranslated no matter the UI language. The engine names the thing; the
+        // UI decides the words.
         if (idx >= 0) {
             const knowers = players.filter(p => p._knownResIdx && p._knownResIdx.has(idx)).map(idOf);
-            return { what: res[idx].type + ' node', knowers };
+            return { kind: 'node', res: res[idx].type, knowers };
         }
         const G = this.EXPLORE_GRID;
         const size = (this.terrain && this.terrain.size) || 800;
@@ -2876,7 +2880,7 @@ class Game {
         const knowers = players.filter(p =>
             p._explored && gx >= 0 && gx < G && gz >= 0 && gz < G && p._explored[gz * G + gx] === 1
         ).map(idOf);
-        return { what: 'ground', knowers };
+        return { kind: 'ground', knowers };
     }
 
     // ---- Exploration tracking (per player) ------------------------------------
