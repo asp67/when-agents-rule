@@ -177,7 +177,7 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['archery_range'] }
             },
             // === Jungsteinzeit - am Dorfzentrum ===
-            marketTech: {
+            market: {
                 name: 'Marktplatz',
                 cost: { food: 200, wood: 150, stone: 0, gold: 0 },
                 researchAt: 'town_center',
@@ -192,7 +192,7 @@ const CIVILIZATIONS = {
                 cost: { food: 50, wood: 50, stone: 50, gold: 0 },
                 researchAt: 'market',
                 requiredAge: 'neolithic',
-                requires: ['marketTech'],
+                requires: ['market'],
                 description: 'Steinabbau +25% effizienter',
                 researchTime: 20000,  // 20 seconds
                 bonus: { harvestRate: 0.25 },
@@ -229,7 +229,7 @@ const CIVILIZATIONS = {
                 cost: { food: 200, wood: 150, stone: 0, gold: 50 },
                 researchAt: 'market',
                 requiredAge: 'bronze',
-                requires: ['marketTech'],
+                requires: ['market'],
                 description: 'Schaltet Stall und Pferdewagen frei',
                 researchTime: 20000,  // 20 seconds
                 unlocks: { buildings: ['stable'], unitTypes: ['horse_carriage'] }
@@ -377,7 +377,7 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['archery_range'] }
             },
             // === Jungsteinzeit - am Dorfzentrum ===
-            marketTech: {
+            market: {
                 name: 'Marktplatz',
                 cost: { food: 200, wood: 150, stone: 0, gold: 0 },
                 researchAt: 'town_center',
@@ -393,7 +393,7 @@ const CIVILIZATIONS = {
                 cost: { food: 200, wood: 0, stone: 0, gold: 150 },
                 researchAt: 'market',
                 requiredAge: 'neolithic',
-                requires: ['marketTech'],
+                requires: ['market'],
                 description: 'Alle Militäreinheiten +10% Gesundheit (+10 HP)',
                 researchTime: 20000,
                 bonus: { health: 10 },
@@ -574,7 +574,7 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['archery_range'] }
             },
             // === Jungsteinzeit - am Dorfzentrum ===
-            marketTech: {
+            market: {
                 name: 'Marktplatz',
                 cost: { food: 200, wood: 150, stone: 0, gold: 0 },
                 researchAt: 'town_center',
@@ -785,7 +785,7 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['archery_range'] }
             },
             // === Jungsteinzeit - am Dorfzentrum ===
-            marketTech: {
+            market: {
                 name: 'Marktplatz',
                 cost: { food: 200, wood: 150, stone: 0, gold: 0 },
                 researchAt: 'town_center',
@@ -801,7 +801,7 @@ const CIVILIZATIONS = {
                 cost: { food: 150, wood: 100, stone: 0, gold: 0 },
                 researchAt: 'market',
                 requiredAge: 'neolithic',
-                requires: ['marketTech'],
+                requires: ['market'],
                 description: 'Schaltet Stall und Kavallerie frei',
                 unlocks: { buildings: ['stable'] }
             },

@@ -105,7 +105,7 @@ const BUILDING_DEFS = {
         canResearch: true,
         researchOptions: [], // Filled dynamically from civ techTree (researchAt: 'market')
         requiredAge: 'neolithic',
-        requiresTech: 'marketTech',  // Requires market tech from town_center
+        requiresTech: 'market',  // Requires market tech from town_center
         description: 'Handel und Forschung fortgeschrittener Technologien',
         buildTime: BASE_BUILD_TIME * 1.5  // 15 seconds to build
     },

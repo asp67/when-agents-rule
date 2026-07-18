@@ -18,6 +18,7 @@
     "enemyUnits",
     "research",
     "unlockedContent",
+    "trainableUnits",
     "buildableStructures",
     "pendingBuildings",
     "threats",
@@ -760,9 +761,9 @@
     },
     "unlockedContent": {
       "type": "object",
+      "description": "Buildings whose unlock tech you have already researched. This is a HISTORY of what you unlocked, not a list of what you may build — for that use buildableStructures.",
       "required": [
-        "buildings",
-        "units"
+        "buildings"
       ],
       "properties": {
         "buildings": {
@@ -770,12 +771,16 @@
           "items": {
             "type": "string"
           }
-        },
-        "units": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        }
+      }
+    },
+    "trainableUnits": {
+      "type": "object",
+      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, keyed by the building that trains it, each entry \"id(age)\" naming the earliest age it becomes available. Includes your civ's unique units and omits any standard unit your civ does not field. Pass the bare id (\"champion\"), not the \"(age)\" suffix, and not a category — infantry/ranged/cavalry/support are valid only in the \"units\" parameter of move_units and attack_target.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
         }
       }
     },

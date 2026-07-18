@@ -86,7 +86,7 @@ class OpenAIAIManager {
         return out;
     }
     // Which building type trains a given unit (for precise "build X first" messages)
-    requiredBuildingForUnit(unitType) {
+    requiredBuildingForUnit(unitType, civilization = null) {
         if (unitType === 'worker') return 'town_center';
         if (typeof BUILDING_TRAIN_TIERS !== 'undefined') {
             for (const bld of Object.keys(BUILDING_TRAIN_TIERS)) {
@@ -95,7 +95,63 @@ class OpenAIAIManager {
                 }
             }
         }
+        // Civ-unique units (Greek hoplite, Egypt's horse carriage) are NOT in the
+        // shared tier table — they carry their own trainAt. Without this the staged
+        // research→build→advance error chain was skipped for exactly the units a
+        // model is least likely to understand, and they fell through to a bare
+        // "no building available" instead.
+        if (civilization && typeof getCivilization === 'function') {
+            const u = ((getCivilization(civilization) || {}).uniqueUnits || [])
+                .find(x => x.id === unitType);
+            if (u && u.trainAt) return u.trainAt;
+        }
+        // Priests and workers come from buildings with a static trainOptions list
+        // rather than an age-tiered one.
+        if (typeof BUILDING_DEFS !== 'undefined') {
+            for (const bld of Object.keys(BUILDING_DEFS)) {
+                const def = getBuildingDef(bld);
+                if (def && Array.isArray(def.trainOptions) && def.trainOptions.includes(unitType)) return bld;
+            }
+        }
         return null;
+    }
+
+    // Every unit this civilization can EVER train: the id, the building that makes
+    // it, and the earliest age it appears. Mirrors buildingTrains() deliberately —
+    // per-age tier options first, static trainOptions as the fallback — so the
+    // vocabulary we ADVERTISE cannot drift from the one the executor ACCEPTS.
+    // Civ uniques and exclusions come along for free, because
+    // getTrainOptionsForBuilding already resolves both (Egypt fields horse
+    // carriages and NO generic cavalry; a model could not have known that).
+    trainableUnitsFor(civilization) {
+        const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
+        const hosts = ['barracks', 'archery_range', 'stable', 'temple'];
+        const seen = new Map();
+        hosts.forEach(bt => {
+            const def = (typeof getBuildingDef === 'function') ? getBuildingDef(bt) : null;
+            const floor = (def && def.requiredAge) || 'stone';
+            ageOrder.forEach(age => {
+                // A unit can't predate the building that trains it: the temple is a
+                // bronze-age structure, so its priest is bronze, not stone.
+                if (ageOrder.indexOf(age) < ageOrder.indexOf(floor)) return;
+                let opts = (typeof getTrainOptionsForBuilding === 'function')
+                    ? getTrainOptionsForBuilding(bt, age, civilization) : null;
+                if (!opts || !opts.length) opts = (def && def.trainOptions) || [];
+                opts.forEach(id => { if (!seen.has(id)) seen.set(id, { id, at: bt, age }); });
+            });
+        });
+        return [...seen.values()];
+    }
+
+    // The trainable vocabulary as one line, grouped by the building that makes it.
+    // This is what an [ERROR] owes the model when it guesses a unit name wrong.
+    trainableListString(ai) {
+        const list = this.trainableUnitsFor(ai.civilization);
+        if (!list.length) return 'Your civilization trains no military units.';
+        const byHost = {};
+        list.forEach(u => { (byHost[u.at] = byHost[u.at] || []).push(u.id); });
+        const parts = Object.entries(byHost).map(([host, ids]) => `at ${host} — ${ids.join(', ')}`);
+        return `Your civilization can train: ${parts.join('; ')}.`;
     }
 
     // Earliest age at which a unit can be trained (scans the train tiers). Lets us
@@ -922,10 +978,24 @@ class OpenAIAIManager {
         };
 
         // --- Unlocked content ---
+        // `units` used to be Object.keys(ai.unlockedUnits) and was structurally
+        // always empty: exactly one tech in the whole game declares a unit unlock,
+        // so for three civs out of four the field could never populate. It was the
+        // only thing resembling a vocabulary for train_unit, and it never had one.
+        // trainableUnits (below) replaces it with the real per-civ list.
         const unlockedContent = {
-            buildings: Object.keys(ai.unlockedBuildings || {}),
-            units: Object.keys(ai.unlockedUnits || {})
+            buildings: Object.keys(ai.unlockedBuildings || {})
         };
+
+        // --- Trainable units: the vocabulary for train_unit's "unitType" ---
+        // Grouped by the building that makes them, id tagged with the age it needs,
+        // so every id-taking action now has exactly one state field answering
+        // "which words may I use here": build_structure→buildableStructures,
+        // research_tech→research.available, train_unit→trainableUnits.
+        const trainableUnits = {};
+        this.trainableUnitsFor(ai.civilization).forEach(u => {
+            (trainableUnits[u.at] = trainableUnits[u.at] || []).push(`${u.id}(${u.age})`);
+        });
 
         // --- Buildable structures for THIS civ (some civs lack e.g. the stable) ---
         // Only lists what your civilization can EVER build; if a type is missing,
@@ -1013,6 +1083,7 @@ class OpenAIAIManager {
             enemyUnits: enemyUnits,
             research: researchObj,
             unlockedContent: unlockedContent,
+            trainableUnits: trainableUnits,
             buildableStructures: buildableStructures,
             pendingBuildings: pendingBuildings,
             threats: threatsObj,
@@ -1192,23 +1263,23 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue EX
 
 ## Actions — issue EXACTLY ONE. name(required) [optional]
 train_worker()                                  villager, at any free Town Center
-train_unit(unitType) [targetX,targetZ]          coords pick WHICH barracks/range/stable
-research_tech(techId)
+train_unit(unitType) [targetX,targetZ]          id from trainableUnits; coords pick WHICH building
+research_tech(techId)                           id from research.available
 upgrade_age()
-build_structure(buildingType) [targetX,targetZ]
+build_structure(buildingType) [targetX,targetZ] type from buildableStructures
 build_wonder()
 harvest_resource(resourceType) [targetX,targetZ]
 assign_workers(resourceType) [count, targetX,targetZ]
 repair_building() [count, targetX,targetZ]      no coords = your most damaged building
 explore(targetX,targetZ) [unitType]             coordinates from map.exploration
 move_units(targetX,targetZ) [units]
-attack_target(targetId | targetX,targetZ) [units]
-delete_unit() [unitType, count]                 defaults to one worker
-destroy_building(buildingType) [targetX,targetZ]
+attack_target(targetId | targetX,targetZ) [units]  targetId from enemyUnits/enemyBuildings
+delete_unit() [unitType, count]                 type from friendlyUnits; defaults to one worker
+destroy_building(buildingType) [targetX,targetZ] one of YOUR types, from friendlyBuildings
 wait()
 
 resourceType: food|wood|stone|gold. assign_workers also accepts "farm" for idle farms.
-units: an OBJECT {"type":count}, e.g. {"champion":3,"cavalry":5} — specific type or category; omit it to order your whole army. Never an array.
+units: an OBJECT {"type":count} — unit ids e.g. {"champion":3}, or categories infantry|ranged|cavalry|support e.g. {"infantry":5} (categories work ONLY here, never in train_unit). Omit for your whole army. Never an array.
 targetX/targetZ: always give BOTH or NEITHER. count defaults: assign_workers 3 (max 20), delete_unit 1 (max 20), repair_building 1 (max 5).
 Any action may also carry "objective" (one line) and "plan" (up to 5 short steps): they are STANDING and echoed back every turn, so omit them to keep the current ones and use them to make a multi-turn intention survive.
 
@@ -2178,11 +2249,19 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
         if (!unitDef) {
             console.log(`[OpenAIAI] ${ai.id}: Unknown unit type "${unitType}"`);
             this.outcome('log.out.unknownUnit', { unitType });
-            return `[ERROR] Unknown unit type "${unitType}".`;
+            // Categories are legal in the "units" parameter of move_units/attack_target
+            // but never here, and only "cavalry" happens to also be a real id — so a
+            // model that generalised from {"cavalry":5} lands on "infantry" and used to
+            // get back nothing at all. Name the whole vocabulary instead.
+            const cats = ['infantry', 'ranged', 'cavalry', 'support'];
+            const catNote = cats.includes(String(unitType).toLowerCase())
+                ? ` "${unitType}" is a unit CATEGORY: those work only in the "units" parameter of move_units/attack_target, never in train_unit, which needs one exact unit id.`
+                : '';
+            return `[ERROR] Unknown unit type "${unitType}".${catNote} ${this.trainableListString(ai)} See "trainableUnits" in the state for the age each one needs.`;
         }
 
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-        const reqB = this.requiredBuildingForUnit(unitType); // 'barracks' | 'stable' | 'archery_range' | null
+        const reqB = this.requiredBuildingForUnit(unitType, ai.civilization); // 'barracks' | 'stable' | 'archery_range' | 'temple' | null
         const rightType = (b) => reqB ? (b.type === reqB) : false;
 
         // Validation follows the advancement chain so the message always points at
@@ -2283,6 +2362,22 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
                 this.outcome('log.out.notAResearchTech', { techId });
                 return `[ERROR] "${techId}" is not a research tech — advancing AGES is a separate action.${ageNote} For actual technologies, use an exact ID from "research.available".`;
             }
+            // Building names are the other near-miss. Several unlock techs ARE named
+            // after their building (house, farm, barracks, market), which teaches the
+            // pattern — so a model reaches for "stable" or "temple" too, where the
+            // tech is called something else entirely or does not exist. The age branch
+            // above has caught its own near-miss for a while; this is the same idea.
+            const asBuilding = (typeof getBuildingDef === 'function') ? getBuildingDef(String(techId)) : null;
+            if (asBuilding) {
+                const need = asBuilding.requiresTech;
+                const how = need
+                    ? (civ?.techTree?.[need]
+                        ? `Its unlock tech is "${need}" — research that, then build_structure "${techId}".`
+                        : `Your civilization has no tech for it, so it cannot build a ${techId}.`)
+                    : `It needs no tech — build_structure "${techId}" directly (check its age in "buildableStructures").`;
+                this.outcome('log.out.techIsBuilding', { techId, need: need || '-' });
+                return `[ERROR] "${techId}" is a BUILDING, not a technology. ${how} See "buildableStructures" for the age and unlock tech of every structure.`;
+            }
             this.outcome('log.out.unknownTech', { techId });
             return `[ERROR] Unknown tech "${techId}". Use an exact tech ID from "research.available".${ageNote}`;
         }
@@ -2324,9 +2419,9 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
         if (!ai.buildings.some(b => b.type === hostType && !b.underConstruction)) {
             console.log(`[OpenAIAI] ${ai.id}: Need a finished ${hostType} to research "${techId}"`);
             if (hostType === 'market') {
-                const hasMarketTech = !!ai.researchedTechs['marketTech'];
+                const hasMarketTech = !!ai.researchedTechs['market'];
                 const step = hasMarketTech ? 'build a Market (build_structure "market") and wait for it to finish'
-                    : 'first research "marketTech", then build a Market and wait for it to finish';
+                    : 'first research "market", then build a Market and wait for it to finish';
                 this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
                 return `[ERROR] "${techId}" is researched at a Market, which you don't have. To enable it: ${step}.`;
             }
@@ -2401,7 +2496,11 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
         if (!buildingDef) {
             console.log(`[OpenAIAI] ${ai.id}: Unknown building "${buildingType}"`);
             this.outcome('log.out.unknownBuilding', { buildingType });
-            return `[ERROR] Unknown building "${buildingType}". Check "unlockedContent.buildings" for valid types.`;
+            // NOT unlockedContent.buildings: that lists only what you have ALREADY
+            // unlocked and is empty on turn 1, so the old message sent the model to
+            // an empty array. buildableStructures is the complete list, with each
+            // type's required age and unlock tech.
+            return `[ERROR] Unknown building "${buildingType}". Use a "type" from "buildableStructures" — it lists every structure your civilization can build, with the age and unlock tech each needs.`;
         }
 
         // ADVANCE first: a building gated to a later epoch can't be built yet. (Most
@@ -3478,7 +3577,15 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
 
     executeDestroyBuilding(ai, game, buildingType, targetX, targetZ) {
         let pool = ai.buildings.filter(b => b.type === buildingType);
-        if (pool.length === 0) { this.outcome('log.out.noBuildingDestroy', { buildingType }); return `[ERROR] You have no "${buildingType}" to destroy.`; }
+        if (pool.length === 0) {
+            this.outcome('log.out.noBuildingDestroy', { buildingType });
+            // Say what you DO own, the way delete_unit does — destroy_building acts on
+            // your OWN structures, so the answer is always in friendlyBuildings.
+            const counts = {};
+            ai.buildings.forEach(b => { counts[b.type] = (counts[b.type] || 0) + 1; });
+            const have = Object.entries(counts).map(([t, n]) => `${t}×${n}`).join(', ') || '(none)';
+            return `[ERROR] You have no "${buildingType}" to destroy. Your buildings: ${have}. Pass one of those "type" values (the "type" field shown for each entry in "friendlyBuildings"). To attack an ENEMY building use attack_target instead.`;
+        }
         let victim = pool[0];
         if (targetX !== undefined && targetZ !== undefined) {
             let bd = Infinity;
