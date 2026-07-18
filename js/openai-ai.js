@@ -2075,7 +2075,7 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
     popCapAdvice(ai) {
         const cap = (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100;
         if (ai.resources.maxPopulation >= cap) {
-            return `You are at the HARD population cap of ${cap} — houses and Town Centers can NOT raise it any further. The only way to free a slot is delete_unit: remove a worker or a military unit you can spare.`;
+            return `You are at the HARD population cap of ${cap} — houses and Town Centers can NOT raise it any further. The only way to free a slot is delete_unit: remove a worker if you need more military units or a military unit if you need more workers.`;
         }
         return `Build houses (+5 each) or a Town Center (+10) to raise maxPopulation (up to the hard cap of ${cap}), or delete_unit to free room now.`;
     }
