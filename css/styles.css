@@ -985,7 +985,7 @@ body.spectator-mode #unitInfo.spectator-card {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 2px 7px 2px 5px;
+    padding: 2px 6px;
     font: inherit;
     font-size: 0.74em;
     line-height: 1.6;
@@ -996,6 +996,13 @@ body.spectator-mode #unitInfo.spectator-card {
     cursor: pointer;
     white-space: nowrap;
     transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+/* Icon-only label: bumped back up because 0.74em on an emoji reads as a smudge. */
+.ai-log-chip-icon {
+    font-size: 1.15em;
+    line-height: 1;
+    display: inline-block;
 }
 
 .ai-log-chip:hover { background: rgba(255, 255, 255, 0.1); color: #e6ebf5; }

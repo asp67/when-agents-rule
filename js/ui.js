@@ -1750,10 +1750,23 @@ class UIManager {
         el.innerHTML = players.map(p => {
             const on = active === p.id;
             const civ = this.escapeHtml(tg((getCivilization(p.civilization) || {}).name || p.civilization));
+            // Badge + civ ICON only: the names wrapped the row onto two lines for no
+            // information gain, since the badge already identifies the seat. The full
+            // name stays as the tooltip.
+            const icon = this.civIcon(p.civilization);
             return `<button class="ai-log-chip${on ? ' is-on' : ''}" data-player="${this.escapeHtml(p.id)}"
                         onclick="game.ui.setLogPlayerFilter('${this.escapeHtml(p.id)}')"
-                        title="${civ}">${this.teamDotHtml(p.seat, 9)}<span>${civ}</span></button>`;
+                        aria-label="${civ}" title="${civ}">${this.teamDotHtml(p.seat, 9)}<span class="ai-log-chip-icon">${icon || civ}</span></button>`;
         }).join('');
+    }
+
+    // The civ's emoji, taken from the localized display name ("⚔️ Greeks" -> "⚔️"),
+    // which is where this project already keeps them. Falls back to '' if a
+    // translation ever drops the prefix, and callers then show the name instead.
+    civIcon(civKey) {
+        const full = (t(`civ.${civKey}.name`) || '').trim();
+        const first = full.split(/\s+/)[0] || '';
+        return (first && !/[\p{L}\p{N}]/u.test(first)) ? first : '';
     }
 
     // Everything the reader can SEE for an entry, lowercased — so searching matches
@@ -1762,7 +1775,13 @@ class UIManager {
     logHaystack(entry, actionLabel, detail) {
         const parts = [
             actionLabel, detail, entry.civName && tg(entry.civName), entry.action,
-            entry.reason, this.renderOutcome(entry), entry.error, entry.result
+            entry.reason, this.renderOutcome(entry), entry.error, entry.result,
+            // The "✗ rejected" marker is rendered from the UI language but was not
+            // searchable, so searching "abgelehnt" in a German UI matched only the
+            // few entries whose outcome text happened to contain the word — never
+            // the category itself. It is on screen, so it belongs in the haystack.
+            entry.failed ? t('log.rejected') : '',
+            entry.isAdvice ? t('log.advice') : ''
         ];
         const p = entry.params || {};
         Object.keys(p).forEach(k => {
