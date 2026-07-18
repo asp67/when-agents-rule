@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=344">
+    <link rel="stylesheet" href="css/styles.css?v=346">
 </head>
 <body>
     <!-- Start Screen -->
@@ -177,6 +177,12 @@
             <div class="ai-log-header" onclick="game.ui.toggleDecisionLog()">
                 <span><span data-i18n="spec.decisions">📜 KI-Entscheidungen</span> <span class="ai-log-count" id="aiLogCount"></span></span>
                 <span class="ai-log-toggle" id="aiLogToggle">▼</span>
+            </div>
+            <div id="aiLogFilter" class="ai-log-filter">
+                <div id="aiLogPlayers" class="ai-log-players"></div>
+                <input id="aiLogSearch" class="ai-log-search" type="search" autocomplete="off"
+                       data-i18n-ph="log.search" placeholder="Suchen…"
+                       oninput="game.ui.setLogTextFilter(this.value)">
             </div>
             <div id="aiLogEntries" class="ai-log-entries"></div>
             <button id="aiLogTopBtn" class="ai-log-top-btn" title="Scroll to top" onclick="game.ui.scrollDecisionLogTop()">▲</button>
@@ -367,24 +373,24 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=344"></script>
-    <script src="js/engine/glcore.js?v=344"></script>
-    <script src="js/engine/texgen.js?v=344"></script>
-    <script src="js/engine/mesh.js?v=344"></script>
-    <script src="js/engine/buildings.js?v=344"></script>
-    <script src="js/engine/units.js?v=344"></script>
-    <script src="js/engine/gamerenderer.js?v=344"></script>
-    <script src="js/i18n.js?v=344"></script>
-    <script src="js/civilizations.js?v=344"></script>
-    <script src="js/buildings.js?v=344"></script>
-    <script src="js/units.js?v=344"></script>
-    <script src="js/resources.js?v=344"></script>
-    <script src="js/terrain.js?v=344"></script>
-    <script src="js/fogofwar.js?v=344"></script>
-    <script src="js/ai.js?v=344"></script>
-    <script src="js/openai-ai.js?v=344"></script>
-    <script src="js/input.js?v=344"></script>
-    <script src="js/ui.js?v=344"></script>
-    <script src="js/game.js?v=344"></script>
+    <script src="js/engine/math3d.js?v=346"></script>
+    <script src="js/engine/glcore.js?v=346"></script>
+    <script src="js/engine/texgen.js?v=346"></script>
+    <script src="js/engine/mesh.js?v=346"></script>
+    <script src="js/engine/buildings.js?v=346"></script>
+    <script src="js/engine/units.js?v=346"></script>
+    <script src="js/engine/gamerenderer.js?v=346"></script>
+    <script src="js/i18n.js?v=346"></script>
+    <script src="js/civilizations.js?v=346"></script>
+    <script src="js/buildings.js?v=346"></script>
+    <script src="js/units.js?v=346"></script>
+    <script src="js/resources.js?v=346"></script>
+    <script src="js/terrain.js?v=346"></script>
+    <script src="js/fogofwar.js?v=346"></script>
+    <script src="js/ai.js?v=346"></script>
+    <script src="js/openai-ai.js?v=346"></script>
+    <script src="js/input.js?v=346"></script>
+    <script src="js/ui.js?v=346"></script>
+    <script src="js/game.js?v=346"></script>
 </body>
 </html>

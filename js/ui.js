@@ -1707,10 +1707,70 @@ class UIManager {
     toggleDecisionLog() {
         const entries = document.getElementById('aiLogEntries');
         const toggle = document.getElementById('aiLogToggle');
+        const filter = document.getElementById('aiLogFilter');
         if (entries) {
             entries.classList.toggle('collapsed');
-            if (toggle) toggle.textContent = entries.classList.contains('collapsed') ? '▶' : '▼';
+            const off = entries.classList.contains('collapsed');
+            if (toggle) toggle.textContent = off ? '▶' : '▼';
+            if (filter) filter.classList.toggle('collapsed', off);
         }
+    }
+
+    // ---- KI-Log filtering ---------------------------------------------------
+    // Two independent filters that AND together: a player and a free-text term.
+    // Both narrow the SOURCE list before the 160-entry render cap, so filtering
+    // reaches back through the whole history rather than only the visible slice.
+    setLogPlayerFilter(playerId) {
+        this._logFilter = this._logFilter || { playerId: null, text: '' };
+        // Clicking the active player clears it — no separate "all" round-trip.
+        this._logFilter.playerId = (this._logFilter.playerId === playerId) ? null : playerId;
+        this._lastLogSig = null;   // filter changed → force a rebuild
+        this.renderLogPlayerChips();
+        this.updateDecisionLog();
+    }
+
+    setLogTextFilter(text) {
+        this._logFilter = this._logFilter || { playerId: null, text: '' };
+        this._logFilter.text = String(text || '').trim().toLowerCase();
+        this._lastLogSig = null;
+        this.updateDecisionLog();
+    }
+
+    // One chip per seat, badge + civ name, so the picker reads the same way the
+    // entries do. Rebuilt only when the roster changes — otherwise every 1s tick
+    // would blow away the focus/active state.
+    renderLogPlayerChips() {
+        const el = document.getElementById('aiLogPlayers');
+        if (!el) return;
+        const players = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        const active = (this._logFilter && this._logFilter.playerId) || null;
+        const sig = players.map(p => `${p.id}:${p.seat}`).join('|') + '#' + active + '#' + getUiLang();
+        if (sig === this._logChipSig) return;
+        this._logChipSig = sig;
+        el.innerHTML = players.map(p => {
+            const on = active === p.id;
+            const civ = this.escapeHtml(tg((getCivilization(p.civilization) || {}).name || p.civilization));
+            return `<button class="ai-log-chip${on ? ' is-on' : ''}" data-player="${this.escapeHtml(p.id)}"
+                        onclick="game.ui.setLogPlayerFilter('${this.escapeHtml(p.id)}')"
+                        title="${civ}">${this.teamDotHtml(p.seat, 9)}<span>${civ}</span></button>`;
+        }).join('');
+    }
+
+    // Everything the reader can SEE for an entry, lowercased — so searching matches
+    // the words on screen (localized action label, detail, reason, outcome) rather
+    // than the internal codes behind them.
+    logHaystack(entry, actionLabel, detail) {
+        const parts = [
+            actionLabel, detail, entry.civName && tg(entry.civName), entry.action,
+            entry.reason, this.renderOutcome(entry), entry.error, entry.result
+        ];
+        const p = entry.params || {};
+        Object.keys(p).forEach(k => {
+            const v = p[k];
+            if (v !== null && typeof v === 'object') return;
+            parts.push(`${k} ${v}`);
+        });
+        return parts.filter(Boolean).join(' ').toLowerCase();
     }
 
     // Composite "power" rating used to rank players on the leaderboard
@@ -1906,9 +1966,12 @@ class UIManager {
         if (!entriesEl || !this.game.openAIAIManager) return;
 
         const log = this.game.openAIAIManager.decisionLog;
-        if (countEl) countEl.textContent = log.length ? `(${log.length})` : '';
+        this.renderLogPlayerChips();
+        const f = this._logFilter || { playerId: null, text: '' };
+        const filtering = !!(f.playerId || f.text);
 
         if (log.length === 0) {
+            if (countEl) countEl.textContent = '';
             if (this._lastLogSig !== 'empty:' + getUiLang()) {
                 entriesEl.innerHTML = `<div class="ai-log-empty" style="color:#6b7488;font-size:0.8em;padding:14px 8px;text-align:center;">${t('log.empty')}</div>`;
                 this._lastLogSig = 'empty:' + getUiLang();
@@ -1917,8 +1980,11 @@ class UIManager {
         }
 
         // Only rebuild when the log actually changed (avoids re-triggering the
-        // entry animation every second, which looks like flicker).
-        const sig = getUiLang() + ':' + log.length + ':' + (log[0] ? log[0].timestamp : 0);
+        // entry animation every second, which looks like flicker). The active
+        // filter is part of the signature: without it, typing in the search box
+        // would not repaint until the next decision arrived.
+        const sig = [getUiLang(), log.length, (log[0] ? log[0].timestamp : 0),
+                     f.playerId || '', f.text].join(':');
         if (sig === this._lastLogSig) return;
         this._lastLogSig = sig;
 
@@ -1947,9 +2013,39 @@ class UIManager {
         const seatOf = {};
         ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).forEach(a => { seatOf[a.id] = a.seat; });
 
+        // Decorate + filter in one pass over the WHOLE log, capping only after the
+        // filters have run — so a search reaches the entire history, not just the
+        // 160 entries that would have been rendered anyway.
+        const view = [];
+        for (const entry of log) {
+            if (f.playerId && entry.playerId !== f.playerId) continue;
+            const pp = entry.params || {};
+            const hasT = pp.targetX !== undefined && pp.targetZ !== undefined;
+            const actionLabel = entry.isAdvice ? t('log.advice')
+                : (actionNames[entry.action] || this.escapeHtml(entry.action));
+            const detail = pp.unitType ? ` (${this.logDetailName('unit', pp.unitType, entry.playerId)})`
+                : pp.buildingType ? ` (${this.logDetailName('building', pp.buildingType, entry.playerId)})`
+                : pp.techId ? ` (${this.logDetailName('tech', pp.techId, entry.playerId)})`
+                : pp.resourceType ? ` (${this.logDetailName('resource', pp.resourceType, entry.playerId)})`
+                : hasT ? ` (→ ${Math.round(pp.targetX)}, ${Math.round(pp.targetZ)})`
+                : '';
+            if (f.text && !this.logHaystack(entry, actionLabel, detail).includes(f.text)) continue;
+            view.push({ entry, actionLabel, detail });
+            if (view.length >= 160) break;
+        }
+
+        if (countEl) countEl.textContent = filtering ? `(${view.length}/${log.length})` : `(${log.length})`;
+
+        if (view.length === 0) {
+            entriesEl.innerHTML = `<div class="ai-log-empty" style="color:#6b7488;font-size:0.8em;padding:14px 8px;text-align:center;">${t('log.noMatches')}</div>`;
+            entriesEl.scrollTop = 0;
+            this.updateDecisionLogTopBtn();
+            return;
+        }
+
         let html = '';
         const now = Date.now();
-        log.slice(0, 160).forEach((entry, idx) => {
+        view.forEach(({ entry, actionLabel, detail }, idx) => {
             const secondsAgo = Math.floor((now - entry.timestamp) / 1000);
             const timeStr = secondsAgo < 5 ? t('log.now') : `${secondsAgo}s`;
             const civColor = this.legibleColor(entry.color);
@@ -1974,15 +2070,7 @@ class UIManager {
                 return;
             }
 
-            const actionLabel = actionNames[entry.action] || this.escapeHtml(entry.action);
-            const p = entry.params || {};
-            const hasTarget = p.targetX !== undefined && p.targetZ !== undefined;
-            const detail = p.unitType ? ` (${this.logDetailName('unit', p.unitType, entry.playerId)})`
-                : p.buildingType ? ` (${this.logDetailName('building', p.buildingType, entry.playerId)})`
-                : p.techId ? ` (${this.logDetailName('tech', p.techId, entry.playerId)})`
-                : p.resourceType ? ` (${this.logDetailName('resource', p.resourceType, entry.playerId)})`
-                : hasTarget ? ` (→ ${Math.round(p.targetX)}, ${Math.round(p.targetZ)})`
-                : '';
+            // actionLabel/detail were computed during the filter pass above.
             const isError = entry.failed || (typeof entry.action === 'string' && (entry.action.includes('failed') || entry.action.includes('⚠')));
             // The outcome body in the model's language (null → raw English fallback).
             const locOutcome = this.renderOutcome(entry);
@@ -1997,7 +2085,7 @@ class UIManager {
                     </div>
                     ${entry.reason ? `<span class="log-reason">“${this.escapeHtml(entry.reason)}”</span>` : ''}
                     ${entry.failed && (locOutcome || entry.error) ? `<span class="log-error">⚠ ${this.escapeHtml(locOutcome || entry.error)}</span>` : ''}
-                    ${!entry.failed && !entry.reason && (locOutcome || entry.result) ? `<span class="log-outcome">${this.escapeHtml(locOutcome || entry.result.replace(/^OK\s*-\s*/, ''))}</span>` : ''}
+                    ${!entry.failed && (!entry.reason || f.text) && (locOutcome || entry.result) ? `<span class="log-outcome">${this.escapeHtml(locOutcome || entry.result.replace(/^OK\s*-\s*/, ''))}</span>` : ''}
                 </div>
             `;
         });

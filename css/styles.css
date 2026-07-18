@@ -956,6 +956,72 @@ body.spectator-mode #unitInfo.spectator-card {
     margin-left: 8px;
 }
 
+/* Filter bar: its own row under the header, so clicking a chip or the search
+   box can't also trigger the header's collapse toggle. */
+.ai-log-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    background: rgba(10, 13, 28, 0.86);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    padding: 6px 8px;
+    box-sizing: border-box;
+    backdrop-filter: blur(7px);
+}
+
+.ai-log-filter.collapsed { display: none; }
+
+.ai-log-players {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.ai-log-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px 2px 5px;
+    font: inherit;
+    font-size: 0.74em;
+    line-height: 1.6;
+    color: #b6bfd4;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.ai-log-chip:hover { background: rgba(255, 255, 255, 0.1); color: #e6ebf5; }
+
+.ai-log-chip.is-on {
+    background: rgba(120, 165, 255, 0.2);
+    border-color: rgba(140, 180, 255, 0.55);
+    color: #eef3ff;
+}
+
+.ai-log-search {
+    flex: 1 1 90px;
+    min-width: 0;
+    font: inherit;
+    font-size: 0.76em;
+    color: #dbe2f0;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 7px;
+    padding: 3px 8px;
+    outline: none;
+}
+
+.ai-log-search::placeholder { color: #6b7488; }
+.ai-log-search:focus { border-color: rgba(140, 180, 255, 0.55); }
+
 .ai-log-entries {
     background: rgba(10, 13, 28, 0.86);
     border: 1px solid rgba(255, 255, 255, 0.08);
