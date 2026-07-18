@@ -988,13 +988,15 @@ class OpenAIAIManager {
         };
 
         // --- Trainable units: the vocabulary for train_unit's "unitType" ---
-        // Grouped by the building that makes them, id tagged with the age it needs,
-        // so every id-taking action now has exactly one state field answering
-        // "which words may I use here": build_structure→buildableStructures,
-        // research_tech→research.available, train_unit→trainableUnits.
+        // Nested building → age → [ids], so every LEAF is a bare id the model can
+        // copy straight into unitType. The first version wrote "militia(stone)" as
+        // one string to save a nesting level, and models duly passed that whole
+        // string as the unitType — the harness had invented a token that looked
+        // copyable and wasn't. Structure it instead of warning about it.
         const trainableUnits = {};
         this.trainableUnitsFor(ai.civilization).forEach(u => {
-            (trainableUnits[u.at] = trainableUnits[u.at] || []).push(`${u.id}(${u.age})`);
+            const host = (trainableUnits[u.at] = trainableUnits[u.at] || {});
+            (host[u.age] = host[u.age] || []).push(u.id);
         });
 
         // --- Buildable structures for THIS civ (some civs lack e.g. the stable) ---
@@ -1261,22 +1263,23 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue EX
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
 
-## Actions — issue EXACTLY ONE. name(required) [optional]
-train_worker()                                  villager, at any free Town Center
-train_unit(unitType) [targetX,targetZ]          id from trainableUnits; coords pick WHICH building
-research_tech(techId)                           id from research.available
-upgrade_age()
-build_structure(buildingType) [targetX,targetZ] type from buildableStructures
-build_wonder()
-harvest_resource(resourceType) [targetX,targetZ]
-assign_workers(resourceType) [count, targetX,targetZ]
-repair_building() [count, targetX,targetZ]      no coords = your most damaged building
-explore(targetX,targetZ) [unitType]             coordinates from map.exploration
-move_units(targetX,targetZ) [units]
-attack_target(targetId | targetX,targetZ) [units]  targetId from enemyUnits/enemyBuildings
-delete_unit() [unitType, count]                 type from friendlyUnits; defaults to one worker
-destroy_building(buildingType) [targetX,targetZ] one of YOUR types, from friendlyBuildings
-wait()
+## Actions — issue EXACTLY ONE. Left column is the "action" value, VERBATIM and with
+## no brackets: "wait", never "wait()". Then its required params, then [optional].
+train_worker                                    villager, at any free Town Center
+train_unit         unitType [targetX targetZ]   id from trainableUnits; coords pick WHICH building
+research_tech      techId                       id from research.available
+upgrade_age
+build_structure    buildingType [targetX targetZ]   type from buildableStructures
+build_wonder
+harvest_resource   resourceType [targetX targetZ]
+assign_workers     resourceType [count targetX targetZ]
+repair_building    [count targetX targetZ]      no coords = your most damaged building
+explore            targetX targetZ [unitType]   coordinates from map.exploration
+move_units         targetX targetZ [units]
+attack_target      targetId OR targetX targetZ [units]   targetId from enemyUnits/enemyBuildings
+delete_unit        [unitType count]             type from friendlyUnits; defaults to one worker
+destroy_building   buildingType [targetX targetZ]   one of YOUR types, from friendlyBuildings
+wait
 
 resourceType: food|wood|stone|gold. assign_workers also accepts "farm" for idle farms.
 units: an OBJECT {"type":count} — unit ids e.g. {"champion":3}, or categories infantry|ranged|cavalry|support e.g. {"infantry":5} (categories work ONLY here, never in train_unit). Omit for your whole army. Never an array.
@@ -2083,8 +2086,22 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
                 actionResult = `OK - Waited this turn.`;
                 break;
 
-            default:
-                actionResult = `[ERROR] Unknown action: ${action}`;
+            default: {
+                // The commonest miss by far: the model copies the action list's
+                // notation into the JSON — "wait()" rather than "wait". The name is
+                // right and only the punctuation is wrong, so say exactly that
+                // instead of a flat "unknown", which reads as "that action does not
+                // exist" and sends a model hunting for a different one.
+                const bare = String(action).replace(/\s*\(.*\)\s*$/, '').trim();
+                const KNOWN = ['train_worker', 'train_unit', 'research_tech', 'upgrade_age',
+                    'build_structure', 'build_wonder', 'harvest_resource', 'assign_workers',
+                    'repair_building', 'explore', 'move_units', 'attack_target',
+                    'delete_unit', 'destroy_building', 'wait'];
+                actionResult = (bare !== action && KNOWN.includes(bare))
+                    ? `[ERROR] Unknown action "${action}". You meant "${bare}" — the "action" value is the bare name with NO brackets or parameter list. Send {"action":"${bare}","params":{...}} and put the parameters in "params".`
+                    : `[ERROR] Unknown action: ${action}. Valid actions: ${KNOWN.join(', ')}.`;
+                break;
+            }
         }
 
         // Safety net: EVERY action must yield a feedback string so the model always
@@ -2257,7 +2274,13 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
             const catNote = cats.includes(String(unitType).toLowerCase())
                 ? ` "${unitType}" is a unit CATEGORY: those work only in the "units" parameter of move_units/attack_target, never in train_unit, which needs one exact unit id.`
                 : '';
-            return `[ERROR] Unknown unit type "${unitType}".${catNote} ${this.trainableListString(ai)} See "trainableUnits" in the state for the age each one needs.`;
+            // "militia(stone)" — the age carried along from the state listing. Name
+            // the bare id rather than making the model work it out.
+            const stripped = String(unitType).replace(/\s*\(.*\)\s*$/, '').trim();
+            const parenNote = (stripped !== String(unitType) && getUnitDefFor(ai.civilization, stripped))
+                ? ` Pass just "${stripped}" — "trainableUnits" groups ids under the age they need, and the age is not part of the id.`
+                : '';
+            return `[ERROR] Unknown unit type "${unitType}".${catNote}${parenNote} ${this.trainableListString(ai)} See "trainableUnits" in the state for the age each one needs.`;
         }
 
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];

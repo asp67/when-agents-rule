@@ -776,11 +776,14 @@
     },
     "trainableUnits": {
       "type": "object",
-      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, keyed by the building that trains it, each entry \"id(age)\" naming the earliest age it becomes available. Includes your civ's unique units and omits any standard unit your civ does not field. Pass the bare id (\"champion\"), not the \"(age)\" suffix, and not a category — infantry/ranged/cavalry/support are valid only in the \"units\" parameter of move_units and attack_target.",
+      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, nested building -> age -> ids, where the age is the earliest one at which that unit can be trained. Every leaf is a bare unit id, ready to pass as \"unitType\" unchanged. Includes your civ's unique units and omits any standard unit your civ does not field. A category (infantry/ranged/cavalry/support) is NOT valid here — those work only in the \"units\" parameter of move_units and attack_target.",
       "additionalProperties": {
-        "type": "array",
-        "items": {
-          "type": "string"
+        "type": "object",
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
