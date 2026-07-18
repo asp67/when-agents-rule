@@ -1263,34 +1263,33 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue EX
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
 
-## Actions — issue EXACTLY ONE. Left column is the "action" value, VERBATIM and with
-## no brackets: "wait", never "wait()". Then its required params, then [optional].
-train_worker                                    villager, at any free Town Center
-train_unit         unitType [targetX targetZ]   id from trainableUnits; coords pick WHICH building
-research_tech      techId                       id from research.available
-upgrade_age
-build_structure    buildingType [targetX targetZ]   type from buildableStructures
-build_wonder
-assign_workers     resourceType [count targetX targetZ]
-repair_building    [count targetX targetZ]      no coords = your most damaged building
-explore            targetX targetZ [unitType]   coordinates from map.exploration
-move_units         targetX targetZ [units]
-attack_target      targetId OR targetX targetZ [units]   targetId from enemyUnits/enemyBuildings
-delete_unit        [unitType count]             type from friendlyUnits; defaults to one worker
-destroy_building   buildingType [targetX targetZ]   one of YOUR types, from friendlyBuildings
-wait
+OUTPUT EXACTLY ONE RAW JSON OBJECT
+Format: {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }}
 
-resourceType: food|wood|stone|gold. assign_workers also accepts "farm" for idle farms.
-units: an OBJECT {"type":count} — unit ids e.g. {"champion":3}, or categories infantry|ranged|cavalry|support e.g. {"infantry":5} (categories work ONLY here, never in train_unit). Omit for your whole army. Never an array.
-targetX/targetZ: always give BOTH or NEITHER. count defaults: assign_workers 3 (max 20), delete_unit 1 (max 20), repair_building 1 (max 5).
-Any action may also carry "objective" (one line) and "plan" (up to 5 short steps): they are STANDING and echoed back every turn, so omit them to keep the current ones and use them to make a multi-turn intention survive.
+UNIVERSAL OPTIONAL PARAMS (in params):
+objective: String (1 line). Persists across turns; omit to keep current.
+plan: Array of up to 5 short strings. Persists across turns; omit to keep current.
 
-Parameters are validated for you: a missing or wrong one comes back as an [ERROR] naming what you may use. One behaviour no error will ever teach you:
-- attack_target with targetX/targetZ is an attack-MOVE: your army marches and the verdict arrives when it does. Do not re-issue while it is marching.
+VALID ACTIONS & PARAMETERS (? = optional)
+Note: targetX and targetZ must ALWAYS be provided together.
 
-## Response format
-Reply with ONLY one JSON object — no markdown, no code fences, no prose around it, using one action name from the list above and a reason:
-{"action":"<name>","params":{ ...action params..., "reason":"<one line: how this advances victory>"}}`;
+train_worker: (None)
+train_unit: unitType (from trainableUnits), targetX?, targetZ?
+research_tech: techId (from research.available)
+upgrade_age: (None)
+build_structure: buildingType (from buildableStructures), targetX?, targetZ?
+build_wonder: (None)
+assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), targetX?, targetZ?
+repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
+explore: targetX, targetZ (from map.exploration), unitType?
+move_units: targetX, targetZ, units?
+attack_target: targetId (from enemyUnits/enemyBuildings) OR targetX, targetZ. Optional: units?. (Coords trigger attack-move; do not reissue while marching)
+delete_unit: unitType? (from friendlyUnits, def: worker), count? (def:1, max:20)
+destroy_building: buildingType (from friendlyBuildings), targetX?, targetZ?
+wait: (None)
+
+PARAMETER CONSTRAINTS:
+units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array.`;
     }
 
     // ----------------------------------------------------------------
