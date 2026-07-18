@@ -645,11 +645,22 @@ class OpenAIAIManager {
             size: game.terrain.size,
             bounds: { minX: -halfMap, maxX: halfMap, minZ: -halfMap, maxZ: halfMap },
             yourSpawnArea: this.getAIBuildingCenter(ai),
-            // Percent of each map tile this player has ever seen, as a 7×7
-            // row-major grid ([row][col], row 0 = north, col 0 = west; tile
-            // centre formula documented in the system prompt). Lets the model
-            // aim scouts at genuinely dark ground instead of guessing.
-            exploration: game.explorationSummary(ai)
+            // Percent of each map tile this player has ever seen, row-major
+            // ([row][col], row 0 = north, col 0 = west), plus the axis edges that
+            // say where each tile IS. Cell [r][c] spans xEdges[c]..xEdges[c+1] by
+            // zEdges[r]..zEdges[r+1], so picking somewhere to scout is an index
+            // lookup rather than arithmetic the model has to get right.
+            //
+            // The edges are stated once per axis, not once per cell: describing all
+            // 49 cells individually costs 676 tokens a turn against 53 this way, and
+            // would make this one field the majority of the whole state message.
+            exploration: (() => {
+                const seen = game.explorationSummary(ai);
+                const T = seen.length || 1;
+                const edges = Array.from({ length: T + 1 },
+                    (_, i) => Math.round((i * game.terrain.size / T) - halfMap));
+                return { xEdges: edges, zEdges: edges, seen };
+            })()
         };
 
         // --- Resources on map (only SCOUTED nodes; remembered once discovered) ---
@@ -1189,7 +1200,7 @@ build_wonder()
 harvest_resource(resourceType) [targetX,targetZ]
 assign_workers(resourceType) [count, targetX,targetZ]
 repair_building() [count, targetX,targetZ]      no coords = your most damaged building
-explore(targetX,targetZ) [unitType]             aim at the lowest map.exploration tile
+explore(targetX,targetZ) [unitType]             coordinates from map.exploration
 move_units(targetX,targetZ) [units]
 attack_target(targetId | targetX,targetZ) [units]
 delete_unit() [unitType, count]                 defaults to one worker
@@ -3411,18 +3422,14 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
             return `OK - Sent your ${scout.type} to explore (${Math.round(tx)}, ${Math.round(tz)})${clamped ? ' — your target was outside the map and was clamped to the edge' : ''}. It will take ~${eta}s to get there; let it travel before exploring again.${pulled}${choiceNote}`;
         }
 
-        // No target → refuse, and teach the conversion. "map.exploration" already
-        // hands the model a grid of how much of each tile it has seen, so choosing
-        // where to look needs no help from us; auto-picking was the harness playing
-        // that part of the game. The formula lives HERE rather than in the system
-        // prompt because this is a rejection the model reads — the one channel that
-        // can actually teach — so only a model that needs it pays for it.
+        // No target → refuse. "map.exploration" already says how much of each tile
+        // has been seen AND where each tile is, so choosing where to look needs no
+        // help from us; auto-picking was the harness playing that part of the game.
+        // No formula here any more: the state carries the edges, so this only has to
+        // point at them. Which tile is worth scouting is the model's call.
         const T = game.EXPLORE_TILES || 7;
-        const size = (game.terrain && game.terrain.size) || 800;
-        const tile = Math.round((size / T) * 10) / 10;
-        const half = size / 2;
         this.outcome('log.out.exploreNeedsCoords', {});
-        return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds). Choose them from "map.exploration": a ${T}x${T} grid where exploration[row][col] is how much of that tile you have already seen — aim at the LOWEST value. The centre of tile [row][col] is targetX = (col + 0.5) * ${tile} - ${half}, targetZ = (row + 0.5) * ${tile} - ${half}.`;
+        return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds). Take them from "map.exploration": "seen" is a ${T}x${T} row-major grid of how much of each tile you have already seen, and tile [row][col] covers x from xEdges[col] to xEdges[col+1] and z from zEdges[row] to zEdges[row+1] — any coordinates inside a tile will scout it.`;
     }
 
     executeDeleteUnit(ai, game, params) {
