@@ -146,6 +146,19 @@ class OpenAIAIManager {
         return this.tileLabel(row, col);
     }
 
+    // The tiles this player actually holds, busiest first, for error messages that
+    // want to anchor the model ("your bases are in D1, G7"). Never a centroid: with
+    // two bases that averages to a tile it owns nothing in.
+    baseTilesString(ai, game) {
+        const counts = {};
+        (ai.buildings || []).forEach(b => {
+            const k = this.tileAt(game, b.x, b.z);
+            counts[k] = (counts[k] || 0) + 1;
+        });
+        const tiles = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+        return tiles.length ? tiles.join(', ') : '(you hold no tiles — you have no buildings left)';
+    }
+
     // A point inside tile {row,col}, inset so the scout sits well within the tile
     // rather than straddling its border. Random rather than the centre on purpose:
     // one stop reveals only a few percent of a 114-unit tile, so repeated explores
@@ -745,10 +758,20 @@ class OpenAIAIManager {
             size: game.terrain.size,
             bounds: { minX: -halfMap, maxX: halfMap, minZ: -halfMap, maxZ: halfMap },
             yourSpawnArea: this.getAIBuildingCenter(ai),
-            // Which tile your own base sits in. Without it the model had a grid and
-            // no idea where it stood on it — every scouting decision was relative to
-            // nothing.
-            yourBaseTile: (b => this.tileAt(game, b.x, b.z))(this.getAIBuildingCenter(ai)),
+            // Which tiles you occupy, and how many buildings sit in each. Was a single
+            // yourBaseTile derived from getAIBuildingCenter — a CENTROID, so a player
+            // holding D1 and G7 was told "E4", a tile it has nothing in. Averaging
+            // positions only names a real place when there is exactly one cluster;
+            // with a second base, or a base rebuilt after the first fell, it points
+            // at empty ground between them.
+            yourBaseTiles: (() => {
+                const out = {};
+                ai.buildings.forEach(b => {
+                    const k = this.tileAt(game, b.x, b.z);
+                    out[k] = (out[k] || 0) + 1;
+                });
+                return out;
+            })(),
             // Percent of each tile this player has ever seen, keyed by the same label
             // explore() takes: column A..G west→east, row 1..7 north→south.
             //
@@ -1331,7 +1354,7 @@ build_structure: buildingType (from buildableStructures), targetX?, targetZ?
 build_wonder: (None)
 assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), targetX?, targetZ?
 repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
-explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7), unitType?
+explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?
 move_units: targetX, targetZ, units?
 attack_target: targetId (from enemyUnits/enemyBuildings) OR targetX, targetZ. Optional: units?. (Coords trigger attack-move; do not reissue while marching)
 delete_unit: unitType? (from friendlyUnits, def: worker), count? (def:1, max:20)
@@ -3542,11 +3565,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // so beats a generic "tile required".
         if (!gave && (params.targetX !== undefined || params.targetZ !== undefined)) {
             this.outcome('log.out.exploreNeedsTile', {});
-            return `[ERROR] explore takes a map "tile", not coordinates. Pass one label from "map.exploration" — column A-${lastCol} then row 1-${T}, e.g. "tile":"C5". Your base is in tile ${this.tileAt(game, ...(b => [b.x, b.z])(this.getAIBuildingCenter(ai)))}.`;
+            return `[ERROR] explore takes a map "tile", not coordinates. Pass one label from "map.exploration" — column A-${lastCol} then row 1-${T}, e.g. "tile":"C5". Your tiles: ${this.baseTilesString(ai, game)}.`;
         }
         if (!gave) {
             this.outcome('log.out.exploreNeedsTile', {});
-            return `[ERROR] explore needs a "tile": one label from "map.exploration" — column A-${lastCol} then row 1-${T}, e.g. "tile":"C5". "map.exploration" gives the percent of each tile you have already seen. Your base is in tile ${this.tileAt(game, ...(b => [b.x, b.z])(this.getAIBuildingCenter(ai)))}.`;
+            return `[ERROR] explore needs a "tile": one label from "map.exploration" — column A-${lastCol} then row 1-${T}, e.g. "tile":"C5". "map.exploration" gives the percent of each tile you have already seen. Your tiles: ${this.baseTilesString(ai, game)}.`;
         }
 
         const t = this.parseTile(raw, T);

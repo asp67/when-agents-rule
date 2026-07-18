@@ -248,9 +248,13 @@
           ],
           "description": "Centre of your buildings (your base)."
         },
-        "yourBaseTile": {
-          "type": "string",
-          "description": "The map tile your base sits in, in the same A1-G7 labelling as exploration (e.g. \"D1\")."
+        "yourBaseTiles": {
+          "type": "object",
+          "description": "Which map tiles you occupy, keyed by the same A1-G7 label as exploration, with the number of your buildings in each (e.g. {\"D1\": 7, \"G7\": 1}). Covers a second base or one rebuilt elsewhere after the first fell; empty when you have no buildings left. Deliberately not a single averaged tile: a player holding D1 and G7 has a centroid in E4, where it owns nothing.",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
         },
         "exploration": {
           "type": "object",
