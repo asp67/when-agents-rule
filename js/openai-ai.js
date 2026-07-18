@@ -1186,6 +1186,7 @@ Nothing else wins. Economy, technology and population are fuel for one of these 
 - "threats.underAttack" lists your units/buildings taking fire right now, with "attackerAt" coordinates. Idle military auto-defend your home (workers only as a last resort, when you have no army) — EXCEPT when your WONDER is attacked: that is all hands on deck, every worker downs tools and fights alongside the army from anywhere on the map, then returns to its job once the raid is repelled. Auto-defense only repels — it never wins the game.
 - Your ATTACKING units also defend themselves between your turns: when one of a fighting group takes damage, the whole group focus-fires that attacker, then the next, and returns to your ordered target once no attackers are left — you don't need to micro a siege against defenders.
 - Combat counters: cavalry > ranged > infantry > cavalry (1.5x damage; the reversed pairings deal 0.75x). Infantry raze buildings at 1.5x, ranged at only 0.5x. Towers fire automatically at enemies in range.
+- You never SEE a fight — it happens between your turns. "battles" reports each engagement you were in, CUMULATIVE since it began: both sides' unit types and counts, the damage each type dealt (to units and to buildings, never mixed), priests' healing, and what each side lost. Read it against the counters above — it is how you find out what actually beat you, and what to build instead. It is absent when nothing is happening.
 - Priests (temple) never fight, but they MARCH WITH your army on an attack — escorting to the fight and healing from the back, never engaging. A priest also walks to and heals your nearby workers and military units with healthPct below 100 on its own; reposition it alone with move_units.
 - Workers: newly trained ones are IDLE until ordered. A worker whose resource node runs dry walks to the nearest DISCOVERED node of the same type by itself and idles only when none is left. Workers deliver goods to the NEAREST finished Town Center — a second town_center near far resources shortens hauls, trains workers in parallel, adds +10 population and SEES far (sight 30 — half a tower's 60, versus 12 for other buildings), revealing the resources around it.
 - Farms regenerate food ONLY while a worker is assigned; the worker who builds a farm stays on as its farmer. Pulling that farmer away with assign_workers stops the farm dead — its "farmed" flag goes false and "buildings.summary.farmsUnmanned" counts it. A farm's "activity" always reads "idle" (farms never produce or research), so "farmed" is the only field that tells you it is working. Restart it with assign_workers resourceType "farm". Unlike berry bushes, farms never run out.
@@ -2883,16 +2884,25 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
             const ai = controller.aiPlayer;
             for (let i = reports.length - 1; i >= 0; i--) {
                 const r = reports[i];
-                const resolve = (msg, failed) => {
+                // The verdict already reaches the MODEL synchronously — it is drained
+                // into the next prompt as "RESULTS OF YOUR EARLIER ATTACK ORDER(S)".
+                // The code/params here are for the spectator LOG, which could not use
+                // the executeAction outcome side-channel because this resolves on a
+                // later tick; without them the arrival line was the last one stuck in
+                // English while the rest of the log spoke the model's language.
+                const resolve = (msg, failed, code, params) => {
                     controller.pendingArrivalMessages = controller.pendingArrivalMessages || [];
                     controller.pendingArrivalMessages.push(msg);
-                    this.logArrival(ai, msg, failed);
+                    this.logArrival(ai, msg, failed, {
+                        lang: (controller.model && controller.model.language) || 'en', code, params
+                    });
                     reports.splice(i, 1);
                 };
                 const onOrder = r.units.filter(u => u.health > 0 && ai.units.includes(u) && u._orderToken === r.token);
                 if (onOrder.length === 0) {
                     if (r.units.every(u => u.health <= 0)) {
-                        resolve(`Your attack force sent to (${Math.round(r.tx)}, ${Math.round(r.tz)}) was destroyed before arriving.`, true);
+                        resolve(`Your attack force sent to (${Math.round(r.tx)}, ${Math.round(r.tz)}) was destroyed before arriving.`, true,
+                            'log.out.attackDestroyedEnRoute', { x: Math.round(r.tx), z: Math.round(r.tz) });
                     } else {
                         reports.splice(i, 1); // those units got a new order — report superseded
                     }
@@ -2901,34 +2911,41 @@ Valid actions: train_worker, train_unit, research_tech, upgrade_age, build_struc
                 const eng = onOrder.find(u => u.isAttacking && u.attackTarget && u.attackTarget.health > 0);
                 if (eng) {
                     const tg = eng.attackTarget;
-                    resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and ENGAGED an enemy ${tg.type}${tg.owner ? ` (${tg.owner})` : ''}.`, false);
+                    resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and ENGAGED an enemy ${tg.type}${tg.owner ? ` (${tg.owner})` : ''}.`, false,
+                        'log.out.attackEngaged', { x: Math.round(r.tx), z: Math.round(r.tz), target: tg.type });
                     continue;
                 }
                 const arrived = onOrder.some(u => Math.hypot(u.x - r.tx, u.z - r.tz) <= ARRIVE) || onOrder.every(u => !u.isMoving);
                 if (arrived) {
                     const enemyNear = [...this.game.getAllUnits(), ...this.game.getAllBuildings()]
                         .some(e => e.health > 0 && !this.isOwnedByAI(e, ai) && Math.hypot(e.x - r.tx, e.z - r.tz) <= ENGAGE);
-                    if (enemyNear) resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}); an enemy is there and they are engaging.`, false);
-                    else resolve(`[ERROR] Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) but found NO valid target — the spot is empty (the enemy moved or was already destroyed). ${this.attackTargetHint(ai, this.game)}`, true);
+                    if (enemyNear) resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}); an enemy is there and they are engaging.`, false,
+                        'log.out.attackContact', { x: Math.round(r.tx), z: Math.round(r.tz) });
+                    else resolve(`[ERROR] Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) but found NO valid target — the spot is empty (the enemy moved or was already destroyed). ${this.attackTargetHint(ai, this.game)}`, true,
+                        'log.out.attackEmpty', { x: Math.round(r.tx), z: Math.round(r.tz) });
                     continue;
                 }
                 if (now - r.startTime > MAXWAIT) {
-                    resolve(`Your attack force did not reach (${Math.round(r.tx)}, ${Math.round(r.tz)}) in time (blocked or fighting along the way).`, true);
+                    resolve(`Your attack force did not reach (${Math.round(r.tx)}, ${Math.round(r.tz)}) in time (blocked or fighting along the way).`, true,
+                        'log.out.attackTooSlow', { x: Math.round(r.tx), z: Math.round(r.tz) });
                 }
             }
         }
     }
 
     // Add a deferred attack outcome to the spectator decision log.
-    logArrival(ai, msg, failed) {
+    logArrival(ai, msg, failed, extra = {}) {
         const civ = getCivilization(ai.civilization);
-        this.decisionLog.unshift({
+        const entry = {
             timestamp: Date.now(), playerId: ai.id,
             civName: civ?.name || ai.civilization,
             color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
             action: 'attack_target', reason: '', result: msg, params: {},
-            failed: !!failed, error: failed ? msg.replace(/^\[ERROR\]\s*/, '') : null
-        });
+            failed: !!failed, error: failed ? msg.replace(/^\[ERROR\]\s*/, '') : null,
+            lang: extra.lang || 'en'
+        };
+        if (extra.code) { entry.outcomeCode = extra.code; entry.outcomeParams = extra.params || {}; }
+        this.decisionLog.unshift(entry);
         if (this.decisionLog.length > this.maxLogEntries) this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
     }
 

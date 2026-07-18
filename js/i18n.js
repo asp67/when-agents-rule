@@ -1504,7 +1504,11 @@ const I18N_OUTCOMES_2 = {
         'log.out.noTCPlacement': 'Kein Dorfzentrum als Platzierungsreferenz gefunden.',
         'log.out.attackDispatched': '{count} Einheit(en) greifen „{target}" an.',
         'log.out.attackMoving': '{count} Einheit(en) rücken auf ({x}, {z}) vor (~{eta}s).',
-        'log.out.exploreSent': 'Kundschafter erkundet ({x}, {z}) (~{eta}s).'
+        'log.out.exploreSent': 'Kundschafter erkundet ({x}, {z}) (~{eta}s).',
+        'log.out.attackDestroyedEnRoute': 'Angriffstrupp auf dem Weg nach ({x}, {z}) vernichtet.',
+        'log.out.attackEngaged': 'Angriffstrupp erreichte ({x}, {z}) und griff feindliche(n) „{target}" an.',
+        'log.out.attackContact': 'Angriffstrupp erreichte ({x}, {z}) – Feindkontakt, Gefecht läuft.',
+        'log.out.attackTooSlow': 'Angriffstrupp erreichte ({x}, {z}) nicht rechtzeitig (blockiert oder unterwegs im Kampf).'
     },
     es: {
         'log.out.trainWorkerNotUnit': '«{unitType}» no es una unidad del Centro urbano; usa train_unit.',
@@ -1581,7 +1585,11 @@ const I18N_OUTCOMES_2 = {
         'log.out.noTCPlacement': 'Sin Centro urbano como referencia de colocación.',
         'log.out.attackDispatched': '{count} unidad(es) atacan «{target}».',
         'log.out.attackMoving': '{count} unidad(es) avanzan hacia ({x}, {z}) (~{eta}s).',
-        'log.out.exploreSent': 'Explorador va a ({x}, {z}) (~{eta}s).'
+        'log.out.exploreSent': 'Explorador va a ({x}, {z}) (~{eta}s).',
+        'log.out.attackDestroyedEnRoute': 'Fuerza de ataque destruida camino a ({x}, {z}).',
+        'log.out.attackEngaged': 'La fuerza llegó a ({x}, {z}) y atacó a «{target}» enemigo.',
+        'log.out.attackContact': 'La fuerza llegó a ({x}, {z}): contacto con el enemigo, combate en curso.',
+        'log.out.attackTooSlow': 'La fuerza no llegó a ({x}, {z}) a tiempo (bloqueada o combatiendo por el camino).'
     },
     zh: {
         'log.out.trainWorkerNotUnit': '“{unitType}”不是镇中心单位，请用 train_unit。',
@@ -1658,7 +1666,11 @@ const I18N_OUTCOMES_2 = {
         'log.out.noTCPlacement': '没有可作为放置参照的镇中心。',
         'log.out.attackDispatched': '{count} 个单位正在攻击“{target}”。',
         'log.out.attackMoving': '{count} 个单位向 ({x}, {z}) 进攻推进（约 {eta} 秒）。',
-        'log.out.exploreSent': '侦察兵前往 ({x}, {z})（约 {eta} 秒）。'
+        'log.out.exploreSent': '侦察兵前往 ({x}, {z})（约 {eta} 秒）。',
+        'log.out.attackDestroyedEnRoute': '攻击部队在前往 ({x}, {z}) 途中被歼灭。',
+        'log.out.attackEngaged': '攻击部队抵达 ({x}, {z})，已与敌方“{target}”交战。',
+        'log.out.attackContact': '攻击部队抵达 ({x}, {z})：遭遇敌人，战斗中。',
+        'log.out.attackTooSlow': '攻击部队未能及时抵达 ({x}, {z})（受阻或途中交战）。'
     }
 };
 Object.keys(I18N_OUTCOMES_2).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_OUTCOMES_2[l]); });

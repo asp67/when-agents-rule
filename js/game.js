@@ -1663,18 +1663,55 @@ class Game {
     // This also replaces the per-unit LOSS/KILL prose: two events per death
     // flooded the 14-slot recentEvents buffer in any real battle and evicted the
     // UNDER ATTACK warnings along with everything else.
+    // Radius that counts as ONE fight. Sized off the map, not guessed: a base rings
+    // its Town Center at 18-46 units (executeBuildStructure) so opposite corners of
+    // one village sit ~92 apart, and a Wonder reaches 90 on its own. A tighter
+    // radius shatters a single city assault — squads spread across the village
+    // razing different buildings — into several unreadable "battles". Rival bases
+    // spawn 400+ apart, so 90 unifies one siege while never merging two of them.
+    static get BATTLE_RADIUS() { return 90; }
+    static get BATTLE_QUIET_MS() { return 10000; }   // no blows for this long → the fight is over
+    static get BATTLE_KEEP_MS() { return 25000; }    // ...but keep reporting it briefly after
+
     _battleAt(x, z, open) {
         const now = Date.now();
+        const R = Game.BATTLE_RADIUS;
         // Retire engagements nobody has touched in a while — kept a little past
         // the last blow so the next state still reports how it ended.
-        this._battles = (this._battles || []).filter(b => (now - b.lastAt) <= 25000);
-        let b = this._battles.find(e => (now - e.lastAt) <= 10000 && Math.hypot(e.x - x, e.z - z) <= 40);
+        this._battles = (this._battles || []).filter(b => (now - b.lastAt) <= Game.BATTLE_KEEP_MS);
+        const near = this._battles.filter(e =>
+            (now - e.lastAt) <= Game.BATTLE_QUIET_MS && Math.hypot(e.x - x, e.z - z) <= R);
+        let b = near[0] || null;
+        // Two fronts that grow together are ONE battle — models routinely split an
+        // army across a village and then regroup on one spot, and separate buckets
+        // would keep reporting halves of a fight that has become a single mass.
+        for (let i = 1; i < near.length; i++) {
+            this._mergeBattleInto(b, near[i]);
+            const idx = this._battles.indexOf(near[i]);
+            if (idx >= 0) this._battles.splice(idx, 1);
+        }
         if (!b && open) {
             b = { x, z, startedAt: now, lastAt: now, sides: {} };
             this._battles.push(b);
             if (this._battles.length > 4) this._battles.shift();
         }
         return b || null;
+    }
+
+    _mergeBattleInto(dst, src) {
+        if (!dst || !src || dst === src) return;
+        dst.startedAt = Math.min(dst.startedAt, src.startedAt);
+        dst.lastAt = Math.max(dst.lastAt, src.lastAt);
+        Object.entries(src.sides).forEach(([ownerId, s]) => {
+            const d = dst.sides[ownerId] || (dst.sides[ownerId] = { involved: {}, lost: {} });
+            Object.entries(s.involved).forEach(([type, e]) => {
+                const t = d.involved[type] ||
+                    (d.involved[type] = { ids: new Set(), dmgUnits: 0, dmgBuildings: 0, healed: 0 });
+                e.ids.forEach(id => t.ids.add(id));
+                t.dmgUnits += e.dmgUnits; t.dmgBuildings += e.dmgBuildings; t.healed += e.healed;
+            });
+            Object.entries(s.lost).forEach(([type, n]) => { d.lost[type] = (d.lost[type] || 0) + n; });
+        });
     }
 
     _battleEntry(battle, ownerId, type) {
