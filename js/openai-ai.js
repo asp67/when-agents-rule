@@ -1189,7 +1189,7 @@ build_wonder()
 harvest_resource(resourceType) [targetX,targetZ]
 assign_workers(resourceType) [count, targetX,targetZ]
 repair_building() [count, targetX,targetZ]      no coords = your most damaged building
-explore() [unitType, targetX,targetZ]           no coords = auto-scout, auto-pick scout
+explore(targetX,targetZ) [unitType]             aim at the lowest map.exploration tile
 move_units(targetX,targetZ) [units]
 attack_target(targetId | targetX,targetZ) [units]
 delete_unit() [unitType, count]                 defaults to one worker
@@ -1201,9 +1201,8 @@ units: an OBJECT {"type":count}, e.g. {"champion":3,"cavalry":5} — specific ty
 targetX/targetZ: always give BOTH or NEITHER. count defaults: assign_workers 3 (max 20), delete_unit 1 (max 20), repair_building 1 (max 5).
 Any action may also carry "objective" (one line) and "plan" (up to 5 short steps): they are STANDING and echoed back every turn, so omit them to keep the current ones and use them to make a multi-turn intention survive.
 
-Parameters are validated for you: a missing or wrong one comes back as an [ERROR] naming what you may use. Two behaviours no error will ever teach you:
+Parameters are validated for you: a missing or wrong one comes back as an [ERROR] naming what you may use. One behaviour no error will ever teach you:
 - attack_target with targetX/targetZ is an attack-MOVE: your army marches and the verdict arrives when it does. Do not re-issue while it is marching.
-- explore with no coordinates auto-picks your least-explored ground and the best free scout.
 
 ## Response format
 Reply with ONLY one JSON object — no markdown, no code fences, no prose around it, using one action name from the list above and a reason:
@@ -3047,45 +3046,11 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
         u._orderToken = ++this._orderSeq; // reassigned → drops out of any prior attack report
     }
 
-    // Send a scout toward an UNEXPLORED frontier to reveal the map. This must NOT
-    // peek at hidden resource positions — the AI doesn't know where undiscovered
-    // nodes are. We fan out from the base in a new direction each call (golden-angle
-    // sweep) with an expanding radius, so repeated scouting covers the whole map.
-    dispatchScoutToward(ai, game, preferredType = null) {
-        // Aim for the centre of the least-explored map tile (7×7 grid, with
-        // jitter so successive scouts spread within the ~114-unit tile) — the
-        // same data the model sees in map.exploration. Golden-angle fan-out
-        // remains as the fallback when no exploration data exists yet or the
-        // whole map is already known.
-        let rawX, rawZ;
-        const sec = game.leastExploredSection ? game.leastExploredSection(ai) : null;
-        if (sec && sec.pct < 100) {
-            rawX = sec.x + (Math.random() - 0.5) * 100;
-            rawZ = sec.z + (Math.random() - 0.5) * 100;
-        } else {
-            const center = this.getAIBuildingCenter(ai);
-            const half = (game.terrain.size / 2) - 30;
-            ai._scoutAngle = (ai._scoutAngle == null) ? 0 : ai._scoutAngle + 2.399963; // golden angle
-            ai._scoutRadius = Math.min(half, (ai._scoutRadius || 45) + 30);
-            rawX = center.x + Math.cos(ai._scoutAngle) * ai._scoutRadius;
-            rawZ = center.z + Math.sin(ai._scoutAngle) * ai._scoutRadius;
-        }
-        // Clamp to solid ground so scouts never wander into the ocean.
-        const { x: tx, z: tz } = game.clampToMap(rawX, rawZ);
-
-        const scout = this.pickScout(ai, preferredType);
-        if (!scout) return `You have no unit free to scout — train a worker first.`;
-        const eta = this.travelEtaSec(scout, tx, tz);
-        const wasBusy = scout.type === 'worker' && !this.game.isIdleWorker(scout);
-        const missedChoice = preferredType && !this.scoutMatchesChoice(scout, preferredType);
-        this.releaseUnitForOrders(scout); // cleanly drop any harvest/farm/combat job
-        scout.task = scout.type === 'worker' ? 'scouting' : null;
-        scout.isMoving = true;
-        scout.targetX = tx;
-        scout.targetZ = tz;
-        const choiceNote = missedChoice ? ` (no idle "${preferredType}" was free, so your ${scout.type} was used instead)` : '';
-        return `Sent your ${scout.type} to explore toward (${Math.round(tx)}, ${Math.round(tz)}) (~${eta}s to arrive, revealing the map as it goes)${wasBusy ? ' — no worker was idle, so one was pulled off gathering' : ''}${choiceNote}.`;
-    }
+    // dispatchScoutToward lived here: it auto-picked a frontier tile and sent a scout
+    // when the model called explore() bare, or named a resource it had never found.
+    // Removed — map.exploration gives the model the same grid this used, so choosing
+    // where to look is its job. game.leastExploredSection() survives for the
+    // rule-based AI, which still scouts on its own.
 
     // Without a finished Town Center gathered goods can never be delivered —
     // say so instead of letting the model burn turns on pointless harvesting.
@@ -3107,14 +3072,13 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
         if (noTC) return noTC;
         const discovered = this.discoveredNodesOfType(ai, game, resourceType);
 
-        // Not scouted yet → nothing is harvested. Flag it as a failed action (so it
-        // shows in the log and isn't counted as success) but auto-send a scout to
-        // help, and tell the model exactly what to do next.
+        // Not scouted yet → nothing is harvested, and nothing is scouted on the
+        // model's behalf either. A failed action that quietly did useful work was
+        // the harness hiding its own move: the model never learned it had delegated.
         if (discovered.length === 0) {
-            const msg = this.dispatchScoutToward(ai, game);
             const have = this.discoveredResourceSummary(ai, game);
             this.outcome('log.out.harvestNotDiscovered', { res: resourceType });
-            return `[ERROR] No ${resourceType} has been discovered yet, so NOTHING was harvested. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. ${msg} It will appear in "resourcesOnMap" once a scout finds it — then call harvest_resource again. Spend the meantime on other useful work (don't keep re-issuing harvest).`;
+            return `[ERROR] No ${resourceType} has been discovered yet, so NOTHING was harvested. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. Send a scout yourself with explore and coordinates picked from "map.exploration"; once ${resourceType} appears in "resourcesOnMap", call harvest_resource again.`;
         }
 
         const idleWorkers = ai.units.filter(u =>
@@ -3262,13 +3226,14 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
         if (noTC) return noTC;
         const count = Math.max(1, Math.min(params.count || 3, 20));
 
-        // Discovered nodes? If not, nothing is reassigned — flag it and auto-scout.
+        // Discovered nodes? If not, nothing is reassigned — and no scout goes out on
+        // the model's behalf (see executeHarvestResource: a failed action must not
+        // quietly play a turn for it).
         const discovered = this.discoveredNodesOfType(ai, game, resourceType);
         if (discovered.length === 0) {
-            const msg = this.dispatchScoutToward(ai, game);
             const have = this.discoveredResourceSummary(ai, game);
             this.outcome('log.out.notDiscovered', { res: resourceType });
-            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. ${msg} Once it appears in "resourcesOnMap", call assign_workers again. Don't keep re-issuing it meanwhile.`;
+            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. Send a scout yourself with explore and coordinates picked from "map.exploration"; once ${resourceType} appears in "resourcesOnMap", call assign_workers again.`;
         }
 
         // Which node? Explicit targetX/targetZ picks the discovered node nearest
@@ -3422,7 +3387,7 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
             const tz0 = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx0) || !Number.isFinite(tz0)) {
                 this.outcome('log.out.exploreNeedsCoords', {});
-                return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds), or omit both to auto-scout the nearest unexplored frontier. Got targetX=${JSON.stringify(params.targetX)}, targetZ=${JSON.stringify(params.targetZ)}.`;
+                return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds). Got targetX=${JSON.stringify(params.targetX)}, targetZ=${JSON.stringify(params.targetZ)}.`;
             }
 
             const scout = this.pickScout(ai, preferredType);
@@ -3446,9 +3411,18 @@ Reply with ONLY one JSON object — no markdown, no code fences, no prose around
             return `OK - Sent your ${scout.type} to explore (${Math.round(tx)}, ${Math.round(tz)})${clamped ? ' — your target was outside the map and was clamped to the edge' : ''}. It will take ~${eta}s to get there; let it travel before exploring again.${pulled}${choiceNote}`;
         }
 
-        // No target → fan out toward the nearest unexplored frontier.
-        const msg = this.dispatchScoutToward(ai, game, preferredType);
-        return msg.startsWith('You have no') ? `[ERROR] ${msg}` : `OK - ${msg}`;
+        // No target → refuse, and teach the conversion. "map.exploration" already
+        // hands the model a grid of how much of each tile it has seen, so choosing
+        // where to look needs no help from us; auto-picking was the harness playing
+        // that part of the game. The formula lives HERE rather than in the system
+        // prompt because this is a rejection the model reads — the one channel that
+        // can actually teach — so only a model that needs it pays for it.
+        const T = game.EXPLORE_TILES || 7;
+        const size = (game.terrain && game.terrain.size) || 800;
+        const tile = Math.round((size / T) * 10) / 10;
+        const half = size / 2;
+        this.outcome('log.out.exploreNeedsCoords', {});
+        return `[ERROR] explore needs BOTH numeric "targetX" and "targetZ" (map coordinates inside map.bounds). Choose them from "map.exploration": a ${T}x${T} grid where exploration[row][col] is how much of that tile you have already seen — aim at the LOWEST value. The centre of tile [row][col] is targetX = (col + 0.5) * ${tile} - ${half}, targetZ = (row + 0.5) * ${tile} - ${half}.`;
     }
 
     executeDeleteUnit(ai, game, params) {
