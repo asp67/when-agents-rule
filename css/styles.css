@@ -2052,3 +2052,26 @@ body.spectator-mode #unitInfo.spectator-card {
 .tv-reply > summary { color: #8cd9a4; }
 .tv-result > summary { color: #ffd45e; }
 .tv-state > summary { color: #7c869c; }
+
+/* Jump-to-top for the transcript viewer — same affordance as the decision log's,
+   in the panel's own blue rather than the log's green. */
+.tv-top-btn {
+    position: absolute;
+    bottom: 12px;
+    right: 14px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(18, 24, 48, 0.94);
+    color: #8cb4ff;
+    font-size: 0.82em;
+    cursor: pointer;
+    z-index: 4;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(6px);
+    transition: opacity 0.18s, transform 0.18s;
+}
+.tv-top-btn.visible { opacity: 1; pointer-events: auto; transform: none; }
+.tv-top-btn:hover { background: #8cb4ff; color: #0a0d1c; }

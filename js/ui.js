@@ -2780,6 +2780,25 @@ class UIManager {
         this.updateSpectatorPlayerList();   // repaint the spyglass active states
     }
 
+    // Mirrors the decision log's arrow: the viewer is a deep scroller once a match
+    // runs long, and having anchored the scroll there must be a fast way back to the
+    // newest turn.
+    updateTranscriptTopBtn() {
+        const body = document.getElementById('tvBody');
+        const btn = document.getElementById('tvTopBtn');
+        if (!body || !btn) return;
+        btn.classList.toggle('visible', body.scrollTop > 24);
+    }
+
+    scrollTranscriptTop() {
+        // Same call the decision log's arrow uses. A rAF tween was tried here after
+        // smooth-scroll appeared dead in testing; that turned out to be the preview
+        // tab being hidden (visibilityState 'hidden', zero rAF frames), which stops a
+        // hand-rolled animation just as dead. Nothing was wrong with the platform API.
+        const body = document.getElementById('tvBody');
+        if (body) body.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
     closeTranscriptViewer() {
         this._transcriptFor = null;
         this.renderTranscriptViewer();
@@ -2813,6 +2832,10 @@ class UIManager {
 
         const body = document.getElementById('tvBody');
         if (!body) return;
+        if (!body._tvScrollBound) {
+            body.addEventListener('scroll', () => this.updateTranscriptTopBtn());
+            body._tvScrollBound = true;
+        }
         if (!turns.length) {
             body.innerHTML = `<div class="tv-empty">${t('spec.tvEmpty')}</div>`;
             return;
@@ -2823,6 +2846,38 @@ class UIManager {
             ? `<details class="tv-sec ${cls}"${open ? ' open' : ''}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
             : '';
 
+        // Reading a turn must survive the next one arriving. Two things get carried
+        // across the rebuild: the scroll position (anchored on the entry the reader is
+        // actually looking at, since new turns arrive ABOVE it and a raw pixel offset
+        // would drift), and which sections they had expanded — the state JSON in
+        // particular is opened deliberately and collapsing it a second later is worse
+        // than never offering it.
+        const atTop = body.scrollTop <= 4;
+        const prevTop = body.scrollTop;
+        let anchorKey = null, anchorOffset = 0;
+        if (!atTop) {
+            const kids = body.children;
+            for (let i = 0; i < kids.length; i++) {
+                const el = kids[i];
+                if (el.offsetTop + el.offsetHeight > prevTop) { // first (partly) visible turn
+                    anchorKey = el.getAttribute('data-key');
+                    anchorOffset = el.offsetTop - prevTop;
+                    break;
+                }
+            }
+        }
+        const wasOpen = new Set();
+        body.querySelectorAll('.tv-turn').forEach(tEl => {
+            const k = tEl.getAttribute('data-key');
+            tEl.querySelectorAll('details[open]').forEach(d => {
+                const cls = [...d.classList].find(c => c !== 'tv-sec');
+                if (cls) wasOpen.add(`${k}:${cls}`);
+            });
+        });
+        const openFor = (turn, cls, dflt) =>
+            (wasOpen.size && body.querySelector(`[data-key="${turn}"]`))
+                ? wasOpen.has(`${turn}:${cls}`) : dflt;
+
         // Newest first: the interesting turn during a live match is the last one.
         const html = turns.slice().reverse().map(e => {
             const tok = e.tokens ? `${e.tokens.prompt}→${e.tokens.completion} tok` : '';
@@ -2830,21 +2885,37 @@ class UIManager {
             const act = e.parsed && e.parsed.action ? e.parsed.action : null;
             const failed = typeof e.harnessResult === 'string' && e.harnessResult.startsWith('[ERROR]');
             return `
-                <div class="tv-turn${failed ? ' is-error' : ''}">
+                <div class="tv-turn${failed ? ' is-error' : ''}" data-key="${e.turn}">
                     <div class="tv-turn-head">
                         <span class="tv-n">#${e.turn}</span>
                         ${act ? `<span class="tv-act">${esc(act)}</span>` : ''}
                         <span class="tv-meta">${esc(ms)}${ms && tok ? ' · ' : ''}${esc(tok)}</span>
                     </div>
-                    ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning, true)}
-                    ${sec('tv-reply', t('spec.tvReply'), e.assistant && e.assistant.content, true)}
-                    ${sec('tv-result', t('spec.tvResult'), e.harnessResult, true)}
+                    ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning,
+                        openFor(e.turn, 'tv-reason', true))}
+                    ${sec('tv-reply', t('spec.tvReply'), e.assistant && e.assistant.content,
+                        openFor(e.turn, 'tv-reply', true))}
+                    ${sec('tv-result', t('spec.tvResult'), e.harnessResult,
+                        openFor(e.turn, 'tv-result', true))}
                     ${sec('tv-state', t('spec.tvState'),
-                        e.state ? JSON.stringify(e.state, null, 1) : '', false)}
+                        e.state ? JSON.stringify(e.state, null, 1) : '',
+                        openFor(e.turn, 'tv-state', false))}
                 </div>`;
         }).join('');
         body.innerHTML = html;
-        body.scrollTop = 0;
+
+        // Follow the newest turn only while the reader is already at the top;
+        // otherwise pin the entry they were on. New turns arrive ABOVE, so restoring
+        // a raw pixel offset would still slide the view — the anchor is an entry.
+        if (atTop) {
+            body.scrollTop = 0;
+        } else if (anchorKey != null) {
+            const el = body.querySelector(`[data-key="${anchorKey}"]`);
+            body.scrollTop = el ? (el.offsetTop - anchorOffset) : prevTop;
+        } else {
+            body.scrollTop = prevTop;
+        }
+        this.updateTranscriptTopBtn();
     }
 
     // ---- Match transcripts ---------------------------------------------------
