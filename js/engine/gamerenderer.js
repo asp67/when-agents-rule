@@ -105,10 +105,13 @@
                 uniform vec2 uUvOffset;   // slow drift for foam/water
                 varying vec3 vNormal;
                 varying vec2 vUv;
+                varying float vDepth;     // view-space distance, for the haze
                 void main() {
                     vNormal = mat3(uModel) * aNormal;
                     vUv = aUv + uUvOffset;
-                    gl_Position = uProj * uView * uModel * vec4(aPosition, 1.0);
+                    vec4 vp = uView * uModel * vec4(aPosition, 1.0);
+                    vDepth = -vp.z;
+                    gl_Position = uProj * vp;
                 }`;
             const FS = `
                 precision mediump float;
@@ -116,14 +119,23 @@
                 uniform vec3 uSunDir, uSunColor, uAmbient, uTint;
                 uniform float uUnlit;
                 uniform float uAlpha;     // fades: ghosts, dust, foam pulse
+                uniform vec3 uSky;        // the colour behind everything
+                uniform vec2 uHaze;       // (start, end) view depth
                 varying vec3 vNormal;
                 varying vec2 vUv;
+                varying float vDepth;
                 void main() {
                     vec4 t = texture2D(uTex, vUv);
                     vec3 base = t.rgb * uTint;
                     vec3 n = normalize(vNormal);
                     vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
-                    gl_FragColor = vec4(mix(base * light, base, uUnlit), t.a * uAlpha);
+                    vec3 col = mix(base * light, base, uUnlit);
+                    // Fade toward the sky with distance, so the sea has ALREADY
+                    // become sky by the time the far plane cuts it. That is what
+                    // lets the horizon read as a horizon rather than as a clip line
+                    // sliding up and down the frame as you zoom.
+                    float h = clamp((vDepth - uHaze.x) / max(1.0, uHaze.y - uHaze.x), 0.0, 1.0);
+                    gl_FragColor = vec4(mix(col, uSky, h), t.a * uAlpha);
                 }`;
             this.prog = GLCore.compileProgram(this.gl, VS, FS);
             this.sunDir = M().normalize([-0.35, 0.9, 0.45]);
@@ -191,17 +203,14 @@
             // theme atmosphere: sun character first, then the sea beyond the map.
             this._sun = theme === 'winter' ? [0.74, 0.78, 0.88]
                 : (theme === 'desert' ? [0.95, 0.84, 0.60] : [0.85, 0.78, 0.66]);
-            // What you actually see past the rim is the ground plane's own outer
-            // band — painted waterDeep and then LIT — so the clear colour behind it
-            // must be waterDeep x that same light, or the two meet in a step. It was
-            // the RAW palette value, which is what drew the hard edge at the horizon
-            // (measured on a real frame: background 22,54,84 against the plane's
-            // 27,65,99). The ground is flat, so its light term is a constant — the
-            // normal is always +Y — which means one multiply closes the seam exactly.
-            const deep = (TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer).waterDeep;
-            const up = Math.max(0, this.sunDir[1]);   // dot((0,1,0), sunDir)
-            this._sky = [0, 1, 2].map(i =>
-                Math.min(1, (deep[i] / 255) * (AMBIENT[i] + this._sun[i] * up)));
+            // The colour behind everything, and the colour distance fades toward.
+            // This used to be derived as lit waterDeep, because the clear colour WAS
+            // the sea past the map rim and any mismatch showed as a hard edge. The
+            // open-water plane covers that rim now, so this is free to be sky — and
+            // the haze keeps the two meeting cleanly without hand-matching anything:
+            // the sea reaches the far plane already wearing this colour.
+            this._sky = theme === 'winter' ? [0.60, 0.67, 0.76]
+                : (theme === 'desert' ? [0.66, 0.71, 0.75] : [0.42, 0.60, 0.79]);
         }
 
         _buf(kind, args) {
@@ -272,6 +281,7 @@
             const FOVY = 20 * Math.PI / 180;
             const tanHalf = Math.tan(FOVY / 2);
             const dist = this._halfH / tanHalf;
+            const FAR = dist + 2200;
             const cam = m3.dimetricView(this.cameraTarget.x, this.cameraTarget.z, dist, this._yaw, this._pitch);
             const v = cam.view;
             this._cam = {
@@ -284,7 +294,12 @@
                 // Generous clip slack: at low pitch the visible ground stretches far
                 // past the look-at point (and close under the eye) — the tighter
                 // planes made units pop out of sight at the frame edges.
-                proj: m3.perspective(FOVY, aspect, Math.max(2, dist - 1400), dist + 2200)
+                proj: m3.perspective(FOVY, aspect, Math.max(2, dist - 1400), FAR),
+                // Haze tied to the far plane, so geometry is fully faded BEFORE it is
+                // clipped at EVERY zoom — otherwise the cut moves with dist and the
+                // horizon slides. The map is 800 across and the eye sits ~dist away,
+                // so land never reaches the start of it; only the open sea does.
+                haze: [FAR * 0.55, FAR * 0.97]
             };
             return this._cam;
         }
@@ -1534,6 +1549,8 @@
             gl.uniform3fv(this.prog.uniforms.uSunDir, this.sunDir);
             gl.uniform3fv(this.prog.uniforms.uSunColor, this._sun);
             gl.uniform3fv(this.prog.uniforms.uAmbient, AMBIENT);
+            gl.uniform3fv(this.prog.uniforms.uSky, this._sky);
+            gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(this.prog.uniforms.uTex, 0);
 
