@@ -2122,6 +2122,11 @@ body.spectator-mode #unitInfo.spectator-card {
 .c-gold  { fill: #e0b53c; }
 /* The moment a player's own discovered supply of a type ran dry. */
 .c-dry { stroke: #ffffff; stroke-width: 1.4; stroke-dasharray: 2 3; opacity: 0.85; }
+/* ...and the moment they were eliminated. A cumulative haul can only freeze, so
+   without the scrim a corpse's bands read as a flawlessly steady economy. The
+   marker is SOLID because the dry marker is dashed — the two must not blur. */
+.c-dead { fill: rgba(6,10,16,0.74); }
+.c-gone { stroke: #ff5a5a; stroke-width: 1.8; opacity: 0.95; }
 
 .chart-legend {
     margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px;
@@ -2133,6 +2138,10 @@ body.spectator-mode #unitInfo.spectator-card {
 .c-sw.c-stone { background: #9aa4b2; } .c-sw.c-gold { background: #e0b53c; }
 .c-sw.c-agekey { background: repeating-linear-gradient(180deg,#8cb4ff 0 3px,transparent 3px 7px); }
 .c-sw.c-drykey { background: repeating-linear-gradient(180deg,#fff 0 2px,transparent 2px 5px); }
+.c-sw.c-deadkey {
+    background: rgba(6,10,16,0.74);
+    box-shadow: inset 0 0 0 1px rgba(147,166,200,0.35), inset 2px 0 0 #ff5a5a;
+}
 
 /* Age glyph sitting atop its marker; staggered by seat so simultaneous
    advances stay readable. */

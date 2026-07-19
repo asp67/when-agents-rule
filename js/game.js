@@ -2924,12 +2924,17 @@ class Game {
         const row = { t, p: {} };
         players.forEach(ai => {
             const g = (ai.resources && ai.resources.gathered) || { food: 0, wood: 0, stone: 0, gold: 0 };
+            const alive = ai.buildings.length > 0 || ai.units.length > 0;
             row.p[ai.id] = {
                 f: Math.round(g.food || 0), w: Math.round(g.wood || 0),
                 s: Math.round(g.stone || 0), o: Math.round(g.gold || 0),
                 pw: Math.round((this.ui && this.ui.spectatorPowerScore) ? this.ui.spectatorPowerScore(ai) : 0),
-                al: ai.buildings.length > 0 || ai.units.length > 0 ? 1 : 0
+                al: alive ? 1 : 0
             };
+            // An eliminated player still "knows" the nodes they scouted, and the
+            // survivors go on draining them — which drew ran-dry markers on a seat
+            // that had been gone for an hour. A corpse has no news to report.
+            if (!alive) return;
             // Age advances: the dotted verticals that turn the graph from a
             // description into an explanation.
             if (this._tlAge[ai.id] !== ai.age) {

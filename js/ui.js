@@ -3288,6 +3288,18 @@ class UIManager {
                 const x = (ML + (e.t / tMax) * (SW - ML - MR)).toFixed(1);
                 bands += '<line class="c-dry" x1="' + x + '" y1="0" x2="' + x + '" y2="' + SH + '"/>';
             });
+            // A cumulative haul can only freeze, so an eliminated player's bands go
+            // perfectly horizontal — indistinguishable from a beautifully steady
+            // economy. Scrim the dead stretch so a corpse reads as one, keeping the
+            // final mix faintly visible rather than cutting the strip short.
+            const gone = samples.find(r => r.p[pl.id] && r.p[pl.id].al === 0);
+            if (gone) {
+                const gx = ML + (gone.t / tMax) * (SW - ML - MR);
+                bands += '<rect class="c-dead" x="' + gx.toFixed(1) + '" y="0" width="'
+                    + Math.max(0, SW - MR - gx).toFixed(1) + '" height="' + SH + '"/>'
+                    + '<line class="c-gone" x1="' + gx.toFixed(1) + '" y1="0" x2="'
+                    + gx.toFixed(1) + '" y2="' + SH + '"/>';
+            }
             strips += '<div class="chart-strip"><span class="strip-name">'
                 + '<i class="strip-swatch" style="background:' + esc(this.chartColor(pl)) + '"></i>'
                 + this.teamDotHtml(pl.seat, 10) + '<span>'
@@ -3302,7 +3314,8 @@ class UIManager {
             + '<span class="c-key"><i class="c-sw c-agekey"></i>' + esc(t('sum.chartAge')) + '</span>'
             + '<span class="c-key">🏛️ ' + esc(t('sum.chartWonder')) + '</span>'
             + '<span class="c-key">💥 ' + esc(t('sum.chartWonderLost')) + '</span>'
-            + '<span class="c-key"><i class="c-sw c-drykey"></i>' + esc(t('sum.chartDry')) + '</span>';
+            + '<span class="c-key"><i class="c-sw c-drykey"></i>' + esc(t('sum.chartDry')) + '</span>'
+            + '<span class="c-key"><i class="c-sw c-deadkey"></i>' + esc(t('sum.chartDead')) + '</span>';
     }
 
     // Build a human-readable Markdown report of the last match.
