@@ -616,10 +616,55 @@
         }
     };
 
+    // The coastline is a wobbled square: chebyshev distance from the centre plus a
+    // noise offset. The mega-texture PAINTS that line and the shoreline foam has to
+    // FOLLOW it, so both read the wobble from here. They used to disagree — the surf
+    // sat on a fixed radius while the painted coast wandered +/-13 units around it,
+    // which is why the waves ran up the beach in places and out to sea in others.
+    TexGen.COAST_CELLS = 24;
+    TexGen.COAST_WOBBLE = 26;
+    TexGen.coastNoise = (rand) => TexGen.noiseSampler(TexGen.COAST_CELLS, rand);
+    // Standalone version for callers outside the texture bake. Inside TexGen.terrain
+    // the coast sampler is the FIRST one drawn from the seeded stream, so drawing it
+    // first from the same seed here reproduces that lattice exactly.
+    TexGen.coastSampler = (seed) => {
+        const n = TexGen.coastNoise(TexGen.rng(seed || 7));
+        return (u, v) => (n(u, v) - 0.5) * TexGen.COAST_WOBBLE;
+    };
+
+    // Open water beyond the map. The mega-texture ends at the ground plane's rim, and
+    // past it the frame was a single flat colour — the sea's DETAIL stopped even once
+    // its mean matched. This tiles out to the horizon underneath everything. The mean
+    // is exactly waterDeep, so it lands on the same lit value as the rim band and the
+    // clear colour behind it: only the grain carries across, never a step.
+    // Cell counts are chosen against OPEN_WATER_TILE so the grain lands at roughly
+    // the same world scale as the mega-texture's own (~18 units), which is what makes
+    // it read as water rather than as a repeat. Tiled too tightly it reads as a
+    // checkerboard — at 40 units a tile the same patch showed a dozen times across
+    // one view, which was more distracting than the flat colour it replaced.
+    TexGen.OPEN_WATER_TILE = 400;
+    TexGen.openWater = (theme, seed = 5, size = 512) => {
+        const P = (TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer).waterDeep;
+        const rand = TexGen.rng(seed);
+        const broad = TexGen.valueNoise(size, 6, rand);    // ~67-unit swell
+        const fine = TexGen.valueNoise(size, 22, rand);    // ~18-unit grain
+        const c = canvas(size), ctx = c.getContext('2d');
+        const img = ctx.createImageData(size, size), d = img.data;
+        for (let i = 0; i < size * size; i++) {
+            const g = (broad[i] - 0.5) * 7 + (fine[i] - 0.5) * 11;
+            d[i * 4] = clamp255(P[0] + g);
+            d[i * 4 + 1] = clamp255(P[1] + g);
+            d[i * 4 + 2] = clamp255(P[2] + g * 0.9);
+            d[i * 4 + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+        return c;
+    };
+
     TexGen.terrain = (theme, seed, size = 2048, worldSize = 1000, landHalf = 400) => {
         const P = TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
         const rand = TexGen.rng(seed || 7);
-        const nCoast = TexGen.noiseSampler(24, rand);
+        const nCoast = TexGen.coastNoise(rand);
         const nPatch = TexGen.noiseSampler(10, rand);
         const nGrain = TexGen.noiseSampler(56, rand);
         const c = canvas(size), ctx = c.getContext('2d');
@@ -633,7 +678,7 @@
                 const u = px / size;
                 const wx = (u - 0.5) * worldSize;
                 // square island: chebyshev distance from centre + coast wobble
-                const dist = Math.max(Math.abs(wx), Math.abs(wz)) + (nCoast(u, v) - 0.5) * 26;
+                const dist = Math.max(Math.abs(wx), Math.abs(wz)) + (nCoast(u, v) - 0.5) * TexGen.COAST_WOBBLE;
                 let col;
                 if (dist > landHalf + 42) {
                     col = P.waterDeep;

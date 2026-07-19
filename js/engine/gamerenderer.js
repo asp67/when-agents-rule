@@ -25,6 +25,10 @@
     // sea colour beyond the map has to be derived from the SAME value — two
     // copies drifting apart is exactly what put a visible seam at the horizon.
     const AMBIENT = [0.52, 0.55, 0.62];
+    // The island's dimensions, in ONE place. The mega-texture paints the coast from
+    // these, the ground plane spans them and the surf ribbon follows them — three
+    // readers of one fact, which is exactly the arrangement that has to not drift.
+    const TERRAIN_SEED = 12345, TERRAIN_WORLD = 1000, TERRAIN_LAND = 400;
     const BSCALE = 0.78;         // engine building set → game footprint scale
 
     class EngineRenderer {
@@ -158,7 +162,8 @@
                 : (theme === 'desert' ? [110, 116, 62] : [74, 112, 58]);
             const T = (c, o) => GLCore.createTextureFromCanvas(gl, c, o);
             this.tex = {
-                terrain: T(TexGen.terrain(theme, 12345, 2048, 1000, 400), { clamp: true }),
+                terrain: T(TexGen.terrain(theme, TERRAIN_SEED, 2048, TERRAIN_WORLD, TERRAIN_LAND), { clamp: true }),
+                openWater: T(TexGen.openWater(theme, 5)),   // tiles — no clamp
                 masonry: T(TexGen.masonry(22)),
                 wood: T(TexGen.wood(33)),
                 bark: T(TexGen.bark(44)),
@@ -310,14 +315,69 @@
         }
 
         // ---- terrain ---------------------------------------------------------
+        // A closed ribbon of quads laid along the painted coastline, for the surf.
+        // Walks the square's perimeter as one continuous loop — which is what makes
+        // the corners join by construction instead of by hand — and at each step
+        // solves for the chebyshev radius where the waterline actually falls.
+        // Returns the raw mesh rather than GPU buffers so it stays auditable.
+        _coastRibbonMesh(seg = 480, width = 7, inset = -2) {
+            const wob = TexGen.coastSampler(TERRAIN_SEED);
+            // The wobble depends on where we land, so the radius is implicit: solve
+            // it by iteration. Three passes is far inside a pixel at this scale.
+            const radiusAt = (px, pz) => {
+                let r = TERRAIN_LAND + inset;
+                for (let i = 0; i < 3; i++) {
+                    r = TERRAIN_LAND + inset
+                        - wob((r * px) / TERRAIN_WORLD + 0.5, (r * pz) / TERRAIN_WORLD + 0.5);
+                }
+                return r;
+            };
+            const pts = [];
+            let arc = 0;
+            for (let i = 0; i <= seg; i++) {
+                const t = (i / seg) * 4, side = Math.min(3, Math.floor(t)), s = t - side;
+                const p = side === 0 ? [1, s * 2 - 1] : side === 1 ? [1 - s * 2, 1]
+                    : side === 2 ? [-1, 1 - s * 2] : [s * 2 - 1, -1];
+                const r = radiusAt(p[0], p[1]);
+                const ix = r * p[0], iz = r * p[1];
+                if (i) arc += Math.hypot(ix - pts[i - 1].ix, iz - pts[i - 1].iz);
+                pts.push({ ix, iz, ox: (r + width) * p[0], oz: (r + width) * p[1], arc });
+            }
+            // Close the UV loop on a WHOLE number of tiles, or the surf shows a
+            // visible break where the ribbon meets its own start.
+            const tiles = Math.max(1, Math.round(arc / 17.5));
+            const positions = [], normals = [], uvs = [], indices = [];
+            pts.forEach(q => {
+                const u = (q.arc / arc) * tiles;
+                positions.push(q.ix, 0.18, q.iz, q.ox, 0.18, q.oz);
+                normals.push(0, 1, 0, 0, 1, 0);
+                uvs.push(u, 0, u, 1);
+            });
+            for (let i = 0; i < seg; i++) {
+                const a = i * 2;
+                indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+            }
+            return { positions, normals, uvs, indices };
+        }
+
         setTerrain(terrain) {
             this.terrain = terrain;
             const theme = terrain.difficulty === 'medium' ? 'winter'
                 : (terrain.difficulty === 'hard' ? 'desert' : 'summer');
             this._buildTextures(theme);
             this._ground = {
-                buf: this._buf('gridPlane', [1000, 1, 1]),
+                buf: this._buf('gridPlane', [TERRAIN_WORLD, 1, 1]),
                 tex: this.tex.terrain, model: M().identity()
+            };
+            // Open sea under everything, far past anything the camera can reach, so
+            // the water's grain carries on to the horizon instead of stopping dead at
+            // the ground plane's rim. Dropped well below y=0 rather than a hair: at
+            // 2000 units out the depth buffer resolves ~0.12, so a token offset would
+            // z-fight with the mega-texture's own water exactly where they overlap.
+            const SEA = 12000;
+            this._sea = {
+                buf: this._buf('gridPlane', [SEA, 1, SEA / TexGen.OPEN_WATER_TILE]),
+                tex: this.tex.openWater, model: M().translation(0, -0.35, 0)
             };
             // Replace THREE resource meshes with engine handles: fog toggles
             // handle.visible, depletion nulls res.mesh — both drive our draw.
@@ -327,24 +387,20 @@
                     ? { trunk: { visible: true }, leaves: { visible: true } }
                     : { visible: true };
             });
-            // shoreline foam: four surf strips just past the coast band, pulsing
-            // and drifting (alpha/uvOff animated per frame). The x-side strips are
-            // shortened by the strip WIDTH so they butt against the z-side strips
-            // instead of crossing them (the corners used to double up and glow).
-            const m3 = M();
-            const LH = 401.5, FW = 7;
-            const longBuf = this._buf('quad', [2 * LH + FW, FW, 46]);
-            const shortBuf = this._buf('quad', [2 * LH - FW - 2, FW, 45]);
-            const flat = (x, z, ry) => m3.multiply(
-                m3.multiply(m3.translation(x, 0.18, z), m3.rotationY(ry)),
-                m3.rotationX(-Math.PI / 2));
-            this._foam = [
-                { buf: longBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(0, LH, 0) },
-                { buf: longBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(0, -LH, 0) },
-                { buf: shortBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(LH, 0, Math.PI / 2) },
-                { buf: shortBuf, tex: this.tex.foam, tint: this.WHITE, model: flat(-LH, 0, Math.PI / 2) }
-            ];
+            // Shoreline foam: ONE closed ribbon that follows the painted coast,
+            // pulsing and drifting (alpha/uvOff animated per frame). It replaces four
+            // straight strips pinned at a fixed radius — the coast wobbles +/-13 units
+            // around that square, so the old surf ran up the beach in places and sat
+            // out in open water in others. Both now read the wobble from
+            // TexGen.coastSampler, so they cannot drift apart again. A closed loop
+            // also retires the corner hack the strips needed: there are no
+            // overlapping ends left to double up and glow.
+            this._foam = [{
+                buf: GLCore.createMeshBuffers(this.gl, this._coastRibbonMesh()),
+                tex: this.tex.foam, tint: this.WHITE, model: M().identity()
+            }];
 
+            const m3 = M();
             // Ambient ground cover: real 3D shrubbery again — the flecks painted
             // into the mega-texture were too subtle alone and the map read bleak.
             // Prebaked entries, themed, seeded (a map seed reproduces the scatter),
@@ -1037,6 +1093,7 @@
                 });
             };
 
+            if (this._sea) dl.opaque.push(this._sea);      // under the island, out to the horizon
             if (this._ground) dl.opaque.push(this._ground);
 
             // shoreline foam: pulse (old sea rhythm: sin(t/1100ms)) + slow drift
