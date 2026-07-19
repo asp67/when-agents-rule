@@ -33,6 +33,14 @@ class ResourceManager {
             case 'stone': this.stone += amount; break;
             case 'gold': this.gold += amount; break;
         }
+        // Lifetime total ever DELIVERED, per type — the honest economy curve.
+        // A held stockpile measures hoarding: a player converting resources into army
+        // and buildings (i.e. playing well) shows a falling balance, and the winner
+        // often ends poorest. This only ever rises, so growth is growth.
+        // Every gather funnels through here, so one counter catches LLM and
+        // rule-based players alike.
+        if (!this.gathered) this.gathered = { food: 0, wood: 0, stone: 0, gold: 0 };
+        if (this.gathered[type] !== undefined && amount > 0) this.gathered[type] += amount;
         if (this.onResourcesChanged) this.onResourcesChanged();
     }
 

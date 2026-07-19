@@ -2770,6 +2770,10 @@ class UIManager {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         if (rec && !snapshot) { try { rec.flushAll(); } catch (e) {} }
         this.updateTranscriptOffer(snapshot);
+        // The graph is an end-of-match artefact: mid-match it would redraw under the
+        // reader every five seconds while the lines are still moving.
+        if (snapshot) { const c = document.getElementById('summaryChart'); if (c) c.style.display = 'none'; }
+        else this.renderSummaryChart();
     }
 
     // ---- In-match transcript viewer ------------------------------------------
@@ -3044,6 +3048,141 @@ class UIManager {
         if (!btn) return;
         btn.classList.toggle('sb-on', !!(el && el.classList.contains('snapshot')
             && el.classList.contains('active')));
+    }
+
+    // ---- End-of-match graph --------------------------------------------------
+    // Hand-rolled SVG. A chart library would be the single largest dependency in a
+    // project whose README leads with a zero-dependency badge — and a line chart
+    // with axes is under a hundred lines of path building.
+    //
+    // Two views over the same samples:
+    //   gathered — cumulative resources DELIVERED, summed. Monotonic, so growth is
+    //              growth. Held stockpiles would measure hoarding instead: a player
+    //              turning resources into army shows a FALLING balance, and the
+    //              winner often ends poorest.
+    //   power    — the leaderboard's composite. "Who was winning", against "who
+    //              built the bigger economy". The gap between one player's two
+    //              curves is itself worth seeing.
+    setChartMode(mode) {
+        this._chartMode = mode;
+        this.renderSummaryChart();
+    }
+
+    // The civ's colour the way the leaderboard derives it: civ.color is a NUMBER on
+    // the civilization record, not a string on the player. Reading pl.color gave
+    // undefined and legibleColor's fallback painted every line the same grey.
+    chartColor(ai) {
+        const civ = (typeof getCivilization === 'function') ? getCivilization(ai.civilization) : null;
+        return this.legibleColor('#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0'));
+    }
+
+    chartValue(row, id, mode) {
+        const p = row.p && row.p[id];
+        if (!p) return 0;
+        return mode === 'power' ? (p.pw || 0) : (p.f || 0) + (p.w || 0) + (p.s || 0) + (p.o || 0);
+    }
+
+    renderSummaryChart() {
+        const box = document.getElementById('summaryChart');
+        if (!box) return;
+        const tl = this.game && this.game._timeline;
+        const samples = (tl && tl.samples) || [];
+        if (samples.length < 2) { box.style.display = 'none'; return; }  // a dot says nothing
+        const players = ((this.game.aiManager && this.game.aiManager.aiPlayers) || [])
+            .filter(a => samples.some(r => r.p && r.p[a.id]));
+        if (!players.length) { box.style.display = 'none'; return; }
+        box.style.display = '';
+
+        const mode = this._chartMode || 'gathered';
+        const gBtn = document.getElementById('chartModeGathered');
+        const pBtn = document.getElementById('chartModePower');
+        gBtn.textContent = t('sum.chartGathered'); pBtn.textContent = t('sum.chartPower');
+        gBtn.classList.toggle('is-on', mode === 'gathered');
+        pBtn.classList.toggle('is-on', mode === 'power');
+        document.getElementById('chartTitle').textContent =
+            t(mode === 'power' ? 'sum.chartTitlePower' : 'sum.chartTitleGathered');
+
+        const W = 900, H = 300, ML = 62, MR = 14, MT = 12, MB = 26;
+        const tMax = samples[samples.length - 1].t || 1;
+        let vMax = 0;
+        samples.forEach(r => players.forEach(pl => {
+            vMax = Math.max(vMax, this.chartValue(r, pl.id, mode));
+        }));
+        if (vMax <= 0) vMax = 1;
+        const X = s => ML + (s / tMax) * (W - ML - MR);
+        const Y = v => H - MB - (v / vMax) * (H - MT - MB);
+        const esc = v => this.escapeHtml(String(v));
+        const mmss = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+        const nice = v => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1000 ? Math.round(v / 1000) + 'k' : String(Math.round(v));
+        // res.* carries an emoji for the HUD; the chart wants the bare word.
+        const resWord = k => String(t('res.' + k)).replace(/^\S+\s*/, '');
+
+        let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart-svg" preserveAspectRatio="none" role="img">';
+        for (let i = 0; i <= 4; i++) {
+            const v = (vMax / 4) * i, y = Y(v).toFixed(1);
+            svg += '<line class="c-grid" x1="' + ML + '" y1="' + y + '" x2="' + (W - MR) + '" y2="' + y + '"/>';
+            svg += '<text class="c-ylab" x="' + (ML - 8) + '" y="' + (Y(v) + 3.5).toFixed(1) + '" text-anchor="end">' + esc(nice(v)) + '</text>';
+        }
+        for (let i = 0; i <= 4; i++) {
+            const s = Math.round((tMax / 4) * i);
+            svg += '<text class="c-xlab" x="' + X(s).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(mmss(s)) + '</text>';
+        }
+        // Age advances go BEHIND the lines, in the advancing player's colour — the
+        // thing that turns the graph from a description into an explanation.
+        ((tl && tl.ages) || []).forEach(a => {
+            const pl = players.find(p => p.id === a.id);
+            if (!pl) return;
+            const x = X(a.t).toFixed(1);
+            svg += '<line class="c-age" x1="' + x + '" y1="' + MT + '" x2="' + x + '" y2="' + (H - MB)
+                + '" stroke="' + esc(this.chartColor(pl)) + '"/>';
+        });
+        players.forEach(pl => {
+            const pts = samples.map(r => X(r.t).toFixed(1) + ',' + Y(this.chartValue(r, pl.id, mode)).toFixed(1)).join(' ');
+            svg += '<polyline class="c-line" points="' + pts + '" stroke="' + esc(this.chartColor(pl)) + '"/>';
+        });
+        document.getElementById('chartMain').innerHTML = svg + '</svg>';
+
+        // Composition strips: one per player, each band a resource's SHARE of that
+        // player's cumulative haul. Normalised to 100% because the magnitude is
+        // already plotted above, and because a shortage should read the same whether
+        // a player gathered 10k or 100k. Cumulative never falls, so running dry shows
+        // as a band being squeezed while the others keep growing.
+        const RES = [['f', 'food'], ['w', 'wood'], ['s', 'stone'], ['o', 'gold']];
+        const SW = 900, SH = 46;
+        let strips = '';
+        players.forEach(pl => {
+            let bands = '';
+            const below = samples.map(() => 0);
+            RES.forEach(([k, name]) => {
+                const top = [], bot = [];
+                samples.forEach((r, i) => {
+                    const p = r.p[pl.id] || {};
+                    const tot = (p.f || 0) + (p.w || 0) + (p.s || 0) + (p.o || 0);
+                    const share = tot > 0 ? (p[k] || 0) / tot : 0;
+                    const x = (ML + (r.t / tMax) * (SW - ML - MR)).toFixed(1);
+                    const y0 = (SH - below[i] * SH).toFixed(1);
+                    below[i] += share;
+                    top.push(x + ',' + (SH - below[i] * SH).toFixed(1));
+                    bot.push(x + ',' + y0);
+                });
+                bands += '<polygon class="c-band c-' + name + '" points="' + top.join(' ') + ' ' + bot.reverse().join(' ') + '"/>';
+            });
+            ((tl && tl.exhausted) || []).filter(e => e.id === pl.id).forEach(e => {
+                const x = (ML + (e.t / tMax) * (SW - ML - MR)).toFixed(1);
+                bands += '<line class="c-dry" x1="' + x + '" y1="0" x2="' + x + '" y2="' + SH + '"/>';
+            });
+            strips += '<div class="chart-strip"><span class="strip-name">'
+                + this.teamDotHtml(pl.seat, 10) + '<span>'
+                + esc(tg((getCivilization(pl.civilization) || {}).name || pl.civilization))
+                + '</span></span><svg viewBox="0 0 ' + SW + ' ' + SH + '" class="strip-svg" preserveAspectRatio="none">'
+                + bands + '</svg></div>';
+        });
+        document.getElementById('chartStrips').innerHTML = strips;
+
+        document.getElementById('chartLegend').innerHTML =
+            RES.map(([, name]) => '<span class="c-key"><i class="c-sw c-' + name + '"></i>' + esc(resWord(name)) + '</span>').join('')
+            + '<span class="c-key"><i class="c-sw c-agekey"></i>' + esc(t('sum.chartAge')) + '</span>'
+            + '<span class="c-key"><i class="c-sw c-drykey"></i>' + esc(t('sum.chartDry')) + '</span>';
     }
 
     // Build a human-readable Markdown report of the last match.

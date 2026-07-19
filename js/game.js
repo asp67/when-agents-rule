@@ -225,6 +225,7 @@ class Game {
         // generator needs the spawns before it runs (they are already computed above).
         this.terrain.spawns = spawnPositions;
         this._battles = []; // fresh match, no carried-over engagements
+        this.resetTimeline();  // ...and a fresh graph
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 
@@ -382,6 +383,7 @@ class Game {
         // generator needs the spawns before it runs (they are already computed above).
         this.terrain.spawns = spawnPositions;
         this._battles = []; // fresh match, no carried-over engagements
+        this.resetTimeline();  // ...and a fresh graph
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 
@@ -592,6 +594,7 @@ class Game {
         this.aiManager.aiPlayers.forEach(ai => {
             ai.resources.updatePopulation(ai.units.length);
         });
+        this.sampleTimeline(currentTime);
 
         // Fine simulation in ≤100ms sub-steps so the FULL elapsed time is advanced.
         const STEP_MAX = 100;
@@ -2854,6 +2857,76 @@ class Game {
         });
         owner.resources.maxPopulation = Math.min(MAX_POPULATION_CAP, slots);
         return owner.resources.maxPopulation;
+    }
+
+    // ---- Match timeline (for the end-of-match graph) -------------------------
+    // A uniform 5-second sample of every player, taken here rather than mined from
+    // the transcripts on purpose: transcripts exist only for LLM seats (a mixed
+    // match would have holes exactly where you want to compare), their memory ring
+    // caps at 300 turns, and each model is sampled at its OWN cadence — a 1.6s model
+    // would carry fifteen times the points of a 25s one, which is not a plottable
+    // axis. One clock, every seat, no cap.
+    //
+    // ~1200 samples for a 100-minute match; a few hundred KB at worst.
+    static get TIMELINE_MS() { return 5000; }
+
+    resetTimeline() {
+        this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [] };
+        this._tlLast = 0;
+        this._tlAge = {};        // playerId -> last age seen
+        this._tlDry = {};        // playerId -> {type: true} once its discovered nodes ran out
+    }
+
+    // Discovered nodes of each type that still hold something, for THIS player.
+    // Live amount rather than the remembered one: the marker answers "was there
+    // anything left to gather", which is a fact about the world, not about belief.
+    discoveredNodeCounts(owner) {
+        const out = { food: 0, wood: 0, stone: 0, gold: 0 };
+        const idx = owner && owner._knownResIdx;
+        if (!idx) return out;
+        ((this.terrain && this.terrain.resources) || []).forEach((r, i) => {
+            if (r.amount > 0 && out[r.type] !== undefined && idx.has(i)) out[r.type]++;
+        });
+        return out;
+    }
+
+    sampleTimeline(now) {
+        if (!this._timeline) this.resetTimeline();
+        const tl = this._timeline;
+        if (now - this._tlLast < Game.TIMELINE_MS) return;
+        this._tlLast = now;
+        const t = Math.round((now - tl.t0) / 1000);
+        const players = (this.aiManager && this.aiManager.aiPlayers) || [];
+        const row = { t, p: {} };
+        players.forEach(ai => {
+            const g = (ai.resources && ai.resources.gathered) || { food: 0, wood: 0, stone: 0, gold: 0 };
+            row.p[ai.id] = {
+                f: Math.round(g.food || 0), w: Math.round(g.wood || 0),
+                s: Math.round(g.stone || 0), o: Math.round(g.gold || 0),
+                pw: Math.round((this.ui && this.ui.spectatorPowerScore) ? this.ui.spectatorPowerScore(ai) : 0),
+                al: ai.buildings.length > 0 || ai.units.length > 0 ? 1 : 0
+            };
+            // Age advances: the dotted verticals that turn the graph from a
+            // description into an explanation.
+            if (this._tlAge[ai.id] !== ai.age) {
+                if (this._tlAge[ai.id] !== undefined) tl.ages.push({ t, id: ai.id, age: ai.age });
+                this._tlAge[ai.id] = ai.age;
+            }
+            // ...and the moment a player's OWN known supply of a type ran dry, which
+            // is what a collapsing share in the composition strip actually means.
+            const disc = this.discoveredNodeCounts(ai);
+            this._tlDry[ai.id] = this._tlDry[ai.id] || {};
+            ['food', 'wood', 'stone', 'gold'].forEach(k => {
+                const dry = disc[k] === 0;
+                if (dry && !this._tlDry[ai.id][k] && t > 0) {
+                    this._tlDry[ai.id][k] = true;
+                    tl.exhausted.push({ t, id: ai.id, type: k });
+                } else if (!dry) {
+                    this._tlDry[ai.id][k] = false;   // found more — it can happen again
+                }
+            });
+        });
+        tl.samples.push(row);
     }
 
     // The A1..G7 label for a world position, on the same grid map.exploration uses

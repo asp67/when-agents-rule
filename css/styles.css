@@ -2075,3 +2075,61 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 .tv-top-btn.visible { opacity: 1; pointer-events: auto; transform: none; }
 .tv-top-btn:hover { background: #8cb4ff; color: #0a0d1c; }
+
+/* ---- End-of-match graph (hand-rolled SVG, no chart library) -------------- */
+.summary-chart {
+    max-width: 980px;
+    margin: 6px auto 12px;
+    padding: 10px 12px 12px;
+    background: rgba(10, 13, 28, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 11px;
+}
+.chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.chart-title { font-size: 0.82em; font-weight: 700; color: #d8e0f0; letter-spacing: 0.2px; }
+.chart-modes { margin-left: auto; display: flex; gap: 4px; }
+.chart-mode {
+    font: inherit; font-size: 0.72em; padding: 3px 9px; border-radius: 999px;
+    color: #93a6c8; background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12); cursor: pointer;
+}
+.chart-mode:hover { color: #e6ebf5; background: rgba(255,255,255,0.1); }
+.chart-mode.is-on { color: #fff; background: rgba(120,165,255,0.24); border-color: rgba(140,180,255,0.6); }
+
+.chart-svg { width: 100%; height: 240px; display: block; }
+.c-grid { stroke: rgba(255,255,255,0.07); stroke-width: 1; }
+.c-ylab, .c-xlab { fill: #7c869c; font-size: 11px; font-family: inherit; }
+/* Age advances: dotted, behind the lines, in the advancing player's colour. */
+.c-age { stroke-width: 1.5; stroke-dasharray: 3 4; opacity: 0.55; }
+.c-line { fill: none; stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+
+.chart-strips { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+.chart-strip { display: flex; align-items: center; gap: 8px; }
+.strip-name {
+    flex: 0 0 132px; display: flex; align-items: center; gap: 5px;
+    font-size: 0.74em; color: #b6bfd4; min-width: 0;
+}
+.strip-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.strip-svg {
+    flex: 1; height: 30px; display: block;
+    border-radius: 4px; background: rgba(0,0,0,0.25);
+}
+/* Resource bands — the four game colours, so the strip reads without a lookup. */
+.c-band { stroke: none; }
+.c-food  { fill: #d9584f; }
+.c-wood  { fill: #4e9c5a; }
+.c-stone { fill: #9aa4b2; }
+.c-gold  { fill: #e0b53c; }
+/* The moment a player's own discovered supply of a type ran dry. */
+.c-dry { stroke: #ffffff; stroke-width: 1.4; stroke-dasharray: 2 3; opacity: 0.85; }
+
+.chart-legend {
+    margin-top: 8px; display: flex; flex-wrap: wrap; gap: 12px;
+    font-size: 0.72em; color: #93a6c8;
+}
+.c-key { display: inline-flex; align-items: center; gap: 5px; }
+.c-sw { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.c-sw.c-food { background: #d9584f; } .c-sw.c-wood { background: #4e9c5a; }
+.c-sw.c-stone { background: #9aa4b2; } .c-sw.c-gold { background: #e0b53c; }
+.c-sw.c-agekey { background: repeating-linear-gradient(180deg,#8cb4ff 0 3px,transparent 3px 7px); }
+.c-sw.c-drykey { background: repeating-linear-gradient(180deg,#fff 0 2px,transparent 2px 5px); }
