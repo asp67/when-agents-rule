@@ -1696,6 +1696,18 @@ class UIManager {
         // The viewer follows the match live; renderTranscriptViewer no-ops unless a
         // model is actually being watched and its turn count has moved.
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.renderTranscriptViewer(); }, 1000));
+        // Live graph while the Results card is open over a running match. Polled at
+        // 1s but rebuilt only when a new sample landed — samples arrive every 5s, so
+        // a faster poll would redraw identical data. Costs ~2ms when it does fire,
+        // which is an eighth of a frame and invisible against the 3D scene still
+        // rendering underneath.
+        this._spectatorIntervals.push(setInterval(() => {
+            if (document.hidden) return;
+            const el = document.getElementById('arenaSummaryScreen');
+            if (el && el.classList.contains('snapshot') && el.classList.contains('active')) {
+                this.renderSummaryChart();
+            }
+        }, 1000));
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateArenaStatus(); }, 1000));
     }
 
@@ -2770,10 +2782,8 @@ class UIManager {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         if (rec && !snapshot) { try { rec.flushAll(); } catch (e) {} }
         this.updateTranscriptOffer(snapshot);
-        // The graph is an end-of-match artefact: mid-match it would redraw under the
-        // reader every five seconds while the lines are still moving.
-        if (snapshot) { const c = document.getElementById('summaryChart'); if (c) c.style.display = 'none'; }
-        else this.renderSummaryChart();
+        this._chartSig = null;      // force a rebuild whenever the card is (re)opened
+        this.renderSummaryChart();
     }
 
     // ---- In-match transcript viewer ------------------------------------------
@@ -3114,14 +3124,27 @@ class UIManager {
         const box = document.getElementById('summaryChart');
         if (!box) return;
         const tl = this.game && this.game._timeline;
-        const samples = (tl && tl.samples) || [];
-        if (samples.length < 2) { box.style.display = 'none'; return; }  // a dot says nothing
+        const all = (tl && tl.samples) || [];
+        if (all.length < 2) { box.style.display = 'none'; return; }  // a dot says nothing
+        // The plot is ~900px wide, so anything past a few hundred points lands
+        // inside the same pixel. Without this a 100-minute match built 477KB of SVG
+        // and took 7ms a redraw; thinned it is ~2ms and flat no matter how long the
+        // match runs — which is what makes a live refresh free.
+        const CAP = 300;
+        const stride = Math.max(1, Math.ceil(all.length / CAP));
+        const samples = stride === 1 ? all : all.filter((_, i) => i % stride === 0 || i === all.length - 1);
         const players = ((this.game.aiManager && this.game.aiManager.aiPlayers) || [])
             .filter(a => samples.some(r => r.p && r.p[a.id]));
         if (!players.length) { box.style.display = 'none'; return; }
         box.style.display = '';
 
         const mode = this._chartMode || 'gathered';
+        // Cheap guard so the live refresh can poll every second and pay for itself
+        // only when a sample actually landed (they arrive every 5s). Also stops the
+        // rebuild from wiping the reader's mode selection mid-glance.
+        const sig = all.length + ':' + mode + ':' + players.length + ':' + getUiLang();
+        if (sig === this._chartSig) return;
+        this._chartSig = sig;
         const gBtn = document.getElementById('chartModeGathered');
         const pBtn = document.getElementById('chartModePower');
         gBtn.textContent = t('sum.chartGathered'); pBtn.textContent = t('sum.chartPower');
