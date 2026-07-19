@@ -779,7 +779,7 @@ class OpenAIAIManager {
             // with a second base, or a base rebuilt after the first fell, it points
             // at empty ground between them.
             // How many nodes of each type are STILL on the map, right now. Compare
-            // against "resourcesOnMap" (what you have found) to judge whether more
+            // against "discoveredNodesOnMap" (what you have found) to judge whether more
             // scouting is worth it — and watch it fall to see the world running dry.
             //
             // This replaces the prose biome brief the prompt used to carry. That line
@@ -818,7 +818,7 @@ class OpenAIAIManager {
 
         // --- Resources on map (only SCOUTED nodes; remembered once discovered) ---
         if (!ai._knownResIdx) ai._knownResIdx = new Set();
-        const resourcesOnMap = [];
+        const discoveredNodesOnMap = [];
         if (game.terrain && game.terrain.resources) {
             game.terrain.resources.forEach((res, idx) => {
                 const k = this.knownAmount(ai, res, idx, game);
@@ -828,7 +828,7 @@ class OpenAIAIManager {
                 // last-seen amount until someone looks again — the disappearance
                 // would otherwise report enemy activity through fog.
                 if (k.amount <= 0) return;
-                resourcesOnMap.push({
+                discoveredNodesOnMap.push({
                     type: res.type,
                     x: Math.round(res.x),
                     z: Math.round(res.z),
@@ -1176,7 +1176,7 @@ class OpenAIAIManager {
             ...(battles.length ? { battles } : {}),
             bonuses: bonusesObj,
             map: mapObj,
-            resourcesOnMap: resourcesOnMap,
+            discoveredNodesOnMap: discoveredNodesOnMap,
             friendlyBuildings: friendlyBuildings,
             buildings: bSummary,
             enemyBuildings: enemyBuildings,
@@ -1459,7 +1459,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const r = gs.resources || {}, ep = gs.epoch || {}, wk = gs.workers || {}, b = gs.buildings || {}, th = gs.threats || {};
         const fu = Array.isArray(gs.friendlyUnits) ? gs.friendlyUnits : [];
         const nodes = { food: 0, wood: 0, stone: 0, gold: 0 };
-        (Array.isArray(gs.resourcesOnMap) ? gs.resourcesOnMap : []).forEach(n => { if (nodes[n.type] != null) nodes[n.type]++; });
+        (Array.isArray(gs.discoveredNodesOnMap) ? gs.discoveredNodesOnMap : []).forEach(n => { if (nodes[n.type] != null) nodes[n.type]++; });
         // The keys mirror the FULL state schema (resources / workers / buildings /
         // research / threats), so the model reads this past-turn recap exactly like
         // the live state it already knows — no new shorthand to learn. "pastTurnRecap"
@@ -3210,12 +3210,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // return the discovered (visible-or-remembered) nodes of a given type.
     // Short summary of what this AI has ACTUALLY discovered, by type — used to
     // ground a rejected harvest/assign so the model stops chasing a resource it
-    // only imagines (it cannot see the rendered map; only "resourcesOnMap").
+    // only imagines (it cannot see the rendered map; only "discoveredNodesOnMap").
     discoveredResourceSummary(ai, game) {
         const counts = {};
         const list = (game.terrain && game.terrain.resources) || [];
         list.forEach((res, idx) => {
-            // Believed amount, so this summary agrees with resourcesOnMap rather than
+            // Believed amount, so this summary agrees with discoveredNodesOnMap rather than
             // naming a type the state does not list (or omitting one it does).
             const k = this.knownAmount(ai, res, idx, game);
             if (k.known && k.amount > 0) {
@@ -3494,7 +3494,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         if (discovered.length === 0) {
             const have = this.discoveredResourceSummary(ai, game);
             this.outcome('log.out.notDiscovered', { res: resourceType });
-            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "resourcesOnMap" exist for you — don't assume a node is ${resourceType}. Send a scout yourself with explore and coordinates picked from "map.exploration"; once ${resourceType} appears in "resourcesOnMap", call assign_workers again.`;
+            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "discoveredNodesOnMap" exist for you — don't assume a node is ${resourceType}. Send a scout yourself with explore and coordinates picked from "map.exploration"; once ${resourceType} appears in "discoveredNodesOnMap", call assign_workers again.`;
         }
 
         // Which node? Explicit targetX/targetZ picks the discovered node nearest
@@ -3508,7 +3508,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const tx = Number(params.targetX), tz = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
                 this.outcome('log.out.assignNeedsCoords', { res: resourceType });
-                return `[ERROR] assign_workers takes BOTH numeric "targetX" and "targetZ" (a discovered ${resourceType} node from "resourcesOnMap"), or neither — then the node nearest your Town Center is used.`;
+                return `[ERROR] assign_workers takes BOTH numeric "targetX" and "targetZ" (a discovered ${resourceType} node from "discoveredNodesOnMap"), or neither — then the node nearest your Town Center is used.`;
             }
             node = this.nearestNodeTo({ x: tx, z: tz }, discovered);
             nodeNote = 'nearest your target';

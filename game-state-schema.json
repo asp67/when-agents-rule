@@ -9,7 +9,7 @@
     "resources",
     "bonuses",
     "map",
-    "resourcesOnMap",
+    "discoveredNodesOnMap",
     "friendlyBuildings",
     "buildings",
     "enemyBuildings",
@@ -250,7 +250,7 @@
         },
         "nodesLeftOnMap": {
           "type": "object",
-          "description": "How many resource nodes of each type are STILL on the map right now, across the whole world (e.g. {\"food\":312,\"wood\":690,\"stone\":37,\"gold\":18}). Compare with resourcesOnMap — what YOU have discovered — to judge whether more scouting is worth it, and watch it fall to see the world running dry: a wood figure sliding toward zero is the signal to stop prospecting and commit to farms. Live rather than a starting snapshot, because a fixed figure goes stale and would have you hunting nodes that no longer exist. It is a total only: no positions, no indication of which nodes went or who took them."
+          "description": "How many resource nodes of each type are STILL on the map right now, across the whole world (e.g. {\"food\":312,\"wood\":690,\"stone\":37,\"gold\":18}). Compare with discoveredNodesOnMap — the ones YOU have actually found — to judge whether more scouting is worth it, and watch it fall to see the world running dry: a wood figure sliding toward zero is the signal to stop prospecting and commit to farms. Live rather than a starting snapshot, because a fixed figure goes stale and would have you hunting nodes that no longer exist. It is a total only: no positions, no indication of which nodes went or who took them."
         },
         "yourBaseTiles": {
           "type": "object",
@@ -271,9 +271,9 @@
         }
       }
     },
-    "resourcesOnMap": {
+    "discoveredNodesOnMap": {
       "type": "array",
-      "description": "Only nodes you have DISCOVERED (remembered once seen) and that still hold resources. Nodes deplete permanently; scout for fresh ones.",
+      "description": "The resource nodes YOU have found: discovered by sight, then remembered. Its counterpart is map.nodesLeftOnMap, which counts what exists across the WHOLE map — this list is the part of that you actually know about. \"amount\" is live while a node is in sight and otherwise the amount as you last saw it, so a node a rival emptied out of your view stays listed at its remembered figure until you look again. Nodes deplete permanently; scout for fresh ones.",
       "items": {
         "type": "object",
         "required": [
