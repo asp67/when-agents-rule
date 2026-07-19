@@ -21,6 +21,10 @@
     const M = () => window.M3D;
     const HALF_PER_DIST = 0.3;   // camera.position.set(distance) → ortho halfH
     const MIN_HALF = 10, MAX_HALF = 190;
+    // Scene ambient. Lives here rather than inline at the draw call because the
+    // sea colour beyond the map has to be derived from the SAME value — two
+    // copies drifting apart is exactly what put a visible seam at the horizon.
+    const AMBIENT = [0.52, 0.55, 0.62];
     const BSCALE = 0.78;         // engine building set → game footprint scale
 
     class EngineRenderer {
@@ -179,11 +183,20 @@
                 ring: T(TexGen.ring(), { clamp: true }),
                 foam: T(TexGen.foam(199))
             };
-            // theme atmosphere: beyond-the-map "sky" (deep sea) + sun character
-            this._sky = theme === 'winter' ? [0.10, 0.20, 0.29]
-                : (theme === 'desert' ? [0.12, 0.30, 0.36] : [0.086, 0.212, 0.329]);
+            // theme atmosphere: sun character first, then the sea beyond the map.
             this._sun = theme === 'winter' ? [0.74, 0.78, 0.88]
                 : (theme === 'desert' ? [0.95, 0.84, 0.60] : [0.85, 0.78, 0.66]);
+            // What you actually see past the rim is the ground plane's own outer
+            // band — painted waterDeep and then LIT — so the clear colour behind it
+            // must be waterDeep x that same light, or the two meet in a step. It was
+            // the RAW palette value, which is what drew the hard edge at the horizon
+            // (measured on a real frame: background 22,54,84 against the plane's
+            // 27,65,99). The ground is flat, so its light term is a constant — the
+            // normal is always +Y — which means one multiply closes the seam exactly.
+            const deep = (TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer).waterDeep;
+            const up = Math.max(0, this.sunDir[1]);   // dot((0,1,0), sunDir)
+            this._sky = [0, 1, 2].map(i =>
+                Math.min(1, (deep[i] / 255) * (AMBIENT[i] + this._sun[i] * up)));
         }
 
         _buf(kind, args) {
@@ -231,7 +244,21 @@
             this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, dist * HALF_PER_DIST));
         }
 
+        // Every path that moves the look-at point — drag-pan, WASD, the action cam,
+        // moveCameraTo — was unbounded, so a long drag could sail the island off past
+        // the horizon and leave you adrift in empty sea with no way back but a reset.
+        // Clamping here, at the one point every path funnels through, means no future
+        // mover can forget to. The bound is the land square itself: the screen centre
+        // always has ground under it, while the coast and open water stay framable.
+        _clampTarget() {
+            const half = (this.terrain && this.terrain.size > 0) ? this.terrain.size / 2 : 400;
+            const t = this.cameraTarget;
+            t.x = Math.min(half, Math.max(-half, t.x));
+            t.z = Math.min(half, Math.max(-half, t.z));
+        }
+
         _computeCam() {
+            this._clampTarget();
             const m3 = M();
             const aspect = (this.W || 1) / (this.H || 1);
             // Narrow-FOV perspective: the eye sits far enough away that the frame
@@ -1437,7 +1464,7 @@
             gl.uniformMatrix4fv(this.prog.uniforms.uView, false, cam.view);
             gl.uniform3fv(this.prog.uniforms.uSunDir, this.sunDir);
             gl.uniform3fv(this.prog.uniforms.uSunColor, this._sun);
-            gl.uniform3f(this.prog.uniforms.uAmbient, 0.52, 0.55, 0.62);
+            gl.uniform3fv(this.prog.uniforms.uAmbient, AMBIENT);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(this.prog.uniforms.uTex, 0);
 
