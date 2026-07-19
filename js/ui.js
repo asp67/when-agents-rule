@@ -2867,11 +2867,19 @@ class UIManager {
             }
         }
         const wasOpen = new Set();
+        const wasScrolled = new Map();
         body.querySelectorAll('.tv-turn').forEach(tEl => {
             const k = tEl.getAttribute('data-key');
-            tEl.querySelectorAll('details[open]').forEach(d => {
+            tEl.querySelectorAll('details').forEach(d => {
                 const cls = [...d.classList].find(c => c !== 'tv-sec');
-                if (cls) wasOpen.add(`${k}:${cls}`);
+                if (!cls) return;
+                if (d.open) wasOpen.add(`${k}:${cls}`);
+                // Each section's <pre> is its own scroller (max-height 260px), and the
+                // state JSON is long enough that reading it means scrolling INSIDE it.
+                // Restoring the panel's scroll and the open flag but not this still
+                // threw the reader back to the top of the JSON on every new turn.
+                const pre = d.querySelector('pre');
+                if (pre && pre.scrollTop > 0) wasScrolled.set(`${k}:${cls}`, pre.scrollTop);
             });
         });
         const openFor = (turn, cls, dflt) =>
@@ -2915,6 +2923,12 @@ class UIManager {
         } else {
             body.scrollTop = prevTop;
         }
+        // ...and put each section's internal scroll back where the reader left it.
+        wasScrolled.forEach((top, key) => {
+            const [k, cls] = key.split(':');
+            const pre = body.querySelector(`[data-key="${k}"] .${cls} pre`);
+            if (pre) pre.scrollTop = top;
+        });
         this.updateTranscriptTopBtn();
     }
 

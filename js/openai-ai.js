@@ -811,16 +811,19 @@ class OpenAIAIManager {
         const resourcesOnMap = [];
         if (game.terrain && game.terrain.resources) {
             game.terrain.resources.forEach((res, idx) => {
-                const visible = !!this.isPositionVisibleToAI(ai, res.x, res.z, game);
-                if (visible) ai._knownResIdx.add(idx);     // remember what we've seen
-                if (!ai._knownResIdx.has(idx)) return;     // undiscovered → hidden, must scout
-                if (res.amount <= 0) return;               // depleted
+                const k = this.knownAmount(ai, res, idx, game);
+                if (!k.known) return;        // undiscovered → hidden, must scout
+                // Depleted as far as THIS player knows. A node it watched run dry
+                // drops out; one a rival emptied out of sight stays listed at its
+                // last-seen amount until someone looks again — the disappearance
+                // would otherwise report enemy activity through fog.
+                if (k.amount <= 0) return;
                 resourcesOnMap.push({
                     type: res.type,
                     x: Math.round(res.x),
                     z: Math.round(res.z),
-                    amount: Math.floor(res.amount),
-                    visible
+                    amount: k.amount,
+                    visible: k.visible
                 });
             });
         }
@@ -3199,11 +3202,13 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // ground a rejected harvest/assign so the model stops chasing a resource it
     // only imagines (it cannot see the rendered map; only "resourcesOnMap").
     discoveredResourceSummary(ai, game) {
-        if (!ai._knownResIdx) ai._knownResIdx = new Set();
         const counts = {};
         const list = (game.terrain && game.terrain.resources) || [];
         list.forEach((res, idx) => {
-            if (ai._knownResIdx.has(idx) && res.amount > 0) {
+            // Believed amount, so this summary agrees with resourcesOnMap rather than
+            // naming a type the state does not list (or omitting one it does).
+            const k = this.knownAmount(ai, res, idx, game);
+            if (k.known && k.amount > 0) {
                 counts[res.type] = (counts[res.type] || 0) + 1;
             }
         });
@@ -3213,13 +3218,37 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         return parts.length ? parts.join(', ') : 'nothing yet';
     }
 
-    discoveredNodesOfType(ai, game, resourceType) {
+    // How much this player BELIEVES is in a node. Live while the node is in sight,
+    // otherwise the amount as last seen.
+    //
+    // Reading the live amount for a node out of sight leaked: a rival draining a
+    // remembered node showed up as the number ticking down, and emptying it made the
+    // node vanish from the list — enemy activity, in a place the player cannot see,
+    // for free. Fog has to mean the contents are stale too, not just the position.
+    knownAmount(ai, res, idx, game) {
         if (!ai._knownResIdx) ai._knownResIdx = new Set();
+        if (!ai._knownResAmt) ai._knownResAmt = Object.create(null);
+        if (this.isPositionVisibleToAI(ai, res.x, res.z, game)) {
+            ai._knownResIdx.add(idx);
+            ai._knownResAmt[idx] = Math.floor(res.amount);   // refresh what we can see
+            return { amount: Math.floor(res.amount), visible: true, known: true };
+        }
+        const known = ai._knownResIdx.has(idx);
+        return {
+            amount: known ? (ai._knownResAmt[idx] != null ? ai._knownResAmt[idx] : Math.floor(res.amount)) : 0,
+            visible: false, known
+        };
+    }
+
+    discoveredNodesOfType(ai, game, resourceType) {
         const out = [];
         const list = (game.terrain && game.terrain.resources) || [];
         list.forEach((res, idx) => {
-            if (this.isPositionVisibleToAI(ai, res.x, res.z, game)) ai._knownResIdx.add(idx);
-            if (ai._knownResIdx.has(idx) && res.type === resourceType && res.amount > 0) out.push(res);
+            const k = this.knownAmount(ai, res, idx, game);
+            // BELIEVED amount, not the live one: otherwise a node the state still
+            // lists (because the player last saw it full) would be refused here as
+            // "not discovered", and the model gets two contradictory answers.
+            if (k.known && res.type === resourceType && k.amount > 0) out.push(res);
         });
         return out;
     }
