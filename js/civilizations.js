@@ -871,13 +871,27 @@ function getCivilization(id) {
 // charcoal-on-shadow) is unreadable without one. Entries 5-6 only ever appear
 // in 5-6 player campaigns. Shape names are interpreted by
 // EngineUnits.badgeParts (world) and ui.teamDotHtml (chips).
+// Six seats, six saturated hues that stay apart from each other AND from the
+// terrain. These are the player's identity everywhere: the DOM chip, the flag over
+// a building, the chest of a unit, the Town Center banner — and the line on the
+// end-of-match graph, which is why they had to be pulled apart properly.
+//
+// The old set (charcoal, white, emerald, ice blue, purple, amber) was chosen when
+// the badge only ever appeared beside a civ name. As chart lines four of them read
+// as grey / white / pale green / pale blue: technically distinct, useless at a
+// glance. That matters most in exactly the match you would run to compare models —
+// every seat the same civ, so the seat colour is the ONLY thing telling them apart.
+//
+// Shapes stay in their original order. They are the backstop for red/green colour
+// blindness, and they are also what makes a badge readable at unit scale in-world
+// where a 6px mark has more silhouette than hue.
 const TEAM_BADGES = [
-    { fill: '#222222', rim: '#FFFFFF', shape: 'circle' },   // charcoal
-    { fill: '#FFFFFF', rim: '#222222', shape: 'square' },   // white
-    { fill: '#009E60', rim: '#FFFFFF', shape: 'triangle' }, // emerald
-    { fill: '#E0F7FA', rim: '#222222', shape: 'diamond' },  // ice blue
-    { fill: '#7B1FA2', rim: '#FFFFFF', shape: 'star' },     // purple
-    { fill: '#FF8F00', rim: '#222222', shape: 'cross' }     // amber
+    { fill: '#FFFFFF', rim: '#222222', shape: 'circle' },   // white
+    { fill: '#2979FF', rim: '#FFFFFF', shape: 'square' },   // blue
+    { fill: '#FF3B30', rim: '#FFFFFF', shape: 'triangle' }, // red
+    { fill: '#00C853', rim: '#222222', shape: 'diamond' },  // green
+    { fill: '#00E5FF', rim: '#222222', shape: 'star' },     // cyan
+    { fill: '#FFD600', rim: '#222222', shape: 'cross' }     // yellow
 ];
 
 function getTeamBadge(seat) {

@@ -3068,10 +3068,38 @@ class UIManager {
         this.renderSummaryChart();
     }
 
-    // The civ's colour the way the leaderboard derives it: civ.color is a NUMBER on
-    // the civilization record, not a string on the player. Reading pl.color gave
-    // undefined and legibleColor's fallback painted every line the same grey.
+    // A player's line colour: the SEAT badge, not the civilization.
+    //
+    // A proper model comparison gives every seat the same civ so balance cannot
+    // explain the result — and civ colours would then paint all four lines
+    // identically, exactly when the graph matters most. The seat badge is already
+    // the thing that distinguishes players everywhere else in this UI for the same
+    // reason (see the note on teamDotHtml about 4×Egypt), so the line now wears the
+    // badge you are reading beside it.
+    //
+    // Through legibleColor because seat 0's charcoal #222222 would vanish against
+    // the dark chart — the same reason teamBadgeRimOnDark exists. Falls back to the
+    // civ colour if a seat is somehow unknown.
+    // legibleColor is tuned for TEXT: it blends 55% toward white below 0.42
+    // luminance, which small type needs. A 2.2px stroke does not — it stays
+    // readable far darker, and washing it out costs the saturation that tells four
+    // lines apart. Seat 2's emerald (#009E60, luminance 0.406) landed just under
+    // that threshold and came out a pale mint. This rescues only genuinely dark
+    // fills, and blends less when it does.
+    chartInk(hex) {
+        const h = String(hex || '').replace('#', '');
+        if (h.length !== 6) return this.legibleColor(hex);
+        const [r, g, b] = [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16));
+        const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        if (lum >= 0.28) return '#' + h;                 // already carries on dark
+        const f = 0.45;
+        const to2 = v => Math.round(v).toString(16).padStart(2, '0');
+        return '#' + to2(r + (255 - r) * f) + to2(g + (255 - g) * f) + to2(b + (255 - b) * f);
+    }
+
     chartColor(ai) {
+        const b = (typeof getTeamBadge === 'function') ? getTeamBadge(ai && ai.seat) : null;
+        if (b && b.fill) return this.chartInk(b.fill);
         const civ = (typeof getCivilization === 'function') ? getCivilization(ai.civilization) : null;
         return this.legibleColor('#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0'));
     }
@@ -3128,13 +3156,22 @@ class UIManager {
             svg += '<text class="c-xlab" x="' + X(s).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' + esc(mmss(s)) + '</text>';
         }
         // Age advances go BEHIND the lines, in the advancing player's colour — the
-        // thing that turns the graph from a description into an explanation.
+        // thing that turns the graph from a description into an explanation. Each
+        // carries the age's own icon so "they advanced" also says WHICH age, and the
+        // icons stagger by seat: simultaneous advances would otherwise stack on top
+        // of one another exactly when the race is closest and you most want to read
+        // the order.
         ((tl && tl.ages) || []).forEach(a => {
             const pl = players.find(p => p.id === a.id);
             if (!pl) return;
             const x = X(a.t).toFixed(1);
-            svg += '<line class="c-age" x1="' + x + '" y1="' + MT + '" x2="' + x + '" y2="' + (H - MB)
+            const lane = MT + 9 + ((pl.seat || 0) % 4) * 11;
+            svg += '<line class="c-age" x1="' + x + '" y1="' + (lane + 3) + '" x2="' + x + '" y2="' + (H - MB)
                 + '" stroke="' + esc(this.chartColor(pl)) + '"/>';
+            // t('age.x') reads "🏺 Stone Age"; the marker wants only the glyph.
+            const icon = String(t('age.' + a.age) || '').trim().split(/\s+/)[0];
+            svg += '<text class="c-ageicon" x="' + x + '" y="' + lane + '" text-anchor="middle">'
+                + esc(icon) + '</text>';
         });
         players.forEach(pl => {
             const pts = samples.map(r => X(r.t).toFixed(1) + ',' + Y(this.chartValue(r, pl.id, mode)).toFixed(1)).join(' ');
@@ -3172,6 +3209,7 @@ class UIManager {
                 bands += '<line class="c-dry" x1="' + x + '" y1="0" x2="' + x + '" y2="' + SH + '"/>';
             });
             strips += '<div class="chart-strip"><span class="strip-name">'
+                + '<i class="strip-swatch" style="background:' + esc(this.chartColor(pl)) + '"></i>'
                 + this.teamDotHtml(pl.seat, 10) + '<span>'
                 + esc(tg((getCivilization(pl.civilization) || {}).name || pl.civilization))
                 + '</span></span><svg viewBox="0 0 ' + SW + ' ' + SH + '" class="strip-svg" preserveAspectRatio="none">'

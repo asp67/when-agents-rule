@@ -2133,3 +2133,13 @@ body.spectator-mode #unitInfo.spectator-card {
 .c-sw.c-stone { background: #9aa4b2; } .c-sw.c-gold { background: #e0b53c; }
 .c-sw.c-agekey { background: repeating-linear-gradient(180deg,#8cb4ff 0 3px,transparent 3px 7px); }
 .c-sw.c-drykey { background: repeating-linear-gradient(180deg,#fff 0 2px,transparent 2px 5px); }
+
+/* Age glyph sitting atop its marker; staggered by seat so simultaneous
+   advances stay readable. */
+.c-ageicon { font-size: 11px; opacity: 0.9; }
+/* Line colour repeated beside each strip: in a same-civ benchmark every strip
+   name reads the same, so the swatch is what ties a strip to its line. */
+.strip-swatch {
+    width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto;
+    display: inline-block; border: 1px solid rgba(0,0,0,0.45);
+}
