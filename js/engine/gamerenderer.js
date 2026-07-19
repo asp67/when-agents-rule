@@ -320,17 +320,29 @@
         // the corners join by construction instead of by hand — and at each step
         // solves for the chebyshev radius where the waterline actually falls.
         // Returns the raw mesh rather than GPU buffers so it stays auditable.
-        _coastRibbonMesh(seg = 480, width = 7, inset = -2) {
+        // inset places the ribbon's INNER edge in the mega-texture's own coast bands:
+        // sand runs to landHalf+3 and water proper begins at landHalf+10, so +3 lays
+        // the 7-wide ribbon exactly across the wetSand-to-water transition. It used
+        // to sit at -2, which put five of its seven units up on dry beach.
+        _coastRibbonMesh(seg = 480, width = 7, inset = 3) {
             const wob = TexGen.coastSampler(TERRAIN_SEED);
-            // The wobble depends on where we land, so the radius is implicit: solve
-            // it by iteration. Three passes is far inside a pixel at this scale.
+            const target = TERRAIN_LAND + inset;
+            // The wobble depends on where we land, so the radius is implicit. Solve
+            // by BISECTION: dist(r) = r + wobble(r) is strictly increasing, because
+            // the wobble's slope stays under 1 across a noise cell. Fixed-point
+            // iteration also converges on that, but only just — its contraction
+            // factor sits near 0.94 where the noise is steep, so a few passes left
+            // the ribbon drifting up to 3 units off the waterline. Bisection lands
+            // it within 0.0002 for the same handful of samples.
             const radiusAt = (px, pz) => {
-                let r = TERRAIN_LAND + inset;
-                for (let i = 0; i < 3; i++) {
-                    r = TERRAIN_LAND + inset
-                        - wob((r * px) / TERRAIN_WORLD + 0.5, (r * pz) / TERRAIN_WORLD + 0.5);
+                let lo = target - TexGen.COAST_WOBBLE, hi = target + TexGen.COAST_WOBBLE;
+                for (let i = 0; i < 18; i++) {
+                    const mid = (lo + hi) / 2;
+                    const d = mid + wob((mid * px) / TERRAIN_WORLD + 0.5,
+                                        (mid * pz) / TERRAIN_WORLD + 0.5);
+                    if (d < target) lo = mid; else hi = mid;
                 }
-                return r;
+                return (lo + hi) / 2;
             };
             const pts = [];
             let arc = 0;

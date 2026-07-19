@@ -643,19 +643,33 @@
     // checkerboard — at 40 units a tile the same patch showed a dozen times across
     // one view, which was more distracting than the flat colour it replaced.
     TexGen.OPEN_WATER_TILE = 400;
-    TexGen.openWater = (theme, seed = 5, size = 512) => {
-        const P = (TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer).waterDeep;
+    TexGen.OPEN_WATER_SEED = 5;
+    // ONE grain field for all open water, queried in TILE space (period 1). The sea
+    // plane bakes it into a tiling sheet and the mega-texture samples it at the SAME
+    // world phase for its own deep water. That shared phase is the whole point: two
+    // independent noise fields have matching means but uncorrelated grain, so where
+    // they met at the ground plane's rim the pattern jumped and drew a visible
+    // square. One field cannot disagree with itself.
+    TexGen.openWaterGrain = (seed = TexGen.OPEN_WATER_SEED) => {
         const rand = TexGen.rng(seed);
-        const broad = TexGen.valueNoise(size, 6, rand);    // ~67-unit swell
-        const fine = TexGen.valueNoise(size, 22, rand);    // ~18-unit grain
+        const broad = TexGen.noiseSampler(6, rand);    // ~67-unit swell
+        const fine = TexGen.noiseSampler(22, rand);    // ~18-unit grain
+        return (u, v) => (broad(u, v) - 0.5) * 7 + (fine(u, v) - 0.5) * 11;
+    };
+    TexGen.openWater = (theme, seed = TexGen.OPEN_WATER_SEED, size = 512) => {
+        const P = (TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer).waterDeep;
+        const grain = TexGen.openWaterGrain(seed);
         const c = canvas(size), ctx = c.getContext('2d');
         const img = ctx.createImageData(size, size), d = img.data;
-        for (let i = 0; i < size * size; i++) {
-            const g = (broad[i] - 0.5) * 7 + (fine[i] - 0.5) * 11;
-            d[i * 4] = clamp255(P[0] + g);
-            d[i * 4 + 1] = clamp255(P[1] + g);
-            d[i * 4 + 2] = clamp255(P[2] + g * 0.9);
-            d[i * 4 + 3] = 255;
+        for (let py = 0; py < size; py++) {
+            for (let px = 0; px < size; px++) {
+                const g = grain(px / size, py / size);
+                const i = (py * size + px) * 4;
+                d[i] = clamp255(P[0] + g);
+                d[i + 1] = clamp255(P[1] + g);
+                d[i + 2] = clamp255(P[2] + g * 0.9);
+                d[i + 3] = 255;
+            }
         }
         ctx.putImageData(img, 0, 0);
         return c;
@@ -667,6 +681,8 @@
         const nCoast = TexGen.coastNoise(rand);
         const nPatch = TexGen.noiseSampler(10, rand);
         const nGrain = TexGen.noiseSampler(56, rand);
+        // Its own seeded stream, so the land's noise above is untouched.
+        const seaGrain = TexGen.openWaterGrain();
         const c = canvas(size), ctx = c.getContext('2d');
         const img = ctx.createImageData(size, size);
         const d = img.data;
@@ -697,7 +713,14 @@
                     // fade the last few units toward the beach so the edge breathes
                     if (dist > landHalf - 26) col = mix(col, P.sand, (dist - (landHalf - 26)) / 11 * 0.5);
                 }
-                const g = (nGrain(u, v) - 0.5) * 16;
+                // Grain: the land's own field inshore, crossfading to the OPEN-WATER
+                // field as the shallows deepen, so by the time this texture reaches
+                // its rim it is carrying the identical noise the sea plane beyond it
+                // is drawing — the two meet mid-swell instead of at a seam.
+                const gLand = (nGrain(u, v) - 0.5) * 16;
+                const gSea = seaGrain(wx / TexGen.OPEN_WATER_TILE, wz / TexGen.OPEN_WATER_TILE);
+                const kSea = Math.max(0, Math.min(1, (dist - (landHalf + 10)) / 32));
+                const g = gLand * (1 - kSea) + gSea * kSea;
                 const i = (py * size + px) * 4;
                 d[i] = clamp255(col[0] + g);
                 d[i + 1] = clamp255(col[1] + g);
