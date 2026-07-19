@@ -515,7 +515,28 @@ class OpenAIAIManager {
                 return { ok: false, errorCode: 'timeout', error: 'Timed out — endpoint unreachable.', provider: prov };
             }
             const detail = (e && e.message) || String(e);
-            return { ok: false, errorCode: 'network', errorDetail: detail, error: 'Connection failed: ' + detail + ' (CORS? Endpoint offline?)', provider: prov };
+            // fetch() reports CORS rejection, connection refused, DNS failure and a
+            // dropped tunnel as the SAME opaque "Failed to fetch" — deliberately, so
+            // a page cannot probe the network by reading error types. That left this
+            // message guessing out loud ("CORS? Endpoint offline?") and sent people
+            // hunting for CORS problems they did not have.
+            //
+            // A no-cors request cannot be rejected BY cors: the browser returns an
+            // opaque response instead. So if this second attempt resolves, the server
+            // answered and the first failure was the CORS policy; if it throws too,
+            // nothing is listening. It is a simple GET with no custom headers, so it
+            // says nothing about whether the KEY is right — only whether the host is
+            // there.
+            let reachable = false;
+            try {
+                await OpenAIAIManager.fetchWithTimeout(url, { mode: 'no-cors' }, 4000);
+                reachable = true;
+            } catch (_) { /* genuinely unreachable */ }
+            return reachable
+                ? { ok: false, errorCode: 'cors', errorDetail: detail, provider: prov,
+                    error: 'The endpoint answered but the browser blocked the response (CORS).' }
+                : { ok: false, errorCode: 'offline', errorDetail: detail, provider: prov,
+                    error: 'No response from the endpoint — it is not reachable.' };
         }
     }
 
