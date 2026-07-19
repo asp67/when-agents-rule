@@ -1843,6 +1843,7 @@ class Game {
         // 14-slot recentEvents buffer in any real fight and evicted the UNDER ATTACK
         // warnings with it. BUILDINGS still get prose: losing one is rare, singular
         // and strategically distinct, so it deserves to be said out loud.
+        if (target.isWonder) this.noteWonder(target, 'lost');
         this.recordBattleLoss(target);
         if (isBuilding) {
             if (victimOwner) {
@@ -2870,8 +2871,22 @@ class Game {
     // ~1200 samples for a 100-minute match; a few hundred KB at worst.
     static get TIMELINE_MS() { return 5000; }
 
+    // A wonder's life is the win condition running: raised, then held, then either
+    // won with or lost. On the graph that is the single most explanatory event a
+    // match produces — a player pouring an economy into one building, and an
+    // opponent deciding to spend an army removing it.
+    noteWonder(building, event) {
+        if (!building || !building.isWonder || !this._timeline) return;
+        const owner = this.getOwnerByBuilding(building);
+        if (!owner) return;
+        this._timeline.wonders.push({
+            t: Math.max(0, Math.round((Date.now() - this._timeline.t0) / 1000)),
+            id: owner.id, event
+        });
+    }
+
     resetTimeline() {
-        this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [] };
+        this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
         this._tlLast = 0;
         this._tlAge = {};        // playerId -> last age seen
         this._tlDry = {};        // playerId -> {type: true} once its discovered nodes ran out
@@ -3081,6 +3096,7 @@ class Game {
     // Finish a construction site: full HP, becomes functional, grants pop bonus.
     completeConstruction(building) {
         if (!building || !building.underConstruction) return;
+        this.noteWonder(building, 'built');   // no-op unless it IS a wonder
         building.underConstruction = false;
         building.buildProgress = building.buildTime || 0;
         building.health = building.maxHealth;

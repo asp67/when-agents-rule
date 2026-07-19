@@ -2143,3 +2143,9 @@ body.spectator-mode #unitInfo.spectator-card {
     width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto;
     display: inline-block; border: 1px solid rgba(0,0,0,0.45);
 }
+
+/* Wonder markers: SOLID, brighter and full-height — the win condition starting or
+   ending outranks an age advance, which is dashed and half-height. */
+.c-wonder { stroke-width: 2; opacity: 0.9; }
+.c-wonder.is-lost { stroke-dasharray: 5 3; }
+.c-wondericon { font-size: 12px; }

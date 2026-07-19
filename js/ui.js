@@ -3196,6 +3196,19 @@ class UIManager {
             svg += '<text class="c-ageicon" x="' + x + '" y="' + lane + '" text-anchor="middle">'
                 + esc(icon) + '</text>';
         });
+        // Wonders get a SOLID line and their own band along the bottom — the win
+        // condition starting and stopping deserves to outrank an age advance, and
+        // keeping the two glyph bands apart means neither can land on the other.
+        ((tl && tl.wonders) || []).forEach(w => {
+            const pl = players.find(p => p.id === w.id);
+            if (!pl) return;
+            const x = X(w.t).toFixed(1);
+            const lost = w.event === 'lost';
+            svg += '<line class="c-wonder' + (lost ? ' is-lost' : '') + '" x1="' + x + '" y1="' + MT
+                + '" x2="' + x + '" y2="' + (H - MB - 13) + '" stroke="' + esc(this.chartColor(pl)) + '"/>';
+            svg += '<text class="c-wondericon" x="' + x + '" y="' + (H - MB - 3)
+                + '" text-anchor="middle">' + (lost ? '💥' : '🏛️') + '</text>';
+        });
         players.forEach(pl => {
             const pts = samples.map(r => X(r.t).toFixed(1) + ',' + Y(this.chartValue(r, pl.id, mode)).toFixed(1)).join(' ');
             svg += '<polyline class="c-line" points="' + pts + '" stroke="' + esc(this.chartColor(pl)) + '"/>';
@@ -3243,6 +3256,8 @@ class UIManager {
         document.getElementById('chartLegend').innerHTML =
             RES.map(([, name]) => '<span class="c-key"><i class="c-sw c-' + name + '"></i>' + esc(resWord(name)) + '</span>').join('')
             + '<span class="c-key"><i class="c-sw c-agekey"></i>' + esc(t('sum.chartAge')) + '</span>'
+            + '<span class="c-key">🏛️ ' + esc(t('sum.chartWonder')) + '</span>'
+            + '<span class="c-key">💥 ' + esc(t('sum.chartWonderLost')) + '</span>'
             + '<span class="c-key"><i class="c-sw c-drykey"></i>' + esc(t('sum.chartDry')) + '</span>';
     }
 
