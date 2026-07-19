@@ -2775,7 +2775,7 @@ class UIManager {
     // it costs nothing and it follows the match live.
     toggleTranscriptViewer(aiId) {
         this._transcriptFor = (this._transcriptFor === aiId) ? null : aiId;
-        this._tvSig = null;                 // force a rebuild on re-target
+        this._tvRendered = null;            // different model → full rebuild
         this.renderTranscriptViewer();
         this.updateSpectatorPlayerList();   // repaint the spyglass active states
     }
@@ -2805,11 +2805,41 @@ class UIManager {
         this.updateSpectatorPlayerList();
     }
 
+    // One turn's markup. The state's <pre> is left EMPTY and filled on first open:
+    // a match-long transcript holds hundreds of 4KB JSON blobs, and putting them all
+    // in the document is what made a rebuild cost seconds. Nobody reads more than a
+    // couple of them.
+    tvTurnHtml(e) {
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const sec = (cls, label, text, open) => text
+            ? `<details class="tv-sec ${cls}"${open ? ' open' : ''}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
+            : '';
+        const tok = e.tokens ? `${e.tokens.prompt}→${e.tokens.completion} tok` : '';
+        const ms = e.latencyMs != null ? `${(e.latencyMs / 1000).toFixed(1)}s` : '';
+        const act = e.parsed && e.parsed.action ? e.parsed.action : null;
+        const failed = typeof e.harnessResult === 'string' && e.harnessResult.startsWith('[ERROR]');
+        const state = e.state
+            ? `<details class="tv-sec tv-state" data-turn="${e.turn}"><summary>${t('spec.tvState')}</summary><pre></pre></details>`
+            : '';
+        return `
+            <div class="tv-turn${failed ? ' is-error' : ''}" data-key="${e.turn}">
+                <div class="tv-turn-head">
+                    <span class="tv-n">#${e.turn}</span>
+                    ${act ? `<span class="tv-act">${esc(act)}</span>` : ''}
+                    <span class="tv-meta">${esc(ms)}${ms && tok ? ' · ' : ''}${esc(tok)}</span>
+                </div>
+                ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning, true)}
+                ${sec('tv-reply', t('spec.tvReply'), e.assistant && e.assistant.content, true)}
+                ${sec('tv-result', t('spec.tvResult'), e.harnessResult, true)}
+                ${state}
+            </div>`;
+    }
+
     renderTranscriptViewer() {
         const el = document.getElementById('transcriptViewer');
         if (!el) return;
         const id = this._transcriptFor;
-        if (!id) { el.style.display = 'none'; this._tvSig = null; return; }
+        if (!id) { el.style.display = 'none'; this._tvRendered = null; return; }
 
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
@@ -2822,113 +2852,72 @@ class UIManager {
             (turns.length && turns[turns.length - 1].name) || (ai && ai.civilization) || id)}</span>`;
         if (cnt) cnt.textContent = turns.length ? `${turns.length}` : '';
 
-        // Only rebuild when something changed — this refreshes on the 1s spectator
-        // tick and re-rendering every second would collapse any section the reader
-        // had opened, mid-read.
-        const last = turns[turns.length - 1];
-        const sig = `${id}:${turns.length}:${last ? last.turn + ':' + (last.harnessResult ? 1 : 0) : 0}`;
-        if (sig === this._tvSig) return;
-        this._tvSig = sig;
-
         const body = document.getElementById('tvBody');
         if (!body) return;
-        if (!body._tvScrollBound) {
+        if (!body._tvBound) {
             body.addEventListener('scroll', () => this.updateTranscriptTopBtn());
-            body._tvScrollBound = true;
+            // 'toggle' does not bubble, so capture it. Fills a state section the first
+            // time it is opened, from the ring — the JSON never sits in the document
+            // until someone actually asks for it.
+            body.addEventListener('toggle', (ev) => {
+                const d = ev.target;
+                if (!d || !d.classList || !d.classList.contains('tv-state') || !d.open) return;
+                const pre = d.querySelector('pre');
+                if (!pre || pre.dataset.filled) return;
+                const r = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+                const entry = (r ? r.recent(this._transcriptFor) : [])
+                    .find(x => String(x.turn) === d.dataset.turn);
+                if (!entry) return;
+                pre.textContent = JSON.stringify(entry.state, null, 1);
+                pre.dataset.filled = '1';
+            }, true);
+            body._tvBound = true;
         }
+
         if (!turns.length) {
             body.innerHTML = `<div class="tv-empty">${t('spec.tvEmpty')}</div>`;
+            this._tvRendered = { id, keys: [] };
             return;
         }
 
-        const esc = s => this.escapeHtml(String(s == null ? '' : s));
-        const sec = (cls, label, text, open) => text
-            ? `<details class="tv-sec ${cls}"${open ? ' open' : ''}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
-            : '';
-
-        // Reading a turn must survive the next one arriving. Two things get carried
-        // across the rebuild: the scroll position (anchored on the entry the reader is
-        // actually looking at, since new turns arrive ABOVE it and a raw pixel offset
-        // would drift), and which sections they had expanded — the state JSON in
-        // particular is opened deliberately and collapsing it a second later is worse
-        // than never offering it.
-        const atTop = body.scrollTop <= 4;
-        const prevTop = body.scrollTop;
-        let anchorKey = null, anchorOffset = 0;
-        if (!atTop) {
-            const kids = body.children;
-            for (let i = 0; i < kids.length; i++) {
-                const el = kids[i];
-                if (el.offsetTop + el.offsetHeight > prevTop) { // first (partly) visible turn
-                    anchorKey = el.getAttribute('data-key');
-                    anchorOffset = el.offsetTop - prevTop;
-                    break;
-                }
-            }
-        }
-        const wasOpen = new Set();
-        const wasScrolled = new Map();
-        body.querySelectorAll('.tv-turn').forEach(tEl => {
-            const k = tEl.getAttribute('data-key');
-            tEl.querySelectorAll('details').forEach(d => {
-                const cls = [...d.classList].find(c => c !== 'tv-sec');
-                if (!cls) return;
-                if (d.open) wasOpen.add(`${k}:${cls}`);
-                // Each section's <pre> is its own scroller (max-height 260px), and the
-                // state JSON is long enough that reading it means scrolling INSIDE it.
-                // Restoring the panel's scroll and the open flag but not this still
-                // threw the reader back to the top of the JSON on every new turn.
-                const pre = d.querySelector('pre');
-                if (pre && pre.scrollTop > 0) wasScrolled.set(`${k}:${cls}`, pre.scrollTop);
-            });
-        });
-        const openFor = (turn, cls, dflt) =>
-            (wasOpen.size && body.querySelector(`[data-key="${turn}"]`))
-                ? wasOpen.has(`${turn}:${cls}`) : dflt;
-
-        // Newest first: the interesting turn during a live match is the last one.
-        const html = turns.slice().reverse().map(e => {
-            const tok = e.tokens ? `${e.tokens.prompt}→${e.tokens.completion} tok` : '';
-            const ms = e.latencyMs != null ? `${(e.latencyMs / 1000).toFixed(1)}s` : '';
-            const act = e.parsed && e.parsed.action ? e.parsed.action : null;
-            const failed = typeof e.harnessResult === 'string' && e.harnessResult.startsWith('[ERROR]');
-            return `
-                <div class="tv-turn${failed ? ' is-error' : ''}" data-key="${e.turn}">
-                    <div class="tv-turn-head">
-                        <span class="tv-n">#${e.turn}</span>
-                        ${act ? `<span class="tv-act">${esc(act)}</span>` : ''}
-                        <span class="tv-meta">${esc(ms)}${ms && tok ? ' · ' : ''}${esc(tok)}</span>
-                    </div>
-                    ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning,
-                        openFor(e.turn, 'tv-reason', true))}
-                    ${sec('tv-reply', t('spec.tvReply'), e.assistant && e.assistant.content,
-                        openFor(e.turn, 'tv-reply', true))}
-                    ${sec('tv-result', t('spec.tvResult'), e.harnessResult,
-                        openFor(e.turn, 'tv-result', true))}
-                    ${sec('tv-state', t('spec.tvState'),
-                        e.state ? JSON.stringify(e.state, null, 1) : '',
-                        openFor(e.turn, 'tv-state', false))}
-                </div>`;
-        }).join('');
-        body.innerHTML = html;
-
-        // Follow the newest turn only while the reader is already at the top;
-        // otherwise pin the entry they were on. New turns arrive ABOVE, so restoring
-        // a raw pixel offset would still slide the view — the anchor is an entry.
-        if (atTop) {
+        // Rebuilding the whole list on every turn was the freeze: 251ms at 25 turns,
+        // 5.7s at the 300 cap, and it grew as a match ran. The list only ever changes
+        // by gaining turns at the top and shedding them off the bottom, so do exactly
+        // that. It also removes the need to save and restore scroll position, open
+        // sections and their inner scroll — untouched nodes simply keep all three.
+        const keys = turns.map(e => e.turn);
+        const prev = (this._tvRendered && this._tvRendered.id === id) ? this._tvRendered.keys : null;
+        if (!prev) {
+            body.innerHTML = turns.slice().reverse().map(e => this.tvTurnHtml(e)).join('');
             body.scrollTop = 0;
-        } else if (anchorKey != null) {
-            const el = body.querySelector(`[data-key="${anchorKey}"]`);
-            body.scrollTop = el ? (el.offsetTop - anchorOffset) : prevTop;
-        } else {
-            body.scrollTop = prevTop;
+            this._tvRendered = { id, keys };
+            this.updateTranscriptTopBtn();
+            return;
         }
-        // ...and put each section's internal scroll back where the reader left it.
-        wasScrolled.forEach((top, key) => {
-            const [k, cls] = key.split(':');
-            const pre = body.querySelector(`[data-key="${k}"] .${cls} pre`);
-            if (pre) pre.scrollTop = top;
+        if (prev.length === keys.length && prev[prev.length - 1] === keys[keys.length - 1]) {
+            this.updateTranscriptTopBtn();
+            return;                       // nothing new
+        }
+
+        const prevSet = new Set(prev);
+        const fresh = turns.filter(e => !prevSet.has(e.turn));
+        const gone = prev.filter(k => !keys.includes(k));
+        gone.forEach(k => {
+            const n = body.querySelector(`[data-key="${k}"]`);
+            if (n) n.remove();            // fell off the ring
         });
+
+        // Insert ascending at the top so the newest ends up first, and push the
+        // scroll down by exactly what was added — otherwise the reader's content
+        // slides up under them as turns arrive.
+        const atTop = body.scrollTop <= 4;
+        const before = body.scrollHeight;
+        fresh.forEach(e => body.insertAdjacentHTML('afterbegin', this.tvTurnHtml(e)));
+        const grew = body.scrollHeight - before;
+        if (atTop) body.scrollTop = 0;
+        else if (grew > 0) body.scrollTop += grew;
+
+        this._tvRendered = { id, keys };
         this.updateTranscriptTopBtn();
     }
 
