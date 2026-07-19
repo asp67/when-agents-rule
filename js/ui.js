@@ -2799,6 +2799,19 @@ class UIManager {
         if (body) body.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    // Fill a state section's <pre> on first open, from the ring. The JSON never sits
+    // in the document until someone asks for it.
+    tvFillState(d) {
+        const pre = d && d.querySelector('pre');
+        if (!pre || pre.dataset.filled) return;
+        const r = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        const entry = (r ? r.recent(this._transcriptFor) : [])
+            .find(x => String(x.turn) === d.dataset.turn);
+        if (!entry) return;
+        pre.textContent = JSON.stringify(entry.state, null, 1);
+        pre.dataset.filled = '1';
+    }
+
     closeTranscriptViewer() {
         this._transcriptFor = null;
         this.renderTranscriptViewer();
@@ -2809,17 +2822,30 @@ class UIManager {
     // a match-long transcript holds hundreds of 4KB JSON blobs, and putting them all
     // in the document is what made a rebuild cost seconds. Nobody reads more than a
     // couple of them.
+    // Which section TYPES are open, not which instances. Collapsing "Reply" once
+    // means every reply is collapsed, including on turns that have not arrived yet —
+    // a reader who does not care about a section does not care about it four turns
+    // from now either, and having new entries always arrive fully expanded both
+    // surprised the reader and made every insert the tallest it could be.
+    tvSectionPrefs() {
+        if (!this._tvSecOpen) {
+            this._tvSecOpen = { 'tv-reason': true, 'tv-reply': true, 'tv-result': true, 'tv-state': false };
+        }
+        return this._tvSecOpen;
+    }
+
     tvTurnHtml(e) {
         const esc = s => this.escapeHtml(String(s == null ? '' : s));
-        const sec = (cls, label, text, open) => text
-            ? `<details class="tv-sec ${cls}"${open ? ' open' : ''}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
+        const pref = this.tvSectionPrefs();
+        const sec = (cls, label, text) => text
+            ? `<details class="tv-sec ${cls}"${pref[cls] ? ' open' : ''}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
             : '';
         const tok = e.tokens ? `${e.tokens.prompt}→${e.tokens.completion} tok` : '';
         const ms = e.latencyMs != null ? `${(e.latencyMs / 1000).toFixed(1)}s` : '';
         const act = e.parsed && e.parsed.action ? e.parsed.action : null;
         const failed = typeof e.harnessResult === 'string' && e.harnessResult.startsWith('[ERROR]');
         const state = e.state
-            ? `<details class="tv-sec tv-state" data-turn="${e.turn}"><summary>${t('spec.tvState')}</summary><pre></pre></details>`
+            ? `<details class="tv-sec tv-state"${pref['tv-state'] ? ' open' : ''} data-turn="${e.turn}"><summary>${t('spec.tvState')}</summary><pre></pre></details>`
             : '';
         return `
             <div class="tv-turn${failed ? ' is-error' : ''}" data-key="${e.turn}">
@@ -2828,9 +2854,9 @@ class UIManager {
                     ${act ? `<span class="tv-act">${esc(act)}</span>` : ''}
                     <span class="tv-meta">${esc(ms)}${ms && tok ? ' · ' : ''}${esc(tok)}</span>
                 </div>
-                ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning, true)}
-                ${sec('tv-reply', t('spec.tvReply'), e.assistant && e.assistant.content, true)}
-                ${sec('tv-result', t('spec.tvResult'), e.harnessResult, true)}
+                ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning)}
+                ${sec('tv-reply', t('spec.tvReply'), e.assistant && e.assistant.content)}
+                ${sec('tv-result', t('spec.tvResult'), e.harnessResult)}
                 ${state}
             </div>`;
     }
@@ -2861,15 +2887,31 @@ class UIManager {
             // until someone actually asks for it.
             body.addEventListener('toggle', (ev) => {
                 const d = ev.target;
-                if (!d || !d.classList || !d.classList.contains('tv-state') || !d.open) return;
-                const pre = d.querySelector('pre');
-                if (!pre || pre.dataset.filled) return;
-                const r = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
-                const entry = (r ? r.recent(this._transcriptFor) : [])
-                    .find(x => String(x.turn) === d.dataset.turn);
-                if (!entry) return;
-                pre.textContent = JSON.stringify(entry.state, null, 1);
-                pre.dataset.filled = '1';
+                if (!d || !d.classList || !d.classList.contains('tv-sec')) return;
+                const cls = [...d.classList].find(c => c !== 'tv-sec');
+                if (!cls) return;
+                if (d.classList.contains('tv-state') && d.open) this.tvFillState(d);
+
+                // Echo check, NOT a re-entrancy flag: 'toggle' fires asynchronously, so
+                // a flag set and cleared around the cascade is already false by the time
+                // the cascade's own events land. Each then re-entered as if the reader
+                // had clicked it — one click produced 153 events and nudged the scroll
+                // 51 times, which is where the drift came from. If this section already
+                // matches the stored preference it IS one of those echoes.
+                const pref = this.tvSectionPrefs();
+                if (pref[cls] === d.open) return;
+                pref[cls] = d.open;
+
+                // Mirror across every turn, holding the clicked section still: the
+                // others change height around it, and the reader is looking at THIS one.
+                const gap = d.getBoundingClientRect().top - body.getBoundingClientRect().top;
+                body.querySelectorAll(`.${cls}`).forEach(o => {
+                    if (o === d || o.open === d.open) return;
+                    o.open = d.open;
+                    if (d.open && o.classList.contains('tv-state')) this.tvFillState(o);
+                });
+                const moved = (d.getBoundingClientRect().top - body.getBoundingClientRect().top) - gap;
+                if (moved) body.scrollTop += moved;
             }, true);
             body._tvBound = true;
         }
@@ -2907,15 +2949,28 @@ class UIManager {
             if (n) n.remove();            // fell off the ring
         });
 
-        // Insert ascending at the top so the newest ends up first, and push the
-        // scroll down by exactly what was added — otherwise the reader's content
-        // slides up under them as turns arrive.
+        // Insert ascending at the top so the newest ends up first, then put the
+        // reader back on the entry they were looking at.
+        //
+        // NOT a scrollHeight delta: that assumes insertion is the only thing that
+        // changed height, and it is not — collapsing a section or lazily filling a
+        // state JSON changes it too, and the correction was then wrong by a constant
+        // ~940px no matter where the collapse happened. Anchoring on an ELEMENT is
+        // exact whatever else moved.
         const atTop = body.scrollTop <= 4;
-        const before = body.scrollHeight;
+        let anchorEl = null, anchorGap = 0;
+        if (!atTop) {
+            for (const el of body.children) {
+                if (el.offsetTop + el.offsetHeight > body.scrollTop) {  // first visible turn
+                    anchorEl = el;
+                    anchorGap = el.offsetTop - body.scrollTop;
+                    break;
+                }
+            }
+        }
         fresh.forEach(e => body.insertAdjacentHTML('afterbegin', this.tvTurnHtml(e)));
-        const grew = body.scrollHeight - before;
         if (atTop) body.scrollTop = 0;
-        else if (grew > 0) body.scrollTop += grew;
+        else if (anchorEl && anchorEl.isConnected) body.scrollTop = anchorEl.offsetTop - anchorGap;
 
         this._tvRendered = { id, keys };
         this.updateTranscriptTopBtn();
