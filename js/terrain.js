@@ -66,6 +66,7 @@ class TerrainManager {
         this.generateTrees();
         this.generateStones();
         this.generateGold();
+        this._seededNodeCounts = null;   // recounted lazily; see seededNodeCounts()
         // Ground, water, foam and ambient cover are painted/drawn by the engine
         // (terrain mega-texture flecks replace the old instanced prop scatter).
     }
@@ -162,6 +163,29 @@ class TerrainManager {
         // tactical choice — and on Desert (114% of the food needed to reach Iron)
         // into a requirement.
         this.scatterEqual('food', 196 * this.diffMods().food, 500);
+    }
+
+    // What this map holds, per type — the size of the larder every model is told.
+    //
+    // Counted from the array rather than the seeding formula, because the scatter can
+    // place a couple fewer than the target where a sector has no room, and a stated
+    // total that quietly differs from reality is worse than none.
+    //
+    // Counted LAZILY, on first ask, because clearResourcesNear() splices nodes out
+    // under each starting Town Center AFTER generateTerrain() runs — counting during
+    // generation reported 392 food on a map that ended up with 390.
+    //
+    // Safe to cache from then on: depletion sets amount to 0 and KEEPS the node in
+    // the array (fog memory stores array indices), so nothing is removed mid-match.
+    // And a cached figure is what we want anyway — a live count would fall as nodes
+    // were consumed, letting a player infer rivals mining somewhere it cannot see.
+    seededNodeCounts() {
+        if (!this._seededNodeCounts) {
+            this._seededNodeCounts = (this.resources || []).reduce((a, r) => {
+                a[r.type] = (a[r.type] || 0) + 1; return a;
+            }, {});
+        }
+        return this._seededNodeCounts;
     }
 
     // Remove a single resource node (its handle just goes with it).
