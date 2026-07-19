@@ -1421,7 +1421,9 @@
                 this._fogCanvas = fow.fogDisplayCanvas;
                 // NPOT canvas (numTiles*4, e.g. 1600) — clamp + no mipmaps
                 this._fogTex = GLCore.createTextureFromCanvas(gl, this._fogCanvas, { clamp: true, nomip: true });
-                const size = fow.mapSize || 800;
+                // The fog reaches past the map so it can fade out over water rather
+                // than being cut off at the coast — the plane has to match.
+                const size = fow.displayWorldSize || fow.mapSize || 800;
                 this._fogEntry = {
                     buf: this._buf('gridPlane', [size, 1, 1]),
                     tex: this._fogTex, tint: this.WHITE,

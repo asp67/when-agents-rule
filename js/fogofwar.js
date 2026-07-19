@@ -8,6 +8,15 @@ class FogOfWarManager {
     // is cut out with scissors.
     static get FEATHER_WORLD() { return 5; }
 
+    // How far the fog reaches PAST the map, and the width it fades out over. The
+    // plane used to be exactly mapSize, so it stopped dead at ±400 while the coast
+    // runs out to ~416 — a hard square cut across the beach, fogged land on the
+    // inside and fully lit shore on the outside. Fading BEYOND the map rather than
+    // inside it means no part of the playable area trades fog integrity for the
+    // effect: units clamp to ~396 and resources are seeded inside 360, so
+    // everything past 400 is shoreline and open water.
+    static get EDGE_MARGIN_WORLD() { return 60; }
+
     constructor(game) {
         this.game = game;
         this.renderer = game.renderer;
@@ -48,9 +57,21 @@ class FogOfWarManager {
         // directly gave hard-edged blocky reveal squares — the ugliest thing on
         // screen while spectating. Feathering it here costs one blurred drawImage
         // every fog update (~2/s) and turns the reveals into soft fog lobes.
+        // ...and a margin of edge-extended cells around it, so the fog can fade out
+        // past the map instead of being cut off at it. Composed at CELL resolution
+        // first: blurring each of the nine pieces separately would fade every
+        // piece's own border and seam the margin, so the whole thing is assembled
+        // unblurred and then blur-upscaled in one pass.
+        this._marginCells = Math.round(FogOfWarManager.EDGE_MARGIN_WORLD / this.gridSize);
+        this.displayWorldSize = this.mapSize + 2 * FogOfWarManager.EDGE_MARGIN_WORLD;
+        const cells = this.numTiles + 2 * this._marginCells;
+        this._scratchCanvas = document.createElement('canvas');
+        this._scratchCanvas.width = this._scratchCanvas.height = cells;
+        this._scratchCtx = this._scratchCanvas.getContext('2d');
+
         this.fogDisplayCanvas = document.createElement('canvas');
-        this.fogDisplayCanvas.width = this.numTiles * 4;
-        this.fogDisplayCanvas.height = this.numTiles * 4;
+        this.fogDisplayCanvas.width = cells * 4;
+        this.fogDisplayCanvas.height = cells * 4;
         this.fogDisplayCtx = this.fogDisplayCanvas.getContext('2d');
 
         // Initialize fog texture + hide resources that start unexplored
@@ -191,18 +212,57 @@ class FogOfWarManager {
         // soft fog edges instead of hard tile stairsteps. ctx.filter is supported
         // in every current browser; if it ever isn't, the smoothed upscale alone
         // still softens the blocks.
-        const d = this.fogDisplayCtx;
+        const src = this.fogCanvas, sw = src.width, sh = src.height;
+        const M = this._marginCells, S = this._scratchCanvas.width;
+        const s = this._scratchCtx;
+        // Compose grid + margin at cell resolution. The margin is the border row /
+        // column STRETCHED outward: a uniformly dark margin would ring explored
+        // coastline in shadow, and a clear one would cut back the same hard square
+        // this exists to remove. Extending means the fog simply keeps saying
+        // whatever the map's edge said, then stops mattering.
+        s.save();
+        s.imageSmoothingEnabled = false;
+        s.clearRect(0, 0, S, S);
+        s.drawImage(src, 0, 0, sw, sh, M, M, sw, sh);                       // the map
+        s.drawImage(src, 0, 0, sw, 1, M, 0, sw, M);                         // top
+        s.drawImage(src, 0, sh - 1, sw, 1, M, S - M, sw, M);                // bottom
+        s.drawImage(src, 0, 0, 1, sh, 0, M, M, sh);                         // left
+        s.drawImage(src, sw - 1, 0, 1, sh, S - M, M, M, sh);                // right
+        s.drawImage(src, 0, 0, 1, 1, 0, 0, M, M);                           // corners
+        s.drawImage(src, sw - 1, 0, 1, 1, S - M, 0, M, M);
+        s.drawImage(src, 0, sh - 1, 1, 1, 0, S - M, M, M);
+        s.drawImage(src, sw - 1, sh - 1, 1, 1, S - M, S - M, M, M);
+        s.restore();
+
+        const d = this.fogDisplayCtx, W = this.fogDisplayCanvas.width;
         // The radius is stated in WORLD units and converted here, so changing
         // gridSize or the upscale can't silently change how soft the fog reads.
         // At a flat 3px it feathered barely 1.5 world units against a 15-unit
         // vision radius, which is why the reveal edge looked cut rather than lit.
-        const blurPx = Math.max(1, Math.round(
-            FogOfWarManager.FEATHER_WORLD * (this.fogDisplayCanvas.width / this.mapSize)));
+        const pxPerWorld = W / this.displayWorldSize;
+        const blurPx = Math.max(1, Math.round(FogOfWarManager.FEATHER_WORLD * pxPerWorld));
         d.save();
-        d.clearRect(0, 0, this.fogDisplayCanvas.width, this.fogDisplayCanvas.height);
+        d.clearRect(0, 0, W, W);
         d.imageSmoothingEnabled = true;
         try { d.filter = `blur(${blurPx}px)`; } catch (e) {}
-        d.drawImage(this.fogCanvas, 0, 0, this.fogDisplayCanvas.width, this.fogDisplayCanvas.height);
+        d.drawImage(this._scratchCanvas, 0, 0, W, W);
+        // Then ramp the margin away, so the plane's own edge has nothing left to
+        // show. Four linear gradients; the corners get both and so fade sooner,
+        // which is what a corner should do anyway.
+        try { d.filter = 'none'; } catch (e) {}
+        d.globalCompositeOperation = 'destination-out';
+        const m = Math.round(FogOfWarManager.EDGE_MARGIN_WORLD * pxPerWorld);
+        const ramp = (x0, y0, x1, y1, rx, ry, rw, rh) => {
+            const g = d.createLinearGradient(x0, y0, x1, y1);
+            g.addColorStop(0, 'rgba(0,0,0,1)');
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            d.fillStyle = g;
+            d.fillRect(rx, ry, rw, rh);
+        };
+        ramp(0, 0, m, 0, 0, 0, m, W);                 // left
+        ramp(W, 0, W - m, 0, W - m, 0, m, W);         // right
+        ramp(0, 0, 0, m, 0, 0, W, m);                 // top
+        ramp(0, W, 0, W - m, 0, W - m, W, m);         // bottom
         d.restore();
 
         this.fogDirty = true; // renderer re-uploads the display canvas next frame
@@ -296,6 +356,7 @@ class FogOfWarManager {
     destroy() {
         this.fogDisplayCanvas = null;
         this.fogCanvas = null;
+        this._scratchCanvas = null;
         this.fogDirty = false;
     }
 }
