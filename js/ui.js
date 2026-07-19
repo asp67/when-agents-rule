@@ -1741,7 +1741,12 @@ class UIManager {
             if (document.hidden) return;
             const el = document.getElementById('arenaSummaryScreen');
             if (el && el.classList.contains('snapshot') && el.classList.contains('active')) {
-                this.renderSummaryChart();
+                // Re-render the card itself, not just the graph: duration, the
+                // leader banner, scores, ages and unit counts all move underneath.
+                // The grid holds no inputs, so rebuilding it costs nothing a reader
+                // would notice — and the chart's own guard keeps the expensive half
+                // from redoing work when no sample has landed.
+                this.showArenaSummary(null, 'snapshot', { snapshot: true });
             }
         }, 1000));
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateArenaStatus(); }, 1000));
@@ -2818,7 +2823,6 @@ class UIManager {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         if (rec && !snapshot) { try { rec.flushAll(); } catch (e) {} }
         this.updateTranscriptOffer(snapshot);
-        this._chartSig = null;      // force a rebuild whenever the card is (re)opened
         this.renderSummaryChart();
     }
 
@@ -3088,6 +3092,10 @@ class UIManager {
 
     // Light the Results button while its card is up, the way Auto lights while the
     // director camera runs — the toggle has to show which way it is currently set.
+    // Called when the Results card is opened, so the chart rebuilds once on entry
+    // and then only when new samples land.
+    resetChartCache() { this._chartSig = null; }
+
     updateSnapshotBtn() {
         const btn = document.getElementById('arenaSnapshotBtn');
         const el = document.getElementById('arenaSummaryScreen');

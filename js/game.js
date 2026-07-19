@@ -97,6 +97,7 @@ class Game {
         if (el && el.classList.contains('snapshot') && el.classList.contains('active')) {
             this.ui.closeArenaSnapshot();
         } else {
+            this.ui.resetChartCache();   // rebuild the graph once on entry
             this.ui.showArenaSummary(null, 'snapshot', { snapshot: true });
         }
     }
