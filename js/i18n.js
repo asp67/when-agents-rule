@@ -292,7 +292,6 @@ const I18N = {
         // Benchmark summary
         'sum.title': '🏟️ Arena — Model evaluation',
         'sum.newArena': '⚔️ New arena',
-        'sum.backToGame': '⬅ Back to the game',
         'sum.snapLeader': 'current leader',
         'sum.reason.snapshot': 'Live snapshot — the match is still running',
         'sum.saveResults': '💾 Save results',
@@ -578,7 +577,6 @@ const I18N = {
 
         'sum.title': '🏟️ Arena — Modell-Auswertung',
         'sum.newArena': '⚔️ Neue Arena',
-        'sum.backToGame': '⬅ Zurück zum Spiel',
         'sum.snapLeader': 'aktuell führend',
         'sum.reason.snapshot': 'Live-Zwischenstand — das Match läuft weiter',
         'sum.saveResults': '💾 Ergebnisse speichern',
@@ -856,7 +854,6 @@ const I18N = {
 
         'sum.title': '🏟️ Arena — Evaluación de modelos',
         'sum.newArena': '⚔️ Nueva arena',
-        'sum.backToGame': '⬅ Volver al juego',
         'sum.snapLeader': 'líder actual',
         'sum.reason.snapshot': 'Instantánea en vivo — la partida sigue en curso',
         'sum.saveResults': '💾 Guardar resultados',
@@ -1142,7 +1139,6 @@ const I18N = {
 
         'sum.title': '🏟️ 竞技场 — 模型评估',
         'sum.newArena': '⚔️ 新竞技场',
-        'sum.backToGame': '⬅ 返回游戏',
         'sum.snapLeader': '当前领先',
         'sum.reason.snapshot': '实时快照 — 比赛仍在进行',
         'sum.saveResults': '💾 保存结果',

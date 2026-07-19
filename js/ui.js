@@ -2743,12 +2743,15 @@ class UIManager {
         // Snapshot: Back returns to the running game; hide the terminal
         // navigation so a live match can't be abandoned by accident. A real end
         // (also when it fires WHILE a snapshot is open) restores the buttons.
-        const backBtn = document.getElementById('summaryBackBtn');
+        // A snapshot carries NO buttons at all: the Results toggle that opened it
+        // closes it, and saving mid-match saves a partial run nobody wants — that
+        // belongs at the end, where the numbers are final.
         const newBtn = document.getElementById('summaryNewArenaBtn');
         const menuBtn = document.getElementById('summaryMenuBtn');
-        if (backBtn) backBtn.style.display = snapshot ? '' : 'none';
+        const saveBtn = document.getElementById('summarySaveBtn');
         if (newBtn) newBtn.style.display = snapshot ? 'none' : '';
         if (menuBtn) menuBtn.style.display = snapshot ? 'none' : '';
+        if (saveBtn) saveBtn.style.display = snapshot ? 'none' : '';
 
         // Snapshot: OVERLAY the running game — gameScreen stays active underneath
         // and the .snapshot variant has a translucent backdrop, so the live match
@@ -2761,6 +2764,7 @@ class UIManager {
             sumEl.classList.remove('snapshot');
             this.showScreen('arenaSummaryScreen');
         }
+        this.updateSnapshotBtn();
         // Get the tail of the match onto disk before the download button can be
         // pressed, or the last few turns of each player would be missing from it.
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
@@ -3029,6 +3033,17 @@ class UIManager {
         if (sumEl) sumEl.classList.remove('snapshot', 'active');
         const gs = document.getElementById('gameScreen');
         if (gs && this.game && this.game.gameStarted) gs.classList.add('active');
+        this.updateSnapshotBtn();
+    }
+
+    // Light the Results button while its card is up, the way Auto lights while the
+    // director camera runs — the toggle has to show which way it is currently set.
+    updateSnapshotBtn() {
+        const btn = document.getElementById('arenaSnapshotBtn');
+        const el = document.getElementById('arenaSummaryScreen');
+        if (!btn) return;
+        btn.classList.toggle('sb-on', !!(el && el.classList.contains('snapshot')
+            && el.classList.contains('active')));
     }
 
     // Build a human-readable Markdown report of the last match.

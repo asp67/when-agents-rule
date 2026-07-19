@@ -85,11 +85,20 @@ class Game {
     }
 
     // Results button: a LIVE snapshot of the standings in the summary layout.
-    // Nothing stops — the match and the LLM pipeline keep running; the summary
-    // screen shows a Back button that returns to the game.
-    showArenaSnapshot() {
+    // Nothing stops — the match and the LLM pipeline keep running.
+    //
+    // A toggle, like Auto beside it: the same button that opened it closes it. It
+    // used to be one-way, with a Back button inside the card doing the returning —
+    // two controls for one piece of state, and the way out was somewhere other than
+    // the way in.
+    toggleArenaSnapshot() {
         if (!this.gameStarted || !this.spectatorMode) return;
-        this.ui.showArenaSummary(null, 'snapshot', { snapshot: true });
+        const el = document.getElementById('arenaSummaryScreen');
+        if (el && el.classList.contains('snapshot') && el.classList.contains('active')) {
+            this.ui.closeArenaSnapshot();
+        } else {
+            this.ui.showArenaSummary(null, 'snapshot', { snapshot: true });
+        }
     }
 
     confirmCancelGame() {
