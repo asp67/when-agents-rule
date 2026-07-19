@@ -1056,7 +1056,28 @@ class UIManager {
         document.getElementById('currentAge').textContent = t(key) !== key ? t(key) : age;
     }
 
+    // Re-render whatever the info card is currently showing.
+    //
+    // updateUnitInfo only ever ran on a selection EVENT, so the card was a snapshot
+    // taken the moment you clicked: watch a building being attacked and its health
+    // never moved. Called from the game tick now, throttled.
+    //
+    // Two things it must not trample. showErrorMessage/showInfoMessage borrow this
+    // same element for a few seconds and restore what was there — refreshing during
+    // that window would cut the message short AND make it restore stale markup. And
+    // a subject that has died should release the card rather than freeze on a
+    // corpse's last numbers.
+    refreshUnitInfo() {
+        if (this._infoBorrowed) return;
+        const s = this._infoSubject;
+        if (!s || (!s.unit && !s.building)) return;
+        const ent = s.unit || s.building;
+        if (ent.health <= 0) { this.updateUnitInfo(null, null); return; }
+        this.updateUnitInfo(s.unit, s.building);
+    }
+
     updateUnitInfo(unit, building) {
+        this._infoSubject = { unit: unit || null, building: building || null };
         const infoDiv = document.getElementById('unitInfo');
         const spectator = this.game && this.game.spectatorMode;
         // In spectator every entity belongs to a rival civ — lead with the SEAT
@@ -1536,31 +1557,46 @@ class UIManager {
 
     showBuildingPlacementHint(buildingName) {
         const infoDiv = document.getElementById('unitInfo');
+        this._infoBorrowed = true;   // held until the placement is finished or cancelled
         infoDiv.innerHTML = `<p style="color: #4ecca3; font-weight: bold;">${t('msg.buildHint', { name: tg(buildingName) })}</p>`;
     }
 
     hideBuildingPlacementHint() {
         const infoDiv = document.getElementById('unitInfo');
+        this._infoBorrowed = false;
         infoDiv.innerHTML = `<p>${t('hud.selectHint')}</p>`;
     }
 
     showErrorMessage(message) {
         const infoDiv = document.getElementById('unitInfo');
         if (!infoDiv) return;
-        const original = infoDiv.innerHTML;
+        // Borrowed: hold the periodic refresh off until we hand the card back, and
+        // re-render on release rather than restoring the markup we captured — by
+        // then it is seconds stale.
+        this._infoBorrowed = true;
         infoDiv.innerHTML = `<p style="color: #e94560; font-weight: bold;">⚠️ ${message}</p>`;
-        setTimeout(() => {
-            infoDiv.innerHTML = original;
+        clearTimeout(this._infoBorrowTimer);
+        this._infoBorrowTimer = setTimeout(() => {
+            this._infoBorrowed = false;
+            this.refreshUnitInfo();
+            if (!this._infoSubject || (!this._infoSubject.unit && !this._infoSubject.building)) {
+                this.updateUnitInfo(null, null);
+            }
         }, 3000);
     }
 
     showInfoMessage(message) {
         const infoDiv = document.getElementById('unitInfo');
         if (!infoDiv) return;
-        const original = infoDiv.innerHTML;
+        this._infoBorrowed = true;
         infoDiv.innerHTML = `<p style="color: #4ecca3; font-weight: bold;">✅ ${message}</p>`;
-        setTimeout(() => {
-            infoDiv.innerHTML = original;
+        clearTimeout(this._infoBorrowTimer);
+        this._infoBorrowTimer = setTimeout(() => {
+            this._infoBorrowed = false;
+            this.refreshUnitInfo();
+            if (!this._infoSubject || (!this._infoSubject.unit && !this._infoSubject.building)) {
+                this.updateUnitInfo(null, null);
+            }
         }, 2500);
     }
 

@@ -595,6 +595,14 @@ class Game {
             ai.resources.updatePopulation(ai.units.length);
         });
         this.sampleTimeline(currentTime);
+        // Keep the selection card current. Health, and anything else it shows, moves
+        // while you watch; the card only ever rendered on the click that selected.
+        // Throttled to ~400ms: fast enough to watch a building lose health, far
+        // cheaper than the per-frame rebuild a tick-rate refresh would be.
+        if (currentTime - (this._infoTick || 0) >= 400) {
+            this._infoTick = currentTime;
+            if (this.ui && this.ui.refreshUnitInfo) this.ui.refreshUnitInfo();
+        }
 
         // Fine simulation in ≤100ms sub-steps so the FULL elapsed time is advanced.
         const STEP_MAX = 100;
