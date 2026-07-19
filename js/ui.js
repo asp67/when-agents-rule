@@ -1693,6 +1693,9 @@ class UIManager {
         // keeps the SIMULATION running, but nobody is looking at the leaderboard.
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSpectatorPlayerList(); }, 1500));
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateDecisionLog(); }, 1000));
+        // The viewer follows the match live; renderTranscriptViewer no-ops unless a
+        // model is actually being watched and its turn count has moved.
+        this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.renderTranscriptViewer(); }, 1000));
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateArenaStatus(); }, 1000));
     }
 
@@ -2309,6 +2312,7 @@ class UIManager {
                 <div class="lb-card rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" data-ai="${ai.id}" onclick="game.focusCameraOnAI('${ai.id}')" title="${t('spec.cardHint')}">
                     <div class="lb-fly-tab" title="${t('spec.flyTabTitle')}" onclick="event.stopPropagation(); game.ui.openLbFlyout('${ai.id}')">◀</div>
                     <div class="lb-model-banner" title="${this.escapeHtml(r.modelName)}">
+                        ${r.isLLM ? `<button class="lb-spy${this._transcriptFor === ai.id ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer('${ai.id}')" title="${t('spec.transcript')}">🔎</button>` : ''}
                         <span class="lb-model-name">${this.escapeHtml(r.modelName)}</span>
                         ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel('${ai.id}')" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
                     </div>
@@ -2762,6 +2766,85 @@ class UIManager {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         if (rec && !snapshot) { try { rec.flushAll(); } catch (e) {} }
         this.updateTranscriptOffer(snapshot);
+    }
+
+    // ---- In-match transcript viewer ------------------------------------------
+    // One panel, re-targeted rather than one per model: the spyglass on another
+    // card swaps whose exchange is shown instead of stacking a second window over
+    // the match. Reads the recorder's in-memory ring (last 300 turns), so opening
+    // it costs nothing and it follows the match live.
+    toggleTranscriptViewer(aiId) {
+        this._transcriptFor = (this._transcriptFor === aiId) ? null : aiId;
+        this._tvSig = null;                 // force a rebuild on re-target
+        this.renderTranscriptViewer();
+        this.updateSpectatorPlayerList();   // repaint the spyglass active states
+    }
+
+    closeTranscriptViewer() {
+        this._transcriptFor = null;
+        this.renderTranscriptViewer();
+        this.updateSpectatorPlayerList();
+    }
+
+    renderTranscriptViewer() {
+        const el = document.getElementById('transcriptViewer');
+        if (!el) return;
+        const id = this._transcriptFor;
+        if (!id) { el.style.display = 'none'; this._tvSig = null; return; }
+
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
+        const turns = rec ? rec.recent(id) : [];
+        el.style.display = '';
+
+        const head = document.getElementById('tvTitle');
+        const cnt = document.getElementById('tvCount');
+        if (head) head.innerHTML = `${this.teamDotHtml(ai && ai.seat, 11)}<span>${this.escapeHtml(
+            (turns.length && turns[turns.length - 1].name) || (ai && ai.civilization) || id)}</span>`;
+        if (cnt) cnt.textContent = turns.length ? `${turns.length}` : '';
+
+        // Only rebuild when something changed — this refreshes on the 1s spectator
+        // tick and re-rendering every second would collapse any section the reader
+        // had opened, mid-read.
+        const last = turns[turns.length - 1];
+        const sig = `${id}:${turns.length}:${last ? last.turn + ':' + (last.harnessResult ? 1 : 0) : 0}`;
+        if (sig === this._tvSig) return;
+        this._tvSig = sig;
+
+        const body = document.getElementById('tvBody');
+        if (!body) return;
+        if (!turns.length) {
+            body.innerHTML = `<div class="tv-empty">${t('spec.tvEmpty')}</div>`;
+            return;
+        }
+
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const sec = (cls, label, text, open) => text
+            ? `<details class="tv-sec ${cls}"${open ? ' open' : ''}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
+            : '';
+
+        // Newest first: the interesting turn during a live match is the last one.
+        const html = turns.slice().reverse().map(e => {
+            const tok = e.tokens ? `${e.tokens.prompt}→${e.tokens.completion} tok` : '';
+            const ms = e.latencyMs != null ? `${(e.latencyMs / 1000).toFixed(1)}s` : '';
+            const act = e.parsed && e.parsed.action ? e.parsed.action : null;
+            const failed = typeof e.harnessResult === 'string' && e.harnessResult.startsWith('[ERROR]');
+            return `
+                <div class="tv-turn${failed ? ' is-error' : ''}">
+                    <div class="tv-turn-head">
+                        <span class="tv-n">#${e.turn}</span>
+                        ${act ? `<span class="tv-act">${esc(act)}</span>` : ''}
+                        <span class="tv-meta">${esc(ms)}${ms && tok ? ' · ' : ''}${esc(tok)}</span>
+                    </div>
+                    ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning, true)}
+                    ${sec('tv-reply', t('spec.tvReply'), e.assistant && e.assistant.content, true)}
+                    ${sec('tv-result', t('spec.tvResult'), e.harnessResult, true)}
+                    ${sec('tv-state', t('spec.tvState'),
+                        e.state ? JSON.stringify(e.state, null, 1) : '', false)}
+                </div>`;
+        }).join('');
+        body.innerHTML = html;
+        body.scrollTop = 0;
     }
 
     // ---- Match transcripts ---------------------------------------------------
