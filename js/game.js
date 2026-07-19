@@ -2847,6 +2847,19 @@ class Game {
         return owner.resources.maxPopulation;
     }
 
+    // The A1..G7 label for a world position, on the same grid map.exploration uses
+    // and explore() takes. Map geometry, so it lives here rather than in the LLM
+    // harness: the spectator's coordinate flag reads it too, and two copies of the
+    // same bucketing would eventually disagree about where a tile boundary is.
+    tileLabelAt(x, z) {
+        const T = this.EXPLORE_TILES || 7;
+        const size = (this.terrain && this.terrain.size) || 800;
+        const cell = size / T, half = size / 2;
+        const col = Math.min(T - 1, Math.max(0, Math.floor((x + half) / cell)));
+        const row = Math.min(T - 1, Math.max(0, Math.floor((z + half) / cell)));
+        return String.fromCharCode(65 + col) + (row + 1);
+    }
+
     // Spectator probe: WHO actually knows this spot? The rendered fog cannot
     // answer that — in spectator mode it is the UNION of every player's sight
     // and it never fades, so lit ground only proves SOMEONE has been there.

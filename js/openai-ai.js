@@ -138,12 +138,7 @@ class OpenAIAIManager {
 
     // Which tile is this world position in?
     tileAt(game, x, z) {
-        const T = game.EXPLORE_TILES || 7;
-        const size = (game.terrain && game.terrain.size) || 800;
-        const cell = size / T, half = size / 2;
-        const col = Math.min(T - 1, Math.max(0, Math.floor((x + half) / cell)));
-        const row = Math.min(T - 1, Math.max(0, Math.floor((z + half) / cell)));
-        return this.tileLabel(row, col);
+        return game.tileLabelAt(x, z);
     }
 
     // The tiles this player actually holds, busiest first, for error messages that

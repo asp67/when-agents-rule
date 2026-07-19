@@ -109,7 +109,12 @@ class InputManager {
             const whatLabel = (d && d.kind === 'node')
                 ? t('cf.node', { res: t('res.' + d.res) })
                 : t('cf.ground');
-            let html = `<span class="cf-pos">🚩 ${Math.round(world.x)}, ${Math.round(world.z)}</span>`;
+            // Both coordinate systems on one line: the tile is what explore() takes
+            // and what map.exploration is keyed by, the raw position is what every
+            // other action wants. Reading a spot off the map should answer both
+            // without the spectator converting between them by hand.
+            const tile = this.game.tileLabelAt ? this.game.tileLabelAt(world.x, world.z) : null;
+            let html = `<span class="cf-pos">🚩 ${tile ? tile + ' / ' : ''}${Math.round(world.x)}, ${Math.round(world.z)}</span>`;
             if (d) {
                 if (d.knowers.length) {
                     html += `<span class="cf-head">${whatLabel} — ${t('cf.discoveredBy')}</span>`;
