@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=356">
+    <link rel="stylesheet" href="css/styles.css?v=357">
 </head>
 <body>
     <!-- Start Screen -->
@@ -362,35 +362,38 @@
             <div id="summaryWinner" class="summary-winner"></div>
             <div id="summaryGrid" class="summary-grid"></div>
             <p class="summary-legend" id="summaryLegend"></p>
+            <p class="summary-transcript-note" id="summaryTranscriptNote" style="display:none"></p>
             <div class="summary-buttons">
                 <button class="menu-btn" id="summaryBackBtn" onclick="game.ui.closeArenaSnapshot()" data-i18n="sum.backToGame" style="display:none">⬅ Zurück zum Spiel</button>
-                <button class="menu-btn" id="summaryNewArenaBtn" onclick="game.showArenaSetup()" data-i18n="sum.newArena">⚔️ Neue Arena</button>
+                <button class="menu-btn" id="summaryNewArenaBtn" onclick="game.ui.leaveArenaSummary(false)" data-i18n="sum.newArena">⚔️ Neue Arena</button>
                 <button class="menu-btn back-btn" onclick="game.ui.downloadArenaResults()" data-i18n="sum.saveResults">💾 Ergebnisse speichern</button>
-                <button class="menu-btn back-btn" id="summaryMenuBtn" onclick="location.reload()" data-i18n="sum.mainMenu">Hauptmenü</button>
+                <button class="menu-btn back-btn" id="summaryTranscriptBtn" onclick="game.ui.downloadTranscripts()" data-i18n="sum.saveTranscripts">🗒️ Transkripte speichern</button>
+                <button class="menu-btn back-btn" id="summaryMenuBtn" onclick="game.ui.leaveArenaSummary(true)" data-i18n="sum.mainMenu">Hauptmenü</button>
             </div>
         </div>
     </div>
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=356"></script>
-    <script src="js/engine/glcore.js?v=356"></script>
-    <script src="js/engine/texgen.js?v=356"></script>
-    <script src="js/engine/mesh.js?v=356"></script>
-    <script src="js/engine/buildings.js?v=356"></script>
-    <script src="js/engine/units.js?v=356"></script>
-    <script src="js/engine/gamerenderer.js?v=356"></script>
-    <script src="js/i18n.js?v=356"></script>
-    <script src="js/civilizations.js?v=356"></script>
-    <script src="js/buildings.js?v=356"></script>
-    <script src="js/units.js?v=356"></script>
-    <script src="js/resources.js?v=356"></script>
-    <script src="js/terrain.js?v=356"></script>
-    <script src="js/fogofwar.js?v=356"></script>
-    <script src="js/ai.js?v=356"></script>
-    <script src="js/openai-ai.js?v=356"></script>
-    <script src="js/input.js?v=356"></script>
-    <script src="js/ui.js?v=356"></script>
-    <script src="js/game.js?v=356"></script>
+    <script src="js/engine/math3d.js?v=357"></script>
+    <script src="js/engine/glcore.js?v=357"></script>
+    <script src="js/engine/texgen.js?v=357"></script>
+    <script src="js/engine/mesh.js?v=357"></script>
+    <script src="js/engine/buildings.js?v=357"></script>
+    <script src="js/engine/units.js?v=357"></script>
+    <script src="js/engine/gamerenderer.js?v=357"></script>
+    <script src="js/i18n.js?v=357"></script>
+    <script src="js/civilizations.js?v=357"></script>
+    <script src="js/buildings.js?v=357"></script>
+    <script src="js/units.js?v=357"></script>
+    <script src="js/resources.js?v=357"></script>
+    <script src="js/terrain.js?v=357"></script>
+    <script src="js/fogofwar.js?v=357"></script>
+    <script src="js/ai.js?v=357"></script>
+    <script src="js/transcript.js?v=357"></script>
+    <script src="js/openai-ai.js?v=357"></script>
+    <script src="js/input.js?v=357"></script>
+    <script src="js/ui.js?v=357"></script>
+    <script src="js/game.js?v=357"></script>
 </body>
 </html>

@@ -1922,3 +1922,18 @@ body.spectator-mode #unitInfo.spectator-card {
 .tut-card code { background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.1); border-radius: 5px; padding: 1px 6px; color: #7fe6c8; font-size: 0.9em; }
 .tut-tip { color: #ffd27a !important; margin-top: 8px; }
 @media (max-width: 760px) { .tut-grid { grid-template-columns: 1fr; } }
+
+/* Results screen: the transcript offer. Warm rather than alarming — it is an
+   opportunity with a deadline, not an error. */
+.summary-transcript-note {
+    max-width: 900px;
+    margin: 4px auto 10px;
+    padding: 9px 14px;
+    font-size: 0.82em;
+    line-height: 1.5;
+    color: #d8c9a4;
+    background: rgba(190, 150, 60, 0.1);
+    border: 1px solid rgba(212, 175, 92, 0.35);
+    border-radius: 9px;
+    text-align: center;
+}

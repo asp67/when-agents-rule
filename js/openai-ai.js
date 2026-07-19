@@ -565,6 +565,25 @@ class OpenAIAIManager {
     async initFromSetup(setup) {
         this.aiControllers = [];
 
+        // Transcript recording, always on. begin() purges whatever the previous match
+        // left behind, so a crash or a "Hauptmenü" reload (which cannot be relied on to
+        // finish an async delete during unload) still yields a clean slate here.
+        if (typeof TranscriptRecorder !== 'undefined') {
+            this.transcripts = this.transcripts || new TranscriptRecorder();
+            const stamp = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            const matchId = `match-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}`
+                + `-${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}`;
+            await this.transcripts.begin(matchId, setup.map((s, i) => {
+                const ai = this.game.aiManager.aiPlayers[i];
+                return {
+                    id: ai && ai.id, civilization: s.civ, seat: ai && ai.seat,
+                    model: s.connection ? (s.connection.model || s.connection.name) : 'ki',
+                    name: s.connection ? s.connection.name : null
+                };
+            }));
+        }
+
         for (let i = 0; i < setup.length; i++) {
             const ai = this.game.aiManager.aiPlayers[i];
             const playerSetup = setup[i];
@@ -1589,6 +1608,14 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // rolling history pair (Option C) so the next turn can replay it cheaply.
         controller._pendingTurnUser = this.buildCompactState(gameState);
 
+        // ...and the FULL state for the transcript. Stored as the object rather than
+        // the assembled prompt text on purpose: replayed history means the message
+        // sent on turn N contains turns 1..N-1, so recording the whole payload every
+        // turn would be quadratic — by turn 200 you would have written turn 1 two
+        // hundred times. Keeping the per-turn delta lets any turn's full context be
+        // reconstructed on demand instead.
+        controller._transcriptState = gameState;
+
         // The result of the immediately previous action (rejection reason, parse error,
         // or OK + detail). The model MUST see this every turn or it will happily repeat
         // a rejected command forever.
@@ -1688,6 +1715,30 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 controller.stats.completionTokens += usage.completion;
             }
             const result = this.parseResponse(norm, controller);
+
+            // Transcript: the exchange VERBATIM, for after-the-fact analysis. Separate
+            // from turnLog below, which trims the reply to 600 chars, keeps content or
+            // reasoning but never both, and stores the compact state rather than the
+            // full one the model actually received. A pure observer — wrapped so a
+            // recording fault can never cost a model its move.
+            try {
+                if (this.transcripts && controller._transcriptState != null) {
+                    this.transcripts.record(controller.aiPlayer && controller.aiPlayer.id, {
+                        at: Date.now(),
+                        latencyMs: Date.now() - reqStart,
+                        state: controller._transcriptState,
+                        assistant: {
+                            content: norm ? norm.content : null,
+                            reasoning: norm ? norm.reasoning : null,
+                            tool_calls: norm ? norm.tool_calls : null,
+                            finish_reason: norm ? norm.finish_reason : null
+                        },
+                        parsed: result || null,
+                        tokens: usage ? { prompt: usage.prompt, completion: usage.completion } : null
+                    });
+                }
+                controller._transcriptState = null;
+            } catch (e) { console.warn('[transcript] capture failed', e); }
 
             // Record this exchange for the rolling multi-turn history (Option C):
             // the compact state we showed + the model's (trimmed) reply.
@@ -2221,6 +2272,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 const lastTurn = controller.turnLog[controller.turnLog.length - 1];
                 if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = actionResult;
             }
+            // Same for the transcript: the harness's answer is the other half of the
+            // exchange, and it arrives after the reply was recorded.
+            try {
+                if (this.transcripts) this.transcripts.noteResult(
+                    controller.aiPlayer && controller.aiPlayer.id, actionResult);
+            } catch (e) { /* recording must never break a turn */ }
         }
     }
 

@@ -2757,6 +2757,58 @@ class UIManager {
             sumEl.classList.remove('snapshot');
             this.showScreen('arenaSummaryScreen');
         }
+        // Get the tail of the match onto disk before the download button can be
+        // pressed, or the last few turns of each player would be missing from it.
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        if (rec && !snapshot) { try { rec.flushAll(); } catch (e) {} }
+        this.updateTranscriptOffer(snapshot);
+    }
+
+    // ---- Match transcripts ---------------------------------------------------
+    // Recorded for every player of every match, offered here, and deleted when this
+    // screen is left. The point of the short life is that nothing accumulates on
+    // disk unasked — and that the offer appears at the one moment it is relevant,
+    // so it needs no separate management screen to discover or clean up.
+    updateTranscriptOffer(snapshot) {
+        const btn = document.getElementById('summaryTranscriptBtn');
+        const note = document.getElementById('summaryTranscriptNote');
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        // A snapshot is a mid-match peek: the match continues and so does recording,
+        // so nothing is offered or deleted here.
+        const show = !!(rec && rec.hasData() && !snapshot);
+        if (btn) btn.style.display = show ? '' : 'none';
+        if (note) {
+            note.style.display = show ? '' : 'none';
+            if (show) note.textContent = t('sum.transcriptNote', { turns: rec.turnsRecorded() });
+        }
+    }
+
+    async downloadTranscripts() {
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        if (!rec || !rec.hasData()) return;
+        try {
+            const blob = await rec.exportBlob();
+            const a = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            a.href = url;
+            a.download = `${rec.matchId || 'match'}-transcripts.jsonl`;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+        } catch (e) {
+            console.warn('[transcript] download failed', e);
+        }
+    }
+
+    // Leaving the results screen for good: the transcripts go with it, exactly as
+    // the notice said. Awaited BEFORE a reload, because an async delete started
+    // during unload is not reliably finished — and begin() purges again next match
+    // as the backstop for the paths that never reach here at all (a crash, a tab
+    // closed outright).
+    async leaveArenaSummary(toMainMenu) {
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        try { if (rec) await rec.purge(); } catch (e) { /* leaving anyway */ }
+        if (toMainMenu) location.reload();
+        else this.game.showArenaSetup();
     }
 
     // Back from a snapshot overlay to the (still running) match.
