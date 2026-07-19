@@ -248,10 +248,9 @@
           ],
           "description": "Centre of your buildings (your base)."
         },
-        "nodesSeededOnMap": {
+        "nodesLeftOnMap": {
           "type": "object",
-          "description": "How many resource nodes this map was created with, per type (e.g. {\"food\":390,\"wood\":783,\"stone\":40,\"gold\":18}). Compare with resourcesOnMap — what you have actually discovered — to judge whether more scouting is worth it. The map's difficulty preset scales these: a food-scarce map is seeded with a quarter of the food a plentiful one gets. FIXED for the whole match and identical for every player: it counts what was placed at the start, NOT what remains, so it never reveals that a rival is consuming nodes you cannot see.",
-          "additionalProperties": { "type": "integer", "minimum": 0 }
+          "description": "How many resource nodes of each type are STILL on the map right now, across the whole world (e.g. {\"food\":312,\"wood\":690,\"stone\":37,\"gold\":18}). Compare with resourcesOnMap — what YOU have discovered — to judge whether more scouting is worth it, and watch it fall to see the world running dry: a wood figure sliding toward zero is the signal to stop prospecting and commit to farms. Live rather than a starting snapshot, because a fixed figure goes stale and would have you hunting nodes that no longer exist. It is a total only: no positions, no indication of which nodes went or who took them."
         },
         "yourBaseTiles": {
           "type": "object",

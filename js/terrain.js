@@ -66,7 +66,6 @@ class TerrainManager {
         this.generateTrees();
         this.generateStones();
         this.generateGold();
-        this._seededNodeCounts = null;   // recounted lazily; see seededNodeCounts()
         // Ground, water, foam and ambient cover are painted/drawn by the engine
         // (terrain mega-texture flecks replace the old instanced prop scatter).
     }
@@ -165,27 +164,29 @@ class TerrainManager {
         this.scatterEqual('food', 196 * this.diffMods().food, 500);
     }
 
-    // What this map holds, per type — the size of the larder every model is told.
+    // How many nodes of each type still hold anything, RIGHT NOW. Handed to every
+    // model so scarcity is visible: a wood figure sliding from 196 toward 40 is the
+    // signal to stop prospecting and start farming.
     //
-    // Counted from the array rather than the seeding formula, because the scatter can
-    // place a couple fewer than the target where a sector has no room, and a stated
-    // total that quietly differs from reality is worse than none.
+    // Live, not a snapshot of the seeded map, and that was a deliberate reversal.
+    // A fixed starting figure goes stale the moment nodes are consumed — on a desert
+    // map seeded with 49 food, a model that had found 4 would read "45 still out
+    // there" long after they were gone, and keep scouting instead of building farms.
+    // The harness would be causing the bad play, with a number that was true once.
     //
-    // Counted LAZILY, on first ask, because clearResourcesNear() splices nodes out
-    // under each starting Town Center AFTER generateTerrain() runs — counting during
-    // generation reported 392 food on a map that ended up with 390.
+    // The cost, accepted knowingly: consumption by rivals is inferable in aggregate.
+    // A player that drained 5 nodes while the total fell 50 can tell the other 45
+    // went somewhere it cannot see. There is no position, no attribution and no way
+    // to tell one rival from another in it — and unlike a stale figure, it never
+    // misleads.
     //
-    // Safe to cache from then on: depletion sets amount to 0 and KEEPS the node in
-    // the array (fog memory stores array indices), so nothing is removed mid-match.
-    // And a cached figure is what we want anyway — a live count would fall as nodes
-    // were consumed, letting a player infer rivals mining somewhere it cannot see.
-    seededNodeCounts() {
-        if (!this._seededNodeCounts) {
-            this._seededNodeCounts = (this.resources || []).reduce((a, r) => {
-                a[r.type] = (a[r.type] || 0) + 1; return a;
-            }, {});
-        }
-        return this._seededNodeCounts;
+    // Depleted nodes stay in the resources array (fog memory stores array indices),
+    // so this counts amount > 0 rather than array length.
+    nodesLeftOnMap() {
+        return (this.resources || []).reduce((a, r) => {
+            if (r.amount > 0) a[r.type] = (a[r.type] || 0) + 1;
+            return a;
+        }, {});
     }
 
     // Remove a single resource node (its handle just goes with it).

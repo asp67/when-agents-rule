@@ -778,20 +778,16 @@ class OpenAIAIManager {
             // positions only names a real place when there is exactly one cluster;
             // with a second base, or a base rebuilt after the first fell, it points
             // at empty ground between them.
-            // How many resource nodes this map was SEEDED with, per type. Compare
-            // against "resourcesOnMap" (what you have actually found) to judge whether
-            // there is more worth scouting for.
+            // How many nodes of each type are STILL on the map, right now. Compare
+            // against "resourcesOnMap" (what you have found) to judge whether more
+            // scouting is worth it — and watch it fall to see the world running dry.
             //
             // This replaces the prose biome brief the prompt used to carry. That line
             // said "food is scarce"; the difficulty preset it described is literally a
             // multiplier on these counts — 98 food instead of 392 on a winter map, 49
-            // and half the stone on a desert one. The number says the same thing
-            // exactly, in the channel that cannot go stale.
-            //
-            // Seeded, not remaining: identical for every player and fixed for the whole
-            // match, so it gives nobody an edge and cannot report rivals mining out of
-            // sight the way a live count would.
-            nodesSeededOnMap: Object.assign({}, (game.terrain && game.terrain.seededNodeCounts) ? game.terrain.seededNodeCounts() : {}),
+            // and half the stone on a desert one. The number says the same thing, and
+            // unlike the sentence it keeps saying it as the match wears on.
+            nodesLeftOnMap: Object.assign({}, (game.terrain && game.terrain.nodesLeftOnMap) ? game.terrain.nodesLeftOnMap() : {}),
             yourBaseTiles: (() => {
                 const out = {};
                 ai.buildings.forEach(b => {
