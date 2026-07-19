@@ -25,10 +25,12 @@
     // sea colour beyond the map has to be derived from the SAME value — two
     // copies drifting apart is exactly what put a visible seam at the horizon.
     const AMBIENT = [0.52, 0.55, 0.62];
-    // The island's dimensions, in ONE place. The mega-texture paints the coast from
-    // these, the ground plane spans them and the surf ribbon follows them — three
-    // readers of one fact, which is exactly the arrangement that has to not drift.
-    const TERRAIN_SEED = 12345, TERRAIN_WORLD = 1000, TERRAIN_LAND = 400;
+    // The island's dimensions, owned by TexGen (which paints the coast from them).
+    // The ground plane spans them, the surf ribbon follows them, and TerrainManager
+    // clamps units against them — readers of one fact, which must not drift.
+    const TERRAIN_SEED = TexGen.TERRAIN_SEED,
+          TERRAIN_WORLD = TexGen.TERRAIN_WORLD,
+          TERRAIN_LAND = TexGen.TERRAIN_LAND;
     const BSCALE = 0.78;         // engine building set → game footprint scale
 
     class EngineRenderer {

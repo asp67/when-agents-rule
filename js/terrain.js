@@ -9,6 +9,44 @@ const DIFFICULTY_MODS = {
     hard:   { food: 0.25, wood: 0.25, stone: 0.5, base: 0xcdb886, dry: 0xc2a868 }
 };
 
+// ---- Where the land actually ends -------------------------------------------
+// The coast is a wobbled square, NOT the ±size/2 box isWalkable used to assume:
+// TexGen paints it at chebyshev radius + noise, so the real waterline swings
+// between about 390 and 416. Nothing ever called isWalkable anyway, which is how
+// units came to stand in the sea. Resolved per DIRECTION and cached for the
+// session — the coast follows a fixed seed (only resources and props follow the
+// map seed), and this is consulted for every unit every tick, which is no place
+// for a root-find.
+const COAST_LIMIT_N = 1024;
+// A few units inland of the waterline — the surf's inner edge sits at LAND+3 — so
+// units stop on sand rather than paddling in the shallows.
+const COAST_WALK_DIST = 396;
+let COAST_LIMIT = null;
+
+function coastLimitTable() {
+    if (COAST_LIMIT) return COAST_LIMIT;
+    const wob = TexGen.coastSampler(TexGen.TERRAIN_SEED);
+    const W = TexGen.TERRAIN_WORLD;
+    const lim = new Float32Array(COAST_LIMIT_N + 1);
+    for (let i = 0; i <= COAST_LIMIT_N; i++) {
+        const t = (i / COAST_LIMIT_N) * 4, side = Math.min(3, Math.floor(t)), s = t - side;
+        const p = side === 0 ? [1, s * 2 - 1] : side === 1 ? [1 - s * 2, 1]
+            : side === 2 ? [-1, 1 - s * 2] : [s * 2 - 1, -1];
+        // The same bisection the surf ribbon uses: dist(r) = r + wobble(r) is
+        // strictly increasing, so this lands exactly where iteration only crept.
+        let lo = COAST_WALK_DIST - TexGen.COAST_WOBBLE;
+        let hi = COAST_WALK_DIST + TexGen.COAST_WOBBLE;
+        for (let k = 0; k < 18; k++) {
+            const mid = (lo + hi) / 2;
+            const d = mid + wob((mid * p[0]) / W + 0.5, (mid * p[1]) / W + 0.5);
+            if (d < COAST_WALK_DIST) lo = mid; else hi = mid;
+        }
+        lim[i] = (lo + hi) / 2;
+    }
+    COAST_LIMIT = lim;
+    return lim;
+}
+
 // Pure DATA since the in-house engine (M6): this class generates and manages
 // the map's resource layout; all drawing (island mega-texture, water, foam,
 // resource meshes) lives in EngineRenderer. The `scene` constructor argument
@@ -248,12 +286,37 @@ class TerrainManager {
         return 0; // Flat terrain for simplicity
     }
 
+    // Chebyshev radius of the shoreline in the direction of (x, z).
+    landLimit(x, z) {
+        const lim = coastLimitTable();
+        const ax = Math.abs(x), az = Math.abs(z);
+        if (ax < 1e-6 && az < 1e-6) return lim[0];
+        // Which side of the square this direction falls on, in the same perimeter
+        // parameter the table was built over.
+        let t;
+        if (ax >= az) { const pz = z / ax; t = x > 0 ? (pz + 1) / 2 : 2 + (1 - pz) / 2; }
+        else          { const px = x / az; t = z > 0 ? 1 + (1 - px) / 2 : 3 + (px + 1) / 2; }
+        // Interpolate between entries rather than rounding to one: the coast's
+        // slope is near 1, so snapping to the nearest of 1024 directions carried a
+        // ~0.08-unit error straight into the answer for no reason.
+        const f = Math.min(COAST_LIMIT_N, Math.max(0, (t / 4) * COAST_LIMIT_N));
+        const i0 = Math.floor(f), i1 = Math.min(COAST_LIMIT_N, i0 + 1), a = f - i0;
+        return lim[i0] * (1 - a) + lim[i1] * a;
+    }
+
     isWalkable(x, z) {
-        // Check bounds
-        if (Math.abs(x) > this.size / 2 || Math.abs(z) > this.size / 2) {
-            return false;
-        }
-        return true;
+        return Math.max(Math.abs(x), Math.abs(z)) <= this.landLimit(x, z);
+    }
+
+    // Pull a point back to the shoreline along its chebyshev ray. Scaling keeps the
+    // direction, so the limit at the returned point is the one we just solved for.
+    // Returns the point unchanged when it is already ashore.
+    clampToLand(x, z) {
+        const cheb = Math.max(Math.abs(x), Math.abs(z));
+        const lim = this.landLimit(x, z);
+        if (cheb <= lim) return { x, z };
+        const k = lim / cheb;
+        return { x: x * k, z: z * k };
     }
 
     getMinimapData() {

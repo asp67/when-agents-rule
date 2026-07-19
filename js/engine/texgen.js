@@ -623,6 +623,12 @@
     // which is why the waves ran up the beach in places and out to sea in others.
     TexGen.COAST_CELLS = 24;
     TexGen.COAST_WOBBLE = 26;
+    // The island's dimensions live with the thing that DRAWS the coast, because
+    // everything that needs to agree about where land ends reads them from here:
+    // the renderer's ground plane and surf ribbon, and the terrain's walkability.
+    TexGen.TERRAIN_SEED = 12345;
+    TexGen.TERRAIN_WORLD = 1000;
+    TexGen.TERRAIN_LAND = 400;
     TexGen.coastNoise = (rand) => TexGen.noiseSampler(TexGen.COAST_CELLS, rand);
     // Standalone version for callers outside the texture bake. Inside TexGen.terrain
     // the coast sampler is the FIRST one drawn from the seeded stream, so drawing it

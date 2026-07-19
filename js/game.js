@@ -613,6 +613,7 @@ class Game {
             this.simulateStep(step);
             remaining -= step;
         }
+        this.keepUnitsAshore();
 
         // HUD/minimap work is pointless while the tab is hidden (background ticks)
         // — skip it. Win conditions ALWAYS run so a match can end unattended.
@@ -2799,6 +2800,31 @@ class Game {
     // Clamp a destination to solid ground (off the beach lip / ocean). Land is
     // within ±size/2; the beach starts ~26 units in, so a 30-unit margin keeps
     // units on grass.
+    // Units had NO bounds check at all: isWalkable existed but nothing ever called
+    // it, and the six separate places that step a unit's position each moved it
+    // freely — so anything chasing, fleeing or gathering could walk off the beach
+    // and stand in the sea. One corrective pass, after every sub-step has run,
+    // covers all six paths and any future one; clamping at each call site would
+    // cover today's and quietly miss tomorrow's.
+    keepUnitsAshore() {
+        const t = this.terrain;
+        if (!t || !t.landLimit) return;
+        const seen = new Set();
+        const sweep = p => {
+            if (!p || !p.units || seen.has(p)) return;
+            seen.add(p);
+            for (const u of p.units) {
+                const cheb = Math.max(Math.abs(u.x), Math.abs(u.z));
+                const lim = t.landLimit(u.x, u.z);
+                if (cheb <= lim) continue;      // ashore — the common case, no work
+                const k = lim / cheb;
+                u.x *= k; u.z *= k;
+            }
+        };
+        sweep(this.player);
+        ((this.aiManager && this.aiManager.aiPlayers) || []).forEach(sweep);
+    }
+
     clampToMap(x, z, margin = 30) {
         const half = (this.terrain ? this.terrain.size : 800) / 2 - margin;
         return {

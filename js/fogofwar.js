@@ -3,6 +3,11 @@
 // `fogDirty` flag. EngineRenderer uploads the display canvas as a texture on
 // its fog plane whenever the flag is set (and clears it).
 class FogOfWarManager {
+    // How far the reveal edge feathers, in WORLD units. Against a 15-unit unit
+    // vision radius this is the difference between fog that is lit and fog that
+    // is cut out with scissors.
+    static get FEATHER_WORLD() { return 5; }
+
     constructor(game) {
         this.game = game;
         this.renderer = game.renderer;
@@ -187,10 +192,16 @@ class FogOfWarManager {
         // in every current browser; if it ever isn't, the smoothed upscale alone
         // still softens the blocks.
         const d = this.fogDisplayCtx;
+        // The radius is stated in WORLD units and converted here, so changing
+        // gridSize or the upscale can't silently change how soft the fog reads.
+        // At a flat 3px it feathered barely 1.5 world units against a 15-unit
+        // vision radius, which is why the reveal edge looked cut rather than lit.
+        const blurPx = Math.max(1, Math.round(
+            FogOfWarManager.FEATHER_WORLD * (this.fogDisplayCanvas.width / this.mapSize)));
         d.save();
         d.clearRect(0, 0, this.fogDisplayCanvas.width, this.fogDisplayCanvas.height);
         d.imageSmoothingEnabled = true;
-        try { d.filter = 'blur(3px)'; } catch (e) {}
+        try { d.filter = `blur(${blurPx}px)`; } catch (e) {}
         d.drawImage(this.fogCanvas, 0, 0, this.fogDisplayCanvas.width, this.fogDisplayCanvas.height);
         d.restore();
 
