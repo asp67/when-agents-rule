@@ -1511,7 +1511,7 @@ Every other player is your enemy. No human plays for you: you command by issuing
 You win by either:
 Destroying the Town Centers and military buildings of ALL rivals, or Building your Wonder and holding it for gameStats.wonderRequired seconds.
 
-The LAST message carries your CURRENT state as JSON; decide from it and issue EXACTLY ONE action. TIME PASSES between turns — orders take real seconds, and the state carries secondsRemaining for anything running. Re-issuing it wastes the turn.
+The LAST message carries your CURRENT state as JSON; decide from it and issue EXACTLY ONE action. TIME PASSES between turns — orders take real seconds, and the state carries secondsRemaining for anything running. Work already under way continues on its own and does not occupy your turn; re-issuing it wastes the turn.
 
 - You never SEE a fight; it happens between your turns. "battles" reports each engagement, cumulative: both sides' composition, damage dealt to units and to buildings, priests' healing, and losses. Losing produces no error, so this is the only place you learn what beat you.
 - Priests never fight. They march with an attack and heal wounded units from the back on their own.

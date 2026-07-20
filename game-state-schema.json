@@ -68,7 +68,7 @@
         },
         "averageSecondsBetweenTurns": {
           "type": "integer",
-          "description": "How much real time has typically passed between your recent turns — your own thinking time included. Divide any duration by this to see how many decisions you get before it completes: at 18, a 40-second build finishes in about two turns, so re-issuing it next turn wastes that turn. Absent on your first turn, before any interval has been observed. It reflects your RECENT turns, so it moves if your responses speed up or slow down."
+          "description": "How much real time has typically passed between your recent turns — your own thinking time included. It converts any duration into the number of DECISIONS you get while that thing runs: at 18, a 40-second build leaves you about two more turns before it completes. Those turns are not spent on it — construction, training, research and age advances continue on their own — so what they are worth is up to you. Absent on your first turn, before any interval has been observed. It reflects your RECENT turns, so it moves if your responses speed up or slow down."
         }
       }
     },
