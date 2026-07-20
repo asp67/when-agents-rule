@@ -16,6 +16,13 @@ class OpenAIAIManager {
                                       // slower local models (Ollama) get a chance; very large or
                                       // reasoning models on modest hardware may still exceed it —
                                       // use a smaller/faster model for the real-time arena.
+        // Turn-based mode (see updateTurnBased). Off = independent pipelines, latency
+        // is a real advantage. On = every seat decides the same frozen state, so the
+        // decision budget is identical and only judgement varies.
+        this.turnBased = false;
+        this._roundPhase = 'ask';   // 'ask' -> 'wait' -> 'advance' -> 'ask'
+        this._roundBudget = 0;      // sim ms still owed to the round being played out
+        this._roundStartedAt = 0;
         this.pendingRequests = new Map(); // controllerId -> Promise
         this._orderSeq = 0; // monotonic token stamped on a unit each time it gets a new
                             // move/attack order, so a deferred attack-arrival report can
@@ -629,7 +636,19 @@ class OpenAIAIManager {
                     model: s.connection ? (s.connection.model || s.connection.name) : 'ki',
                     name: s.connection ? s.connection.name : null
                 };
-            }));
+            }), {
+                // The conditions a result has to be read against. Two runs with
+                // different values here are not comparable, and six months from now
+                // this line is the only thing that will say which was which.
+                mapSeed: (this.game.terrain && this.game.terrain.seed) || null,
+                difficulty: this.game.difficulty || null,
+                mapSize: (this.game.terrain && this.game.terrain.size) || null,
+                turnBased: !!this.turnBased,
+                roundQuantumMs: this.turnBased ? OpenAIAIManager.ROUND_QUANTUM_MS : null,
+                simSpeed: this.game.simSpeed || 1,
+                wonderRequired: this.game.wonderRequired || null,
+                promptVersion: (this.game.ui && this.game.ui.ARENA_PROMPT_VERSION) || null
+            });
         }
 
         for (let i = 0; i < setup.length; i++) {
@@ -4188,6 +4207,56 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     //     cap — so a faster model genuinely takes more turns. That speed is a
     //     real, intended advantage when comparing models.
     // ----------------------------------------------------------------
+    // ---- Turn-based rounds -----------------------------------------------------
+    // Off, seats run independent pipelines and a faster model genuinely takes more
+    // turns — a real advantage, and an intended one when the question is "which model
+    // plays this better in real time".
+    //
+    // On, the match becomes a board game. Every live seat is handed the SAME frozen
+    // state, they think in parallel, all answers are applied together, and only then
+    // does the sim advance one fixed quantum. Decisions-per-game-second becomes
+    // identical for every seat, so a 36s model and a 3s model get the same number of
+    // moves and latency stops being the variable. A round costs the SLOWEST seat's
+    // reply, not the sum of all of them.
+    static get ROUND_QUANTUM_MS() { return 5000; }   // game-ms released per round
+    static get ROUND_TIMEOUT_MS() { return 90000; }  // a silent seat forfeits its turn
+
+    // How much simulation the game may run right now. Zero while a round is still
+    // being decided, so the board is frozen for everyone who is thinking about it.
+    consumeRoundBudget(ms) {
+        if (this._roundBudget <= 0) return 0;
+        const take = Math.min(ms, this._roundBudget);
+        this._roundBudget -= take;
+        return take;
+    }
+
+    updateTurnBased(now) {
+        const live = this.aiControllers.filter(c => {
+            if (this.isControllerDefeated(c)) { if (!c.defeated) this.markDefeated(c); return false; }
+            return !c.paused;
+        });
+        if (!live.length) return;
+
+        if (this._roundPhase === 'advance') {
+            if (this._roundBudget > 0) return;      // sim still working through the quantum
+            this._roundPhase = 'ask';
+        }
+        if (this._roundPhase === 'wait') {
+            if (live.some(c => c.pending)) {
+                if (now - this._roundStartedAt <= OpenAIAIManager.ROUND_TIMEOUT_MS) return;
+                // One unreachable endpoint must not freeze the other three: release
+                // them, let the round resolve, and the slow seat simply misses it.
+                live.forEach(c => { c.pending = false; });
+            }
+            this._roundBudget = OpenAIAIManager.ROUND_QUANTUM_MS;
+            this._roundPhase = 'advance';
+            return;
+        }
+        this._roundStartedAt = now;
+        this._roundPhase = 'wait';
+        live.forEach(c => this.startTurn(c, now));
+    }
+
     async update(deltaTime) {
         if (this.aiControllers.length === 0) return;
         const now = Date.now();
@@ -4202,6 +4271,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         this.updateResourceDiscovery(now);
         this.updateEnemyBuildingDiscovery();
         this.updateAttackReports(now);
+
+        if (this.turnBased) { this.updateTurnBased(now); return; }
 
         for (const controller of this.aiControllers) {
             if (this.isControllerDefeated(controller)) {                       // lost its last Town Center

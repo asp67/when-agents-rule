@@ -32,6 +32,11 @@ class Game {
         this.spectatorMode = false; // True when human is spectating AI vs AI
         this.wonderTimer = 0;
         this.wonderHeld = false;
+        // Game time per wall-clock second: 1 | 1.5 | 2. See simBudget — clamped back to
+        // 1 while a Wonder stands, because speeding the sim shrinks the number of
+        // DECISIONS a seat gets inside that countdown even though the countdown itself
+        // scales correctly.
+        this.simSpeed = 1;
         // Seconds a finished Wonder must be HELD to win. Long enough that rivals get a
         // real window to march over and destroy it (a Wonder is an existential threat).
         this.wonderRequired = 600;
@@ -608,7 +613,7 @@ class Game {
 
         // Fine simulation in ≤100ms sub-steps so the FULL elapsed time is advanced.
         const STEP_MAX = 100;
-        let remaining = simTime;
+        let remaining = this.simBudget(simTime);
         while (remaining > 0) {
             const step = Math.min(STEP_MAX, remaining);
             this.simulateStep(step);
@@ -1544,6 +1549,43 @@ class Game {
         }
         return null;
     }
+
+    // How much simulation the clock may advance right now. Both gates live here
+    // rather than at the tick's source, so anything driving the sub-step loop obeys
+    // both of them.
+    //
+    // SPEED multiplies game time against wall time. It is forced back to 1x while any
+    // Wonder stands, and the reason is subtler than it looks: the hold is accumulated
+    // from deltaTime, so it scales WITH the sim and the march-versus-wonder race is
+    // preserved. What does not scale is a model's thinking time — at 2x a slow seat
+    // gets half the decisions inside the same countdown. The decision budget is what
+    // decides that race, so it is the thing to protect.
+    //
+    // TURN-BASED hands the budget to the AI manager, which releases a fixed quantum
+    // only once every seat has answered the same frozen state.
+    simBudget(ms) {
+        let out = ms * (this.anyWonderStanding() ? 1 : (this.simSpeed || 1));
+        const mgr = this.openAIAIManager;
+        if (mgr && mgr.turnBased) out = mgr.consumeRoundBudget(out);
+        return out;
+    }
+
+    // Any Wonder on the map at all, finished or still going up — a rival can already
+    // be marching at one that is half-built, so the race starts before it completes.
+    anyWonderStanding() {
+        const list = (this.renderer && this.renderer.buildings) || [];
+        for (const b of list) if (b.isWonder && b.health > 0) return true;
+        return false;
+    }
+
+    // 1 | 1.5 | 2. Returns what actually took effect, which is 1 while a Wonder stands.
+    setSimSpeed(mult) {
+        this.simSpeed = [1, 1.5, 2].includes(mult) ? mult : 1;
+        if (this.ui && this.ui.updateSimSpeedButton) this.ui.updateSimSpeedButton();
+        return this.effectiveSimSpeed();
+    }
+
+    effectiveSimSpeed() { return this.anyWonderStanding() ? 1 : (this.simSpeed || 1); }
 
     toggleActionCam() {
         this._actionCam = !this._actionCam;

@@ -49,13 +49,30 @@ class TranscriptRecorder {
     // Start a fresh match. Wipes anything left over first: a crash or a reload
     // during the previous match can leave files that were never offered for
     // download, and the promise to the user is a clean slate every time.
-    async begin(matchId, players) {
+    // `match` describes the CONDITIONS: map seed, difficulty, and the settings that
+    // change what a result means (sim speed, turn-based, any resource boost). Written
+    // as the file's first line, tagged type:"match" so a reader can tell it from a
+    // turn. Without it a folder of transcripts is a folder of numbers with no way to
+    // tell which ran doubled, at 2x, or turn-based — cheap to record now and
+    // unrecoverable later.
+    async begin(matchId, players, match) {
         await this.purge();
         this.matchId = matchId;
         this.mem.clear(); this.pending.clear(); this.meta.clear(); this.counts.clear(); this.open.clear();
         (players || []).forEach(p => this.meta.set(p.id, {
             civ: p.civilization, seat: p.seat, model: p.model || null, name: p.name || null
         }));
+        this.matchMeta = Object.assign({ type: 'match', matchId, startedAt: Date.now() },
+            match || {},
+            { players: (players || []).map(p => ({
+                id: p.id, seat: p.seat, civ: p.civilization,
+                model: p.model || null, name: p.name || null })) });
+        try {
+            const buf = this.pending.get('__match__') || [];
+            buf.push(JSON.stringify(this.matchMeta) + '\n');
+            this.pending.set('__match__', buf);
+            await this.flush('__match__');
+        } catch (e) { console.warn('[transcript] match header failed', e); }
     }
 
     // One turn. Never throws into the caller: a recording failure must not cost
@@ -156,11 +173,15 @@ class TranscriptRecorder {
     async exportBlob() {
         await this.flushAll();
         const parts = [];
+        let header = null;
         try {
             const dir = await (await this._root(true)).getDirectoryHandle(this.matchId, { create: true });
             for await (const [name, h] of dir.entries()) {
                 if (!name.endsWith('.jsonl') || h.kind !== 'file') continue;
-                parts.push(await (await h.getFile()).text());
+                const text = await (await h.getFile()).text();
+                // The match header goes FIRST, so anyone opening the file learns the
+                // conditions before the turns rather than hunting for them.
+                if (name === '__match__.jsonl') header = text; else parts.push(text);
             }
         } catch (e) {
             console.warn('[transcript] export failed', e);
@@ -170,7 +191,8 @@ class TranscriptRecorder {
         if (!parts.length) {
             this.mem.forEach(ring => ring.forEach(e => parts.push(JSON.stringify(e) + '\n')));
         }
-        return new Blob(parts, { type: 'application/x-ndjson' });
+        if (!header && this.matchMeta) header = JSON.stringify(this.matchMeta) + '\n';
+        return new Blob(header ? [header, ...parts] : parts, { type: 'application/x-ndjson' });
     }
 
     // Delete every transcript on disk and in memory.
