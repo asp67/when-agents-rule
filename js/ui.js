@@ -2681,6 +2681,10 @@ class UIManager {
                     minLatency: lat.length ? Math.min(...lat) : 0,
                     maxLatency: lat.length ? Math.max(...lat) : 0,
                     timeouts: st.timeouts, networkErrors: st.networkErrors, parseFails: st.parseFails,
+                    // Subset of parseFails: replies cut off mid-JSON by the model's
+                    // output-token cap. Broken out because it has a fix the others
+                    // don't — raise maxTokens for that model.
+                    truncated: st.truncatedReplies || 0,
                     noAction: st.noActionReturns || 0,
                     contextOverflows: ctxOv,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
@@ -2774,7 +2778,7 @@ class UIManager {
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
                         <div class="sum-metric"><span>\u{1FA99} ${t('sum.mTokens')}</span><b>${this.fmtTokens(m.promptTokens + m.completionTokens)}</b><i>${(m.promptTokens + m.completionTokens) ? t('sum.mTokSplit', { p: this.fmtTokens(m.promptTokens), c: this.fmtTokens(m.completionTokens) }) : t('sum.mTokNone')}</i></div>
-                        <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, na: m.noAction || 0, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
+                        <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, cut: m.truncated || 0, na: m.noAction || 0, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
                     </div>
                     <div class="sum-actions">${topActions || `<span class="sum-chip">${t('sum.noActions')}</span>`}</div>
                     <div class="sum-final">${r.ageName} · \u{1F477} ${r.workers} · ⚔️ ${r.military} · \u{1F3DB}️ ${r.buildings} · \u{1F356}${r.food} \u{1F332}${r.wood} \u{1FAA8}${r.stone} \u{1F947}${r.gold}</div>
@@ -3363,7 +3367,7 @@ class UIManager {
                 L.push(`- Reasoning rate: ${Math.round(m.reasonRate * 100)}%`);
                 L.push(`- Reliability: ${Math.round(m.reliability * 100)}%`);
                 L.push(`- Latency: avg ${(m.avgLatency / 1000).toFixed(1)}s (min ${(m.minLatency / 1000).toFixed(1)}s, max ${(m.maxLatency / 1000).toFixed(1)}s)`);
-                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} · no-action ${m.noAction || 0} · invalid ${m.invalidActions} · rejected ${m.rejected} · context-overflows ${m.contextOverflows || 0}`);
+                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} (of which truncated ${m.truncated || 0}) · no-action ${m.noAction || 0} · invalid ${m.invalidActions} · rejected ${m.rejected} · context-overflows ${m.contextOverflows || 0}`);
             L.push(`- Tokens: ${(m.promptTokens + m.completionTokens) ? `${m.promptTokens} prompt + ${m.completionTokens} completion = ${m.promptTokens + m.completionTokens}` : 'not reported by endpoint'}`);
                 if (r.tags && r.tags.length) L.push(`- Behavior: ${r.tags.map(x => x.t).join(', ')}`);
                 const actions = Object.entries(m.actionCounts || {}).sort((a, b) => b[1] - a[1])

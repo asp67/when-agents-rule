@@ -40,6 +40,7 @@ class OpenAIAIManager {
             promptTokens: 0,      // cumulative token usage as reported by the provider
             completionTokens: 0,  // (0/0 when the endpoint doesn't report usage)
             parseFails: 0,        // response unusable: empty, truncated, or parser crashed
+            truncatedReplies: 0,  // ...of those, cut off mid-JSON by the output-token cap
             noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
             actionsAttempted: 0,  // actions handed to executeAction
             actionsSucceeded: 0,  // executed OK
@@ -1812,6 +1813,23 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 return null;
             }
 
+            // The model DID issue an action and the JSON carrying it broke. That is a
+            // format fault it can fix, so unlike a prose reply it gets told — and it
+            // counts as a parse failure, which formatOk already subtracts.
+            if (result && result.malformed) {
+                if (s) {
+                    s.parseFails++;
+                    if (result.truncated) s.truncatedReplies = (s.truncatedReplies || 0) + 1;
+                }
+                controller.lastActionResult = result.truncated
+                    ? `[ERROR] Your reply was CUT OFF before the JSON closed — you ran out of output tokens, so nothing was executed. Keep "reason", "objective" and "plan" to one short sentence each and always close the JSON.`
+                    : `[ERROR] Your reply contained an "action" but was not valid JSON, so nothing was executed. Reply with ONLY the JSON object: {"action":"...","params":{...}} — straight double quotes, no line breaks inside strings.`;
+                const lastMalformed = controller.turnLog[controller.turnLog.length - 1];
+                if (lastMalformed && lastMalformed.outcome == null) lastMalformed.outcome = controller.lastActionResult;
+                controller._failStreak = 0;
+                return null;
+            }
+
             if (s && !result) s.parseFails++;
 
             // If parsing failed, store error feedback for next turn — and stamp it as
@@ -1932,6 +1950,25 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             }
         };
 
+        // A reply that CONTAINS an action but would not parse is a MALFORMED action,
+        // not prose — the model decided, and the JSON carrying the decision broke.
+        // Logged under its own tag because "no action provided" was simply untrue,
+        // and an untrue log entry is worse than none.
+        const logMalformed = (text, cut) => {
+            this.decisionLog.unshift({
+                timestamp: Date.now(),
+                playerId: ai.id,
+                civName: civName,
+                color: colorHex,
+                action: cut ? '✂️ reply_truncated' : '⚠️ malformed_action',
+                reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
+                params: {}
+            });
+            if (this.decisionLog.length > this.maxLogEntries) {
+                this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
+            }
+        };
+
         try {
             const message = norm || {};
             if (message.content == null && message.reasoning == null && !message.tool_calls) {
@@ -1980,6 +2017,26 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             //    turn (counted separately in the results).
             const freeText = (message.content || message.reasoning || '').toString().trim();
             if (freeText) {
+                // Split BEFORE the prose verdict. Silence is the right answer to a
+                // model that chose not to act; it is the wrong answer to one whose
+                // JSON broke, which then repeats the same fault every turn with
+                // nothing to correct. Saying "your JSON was malformed" is the error
+                // channel doing its job, not a crutch — the same call as the
+                // bracket-stripping hint executeAction already gives.
+                // An opening brace AND an "action" key: that is a JSON attempt, not
+                // prose. The quote class has to include CURLY quotes — a model that
+                // smart-quotes its keys is the commonest way to produce unparseable
+                // JSON, and matching only straight quotes sent exactly that case
+                // down the prose path, which is the bug this split exists to fix.
+                const looksLikeAction = freeText.includes('{') &&
+                    /["'“”‘’]?\s*action\s*["'“”‘’]?\s*:/i.test(freeText);
+                if (looksLikeAction) {
+                    const cut = message.finish_reason === 'length';
+                    console.warn(`[OpenAIAI] Malformed action JSON${cut ? ' — reply hit the output-token cap' : ''}, nothing executed:`,
+                        freeText.slice(0, 160));
+                    logMalformed(freeText, cut);
+                    return { malformed: true, truncated: cut };
+                }
                 console.warn(`[OpenAIAI] Reply without JSON action — nothing executed:`, freeText.substring(0, 160));
                 logNoAction(freeText);
                 return { noAction: true };
