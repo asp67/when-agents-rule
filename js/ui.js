@@ -2108,7 +2108,9 @@ class UIManager {
             no_action_provided: t('log.no_action_provided'),
             malformed_action: t('log.malformed_action'),
             reply_truncated: t('log.reply_truncated'),
-            tool_call_failed: t('log.tool_call_failed')
+            tool_call_failed: t('log.tool_call_failed'),
+            request_failed: t('log.request_failed'),
+            fallback_rule_based: t('log.fallback_rule_based')
         };
 
         // playerId → seat for the team-badge chip on each entry: entries only
@@ -2178,8 +2180,11 @@ class UIManager {
             // The outcome body in the model's language (null → raw English fallback).
             const locOutcome = this.renderOutcome(entry);
 
+            const linked = this.logEntryLinkable(entry);
             html += `
-                <div class="ai-log-entry${isError ? ' is-error' : ''}${newCls}" data-key="${key}" style="border-left-color: ${civColor}">
+                <div class="ai-log-entry${isError ? ' is-error' : ''}${newCls}${linked ? ' is-linked' : ''}" data-key="${key}"${
+                    linked ? ` onclick="game.ui.openTranscriptAt(${key})" title="${t('log.openTranscript')}"` : ''
+                } style="border-left-color: ${civColor}">
                     <div class="log-line1">
                         <span class="log-time">${timeStr}</span>
                         ${this.teamDotHtml(seatOf[entry.playerId], 9)}
@@ -2842,6 +2847,61 @@ class UIManager {
     // card swaps whose exchange is shown instead of stacking a second window over
     // the match. Reads the recorder's in-memory ring (last 300 turns), so opening
     // it costs nothing and it follows the match live.
+    // Which log entries have an exchange behind them. Spectator advice and the
+    // harness's own pause/resume/defeat notices are written without a model turn,
+    // so there is nothing to open.
+    logEntryLinkable(entry) {
+        if (!entry || entry.isAdvice) return false;
+        if (['advice', 'paused', 'resumed', 'defeated'].includes(entry.action)) return false;
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        return !!(rec && rec.turnsFor(entry.playerId) > 0);
+    }
+
+    // Jump from a decision-log entry to the exchange that produced it.
+    //
+    // The two records are matched on TIME rather than a shared id, because no single
+    // counter is correct for both: the log entry for a failed parse is written inside
+    // parseResponse, BEFORE the transcript turn exists, and the entry for an executed
+    // action just after it. Turns are seconds apart while those two writes are
+    // milliseconds apart, so nearest-in-time is unambiguous — and it stays correct if
+    // either side is reordered later, which a stamped counter would not.
+    openTranscriptAt(key) {
+        const mgr = this.game.openAIAIManager;
+        const entry = ((mgr && mgr.decisionLog) || []).find(e => e._uid === Number(key));
+        if (!entry) return;
+        this._transcriptFor = entry.playerId;
+        this._tvRendered = null;              // may be a different model → full rebuild
+        this.renderTranscriptViewer();
+        this.updateSpectatorPlayerList();     // repaint the spyglass active states
+
+        const turns = (mgr && mgr.transcripts) ? mgr.transcripts.recent(entry.playerId) : [];
+        let best = null, bestD = Infinity;
+        turns.forEach(x => {
+            const d = Math.abs((x.at || 0) - entry.timestamp);
+            if (d < bestD) { bestD = d; best = x; }
+        });
+        // Older turns fall off the recorder's 300-turn ring; the viewer cannot show
+        // what it no longer holds, so open it and leave the reader at the top.
+        if (best) this.tvJumpTo(best.turn);
+    }
+
+    // Scroll a turn into view and flash it: in a list where every entry looks alike,
+    // landing near the right one is not the same as finding it.
+    tvJumpTo(turn) {
+        const body = document.getElementById('tvBody');
+        if (!body) return;
+        const el = body.querySelector(`.tv-turn[data-key="${turn}"]`);
+        if (!el) return;
+        // Same measure the section-mirroring uses: rects, not offsetTop, which is
+        // relative to whichever ancestor happens to be positioned.
+        const gap = el.getBoundingClientRect().top - body.getBoundingClientRect().top;
+        body.scrollTop = Math.max(0, body.scrollTop + gap - 8);
+        el.classList.remove('tv-jumped');
+        void el.offsetWidth;                  // restart the flash when re-clicked
+        el.classList.add('tv-jumped');
+        this.updateTranscriptTopBtn();
+    }
+
     toggleTranscriptViewer(aiId) {
         this._transcriptFor = (this._transcriptFor === aiId) ? null : aiId;
         this._tvRendered = null;            // different model → full rebuild

@@ -141,6 +141,10 @@ class TranscriptRecorder {
     // Last N turns for a player, newest last — for an on-screen viewer.
     recent(playerId) { return (this.mem.get(playerId) || []).slice(); }
 
+    // How many turns this player has recorded. Cheap enough to ask once per log
+    // entry per repaint, which recent() — it copies the whole ring — is not.
+    turnsFor(playerId) { return this.counts.get(playerId) || 0; }
+
     turnsRecorded() {
         let n = 0; this.counts.forEach(v => { n += v; }); return n;
     }

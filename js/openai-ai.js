@@ -1940,7 +1940,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 playerId: ai.id,
                 civName: civName,
                 color: colorHex,
-                action: '⚠️ request_failed',
+                action: 'request_failed',
                 reason: `Request to model failed: ${err.message.substring(0, 100)}`,
                 params: {}
             });
