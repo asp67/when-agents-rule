@@ -1519,9 +1519,9 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue EX
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
 
 OUTPUT EXACTLY ONE RAW JSON OBJECT
-Format: {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }}
+Format: {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }, "objective": "<1 line>", "plan": ["<step>", "<step>"]}
 
-UNIVERSAL OPTIONAL PARAMS (in params):
+OPTIONAL TOP-LEVEL FIELDS (beside "action", not inside "params"):
 objective: String (1 line). Persists across turns; omit to keep current.
 plan: Array of up to 5 short strings. Persists across turns; omit to keep current.
 
@@ -2364,11 +2364,25 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // live on the controller and are replayed at the TOP of every prompt, so a
         // multi-step intent (and its surviving sub-goals) outlasts the move history.
         // Wholesale-replace semantics: the model rewrites them when they change.
-        if (params && typeof params.objective === 'string' && params.objective.trim()) {
-            controller.objective = params.objective.trim().slice(0, 300);
+        //
+        // Read from BOTH placements. The prompt called these "params" while its Format
+        // line showed only action/params — so models put them beside "action", which is
+        // the more natural JSON shape and what every reply in testing did. Reading
+        // params.* alone discarded them in silence: no error, no log, the objective
+        // simply never existed. This feature had never once fired for those models.
+        const src = actionData || {};
+        const objRaw = (params && params.objective !== undefined) ? params.objective : src.objective;
+        const planRaw = (params && params.plan !== undefined) ? params.plan : src.plan;
+        if (typeof objRaw === 'string' && objRaw.trim()) {
+            controller.objective = objRaw.trim().slice(0, 300);
         }
-        if (params && Array.isArray(params.plan)) {
-            controller.plan = params.plan
+        // A plan sent as one string is kept as a single step rather than dropped. Its
+        // intent is unambiguous; splitting "[1] a, [2] b" into steps would be the
+        // harness inventing structure the model did not commit to.
+        const planArr = Array.isArray(planRaw) ? planRaw
+            : (typeof planRaw === 'string' && planRaw.trim()) ? [planRaw] : null;
+        if (planArr) {
+            controller.plan = planArr
                 .filter(s => typeof s === 'string' && s.trim())
                 .slice(0, 5)
                 .map(s => s.trim().slice(0, 120));
