@@ -21,7 +21,6 @@
     "unlockedContent",
     "trainableUnits",
     "buildableStructures",
-    "pendingBuildings",
     "threats",
     "gameStats"
   ],
@@ -823,12 +822,21 @@
         }
       }
     },
-    "pendingBuildings": {
+    "recentLosses": {
       "type": "array",
+      "description": "Buildings of YOURS destroyed in the last two minutes. Absent entirely when you have lost nothing. A building simply disappears from friendlyBuildings when it falls, so without this a structure you were told you had started — a Wonder above all — would vanish with no explanation. Losses older than the window drop off; a repeated entry means it happened again, not that it is still happening.",
       "items": {
-        "type": "string"
-      },
-      "description": "Building types queued but not yet placed."
+        "type": "object",
+        "required": ["type", "x", "z", "secondsAgo"],
+        "properties": {
+          "type": { "type": "string", "description": "What was destroyed." },
+          "wonder": { "type": "boolean", "description": "Present (true) only if the lost building was your Wonder — your win condition is gone and its countdown has reset." },
+          "x": { "type": "integer" },
+          "z": { "type": "integer" },
+          "secondsAgo": { "type": "integer", "description": "How long ago it fell." },
+          "to": { "type": "string", "description": "Which rival destroyed it, when that is known. Absent if it fell to something unattributed." }
+        }
+      }
     },
     "threats": {
       "type": "object",

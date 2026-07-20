@@ -1872,6 +1872,34 @@ class Game {
         if (ownerObj.events.length > 14) ownerObj.events.shift();
     }
 
+    // A durable record of buildings a player has lost, read back for the same window
+    // the battle ledger uses.
+    //
+    // The prose LOSS line above already says it — but into recentEvents, which expires
+    // by DISPLACEMENT, not time: 14 slots, of which the model is shown 8, and busiest
+    // precisely while things are being destroyed. So the notice was routinely evicted
+    // before the owner's next turn, and a building simply vanished from
+    // friendlyBuildings with nothing left pointing at it. Unit deaths were moved out of
+    // that buffer into the battle ledger for exactly this reason; buildings were left
+    // behind. The battle ledger does count them, but as a bare type tally inside an
+    // engagement — and only when one was already open near the spot, since
+    // recordBattleLoss will not start one.
+    noteBuildingLoss(ownerObj, building, killerOwner) {
+        if (!ownerObj || !building) return;
+        const list = ownerObj._lostBuildings || (ownerObj._lostBuildings = []);
+        list.push({
+            at: Date.now(),
+            type: building.type,
+            wonder: !!building.isWonder,
+            x: Math.round(building.x),
+            z: Math.round(building.z),
+            to: (killerOwner && killerOwner !== ownerObj) ? this.ownerName(killerOwner) : null
+        });
+        // Bound the array; the AGE rule lives at the read side so a quiet map cannot
+        // leave a stale entry sitting in the state (the mistake the battle ledger made).
+        if (list.length > 25) list.splice(0, list.length - 25);
+    }
+
     ownerName(o) {
         if (!o) return 'an unknown force';
         if (o === this.player) return 'the human player';
@@ -1907,6 +1935,7 @@ class Game {
                 const by = (killerOwner && killerOwner !== victimOwner)
                     ? ` by ${this.ownerName(killerOwner)}'s ${killerLabel || 'forces'}` : '';
                 this.logPlayerEvent(victimOwner, `LOSS: your ${label} was destroyed${by} at ${at}`);
+                this.noteBuildingLoss(victimOwner, target, killerOwner);
             }
             if (killerOwner && killerOwner !== victimOwner) {
                 this.logPlayerEvent(killerOwner, `KILL: your ${killerLabel || 'forces'} destroyed ${this.ownerName(victimOwner)}'s ${label} at ${at}`);

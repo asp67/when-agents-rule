@@ -1220,8 +1220,27 @@ class OpenAIAIManager {
             return { type: t, requiredAge: reqAge, requiresTech: reqTech, researched: techDone, readyToBuild: techDone };
         }).filter(Boolean);
 
-        // --- Pending buildings ---
-        const pendingBuildings = (ai.pendingBuildings || []).map(pb => pb.type);
+        // --- Buildings you have LOST recently ---
+        //
+        // Replaces "pendingBuildings", which read ai.pendingBuildings — a field only
+        // ever populated on the HUMAN player's two-step place-a-building flow. Models
+        // call createBuilding directly, so it was [] for every model on every turn,
+        // and a model hunting for a Wonder it had started reasoned its way through
+        // that empty array before giving up.
+        //
+        // What it was actually looking for is this: a building it was told it started
+        // had been destroyed, and destruction leaves no trace in a snapshot. Held for
+        // the same window as the battle ledger — one constant, because it is the same
+        // question ("what did I miss between turns?") — and filtered by age HERE so a
+        // quiet map cannot serve a stale entry.
+        const recentLosses = (ai._lostBuildings || [])
+            .filter(l => battleNow - l.at <= Game.BATTLE_KEEP_MS)
+            .map(l => Object.assign(
+                { type: l.type },
+                l.wonder ? { wonder: true } : {},
+                { x: l.x, z: l.z, secondsAgo: Math.round((battleNow - l.at) / 1000) },
+                l.to ? { to: l.to } : {}
+            ));
 
         // --- Opponents: ALL rivals — rule-based ones and, in campaign, the human
         // too (the old list was built from LLM controllers only, leaving blind
@@ -1296,7 +1315,9 @@ class OpenAIAIManager {
             unlockedContent: unlockedContent,
             trainableUnits: trainableUnits,
             buildableStructures: buildableStructures,
-            pendingBuildings: pendingBuildings,
+            // Omitted in peacetime, like "battles": a match where nothing has been
+            // destroyed should pay nothing for the field.
+            ...(recentLosses.length ? { recentLosses } : {}),
             threats: threatsObj,
             gameStats: gameStatsObj
         };
