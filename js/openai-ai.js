@@ -37,6 +37,19 @@ class OpenAIAIManager {
     }
 
     // Per-controller behavior metrics (reset each match)
+    // Was this optional parameter actually SUPPLIED?
+    //
+    // A key present but blank is the model omitting it, not setting it — models
+    // routinely send "from": "" or "targetX": " " to mean "no preference", having
+    // been told the field is optional. The trim has to happen BEFORE the emptiness
+    // test, which is where this kept going wrong: `v !== ''` passes a single space
+    // through, and then "from" fails an enum it never meant to answer. For
+    // coordinates it was worse than an error — Number(" ") is 0 and finite, so a
+    // blank targetX was silently accepted as the map centre.
+    static given(v) {
+        return !(v === undefined || v === null || (typeof v === 'string' && v.trim() === ''));
+    }
+
     // How many food/wood nodes each Town Center contributes to "nearestNodes".
     // Stone and gold ignore it — they are scarce enough to list whole.
     static get NEAREST_PER_ANCHOR() { return 10; }
@@ -3732,8 +3745,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         // Which farm first? An explicit target picks one; otherwise the shortest
         // delivery loop wins — same rule as the resource path.
-        const gaveX = params.targetX !== undefined && params.targetX !== null && params.targetX !== '';
-        const gaveZ = params.targetZ !== undefined && params.targetZ !== null && params.targetZ !== '';
+        const gaveX = OpenAIAIManager.given(params.targetX);
+        const gaveZ = OpenAIAIManager.given(params.targetZ);
         if (gaveX || gaveZ) {
             const tx = Number(params.targetX), tz = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
@@ -3823,8 +3836,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // Which node? Explicit targetX/targetZ picks the discovered node nearest
         // that point; otherwise the node nearest ANY finished Town Center wins —
         // the shortest delivery loop is the fastest economy.
-        const gaveX = params.targetX !== undefined && params.targetX !== null && params.targetX !== '';
-        const gaveZ = params.targetZ !== undefined && params.targetZ !== null && params.targetZ !== '';
+        const gaveX = OpenAIAIManager.given(params.targetX);
+        const gaveZ = OpenAIAIManager.given(params.targetZ);
         let node;
         let nodeNote;
         if (gaveX || gaveZ) {
@@ -3879,8 +3892,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             return game.isIdleWorker(u) ? 'idle' : null;
         };
         const FROMS = ['food', 'wood', 'stone', 'gold', 'farm', 'idle'];
-        const rawFrom = (params.from === undefined || params.from === null || params.from === '')
-            ? null : String(params.from).toLowerCase().trim();
+        const rawFrom = OpenAIAIManager.given(params.from)
+            ? String(params.from).toLowerCase().trim() : null;
         const from = rawFrom === 'farms' ? 'farm' : rawFrom;
         if (from !== null && !FROMS.includes(from)) {
             this.outcome('log.out.assignBadFrom', {});
@@ -3920,8 +3933,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // workers. What the model CAN say is what it wants done when the moment comes.
         const carrying = u => !!(u.carryingResource || u.task === 'carrying');
         let allowSpill = true;
-        if (params.allowSpill !== undefined && params.allowSpill !== null && params.allowSpill !== '') {
-            const v = params.allowSpill;
+        if (OpenAIAIManager.given(params.allowSpill)) {
+            const v = typeof params.allowSpill === 'string'
+                ? params.allowSpill.trim().toLowerCase() : params.allowSpill;
             if (v === true || v === 'true') allowSpill = true;
             else if (v === false || v === 'false') allowSpill = false;
             else {
@@ -4023,8 +4037,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             return `[ERROR] None of your buildings are damaged — nothing to repair. (Construction SITES are finished automatically by the worker build_structure assigned.)`;
         }
         let target;
-        const gaveX = params.targetX !== undefined && params.targetX !== null && params.targetX !== '';
-        const gaveZ = params.targetZ !== undefined && params.targetZ !== null && params.targetZ !== '';
+        const gaveX = OpenAIAIManager.given(params.targetX);
+        const gaveZ = OpenAIAIManager.given(params.targetZ);
         if (gaveX || gaveZ) {
             const tx = Number(params.targetX), tz = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
@@ -4076,7 +4090,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // like "cavalry"/"worker"); omit it to auto-pick the best scout.
         const preferredType = params.unitType ? String(params.unitType).trim() : null;
         const raw = params.tile;
-        const gave = raw !== undefined && raw !== null && String(raw).trim() !== '';
+        const gave = OpenAIAIManager.given(raw);
 
         // Coordinates used to be the input here. Catch them by name: a model that
         // sends targetX/targetZ has the right intent and the wrong shape, and saying
