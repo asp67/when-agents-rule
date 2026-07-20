@@ -164,7 +164,21 @@ class UIManager {
         // Map/difficulty lives on the setup screens (shared global setting).
         const diffEl = document.getElementById('setupDifficulty');
         if (diffEl && typeof getDifficulty === 'function') diffEl.value = getDifficulty();
+        // Turn-based is an ARENA setting: it only means anything when seats are
+        // competing for turns, so the campaign screen hides it entirely.
+        const tbWrap = document.getElementById('setupTurnBased');
+        if (tbWrap) {
+            tbWrap.checked = !!(this._arenaConfig && this._arenaConfig.turnBased);
+            const field = tbWrap.closest('.arena-field');
+            if (field) field.style.display = campaign ? 'none' : '';
+        }
     }
+
+    setTurnBased(on) {
+        if (this._arenaConfig) { this._arenaConfig.turnBased = !!on; this.saveSetup(); }
+    }
+
+    turnBasedEnabled() { return !!(this._arenaConfig && this._arenaConfig.turnBased); }
 
     setSetupSeed(v) {
         const cfg = this._setupMode === 'campaign' ? this._campaignConfig : this._arenaConfig;
@@ -1879,6 +1893,9 @@ class UIManager {
     }
 
     updateArenaStatus() {
+        // The Wonder lock engages and releases DURING a match, not on a click, so the
+        // button has to be repainted on the same beat as the clock.
+        this.updateSimSpeedButton();
         // Clock
         const clockEl = document.getElementById('arenaClock');
         if (clockEl && this.arenaStartTime) {
@@ -2858,6 +2875,43 @@ class UIManager {
     // Which log entries have an exchange behind them. Spectator advice and the
     // harness's own pause/resume/defeat notices are written without a model turn,
     // so there is nothing to open.
+    // ---- Simulation speed -------------------------------------------------------
+    // One cycling button rather than three radio buttons: the status bar has room for
+    // one control, and 1x -> 1.5x -> 2x -> 1x needs no extra chrome.
+    //
+    // Confirmed ONCE per match on the first speed-up, not on every click. Speeding up
+    // changes what a result means, so it deserves a warning — but a dialog on every
+    // press is friction, and slowing back down never needs one.
+    cycleSimSpeed() {
+        const order = [1, 1.5, 2];
+        const next = order[(order.indexOf(this.game.simSpeed || 1) + 1) % order.length];
+        const speedingUp = next > (this.game.simSpeed || 1);
+        const apply = () => { this.game.setSimSpeed(next); this.updateSimSpeedButton(); };
+        if (speedingUp && !this._simSpeedWarned) {
+            this._simSpeedWarned = true;
+            this.showConfirm(t('spec.simSpeedWarn'), apply, {
+                title: t('spec.simSpeedWarnTitle'),
+                confirmLabel: t('spec.simSpeedGo'),
+                cancelLabel: t('dlg.keepPlaying')
+            });
+            return;
+        }
+        apply();
+    }
+
+    updateSimSpeedButton() {
+        const btn = document.getElementById('simSpeedBtn');
+        if (!btn || !this.game) return;
+        const set = this.game.simSpeed || 1;
+        const eff = this.game.effectiveSimSpeed ? this.game.effectiveSimSpeed() : set;
+        const locked = eff !== set;   // a Wonder is holding it at 1x
+        btn.textContent = `⏱ ${String(set).replace('.', ',')}×`;
+        btn.classList.toggle('sb-on', set !== 1);
+        // Say WHY it is not running at the chosen speed, rather than silently lying.
+        btn.classList.toggle('is-locked', locked);
+        btn.title = locked ? t('spec.simSpeedLocked', { s: String(set) }) : t('spec.simSpeedTitle');
+    }
+
     logEntryLinkable(entry) {
         if (!entry || entry.isAdvice) return false;
         if (['advice', 'paused', 'resumed', 'defeated'].includes(entry.action)) return false;

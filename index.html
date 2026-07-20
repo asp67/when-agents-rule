@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=419">
+    <link rel="stylesheet" href="css/styles.css?v=420">
 </head>
 <body>
     <!-- Start Screen -->
@@ -172,6 +172,7 @@
                 <span class="sb-wonder" id="arenaWonder" style="display:none;"></span>
                 <span class="sb-sep"></span>
                 <button class="sb-end sb-quit" id="arenaHelpBtn" onclick="game.ui.showControlsCard('arena')" data-i18n-title="help.title" title="Steuerung">?</button>
+                <button class="sb-end sb-speed" id="simSpeedBtn" onclick="game.ui.cycleSimSpeed()" data-i18n-title="spec.simSpeedTitle" title="Simulationstempo">⏱ 1×</button>
                 <button class="sb-end" id="actionCamBtn" onclick="game.toggleActionCam()" data-i18n="spec.actionCam" data-i18n-title="spec.actionCamTitle" title="Kamera folgt automatisch den Kämpfen">🎬 Auto</button>
                 <button class="sb-end" id="arenaSnapshotBtn" onclick="game.toggleArenaSnapshot()" data-i18n="spec.evaluate" data-i18n-title="spec.evaluateTitle" title="Live-Zwischenstand ansehen (Spiel läuft weiter)">Auswertung ▸</button>
                 <button class="sb-end sb-quit" onclick="game.cancelGame()" data-i18n="spec.quit" data-i18n-title="spec.quitTitle" title="Arena beenden und zur Auswertung">✕ Beenden</button>
@@ -300,6 +301,13 @@
                         <label data-i18n="ar.fSeed">Karten-Seed (optional)</label>
                         <input type="text" id="setupSeed" data-i18n-ph="ar.seedPh" placeholder="zufällig" oninput="game.ui.setSetupSeed(this.value)">
                     </div>
+                    <div class="arena-field arena-field-wide">
+                        <label class="arena-check">
+                            <input type="checkbox" id="setupTurnBased" onchange="game.ui.setTurnBased(this.checked)">
+                            <span data-i18n="ar.fTurnBased">Rundenbasiert</span>
+                        </label>
+                        <p class="arena-hint" data-i18n="ar.fTurnBasedHint">Alle Modelle entscheiden gleichzeitig über denselben Spielstand; danach läuft die Simulation eine feste Runde weiter. Schnelle Modelle bekommen dadurch nicht mehr Züge — vergleicht Urteil statt Tempo. Eine Runde dauert so lange wie die langsamste Antwort.</p>
+                    </div>
                 </div>
                 <div id="arenaSlotsList" class="arena-slots"></div>
             </div>
@@ -398,25 +406,25 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=419"></script>
-    <script src="js/engine/glcore.js?v=419"></script>
-    <script src="js/engine/texgen.js?v=419"></script>
-    <script src="js/engine/mesh.js?v=419"></script>
-    <script src="js/engine/buildings.js?v=419"></script>
-    <script src="js/engine/units.js?v=419"></script>
-    <script src="js/engine/gamerenderer.js?v=419"></script>
-    <script src="js/i18n.js?v=419"></script>
-    <script src="js/civilizations.js?v=419"></script>
-    <script src="js/buildings.js?v=419"></script>
-    <script src="js/units.js?v=419"></script>
-    <script src="js/resources.js?v=419"></script>
-    <script src="js/terrain.js?v=419"></script>
-    <script src="js/fogofwar.js?v=419"></script>
-    <script src="js/ai.js?v=419"></script>
-    <script src="js/transcript.js?v=419"></script>
-    <script src="js/openai-ai.js?v=419"></script>
-    <script src="js/input.js?v=419"></script>
-    <script src="js/ui.js?v=419"></script>
-    <script src="js/game.js?v=419"></script>
+    <script src="js/engine/math3d.js?v=420"></script>
+    <script src="js/engine/glcore.js?v=420"></script>
+    <script src="js/engine/texgen.js?v=420"></script>
+    <script src="js/engine/mesh.js?v=420"></script>
+    <script src="js/engine/buildings.js?v=420"></script>
+    <script src="js/engine/units.js?v=420"></script>
+    <script src="js/engine/gamerenderer.js?v=420"></script>
+    <script src="js/i18n.js?v=420"></script>
+    <script src="js/civilizations.js?v=420"></script>
+    <script src="js/buildings.js?v=420"></script>
+    <script src="js/units.js?v=420"></script>
+    <script src="js/resources.js?v=420"></script>
+    <script src="js/terrain.js?v=420"></script>
+    <script src="js/fogofwar.js?v=420"></script>
+    <script src="js/ai.js?v=420"></script>
+    <script src="js/transcript.js?v=420"></script>
+    <script src="js/openai-ai.js?v=420"></script>
+    <script src="js/input.js?v=420"></script>
+    <script src="js/ui.js?v=420"></script>
+    <script src="js/game.js?v=420"></script>
 </body>
 </html>

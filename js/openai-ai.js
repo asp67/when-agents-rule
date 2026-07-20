@@ -620,6 +620,15 @@ class OpenAIAIManager {
     async initFromSetup(setup) {
         this.aiControllers = [];
 
+        // Read the round mode from the saved arena config. A manager is built fresh per
+        // match, so the flag has to be pulled in here or every new match silently
+        // reverts to independent pipelines — which is a different benchmark.
+        this.turnBased = !!(this.game && this.game.ui && this.game.ui.turnBasedEnabled
+            && this.game.ui.turnBasedEnabled());
+        this._roundPhase = 'ask';
+        this._roundBudget = 0;
+        this._roundStartedAt = 0;
+
         // Transcript recording, always on. begin() purges whatever the previous match
         // left behind, so a crash or a "Hauptmenü" reload (which cannot be relied on to
         // finish an async delete during unload) still yields a clean slate here.
