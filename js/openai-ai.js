@@ -3010,7 +3010,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
         if (pick.error === 'no_workers') {
             this.outcome('log.out.noWorkersBuild', { buildingType });
-            return `[ERROR] You have no workers to build ${buildingType}. Train a worker first.`;
+            return `[ERROR] You have no workers to build ${buildingType}.`;
         }
         if (pick.error === 'no_idle') {
             this.outcome('log.out.noWorkerIdleBuild', { buildingType });
@@ -3722,7 +3722,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
             const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
             this.outcome('log.out.noWorkersForFarms', { open: open.length });
-            return `[ERROR] No workers can be spared for your ${open.length} unmanned farm(s): ${building} are constructing, ${fighting} are fighting (neither is ever pulled), and the rest already man farms. Train a worker.`;
+            return `[ERROR] No workers can be spared for your ${open.length} unmanned farm(s): ${building} are constructing, ${fighting} are fighting (neither is ever pulled), and the rest already man farms.`;
         }
         const rank = u => game.workerPullRank(ai, u);
         candidates.sort((a, b) => rank(a) - rank(b));
@@ -3828,7 +3828,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
             const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
             this.outcome('log.out.noWorkersReassign', { already, res: resourceType, building, fighting });
-            return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing, ${fighting} are fighting (builders and fighting workers are never pulled). Train more workers.`;
+            return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing, ${fighting} are fighting (builders and fighting workers are never pulled).`;
         }
 
         // Optional SOURCE. Omitted, the triage below picks as it always has (idle
@@ -3974,7 +3974,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             .slice(0, count);
         if (workers.length === 0) {
             this.outcome('log.out.noWorkersRepair', {});
-            return `[ERROR] No workers available to repair (all are constructing). Train a worker or wait for a build to finish.`;
+            return `[ERROR] No workers available to repair (all are constructing).`;
         }
         workers.forEach(w => {
             if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
@@ -4019,7 +4019,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
 
         const scout = this.pickScout(ai, preferredType);
-        if (!scout) { this.outcome('log.out.noUnitExplore', {}); return `[ERROR] No unit available to explore. Train a worker first.`; }
+        if (!scout) { this.outcome('log.out.noUnitExplore', {}); return `[ERROR] No unit available to explore.`; }
         const wasBusy = scout.type === 'worker' && !this.game.isIdleWorker(scout);
         const missedChoice = preferredType && !this.scoutMatchesChoice(scout, preferredType);
 
