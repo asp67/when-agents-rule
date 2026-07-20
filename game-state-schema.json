@@ -10,6 +10,7 @@
     "bonuses",
     "map",
     "discoveredNodesOnMap",
+    "nearestNodes",
     "friendlyBuildings",
     "buildings",
     "enemyBuildings",
@@ -272,16 +273,25 @@
       }
     },
     "discoveredNodesOnMap": {
+      "type": "object",
+      "description": "How many nodes of each type YOU have found and not yet seen emptied — discovered by sight, then remembered. Its counterpart is map.nodesLeftOnMap, which counts what exists across the WHOLE map: the gap between them is what is still out there unscouted, and whether closing it is worth a scout is your call. Counts only; for coordinates see nearestNodes.",
+      "properties": {
+        "food": { "type": "integer" },
+        "wood": { "type": "integer" },
+        "stone": { "type": "integer" },
+        "gold": { "type": "integer" }
+      }
+    },
+    "nearestNodes": {
       "type": "array",
-      "description": "The resource nodes YOU have found: discovered by sight, then remembered. Its counterpart is map.nodesLeftOnMap, which counts what exists across the WHOLE map — this list is the part of that you actually know about. \"amount\" is live while a node is in sight and otherwise the amount as you last saw it, so a node a rival emptied out of your view stays listed at its remembered figure until you look again. Nodes deplete permanently; scout for fresh ones.",
+      "description": "Where to actually send a worker: the food and wood nodes closest to EACH of your Town Centers (ten apiece, so a second base is listed too, not crowded out by the first), plus every stone and gold node you have found — those are scarce enough to list whole. This is a shortlist, not the limit of what you know: assign_workers accepts the coordinates of ANY node you have scouted, including one that dropped off here. \"amount\" is live while a node is in sight and otherwise the amount as you last saw it, so one a rival emptied out of your view keeps its remembered figure until you look again. Nodes deplete permanently.",
       "items": {
         "type": "object",
         "required": [
           "type",
           "x",
           "z",
-          "amount",
-          "visible"
+          "amount"
         ],
         "properties": {
           "type": {
@@ -296,10 +306,6 @@
           "amount": {
             "type": "integer",
             "description": "Remaining amount on the node."
-          },
-          "visible": {
-            "type": "boolean",
-            "description": "true = a unit sees it right now; false = remembered from an earlier look."
           }
         }
       }

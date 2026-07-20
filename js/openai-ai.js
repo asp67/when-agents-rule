@@ -30,6 +30,10 @@ class OpenAIAIManager {
     }
 
     // Per-controller behavior metrics (reset each match)
+    // How many food/wood nodes each Town Center contributes to "nearestNodes".
+    // Stone and gold ignore it — they are scarce enough to list whole.
+    static get NEAREST_PER_ANCHOR() { return 10; }
+
     newStats() {
         return {
             requests: 0,          // requests that returned or definitively failed
@@ -867,9 +871,21 @@ class OpenAIAIManager {
             })()
         };
 
-        // --- Resources on map (only SCOUTED nodes; remembered once discovered) ---
+        // --- Resources: what you know exists, and the nodes worth walking to ---
+        //
+        // This was one array of every node ever scouted. On a fully explored map that
+        // is 1231 entries and 18,900 tokens — 95% of the whole state, re-sent every
+        // turn forever, and 300 copies alive in the transcript ring. Two questions
+        // were being asked of it and only two: "is more scouting worth it", which a
+        // COUNT answers, and "where do I send this worker", which only the near ones
+        // answer. The rest was paid for and never used.
+        //
+        // Nothing is taken away: assign_workers still resolves any discovered node by
+        // coordinate (discoveredNodesOfType sees them all), so a remembered far node
+        // stays targetable — it just is not recited every turn.
         if (!ai._knownResIdx) ai._knownResIdx = new Set();
-        const discoveredNodesOnMap = [];
+        const discoveredNodesOnMap = { food: 0, wood: 0, stone: 0, gold: 0 };
+        const byType = { food: [], wood: [], stone: [], gold: [] };
         if (game.terrain && game.terrain.resources) {
             game.terrain.resources.forEach((res, idx) => {
                 const k = this.knownAmount(ai, res, idx, game);
@@ -878,16 +894,36 @@ class OpenAIAIManager {
                 // drops out; one a rival emptied out of sight stays listed at its
                 // last-seen amount until someone looks again — the disappearance
                 // would otherwise report enemy activity through fog.
-                if (k.amount <= 0) return;
-                discoveredNodesOnMap.push({
+                if (k.amount <= 0 || !byType[res.type]) return;
+                discoveredNodesOnMap[res.type]++;
+                byType[res.type].push({
                     type: res.type,
                     x: Math.round(res.x),
                     z: Math.round(res.z),
-                    amount: k.amount,
-                    visible: k.visible
+                    amount: k.amount
                 });
             });
         }
+        // Nearest per TOWN CENTER, not globally nearest: with two bases the ten
+        // closest overall can all sit around one of them and leave the other blind.
+        // Anchored on Town Centers because that is exactly what assign_workers picks
+        // when given no coordinates — so this lists the nodes the harness would
+        // choose anyway, instead of the 1231 it would not.
+        const tcAnchors = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction);
+        const anchors = tcAnchors.length ? tcAnchors
+            : (ai.buildings.length ? [ai.buildings[0]] : (ai.units.length ? [ai.units[0]] : []));
+        const nearby = new Map();
+        // Stone and gold in FULL: 58 nodes between them on a whole map, and they are
+        // the scarce ones — "where is the gold" is the question least worth truncating.
+        byType.stone.concat(byType.gold).forEach(n => nearby.set(n.x + ',' + n.z, n));
+        anchors.forEach(a => ['food', 'wood'].forEach(ty => {
+            byType[ty]
+                .map(n => ({ n, d: Math.hypot(a.x - n.x, a.z - n.z) }))
+                .sort((p, q) => p.d - q.d)
+                .slice(0, OpenAIAIManager.NEAREST_PER_ANCHOR)
+                .forEach(({ n }) => nearby.set(n.x + ',' + n.z, n));
+        }));
+        const nearestNodes = [...nearby.values()];
 
         // --- Buildings (compact: friendly buildings with essentials + busy/idle) ---
         // Research and age-up are player-level in the engine (ai.currentResearch /
@@ -1228,6 +1264,7 @@ class OpenAIAIManager {
             bonuses: bonusesObj,
             map: mapObj,
             discoveredNodesOnMap: discoveredNodesOnMap,
+            nearestNodes: nearestNodes,
             friendlyBuildings: friendlyBuildings,
             buildings: bSummary,
             enemyBuildings: enemyBuildings,
@@ -1509,8 +1546,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
         const r = gs.resources || {}, ep = gs.epoch || {}, wk = gs.workers || {}, b = gs.buildings || {}, th = gs.threats || {};
         const fu = Array.isArray(gs.friendlyUnits) ? gs.friendlyUnits : [];
-        const nodes = { food: 0, wood: 0, stone: 0, gold: 0 };
-        (Array.isArray(gs.discoveredNodesOnMap) ? gs.discoveredNodesOnMap : []).forEach(n => { if (nodes[n.type] != null) nodes[n.type]++; });
+        // Already counts. This used to tally a 1231-entry array on every recap.
+        const dn = gs.discoveredNodesOnMap;
+        const nodes = Object.assign({ food: 0, wood: 0, stone: 0, gold: 0 },
+            (dn && typeof dn === 'object' && !Array.isArray(dn)) ? dn : {});
         // The keys mirror the FULL state schema (resources / workers / buildings /
         // research / threats), so the model reads this past-turn recap exactly like
         // the live state it already knows — no new shorthand to learn. "pastTurnRecap"
@@ -3645,7 +3684,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         if (discovered.length === 0) {
             const have = this.discoveredResourceSummary(ai, game);
             this.outcome('log.out.notDiscovered', { res: resourceType });
-            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources in "discoveredNodesOnMap" exist for you — don't assume a node is ${resourceType}. Send a scout yourself with explore and coordinates picked from "map.exploration"; once ${resourceType} appears in "discoveredNodesOnMap", call assign_workers again.`;
+            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources you have scouted exist for you — "discoveredNodesOnMap" counts them per type and "nearestNodes" gives the coordinates of the ones near your bases. Send a scout yourself with explore and a tile picked from "map.exploration"; once ${resourceType} shows a count above 0, call assign_workers again.`;
         }
 
         // Which node? Explicit targetX/targetZ picks the discovered node nearest
@@ -3659,7 +3698,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const tx = Number(params.targetX), tz = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
                 this.outcome('log.out.assignNeedsCoords', { res: resourceType });
-                return `[ERROR] assign_workers takes BOTH numeric "targetX" and "targetZ" (a discovered ${resourceType} node from "discoveredNodesOnMap"), or neither — then the node nearest your Town Center is used.`;
+                return `[ERROR] assign_workers takes BOTH numeric "targetX" and "targetZ" (a ${resourceType} node from "nearestNodes", or any other you have scouted), or neither — then the node nearest your Town Center is used.`;
             }
             node = this.nearestNodeTo({ x: tx, z: tz }, discovered);
             nodeNote = 'nearest your target';
