@@ -1900,10 +1900,20 @@ class Game {
         if (list.length > 25) list.splice(0, list.length - 25);
     }
 
+    // How a player is REFERRED TO in anything a model reads: battles, UNDER ATTACK
+    // and LOSS/KILL events, recentLosses.to, the Wonder countdown.
+    //
+    // This used to answer with the civilization, which is exactly wrong for the
+    // benchmark case: a controlled run gives all four seats the SAME civ, so three
+    // different rivals all came back "greek" and no report could be attributed to
+    // anyone. The seat id is the key the model already holds — gameStats.opponents[].id,
+    // enemyBuildings[].owner, enemyUnits[].owner — so naming seats by it is what makes
+    // "who is hitting me" joinable with "who is where". The civ is still one lookup
+    // away in gameStats.opponents.
     ownerName(o) {
         if (!o) return 'an unknown force';
-        if (o === this.player) return 'the human player';
-        return o.civilization || o.id || 'an enemy';
+        if (o === this.player) return 'player';   // the id pushRival gives the human
+        return o.id || o.civilization || 'an enemy';
     }
 
     destroyTarget(target) {

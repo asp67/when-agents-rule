@@ -1784,8 +1784,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const liveWonders = enemyWonders.filter(w => w.state === 'complete' && w.secondsUntilEnemyWins != null);
         if (liveWonders.length) {
             const worst = liveWonders.reduce((a, b) => (a.secondsUntilEnemyWins <= b.secondsUntilEnemyWins ? a : b));
-            const ownerAi = this.game.aiManager.aiPlayers.find(a => a.id === worst.owner);
-            const who = ownerAi ? ownerAi.civilization : 'a rival';
+            // The seat id, not the civ: a controlled benchmark runs four seats on the
+            // SAME civ, so "greek has completed a Wonder" would name three rivals at
+            // once. This is the id already carried by threats.enemyWonders[].owner and
+            // gameStats.opponents[].id, so it can be joined with everything else.
+            const who = worst.owner || 'a rival';
             tailNow.push(`${who} has completed a Wonder at (${worst.x}, ${worst.z}) [targetId "${worst.id}", ${worst.healthPct}% HP]. If it still stands in ${worst.secondsUntilEnemyWins}s, ${who} wins the match.`);
         }
         const lastHistResult = controller.conversationHistory.length ? String(controller.conversationHistory[controller.conversationHistory.length - 1].result) : null;
@@ -3864,8 +3867,21 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const pool = candidates.filter(u => whereFrom(u) === from);
             if (!pool.length) {
                 const onIt = ai.units.filter(u => u.type === 'worker' && whereFrom(u) === from).length;
+                // Name the field that ACTUALLY exists. This was built as
+                // "workers.on" + capitalise(from), which is right for the four
+                // resources and wrong for the other two: it produced workers.onIdle
+                // and workers.onFarm, neither of which is in the state. A model sent
+                // to check a field that does not exist has nowhere to go.
+                const FIELD = { food: 'onFood', wood: 'onWood', stone: 'onStone',
+                                gold: 'onGold', farm: 'onFarms', idle: 'idle' };
+                // And say which of the two situations it is. "0 are on it, and none of
+                // those can be pulled" read as two separate reasons and left the real
+                // one — that there is simply nobody there — impossible to pick out.
+                const why = onIt === 0
+                    ? `you have no workers on "${from}" (workers.${FIELD[from]} is 0)`
+                    : `all ${onIt} of them are constructing or fighting, and those are never pulled`;
                 this.outcome('log.out.assignFromEmpty', { from, res: resourceType });
-                return `[ERROR] No workers could be taken from "${from}": ${onIt} are on it, and none of those can be pulled (builders and fighting workers never are). Check workers.on${from.charAt(0).toUpperCase() + from.slice(1)} before choosing a source, or omit "from" to let the harness pick.`;
+                return `[ERROR] No workers could be taken from "${from}": ${why}. Choose a source that has some, or omit "from" to let the harness pick.`;
             }
             candidates = pool;   // STRICT: an explicit source is not quietly widened
         }
