@@ -2073,7 +2073,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 color: colorHex,
                 action: 'request_failed',
                 reason: `Request to model failed: ${err.message.substring(0, 100)}`,
-                params: {}
+                params: {}, failed: true
             });
             if (this.decisionLog.length > this.maxLogEntries) {
                 this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
@@ -2111,7 +2111,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 color: colorHex,
                 action: 'tool_call_failed',
                 reason: `Tool call could not be interpreted: ${reason}`,
-                params: {}
+                params: {}, failed: true
             });
             if (this.decisionLog.length > this.maxLogEntries) {
                 this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
@@ -2129,7 +2129,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 color: colorHex,
                 action: 'no_action_provided',
                 reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
-                params: {}
+                params: {}, failed: true
             });
             if (this.decisionLog.length > this.maxLogEntries) {
                 this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
@@ -2148,7 +2148,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 color: colorHex,
                 action: cut ? 'reply_truncated' : 'malformed_action',
                 reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
-                params: {}
+                params: {}, failed: true
             });
             if (this.decisionLog.length > this.maxLogEntries) {
                 this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);

@@ -2176,7 +2176,15 @@ class UIManager {
             }
 
             // actionLabel/detail were computed during the filter pass above.
-            const isError = entry.failed || (typeof entry.action === 'string' && (entry.action.includes('failed') || entry.action.includes('⚠')));
+            // The entry's own flag, nothing else. This used to also sniff the action
+            // NAME for "failed" or a warning emoji — so a lost turn was styled red only
+            // if its tag happened to be spelled a certain way. Localising the tags
+            // stripped the emoji out of malformed_action / reply_truncated /
+            // no_action_provided and they silently went black, while tool_call_failed
+            // and request_failed kept their red purely because the word "failed" is in
+            // them. Every one of those is a turn the model lost; they all set failed
+            // now, and styling reads the fact instead of guessing from the label.
+            const isError = !!entry.failed;
             // The outcome body in the model's language (null → raw English fallback).
             const locOutcome = this.renderOutcome(entry);
 
