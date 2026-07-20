@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=424">
+    <link rel="stylesheet" href="css/styles.css?v=426">
 </head>
 <body>
     <!-- Start Screen -->
@@ -172,7 +172,16 @@
                 <span class="sb-wonder" id="arenaWonder" style="display:none;"></span>
                 <span class="sb-sep"></span>
                 <button class="sb-end sb-quit" id="arenaHelpBtn" onclick="game.ui.showControlsCard('arena')" data-i18n-title="help.title" title="Steuerung">?</button>
-                <button class="sb-end sb-speed" id="simSpeedBtn" onclick="game.ui.cycleSimSpeed()" data-i18n-title="spec.simSpeedTitle" title="Simulationstempo">⏱ 1×</button>
+                <span class="sb-speed-wrap" id="simSpeedWrap">
+                    <button class="sb-end sb-speed" id="simSpeedBtn" onclick="game.ui.toggleSimSpeedMenu()" data-i18n-title="spec.simSpeedTitle" title="Simulationstempo">⏱ 1×</button>
+                    <div class="sb-speed-menu" id="simSpeedMenu">
+                        <div class="sb-speed-card">
+                            <button type="button" class="sb-speed-opt" data-speed="1" onclick="game.ui.pickSimSpeed(1)">1×</button>
+                            <button type="button" class="sb-speed-opt" data-speed="1.5" onclick="game.ui.pickSimSpeed(1.5)">1,5×</button>
+                            <button type="button" class="sb-speed-opt" data-speed="2" onclick="game.ui.pickSimSpeed(2)">2×</button>
+                        </div>
+                    </div>
+                </span>
                 <button class="sb-end" id="actionCamBtn" onclick="game.toggleActionCam()" data-i18n="spec.actionCam" data-i18n-title="spec.actionCamTitle" title="Kamera folgt automatisch den Kämpfen">🎬 Auto</button>
                 <button class="sb-end" id="arenaSnapshotBtn" onclick="game.toggleArenaSnapshot()" data-i18n="spec.evaluate" data-i18n-title="spec.evaluateTitle" title="Live-Zwischenstand ansehen (Spiel läuft weiter)">Auswertung ▸</button>
                 <button class="sb-end sb-quit" onclick="game.cancelGame()" data-i18n="spec.quit" data-i18n-title="spec.quitTitle" title="Arena beenden und zur Auswertung">✕ Beenden</button>
@@ -306,7 +315,7 @@
                             <input type="checkbox" id="setupTurnBased" onchange="game.ui.setTurnBased(this.checked)">
                             <span data-i18n="ar.fTurnBased">Rundenbasiert</span>
                         </label>
-                        <p class="arena-hint" data-i18n="ar.fTurnBasedHint">Alle Modelle entscheiden gleichzeitig über denselben Spielstand; danach läuft die Simulation eine feste Runde weiter. Schnelle Modelle bekommen dadurch nicht mehr Züge — vergleicht Urteil statt Tempo. Eine Runde dauert so lange wie die langsamste Antwort.</p>
+                        <p class="arena-hint" data-i18n="ar.fTurnBasedHint">Alle Modelle lesen im selben Moment denselben Spielstand; sobald die letzte Antwort eintrifft, werden alle Züge gemeinsam ausgeführt. Schnelle Modelle bekommen dadurch nicht mehr Züge — vergleicht Urteil statt Tempo. Das Spiel läuft während des Nachdenkens weiter, eine Runde dauert also so lange wie die langsamste Antwort.</p>
                     </div>
                 </div>
                 <div id="arenaSlotsList" class="arena-slots"></div>
@@ -406,25 +415,25 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=424"></script>
-    <script src="js/engine/glcore.js?v=424"></script>
-    <script src="js/engine/texgen.js?v=424"></script>
-    <script src="js/engine/mesh.js?v=424"></script>
-    <script src="js/engine/buildings.js?v=424"></script>
-    <script src="js/engine/units.js?v=424"></script>
-    <script src="js/engine/gamerenderer.js?v=424"></script>
-    <script src="js/i18n.js?v=424"></script>
-    <script src="js/civilizations.js?v=424"></script>
-    <script src="js/buildings.js?v=424"></script>
-    <script src="js/units.js?v=424"></script>
-    <script src="js/resources.js?v=424"></script>
-    <script src="js/terrain.js?v=424"></script>
-    <script src="js/fogofwar.js?v=424"></script>
-    <script src="js/ai.js?v=424"></script>
-    <script src="js/transcript.js?v=424"></script>
-    <script src="js/openai-ai.js?v=424"></script>
-    <script src="js/input.js?v=424"></script>
-    <script src="js/ui.js?v=424"></script>
-    <script src="js/game.js?v=424"></script>
+    <script src="js/engine/math3d.js?v=426"></script>
+    <script src="js/engine/glcore.js?v=426"></script>
+    <script src="js/engine/texgen.js?v=426"></script>
+    <script src="js/engine/mesh.js?v=426"></script>
+    <script src="js/engine/buildings.js?v=426"></script>
+    <script src="js/engine/units.js?v=426"></script>
+    <script src="js/engine/gamerenderer.js?v=426"></script>
+    <script src="js/i18n.js?v=426"></script>
+    <script src="js/civilizations.js?v=426"></script>
+    <script src="js/buildings.js?v=426"></script>
+    <script src="js/units.js?v=426"></script>
+    <script src="js/resources.js?v=426"></script>
+    <script src="js/terrain.js?v=426"></script>
+    <script src="js/fogofwar.js?v=426"></script>
+    <script src="js/ai.js?v=426"></script>
+    <script src="js/transcript.js?v=426"></script>
+    <script src="js/openai-ai.js?v=426"></script>
+    <script src="js/input.js?v=426"></script>
+    <script src="js/ui.js?v=426"></script>
+    <script src="js/game.js?v=426"></script>
 </body>
 </html>

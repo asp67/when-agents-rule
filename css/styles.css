@@ -2157,11 +2157,53 @@ body.spectator-mode #unitInfo.spectator-card {
     box-shadow: inset 0 0 0 1px rgba(147,166,200,0.35), inset 2px 0 0 #ff5a5a;
 }
 
-/* Simulation-speed button in the arena bar. "is-locked" means a Wonder is holding it
+/* Simulation-speed control in the arena bar. "is-locked" means a Wonder is holding it
    at 1x regardless of the setting — dimmed rather than relabelled, so the chosen
    speed stays visible and the tooltip explains why it is not in effect. */
 .sb-speed { min-width: 60px; font-variant-numeric: tabular-nums; }
 .sb-speed.is-locked { opacity: 0.55; text-decoration: line-through; }
+
+/* All three speeds on hover (or a click, for touch) instead of a cycle button: going
+   from 1x to 2x used to mean passing THROUGH 1.5x and simulating at it on the way.
+   pointer-events must be restored here — the HUD around it is click-through. */
+.sb-speed-wrap { position: relative; display: inline-flex; pointer-events: auto; }
+.sb-speed-menu {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding-top: 8px;   /* a bridge, so the pointer never leaves the wrapper on the way down */
+    display: none;
+    z-index: 1002;
+}
+.sb-speed-wrap:hover .sb-speed-menu,
+.sb-speed-wrap.is-open .sb-speed-menu { display: block; }
+
+.sb-speed-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    background: linear-gradient(180deg, rgba(18, 24, 48, 0.97), rgba(10, 14, 30, 0.97));
+    border: 1px solid rgba(78, 204, 163, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+}
+.sb-speed-opt {
+    cursor: pointer;
+    border: none;
+    border-radius: 999px;
+    padding: 5px 18px;
+    font: inherit;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: #cfe3ff;
+    background: rgba(255, 255, 255, 0.06);
+    transition: background 0.15s, color 0.15s;
+}
+.sb-speed-opt:hover { background: rgba(78, 204, 163, 0.25); color: #fff; }
+.sb-speed-opt.is-active { background: linear-gradient(145deg, #35b58c, #1f8d6b); color: #fff; }
 
 /* A checkbox setting on the setup screen, with the consequence spelled out under it. */
 .arena-field-wide { grid-column: 1 / -1; }

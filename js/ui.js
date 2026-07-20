@@ -2876,18 +2876,35 @@ class UIManager {
     // harness's own pause/resume/defeat notices are written without a model turn,
     // so there is nothing to open.
     // ---- Simulation speed -------------------------------------------------------
-    // One cycling button rather than three radio buttons: the status bar has room for
-    // one control, and 1x -> 1.5x -> 2x -> 1x needs no extra chrome.
+    // The button shows what is running and opens a small menu of all three speeds. It
+    // used to cycle, which meant 1x -> 2x could only be reached THROUGH 1.5x — the
+    // match actually simulated at a speed nobody asked for on the way past.
     //
-    // Confirmed ONCE per match on the first speed-up, not on every click. Speeding up
+    // Hover opens it; a click pins it open, which is the only route on a touch screen.
+    simSpeedLabel(v) { return Number(v).toLocaleString(typeof getUiLang === 'function' ? getUiLang() : 'en'); }
+
+    toggleSimSpeedMenu() {
+        const wrap = document.getElementById('simSpeedWrap');
+        if (!wrap) return;
+        wrap.classList.toggle('is-open');
+        if (!this._simSpeedOutside) {
+            this._simSpeedOutside = (e) => {
+                if (!wrap.contains(e.target)) wrap.classList.remove('is-open');
+            };
+            document.addEventListener('click', this._simSpeedOutside);
+        }
+    }
+
+    // Confirmed ONCE per match on the first speed-up, not on every pick. Speeding up
     // changes what a result means, so it deserves a warning — but a dialog on every
     // press is friction, and slowing back down never needs one.
-    cycleSimSpeed() {
-        const order = [1, 1.5, 2];
-        const next = order[(order.indexOf(this.game.simSpeed || 1) + 1) % order.length];
-        const speedingUp = next > (this.game.simSpeed || 1);
-        const apply = () => { this.game.setSimSpeed(next); this.updateSimSpeedButton(); };
-        if (speedingUp && !this._simSpeedWarned) {
+    pickSimSpeed(mult) {
+        const wrap = document.getElementById('simSpeedWrap');
+        if (wrap) wrap.classList.remove('is-open');
+        const cur = this.game.simSpeed || 1;
+        if (mult === cur) return;
+        const apply = () => { this.game.setSimSpeed(mult); this.updateSimSpeedButton(); };
+        if (mult > cur && !this._simSpeedWarned) {
             this._simSpeedWarned = true;
             this.showConfirm(t('spec.simSpeedWarn'), apply, {
                 title: t('spec.simSpeedWarnTitle'),
@@ -2905,11 +2922,18 @@ class UIManager {
         const set = this.game.simSpeed || 1;
         const eff = this.game.effectiveSimSpeed ? this.game.effectiveSimSpeed() : set;
         const locked = eff !== set;   // a Wonder is holding it at 1x
-        btn.textContent = `⏱ ${String(set).replace('.', ',')}×`;
+        btn.textContent = `⏱ ${this.simSpeedLabel(set)}×`;
         btn.classList.toggle('sb-on', set !== 1);
         // Say WHY it is not running at the chosen speed, rather than silently lying.
         btn.classList.toggle('is-locked', locked);
         btn.title = locked ? t('spec.simSpeedLocked', { s: String(set) }) : t('spec.simSpeedTitle');
+        // Repainted on the arena clock's beat, so the decimal separator follows a
+        // language switch mid-match without its own hook.
+        document.querySelectorAll('#simSpeedMenu .sb-speed-opt').forEach(o => {
+            const v = parseFloat(o.dataset.speed);
+            o.textContent = `${this.simSpeedLabel(v)}×`;
+            o.classList.toggle('is-active', v === set);
+        });
     }
 
     logEntryLinkable(entry) {
