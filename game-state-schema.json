@@ -313,7 +313,8 @@
         "properties": {
           "at": { "type": "array", "items": { "type": "integer" }, "description": "[x, z] centre of the fighting." },
           "ongoing": { "type": "boolean", "description": "true while blows are still landing." },
-          "secondsElapsed": { "type": "integer" },
+          "endedSecondsAgo": { "type": "integer", "description": "Only present once ongoing is false: how long ago the last blow landed. An entry is reported for two minutes after a fight ends, so this is what tells a finished skirmish from a stale one." },
+          "secondsElapsed": { "type": "integer", "description": "How long the fight LASTED (first blow to last), not how long ago it was — see endedSecondsAgo for that." },
           "you": { "$ref": "#/properties/battles/items/definitions/side" },
           "enemy": {
             "type": "array",

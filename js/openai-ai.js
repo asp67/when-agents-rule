@@ -767,9 +767,16 @@ class OpenAIAIManager {
                                     (oid === 'player' ? game.player : null);
                         return Object.assign({ owner: foe ? game.ownerName(foe) : String(oid) }, sideJson(b.sides[oid]));
                     });
+                const quiet = battleNow - b.lastAt;
+                const ongoing = quiet < Game.BATTLE_QUIET_MS;
                 return {
                     at: [Math.round(b.x), Math.round(b.z)],
-                    ongoing: (battleNow - b.lastAt) < 10000,
+                    ongoing,
+                    // Entries are held for two minutes so a slow model still gets a
+                    // turn to read them — far too long for "not ongoing" to carry it
+                    // alone, since that says the same at 11 seconds and at 110. Only
+                    // present once the fight has ended, so a live one pays nothing.
+                    ...(ongoing ? {} : { endedSecondsAgo: Math.round(quiet / 1000) }),
                     secondsElapsed: Math.max(0, Math.round((b.lastAt - b.startedAt) / 1000)),
                     you: sideJson(b.sides[ai.id]),
                     enemy

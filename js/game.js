@@ -596,6 +596,7 @@ class Game {
             ai.resources.updatePopulation(ai.units.length);
         });
         this.sampleTimeline(currentTime);
+        this.pruneBattles();   // time-driven: a quiet map must still let fights expire
         // Keep the selection card current. Health, and anything else it shows, moves
         // while you watch; the card only ever rendered on the click that selected.
         // Throttled to ~400ms: fast enough to watch a building lose health, far
@@ -1728,14 +1729,19 @@ class Game {
     // spawn 400+ apart, so 90 unifies one siege while never merging two of them.
     static get BATTLE_RADIUS() { return 90; }
     static get BATTLE_QUIET_MS() { return 10000; }   // no blows for this long → the fight is over
-    static get BATTLE_KEEP_MS() { return 25000; }    // ...but keep reporting it briefly after
+    // ...but keep reporting it long after. A slow model can spend 20-30s on a turn,
+    // so a short window meant the only record of a fight could expire between the
+    // last blow and that player's next look at the board.
+    static get BATTLE_KEEP_MS() { return 120000; }
+    // Engagements held at once, across every player. Sized against KEEP_MS: entries
+    // now linger nearly 5x longer, so the old cap of 4 would have run out of room in
+    // any busy match and started dropping live fights to make space.
+    static get BATTLE_MAX() { return 8; }
 
     _battleAt(x, z, open) {
         const now = Date.now();
         const R = Game.BATTLE_RADIUS;
-        // Retire engagements nobody has touched in a while — kept a little past
-        // the last blow so the next state still reports how it ended.
-        this._battles = (this._battles || []).filter(b => (now - b.lastAt) <= Game.BATTLE_KEEP_MS);
+        this.pruneBattles();
         const near = this._battles.filter(e =>
             (now - e.lastAt) <= Game.BATTLE_QUIET_MS && Math.hypot(e.x - x, e.z - z) <= R);
         let b = near[0] || null;
@@ -1750,9 +1756,31 @@ class Game {
         if (!b && open) {
             b = { x, z, startedAt: now, lastAt: now, sides: {} };
             this._battles.push(b);
-            if (this._battles.length > 4) this._battles.shift();
+            // Evict the STALEST, not the earliest inserted. At a two-minute window a
+            // long siege is easily the oldest entry while still being the live one,
+            // and shift() would have dropped it to make room for a fresh skirmish.
+            while (this._battles.length > Game.BATTLE_MAX) {
+                let stalest = 0;
+                for (let i = 1; i < this._battles.length; i++) {
+                    if (this._battles[i].lastAt < this._battles[stalest].lastAt) stalest = i;
+                }
+                this._battles.splice(stalest, 1);
+            }
         }
         return b || null;
+    }
+
+    // Retire engagements nobody has touched in a while — kept well past the last
+    // blow so a slow model still gets a turn to read how the fight ended.
+    //
+    // TIME-driven, and that is the point: this used to live inside _battleAt, which
+    // only runs when a blow lands. So the moment the map went quiet — exactly when a
+    // battle has just finished — nothing pruned, and the last entries rode along in
+    // every state for the rest of the match. The one caller that reads _battles
+    // outside combat (the state serializer) never filtered by age either.
+    pruneBattles() {
+        const now = Date.now();
+        this._battles = (this._battles || []).filter(b => (now - b.lastAt) <= Game.BATTLE_KEEP_MS);
     }
 
     _mergeBattleInto(dst, src) {
