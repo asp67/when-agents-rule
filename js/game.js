@@ -1530,12 +1530,31 @@ class Game {
     // Spectator action camera: toggled from the status bar. When on, the renderer
     // eases the camera toward the hottest recent fight and drifts gently when the
     // map is quiet. Any manual camera action switches it off — the user always wins.
+    // Whatever the spectator currently has selected, as a camera subject — or null.
+    // Derived from the selection rather than remembered separately: the selection is
+    // what "the thing I am watching" means, and a second copy of that fact is how the
+    // info card ended up showing one unit while the camera followed something else.
+    _selectionAsCamSubject() {
+        if (this.selectedBuilding && this.selectedBuilding.health > 0) {
+            return { kind: 'ent', ent: this.selectedBuilding };
+        }
+        for (const ai of this.aiManager.aiPlayers) {
+            const u = ai.units.find(x => x.selected && x.health > 0);
+            if (u) return { kind: 'units', units: [u] };
+        }
+        return null;
+    }
+
     toggleActionCam() {
         this._actionCam = !this._actionCam;
-        // Fresh tour every time it's switched on (drop any click-follow subject).
         this._camPOI = null;
         this._camTourIdx = null;
-        this._camFollow = null;
+        // Switching it ON adopts whatever is already selected. "Follow the selected
+        // unit" has to mean the same thing whichever order you do it in, and this
+        // used to clear the subject unconditionally — so picking a unit and THEN
+        // pressing Auto silently started a tour instead, while the unit stayed
+        // selected and its card stayed on screen. Only the other order worked.
+        this._camFollow = this._actionCam ? this._selectionAsCamSubject() : null;
         const btn = document.getElementById('actionCamBtn');
         if (btn) btn.classList.toggle('sb-on', this._actionCam);
     }
