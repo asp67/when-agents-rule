@@ -1577,9 +1577,9 @@ class Game {
         return false;
     }
 
-    // 1 | 1.5 | 2. Returns what actually took effect, which is 1 while a Wonder stands.
+    // 1 | 1.5 | 2 | 4. Returns what actually took effect, which is 1 while a Wonder stands.
     setSimSpeed(mult) {
-        this.simSpeed = [1, 1.5, 2].includes(mult) ? mult : 1;
+        this.simSpeed = [1, 1.5, 2, 4].includes(mult) ? mult : 1;
         if (this.ui && this.ui.updateSimSpeedButton) this.ui.updateSimSpeedButton();
         return this.effectiveSimSpeed();
     }
