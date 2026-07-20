@@ -625,7 +625,7 @@
     },
     "workers": {
       "type": "object",
-      "description": "Live tally of what your villagers are doing — use it to rebalance the economy at a glance. Gathering is a round trip (walk out, gather, carry home), so a worker on wood is on wood the whole cycle: onWood counts all of them, and carryingWood is the subset currently holding a load.",
+      "description": "Live tally of what your villagers are doing — use it to rebalance the economy at a glance. Gathering is a round trip (walk out, gather, carry home), so a worker on wood is on wood for the whole cycle and onWood counts all of them, wherever they are in it.",
       "required": [
         "total",
         "idle",
@@ -636,11 +636,7 @@
         "onFood",
         "onWood",
         "onStone",
-        "onGold",
-        "carryingFood",
-        "carryingWood",
-        "carryingStone",
-        "carryingGold"
+        "onGold"
       ],
       "properties": {
         "total": { "type": "integer" },
@@ -649,17 +645,10 @@
         "onFarms": { "type": "integer" },
         "scouting": { "type": "integer" },
         "moving": { "type": "integer", "description": "In transit with no resolved job yet." },
-        "onFood": { "type": "integer", "description": "Workers whose job is food, at ANY point of the cycle: walking out, gathering, or carrying home." },
+        "onFood": { "type": "integer", "description": "Workers whose job is food, at ANY point of the cycle: walking out, gathering, or carrying home. Reassigning a worker who happens to be carrying a load destroys it — but which ones those are changes every few seconds, far faster than a turn, so it is not something to plan from here. assign_workers' allowSpill decides it at the moment the order runs." },
         "onWood": { "type": "integer" },
         "onStone": { "type": "integer" },
-        "onGold": { "type": "integer" },
-        "carryingFood": {
-          "type": "integer",
-          "description": "Of onFood, how many are carrying a load right now. Reassigning one DESTROYS that load, so onFood minus carryingFood is how many can be moved for free — the number to check before choosing assign_workers' count and from. A load is 10 x your harvest bonus, so this count cannot be inferred from your resource totals."
-        },
-        "carryingWood": { "type": "integer" },
-        "carryingStone": { "type": "integer" },
-        "carryingGold": { "type": "integer" }
+        "onGold": { "type": "integer" }
       }
     },
     "enemyUnits": {

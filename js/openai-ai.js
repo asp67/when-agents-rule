@@ -1125,15 +1125,15 @@ class OpenAIAIManager {
         //     read as harvestingWood 1 / returning 2. The staffing figure a model
         //     rebalances from was understating itself by however long the walk is.
         //
-        //     "carryingX" is the subset holding a full load. Reassigning one DROPS
-        //     that load (see executeAssignWorkers), so onX minus carryingX is what
-        //     can be pulled for free — the number the decision actually turns on.
-        //     A load is 10 x the civ/tech harvest bonus, so an AMOUNT could not be
-        //     divided back into a headcount by the model; the count has to be given.
+        //     There was a "carryingX" here too — how many of each were holding a load
+        //     — so a model could work out how many moved for free. It was removed
+        //     because it cannot survive the trip: a gather round trip runs 12-32s and
+        //     a reply takes 1.6-36s, so by the time the action lands the figure is a
+        //     whole cycle old and describes different workers. Spilling is decided at
+        //     EXECUTION now, via assign_workers' allowSpill, where the truth is known.
         const wk = {
             total: 0, idle: 0, building: 0, onFarms: 0, scouting: 0, moving: 0,
-            onFood: 0, onWood: 0, onStone: 0, onGold: 0,
-            carryingFood: 0, carryingWood: 0, carryingStone: 0, carryingGold: 0
+            onFood: 0, onWood: 0, onStone: 0, onGold: 0
         };
         const CAP = { food: 'Food', wood: 'Wood', stone: 'Stone', gold: 'Gold' };
         ai.units.forEach(u => {
@@ -1148,7 +1148,6 @@ class OpenAIAIManager {
                 const k = CAP[rt];
                 if (!k) { wk.moving++; return; }   // job not resolved yet (in transit)
                 wk['on' + k]++;
-                if (carrying) wk['carrying' + k]++;
                 return;
             }
             if (this.game.isIdleWorker(u)) { wk.idle++; return; }
@@ -1575,7 +1574,7 @@ research_tech: techId (from research.available)
 upgrade_age: (None)
 build_structure: buildingType (from buildableStructures), targetX?, targetZ?
 build_wonder: (None)
-assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), targetX?, targetZ?
+assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), allowSpill? (def:true; false takes only workers not carrying a load right now, and takes fewer if that is all there are), targetX?, targetZ?
 repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
 explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?
 move_units: targetX, targetZ, units?
@@ -3870,9 +3869,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         // Optional SOURCE. Omitted, the triage below picks as it always has (idle
         // first, then the fattest stockpile down). Given, the MODEL chooses where the
-        // workers come from — which is what makes workers.onX / workers.carryingX
-        // worth reading at all: knowing four food workers are free is worth nothing
-        // if the harness then takes them off gold.
+        // workers come from — which is what makes workers.onX worth reading at all:
+        // deciding to thin out food is worth nothing if the pick then takes them
+        // off gold.
         const whereFrom = u => {
             if (u.task === 'farm_work' || u.farmRef) return 'farm';
             const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
@@ -3914,14 +3913,41 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             candidates = pool;   // STRICT: an explicit source is not quietly widened
         }
 
+        // Spilling is a POLICY the model states and the harness applies here, where
+        // the truth is known. It cannot be planned from the state: a gather round trip
+        // runs 12-32s and a reply takes 1.6-36s, so any count of who is carrying is a
+        // whole cycle stale by the time the order arrives, describing different
+        // workers. What the model CAN say is what it wants done when the moment comes.
+        const carrying = u => !!(u.carryingResource || u.task === 'carrying');
+        let allowSpill = true;
+        if (params.allowSpill !== undefined && params.allowSpill !== null && params.allowSpill !== '') {
+            const v = params.allowSpill;
+            if (v === true || v === 'true') allowSpill = true;
+            else if (v === false || v === 'false') allowSpill = false;
+            else {
+                this.outcome('log.out.assignBadSpill', {});
+                return `[ERROR] assign_workers "allowSpill" must be true or false. true (the default) moves the workers you asked for even if some are carrying a load, which is lost. false moves only workers not carrying anything right now, and moves fewer if that is all there are. Got ${JSON.stringify(params.allowSpill)}.`;
+            }
+        }
+        if (!allowSpill) {
+            const free = candidates.filter(u => !carrying(u));
+            if (!free.length) {
+                const held = candidates.length;
+                this.outcome('log.out.assignAllCarrying', { n: held, res: resourceType });
+                return `[ERROR] Nobody could be moved without losing a load: all ${held} available worker(s) are carrying one right now. "allowSpill": true takes them anyway and loses what they hold.`;
+            }
+            candidates = free;
+        }
+
         // Tier policy lives in game.workerPullRank — the same triage that picks
         // builders, so every kind of pull disturbs the economy the same way. Within a
-        // tier, take the ones NOT carrying first: reassigning drops a full load, and
+        // tier, take the ones NOT carrying first: reassigning destroys a full load, and
         // an empty-handed worker at the same node costs nothing to move. The tiers
         // used to rank a loaded worker and an empty one identically, so a request for
         // three could destroy three loads while three empty ones stood beside them.
+        // This runs on LIVE state, which is why it works where a state count could not.
         const rank = u => game.workerPullRank(ai, u);
-        const loaded = u => (u.carryingResource || u.task === 'carrying') ? 1 : 0;
+        const loaded = u => carrying(u) ? 1 : 0;
         candidates.sort((a, b) => (rank(a) - rank(b)) || (loaded(a) - loaded(b)));
 
         let moved = 0;
@@ -3956,14 +3982,16 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const short = moved < count
-            ? (from !== null
-                ? ` Fewer than requested: only ${moved} could be taken from "${from}".`
-                : ` Fewer than requested: the others are constructing or fighting (never pulled), already on ${resourceType}, or you don't have that many workers.`)
+            ? (!allowSpill
+                ? ` Fewer than requested: only ${moved} were empty-handed at that moment, and "allowSpill": false left the rest gathering.`
+                : from !== null
+                    ? ` Fewer than requested: only ${moved} could be taken from "${from}".`
+                    : ` Fewer than requested: the others are constructing or fighting (never pulled), already on ${resourceType}, or you don't have that many workers.`)
             : '';
         // What the reassignment actually COST. Workers carrying a load drop it, and
         // the free ones are taken first — so this only appears when more were asked
-        // for than were empty-handed. The amount is the fact; noticing that asking for
-        // fewer, or checking workers.carrying* first, would have avoided it is the
+        // for than were empty-handed, with allowSpill left at its default. The amount
+        // is the fact; noticing that allowSpill:false would have avoided it is the
         // play, and that is the model's to make.
         // "Dropped" was wrong and teachable-wrong: it implies the load is lying on the
         // ground and could be fetched. It is destroyed (harvestAmount = 0), and a model
