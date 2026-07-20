@@ -625,54 +625,41 @@
     },
     "workers": {
       "type": "object",
-      "description": "Live tally of what your villagers are doing — use it to rebalance the economy at a glance.",
+      "description": "Live tally of what your villagers are doing — use it to rebalance the economy at a glance. Gathering is a round trip (walk out, gather, carry home), so a worker on wood is on wood the whole cycle: onWood counts all of them, and carryingWood is the subset currently holding a load.",
       "required": [
         "total",
         "idle",
         "building",
         "onFarms",
         "scouting",
-        "returning",
         "moving",
-        "harvestingFood",
-        "harvestingWood",
-        "harvestingStone",
-        "harvestingGold"
+        "onFood",
+        "onWood",
+        "onStone",
+        "onGold",
+        "carryingFood",
+        "carryingWood",
+        "carryingStone",
+        "carryingGold"
       ],
       "properties": {
-        "total": {
-          "type": "integer"
+        "total": { "type": "integer" },
+        "idle": { "type": "integer" },
+        "building": { "type": "integer" },
+        "onFarms": { "type": "integer" },
+        "scouting": { "type": "integer" },
+        "moving": { "type": "integer", "description": "In transit with no resolved job yet." },
+        "onFood": { "type": "integer", "description": "Workers whose job is food, at ANY point of the cycle: walking out, gathering, or carrying home." },
+        "onWood": { "type": "integer" },
+        "onStone": { "type": "integer" },
+        "onGold": { "type": "integer" },
+        "carryingFood": {
+          "type": "integer",
+          "description": "Of onFood, how many are carrying a load right now. Reassigning one DESTROYS that load, so onFood minus carryingFood is how many can be moved for free — the number to check before choosing assign_workers' count and from. A load is 10 x your harvest bonus, so this count cannot be inferred from your resource totals."
         },
-        "idle": {
-          "type": "integer"
-        },
-        "building": {
-          "type": "integer"
-        },
-        "onFarms": {
-          "type": "integer"
-        },
-        "scouting": {
-          "type": "integer"
-        },
-        "returning": {
-          "type": "integer"
-        },
-        "moving": {
-          "type": "integer"
-        },
-        "harvestingFood": {
-          "type": "integer"
-        },
-        "harvestingWood": {
-          "type": "integer"
-        },
-        "harvestingStone": {
-          "type": "integer"
-        },
-        "harvestingGold": {
-          "type": "integer"
-        }
+        "carryingWood": { "type": "integer" },
+        "carryingStone": { "type": "integer" },
+        "carryingGold": { "type": "integer" }
       }
     },
     "enemyUnits": {

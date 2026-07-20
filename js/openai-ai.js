@@ -1090,24 +1090,37 @@ class OpenAIAIManager {
 
         // --- Worker breakdown: a live tally of what your villagers are doing, so the
         //     model can rebalance the economy at a glance (counts workers only). ---
+        //     "onX" counts EVERY worker whose job is X, at any point in the gather
+        //     cycle — walking out, at the node, or carrying a load home. It used to
+        //     count only those standing on a node, with the whole return leg dumped
+        //     into an unattributed "returning" bucket, so three workers all on wood
+        //     read as harvestingWood 1 / returning 2. The staffing figure a model
+        //     rebalances from was understating itself by however long the walk is.
+        //
+        //     "carryingX" is the subset holding a full load. Reassigning one DROPS
+        //     that load (see executeAssignWorkers), so onX minus carryingX is what
+        //     can be pulled for free — the number the decision actually turns on.
+        //     A load is 10 x the civ/tech harvest bonus, so an AMOUNT could not be
+        //     divided back into a headcount by the model; the count has to be given.
         const wk = {
-            total: 0, idle: 0, building: 0, onFarms: 0, scouting: 0, returning: 0, moving: 0,
-            harvestingFood: 0, harvestingWood: 0, harvestingStone: 0, harvestingGold: 0
+            total: 0, idle: 0, building: 0, onFarms: 0, scouting: 0, moving: 0,
+            onFood: 0, onWood: 0, onStone: 0, onGold: 0,
+            carryingFood: 0, carryingWood: 0, carryingStone: 0, carryingGold: 0
         };
+        const CAP = { food: 'Food', wood: 'Wood', stone: 'Stone', gold: 'Gold' };
         ai.units.forEach(u => {
             if (u.type !== 'worker') return;
             wk.total++;
             if (u.task === 'building' || u.isBuilding) { wk.building++; return; }
             if (u.task === 'scouting') { wk.scouting++; return; }
             if (u.task === 'farm_work') { wk.onFarms++; return; }
-            if (u.carryingResource || u.task === 'carrying') { wk.returning++; return; }
-            if (u.task === 'harvesting' || u.isHarvesting || u.harvestTarget) {
+            const carrying = !!(u.carryingResource || u.task === 'carrying');
+            if (carrying || u.task === 'harvesting' || u.isHarvesting || u.harvestTarget) {
                 const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
-                if (rt === 'food') wk.harvestingFood++;
-                else if (rt === 'wood') wk.harvestingWood++;
-                else if (rt === 'stone') wk.harvestingStone++;
-                else if (rt === 'gold') wk.harvestingGold++;
-                else wk.moving++; // harvesting but target not yet known (in transit)
+                const k = CAP[rt];
+                if (!k) { wk.moving++; return; }   // job not resolved yet (in transit)
+                wk['on' + k]++;
+                if (carrying) wk['carrying' + k]++;
                 return;
             }
             if (this.game.isIdleWorker(u)) { wk.idle++; return; }
@@ -1534,7 +1547,7 @@ research_tech: techId (from research.available)
 upgrade_age: (None)
 build_structure: buildingType (from buildableStructures), targetX?, targetZ?
 build_wonder: (None)
-assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), targetX?, targetZ?
+assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), targetX?, targetZ?
 repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
 explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?
 move_units: targetX, targetZ, units?
@@ -1628,9 +1641,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 advancingTo: ep.upgradeInProgress ? ep.upgradeInProgress.targetEpoch : null
             },
             resources: { food: r.food, wood: r.wood, stone: r.stone, gold: r.gold, population: r.population, maxPopulation: r.maxPopulation },
+            // Mirrors the live state's key names. The recap kept reading the old
+            // harvesting* keys after the split and would have replayed four
+            // undefineds into every past turn.
             workers: {
-                total: wk.total, harvestingFood: wk.harvestingFood, harvestingWood: wk.harvestingWood,
-                harvestingStone: wk.harvestingStone, harvestingGold: wk.harvestingGold,
+                total: wk.total, onFood: wk.onFood, onWood: wk.onWood,
+                onStone: wk.onStone, onGold: wk.onGold,
                 onFarms: wk.onFarms, building: wk.building, idle: wk.idle, scouting: wk.scouting
             },
             militaryUnitCount: fu.filter(u => u.type !== 'worker').length,
@@ -3803,7 +3819,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // auto-retaliation) are never pulled, nor are workers already on the
         // requested resource: assign_workers ADDS to it.
         const isFighting = u => u.isAttacking || u.attackTarget || u.attackMove;
-        const candidates = ai.units.filter(u =>
+        let candidates = ai.units.filter(u =>
             u.type === 'worker' && u.health > 0 &&
             u.task !== 'building' && !u.isBuilding && !isFighting(u) &&
             !((u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget && u.harvestTarget.type === resourceType));
@@ -3814,18 +3830,65 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             this.outcome('log.out.noWorkersReassign', { already, res: resourceType, building, fighting });
             return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing, ${fighting} are fighting (builders and fighting workers are never pulled). Train more workers.`;
         }
+
+        // Optional SOURCE. Omitted, the triage below picks as it always has (idle
+        // first, then the fattest stockpile down). Given, the MODEL chooses where the
+        // workers come from — which is what makes workers.onX / workers.carryingX
+        // worth reading at all: knowing four food workers are free is worth nothing
+        // if the harness then takes them off gold.
+        const whereFrom = u => {
+            if (u.task === 'farm_work' || u.farmRef) return 'farm';
+            const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
+            if (rt) return rt;
+            return game.isIdleWorker(u) ? 'idle' : null;
+        };
+        const FROMS = ['food', 'wood', 'stone', 'gold', 'farm', 'idle'];
+        const rawFrom = (params.from === undefined || params.from === null || params.from === '')
+            ? null : String(params.from).toLowerCase().trim();
+        const from = rawFrom === 'farms' ? 'farm' : rawFrom;
+        if (from !== null && !FROMS.includes(from)) {
+            this.outcome('log.out.assignBadFrom', {});
+            return `[ERROR] assign_workers "from" is where workers are TAKEN FROM and must be one of ${FROMS.join('|')} — omit it to let the harness pick idle workers first, then your largest stockpile. Got ${JSON.stringify(params.from)}.`;
+        }
+        if (from !== null && from === resourceType) {
+            this.outcome('log.out.assignFromSame', { res: resourceType });
+            return `[ERROR] "from" and "resourceType" are both "${resourceType}", which would move workers onto the job they already have. Choose a different source or omit "from".`;
+        }
+        if (from !== null) {
+            const pool = candidates.filter(u => whereFrom(u) === from);
+            if (!pool.length) {
+                const onIt = ai.units.filter(u => u.type === 'worker' && whereFrom(u) === from).length;
+                this.outcome('log.out.assignFromEmpty', { from, res: resourceType });
+                return `[ERROR] No workers could be taken from "${from}": ${onIt} are on it, and none of those can be pulled (builders and fighting workers never are). Check workers.on${from.charAt(0).toUpperCase() + from.slice(1)} before choosing a source, or omit "from" to let the harness pick.`;
+            }
+            candidates = pool;   // STRICT: an explicit source is not quietly widened
+        }
+
         // Tier policy lives in game.workerPullRank — the same triage that picks
-        // builders, so every kind of pull disturbs the economy the same way.
+        // builders, so every kind of pull disturbs the economy the same way. Within a
+        // tier, take the ones NOT carrying first: reassigning drops a full load, and
+        // an empty-handed worker at the same node costs nothing to move. The tiers
+        // used to rank a loaded worker and an empty one identically, so a request for
+        // three could destroy three loads while three empty ones stood beside them.
         const rank = u => game.workerPullRank(ai, u);
-        candidates.sort((a, b) => rank(a) - rank(b));
+        const loaded = u => (u.carryingResource || u.task === 'carrying') ? 1 : 0;
+        candidates.sort((a, b) => (rank(a) - rank(b)) || (loaded(a) - loaded(b)));
 
         let moved = 0;
         const pulledFrom = {};
+        const spilled = {};      // resource -> amount destroyed by pulling a loaded worker
         for (const w of candidates) {
             if (moved >= count) break;
             const r = rank(w);
             const label = r === 0 ? 'idle' : r === 5 ? 'scouting' : r === 6 ? 'repairing' : r === 7 ? 'farming' : `from ${w.harvestTarget.type}`;
             pulledFrom[label] = (pulledFrom[label] || 0) + 1;
+            // A carried load is destroyed by the reassignment. Sorted last, so this
+            // only happens once the free workers run out — but it is a real cost and
+            // the model can only learn it from being told.
+            if ((w.carryingResource || w.task === 'carrying') && w.harvestAmount > 0) {
+                const rt = w.carryingResourceType || (w.harvestTarget && w.harvestTarget.type) || 'resources';
+                spilled[rt] = (spilled[rt] || 0) + w.harvestAmount;
+            }
             if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
             w.farmRef = null;
             w._formerTask = null;
@@ -3842,7 +3905,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             moved++;
         }
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
-        const short = moved < count ? ` Fewer than requested: the others are constructing or fighting (never pulled), already on ${resourceType}, or you don't have that many workers.` : '';
+        const short = moved < count
+            ? (from !== null
+                ? ` Fewer than requested: only ${moved} could be taken from "${from}".`
+                : ` Fewer than requested: the others are constructing or fighting (never pulled), already on ${resourceType}, or you don't have that many workers.`)
+            : '';
+        // What the reassignment actually COST. Workers carrying a load drop it, and
+        // the free ones are taken first — so this only appears when more were asked
+        // for than were empty-handed. Stating the price is the error channel doing its
+        // job; whether it was worth paying stays the model's call.
+        const spillTxt = Object.keys(spilled).length
+            ? ` Dropped in transit: ${Object.entries(spilled).map(([r, n]) => `${n} ${r}`).join(', ')} — those workers were carrying. "workers.carrying*" says how many are, and "workers.on*" minus that is how many move for free.`
+            : '';
         // Gathering is a ROUND TRIP: walk out, gather, carry it back to a Town Center.
         // The state gives node coordinates and nothing about what distance costs, and
         // models were picking far nodes as if delivery were free. Report the haul on
@@ -3855,7 +3929,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }, null);
         const haul = nearTC ? ` Each load is a ~${Math.max(1, Math.round(nearTC.d / (3 * 1.0)))}s walk back to your nearest Town Center, so a closer node gathers faster.` : '';
         this.outcome('log.out.reassigned', { count: moved, res: resourceType, x: Math.round(node.x), z: Math.round(node.z), near: (gaveX || gaveZ) ? 'target' : 'tc', pulled: this.pulledCounts(pulledFrom) });
-        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${haul}${short}`;
+        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${spillTxt}${haul}${short}`;
     }
 
     // Put workers on fixing a damaged own building (free; uses the build task's
