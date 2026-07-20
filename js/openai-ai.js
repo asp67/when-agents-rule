@@ -1842,6 +1842,20 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 s.latencies.push(Date.now() - reqStart);
             }
 
+            // Stamp the harness's answer onto the transcript. executeAction does this
+            // for every turn that RUNS — but a reply that never parsed never reaches
+            // it, so the turns whose failure most needs explaining were the only ones
+            // showing a blank where the answer goes. Every early return below routes
+            // through here so none can forget.
+            const stampResult = (msg) => {
+                try {
+                    if (this.transcripts) {
+                        this.transcripts.noteResult(controller.aiPlayer && controller.aiPlayer.id, msg);
+                    }
+                } catch (e) { /* recording must never break a turn */ }
+                return null;
+            };
+
             // The model ANSWERED, but with prose and no JSON action anywhere.
             // Fair-eval rule: nothing is executed and nothing is guessed (the old
             // keyword inference laundered format failures into valid-looking
@@ -1850,7 +1864,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             if (result && result.noAction) {
                 this.registerNoActionReturn(controller);
                 controller._failStreak = 0;
-                return null;
+                return stampResult(controller.lastActionResult);
             }
 
             // The model DID issue an action and the JSON carrying it broke. That is a
@@ -1867,7 +1881,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 const lastMalformed = controller.turnLog[controller.turnLog.length - 1];
                 if (lastMalformed && lastMalformed.outcome == null) lastMalformed.outcome = controller.lastActionResult;
                 controller._failStreak = 0;
-                return null;
+                return stampResult(controller.lastActionResult);
             }
 
             if (s && !result) s.parseFails++;
@@ -1879,6 +1893,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 controller.lastActionResult = `[ERROR] Your last response could not be parsed. Please use the execute_action tool with valid JSON containing "action" and "params" fields. Example: {"action": "wait", "params": {"reason": "analyzing situation"}}`;
                 const lastTurn = controller.turnLog[controller.turnLog.length - 1];
                 if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
+                stampResult(controller.lastActionResult);
             }
 
             controller._failStreak = 0; // endpoint reachable (parse problems aside)
