@@ -417,6 +417,28 @@ class OpenAIAIManager {
         return { content: message.content, reasoning: message.reasoning, tool_calls: message.tool_calls, finish_reason: data.choices && data.choices[0] && data.choices[0].finish_reason };
     }
 
+    // "The reply hit the output cap", spelled differently by every provider:
+    // OpenAI and Ollama say "length", Anthropic "max_tokens", Google "MAX_TOKENS".
+    // Matching only "length" (as the first cut of this check did) silently misses
+    // two of the four and reports their truncations as ordinary malformed JSON.
+    static hitTokenCap(finishReason) {
+        return /^(length|max_tokens)$/i.test(String(finishReason || ''));
+    }
+
+    // The provider's OWN usage object, verbatim. extractUsage reduces it to a
+    // prompt/completion pair, which drops reasoning-token accounting and anything
+    // provider-specific — exactly the fields wanted when a reply stops far short of
+    // the cap that was asked for.
+    static rawUsage(provider, data) {
+        if (!data) return null;
+        if (provider === 'ollama') {
+            const { prompt_eval_count, eval_count, done_reason } = data;
+            return (prompt_eval_count != null || eval_count != null)
+                ? { prompt_eval_count, eval_count, done_reason } : null;
+        }
+        return data.usage || data.usageMetadata || null;
+    }
+
     // Pull token usage out of a provider response (field names differ everywhere).
     // Returns { prompt, completion } or null when the provider didn't report usage.
     static extractUsage(provider, data) {
@@ -1756,6 +1778,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 controller.stats.promptTokens += usage.prompt;
                 controller.stats.completionTokens += usage.completion;
             }
+            // A reply cut short is worth saying out loud, with the numbers needed to
+            // tell WHOSE limit did it. If the provider reports far fewer completion
+            // tokens than we asked for, the cap was applied upstream (a proxy or a
+            // server-side default), not by us — and if the JSON is cut while the
+            // finish reason is NOT the cap, nothing capped it and the transport
+            // truncated the body. Those need opposite fixes, so don't guess.
+            const askedMax = model.maxTokens || 2000;
+            if (OpenAIAIManager.hitTokenCap(norm && norm.finish_reason)) {
+                console.warn(`[OpenAIAI] ${ai.id}: reply stopped at a token cap — we asked max_tokens=${askedMax}, ` +
+                    `provider reported completion=${usage ? usage.completion : 'n/a'}, content=${((norm && norm.content) || '').length} chars. ` +
+                    `A completion far below the ask means the cap came from the endpoint, not from here.`);
+            }
             const result = this.parseResponse(norm, controller);
 
             // Transcript: the exchange VERBATIM, for after-the-fact analysis. Separate
@@ -1776,7 +1810,13 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                             finish_reason: norm ? norm.finish_reason : null
                         },
                         parsed: result || null,
-                        tokens: usage ? { prompt: usage.prompt, completion: usage.completion } : null
+                        tokens: usage ? { prompt: usage.prompt, completion: usage.completion } : null,
+                        // What we ASKED for, beside what came back. A truncation is
+                        // only diagnosable as a pair: the cap we set is upstream of
+                        // every explanation for why the reply stopped.
+                        request: { maxTokens: askedMax, provider, model: model.model || 'default' },
+                        usageRaw: OpenAIAIManager.rawUsage(provider, data),
+                        contentChars: ((norm && norm.content) || '').length
                     });
                 }
                 controller._transcriptState = null;
@@ -2031,7 +2071,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 const looksLikeAction = freeText.includes('{') &&
                     /["'“”‘’]?\s*action\s*["'“”‘’]?\s*:/i.test(freeText);
                 if (looksLikeAction) {
-                    const cut = message.finish_reason === 'length';
+                    const cut = OpenAIAIManager.hitTokenCap(message.finish_reason);
                     console.warn(`[OpenAIAI] Malformed action JSON${cut ? ' — reply hit the output-token cap' : ''}, nothing executed:`,
                         freeText.slice(0, 160));
                     logMalformed(freeText, cut);
