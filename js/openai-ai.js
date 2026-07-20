@@ -941,6 +941,10 @@ class OpenAIAIManager {
 
         const bSummary = { total: 0, idle: 0, busy: 0, underConstruction: 0, producing: 0, researching: 0, advancingAge: 0, farmsUnmanned: 0, byType: {} };
 
+        // Seconds a finished Wonder must be held. Needed by BOTH the owner's view of
+        // its own wonder and every rival's view of it — one definition, because the
+        // two countdowns are the same clock read from opposite sides.
+        const required = (game.wonderRequired || 600);
         const friendlyBuildings = ai.buildings.map(b => {
             const constructing = !!b.underConstruction;
             const producing = !!b.isProducing && !constructing;
@@ -990,7 +994,21 @@ class OpenAIAIManager {
                 obj.advancingTo = ai.currentAgeUpgrade.targetAge;
                 obj.ageSecondsRemaining = this.secsLeft(ai.currentAgeUpgrade.progress, ai.currentAgeUpgrade.duration);
             }
-            if (b.isWonder) obj.wonder = true;
+            if (b.isWonder) {
+                obj.wonder = true;
+                // The owner used to get this boolean and nothing else, while every
+                // rival was handed secondsUntilEnemyWins — the same clock, ticking on
+                // ai._wonderHold, read only for the other side. So the one player whose
+                // victory was running was the only one who could not see it.
+                const held = constructing ? 0 : Math.round((ai._wonderHold || 0) / 1000);
+                obj.secondsUntilYouWin = constructing ? null : Math.max(0, required - held);
+                // And they were not told the rule that makes them a target. Every OTHER
+                // building they own is fog-protected, so a model may reasonably infer
+                // its Wonder is hidden too, tuck it in a corner, and be punished for a
+                // belief the state invited. Stating the fact is not advice: what to do
+                // about being visible is still entirely theirs to work out.
+                obj.revealedToAll = true;
+            }
             if (b.type === 'farm') {
                 obj.food = Math.floor(b.foodAmount || 0);
                 // A farm grows food ONLY while a worker mans it. "busy"/"activity"
@@ -1024,7 +1042,6 @@ class OpenAIAIManager {
         if (!ai._knownEnemyBuildings) ai._knownEnemyBuildings = new Set();
         const enemyBuildings = [];
         const enemyWonders = [];
-        const required = (game.wonderRequired || 600);
         game.getAllBuildings().forEach(bldg => {
             if (ai.buildings.includes(bldg)) return;
             if (bldg.health <= 0) { ai._knownEnemyBuildings.delete(bldg); return; } // destroyed
@@ -1247,9 +1264,13 @@ class OpenAIAIManager {
 
         // --- Game stats ---
         const gameStatsObj = {
-            wonderTimer: game.wonderTimer || 0,
+            // wonderTimer/wonderHeld were dropped: they read game.wonderTimer and
+            // game.wonderHeld, which belong to the HUMAN player's wonder — and
+            // checkWinConditions returns early in spectator mode, so in an arena they
+            // were permanently 0 and false for every seat. Tokens spent every turn to
+            // imply a clock that never moved. The owner's real clock now rides on its
+            // own wonder as secondsUntilYouWin.
             wonderRequired: required,
-            wonderHeld: game.wonderHeld || false,
             opponents: aiOpponents
         };
 

@@ -448,6 +448,17 @@
             "type": "boolean",
             "description": "Present (true) on your Wonder."
           },
+          "secondsUntilYouWin": {
+            "oneOf": [
+              { "type": "integer" },
+              { "type": "null" }
+            ],
+            "description": "Your Wonder only: seconds of holding still required before it wins the match for you. null while it is under construction. The same clock your rivals read as secondsUntilEnemyWins — it resets to the full duration if the Wonder falls."
+          },
+          "revealedToAll": {
+            "type": "boolean",
+            "description": "Your Wonder only, always true: a finished or half-built Wonder is shown to EVERY rival regardless of fog of war, including its coordinates and this countdown. Unlike your other buildings it cannot be hidden, so its location is a decision made in the open."
+          },
           "food": {
             "type": "integer",
             "description": "Farms only: food currently stocked in the farm."
@@ -901,21 +912,13 @@
     "gameStats": {
       "type": "object",
       "required": [
-        "wonderTimer",
         "wonderRequired",
-        "wonderHeld",
         "opponents"
       ],
       "properties": {
-        "wonderTimer": {
-          "type": "number"
-        },
         "wonderRequired": {
           "type": "number",
-          "description": "Seconds a finished Wonder must be held to win (600 by default)."
-        },
-        "wonderHeld": {
-          "type": "boolean"
+          "description": "Seconds a finished Wonder must be held to win (600 by default). Your own progress against it is secondsUntilYouWin on your Wonder in friendlyBuildings; a rival's is secondsUntilEnemyWins in threats.enemyWonders."
         },
         "opponents": {
           "type": "array",
