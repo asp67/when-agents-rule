@@ -1281,6 +1281,30 @@ class OpenAIAIManager {
             enemyWonders: enemyWonders                       // existential: destroy these or you lose
         };
 
+        // --- Clock ---
+        //
+        // The prompt tells a model "TIME PASSES between turns" and the state is full
+        // of seconds — buildSecondsRemaining, secondsUntilEnemyWins, secondsAgo — but
+        // nothing said how long a turn IS, so none of them could be converted into
+        // decisions. A 40s build is thirteen turns for a 3s seat and one turn for a
+        // 37s seat; both were told "40". That is not strategy separating them.
+        //
+        // An AVERAGE rather than the last gap: one retry or one long reasoning burst
+        // makes a single sample useless to plan on. And no derived "turnsRemaining" —
+        // that is the model's arithmetic to do, and it would bake in an assumption
+        // that cadence holds when a slowing endpoint is exactly when it does not.
+        const clockObj = {
+            matchSeconds: Math.max(0, Math.round(
+                (battleNow - ((game._timeline && game._timeline.t0) || battleNow)) / 1000))
+        };
+        const gaps = (controller && controller.turnGaps) || [];
+        // Omitted on the first turn: no interval has been observed yet, and seeding it
+        // from the configured breather would be a guess wearing a measurement's clothes.
+        if (gaps.length) {
+            clockObj.averageSecondsBetweenTurns =
+                Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length / 1000);
+        }
+
         // --- Game stats ---
         const gameStatsObj = {
             // wonderTimer/wonderHeld were dropped: they read game.wonderTimer and
@@ -1295,6 +1319,7 @@ class OpenAIAIManager {
 
         return {
             player: playerObj,
+            clock: clockObj,
             epoch: epochObj,
             resources: resourcesObj,
             recentEvents: recentEvents,
@@ -4260,6 +4285,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
     // Fire a single turn for one controller on its own independent pipeline.
     startTurn(controller, now = Date.now()) {
+        // Real turn-to-turn cadence, MEASURED before lastTurnTime is overwritten.
+        // This is the model's own thinking time plus the breather plus any scheduling
+        // delay it met — the only number that converts the state's seconds into
+        // decisions, and it differs ~12x between a 1.6s seat and a 36s one. Kept as a
+        // short rolling window rather than a lifetime mean: a cadence that degrades
+        // (a slowing endpoint, a growing context) should be reflected, not averaged
+        // away against turns from ten minutes ago.
+        if (controller.lastTurnTime) {
+            const gaps = controller.turnGaps || (controller.turnGaps = []);
+            gaps.push(now - controller.lastTurnTime);
+            if (gaps.length > 10) gaps.shift();
+        }
         controller.lastTurnTime = now;
         controller.turnCount++;
         controller.pending = true;

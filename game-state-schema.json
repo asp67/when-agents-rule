@@ -5,6 +5,7 @@
   "type": "object",
   "required": [
     "player",
+    "clock",
     "epoch",
     "resources",
     "bonuses",
@@ -53,6 +54,21 @@
         "isHuman": {
           "type": "boolean",
           "const": false
+        }
+      }
+    },
+    "clock": {
+      "type": "object",
+      "description": "What every other 'seconds' figure in this state is measured against. The match runs in real time and does NOT pause while you think, so durations elsewhere (buildSecondsRemaining, secondsUntilEnemyWins, secondsAgo, walk times) are wall-clock seconds, not turns.",
+      "required": ["matchSeconds"],
+      "properties": {
+        "matchSeconds": {
+          "type": "integer",
+          "description": "Seconds since the match began."
+        },
+        "averageSecondsBetweenTurns": {
+          "type": "integer",
+          "description": "How much real time has typically passed between your recent turns — your own thinking time included. Divide any duration by this to see how many decisions you get before it completes: at 18, a 40-second build finishes in about two turns, so re-issuing it next turn wastes that turn. Absent on your first turn, before any interval has been observed. It reflects your RECENT turns, so it moves if your responses speed up or slow down."
         }
       }
     },
