@@ -3857,7 +3857,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const from = rawFrom === 'farms' ? 'farm' : rawFrom;
         if (from !== null && !FROMS.includes(from)) {
             this.outcome('log.out.assignBadFrom', {});
-            return `[ERROR] assign_workers "from" is where workers are TAKEN FROM and must be one of ${FROMS.join('|')} — omit it to let the harness pick idle workers first, then your largest stockpile. Got ${JSON.stringify(params.from)}.`;
+            return `[ERROR] assign_workers "from" is where workers are TAKEN FROM and must be one of ${FROMS.join('|')} — omit it to use ingame worker selection, which takes idle workers first, then your largest stockpile. Got ${JSON.stringify(params.from)}.`;
         }
         if (from !== null && from === resourceType) {
             this.outcome('log.out.assignFromSame', { res: resourceType });
@@ -3881,7 +3881,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     ? `you have no workers on "${from}" (workers.${FIELD[from]} is 0)`
                     : `all ${onIt} of them are constructing or fighting, and those are never pulled`;
                 this.outcome('log.out.assignFromEmpty', { from, res: resourceType });
-                return `[ERROR] No workers could be taken from "${from}": ${why}. Choose a source that has some, or omit "from" to let the harness pick.`;
+                return `[ERROR] No workers could be taken from "${from}": ${why}. Choose a source that has workers assigned to it, or omit "from" to use ingame worker selection.`;
             }
             candidates = pool;   // STRICT: an explicit source is not quietly widened
         }
