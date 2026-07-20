@@ -1771,16 +1771,22 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             controller.pendingArrivalMessages = [];
             tailNow.push(`RESULTS OF YOUR EARLIER ATTACK ORDER(S) — your units have now arrived:\n` + msgs.map(m => `- ${m}`).join('\n'));
         }
-        // (URGENT) A completed rival Wonder is a live loss timer. Replies take up to
-        // ~30s, so shout the countdown on EVERY tick right next to the state — the
-        // model must drop everything and raze it, not discover it buried in JSON.
+        // A completed rival Wonder is a live loss timer, restated beside the state each
+        // turn because a reply can take ~30s and the number moves the whole time.
+        //
+        // It used to shout — "⚠️ URGENT — YOU LOSE IN Ns … Send your ENTIRE army to
+        // attack_target it THIS turn and keep them on it until it falls." That was the
+        // harness playing the decisive turn of the match, every turn, on the one
+        // decision that ends games. The countdown, the position, the targetId and the
+        // HP are facts and stay; what to do about them is the whole thing being
+        // measured. The consequence is stated as the RULE it is, not as a command.
         const enemyWonders = (gameState.threats && gameState.threats.enemyWonders) || [];
         const liveWonders = enemyWonders.filter(w => w.state === 'complete' && w.secondsUntilEnemyWins != null);
         if (liveWonders.length) {
             const worst = liveWonders.reduce((a, b) => (a.secondsUntilEnemyWins <= b.secondsUntilEnemyWins ? a : b));
             const ownerAi = this.game.aiManager.aiPlayers.find(a => a.id === worst.owner);
             const who = ownerAi ? ownerAi.civilization : 'a rival';
-            tailNow.push(`⚠️ URGENT — YOU LOSE IN ${worst.secondsUntilEnemyWins}s. ${who} holds a COMPLETED Wonder at (${worst.x}, ${worst.z}) [targetId "${worst.id}", ${worst.healthPct}% HP]. If it is not DESTROYED before that countdown hits 0, the game ends and you LOSE — no economy, tech or army matters. Send your ENTIRE army to attack_target it THIS turn and keep them on it until it falls.`);
+            tailNow.push(`${who} has completed a Wonder at (${worst.x}, ${worst.z}) [targetId "${worst.id}", ${worst.healthPct}% HP]. If it still stands in ${worst.secondsUntilEnemyWins}s, ${who} wins the match.`);
         }
         const lastHistResult = controller.conversationHistory.length ? String(controller.conversationHistory[controller.conversationHistory.length - 1].result) : null;
         tailNow.push(`Here is your CURRENT game state. Analyze it and choose the single best action for THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
