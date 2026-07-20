@@ -2101,7 +2101,14 @@ class UIManager {
             build_wonder: t('log.build_wonder'),
             assign_workers: t('log.assign_workers'),
             delete_unit: t('log.delete_unit'),
-            destroy_building: t('log.destroy_building')
+            destroy_building: t('log.destroy_building'),
+            // Failure tags. These render in the log exactly like an action does, so
+            // they belong in the same table — they were emitted as pre-baked English
+            // strings and stayed English in every language.
+            no_action_provided: t('log.no_action_provided'),
+            malformed_action: t('log.malformed_action'),
+            reply_truncated: t('log.reply_truncated'),
+            tool_call_failed: t('log.tool_call_failed')
         };
 
         // playerId → seat for the team-badge chip on each entry: entries only

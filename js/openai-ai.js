@@ -1863,7 +1863,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 }
                 controller.lastActionResult = result.truncated
                     ? `[ERROR] Your reply was CUT OFF before the JSON closed — you ran out of output tokens, so nothing was executed. Keep "reason", "objective" and "plan" to one short sentence each and always close the JSON.`
-                    : `[ERROR] Your reply contained an "action" but was not valid JSON, so nothing was executed. Reply with ONLY the JSON object: {"action":"...","params":{...}} — straight double quotes, no line breaks inside strings.`;
+                    : `[ERROR] Your reply contained an "action" but was not valid JSON, so nothing was executed.${result.why ? ` The JSON parser reported: ${result.why}.` : ''} Reply with ONLY the JSON object: {"action":"...","params":{...}} — straight double quotes, and any quote INSIDE a string value must be escaped as \\" or left out.`;
                 const lastMalformed = controller.turnLog[controller.turnLog.length - 1];
                 if (lastMalformed && lastMalformed.outcome == null) lastMalformed.outcome = controller.lastActionResult;
                 controller._failStreak = 0;
@@ -1963,7 +1963,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 playerId: ai.id,
                 civName: civName,
                 color: colorHex,
-                action: '⚠️ tool_call_failed',
+                action: 'tool_call_failed',
                 reason: `Tool call could not be interpreted: ${reason}`,
                 params: {}
             });
@@ -1981,7 +1981,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 playerId: ai.id,
                 civName: civName,
                 color: colorHex,
-                action: '💬 no_action_provided',
+                action: 'no_action_provided',
                 reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
                 params: {}
             });
@@ -2000,7 +2000,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 playerId: ai.id,
                 civName: civName,
                 color: colorHex,
-                action: cut ? '✂️ reply_truncated' : '⚠️ malformed_action',
+                action: cut ? 'reply_truncated' : 'malformed_action',
                 reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
                 params: {}
             });
@@ -2072,10 +2072,21 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     /["'“”‘’]?\s*action\s*["'“”‘’]?\s*:/i.test(freeText);
                 if (looksLikeAction) {
                     const cut = OpenAIAIManager.hitTokenCap(message.finish_reason);
+                    // Hand back the parser's OWN complaint. "Not valid JSON" invites a
+                    // model to rewrite a shape it already had right; the position and
+                    // the token it choked on point at the one character to fix. A
+                    // stray unescaped quote inside "plan" is the common case and looks
+                    // nothing like a shape error from the inside.
+                    let why = '';
+                    if (!cut) {
+                        const cands = this.findJsonObjects(freeText);
+                        const raw = cands.length ? cands[cands.length - 1] : freeText;
+                        try { JSON.parse(raw); } catch (e) { why = String((e && e.message) || e).slice(0, 160); }
+                    }
                     console.warn(`[OpenAIAI] Malformed action JSON${cut ? ' — reply hit the output-token cap' : ''}, nothing executed:`,
                         freeText.slice(0, 160));
                     logMalformed(freeText, cut);
-                    return { malformed: true, truncated: cut };
+                    return { malformed: true, truncated: cut, why };
                 }
                 console.warn(`[OpenAIAI] Reply without JSON action — nothing executed:`, freeText.substring(0, 160));
                 logNoAction(freeText);
