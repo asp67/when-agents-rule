@@ -3912,10 +3912,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             : '';
         // What the reassignment actually COST. Workers carrying a load drop it, and
         // the free ones are taken first — so this only appears when more were asked
-        // for than were empty-handed. Stating the price is the error channel doing its
-        // job; whether it was worth paying stays the model's call.
+        // for than were empty-handed. The amount is the fact; noticing that asking for
+        // fewer, or checking workers.carrying* first, would have avoided it is the
+        // play, and that is the model's to make.
         const spillTxt = Object.keys(spilled).length
-            ? ` Dropped in transit: ${Object.entries(spilled).map(([r, n]) => `${n} ${r}`).join(', ')} — those workers were carrying. "workers.carrying*" says how many are, and "workers.on*" minus that is how many move for free.`
+            ? ` Dropped in transit: ${Object.entries(spilled).map(([r, n]) => `${n} ${r}`).join(', ')} — those workers were carrying.`
             : '';
         // Gathering is a ROUND TRIP: walk out, gather, carry it back to a Town Center.
         // The state gives node coordinates and nothing about what distance costs, and
