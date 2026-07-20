@@ -1561,13 +1561,12 @@ class Game {
     // gets half the decisions inside the same countdown. The decision budget is what
     // decides that race, so it is the thing to protect.
     //
-    // TURN-BASED hands the budget to the AI manager, which releases a fixed quantum
-    // only once every seat has answered the same frozen state.
+    // TURN-BASED does not touch this. The match keeps running at the chosen speed while
+    // seats think; fairness there comes from every seat reading the same snapshot and
+    // every move landing at the same instant (see OpenAIAIManager.flushRound), not from
+    // holding the world still.
     simBudget(ms) {
-        let out = ms * (this.anyWonderStanding() ? 1 : (this.simSpeed || 1));
-        const mgr = this.openAIAIManager;
-        if (mgr && mgr.turnBased) out = mgr.consumeRoundBudget(out);
-        return out;
+        return ms * (this.anyWonderStanding() ? 1 : (this.simSpeed || 1));
     }
 
     // Any Wonder on the map at all, finished or still going up — a rival can already

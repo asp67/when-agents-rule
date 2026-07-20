@@ -17,12 +17,15 @@ class OpenAIAIManager {
                                       // reasoning models on modest hardware may still exceed it —
                                       // use a smaller/faster model for the real-time arena.
         // Turn-based mode (see updateTurnBased). Off = independent pipelines, latency
-        // is a real advantage. On = every seat decides the same frozen state, so the
-        // decision budget is identical and only judgement varies.
+        // is a real advantage. On = every seat reads the same board and every move
+        // lands at the same instant, so the decision budget is identical and only
+        // judgement varies.
         this.turnBased = false;
-        this._roundPhase = 'ask';   // 'ask' -> 'wait' -> 'advance' -> 'ask'
-        this._roundBudget = 0;      // sim ms still owed to the round being played out
+        this._roundPhase = 'ask';   // 'ask' -> 'wait' -> 'ask'
+        this._roundNo = 0;          // stamped on each question; a reply from an older
+                                    // round answers a board that is already gone
         this._roundStartedAt = 0;
+        this._roundEndedAt = 0;
         this.pendingRequests = new Map(); // controllerId -> Promise
         this._orderSeq = 0; // monotonic token stamped on a unit each time it gets a new
                             // move/attack order, so a deferred attack-arrival report can
@@ -639,8 +642,9 @@ class OpenAIAIManager {
         this.turnBased = !!(this.game && this.game.ui && this.game.ui.turnBasedEnabled
             && this.game.ui.turnBasedEnabled());
         this._roundPhase = 'ask';
-        this._roundBudget = 0;
+        this._roundNo = 0;
         this._roundStartedAt = 0;
+        this._roundEndedAt = 0;
 
         // Transcript recording, always on. begin() purges whatever the previous match
         // left behind, so a crash or a "Hauptmenü" reload (which cannot be relied on to
@@ -666,7 +670,7 @@ class OpenAIAIManager {
                 difficulty: this.game.difficulty || null,
                 mapSize: (this.game.terrain && this.game.terrain.size) || null,
                 turnBased: !!this.turnBased,
-                roundQuantumMs: this.turnBased ? OpenAIAIManager.ROUND_QUANTUM_MS : null,
+                roundTimeoutMs: this.turnBased ? OpenAIAIManager.ROUND_TIMEOUT_MS : null,
                 simSpeed: this.game.simSpeed || 1,
                 wonderRequired: this.game.wonderRequired || null,
                 promptVersion: (this.game.ui && this.game.ui.ARENA_PROMPT_VERSION) || null
@@ -4263,23 +4267,26 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // turns — a real advantage, and an intended one when the question is "which model
     // plays this better in real time".
     //
-    // On, the match becomes a board game. Every live seat is handed the SAME frozen
-    // state, they think in parallel, all answers are applied together, and only then
-    // does the sim advance one fixed quantum. Decisions-per-game-second becomes
-    // identical for every seat, so a 36s model and a 3s model get the same number of
-    // moves and latency stops being the variable. A round costs the SLOWEST seat's
-    // reply, not the sum of all of them.
-    static get ROUND_QUANTUM_MS() { return 5000; }   // game-ms released per round
+    // On, the match becomes a board game played on a moving board. Every live seat is
+    // handed the SAME state at the same instant and thinks in parallel; the match keeps
+    // running while they do; and every answer is held until the LAST one arrives, then
+    // applied together. So each seat gets exactly one move per round no matter how long
+    // it took, and answering in 3s buys no earlier effect than answering in 30s.
+    // Decisions-per-game-second becomes identical for every seat and latency stops
+    // being the variable. A round costs the SLOWEST seat's reply, not the sum.
+    //
+    // The board is deliberately NOT frozen while seats think. Freezing would make every
+    // move land on exactly the state it was chosen for, but it also means a 30s round
+    // buys 5s of game — a match would take hours of wall clock, and a spectator watches
+    // a still image. Running on costs both accuracy equally: all four read the same
+    // snapshot and all four act on it the same number of seconds later.
     static get ROUND_TIMEOUT_MS() { return 90000; }  // a silent seat forfeits its turn
 
-    // How much simulation the game may run right now. Zero while a round is still
-    // being decided, so the board is frozen for everyone who is thinking about it.
-    consumeRoundBudget(ms) {
-        if (this._roundBudget <= 0) return 0;
-        const take = Math.min(ms, this._roundBudget);
-        this._roundBudget -= take;
-        return take;
-    }
+    // Is the question this answer was given to still the one on the table? Both halves
+    // are load-bearing: the number catches an answer overtaken by a later round, and
+    // the phase catches the round that resolved WITHOUT this seat — a timeout flush
+    // leaves the number untouched, so the number alone would let that answer through.
+    roundStillOpen(round) { return this._roundPhase === 'wait' && round === this._roundNo; }
 
     updateTurnBased(now) {
         const live = this.aiControllers.filter(c => {
@@ -4288,24 +4295,44 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         });
         if (!live.length) return;
 
-        if (this._roundPhase === 'advance') {
-            if (this._roundBudget > 0) return;      // sim still working through the quantum
-            this._roundPhase = 'ask';
-        }
         if (this._roundPhase === 'wait') {
             if (live.some(c => c.pending)) {
                 if (now - this._roundStartedAt <= OpenAIAIManager.ROUND_TIMEOUT_MS) return;
-                // One unreachable endpoint must not freeze the other three: release
+                // One unreachable endpoint must not stall the other three: release
                 // them, let the round resolve, and the slow seat simply misses it.
                 live.forEach(c => { c.pending = false; });
             }
-            this._roundBudget = OpenAIAIManager.ROUND_QUANTUM_MS;
-            this._roundPhase = 'advance';
+            this.flushRound(live);
+            this._roundPhase = 'ask';
+            this._roundEndedAt = now;
             return;
         }
+        // The same breather real-time turns get, so four fast endpoints cannot spin
+        // rounds quicker than the game can show them.
+        if (this._roundEndedAt && now - this._roundEndedAt < this.turnInterval) return;
+        this._roundNo++;
         this._roundStartedAt = now;
         this._roundPhase = 'wait';
-        live.forEach(c => this.startTurn(c, now));
+        // Clearing first matters for a seat that was paused mid-round: its answer to a
+        // question two rounds old must not be waiting in the queue when it comes back.
+        live.forEach(c => { c.queuedAction = null; this.startTurn(c, now); });
+    }
+
+    // Where a round takes effect. Every move runs here, back to back, with no
+    // simulation in between — that is what makes them simultaneous, and it is the
+    // whole point of the mode. JS still has to run them in SOME order, and the first
+    // mover wins a contested build spot, so the order rotates by round instead of
+    // permanently favouring seat one.
+    flushRound(live) {
+        const queued = live.filter(c => c.queuedAction);
+        if (queued.length > 1) queued.push(...queued.splice(0, this._roundNo % queued.length));
+        for (const c of queued) {
+            const action = c.queuedAction;
+            c.queuedAction = null;
+            if (this._stopped || c.defeated) continue;
+            try { this.executeAction(c, action); }
+            catch (err) { console.error(`[OpenAIAI] Queued action failed for ${c.id}:`, err); }
+        }
     }
 
     async update(deltaTime) {
@@ -4540,15 +4567,24 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         console.log(`[OpenAIAI] Turn #${controller.turnCount} for ${controller.id} (${controller.aiPlayer.civilization})`);
 
         const gameState = this.buildGameStateJSON(controller);
+        const askedInRound = this._roundNo;
 
         const promise = this.sendToOpenAI(controller, gameState)
             .then(actionData => {
                 if (this._stopped || controller.defeated) return; // ended or defeated mid-flight — drop it
-                if (actionData) {
-                    this.executeAction(controller, actionData);
-                } else {
+                if (!actionData) {
                     console.warn(`[OpenAIAI] No action returned for ${controller.id}`);
+                    return;
                 }
+                if (this.turnBased) {
+                    // Hold it for flushRound. Arriving first must not mean taking
+                    // effect first. An answer to a round that has already resolved
+                    // (this seat timed out and the others moved on without it) is
+                    // dropped rather than replayed onto a board it never saw.
+                    if (this.roundStillOpen(askedInRound)) controller.queuedAction = actionData;
+                    return;
+                }
+                this.executeAction(controller, actionData);
             })
             .catch(err => {
                 console.error(`[OpenAIAI] Turn failed for ${controller.id}:`, err);
