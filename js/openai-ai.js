@@ -3915,8 +3915,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // for than were empty-handed. The amount is the fact; noticing that asking for
         // fewer, or checking workers.carrying* first, would have avoided it is the
         // play, and that is the model's to make.
+        // "Dropped" was wrong and teachable-wrong: it implies the load is lying on the
+        // ground and could be fetched. It is destroyed (harvestAmount = 0), and a model
+        // reading "dropped" could reasonably send someone back for it.
         const spillTxt = Object.keys(spilled).length
-            ? ` Dropped in transit: ${Object.entries(spilled).map(([r, n]) => `${n} ${r}`).join(', ')} — those workers were carrying.`
+            ? ` Returning workers spilled ${Object.entries(spilled).map(([r, n]) => `${n} ${r}`).join(', ')} they were carrying.`
             : '';
         // Gathering is a ROUND TRIP: walk out, gather, carry it back to a Town Center.
         // The state gives node coordinates and nothing about what distance costs, and
