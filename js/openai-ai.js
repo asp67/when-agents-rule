@@ -3927,7 +3927,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const d = Math.hypot(b.x - node.x, b.z - node.z);
             return (!best || d < best.d) ? { b, d } : best;
         }, null);
-        const haul = nearTC ? ` Each load is a ~${Math.max(1, Math.round(nearTC.d / (3 * 1.0)))}s walk back to your nearest Town Center, so a closer node gathers faster.` : '';
+        const haul = nearTC ? ` Each load is a ~${Math.max(1, Math.round(nearTC.d / (3 * 1.0)))}s walk back to your nearest Town Center.` : '';
         this.outcome('log.out.reassigned', { count: moved, res: resourceType, x: Math.round(node.x), z: Math.round(node.z), near: (gaveX || gaveZ) ? 'target' : 'tc', pulled: this.pulledCounts(pulledFrom) });
         return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${spillTxt}${haul}${short}`;
     }
