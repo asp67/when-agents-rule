@@ -157,6 +157,7 @@ class UIManager {
         // the same sentence, and a hint left describing the other mode is worse than none.
         const cHint = document.getElementById('setupCountHint');
         if (cHint) { const k = campaign ? 'cmp.countHint' : 'ar.countHint'; cHint.setAttribute('data-i18n', k); cHint.textContent = t(k); }
+        this.renderDifficultyTable();
         const opts = campaign ? [1, 2, 3, 4, 5] : [2, 3, 4];
         const cur = this.setupSlotCount();
         const cntSel = document.getElementById('setupCount');
@@ -334,6 +335,41 @@ class UIManager {
     // truthiness test because 0 is a legitimate value for temperature and top_p — "|| null"
     // would silently discard the most deliberate setting a user can pick. Out-of-range is
     // clamped, not dropped, so a typed 5 becomes the ceiling instead of vanishing.
+    // What each difficulty actually changes, READ OFF the generator's own table rather
+    // than restated here — a summary that is maintained by hand is a summary that ends up
+    // lying, and this one would lie quietly. Ratios are against easy because that is what
+    // a player compares; the scatter base cancels out, so only the multipliers are needed.
+    // A resource with no entry (gold) is unchanged, which the row then says.
+    difficultyRows() {
+        if (typeof DIFFICULTY_MODS === 'undefined') return [];
+        const KEYS = ['food', 'wood', 'stone', 'gold'];
+        const easy = DIFFICULTY_MODS.easy || {};
+        const num = n => (Math.round(n * 1000) / 1000);
+        return ['easy', 'medium', 'hard'].map(id => {
+            const m = DIFFICULTY_MODS[id] || {};
+            const parts = KEYS.map(k => {
+                const base = easy[k] == null ? 1 : easy[k];
+                const mine = m[k] == null ? 1 : m[k];
+                const r = base ? mine / base : 1;
+                return r === 1 ? null : `${t('resPlain.' + k)} ×${num(r)}`;
+            }).filter(Boolean);
+            return { id, name: t('ar.diffShort.' + id), parts };
+        });
+    }
+
+    renderDifficultyTable() {
+        const host = document.getElementById('setupDifficultyTable');
+        if (!host) return;
+        const cur = (typeof getDifficulty === 'function') ? getDifficulty() : 'easy';
+        const rows = this.difficultyRows();
+        if (!rows.length) { host.textContent = ''; return; }
+        host.innerHTML = rows.map(r => {
+            const what = r.parts.length ? r.parts.join(', ') : t('ar.diffBaseline');
+            return `<div class="diff-row${r.id === cur ? ' is-current' : ''}">`
+                 + `<b>${this.escapeHtml(r.name)}</b><span>${this.escapeHtml(what)}</span></div>`;
+        }).join('') + `<div class="diff-note">${this.escapeHtml(t('ar.diffNote'))}</div>`;
+    }
+
     numOrNull(v, lo, hi, intOnly) {
         if (v === '' || v == null) return null;
         let n = intOnly ? parseInt(v, 10) : parseFloat(v);

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=450">
+    <link rel="stylesheet" href="css/styles.css?v=452">
 </head>
 <body>
     <!-- Start Screen -->
@@ -302,13 +302,13 @@
                         <p class="arena-hint" id="setupCountHint" data-i18n="ar.countHint">Wie viele Plätze diese Partie hat. Jeder bekommt unten eine Zivilisation und ein Modell.</p>
                     </div>
                     <div class="arena-field f-map">
-                        <label data-i18n="ar.fMap">Karte</label>
-                        <select id="setupDifficulty" data-i18n-diff onchange="setDifficulty(this.value)">
+                        <label data-i18n="ar.fDifficulty">Schwierigkeit</label>
+                        <select id="setupDifficulty" data-i18n-diff onchange="setDifficulty(this.value); game.ui.renderDifficultyTable()">
                             <option value="easy" data-i18n="diff.easy">🌞 Summer Valley (Easy)</option>
                             <option value="medium" data-i18n="diff.medium">❄️ Winter Valley (Medium)</option>
                             <option value="hard" data-i18n="diff.hard">🏜️ Desert (Hard)</option>
                         </select>
-                        <p class="arena-hint" data-i18n="ar.mapHint">Gelände und Startrohstoffe. Für alle Plätze gleich.</p>
+                        <div class="arena-hint diff-table" id="setupDifficultyTable"></div>
                     </div>
                     <div class="arena-field f-seed">
                         <label data-i18n="ar.fSeed">Karten-Seed (optional)</label>
@@ -431,25 +431,25 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=450"></script>
-    <script src="js/engine/glcore.js?v=450"></script>
-    <script src="js/engine/texgen.js?v=450"></script>
-    <script src="js/engine/mesh.js?v=450"></script>
-    <script src="js/engine/buildings.js?v=450"></script>
-    <script src="js/engine/units.js?v=450"></script>
-    <script src="js/engine/gamerenderer.js?v=450"></script>
-    <script src="js/i18n.js?v=450"></script>
-    <script src="js/civilizations.js?v=450"></script>
-    <script src="js/buildings.js?v=450"></script>
-    <script src="js/units.js?v=450"></script>
-    <script src="js/resources.js?v=450"></script>
-    <script src="js/terrain.js?v=450"></script>
-    <script src="js/fogofwar.js?v=450"></script>
-    <script src="js/ai.js?v=450"></script>
-    <script src="js/transcript.js?v=450"></script>
-    <script src="js/openai-ai.js?v=450"></script>
-    <script src="js/input.js?v=450"></script>
-    <script src="js/ui.js?v=450"></script>
-    <script src="js/game.js?v=450"></script>
+    <script src="js/engine/math3d.js?v=452"></script>
+    <script src="js/engine/glcore.js?v=452"></script>
+    <script src="js/engine/texgen.js?v=452"></script>
+    <script src="js/engine/mesh.js?v=452"></script>
+    <script src="js/engine/buildings.js?v=452"></script>
+    <script src="js/engine/units.js?v=452"></script>
+    <script src="js/engine/gamerenderer.js?v=452"></script>
+    <script src="js/i18n.js?v=452"></script>
+    <script src="js/civilizations.js?v=452"></script>
+    <script src="js/buildings.js?v=452"></script>
+    <script src="js/units.js?v=452"></script>
+    <script src="js/resources.js?v=452"></script>
+    <script src="js/terrain.js?v=452"></script>
+    <script src="js/fogofwar.js?v=452"></script>
+    <script src="js/ai.js?v=452"></script>
+    <script src="js/transcript.js?v=452"></script>
+    <script src="js/openai-ai.js?v=452"></script>
+    <script src="js/input.js?v=452"></script>
+    <script src="js/ui.js?v=452"></script>
+    <script src="js/game.js?v=452"></script>
 </body>
 </html>

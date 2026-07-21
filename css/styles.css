@@ -2316,3 +2316,13 @@ body.spectator-mode #unitInfo.spectator-card {
 /* A setting combination the provider will not accept, said on the card rather than
    discovered as a 400 mid-match. */
 .think-conflict { color: #ffb26b; }
+
+/* What each difficulty actually costs you, listed so the trade is visible before the
+   choice rather than after the match. Derived from DIFFICULTY_MODS — see
+   ui.difficultyRows — so it cannot drift from what generation really does. */
+.diff-table { display: flex; flex-direction: column; gap: 2px; }
+.diff-row { display: flex; gap: 8px; align-items: baseline; opacity: 0.65; }
+.diff-row b { flex: 0 0 62px; font-weight: 700; }
+.diff-row span { font-variant-numeric: tabular-nums; }
+.diff-row.is-current { opacity: 1; color: #4ecca3; }
+.diff-note { margin-top: 4px; opacity: 0.6; }

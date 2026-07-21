@@ -1,8 +1,16 @@
 // Terrain and map generation
 // Difficulty presets: resource-count multipliers + a ground colour theme.
-//   easy   = Summer Valley (full resources, lush green)
-//   medium = Winter Valley (-50% food, pale wintry ground)
-//   hard   = Desert        (-75% food, -75% wood, -50% stone, sandy ground)
+// The multipliers below are against the scatter counts at the call sites, NOT against
+// each other, which the old comment here confused: it called easy "full resources" when
+// easy DOUBLES food, and described medium as -50% food when against easy it is -75%.
+// What a player actually compares is each preset against easy, so in those terms:
+//   easy   = Summer Valley  392 food, 784 wood, 40 stone  (the baseline)
+//   medium = Winter Valley  food x0.25                    (98 food)
+//   hard   = Desert         food x0.125, wood x0.25, stone x0.5  (49 / 196 / 20)
+// Gold has no entry and is deliberately identical in all three — 18 patches — so the
+// scarcest resource is never what separates the presets.
+// The setup screen derives its summary from this table rather than restating it, so
+// changing a number here changes what the player is told.
 const DIFFICULTY_MODS = {
     easy:   { food: 2.0,  wood: 1.0,  stone: 1.0, base: 0x79b94a, dry: 0xb2bd66 },
     medium: { food: 0.5,  wood: 1.0,  stone: 1.0, base: 0x9db9b3, dry: 0xcdd6d2 },
