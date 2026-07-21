@@ -527,7 +527,16 @@ class UIManager {
 
     _downloadCatalog() {
         try {
-            const payload = Object.assign({ app: 'When Agents Rule', kind: 'model-catalog', version: 2 }, this.serializeArenaConfig());
+            const cfg = this.serializeArenaConfig();
+            // rejectedParams is kept in localStorage on purpose — it saves a wasted
+            // request every match — but it must NOT travel. It is an observation about
+            // one endpoint on one machine, and "http://localhost:11434" in this catalogue
+            // is a different server on yours. Shipping it would silently suppress
+            // parameters that the recipient's endpoint accepts perfectly well, with only
+            // a small tag to explain why. The settings a user CHOSE are exported; what
+            // the harness merely learned is not.
+            (cfg.models || []).forEach(m => { delete m.rejectedParams; });
+            const payload = Object.assign({ app: 'When Agents Rule', kind: 'model-catalog', version: 2 }, cfg);
             const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
