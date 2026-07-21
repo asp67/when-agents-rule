@@ -599,7 +599,7 @@ class AIManager {
         }
         // A Wonder doesn't give up with the centre block: late-game bases fill the
         // whole 60-box, so sweep expanding rings (out to ~90 units) and take the
-        // first clear spot — same widening the LLM build_wonder action gets.
+        // first clear spot — same widening a Wonder gets via build_structure.
         if (isWonder) {
             for (let radius = 14; radius <= 90; radius += 8) {
                 const steps = Math.max(8, Math.round((2 * Math.PI * radius) / 12));

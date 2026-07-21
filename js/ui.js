@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v45';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v46';
     }
 
     showScreen(screenId) {
@@ -2114,7 +2114,6 @@ class UIManager {
             resumed: t('log.resumed'),
             defeated: t('log.defeated'),
             explore: t('log.explore'),
-            build_wonder: t('log.build_wonder'),
             assign_workers: t('log.assign_workers'),
             delete_unit: t('log.delete_unit'),
             destroy_building: t('log.destroy_building'),

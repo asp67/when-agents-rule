@@ -1286,6 +1286,21 @@ class OpenAIAIManager {
             return { type: t, requiredAge: reqAge, requiresTech: reqTech, researched: techDone, readyToBuild: techDone };
         }).filter(Boolean);
 
+        // The Wonder belongs in this list. It was in no vocabulary at all: a model's
+        // entire knowledge of the win condition it can BUILD was the goal line and a
+        // zero-parameter action, so the age it needs and even the name of the thing
+        // were only discoverable by trying. Advertised under the civ's real id — the
+        // same string that will appear in friendlyBuildings once it stands — with
+        // isWonder marking which one it is, since "akropolis" says nothing on its own.
+        const wDef = this.wonderDefFor(ai.civilization);
+        if (wDef) {
+            buildableStructures.push({
+                type: wDef.id, requiredAge: wDef.requiredAge || 'iron', requiresTech: null,
+                researched: true, readyToBuild: !ai.buildings.some(b => b.isWonder),
+                isWonder: true
+            });
+        }
+
         // --- Buildings you have LOST recently ---
         //
         // Replaces "pendingBuildings", which read ai.pendingBuildings — a field only
@@ -1598,7 +1613,6 @@ train_unit: unitType (from trainableUnits), targetX?, targetZ?
 research_tech: techId (from research.available)
 upgrade_age: (None)
 build_structure: buildingType (from buildableStructures), targetX?, targetZ?
-build_wonder: (None)
 assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), allowSpill? (def:true; false takes only workers not carrying a load right now, and takes fewer if that is all there are), targetX?, targetZ?
 repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
 explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?
@@ -2525,10 +2539,6 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 }
                 break;
 
-            case 'build_wonder':
-                actionResult = this.executeBuildWonder(ai, game);
-                break;
-
             case 'assign_workers':
                 actionResult = this.executeAssignWorkers(ai, game, params || {});
                 break;
@@ -2565,7 +2575,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 // exist" and sends a model hunting for a different one.
                 const bare = String(action).replace(/\s*\(.*\)\s*$/, '').trim();
                 const KNOWN = ['train_unit', 'research_tech', 'upgrade_age',
-                    'build_structure', 'build_wonder', 'assign_workers',
+                    'build_structure', 'assign_workers',
                     'repair_building', 'explore', 'move_units', 'attack_target',
                     'delete_unit', 'destroy_building', 'wait'];
                 actionResult = (bare !== action && KNOWN.includes(bare))
@@ -2959,8 +2969,32 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         return `OK - Advancing to the ${nextAge} age — ~${ageSecs}s to complete. Keep developing meanwhile; "epoch.upgradeInProgress" shows secondsRemaining, so don't re-issue upgrade_age until it is done.`;
     }
 
+    // The civ's Wonder, or null. Its id differs per civilization (akropolis, pyramid,
+    // firetemple, shrine) and it lives in uniqueBuildings rather than BUILDING_DEFS,
+    // so getBuildingDef() alone can never find it.
+    wonderDefFor(civilization) {
+        const civ = (typeof getCivilization === 'function') ? getCivilization(civilization) : null;
+        return ((civ && civ.uniqueBuildings) || []).find(b => b.type === 'wonder') || null;
+    }
+
+    // getBuildingDef, plus the Wonder. "wonder" is accepted as an alias for whichever
+    // id this civ uses: the state advertises the real id (so the thing you build and
+    // the thing you then own are called the same), but a model that reads the goal
+    // line and reaches for the generic word is not wrong enough to refuse.
+    buildingDefFor(ai, buildingType) {
+        const direct = (typeof getBuildingDef === 'function') ? getBuildingDef(buildingType) : null;
+        if (direct) return direct;
+        const w = this.wonderDefFor(ai.civilization);
+        if (w && (buildingType === 'wonder' || buildingType === w.id)) return w;
+        return null;
+    }
+
     executeBuildStructure(ai, game, buildingType, targetX, targetZ) {
-        const buildingDef = getBuildingDef(buildingType);
+        const buildingDef = this.buildingDefFor(ai, buildingType);
+        // Resolve an alias to the real id up front, so every message below — and the
+        // building that ends up in friendlyBuildings — uses one name for one thing.
+        if (buildingDef && buildingDef.type === 'wonder') buildingType = buildingDef.id;
+        const isWonderBuild = !!(buildingDef && buildingDef.type === 'wonder');
         if (!buildingDef) {
             console.log(`[OpenAIAI] ${ai.id}: Unknown building "${buildingType}"`);
             this.outcome('log.out.unknownBuilding', { buildingType });
@@ -2975,7 +3009,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // age-gated buildings also need a tech, but some — e.g. the temple — only
         // need the age, so check it before the tech/resource steps.)
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-        const effAge = (typeof effectiveBuildingAge === 'function') ? effectiveBuildingAge(ai.civilization, buildingDef) : buildingDef.requiredAge;
+        // effectiveBuildingAge resolves a def's age against the civ's unlock tech. The
+        // Wonder has no unlock tech and is not in BUILDING_DEFS, so ask it only about
+        // the buildings it knows and take the Wonder's own requiredAge as given.
+        const effAge = (!isWonderBuild && typeof effectiveBuildingAge === 'function')
+            ? effectiveBuildingAge(ai.civilization, buildingDef)
+            : (buildingDef.requiredAge || 'iron');
         if (effAge && ageOrder.indexOf(ai.age) < ageOrder.indexOf(effAge)) {
             console.log(`[OpenAIAI] ${ai.id}: ${buildingType} needs ${effAge}`);
             this.outcome('log.out.buildingNeedsAge', { buildingType, effAge, age: ai.age });
@@ -2996,6 +3035,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             return `[ERROR] You must research "${buildingDef.requiresTech}" before you can build ${buildingType}. Use research_tech first (it should appear in "research.available"), then build.`;
         }
 
+        // One Wonder per player, whether it is finished or still going up.
+        if (isWonderBuild && ai.buildings.some(b => b.isWonder)) {
+            this.outcome('log.out.alreadyWonder', {});
+            return `[ERROR] You are already building or holding a Wonder.`;
+        }
+
         if (!ai.resources.hasResources(buildingDef.cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${buildingType}`);
             this.outcome('log.out.cannotAfford', { whatName: buildingDef.name, need: buildingDef.cost, have: this.haveObj(ai) });
@@ -3013,7 +3058,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             // Default: a ring around the town centre, so buildings spread out.
             // Roughly double the old radius so bases occupy a larger footprint.
             const ang = Math.random() * Math.PI * 2;
-            const rad = 18 + Math.random() * 28;
+            const rad = isWonderBuild ? (Math.random() - 0.5) * 20 : 18 + Math.random() * 28;
             x = tc.x + Math.cos(ang) * rad;
             z = tc.z + Math.sin(ang) * rad;
         } else {
@@ -3023,7 +3068,25 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         // Validate position: keep walkable gaps between buildings AND an exclusion
         // zone around resource nodes (so harvesters can still reach them).
-        const spot = this.findClearSpot(ai, game, buildingType, buildingDef.type === 'wonder', x, z);
+        let spot = this.findClearSpot(ai, game, buildingType, isWonderBuild, x, z);
+        // A Wonder is not refused while the map still has room for it. By the time one
+        // is affordable the base is usually full, and the nudge search gives up inside
+        // it — so sweep widening rings out to ~90 units and take the first clear spot.
+        // Losing the win condition to "your base is crowded" is not a decision the
+        // harness should be making for anyone.
+        if (!spot && isWonderBuild && tc) {
+            outer:
+            for (let radius = 14; radius <= 90; radius += 8) {
+                const steps = Math.max(8, Math.round((2 * Math.PI * radius) / 12));
+                const a0 = Math.random() * Math.PI * 2;
+                for (let s = 0; s < steps; s++) {
+                    const ang = a0 + (s / steps) * 2 * Math.PI;
+                    const cx = tc.x + Math.cos(ang) * radius;
+                    const cz = tc.z + Math.sin(ang) * radius;
+                    if (this.isSpotClear(ai, game, buildingType, true, cx, cz)) { spot = { x: cx, z: cz }; break outer; }
+                }
+            }
+        }
         if (!spot) {
             console.log(`[OpenAIAI] ${ai.id}: Could not find valid position for ${buildingType}`);
             this.outcome('log.out.noClearSpot', { buildingType });
@@ -3058,17 +3121,21 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         console.log(`[OpenAIAI] ${ai.id}: Started ${buildingDef.name} at (${Math.round(x)}, ${Math.round(z)})`);
         const secs = Math.round((building.buildTime || 10000) / 1000);
         this.outcome('log.out.buildStarted', { buildingName: buildingDef.name, x: Math.round(x), z: Math.round(z), secs });
+        // The old build_wonder reply ended "defend it, rivals will rush it!" — an order
+        // with an exclamation mark. The hold time is the part that was a fact.
+        const tail = isWonderBuild
+            ? ` This is your Wonder: once complete it must stand for ${game.wonderRequired || 600}s for you to win the match.`
+            : '';
         return pick.restore
-            ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.`
-            : `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).`;
+            ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.${tail}`
+            : `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).${tail}`;
     }
 
-    // Build this civ's Wonder. Win by holding it for the required time.
-    // Shared placement validation: nudge (x, z) until it keeps a walkable gap to
-    // EVERY existing building (11 to Town Centers/Wonders, 9 otherwise) and stays
-    // outside every live resource node's clearance ring. Up to 40 nudge attempts;
-    // returns {x, z} or null. Used by build_structure AND build_wonder — the
-    // Wonder used to skip validation entirely and could land on top of the base.
+    // Placement validation: nudge (x, z) until it keeps a walkable gap to EVERY
+    // existing building (11 to Town Centers/Wonders, 9 otherwise) and stays outside
+    // every live resource node's clearance ring. Up to 40 nudge attempts; returns
+    // {x, z} or null. The Wonder used to skip validation entirely and could land on
+    // top of the base.
     findClearSpot(ai, game, buildingType, isWonderBuild, x, z) {
         const reqGap = b => (b.type === 'town_center' || b.isWonder) ? 11 : 9;
         const resClr = game.resourceClearance(buildingType, isWonderBuild);
@@ -3130,73 +3197,6 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             if (Math.hypot(x - r.x, z - r.z) < resClr) return false;
         }
         return true;
-    }
-
-    executeBuildWonder(ai, game) {
-        const civ = getCivilization(ai.civilization);
-        const wonderDef = (civ.uniqueBuildings || []).find(b => b.type === 'wonder');
-        if (!wonderDef) { this.outcome('log.out.noWonder', {}); return `[ERROR] Your civilization has no Wonder.`; }
-
-        const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-        const reqAge = wonderDef.requiredAge || 'iron';
-        if (ageOrder.indexOf(ai.age) < ageOrder.indexOf(reqAge)) {
-            this.outcome('log.out.wonderNeedsAge', { reqAge, age: ai.age });
-            return `[ERROR] The Wonder requires the ${reqAge} age. You are in ${ai.age}. Advance your age first.`;
-        }
-        if (ai.buildings.some(b => b.isWonder)) {
-            this.outcome('log.out.alreadyWonder', {});
-            return `[ERROR] You are already building or holding a Wonder.`;
-        }
-        if (!ai.resources.hasResources(wonderDef.cost)) {
-            const c = wonderDef.cost;
-            this.outcome('log.out.cannotAfford', { whatName: wonderDef.name, need: c, have: this.haveObj(ai) });
-            return `[ERROR] Cannot afford the Wonder (needs ${this.costString(c)}). You have ${this.haveString(ai)}.`;
-        }
-
-        // Place near the town center — through the SAME placement validation as
-        // build_structure (building gaps + resource clearance). The Wonder used to
-        // be dropped blindly at TC ± 10 and could overlap whatever stood there.
-        const tc = ai.buildings.find(b => b.type === 'town_center');
-        const seedX = tc ? tc.x + (Math.random() - 0.5) * 20 : 0;
-        const seedZ = tc ? tc.z + (Math.random() - 0.5) * 20 : 0;
-        let spot = this.findClearSpot(ai, game, wonderDef.id, true, seedX, seedZ);
-        // Late game means a full base: when the nudge search finds no room in the
-        // center, sweep expanding rings around the TC (out to ~90 units) and take
-        // the first clear spot — the Wonder gets a suburb before it gets refused.
-        if (!spot && tc) {
-            outer:
-            for (let radius = 14; radius <= 90; radius += 8) {
-                const steps = Math.max(8, Math.round((2 * Math.PI * radius) / 12));
-                const a0 = Math.random() * Math.PI * 2;
-                for (let s = 0; s < steps; s++) {
-                    const ang = a0 + (s / steps) * 2 * Math.PI;
-                    const cx = tc.x + Math.cos(ang) * radius;
-                    const cz = tc.z + Math.sin(ang) * radius;
-                    if (this.isSpotClear(ai, game, wonderDef.id, true, cx, cz)) { spot = { x: cx, z: cz }; break outer; }
-                }
-            }
-        }
-        if (!spot) {
-            this.outcome('log.out.noClearSpotWonder', {});
-            return `[ERROR] No clear spot for the Wonder within ~90 units of your Town Center — even the outskirts are packed. destroy_building an old structure to make room, then build_wonder again.`;
-        }
-        const { x, z } = spot;
-
-        // forceBorrow: parity with the rule-based AI (see executeBuildStructure).
-        // This exact rejection blocked a Persian Iron-age player from starting an
-        // affordable Wonder because all its workers were out gathering.
-        const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
-        if (pick.error === 'no_workers') { this.outcome('log.out.noWorkersWonder', {}); return `[ERROR] You have no workers to build the Wonder.`; }
-        if (pick.error === 'no_idle') { this.outcome('log.out.noWorkerIdleWonder', {}); return `[ERROR] No worker available to start the Wonder — all your workers are constructing other sites or fighting (neither is ever pulled). Wait for one to finish.`; }
-
-        ai.resources.spendResources(wonderDef.cost);
-        const wonder = createBuilding(wonderDef.id, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
-        ai.buildings.push(wonder);
-        game.renderer.addBuilding(wonder);
-        game.applyBuilder(pick, wonder);
-        const secs = Math.round((wonder.buildTime || 60000) / 1000);
-        this.outcome('log.out.wonderStarted', { secs, hold: (game.wonderRequired || 600) });
-        return `OK - Started building the Wonder (~${secs}s to build). Hold it for ${(game.wonderRequired || 600)}s after completion to WIN — defend it, rivals will rush it!`;
     }
 
     // Resolve an optional { type: count } selection into concrete units for a
