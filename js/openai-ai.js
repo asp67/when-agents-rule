@@ -1309,7 +1309,13 @@ class OpenAIAIManager {
         if (prevCounts) {
             ['food', 'wood', 'stone', 'gold'].forEach(k => {
                 if (prevCounts[k] > 0 && discoveredNodesOnMap[k] === 0 && game.logPlayerEvent) {
-                    game.logPlayerEvent(ai, `Your last known ${k} node was exhausted — nothing you have discovered still holds ${k}`);
+                    // Says NODES, and only nodes. The first wording claimed "nothing you
+                    // have discovered still holds food", which is plainly false beside two
+                    // farms holding 300 each — listed in the very same state. This event
+                    // knows one thing and must not speak for the rest of the economy.
+                    // Naming the field ties the event to the number that moved, which is
+                    // the whole point of having it.
+                    game.logPlayerEvent(ai, `Your last discovered ${k} node has been emptied — discoveredNodesOnMap.${k} is now 0.`);
                 }
             });
         }
