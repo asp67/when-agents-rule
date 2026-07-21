@@ -769,18 +769,22 @@
     },
     "trainableUnits": {
       "type": "object",
-      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, nested building -> age -> entries, where the age is the earliest one at which that unit can be trained. Each entry's \"id\" is the bare unit id, ready to pass as \"unitType\" unchanged, alongside its cost and whether you can currently afford it. The Town Center hosts \"worker\" — villagers are trained with train_unit like everything else. Includes your civ's unique units and omits any standard unit your civ does not field. A category (infantry/ranged/cavalry/support) is NOT valid here — those work only in the \"units\" parameter of move_units and attack_target.",
+      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, nested building -> age -> entries, where the age is the earliest one at which that unit can be trained. Units you cannot reach yet are listed on purpose, so you can plan toward them — readyToTrain says which ones you could order right now. Each entry's \"id\" is the bare unit id, ready to pass as \"unitType\" unchanged. The Town Center hosts \"worker\" — villagers are trained with train_unit like everything else. Includes your civ's unique units, and omits both standard units your civ does not field and any host building your civ can never construct. A category (infantry/ranged/cavalry/support) is NOT valid here — those work only in the \"units\" parameter of move_units and attack_target.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "cost", "canAfford"],
+            "required": ["id", "cost", "canAfford", "readyToTrain"],
             "properties": {
               "id": { "type": "string" },
               "cost": { "$ref": "#/$defs/cost" },
-              "canAfford": { "type": "boolean" }
+              "canAfford": { "type": "boolean" },
+              "readyToTrain": {
+                "type": "boolean",
+                "description": "Every STRUCTURAL gate is met: you have reached the age above it and a finished host building of that type stands. Population room and whether a trainer is free right now are deliberately excluded — population is in resources, and a busy trainer changes several times while you are thinking, so it could not be reported honestly here."
+              }
             }
           }
         }
@@ -820,10 +824,12 @@
             ]
           },
           "researched": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether requiresTech has been researched. Null requiresTech counts as researched."
           },
           "readyToBuild": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Every STRUCTURAL gate is met: the unlock tech is researched AND you have reached requiredAge (and, for the Wonder, you do not already have one). Resources are separate — see canAfford."
           },
           "cost": {
             "$ref": "#/$defs/cost"

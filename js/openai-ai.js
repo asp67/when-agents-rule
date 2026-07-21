@@ -216,8 +216,17 @@ class OpenAIAIManager {
         // drift the comment above warns against, on the line that warns about it.
         const hosts = ['town_center', 'barracks', 'archery_range', 'stable', 'temple'];
         const seen = new Map();
+        const civTree = ((typeof getCivilization === 'function'
+            ? getCivilization(civilization) : null) || {}).techTree || {};
         hosts.forEach(bt => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(bt) : null;
+            // A host this civilization can NEVER build advertises units it can never
+            // train. Greece has no "horseback" tech, so it has no stable — yet this
+            // list handed a Greek player scout_cavalry, cavalry and heavy_cavalry, and
+            // trainableListString repeated them inside the very error that refuses one.
+            // buildableStructures has always applied this filter; the unit vocabulary
+            // never did, which is the same advertise/accept drift pointing outward.
+            if (def && def.requiresTech && !civTree[def.requiresTech]) return;
             const floor = (def && def.requiredAge) || 'stone';
             ageOrder.forEach(age => {
                 // A unit can't predate the building that trains it: the temple is a
@@ -1272,10 +1281,24 @@ class OpenAIAIManager {
             canAfford: !!(cost && ai.resources.hasResources(cost))
         });
 
+        // Both vocabularies list everything the civ can EVER field, not only what is
+        // reachable this minute, because a plan needs to see what it is building toward.
+        // That only works if each entry also says whether it is reachable NOW — a list
+        // of the possible, priced but ungated, invites exactly the rejected call the
+        // prices were added to prevent.
+        //
+        // These two flags cover the STRUCTURAL gates only: age, unlock tech, host built.
+        // Population and "that building is busy right now" are deliberately left out —
+        // both are already elsewhere in the state, and busy in particular flips several
+        // times inside one model's thinking time, so a snapshot of it would be a lie by
+        // the time the answer arrives.
+        const AGES = ['stone', 'neolithic', 'bronze', 'iron'];
+        const ageReached = (need) => AGES.indexOf(ai.age) >= AGES.indexOf(need || 'stone');
+
         // --- Trainable units: the vocabulary for train_unit's "unitType" ---
-        // Nested building → age → [{id, cost, canAfford}]. The id stays a field of its
-        // own rather than being folded into the token: an early version wrote
-        // "militia(stone)" as one string to save a nesting level, and models duly
+        // Nested building → age → [{id, cost, canAfford, readyToTrain}]. The id stays a
+        // field of its own rather than being folded into the token: an early version
+        // wrote "militia(stone)" as one string to save a nesting level, and models duly
         // passed that whole string as the unitType — the harness had invented a token
         // that looked copyable and wasn't. An object with an explicit "id" cannot be
         // mistaken for one.
@@ -1283,7 +1306,11 @@ class OpenAIAIManager {
         this.trainableUnitsFor(ai.civilization).forEach(u => {
             const host = (trainableUnits[u.at] = trainableUnits[u.at] || {});
             const def = (typeof getUnitDefFor === 'function') ? getUnitDefFor(ai.civilization, u.id) : null;
-            (host[u.age] = host[u.age] || []).push({ id: u.id, ...priced(def && def.cost) });
+            const hostStands = ai.buildings.some(b => b.type === u.at && !b.underConstruction);
+            (host[u.age] = host[u.age] || []).push({
+                id: u.id, ...priced(def && def.cost),
+                readyToTrain: ageReached(u.age) && hostStands
+            });
         });
 
         // --- Buildable structures for THIS civ (some civs lack e.g. the stable) ---
@@ -1300,7 +1327,13 @@ class OpenAIAIManager {
             // requiredAge is the CIV-effective age (unlock tech may come later
             // than the def's own age — Egypt's stable is bronze, not neolithic).
             const reqAge = (typeof effectiveBuildingAge === 'function') ? effectiveBuildingAge(ai.civilization, def) : (def.requiredAge || 'stone');
-            return { type: t, requiredAge: reqAge, requiresTech: reqTech, researched: techDone, readyToBuild: techDone, ...priced(def.cost) };
+            // readyToBuild used to be assigned techDone — the same value as "researched",
+            // in every row, under a name that promises more. A stone-age player was told
+            // readyToBuild:true for a bronze-age temple and got refused on age. Now the
+            // two fields say different things: researched is the tech, readyToBuild is
+            // every structural gate together.
+            return { type: t, requiredAge: reqAge, requiresTech: reqTech, researched: techDone,
+                     readyToBuild: techDone && ageReached(reqAge), ...priced(def.cost) };
         }).filter(Boolean);
 
         // The Wonder belongs in this list. It was in no vocabulary at all: a model's
@@ -1318,8 +1351,8 @@ class OpenAIAIManager {
         if (wDef) {
             buildableStructures.push({
                 type: 'wonder', builtAs: wDef.id,
-                requiredAge: wDef.requiredAge || 'iron', requiresTech: null,
-                researched: true, readyToBuild: !ai.buildings.some(b => b.isWonder),
+                requiredAge: wDef.requiredAge || 'iron', requiresTech: null, researched: true,
+                readyToBuild: ageReached(wDef.requiredAge || 'iron') && !ai.buildings.some(b => b.isWonder),
                 isWonder: true, ...priced(wDef.cost)
             });
         }
