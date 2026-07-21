@@ -1543,8 +1543,43 @@ body.spectator-mode #unitInfo.spectator-card {
    of the two because it holds a real caption — "Tiempo de respuesta por ronda (s)" is
    288px — while the left is only prose, which reflows at any width. */
 .tb-split { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
-.tb-split .tb-main { flex: 1 1 200px; min-width: 170px; }
-.tb-split .arena-subfield { flex: 0 1 300px; margin: 0; }
+/* Every column in this row keeps ONE rhythm: label, control, description, each starting
+   at the same height across all five. Three things were breaking it.
+
+   .tb-main is a plain div, so its children fell back to block flow while every other
+   column is a flex column with a 4px gap — a 2px label offset and a 10px control one.
+   It is now the same kind of box as its neighbours.
+
+   A select and a text input do not agree on intrinsic height to within a couple of
+   pixels, which was enough to push the descriptions out of line. Every control in this
+   row is pinned to one height, the checkbox row included.
+
+   And <p> brings its own margins, so the description is given explicit ones. */
+.tb-split .tb-main { flex: 1 1 200px; min-width: 170px; display: flex; flex-direction: column; gap: 4px; }
+.campaign-setup-row .arena-field select,
+.campaign-setup-row .arena-field input[type="text"],
+.campaign-setup-row .arena-field input[type="number"],
+.campaign-setup-row .arena-check { height: 38px; box-sizing: border-box; }
+.campaign-setup-row .arena-check { display: flex; align-items: center; gap: 8px; margin: 0; }
+.campaign-setup-row .arena-hint { margin: 6px 0 0; }
+/* Every caption in this row is a fixed-height flex line, so nothing placed inside one
+   can grow it: the campaign "You play" label carries a 24px civ-colour chip, which was
+   pushing that column's control and description 5px below its neighbours.
+
+   The two captions nested inside .tb-split need naming separately — a direct-child
+   selector missed them, and Chinese glyphs render a pixel taller than Latin here, which
+   was enough to break the row in one language only.
+
+   :not(.arena-check) because the checkbox row is ALSO a <label> and a direct child.
+   Without it this rule pins that CONTROL to caption height and its description climbs
+   up over it — widening a selector to reach the captions caught the control too. */
+.campaign-setup-row .arena-field > label:not(.arena-check),
+.campaign-setup-row .tb-main > label:not(.arena-check),
+.campaign-setup-row .arena-subfield > label:not(.arena-check) {
+    display: flex; align-items: center; gap: 6px;
+    height: 18px; line-height: 18px;
+}
+.tb-split .arena-subfield { flex: 0 1 300px; margin: 0; display: flex; flex-direction: column; gap: 4px; }
 
 .arena-slots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .arena-slot {
@@ -2257,7 +2292,7 @@ body.spectator-mode #unitInfo.spectator-card {
    288px and would be cut. A caption that outgrows its column should wrap, not lie.
    Styled like its siblings so it reads as a field label, not an afterthought. */
 .arena-subfield label {
-    display: block; margin-bottom: 4px;
+    display: block; margin-bottom: 0;
     white-space: normal; overflow: visible; text-overflow: clip;
     font-size: 0.85em; color: #4ecca3; font-weight: bold;
     text-transform: uppercase; letter-spacing: 1px;

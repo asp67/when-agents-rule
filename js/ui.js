@@ -153,6 +153,10 @@ class UIManager {
         // Count label text differs (Opponents vs Participants).
         const lbl = document.getElementById('setupCountLabel');
         if (lbl) { const key = campaign ? 'cmp.count' : 'ar.count'; lbl.setAttribute('data-i18n', key); lbl.textContent = t(key); }
+        // The description swaps with it — "how many seats" and "how many rivals" are not
+        // the same sentence, and a hint left describing the other mode is worse than none.
+        const cHint = document.getElementById('setupCountHint');
+        if (cHint) { const k = campaign ? 'cmp.countHint' : 'ar.countHint'; cHint.setAttribute('data-i18n', k); cHint.textContent = t(k); }
         const opts = campaign ? [1, 2, 3, 4, 5] : [2, 3, 4];
         const cur = this.setupSlotCount();
         const cntSel = document.getElementById('setupCount');
