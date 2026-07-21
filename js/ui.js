@@ -2043,6 +2043,14 @@ class UIManager {
             if (AGES.includes(v[k])) v[k] = tIn(lang, 'age.' + v[k]);
         });
         if (AGES.includes(v.res) === false && hasI18n(lang, 'resPlain.' + v.res)) v.res = tIn(lang, 'resPlain.' + v.res);
+        // "from" is a worker SOURCE: the four resources, plus farm and idle. Same
+        // fallback chain as a pulled-breakdown key, so it does not sit in a German
+        // sentence as a raw English token next to an already-localized {res}.
+        if (v.from != null) {
+            v.from = hasI18n(lang, 'resPlain.' + v.from) ? tIn(lang, 'resPlain.' + v.from)
+                   : hasI18n(lang, 'pull.' + v.from) ? tIn(lang, 'pull.' + v.from)
+                   : v.from;
+        }
         // Pull breakdown {idle:3, wood:2}: resource keys get the resource word, the
         // rest (idle/scout/repair/farm) their own label; unknown keys pass through.
         const pulledClause = obj => Object.keys(obj || {}).map(k =>
