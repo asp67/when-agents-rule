@@ -36,7 +36,7 @@ const CIVILIZATIONS = {
         },
         // Egypt's stable fields chariots only — the generic cavalry line
         // belongs to the horse-breeding civilizations.
-        excludedUnits: ['scout_cavalry', 'cavalry', 'heavy_cavalry'],
+        excludedUnits: ['cavalry', 'heavy_cavalry'],
         uniqueUnits: [
             {
                 id: 'priest',
@@ -224,14 +224,26 @@ const CIVILIZATIONS = {
             // Reuses the id 'horseback' on purpose: the stable's requiresTech and
             // every unlock gate key on that id, so Egypt's late chariot route
             // works through the exact same plumbing as Persia's and Yamato's.
+            // Horseback is the same deal for every civ: neolithic, at the Town Center,
+            // no prerequisite. It used to sit behind the MARKET for Egypt and Yamato,
+            // which made the stable a four-step chain (research market, build market,
+            // research horseback, build stable) costing ~1300 against a barracks' 450 —
+            // and worse, while the market tech was unresearched horseback was correctly
+            // absent from research.available, so a model reading "stable requires
+            // horseback" was chasing a tech that appeared nowhere. A dead end, not a
+            // plan. Levelled here rather than papered over in the state.
+            //
+            // What stays civ-specific is the LINE, not the gate: everyone gets the
+            // scout, Egypt still rides its bronze-age horse_carriage instead of generic
+            // cavalry, and Greece gets the scout and nothing above it.
             horseback: {
-                name: 'Pferdewagen',
-                cost: { food: 200, wood: 150, stone: 0, gold: 50 },
-                researchAt: 'market',
-                requiredAge: 'bronze',
-                requires: ['market'],
-                description: 'Schaltet Stall und Pferdewagen frei',
-                researchTime: 20000,  // 20 seconds
+                name: 'Pferdezucht',
+                cost: { food: 150, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'neolithic',
+                requires: [],
+                description: 'Schaltet Stall und Kundschafter frei',
+                researchTime: 15000,
                 unlocks: { buildings: ['stable'], unitTypes: ['horse_carriage'] }
             },
             // === Bronzezeit - am Tempel ===
@@ -260,6 +272,8 @@ const CIVILIZATIONS = {
         }
     },
     greek: {
+        // Scout only: the stable exists for scouting, not as a second army line.
+        excludedUnits: ['cavalry', 'heavy_cavalry'],
         name: "Griechen",
         color: 0x4169e1,
         bonus: {
@@ -343,6 +357,19 @@ const CIVILIZATIONS = {
                 description: 'Schaltet Kaserne-Bau frei (Infanterie-Ausbildung)',
                 researchTime: 15000,
                 unlocks: { buildings: ['barracks'] }
+            },
+            // Greece had no horseback at all, so no stable and no mounted unit of any
+            // kind. It gets the scout for map presence and nothing above it — see
+            // excludedUnits — which leaves it the infantry civ it was.
+            horseback: {
+                name: 'Pferdezucht',
+                cost: { food: 150, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'neolithic',
+                requires: [],
+                description: 'Schaltet Stall und Kundschafter frei',
+                researchTime: 15000,
+                unlocks: { buildings: ['stable'] }
             },
             falx: {
                 name: 'Falx-Schwerter',
@@ -557,7 +584,7 @@ const CIVILIZATIONS = {
                 name: 'Pferdezucht',
                 cost: { food: 150, wood: 100, stone: 0, gold: 0 },
                 researchAt: 'town_center',
-                requiredAge: 'stone',
+                requiredAge: 'neolithic',
                 requires: [],
                 description: 'Schaltet Stall und Kavallerie frei',
                 researchTime: 15000,
@@ -799,10 +826,11 @@ const CIVILIZATIONS = {
             horseback: {
                 name: 'Pferdezucht',
                 cost: { food: 150, wood: 100, stone: 0, gold: 0 },
-                researchAt: 'market',
+                researchAt: 'town_center',
                 requiredAge: 'neolithic',
-                requires: ['market'],
+                requires: [],
                 description: 'Schaltet Stall und Kavallerie frei',
+                researchTime: 15000,
                 unlocks: { buildings: ['stable'] }
             },
             // === Bronzezeit - am Markt ===
