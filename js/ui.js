@@ -299,6 +299,8 @@ class UIManager {
             // Sampling knobs. '' means "don't send it", so the provider's own default for
             // that model applies — which is NOT the same as sending a number that happens
             // to match it today. All three are left blank by default.
+            // Parameters this endpoint has been observed to refuse (see noteModelRejection).
+            rejectedParams: opts.rejectedParams || {},
             temperature: opts.temperature != null ? opts.temperature : '',
             topP: opts.topP != null ? opts.topP : '',
             topK: opts.topK != null ? opts.topK : '',
@@ -332,6 +334,23 @@ class UIManager {
         return intOnly ? n : Math.round(n * 100) / 100;
     }
 
+    // Called by the arena when an endpoint refuses a parameter mid-match. Stored on the
+    // library entry so the card can say so, and so a later match does not spend a request
+    // rediscovering it. Observed behaviour, not a guess from the model id — which is the
+    // only sort of capability claim this file is willing to make.
+    noteModelRejection(libraryId, flags) {
+        if (libraryId == null || !flags) return;
+        const cfg = this._arenaConfig;
+        const m = cfg && (cfg.models || []).find(x => x.id === libraryId);
+        if (!m) return;
+        m.rejectedParams = Object.assign({}, m.rejectedParams);
+        let changed = false;
+        Object.keys(flags).forEach(k => { if (!m.rejectedParams[k]) { m.rejectedParams[k] = true; changed = true; } });
+        if (!changed) return;
+        this.saveArenaConfig();
+        if (document.getElementById('modelLibraryList')) this.renderArenaLibrary();
+    }
+
     normalizeArenaModel(m) {
         const def = this.makeArenaModel();
         m.availableModels = Array.isArray(m.availableModels) ? m.availableModels : [];
@@ -347,6 +366,7 @@ class UIManager {
         }
         if (m.maxTokens == null) m.maxTokens = '';
         ['temperature', 'topP', 'topK'].forEach(k => { if (m[k] == null) m[k] = ''; });
+        if (!m.rejectedParams || typeof m.rejectedParams !== 'object') m.rejectedParams = {};
         if (m.contextSize == null) m.contextSize = '';
         m.minimizeTokens = !!m.minimizeTokens;
         if (m.maxContext == null) m.maxContext = null;
@@ -626,6 +646,28 @@ class UIManager {
         const provSel = (v) => (m.provider || 'auto') === v ? 'selected' : '';
         // Show Ollama-specific server advice when this model talks to Ollama.
         const isOllama = (typeof OpenAIAIManager !== 'undefined') && OpenAIAIManager.resolveProvider(m) === 'ollama';
+        // Show the value the endpoint would actually apply, per provider, instead of the
+        // word "provider's". Where there is no single honest number (real OpenAI has no
+        // top_k, Anthropic applies no top_p unless asked, Google's topK varies by model)
+        // samplingDefaults returns null and the generic wording stands.
+        const _defs = (typeof OpenAIAIManager !== 'undefined')
+            ? OpenAIAIManager.samplingDefaults(OpenAIAIManager.resolveProvider(m))
+            : { temperature: null, topP: null, topK: null };
+        const defPh = {
+            temperature: _defs.temperature != null ? _defs.temperature : t('ar.samplingDefault'),
+            topP: _defs.topP != null ? _defs.topP : t('ar.samplingDefault'),
+            topK: _defs.topK != null ? _defs.topK : t('ar.samplingDefault')
+        };
+        // What this endpoint has actually REFUSED in a past match. Observed, never
+        // guessed from the model name — the only kind of capability claim worth showing.
+        const rejected = (m.rejectedParams && typeof m.rejectedParams === 'object') ? m.rejectedParams : {};
+        const REJ_LABEL = { omitTemperature: t('ar.fTemperature'), omitTopP: t('ar.fTopP'), omitTopK: t('ar.fTopK') };
+        const rejectedTag = (flag) => rejected[flag]
+            ? ` <span class="param-rejected" title="${this.escapeHtml(t('ar.paramRejectedTitle'))}">${t('ar.paramRejected')}</span>` : '';
+        const rejectedNames = Object.keys(rejected).filter(k => REJ_LABEL[k]).map(k => REJ_LABEL[k]);
+        const rejectedNote = rejectedNames.length
+            ? `<p class="auth-hint param-rejected-note">${this.escapeHtml(t('ar.paramRejectedNote', { list: rejectedNames.join(', ') }))}</p>`
+            : '';
         const epPlaceholder = provPlaceholders[m.provider || 'auto'] || provPlaceholders.auto;
         const sub = e(m.model || m.endpoint || t('ar.notConfigured'));
         return `
@@ -685,14 +727,15 @@ class UIManager {
                     <select onchange="game.ui.setModelField(${m.id},'language',this.value)">${langOpts}</select></div>
             </div>
             <div class="model-select-row sampling-row">
-                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTemperature')}</label>
-                    <input type="number" min="0" max="2" step="0.05" value="${e(m.temperature)}" oninput="game.ui.setModelField(${m.id},'temperature',this.value)" placeholder="${t('ar.samplingDefault')}"></div>
-                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTopP')}</label>
-                    <input type="number" min="0" max="1" step="0.05" value="${e(m.topP)}" oninput="game.ui.setModelField(${m.id},'topP',this.value)" placeholder="${t('ar.samplingDefault')}"></div>
-                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTopK')}</label>
-                    <input type="number" min="1" step="1" value="${e(m.topK)}" oninput="game.ui.setModelField(${m.id},'topK',this.value)" placeholder="${t('ar.samplingDefault')}"></div>
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTemperature')}${rejectedTag('omitTemperature')}</label>
+                    <input type="number" min="0" max="2" step="0.05" value="${e(m.temperature)}" oninput="game.ui.setModelField(${m.id},'temperature',this.value)" placeholder="${e(defPh.temperature)}"></div>
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTopP')}${rejectedTag('omitTopP')}</label>
+                    <input type="number" min="0" max="1" step="0.05" value="${e(m.topP)}" oninput="game.ui.setModelField(${m.id},'topP',this.value)" placeholder="${e(defPh.topP)}"></div>
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTopK')}${rejectedTag('omitTopK')}</label>
+                    <input type="number" min="1" step="1" value="${e(m.topK)}" oninput="game.ui.setModelField(${m.id},'topK',this.value)" placeholder="${e(defPh.topK)}"></div>
             </div>
             <p class="auth-hint">${t('ar.samplingHint')}</p>
+            ${rejectedNote}
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
             <p class="auth-hint">${t('ar.maxTokensHint')}</p>
             <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
@@ -1090,6 +1133,9 @@ class UIManager {
                 maxContext: (() => { const n = parseInt(m.maxContext, 10); return (n && n >= 512) ? n : null; })(),
                 minimizeTokens: !!m.minimizeTokens,
                 language: m.language || 'en',
+                // So a parameter the endpoint refuses mid-match can be recorded against
+                // the entry it came from rather than being relearned every match.
+                libraryId: m.id,
                 auth: this.cleanAuth(m.auth)
             }
         };

@@ -2268,3 +2268,12 @@ body.spectator-mode #unitInfo.spectator-card {
 /* Sampling knobs sit on their own row under the model/context row: they are set once
    and rarely touched, unlike the model picker above them. */
 .sampling-row { margin-top: 8px; }
+
+/* A parameter this endpoint has been observed to refuse. Marked rather than hidden:
+   the field stays editable in case the model behind the endpoint changes. */
+.param-rejected {
+    font-size: 0.78em; font-weight: 700; letter-spacing: 0; text-transform: none;
+    color: #ffb26b; background: rgba(255, 178, 107, 0.14);
+    border-radius: 999px; padding: 1px 7px; margin-left: 6px;
+}
+.param-rejected-note { color: #ffb26b; }

@@ -407,6 +407,24 @@ class OpenAIAIManager {
         return p === 'auto' ? OpenAIAIManager.detectProvider((model && model.endpoint) || '') : p;
     }
 
+    // What each provider applies when we send nothing, so the input can show the value
+    // you would actually get instead of the word "provider's". These are the providers'
+    // DOCUMENTED API defaults, not something probed — a specific model can differ, and an
+    // Ollama Modelfile can override all three, which the hint says.
+    //
+    // null means there is no single honest number: real OpenAI has no top_k at all,
+    // Anthropic applies no top_p/top_k unless asked, and Google's topK varies by model.
+    // Those keep the generic placeholder rather than being given a number we would be
+    // making up.
+    static samplingDefaults(provider) {
+        switch (provider) {
+            case 'anthropic': return { temperature: '1', topP: null, topK: null };
+            case 'ollama':    return { temperature: '0.8', topP: '0.9', topK: '40' };
+            case 'google':    return { temperature: '1', topP: '0.95', topK: null };
+            default:          return { temperature: '1', topP: '1', topK: null };
+        }
+    }
+
     // Some endpoints REJECT a parameter rather than ignoring it, and say which in the
     // 400. OpenAI's reasoning models are the live case: they refuse max_tokens and want
     // max_completion_tokens, and refuse any temperature but the default. A model pointed
@@ -438,6 +456,11 @@ class OpenAIAIManager {
         if (!opts.omitTopP && /top_p|topP/i.test(e)
             && /unsupported|not support|only the default|must be|is not supported/i.test(e)) {
             add.omitTopP = true;
+        }
+        // Real OpenAI answers "Unrecognized request argument supplied: top_k".
+        if (!opts.omitTopK && /top_k|topK/i.test(e)
+            && /unsupported|not support|unrecognized|unknown|extra|not permitted|is not supported/i.test(e)) {
+            add.omitTopK = true;
         }
         return Object.keys(add).length ? add : null;
     }
@@ -508,9 +531,14 @@ class OpenAIAIManager {
         // endpoint has said so itself, never guessed from the model name.
         body[opts.useMaxCompletionTokens ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
         if (!opts.omitTemperature) put(body, 'temperature', temperature);
-        // The OpenAI chat API has no top_k — sending one is a 400 on strict gateways and
-        // silently ignored elsewhere, so it is dropped rather than passed along.
         if (!opts.omitTopP) put(body, 'top_p', topP);
+        // "openai-compatible" is not only OpenAI. vLLM, Groq, LM Studio, LiteLLM and
+        // OpenRouter all accept top_k here and are a large part of who runs this; real
+        // OpenAI is the one that does not. So it goes out by default and adaptToApiError
+        // drops it for that endpoint the first time it is refused — the same
+        // send-then-learn rule the rest of this file uses, rather than punishing every
+        // local gateway for one provider's omission.
+        if (!opts.omitTopK) put(body, 'top_k', topK);
         // If this "OpenAI-compatible" endpoint is actually an Ollama server (user
         // pointed at :11434 / picked OpenAI-compat), ask it to keep the model
         // resident so it isn't unloaded between turns. Only do this for detected
@@ -820,6 +848,7 @@ class OpenAIAIManager {
                 maxContext: conn.maxContext || null, // model's real max context — hard ceiling for the budget
                 minimizeTokens: !!conn.minimizeTokens, // true = compact one-line history (Option A)
                 language: conn.language || 'en', // language the model reasons/answers in (independent of GUI)
+                libraryId: conn.libraryId != null ? conn.libraryId : null,
                 customSystemPrompt: playerSetup.systemPrompt || null
             };
 
@@ -2105,6 +2134,14 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 { temperature: model.temperature, topP: model.topP, topK: model.topK,
                   maxTokens: model.maxTokens, numCtx: model.contextSize },
                 model._reqOpts);
+            // Learned refusals are worth keeping past the match: the library shows them,
+            // so "this endpoint does not take top_k" survives as an observation rather
+            // than being rediscovered at the cost of one request every single match.
+            model._onLearn = model._onLearn || ((flags) => {
+                if (this.game && this.game.ui && this.game.ui.noteModelRejection) {
+                    this.game.ui.noteModelRejection(model.libraryId, flags);
+                }
+            });
 
             const reqStart = Date.now();
             let response, apiUrl, body;
@@ -2145,6 +2182,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     ? OpenAIAIManager.adaptToApiError(model._reqOpts, errorText) : null;
                 if (!fix) throw new Error(`API error (${response.status}): ${errorText}`);
                 Object.assign(model._reqOpts, fix);
+                try { model._onLearn(fix); } catch (e) { /* display only */ }
                 console.warn(`[OpenAIAI] ${ai.id}: endpoint rejected a parameter, retrying with`,
                     Object.keys(fix).join(', '));
             }
