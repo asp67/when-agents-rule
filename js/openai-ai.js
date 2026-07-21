@@ -74,7 +74,11 @@ class OpenAIAIManager {
             actionsRejected: 0,   // understood but failed (cost, pop, duplicate, ...)
             invalidActions: 0,    // unknown action name
             reasonsGiven: 0,      // decisions that included a non-empty reason
-            actionCounts: {}      // attempted action name -> count
+            actionCounts: {},     // attempted action name -> count
+            workersTrained: 0     // train_unit attempts whose unitType was "worker".
+                                  // actionCounts is keyed by action NAME, and since
+                                  // villagers moved into train_unit that key alone can
+                                  // no longer tell an economy move from a military one.
         };
     }
 
@@ -205,7 +209,12 @@ class OpenAIAIManager {
     // carriages and NO generic cavalry; a model could not have known that).
     trainableUnitsFor(civilization) {
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
-        const hosts = ['barracks', 'archery_range', 'stable', 'temple'];
+        // town_center is in here because the executor has always accepted
+        // {"unitType":"worker"} — buildingTrains() special-cases it — while this list
+        // advertised only the military hosts. The one action that could reach a
+        // villager was therefore the only one a model was told about. Exactly the
+        // drift the comment above warns against, on the line that warns about it.
+        const hosts = ['town_center', 'barracks', 'archery_range', 'stable', 'temple'];
         const seen = new Map();
         hosts.forEach(bt => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(bt) : null;
@@ -227,7 +236,7 @@ class OpenAIAIManager {
     // This is what an [ERROR] owes the model when it guesses a unit name wrong.
     trainableListString(ai) {
         const list = this.trainableUnitsFor(ai.civilization);
-        if (!list.length) return 'Your civilization trains no military units.';
+        if (!list.length) return 'Your civilization trains no units.';
         const byHost = {};
         list.forEach(u => { (byHost[u.at] = byHost[u.at] || []).push(u.id); });
         const parts = Object.entries(byHost).map(([host, ids]) => `at ${host} — ${ids.join(', ')}`);
@@ -1585,7 +1594,6 @@ plan: Array of up to 5 short strings. Persists across turns; omit to keep curren
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
 
-train_worker: (None)
 train_unit: unitType (from trainableUnits), targetX?, targetZ?
 research_tech: techId (from research.available)
 upgrade_age: (None)
@@ -2462,14 +2470,15 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const st = controller.stats;
             st.actionsAttempted++;
             st.actionCounts[action] = (st.actionCounts[action] || 0) + 1;
+            // Counted as ATTEMPTED, matching actionCounts — the eco/military split is
+            // about what the model chose to do, not whether it could afford it.
+            if (action === 'train_unit' && String(params && params.unitType).toLowerCase() === 'worker') {
+                st.workersTrained++;
+            }
             if (params && typeof params.reason === 'string' && params.reason.trim()) st.reasonsGiven++;
         }
 
         switch (action) {
-            case 'train_worker':
-                actionResult = this.executeTrainWorker(ai, game, params || {});
-                break;
-
             case 'train_unit':
                 if (params?.unitType) {
                     actionResult = this.executeTrainUnit(ai, game, params.unitType, params || {});
@@ -2555,7 +2564,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 // instead of a flat "unknown", which reads as "that action does not
                 // exist" and sends a model hunting for a different one.
                 const bare = String(action).replace(/\s*\(.*\)\s*$/, '').trim();
-                const KNOWN = ['train_worker', 'train_unit', 'research_tech', 'upgrade_age',
+                const KNOWN = ['train_unit', 'research_tech', 'upgrade_age',
                     'build_structure', 'build_wonder', 'assign_workers',
                     'repair_building', 'explore', 'move_units', 'attack_target',
                     'delete_unit', 'destroy_building', 'wait'];
@@ -2677,58 +2686,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         return { b: chosen.b, note: redirected ? ' (the structure nearest your coordinates was busy, so the next free one was used)' : '' };
     }
 
-    executeTrainWorker(ai, game, params = {}) {
-        // Models sometimes call train_worker but pass a military unit type. That's a
-        // tool-calling mismatch: train_worker ALWAYS makes a villager at the Town
-        // Center. Tell them the right action instead of silently training a worker.
-        const ut = params && params.unitType;
-        if (ut && ut !== 'worker') {
-            this.outcome('log.out.trainWorkerNotUnit', { unitType: ut });
-            return `[ERROR] train_worker only trains a Villager (worker) at the Town Center — it ignores unitType. To train "${ut}", use action "train_unit" with params.unitType="${ut}" (military units come from a barracks/archery_range/stable, not the Town Center).`;
-        }
-        const allTCs = ai.buildings.filter(b => b.type === 'town_center');
-        if (allTCs.length === 0) {
-            console.log(`[OpenAIAI] ${ai.id}: No Town Center at all to train worker`);
-            const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
-            const costStr = tcDef ? this.costString(tcDef.cost) : '100 food, 100 wood, 100 stone, 100 gold';
-            this.outcome('log.out.noTCTrain', {});
-            return `[ERROR] You have NO Town Center, so you cannot train workers. Rebuild one: build_structure with buildingType="town_center" and a targetX/targetZ on open ground (costs ${costStr}; one of your existing workers constructs it). Until a Town Center stands you cannot make new workers.`;
-        }
-        const townCenters = allTCs.filter(b => !b.isProducing && !b.underConstruction);
-        if (townCenters.length === 0) {
-            console.log(`[OpenAIAI] ${ai.id}: Town Center busy/under construction`);
-            this.outcome('log.out.tcBusy', {});
-            return `[ERROR] Your Town Center is busy producing or still under construction — wait for it to finish, then train the worker.`;
-        }
-
-        // Check population limit before training worker
-        if (ai.resources.population >= ai.resources.maxPopulation) {
-            console.log(`[OpenAIAI] ${ai.id}: Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation})`);
-            this.popCapOutcome(ai);
-            return `[ERROR] Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation}). ${this.popCapAdvice(ai)}`;
-        }
-
-        const workerDef = getUnitDef('worker');
-        if (!ai.resources.hasResources(workerDef.cost)) {
-            console.log(`[OpenAIAI] ${ai.id}: Cannot afford worker`);
-            this.outcome('log.out.cannotAfford', { whatName: 'Dorfbewohner', need: workerDef.cost, have: this.haveObj(ai) });
-            return `[ERROR] Cannot afford a worker (needs ${this.costString(workerDef.cost)}). You have ${this.haveString(ai)}.`;
-        }
-
-        const { b: tc, note } = this.chooseTrainer(townCenters, allTCs.filter(b => !b.underConstruction), params);
-        ai.resources.spendResources(workerDef.cost);
-        tc.isProducing = true;
-        tc.productionType = 'worker';
-        tc.productionDuration = 5000;
-        tc.productionProgress = 0;
-        console.log(`[OpenAIAI] ${ai.id}: Training worker at Town Center (${Math.round(tc.x)}, ${Math.round(tc.z)})`);
-        this.outcome('log.out.trainWorker', { x: Math.round(tc.x), z: Math.round(tc.z), food: Math.floor(ai.resources.food) });
-        return `OK - Training a worker at the Town Center (${Math.round(tc.x)}, ${Math.round(tc.z)}) (~5s to produce; ${Math.floor(ai.resources.food)} food left). That Town Center is busy until it finishes.${note}`;
-    }
-
+    // Every trainable thing comes through here, villagers included. A worker is a unit
+    // whose building happens to be the Town Center, and the validation chain below
+    // already read it that way — requiredBuildingForUnit('worker') has always returned
+    // 'town_center' and buildingTrains() has always accepted it there.
     executeTrainUnit(ai, game, unitType, params = {}) {
-        if (unitType === 'worker') return this.executeTrainWorker(ai, game, params);
-
         const civ = getCivilization(ai.civilization);
         const unitDef = getUnitDefFor(ai.civilization, unitType);
         if (!unitDef) {
@@ -2765,6 +2727,16 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 if (ai.buildings.some(b => rightType(b) && b.underConstruction)) {
                     this.outcome('log.out.buildingUnderConstr', { building: reqB, unitType });
                     return `[ERROR] Your ${reqB} is still under construction. Wait for it to finish, then train ${unitType}.`;
+                }
+                // Owning no Town Center is not the same as not having got round to a
+                // barracks yet: it ends worker production outright, and the way back is
+                // a build order an EXISTING worker has to carry out. The generic
+                // "you have not built one yet" below would bury all of that.
+                if (reqB === 'town_center') {
+                    const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
+                    const costStr = tcDef ? this.costString(tcDef.cost) : '100 food, 100 wood, 100 stone, 100 gold';
+                    this.outcome('log.out.noTCTrain', {});
+                    return `[ERROR] You have NO Town Center, so you cannot train workers. Rebuild one: build_structure with buildingType="town_center" and a targetX/targetZ on open ground (costs ${costStr}; one of your existing workers constructs it). Until a Town Center stands you cannot make new workers.`;
                 }
                 const bdef = getBuildingDef(reqB);
                 const tech = bdef && bdef.requiresTech;
@@ -2833,7 +2805,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         free.productionProgress = 0;
         console.log(`[OpenAIAI] ${ai.id}: Training ${unitType} at ${free.name} (${Math.round(free.x)}, ${Math.round(free.z)})`);
         this.outcome('log.out.trainUnit', { unitName: unitDef.name, x: Math.round(free.x), z: Math.round(free.z) });
-        return `OK - Training ${unitType} at ${free.name} (${Math.round(free.x)}, ${Math.round(free.z)}) (~5s to produce; that building is busy until it finishes).${note}`;
+        // free.type, not free.name: name is the LOCALISED display string, so this line
+        // was handing models "at Dorfzentrum" while every other message about the same
+        // building — including the busy error two steps up — calls it "town_center".
+        // The type is the id the model already reads in trainableUnits and writes in
+        // build_structure, so it is the one word that is copyable in both directions.
+        return `OK - Training ${unitType} at ${free.type} (${Math.round(free.x)}, ${Math.round(free.z)}) (~5s to produce; that building is busy until it finishes).${note}`;
     }
 
     executeResearchTech(ai, game, techId) {

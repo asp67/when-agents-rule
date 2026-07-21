@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v44';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v45';
     }
 
     showScreen(screenId) {
@@ -2069,7 +2069,7 @@ class UIManager {
                 v.tech = tgIn(lang, p.techName || ''); v.host = tgIn(lang, p.hostName || ''); break;
             case 'log.out.ageUpStarted':
                 v.age = tIn(lang, 'age.' + p.age); break;
-            // trainWorker / farmAllManned / populationLimit: params already primitive
+            // farmAllManned / populationLimit: params already primitive
         }
         return tIn(lang, code, v);
     }
@@ -2103,7 +2103,6 @@ class UIManager {
         this._lastLogSig = sig;
 
         const actionNames = {
-            train_worker: t('log.train_worker'),
             train_unit: t('log.train_unit'),
             research_tech: t('log.research_tech'),
             upgrade_age: t('log.upgrade_age'),
@@ -2645,8 +2644,13 @@ class UIManager {
         if (distinct >= 5) tags.push({ t: t('tag.versatile'), cls: 'good' });
         else if (m.attempted >= 4 && distinct <= 2) tags.push({ t: t('tag.monotonous'), cls: 'warn' });
         const ac = m.actionCounts;
-        const mil = (ac.train_unit || 0) + (ac.attack_target || 0) + (ac.move_units || 0);
-        const eco = (ac.train_worker || 0) + (ac.assign_workers || 0) + (ac.build_structure || 0);
+        // Villagers are train_unit calls now, so they have to be subtracted out of the
+        // military side and added to the economic one. Left alone, every worker a model
+        // trained would have scored as aggression and flipped this tag for exactly the
+        // players it describes worst.
+        const workers = m.workersTrained || 0;
+        const mil = Math.max(0, (ac.train_unit || 0) - workers) + (ac.attack_target || 0) + (ac.move_units || 0);
+        const eco = workers + (ac.assign_workers || 0) + (ac.build_structure || 0);
         if (mil > eco && mil > 0) tags.push({ t: t('tag.aggressive'), cls: 'neutral' });
         else if (eco > mil && eco > 0) tags.push({ t: t('tag.ecoFocus'), cls: 'neutral' });
         if (!tags.length) tags.push({ t: '—', cls: 'neutral' });
@@ -2733,7 +2737,8 @@ class UIManager {
                     formatOk: responded > 0 ? (responded - st.parseFails - (st.noActionReturns || 0)) / responded : 0,
                     reliability: reliabilityBase ? 1 - (st.timeouts + st.networkErrors) / reliabilityBase : 0,
                     reasonRate: st.actionsAttempted ? st.reasonsGiven / st.actionsAttempted : 0,
-                    actionCounts: st.actionCounts
+                    actionCounts: st.actionCounts,
+                    workersTrained: st.workersTrained || 0
                 };
                 rep.soundness = this.computeSoundness(rep);
                 rep.tags = this.computeBehaviorTags(rep);
