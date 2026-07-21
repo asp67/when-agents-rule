@@ -1352,6 +1352,27 @@ class Game {
             };
             owner.buildings.forEach(scan);
             owner.units.forEach(scan);
+            // DAMAGE-triggered, never PROXIMITY-triggered. Do not "improve" this into
+            // waking on nearby hostiles; the gap is load-bearing and a model has
+            // already stood in it.
+            //
+            // A 9b model, its army dead and attack_target refusing workers by rule,
+            // read the one line in the vocabulary that says move_units accepts
+            // {"worker":N} "to place a unit on an exact spot" — and placed
+            // ninety-three of them on an enemy Wonder. It could not declare an
+            // attack, so it built the conditions for one and waited for somebody
+            // else to swing. The defender, Sonnet, read it exactly right from the
+            // other side: sixty-six enemy workers in sight, logged as "only enemy
+            // workers visible (no threat)", and it waited too — because striking
+            // first was the only thing that could turn that crowd into an army.
+            // A third player's lone scout hit the Wonder, this draft fired on the
+            // damage, and the fight neither of them had chosen began.
+            //
+            // Waking on proximity would erase both halves at once: no gambit for the
+            // attacker, no restraint worth having for the defender. The stand-off is
+            // the feature. Confirmed intended by asp67 (2026-07-21) — outplaying the
+            // harness is how a small model shows its class, and stays fair game as
+            // long as it is not a glitch that makes the game unfair.
             if (!threats.length) return;
 
             threats.sort((a, b) => this.threatPriority(b.ent) - this.threatPriority(a.ent));
