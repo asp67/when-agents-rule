@@ -2063,7 +2063,7 @@ train_unit: unitType (from trainableUnits), targetX?, targetZ?
 research_tech: techId (from research.available)
 upgrade_age: (None)
 build_structure: buildingType (from buildableStructures), targetX?, targetZ?
-assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), allowSpill? (def:true; false takes only workers not carrying a load right now, and takes fewer if that is all there are), targetX?, targetZ?
+assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), allowSpill? (def:true; false takes only workers not carrying a load right now, and takes fewer if that is all there are), targetX?, targetZ? (which node: the one of that type nearest this point; pass the SAME value in "from" and "resourceType" to move a crew from one node to another)
 repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
 explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?
 move_units: targetX, targetZ, units?, unitIds?
@@ -4387,29 +4387,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
 
         // Pull order, cheapest disruption first: idle hands, then gatherers from
-        // the fattest stockpile down to the leanest (surplus labor is the most
-        // expendable), then scouts, then repairers, then farmers — steady food is
-        // the last thing to cannibalize. Builders and fighting workers (also by
-        // auto-retaliation) are never pulled, nor are workers already on the
-        // requested resource: assign_workers ADDS to it.
-        const isFighting = u => u.isAttacking || u.attackTarget || u.attackMove;
-        let candidates = ai.units.filter(u =>
-            u.type === 'worker' && u.health > 0 &&
-            u.task !== 'building' && !u.isBuilding && !isFighting(u) &&
-            !((u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget && u.harvestTarget.type === resourceType));
-        if (candidates.length === 0) {
-            const already = ai.units.filter(u => u.type === 'worker' && (u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget && u.harvestTarget.type === resourceType).length;
-            const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
-            const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
-            this.outcome('log.out.noWorkersReassign', { already, res: resourceType, building, fighting });
-            return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing, ${fighting} are fighting (builders and fighting workers are never pulled).`;
-        }
-
         // Optional SOURCE. Omitted, the triage below picks as it always has (idle
         // first, then the fattest stockpile down). Given, the MODEL chooses where the
         // workers come from — which is what makes workers.onX worth reading at all:
         // deciding to thin out food is worth nothing if the pick then takes them
-        // off gold.
+        // off gold. It is parsed here, above the candidate filter, because the filter
+        // needs to know what was asked for before it can decide who is eligible.
         const whereFrom = u => {
             if (u.task === 'farm_work' || u.farmRef) return 'farm';
             const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
@@ -4424,10 +4407,52 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             this.outcome('log.out.assignBadFrom', {});
             return `[ERROR] assign_workers "from" is where workers are TAKEN FROM and must be one of ${FROMS.join('|')} — omit it to use ingame worker selection, which takes idle workers first, then your largest stockpile. Got ${JSON.stringify(params.from)}.`;
         }
-        if (from !== null && from === resourceType) {
+        // Same source and destination is only a no-op WITHOUT coordinates. With them the
+        // model is naming a NODE — take the workers already on gold and move them to the
+        // gold deposit nearest this point — which is a relocation, and the only way to
+        // express one. This rejected exactly that: a model moving six gold workers off a
+        // node at (341,27) onto one at (-124,103) to cut the walk, which is a better
+        // decision than most, was told it wanted a job they already had. And the advice
+        // made it worse: omitting "from" takes idle workers first and then the largest
+        // stockpile, which is not the far-node crew it was trying to move.
+        const relocating = OpenAIAIManager.given(params.targetX) || OpenAIAIManager.given(params.targetZ);
+        if (from !== null && from === resourceType && !relocating) {
             this.outcome('log.out.assignFromSame', { res: resourceType });
-            return `[ERROR] "from" and "resourceType" are both "${resourceType}", which would move workers onto the job they already have. Choose a different source or omit "from".`;
+            return `[ERROR] "from" and "resourceType" are both "${resourceType}" with no target, which would move workers onto the job they already have. Add "targetX"/"targetZ" to move them to a different ${resourceType} node, choose a different source, or omit "from".`;
         }
+
+        // Triage, when the model does not name a source: idle workers first, then
+        // the fattest stockpile down to the leanest (surplus labor is the most
+        // expendable), then scouts, then repairers, then farmers — steady food is
+        // the last thing to cannibalize. Builders and fighting workers (also by
+        // auto-retaliation) are never pulled, nor are workers already on the
+        // requested resource: assign_workers ADDS to it.
+        //
+        // Except when the model asked for a relocation. "from gold, to gold, at
+        // (x,z)" means move the gold crew to a different gold node, and the crew it
+        // means is precisely the one this filter drops — so the pool came out empty
+        // BY CONSTRUCTION, and the diagnosis below then blamed the only other
+        // exclusions it knew about and reported six walking miners as "constructing
+        // or fighting". Letting the guard through without this was fixing the lock
+        // and leaving the door.
+        const isFighting = u => u.isAttacking || u.attackTarget || u.attackMove;
+        const onSameRes = u => (u.task === 'harvesting' || u.task === 'carrying')
+            && u.harvestTarget && u.harvestTarget.type === resourceType;
+        const sameNodeMove = relocating && from !== null && from === resourceType;
+        let candidates = ai.units.filter(u =>
+            u.type === 'worker' && u.health > 0 &&
+            u.task !== 'building' && !u.isBuilding && !isFighting(u) &&
+            (sameNodeMove || !onSameRes(u)));
+        if (candidates.length === 0) {
+            // Not a blocker when they are the ones being moved — reporting them as
+            // one would name a reason that did not apply.
+            const already = sameNodeMove ? 0 : ai.units.filter(u => u.type === 'worker' && onSameRes(u)).length;
+            const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
+            const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
+            this.outcome('log.out.noWorkersReassign', { already, res: resourceType, building, fighting });
+            return `[ERROR] No workers could be reassigned: ${already} already harvest ${resourceType}, ${building} are constructing, ${fighting} are fighting (builders and fighting workers are never pulled).`;
+        }
+
         if (from !== null) {
             const pool = candidates.filter(u => whereFrom(u) === from);
             if (!pool.length) {
