@@ -225,7 +225,12 @@ class Game {
         // reflect it and the per-TC clearResourcesNear below acts on fresh nodes.
         this.difficulty = (typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy';
         this.terrain.difficulty = this.difficulty;
-        this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || null; // same seed = same map
+        // Blank means "pick one for me", NOT "run unseeded". Terrain falls through to
+        // Math.random when seed is null, so a blank field used to produce a layout that
+        // could never be played again — and the transcript recorded null, which answered
+        // "did you type a seed" rather than "what map was this". Mint one instead: every
+        // match is reproducible and every transcript carries the seed that made it.
+        this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed();
         this.mapSeed = this.terrain.seed;
         // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
         // generator needs the spawns before it runs (they are already computed above).
@@ -383,7 +388,7 @@ class Game {
         // scaled by difficulty) before placing Town Centers / clearing nodes under them.
         this.difficulty = (typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy';
         this.terrain.difficulty = this.difficulty;
-        this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || null; // same seed = same map
+        this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed();
         this.mapSeed = this.terrain.seed;
         // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
         // generator needs the spawns before it runs (they are already computed above).
@@ -1565,6 +1570,13 @@ class Game {
     // seats think; fairness there comes from every seat reading the same snapshot and
     // every move landing at the same instant (see OpenAIAIManager.flushRound), not from
     // holding the world still.
+    // Short, readable, and unmistakably machine-picked so nobody wonders whether they
+    // typed it. Any string works — terrain hashes it — so this only has to be unique
+    // enough that two matches minutes apart do not collide.
+    static mintSeed() {
+        return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    }
+
     simBudget(ms) {
         return ms * (this.anyWonderStanding() ? 1 : (this.simSpeed || 1));
     }

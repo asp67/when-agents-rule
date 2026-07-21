@@ -66,7 +66,12 @@ class TranscriptRecorder {
             match || {},
             { players: (players || []).map(p => ({
                 id: p.id, seat: p.seat, civ: p.civilization,
-                model: p.model || null, name: p.name || null })) });
+                model: p.model || null, name: p.name || null,
+                // How this seat was configured. One named field rather than spreading p,
+                // so this stays a whitelist: the caller decides what is publishable (see
+                // OpenAIAIManager.publicModelSettings, which excludes auth and endpoint)
+                // and nothing arrives here by accident.
+                settings: p.settings || null })) });
         try {
             const buf = this.pending.get('__match__') || [];
             buf.push(JSON.stringify(this.matchMeta) + '\n');

@@ -477,6 +477,57 @@ class OpenAIAIManager {
         if (provider === 'google') return { kind: 'budget', value: Math.max(-1, n) };
         return { kind: 'budget', value: Math.max(OpenAIAIManager.ANTHROPIC_MIN_THINKING, n) };
     }
+    // Everything about a seat that changes how it played, and nothing that identifies or
+    // authenticates it. A transcript is meant to be handed to someone else, so this is a
+    // WHITELIST: a field is absent unless it was named here, which means a setting added
+    // later is missing from the record rather than a credential leaking into it.
+    //
+    // Deliberately absent:
+    //   auth      — keys, tokens, passwords, headers. Never, in any form.
+    //   endpoint  — private hostnames and, for some providers, a key in the query string.
+    //               provider + model tells a reader what they need to interpret a result.
+    //
+    // extraBody is free-form text the user typed, which is exactly where a stray key ends
+    // up, so its values are redacted by name rather than trusted.
+    static publicModelSettings(conn, slot, sharedPrompt) {
+        const out = {
+            provider: OpenAIAIManager.resolveProvider(conn),
+            maxTokens: conn.maxTokens || null,
+            contextBudget: conn.contextSize || null,
+            minimizeTokens: !!conn.minimizeTokens,
+            language: conn.language || 'en'
+        };
+        ['temperature', 'topP', 'topK'].forEach(k => { if (conn[k] != null) out[k] = conn[k]; });
+        if (conn.reasoning) out.reasoning = conn.reasoning;
+        if (conn.extraBody) out.extraBody = OpenAIAIManager.redactSecrets(conn.extraBody);
+        // Only when it DIFFERS from the shared template, which the match header carries
+        // once. Every slot's systemPrompt is populated — it falls back to the template —
+        // so storing it unconditionally would repeat several KB per seat and still not
+        // say which seats were actually customised.
+        //
+        // The template itself is recorded because promptVersion cannot stand in for it:
+        // that string is bumped when the BUILT-IN default changes, and says nothing about
+        // a user who edited the prompt on the setup screen. Two matches can share a
+        // version and have been given different instructions.
+        const p = slot && slot.systemPrompt;
+        if (p && p.trim() && p.trim() !== String(sharedPrompt || '').trim()) out.systemPrompt = p;
+        return out;
+    }
+
+    // Values under a key that looks like a credential are replaced, not dropped, so the
+    // reader can see that something was set without being handed it.
+    static redactSecrets(obj) {
+        const SECRET = /key|token|secret|password|passwd|auth|bearer|credential/i;
+        const walk = (v) => {
+            if (!v || typeof v !== 'object') return v;
+            if (Array.isArray(v)) return v.map(walk);
+            const o = {};
+            Object.keys(v).forEach(k => { o[k] = SECRET.test(k) ? '[redacted]' : walk(v[k]); });
+            return o;
+        };
+        return walk(obj);
+    }
+
     static get REASONING_EFFORTS() { return ['minimal', 'low', 'medium', 'high']; }
 
     // Keys the passthrough may not touch. Everything else is fair game — the point of the
@@ -916,14 +967,19 @@ class OpenAIAIManager {
             const pad = n => String(n).padStart(2, '0');
             const matchId = `match-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}`
                 + `-${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}`;
+            const sharedPrompt = (this.game.ui && this.game.ui._arenaConfig
+                && this.game.ui._arenaConfig.prompt) || null;
             await this.transcripts.begin(matchId, setup.map((s, i) => {
                 const ai = this.game.aiManager.aiPlayers[i];
+                const c = s.connection;
                 return {
                     id: ai && ai.id, civilization: s.civ, seat: ai && ai.seat,
-                    model: s.connection ? (s.connection.model || s.connection.name) : 'ki',
-                    name: s.connection ? s.connection.name : null
+                    model: c ? (c.model || c.name) : 'ki',
+                    name: c ? c.name : null,
+                    settings: c ? OpenAIAIManager.publicModelSettings(c, s, sharedPrompt) : null
                 };
             }), {
+                systemPrompt: sharedPrompt,
                 // The conditions a result has to be read against. Two runs with
                 // different values here are not comparable, and six months from now
                 // this line is the only thing that will say which was which.
