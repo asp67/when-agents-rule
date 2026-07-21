@@ -305,14 +305,31 @@ class OpenAIAIManager {
 
     // --- Timing helpers: the model can't see the on-screen progress bars, so we
     // tell it how long timed actions take and how much is left. ---
+    // Every duration the model is told is REAL seconds, not game seconds.
+    //
+    // The two were the same until the speed control existed, and then quietly stopped
+    // being: matchSeconds, averageSecondsBetweenTurns and secondsToAnswer are all
+    // measured with Date.now(), while build, research, travel and the Wonder hold are
+    // game time. At 2x a model was told "60s to build" and given a turn every 10s, and
+    // planned six turns of work into the three it actually had.
+    //
+    // Real seconds is the right unit to normalise ON, because it is the clock the
+    // model's own cadence runs on — turn-counting is what these numbers are FOR.
+    // effectiveSimSpeed, not simSpeed, so the Wonder lock is reflected: once one
+    // stands the game really is back to 1x and everything really does take longer.
+    realSecs(gameMs) {
+        const sp = (this.game && this.game.effectiveSimSpeed) ? this.game.effectiveSimSpeed() : 1;
+        return Math.max(0, Math.ceil((gameMs || 0) / 1000 / (sp || 1)));
+    }
+
     secsLeft(progress, duration) {
-        return Math.max(0, Math.ceil(((duration || 0) - (progress || 0)) / 1000));
+        return this.realSecs((duration || 0) - (progress || 0));
     }
     // Seconds for a unit to walk to (tx,tz). Matches the game loop's speed*3 u/s.
     travelEtaSec(unit, tx, tz) {
         const sp = (((unit && unit.speed) || 1.0) * 3) || 3;
         const d = Math.hypot(((unit && unit.x) || 0) - tx, ((unit && unit.z) || 0) - tz);
-        return Math.max(1, Math.round(d / sp));
+        return Math.max(1, this.realSecs((d / sp) * 1000));
     }
 
     // fetch() with an abort timeout so unreachable endpoints fail fast
@@ -1361,7 +1378,7 @@ class OpenAIAIManager {
                 const ownerAi = game.aiManager.aiPlayers.find(a => a.buildings.includes(bldg));
                 const held = bldg.underConstruction ? 0 : Math.round(((ownerAi && ownerAi._wonderHold) || 0) / 1000);
                 entry.state = bldg.underConstruction ? 'under_construction' : 'complete';
-                entry.secondsUntilEnemyWins = bldg.underConstruction ? null : Math.max(0, required - held);
+                entry.secondsUntilEnemyWins = bldg.underConstruction ? null : this.realSecs(Math.max(0, required - held) * 1000);
                 enemyWonders.push(entry);
             }
             enemyBuildings.push(entry);
@@ -1704,7 +1721,7 @@ class OpenAIAIManager {
             // were permanently 0 and false for every seat. Tokens spent every turn to
             // imply a clock that never moved. The owner's real clock now rides on its
             // own wonder as secondsUntilYouWin.
-            wonderRequired: required,
+            wonderRequired: this.realSecs(required * 1000),
             opponents: aiOpponents
         };
 
@@ -2908,6 +2925,20 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 // right and only the punctuation is wrong, so say exactly that
                 // instead of a flat "unknown", which reads as "that action does not
                 // exist" and sends a model hunting for a different one.
+                // An object here means the reply was wrapped one level too deep — the
+                // whole action put in "action", or a bare params bag. "[object Object]"
+                // told the model none of that and sent it looking for a different action
+                // name, which was never the problem.
+                if (action && typeof action === 'object') {
+                    const inner = !Array.isArray(action) && typeof action.action === 'string' ? action.action : null;
+                    const type = !Array.isArray(action) && typeof action.type === 'string' ? action.type : null;
+                    actionResult = `[ERROR] "action" must be the action NAME as a string, not ${Array.isArray(action) ? 'an array' : 'an object'}. `
+                        + (inner ? `You nested the whole reply inside it — send {"action":"${inner}","params":{...}} at the top level. `
+                           : type ? `You sent {"type":"${type}",...} — the key is "action", and its parameters go in "params". `
+                           : `Send {"action":"<name>","params":{...}}. `)
+                        + `Received: ${JSON.stringify(action).slice(0, 120)}`;
+                    break;
+                }
                 const bare = String(action).replace(/\s*\(.*\)\s*$/, '').trim();
                 const KNOWN = ['train_unit', 'research_tech', 'upgrade_age',
                     'build_structure', 'assign_workers',
@@ -3050,6 +3081,17 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             // but never here, and only "cavalry" happens to also be a real id — so a
             // model that generalised from {"cavalry":5} lands on "infantry" and used to
             // get back nothing at all. Name the whole vocabulary instead.
+            // A model that has read move_units/attack_target sometimes brings their
+            // {"type": count} map here, and "[object Object]" told it nothing about what
+            // it had done. Name the shape and the one id it clearly meant.
+            if (unitType && typeof unitType === 'object') {
+                const keys = Array.isArray(unitType) ? unitType : Object.keys(unitType);
+                const first = keys.length ? String(keys[0]) : null;
+                this.outcome('log.out.unknownUnit', { unitType: first || 'object' });
+                return `[ERROR] "unitType" must be ONE unit id as a string, not ${Array.isArray(unitType) ? 'an array' : 'an object'}. `
+                    + (first ? `You sent ${JSON.stringify(unitType)} — send "unitType": "${first}" and put how many in "count" if you need more than one. ` : '')
+                    + `The {"type": count} shape belongs to "units" in move_units and attack_target, never here. ${this.trainableListString(ai)}`;
+            }
             const cats = ['infantry', 'ranged', 'cavalry', 'support'];
             const catNote = cats.includes(String(unitType).toLowerCase())
                 ? ` "${unitType}" is a unit CATEGORY: those work only in the "units" parameter of move_units/attack_target, never in train_unit, which needs one exact unit id.`
@@ -3160,7 +3202,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // building — including the busy error two steps up — calls it "town_center".
         // The type is the id the model already reads in trainableUnits and writes in
         // build_structure, so it is the one word that is copyable in both directions.
-        return `OK - Training ${unitType} at ${free.type} (${Math.round(free.x)}, ${Math.round(free.z)}) (~5s to produce; that building is busy until it finishes).${note}`;
+        return `OK - Training ${unitType} at ${free.type} (${Math.round(free.x)}, ${Math.round(free.z)}) (~${this.realSecs(free.productionDuration || 5000)}s to produce; that building is busy until it finishes).${note}`;
     }
 
     executeResearchTech(ai, game, techId) {
@@ -3268,7 +3310,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             duration: tech.researchTime || 15000
         };
         console.log(`[OpenAIAI] ${ai.id}: Researching "${tech.name}" (${techId})`);
-        const researchSecs = Math.round((tech.researchTime || 15000) / 1000);
+        const researchSecs = this.realSecs(tech.researchTime || 15000);
         this.outcome('log.out.researchStarted', { techName: tech.name, secs: researchSecs });
         return `OK - Researching "${techId}" — ~${researchSecs}s to complete. Only one tech at a time; don't re-issue until "research.current" is empty (it shows secondsRemaining).`;
     }
@@ -3304,7 +3346,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             duration: 30000
         };
         console.log(`[OpenAIAI] ${ai.id}: Upgrading to ${nextAge}`);
-        const ageSecs = Math.round((ai.currentAgeUpgrade.duration || 30000) / 1000);
+        const ageSecs = this.realSecs(ai.currentAgeUpgrade.duration || 30000);
         this.outcome('log.out.ageUpStarted', { age: nextAge, secs: ageSecs });
         return `OK - Advancing to the ${nextAge} age — ~${ageSecs}s to complete. Keep developing meanwhile; "epoch.upgradeInProgress" shows secondsRemaining, so don't re-issue upgrade_age until it is done.`;
     }
@@ -3459,12 +3501,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         game.applyBuilder(pick, building);
 
         console.log(`[OpenAIAI] ${ai.id}: Started ${buildingDef.name} at (${Math.round(x)}, ${Math.round(z)})`);
-        const secs = Math.round((building.buildTime || 10000) / 1000);
+        const secs = this.realSecs(building.buildTime || 10000);
         this.outcome('log.out.buildStarted', { buildingName: buildingDef.name, x: Math.round(x), z: Math.round(z), secs });
         // The old build_wonder reply ended "defend it, rivals will rush it!" — an order
         // with an exclamation mark. The hold time is the part that was a fact.
         const tail = isWonderBuild
-            ? ` This is your Wonder: once complete it must stand for ${game.wonderRequired || 600}s for you to win the match.`
+            ? ` This is your Wonder: once complete it must stand for ${this.realSecs((game.wonderRequired || 600) * 1000)}s for you to win the match.`
             : '';
         return pick.restore
             ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.${tail}`

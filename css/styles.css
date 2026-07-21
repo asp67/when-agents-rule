@@ -2338,3 +2338,7 @@ body.spectator-mode #unitInfo.spectator-card {
 .extra-body:focus { border-color: #4ecca3; }
 .extra-body.is-bad { border-color: #ffb26b; }
 .extra-body-err { color: #ffb26b; }
+
+/* An answer that was empty. Dimmed and italic so it reads as a note about the turn
+   rather than as something the model actually said. */
+.tv-sec.is-empty pre { opacity: 0.6; font-style: italic; }

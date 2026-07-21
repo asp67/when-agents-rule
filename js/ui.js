@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v51';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v52';
     }
 
     showScreen(screenId) {
@@ -3330,6 +3330,19 @@ class UIManager {
         const sec = (cls, label, text) => text
             ? `<details class="tv-sec ${cls}"${pref[cls] ? ' open' : ''}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
             : '';
+        // A section with nothing in it used to render as nothing at all, so a turn where
+        // the model answered with pure reasoning and no reply simply lost its Reply block
+        // — and a run of those reads as the viewer being broken rather than as the model
+        // having said nothing. An empty answer is the single most useful thing to know
+        // about such a turn, so it is stated.
+        const emptySec = (cls, label, note) =>
+            `<details class="tv-sec ${cls} is-empty"${pref[cls] ? ' open' : ''}><summary>${label}</summary><pre>${esc(note)}</pre></details>`;
+        const replyText = e.assistant && e.assistant.content;
+        const hadReasoning = !!(e.assistant && e.assistant.reasoning);
+        const replySec = replyText
+            ? sec('tv-reply', t('spec.tvReply'), replyText)
+            : (e.assistant ? emptySec('tv-reply', t('spec.tvReply'),
+                 hadReasoning ? t('spec.tvReplyEmptyThought') : t('spec.tvReplyEmpty')) : '');
         const tok = e.tokens ? `${e.tokens.prompt}→${e.tokens.completion} tok` : '';
         const ms = e.latencyMs != null ? `${(e.latencyMs / 1000).toFixed(1)}s` : '';
         const act = e.parsed && e.parsed.action ? e.parsed.action : null;
@@ -3345,7 +3358,7 @@ class UIManager {
                     <span class="tv-meta">${esc(ms)}${ms && tok ? ' · ' : ''}${esc(tok)}</span>
                 </div>
                 ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning)}
-                ${sec('tv-reply', t('spec.tvReply'), e.assistant && e.assistant.content)}
+                ${replySec}
                 ${sec('tv-result', t('spec.tvResult'), e.harnessResult)}
                 ${state}
             </div>`;
