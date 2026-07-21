@@ -438,7 +438,15 @@ class OpenAIAIManager {
         if (raw === '' || raw == null) return null;
         const s = String(raw).trim().toLowerCase();
         if (provider === 'openai') {
-            return OpenAIAIManager.REASONING_EFFORTS.includes(s) ? { kind: 'effort', value: s } : null;
+            // Two different things share this branch. OpenAI's own reasoning models take
+            // reasoning_effort; a Qwen served through vLLM or SGLang ignores that entirely
+            // and gates thinking on chat_template_kwargs.enable_thinking. "openai-
+            // compatible" is a wire format, not a single vendor, so the control offers
+            // both and the value picks which one is sent.
+            if (OpenAIAIManager.REASONING_EFFORTS.includes(s)) return { kind: 'effort', value: s };
+            if (s === 'on' || s === 'true') return { kind: 'enableThinking', value: true };
+            if (s === 'off' || s === 'false') return { kind: 'enableThinking', value: false };
+            return null;
         }
         if (provider === 'ollama') {
             if (s === 'on' || s === 'true') return { kind: 'think', value: true };
@@ -453,6 +461,28 @@ class OpenAIAIManager {
         return { kind: 'budget', value: Math.max(OpenAIAIManager.ANTHROPIC_MIN_THINKING, n) };
     }
     static get REASONING_EFFORTS() { return ['minimal', 'low', 'medium', 'high']; }
+
+    // Keys the passthrough may not touch. Everything else is fair game — the point of the
+    // escape hatch is the parameters this file does NOT model, and there will always be
+    // more of those than it can chase. But these carry the conversation itself and the
+    // routing, and overwriting one does not customise the request, it breaks it.
+    static get EXTRA_BODY_PROTECTED() {
+        return ['messages', 'contents', 'model', 'system', 'systemInstruction', 'stream'];
+    }
+
+    // Merge a user-supplied object into a built body. Shallow at the top level, one level
+    // deep for plain objects, so {"options":{"repeat_penalty":1.1}} adds to Ollama's
+    // options rather than replacing num_ctx and the rest along with it.
+    static mergeExtraBody(body, extra) {
+        if (!extra || typeof extra !== 'object' || Array.isArray(extra)) return body;
+        Object.keys(extra).forEach(k => {
+            if (OpenAIAIManager.EXTRA_BODY_PROTECTED.includes(k)) return;
+            const v = extra[k], cur = body[k];
+            const plain = x => x && typeof x === 'object' && !Array.isArray(x);
+            body[k] = (plain(v) && plain(cur)) ? Object.assign({}, cur, v) : v;
+        });
+        return body;
+    }
     static get ANTHROPIC_MIN_THINKING() { return 1024; }
 
     // Anthropic requires max_tokens to EXCEED the thinking budget, and the budget to be
@@ -505,7 +535,7 @@ class OpenAIAIManager {
         }
         // A non-reasoning model refuses the thinking parameter outright. Same rule:
         // stop sending it, say so in the library, do not guess from the model name.
-        if (!opts.omitReasoning && /reasoning_effort|thinkingConfig|thinkingBudget|\bthinking\b|\bthink\b/i.test(e)
+        if (!opts.omitReasoning && /reasoning_effort|thinkingConfig|thinkingBudget|chat_template_kwargs|enable_thinking|\bthinking\b|\bthink\b/i.test(e)
             && /unsupported|not support|unrecognized|unknown|extra|not permitted|is not supported|invalid/i.test(e)) {
             add.omitReasoning = true;
         }
@@ -515,6 +545,13 @@ class OpenAIAIManager {
     // Build {url, body} for one chat turn. `turns` is the user/assistant history
     // (no system message); the system prompt is passed separately.
     static buildChatRequest(provider, endpoint, modelId, systemPrompt, turns, opts = {}) {
+        const built = OpenAIAIManager._buildChatRequest(provider, endpoint, modelId, systemPrompt, turns, opts);
+        // Last word to the passthrough, so it can correct anything modelled above it.
+        OpenAIAIManager.mergeExtraBody(built.body, opts.extraBody);
+        return built;
+    }
+
+    static _buildChatRequest(provider, endpoint, modelId, systemPrompt, turns, opts = {}) {
         // Left undefined when unset so each branch can OMIT it. Sending a hard-coded 0.7
         // for every model was the old behaviour and it silently overrode whatever default
         // the provider had chosen for that model.
@@ -608,6 +645,12 @@ class OpenAIAIManager {
         // local gateway for one provider's omission.
         if (!opts.omitTopK) put(body, 'top_k', topK);
         if (reasoning && reasoning.kind === 'effort') body.reasoning_effort = reasoning.value;
+        // Qwen and friends. Merged rather than assigned: a raw extra body may also carry
+        // chat_template_kwargs, and clobbering it would lose whatever else was in there.
+        if (reasoning && reasoning.kind === 'enableThinking') {
+            body.chat_template_kwargs = Object.assign({}, body.chat_template_kwargs,
+                { enable_thinking: reasoning.value });
+        }
         // If this "OpenAI-compatible" endpoint is actually an Ollama server (user
         // pointed at :11434 / picked OpenAI-compat), ask it to keep the model
         // resident so it isn't unloaded between turns. Only do this for detected
@@ -913,6 +956,7 @@ class OpenAIAIManager {
                 topP: (conn.topP == null) ? null : conn.topP,
                 topK: (conn.topK == null) ? null : conn.topK,
                 reasoning: conn.reasoning == null ? '' : conn.reasoning,
+                extraBody: conn.extraBody || null,
                 maxTokens: conn.maxTokens || 2000, // per-model cap on reply length (default 2000)
                 contextSize: conn.contextSize || null, // context budget (tokens); also Ollama num_ctx (null = 32768)
                 maxContext: conn.maxContext || null, // model's real max context — hard ceiling for the budget
@@ -2202,7 +2246,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             model._reqOpts = model._reqOpts || {};
             const reqOpts = () => Object.assign(
                 { temperature: model.temperature, topP: model.topP, topK: model.topK,
-                  reasoning: model.reasoning, maxTokens: model.maxTokens, numCtx: model.contextSize },
+                  reasoning: model.reasoning, extraBody: model.extraBody,
+                  maxTokens: model.maxTokens, numCtx: model.contextSize },
                 model._reqOpts);
             // Learned refusals are worth keeping past the match: the library shows them,
             // so "this endpoint does not take top_k" survives as an observation rather

@@ -2326,3 +2326,15 @@ body.spectator-mode #unitInfo.spectator-card {
 .diff-row span { font-variant-numeric: tabular-nums; }
 .diff-row.is-current { opacity: 1; color: #4ecca3; }
 .diff-note { margin-top: 4px; opacity: 0.6; }
+
+/* The passthrough. Monospace because it is JSON, and flagged rather than blocked while
+   it is mid-edit — half-typed JSON is the normal state of a field like this. */
+.extra-body {
+    width: 100%; box-sizing: border-box; resize: vertical;
+    padding: 8px 12px; background: #1a1a2e; border: 1px solid #0f3460;
+    border-radius: 6px; color: #e0e0e0; outline: none;
+    font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.85em;
+}
+.extra-body:focus { border-color: #4ecca3; }
+.extra-body.is-bad { border-color: #ffb26b; }
+.extra-body-err { color: #ffb26b; }

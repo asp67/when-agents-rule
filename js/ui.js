@@ -310,6 +310,10 @@ class UIManager {
             // word for OpenAI, a token budget for Anthropic and Google, on/off for Ollama.
             // '' = don't ask for it at all.
             reasoning: opts.reasoning != null ? opts.reasoning : '',
+            // Raw JSON merged into the request body. The escape hatch for whatever this
+            // harness does not model — kept as the typed TEXT so an unfinished edit is
+            // still there when you come back to it, and parsed on the way out.
+            extraBody: opts.extraBody != null ? opts.extraBody : '',
             temperature: opts.temperature != null ? opts.temperature : '',
             topP: opts.topP != null ? opts.topP : '',
             topK: opts.topK != null ? opts.topK : '',
@@ -340,6 +344,22 @@ class UIManager {
     // lying, and this one would lie quietly. Ratios are against easy because that is what
     // a player compares; the scatter base cancels out, so only the multipliers are needed.
     // A resource with no entry (gold) is unchanged, which the row then says.
+    // Parse the passthrough. Returns { value, error } — an object or null, plus a message
+    // when the text is present and unusable, so the card can say so instead of the request
+    // failing later for a reason that looks like the endpoint's fault.
+    parseExtraBody(text) {
+        const s = String(text == null ? '' : text).trim();
+        if (!s) return { value: null, error: null };
+        let v;
+        try { v = JSON.parse(s); }
+        catch (e) { return { value: null, error: t('ar.extraBodyBad') }; }
+        if (!v || typeof v !== 'object' || Array.isArray(v)) return { value: null, error: t('ar.extraBodyNotObject') };
+        const blocked = Object.keys(v).filter(k =>
+            typeof OpenAIAIManager !== 'undefined' && OpenAIAIManager.EXTRA_BODY_PROTECTED.includes(k));
+        if (blocked.length) return { value: null, error: t('ar.extraBodyProtected', { keys: blocked.join(', ') }) };
+        return { value: v, error: null };
+    }
+
     difficultyRows() {
         if (typeof DIFFICULTY_MODS === 'undefined') return [];
         const KEYS = ['food', 'wood', 'stone', 'gold'];
@@ -409,7 +429,7 @@ class UIManager {
             if (baked) m.name = '';
         }
         if (m.maxTokens == null) m.maxTokens = '';
-        ['temperature', 'topP', 'topK', 'reasoning'].forEach(k => { if (m[k] == null) m[k] = ''; });
+        ['temperature', 'topP', 'topK', 'reasoning', 'extraBody'].forEach(k => { if (m[k] == null) m[k] = ''; });
         if (!m.rejectedParams || typeof m.rejectedParams !== 'object') m.rejectedParams = {};
         if (m.contextSize == null) m.contextSize = '';
         m.minimizeTokens = !!m.minimizeTokens;
@@ -727,8 +747,12 @@ class UIManager {
         let reasoningControl, reasoningHintKey;
         if (_prov === 'openai') {
             reasoningHintKey = 'ar.reasoningHintOpenai';
+            // Both dialects on one control: the effort words reach OpenAI's own reasoning
+            // models, on/off reaches a Qwen behind vLLM or SGLang. Which one is sent
+            // follows from which value is picked.
             reasoningControl = `<select onchange="${_setF}">${_opt('', t('ar.reasoningOff'), m.reasoning)}${
-                OpenAIAIManager.REASONING_EFFORTS.map(v => _opt(v, v, m.reasoning)).join('')}</select>`;
+                OpenAIAIManager.REASONING_EFFORTS.map(v => _opt(v, v, m.reasoning)).join('')}${
+                _opt('on', t('ar.thinkOn'), m.reasoning)}${_opt('off', t('ar.thinkOff'), m.reasoning)}</select>`;
         } else if (_prov === 'ollama') {
             reasoningHintKey = 'ar.reasoningHintOllama';
             reasoningControl = `<select onchange="${_setF}">${_opt('', t('ar.reasoningOff'), m.reasoning)}${
@@ -740,6 +764,7 @@ class UIManager {
         // Two Anthropic rules that a request cannot satisfy silently. Said here, on the
         // card, rather than discovered as a 400 mid-match — or worse, as a temperature
         // that appears to be set and is not.
+        const extraBodyErr = this.parseExtraBody(m.extraBody).error;
         const _cap = parseInt(m.maxTokens, 10) || 2000;
         const _budget = parseInt(m.reasoning, 10);
         const _warn = [];
@@ -831,6 +856,13 @@ class UIManager {
             </div>
             <p class="auth-hint">${t(reasoningHintKey)}</p>
             ${thinkingConflicts}
+            <div class="model-select-row"><div class="arena-field">
+                <label>${t('ar.fExtraBody')}</label>
+                <textarea class="extra-body${extraBodyErr ? ' is-bad' : ''}" rows="2" spellcheck="false"
+                    oninput="game.ui.setModelField(${m.id},'extraBody',this.value)"
+                    placeholder='{"chat_template_kwargs": {"enable_thinking": true}}'>${e(m.extraBody)}</textarea>
+            </div></div>
+            <p class="auth-hint${extraBodyErr ? ' extra-body-err' : ''}">${extraBodyErr ? this.escapeHtml(extraBodyErr) : t('ar.extraBodyHint')}</p>
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
             <p class="auth-hint">${t('ar.maxTokensHint')}</p>
             <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
@@ -1225,6 +1257,7 @@ class UIManager {
                 topP: this.numOrNull(m.topP, 0, 1),
                 topK: this.numOrNull(m.topK, 1, 1000, true),
                 reasoning: m.reasoning == null ? '' : String(m.reasoning),
+                extraBody: this.parseExtraBody(m.extraBody).value,
                 contextSize: (() => { const n = parseInt(m.contextSize, 10); return (n && n >= 512) ? n : null; })(),
                 maxContext: (() => { const n = parseInt(m.maxContext, 10); return (n && n >= 512) ? n : null; })(),
                 minimizeTokens: !!m.minimizeTokens,
