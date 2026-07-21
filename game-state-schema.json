@@ -769,31 +769,45 @@
     },
     "trainableUnits": {
       "type": "object",
-      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, nested building -> age -> ids, where the age is the earliest one at which that unit can be trained. Every leaf is a bare unit id, ready to pass as \"unitType\" unchanged. Includes your civ's unique units and omits any standard unit your civ does not field. A category (infantry/ranged/cavalry/support) is NOT valid here — those work only in the \"units\" parameter of move_units and attack_target.",
+      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, nested building -> age -> entries, where the age is the earliest one at which that unit can be trained. Each entry's \"id\" is the bare unit id, ready to pass as \"unitType\" unchanged, alongside its cost and whether you can currently afford it. The Town Center hosts \"worker\" — villagers are trained with train_unit like everything else. Includes your civ's unique units and omits any standard unit your civ does not field. A category (infantry/ranged/cavalry/support) is NOT valid here — those work only in the \"units\" parameter of move_units and attack_target.",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "object",
+            "required": ["id", "cost", "canAfford"],
+            "properties": {
+              "id": { "type": "string" },
+              "cost": { "$ref": "#/$defs/cost" },
+              "canAfford": { "type": "boolean" }
+            }
           }
         }
       }
     },
     "buildableStructures": {
       "type": "array",
-      "description": "What your civilization can EVER build. If a type is absent (e.g. stable for some civs), your civ does not have it — do not keep trying.",
+      "description": "What your civilization can EVER build, and the vocabulary for build_structure's \"buildingType\". If a type is absent (e.g. stable for some civs), your civ does not have it — do not keep trying. Your Wonder is listed here too, as type \"wonder\".",
       "items": {
         "type": "object",
         "required": [
           "type",
+          "requiredAge",
           "requiresTech",
           "researched",
-          "readyToBuild"
+          "readyToBuild",
+          "cost",
+          "canAfford"
         ],
         "properties": {
           "type": {
-            "type": "string"
+            "type": "string",
+            "description": "Pass this verbatim as build_structure's \"buildingType\"."
+          },
+          "requiredAge": {
+            "type": "string",
+            "description": "Earliest age at which this civilization can build it — already adjusted for a unlock tech that arrives later than the building's own age."
           },
           "requiresTech": {
             "oneOf": [
@@ -810,6 +824,21 @@
           },
           "readyToBuild": {
             "type": "boolean"
+          },
+          "cost": {
+            "$ref": "#/$defs/cost"
+          },
+          "canAfford": {
+            "type": "boolean",
+            "description": "Whether your current stockpile covers cost. Age and tech may still gate it — see requiredAge and readyToBuild."
+          },
+          "isWonder": {
+            "type": "boolean",
+            "description": "Present and true on the single Wonder entry. Building it and holding it for gameStats.wonderRequired seconds wins the match."
+          },
+          "builtAs": {
+            "type": "string",
+            "description": "Wonder only: the civilization-specific id the finished Wonder carries in friendlyBuildings (akropolis, pyramid, firetemple, shrine). You still BUILD it by passing type \"wonder\"."
           }
         }
       }

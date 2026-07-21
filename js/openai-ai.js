@@ -1257,16 +1257,33 @@ class OpenAIAIManager {
             buildings: Object.keys(ai.unlockedBuildings || {})
         };
 
+        // Price tag in the same shape research.available has always used, so one
+        // reading habit covers every vocabulary. canAfford is a comparison of two
+        // numbers the model already holds; it is here because WITHOUT it the only way
+        // to learn a price is to attempt the buy and be rejected — and rejections are
+        // scored (successRate is the heaviest term in soundness). Making a model spend
+        // a failed action to read a number we already know is the harness manufacturing
+        // the mistake it then marks down.
+        const priced = (cost) => ({
+            cost: {
+                food: (cost && cost.food) || 0, wood: (cost && cost.wood) || 0,
+                stone: (cost && cost.stone) || 0, gold: (cost && cost.gold) || 0
+            },
+            canAfford: !!(cost && ai.resources.hasResources(cost))
+        });
+
         // --- Trainable units: the vocabulary for train_unit's "unitType" ---
-        // Nested building → age → [ids], so every LEAF is a bare id the model can
-        // copy straight into unitType. The first version wrote "militia(stone)" as
-        // one string to save a nesting level, and models duly passed that whole
-        // string as the unitType — the harness had invented a token that looked
-        // copyable and wasn't. Structure it instead of warning about it.
+        // Nested building → age → [{id, cost, canAfford}]. The id stays a field of its
+        // own rather than being folded into the token: an early version wrote
+        // "militia(stone)" as one string to save a nesting level, and models duly
+        // passed that whole string as the unitType — the harness had invented a token
+        // that looked copyable and wasn't. An object with an explicit "id" cannot be
+        // mistaken for one.
         const trainableUnits = {};
         this.trainableUnitsFor(ai.civilization).forEach(u => {
             const host = (trainableUnits[u.at] = trainableUnits[u.at] || {});
-            (host[u.age] = host[u.age] || []).push(u.id);
+            const def = (typeof getUnitDefFor === 'function') ? getUnitDefFor(ai.civilization, u.id) : null;
+            (host[u.age] = host[u.age] || []).push({ id: u.id, ...priced(def && def.cost) });
         });
 
         // --- Buildable structures for THIS civ (some civs lack e.g. the stable) ---
@@ -1283,21 +1300,27 @@ class OpenAIAIManager {
             // requiredAge is the CIV-effective age (unlock tech may come later
             // than the def's own age — Egypt's stable is bronze, not neolithic).
             const reqAge = (typeof effectiveBuildingAge === 'function') ? effectiveBuildingAge(ai.civilization, def) : (def.requiredAge || 'stone');
-            return { type: t, requiredAge: reqAge, requiresTech: reqTech, researched: techDone, readyToBuild: techDone };
+            return { type: t, requiredAge: reqAge, requiresTech: reqTech, researched: techDone, readyToBuild: techDone, ...priced(def.cost) };
         }).filter(Boolean);
 
         // The Wonder belongs in this list. It was in no vocabulary at all: a model's
         // entire knowledge of the win condition it can BUILD was the goal line and a
-        // zero-parameter action, so the age it needs and even the name of the thing
-        // were only discoverable by trying. Advertised under the civ's real id — the
-        // same string that will appear in friendlyBuildings once it stands — with
-        // isWonder marking which one it is, since "akropolis" says nothing on its own.
+        // zero-parameter action, so its price, the age it needs, and even the name of
+        // the thing were discoverable only by trying.
+        //
+        // Advertised as "wonder", not as this civ's id. The ids differ per
+        // civilization — akropolis, pyramid, firetemple, shrine — so publishing them
+        // would make the SAME move a different call for each seat, and a seat with an
+        // obscure id a harder one. Every seat now sends build_structure "wonder".
+        // builtAs carries the id it will answer to once it stands, because that is
+        // what friendlyBuildings will call it and the two must be connectable.
         const wDef = this.wonderDefFor(ai.civilization);
         if (wDef) {
             buildableStructures.push({
-                type: wDef.id, requiredAge: wDef.requiredAge || 'iron', requiresTech: null,
+                type: 'wonder', builtAs: wDef.id,
+                requiredAge: wDef.requiredAge || 'iron', requiresTech: null,
                 researched: true, readyToBuild: !ai.buildings.some(b => b.isWonder),
-                isWonder: true
+                isWonder: true, ...priced(wDef.cost)
             });
         }
 
