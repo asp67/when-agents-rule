@@ -1144,8 +1144,27 @@ class OpenAIAIManager {
         // reads, put that event one turn behind the number that caused it: the model
         // would see stone fall to zero with no explanation, and only be told why on the
         // following turn. Which is the exact frame that confused one in the first place.
-        const buildRecentEvents = () => (ai.events || []).slice(-8).map(e =>
-            `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
+        // This expired by DISPLACEMENT only — the last 8 of a 14-slot ring, with no
+        // notion of age — which fails at both ends. The busy end was already known and
+        // worked around: notices evicted by newer ones before the owner's next turn,
+        // which is why building losses were moved into their own ledger. The quiet end
+        // was not. One match left "your last discovered food node has been emptied" in
+        // this list for THIRTY-TWO MINUTES, still labelled as news at "2755s ago",
+        // beside a discoveredNodesOnMap.food that by then read 8. True when it fired,
+        // false for most of the match it was shown in — and worse than never sending
+        // it, because the model had no reason to distrust the one channel that exists
+        // to tell it what changed.
+        //
+        // Keyed on the player's OWN turns, so it survives exactly as long as it is news
+        // to THAT player: nothing expires before they have had a turn to read it, and
+        // nothing outlives the turn after. Two rather than one so an event landing just
+        // after a state was built is still seen. A wall-clock window cannot express
+        // this — turn length belongs to the model, not to the game.
+        const buildRecentEvents = () => {
+            const seq = ai._turnSeq = (ai._turnSeq || 0) + 1;
+            return (ai.events || []).filter(e => (e.seq || 0) >= seq - 2).slice(-8).map(e =>
+                `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
+        };
 
         // --- Battles: what actually happened in the fighting ---
         // A model cannot watch a fight — it decides between snapshots. Each entry is
@@ -1532,7 +1551,15 @@ class OpenAIAIManager {
             wk.total++;
             if (u.task === 'building' || u.isBuilding) { wk.building++; return; }
             if (u.task === 'scouting') { wk.scouting++; return; }
-            if (u.task === 'farm_work') { wk.onFarms++; return; }
+            // MUST match whereFrom() in executeAssignWorkers, which reads
+            // "farm_work || farmRef". Counting only the task put a worker WALKING to
+            // a farm, or carrying a load back from one, into onFood here and into
+            // "farm" there — so the state advertised food workers the executor would
+            // not hand over. It was the single largest source of rejected calls in a
+            // match: 22 of them, one model reading "onFood": 2, asking to pull from
+            // food, and being told "workers.onFood is 0" by the same harness that had
+            // just published the 2. Two classifiers, one question.
+            if (u.task === 'farm_work' || u.farmRef) { wk.onFarms++; return; }
             const carrying = !!(u.carryingResource || u.task === 'carrying');
             if (carrying || u.task === 'harvesting' || u.isHarvesting || u.harvestTarget) {
                 const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
@@ -3814,8 +3841,21 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 this.outcome('log.out.moveNoMatch', {});
                 return `[ERROR] move_units matched none of your units${sel.note}. Name unit types you actually own (e.g. {"champion":3}, or {"worker":1} to place a worker exactly), or omit "units" to move your whole army. Your military: ${this.forceComposition(ai)}.`;
             }
+            // Two different mistakes shared one sentence. A model that NAMED a type
+            // it no longer owns was told how omitting "units" behaves — advice about
+            // a call it did not make. One asked for {"militia":1} with its last
+            // militia dead and got a lecture on omission while 93 workers stood idle
+            // beside it, which was the only piece of the answer that mattered.
+            const named = (unitsMap && Object.keys(unitsMap).length > 0)
+                || (Array.isArray(unitIds) && unitIds.length > 0);
+            const workers = ai.units.filter(u => u.type === 'worker' && u.health > 0).length;
+            const alt = workers
+                ? `Name {"worker":N} to move workers instead — you have ${workers}`
+                : `Train military units first`;
             this.outcome('log.out.noMilitaryMove', {});
-            return `[ERROR] You have no military units to move. Omitting "units" moves your army, and you have none yet — name {"worker":1} to reposition a worker instead, or train military units first.`;
+            return named
+                ? `[ERROR] move_units matched none of your units: you have no military units left${sel.note}. ${alt}.`
+                : `[ERROR] You have no military units to move — omitting "units" moves your army, and you have none. ${alt}.`;
         }
 
         let eta = 0;

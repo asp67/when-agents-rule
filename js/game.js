@@ -1921,7 +1921,12 @@ class Game {
     logPlayerEvent(ownerObj, text) {
         if (!ownerObj) return;
         ownerObj.events = ownerObj.events || [];
-        ownerObj.events.push({ at: Date.now(), text });
+        // "seq" is the state-build counter this event was logged under, and it is what
+        // expires the event later. Wall-clock cannot do that job: turns are seconds
+        // apart at 1x, a quarter of that at 4x, and a minute apart for a slow model, so
+        // any fixed number of seconds means something different for every player in the
+        // same match. A turn count means the same thing for all of them.
+        ownerObj.events.push({ at: Date.now(), seq: ownerObj._turnSeq || 0, text });
         if (ownerObj.events.length > 14) ownerObj.events.shift();
     }
 
