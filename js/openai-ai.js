@@ -407,6 +407,35 @@ class OpenAIAIManager {
         return p === 'auto' ? OpenAIAIManager.detectProvider((model && model.endpoint) || '') : p;
     }
 
+    // Some endpoints REJECT a parameter rather than ignoring it, and say which in the
+    // 400. OpenAI's reasoning models are the live case: they refuse max_tokens and want
+    // max_completion_tokens, and refuse any temperature but the default. A model pointed
+    // at one of those failed every single turn — total failure, not degraded play.
+    //
+    // Matched on the endpoint's own words, not on the model id. Gateways and Azure
+    // deployments proxy these models under arbitrary names, so a name pattern would miss
+    // exactly the setups people actually run, and would also mislabel an innocent model
+    // called "o3-custom" on a server that is perfectly happy with max_tokens. The cost is
+    // one rejected request the first time; the flag is then remembered for the match.
+    //
+    // Returns the flags to ADD, or null when the error is not one we know how to fix —
+    // in which case it must surface unchanged rather than be retried blindly.
+    static adaptToApiError(opts, errorText) {
+        const e = String(errorText || '');
+        const add = {};
+        if (!opts.useMaxCompletionTokens && /max_completion_tokens/i.test(e)) {
+            add.useMaxCompletionTokens = true;
+        }
+        // Only when the complaint is ABOUT temperature — "unsupported value", "does not
+        // support", "only the default (1)". A 400 that merely mentions the word while
+        // objecting to something else must not silently drop a setting the user chose.
+        if (!opts.omitTemperature && /temperature/i.test(e)
+            && /unsupported|not support|only the default|must be|is not supported/i.test(e)) {
+            add.omitTemperature = true;
+        }
+        return Object.keys(add).length ? add : null;
+    }
+
     // Build {url, body} for one chat turn. `turns` is the user/assistant history
     // (no system message); the system prompt is passed separately.
     static buildChatRequest(provider, endpoint, modelId, systemPrompt, turns, opts = {}) {
@@ -453,9 +482,14 @@ class OpenAIAIManager {
         }
         // openai-compatible (default)
         const body = {
-            model, temperature, max_tokens: maxTokens,
+            model,
             messages: [{ role: 'system', content: systemPrompt }, ...turns]
         };
+        // Reasoning models on the real OpenAI API rename the reply cap and refuse any
+        // temperature but the default. Both flags are set by adaptToApiError after the
+        // endpoint has said so itself, never guessed from the model name.
+        body[opts.useMaxCompletionTokens ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
+        if (!opts.omitTemperature) body.temperature = temperature;
         // If this "OpenAI-compatible" endpoint is actually an Ollama server (user
         // pointed at :11434 / picked OpenAI-compat), ask it to keep the model
         // resident so it isn't unloaded between turns. Only do this for detected
@@ -2035,43 +2069,56 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 headers = { 'Content-Type': 'application/json' };
             }
 
-            const req = OpenAIAIManager.buildChatRequest(
-                provider, model.endpoint, model.model || 'default', systemPrompt, turns,
-                { temperature: model.temperature, maxTokens: model.maxTokens, numCtx: model.contextSize }
-            );
-            const apiUrl = req.url;
-            const body = req.body;
-            console.log(`[OpenAIAI] Sending ${provider} request to ${apiUrl} for ${ai.id}`);
+            // Request-shape flags live on the model config, so once an endpoint has
+            // told us what it wants, every later turn of the match gets it right first
+            // time. They are not persisted to the library: re-learning costs one request
+            // per match and cannot go stale when a provider changes its mind.
+            model._reqOpts = model._reqOpts || {};
+            const reqOpts = () => Object.assign(
+                { temperature: model.temperature, maxTokens: model.maxTokens, numCtx: model.contextSize },
+                model._reqOpts);
 
             const reqStart = Date.now();
+            let response, apiUrl, body;
+            // At most two passes: the second only happens when the endpoint named a
+            // parameter we know how to change. Anything else surfaces unchanged.
+            for (let attempt = 0; attempt < 2; attempt++) {
+                const req = OpenAIAIManager.buildChatRequest(
+                    provider, model.endpoint, model.model || 'default', systemPrompt, turns, reqOpts());
+                apiUrl = req.url; body = req.body;
+                console.log(`[OpenAIAI] Sending ${provider} request to ${apiUrl} for ${ai.id}`);
 
-            // Abort the request if the endpoint is slow/dead so the controller
-            // never gets stuck "pending" for the rest of the match. The handle is
-            // stored on the controller so stop() can abort it when the match ends.
-            const controllerAbort = new AbortController();
-            controller._abort = controllerAbort;
-            const timeoutId = setTimeout(() => controllerAbort.abort(), this.requestTimeout);
-            let response;
-            try {
-                response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: headers,
-                    mode: 'cors',
-                    body: JSON.stringify(body),
-                    signal: controllerAbort.signal
-                });
-            } catch (fetchErr) {
-                if (fetchErr.name === 'AbortError') {
-                    throw new Error(`timed out after ${Math.round(this.requestTimeout / 1000)}s`);
+                // Abort the request if the endpoint is slow/dead so the controller
+                // never gets stuck "pending" for the rest of the match. The handle is
+                // stored on the controller so stop() can abort it when the match ends.
+                const controllerAbort = new AbortController();
+                controller._abort = controllerAbort;
+                const timeoutId = setTimeout(() => controllerAbort.abort(), this.requestTimeout);
+                try {
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: headers,
+                        mode: 'cors',
+                        body: JSON.stringify(body),
+                        signal: controllerAbort.signal
+                    });
+                } catch (fetchErr) {
+                    if (fetchErr.name === 'AbortError') {
+                        throw new Error(`timed out after ${Math.round(this.requestTimeout / 1000)}s`);
+                    }
+                    throw fetchErr;
+                } finally {
+                    clearTimeout(timeoutId);
                 }
-                throw fetchErr;
-            } finally {
-                clearTimeout(timeoutId);
-            }
+                if (response.ok) break;
 
-            if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API error (${response.status}): ${errorText}`);
+                const fix = (response.status === 400 && attempt === 0)
+                    ? OpenAIAIManager.adaptToApiError(model._reqOpts, errorText) : null;
+                if (!fix) throw new Error(`API error (${response.status}): ${errorText}`);
+                Object.assign(model._reqOpts, fix);
+                console.warn(`[OpenAIAI] ${ai.id}: endpoint rejected a parameter, retrying with`,
+                    Object.keys(fix).join(', '));
             }
 
             const data = await response.json();
