@@ -433,24 +433,38 @@ class OpenAIAIManager {
             && /unsupported|not support|only the default|must be|is not supported/i.test(e)) {
             add.omitTemperature = true;
         }
+        // Same family of model refuses top_p as well. Without this, exposing top_p would
+        // hand back the exact failure adaptToApiError was written to end.
+        if (!opts.omitTopP && /top_p|topP/i.test(e)
+            && /unsupported|not support|only the default|must be|is not supported/i.test(e)) {
+            add.omitTopP = true;
+        }
         return Object.keys(add).length ? add : null;
     }
 
     // Build {url, body} for one chat turn. `turns` is the user/assistant history
     // (no system message); the system prompt is passed separately.
     static buildChatRequest(provider, endpoint, modelId, systemPrompt, turns, opts = {}) {
-        const temperature = opts.temperature != null ? opts.temperature : 0.7;
+        // Left undefined when unset so each branch can OMIT it. Sending a hard-coded 0.7
+        // for every model was the old behaviour and it silently overrode whatever default
+        // the provider had chosen for that model.
+        const temperature = opts.temperature != null ? Number(opts.temperature) : undefined;
+        const topP = opts.topP != null ? Number(opts.topP) : undefined;
+        const topK = opts.topK != null ? Number(opts.topK) : undefined;
         const maxTokens = opts.maxTokens != null ? opts.maxTokens : 2000;
         const model = modelId || 'default';
+        // Only ever add a key we actually have a value for.
+        const put = (obj, key, val) => { if (val !== undefined && !Number.isNaN(val)) obj[key] = val; return obj; };
 
         if (provider === 'anthropic') {
             return {
                 url: OpenAIAIManager.stripSlash(endpoint) + '/messages',
-                body: {
-                    model, max_tokens: maxTokens, temperature,
+                body: put(put(put({
+                    model, max_tokens: maxTokens,
                     system: systemPrompt,
                     messages: turns.map(t => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: String(t.content) }))
-                }
+                }, 'temperature', opts.omitTemperature ? undefined : temperature),
+                   'top_p', opts.omitTopP ? undefined : topP), 'top_k', topK)
             };
         }
         if (provider === 'ollama') {
@@ -465,7 +479,9 @@ class OpenAIAIManager {
                     // the CPU — making every turn crawl and time out. Lower this on
                     // smaller GPUs; raise it if your game state is large and you have
                     // the VRAM.
-                    options: { temperature, num_predict: maxTokens, num_ctx: (opts.numCtx && opts.numCtx > 0) ? opts.numCtx : 32768 },
+                    options: put(put(put({ num_predict: maxTokens, num_ctx: (opts.numCtx && opts.numCtx > 0) ? opts.numCtx : 32768 },
+                        'temperature', opts.omitTemperature ? undefined : temperature),
+                        'top_p', opts.omitTopP ? undefined : topP), 'top_k', topK),
                     messages: [{ role: 'system', content: systemPrompt }, ...turns]
                 }
             };
@@ -476,7 +492,9 @@ class OpenAIAIManager {
                 body: {
                     systemInstruction: { parts: [{ text: systemPrompt }] },
                     contents: turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(t.content) }] })),
-                    generationConfig: { temperature, maxOutputTokens: maxTokens }
+                    generationConfig: put(put(put({ maxOutputTokens: maxTokens },
+                        'temperature', opts.omitTemperature ? undefined : temperature),
+                        'topP', opts.omitTopP ? undefined : topP), 'topK', topK)
                 }
             };
         }
@@ -489,7 +507,10 @@ class OpenAIAIManager {
         // temperature but the default. Both flags are set by adaptToApiError after the
         // endpoint has said so itself, never guessed from the model name.
         body[opts.useMaxCompletionTokens ? 'max_completion_tokens' : 'max_tokens'] = maxTokens;
-        if (!opts.omitTemperature) body.temperature = temperature;
+        if (!opts.omitTemperature) put(body, 'temperature', temperature);
+        // The OpenAI chat API has no top_k — sending one is a 400 on strict gateways and
+        // silently ignored elsewhere, so it is dropped rather than passed along.
+        if (!opts.omitTopP) put(body, 'top_p', topP);
         // If this "OpenAI-compatible" endpoint is actually an Ollama server (user
         // pointed at :11434 / picked OpenAI-compat), ask it to keep the model
         // resident so it isn't unloaded between turns. Only do this for detected
@@ -787,7 +808,13 @@ class OpenAIAIManager {
                 provider: conn.provider || 'auto',
                 auth: conn.auth || { type: 'none' },
                 model: conn.model || 'default',
-                temperature: 0.7,
+                // null anywhere below means "do not send it" — the provider's own default
+                // then applies. That is not the same as sending a number that happens to
+                // match it: an endpoint that rejects a parameter rejects it at any value,
+                // and reasoning models reject temperature outright (see adaptToApiError).
+                temperature: (conn.temperature == null) ? null : conn.temperature,
+                topP: (conn.topP == null) ? null : conn.topP,
+                topK: (conn.topK == null) ? null : conn.topK,
                 maxTokens: conn.maxTokens || 2000, // per-model cap on reply length (default 2000)
                 contextSize: conn.contextSize || null, // context budget (tokens); also Ollama num_ctx (null = 32768)
                 maxContext: conn.maxContext || null, // model's real max context — hard ceiling for the budget
@@ -2075,7 +2102,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             // per match and cannot go stale when a provider changes its mind.
             model._reqOpts = model._reqOpts || {};
             const reqOpts = () => Object.assign(
-                { temperature: model.temperature, maxTokens: model.maxTokens, numCtx: model.contextSize },
+                { temperature: model.temperature, topP: model.topP, topK: model.topK,
+                  maxTokens: model.maxTokens, numCtx: model.contextSize },
                 model._reqOpts);
 
             const reqStart = Date.now();

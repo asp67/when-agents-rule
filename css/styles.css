@@ -2264,3 +2264,7 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 .arena-subfield input { width: 100%; max-width: 150px; }
 .arena-subfield.is-off { opacity: 0.45; }
+
+/* Sampling knobs sit on their own row under the model/context row: they are set once
+   and rarely touched, unlike the model picker above them. */
+.sampling-row { margin-top: 8px; }

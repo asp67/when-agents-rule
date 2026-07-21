@@ -296,6 +296,12 @@ class UIManager {
             model: opts.model || '',
             provider: opts.provider || 'auto', // auto | openai | anthropic | ollama | google
             maxTokens: opts.maxTokens || '',   // '' = use the default (2000)
+            // Sampling knobs. '' means "don't send it", so the provider's own default for
+            // that model applies — which is NOT the same as sending a number that happens
+            // to match it today. All three are left blank by default.
+            temperature: opts.temperature != null ? opts.temperature : '',
+            topP: opts.topP != null ? opts.topP : '',
+            topK: opts.topK != null ? opts.topK : '',
             // Per-model context budget in tokens. Sizes the rolling chat history sent
             // each turn (bigger budget = longer memory for big-context models) and is
             // also used as Ollama's num_ctx. '' = default (32768). Lower = much faster.
@@ -313,6 +319,19 @@ class UIManager {
         };
     }
 
+    // A blank field means "do not send this parameter", which is different from sending
+    // a number that matches the provider's current default. parseFloat rather than a
+    // truthiness test because 0 is a legitimate value for temperature and top_p — "|| null"
+    // would silently discard the most deliberate setting a user can pick. Out-of-range is
+    // clamped, not dropped, so a typed 5 becomes the ceiling instead of vanishing.
+    numOrNull(v, lo, hi, intOnly) {
+        if (v === '' || v == null) return null;
+        let n = intOnly ? parseInt(v, 10) : parseFloat(v);
+        if (!isFinite(n)) return null;
+        n = Math.min(hi, Math.max(lo, n));
+        return intOnly ? n : Math.round(n * 100) / 100;
+    }
+
     normalizeArenaModel(m) {
         const def = this.makeArenaModel();
         m.availableModels = Array.isArray(m.availableModels) ? m.availableModels : [];
@@ -327,6 +346,7 @@ class UIManager {
             if (baked) m.name = '';
         }
         if (m.maxTokens == null) m.maxTokens = '';
+        ['temperature', 'topP', 'topK'].forEach(k => { if (m[k] == null) m[k] = ''; });
         if (m.contextSize == null) m.contextSize = '';
         m.minimizeTokens = !!m.minimizeTokens;
         if (m.maxContext == null) m.maxContext = null;
@@ -664,6 +684,15 @@ class UIManager {
                 <div class="arena-field" style="flex:0 0 170px"><label>${t('ar.fModelLang')}</label>
                     <select onchange="game.ui.setModelField(${m.id},'language',this.value)">${langOpts}</select></div>
             </div>
+            <div class="model-select-row sampling-row">
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTemperature')}</label>
+                    <input type="number" min="0" max="2" step="0.05" value="${e(m.temperature)}" oninput="game.ui.setModelField(${m.id},'temperature',this.value)" placeholder="${t('ar.samplingDefault')}"></div>
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTopP')}</label>
+                    <input type="number" min="0" max="1" step="0.05" value="${e(m.topP)}" oninput="game.ui.setModelField(${m.id},'topP',this.value)" placeholder="${t('ar.samplingDefault')}"></div>
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTopK')}</label>
+                    <input type="number" min="1" step="1" value="${e(m.topK)}" oninput="game.ui.setModelField(${m.id},'topK',this.value)" placeholder="${t('ar.samplingDefault')}"></div>
+            </div>
+            <p class="auth-hint">${t('ar.samplingHint')}</p>
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
             <p class="auth-hint">${t('ar.maxTokensHint')}</p>
             <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
@@ -1052,6 +1081,11 @@ class UIManager {
                 model: (m.model || '').trim(),
                 provider: m.provider || 'auto',
                 maxTokens: (() => { const n = parseInt(m.maxTokens, 10); return (n && n >= 64) ? n : null; })(),
+                // null = omit. parseFloat so 0 survives: temperature 0 is a real, useful
+                // setting and "|| null" would have thrown it away as falsy.
+                temperature: this.numOrNull(m.temperature, 0, 2),
+                topP: this.numOrNull(m.topP, 0, 1),
+                topK: this.numOrNull(m.topK, 1, 1000, true),
                 contextSize: (() => { const n = parseInt(m.contextSize, 10); return (n && n >= 512) ? n : null; })(),
                 maxContext: (() => { const n = parseInt(m.maxContext, 10); return (n && n >= 512) ? n : null; })(),
                 minimizeTokens: !!m.minimizeTokens,
