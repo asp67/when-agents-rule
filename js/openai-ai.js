@@ -1459,6 +1459,10 @@ class OpenAIAIManager {
             else if (u.isMoving) action = 'moving';
 
             return {
+                // The one thing that makes a unit addressable. Without it "move a
+                // crossbowman" resolves to whichever is nearest the DESTINATION, which is
+                // the opposite of what you want when the point is to fetch a wounded one.
+                id: u.handle,
                 type: u.type,
                 x: Math.round(u.x),
                 z: Math.round(u.z),
@@ -2025,13 +2029,14 @@ build_structure: buildingType (from buildableStructures), targetX?, targetZ?
 assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), allowSpill? (def:true; false takes only workers not carrying a load right now, and takes fewer if that is all there are), targetX?, targetZ?
 repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
 explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?
-move_units: targetX, targetZ, units?
-attack_target: targetId (from enemyUnits/enemyBuildings) OR targetX, targetZ. Optional: units?. (Coords trigger attack-move; do not reissue while marching)
+move_units: targetX, targetZ, units?, unitIds?
+attack_target: targetId (from enemyUnits/enemyBuildings) OR targetX, targetZ. Optional: units?, unitIds?. (Coords trigger attack-move; do not reissue while marching)
 delete_unit: unitType? (from friendlyUnits, def: worker), count? (def:1, max:20)
 destroy_building: buildingType (from friendlyBuildings), targetX?, targetZ?
 wait: (None)
 
 PARAMETER CONSTRAINTS:
+unitIds: An ARRAY of ids from friendlyUnits, e.g. [183, 12]. Moves or attacks EXACTLY those units and nothing else; "units" is ignored when it is given. Ids are never reused, so one that is gone means that unit died. Use it when WHICH unit matters — "units" picks whichever are nearest the target, which is the wrong end when you are fetching a wounded one.
 units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array. move_units also accepts {"worker":N} when named explicitly — that is how you place a unit on an exact spot; attack_target never takes workers.`;
     }
 
@@ -2956,7 +2961,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
             case 'move_units':
                 if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ);
+                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ, params.unitIds);
                 } else {
                     actionResult = `[ERROR] move_units requires "targetX" and "targetZ" parameters.`;
                 }
@@ -2964,9 +2969,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
             case 'attack_target':
                 if (params?.targetId) {
-                    actionResult = this.executeAttackTarget(ai, game, params.targetId, params.units);
+                    actionResult = this.executeAttackTarget(ai, game, params.targetId, params.units, params.unitIds);
                 } else if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.units);
+                    actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.units, params.unitIds);
                 } else {
                     actionResult = `[ERROR] attack_target requires "targetId" or ("targetX" and "targetZ") parameters.`;
                 }
@@ -3673,7 +3678,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // case returns every priest in `support`, escortSupportUnits(sel.support,…)
     // escorts the whole clergy on a full-army order and only the named priests
     // on a detachment — no special-casing needed.
-    selectOrderedUnits(ai, unitsMap, dx, dz) {
+    selectOrderedUnits(ai, unitsMap, dx, dz, ids) {
         // Workers are a THIRD bucket, not combat: move_units takes them along, attack
         // never does. Naming "worker" explicitly is how a model puts a unit on an
         // exact spot now that explore works in whole tiles — but omitting "units"
@@ -3684,6 +3689,27 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             support: arr.filter(u => u.type !== 'worker' && u.unitType === 'support'),
             workers: arr.filter(u => u.type === 'worker')
         });
+        // Explicit handles win outright. "the nearest N of this type" cannot express
+        // "that one", which is how a model that had correctly found its dying crossbowman
+        // and an idle healer ended up moving a different, healthy crossbowman that was
+        // already standing at the temple — and reissuing the same order, because nothing
+        // in the reply said which unit had moved.
+        if (Array.isArray(ids) && ids.length) {
+            const byHandle = new Map();
+            ai.units.forEach(u => { if (u.health > 0) byHandle.set(Number(u.handle), u); });
+            const picked = [], missing = [];
+            ids.forEach(raw => {
+                const n = Number(raw);
+                const u = byHandle.get(n);
+                if (u) { if (!picked.includes(u)) picked.push(u); } else missing.push(raw);
+            });
+            let note = '';
+            // A handle is never reused, so an unknown one is a unit that DIED rather than
+            // a different unit wearing its number. Say that, instead of quietly moving
+            // whoever happens to be nearby.
+            if (missing.length) note = ` (no longer yours or already dead: ${missing.join(', ')})`;
+            return Object.assign(split(picked), { note });
+        }
         const hasMap = unitsMap && typeof unitsMap === 'object' && !Array.isArray(unitsMap) && Object.keys(unitsMap).length > 0;
         if (!hasMap) return Object.assign(split(ai.units.filter(u => u.type !== 'worker' && u.health > 0)), { note: '' });
         const live = ai.units.filter(u => u.health > 0);
@@ -3708,6 +3734,21 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         return Object.assign(split([...chosen]), { note });
     }
 
+    // "crossbowman #183 from (305, -30)" for one unit; a capped list for several. Capped
+    // because a whole-army order can carry ninety units and the point is that the model
+    // can check the pick, not that it re-reads its own roster.
+    describeMoved(units) {
+        if (!units.length) return '0 unit(s)';
+        if (units.length === 1) {
+            const u = units[0];
+            return `${u.type} #${u.handle} from (${Math.round(u.x)}, ${Math.round(u.z)})`;
+        }
+        const CAP = 6;
+        const shown = units.slice(0, CAP).map(u => `${u.type} #${u.handle}`).join(', ');
+        const rest = units.length - CAP;
+        return `${units.length} unit(s) — ${shown}${rest > 0 ? `, and ${rest} more` : ''}`;
+    }
+
     // Human-readable tally of a player's non-worker force, for mismatch feedback.
     forceComposition(ai) {
         const counts = {};
@@ -3716,7 +3757,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         return parts.length ? parts.join(', ') : '(no military)';
     }
 
-    executeMoveUnits(ai, game, unitsMap, targetX, targetZ) {
+    executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds) {
         // Validate the destination first so bad coords never strand units at NaN.
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
@@ -3728,7 +3769,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         // Optional {type:count} detachment; a move order repositions the whole
         // named force, priests included (they come along on a move as always).
-        const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ);
+        const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ, unitIds);
         const unitsToMove = [...sel.combat, ...sel.support, ...sel.workers];
         if (unitsToMove.length === 0) {
             const ownsMilitary = ai.units.some(u => u.type !== 'worker' && u.health > 0);
@@ -3760,10 +3801,13 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         console.log(`[OpenAIAI] ${ai.id}: Moving ${unitsToMove.length} units to (${Math.round(targetX)}, ${Math.round(targetZ)})`);
         this.outcome('log.out.moveUnits', { count: unitsToMove.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
-        return `OK - Moving ${unitsToMove.length} unit(s) to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note} — ~${eta}s to arrive; let them march before re-issuing.`;
+        // Naming the units is what makes a wrong pick VISIBLE. Without it the reply for
+        // moving the wrong crossbowman and the right one are the same sentence, so a model
+        // has no way to notice and simply reissues.
+        return `OK - Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note} — ~${eta}s to arrive; let them march before re-issuing.`;
     }
 
-    executeAttackTarget(ai, game, targetId, unitsMap) {
+    executeAttackTarget(ai, game, targetId, unitsMap, unitIds) {
         // Find target in all units and buildings
         let target = null;
         target = game.getAllUnits().find(u => (u.id || '') === targetId);
@@ -3786,7 +3830,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         // Optional {type:count} detachment closest to the target; no map → the
         // whole combat force. Support units are split out to escort, not fight.
-        const sel = this.selectOrderedUnits(ai, unitsMap, target.x, target.z);
+        const sel = this.selectOrderedUnits(ai, unitsMap, target.x, target.z, unitIds);
         const unitsToAttack = sel.combat;
 
         if (unitsToAttack.length === 0) {
@@ -3826,7 +3870,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         return `OK - ${unitsToAttack.length} units attacking "${target.name || target.type}".${sel.note}${escortNote}`;
     }
 
-    executeAttackPosition(ai, game, targetX, targetZ, unitsMap) {
+    executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds) {
         const controller = this.aiControllers.find(c => c.aiPlayer === ai);
 
         const mx = Number(targetX), mz = Number(targetZ);
@@ -3839,7 +3883,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         // Optional {type:count} detachment closest to the destination; no map →
         // the whole combat force. Support units split out to escort, not fight.
-        const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ);
+        const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ, unitIds);
         const unitsToAttack = sel.combat;
         if (unitsToAttack.length === 0) {
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);

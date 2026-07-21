@@ -585,7 +585,7 @@
     },
     "friendlyUnits": {
       "type": "array",
-      "description": "Every unit you own and what it is doing right now.",
+      "description": "Your units. Each carries an \"id\" you can pass in unitIds to move_units or attack_target to address it exactly; ids are never reused, so one that has vanished means that unit died. Fog-limited only in the sense that these are all yours.",
       "items": {
         "type": "object",
         "required": [

@@ -155,6 +155,27 @@ function getUnitDefFor(civilization, id) {
 }
 
 // Create a unit instance
+// A SHORT handle the model can name, counted per owner and never reused within a match.
+//
+// The internal id stays what it was — 'unit_<ms>_<rand>' guarantees uniqueness but is 28
+// characters, and at ninety units that is real weight on every single turn's state. This
+// is the published identity: a plain number, so it costs one token, and readable beside
+// the unit's own type rather than encoding it. A scheme like "RC07" would save a little
+// more and cost every model a cipher to decode before it could act — the same trap as the
+// old "militia(stone)" token that models pasted back verbatim.
+//
+// NOT reused when a unit dies. A 0-99 slot recycled on death is the staleness trap in its
+// purest form: a model reads the state, unit 7 dies while it thinks, a new unit takes slot
+// 7, and its order lands on someone else — silently, and untraceably. Monotonic means a
+// stale handle names a DEAD unit, which the harness can say out loud.
+const _unitSeq = new Map();
+function resetUnitHandles() { _unitSeq.clear(); }
+function nextUnitHandle(owner) {
+    const n = (_unitSeq.get(owner) || 0) + 1;
+    _unitSeq.set(owner, n);
+    return n;
+}
+
 function createUnit(type, x, z, owner, civilization, age) {
     const civ = getCivilization(civilization);
     const unitDef = getUnitDefFor(civilization, type);
@@ -169,6 +190,7 @@ function createUnit(type, x, z, owner, civilization, age) {
 
     const unit = {
         id: 'unit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        handle: nextUnitHandle(owner),   // short, published, per-owner, never reused
         type: type,
         name: unitDef.name,
         x: x,

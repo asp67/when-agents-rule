@@ -3061,6 +3061,9 @@ class Game {
 
     resetTimeline() {
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
+        // Handles are per MATCH: without this they keep climbing across restarts in one
+        // session, and a transcript's ids stop starting at 1.
+        if (typeof resetUnitHandles === 'function') resetUnitHandles();
         this._tlLast = 0;
         this._tlAge = {};        // playerId -> last age seen
         this._tlDry = {};        // playerId -> {type: true} once its discovered nodes ran out
