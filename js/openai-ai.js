@@ -425,6 +425,47 @@ class OpenAIAIManager {
         }
     }
 
+    // Extended thinking, which every provider spells differently and gates differently.
+    // One stored field per model, read against the resolved provider, because a model
+    // entry has exactly one provider — and a value left over from a different one is
+    // ignored rather than sent as nonsense.
+    //
+    //   openai     reasoning_effort: minimal | low | medium | high
+    //   anthropic  thinking: { type: 'enabled', budget_tokens: N }
+    //   google     generationConfig.thinkingConfig: { thinkingBudget: N }  (0 off, -1 auto)
+    //   ollama     think: true | false
+    static reasoningFor(provider, raw) {
+        if (raw === '' || raw == null) return null;
+        const s = String(raw).trim().toLowerCase();
+        if (provider === 'openai') {
+            return OpenAIAIManager.REASONING_EFFORTS.includes(s) ? { kind: 'effort', value: s } : null;
+        }
+        if (provider === 'ollama') {
+            if (s === 'on' || s === 'true') return { kind: 'think', value: true };
+            if (s === 'off' || s === 'false') return { kind: 'think', value: false };
+            return null;
+        }
+        const n = parseInt(s, 10);
+        if (!isFinite(n)) return null;
+        // Google takes 0 to switch thinking off and -1 to let the model decide, so its
+        // floor is different from Anthropic's, which has a documented 1024 minimum.
+        if (provider === 'google') return { kind: 'budget', value: Math.max(-1, n) };
+        return { kind: 'budget', value: Math.max(OpenAIAIManager.ANTHROPIC_MIN_THINKING, n) };
+    }
+    static get REASONING_EFFORTS() { return ['minimal', 'low', 'medium', 'high']; }
+    static get ANTHROPIC_MIN_THINKING() { return 1024; }
+
+    // Anthropic requires max_tokens to EXCEED the thinking budget, and the budget to be
+    // at least 1024 — so a small reply cap makes thinking impossible rather than merely
+    // cramped. Returns the budget to send, or null when the two settings cannot both be
+    // honoured. The UI warns about the same condition; this is the backstop that stops a
+    // request we already know will 400.
+    static anthropicThinkingBudget(budget, maxTokens) {
+        const room = (maxTokens || 0) - 1;
+        const b = Math.min(budget, room);
+        return b >= OpenAIAIManager.ANTHROPIC_MIN_THINKING ? b : null;
+    }
+
     // Some endpoints REJECT a parameter rather than ignoring it, and say which in the
     // 400. OpenAI's reasoning models are the live case: they refuse max_tokens and want
     // max_completion_tokens, and refuse any temperature but the default. A model pointed
@@ -462,6 +503,12 @@ class OpenAIAIManager {
             && /unsupported|not support|unrecognized|unknown|extra|not permitted|is not supported/i.test(e)) {
             add.omitTopK = true;
         }
+        // A non-reasoning model refuses the thinking parameter outright. Same rule:
+        // stop sending it, say so in the library, do not guess from the model name.
+        if (!opts.omitReasoning && /reasoning_effort|thinkingConfig|thinkingBudget|\bthinking\b|\bthink\b/i.test(e)
+            && /unsupported|not support|unrecognized|unknown|extra|not permitted|is not supported|invalid/i.test(e)) {
+            add.omitReasoning = true;
+        }
         return Object.keys(add).length ? add : null;
     }
 
@@ -478,16 +525,32 @@ class OpenAIAIManager {
         const model = modelId || 'default';
         // Only ever add a key we actually have a value for.
         const put = (obj, key, val) => { if (val !== undefined && !Number.isNaN(val)) obj[key] = val; return obj; };
+        const reasoning = opts.omitReasoning ? null : OpenAIAIManager.reasoningFor(provider, opts.reasoning);
+        // Anthropic forbids temperature, top_p and top_k while extended thinking is on.
+        // Suppressed here rather than left to 400, and the library says so on the card so
+        // it does not look like the settings were quietly ignored.
+        const thinkingSuppressesSampling = (provider === 'anthropic' && reasoning && reasoning.kind === 'budget');
 
         if (provider === 'anthropic') {
             return {
                 url: OpenAIAIManager.stripSlash(endpoint) + '/messages',
-                body: put(put(put({
-                    model, max_tokens: maxTokens,
-                    system: systemPrompt,
-                    messages: turns.map(t => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: String(t.content) }))
-                }, 'temperature', opts.omitTemperature ? undefined : temperature),
-                   'top_p', opts.omitTopP ? undefined : topP), 'top_k', topK)
+                body: (() => {
+                    const b = {
+                        model, max_tokens: maxTokens,
+                        system: systemPrompt,
+                        messages: turns.map(t => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: String(t.content) }))
+                    };
+                    if (thinkingSuppressesSampling) {
+                        const budget = OpenAIAIManager.anthropicThinkingBudget(reasoning.value, maxTokens);
+                        if (budget != null) { b.thinking = { type: 'enabled', budget_tokens: budget }; return b; }
+                        // No room for a legal budget: send an ordinary request rather than
+                        // one that is certain to be rejected, and let the sampling through.
+                    }
+                    put(b, 'temperature', opts.omitTemperature ? undefined : temperature);
+                    put(b, 'top_p', opts.omitTopP ? undefined : topP);
+                    put(b, 'top_k', opts.omitTopK ? undefined : topK);
+                    return b;
+                })()
             };
         }
         if (provider === 'ollama') {
@@ -495,6 +558,7 @@ class OpenAIAIManager {
                 url: OpenAIAIManager.ollamaRoot(endpoint) + '/api/chat',
                 body: {
                     model, stream: false,
+                    ...(reasoning && reasoning.kind === 'think' ? { think: reasoning.value } : {}),
                     keep_alive: -1, // never auto-unload: the arena drives the model continuously
                     // Cap the context to a user-configurable size (default 32768).
                     // Ollama otherwise loads the model's FULL context (e.g. 128k for
@@ -515,9 +579,13 @@ class OpenAIAIManager {
                 body: {
                     systemInstruction: { parts: [{ text: systemPrompt }] },
                     contents: turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(t.content) }] })),
-                    generationConfig: put(put(put({ maxOutputTokens: maxTokens },
-                        'temperature', opts.omitTemperature ? undefined : temperature),
-                        'topP', opts.omitTopP ? undefined : topP), 'topK', topK)
+                    generationConfig: (() => {
+                        const g = put(put(put({ maxOutputTokens: maxTokens },
+                            'temperature', opts.omitTemperature ? undefined : temperature),
+                            'topP', opts.omitTopP ? undefined : topP), 'topK', topK);
+                        if (reasoning && reasoning.kind === 'budget') g.thinkingConfig = { thinkingBudget: reasoning.value };
+                        return g;
+                    })()
                 }
             };
         }
@@ -539,6 +607,7 @@ class OpenAIAIManager {
         // send-then-learn rule the rest of this file uses, rather than punishing every
         // local gateway for one provider's omission.
         if (!opts.omitTopK) put(body, 'top_k', topK);
+        if (reasoning && reasoning.kind === 'effort') body.reasoning_effort = reasoning.value;
         // If this "OpenAI-compatible" endpoint is actually an Ollama server (user
         // pointed at :11434 / picked OpenAI-compat), ask it to keep the model
         // resident so it isn't unloaded between turns. Only do this for detected
@@ -843,6 +912,7 @@ class OpenAIAIManager {
                 temperature: (conn.temperature == null) ? null : conn.temperature,
                 topP: (conn.topP == null) ? null : conn.topP,
                 topK: (conn.topK == null) ? null : conn.topK,
+                reasoning: conn.reasoning == null ? '' : conn.reasoning,
                 maxTokens: conn.maxTokens || 2000, // per-model cap on reply length (default 2000)
                 contextSize: conn.contextSize || null, // context budget (tokens); also Ollama num_ctx (null = 32768)
                 maxContext: conn.maxContext || null, // model's real max context — hard ceiling for the budget
@@ -2132,7 +2202,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             model._reqOpts = model._reqOpts || {};
             const reqOpts = () => Object.assign(
                 { temperature: model.temperature, topP: model.topP, topK: model.topK,
-                  maxTokens: model.maxTokens, numCtx: model.contextSize },
+                  reasoning: model.reasoning, maxTokens: model.maxTokens, numCtx: model.contextSize },
                 model._reqOpts);
             // Learned refusals are worth keeping past the match: the library shows them,
             // so "this endpoint does not take top_k" survives as an observation rather

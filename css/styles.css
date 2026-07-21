@@ -2277,3 +2277,7 @@ body.spectator-mode #unitInfo.spectator-card {
     border-radius: 999px; padding: 1px 7px; margin-left: 6px;
 }
 .param-rejected-note { color: #ffb26b; }
+
+/* A setting combination the provider will not accept, said on the card rather than
+   discovered as a 400 mid-match. */
+.think-conflict { color: #ffb26b; }

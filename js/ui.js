@@ -301,6 +301,10 @@ class UIManager {
             // to match it today. All three are left blank by default.
             // Parameters this endpoint has been observed to refuse (see noteModelRejection).
             rejectedParams: opts.rejectedParams || {},
+            // Extended thinking. One field, read against the resolved provider: an effort
+            // word for OpenAI, a token budget for Anthropic and Google, on/off for Ollama.
+            // '' = don't ask for it at all.
+            reasoning: opts.reasoning != null ? opts.reasoning : '',
             temperature: opts.temperature != null ? opts.temperature : '',
             topP: opts.topP != null ? opts.topP : '',
             topK: opts.topK != null ? opts.topK : '',
@@ -365,7 +369,7 @@ class UIManager {
             if (baked) m.name = '';
         }
         if (m.maxTokens == null) m.maxTokens = '';
-        ['temperature', 'topP', 'topK'].forEach(k => { if (m[k] == null) m[k] = ''; });
+        ['temperature', 'topP', 'topK', 'reasoning'].forEach(k => { if (m[k] == null) m[k] = ''; });
         if (!m.rejectedParams || typeof m.rejectedParams !== 'object') m.rejectedParams = {};
         if (m.contextSize == null) m.contextSize = '';
         m.minimizeTokens = !!m.minimizeTokens;
@@ -670,9 +674,45 @@ class UIManager {
         // What this endpoint has actually REFUSED in a past match. Observed, never
         // guessed from the model name — the only kind of capability claim worth showing.
         const rejected = (m.rejectedParams && typeof m.rejectedParams === 'object') ? m.rejectedParams : {};
-        const REJ_LABEL = { omitTemperature: t('ar.fTemperature'), omitTopP: t('ar.fTopP'), omitTopK: t('ar.fTopK') };
+        const REJ_LABEL = { omitTemperature: t('ar.fTemperature'), omitTopP: t('ar.fTopP'),
+                            omitTopK: t('ar.fTopK'), omitReasoning: t('ar.fReasoning') };
         const rejectedTag = (flag) => rejected[flag]
             ? ` <span class="param-rejected" title="${this.escapeHtml(t('ar.paramRejectedTitle'))}">${t('ar.paramRejected')}</span>` : '';
+        // Extended thinking looks different on every provider, so the control does too:
+        // an effort word for OpenAI, a token budget for Anthropic and Google, on/off for
+        // Ollama. Rendering the wrong one would invite a value the endpoint cannot use.
+        const _prov = (typeof OpenAIAIManager !== 'undefined') ? OpenAIAIManager.resolveProvider(m) : 'openai';
+        const _setF = `game.ui.setModelField(${m.id},'reasoning',this.value)`;
+        const _opt = (v, label, sel) => `<option value="${v}" ${String(sel) === String(v) ? 'selected' : ''}>${label}</option>`;
+        let reasoningControl, reasoningHintKey;
+        if (_prov === 'openai') {
+            reasoningHintKey = 'ar.reasoningHintOpenai';
+            reasoningControl = `<select onchange="${_setF}">${_opt('', t('ar.reasoningOff'), m.reasoning)}${
+                OpenAIAIManager.REASONING_EFFORTS.map(v => _opt(v, v, m.reasoning)).join('')}</select>`;
+        } else if (_prov === 'ollama') {
+            reasoningHintKey = 'ar.reasoningHintOllama';
+            reasoningControl = `<select onchange="${_setF}">${_opt('', t('ar.reasoningOff'), m.reasoning)}${
+                _opt('on', t('ar.reasoningOn'), m.reasoning)}${_opt('off', t('ar.reasoningNo'), m.reasoning)}</select>`;
+        } else {
+            reasoningHintKey = _prov === 'google' ? 'ar.reasoningHintGoogle' : 'ar.reasoningHintAnthropic';
+            reasoningControl = `<input type="number" step="256" min="${_prov === 'google' ? -1 : 1024}" value="${e(m.reasoning)}" oninput="${_setF}" placeholder="${t('ar.reasoningOff')}">`;
+        }
+        // Two Anthropic rules that a request cannot satisfy silently. Said here, on the
+        // card, rather than discovered as a 400 mid-match — or worse, as a temperature
+        // that appears to be set and is not.
+        const _cap = parseInt(m.maxTokens, 10) || 2000;
+        const _budget = parseInt(m.reasoning, 10);
+        const _warn = [];
+        if (_prov === 'anthropic' && isFinite(_budget) && _budget > 0) {
+            if (typeof OpenAIAIManager !== 'undefined'
+                && OpenAIAIManager.anthropicThinkingBudget(Math.max(1024, _budget), _cap) == null) {
+                _warn.push(t('ar.thinkNeedsHeadroom', { cap: _cap, min: 1024 }));
+            } else if (m.temperature !== '' || m.topP !== '' || m.topK !== '') {
+                _warn.push(t('ar.thinkOverridesSampling'));
+            }
+        }
+        const thinkingConflicts = _warn.length
+            ? `<p class="auth-hint think-conflict">${_warn.map(w => this.escapeHtml(w)).join(' ')}</p>` : '';
         const rejectedNames = Object.keys(rejected).filter(k => REJ_LABEL[k]).map(k => REJ_LABEL[k]);
         const rejectedNote = rejectedNames.length
             ? `<p class="auth-hint param-rejected-note">${this.escapeHtml(t('ar.paramRejectedNote', { list: rejectedNames.join(', ') }))}</p>`
@@ -745,6 +785,12 @@ class UIManager {
             </div>
             <p class="auth-hint">${t('ar.samplingHint')}</p>
             ${rejectedNote}
+            <div class="model-select-row sampling-row">
+                <div class="arena-field" style="flex:0 0 230px"><label>${t('ar.fReasoning')}${rejectedTag('omitReasoning')}</label>
+                    ${reasoningControl}</div>
+            </div>
+            <p class="auth-hint">${t(reasoningHintKey)}</p>
+            ${thinkingConflicts}
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
             <p class="auth-hint">${t('ar.maxTokensHint')}</p>
             <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
@@ -1138,6 +1184,7 @@ class UIManager {
                 temperature: this.numOrNull(m.temperature, 0, 2),
                 topP: this.numOrNull(m.topP, 0, 1),
                 topK: this.numOrNull(m.topK, 1, 1000, true),
+                reasoning: m.reasoning == null ? '' : String(m.reasoning),
                 contextSize: (() => { const n = parseInt(m.contextSize, 10); return (n && n >= 512) ? n : null; })(),
                 maxContext: (() => { const n = parseInt(m.maxContext, 10); return (n && n >= 512) ? n : null; })(),
                 minimizeTokens: !!m.minimizeTokens,
