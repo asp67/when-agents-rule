@@ -979,7 +979,7 @@
   "$defs": {
     "blockedBy": {
       "type": "array",
-      "description": "What stands between you and ordering this RIGHT NOW. Empty means nothing does. Listed structural gates first, price last — the same order the harness reports them if you try anyway. Absent on purpose: population room (already in resources) and whether a trainer or research host is busy this instant, which changes several times while you are thinking and so could not be reported honestly here.",
+      "description": "What stands between you and ordering this RIGHT NOW. Empty means nothing does. Listed structural gates first, price last — the same order the harness reports them if you try anyway. \"pop\" appears on units when you are at the population cap; buildings never consume population and never carry it. Absent on purpose: whether a trainer or research host is busy this instant, which changes several times while you are thinking and so could not be reported honestly here.",
       "items": {
         "type": "string",
         "enum": [
@@ -987,6 +987,7 @@
           "tech",
           "host",
           "alreadyBuilt",
+          "pop",
           "cost"
         ]
       }

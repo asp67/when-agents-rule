@@ -1536,10 +1536,22 @@ class OpenAIAIManager {
         //
         // Gate names: "age" (epoch not reached), "tech" (unlock tech not researched),
         // "host" (no finished building that trains/researches it), "alreadyBuilt" (the
-        // Wonder, one per player), "cost" (cannot pay right now). Deliberately absent:
-        // population, and whether a trainer is free this instant — population is already
-        // in resources, and busy flips several times inside one model's thinking time,
-        // so a snapshot of it would be stale before the answer came back.
+        // Wonder, one per player), "pop" (at the population cap), "cost" (cannot pay).
+        //
+        // "pop" was left out of the first version on the grounds that population is
+        // already in resources and the model can compare two numbers itself. That proved
+        // too much — cost is equally derivable, and cost is listed. A match settled it:
+        // one seat spent 227 of its 474 turns being told "Population limit reached" by
+        // the executor while trainableUnits told it, on those same turns, that nothing at
+        // all stood in the way. Half a model's match spent on a gate the state denied.
+        // In that same match the Market techs DID say blockedBy ["host"] and the seat
+        // ignored them 21 times: where the state warns, the error is the model's; where
+        // it stays quiet, the error is ours.
+        //
+        // Still absent, and for a reason that does hold: whether a trainer is free this
+        // instant. Production runs about five seconds and turns arrive every four, so a
+        // snapshot of "busy" is stale before the answer comes back. The population cap is
+        // not like that — it persists until a house finishes.
         const costOf = (cost) => ({
             food: (cost && cost.food) || 0, wood: (cost && cost.wood) || 0,
             stone: (cost && cost.stone) || 0, gold: (cost && cost.gold) || 0
@@ -1554,6 +1566,7 @@ class OpenAIAIManager {
         // were added to prevent.
         const AGES = ['stone', 'neolithic', 'bronze', 'iron'];
         const ageReached = (need) => AGES.indexOf(ai.age) >= AGES.indexOf(need || 'stone');
+        const atPopCap = (ai.resources.population || 0) >= (ai.resources.maxPopulation || 0);
 
         // --- Trainable units: the vocabulary for train_unit's "unitType" ---
         // Nested building → age → [{id, cost, blockedBy}]. The id stays a field of its
@@ -1570,6 +1583,10 @@ class OpenAIAIManager {
             // Structural gates first, money last — the order the executor reports them.
             if (!ageReached(u.age)) blockedBy.push('age');
             if (!standing(u.at)) blockedBy.push('host');
+            // Units are the only thing that consumes population; buildings never do,
+            // which is why this gate exists here and not in buildableStructures. Mirrors
+            // the executor's own check exactly (>=, one head per unit).
+            if (atPopCap) blockedBy.push('pop');
             if (tooPoor(def && def.cost)) blockedBy.push('cost');
             (host[u.age] = host[u.age] || []).push({
                 id: u.id, cost: costOf(def && def.cost), blockedBy
