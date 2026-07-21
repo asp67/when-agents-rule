@@ -974,7 +974,15 @@ class OpenAIAIManager {
                 const c = s.connection;
                 return {
                     id: ai && ai.id, civilization: s.civ, seat: ai && ai.seat,
-                    model: c ? (c.model || c.name) : 'ki',
+                    // The model ID as configured, and NOTHING else. It used to fall back
+                    // to the display name, so a seat with no id recorded "RTX ornith:9b"
+                    // in a field called model while the request had actually said
+                    // "default" and let the endpoint choose — a reader would take the
+                    // nickname for an id. With an aggregator in front (OpenRouter,
+                    // Ollama, LiteLLM) the id is the only thing that says WHICH of
+                    // hundreds of models played, so it must not be guessable-looking
+                    // when it is absent. null means none was configured.
+                    model: c ? (String(c.model || '').trim() || null) : 'ki',
                     name: c ? c.name : null,
                     settings: c ? OpenAIAIManager.publicModelSettings(c, s, sharedPrompt) : null
                 };
