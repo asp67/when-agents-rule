@@ -1138,7 +1138,13 @@ class OpenAIAIManager {
         // --- Battle report: losses, kills and raids since a while back ---
         // (game.logPlayerEvent feeds this; without it deaths between turns were
         // completely invisible to the model.)
-        const recentEvents = (ai.events || []).slice(-8).map(e =>
+        //
+        // Read LATE — see the node-exhaustion check further down, which logs an event of
+        // its own while building this same state. Snapshotting here, where this section
+        // reads, put that event one turn behind the number that caused it: the model
+        // would see stone fall to zero with no explanation, and only be told why on the
+        // following turn. Which is the exact frame that confused one in the first place.
+        const buildRecentEvents = () => (ai.events || []).slice(-8).map(e =>
             `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
 
         // --- Battles: what actually happened in the fighting ---
@@ -1281,6 +1287,30 @@ class OpenAIAIManager {
                     z: Math.round(res.z),
                     amount: k.amount
                 });
+            });
+        }
+        // The moment a type drops to zero, said out loud — computed HERE, from the very
+        // number the model reads, and not from game.discoveredNodeCounts even though that
+        // already detects the same crossing for the results graph. The two do not mean the
+        // same thing: the graph counts LIVE amounts, this counts what THIS player knows,
+        // and the difference is deliberate — a node a rival drains out of your sight stays
+        // listed here at its last-seen amount. Firing from the live count would have
+        // announced "your last known stone was exhausted" while the field directly beside
+        // it still showed a node, which is worse than saying nothing.
+        //
+        // Why say it at all: a model watched its own stone count fall to zero while its
+        // workers were returning stone, and concluded the harness had lost track of a node
+        // rather than that the node was gone. A number that changes with no event behind
+        // it is indistinguishable from a bug. Same lesson as the destroyed building.
+        //
+        // A fact, not a nudge — where to look next stays the model's call.
+        const prevCounts = ai._lastNodeCounts;
+        ai._lastNodeCounts = Object.assign({}, discoveredNodesOnMap);
+        if (prevCounts) {
+            ['food', 'wood', 'stone', 'gold'].forEach(k => {
+                if (prevCounts[k] > 0 && discoveredNodesOnMap[k] === 0 && game.logPlayerEvent) {
+                    game.logPlayerEvent(ai, `Your last known ${k} node was exhausted — nothing you have discovered still holds ${k}`);
+                }
             });
         }
         // Nearest per TOWN CENTER, not globally nearest: with two bases the ten
@@ -1815,7 +1845,7 @@ class OpenAIAIManager {
             clock: clockObj,
             epoch: epochObj,
             resources: resourcesObj,
-            recentEvents: recentEvents,
+            recentEvents: buildRecentEvents(),
             // Omitted entirely in peacetime — this rides the per-turn channel, so a
             // quiet game should pay nothing for it.
             ...(battles.length ? { battles } : {}),
@@ -2010,6 +2040,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue EX
 - Priests never fight. They march with an attack and heal wounded units from the back on their own.
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
+- Resource nodes hold a finite amount and disappear when emptied.
 
 OUTPUT EXACTLY ONE RAW JSON OBJECT
 Format: {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }, "objective": "<1 line>", "plan": ["<step>", "<step>"]}
