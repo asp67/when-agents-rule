@@ -1524,7 +1524,27 @@ body.spectator-mode #unitInfo.spectator-card {
     border: 1px solid rgba(78, 204, 163, 0.25);
     border-radius: 10px;
 }
-.campaign-setup-row .arena-field { flex: 1; min-width: 160px; }
+/* Each picker takes only what its widest translation needs, freeing the rest of the row
+   for the turn-based block. The bases are measured, not guessed: at the label font the
+   longest string across en/de/es/zh is 115px for the count label, 238px for the map
+   options and 238px for the seed label — Spanish in all three — plus room for a select
+   arrow. min-width:0 lets them shrink on a narrow viewport instead of forcing a
+   scrollbar, and the row already wraps, so the turn-based block drops below rather
+   than crushing the pickers. */
+.campaign-setup-row .arena-field { flex: 0 1 auto; min-width: 0; }
+.campaign-setup-row .f-count { flex-basis: 140px; }
+.campaign-setup-row .f-map   { flex-basis: 290px; }
+.campaign-setup-row .f-seed  { flex-basis: 250px; }
+.campaign-setup-row .f-turnbased { flex: 1 1 560px; min-width: 320px; }
+
+/* The explanation on the left, the setting it governs on the right. The two bases plus
+   the gap must stay under .f-turnbased's own basis or the pair wraps and the field lands
+   back under the text: 200 + 16 + 300 = 516 against 560. The right column is the wider
+   of the two because it holds a real caption — "Tiempo de respuesta por ronda (s)" is
+   288px — while the left is only prose, which reflows at any width. */
+.tb-split { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.tb-split .tb-main { flex: 1 1 200px; min-width: 170px; }
+.tb-split .arena-subfield { flex: 0 1 300px; margin: 0; }
 
 .arena-slots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
 .arena-slot {
@@ -2206,7 +2226,8 @@ body.spectator-mode #unitInfo.spectator-card {
 .sb-speed-opt.is-active { background: linear-gradient(145deg, #35b58c, #1f8d6b); color: #fff; }
 
 /* A checkbox setting on the setup screen, with the consequence spelled out under it. */
-.arena-field-wide { grid-column: 1 / -1; }
+/* The setup row is FLEX, so the old .arena-field-wide { grid-column } was a no-op and
+   the answer-time field stacked under the explanation instead of sitting beside it. */
 .arena-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .arena-check input { width: 15px; height: 15px; accent-color: #8cb4ff; cursor: pointer; }
 .arena-hint {
@@ -2231,7 +2252,15 @@ body.spectator-mode #unitInfo.spectator-card {
 
 /* Round-answer-time field: indented under the turn-based checkbox it belongs to,
    and dimmed when that checkbox is off so it cannot look like a live setting. */
-.arena-subfield { margin: 8px 0 0 26px; }
-.arena-subfield label { display: block; font-size: 0.86em; opacity: 0.85; margin-bottom: 4px; }
-.arena-subfield input { width: 110px; }
+.arena-subfield { margin: 8px 0 0 0; }
+/* Overrides .arena-field label nowrap+ellipsis: "Tiempo de respuesta por ronda (s)" is
+   288px and would be cut. A caption that outgrows its column should wrap, not lie.
+   Styled like its siblings so it reads as a field label, not an afterthought. */
+.arena-subfield label {
+    display: block; margin-bottom: 4px;
+    white-space: normal; overflow: visible; text-overflow: clip;
+    font-size: 0.85em; color: #4ecca3; font-weight: bold;
+    text-transform: uppercase; letter-spacing: 1px;
+}
+.arena-subfield input { width: 100%; max-width: 150px; }
 .arena-subfield.is-off { opacity: 0.45; }
