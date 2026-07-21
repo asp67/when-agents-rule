@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v49';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v50';
     }
 
     showScreen(screenId) {
@@ -2728,9 +2728,17 @@ class UIManager {
                     noAction: st.noActionReturns || 0,
                     contextOverflows: ctxOv,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
+                    contended: st.actionsContended || 0,
                     promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
                     attempted: st.actionsAttempted, succeeded: st.actionsSucceeded,
-                    successRate: st.actionsAttempted ? st.actionsSucceeded / st.actionsAttempted : 0,
+                    // Contended attempts leave the DENOMINATOR, not just the numerator.
+                    // A model whose only failures were a busy barracks made no mistake,
+                    // so it should read 1.0 — docking it would score tempo as error, and
+                    // the models that contend with themselves most are the busy ones.
+                    successRate: (() => {
+                        const judged = st.actionsAttempted - (st.actionsContended || 0);
+                        return judged > 0 ? st.actionsSucceeded / judged : 0;
+                    })(),
                     // Format fidelity: prose-only replies (no JSON action) are format
                     // failures too — they just get their own counter.
                     formatOk: responded > 0 ? (responded - st.parseFails - (st.noActionReturns || 0)) / responded : 0,
@@ -2815,7 +2823,7 @@ class UIManager {
                     <div class="sum-metrics">
                         <div class="sum-metric"><span>⏱ ${t('sum.mResponse')}</span><b>${avgS.toFixed(1)}s</b><i>${(m.minLatency / 1000).toFixed(1)}–${(m.maxLatency / 1000).toFixed(1)}s</i></div>
                         <div class="sum-metric"><span>\u{1F9E0} ${t('sum.mDecisions')}</span><b>${m.decisions}</b><i>${t('sum.mAnswered', { n: m.responded })}</i></div>
-                        <div class="sum-metric"><span>✅ ${t('sum.mSuccess')}</span><b>${Math.round(m.successRate * 100)}%</b><i>${m.succeeded}/${m.attempted}</i></div>
+                        <div class="sum-metric"><span>✅ ${t('sum.mSuccess')}</span><b>${Math.round(m.successRate * 100)}%</b><i>${m.succeeded}/${m.attempted - (m.contended || 0)}${(m.contended || 0) ? ` · ${t('sum.contended', { n: m.contended })}` : ''}</i></div>
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
                         <div class="sum-metric"><span>\u{1FA99} ${t('sum.mTokens')}</span><b>${this.fmtTokens(m.promptTokens + m.completionTokens)}</b><i>${(m.promptTokens + m.completionTokens) ? t('sum.mTokSplit', { p: this.fmtTokens(m.promptTokens), c: this.fmtTokens(m.completionTokens) }) : t('sum.mTokNone')}</i></div>
@@ -3524,7 +3532,7 @@ class UIManager {
                 L.push(`- Reasoning rate: ${Math.round(m.reasonRate * 100)}%`);
                 L.push(`- Reliability: ${Math.round(m.reliability * 100)}%`);
                 L.push(`- Latency: avg ${(m.avgLatency / 1000).toFixed(1)}s (min ${(m.minLatency / 1000).toFixed(1)}s, max ${(m.maxLatency / 1000).toFixed(1)}s)`);
-                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} (of which truncated ${m.truncated || 0}) · no-action ${m.noAction || 0} · invalid ${m.invalidActions} · rejected ${m.rejected} · context-overflows ${m.contextOverflows || 0}`);
+                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} (of which truncated ${m.truncated || 0}) · no-action ${m.noAction || 0} · invalid ${m.invalidActions} · rejected ${m.rejected} · contended ${m.contended || 0} · context-overflows ${m.contextOverflows || 0}`);
             L.push(`- Tokens: ${(m.promptTokens + m.completionTokens) ? `${m.promptTokens} prompt + ${m.completionTokens} completion = ${m.promptTokens + m.completionTokens}` : 'not reported by endpoint'}`);
                 if (r.tags && r.tags.length) L.push(`- Behavior: ${r.tags.map(x => x.t).join(', ')}`);
                 const actions = Object.entries(m.actionCounts || {}).sort((a, b) => b[1] - a[1])

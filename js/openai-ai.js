@@ -71,7 +71,12 @@ class OpenAIAIManager {
             noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
             actionsAttempted: 0,  // actions handed to executeAction
             actionsSucceeded: 0,  // executed OK
-            actionsRejected: 0,   // understood but failed (cost, pop, duplicate, ...)
+            actionsRejected: 0,   // understood but failed on a gate the state had SHOWN
+                                  // the model — an avoidable mistake, and the only kind
+                                  // successRate counts
+            actionsContended: 0,  // understood but failed on something the state cannot
+                                  // honestly forewarn (see UNFOREWARNED). Not scored:
+                                  // held out of successRate's denominator entirely
             invalidActions: 0,    // unknown action name
             reasonsGiven: 0,      // decisions that included a non-empty reason
             actionCounts: {},     // attempted action name -> count
@@ -95,6 +100,27 @@ class OpenAIAIManager {
     // right before returning; uncovered ones don't, and the log falls back to the
     // English text. See ui.renderOutcome / I18N_OUTCOMES.
     outcome(code, params) { this._pendingOutcome = { code, params: params || {} }; return true; }
+
+    // Rejections the state cannot honestly forewarn, and which therefore must not count
+    // against a model. Every OTHER rejection is now a gate the model was shown before it
+    // acted — blockedBy, a published tally, or a rule in the system prompt — so trying
+    // anyway is a real mistake and belongs in successRate. These four are not:
+    //   trainerBusy        a trainer exists but is mid-production; flips every ~5s
+    //   noWorkerIdleBuild  workers exist, all building or fighting; churns constantly
+    //   noClearSpot        a placement search the model has no way to run
+    //   assignAllCarrying  who is carrying a load is deliberately unpublished — it is
+    //                      stale by the time an answer arrives (the carryingX lesson)
+    // Each is something we CHOSE not to publish because publishing it would be a lie by
+    // the time the model read it. Scoring a model for not knowing it would restore, in
+    // the metric, exactly the unfairness the state was fixed to remove.
+    //
+    // A code that is not listed counts as avoidable. A metric that quietly forgives what
+    // nobody has classified flatters every model equally and hides its own drift; being
+    // counted is the error that gets noticed and fixed. Any new rejection outcome added
+    // below must be triaged here.
+    static get UNFOREWARNED() {
+        return new Set(['trainerBusy', 'noWorkerIdleBuild', 'noClearSpot', 'assignAllCarrying']);
+    }
     haveString(ai) {
         const r = ai.resources;
         return `${Math.floor(r.food)} food, ${Math.floor(r.wood)} wood, ${Math.floor(r.stone)} stone, ${Math.floor(r.gold)} gold`;
@@ -1676,6 +1702,7 @@ plan: Array of up to 5 short strings. Persists across turns; omit to keep curren
 
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
+Every entry in trainableUnits, buildableStructures and research.available carries "cost" and "blockedBy" — what stands between you and ordering it right now ("age", "tech", "host", "alreadyBuilt", "cost"). An empty blockedBy means nothing does.
 
 train_unit: unitType (from trainableUnits), targetX?, targetZ?
 research_tech: techId (from research.available)
@@ -2661,13 +2688,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             actionResult = `[ERROR] Action "${action}" produced no result. Pick a different action.`;
         }
 
-        // Behavior metrics + flag the log entry if the action was rejected
+        // Behavior metrics + flag the log entry if the action was rejected.
+        // _pendingOutcome is cleared at the top of this method and not consumed until
+        // below, so the code read here always belongs to THIS action.
         if (actionResult) {
             const rejected = actionResult.startsWith('[ERROR]');
+            const code = String((this._pendingOutcome && this._pendingOutcome.code) || '')
+                .replace(/^log\.out\./, '');
             if (controller.stats) {
                 const st = controller.stats;
                 if (rejected) {
                     if (/Unknown action/i.test(actionResult)) st.invalidActions++;
+                    else if (OpenAIAIManager.UNFOREWARNED.has(code)) st.actionsContended++;
                     else st.actionsRejected++;
                 } else {
                     st.actionsSucceeded++;
