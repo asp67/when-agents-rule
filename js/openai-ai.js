@@ -1217,7 +1217,12 @@ class OpenAIAIManager {
             secondsRemaining: this.secsLeft(ai.currentResearch.progress, ai.currentResearch.duration)
         } : null;
 
-        // Available techs (compact: id, cost, canAfford)
+        // Available techs. Already filtered to what is researchable in principle —
+        // not yet researched, age reached, prerequisites done — so the gates that can
+        // still stand are the host building and the price. "host" was never reported:
+        // a tech researched at a Market appeared here whether or not a Market existed,
+        // and executeResearchTech refuses on exactly that. Same shape as the other two
+        // vocabularies, so one reading habit covers all three.
         const availableTechs = Object.keys(techs)
             .filter(tid => {
                 const t = techs[tid];
@@ -1239,15 +1244,11 @@ class OpenAIAIManager {
                     stone: Math.floor((t.cost.stone || 0) * costMult),
                     gold: Math.floor((t.cost.gold || 0) * costMult)
                 };
-                return {
-                    id: tid,
-                    cost,
-                    researchAt: t.researchAt,
-                    canAfford: ai.resources.food >= cost.food &&
-                               ai.resources.wood >= cost.wood &&
-                               ai.resources.stone >= cost.stone &&
-                               ai.resources.gold >= cost.gold
-                };
+                const at = t.researchAt || 'town_center';
+                const blockedBy = [];
+                if (!ai.buildings.some(b => b.type === at && !b.underConstruction)) blockedBy.push('host');
+                if (!ai.resources.hasResources(cost)) blockedBy.push('cost');
+                return { id: tid, cost, researchAt: t.researchAt, blockedBy };
             });
 
         const researchObj = {
@@ -1266,39 +1267,46 @@ class OpenAIAIManager {
             buildings: Object.keys(ai.unlockedBuildings || {})
         };
 
-        // Price tag in the same shape research.available has always used, so one
-        // reading habit covers every vocabulary. canAfford is a comparison of two
-        // numbers the model already holds; it is here because WITHOUT it the only way
-        // to learn a price is to attempt the buy and be rejected — and rejections are
-        // scored (successRate is the heaviest term in soundness). Making a model spend
-        // a failed action to read a number we already know is the harness manufacturing
-        // the mistake it then marks down.
-        const priced = (cost) => ({
-            cost: {
-                food: (cost && cost.food) || 0, wood: (cost && cost.wood) || 0,
-                stone: (cost && cost.stone) || 0, gold: (cost && cost.gold) || 0
-            },
-            canAfford: !!(cost && ai.resources.hasResources(cost))
+        // Every buyable thing — tech, unit, structure — is described the same way: its
+        // PRICE, which is a constant of the world, and the gates standing in the way
+        // right now. An empty blockedBy means you can order it this turn.
+        //
+        // The price stays because it is what a plan is made of: "missing 50 gold" is
+        // true for one tick, "costs 100 gold" is true all match, and only the second
+        // lets a model work out what three of them would come to. The gates are here
+        // because otherwise the only way to learn one is to attempt the buy and be
+        // rejected — and rejections are SCORED (successRate is the heaviest term in
+        // soundness), so the harness would be manufacturing the mistake it marks down.
+        //
+        // One list, not a boolean per gate: canAfford, readyToBuild, readyToTrain and
+        // researched were each derivable from the others, and fields that must agree
+        // are how a contract drifts apart.
+        //
+        // Gate names: "age" (epoch not reached), "tech" (unlock tech not researched),
+        // "host" (no finished building that trains/researches it), "alreadyBuilt" (the
+        // Wonder, one per player), "cost" (cannot pay right now). Deliberately absent:
+        // population, and whether a trainer is free this instant — population is already
+        // in resources, and busy flips several times inside one model's thinking time,
+        // so a snapshot of it would be stale before the answer came back.
+        const costOf = (cost) => ({
+            food: (cost && cost.food) || 0, wood: (cost && cost.wood) || 0,
+            stone: (cost && cost.stone) || 0, gold: (cost && cost.gold) || 0
         });
+        const tooPoor = (cost) => !(cost && ai.resources.hasResources(cost));
+        const standing = (type) => ai.buildings.some(b => b.type === type && !b.underConstruction);
 
         // Both vocabularies list everything the civ can EVER field, not only what is
         // reachable this minute, because a plan needs to see what it is building toward.
-        // That only works if each entry also says whether it is reachable NOW — a list
-        // of the possible, priced but ungated, invites exactly the rejected call the
-        // prices were added to prevent.
-        //
-        // These two flags cover the STRUCTURAL gates only: age, unlock tech, host built.
-        // Population and "that building is busy right now" are deliberately left out —
-        // both are already elsewhere in the state, and busy in particular flips several
-        // times inside one model's thinking time, so a snapshot of it would be a lie by
-        // the time the answer arrives.
+        // That only works if each entry also says what stands in the way — a list of the
+        // possible, priced but ungated, invites exactly the rejected call the prices
+        // were added to prevent.
         const AGES = ['stone', 'neolithic', 'bronze', 'iron'];
         const ageReached = (need) => AGES.indexOf(ai.age) >= AGES.indexOf(need || 'stone');
 
         // --- Trainable units: the vocabulary for train_unit's "unitType" ---
-        // Nested building → age → [{id, cost, canAfford, readyToTrain}]. The id stays a
-        // field of its own rather than being folded into the token: an early version
-        // wrote "militia(stone)" as one string to save a nesting level, and models duly
+        // Nested building → age → [{id, cost, blockedBy}]. The id stays a field of its
+        // own rather than being folded into the token: an early version wrote
+        // "militia(stone)" as one string to save a nesting level, and models duly
         // passed that whole string as the unitType — the harness had invented a token
         // that looked copyable and wasn't. An object with an explicit "id" cannot be
         // mistaken for one.
@@ -1306,10 +1314,13 @@ class OpenAIAIManager {
         this.trainableUnitsFor(ai.civilization).forEach(u => {
             const host = (trainableUnits[u.at] = trainableUnits[u.at] || {});
             const def = (typeof getUnitDefFor === 'function') ? getUnitDefFor(ai.civilization, u.id) : null;
-            const hostStands = ai.buildings.some(b => b.type === u.at && !b.underConstruction);
+            const blockedBy = [];
+            // Structural gates first, money last — the order the executor reports them.
+            if (!ageReached(u.age)) blockedBy.push('age');
+            if (!standing(u.at)) blockedBy.push('host');
+            if (tooPoor(def && def.cost)) blockedBy.push('cost');
             (host[u.age] = host[u.age] || []).push({
-                id: u.id, ...priced(def && def.cost),
-                readyToTrain: ageReached(u.age) && hostStands
+                id: u.id, cost: costOf(def && def.cost), blockedBy
             });
         });
 
@@ -1327,13 +1338,11 @@ class OpenAIAIManager {
             // requiredAge is the CIV-effective age (unlock tech may come later
             // than the def's own age — Egypt's stable is bronze, not neolithic).
             const reqAge = (typeof effectiveBuildingAge === 'function') ? effectiveBuildingAge(ai.civilization, def) : (def.requiredAge || 'stone');
-            // readyToBuild used to be assigned techDone — the same value as "researched",
-            // in every row, under a name that promises more. A stone-age player was told
-            // readyToBuild:true for a bronze-age temple and got refused on age. Now the
-            // two fields say different things: researched is the tech, readyToBuild is
-            // every structural gate together.
-            return { type: t, requiredAge: reqAge, requiresTech: reqTech, researched: techDone,
-                     readyToBuild: techDone && ageReached(reqAge), ...priced(def.cost) };
+            const blockedBy = [];
+            if (!ageReached(reqAge)) blockedBy.push('age');
+            if (!techDone) blockedBy.push('tech');
+            if (tooPoor(def.cost)) blockedBy.push('cost');
+            return { type: t, requiredAge: reqAge, requiresTech: reqTech, cost: costOf(def.cost), blockedBy };
         }).filter(Boolean);
 
         // The Wonder belongs in this list. It was in no vocabulary at all: a model's
@@ -1349,11 +1358,14 @@ class OpenAIAIManager {
         // what friendlyBuildings will call it and the two must be connectable.
         const wDef = this.wonderDefFor(ai.civilization);
         if (wDef) {
+            const wAge = wDef.requiredAge || 'iron';
+            const wBlocked = [];
+            if (!ageReached(wAge)) wBlocked.push('age');
+            if (ai.buildings.some(b => b.isWonder)) wBlocked.push('alreadyBuilt');
+            if (tooPoor(wDef.cost)) wBlocked.push('cost');
             buildableStructures.push({
-                type: 'wonder', builtAs: wDef.id,
-                requiredAge: wDef.requiredAge || 'iron', requiresTech: null, researched: true,
-                readyToBuild: ageReached(wDef.requiredAge || 'iron') && !ai.buildings.some(b => b.isWonder),
-                isWonder: true, ...priced(wDef.cost)
+                type: 'wonder', builtAs: wDef.id, requiredAge: wAge, requiresTech: null,
+                isWonder: true, cost: costOf(wDef.cost), blockedBy: wBlocked
             });
         }
 
