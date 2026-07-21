@@ -2228,3 +2228,10 @@ body.spectator-mode #unitInfo.spectator-card {
 .c-wonder { stroke-width: 2; opacity: 0.9; }
 .c-wonder.is-lost { stroke-dasharray: 5 3; }
 .c-wondericon { font-size: 12px; }
+
+/* Round-answer-time field: indented under the turn-based checkbox it belongs to,
+   and dimmed when that checkbox is off so it cannot look like a live setting. */
+.arena-subfield { margin: 8px 0 0 26px; }
+.arena-subfield label { display: block; font-size: 0.86em; opacity: 0.85; margin-bottom: 4px; }
+.arena-subfield input { width: 110px; }
+.arena-subfield.is-off { opacity: 0.45; }

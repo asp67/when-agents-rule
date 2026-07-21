@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v50';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v51';
     }
 
     showScreen(screenId) {
@@ -172,13 +172,58 @@ class UIManager {
             const field = tbWrap.closest('.arena-field');
             if (field) field.style.display = campaign ? 'none' : '';
         }
+        const rt = document.getElementById('setupRoundTimeout');
+        if (rt) rt.value = this.roundTimeoutSeconds();
+        this.syncRoundTimeoutEnabled();
     }
 
     setTurnBased(on) {
         if (this._arenaConfig) { this._arenaConfig.turnBased = !!on; this.saveSetup(); }
+        this.syncRoundTimeoutEnabled();
     }
 
     turnBasedEnabled() { return !!(this._arenaConfig && this._arenaConfig.turnBased); }
+
+    // The deadline is only meaningful in turn-based mode, so the input follows the
+    // checkbox rather than sitting there implying it does something in real time.
+    syncRoundTimeoutEnabled() {
+        const rt = document.getElementById('setupRoundTimeout');
+        if (!rt) return;
+        const on = this.turnBasedEnabled();
+        rt.disabled = !on;
+        const wrap = rt.closest('.arena-subfield');
+        if (wrap) wrap.classList.toggle('is-off', !on);
+    }
+
+    // Seconds a seat gets to answer before the round resolves without it. Stored in
+    // seconds because that is the unit on screen and in clock.secondsToAnswer; the one
+    // conversion to ms lives in roundTimeoutMs() so the number the model is told and
+    // the number that is enforced cannot drift apart.
+    roundTimeoutSeconds() {
+        const def = OpenAIAIManager.ROUND_TIMEOUT_DEFAULT_MS / 1000;
+        const n = parseInt(this._arenaConfig && this._arenaConfig.roundTimeoutSec, 10);
+        return (n && n > 0) ? n : def;
+    }
+
+    roundTimeoutMs() { return this.roundTimeoutSeconds() * 1000; }
+
+    setRoundTimeout(v) {
+        if (!this._arenaConfig) return;
+        const lo = OpenAIAIManager.ROUND_TIMEOUT_MIN_MS / 1000;
+        const hi = OpenAIAIManager.ROUND_TIMEOUT_MAX_MS / 1000;
+        const n = parseInt(v, 10);
+        // Clamp rather than reject: a typed "5" should become the floor, not silently
+        // fall back to 90 and leave the field showing something it is not using.
+        this._arenaConfig.roundTimeoutSec = isFinite(n) && n > 0
+            ? Math.min(hi, Math.max(lo, n))
+            : OpenAIAIManager.ROUND_TIMEOUT_DEFAULT_MS / 1000;
+        this.saveSetup();
+    }
+
+    commitRoundTimeout(el) {
+        this.setRoundTimeout(el && el.value);
+        if (el) el.value = this.roundTimeoutSeconds();   // show what was actually stored
+    }
 
     setSetupSeed(v) {
         const cfg = this._setupMode === 'campaign' ? this._campaignConfig : this._arenaConfig;
@@ -2122,6 +2167,7 @@ class UIManager {
             resumed: t('log.resumed'),
             defeated: t('log.defeated'),
             explore: t('log.explore'),
+            round_missed: t('log.round_missed'),
             assign_workers: t('log.assign_workers'),
             delete_unit: t('log.delete_unit'),
             destroy_building: t('log.destroy_building'),

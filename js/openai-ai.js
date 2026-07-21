@@ -78,6 +78,9 @@ class OpenAIAIManager {
                                   // honestly forewarn (see UNFOREWARNED). Not scored:
                                   // held out of successRate's denominator entirely
             invalidActions: 0,    // unknown action name
+            roundsMissed: 0,      // turn-based: rounds that resolved without this seat
+                                  // because its answer ran past the deadline. A latency
+                                  // fact, never an action — successRate cannot see it
             reasonsGiven: 0,      // decisions that included a non-empty reason
             actionCounts: {},     // attempted action name -> count
             workersTrained: 0     // train_unit attempts whose unitType was "worker".
@@ -685,6 +688,8 @@ class OpenAIAIManager {
         // reverts to independent pipelines — which is a different benchmark.
         this.turnBased = !!(this.game && this.game.ui && this.game.ui.turnBasedEnabled
             && this.game.ui.turnBasedEnabled());
+        this._roundTimeoutMs = (this.game && this.game.ui && this.game.ui.roundTimeoutMs)
+            ? this.game.ui.roundTimeoutMs() : OpenAIAIManager.ROUND_TIMEOUT_DEFAULT_MS;
         this._roundPhase = 'ask';
         this._roundNo = 0;
         this._roundStartedAt = 0;
@@ -714,7 +719,7 @@ class OpenAIAIManager {
                 difficulty: this.game.difficulty || null,
                 mapSize: (this.game.terrain && this.game.terrain.size) || null,
                 turnBased: !!this.turnBased,
-                roundTimeoutMs: this.turnBased ? OpenAIAIManager.ROUND_TIMEOUT_MS : null,
+                roundTimeoutMs: this.turnBased ? this.roundTimeoutMs() : null,
                 simSpeed: this.game.simSpeed || 1,
                 wonderRequired: this.game.wonderRequired || null,
                 promptVersion: (this.game.ui && this.game.ui.ARENA_PROMPT_VERSION) || null
@@ -1479,6 +1484,13 @@ class OpenAIAIManager {
             clockObj.averageSecondsBetweenTurns =
                 Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length / 1000);
         }
+        // Turn-based only, where a deadline actually exists. Publishing it is what lets
+        // a model spend its thinking budget deliberately; enforcing it silently only
+        // punished models for not guessing a number we already knew. Absent in
+        // real-time mode rather than reported as null or infinity — there is no
+        // deadline there, and a field that answers a question the mode never asks is
+        // one more thing to reason past.
+        if (this.turnBased) clockObj.secondsToAnswer = Math.round(this.roundTimeoutMs() / 1000);
 
         // --- Game stats ---
         const gameStatsObj = {
@@ -4357,7 +4369,54 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // buys 5s of game — a match would take hours of wall clock, and a spectator watches
     // a still image. Running on costs both accuracy equally: all four read the same
     // snapshot and all four act on it the same number of seconds later.
-    static get ROUND_TIMEOUT_MS() { return 90000; }  // a silent seat forfeits its turn
+    // Default only. The real value is per-match and set on the setup screen — a fixed
+    // ceiling locked slow local models out of turn-based mode altogether, which is the
+    // one mode where their slowness is supposed to stop mattering.
+    static get ROUND_TIMEOUT_DEFAULT_MS() { return 90000; }
+    static get ROUND_TIMEOUT_MIN_MS() { return 10000; }
+    static get ROUND_TIMEOUT_MAX_MS() { return 900000; }
+    roundTimeoutMs() {
+        const n = Number(this._roundTimeoutMs);
+        return (isFinite(n) && n > 0) ? n : OpenAIAIManager.ROUND_TIMEOUT_DEFAULT_MS;
+    }
+
+    // A seat ran past the round deadline. Three things follow, and the first is the one
+    // that was missing: the model is TOLD. It reads this on its next turn, alongside the
+    // deadline itself in clock.secondsToAnswer, so it can decide to think less — which
+    // it cannot do about a limit nobody mentioned.
+    //
+    // The in-flight request is aborted rather than left to land. Not aborting would
+    // measure the seat's true latency, which is worth something, but each round would
+    // then ask again while the last one was still running and a genuinely slow endpoint
+    // would stack requests without bound. The cost is that this turn's latency is
+    // censored at the timeout instead of recorded.
+    //
+    // It is NOT an action, so it never touches actionsAttempted or successRate. Missing
+    // a deadline is a latency fact, and the mode exists precisely to stop latency being
+    // scored as judgement.
+    noteRoundMissed(controller) {
+        const secs = Math.round(this.roundTimeoutMs() / 1000);
+        if (controller.stats) controller.stats.roundsMissed = (controller.stats.roundsMissed || 0) + 1;
+        try { if (controller._abort) controller._abort.abort(); } catch (e) { /* already settled */ }
+        const msg = `[TIMEOUT] Your answer did not arrive within ${secs}s of the state being sent, so this round was played without you. Every round gives every player the same ${secs}s; see clock.secondsToAnswer.`;
+        controller.conversationHistory.push({
+            action: 'round_missed', reason: '', result: msg, failed: true
+        });
+        const civ = getCivilization(controller.aiPlayer.civilization);
+        this.decisionLog.unshift({
+            timestamp: Date.now(), playerId: controller.aiPlayer.id,
+            civName: civ?.name || controller.aiPlayer.civilization,
+            color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
+            action: 'round_missed', reason: '', params: {}, failed: true,
+            error: msg.replace(/^\[TIMEOUT\]\s*/, ''), lang: controller.model && controller.model.language,
+            outcomeCode: 'log.out.roundMissed', outcomeParams: { secs }
+        });
+        // NOT written to the transcript. record() increments the turn counter and seals
+        // the open turn, so a miss would be indistinguishable from a turn that happened
+        // and would inflate turnsFor(). The transcript therefore still skips a missed
+        // round silently — worth its own fix, since reading one back you cannot tell a
+        // slow seat from one that was never asked.
+    }
 
     // Is the question this answer was given to still the one on the table? Both halves
     // are load-bearing: the number catches an answer overtaken by a later round, and
@@ -4374,9 +4433,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         if (this._roundPhase === 'wait') {
             if (live.some(c => c.pending)) {
-                if (now - this._roundStartedAt <= OpenAIAIManager.ROUND_TIMEOUT_MS) return;
+                if (now - this._roundStartedAt <= this.roundTimeoutMs()) return;
                 // One unreachable endpoint must not stall the other three: release
                 // them, let the round resolve, and the slow seat simply misses it.
+                // Missing seats are told so on their next turn — a deadline enforced
+                // in silence is one a model cannot budget against.
+                live.filter(c => c.pending).forEach(c => this.noteRoundMissed(c));
                 live.forEach(c => { c.pending = false; });
             }
             this.flushRound(live);
