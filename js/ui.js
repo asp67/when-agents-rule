@@ -3803,7 +3803,12 @@ class UIManager {
             if (r.isLLM && m) {
                 L.push(`- Strategy score: ${r.soundness}/100`);
                 L.push(`- Decisions: ${m.decisions} (answered ${m.responded})`);
-                L.push(`- Success rate: ${Math.round(m.successRate * 100)}% (${m.succeeded}/${m.attempted})`);
+                // Denominator MUST match the percentage, which excludes contended
+                // attempts (see the successRate definition — a busy barracks is not the
+                // model's mistake). Printing raw m.attempted here made "95% (374/402)"
+                // where 374/402 is 93%: the fraction contradicted its own percentage
+                // whenever contended > 0. Mirror the in-app summary (sum-metric) exactly.
+                L.push(`- Success rate: ${Math.round(m.successRate * 100)}% (${m.succeeded}/${m.attempted - (m.contended || 0)}${(m.contended || 0) ? ` · ${m.contended} not scored (timing)` : ''})`);
                 L.push(`- Format fidelity: ${Math.round(m.formatOk * 100)}%`);
                 L.push(`- Reasoning rate: ${Math.round(m.reasonRate * 100)}%`);
                 L.push(`- Reliability: ${Math.round(m.reliability * 100)}%`);
