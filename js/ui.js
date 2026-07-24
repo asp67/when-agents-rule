@@ -3184,8 +3184,17 @@ class UIManager {
     pickSimSpeed(mult) {
         const wrap = document.getElementById('simSpeedWrap');
         if (wrap) wrap.classList.remove('is-open');
+        // 0 is not a speed, it is the pause request. Kept on this control because that
+        // is where a spectator looks for "how fast is this going", and stopped is a
+        // point on that scale — but it never touches simSpeed, so the speed the match
+        // was running at is still there when it resumes.
+        if (mult === 0) { this.game.requestPause(); this.updateSimSpeedButton(); return; }
+        const wasPaused = this.game.pauseState !== 'running';
+        if (wasPaused) this.game.resumeSim();
         const cur = this.game.simSpeed || 1;
-        if (mult === cur) return;
+        // Resuming at the speed it was already set to is a real change (paused -> that
+        // speed), so the early-out only applies when nothing at all would happen.
+        if (mult === cur && !wasPaused) return;
         const apply = () => { this.game.setSimSpeed(mult); this.updateSimSpeedButton(); };
         if (mult > cur && !this._simSpeedWarned) {
             this._simSpeedWarned = true;
@@ -3205,17 +3214,33 @@ class UIManager {
         const set = this.game.simSpeed || 1;
         const eff = this.game.effectiveSimSpeed ? this.game.effectiveSimSpeed() : set;
         const locked = eff !== set;   // a Wonder is holding it at 1x
-        btn.textContent = `⏱ ${this.simSpeedLabel(set)}×`;
-        btn.classList.toggle('sb-on', set !== 1);
+        const pstate = this.game.pauseState || 'running';
+        // "Pausing" is its own face, not a spinner for politeness: between the press and
+        // the stop the match really is still running, and saying "paused" then would be
+        // the button lying about the world for as long as a slow endpoint takes.
+        if (pstate === 'paused')       btn.textContent = `⏸ ${t('spec.simPaused')}`;
+        else if (pstate === 'pausing') btn.textContent = `⏳ ${t('spec.simPausing')}`;
+        else                           btn.textContent = `⏱ ${this.simSpeedLabel(set)}×`;
+        btn.classList.toggle('sb-on', set !== 1 || pstate !== 'running');
+        btn.classList.toggle('is-paused', pstate !== 'running');
         // Say WHY it is not running at the chosen speed, rather than silently lying.
-        btn.classList.toggle('is-locked', locked);
-        btn.title = locked ? t('spec.simSpeedLocked', { s: String(set) }) : t('spec.simSpeedTitle');
+        btn.classList.toggle('is-locked', locked && pstate === 'running');
+        btn.title = pstate === 'pausing' ? t('spec.simPausingTitle')
+            : pstate === 'paused' ? t('spec.simPausedTitle')
+            : locked ? t('spec.simSpeedLocked', { s: String(set) }) : t('spec.simSpeedTitle');
         // Repainted on the arena clock's beat, so the decimal separator follows a
         // language switch mid-match without its own hook.
         document.querySelectorAll('#simSpeedMenu .sb-speed-opt').forEach(o => {
             const v = parseFloat(o.dataset.speed);
+            if (v === 0) {
+                o.textContent = `⏸ ${t('spec.simPause')}`;
+                o.classList.toggle('is-active', pstate !== 'running');
+                return;
+            }
             o.textContent = `${this.simSpeedLabel(v)}×`;
-            o.classList.toggle('is-active', v === set);
+            // While paused, no SPEED is the active one — the match is stopped, and
+            // highlighting 4x there would say it is running at 4x.
+            o.classList.toggle('is-active', v === set && pstate === 'running');
         });
     }
 

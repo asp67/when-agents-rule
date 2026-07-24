@@ -4961,7 +4961,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // leaves the number untouched, so the number alone would let that answer through.
     roundStillOpen(round) { return this._roundPhase === 'wait' && round === this._roundNo; }
 
-    updateTurnBased(now) {
+    updateTurnBased(now, pausing) {
         const live = this.aiControllers.filter(c => {
             if (this.isControllerDefeated(c)) { if (!c.defeated) this.markDefeated(c); return false; }
             return !c.paused;
@@ -4983,6 +4983,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             this._roundEndedAt = now;
             return;
         }
+        // A pause asked for mid-round is honoured HERE, at the boundary: the round that
+        // was already asked has just flushed above, and the next one is simply not
+        // opened. Pausing therefore always lands between rounds, never inside one.
+        if (pausing) return;
         // The same breather real-time turns get, so four fast endpoints cannot spin
         // rounds quicker than the game can show them.
         if (this._roundEndedAt && now - this._roundEndedAt < this.turnInterval) return;
@@ -5022,11 +5026,29 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // times a second so "seen on the map" always equals "known to the model".
         if (this._stopped) return; // match ended/restarted — issue no more turns
 
+        // PAUSE, in two beats. Beat one: stop opening anything new but keep updating,
+        // so answers already in flight arrive and — in turn-based — the round they
+        // belong to still flushes. Beat two: once no seat is waiting on a reply and no
+        // reply is waiting to be applied, the world is genuinely idle and freezes.
+        //
+        // Returning early on the press instead would strand every queued move: in
+        // turn-based they sit in queuedAction and only flushRound can spend them, so
+        // the gate has to let the round finish rather than jump the fence.
+        const pausing = !!(this.game && this.game.pauseState !== 'running');
+        if (pausing) {
+            const busy = this.aiControllers.some(c => c.pending || c.queuedAction);
+            if (!busy) {
+                this.game.pauseState = 'paused';
+                if (this.game.ui && this.game.ui.updateSimSpeedButton) this.game.ui.updateSimSpeedButton();
+                return;   // no messages sent, no turns issued, no time passing
+            }
+        }
+
         this.updateResourceDiscovery(now);
         this.updateEnemyBuildingDiscovery();
         this.updateAttackReports(now);
 
-        if (this.turnBased) { this.updateTurnBased(now); return; }
+        if (this.turnBased) { this.updateTurnBased(now, pausing); return; }
 
         for (const controller of this.aiControllers) {
             if (this.isControllerDefeated(controller)) {                       // lost its last Town Center
@@ -5034,6 +5056,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 continue;
             }
             if (controller.paused) continue;                                  // spectator paused it
+            if (pausing) continue;                                            // pause requested: open nothing new
             if (controller.pending) continue;                                 // own pipeline busy
             if (now - controller.lastTurnTime < this.turnInterval) continue;  // small breather
             this.startTurn(controller, now);

@@ -37,6 +37,12 @@ class Game {
         // DECISIONS a seat gets inside that countdown even though the countdown itself
         // scales correctly.
         this.simSpeed = 1;
+        // 'running' | 'pausing' | 'paused'. Pause is NOT speed zero: a request already
+        // sent cannot be unsent, so pressing pause asks to stop and the world keeps
+        // turning until every answer in flight has landed and been applied. Freezing on
+        // the press would throw those moves away, and the model would never learn that
+        // the turn it spent was discarded.
+        this.pauseState = 'running';
         // Seconds a finished Wonder must be HELD to win. Long enough that rivals get a
         // real window to march over and destroy it (a Wonder is an existential threat).
         this.wonderRequired = 600;
@@ -618,7 +624,8 @@ class Game {
 
         // Fine simulation in ≤100ms sub-steps so the FULL elapsed time is advanced.
         const STEP_MAX = 100;
-        let remaining = this.simBudget(simTime);
+        const budgeted = this.simBudget(simTime);
+        let remaining = budgeted;
         while (remaining > 0) {
             const step = Math.min(STEP_MAX, remaining);
             this.simulateStep(step);
@@ -642,7 +649,13 @@ class Game {
                 if (this.ui.updateOpponentsPanel) this.ui.updateOpponentsPanel();
             }
         }
-        this.checkWinConditions(simTime);
+        // The BUDGET, not raw elapsed time. A Wonder hold is the one clock that could
+        // run while the world stood still: it accumulates from whatever it is handed,
+        // and handing it real milliseconds meant a paused match could still be won by
+        // a Wonder nobody was defending and nobody could attack. (Outside a pause the
+        // two are identical whenever it matters — a standing Wonder already forces the
+        // sim to 1x — so this changes nothing else.)
+        this.checkWinConditions(budgeted);
 
         // Update minimap periodically (every ~500ms; skipped while hidden)
         if (!hidden) {
@@ -1599,8 +1612,25 @@ class Game {
     }
 
     simBudget(ms) {
+        if (this.pauseState === 'paused') return 0;
         return ms * (this.anyWonderStanding() ? 1 : (this.simSpeed || 1));
     }
+
+    // Pause takes effect only once nothing is in flight; the AI manager makes that call
+    // (it is the only thing that knows) and flips us to 'paused'.
+    requestPause() {
+        if (this.pauseState === 'running') this.pauseState = 'pausing';
+        if (this.ui && this.ui.updateSimSpeedButton) this.ui.updateSimSpeedButton();
+    }
+    resumeSim() {
+        this.pauseState = 'running';
+        // Elapsed time is measured from lastFrameTime, which has been advancing all
+        // through the pause. Without this the first tick back would hand the sim the
+        // entire pause as one catch-up and the match would jump.
+        this.lastFrameTime = Date.now();
+        if (this.ui && this.ui.updateSimSpeedButton) this.ui.updateSimSpeedButton();
+    }
+    isPaused() { return this.pauseState === 'paused'; }
 
     // Any Wonder on the map at all, finished or still going up — a rival can already
     // be marching at one that is half-built, so the race starts before it completes.
