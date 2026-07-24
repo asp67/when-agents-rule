@@ -530,6 +530,28 @@ class OpenAIAIManager {
 
     static get REASONING_EFFORTS() { return ['minimal', 'low', 'medium', 'high']; }
 
+    // How many plan steps a model may keep. Stated in the prompt AND enforced on the
+    // way in from this one place, because a cap advertised as one number and applied as
+    // another is the quiet kind of lie: the model would write the tenth step, be told
+    // nothing, and read back a plan missing its ending.
+    //
+    // Raised 5 -> 10 on measurement, not taste. Across 2825 plans in seven matches the
+    // length histogram piled up hard against the ceiling: 37.8% of ALL plans were
+    // exactly five steps, and per model it was minimax 94% at the cap, deepseek 94%,
+    // Sonnet 90%, grok 86% — while gpt-oss averaged 1.3 steps and never once reached
+    // it. Weak planners decay smoothly and never touch the limit; strong ones sit on
+    // it. One model was already returning 5.24 steps on average and being cut. That is
+    // a cap that binds only the models whose planning is worth reading.
+    //
+    // The price, measured against real token counts rather than guessed: the plan is
+    // echoed once per turn and is NOT stored in conversation history, so it does not
+    // compound — about +86 prompt tokens on a median 15,913 (+0.5%) and +83 completion
+    // tokens on a median 563 (+15%), roughly +1% of a match's tokens overall. The real
+    // cost is latency, since completion is generated serially: about +1.7s a turn for a
+    // mid-speed endpoint, which at a 30s round deadline moves ~1.5% of turns past it.
+    // Those now surface honestly as missed rounds rather than as invented unreliability.
+    static get PLAN_MAX_STEPS() { return 10; }
+
     // Keys the passthrough may not touch. Everything else is fair game — the point of the
     // escape hatch is the parameters this file does NOT model, and there will always be
     // more of those than it can chase. But these carry the conversation itself and the
@@ -2080,7 +2102,7 @@ Format: {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-l
 
 OPTIONAL TOP-LEVEL FIELDS (beside "action", not inside "params"):
 objective: String (1 line). Persists across turns; omit to keep current.
-plan: Array of up to 5 short strings. Persists across turns; omit to keep current.
+plan: Array of up to ${OpenAIAIManager.PLAN_MAX_STEPS} short strings. Persists across turns; omit to keep current.
 
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
@@ -3004,7 +3026,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         if (planArr) {
             controller.plan = planArr
                 .filter(s => typeof s === 'string' && s.trim())
-                .slice(0, 5)
+                .slice(0, OpenAIAIManager.PLAN_MAX_STEPS)
                 .map(s => s.trim().slice(0, 120));
         }
 
