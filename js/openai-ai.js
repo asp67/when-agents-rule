@@ -2440,6 +2440,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 // stored on the controller so stop() can abort it when the match ends.
                 const controllerAbort = new AbortController();
                 controller._abort = controllerAbort;
+                controller._deadlineAbort = false;   // cleared per attempt; set only by noteRoundMissed
                 const timeoutId = setTimeout(() => controllerAbort.abort(), this.requestTimeout);
                 try {
                     response = await fetch(apiUrl, {
@@ -2451,6 +2452,13 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     });
                 } catch (fetchErr) {
                     if (fetchErr.name === 'AbortError') {
+                        // Two very different aborts land here. Reporting the request
+                        // timeout for both produced "timed out after 180s" about a
+                        // request that was thirty seconds old, because the round
+                        // deadline — not this timeout — had fired.
+                        if (controller._deadlineAbort) {
+                            throw new Error(`round deadline reached after ${Math.round(this.roundTimeoutMs() / 1000)}s — the harness cancelled the request`);
+                        }
                         throw new Error(`timed out after ${Math.round(this.requestTimeout / 1000)}s`);
                     }
                     throw fetchErr;
@@ -2613,6 +2621,25 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     controller.stats.requests++;
                     controller.stats.contextOverflows = (controller.stats.contextOverflows || 0) + 1;
                 }
+                return null;
+            }
+            // OUR deadline, not their endpoint. Same standing as a context overflow
+            // directly above: a lost turn caused by the harness, counted visibly and
+            // kept out of the reliability score entirely.
+            //
+            // It used to be charged as an endpoint failure, and which KIND depended on
+            // whether the provider had sent response headers yet — an HTTP detail that
+            // says nothing about the model. In one match the same event was filed 44
+            // times as "network error" for a seat behind an aggregator (headers early,
+            // body streaming) and 3 times as "timeout" for a local seat (headers only
+            // once generation finished). The first lost 12 points of reliability; the
+            // second was labelled "Frequent timeouts" having never timed out.
+            //
+            // roundsMissed already counted this in noteRoundMissed, and it is the
+            // honest number: the seat was asked and did not answer in time.
+            if (controller._deadlineAbort) {
+                controller._deadlineAbort = false;
+                if (controller.stats) controller.stats.requests++;
                 return null;
             }
             // Behavior metrics: classify the failure
@@ -2985,7 +3012,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         if (controller.stats) {
             const st = controller.stats;
             st.actionsAttempted++;
-            st.actionCounts[action] = (st.actionCounts[action] || 0) + 1;
+            // Key by a STRING always. An object here was used as a key directly, so a
+            // model that sent {"action":{"type":"assign_workers",...}} put a chip
+            // reading "[object Object]" in the results next to the real actions — a
+            // shape error wearing the costume of an action the game has.
+            st.actionCounts[typeof action === 'string' ? action : '(malformed)'] =
+                (st.actionCounts[typeof action === 'string' ? action : '(malformed)'] || 0) + 1;
             // Counted as ATTEMPTED, matching actionCounts — the eco/military split is
             // about what the model chose to do, not whether it could afford it.
             if (action === 'train_unit' && String(params && params.unitType).toLowerCase() === 'worker') {
@@ -3119,7 +3151,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             if (controller.stats) {
                 const st = controller.stats;
                 if (rejected) {
-                    if (/Unknown action/i.test(actionResult)) st.invalidActions++;
+                    // "not a string" is an invented shape rather than an invented name,
+                    // but both are the model failing to produce a callable action, and
+                    // neither is a rejected game move. Same bucket.
+                    if (/Unknown action/i.test(actionResult)
+                        || /must be the action NAME as a string/i.test(actionResult)) st.invalidActions++;
                     else if (OpenAIAIManager.UNFOREWARNED.has(code)) st.actionsContended++;
                     else st.actionsRejected++;
                 } else {
@@ -4894,6 +4930,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     noteRoundMissed(controller) {
         const secs = Math.round(this.roundTimeoutMs() / 1000);
         if (controller.stats) controller.stats.roundsMissed = (controller.stats.roundsMissed || 0) + 1;
+        // Flag it BEFORE aborting: the rejection this causes is about to surface in
+        // sendToOpenAI's catch, which otherwise cannot tell our own scissors from a
+        // failing endpoint and used to bill the model for both.
+        controller._deadlineAbort = true;
         try { if (controller._abort) controller._abort.abort(); } catch (e) { /* already settled */ }
         const msg = `[TIMEOUT] Your answer did not arrive within ${secs}s of the state being sent, so this round was played without you. Every round gives every player the same ${secs}s; see clock.secondsToAnswer.`;
         controller.conversationHistory.push({

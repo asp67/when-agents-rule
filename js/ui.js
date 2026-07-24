@@ -2973,11 +2973,19 @@ class UIManager {
                 const lat = st.latencies;
                 const avg = lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0;
                 const ctxOv = st.contextOverflows || 0;
-                const responded = Math.max(0, st.requests - st.timeouts - st.networkErrors - ctxOv);
+                // Rounds the seat was asked but did not answer inside the deadline. The
+                // counter existed and was never read, so the fair number was collected
+                // and thrown away while an unfair one (see the deadline-abort branch in
+                // sendToOpenAI) was displayed in its place.
+                const missed = st.roundsMissed || 0;
+                const responded = Math.max(0, st.requests - st.timeouts - st.networkErrors - ctxOv - missed);
                 // Context overflows are lost turns caused by the HARNESS's budgeting,
                 // not the endpoint — count them visibly but keep them out of the
                 // model's reliability score (both numerator and denominator).
-                const reliabilityBase = Math.max(0, st.requests - ctxOv);
+                // Missed rounds leave BOTH sides, exactly like context overflows: the
+                // harness cut the request, so it is neither evidence for nor against the
+                // endpoint. Latency is reported as latency — that is what the mode is for.
+                const reliabilityBase = Math.max(0, st.requests - ctxOv - missed);
                 rep.metrics = {
                     decisions: st.requests, responded,
                     avgLatency: avg,
@@ -2989,7 +2997,7 @@ class UIManager {
                     // don't — raise maxTokens for that model.
                     truncated: st.truncatedReplies || 0,
                     noAction: st.noActionReturns || 0,
-                    contextOverflows: ctxOv,
+                    contextOverflows: ctxOv, roundsMissed: missed,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
                     contended: st.actionsContended || 0,
                     promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
@@ -3085,7 +3093,7 @@ class UIManager {
                     <div class="sum-tags">${tagsHtml}</div>
                     <div class="sum-metrics">
                         <div class="sum-metric"><span>⏱ ${t('sum.mResponse')}</span><b>${avgS.toFixed(1)}s</b><i>${(m.minLatency / 1000).toFixed(1)}–${(m.maxLatency / 1000).toFixed(1)}s</i></div>
-                        <div class="sum-metric"><span>\u{1F9E0} ${t('sum.mDecisions')}</span><b>${m.decisions}</b><i>${t('sum.mAnswered', { n: m.responded })}</i></div>
+                        <div class="sum-metric"><span>\u{1F9E0} ${t('sum.mDecisions')}</span><b>${m.decisions}</b><i>${t('sum.mAnswered', { n: m.responded })}${(m.roundsMissed || 0) ? ` · ${t('sum.missedRounds', { n: m.roundsMissed })}` : ''}</i></div>
                         <div class="sum-metric"><span>✅ ${t('sum.mSuccess')}</span><b>${Math.round(m.successRate * 100)}%</b><i>${m.succeeded}/${m.attempted - (m.contended || 0)}${(m.contended || 0) ? ` · ${t('sum.contended', { n: m.contended })}` : ''}</i></div>
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
@@ -3802,7 +3810,7 @@ class UIManager {
             const m = r.metrics;
             if (r.isLLM && m) {
                 L.push(`- Strategy score: ${r.soundness}/100`);
-                L.push(`- Decisions: ${m.decisions} (answered ${m.responded})`);
+                L.push(`- Decisions: ${m.decisions} (answered ${m.responded}${(m.roundsMissed || 0) ? ` · ${m.roundsMissed} missed the round deadline` : ''})`);
                 // Denominator MUST match the percentage, which excludes contended
                 // attempts (see the successRate definition — a busy barracks is not the
                 // model's mistake). Printing raw m.attempted here made "95% (374/402)"
