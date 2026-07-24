@@ -2978,14 +2978,19 @@ class UIManager {
                 // and thrown away while an unfair one (see the deadline-abort branch in
                 // sendToOpenAI) was displayed in its place.
                 const missed = st.roundsMissed || 0;
-                const responded = Math.max(0, st.requests - st.timeouts - st.networkErrors - ctxOv - missed);
+                // Turns lost to a rate limit the retry could not clear. Same standing as
+                // a context overflow or a missed round: really lost, so not "answered" —
+                // but caused by how fast the ACCOUNT is being driven, not by the model,
+                // so it must not read as the endpoint being unreachable.
+                const rlLost = st.rateLimitLost || 0;
+                const responded = Math.max(0, st.requests - st.timeouts - st.networkErrors - ctxOv - missed - rlLost);
                 // Context overflows are lost turns caused by the HARNESS's budgeting,
                 // not the endpoint — count them visibly but keep them out of the
                 // model's reliability score (both numerator and denominator).
                 // Missed rounds leave BOTH sides, exactly like context overflows: the
                 // harness cut the request, so it is neither evidence for nor against the
                 // endpoint. Latency is reported as latency — that is what the mode is for.
-                const reliabilityBase = Math.max(0, st.requests - ctxOv - missed);
+                const reliabilityBase = Math.max(0, st.requests - ctxOv - missed - rlLost);
                 rep.metrics = {
                     decisions: st.requests, responded,
                     avgLatency: avg,
@@ -2998,6 +3003,7 @@ class UIManager {
                     truncated: st.truncatedReplies || 0,
                     noAction: st.noActionReturns || 0,
                     contextOverflows: ctxOv, roundsMissed: missed,
+                    rateLimited: st.rateLimited || 0, rateLimitLost: rlLost,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
                     contended: st.actionsContended || 0,
                     promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
@@ -3846,7 +3852,7 @@ class UIManager {
                 L.push(`- Reasoning rate: ${Math.round(m.reasonRate * 100)}%`);
                 L.push(`- Reliability: ${Math.round(m.reliability * 100)}%`);
                 L.push(`- Latency: avg ${(m.avgLatency / 1000).toFixed(1)}s (min ${(m.minLatency / 1000).toFixed(1)}s, max ${(m.maxLatency / 1000).toFixed(1)}s)`);
-                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} (of which truncated ${m.truncated || 0}) · no-action ${m.noAction || 0} · invalid ${m.invalidActions} · rejected ${m.rejected} · contended ${m.contended || 0} · context-overflows ${m.contextOverflows || 0}`);
+                L.push(`- Errors: timeouts ${m.timeouts} · network ${m.networkErrors} · parse ${m.parseFails} (of which truncated ${m.truncated || 0}) · no-action ${m.noAction || 0} · invalid ${m.invalidActions} · rejected ${m.rejected} · contended ${m.contended || 0} · context-overflows ${m.contextOverflows || 0} · rate-limited ${m.rateLimited || 0} (of which cost a turn ${m.rateLimitLost || 0})`);
             L.push(`- Tokens: ${(m.promptTokens + m.completionTokens) ? `${m.promptTokens} prompt + ${m.completionTokens} completion = ${m.promptTokens + m.completionTokens}` : 'not reported by endpoint'}`);
                 if (r.tags && r.tags.length) L.push(`- Behavior: ${r.tags.map(x => x.t).join(', ')}`);
                 const actions = Object.entries(m.actionCounts || {}).sort((a, b) => b[1] - a[1])

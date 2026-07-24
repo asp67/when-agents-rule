@@ -64,6 +64,10 @@ class OpenAIAIManager {
             timeouts: 0,
             networkErrors: 0,
             contextOverflows: 0,  // request too big for the model's context (lost turn; endpoint fine)
+            rateLimited: 0,       // 429 RESPONSES seen, retried or not (endpoint fine; the ACCOUNT is going too fast)
+            rateLimitLost: 0,      // ...of those, TURNS the retry could not save. Two counters because one
+                                   // cannot answer both questions: "how much am I being throttled" and "how
+                                   // many turns did it actually cost me". A recovered 429 costs nothing.
             promptTokens: 0,      // cumulative token usage as reported by the provider
             completionTokens: 0,  // (0/0 when the endpoint doesn't report usage)
             parseFails: 0,        // response unusable: empty, truncated, or parser crashed
@@ -573,6 +577,34 @@ class OpenAIAIManager {
         });
         return body;
     }
+    // A 429, or a body that says so in words. Some gateways answer 200-with-an-error or
+    // dress a quota refusal as a 503, so the text is checked too — but only for phrases
+    // that cannot mean anything else.
+    static isRateLimited(status, errorText) {
+        if (status === 429) return true;
+        if (status !== 503 && status !== 500) return false;
+        return /rate.?limit|too many requests|quota exceeded|overloaded/i.test(String(errorText || ''));
+    }
+
+    // How long to wait before the one retry. Retry-After is authoritative when the
+    // server sends it (seconds, or an HTTP date), otherwise a short default. Clamped at
+    // both ends: zero would just re-hit the limit, and a server asking for two minutes
+    // must not park a seat past a round deadline it cannot see.
+    static retryAfterMs(headers, fallbackMs) {
+        let ms = fallbackMs;
+        try {
+            const raw = headers && typeof headers.get === 'function' ? headers.get('Retry-After') : null;
+            if (raw != null && String(raw).trim() !== '') {
+                const secs = Number(raw);
+                if (isFinite(secs)) ms = secs * 1000;
+                else { const when = Date.parse(String(raw)); if (isFinite(when)) ms = when - Date.now(); }
+            }
+        } catch (e) { /* header unreadable — use the fallback */ }
+        if (!isFinite(ms) || ms < 250) ms = 250;
+        return Math.min(ms, OpenAIAIManager.RATE_LIMIT_MAX_WAIT_MS);
+    }
+    static get RATE_LIMIT_MAX_WAIT_MS() { return 8000; }
+
     static get ANTHROPIC_MIN_THINKING() { return 1024; }
 
     // Anthropic requires max_tokens to EXCEED the thinking budget, and the budget to be
@@ -1106,6 +1138,22 @@ class OpenAIAIManager {
             this.aiControllers.push(controller);
             console.log(`[OpenAIAI] Assigned model "${modelInfo.name}" (${modelInfo.endpoint}) to AI "${ai.civilization}" (${ai.id})`);
         }
+
+        // Two seats can legitimately run the SAME library entry — one OpenRouter key,
+        // one model, two civs — and then they shared a display name outright. The
+        // results table and the transcript both key their human-readable identity off
+        // it, so two rows read "OR grok" and only the civ told them apart. Suffix only
+        // the names that actually collide, so the common case is untouched.
+        const nameTally = {};
+        this.aiControllers.forEach(c => { nameTally[c.model.name] = (nameTally[c.model.name] || 0) + 1; });
+        const nameSeen = {};
+        this.aiControllers.forEach(c => {
+            const n = c.model.name;
+            if (nameTally[n] > 1) {
+                nameSeen[n] = (nameSeen[n] || 0) + 1;
+                c.model.name = `${n} #${nameSeen[n]}`;
+            }
+        });
 
         console.log(`[OpenAIAI] Initialized ${this.aiControllers.length} LLM controllers from Arena setup`);
     }
@@ -2451,7 +2499,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             let response, apiUrl, body;
             // At most two passes: the second only happens when the endpoint named a
             // parameter we know how to change. Anything else surfaces unchanged.
-            for (let attempt = 0; attempt < 2; attempt++) {
+            // Three passes, but the two reasons to spend one are independent: a
+            // parameter the endpoint refuses (learned once, below) and a rate limit.
+            // Tracked as booleans rather than by attempt number, so a 429 on the first
+            // pass cannot eat the one chance to adapt a bad parameter.
+            let rateRetried = false, adapted = false;
+            for (let attempt = 0; attempt < 3; attempt++) {
                 const req = OpenAIAIManager.buildChatRequest(
                     provider, model.endpoint, model.model || 'default', systemPrompt, turns, reqOpts());
                 apiUrl = req.url; body = req.body;
@@ -2490,9 +2543,36 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 if (response.ok) break;
 
                 const errorText = await response.text();
-                const fix = (response.status === 400 && attempt === 0)
+
+                // RATE LIMIT. Not a broken endpoint and not a bad parameter — the
+                // account is simply going too fast, which is precisely what happens when
+                // several seats share one key. Worth its own handling because the shape
+                // of this harness's traffic invites it: turn-based asks every seat in the
+                // same millisecond (measured at 95-99% of requests inside 250ms of
+                // another), so a burst limit does not cost one seat a turn, it costs the
+                // whole round — every seat 429s together and the round flushes empty.
+                //
+                // One retry, because a second would push a seat past a deadline it
+                // cannot see and turn a recoverable blip into a missed round anyway.
+                if (OpenAIAIManager.isRateLimited(response.status, errorText) && !rateRetried) {
+                    rateRetried = true;
+                    if (controller.stats) controller.stats.rateLimited = (controller.stats.rateLimited || 0) + 1;
+                    const waitMs = OpenAIAIManager.retryAfterMs(response.headers, 1200);
+                    console.warn(`[OpenAIAI] ${ai.id}: rate limited (${response.status}) — retrying once in ${waitMs}ms`);
+                    await new Promise(r => setTimeout(r, waitMs));
+                    // The round may have moved on while we waited. Retrying into a
+                    // question nobody is asking any more wastes a call and can only
+                    // produce an answer roundStillOpen would throw away.
+                    if (this._stopped || controller._deadlineAbort) {
+                        throw new Error(`rate limited (${response.status}); the round moved on during backoff`);
+                    }
+                    continue;
+                }
+
+                const fix = (response.status === 400 && !adapted)
                     ? OpenAIAIManager.adaptToApiError(model._reqOpts, errorText) : null;
                 if (!fix) throw new Error(`API error (${response.status}): ${errorText}`);
+                adapted = true;
                 Object.assign(model._reqOpts, fix);
                 try { model._onLearn(fix); } catch (e) { /* display only */ }
                 console.warn(`[OpenAIAI] ${ai.id}: endpoint rejected a parameter, retrying with`,
@@ -2662,6 +2742,22 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             if (controller._deadlineAbort) {
                 controller._deadlineAbort = false;
                 if (controller.stats) controller.stats.requests++;
+                return null;
+            }
+            // A rate limit that outlived its retry. Counted where it can be seen and
+            // acted on — split the key, slow the tempo — but kept out of the endpoint's
+            // reliability, which is meant to answer "can this model be reached", not
+            // "did the operator run four seats through one key".
+            if (/rate limited \(|API error \(429\)/.test(err.message || '')) {
+                if (controller.stats) {
+                    controller.stats.requests++;
+                    controller.stats.rateLimited = (controller.stats.rateLimited || 0) + 1;
+                    // The turn is gone. It has to be subtracted from "answered" as well,
+                    // or a seat that was throttled off the board reads as having replied
+                    // to every question it was asked.
+                    controller.stats.rateLimitLost = (controller.stats.rateLimitLost || 0) + 1;
+                }
+                controller.lastActionResult = `[ERROR] The endpoint refused this turn with a rate limit and the retry did not clear it. Nothing was executed; continue normally.`;
                 return null;
             }
             // Behavior metrics: classify the failure
