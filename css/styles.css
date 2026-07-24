@@ -2217,6 +2217,10 @@ body.spectator-mode #unitInfo.spectator-card {
    speed stays visible and the tooltip explains why it is not in effect. */
 .sb-speed { min-width: 60px; font-variant-numeric: tabular-nums; }
 .sb-speed.is-locked { opacity: 0.55; text-decoration: line-through; }
+/* A speed a standing Wonder is holding out of reach. Struck rather than removed or
+   disabled: picking one still records it for when the Wonder falls, and taking that
+   away would cost a real capability to fix a display problem. */
+.sb-speed-opt.is-held { opacity: 0.5; text-decoration: line-through; }
 
 /* All three speeds on hover (or a click, for touch) instead of a cycle button: going
    from 1x to 2x used to mean passing THROUGH 1.5x and simulating at it on the way.

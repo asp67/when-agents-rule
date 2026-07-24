@@ -3219,7 +3219,14 @@ class UIManager {
         if (!btn || !this.game) return;
         const set = this.game.simSpeed || 1;
         const eff = this.game.effectiveSimSpeed ? this.game.effectiveSimSpeed() : set;
-        const locked = eff !== set;   // a Wonder is holding it at 1x
+        const locked = eff !== set;   // showing a speed that is NOT the one running
+        // Whether a Wonder is holding the tempo at all — which is a different question
+        // from whether the DISPLAYED number is wrong. At 2x or 4x the two coincide and
+        // the struck button said so, but at 1x "chosen" and "running" agree, so every
+        // signal went quiet: the control looked entirely normal while three of its five
+        // options were unreachable. The state has to be readable at 1x too.
+        const heldByWonder = (typeof this.game.anyWonderStanding === 'function')
+            ? this.game.anyWonderStanding() : locked;
         const pstate = this.game.pauseState || 'running';
         // "Pausing" is its own face, not a spinner for politeness: between the press and
         // the stop the match really is still running, and saying "paused" then would be
@@ -3233,7 +3240,11 @@ class UIManager {
         btn.classList.toggle('is-locked', locked && pstate === 'running');
         btn.title = pstate === 'pausing' ? t('spec.simPausingTitle')
             : pstate === 'paused' ? t('spec.simPausedTitle')
-            : locked ? t('spec.simSpeedLocked', { s: String(set) }) : t('spec.simSpeedTitle');
+            // Two different sentences, because "returns to 1x once it falls" is not a
+            // thing to tell someone already running at 1x.
+            : locked ? t('spec.simSpeedLocked', { s: String(set) })
+            : heldByWonder ? t('spec.simSpeedHeld')
+            : t('spec.simSpeedTitle');
         // Repainted on the arena clock's beat, so the decimal separator follows a
         // language switch mid-match without its own hook.
         document.querySelectorAll('#simSpeedMenu .sb-speed-opt').forEach(o => {
@@ -3247,6 +3258,14 @@ class UIManager {
             // While paused, no SPEED is the active one — the match is stopped, and
             // highlighting 4x there would say it is running at 4x.
             o.classList.toggle('is-active', v === set && pstate === 'running');
+            // Anything above 1x is out of reach while a Wonder stands. The menu offered
+            // all four as though the choice were open, which is where the control was
+            // least honest: this is the exact moment a spectator opens it to speed
+            // through a hold. Still clickable — the pick is remembered for when the
+            // Wonder falls — but no longer pretending to be available now.
+            const held = heldByWonder && v > 1;
+            o.classList.toggle('is-held', held);
+            o.title = held ? t('spec.simSpeedHeldOpt') : '';
         });
     }
 
