@@ -5066,11 +5066,28 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             error: msg.replace(/^\[TIMEOUT\]\s*/, ''), lang: controller.model && controller.model.language,
             outcomeCode: 'log.out.roundMissed', outcomeParams: { secs }
         });
-        // NOT written to the transcript. record() increments the turn counter and seals
-        // the open turn, so a miss would be indistinguishable from a turn that happened
-        // and would inflate turnsFor(). The transcript therefore still skips a missed
-        // round silently — worth its own fix, since reading one back you cannot tell a
-        // slow seat from one that was never asked.
+        // On file as a MARKER, not a turn. record() would increment the turn counter and
+        // make a skipped round indistinguishable from a move, inflating turnsFor() and
+        // the decision count with it — so note() appends without touching either.
+        //
+        // The absence was unreadable in the other direction too. One seat in a real match
+        // had 871 seconds between snapshots, and nothing on file said whether it had been
+        // asked twenty times and missed them all or simply thought once. Those are
+        // opposite conclusions about a model, and a transcript meant to be handed on
+        // should not leave the reader to guess between them.
+        if (this.transcripts) {
+            const t0 = (this.game && this.game._timeline && this.game._timeline.t0) || Date.now();
+            this.transcripts.note(controller.aiPlayer && controller.aiPlayer.id, {
+                type: 'round_missed',
+                at: Date.now(),
+                round: this._roundNo,
+                // Same clock as every state snapshot and the timeline graph, so a reader
+                // can place the gap on the curve without converting anything.
+                matchSeconds: Math.max(0, Math.round((Date.now() - t0) / 1000)),
+                deadlineSeconds: secs,
+                note: msg
+            });
+        }
     }
 
     // Is the question this answer was given to still the one on the table? Both halves

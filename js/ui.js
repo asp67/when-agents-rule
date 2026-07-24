@@ -3123,6 +3123,22 @@ class UIManager {
             difficulty: game.difficulty || 'easy'
         };
 
+        // Append the outcome and the curve to the transcript, so one file carries the
+        // conditions, every exchange, the result and the graph — a match can be handed
+        // on and read end to end without a second download. The markdown export stays
+        // exactly as it was for anyone who wants only that.
+        //
+        // Guarded on !snapshot: the Results button opens this mid-match with numbers
+        // that are not final, and a second results line would leave a reader guessing
+        // which one counts.
+        if (!snapshot) {
+            const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+            if (rec && rec.hasData && rec.hasData()) {
+                try { rec.finish([this.publicResults(this._lastSummary), this.publicTimeline()]); }
+                catch (e) { console.warn('[transcript] summary tail failed', e); }
+            }
+        }
+
         // Snapshot: Back returns to the running game; hide the terminal
         // navigation so a live match can't be abandoned by accident. A real end
         // (also when it fires WHILE a snapshot is open) restores the buttons.
@@ -3822,6 +3838,82 @@ class UIManager {
     }
 
     // Build a human-readable Markdown report of the last match.
+    // The results, as data rather than prose, for the transcript tail.
+    //
+    // A WHITELIST, and not for tidiness: a report object carries `ai`, the live
+    // aiPlayer, whose units and buildings hold references back into the game.
+    // JSON.stringify on one would either hit a circular reference or quietly embed a
+    // slice of the running match in a file meant to be handed to someone else. Every
+    // field here is named on purpose, so a field added to reports later is missing from
+    // the record rather than leaking into it — the same rule the per-seat settings block
+    // already follows (see OpenAIAIManager.publicModelSettings).
+    publicResults(summary) {
+        if (!summary) return null;
+        const s = summary;
+        return {
+            type: 'results',
+            at: Date.now(),
+            outcome: s.reason || null,
+            duration: s.durStr || null,
+            playerCount: s.playerCount || 0,
+            mapSeed: s.mapSeed || null,
+            difficulty: s.difficulty || null,
+            // Which build produced these numbers. The metrics below are what THIS
+            // version reported; if a definition changes later a recomputation will
+            // disagree, and that is correct — but only if the reader can tell which
+            // rules were in force.
+            build: this.buildVersion(),
+            promptVersion: this.ARENA_PROMPT_VERSION || null,
+            ranking: (s.reports || []).map((r, i) => ({
+                rank: i + 1,
+                playerId: (r.ai && r.ai.id) || null,   // the id, never the object
+                civ: (r.ai && r.ai.civilization) || null,
+                civName: r.civName || null,
+                model: r.model || null,
+                isLLM: !!r.isLLM,
+                isWinner: !!r.isWinner,
+                alive: !!r.alive,
+                power: r.power || 0,
+                soundness: r.soundness || 0,
+                age: r.ageName || null,
+                workers: r.workers || 0, military: r.military || 0, buildings: r.buildings || 0,
+                resources: { food: r.food || 0, wood: r.wood || 0, stone: r.stone || 0, gold: r.gold || 0 },
+                modelConfig: r.modelConfig || null,     // already endpoint/key-free by design
+                tags: (r.tags || []).map(x => x && x.t).filter(Boolean),
+                metrics: r.metrics ? Object.assign({}, r.metrics, {
+                    // Drop the raw latency array: hundreds of numbers per seat that the
+                    // min/avg/max beside them already summarise.
+                    latencies: undefined
+                }) : null
+            }))
+        };
+    }
+
+    // The curve behind the result. Plain numbers already — samples every 5s plus the
+    // three event arrays (age advances, exhausted node types, wonder events) that turn
+    // the graph from a description into an explanation. Its "t" is seconds from the same
+    // origin as every snapshot's clock.matchSeconds, so a replay can put a playhead on
+    // the graph with no conversion and no drift.
+    publicTimeline() {
+        const tl = this.game && this.game._timeline;
+        if (!tl) return null;
+        return {
+            type: 'timeline', t0: tl.t0 || null, intervalMs: Game.TIMELINE_MS,
+            samples: tl.samples || [], ages: tl.ages || [],
+            exhausted: tl.exhausted || [], wonders: tl.wonders || []
+        };
+    }
+
+    // Which build is running, read off a loaded script rather than kept as a constant —
+    // a constant is a second place to bump and would drift from the files it names.
+    buildVersion() {
+        try {
+            const el = document.querySelector('script[src*="js/game.js"]');
+            const m = el && String(el.getAttribute('src') || '').match(/[?&]v=(\d+)/);
+            return m ? Number(m[1]) : null;
+        } catch (e) { return null; }
+    }
+
     buildResultsMarkdown(summary) {
         const { reports, reason, durStr, playerCount } = summary;
         const d = new Date();
