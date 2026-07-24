@@ -172,6 +172,18 @@ class Game {
         }
 
         this.spectatorMode = true;
+        // Tempo is per MATCH, not per session. It used to carry over, so a 4x left on
+        // from the last run silently applied to the next one — and speed is not a
+        // cosmetic preference here: it decides how many turns each seat gets inside the
+        // same countdown, which is the thing that decides races. A result whose tempo
+        // was inherited from a match the viewer may not even remember starting is a
+        // result they cannot read. Same for a pause: a new match must not begin frozen.
+        this.setSimSpeed(1);
+        this.pauseState = 'running';
+        // And the speed-up confirmation is documented as "once per match" — it was
+        // stored on the UI and never cleared, so it was really once per session and
+        // every match after the first sped up without a word.
+        if (this.ui) this.ui._simSpeedWarned = false;
         this.ui.showScreen('gameScreen');
         this.gameStarted = true;
 
