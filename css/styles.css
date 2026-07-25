@@ -2411,6 +2411,8 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-seat { background:#1a2430; color:#bcd; border:1px solid rgba(255,255,255,0.14);
     border-radius:5px; font-size:0.7em; padding:2px 4px; max-width:100%; }
 .an-nav { display:flex; gap:3px; }
+.an-list:focus { outline:none; border-color:rgba(78,204,163,0.5); }
+.an-list:focus-visible { outline:none; border-color:rgba(78,204,163,0.7); }
 .an-list { overflow-y:auto; min-height:0; flex:1 1 auto;
     border:1px solid rgba(255,255,255,0.08); border-radius:6px; background:rgba(0,0,0,0.24); }
 .an-row { display:flex; align-items:center; gap:5px; padding:3px 6px; cursor:pointer;

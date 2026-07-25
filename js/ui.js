@@ -3968,7 +3968,14 @@ class UIManager {
         this.anRender();
     }
     // A deliberate jump takes over from playback rather than fighting it.
-    anSeek(i) { this.anStopPlay(); if (this.analyzer) { this.analyzer.seek(i); this.anRender(); } }
+    // Focus follows the click, so arrows continue where the reader just was rather than
+    // going back to panning the map.
+    anSeek(i) {
+        this.anStopPlay();
+        if (this.analyzer) { this.analyzer.seek(i); this.anRender(); }
+        const list = document.getElementById('anList');
+        if (list && list.focus) list.focus({ preventScroll: true });
+    }
     anStep(d) { if (this.analyzer) { this.analyzer.step(d); this.anRender(); } }
     anJumpSec(sec) { this.anStopPlay(); if (this.analyzer) { this.analyzer.seekSeconds(sec); this.anRender(); } }
 
@@ -3992,6 +3999,37 @@ class UIManager {
         this.anRender();
     }
 
+
+    // Arrow keys belong to whatever the reader is pointing at. The renderer binds keydown
+    // on DOCUMENT — which is right for a game where the map is the only thing there — so
+    // in the analyzer the camera panned no matter where focus was, and pressing Down in
+    // the turn list scrolled the map instead of the list. Worse, it did BOTH at once.
+    //
+    // Fixed by owning the keys in the lower deck rather than by touching the engine: a
+    // CAPTURE listener on the reading half sees the event before it can bubble to
+    // document, acts on it, and stops it there. Focus in the stage is untouched, so the
+    // map keeps the full arena camera.
+    anBindKeys() {
+        const lower = document.querySelector('#analyzeScreen .an-lower');
+        if (!lower || this._anKeysBound) return;
+        this._anKeysBound = true;
+        lower.addEventListener('keydown', (ev) => {
+            const k = String(ev.key || '').toLowerCase();
+            const arrows = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+            if (arrows.indexOf(k) === -1) return;
+            // Typing in a control is not navigating: a select needs its own arrows.
+            const tag = (ev.target && ev.target.tagName) || '';
+            if (tag === 'SELECT' || tag === 'INPUT' || tag === 'TEXTAREA') return;
+            ev.preventDefault();
+            ev.stopPropagation();   // ...and never reaches the renderer's document handler
+            // A key already held when focus moved in would otherwise pan forever, since
+            // its keyup is about to be swallowed too.
+            const r = this.game.renderer;
+            if (r && r.keysPressed) arrows.forEach(a2 => { r.keysPressed[a2] = false; });
+            if (k === 'arrowdown' || k === 'arrowright') this.anStep(1);
+            else this.anStep(-1);
+        }, true);
+    }
     anRender() {
         const a = this.analyzer;
         const body = document.getElementById('anBody');
@@ -4139,6 +4177,7 @@ class UIManager {
         this.game.spectatorMode = true;
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
         this.anBindPick();
+        this.anBindKeys();
     }
 
     anUnmountStage() {
