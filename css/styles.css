@@ -2354,7 +2354,10 @@ body.spectator-mode #unitInfo.spectator-card {
    same canvas the arena uses, moved here — so the view, the camera and the feel are
    the arena's rather than an imitation of it.
    --------------------------------------------------------------------------- */
-#analyzeScreen { display:flex; flex-direction:column; overflow:hidden; }
+/* .active-scoped: a bare #analyzeScreen rule is ID-specificity and beat BOTH
+   .screen{display:none} and .screen.active, so this screen was displayed over every
+   other one — its header sat on the start screen and swallowed Play and Tutorial. */
+#analyzeScreen.active { display:flex; flex-direction:column; overflow:hidden; }
 
 /* Transparent and thin: it sits over the match, so it must not become furniture. */
 .an-bar { flex:0 0 auto; display:flex; align-items:center; gap:12px; flex-wrap:wrap;
