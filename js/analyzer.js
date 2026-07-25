@@ -201,6 +201,20 @@ class TranscriptAnalyzer {
         this.nodeIndex.sort((a, b) => a.firstSec - b.firstSec);
     }
 
+
+    // What age a seat had reached at a given moment, from its OWN snapshot. Enemy
+    // entries in the state carry no age of their own, so this is the only way to build
+    // a rival's structures as they actually looked.
+    epochAt(seatId, sec) {
+        const st = this.seats.get(seatId);
+        if (!st) return 'stone';
+        let last = null;
+        for (const r of st.turns) {
+            if (r.type) continue;
+            if (r._sec <= sec) last = r; else break;
+        }
+        return (last && last.state && last.state.epoch && last.state.epoch.currentEpoch) || 'stone';
+    }
     // Everything to draw for one moment. `union` decides whose eyes: a single seat is
     // the honest reconstruction of what that model could see, the union is the analyst's
     // overview that no player ever had. Both are useful and they are different claims,
@@ -263,15 +277,42 @@ class TranscriptAnalyzer {
                     });
                 }
             }
+            // When each enemy BUILDING was last actually seen. The harness remembers
+            // rivals' buildings indefinitely and hands them over with visible:false, but
+            // never says when the sighting was — and a remembered structure has to be
+            // drawn as it looked THEN, not as a stone-age hut and not as it looks now.
+            const bLastSeen = new Map(), bFirstKnown = new Map();
+            if (seat) {
+                for (const r of seat.turns) {
+                    if (r.type) continue;
+                    if (r._sec > sec) break;
+                    ((r.state && r.state.enemyBuildings) || []).forEach(b => {
+                        const k = String(b.id);
+                        if (!bFirstKnown.has(k)) bFirstKnown.set(k, r._sec);
+                        if (b.visible !== false) bLastSeen.set(k, r._sec);
+                    });
+                }
+            }
             const liveIds = new Set((st.enemyUnits || []).map(u => String(u.id)));
-            (st.enemyUnits || []).forEach(u => out.enemies.push(Object.assign({}, u, { confirmed: true })));
+            // Seen right now: the owner's age right now, so a rival that has aged up
+            // since the last sighting is redrawn the moment it comes back into view.
+            (st.enemyUnits || []).forEach(u => out.enemies.push(Object.assign({}, u, {
+                confirmed: true, epochWhenSeen: this.epochAt(u.owner, sec) })));
             remembered.forEach((v, id) => {
                 if (liveIds.has(id)) return;   // seen right now: already added as confirmed
-                out.enemies.push(Object.assign({}, v.e, { confirmed: false, lastSeenSec: v.at }));
+                out.enemies.push(Object.assign({}, v.e, {
+                    confirmed: false, lastSeenSec: v.at,
+                    epochWhenSeen: this.epochAt(v.e.owner, v.at) }));
             });
             // Buildings carry their own confirmed flag from the harness.
-            (st.enemyBuildings || []).forEach(b =>
-                out.enemies.push(Object.assign({}, b, { confirmed: b.visible !== false, isBuilding: true })));
+            (st.enemyBuildings || []).forEach(b => {
+                const k = String(b.id);
+                const seenAt = (b.visible !== false) ? sec
+                    : (bLastSeen.has(k) ? bLastSeen.get(k) : (bFirstKnown.has(k) ? bFirstKnown.get(k) : sec));
+                out.enemies.push(Object.assign({}, b, {
+                    confirmed: b.visible !== false, isBuilding: true, lastSeenSec: seenAt,
+                    epochWhenSeen: this.epochAt(b.owner, seenAt) }));
+            });
         }
         return out;
     }

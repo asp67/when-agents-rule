@@ -4422,7 +4422,12 @@ class UIManager {
         if (!a.union) {
             sc.enemies.forEach(e => {
                 const owner = a.seats.get(e.owner) || {};
-                const oage = owner.epoch || 'stone';
+                // The seats MAP has no epoch — only the scene's seat objects do — so this
+                // read undefined and every rival building came out a stone-age hut, then
+                // stayed one when it was seen again. The sighting now carries the age its
+                // owner was in at the moment it was seen: current for something in view,
+                // the age at last contact for something merely remembered.
+                const oage = e.epochWhenSeen || 'stone';
                 const isB = e.isBuilding || (e.healthPct !== undefined &&
                     /town_center|barracks|temple|market|house|farm|pyramid|akropolis|firetemple|shrine|range|stable|tower|wonder/i.test(e.type || ''));
                 // Translucent when the position is only remembered — for units as well as
