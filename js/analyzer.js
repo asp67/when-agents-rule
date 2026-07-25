@@ -96,6 +96,7 @@ class TranscriptAnalyzer {
             this.seats.get(r.playerId).turns.push(r);
         });
 
+        this._disambiguateSeats();
         this._carryForward();
         this._indexNodes();
         this._buildChapters();
@@ -103,6 +104,26 @@ class TranscriptAnalyzer {
         return this;
     }
 
+
+    // Every transcript written before this was fixed lists the raw model names in its
+    // header while its results block ranks the suffixed ones — so a match between two
+    // copies of one model opens with two identical rows in the seat filter and no way
+    // to tell which is which. The same rule is applied here, in seat order, so an old
+    // file reads the way its own results block already does.
+    _disambiguateSeats() {
+        const rows = [...this.seats.values()].sort((a, b) => (a.seat || 0) - (b.seat || 0));
+        const tally = {};
+        rows.forEach(r => { const n = r.name || r.model; if (n) tally[n] = (tally[n] || 0) + 1; });
+        const seen = {};
+        rows.forEach(r => {
+            const n = r.name || r.model;
+            if (!n || tally[n] < 2) return;
+            seen[n] = (seen[n] || 0) + 1;
+            // Already suffixed by a newer recorder: leave it exactly as written.
+            if (/ #\d+$/.test(n)) return;
+            r.name = `${n} #${seen[n]}`;
+        });
+    }
     // objective and plan PERSIST across turns — "omit to keep current" — so about one
     // turn in ten carries neither while very much having both. Reading only what is on
     // the line would show a blank plan that is not blank, which is the same class of lie

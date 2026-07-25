@@ -1012,6 +1012,26 @@ class OpenAIAIManager {
         this._roundStartedAt = 0;
         this._roundEndedAt = 0;
 
+        // Two seats on the same model share a display name, so it is suffixed #1/#2.
+        // This used to run AFTER the controllers were built, ~120 lines below — by which
+        // time the transcript header had already been written with the raw names. The
+        // file then contradicted itself: a results block ranking "gpt-oss #1" and "#2"
+        // over a header listing "gpt-oss" twice, so every reader of the header saw two
+        // seats wearing one name. Named once, here, ahead of both — and outside the
+        // recorder's guard, so it cannot go stale from a previous match.
+        const displayName = i => {
+            const c = setup[i].connection;
+            return c ? (c.name || c.model || `Player ${i + 1}`) : `Player ${i + 1}`;
+        };
+        const nameTally = {};
+        setup.forEach((s2, i) => { const n = displayName(i); nameTally[n] = (nameTally[n] || 0) + 1; });
+        const nameSeen = {};
+        this._seatNames = setup.map((s2, i) => {
+            const n = displayName(i);
+            if (nameTally[n] < 2) return n;
+            nameSeen[n] = (nameSeen[n] || 0) + 1;
+            return `${n} #${nameSeen[n]}`;
+        });
         // Transcript recording, always on. begin() purges whatever the previous match
         // left behind, so a crash or a "Hauptmenü" reload (which cannot be relied on to
         // finish an async delete during unload) still yields a clean slate here.
@@ -1037,7 +1057,8 @@ class OpenAIAIManager {
                     // hundreds of models played, so it must not be guessable-looking
                     // when it is absent. null means none was configured.
                     model: c ? (String(c.model || '').trim() || null) : 'ki',
-                    name: c ? c.name : null,
+                    // The name the results block will use, so the two agree.
+                    name: c ? this._seatNames[i] : null,
                     settings: c ? OpenAIAIManager.publicModelSettings(c, s, sharedPrompt) : null
                 };
             }), {
@@ -1078,7 +1099,7 @@ class OpenAIAIManager {
 
             const modelInfo = {
                 id: `openai-ai-${i}`,
-                name: conn.name || conn.model || `Player ${i + 1}`,
+                name: (this._seatNames && this._seatNames[i]) || conn.name || conn.model || `Player ${i + 1}`,
                 endpoint: conn.endpoint,
                 provider: conn.provider || 'auto',
                 auth: conn.auth || { type: 'none' },
@@ -1140,20 +1161,7 @@ class OpenAIAIManager {
         }
 
         // Two seats can legitimately run the SAME library entry — one OpenRouter key,
-        // one model, two civs — and then they shared a display name outright. The
-        // results table and the transcript both key their human-readable identity off
-        // it, so two rows read "OR grok" and only the civ told them apart. Suffix only
-        // the names that actually collide, so the common case is untouched.
-        const nameTally = {};
-        this.aiControllers.forEach(c => { nameTally[c.model.name] = (nameTally[c.model.name] || 0) + 1; });
-        const nameSeen = {};
-        this.aiControllers.forEach(c => {
-            const n = c.model.name;
-            if (nameTally[n] > 1) {
-                nameSeen[n] = (nameSeen[n] || 0) + 1;
-                c.model.name = `${n} #${nameSeen[n]}`;
-            }
-        });
+        // (Colliding names were suffixed #1/#2 before the header was written, above.)
 
         console.log(`[OpenAIAI] Initialized ${this.aiControllers.length} LLM controllers from Arena setup`);
     }
