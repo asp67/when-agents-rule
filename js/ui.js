@@ -4170,9 +4170,15 @@ class UIManager {
         // Units and buildings, built through the game's own factories so they get the
         // right civ mesh, colour and stats instead of a hand-rolled lookalike.
         sc.seats.forEach(s => {
+            // The epoch decides how a building LOOKS, and createBuilding defaults it to
+            // 'stone' when nobody says otherwise — which is why an Iron-Age wonder stood
+            // in a field of stone-age tents. Each seat carries its own epoch at this
+            // moment, and they differ: one match had gpt-oss in iron while ornith was
+            // still bronze.
+            const age = s.epoch || 'stone';
             s.buildings.forEach(b => {
                 const ent = (typeof createBuilding === 'function')
-                    ? createBuilding(b.type, b.x, b.z, s.id, s.civilization, { instant: true }) : null;
+                    ? createBuilding(b.type, b.x, b.z, s.id, s.civilization, { instant: true, age }) : null;
                 if (!ent) return;
                 ent.seat = s.seat;
                 ent.underConstruction = false;
@@ -4181,7 +4187,7 @@ class UIManager {
             });
             s.units.forEach(u => {
                 const ent = (typeof createUnit === 'function')
-                    ? createUnit(u.type, u.x, u.z, s.id, s.civilization, 'iron') : null;
+                    ? createUnit(u.type, u.x, u.z, s.id, s.civilization, age) : null;
                 if (!ent) return;
                 // createUnit resolves the seat from the LIVE game, which has no idea
                 // about a recorded match — so the badge is set from the transcript.
@@ -4192,18 +4198,25 @@ class UIManager {
             });
         });
 
-        // Enemy sightings, single-seat view only: what this model could see, standing
-        // where it last saw them.
+        // Enemies, single-seat view only. Both kinds are drawn — a remembered position is
+        // information the model had and acted on, so leaving it out shows less than the
+        // model knew. What separates them is the FOG: only confirmed sightings get their
+        // surroundings revealed below, so a remembered one stays in the dim explored tier
+        // and reads as the stale claim it is. That is the game's own convention for
+        // "I remember this", rather than a second fading mechanism beside it.
         if (!a.union) {
             sc.enemies.forEach(e => {
                 const owner = a.seats.get(e.owner) || {};
-                if (e.healthPct !== undefined && /town_center|barracks|temple|market|house|farm|pyramid|akropolis|firetemple|shrine|range|stable|tower|wonder/i.test(e.type || '')) {
+                const oage = owner.epoch || 'stone';
+                const isB = e.isBuilding || (e.healthPct !== undefined &&
+                    /town_center|barracks|temple|market|house|farm|pyramid|akropolis|firetemple|shrine|range|stable|tower|wonder/i.test(e.type || ''));
+                if (isB) {
                     const ent = (typeof createBuilding === 'function')
-                        ? createBuilding(e.type, e.x, e.z, e.owner, owner.civilization, { instant: true }) : null;
+                        ? createBuilding(e.type, e.x, e.z, e.owner, owner.civilization, { instant: true, age: oage }) : null;
                     if (ent) { ent.seat = owner.seat; ent.underConstruction = false; r.addBuilding(ent); }
                 } else {
                     const ent = (typeof createUnit === 'function')
-                        ? createUnit(e.type, e.x, e.z, e.owner, owner.civilization, 'iron') : null;
+                        ? createUnit(e.type, e.x, e.z, e.owner, owner.civilization, oage) : null;
                     if (ent) { ent.seat = owner.seat; r.addUnit(ent); }
                 }
             });
@@ -4271,8 +4284,9 @@ class UIManager {
                 s.units.forEach(u => fow.reveal(u.x, u.z, fow.unitVisionRange));
                 s.buildings.forEach(b => fow.reveal(b.x, b.z, fow.buildingVisionRange));
             });
-            // So is anything it can currently see of somebody else's.
-            (sc.enemies || []).forEach(e => fow.reveal(e.x, e.z, 8));
+            // So is anything it can currently SEE of somebody else's — but not a
+            // remembered one, whose whole point is that it sits in the dark.
+            (sc.enemies || []).forEach(e => { if (e.confirmed) fow.reveal(e.x, e.z, 8); });
         }
         fow.updateFogTexture();
         fow.fogDirty = true;

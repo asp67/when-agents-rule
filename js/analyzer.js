@@ -226,18 +226,46 @@ class TranscriptAnalyzer {
                 id: s.id, seat: s.seat, name: s.name || s.model || s.civ,
                 civilization: s.civilization, ageSec: sec - last._sec,
                 isCurrent: s.id === rec.playerId,
+                // Its OWN epoch at its OWN last snapshot: what its buildings looked like.
+                epoch: (st.epoch && st.epoch.currentEpoch) || 'stone',
                 units: Array.isArray(st.friendlyUnits) ? st.friendlyUnits : [],
                 buildings: Array.isArray(st.friendlyBuildings) ? st.friendlyBuildings : []
             });
         });
 
-        // Enemies as SEEN, from the selected seat only. In union mode every seat's own
-        // units are already drawn from its own snapshot, so repeating them as somebody
-        // else's sighting would double the army on screen.
+        // Enemies, from the selected seat only — in union mode each seat is already drawn
+        // from its own snapshot, so repeating them as somebody else's sighting would
+        // double the army.
+        //
+        // Two kinds, and the difference is the whole point. CONFIRMED is what the seat can
+        // see this instant: a live position. REMEMBERED is where something was the last
+        // time it was seen, which is a claim about the past — the harness already keeps
+        // that for buildings (they arrive carrying visible:false, 84 of 109 in one match)
+        // but not for units, so unit sightings are accumulated here: latest sighting per
+        // id wins, and being seen somewhere new replaces the old place rather than adding
+        // a second ghost of the same unit.
         if (!union) {
             const st = rec.state || {};
-            out.enemies = (Array.isArray(st.enemyUnits) ? st.enemyUnits : [])
-                .concat(Array.isArray(st.enemyBuildings) ? st.enemyBuildings : []);
+            const seat = this.seats.get(rec.playerId);
+            const remembered = new Map();
+            if (seat) {
+                for (const r of seat.turns) {
+                    if (r.type) continue;
+                    if (r._sec > sec) break;
+                    ((r.state && r.state.enemyUnits) || []).forEach(u => {
+                        if (typeof u.x === 'number') remembered.set(String(u.id), { e: u, at: r._sec });
+                    });
+                }
+            }
+            const liveIds = new Set((st.enemyUnits || []).map(u => String(u.id)));
+            (st.enemyUnits || []).forEach(u => out.enemies.push(Object.assign({}, u, { confirmed: true })));
+            remembered.forEach((v, id) => {
+                if (liveIds.has(id)) return;   // seen right now: already added as confirmed
+                out.enemies.push(Object.assign({}, v.e, { confirmed: false, lastSeenSec: v.at }));
+            });
+            // Buildings carry their own confirmed flag from the harness.
+            (st.enemyBuildings || []).forEach(b =>
+                out.enemies.push(Object.assign({}, b, { confirmed: b.visible !== false, isBuilding: true })));
         }
         return out;
     }
