@@ -3895,11 +3895,12 @@ class UIManager {
 
     anOpen() {
         this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
+        if (this.analyzer.autoCam === undefined) this.analyzer.autoCam = true;
         this.showScreen('analyzeScreen');
         this.anRender();
     }
 
-    anClose() { this.showScreen('gameModeScreen'); }
+    anClose() { this.anUnmountStage(); this.showScreen('gameModeScreen'); }
 
     anLoadFile(input) {
         const f = input && input.files && input.files[0];
@@ -4051,14 +4052,18 @@ class UIManager {
         // The board, plus a caption naming whose view it is. A single seat is what that
         // model could see; the union is an overview no player ever had. Those are
         // different claims and the label says which is on screen.
-        this.anDrawBoard();
-        const capEl = document.getElementById('anBoardCap');
-        if (capEl) {
-            const seatName = (a.seats.get(cur && cur.playerId) || {});
-            capEl.innerHTML = '<button class="an-chip' + (a.union ? ' is-on' : '')
+        // The stage: the engine's own canvas, showing this moment.
+        this.anMountStage();
+        this.anBuildStage(cur);
+        const hud = document.getElementById('anStageHud');
+        if (hud) {
+            const sn = a.seats.get(cur && cur.playerId) || {};
+            hud.innerHTML = '<button class="an-chip' + (a.union ? ' is-on' : '')
                 + '" onclick="game.ui.anToggleUnion()">' + esc(t('an.union')) + '</button>'
+                + '<button class="an-chip' + (a.autoCam ? ' is-on' : '')
+                + '" onclick="game.ui.anToggleAutoCam()">' + esc(t('an.autoCam')) + '</button>'
                 + '<span class="an-cap-txt">' + esc(a.union ? t('an.viewAll')
-                    : t('an.viewSeat', { s: seatName.name || seatName.model || seatName.civ || '?' })) + '</span>';
+                    : t('an.viewSeat', { s: sn.name || sn.model || sn.civ || '?' })) + '</span>';
         }
 
         const ch = a.chapters.map(c => '<button class="an-chapter" onclick="game.ui.anJumpSec(' + c.t + ')">'
@@ -4068,35 +4073,158 @@ class UIManager {
             ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + ch : '';
     }
 
-    // ---- the board -----------------------------------------------------------
-    // Top-down, 2D, drawn from the snapshot. Deliberately not the 3D renderer: the
-    // engine draws a world that is running, and this is a still of a world that has
-    // finished. The game's own minimap already proves the overview needs no relief —
-    // getMinimapData() returns resources and a size, nothing else — so the board owes
-    // the reader positions and identity, not scenery.
+    // ---- the stage: the real engine, showing a finished match -----------------
+    // Not a second renderer and not a flat substitute. The engine's canvas is MOVED
+    // here and moved back on the way out, so the analyzer inherits the arena's camera
+    // wholesale — pan, rotate, zoom, edge-scroll — because the renderer binds those to
+    // its own canvas rather than depending on the game loop. A 2D board stood here
+    // first and told you nothing: positions without terrain, scale or elevation are
+    // numbers, not a situation.
 
-    AN_GROUND() { return { easy: '#3f7536', medium: '#4d626c', hard: '#79613c' }; }
-    AN_NODE()   { return { food: '#c86a2a', wood: '#2f8f2f', stone: '#9a9a9a', gold: '#e0b400' }; }
-
-    // The coastline. It follows a FIXED seed, not the map seed — the same island in
-    // every match — so one cached table draws it for any transcript, with no terrain
-    // regeneration and no dependency on the map having been generated at all.
-    anCoastPath() {
-        if (this._anCoast) return this._anCoast;
-        if (typeof coastLimitTable !== 'function') return null;
-        const lim = coastLimitTable();
-        const N = lim.length - 1;
-        const pts = [];
-        for (let i = 0; i <= N; i++) {
-            // Mirrors the table's own parameterisation: t runs 0..4 around the square,
-            // one unit per side, and the direction vector is chebyshev-normalised.
-            const t = (i / N) * 4, side = Math.min(3, Math.floor(t)), s = t - side;
-            const p = side === 0 ? [1, s * 2 - 1] : side === 1 ? [1 - s * 2, 1]
-                : side === 2 ? [-1, 1 - s * 2] : [s * 2 - 1, -1];
-            pts.push([lim[i] * p[0], lim[i] * p[1]]);
+    anMountStage() {
+        const cv = document.getElementById('gameCanvas');
+        const host = document.getElementById('anViewport');
+        if (!cv || !host) return;
+        if (cv.parentElement !== host) {
+            // Remember where it came from so the arena gets it back in the same slot.
+            if (!this._anCanvasHome) {
+                this._anCanvasHome = { parent: cv.parentElement, next: cv.nextSibling };
+            }
+            host.appendChild(cv);
         }
-        this._anCoast = pts;
-        return pts;
+        // Spectator input: no orders to give in a recording.
+        this._anPrevSpectator = this.game.spectatorMode;
+        this.game.spectatorMode = true;
+        if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
+    }
+
+    anUnmountStage() {
+        const cv = document.getElementById('gameCanvas');
+        const home = this._anCanvasHome;
+        if (cv && home && home.parent) {
+            home.parent.insertBefore(cv, home.next || null);
+            this._anCanvasHome = null;
+        }
+        if (this._anPrevSpectator !== undefined) {
+            this.game.spectatorMode = this._anPrevSpectator;
+            this._anPrevSpectator = undefined;
+        }
+        const r = this.game.renderer;
+        if (r) {
+            if (r.clearScene) r.clearScene();
+            if (r.onWindowResize) r.onWindowResize();
+        }
+    }
+
+    // The map, rebuilt exactly. mapSeed + difficulty + player count is enough:
+    // TerrainManager is pure data (its scene argument is ignored) and spawn positions
+    // are plain trigonometry, so the island and every node land where they did.
+    anTerrain() {
+        const a = this.analyzer, h = (a && a.header) || {};
+        const size = h.mapSize || 800;
+        const key = [h.mapSeed, h.difficulty, (h.players || []).length, size].join('|');
+        if (this._anTerrain && this._anTerrainKey === key) return this._anTerrain;
+        const t = new TerrainManager(null, size);
+        t.difficulty = h.difficulty || 'easy';
+        t.seed = h.mapSeed || null;
+        const n = Math.max(1, (h.players || []).length), half = size / 2;
+        t.spawns = [];
+        for (let i = 0; i < n; i++) {
+            const ang = (i / n) * Math.PI * 2 - Math.PI / 2, rad = half * 0.85;
+            t.spawns.push({ x: Math.cos(ang) * rad, z: Math.sin(ang) * rad });
+        }
+        t.generateTerrain();   // spawns must be set first: stone and gold rotate onto them
+        this._anTerrain = t; this._anTerrainKey = key;
+        return t;
+    }
+
+    // Everything the reader is allowed to see at this moment, put into the engine.
+    // Rebuilt per seek rather than diffed: a snapshot is a whole world, and matching
+    // entities across an 8-to-900-second gap would be inventing continuity the file
+    // does not claim.
+    anBuildStage(rec) {
+        const a = this.analyzer, r = this.game.renderer;
+        if (!a || !r || !rec) return;
+        const sc = a.scene(rec, a.union);
+        if (!sc) return;
+
+        r.clearScene();
+        const terrain = this.anTerrain();
+        this.game.terrain = terrain;          // the renderer reads it for ground + nodes
+        r.setTerrain(terrain);
+
+        // Nodes: only the ones somebody had found by now. The engine already carries a
+        // visibility handle per resource because fog toggles it, so this is the same
+        // mechanism rather than a second one.
+        const known = new Set(sc.nodes.map(n => n.type + '@' + Math.round(n.x) + ',' + Math.round(n.z)));
+        (terrain.resources || []).forEach(res => {
+            const seen = known.has(res.type + '@' + Math.round(res.x) + ',' + Math.round(res.z));
+            if (!res.mesh) return;
+            if (res.mesh.trunk) { res.mesh.trunk.visible = seen; res.mesh.leaves.visible = seen; }
+            else res.mesh.visible = seen;
+        });
+
+        // Units and buildings, built through the game's own factories so they get the
+        // right civ mesh, colour and stats instead of a hand-rolled lookalike.
+        sc.seats.forEach(s => {
+            s.buildings.forEach(b => {
+                const ent = (typeof createBuilding === 'function')
+                    ? createBuilding(b.type, b.x, b.z, s.id, s.civilization, { instant: true }) : null;
+                if (!ent) return;
+                ent.seat = s.seat;
+                ent.underConstruction = false;
+                if (b.healthPct != null) ent.health = Math.max(1, (ent.maxHealth || 100) * b.healthPct / 100);
+                r.addBuilding(ent);
+            });
+            s.units.forEach(u => {
+                const ent = (typeof createUnit === 'function')
+                    ? createUnit(u.type, u.x, u.z, s.id, s.civilization, 'iron') : null;
+                if (!ent) return;
+                // createUnit resolves the seat from the LIVE game, which has no idea
+                // about a recorded match — so the badge is set from the transcript.
+                ent.seat = s.seat;
+                if (u.healthPct != null) ent.health = Math.max(1, (ent.maxHealth || 100) * u.healthPct / 100);
+                ent.isAttacking = u.action === 'attacking';
+                r.addUnit(ent);
+            });
+        });
+
+        // Enemy sightings, single-seat view only: what this model could see, standing
+        // where it last saw them.
+        if (!a.union) {
+            sc.enemies.forEach(e => {
+                const owner = a.seats.get(e.owner) || {};
+                if (e.healthPct !== undefined && /town_center|barracks|temple|market|house|farm|pyramid|akropolis|firetemple|shrine|range|stable|tower|wonder/i.test(e.type || '')) {
+                    const ent = (typeof createBuilding === 'function')
+                        ? createBuilding(e.type, e.x, e.z, e.owner, owner.civilization, { instant: true }) : null;
+                    if (ent) { ent.seat = owner.seat; ent.underConstruction = false; r.addBuilding(ent); }
+                } else {
+                    const ent = (typeof createUnit === 'function')
+                        ? createUnit(e.type, e.x, e.z, e.owner, owner.civilization, 'iron') : null;
+                    if (ent) { ent.seat = owner.seat; r.addUnit(ent); }
+                }
+            });
+        }
+
+        if (a.autoCam) this.anAimCamera(rec, sc);
+    }
+
+    // Auto mode points the camera at whatever the turn is ABOUT: a fight if there is
+    // one, else the place the order names, else that seat's Town Center, else the
+    // middle of its forces. Manual mode never moves it — the reader is steering.
+    anAimCamera(rec, sc) {
+        const r = this.game.renderer;
+        if (!r || !r.moveCameraTo) return;
+        const p = this.analyzer.cameraInterest(rec, sc);
+        if (p) r.moveCameraTo(p.x, p.z);
+    }
+
+    anToggleAutoCam() {
+        if (!this.analyzer) return;
+        this.analyzer.autoCam = !this.analyzer.autoCam;
+        if (this.analyzer.autoCam) this.anAimCamera(this.analyzer.current(),
+            this.analyzer.scene(this.analyzer.current(), this.analyzer.union));
+        this.anRender();
     }
 
     anToggleUnion() {
@@ -4105,103 +4233,30 @@ class UIManager {
         this.anRender();
     }
 
-    anDrawBoard() {
-        const a = this.analyzer;
-        const cv = document.getElementById('anBoard');
-        if (!cv || !a) return;
-        const rec = a.current();
-        const wrap = cv.parentElement;
-        const css = Math.max(180, Math.min(wrap ? wrap.clientWidth : 320, 420));
-        const dpr = Math.min(2, window.devicePixelRatio || 1);
-        cv.style.width = css + 'px'; cv.style.height = css + 'px';
-        cv.width = Math.round(css * dpr); cv.height = Math.round(css * dpr);
-        const g = cv.getContext('2d');
-        g.setTransform(dpr, 0, 0, dpr, 0, 0);
-        g.clearRect(0, 0, css, css);
-
-        const half = ((a.header && a.header.mapSize) || 800) / 2;
-        // A margin so a unit on the shoreline is not clipped by the canvas edge.
-        const R = css / 2, SC = (R - 4) / half;
-        const X = wx => R + wx * SC, Z = wz => R + wz * SC;
-
-        g.fillStyle = '#0e1a24';
-        g.fillRect(0, 0, css, css);
-
-        const coast = this.anCoastPath();
-        g.beginPath();
-        if (coast) {
-            coast.forEach((p, i) => { const x = X(p[0]), y = Z(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
-            g.closePath();
-        } else {
-            g.rect(X(-half), Z(-half), half * 2 * SC, half * 2 * SC);
-        }
-        g.fillStyle = (this.AN_GROUND()[(a.header && a.header.difficulty) || 'easy']) || this.AN_GROUND().easy;
-        g.fill();
-        g.strokeStyle = 'rgba(255,255,255,0.16)'; g.lineWidth = 1; g.stroke();
-
-        const sc = a.scene(rec, a.union);
-        if (!sc) return;
-
-        // Nodes first, under everything: they are the map, not the action.
-        const NC = this.AN_NODE();
-        sc.nodes.forEach(n => {
-            g.fillStyle = NC[n.type] || '#888';
-            g.globalAlpha = 0.85;
-            g.fillRect(X(n.x) - 1.5, Z(n.z) - 1.5, 3, 3);
-        });
-        g.globalAlpha = 1;
-
-        sc.seats.forEach(s => {
-            const col = this.chartColor(s);
-            // Staleness is drawn, not just written: a seat last heard from three minutes
-            // ago fades toward the background rather than sitting there looking current.
-            const fade = s.isCurrent ? 1 : Math.max(0.28, 1 - (s.ageSec || 0) / 240);
-            g.globalAlpha = fade;
-            s.buildings.forEach(b => {
-                const isW = !!(b.isWonder || /wonder|pyramid|akropolis|firetemple|shrine/i.test(b.type || ''));
-                const sz = isW ? 9 : (/town_center/.test(b.type || '') ? 7 : 5);
-                g.fillStyle = col;
-                g.fillRect(X(b.x) - sz / 2, Z(b.z) - sz / 2, sz, sz);
-                g.strokeStyle = isW ? '#fff' : 'rgba(0,0,0,0.55)';
-                g.lineWidth = isW ? 1.6 : 1;
-                g.strokeRect(X(b.x) - sz / 2, Z(b.z) - sz / 2, sz, sz);
-            });
-            s.units.forEach(u => {
-                const worker = u.type === 'worker';
-                g.beginPath();
-                g.arc(X(u.x), Z(u.z), worker ? 1.6 : 2.6, 0, Math.PI * 2);
-                g.fillStyle = col; g.fill();
-                if (!worker) { g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 0.8; g.stroke(); }
-                // Fighting is the one unit state worth a mark of its own — it is what a
-                // reader is usually scrubbing to find.
-                if (u.action === 'attacking') {
-                    g.beginPath(); g.arc(X(u.x), Z(u.z), 4.6, 0, Math.PI * 2);
-                    g.strokeStyle = '#ff6b6b'; g.lineWidth = 1.1; g.stroke();
-                }
-            });
-            g.globalAlpha = 1;
-        });
-
-        // Enemy sightings, single-seat view only. Hollow, so they never read as one of
-        // yours — a sighting is a claim about a moment, not a position you own — and in
-        // the OWNER's colour, which says whose unit was spotted rather than only that
-        // something was.
-        //
-        // Not plain white: a civ colour can BE white (Greece is #FFFFFF), so a white ring
-        // and a white army were the same mark on the board. A dark rim goes under every
-        // ring so a pale owner still reads against the grass.
-        sc.enemies.forEach(e => {
-            const owner = a.seats.get(e.owner);
-            const col = owner ? this.chartColor(owner) : '#ffffff';
-            const big = /town_center|barracks|temple|market|house|farm|wonder|pyramid|akropolis|firetemple|shrine|range|stable|tower/i
-                .test(e.type || '');
-            const rr = big ? 3.4 : 2.6;
-            g.beginPath(); g.arc(X(e.x), Z(e.z), rr + 0.9, 0, Math.PI * 2);
-            g.strokeStyle = 'rgba(0,0,0,0.65)'; g.lineWidth = 2.2; g.stroke();
-            g.beginPath(); g.arc(X(e.x), Z(e.z), rr, 0, Math.PI * 2);
-            g.strokeStyle = col; g.lineWidth = 1.4; g.stroke();
-        });
+    // Drag the seam to decide how much room the action gets versus the reading.
+    anSplitStart(ev) {
+        const body = document.getElementById('anBody');
+        if (!body) return;
+        ev.preventDefault();
+        const move = (e) => {
+            const r = body.getBoundingClientRect();
+            const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+            const pct = Math.max(20, Math.min(80, (y / r.height) * 100));
+            body.style.gridTemplateRows = pct + '% 6px 1fr';
+            if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
+        };
+        const up = () => {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', up);
+            window.removeEventListener('touchmove', move);
+            window.removeEventListener('touchend', up);
+        };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', up);
+        window.addEventListener('touchmove', move, { passive: false });
+        window.addEventListener('touchend', up);
     }
+
 
     anDetailHtml(r) {
         if (!r) return '';

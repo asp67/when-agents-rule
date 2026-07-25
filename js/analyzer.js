@@ -32,7 +32,9 @@ class TranscriptAnalyzer {
         this.filter = 'all';
         this.seatFilter = null;
         this.cursor = -1;
-        this.mode = 'gathered';  // its own chart mode; the results screen keeps its own
+        this.mode = 'gathered';
+        this.union = false;      // single seat = what that model could see
+        this.autoCam = true;     // point the camera at the action until told not to  // its own chart mode; the results screen keeps its own
         this.fileName = null;
         this.parseErrors = 0;
     }
@@ -295,6 +297,32 @@ class TranscriptAnalyzer {
         return this.seek(this.order.indexOf(vis[next]));
     }
 
+
+    // What this turn is ABOUT, in world coordinates — the camera's subject in auto
+    // mode. Ordered by what a reader came for: a fight first, then the place the order
+    // named, then that seat's Town Center, and only then the centre of mass of its
+    // forces. Returns null when the snapshot shows nothing worth pointing at, which
+    // leaves the camera where the reader last put it.
+    cameraInterest(rec, sc) {
+        if (!rec) return null;
+        const st = rec.state || {};
+        const b = (st.battles || [])[0];
+        if (b && Array.isArray(b.at) && b.at.length === 2) return { x: b.at[0], z: b.at[1] };
+        const p = (rec.parsed && rec.parsed.params) || {};
+        if (typeof p.targetX === 'number' && typeof p.targetZ === 'number') {
+            return { x: p.targetX, z: p.targetZ };
+        }
+        const mine = (sc && sc.seats || []).find(x => x.isCurrent)
+            || { buildings: st.friendlyBuildings || [], units: st.friendlyUnits || [] };
+        const tc = (mine.buildings || []).find(x => /town_center/i.test(x.type || ''));
+        if (tc) return { x: tc.x, z: tc.z };
+        const us = mine.units || [];
+        if (us.length) {
+            return { x: us.reduce((n, u) => n + u.x, 0) / us.length,
+                     z: us.reduce((n, u) => n + u.z, 0) / us.length };
+        }
+        return null;
+    }
     // ---- derived readings -------------------------------------------------
 
     // How stale every OTHER seat is at the selected moment. The honest answer to "what

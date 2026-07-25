@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=485">
+    <link rel="stylesheet" href="css/styles.css?v=486">
 </head>
 <body>
     <!-- Start Screen -->
@@ -54,46 +54,47 @@
     </div>
 
     <div id="analyzeScreen" class="screen">
-        <div class="an-shell">
-            <div class="an-head">
-                <h2 data-i18n="an.title">🎬 Transkript analysieren</h2>
-                <label class="an-pick">
-                    <input type="file" id="anFile" accept=".jsonl,.json,.txt" onchange="game.ui.anLoadFile(this)">
-                    <span data-i18n="an.pick">Transkript wählen…</span>
-                </label>
-                <span id="anMeta" class="an-meta"></span>
-                <button class="menu-btn back-btn an-back" onclick="game.ui.anClose()" data-i18n="common.back">Zurück</button>
+        <!-- Transparent, minimal, same furniture as the arena spectator bar. -->
+        <div class="an-bar">
+            <span class="an-brand">🎬 <span data-i18n="an.title">Transkript</span></span>
+            <label class="an-pick">
+                <input type="file" id="anFile" accept=".jsonl,.json,.txt" onchange="game.ui.anLoadFile(this)">
+                <span data-i18n="an.pick">Transkript wählen…</span>
+            </label>
+            <span id="anMeta" class="an-meta"></span>
+            <button class="sb-end an-back" onclick="game.ui.anClose()" data-i18n="common.back">Zurück</button>
+        </div>
+        <div id="anEmpty" class="an-empty" data-i18n="an.empty">Lade eine .jsonl-Datei, die die Arena gespeichert hat.</div>
+        <div id="anBody" class="an-body" style="display:none;">
+            <div class="an-stage">
+                <div id="anViewport" class="an-viewport"></div>
+                <div class="an-stage-hud" id="anStageHud"></div>
             </div>
-            <div id="anEmpty" class="an-empty" data-i18n="an.empty">Lade eine .jsonl-Datei, die die Arena gespeichert hat.</div>
-            <div id="anBody" class="an-body" style="display:none;">
-                <div class="summary-chart an-chart" id="anChartBox">
-                    <div class="chart-head">
-                        <span class="chart-title" id="anChartTitle"></span>
-                        <span class="chart-modes">
-                            <button class="chart-mode is-on" id="anModeGathered" onclick="game.ui.anSetMode('gathered')"></button>
-                            <button class="chart-mode" id="anModePower" onclick="game.ui.anSetMode('power')"></button>
-                        </span>
-                    </div>
-                    <div id="anChartMain" onclick="game.ui.anChartClick(event)"></div>
-                    <div class="chart-strips" id="anChartStrips"></div>
-                    <div class="chart-legend" id="anChartLegend"></div>
+            <div class="an-seam" id="anSeam" onmousedown="game.ui.anSplitStart(event)" ontouchstart="game.ui.anSplitStart(event)"></div>
+            <div class="an-lower">
+                <div class="an-scrub">
+                    <div class="an-bar2" id="anFilters"></div>
+                    <div class="an-list" id="anList"></div>
                 </div>
-                <div class="an-cols">
-                    <div class="an-boardwrap">
-                        <canvas id="anBoard" class="an-board"></canvas>
-                        <div id="anBoardCap" class="an-cap"></div>
+                <div class="an-detail" id="anDetail"></div>
+                <div class="an-graph">
+                    <div class="summary-chart an-chart" id="anChartBox">
+                        <div class="chart-head">
+                            <span class="chart-title" id="anChartTitle"></span>
+                            <span class="chart-modes">
+                                <button class="chart-mode is-on" id="anModeGathered" onclick="game.ui.anSetMode('gathered')"></button>
+                                <button class="chart-mode" id="anModePower" onclick="game.ui.anSetMode('power')"></button>
+                            </span>
+                        </div>
+                        <div id="anChartMain" onclick="game.ui.anChartClick(event)"></div>
+                        <div class="chart-strips" id="anChartStrips"></div>
+                        <div class="chart-legend" id="anChartLegend"></div>
                     </div>
-                    <div class="an-left">
-                        <div class="an-bar" id="anFilters"></div>
-                        <div class="an-list" id="anList"></div>
-                    </div>
-                    <div class="an-right" id="anDetail"></div>
+                    <div class="an-chapters" id="anChapters"></div>
                 </div>
-                <div class="an-chapters" id="anChapters"></div>
             </div>
         </div>
     </div>
-
     <!-- Tutorial Screen -->
     <div id="tutorialScreen" class="screen">
         <div class="tutorial-content">
@@ -478,26 +479,26 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=485"></script>
-    <script src="js/engine/glcore.js?v=485"></script>
-    <script src="js/engine/texgen.js?v=485"></script>
-    <script src="js/engine/mesh.js?v=485"></script>
-    <script src="js/engine/buildings.js?v=485"></script>
-    <script src="js/engine/units.js?v=485"></script>
-    <script src="js/engine/gamerenderer.js?v=485"></script>
-    <script src="js/i18n.js?v=485"></script>
-    <script src="js/civilizations.js?v=485"></script>
-    <script src="js/buildings.js?v=485"></script>
-    <script src="js/units.js?v=485"></script>
-    <script src="js/resources.js?v=485"></script>
-    <script src="js/terrain.js?v=485"></script>
-    <script src="js/fogofwar.js?v=485"></script>
-    <script src="js/ai.js?v=485"></script>
-    <script src="js/analyzer.js?v=485"></script>
-    <script src="js/transcript.js?v=485"></script>
-    <script src="js/openai-ai.js?v=485"></script>
-    <script src="js/input.js?v=485"></script>
-    <script src="js/ui.js?v=485"></script>
-    <script src="js/game.js?v=485"></script>
+    <script src="js/engine/math3d.js?v=486"></script>
+    <script src="js/engine/glcore.js?v=486"></script>
+    <script src="js/engine/texgen.js?v=486"></script>
+    <script src="js/engine/mesh.js?v=486"></script>
+    <script src="js/engine/buildings.js?v=486"></script>
+    <script src="js/engine/units.js?v=486"></script>
+    <script src="js/engine/gamerenderer.js?v=486"></script>
+    <script src="js/i18n.js?v=486"></script>
+    <script src="js/civilizations.js?v=486"></script>
+    <script src="js/buildings.js?v=486"></script>
+    <script src="js/units.js?v=486"></script>
+    <script src="js/resources.js?v=486"></script>
+    <script src="js/terrain.js?v=486"></script>
+    <script src="js/fogofwar.js?v=486"></script>
+    <script src="js/ai.js?v=486"></script>
+    <script src="js/analyzer.js?v=486"></script>
+    <script src="js/transcript.js?v=486"></script>
+    <script src="js/openai-ai.js?v=486"></script>
+    <script src="js/input.js?v=486"></script>
+    <script src="js/ui.js?v=486"></script>
+    <script src="js/game.js?v=486"></script>
 </body>
 </html>
