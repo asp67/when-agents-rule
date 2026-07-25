@@ -2412,12 +2412,42 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-scrub { display:flex; flex-direction:column; min-height:0; min-width:0; }
 .an-bar2 { display:flex; flex-wrap:wrap; gap:4px; align-items:center; padding-bottom:5px; flex:0 0 auto; }
 .an-chip { background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.14);
-    color:#bcd; border-radius:5px; padding:2px 7px; font-size:0.7em; cursor:pointer; white-space:nowrap; }
+    color:#bcd; border-radius:5px; padding:2px 7px; font-size:0.7em; cursor:pointer;
+    white-space:nowrap; height:24px; display:inline-flex; align-items:center; }
 .an-chip:hover { background:rgba(255,255,255,0.15); color:#fff; }
 .an-chip.is-on { background:linear-gradient(145deg,#35b58c,#1f8d6b); border-color:#2ea283; color:#fff; }
-.an-seat { background:#1a2430; color:#bcd; border:1px solid rgba(255,255,255,0.14);
-    border-radius:5px; font-size:0.7em; padding:2px 4px; max-width:100%; }
-.an-nav { display:flex; gap:3px; }
+/* Seat picker. A native <select> could not carry the team badge, and without it two
+   seats on the same model were one row printed twice. */
+.an-pick { position:relative; display:inline-flex; }
+.an-pick-btn { display:inline-flex; align-items:center; gap:5px; height:24px;
+    background:#1a2430; color:#bcd; border:1px solid rgba(255,255,255,0.14);
+    border-radius:5px; font-size:0.7em; padding:0 4px 0 6px; cursor:pointer;
+    max-width:230px; font-family:inherit; }
+.an-pick-btn:hover { border-color:rgba(255,255,255,0.3); color:#fff; }
+.an-pick.is-open .an-pick-btn { border-color:rgba(78,204,163,0.6); color:#fff; }
+.an-pick.is-open .an-pick-btn .an-svg { transform:rotate(180deg); }
+.an-pick-btn .an-svg { width:12px; height:12px; opacity:0.65; flex:0 0 auto; transition:transform 0.12s; }
+.an-pick-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Every badge at once = the union view, readable without opening the menu. */
+.an-pick-stack { display:inline-flex; align-items:center; }
+.an-pick-stack > * { margin-right:-3px; }
+.an-pick-menu { display:none; position:absolute; top:calc(100% + 3px); left:0; z-index:40;
+    min-width:100%; background:#141d27; border:1px solid rgba(255,255,255,0.16);
+    border-radius:6px; padding:3px; box-shadow:0 8px 22px rgba(0,0,0,0.55); }
+.an-pick.is-open .an-pick-menu { display:block; }
+.an-pick-opt { display:flex; align-items:center; gap:6px; width:100%; text-align:left;
+    background:none; border:0; border-radius:4px; color:#bcd; font-size:0.7em;
+    font-family:inherit; padding:4px 7px; cursor:pointer; white-space:nowrap; }
+.an-pick-opt:hover, .an-pick-opt:focus { background:rgba(255,255,255,0.1); color:#fff; outline:none; }
+.an-pick-opt.is-on { background:rgba(78,204,163,0.16); color:#eafff6; }
+.an-pick-opt:focus-visible { box-shadow:inset 0 0 0 1px rgba(78,204,163,0.7); }
+.an-pick-civ { font-style:normal; opacity:0.5; margin-left:auto; padding-left:10px; }
+
+/* Square icon buttons: equal boxes, so the row cannot sit unevenly. */
+.an-nav { display:flex; gap:4px; align-items:center; }
+.an-ico { display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:24px; padding:0; }
+.an-ico .an-svg { width:15px; height:15px; }
 .an-list:focus { outline:none; border-color:rgba(78,204,163,0.5); }
 .an-list:focus-visible { outline:none; border-color:rgba(78,204,163,0.7); }
 .an-list { overflow-y:auto; min-height:0; flex:1 1 auto;

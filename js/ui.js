@@ -3965,6 +3965,11 @@ class UIManager {
     anSetSeat(id) {
         if (!this.analyzer) return;
         this.analyzer.seatFilter = (id === '*' || !id) ? null : id;
+        // Picking is the menu's whole job, so it closes on the way out — including its
+        // outside-click listener, which would otherwise sit armed for a stale menu.
+        if (this._anPickAway) { document.removeEventListener('click', this._anPickAway); this._anPickAway = null; }
+        if (this._anPickKeys) { document.removeEventListener('keydown', this._anPickKeys, true); this._anPickKeys = null; }
+        this._anPickOpen = false;
         this.anRender();
     }
     // A deliberate jump takes over from playback rather than fighting it.
@@ -3977,6 +3982,77 @@ class UIManager {
         if (list && list.focus) list.focus({ preventScroll: true });
     }
     anStep(d) { if (this.analyzer) { this.analyzer.step(d); this.anRender(); } }
+
+    // One 24x24 box for every control icon, so a row of them cannot drift.
+    anIcon(name) {
+        const P = {
+            prev: '<path d="M15 5l-7 7 7 7"/>',
+            next: '<path d="M9 5l7 7-7 7"/>',
+            chev: '<path d="M6 9.5l6 6 6-6"/>',
+            play: '<path d="M8 5.2l11 6.8-11 6.8z" fill="currentColor" stroke="none"/>',
+            pause: '<path d="M9 5h3.1v14H9zM16 5h3.1v14H16z" fill="currentColor" stroke="none"/>'
+        };
+        return '<svg class="an-svg" viewBox="0 0 24 24" aria-hidden="true" fill="none"'
+            + ' stroke="currentColor" stroke-width="2.4" stroke-linecap="round"'
+            + ' stroke-linejoin="round">' + (P[name] || '') + '</svg>';
+    }
+
+    // The seat menu. Open state lives on the instance rather than in the DOM because
+    // the whole bar is rebuilt on every render — including once a second while playing
+    // — and a class set on the old node would vanish with it.
+    anTogglePick(ev) {
+        if (ev) ev.stopPropagation();
+        this._anPickOpen = !this._anPickOpen;
+        this.anRender();
+        if (this._anPickOpen) {
+            // Close on the next click anywhere else. Bound per opening and removed on
+            // close, so it never accumulates.
+            this._anPickAway = () => this.anPickClose();
+            setTimeout(() => document.addEventListener('click', this._anPickAway, { once: true }), 0);
+            // On the document, not on the bar: the filter bar sits outside .an-lower,
+            // so the analyzer's own arrow handler never sees these keys — and without
+            // this the arrows would fall through to the renderer and pan the camera
+            // while the reader is choosing a seat.
+            this._anPickKeys = (ev) => {
+                const k = String(ev.key || '').toLowerCase();
+                const opts = [...document.querySelectorAll('#analyzeScreen .an-pick-opt')];
+                if (!opts.length) return;
+                if (k === 'escape') {
+                    ev.preventDefault(); ev.stopPropagation();
+                    const btn = document.querySelector('#analyzeScreen .an-pick-btn');
+                    this.anPickClose();
+                    if (btn) btn.focus();
+                    return;
+                }
+                if (k === 'arrowdown' || k === 'arrowup' || k === 'home' || k === 'end') {
+                    ev.preventDefault(); ev.stopPropagation();
+                    const at = opts.indexOf(document.activeElement);
+                    let to;
+                    if (k === 'home') to = 0;
+                    else if (k === 'end') to = opts.length - 1;
+                    else if (at < 0) to = 0;
+                    else to = (at + (k === 'arrowdown' ? 1 : -1) + opts.length) % opts.length;
+                    if (opts[to]) opts[to].focus();
+                } else if (k === 'arrowleft' || k === 'arrowright') {
+                    // Swallowed rather than acted on: stepping the transcript under an
+                    // open menu moves the very thing being chosen for.
+                    ev.preventDefault(); ev.stopPropagation();
+                }
+            };
+            document.addEventListener('keydown', this._anPickKeys, true);
+            const first = document.querySelector('#analyzeScreen .an-pick-opt.is-on')
+                || document.querySelector('#analyzeScreen .an-pick-opt');
+            if (first) first.focus();
+        }
+    }
+    anPickClose() {
+        if (this._anPickAway) { document.removeEventListener('click', this._anPickAway); this._anPickAway = null; }
+        if (this._anPickKeys) { document.removeEventListener('keydown', this._anPickKeys, true); this._anPickKeys = null; }
+        if (!this._anPickOpen) return;
+        this._anPickOpen = false;
+        this.anRender();
+    }
+
     anJumpSec(sec) { this.anStopPlay(); if (this.analyzer) { this.analyzer.seekSeconds(sec); this.anRender(); } }
 
     // A click on the plot becomes a moment. The SVG is a fixed 900x300 viewBox stretched
@@ -4016,6 +4092,12 @@ class UIManager {
         lower.addEventListener('keydown', (ev) => {
             const k = String(ev.key || '').toLowerCase();
             const arrows = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright'];
+            // An open seat menu owns the keyboard — but it is not bound HERE. The filter
+            // bar sits outside .an-lower, so this listener never sees the menu's keys at
+            // all; the real handling is a document-level one armed while it is open (see
+            // anTogglePick). This is only the guard: never step the transcript underneath
+            // an open menu, since that moves the very thing being chosen for.
+            if (this._anPickOpen) return;
             if (arrows.indexOf(k) === -1) return;
             // Typing in a control is not navigating: a select needs its own arrows.
             const tag = (ev.target && ev.target.tagName) || '';
@@ -4087,18 +4169,56 @@ class UIManager {
             return '<button class="an-chip' + (a.filter === kv[0] ? ' is-on' : '')
                 + '" onclick="game.ui.anSetFilter(\'' + kv[0] + '\')">' + esc(kv[1]) + '</button>';
         }).join('');
-        bar += '<select class="an-seat" onchange="game.ui.anSetSeat(this.value)">'
-            + '<option value="*">' + esc(t('an.allSeats')) + '</option>'
-            + [...a.seats.values()].map(s => '<option value="' + esc(s.id) + '"'
-                + (a.seatFilter === s.id ? ' selected' : '') + '>'
-                + esc(s.name || s.model || s.civ) + '</option>').join('')
-            + '</select>';
+        // The seat picker carries each seat's BADGE, not just its name. A native
+        // <select> cannot hold one — options take text only — so two seats running the
+        // same model read as one row repeated, and picking between them was guesswork.
+        // The badge is the same mark the board and every other panel use, so the choice
+        // is made on the thing the reader is already tracking rather than on a name.
+        const seatRows = [...a.seats.values()].sort((x, y) => (x.seat || 0) - (y.seat || 0));
+        const seatLabel = sm => esc(sm.name || sm.model || this.anCivName(sm.civ));
+        const sel = (a.seatFilter && a.seatFilter !== '*') ? a.seats.get(a.seatFilter) : null;
+        const face = sel
+            ? this.teamDotHtml(sel.seat, 8) + '<span class="an-pick-label">' + seatLabel(sel) + '</span>'
+            // 'All seats' wears every badge, so the union reads as a union at a glance.
+            : '<span class="an-pick-stack">'
+                + seatRows.map(sm => this.teamDotHtml(sm.seat, 7)).join('')
+                + '</span><span class="an-pick-label">' + esc(t('an.allSeats')) + '</span>';
+        let menu = '<button type="button" role="option" aria-selected="' + (!sel)
+            + '" class="an-pick-opt' + (sel ? '' : ' is-on')
+            + '" onclick="game.ui.anSetSeat(\'*\')">'
+            + '<span class="an-pick-stack">' + seatRows.map(sm => this.teamDotHtml(sm.seat, 7)).join('')
+            + '</span><span class="an-pick-label">' + esc(t('an.allSeats')) + '</span></button>';
+        menu += seatRows.map(sm => {
+            const on = a.seatFilter === sm.id;
+            return '<button type="button" role="option" aria-selected="' + on
+                + '" class="an-pick-opt' + (on ? ' is-on' : '')
+                + '" onclick="game.ui.anSetSeat(\'' + esc(sm.id) + '\')">'
+                + this.teamDotHtml(sm.seat, 8)
+                + '<span class="an-pick-label">' + seatLabel(sm) + '</span>'
+                // The civ is what tells two seats on one model apart on the board.
+                + '<i class="an-pick-civ">' + esc(this.anCivName(sm.civ)) + '</i></button>';
+        }).join('');
+        bar += '<span class="an-pick' + (this._anPickOpen ? ' is-open' : '') + '">'
+            + '<button type="button" class="an-pick-btn" aria-haspopup="listbox"'
+            + ' aria-expanded="' + (!!this._anPickOpen) + '"'
+            + ' onclick="game.ui.anTogglePick(event)">'
+            + face + this.anIcon('chev') + '</button>'
+            + '<span class="an-pick-menu" role="listbox">' + menu + '</span></span>';
         const playing = !!this._anPlayTimer;
-        bar += '<span class="an-nav"><button class="an-chip" onclick="game.ui.anStep(-1)">‹</button>'
-            + '<button class="an-chip' + (playing ? ' is-on' : '') + '" title="'
+        // Icons, not glyphs: ‹ ▶ › are three different type designs and measured 19.7 /
+        // 25.7 / 19.7px wide, so the row of them sat unequal and a pixel off the picker.
+        // Drawn shapes in equal square buttons line up because they are the same box.
+        bar += '<span class="an-nav">'
+            + '<button class="an-chip an-ico" title="' + esc(t('an.prevStep'))
+            + '" aria-label="' + esc(t('an.prevStep')) + '" onclick="game.ui.anStep(-1)">'
+            + this.anIcon('prev') + '</button>'
+            + '<button class="an-chip an-ico' + (playing ? ' is-on' : '') + '" title="'
+            + esc(t(playing ? 'an.pause' : 'an.play')) + '" aria-label="'
             + esc(t(playing ? 'an.pause' : 'an.play')) + '" onclick="game.ui.anTogglePlay()">'
-            + (playing ? '⏸' : '▶') + '</button>'
-            + '<button class="an-chip" onclick="game.ui.anStep(1)">›</button></span>';
+            + this.anIcon(playing ? 'pause' : 'play') + '</button>'
+            + '<button class="an-chip an-ico" title="' + esc(t('an.nextStep'))
+            + '" aria-label="' + esc(t('an.nextStep')) + '" onclick="game.ui.anStep(1)">'
+            + this.anIcon('next') + '</button></span>';
         document.getElementById('anFilters').innerHTML = bar;
 
         const vis = a.visible();
