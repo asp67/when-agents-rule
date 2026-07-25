@@ -2454,6 +2454,9 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-list:focus-visible { outline:none; border-color:rgba(78,204,163,0.7); }
 .an-list { overflow-y:auto; min-height:0; flex:1 1 auto;
     border:1px solid rgba(255,255,255,0.08); border-radius:6px; background:rgba(0,0,0,0.24); }
+/* '+2' beside a turn that carried more than one command. */
+.an-more { font-size:0.82em; color:#9fd8c2; background:rgba(78,204,163,0.16);
+    border:1px solid rgba(78,204,163,0.34); border-radius:3px; padding:0 4px; flex:0 0 auto; }
 .an-row { display:flex; align-items:center; gap:5px; padding:3px 6px; cursor:pointer;
     font-size:0.73em; border-bottom:1px solid rgba(255,255,255,0.04); }
 .an-row:hover { background:rgba(255,255,255,0.06); }

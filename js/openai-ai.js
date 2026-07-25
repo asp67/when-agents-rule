@@ -74,6 +74,11 @@ class OpenAIAIManager {
             truncatedReplies: 0,  // ...of those, cut off mid-JSON by the output-token cap
             noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
             actionsAttempted: 0,  // actions handed to executeAction
+            turnsExecuted: 0,     // turns that ran at least one command. actionsAttempted
+                                  // divided by this is commands-per-turn — reported beside
+                                  // the success rate, never folded INTO it: a seat that
+                                  // sends one safe command must not outrank one that sends
+                                  // three and gets two right.
             actionsSucceeded: 0,  // executed OK
             actionsRejected: 0,   // understood but failed on a gate the state had SHOWN
                                   // the model — an avoidable mistake, and the only kind
@@ -555,6 +560,31 @@ class OpenAIAIManager {
     // mid-speed endpoint, which at a 30s round deadline moves ~1.5% of turns past it.
     // Those now surface honestly as missed rounds rather than as invented unreliability.
     static get PLAN_MAX_STEPS() { return 10; }
+
+    // How many commands one reply may carry. The game does not stop while a model
+    // thinks: the slowest seat in the last match sat 43s between turns, so its orders
+    // landed on a board 43 seconds older than the one it read. A short queue lets a slow
+    // seat express a whole beat of play — build, then assign, then scout — instead of
+    // spending three stale turns on it.
+    //
+    // Three, not more, for two measured reasons. The commands run in ORDER against a
+    // board that each one changes, and the model cannot see between them; 29% of every
+    // error in the last match was already a resource or population gate, which is
+    // exactly the class that compounds when you spend before you look. And the reply
+    // stays cheap: an action object is 38 tokens against a mean reply of 811, so three
+    // of them add about 9% output — nowhere near the cap that truncates a turn.
+    static get MAX_COMMANDS_PER_TURN() { return 3; }
+
+    // Does this parsed object order anything? Every acceptance gate in the parser used
+    // to ask for a truthy .action, which a reply carrying only a "commands" list does
+    // not have — so the batched shape parsed perfectly and was then thrown away as a
+    // no-action turn. One predicate, used at every gate, so the two shapes cannot drift
+    // apart again.
+    static ordersSomething(p) {
+        if (!p || typeof p !== 'object') return false;
+        if (p.action) return true;
+        return Array.isArray(p.commands) && p.commands.length > 0;
+    }
 
     // Keys the passthrough may not touch. Everything else is fair game — the point of the
     // escape hatch is the parameters this file does NOT model, and there will always be
@@ -2145,7 +2175,7 @@ Every other player is your enemy. No human plays for you: you command by issuing
 You win by either:
 Destroying the Town Centers and military buildings of ALL rivals, or Building your Wonder and holding it for gameStats.wonderRequired seconds.
 
-The LAST message carries your CURRENT state as JSON; decide from it and issue EXACTLY ONE action. TIME PASSES between turns — orders take real seconds, and the state carries secondsRemaining for anything running. Work already under way continues on its own and does not occupy your turn; re-issuing it wastes the turn.
+The LAST message carries your CURRENT state as JSON; decide from it and issue one action, or up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} in one reply. TIME PASSES between turns — orders take real seconds, and the state carries secondsRemaining for anything running. Work already under way continues on its own and does not occupy your turn; re-issuing it wastes the turn.
 
 - You never SEE a fight; it happens between your turns. "battles" reports each engagement, cumulative: both sides' composition, damage dealt to units and to buildings, priests' healing, and losses. Losing produces no error, so this is the only place you learn what beat you.
 - Priests never fight. They march with an attack and heal wounded units from the back on their own.
@@ -2159,6 +2189,12 @@ Format: {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-l
 OPTIONAL TOP-LEVEL FIELDS (beside "action", not inside "params"):
 objective: String (1 line). Persists across turns; omit to keep current.
 plan: Array of up to ${OpenAIAIManager.PLAN_MAX_STEPS} short strings. Persists across turns; omit to keep current.
+commands: Array of up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} action objects, to spend one turn on a whole beat of play.
+  Use it INSTEAD of the top-level "action": {"commands": [{"action":"...","params":{...}}, {"action":"...","params":{...}}], "objective": "..."}
+  One action is a complete reply — send "commands" only when you genuinely have several moves; a single "wait" is just as valid.
+  They run IN ORDER on a board each one CHANGES, and you do not see between them, so order them so the cheap and certain moves go first:
+  spend resources or population in the first command and a later one can be refused for what the first just used.
+  Each is judged on its own — one refusal does not cancel the others, and you are told which number failed and why.
 
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
@@ -2809,7 +2845,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     registerNoActionReturn(controller) {
         const s = controller.stats;
         if (s) s.noActionReturns = (s.noActionReturns || 0) + 1;
-        controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: your reply contained no valid JSON action object. Reply with EXACTLY ONE JSON object, e.g. {"action":"wait","params":{"reason":"..."}} — plain prose wastes the turn.`;
+        controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: your reply contained no valid JSON action object. Reply with ONE JSON object, e.g. {"action":"wait","params":{"reason":"..."}} — or carry several in a "commands" array. Plain prose wastes the turn.`;
         const lastTurn = controller.turnLog[controller.turnLog.length - 1];
         if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
     }
@@ -2896,7 +2932,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             //    message.reasoning, so we must look there too.
             let parsed = this.extractActionFromText(message.content);
             if (!parsed) parsed = this.extractActionFromText(message.reasoning);
-            if (parsed && parsed.action) {
+            if (OpenAIAIManager.ordersSomething(parsed)) {
                 console.log(`[OpenAIAI] Parsed action:`, parsed);
                 return parsed;
             }
@@ -2907,7 +2943,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 const args = toolCalls[0].function?.arguments;
                 console.log(`[OpenAIAI] Tool call fallback:`, args);
                 const fromTool = this.extractActionFromText(args);
-                if (fromTool && fromTool.action) return fromTool;
+                if (OpenAIAIManager.ordersSomething(fromTool)) return fromTool;
                 if (typeof args === 'string' && args.trim()) {
                     // A tool call whose arguments carry no parseable action is
                     // still no action — we don't guess one from the text.
@@ -2994,7 +3030,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // Direct parse
         try {
             const p = JSON.parse(t);
-            if (p && p.action) return p;
+            if (OpenAIAIManager.ordersSomething(p)) return p;
         } catch (e) { /* fall through */ }
 
         // Balanced-brace scan: collect every top-level {...} and prefer the
@@ -3002,14 +3038,16 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const objs = this.findJsonObjects(t);
         for (let i = objs.length - 1; i >= 0; i--) {
             const raw = objs[i];
-            if (!/["']?action["']?\s*:/.test(raw)) continue;
+            // "commands" too: a batched reply's own key is commands, and its actions
+            // live one level down inside it.
+            if (!/["']?(?:action|commands)["']?\s*:/.test(raw)) continue;
             try {
                 const p = JSON.parse(raw);
-                if (p && p.action) return p;
+                if (OpenAIAIManager.ordersSomething(p)) return p;
             } catch (e) { /* try repaired */ }
             try {
                 const p = JSON.parse(this.fixJsonString(raw));
-                if (p && p.action) return p;
+                if (OpenAIAIManager.ordersSomething(p)) return p;
             } catch (e) { /* next candidate */ }
         }
 
@@ -3065,10 +3103,92 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // ----------------------------------------------------------------
     // 11. Execute the parsed action for the AI player
     // ----------------------------------------------------------------
+    // One reply, one to MAX_COMMANDS_PER_TURN commands. The single-action shape stays
+    // exactly as valid as it ever was — a bare {"action":"wait"} is a complete reply —
+    // so this is additive and a model that ignores it loses nothing.
+    //
+    // Commands run IN ORDER against the live board, which each one changes. That is the
+    // honest arrangement: a model that spends its stone on a tower and then orders a
+    // wall it can no longer afford is told so, on that command, and keeps the tower.
+    // The alternative — validating all three against the state the model read — would
+    // let impossible combinations through and lie about what happened.
+    executeTurn(controller, envelope) {
+        const cmds = this.normalizeCommands(envelope);
+        if (!cmds.length) { this.executeAction(controller, envelope); return; }
+        if (cmds.length === 1) {
+            // Nothing to combine: leave the single-command path byte-for-byte as it was,
+            // including its transcript stamp, its feedback wording and its own counting.
+            this.executeAction(controller, cmds[0]);
+            return;
+        }
+        // Counted once for the whole turn, before _batch is set — executeAction skips
+        // its own count while a batch is running, so this is the only increment.
+        if (controller.stats) controller.stats.turnsExecuted++;
+        controller._batch = { results: [] };
+        try {
+            for (const c of cmds) {
+                if (this._stopped || controller.defeated) break;
+                if (!c || typeof c.action !== 'string' || !c.action.trim()) {
+                    // Counted, not skipped in silence. A malformed entry is a real
+                    // mistake and the only way the model learns is being told which one.
+                    if (controller.stats) controller.stats.invalidActions++;
+                    controller._batch.results.push('[ERROR] Not a command object: every entry in "commands" needs an "action" name as a string.');
+                    continue;
+                }
+                try { this.executeAction(controller, c); }
+                catch (err) {
+                    console.error('[OpenAIAI] Command failed for ' + controller.id + ':', err);
+                    controller._batch.results.push('[ERROR] That command could not be carried out.');
+                }
+            }
+        } finally {
+            const results = controller._batch.results;
+            controller._batch = null;
+            // Numbered, so the model can tell WHICH of its commands failed. An
+            // unlabelled list of three answers is a puzzle, not feedback — and the
+            // position is the whole point when the second failed because the first
+            // spent the resource.
+            const combined = results.map((r, i) =>
+                'Command ' + (i + 1) + '/' + results.length + ': ' + r).join('\n');
+            controller.lastActionResult = combined;
+            if (controller.turnLog && controller.turnLog.length) {
+                const lastTurn = controller.turnLog[controller.turnLog.length - 1];
+                if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = combined;
+            }
+            try {
+                if (this.transcripts) this.transcripts.noteResult(
+                    controller.aiPlayer && controller.aiPlayer.id, combined);
+            } catch (e) { /* recording must never break a turn */ }
+        }
+    }
+
+    // What did this reply actually order? Returns [] when the reply carries no command
+    // list at all, which means the caller should treat it as the single-action shape.
+    normalizeCommands(envelope) {
+        if (!envelope || typeof envelope !== 'object') return [];
+        const raw = envelope.commands;
+        if (!Array.isArray(raw) || !raw.length) return [];
+        const out = raw.slice(0, OpenAIAIManager.MAX_COMMANDS_PER_TURN);
+        // objective and plan are properties of the TURN, not of any one command, and
+        // they are absorbed inside executeAction. Carried onto the first command so a
+        // batched reply keeps its standing goal — without this the feature would go
+        // silently dead for exactly the models that used the new shape.
+        const first = out[0];
+        if (first && typeof first === 'object') {
+            const carried = Object.assign({}, first);
+            if (envelope.objective !== undefined && carried.objective === undefined) carried.objective = envelope.objective;
+            if (envelope.plan !== undefined && carried.plan === undefined) carried.plan = envelope.plan;
+            out[0] = carried;
+        }
+        return out;
+    }
     executeAction(controller, actionData) {
         const ai = controller.aiPlayer;
         const game = this.game;
 
+        // Counted here rather than in executeTurn so the single-action path — which
+        // reaches executeAction directly — is in the denominator too.
+        if (controller.stats && !controller._batch) controller.stats.turnsExecuted++;
         if (!actionData || !actionData.action) {
             console.warn(`[OpenAIAI] No action data for ${ai.id}`);
             controller.lastActionResult = `[ERROR] No valid action data received.`;
@@ -3320,6 +3440,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 controller.conversationHistory = controller.conversationHistory.slice(-this.maxHistoryEntries);
             }
             controller.lastActionResult = actionResult;
+            // One command of several: executeTurn owns the turn-level bookkeeping and
+            // stamps the combined answer once at the end. noteResult SEALS the turn, so
+            // a second call here would find nothing open and commands 2 and 3 would
+            // vanish from the transcript without a word.
+            if (controller._batch) { controller._batch.results.push(actionResult); return; }
             // Attach this outcome to the matching rolling-history turn (Option C) so the
             // multi-turn replay shows the result of each past decision, not just the
             // decision — otherwise the model can't tell a command keeps being rejected.
@@ -5153,7 +5278,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const action = c.queuedAction;
             c.queuedAction = null;
             if (this._stopped || c.defeated) continue;
-            try { this.executeAction(c, action); }
+            try { this.executeTurn(c, action); }
             catch (err) { console.error(`[OpenAIAI] Queued action failed for ${c.id}:`, err); }
         }
     }
@@ -5426,7 +5551,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     if (this.roundStillOpen(askedInRound)) controller.queuedAction = actionData;
                     return;
                 }
-                this.executeAction(controller, actionData);
+                this.executeTurn(controller, actionData);
             })
             .catch(err => {
                 console.error(`[OpenAIAI] Turn failed for ${controller.id}:`, err);

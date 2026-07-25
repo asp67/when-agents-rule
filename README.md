@@ -44,7 +44,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 
 - **⚔️ Models develop their own doctrine.** Same rules, same prompt — yet you get pure economists racing for a Wonder next to warlords massing an army absurdly early. Which one a model turns out to be is part of what you're measuring.
 - **🧨 Pressure changes their play.** Raided, out-scouted, slipping down the leaderboard — many models genuinely switch tactics rather than doubling down. Watching one *notice* it is losing is worth the match on its own.
-- **🎯 Precise tool calling.** Every move must be one valid JSON action. Hallucinate a tool, fumble the schema, wrap it in prose — the turn is wasted, and you can watch format discipline hold or crumble.
+- **🎯 Precise tool calling.** Every move must be valid JSON — one action, or up to three in one reply. Hallucinate a tool, fumble the schema, wrap it in prose — the turn is wasted, and you can watch format discipline hold or crumble.
 - **🧭 An unfamiliar framework.** No fine-tuning, no examples of good play. Only the rules in the prompt and the state in front of it.
 - **🧠 Long-horizon strategy.** Economy → tech → military → conquest plays out over dozens of turns. Models that optimize forever and never build an army lose. The harness carries a model-authored **objective + plan** (up to 10 steps) across turns — but maintaining it is the model's job.
 - **🔁 Error recovery.** A rejected action comes back with a precise reason. Does the model correct course, or bang on the same locked door?
@@ -187,19 +187,42 @@ Browser (no backend, no external code)
 │                                 composed meshes, fog plane, effects
 ├── Game engine               — economy, combat, fog of war, ages, win conditions
 ├── Provider adapters         — OpenAI / Anthropic / Ollama / Google request shaping + auth
-└── Per-model agent loop      — builds the JSON game-state, calls the model, parses ONE action,
-                                applies it, feeds the result back next turn
+└── Per-model agent loop      — builds the JSON game-state, calls the model, parses its
+                                command(s), applies them in order, feeds each result back
 ```
 
-Each turn a model receives a structured snapshot and must return exactly one action:
+Each turn a model receives a structured snapshot and returns an action:
 
 ```json
 { "action": "build_structure", "params": { "buildingType": "barracks", "reason": "need infantry to pressure the leader" } }
 ```
 
+**Or up to three commands in one reply.** The game does not stop while a model thinks — in a
+recent match the slowest seat sat 43 seconds between turns, so its orders landed on a board
+43 seconds older than the one it read. A short queue lets a slow seat spend one turn on a
+whole beat of play instead of three stale ones:
+
+```json
+{ "commands": [
+    { "action": "train_unit",      "params": { "unitType": "worker" } },
+    { "action": "build_structure", "params": { "buildingType": "house" } },
+    { "action": "explore",         "params": { "tile": "C5" } } ],
+  "objective": "out-expand the leader" }
+```
+
+It is entirely optional — a single action is a complete reply, and a lone `wait` is as valid as
+three orders. Commands run **in order against a board each one changes**, and the model cannot
+look between them, so spending resources early can get a later command refused for what the
+first just used. Each is judged **on its own**: one refusal does not cancel its siblings, and
+the feedback names which number failed and why. A reply whose JSON is broken still costs the
+whole turn — so the penalty for malformed output scales with how much was riding on it,
+without any special rule. The results screen reports **commands per turn** beside the success
+rate rather than inside it, so a seat that sends one safe command cannot outrank one that sends
+three and gets two right.
+
 The engine validates it against the **advancement chain** (advance → research → build → resources → train) and returns a precise, actionable error if it can't be done — which becomes part of the model's context next turn. The full state contract is in [`game-state-schema.json`](game-state-schema.json).
 
-**The harness never plans for the model.** Every turn the prompt is rebuilt from scratch, so the harness — not each server's truncation rules — decides exactly what the model sees. The model always gets the outcome of its previous action (a rejected command is never silently repeated), the current state last, and its own standing objective and plan echoed back until it rewrites them. Everything else is the model's own reasoning.
+**The harness never plans for the model.** Every turn the prompt is rebuilt from scratch, so the harness — not each server's truncation rules — decides exactly what the model sees. The model always gets the outcome of every command it last sent, each numbered and answered separately (a rejected command is never silently repeated), the current state last, and its own standing objective and plan echoed back until it rewrites them. Everything else is the model's own reasoning.
 
 **Action set:** `train_unit` · `research_tech` · `upgrade_age` · `build_structure` · `assign_workers` · `repair_building` · `explore` · `move_units` · `attack_target` · `delete_unit` · `destroy_building` · `wait`. Villagers and the Wonder are ordinary targets: `train_unit` with `unitType: "worker"`, and `build_structure` with the civ's Wonder id.
 

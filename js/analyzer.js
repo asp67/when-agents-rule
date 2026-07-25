@@ -236,6 +236,30 @@ class TranscriptAnalyzer {
         }
         return (last && last.state && last.state.epoch && last.state.epoch.currentEpoch) || 'stone';
     }
+
+    // Every command a turn carried, in order, whichever shape the reply used: a bare
+    // {action, params} or a "commands" list of up to three. Readers should not have to
+    // know which — and transcripts recorded before batching existed only ever have the
+    // first, so this is also what keeps them readable.
+    commandsOf(rec) {
+        const p = (rec && rec.parsed) || null;
+        if (!p) return [];
+        if (Array.isArray(p.commands) && p.commands.length) {
+            return p.commands.filter(c => c && typeof c === 'object');
+        }
+        return (typeof p.action === 'string' || p.action) ? [p] : [];
+    }
+
+    // The harness answers a batch with one numbered line per command. Split them back
+    // apart so each command can be shown beside its OWN outcome; anything that does not
+    // match that shape is one result for one command, which is every older transcript.
+    resultsOf(rec) {
+        const h = (rec && typeof rec.harnessResult === 'string') ? rec.harnessResult : '';
+        if (!h) return [];
+        const parts = h.split(/\n(?=Command \d+\/\d+: )/);
+        if (parts.length < 2 && !/^Command \d+\/\d+: /.test(h)) return [h];
+        return parts.map(x => x.replace(/^Command \d+\/\d+: /, ''));
+    }
     // Everything to draw for one moment. `union` decides whose eyes: a single seat is
     // the honest reconstruction of what that model could see, the union is the analyst's
     // overview that no player ever had. Both are useful and they are different claims,
@@ -476,9 +500,13 @@ class TranscriptAnalyzer {
         const st = rec.state || {};
         const b = (st.battles || [])[0];
         if (b && Array.isArray(b.at) && b.at.length === 2) return { x: b.at[0], z: b.at[1] };
-        const p = (rec.parsed && rec.parsed.params) || {};
-        if (typeof p.targetX === 'number' && typeof p.targetZ === 'number') {
-            return { x: p.targetX, z: p.targetZ };
+        // The FIRST command that names a place. A turn may now carry three, and only
+        // some of them point anywhere.
+        for (const c of this.commandsOf(rec)) {
+            const cp = (c && c.params) || {};
+            if (typeof cp.targetX === 'number' && typeof cp.targetZ === 'number') {
+                return { x: cp.targetX, z: cp.targetZ };
+            }
         }
         const mine = (sc && sc.seats || []).find(x => x.isCurrent)
             || { buildings: st.friendlyBuildings || [], units: st.friendlyUnits || [] };

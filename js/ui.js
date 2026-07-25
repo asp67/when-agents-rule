@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v60';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v61';
     }
 
     showScreen(screenId) {
@@ -3006,6 +3006,13 @@ class UIManager {
                     rateLimited: st.rateLimited || 0, rateLimitLost: rlLost,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
                     contended: st.actionsContended || 0,
+                    // How much each turn carried. Reported BESIDE the success rate and
+                    // never inside it: scoring per command already means a seat sending
+                    // three and getting two right reads 67% while a seat sending one
+                    // safe command reads 100%. Without this figure the second looks
+                    // simply better, when what it did was less.
+                    commandsPerTurn: (st.turnsExecuted || 0)
+                        ? st.actionsAttempted / st.turnsExecuted : 0,
                     promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
                     attempted: st.actionsAttempted, succeeded: st.actionsSucceeded,
                     // Contended attempts leave the DENOMINATOR, not just the numerator.
@@ -3099,7 +3106,7 @@ class UIManager {
                     <div class="sum-tags">${tagsHtml}</div>
                     <div class="sum-metrics">
                         <div class="sum-metric"><span>⏱ ${t('sum.mResponse')}</span><b>${avgS.toFixed(1)}s</b><i>${(m.minLatency / 1000).toFixed(1)}–${(m.maxLatency / 1000).toFixed(1)}s</i></div>
-                        <div class="sum-metric"><span>\u{1F9E0} ${t('sum.mDecisions')}</span><b>${m.decisions}</b><i>${t('sum.mAnswered', { n: m.responded })}${(m.roundsMissed || 0) ? ` · ${t('sum.missedRounds', { n: m.roundsMissed })}` : ''}</i></div>
+                        <div class="sum-metric"><span>\u{1F9E0} ${t('sum.mDecisions')}</span><b>${m.decisions}</b><i>${t('sum.mAnswered', { n: m.responded })}${(m.roundsMissed || 0) ? ` · ${t('sum.missedRounds', { n: m.roundsMissed })}` : ''}${(m.commandsPerTurn || 0) > 1.05 ? ` · ${t('sum.perTurn', { n: m.commandsPerTurn.toFixed(1) })}` : ''}</i></div>
                         <div class="sum-metric"><span>✅ ${t('sum.mSuccess')}</span><b>${Math.round(m.successRate * 100)}%</b><i>${m.succeeded}/${m.attempted - (m.contended || 0)}${(m.contended || 0) ? ` · ${t('sum.contended', { n: m.contended })}` : ''}</i></div>
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
@@ -4233,13 +4240,18 @@ class UIManager {
                     + this.teamDotHtml(sm.seat, 8)
                     + '<span class="an-act">⏱ ' + esc(t('an.rowMissed')) + '</span></div>';
             }
-            const act = (r.parsed && r.parsed.action);
+            // A batched turn is labelled by its first command with a count beside it —
+            // three rows all reading "train unit" would say less than one saying +2.
+            const cmds = a.commandsOf ? a.commandsOf(r) : [];
+            const act = cmds.length ? cmds[0].action : (r.parsed && r.parsed.action);
+            const more = cmds.length > 1 ? cmds.length - 1 : 0;
             const bad = typeof r.harnessResult === 'string' && r.harnessResult.indexOf('[ERROR]') === 0;
             const fight = !!(r.state && r.state.battles && r.state.battles.length);
             return '<div class="an-row' + on + (bad ? ' is-bad' : '') + '" onclick="game.ui.anSeek(' + i + ')">'
                 + '<span class="an-t">' + esc(mmss(r._sec)) + '</span>'
                 + this.teamDotHtml(sm.seat, 8)
                 + '<span class="an-act">' + esc(typeof act === 'string' ? act.replace(/_/g, ' ') : '(malformed)') + '</span>'
+                + (more ? '<span class="an-more" title="' + esc(t('an.plusMore', { n: more })) + '">+' + more + '</span>' : '')
                 + (fight ? '<span class="an-flag">⚔️</span>' : '')
                 + (r._planNew ? '<span class="an-flag">📋</span>' : '')
                 + (bad ? '<span class="an-flag">✕</span>' : '') + '</div>';
@@ -4846,6 +4858,27 @@ class UIManager {
             return '<span class="an-st">' + this.teamDotHtml(x.seat.seat, 8) + esc(t('an.agoS', { n: x.ageSec })) + '</span>';
         }).join('');
 
+        // One block per command. A turn may carry up to MAX_COMMANDS_PER_TURN of them and
+        // each is judged on its own, so each is shown with its OWN answer rather than
+        // hidden behind the first one's.
+        const cmdList = a.commandsOf ? a.commandsOf(r) : [];
+        const cmdResults = a.resultsOf ? a.resultsOf(r) : [];
+        const cmdBlocks = (cmdList.length ? cmdList : [p]).map((c, i) => {
+            const nm = (c && typeof c.action === 'string') ? c.action : '(malformed)';
+            const ps = Object.assign({}, (c && c.params) || {});
+            const why = ps.reason; delete ps.reason;
+            const res = cmdResults.length > 1 ? cmdResults[i] : (i === 0 ? cmdResults[0] : null);
+            const isBad = typeof res === 'string' && res.indexOf('[ERROR]') === 0;
+            const tag = cmdList.length > 1
+                ? t('an.sentN', { i: i + 1, n: cmdList.length }) : t('an.sent');
+            return '<div class="an-d-sec' + (isBad ? ' is-bad' : '') + '">'
+                + '<span class="an-d-tag">' + esc(tag) + '</span>'
+                + '<span class="an-d-cmd">' + esc(String(nm).replace(/_/g, ' ')) + '</span>'
+                + (Object.keys(ps).length ? ' <code>' + esc(JSON.stringify(ps)) + '</code>' : '')
+                + '</div>'
+                + (why ? '<div class="an-d-reason">“' + esc(why) + '”</div>' : '');
+        }).join('');
+
         // The numbers go DIRECTLY under the name, above everything variable. They used to
         // sit below the command, where the block above them changes height turn by turn —
         // so during playback the one row you want to watch was the one that moved most.
@@ -4858,12 +4891,7 @@ class UIManager {
             + plan
             // Both blocks are labelled now. A target glyph suggests a plan; it does not
             // say so, and the command sat as a bare word with no clue what it was.
-            + '<div class="an-d-sec' + (bad ? ' is-bad' : '') + '">'
-            + '<span class="an-d-tag">' + esc(t('an.sent')) + '</span>'
-            + '<span class="an-d-cmd">' + esc(act.replace(/_/g, ' ')) + '</span>'
-            + (Object.keys(params).length ? ' <code>' + esc(JSON.stringify(params)) + '</code>' : '')
-            + '</div>'
-            + (reason ? '<div class="an-d-reason">“' + esc(reason) + '”</div>' : '')
+            + cmdBlocks
             + this.tvTurnHtml(r);
     }
 
@@ -4973,6 +5001,9 @@ class UIManager {
             if (r.isLLM && m) {
                 L.push(`- Strategy score: ${r.soundness}/100`);
                 L.push(`- Decisions: ${m.decisions} (answered ${m.responded}${(m.roundsMissed || 0) ? ` · ${m.roundsMissed} missed the round deadline` : ''})`);
+                // Only when it says something: a match where every reply carried one
+                // command prints exactly what it always did.
+                if ((m.commandsPerTurn || 0) > 1.05) L.push(`- Commands per turn: ${m.commandsPerTurn.toFixed(2)} (${m.attempted} commands over ${Math.round(m.attempted / m.commandsPerTurn)} turns)`);
                 // Denominator MUST match the percentage, which excludes contended
                 // attempts (see the successRate definition — a busy barracks is not the
                 // model's mistake). Printing raw m.attempted here made "95% (374/402)"
