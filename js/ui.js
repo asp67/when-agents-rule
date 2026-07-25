@@ -3613,7 +3613,10 @@ class UIManager {
     // director camera runs — the toggle has to show which way it is currently set.
     // Called when the Results card is opened, so the chart rebuilds once on entry
     // and then only when new samples land.
-    resetChartCache() { this._chartSig = null; }
+    // Clears EVERY target's cached signature. It was one field, and when the chart
+    // gained a second target the reset kept clearing a name nothing read any more — a
+    // forced redraw that silently stopped forcing anything.
+    resetChartCache() { this._chartSigs = {}; }
 
     updateSnapshotBtn() {
         const btn = document.getElementById('arenaSnapshotBtn');
@@ -3683,10 +3686,22 @@ class UIManager {
         return mode === 'power' ? (p.pw || 0) : (p.f || 0) + (p.w || 0) + (p.s || 0) + (p.o || 0);
     }
 
-    renderSummaryChart() {
-        const box = document.getElementById('summaryChart');
+    // Drawn for the results screen and, with a `src`, for a transcript loaded off disk.
+    // Parameterised rather than copied: a second chart implementation would be a second
+    // place for the age markers, the ran-dry ticks and the dead-player scrim to drift,
+    // and this file has been fixing exactly that class of bug all week.
+    //
+    // src (all optional): { timeline, players, mode, el, playheadSeconds, sigKey }.
+    // Omitted, it reads the live match and the summary screen's boxes.
+    renderSummaryChart(src) {
+        const S = src || {};
+        const el = S.el || {
+            box: 'summaryChart', main: 'chartMain', strips: 'chartStrips', legend: 'chartLegend',
+            title: 'chartTitle', gathered: 'chartModeGathered', power: 'chartModePower'
+        };
+        const box = document.getElementById(el.box);
         if (!box) return;
-        const tl = this.game && this.game._timeline;
+        const tl = S.timeline || (this.game && this.game._timeline);
         const all = (tl && tl.samples) || [];
         if (all.length < 2) { box.style.display = 'none'; return; }  // a dot says nothing
         // The plot is ~900px wide, so anything past a few hundred points lands
@@ -3696,24 +3711,35 @@ class UIManager {
         const CAP = 300;
         const stride = Math.max(1, Math.ceil(all.length / CAP));
         const samples = stride === 1 ? all : all.filter((_, i) => i % stride === 0 || i === all.length - 1);
-        const players = ((this.game.aiManager && this.game.aiManager.aiPlayers) || [])
+        // Only {id, seat, civilization} is ever read, so a transcript header's player
+        // list stands in for live aiPlayers without adapting anything.
+        const players = (S.players || (this.game.aiManager && this.game.aiManager.aiPlayers) || [])
             .filter(a => samples.some(r => r.p && r.p[a.id]));
         if (!players.length) { box.style.display = 'none'; return; }
         box.style.display = '';
 
-        const mode = this._chartMode || 'gathered';
+        const mode = (S.mode != null ? S.mode : this._chartMode) || 'gathered';
         // Cheap guard so the live refresh can poll every second and pay for itself
         // only when a sample actually landed (they arrive every 5s). Also stops the
         // rebuild from wiping the reader's mode selection mid-glance.
-        const sig = all.length + ':' + mode + ':' + players.length + ':' + getUiLang();
-        if (sig === this._chartSig) return;
-        this._chartSig = sig;
-        const gBtn = document.getElementById('chartModeGathered');
-        const pBtn = document.getElementById('chartModePower');
-        gBtn.textContent = t('sum.chartGathered'); pBtn.textContent = t('sum.chartPower');
-        gBtn.classList.toggle('is-on', mode === 'gathered');
-        pBtn.classList.toggle('is-on', mode === 'power');
-        document.getElementById('chartTitle').textContent =
+        // The playhead moves without the data changing, so it belongs in the signature
+        // or a scrub would repaint nothing. Cached per target box: two charts on two
+        // screens sharing one signature would each suppress the other's redraw.
+        const sig = all.length + ':' + mode + ':' + players.length + ':' + getUiLang()
+            + ':' + (S.playheadSeconds == null ? '-' : S.playheadSeconds)
+            + ':' + (S.sigKey || 'live');
+        this._chartSigs = this._chartSigs || {};
+        if (sig === this._chartSigs[el.box]) return;
+        this._chartSigs[el.box] = sig;
+        const gBtn = document.getElementById(el.gathered);
+        const pBtn = document.getElementById(el.power);
+        if (gBtn && pBtn) {
+            gBtn.textContent = t('sum.chartGathered'); pBtn.textContent = t('sum.chartPower');
+            gBtn.classList.toggle('is-on', mode === 'gathered');
+            pBtn.classList.toggle('is-on', mode === 'power');
+        }
+        const titleEl = document.getElementById(el.title);
+        if (titleEl) titleEl.textContent =
             t(mode === 'power' ? 'sum.chartTitlePower' : 'sum.chartTitleGathered');
 
         const W = 900, H = 300, ML = 62, MR = 14, MT = 12, MB = 26;
@@ -3776,7 +3802,15 @@ class UIManager {
             const pts = samples.map(r => X(r.t).toFixed(1) + ',' + Y(this.chartValue(r, pl.id, mode)).toFixed(1)).join(' ');
             svg += '<polyline class="c-line" points="' + pts + '" stroke="' + esc(this.chartColor(pl)) + '"/>';
         });
-        document.getElementById('chartMain').innerHTML = svg + '</svg>';
+        // Where the reader is standing. Last, so it draws over the plot rather than
+        // under it, and clamped into the axis so a snapshot a second past the final
+        // sample cannot park it off the edge.
+        if (S.playheadSeconds != null) {
+            const px = X(Math.max(0, Math.min(tMax, S.playheadSeconds))).toFixed(1);
+            svg += '<line class="c-playhead" x1="' + px + '" y1="' + MT + '" x2="' + px + '" y2="' + (H - MB) + '"/>'
+                + '<circle class="c-playhead-dot" cx="' + px + '" cy="' + MT + '" r="3.5"/>';
+        }
+        document.getElementById(el.main).innerHTML = svg + '</svg>';
 
         // Composition strips: one per player, each band a resource's SHARE of that
         // player's cumulative haul. Normalised to 100% because the magnitude is
@@ -3826,9 +3860,11 @@ class UIManager {
                 + '</span></span><svg viewBox="0 0 ' + SW + ' ' + SH + '" class="strip-svg" preserveAspectRatio="none">'
                 + bands + '</svg></div>';
         });
-        document.getElementById('chartStrips').innerHTML = strips;
+        const stripsEl = document.getElementById(el.strips);
+        if (stripsEl) stripsEl.innerHTML = strips;
 
-        document.getElementById('chartLegend').innerHTML =
+        const legendEl = document.getElementById(el.legend);
+        if (legendEl) legendEl.innerHTML =
             RES.map(([, name]) => '<span class="c-key"><i class="c-sw c-' + name + '"></i>' + esc(resWord(name)) + '</span>').join('')
             + '<span class="c-key"><i class="c-sw c-agekey"></i>' + esc(t('sum.chartAge')) + '</span>'
             + '<span class="c-key">🏛️ ' + esc(t('sum.chartWonder')) + '</span>'
@@ -3847,6 +3883,251 @@ class UIManager {
     // field here is named on purpose, so a field added to reports later is missing from
     // the record rather than leaking into it — the same rule the per-seat settings block
     // already follows (see OpenAIAIManager.publicModelSettings).
+    // ---- Transcript analyzer -------------------------------------------------
+    // The reading end of the round trip: a match is recorded, downloaded, handed on,
+    // and opened here. Nothing in it touches the live game — it renders a file.
+
+    AN_EL() {
+        return { box: 'anChartBox', main: 'anChartMain', strips: 'anChartStrips',
+                 legend: 'anChartLegend', title: 'anChartTitle',
+                 gathered: 'anModeGathered', power: 'anModePower' };
+    }
+
+    anOpen() {
+        this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
+        this.showScreen('analyzeScreen');
+        this.anRender();
+    }
+
+    anClose() { this.showScreen('gameModeScreen'); }
+
+    anLoadFile(input) {
+        const f = input && input.files && input.files[0];
+        if (!f) return;
+        const fr = new FileReader();
+        fr.onload = () => {
+            this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
+            try { this.analyzer.load(String(fr.result || ''), f.name); }
+            catch (e) { console.warn('[analyzer] load failed', e); this.showErrorMessage(t('an.badFile')); return; }
+            this.resetChartCache();
+            this.anRender();
+        };
+        fr.onerror = () => this.showErrorMessage(t('an.badFile'));
+        fr.readAsText(f);
+    }
+
+    anSetMode(mode) {
+        if (!this.analyzer) return;
+        this.analyzer.mode = mode;
+        this.resetChartCache();
+        this.anRender();
+    }
+
+    anSetFilter(kind) { if (this.analyzer) { this.analyzer.filter = kind; this.anRender(); } }
+    anSetSeat(id) {
+        if (!this.analyzer) return;
+        this.analyzer.seatFilter = (id === '*' || !id) ? null : id;
+        this.anRender();
+    }
+    anSeek(i) { if (this.analyzer) { this.analyzer.seek(i); this.anRender(); } }
+    anStep(d) { if (this.analyzer) { this.analyzer.step(d); this.anRender(); } }
+    anJumpSec(sec) { if (this.analyzer) { this.analyzer.seekSeconds(sec); this.anRender(); } }
+
+    // A click on the plot becomes a moment. The SVG is a fixed 900x300 viewBox stretched
+    // to whatever width the pane has, so the pixel is converted back through the same
+    // margins the renderer used — otherwise the playhead lands where the reader did not
+    // point, which is worse than not being clickable at all.
+    anChartClick(ev) {
+        const a = this.analyzer; if (!a || !a.timeline) return;
+        const host = document.getElementById('anChartMain');
+        const svg = host && host.querySelector('svg');
+        if (!svg) return;
+        const r = svg.getBoundingClientRect();
+        if (!r.width) return;
+        const ML = 62, MR = 14, W = 900;
+        const vx = ((ev.clientX - r.left) / r.width) * W;
+        const frac = Math.max(0, Math.min(1, (vx - ML) / (W - ML - MR)));
+        const samples = a.timeline.samples || [];
+        const tMax = samples.length ? (samples[samples.length - 1].t || 1) : a.durationSec();
+        a.seekSeconds(Math.round(frac * tMax));
+        this.anRender();
+    }
+
+    anRender() {
+        const a = this.analyzer;
+        const body = document.getElementById('anBody');
+        const empty = document.getElementById('anEmpty');
+        const meta = document.getElementById('anMeta');
+        if (!body || !empty) return;
+        const has = !!(a && a.order && a.order.length);
+        body.style.display = has ? '' : 'none';
+        empty.style.display = has ? 'none' : '';
+        if (meta) meta.innerHTML = '';
+        if (!has) {
+            // A file with a header but no turns is a match that recorded nothing, not a
+            // broken file — say which it is rather than showing empty furniture.
+            if (meta && a && a.fileName) meta.textContent = t('an.noTurns', { f: a.fileName, e: a.parseErrors });
+            return;
+        }
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const mmss = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+        const st = a.stats();
+        const h = a.header || {};
+
+        const bits = [esc(a.fileName || ''), t('an.turns', { n: st.total })];
+        if (st.markers) bits.push(t('an.missed', { n: st.markers }));
+        if (h.mapSeed) bits.push('seed ' + esc(h.mapSeed));
+        if (h.difficulty) bits.push(esc(h.difficulty));
+        if (h.turnBased != null) bits.push(h.turnBased ? t('an.turnBased') : t('an.realTime'));
+        if (h.simSpeed) bits.push(h.simSpeed + '×');
+        if (h.promptVersion) bits.push(esc(h.promptVersion));
+        if (a.results && a.results.build) bits.push('build ' + a.results.build);
+        bits.push(mmss(st.duration));
+        if (st.parseErrors) bits.push(t('an.parseErrors', { n: st.parseErrors }));
+        // An interrupted match has turns but no tail. Better to say so than to leave a
+        // reader wondering why there is no graph.
+        if (!a.results || !a.timeline) bits.push(t('an.partial'));
+        if (meta) meta.innerHTML = bits.join(' · ');
+
+        const cur = a.current();
+
+        const chartBox = document.getElementById('anChartBox');
+        if (a.timeline) {
+            chartBox.style.display = '';
+            this.renderSummaryChart({
+                timeline: a.timeline, players: a.chartPlayers(), mode: a.mode,
+                el: this.AN_EL(), sigKey: 'an', playheadSeconds: cur ? cur._sec : null
+            });
+        } else {
+            chartBox.style.display = 'none';
+        }
+
+        const F = [['all', t('an.fAll')], ['battles', t('an.fBattles')],
+                   ['rejected', t('an.fRejected')], ['planned', t('an.fPlanned')],
+                   ['missed', t('an.fMissed')]];
+        let bar = F.map(function (kv) {
+            return '<button class="an-chip' + (a.filter === kv[0] ? ' is-on' : '')
+                + '" onclick="game.ui.anSetFilter(\'' + kv[0] + '\')">' + esc(kv[1]) + '</button>';
+        }).join('');
+        bar += '<select class="an-seat" onchange="game.ui.anSetSeat(this.value)">'
+            + '<option value="*">' + esc(t('an.allSeats')) + '</option>'
+            + [...a.seats.values()].map(s => '<option value="' + esc(s.id) + '"'
+                + (a.seatFilter === s.id ? ' selected' : '') + '>'
+                + esc(s.name || s.model || s.civ) + '</option>').join('')
+            + '</select>';
+        bar += '<span class="an-nav"><button class="an-chip" onclick="game.ui.anStep(-1)">‹</button>'
+            + '<button class="an-chip" onclick="game.ui.anStep(1)">›</button></span>';
+        document.getElementById('anFilters').innerHTML = bar;
+
+        const vis = a.visible();
+        const rows = vis.map(r => {
+            const i = a.order.indexOf(r);
+            const sm = a.seats.get(r.playerId) || {};
+            const on = r === cur ? ' is-cur' : '';
+            if (r.type === 'round_missed') {
+                return '<div class="an-row is-missed' + on + '" onclick="game.ui.anSeek(' + i + ')">'
+                    + '<span class="an-t">' + esc(mmss(r._sec)) + '</span>'
+                    + this.teamDotHtml(sm.seat, 8)
+                    + '<span class="an-act">⏱ ' + esc(t('an.rowMissed')) + '</span></div>';
+            }
+            const act = (r.parsed && r.parsed.action);
+            const bad = typeof r.harnessResult === 'string' && r.harnessResult.indexOf('[ERROR]') === 0;
+            const fight = !!(r.state && r.state.battles && r.state.battles.length);
+            return '<div class="an-row' + on + (bad ? ' is-bad' : '') + '" onclick="game.ui.anSeek(' + i + ')">'
+                + '<span class="an-t">' + esc(mmss(r._sec)) + '</span>'
+                + this.teamDotHtml(sm.seat, 8)
+                + '<span class="an-act">' + esc(typeof act === 'string' ? act.replace(/_/g, ' ') : '(malformed)') + '</span>'
+                + (fight ? '<span class="an-flag">⚔️</span>' : '')
+                + (r._planNew ? '<span class="an-flag">📋</span>' : '')
+                + (bad ? '<span class="an-flag">✕</span>' : '') + '</div>';
+        }).join('');
+        document.getElementById('anList').innerHTML = rows
+            || '<div class="an-none">' + esc(t('an.noneMatch')) + '</div>';
+        const curEl = document.querySelector('#anList .is-cur');
+        if (curEl && curEl.scrollIntoView) curEl.scrollIntoView({ block: 'nearest' });
+
+        document.getElementById('anDetail').innerHTML = this.anDetailHtml(cur);
+
+        const ch = a.chapters.map(c => '<button class="an-chapter" onclick="game.ui.anJumpSec(' + c.t + ')">'
+            + '<span class="an-t">' + esc(mmss(c.t)) + '</span>' + esc(c.icon) + ' ' + esc(c.text)
+            + '</button>').join('');
+        document.getElementById('anChapters').innerHTML = ch
+            ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + ch : '';
+    }
+
+    anDetailHtml(r) {
+        if (!r) return '';
+        const a = this.analyzer;
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const mmss = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+        const s = a.seats.get(r.playerId) || {};
+        const who = esc(s.name || s.model || s.civ || r.playerId);
+        const head = '<div class="an-d-head">' + this.teamDotHtml(s.seat, 12) + ' ' + who
+            + '<span class="an-d-t">' + esc(mmss(r._sec)) + '</span></div>';
+
+        if (r.type === 'round_missed') {
+            return head + '<div class="an-d-missed">⏱ ' + esc(r.note || t('an.rowMissed')) + '</div>';
+        }
+
+        // Standing objective and plan, CARRIED FORWARD. They persist across turns — "omit
+        // to keep current" — so reading only this turn's record would blank them on the
+        // ~11% of turns that simply did not restate them, showing an empty plan where
+        // there is a plan. Flagged when THIS turn is the one that rewrote it, so a model
+        // changing its mind is visible rather than just having a plan.
+        let plan = '';
+        if (r._objective || (r._plan && r._plan.length)) {
+            plan = '<div class="an-d-plan">'
+                + (r._objective ? '<div class="an-d-obj">🎯 ' + esc(r._objective) + '</div>' : '')
+                + ((r._plan && r._plan.length)
+                    ? '<ol class="an-d-steps">' + r._plan.map(x => '<li>' + esc(x) + '</li>').join('') + '</ol>'
+                    : '')
+                + ((r._planNew || r._objectiveNew)
+                    ? '<span class="an-d-newtag">' + esc(t('an.rewritten')) + '</span>' : '')
+                + '</div>';
+        }
+
+        const p = r.parsed || {};
+        const act = typeof p.action === 'string' ? p.action : '(malformed)';
+        const params = Object.assign({}, p.params || {});
+        const reason = params.reason; delete params.reason;
+        const bad = typeof r.harnessResult === 'string' && r.harnessResult.indexOf('[ERROR]') === 0;
+
+        const stt = r.state || {};
+        const res = stt.resources || {};
+        const wk = stt.workers || {};
+        const num = [];
+        if (stt.epoch && stt.epoch.currentEpoch) num.push(esc(stt.epoch.currentEpoch));
+        if (res.population != null) num.push('pop ' + res.population + '/' + (res.maxPopulation != null ? res.maxPopulation : '?'));
+        ['food', 'wood', 'stone', 'gold'].forEach(k => {
+            if (res[k] != null) num.push(k.charAt(0).toUpperCase() + Math.round(res[k]));
+        });
+        if (wk.total != null) num.push('👷' + wk.total);
+        if (Array.isArray(stt.friendlyUnits)) num.push(t('an.units', { n: stt.friendlyUnits.length }));
+        if (r.latencyMs) num.push(Math.round(r.latencyMs / 1000) + 's');
+        if (r.tokens) num.push((r.tokens.prompt || 0) + '/' + (r.tokens.completion || 0) + ' tok');
+
+        // Who else was on the board here, and how stale their picture is. The honest
+        // answer to "what did this moment look like": one seat is current and the rest
+        // were last heard from some seconds ago. That skew is a fact about the match —
+        // seats snapshot on their own turns — not a gap to paper over, and it is the
+        // reason nothing here is interpolated.
+        const stale = a.staleness(r).map(x => {
+            if (x.isCurrent) return '<span class="an-st is-cur">' + this.teamDotHtml(x.seat.seat, 8) + esc(t('an.now')) + '</span>';
+            if (!x.last) return '<span class="an-st is-none">' + this.teamDotHtml(x.seat.seat, 8) + '—</span>';
+            return '<span class="an-st">' + this.teamDotHtml(x.seat.seat, 8) + esc(t('an.agoS', { n: x.ageSec })) + '</span>';
+        }).join('');
+
+        return head
+            + '<div class="an-d-stale">' + stale + '</div>'
+            + plan
+            + '<div class="an-d-act' + (bad ? ' is-bad' : '') + '"><b>' + esc(act.replace(/_/g, ' ')) + '</b>'
+            + (Object.keys(params).length ? ' <code>' + esc(JSON.stringify(params)) + '</code>' : '')
+            + '</div>'
+            + (reason ? '<div class="an-d-reason">“' + esc(reason) + '”</div>' : '')
+            + '<div class="an-d-nums">' + num.map(x => '<span>' + esc(x) + '</span>').join('') + '</div>'
+            + this.tvTurnHtml(r);
+    }
+
     publicResults(summary) {
         if (!summary) return null;
         const s = summary;

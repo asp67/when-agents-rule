@@ -1,0 +1,260 @@
+// ---------------------------------------------------------------------------
+// Transcript analyzer — read a finished match back, turn by turn.
+//
+// A transcript is the only artifact that survives a match, and until now reading
+// one meant writing a script. This turns it into something you can scrub: the
+// graph with a playhead, a list of every turn every seat took, and for each one
+// what that model was told, what it decided, why it said it decided that, and
+// what the harness answered.
+//
+// It renders ONLY what the file attests to. No interpolation between snapshots:
+// they arrive 8 to 900 seconds apart depending on the seat, and units move ~3u/s,
+// so a smooth animation would be inventing up to hundreds of units of travel per
+// unit per frame. A frame here is a moment the transcript vouches for, and the
+// gaps are left visible because they are part of what happened — a seat that was
+// asked twelve times while another answered once is the story, not a rendering
+// defect to smooth over.
+// ---------------------------------------------------------------------------
+class TranscriptAnalyzer {
+    constructor(ui) {
+        this.ui = ui;
+        this.reset();
+    }
+
+    reset() {
+        this.header = null;      // type:"match" — the conditions
+        this.results = null;     // type:"results" — absent if the match was interrupted
+        this.timeline = null;    // type:"timeline" — ditto
+        this.turns = [];         // every turn, chronological across all seats
+        this.markers = [];       // type:"round_missed" and anything else non-turn
+        this.chapters = [];      // derived: what a reader would want to jump to
+        this.seats = new Map();  // playerId -> {id, seat, civ, model, name, turns:[]}
+        this.filter = 'all';
+        this.seatFilter = null;
+        this.cursor = -1;
+        this.mode = 'gathered';  // its own chart mode; the results screen keeps its own
+        this.fileName = null;
+        this.parseErrors = 0;
+    }
+
+    // ---- loading ----------------------------------------------------------
+
+    // Tolerant on purpose. A transcript can be truncated by a crash mid-write, and
+    // JSONL exists precisely so every complete line before that still reads — so a
+    // bad line is counted and skipped, never fatal. An interrupted match with no
+    // results/timeline tail is a normal thing to open, not an error.
+    load(text, fileName) {
+        this.reset();
+        this.fileName = fileName || null;
+        const lines = String(text || '').split(/\r?\n/);
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            let o;
+            try { o = JSON.parse(line); } catch (e) { this.parseErrors++; continue; }
+            if (o.type === 'match') { this.header = o; continue; }
+            if (o.type === 'results') { this.results = o; continue; }
+            if (o.type === 'timeline') { this.timeline = o; continue; }
+            if (o.type) { this.markers.push(o); continue; }   // round_missed and future kinds
+            // A turn always carries the seat that took it — record() refuses to write one
+            // without a playerId. So an object that lacks it is not a turn with fields
+            // missing, it is a line that does not belong to this format: a stray "{}" in
+            // a hand-edited file counted as a turn and drew one broken row where the
+            // empty state belonged. Counted as unreadable, which is what it is.
+            if (!o.playerId) { this.parseErrors++; continue; }
+            this.turns.push(o);
+        }
+        // One clock for everything. Turns carry it in the state; markers carry it at the
+        // top level; both measure from the timeline's origin, so they interleave without
+        // conversion. `at` is the tiebreak so two events in the same second keep the
+        // order they happened in.
+        const secOf = (r) => (r.state && r.state.clock && typeof r.state.clock.matchSeconds === 'number')
+            ? r.state.clock.matchSeconds
+            : (typeof r.matchSeconds === 'number' ? r.matchSeconds : null);
+        const all = this.turns.concat(this.markers);
+        all.forEach(r => { r._sec = secOf(r); });
+        // A transcript written before matchSeconds existed still opens: fall back to the
+        // wall-clock stamp, offset from the first record so the axis starts at zero.
+        const t0 = all.length ? Math.min(...all.map(r => r.at || Infinity)) : 0;
+        all.forEach(r => { if (r._sec == null) r._sec = Math.max(0, Math.round(((r.at || t0) - t0) / 1000)); });
+        all.sort((a, b) => (a._sec - b._sec) || ((a.at || 0) - (b.at || 0)));
+        this.order = all;
+
+        (this.header && this.header.players || []).forEach(p => {
+            this.seats.set(p.id, { id: p.id, seat: p.seat, civ: p.civ, civilization: p.civ,
+                                   model: p.model, name: p.name, settings: p.settings || null, turns: [] });
+        });
+        // A seat the header never mentioned (older transcript, or a file merged by hand)
+        // still gets a row rather than having its turns vanish.
+        this.order.forEach(r => {
+            if (!r.playerId) return;
+            if (!this.seats.has(r.playerId)) {
+                this.seats.set(r.playerId, { id: r.playerId, seat: r.seat, civ: r.civ,
+                    civilization: r.civ, model: r.model, name: r.name, turns: [] });
+            }
+            this.seats.get(r.playerId).turns.push(r);
+        });
+
+        this._carryForward();
+        this._buildChapters();
+        this.cursor = this.order.length ? 0 : -1;
+        return this;
+    }
+
+    // objective and plan PERSIST across turns — "omit to keep current" — so about one
+    // turn in ten carries neither while very much having both. Reading only what is on
+    // the line would show a blank plan that is not blank, which is the same class of lie
+    // this harness keeps having to fix elsewhere. Resolved once, per seat, in order.
+    _carryForward() {
+        const last = new Map();
+        this.order.forEach(r => {
+            if (r.type) return;                       // markers do not carry a plan
+            const cur = last.get(r.playerId) || { objective: null, plan: null };
+            const p = r.parsed || {};
+            if (typeof p.objective === 'string' && p.objective.trim()) cur.objective = p.objective.trim();
+            if (Array.isArray(p.plan) && p.plan.length) cur.plan = p.plan.slice();
+            last.set(r.playerId, cur);
+            r._objective = cur.objective;
+            r._plan = cur.plan;
+            // Whether THIS turn changed it, so the reader can see a model rewriting its
+            // plan rather than only that it has one.
+            r._objectiveNew = typeof p.objective === 'string' && !!p.objective.trim();
+            r._planNew = Array.isArray(p.plan) && p.plan.length > 0;
+        });
+    }
+
+    // What a reader would want to jump to, from the sources that already computed it:
+    // the timeline's own event arrays, plus the turns where something happened that no
+    // graph shows — a fight, a refusal, a skipped round.
+    _buildChapters() {
+        const ch = [];
+        const civOf = id => {
+            const s = this.seats.get(id);
+            return (s && (s.name || s.model || s.civ)) || id;
+        };
+        const tl = this.timeline || {};
+        (tl.ages || []).forEach(e => ch.push({ t: e.t, kind: 'age', icon: '⏫',
+            text: `${civOf(e.id)} → ${e.age}`, id: e.id }));
+        (tl.wonders || []).forEach(e => ch.push({ t: e.t, kind: 'wonder',
+            icon: e.event === 'lost' ? '💥' : '🏛️',
+            text: `${civOf(e.id)} wonder ${e.event}`, id: e.id }));
+        (tl.exhausted || []).forEach(e => ch.push({ t: e.t, kind: 'dry', icon: '⚱',
+            text: `${civOf(e.id)}: ${e.type} ran out`, id: e.id }));
+        this.order.forEach((r, i) => {
+            if (r.type === 'round_missed') {
+                ch.push({ t: r._sec, kind: 'missed', icon: '⏱',
+                    text: `${civOf(r.playerId)} missed the round`, id: r.playerId, index: i });
+                return;
+            }
+            const b = r.state && r.state.battles;
+            if (Array.isArray(b) && b.length) {
+                ch.push({ t: r._sec, kind: 'battle', icon: '⚔️',
+                    text: `${civOf(r.playerId)} in combat`, id: r.playerId, index: i });
+            }
+        });
+        // Battles span many turns, so one entry per turn would bury everything else.
+        // Collapse runs of the same kind+seat inside a short window into the first.
+        ch.sort((a, b) => a.t - b.t);
+        const out = [];
+        ch.forEach(c => {
+            const dup = out.find(o => o.kind === c.kind && o.id === c.id
+                && (c.kind === 'battle' ? (c.t - o.t) <= 45 : c.t === o.t));
+            if (!dup) out.push(c);
+        });
+        this.chapters = out;
+    }
+
+    // ---- selection -------------------------------------------------------
+
+    visible() {
+        return this.order.filter(r => {
+            if (this.seatFilter && r.playerId !== this.seatFilter) return false;
+            switch (this.filter) {
+                case 'battles':  return !!(r.state && r.state.battles && r.state.battles.length);
+                case 'rejected': return typeof r.harnessResult === 'string' && r.harnessResult.startsWith('[ERROR]');
+                case 'missed':   return r.type === 'round_missed';
+                case 'planned':  return !!r._planNew;
+                default:         return true;
+            }
+        });
+    }
+
+    current() { return this.order[this.cursor] || null; }
+
+    seek(index) {
+        if (!this.order.length) return null;
+        this.cursor = Math.max(0, Math.min(this.order.length - 1, index));
+        return this.current();
+    }
+
+    // Nearest record at or before a point on the graph — how a click on the chart
+    // becomes a selection. At-or-before rather than nearest so scrubbing never jumps
+    // ahead of where the reader pointed.
+    seekSeconds(sec) {
+        if (!this.order.length) return null;
+        let idx = 0;
+        for (let i = 0; i < this.order.length; i++) {
+            if (this.order[i]._sec <= sec) idx = i; else break;
+        }
+        return this.seek(idx);
+    }
+
+    step(delta) {
+        const vis = this.visible();
+        if (!vis.length) return this.current();
+        const cur = this.current();
+        let i = vis.indexOf(cur);
+        if (i === -1) {
+            // The cursor is on a record the filter hides: move to the neighbour in the
+            // direction of travel rather than snapping to the top of the list.
+            const at = cur ? cur._sec : 0;
+            i = delta >= 0 ? vis.findIndex(r => r._sec > at) : -1;
+            if (i === -1 && delta < 0) {
+                for (let k = vis.length - 1; k >= 0; k--) if (vis[k]._sec < at) { i = k; break; }
+            }
+            if (i === -1) i = delta >= 0 ? 0 : vis.length - 1;
+            return this.seek(this.order.indexOf(vis[i]));
+        }
+        const next = Math.max(0, Math.min(vis.length - 1, i + delta));
+        return this.seek(this.order.indexOf(vis[next]));
+    }
+
+    // ---- derived readings -------------------------------------------------
+
+    // How stale every OTHER seat is at the selected moment. The honest answer to "what
+    // did the board look like here": one seat is current and the rest were last heard
+    // from some seconds ago, which is a fact about the match, not a gap to paper over.
+    staleness(rec) {
+        if (!rec) return [];
+        const out = [];
+        this.seats.forEach(s => {
+            let last = null;
+            for (const r of s.turns) { if (r._sec <= rec._sec && !r.type) last = r; else if (r._sec > rec._sec) break; }
+            out.push({ seat: s, last, ageSec: last ? (rec._sec - last._sec) : null,
+                       isCurrent: s.id === rec.playerId });
+        });
+        return out.sort((a, b) => (a.seat.seat || 0) - (b.seat.seat || 0));
+    }
+
+    durationSec() {
+        if (this.order.length) return this.order[this.order.length - 1]._sec;
+        const s = this.timeline && this.timeline.samples;
+        return (s && s.length) ? s[s.length - 1].t : 0;
+    }
+
+    // The seat list for the shared chart renderer, which reads only {id, seat, civilization}.
+    chartPlayers() { return [...this.seats.values()]; }
+
+    stats() {
+        const perSeat = [...this.seats.values()].map(s => {
+            const turns = s.turns.filter(r => !r.type);
+            const missed = s.turns.filter(r => r.type === 'round_missed').length;
+            const rejected = turns.filter(r => typeof r.harnessResult === 'string'
+                && r.harnessResult.startsWith('[ERROR]')).length;
+            const lat = turns.map(r => r.latencyMs || 0).filter(x => x > 0);
+            return { seat: s, turns: turns.length, missed, rejected,
+                     avgLatency: lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0 };
+        });
+        return { perSeat, total: this.turns.length, markers: this.markers.length,
+                 parseErrors: this.parseErrors, duration: this.durationSec() };
+    }
+}
