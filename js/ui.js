@@ -4067,6 +4067,7 @@ class UIManager {
         if (meta) meta.innerHTML = bits.join(' · ');
 
         const cur = a.current();
+        this.anRenderWonder(cur);
 
         const chartBox = document.getElementById('anChartBox');
         if (a.timeline) {
@@ -4265,6 +4266,37 @@ class UIManager {
         if (!known) return String(id);
         const civ = getCivilization(id);
         return (civ && civ.name) ? tg(civ.name) : String(id);
+    }
+
+    // The wonder clock, in the header, because it is the one number that decides the
+    // match and it appeared nowhere on this screen. Hidden until a wonder exists, so it
+    // never takes up space claiming nothing.
+    anRenderWonder(rec) {
+        const box = document.getElementById('anWonder');
+        if (!box) return;
+        const a = this.analyzer;
+        const w = (a && rec) ? a.wonderStatus(rec) : null;
+        if (!w) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        const esc = x => this.escapeHtml(String(x == null ? '' : x));
+        const mmss = n => Math.floor(n / 60) + ':' + String(Math.round(n % 60)).padStart(2, '0');
+        const who = (w.owner && (w.owner.name || w.owner.model)) || this.anCivName(w.owner && w.owner.civ);
+        let label, cls = '';
+        if (w.building) {
+            label = t('an.wonderBuilding', { s: w.buildSecs != null ? w.buildSecs : '?' });
+        } else if (w.secs != null) {
+            label = t('an.wonderHold', { t: mmss(w.secs) });
+            // Under two minutes is the stretch people reopen a transcript to watch.
+            if (w.secs <= 120) cls = ' is-urgent';
+        } else {
+            label = t('an.wonderStands');
+        }
+        box.style.display = '';
+        box.className = 'an-wonder' + cls;
+        box.innerHTML = '\uD83C\uDFDB\uFE0F ' + this.teamDotHtml(w.seat, 9) + ' '
+            + '<b>' + esc(who) + '</b> ' + esc(label)
+            // A stale reading says so: this seat was last heard from N seconds ago, so
+            // its countdown is that old too.
+            + (w.ageSec > 0 ? ' <i>' + esc(t('an.agoS', { n: w.ageSec })) + '</i>' : '');
     }
     anRenderPick() {
         const box = document.getElementById('anPick');

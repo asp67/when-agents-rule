@@ -188,11 +188,14 @@ class TranscriptAnalyzer {
                 const key = n.type + '@' + Math.round(n.x) + ',' + Math.round(n.z);
                 let e = seen.get(key);
                 if (!e) {
-                    e = { type: n.type, x: n.x, z: n.z, firstSec: r._sec, seats: new Set() };
+                    e = { type: n.type, x: n.x, z: n.z, firstSec: r._sec, seats: new Map() };
                     seen.set(key, e);
                     this.nodeIndex.push(e);
                 }
-                e.seats.add(r.playerId);
+                // WHEN each seat first saw it, not merely that it did. The right-click
+                // flag asks who knew a spot at THIS moment, and a bare set answers a
+                // different question — one that is true of the whole match.
+                if (!e.seats.has(r.playerId)) e.seats.set(r.playerId, r._sec);
             });
         });
         this.nodeIndex.sort((a, b) => a.firstSec - b.firstSec);
@@ -207,8 +210,9 @@ class TranscriptAnalyzer {
         const sec = rec._sec;
         const out = { sec, union: !!union, seats: [], nodes: [], enemies: [] };
 
-        out.nodes = (this.nodeIndex || []).filter(n =>
-            n.firstSec <= sec && (union || n.seats.has(rec.playerId)));
+        out.nodes = (this.nodeIndex || []).filter(n => n.firstSec <= sec && (union
+            // ...and had seen it BY now, not merely at some point in the match.
+            ? true : (n.seats.get(rec.playerId) != null && n.seats.get(rec.playerId) <= sec)));
 
         // Each seat's latest snapshot at or before this moment, with its age. Nothing is
         // moved or guessed forward: a seat last heard from 200s ago is drawn where it was
@@ -272,6 +276,78 @@ class TranscriptAnalyzer {
         return out;
     }
 
+
+    // Who knew this spot, at the moment being read. The game answers this from live
+    // players' _knownResIdx and _explored, which a recorded match has none of — so the
+    // spectator flag reported every square of ground as undiscovered by everyone.
+    // Answered from the transcript instead, in the shape discoveryAt returns.
+    discoveryAt(x, z, sec) {
+        const idOf = s => ({ civ: s.civ, seat: s.seat });
+        // A node first: it is the specific thing a reader right-clicks to check.
+        let best = null, bestD = 6;
+        (this.nodeIndex || []).forEach(n => {
+            if (n.firstSec > sec) return;
+            const d = Math.hypot(n.x - x, n.z - z);
+            if (d < bestD) { bestD = d; best = n; }
+        });
+        if (best) {
+            const knowers = [];
+            this.seats.forEach(st => {
+                const t0 = best.seats.get(st.id);
+                if (t0 != null && t0 <= sec) knowers.push(idOf(st));
+            });
+            return { kind: 'node', res: best.type, knowers };
+        }
+        // Otherwise plain ground: whose exploration record covers this tile. Coarser
+        // than the live game's per-cell grid because the transcript only records a
+        // percentage per 7x7 tile — so this says who has been in this AREA.
+        const size = (this.header && this.header.mapSize) || 800;
+        const SPAN = 7, half = size / 2, tile = size / SPAN;
+        const col = Math.floor((x + half) / tile), row = Math.floor((z + half) / tile);
+        const key = String.fromCharCode(65 + col) + (row + 1);
+        const knowers = [];
+        if (col >= 0 && col < SPAN && row >= 0 && row < SPAN) {
+            this.seats.forEach(st => {
+                let last = null;
+                for (const r of st.turns) { if (r.type) continue; if (r._sec <= sec) last = r; else break; }
+                const exp = last && last.state && last.state.map && last.state.map.exploration;
+                if (exp && exp[key] > 0) knowers.push(idOf(st));
+            });
+        }
+        return { kind: 'ground', knowers };
+    }
+
+    // The wonder clock at this moment, or null. Read from the OWNER's own snapshot
+    // wherever possible — it carries secondsUntilYouWin, the same countdown a rival
+    // sees as secondsUntilEnemyWins — so the header shows one authoritative number
+    // rather than whichever seat happened to be selected.
+    wonderStatus(rec) {
+        if (!rec) return null;
+        const sec = rec._sec;
+        let out = null;
+        this.seats.forEach(st => {
+            if (out && out.secs != null) return;
+            let last = null;
+            for (const r of st.turns) { if (r.type) continue; if (r._sec <= sec) last = r; else break; }
+            const w = last && ((last.state && last.state.friendlyBuildings) || [])
+                .find(b => b.wonder === true || b.isWonder === true);
+            if (!w) return;
+            out = { owner: st, seat: st.seat, building: w.state === 'under_construction',
+                    secs: (typeof w.secondsUntilYouWin === 'number') ? w.secondsUntilYouWin : null,
+                    buildSecs: (typeof w.buildSecondsRemaining === 'number') ? w.buildSecondsRemaining : null,
+                    healthPct: w.healthPct, ageSec: sec - last._sec };
+        });
+        if (out) return out;
+        // Nobody's own snapshot has one; fall back to what the selected seat can see of
+        // somebody else's.
+        const st2 = (rec.state && rec.state.enemyBuildings) || [];
+        const e = st2.find(b => b.isWonder === true);
+        if (!e) return null;
+        return { owner: this.seats.get(e.owner) || null, seat: (this.seats.get(e.owner) || {}).seat,
+                 building: e.state === 'under_construction',
+                 secs: (typeof e.secondsUntilEnemyWins === 'number') ? e.secondsUntilEnemyWins : null,
+                 buildSecs: null, healthPct: e.healthPct, ageSec: 0, seen: true };
+    }
     // ---- selection -------------------------------------------------------
 
     visible() {

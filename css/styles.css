@@ -2365,6 +2365,13 @@ body.spectator-mode #unitInfo.spectator-card {
     border-bottom:1px solid rgba(255,255,255,0.07); backdrop-filter:blur(3px); z-index:5; }
 .an-brand { font-weight:600; font-size:0.92em; color:#dfe; white-space:nowrap; }
 .an-back { margin-left:auto; }
+
+/* Wonder clock in the header: the one number that decides a match. */
+.an-wonder { display:inline-flex; align-items:center; gap:5px; font-size:0.72em; color:#cfe;
+    background:rgba(78,204,163,0.14); border:1px solid rgba(78,204,163,0.4);
+    border-radius:5px; padding:3px 8px; white-space:nowrap; }
+.an-wonder.is-urgent { color:#ffd9a0; background:rgba(217,164,65,0.18); border-color:rgba(217,164,65,0.55); }
+.an-wonder i { font-style:normal; opacity:0.6; }
 .an-pick { position:relative; overflow:hidden; display:inline-flex; align-items:center;
     padding:4px 11px; border-radius:5px; cursor:pointer; white-space:nowrap;
     background:rgba(78,204,163,0.18); border:1px solid rgba(78,204,163,0.45); color:#cfe; font-size:0.8em; }

@@ -3231,6 +3231,14 @@ class Game {
     // set that drives a model's harvest/assign choices (_knownResIdx); for bare
     // ground, that player's explored bitmap.
     discoveryAt(x, z) {
+        // A recorded match has no live players to ask, so the analyzer answers for
+        // itself from the transcript — same return shape, so the spectator flag needs
+        // no idea which mode it is in.
+        const an = this.ui && this.ui.analyzer;
+        const onAnalyzer = an && an.order && an.order.length
+            && document.getElementById('analyzeScreen')
+            && document.getElementById('analyzeScreen').classList.contains('active');
+        if (onAnalyzer && an.current()) return an.discoveryAt(x, z, an.current()._sec);
         const players = (this.aiManager && this.aiManager.aiPlayers) || [];
         const res = (this.terrain && this.terrain.resources) || [];
         let idx = -1, best = 6;
