@@ -4048,11 +4048,159 @@ class UIManager {
 
         document.getElementById('anDetail').innerHTML = this.anDetailHtml(cur);
 
+        // The board, plus a caption naming whose view it is. A single seat is what that
+        // model could see; the union is an overview no player ever had. Those are
+        // different claims and the label says which is on screen.
+        this.anDrawBoard();
+        const capEl = document.getElementById('anBoardCap');
+        if (capEl) {
+            const seatName = (a.seats.get(cur && cur.playerId) || {});
+            capEl.innerHTML = '<button class="an-chip' + (a.union ? ' is-on' : '')
+                + '" onclick="game.ui.anToggleUnion()">' + esc(t('an.union')) + '</button>'
+                + '<span class="an-cap-txt">' + esc(a.union ? t('an.viewAll')
+                    : t('an.viewSeat', { s: seatName.name || seatName.model || seatName.civ || '?' })) + '</span>';
+        }
+
         const ch = a.chapters.map(c => '<button class="an-chapter" onclick="game.ui.anJumpSec(' + c.t + ')">'
             + '<span class="an-t">' + esc(mmss(c.t)) + '</span>' + esc(c.icon) + ' ' + esc(c.text)
             + '</button>').join('');
         document.getElementById('anChapters').innerHTML = ch
             ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + ch : '';
+    }
+
+    // ---- the board -----------------------------------------------------------
+    // Top-down, 2D, drawn from the snapshot. Deliberately not the 3D renderer: the
+    // engine draws a world that is running, and this is a still of a world that has
+    // finished. The game's own minimap already proves the overview needs no relief —
+    // getMinimapData() returns resources and a size, nothing else — so the board owes
+    // the reader positions and identity, not scenery.
+
+    AN_GROUND() { return { easy: '#3f7536', medium: '#4d626c', hard: '#79613c' }; }
+    AN_NODE()   { return { food: '#c86a2a', wood: '#2f8f2f', stone: '#9a9a9a', gold: '#e0b400' }; }
+
+    // The coastline. It follows a FIXED seed, not the map seed — the same island in
+    // every match — so one cached table draws it for any transcript, with no terrain
+    // regeneration and no dependency on the map having been generated at all.
+    anCoastPath() {
+        if (this._anCoast) return this._anCoast;
+        if (typeof coastLimitTable !== 'function') return null;
+        const lim = coastLimitTable();
+        const N = lim.length - 1;
+        const pts = [];
+        for (let i = 0; i <= N; i++) {
+            // Mirrors the table's own parameterisation: t runs 0..4 around the square,
+            // one unit per side, and the direction vector is chebyshev-normalised.
+            const t = (i / N) * 4, side = Math.min(3, Math.floor(t)), s = t - side;
+            const p = side === 0 ? [1, s * 2 - 1] : side === 1 ? [1 - s * 2, 1]
+                : side === 2 ? [-1, 1 - s * 2] : [s * 2 - 1, -1];
+            pts.push([lim[i] * p[0], lim[i] * p[1]]);
+        }
+        this._anCoast = pts;
+        return pts;
+    }
+
+    anToggleUnion() {
+        if (!this.analyzer) return;
+        this.analyzer.union = !this.analyzer.union;
+        this.anRender();
+    }
+
+    anDrawBoard() {
+        const a = this.analyzer;
+        const cv = document.getElementById('anBoard');
+        if (!cv || !a) return;
+        const rec = a.current();
+        const wrap = cv.parentElement;
+        const css = Math.max(180, Math.min(wrap ? wrap.clientWidth : 320, 420));
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        cv.style.width = css + 'px'; cv.style.height = css + 'px';
+        cv.width = Math.round(css * dpr); cv.height = Math.round(css * dpr);
+        const g = cv.getContext('2d');
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, css, css);
+
+        const half = ((a.header && a.header.mapSize) || 800) / 2;
+        // A margin so a unit on the shoreline is not clipped by the canvas edge.
+        const R = css / 2, SC = (R - 4) / half;
+        const X = wx => R + wx * SC, Z = wz => R + wz * SC;
+
+        g.fillStyle = '#0e1a24';
+        g.fillRect(0, 0, css, css);
+
+        const coast = this.anCoastPath();
+        g.beginPath();
+        if (coast) {
+            coast.forEach((p, i) => { const x = X(p[0]), y = Z(p[1]); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+            g.closePath();
+        } else {
+            g.rect(X(-half), Z(-half), half * 2 * SC, half * 2 * SC);
+        }
+        g.fillStyle = (this.AN_GROUND()[(a.header && a.header.difficulty) || 'easy']) || this.AN_GROUND().easy;
+        g.fill();
+        g.strokeStyle = 'rgba(255,255,255,0.16)'; g.lineWidth = 1; g.stroke();
+
+        const sc = a.scene(rec, a.union);
+        if (!sc) return;
+
+        // Nodes first, under everything: they are the map, not the action.
+        const NC = this.AN_NODE();
+        sc.nodes.forEach(n => {
+            g.fillStyle = NC[n.type] || '#888';
+            g.globalAlpha = 0.85;
+            g.fillRect(X(n.x) - 1.5, Z(n.z) - 1.5, 3, 3);
+        });
+        g.globalAlpha = 1;
+
+        sc.seats.forEach(s => {
+            const col = this.chartColor(s);
+            // Staleness is drawn, not just written: a seat last heard from three minutes
+            // ago fades toward the background rather than sitting there looking current.
+            const fade = s.isCurrent ? 1 : Math.max(0.28, 1 - (s.ageSec || 0) / 240);
+            g.globalAlpha = fade;
+            s.buildings.forEach(b => {
+                const isW = !!(b.isWonder || /wonder|pyramid|akropolis|firetemple|shrine/i.test(b.type || ''));
+                const sz = isW ? 9 : (/town_center/.test(b.type || '') ? 7 : 5);
+                g.fillStyle = col;
+                g.fillRect(X(b.x) - sz / 2, Z(b.z) - sz / 2, sz, sz);
+                g.strokeStyle = isW ? '#fff' : 'rgba(0,0,0,0.55)';
+                g.lineWidth = isW ? 1.6 : 1;
+                g.strokeRect(X(b.x) - sz / 2, Z(b.z) - sz / 2, sz, sz);
+            });
+            s.units.forEach(u => {
+                const worker = u.type === 'worker';
+                g.beginPath();
+                g.arc(X(u.x), Z(u.z), worker ? 1.6 : 2.6, 0, Math.PI * 2);
+                g.fillStyle = col; g.fill();
+                if (!worker) { g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 0.8; g.stroke(); }
+                // Fighting is the one unit state worth a mark of its own — it is what a
+                // reader is usually scrubbing to find.
+                if (u.action === 'attacking') {
+                    g.beginPath(); g.arc(X(u.x), Z(u.z), 4.6, 0, Math.PI * 2);
+                    g.strokeStyle = '#ff6b6b'; g.lineWidth = 1.1; g.stroke();
+                }
+            });
+            g.globalAlpha = 1;
+        });
+
+        // Enemy sightings, single-seat view only. Hollow, so they never read as one of
+        // yours — a sighting is a claim about a moment, not a position you own — and in
+        // the OWNER's colour, which says whose unit was spotted rather than only that
+        // something was.
+        //
+        // Not plain white: a civ colour can BE white (Greece is #FFFFFF), so a white ring
+        // and a white army were the same mark on the board. A dark rim goes under every
+        // ring so a pale owner still reads against the grass.
+        sc.enemies.forEach(e => {
+            const owner = a.seats.get(e.owner);
+            const col = owner ? this.chartColor(owner) : '#ffffff';
+            const big = /town_center|barracks|temple|market|house|farm|wonder|pyramid|akropolis|firetemple|shrine|range|stable|tower/i
+                .test(e.type || '');
+            const rr = big ? 3.4 : 2.6;
+            g.beginPath(); g.arc(X(e.x), Z(e.z), rr + 0.9, 0, Math.PI * 2);
+            g.strokeStyle = 'rgba(0,0,0,0.65)'; g.lineWidth = 2.2; g.stroke();
+            g.beginPath(); g.arc(X(e.x), Z(e.z), rr, 0, Math.PI * 2);
+            g.strokeStyle = col; g.lineWidth = 1.4; g.stroke();
+        });
     }
 
     anDetailHtml(r) {

@@ -2373,7 +2373,7 @@ body.spectator-mode #unitInfo.spectator-card {
 .c-playhead { stroke:#fff; stroke-width:1.5; opacity:0.9; }
 .c-playhead-dot { fill:#fff; }
 
-.an-cols { display:grid; grid-template-columns:minmax(190px, 260px) 1fr; gap:10px;
+.an-cols { display:grid; grid-template-columns:auto minmax(180px, 240px) 1fr; gap:10px;
     min-height:0; flex:1 1 auto; }
 .an-left { display:flex; flex-direction:column; min-height:0; }
 .an-bar { display:flex; flex-wrap:wrap; gap:4px; align-items:center; padding-bottom:6px; flex:0 0 auto; }
@@ -2432,6 +2432,19 @@ body.spectator-mode #unitInfo.spectator-card {
     color:#bcd; border-radius:4px; padding:2px 6px; font-size:0.7em; }
 .an-chapter:hover { background:rgba(255,255,255,0.13); color:#fff; }
 
+
+/* The board: a still of a finished world, so it is flat and top-down. Fixed square
+   so the aspect ratio can never lie about a distance. */
+.an-boardwrap { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.an-board { display:block; border-radius:6px; border:1px solid rgba(255,255,255,0.1);
+    background:#0e1a24; }
+.an-cap { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.an-cap-txt { font-size:0.68em; color:#8fa2b4; }
+
+@media (max-width: 1100px) {
+    .an-cols { grid-template-columns:minmax(180px, 240px) 1fr; }
+    .an-boardwrap { grid-column:1 / -1; align-items:flex-start; }
+}
 @media (max-width: 820px) {
     .an-cols { grid-template-columns:1fr; }
     .an-right { border-left:none; border-top:1px solid rgba(255,255,255,0.08); padding-left:0; }

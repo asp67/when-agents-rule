@@ -95,6 +95,7 @@ class TranscriptAnalyzer {
         });
 
         this._carryForward();
+        this._indexNodes();
         this._buildChapters();
         this.cursor = this.order.length ? 0 : -1;
         return this;
@@ -161,6 +162,82 @@ class TranscriptAnalyzer {
             if (!dup) out.push(c);
         });
         this.chapters = out;
+    }
+
+    // ---- the board --------------------------------------------------------
+
+    // When each node position was FIRST seen, by whom. nearestNodes is capped (ten
+    // food/wood per Town Center; stone and gold listed whole), so no single snapshot
+    // holds everything a seat knew — but the union across snapshots does, and indexing
+    // the first sighting lets the board reveal the map as the reader scrubs instead of
+    // showing at second zero what nobody had found yet.
+    //
+    // Nodes are never removed once seen. A node that stops appearing may have been
+    // emptied or may simply have fallen outside the nearest-N window, and the file
+    // cannot tell those apart — so the board says "discovered by now", which is true,
+    // rather than guessing at "still there", which would not be.
+    _indexNodes() {
+        this.nodeIndex = [];
+        const seen = new Map();
+        this.order.forEach(r => {
+            if (r.type) return;
+            ((r.state && r.state.nearestNodes) || []).forEach(n => {
+                if (typeof n.x !== 'number' || typeof n.z !== 'number') return;
+                const key = n.type + '@' + Math.round(n.x) + ',' + Math.round(n.z);
+                let e = seen.get(key);
+                if (!e) {
+                    e = { type: n.type, x: n.x, z: n.z, firstSec: r._sec, seats: new Set() };
+                    seen.set(key, e);
+                    this.nodeIndex.push(e);
+                }
+                e.seats.add(r.playerId);
+            });
+        });
+        this.nodeIndex.sort((a, b) => a.firstSec - b.firstSec);
+    }
+
+    // Everything to draw for one moment. `union` decides whose eyes: a single seat is
+    // the honest reconstruction of what that model could see, the union is the analyst's
+    // overview that no player ever had. Both are useful and they are different claims,
+    // so the board says which one it is showing rather than blending them.
+    scene(rec, union) {
+        if (!rec) return null;
+        const sec = rec._sec;
+        const out = { sec, union: !!union, seats: [], nodes: [], enemies: [] };
+
+        out.nodes = (this.nodeIndex || []).filter(n =>
+            n.firstSec <= sec && (union || n.seats.has(rec.playerId)));
+
+        // Each seat's latest snapshot at or before this moment, with its age. Nothing is
+        // moved or guessed forward: a seat last heard from 200s ago is drawn where it was
+        // 200s ago and labelled as such.
+        this.seats.forEach(s => {
+            if (!union && s.id !== rec.playerId) return;
+            let last = null;
+            for (const r of s.turns) {
+                if (r.type) continue;
+                if (r._sec <= sec) last = r; else break;
+            }
+            if (!last) return;
+            const st = last.state || {};
+            out.seats.push({
+                id: s.id, seat: s.seat, name: s.name || s.model || s.civ,
+                civilization: s.civilization, ageSec: sec - last._sec,
+                isCurrent: s.id === rec.playerId,
+                units: Array.isArray(st.friendlyUnits) ? st.friendlyUnits : [],
+                buildings: Array.isArray(st.friendlyBuildings) ? st.friendlyBuildings : []
+            });
+        });
+
+        // Enemies as SEEN, from the selected seat only. In union mode every seat's own
+        // units are already drawn from its own snapshot, so repeating them as somebody
+        // else's sighting would double the army on screen.
+        if (!union) {
+            const st = rec.state || {};
+            out.enemies = (Array.isArray(st.enemyUnits) ? st.enemyUnits : [])
+                .concat(Array.isArray(st.enemyBuildings) ? st.enemyBuildings : []);
+        }
+        return out;
     }
 
     // ---- selection -------------------------------------------------------
