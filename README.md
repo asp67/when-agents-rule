@@ -24,17 +24,11 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 ## What is this?
 
-When Agents Rule is a **sandbox arena for pitting language models against one another** at a task they were never trained for: running an economy and an army, in real time, inside a small RTS they've never seen. Every player is an autonomous model agent governing its own civilization — and every match ends one of two ways: a rival razed to the ground, or a Wonder held in peace.
+A sandbox arena for pitting language models against one another at a task they were never trained for: running an economy and an army, in real time, inside a small RTS they've never seen. Every player is an autonomous model agent governing its own civilization, and every match ends one of two ways — a rival razed to the ground, or a Wonder held in peace.
 
-It is **not** a leaderboard and not a peer-reviewed benchmark. It *is* a hands-on testbed — non-scientific, but more than a toy: with the setup held steady (same civilization, a fixed map seed, and a resource layout that is now equal for every player), a match isolates the model as the variable well enough for **narrow, controlled comparisons**. Loosen those controls and it stays a fun, surprisingly revealing way to watch how different models behave when you drop them into an **unfamiliar framework** and ask them to **act**, not chat.
+Each model is handed a compact **JSON snapshot** of its situation every turn (resources, buildings, units, fog-of-war discoveries, threats, tech tree, map bounds), a **fixed set of tools** (`train_unit`, `build_structure`, `research_tech`, `attack_target`, `explore`, …), and one instruction: **win.** Then it has to keep doing that, turn after turn, for a whole match.
 
-Each model is handed:
-
-- a compact **JSON snapshot** of its situation every turn (resources, buildings, units, fog-of-war discoveries, threats, tech tree, the map bounds…),
-- a **fixed set of tools** (`train_unit`, `build_structure`, `research_tech`, `upgrade_age`, `attack_target`, `explore`, …),
-- and a single instruction: **win.**
-
-Then it has to keep doing that, turn after turn, for an entire match.
+It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). With the setup held steady (same civilization, fixed map seed, resource layout equal for every player) a match isolates the model well enough for narrow comparisons.
 
 <div align="center">
 
@@ -44,20 +38,18 @@ Then it has to keep doing that, turn after turn, for an entire match.
 
 </div>
 
-## Why it's an interesting (if unscientific) eval
+## Why it's an interesting eval
 
-Most quick LLM demos reward a single clever answer. A full match of When Agents Rule rewards something harder, and it stresses exactly the capabilities people care about in agents:
+Most quick LLM demos reward a single clever answer. A full match rewards the things people actually care about in agents:
 
-- **⚔️ Models develop their own doctrine.** Run enough matches and temperaments emerge: the same rules and the same prompt produce pure economists that race for a Wonder and barely raise a guard, next to warlords that field a comically strong military absurdly early and go hunting. Which one a model turns out to be is part of what you're evaluating.
-- **🧨 Pressure changes their play.** A model that feels challenged — raided, out-scouted, slipping down the leaderboard — will often genuinely switch tactics instead of doubling down: economists start drafting armies, aggressors pull back and wall up. Watching a model *notice* it is losing is worth the match on its own.
-- **🎯 Precise tool calling under pressure.** Every move must be a single, valid JSON action with the right parameters. Hallucinate a tool, fumble the schema, or wrap it in prose and the turn is wasted. You can literally *watch* a model's format discipline hold or crumble.
-- **🧭 Operating in a loose, unfamiliar framework.** There's no fine-tuning, no examples of "good play." The model only has the rules in its system prompt and the state in front of it. Can it infer a working strategy for a system it has never encountered?
-- **🧠 Long-context, long-horizon strategy.** Economy → technology → military → conquest is a chain that plays out over dozens of turns. Models that optimize their economy forever and never build an army lose. Models that remember their plan, adapt to scouting, and convert resources into pressure win. (The harness gives each model a persistent **objective + plan** it can carry across turns — but it's up to the model to actually maintain and follow it.)
-- **🔁 Error recovery.** When an action is rejected, the model gets a precise reason back (e.g. *"barracks not built yet — research it first"*). Does it correct course, or bang on the same locked door?
-- **🗺️ Spatial & resource reasoning.** Fog of war hides the map. Resources and enemies must be **scouted** before they can be used or attacked. Good play means exploring, not guessing.
-- **⏱️ Latency vs. quality.** Each model runs its **own independent loop** — faster models simply act more often. A brilliant-but-slow model can be out-tempoed by a decent-but-fast one, just like in the real world.
-
-You won't get a p-value, and a single match is an anecdote. But the map is no longer a confound — pin the civilization and the seed, and what's left to explain the result is mostly the models themselves. Within those bounds it stands up as a *comparative* testbed for narrow questions; outside them, it's still an immediate, surprisingly revealing feel for which models can actually *play*.
+- **⚔️ Models develop their own doctrine.** Same rules, same prompt — yet you get pure economists racing for a Wonder next to warlords massing an army absurdly early. Which one a model turns out to be is part of what you're measuring.
+- **🧨 Pressure changes their play.** Raided, out-scouted, slipping down the leaderboard — many models genuinely switch tactics rather than doubling down. Watching one *notice* it is losing is worth the match on its own.
+- **🎯 Precise tool calling.** Every move must be one valid JSON action. Hallucinate a tool, fumble the schema, wrap it in prose — the turn is wasted, and you can watch format discipline hold or crumble.
+- **🧭 An unfamiliar framework.** No fine-tuning, no examples of good play. Only the rules in the prompt and the state in front of it.
+- **🧠 Long-horizon strategy.** Economy → tech → military → conquest plays out over dozens of turns. Models that optimize forever and never build an army lose. The harness carries a model-authored **objective + plan** (up to 10 steps) across turns — but maintaining it is the model's job.
+- **🔁 Error recovery.** A rejected action comes back with a precise reason. Does the model correct course, or bang on the same locked door?
+- **🗺️ Spatial reasoning.** Fog of war hides the map; resources and enemies must be scouted before they can be used or attacked.
+- **⏱️ Latency vs. quality.** In real-time mode faster models simply act more often, and a brilliant-but-slow model gets out-tempoed. Turn-based rounds remove that variable when you want to compare judgement instead.
 
 <div align="center">
 
@@ -69,27 +61,35 @@ You won't get a p-value, and a single match is an anecdote. But the map is no lo
 
 ## ✨ Features
 
-- **🤖 2–4 models, fighting live** — pick the participant count; each model runs its own asynchronous decision pipeline, so faster models genuinely move more often.
-- **🔌 Bring any model** — OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter, …), **Anthropic**, **Ollama**, and **Google (Gemini)**, with auto-detection. Mix local and cloud in the same match.
-- **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or OAuth2 (paste a token or fetch via client-credentials).
-- **🧰 Model library** — add, **test connection**, pick the served model, set per-model **max tokens**, **reasoning language**, and a **context budget** (all providers; also Ollama's `num_ctx`) with a **↺ Max** auto-fill and a **minimize-tokens** toggle. Saved locally and **exportable/importable** as a file.
-- **🧠 Rolling context that scales with the model** — history is sized to each model's context budget: big-context models remember more of the match. Default is a true **multi-turn conversation** with per-turn state recaps; the minimize-tokens toggle switches to a compact one-line move history.
-- **🪙 Token accounting** — provider-reported usage per model (prompt + completion) on the summary card and in the results file, next to latency. Speed *and* cost, side by side.
-- **🌱 Seeded maps** — optional map seed: the same seed reproduces the exact same resource layout, for fair A/B comparisons between models.
-- **⚖️ Fair resource placement** — food and wood fill an even 7×7 grid, while the scarce **stone and gold are laid out identically for every player** (same counts, same distances from home, never beside a Town Center). With same-civ seats and a fixed seed, the map stops being a confounding variable — the outcome is left to the models.
-- **🌙 Keeps running in a background tab** — a Web-Worker driver keeps the simulation and the models' turns going while the tab is hidden (rendering pauses, the match doesn't). A discarded tab or a sleeping machine still pauses play.
-- **🎬 A battlefield worth watching** — soft feathered fog of war, visible arrows and tower stones, hit flashes, animated deaths and crumbling buildings, battle pings in the world and on the minimap, themed ground cover per map (lush summer, frosted winter, dry desert), and an optional **action camera** that automatically follows the fighting.
-- **📄 Results export** — one click saves the full match evaluation as a self-describing `results_<datetime>.md` (winner, per-model scores, stats, each model's config, difficulty, seed).
-- **📝 Per-player system prompts** — give each seat its own brain (aggressive vs. economic, terse vs. verbose) from one editable template, and watch the styles collide.
-- **🛰️ Live spectator dashboard** — a ranked leaderboard, a streaming **decision log** (every move + the model's stated reason, rejected actions flagged), per-model **advice chat**, and **play/pause** for any model (handy when one hits a quota).
-- **📊 End-of-match model evaluation** — latency, decision count, action-success rate, JSON format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 **strategy score**.
-- **🌍 Fully localized UI** — English, German, Spanish, Simplified Chinese — with the **model's** language chosen **separately** from the interface language.
-- **🎮 Also human-playable** — a **Campaign** mode: pick your civilization and face **1–5 opponents**, each controlled by one of your models or the built-in rule-based AI, on three difficulty maps (Summer Valley / Winter Valley / Desert). If a model's endpoint goes unreachable mid-game, that opponent **falls back to the rule-based AI** so your match stays alive — and a footer always shows who controls each rival.
-- **🚫 No build step, no dependencies** — plain HTML/CSS/JS with an **in-house WebGL engine** (every texture painted procedurally at load — no asset downloads, no CDN, no external code at all). Clone, serve, play.
+**The match**
+- **🤖 2–4 models, fighting live** — each with its own asynchronous decision pipeline.
+- **⏳ Two tempos** — *real time*, where faster models act more often, or **turn-based rounds**: every seat reads the same snapshot, all moves land together, and a configurable answer time (default 90 s) keeps one slow endpoint from stalling the rest. Missed rounds are recorded rather than hidden.
+- **⏱ Speed control** — 1× / 1.5× / 2× / 4×, plus **Pause** (which waits for answers already in flight, so no move is thrown away). Held at 1× while a Wonder stands, so the countdown can't be sped past.
+- **🌱 Seeded maps & fair placement** — the same seed reproduces the exact layout; food and wood fill an even 7×7 grid while scarce **stone and gold are placed identically for every player**. The map stops being a confound.
+
+**The models**
+- **🔌 Bring any model** — OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter, …), **Anthropic**, **Ollama**, **Google (Gemini)**, with auto-detection. Mix local and cloud in one match.
+- **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or OAuth2.
+- **🧰 Model library** — add, **test connection**, pick the served model, and set per-model **max tokens**, **context budget**, **language**, **temperature / top-p / top-k**, **thinking/reasoning** settings, and a raw request-body passthrough for anything newer than this harness. Saved locally, exportable/importable.
+- **🧠 Rolling context that scales with the model** — history is sized to each model's context budget, so a 128K model remembers more of the match than a 32K one. Default is a real multi-turn conversation; a **minimize-tokens** toggle switches to compact one-line history.
+- **🪙 Token accounting** — provider-reported prompt + completion usage per model, next to latency.
+
+**Watching & reading it back**
+- **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and play/pause per model.
+- **🎬 A battlefield worth watching** — feathered fog of war, arrows and tower stones, hit flashes, animated deaths, battle pings, per-map ground cover, and an optional **action camera** that follows the fighting.
+- **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 strategy score.
+- **📄 Exports** — the evaluation as a self-describing `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline appended at the end.
+- **🎞️ [Analyze Transcript](#-analyze-transcript)** — load a saved transcript and read a finished match back, turn by turn, in the same 3D engine.
+- **🌍 Fully localized UI** — English, German, Spanish, Simplified Chinese, with the *model's* language chosen separately from the interface language.
+
+**The rest**
+- **🌙 Keeps running in a background tab** — a Web-Worker driver keeps the simulation and the models' turns going while the tab is hidden.
+- **🎮 Also human-playable** — a **Campaign** mode: pick your civilization and face 1–5 opponents, model- or AI-controlled, on three maps. If a model's endpoint dies mid-game that opponent falls back to the rule-based AI.
+- **🚫 No build step, no dependencies** — plain HTML/CSS/JS with an in-house WebGL engine; every texture painted procedurally at load. No CDN, no assets, no external code.
 
 ## 🚀 Quick start
 
-No install, no bundler. You just need to serve the folder over HTTP (the app uses `fetch`, so opening `index.html` from `file://` won't work).
+No install, no bundler. Serve the folder over HTTP (the app uses `fetch`, so `file://` won't work).
 
 ```bash
 git clone https://github.com/asp67/when-agents-rule.git
@@ -103,15 +103,15 @@ npx http-server . -p 8080 -o          # Node
 
 Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
 
-> 💡 **Fastest path to a match:** install [Ollama](https://ollama.com), pull a small, quick model (`ollama pull qwen2.5:7b`), and point a couple of arena seats at `http://localhost:11434`. Small + fast beats large + slow in a real-time arena.
-
-> 🐦 **Easy first pick:** `ollama pull ornith:9b` — it needs only ~6 GB of VRAM, so it runs on many consumer graphics cards, and it turns out to be a **surprisingly strong player** for its size.
+> 💡 **Fastest path to a match:** install [Ollama](https://ollama.com), pull something small and quick (`ollama pull qwen2.5:7b`), and point a couple of seats at `http://localhost:11434`. Small + fast beats large + slow in a real-time arena.
+>
+> 🐦 **Easy first pick:** `ollama pull ornith:9b` — ~6 GB of VRAM, runs on many consumer cards, and a surprisingly strong player for its size.
 
 ## 🏟️ Setting up the Arena
 
-1. **Model Library** → add your models. For each: set the **endpoint**, pick the **protocol/provider** (or leave on auto-detect), choose an **auth** method, hit **🔌 Test connection**, and select the served model. Optionally set **max tokens**, the **model language**, and the **context budget** (press **↺ Max** to fill in the model's maximum).
-2. **Arena participants** → choose **how many participants (2–4)**, then give each seat a **civilization** and a **controller** (one of your models, or the rule-based AI). An optional **map seed** makes the terrain reproducible for fair rematches.
-3. **System prompt** → tweak the shared template, or give individual seats their own prompt.
+1. **Model Library** → add your models. Set the **endpoint**, pick the **provider** (or leave on auto-detect), choose **auth**, hit **🔌 Test connection**, select the served model. Optionally set max tokens, context budget, language, and sampling/thinking parameters.
+2. **Arena participants** → choose **2–4 seats**, then give each a **civilization** and a **controller**. Set the **difficulty**, an optional **map seed**, and whether to run **turn-based rounds** (with the answer time per round).
+3. **System prompt** → tweak the shared template, or give individual seats their own.
 4. **⚔️ Start Arena** and watch.
 
 <div align="center">
@@ -122,7 +122,7 @@ Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
 
 </div>
 
-While spectating you can **click a card** to fly the camera to that base, **drag** to pan, send a model **advice**, or **pause** a model entirely. The **decision log** streams every move alongside the model's own stated reason, and flags any rejected action:
+While spectating you can **click a card** to fly the camera to that base, **drag** to pan, send a model **advice**, or **pause** one entirely. The decision log streams every move with the model's own reason, and flags rejections:
 
 <div align="center">
 
@@ -132,13 +132,30 @@ While spectating you can **click a card** to fly the camera to that base, **drag
 
 </div>
 
-> 💡 **The context budget is a real lever — history scales with it.** Each model has a **context budget** (default **32768** tokens; press **↺ Max** to fill in the model's true maximum). The harness sizes the rolling match history to that budget: a 128K-context model literally remembers more of the game than a 32K one. Two history modes per model:
-> - **Multi-turn (default):** a genuine conversation — past turns replayed as compact state recaps + the model's own replies + each action's outcome. Richest memory; uses more of the budget.
-> - **Minimize token spending:** every past move compressed to one line (`action ("reason") → OK/FAILED: outcome`). Cheapest, and still enough for coherent play.
+> 💡 **The context budget is a real lever.** Default **32768** tokens; **↺ Max** fills in the model's true maximum. History is sized to it, in one of two modes: **multi-turn** (past turns replayed as compact state recaps plus the model's replies — richest memory) or **minimize tokens** (each past move as one line — cheapest, still coherent). Either way the prompt is rebuilt from scratch every turn, and if an endpoint rejects a request as too large the harness shrinks the window and keeps playing.
 >
-> Either way the prompt is rebuilt from scratch every turn with conservative token estimates and safety headroom, and if an endpoint ever rejects a request as too large the harness shrinks the window automatically and keeps playing. **Lower budgets are much faster** — especially on Ollama, where the budget also sets `num_ctx` and an oversized window (e.g. 128K) can spill the model onto the CPU. For small local models, 32K remains a great default.
->
-> If a model is a heavy **reasoning / "thinking"** type that tends to overthink, raise its **max tokens** (the *output* budget) — not its context — so it has room to finish reasoning *and* still emit the final JSON action. Watch latency too: more thinking means slower turns, and a slow turn can hit the request timeout before context ever becomes an issue.
+> **Lower budgets are much faster** — on Ollama the budget also sets `num_ctx`, and an oversized window can spill the model onto the CPU. For small local models 32K is a good default. If a model overthinks, raise its **max tokens** (the *output* budget), not its context, so it can finish reasoning *and* still emit the JSON action.
+
+## 🎞️ Analyze Transcript
+
+A third mode beside Arena and Campaign, and the other half of the round trip: a match records itself, gets downloaded, gets handed to someone else — and opens here.
+
+<div align="center">
+
+![Reading a finished match back in the analyzer](Screenshots/AnalyzeTranscript.png)
+
+<sub><i>A finished match, reopened: the board in the same 3D engine with per-seat fog, the turn list on the left, the model's plan, command and reasoning in the middle, and the economy graph with a playhead on the right.</i></sub>
+
+</div>
+
+Load a `match-*.jsonl` and you get:
+
+- **The board in the real engine.** The arena's own renderer with the full camera — pan, rotate, zoom. The map is rebuilt exactly from the recorded seed, and **fog is per seat**: only what that model had discovered is lit, with opacity scaled to how much of each tile it swept. Switch to **All seats** for the cumulated view, where ground nobody ever scouted stays dark.
+- **What the model was thinking.** Its standing objective and plan (carried forward, and flagged on the turns it rewrote them), the command it sent, its stated reason, its raw reasoning, and the harness's answer.
+- **A timeline you can scrub.** Step through turns, **play** at one a second, click the economy graph to jump, or use the chapter list — age advances, wonders, exhausted resources, combat. Filters narrow it to combat, harness errors, plan rewrites or missed rounds.
+- **Click anything** to inspect it. Remembered enemy positions render translucent and say when they were last seen, so a stale sighting never looks like a live one.
+
+Nothing is interpolated between snapshots. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
 
 ## 🧮 How a model is scored
 
@@ -146,11 +163,11 @@ While spectating you can **click a card** to fly the camera to that base, **drag
 
 ![End-of-match model evaluation](Screenshots/ModelEvaluation.png)
 
-<sub><i>End-of-match evaluation of a four-model match (won by Wonder) — each model's 0–100 strategy score and the raw stats behind it: latency, decisions, success rate, format fidelity, reasoning rate, token usage, the full error breakdown (including no-action replies), and behavior tags.</i></sub>
+<sub><i>End-of-match evaluation of a four-model match (won by Wonder) — each model's 0–100 strategy score and the raw stats behind it.</i></sub>
 
 </div>
 
-The match-end **Strategy Score** (0–100) is a transparent composite — no black box:
+The **Strategy Score** (0–100) is a transparent composite — no black box:
 
 | Weight | Factor |
 |:---:|---|
@@ -160,7 +177,7 @@ The match-end **Strategy Score** (0–100) is a transparent composite — no bla
 | 15% | Reliability (no timeouts / network errors) |
 | 13% | Action diversity (used the toolset, didn't loop one move) |
 
-Alongside it you get raw stats — average/min/max latency, decisions made, success ratio, reasoning rate, **token usage** (prompt + completion, as reported by the provider), and a full **error breakdown** (timeouts · parse fails · **no-action replies** (the model answered in prose without a JSON action — nothing is guessed or executed) · invalid actions · rejected · context overflows) — plus quick **behavior tags** like *Aggressive*, *Economy-focused*, *Format issues*, or *Invents actions*. **💾 Save results** exports it all as a self-describing Markdown file (including each model's config, the difficulty, and the map seed).
+Alongside it: latency, decisions made, success ratio, reasoning rate, token usage, and a full error breakdown — timeouts, parse fails, **no-action replies** (prose with no JSON action; nothing is guessed or executed), invalid actions, rejections, context overflows, rate limits, and missed rounds. Costs the harness caused are counted but kept out of the model's reliability score, so a rate limit or a round deadline never reads as an unreachable endpoint.
 
 ## 🛠️ How it works
 
@@ -170,8 +187,8 @@ Browser (no backend, no external code)
 │                                 composed meshes, fog plane, effects
 ├── Game engine               — economy, combat, fog of war, ages, win conditions
 ├── Provider adapters         — OpenAI / Anthropic / Ollama / Google request shaping + auth
-└── Per-model agent loop       — builds the JSON game-state, calls the model, parses ONE action,
-                                 applies it, feeds the result back next turn
+└── Per-model agent loop      — builds the JSON game-state, calls the model, parses ONE action,
+                                applies it, feeds the result back next turn
 ```
 
 Each turn a model receives a structured snapshot and must return exactly one action:
@@ -180,32 +197,28 @@ Each turn a model receives a structured snapshot and must return exactly one act
 { "action": "build_structure", "params": { "buildingType": "barracks", "reason": "need infantry to pressure the leader" } }
 ```
 
-The engine validates it against the **advancement chain** (advance → research → build → resources → train) and returns a precise, actionable error if it can't be done — which becomes part of the model's context on the next turn. The full state contract is in [`game-state-schema.json`](game-state-schema.json).
+The engine validates it against the **advancement chain** (advance → research → build → resources → train) and returns a precise, actionable error if it can't be done — which becomes part of the model's context next turn. The full state contract is in [`game-state-schema.json`](game-state-schema.json).
 
-**Budget-bounded rolling context, by design.** The model is stateless across turns from the harness's point of view — every turn the prompt is rebuilt from scratch, so the harness (not each server's truncation rules) decides exactly what the model sees. The match history is a **rolling window sized to the model's context budget**: in the default **multi-turn mode** past turns are replayed as real conversation turns (a compact, schema-keyed `pastTurnRecap` of the state + the model's reply + that action's outcome), oldest rolling off first; with **minimize tokens** on, history is instead the last N moves as one-liners (`action ("reason") → OK/FAILED: outcome`), N chosen to fit the budget. Either way the model *always* gets the result of its previous action (so a rejected command is never silently repeated), the full current state last, and a model-authored **standing objective + plan** that persists until the model rewrites it — so a multi-step intent like *"scout the enemy base → mass cavalry → attack"* survives beyond the visible history. The harness only stores and echoes these back; it never plans for the model, so the eval still measures the model's own strategic reasoning.
+**The harness never plans for the model.** Every turn the prompt is rebuilt from scratch, so the harness — not each server's truncation rules — decides exactly what the model sees. The model always gets the outcome of its previous action (a rejected command is never silently repeated), the current state last, and its own standing objective and plan echoed back until it rewrites them. Everything else is the model's own reasoning.
 
-**Action set:** `train_unit` · `research_tech` · `upgrade_age` · `build_structure` · `assign_workers` · `repair_building` · `explore` · `move_units` · `attack_target` · `delete_unit` · `destroy_building` · `wait`. Villagers and the Wonder are ordinary train/build targets: `train_unit` with `unitType: "worker"` (hosted at the Town Center), and `build_structure` with the civ's Wonder id from `buildableStructures` — which now carries the model's placement choice too.
+**Action set:** `train_unit` · `research_tech` · `upgrade_age` · `build_structure` · `assign_workers` · `repair_building` · `explore` · `move_units` · `attack_target` · `delete_unit` · `destroy_building` · `wait`. Villagers and the Wonder are ordinary targets: `train_unit` with `unitType: "worker"`, and `build_structure` with the civ's Wonder id.
 
 ## ⚔️ Game rules in a nutshell
 
-- **Win** by either **eliminating every** rival, **or** building a **Wonder** and holding it for the countdown (**600 s**). A rival is only out when it has no army, no military building it can afford to produce from, and no Town Center (nor a worker + the resources to rebuild one) — so raze their base *and* mop up, or they can come back.
-- **Advance the ages** — Stone → Neolithic → Bronze → Iron — to unlock stronger units, tech, and (eventually) the Wonder. Buildings get an epoch-appropriate look and +50% HP per age.
-- **Economy first, but not forever:** workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100). **Resource nodes deplete** (food 500 · wood 300 · stone 1000 · gold 2000 per node) — scout for fresh ones; only **farms regenerate**, and only while a worker mans them. Placement is built for fairness: food and wood fill an even **7×7 grid**, while scarce **stone and gold are placed identically for every player** — same counts, same distances from home, none beside a Town Center. No start is advantaged, and scouting any direction pays.
+- **Win** by eliminating every rival, **or** building a **Wonder** and holding it for **600 s**. A rival is only out with no army, no military building it can afford to produce from, and no Town Center (nor a worker plus the resources to rebuild one) — so raze the base *and* mop up.
+- **Advance the ages** — Stone → Neolithic → Bronze → Iron — for stronger units, tech and eventually the Wonder. Buildings take an epoch-appropriate look and +50% HP per age.
+- **Economy first, but not forever.** Workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100). **Nodes deplete** and disappear (food 500 · wood 300 · stone 1000 · gold 2000) — scout for fresh ones. Only farms regenerate, and only while manned.
 - **Counters:** cavalry > ranged > infantry > cavalry; infantry raze buildings best; towers defend.
-- **Fog of war:** scout to reveal resources and enemies — a model can't harvest or attack what it hasn't discovered.
+- **Fog of war:** a model can't harvest or attack what it hasn't discovered.
 - **4 civilizations** — Egyptians, Greeks, Persians, Yamato — each with a unique bonus and Wonder.
 
 ## 🔒 Privacy & security
 
-This is a **fully client-side** app with no backend of its own.
+Fully client-side, with no backend of its own.
 
-- API keys and other secrets you enter live in your **browser's `localStorage`** and are sent **directly from your browser** to the endpoints you configure — nothing is proxied through any third party.
-- That's fine for **local, single-user testing**. Don't enter credentials on a shared or public machine, and scope/limit any keys you use.
-- **Exporting** the model catalogue writes a JSON file that contains your keys **in plain text** (the app warns you). Keep that file private — never share it or commit it. (`*.secrets.json`, `when-agents-rule-models.json`, and `arenaConfig*.json` are git-ignored by default.)
-
-## 🌍 Languages
-
-The **interface** ships in English, German, Spanish, and Simplified Chinese. Separately, each **model** has its own language for how it reasons and writes its `reason` field — so you can run, say, a Chinese UI with English-thinking models, or vice versa. Defaults are English / English.
+- API keys live in your browser's **`localStorage`** and are sent **directly** to the endpoints you configure — nothing is proxied.
+- Fine for local, single-user testing. Don't enter credentials on a shared machine, and scope any keys you use.
+- **Exporting** the model catalogue writes your keys **in plain text** (the app warns you). Keep that file private. Transcripts and results files are deliberately **key-free and endpoint-free**, so they're safe to hand on.
 
 ## 📁 Project structure
 
@@ -216,8 +229,10 @@ js/
 ├── game.js             # core loop, economy, combat, win conditions
 ├── openai-ai.js        # LLM arena harness: provider adapters, agent loop, metrics
 ├── ai.js               # rule-based AI opponent
-├── ui.js               # menus, model library, spectator dashboard
-├── engine/             # the in-house WebGL engine: math3d, glcore, texgen,
+├── ui.js               # menus, model library, spectator dashboard, analyzer UI
+├── transcript.js       # per-match JSONL recorder (states, replies, results, timeline)
+├── analyzer.js         # transcript parsing, scene assembly, chapters
+├── engine/             # in-house WebGL engine: math3d, glcore, texgen,
 │                       #   mesh, buildings, units, gamerenderer
 ├── i18n.js             # 4-language UI dictionary + game-content translations
 ├── civilizations.js    # civs, units, buildings, tech trees
@@ -225,23 +240,21 @@ js/
 game-state-schema.json  # the JSON contract handed to every model each turn
 ```
 
-## 🧰 Tech stack
-
-Plain **HTML + CSS + JavaScript** — and nothing else. The 3D world is drawn by an **in-house WebGL engine** (`js/engine/`): a locked dimetric camera in the classic RTS style, every material **painted procedurally** into canvases at load (masonry, thatch, roof tiles, cloth, the whole terrain mega-texture), meshes composed from first-principles primitives. No framework, no bundler, no transpile step, no CDN, no assets to download. Cache-busting is done with a `?v=` query on each script tag.
+Plain HTML + CSS + JavaScript, nothing else. The 3D world is drawn by the in-house engine in `js/engine/`: a locked dimetric camera, every material painted procedurally into canvases at load, meshes composed from primitives. No framework, no bundler, no transpile, no CDN. Cache-busting is a `?v=` query on each script tag.
 
 ## 🧭 Related projects
 
 Similar arenas, different games — worth knowing, and worth crediting:
 
-- **[llm-colosseum](https://github.com/OpenGenerativeAI/llm-colosseum)** — the project that popularized LLM-vs-LLM gaming: models fight in *Street Fighter III*, making reflex-scale decisions seconds apart, ranked by ELO. *When Agents Rule* probes the opposite end of the spectrum: long-horizon statecraft over matches half an hour long — economy, tech, fog of war, persistent plans — with a **peaceful** road to victory next to the military one.
-- **[LMSYS Chatbot Arena](https://lmarena.ai)** — humans vote on chat answers. Here nobody votes: the game itself is the judge, and the scoreboard is razed bases and held Wonders.
-- **[Stratagem](https://github.com/KaliBomaye/stratagem)** — turn-based LLM strategy with natural-language diplomacy on a province graph. Ours is real-time, 3D, browser-only with no install, no build step and **zero external code** (the WebGL engine is in-house), and instruments every model as it plays (behavior metrics, latency, token accounting).
-- **[Age of Agents](https://github.com/agentsmill/age-of-agents)** — renders your AI *coding* sessions as a peaceful, AoE-style pixel kingdom: a lovely visualization with no combat and no winners. Here the agents don't decorate the kingdom — they run it, and only one keeps it.
-- **[LLM-Game-Benchmark](https://github.com/research-outcome/LLM-Game-Benchmark)** — an academic benchmark of LLMs in grid-based games, with a leaderboard. We trade that rigor for richness: one sprawling, unfamiliar game instead of many small ones — see the disclaimers below.
+- **[llm-colosseum](https://github.com/OpenGenerativeAI/llm-colosseum)** — the project that popularized LLM-vs-LLM gaming, in *Street Fighter III*, at reflex scale. This is the opposite end: long-horizon statecraft over half an hour, with a peaceful road to victory beside the military one.
+- **[LMSYS Chatbot Arena](https://lmarena.ai)** — humans vote on chat answers. Here nobody votes; the game is the judge.
+- **[Stratagem](https://github.com/KaliBomaye/stratagem)** — turn-based LLM strategy with natural-language diplomacy on a province graph. Ours is real-time, 3D, browser-only, and instruments every model as it plays.
+- **[Age of Agents](https://github.com/agentsmill/age-of-agents)** — renders your AI *coding* sessions as a peaceful AoE-style kingdom. Here the agents don't decorate the kingdom, they run it.
+- **[LLM-Game-Benchmark](https://github.com/research-outcome/LLM-Game-Benchmark)** — an academic benchmark across grid games, with a leaderboard. We trade rigor for richness: one sprawling, unfamiliar game instead of many small ones.
 
 ## ⚠️ Disclaimers
 
-- **Non-scientific.** Not a peer-reviewed benchmark, and no single match is evidence of anything: sample sizes are tiny and tempo (latency) heavily influences who wins. Don't cite match results as model capability. Within a **controlled setup** — same civilization, a fixed seed, and the resource layout now equal for every player — a match does isolate the model as the main variable and gives a genuine, if narrow, comparative read. Treat that as informed intuition, not data.
+- **Non-scientific.** Not a peer-reviewed benchmark, and no single match is evidence of anything — sample sizes are tiny and tempo heavily influences who wins. Don't cite match results as model capability. Within a controlled setup (same civilization, fixed seed, equal resource layout, and turn-based rounds to neutralize speed) a match does isolate the model as the main variable and gives a genuine but narrow comparative read. Treat it as informed intuition, not data.
 - **Not affiliated** with LMSYS / Chatbot Arena, OpenAI, Anthropic, Google, or any model provider. "When Agents Rule" is meant literally: autonomous model agents governing rival civilizations — by wonder or by war.
 - Built as a hobby project, with a generous assist from AI pair-programming.
 
