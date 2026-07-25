@@ -2417,31 +2417,33 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-chip:hover { background:rgba(255,255,255,0.15); color:#fff; }
 .an-chip.is-on { background:linear-gradient(145deg,#35b58c,#1f8d6b); border-color:#2ea283; color:#fff; }
 /* Seat picker. A native <select> could not carry the team badge, and without it two
-   seats on the same model were one row printed twice. */
-.an-pick { position:relative; display:inline-flex; }
-.an-pick-btn { display:inline-flex; align-items:center; gap:5px; height:24px;
+   seats on the same model were one row printed twice.
+   Named an-seat*, NOT an-pick*: that namespace already belongs to the file-load label
+   and the entity inspect card, and the label's overflow:hidden clipped this menu away. */
+.an-seat { position:relative; display:inline-flex; }
+.an-seat-btn { display:inline-flex; align-items:center; gap:5px; height:24px;
     background:#1a2430; color:#bcd; border:1px solid rgba(255,255,255,0.14);
     border-radius:5px; font-size:0.7em; padding:0 4px 0 6px; cursor:pointer;
     max-width:230px; font-family:inherit; }
-.an-pick-btn:hover { border-color:rgba(255,255,255,0.3); color:#fff; }
-.an-pick.is-open .an-pick-btn { border-color:rgba(78,204,163,0.6); color:#fff; }
-.an-pick.is-open .an-pick-btn .an-svg { transform:rotate(180deg); }
-.an-pick-btn .an-svg { width:12px; height:12px; opacity:0.65; flex:0 0 auto; transition:transform 0.12s; }
-.an-pick-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.an-seat-btn:hover { border-color:rgba(255,255,255,0.3); color:#fff; }
+.an-seat.is-open .an-seat-btn { border-color:rgba(78,204,163,0.6); color:#fff; }
+.an-seat.is-open .an-seat-btn .an-svg { transform:rotate(180deg); }
+.an-seat-btn .an-svg { width:12px; height:12px; opacity:0.65; flex:0 0 auto; transition:transform 0.12s; }
+.an-seat-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* Every badge at once = the union view, readable without opening the menu. */
-.an-pick-stack { display:inline-flex; align-items:center; }
-.an-pick-stack > * { margin-right:-3px; }
-.an-pick-menu { display:none; position:absolute; top:calc(100% + 3px); left:0; z-index:40;
+.an-seat-stack { display:inline-flex; align-items:center; }
+.an-seat-stack > * { margin-right:-3px; }
+.an-seat-menu { display:none; position:absolute; top:calc(100% + 3px); left:0; z-index:40;
     min-width:100%; background:#141d27; border:1px solid rgba(255,255,255,0.16);
     border-radius:6px; padding:3px; box-shadow:0 8px 22px rgba(0,0,0,0.55); }
-.an-pick.is-open .an-pick-menu { display:block; }
-.an-pick-opt { display:flex; align-items:center; gap:6px; width:100%; text-align:left;
+.an-seat.is-open .an-seat-menu { display:block; }
+.an-seat-opt { display:flex; align-items:center; gap:6px; width:100%; text-align:left;
     background:none; border:0; border-radius:4px; color:#bcd; font-size:0.7em;
     font-family:inherit; padding:4px 7px; cursor:pointer; white-space:nowrap; }
-.an-pick-opt:hover, .an-pick-opt:focus { background:rgba(255,255,255,0.1); color:#fff; outline:none; }
-.an-pick-opt.is-on { background:rgba(78,204,163,0.16); color:#eafff6; }
-.an-pick-opt:focus-visible { box-shadow:inset 0 0 0 1px rgba(78,204,163,0.7); }
-.an-pick-civ { font-style:normal; opacity:0.5; margin-left:auto; padding-left:10px; }
+.an-seat-opt:hover, .an-seat-opt:focus { background:rgba(255,255,255,0.1); color:#fff; outline:none; }
+.an-seat-opt.is-on { background:rgba(78,204,163,0.16); color:#eafff6; }
+.an-seat-opt:focus-visible { box-shadow:inset 0 0 0 1px rgba(78,204,163,0.7); }
+.an-seat-civ { font-style:normal; opacity:0.5; margin-left:auto; padding-left:10px; }
 
 /* Square icon buttons: equal boxes, so the row cannot sit unevenly. */
 .an-nav { display:flex; gap:4px; align-items:center; }

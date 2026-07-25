@@ -3967,9 +3967,9 @@ class UIManager {
         this.analyzer.seatFilter = (id === '*' || !id) ? null : id;
         // Picking is the menu's whole job, so it closes on the way out — including its
         // outside-click listener, which would otherwise sit armed for a stale menu.
-        if (this._anPickAway) { document.removeEventListener('click', this._anPickAway); this._anPickAway = null; }
-        if (this._anPickKeys) { document.removeEventListener('keydown', this._anPickKeys, true); this._anPickKeys = null; }
-        this._anPickOpen = false;
+        if (this._anSeatMenuAway) { document.removeEventListener('click', this._anSeatMenuAway); this._anSeatMenuAway = null; }
+        if (this._anSeatMenuKeys) { document.removeEventListener('keydown', this._anSeatMenuKeys, true); this._anSeatMenuKeys = null; }
+        this._anSeatMenuOpen = false;
         this.anRender();
     }
     // A deliberate jump takes over from playback rather than fighting it.
@@ -4000,27 +4000,30 @@ class UIManager {
     // The seat menu. Open state lives on the instance rather than in the DOM because
     // the whole bar is rebuilt on every render — including once a second while playing
     // — and a class set on the old node would vanish with it.
-    anTogglePick(ev) {
+    anSeatMenuToggle(ev) {
         if (ev) ev.stopPropagation();
-        this._anPickOpen = !this._anPickOpen;
+        // Closing goes through the same door as every other close, so the outside-click
+        // and key listeners come down rather than staying armed for a menu that is gone.
+        if (this._anSeatMenuOpen) { this.anSeatMenuClose(); return; }
+        this._anSeatMenuOpen = true;
         this.anRender();
-        if (this._anPickOpen) {
+        if (this._anSeatMenuOpen) {
             // Close on the next click anywhere else. Bound per opening and removed on
             // close, so it never accumulates.
-            this._anPickAway = () => this.anPickClose();
-            setTimeout(() => document.addEventListener('click', this._anPickAway, { once: true }), 0);
+            this._anSeatMenuAway = () => this.anSeatMenuClose();
+            setTimeout(() => document.addEventListener('click', this._anSeatMenuAway, { once: true }), 0);
             // On the document, not on the bar: the filter bar sits outside .an-lower,
             // so the analyzer's own arrow handler never sees these keys — and without
             // this the arrows would fall through to the renderer and pan the camera
             // while the reader is choosing a seat.
-            this._anPickKeys = (ev) => {
+            this._anSeatMenuKeys = (ev) => {
                 const k = String(ev.key || '').toLowerCase();
-                const opts = [...document.querySelectorAll('#analyzeScreen .an-pick-opt')];
+                const opts = [...document.querySelectorAll('#analyzeScreen .an-seat-opt')];
                 if (!opts.length) return;
                 if (k === 'escape') {
                     ev.preventDefault(); ev.stopPropagation();
-                    const btn = document.querySelector('#analyzeScreen .an-pick-btn');
-                    this.anPickClose();
+                    const btn = document.querySelector('#analyzeScreen .an-seat-btn');
+                    this.anSeatMenuClose();
                     if (btn) btn.focus();
                     return;
                 }
@@ -4039,17 +4042,17 @@ class UIManager {
                     ev.preventDefault(); ev.stopPropagation();
                 }
             };
-            document.addEventListener('keydown', this._anPickKeys, true);
-            const first = document.querySelector('#analyzeScreen .an-pick-opt.is-on')
-                || document.querySelector('#analyzeScreen .an-pick-opt');
+            document.addEventListener('keydown', this._anSeatMenuKeys, true);
+            const first = document.querySelector('#analyzeScreen .an-seat-opt.is-on')
+                || document.querySelector('#analyzeScreen .an-seat-opt');
             if (first) first.focus();
         }
     }
-    anPickClose() {
-        if (this._anPickAway) { document.removeEventListener('click', this._anPickAway); this._anPickAway = null; }
-        if (this._anPickKeys) { document.removeEventListener('keydown', this._anPickKeys, true); this._anPickKeys = null; }
-        if (!this._anPickOpen) return;
-        this._anPickOpen = false;
+    anSeatMenuClose() {
+        if (this._anSeatMenuAway) { document.removeEventListener('click', this._anSeatMenuAway); this._anSeatMenuAway = null; }
+        if (this._anSeatMenuKeys) { document.removeEventListener('keydown', this._anSeatMenuKeys, true); this._anSeatMenuKeys = null; }
+        if (!this._anSeatMenuOpen) return;
+        this._anSeatMenuOpen = false;
         this.anRender();
     }
 
@@ -4095,9 +4098,9 @@ class UIManager {
             // An open seat menu owns the keyboard — but it is not bound HERE. The filter
             // bar sits outside .an-lower, so this listener never sees the menu's keys at
             // all; the real handling is a document-level one armed while it is open (see
-            // anTogglePick). This is only the guard: never step the transcript underneath
+            // anSeatMenuToggle). This is only the guard: never step the transcript underneath
             // an open menu, since that moves the very thing being chosen for.
-            if (this._anPickOpen) return;
+            if (this._anSeatMenuOpen) return;
             if (arrows.indexOf(k) === -1) return;
             // Typing in a control is not navigating: a select needs its own arrows.
             const tag = (ev.target && ev.target.tagName) || '';
@@ -4178,32 +4181,30 @@ class UIManager {
         const seatLabel = sm => esc(sm.name || sm.model || this.anCivName(sm.civ));
         const sel = (a.seatFilter && a.seatFilter !== '*') ? a.seats.get(a.seatFilter) : null;
         const face = sel
-            ? this.teamDotHtml(sel.seat, 8) + '<span class="an-pick-label">' + seatLabel(sel) + '</span>'
-            // 'All seats' wears every badge, so the union reads as a union at a glance.
-            : '<span class="an-pick-stack">'
-                + seatRows.map(sm => this.teamDotHtml(sm.seat, 7)).join('')
-                + '</span><span class="an-pick-label">' + esc(t('an.allSeats')) + '</span>';
+            ? this.teamDotHtml(sel.seat, 8) + '<span class="an-seat-label">' + seatLabel(sel) + '</span>'
+            // No badge on 'All seats': it is the ABSENCE of a seat choice, and a row of
+            // every mark reads as one seat that somehow owns all four.
+            : '<span class="an-seat-label">' + esc(t('an.allSeats')) + '</span>';
         let menu = '<button type="button" role="option" aria-selected="' + (!sel)
-            + '" class="an-pick-opt' + (sel ? '' : ' is-on')
+            + '" class="an-seat-opt' + (sel ? '' : ' is-on')
             + '" onclick="game.ui.anSetSeat(\'*\')">'
-            + '<span class="an-pick-stack">' + seatRows.map(sm => this.teamDotHtml(sm.seat, 7)).join('')
-            + '</span><span class="an-pick-label">' + esc(t('an.allSeats')) + '</span></button>';
+            + '<span class="an-seat-label">' + esc(t('an.allSeats')) + '</span></button>';
         menu += seatRows.map(sm => {
             const on = a.seatFilter === sm.id;
             return '<button type="button" role="option" aria-selected="' + on
-                + '" class="an-pick-opt' + (on ? ' is-on' : '')
+                + '" class="an-seat-opt' + (on ? ' is-on' : '')
                 + '" onclick="game.ui.anSetSeat(\'' + esc(sm.id) + '\')">'
                 + this.teamDotHtml(sm.seat, 8)
-                + '<span class="an-pick-label">' + seatLabel(sm) + '</span>'
+                + '<span class="an-seat-label">' + seatLabel(sm) + '</span>'
                 // The civ is what tells two seats on one model apart on the board.
-                + '<i class="an-pick-civ">' + esc(this.anCivName(sm.civ)) + '</i></button>';
+                + '<i class="an-seat-civ">' + esc(this.anCivName(sm.civ)) + '</i></button>';
         }).join('');
-        bar += '<span class="an-pick' + (this._anPickOpen ? ' is-open' : '') + '">'
-            + '<button type="button" class="an-pick-btn" aria-haspopup="listbox"'
-            + ' aria-expanded="' + (!!this._anPickOpen) + '"'
-            + ' onclick="game.ui.anTogglePick(event)">'
+        bar += '<span class="an-seat' + (this._anSeatMenuOpen ? ' is-open' : '') + '">'
+            + '<button type="button" class="an-seat-btn" aria-haspopup="listbox"'
+            + ' aria-expanded="' + (!!this._anSeatMenuOpen) + '"'
+            + ' onclick="game.ui.anSeatMenuToggle(event)">'
             + face + this.anIcon('chev') + '</button>'
-            + '<span class="an-pick-menu" role="listbox">' + menu + '</span></span>';
+            + '<span class="an-seat-menu" role="listbox">' + menu + '</span></span>';
         const playing = !!this._anPlayTimer;
         // Icons, not glyphs: ‹ ▶ › are three different type designs and measured 19.7 /
         // 25.7 / 19.7px wide, so the row of them sat unequal and a pixel off the picker.
@@ -4823,16 +4824,13 @@ class UIManager {
         });
         if (wk.total != null) withIcon('res.workers', wk.total);
         if (Array.isArray(stt.friendlyUnits)) {
-            // friendlyUnits is EVERY unit, workers included — pop and this count are the
-            // same number on all but the opening turn. Beside a worker count, a sword
-            // alone would read as 'and that many soldiers on top', so the tooltip spells
-            // out the split rather than leaving the icon to imply one.
-            const n = stt.friendlyUnits.length;
-            const L = this.anSplitLabel('res.units');
-            const title = (wk.total != null)
-                ? t('res.unitsBreak', { n: n, w: wk.total, m: Math.max(0, n - wk.total) })
-                : L.text;
-            push(L.icon ? L.icon + ' ' + n : t('an.units', { n: n }), title);
+            // The MILITARY, not every unit. friendlyUnits counts workers too, so a sword
+            // showing its length printed the headcount a second time — 3 workers beside
+            // 3 "units" while the population read 3, which says six people. Population IS
+            // workers plus military, so counting the non-workers makes the row add up.
+            const mil = stt.friendlyUnits.filter(u => u.type !== 'worker').length;
+            const L = this.anSplitLabel('res.military');
+            push(L.icon ? L.icon + ' ' + mil : t('an.units', { n: mil }), L.text);
         }
         if (r.latencyMs) push(Math.round(r.latencyMs / 1000) + 's', '');
         if (r.tokens) push((r.tokens.prompt || 0) + '/' + (r.tokens.completion || 0) + ' tok', '');

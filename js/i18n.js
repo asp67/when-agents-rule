@@ -121,7 +121,7 @@ const I18N = {
         'menu.research': 'Research technology',
         'menu.upgrade': 'Upgrade',
 
-        'res.food': '🍖 Food', 'res.wood': '🌲 Wood', 'res.stone': '🪨 Stone', 'res.gold': '🥇 Gold', 'res.pop': '👥 Population', 'res.workers': '👷 Workers', 'res.units': '⚔️ Units', 'res.unitsBreak': '{n} units — {w} workers, {m} military',
+        'res.food': '🍖 Food', 'res.wood': '🌲 Wood', 'res.stone': '🪨 Stone', 'res.gold': '🥇 Gold', 'res.pop': '👥 Population', 'res.workers': '👷 Workers', 'res.military': '⚔️ Military',
         'cf.offMap': 'off map', 'cf.node': 'Node: {res}', 'cf.ground': 'Ground', 'cf.discoveredBy': 'discovered by:', 'cf.undiscovered': 'undiscovered',
         'hud.ageUpProgress': 'Advancing age: {pct}%', 'hud.researchProgress': 'Research ({name}): {pct}%', 'hud.productionProgress': 'Production: {pct}%',
         'age.stone': '🏺 Stone Age', 'age.neolithic': '🌾 Neolithic', 'age.bronze': '⚒️ Bronze Age', 'age.iron': '🗡️ Iron Age',
@@ -481,7 +481,7 @@ const I18N = {
         'menu.research': 'Technologie erforschen',
         'menu.upgrade': 'Aufrüsten',
 
-        'res.food': '🍖 Nahrung', 'res.wood': '🌲 Holz', 'res.stone': '🪨 Stein', 'res.gold': '🥇 Gold', 'res.pop': '👥 Bevölkerung', 'res.workers': '👷 Arbeiter', 'res.units': '⚔️ Einheiten', 'res.unitsBreak': '{n} Einheiten — {w} Arbeiter, {m} Militär',
+        'res.food': '🍖 Nahrung', 'res.wood': '🌲 Holz', 'res.stone': '🪨 Stein', 'res.gold': '🥇 Gold', 'res.pop': '👥 Bevölkerung', 'res.workers': '👷 Arbeiter', 'res.military': '⚔️ Militär',
         'cf.offMap': 'außerhalb der Karte', 'cf.node': 'Vorkommen: {res}', 'cf.ground': 'Boden', 'cf.discoveredBy': 'entdeckt von:', 'cf.undiscovered': 'unentdeckt',
         'hud.ageUpProgress': 'Aufrüstung: {pct}%', 'hud.researchProgress': 'Forschung ({name}): {pct}%', 'hud.productionProgress': 'Produktion: {pct}%',
         'age.stone': '🏺 Altsteinzeit', 'age.neolithic': '🌾 Jungsteinzeit', 'age.bronze': '⚒️ Bronzezeit', 'age.iron': '🗡️ Eisenzeit',
@@ -834,7 +834,7 @@ const I18N = {
         'menu.research': 'Investigar tecnología',
         'menu.upgrade': 'Mejorar',
 
-        'res.food': '🍖 Comida', 'res.wood': '🌲 Madera', 'res.stone': '🪨 Piedra', 'res.gold': '🥇 Oro', 'res.pop': '👥 Población', 'res.workers': '👷 Trabajadores', 'res.units': '⚔️ Unidades', 'res.unitsBreak': '{n} unidades — {w} trabajadores, {m} militares',
+        'res.food': '🍖 Comida', 'res.wood': '🌲 Madera', 'res.stone': '🪨 Piedra', 'res.gold': '🥇 Oro', 'res.pop': '👥 Población', 'res.workers': '👷 Trabajadores', 'res.military': '⚔️ Militares',
         'cf.offMap': 'fuera del mapa', 'cf.node': 'Yacimiento: {res}', 'cf.ground': 'Terreno', 'cf.discoveredBy': 'descubierto por:', 'cf.undiscovered': 'sin descubrir',
         'hud.ageUpProgress': 'Avance de era: {pct}%', 'hud.researchProgress': 'Investigación ({name}): {pct}%', 'hud.productionProgress': 'Producción: {pct}%',
         'age.stone': '🏺 Edad de Piedra', 'age.neolithic': '🌾 Neolítico', 'age.bronze': '⚒️ Edad de Bronce', 'age.iron': '🗡️ Edad de Hierro',
@@ -1179,7 +1179,7 @@ const I18N = {
         'menu.research': '研究科技',
         'menu.upgrade': '升级',
 
-        'res.food': '🍖 食物', 'res.wood': '🌲 木材', 'res.stone': '🪨 石头', 'res.gold': '🥇 黄金', 'res.pop': '👥 人口', 'res.workers': '👷 工人', 'res.units': '⚔️ 单位', 'res.unitsBreak': '{n} 个单位 — {w} 工人，{m} 军事',
+        'res.food': '🍖 食物', 'res.wood': '🌲 木材', 'res.stone': '🪨 石头', 'res.gold': '🥇 黄金', 'res.pop': '👥 人口', 'res.workers': '👷 工人', 'res.military': '⚔️ 军事',
         'cf.offMap': '地图之外', 'cf.node': '资源点：{res}', 'cf.ground': '地面', 'cf.discoveredBy': '发现者：', 'cf.undiscovered': '未发现',
         'hud.ageUpProgress': '时代升级：{pct}%', 'hud.researchProgress': '研究（{name}）：{pct}%', 'hud.productionProgress': '生产：{pct}%',
         'age.stone': '🏺 旧石器时代', 'age.neolithic': '🌾 新石器时代', 'age.bronze': '⚒️ 青铜时代', 'age.iron': '🗡️ 铁器时代',
