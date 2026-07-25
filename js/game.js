@@ -3180,10 +3180,27 @@ class Game {
             // ...and the moment a player's OWN known supply of a type ran dry, which
             // is what a collapsing share in the composition strip actually means.
             const disc = this.discoveredNodeCounts(ai);
-            this._tlDry[ai.id] = this._tlDry[ai.id] || {};
+            // "Ran dry" is a TRANSITION from having some to having none, and the flag
+            // starts true — already dry, nothing to report — for exactly that reason.
+            //
+            // Defaulting to {} instead made never-discovered look identical to
+            // just-exhausted, and the "t > 0" guard was a wrong proxy for the difference:
+            // it only silenced the very first sample, so the second one fired. Every
+            // match therefore opened with "stone ran out" and "gold ran out" for every
+            // player five seconds in, before anyone had mined a thing — in one 78-minute
+            // match, four of the nine markers were that. The model-facing version of this
+            // notice already required a previous non-zero count; the graph's copy never
+            // got the same fix, and drifted.
+            //
+            // Starting true is also simply truthful: a player who has discovered no stone
+            // HAS no stone supply, and there is no news in that. The first discovery
+            // flips it false through the branch below, and only then can it ran-dry.
+            if (!this._tlDry[ai.id]) {
+                this._tlDry[ai.id] = { food: true, wood: true, stone: true, gold: true };
+            }
             ['food', 'wood', 'stone', 'gold'].forEach(k => {
                 const dry = disc[k] === 0;
-                if (dry && !this._tlDry[ai.id][k] && t > 0) {
+                if (dry && !this._tlDry[ai.id][k]) {
                     this._tlDry[ai.id][k] = true;
                     tl.exhausted.push({ t, id: ai.id, type: k });
                 } else if (!dry) {
