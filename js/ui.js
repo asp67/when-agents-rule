@@ -4353,6 +4353,44 @@ class UIManager {
         return t;
     }
 
+
+    // Construction progress for a recorded building, 0..1.
+    //
+    // The engine grows a scaffold from buildProgress/buildTime while underConstruction,
+    // and draws a health bar only once that clears. Forcing every building to 'complete'
+    // therefore did two wrong things at once: it skipped the scaffold, and it fed the
+    // bar a health value that is not damage at all. A site's HP tracks its progress by
+    // health = maxHealth * (0.2 + 0.8 * pct), so a Wonder at 0% built sits at 20% HP —
+    // and rendered as a FINISHED wonder about to collapse, in red, for the whole minute
+    // it was going up. The most conspicuous building in the game, wearing the one status
+    // that would make a reader reach for the replay.
+    //
+    // buildPct is authoritative and the owner's own snapshot carries it. A rival's does
+    // not, so it is inverted out of healthPct through the same formula — exact for an
+    // undamaged site, which a half-built one nearly always is.
+    anBuildProgress(b) {
+        if (typeof b.buildPct === 'number') return Math.max(0, Math.min(1, b.buildPct / 100));
+        if (typeof b.healthPct === 'number') {
+            return Math.max(0, Math.min(1, (b.healthPct / 100 - 0.2) / 0.8));
+        }
+        return 0;
+    }
+
+    // Apply a recorded building's condition to a freshly created entity: still going up,
+    // or standing and damaged.
+    anApplyBuildState(ent, b) {
+        const rising = b.state === 'under_construction';
+        ent.underConstruction = rising;
+        if (rising) {
+            const pct = this.anBuildProgress(b);
+            ent.buildProgress = pct * (ent.buildTime || 10000);
+            // The same curve the game uses while building, so the scaffold and the
+            // entity's health agree with each other.
+            ent.health = Math.max(1, (ent.maxHealth || 100) * (0.2 + 0.8 * pct));
+        } else if (b.healthPct != null) {
+            ent.health = Math.max(1, (ent.maxHealth || 100) * b.healthPct / 100);
+        }
+    }
     // Everything the reader is allowed to see at this moment, put into the engine.
     // Rebuilt per seek rather than diffed: a snapshot is a whole world, and matching
     // entities across an 8-to-900-second gap would be inventing continuity the file
@@ -4392,12 +4430,15 @@ class UIManager {
             // still bronze.
             const age = s.epoch || 'stone';
             s.buildings.forEach(b => {
+                const rising = b.state === 'under_construction';
+                // Told at CREATION, because _composeBuilding builds the scaffold from
+                // this flag when the entity is added — setting it afterwards is too late.
                 const ent = (typeof createBuilding === 'function')
-                    ? createBuilding(b.type, b.x, b.z, s.id, s.civilization, { instant: true, age }) : null;
+                    ? createBuilding(b.type, b.x, b.z, s.id, s.civilization,
+                        { instant: true, age, underConstruction: rising }) : null;
                 if (!ent) return;
                 ent.seat = s.seat;
-                ent.underConstruction = false;
-                if (b.healthPct != null) ent.health = Math.max(1, (ent.maxHealth || 100) * b.healthPct / 100);
+                this.anApplyBuildState(ent, b);
                 r.addBuilding(ent);
             });
             s.units.forEach(u => {
@@ -4435,9 +4476,12 @@ class UIManager {
                 // strength looking like a live sighting.
                 const fade = e.confirmed ? null : 0.4;
                 if (isB) {
+                    const rising = e.state === 'under_construction';
                     const ent = (typeof createBuilding === 'function')
-                        ? createBuilding(e.type, e.x, e.z, e.owner, owner.civilization, { instant: true, age: oage }) : null;
-                    if (ent) { ent.seat = owner.seat; ent.underConstruction = false;
+                        ? createBuilding(e.type, e.x, e.z, e.owner, owner.civilization,
+                            { instant: true, age: oage, underConstruction: rising }) : null;
+                    if (ent) { ent.seat = owner.seat;
+                              this.anApplyBuildState(ent, e);
                               ent._fade = fade; ent._anStale = !e.confirmed; r.addBuilding(ent); }
                 } else {
                     const ent = (typeof createUnit === 'function')
