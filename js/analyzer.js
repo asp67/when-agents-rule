@@ -228,6 +228,8 @@ class TranscriptAnalyzer {
                 isCurrent: s.id === rec.playerId,
                 // Its OWN epoch at its OWN last snapshot: what its buildings looked like.
                 epoch: (st.epoch && st.epoch.currentEpoch) || 'stone',
+                // Its own record of where it has been, so the union view can add them up.
+                exploration: (st.map && st.map.exploration) || null,
                 units: Array.isArray(st.friendlyUnits) ? st.friendlyUnits : [],
                 buildings: Array.isArray(st.friendlyBuildings) ? st.friendlyBuildings : []
             });

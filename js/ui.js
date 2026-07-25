@@ -4416,18 +4416,21 @@ class UIManager {
         fow.gradedFog = true;
         fow.fogGrid.fill(0);
 
-        // In union view nothing is hidden: it is explicitly the overview no player had,
-        // so pretending it has a fog would be the lie the other way round.
-        if (a.union) {
-            fow.gradedFog = false;
-            fow.fogGrid.fill(2);
-        } else {
+        {
             const half = terrain.size / 2, N = fow.numTiles, cell = fow.gridSize;
+            // ONE seat's record, or every seat's added together. The union view used to
+            // lift the fog outright, which threw away the most interesting thing on the
+            // map: ground nobody ever walked. Cumulating instead matches what the arena
+            // spectator shows — everything anyone found is lit, and what nobody found
+            // stays dark, which for four models over an hour is a real answer about how
+            // much of the island the match actually used.
             const rec = a.current();
-            const exp = (rec && rec.state && rec.state.map && rec.state.map.exploration) || null;
-            if (exp) {
-                // Keys are A1..G7: letter is the column, digit the row, over a 7x7 grid.
-                const SPAN = 7, tile = terrain.size / SPAN;
+            const grids = a.union
+                ? (sc.seats || []).map(x => x.exploration).filter(Boolean)
+                : [(rec && rec.state && rec.state.map && rec.state.map.exploration) || null].filter(Boolean);
+            // Keys are A1..G7: letter is the column, digit the row, over a 7x7 grid.
+            const SPAN = 7, tile = terrain.size / SPAN;
+            grids.forEach(exp => {
                 Object.keys(exp).forEach(k => {
                     if (!(exp[k] > 0)) return;
                     const col = k.charCodeAt(0) - 65, row = parseInt(k.slice(1), 10) - 1;
@@ -4439,7 +4442,9 @@ class UIManager {
                     const gz1 = Math.min(N - 1, Math.floor((z0 + tile + half) / cell));
                     // The fraction itself, not a flag. Clamped just under 1 so a fully
                     // swept tile still reads as explored-and-remembered rather than as
-                    // being watched right now, which is what tier 2 means.
+                    // being watched right now, which is what tier 2 means. Taken as a MAX
+                    // across seats: two players who each swept half of a tile have not
+                    // jointly swept all of it, and adding the percentages would claim so.
                     const frac = Math.min(0.97, Math.max(0, exp[k] / 100));
                     for (let gz = gz0; gz <= gz1; gz++) {
                         for (let gx = gx0; gx <= gx1; gx++) {
@@ -4448,7 +4453,7 @@ class UIManager {
                         }
                     }
                 });
-            }
+            });
             // A node it has found was seen, whatever the tile grid rounds to.
             sc.nodes.forEach(n => fow.reveal(n.x, n.z, 10));
             // ...and what it owns now is in sight now.
