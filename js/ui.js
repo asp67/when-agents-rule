@@ -4369,6 +4369,18 @@ class UIManager {
     // Age and civ ids are protocol values in the transcript; a human reading it wants
     // words. t('age.x') carries a leading glyph for the HUD, which these compact chips
     // have no room for, so it is stripped the way the results chart already does.
+
+    // Split an '🍖 Food' style label into its icon and its word. Both already live
+    // in i18n for every resource, the population and each age — the HUD prints them
+    // whole — so the analyzer takes its icons from there rather than keeping a second
+    // copy that can drift. The icon must be a PICTOGRAPH: a language whose label has no
+    // icon would otherwise donate its first word as one ('Âge' for the French age).
+    anSplitLabel(key) {
+        if (typeof hasI18n !== 'function' || !hasI18n(getUiLang(), key)) return { icon: '', text: '' };
+        const raw = String(t(key)).trim();
+        const m = raw.match(/^(\p{Extended_Pictographic}[\p{Extended_Pictographic}\uFE0F\u200D]*)\s+([\s\S]+)$/u);
+        return m ? { icon: m[1], text: m[2] } : { icon: '', text: raw };
+    }
     anAgeName(id) {
         // hasI18n, not a truthiness check on t(): a missing key comes BACK as the key
         // itself, so `t(k) || id` would have shown "age.zzz" and looked deliberate.
@@ -4787,16 +4799,43 @@ class UIManager {
         const stt = r.state || {};
         const res = stt.resources || {};
         const wk = stt.workers || {};
+        // The same icons the in-game HUD uses, so a figure here and a figure on the HUD
+        // are recognised as the same thing. Only the workers had one, which made every
+        // other number a letter to decode: F/W/S/G read as labels, not as food and wood
+        // and stone and gold. Each carries its word as a tooltip, so an icon never has
+        // to be guessed at.
         const num = [];
-        if (stt.epoch && stt.epoch.currentEpoch) num.push(esc(this.anAgeName(stt.epoch.currentEpoch)));
-        if (res.population != null) num.push('pop ' + res.population + '/' + (res.maxPopulation != null ? res.maxPopulation : '?'));
+        const push = (txt, title) => num.push({ txt: String(txt), title: title || '' });
+        const withIcon = (key, val) => {
+            const L = this.anSplitLabel(key);
+            push(L.icon ? L.icon + ' ' + val : L.text + ' ' + val, L.text);
+        };
+        if (stt.epoch && stt.epoch.currentEpoch) {
+            const g = this.anSplitLabel('age.' + stt.epoch.currentEpoch);
+            push(g.icon ? g.icon + ' ' + this.anAgeName(stt.epoch.currentEpoch)
+                        : this.anAgeName(stt.epoch.currentEpoch), '');
+        }
+        if (res.population != null) {
+            withIcon('res.pop', res.population + '/' + (res.maxPopulation != null ? res.maxPopulation : '?'));
+        }
         ['food', 'wood', 'stone', 'gold'].forEach(k => {
-            if (res[k] != null) num.push(k.charAt(0).toUpperCase() + Math.round(res[k]));
+            if (res[k] != null) withIcon('res.' + k, Math.round(res[k]));
         });
-        if (wk.total != null) num.push('👷' + wk.total);
-        if (Array.isArray(stt.friendlyUnits)) num.push(t('an.units', { n: stt.friendlyUnits.length }));
-        if (r.latencyMs) num.push(Math.round(r.latencyMs / 1000) + 's');
-        if (r.tokens) num.push((r.tokens.prompt || 0) + '/' + (r.tokens.completion || 0) + ' tok');
+        if (wk.total != null) withIcon('res.workers', wk.total);
+        if (Array.isArray(stt.friendlyUnits)) {
+            // friendlyUnits is EVERY unit, workers included — pop and this count are the
+            // same number on all but the opening turn. Beside a worker count, a sword
+            // alone would read as 'and that many soldiers on top', so the tooltip spells
+            // out the split rather than leaving the icon to imply one.
+            const n = stt.friendlyUnits.length;
+            const L = this.anSplitLabel('res.units');
+            const title = (wk.total != null)
+                ? t('res.unitsBreak', { n: n, w: wk.total, m: Math.max(0, n - wk.total) })
+                : L.text;
+            push(L.icon ? L.icon + ' ' + n : t('an.units', { n: n }), title);
+        }
+        if (r.latencyMs) push(Math.round(r.latencyMs / 1000) + 's', '');
+        if (r.tokens) push((r.tokens.prompt || 0) + '/' + (r.tokens.completion || 0) + ' tok', '');
 
         // Who else was on the board here, and how stale their picture is. The honest
         // answer to "what did this moment look like": one seat is current and the rest
@@ -4814,7 +4853,9 @@ class UIManager {
         // so during playback the one row you want to watch was the one that moved most.
         // Pinned here it stays put and can be read while the rest scrolls beneath it.
         return head
-            + '<div class="an-d-nums">' + num.map(x => '<span>' + esc(x) + '</span>').join('') + '</div>'
+            + '<div class="an-d-nums">' + num.map(x => '<span'
+                + (x.title ? ' title="' + esc(x.title) + '"' : '') + '>' + esc(x.txt) + '</span>').join('')
+            + '</div>'
             + '<div class="an-d-stale">' + stale + '</div>'
             + plan
             // Both blocks are labelled now. A target glyph suggests a plan; it does not
