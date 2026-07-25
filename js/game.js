@@ -475,6 +475,13 @@ class Game {
                 ai.units.push(aiWorker);
                 this.renderer.addUnit(aiWorker);
             }
+            // Exactly what the human player does above, and it was missing here. The
+            // population field is DERIVED from the unit list rather than incremented, so
+            // until something derives it the seat reads as empty. Only the per-tick
+            // refresh ever did, which left a window in which three workers were standing
+            // on the map under a population of 0 — and every model's opening snapshot
+            // fell inside it.
+            ai.resources.updatePopulation(ai.units.length);
         }
 
         // Initialize OpenAI-powered AI controllers for all AI players (async).
@@ -616,13 +623,21 @@ class Game {
         const simTime = Math.min(elapsed, MAX_CATCHUP);
 
         // Coarse, once-per-tick work (AI decision cadence and population don't need slicing).
+        //
+        // Population is derived FIRST, because both managers below read it and one of
+        // them ships it to a model. It used to be re-derived at the end of the tick,
+        // which meant every state a model received carried the PREVIOUS tick's headcount
+        // — harmless while the count held still, a straight contradiction whenever it
+        // had just changed, and on the opening turn a population of 0 sitting beside the
+        // three workers it was counting. A field that is computed from another field has
+        // to be computed before the read, not after it.
+        this.aiManager.aiPlayers.forEach(ai => {
+            ai.resources.updatePopulation(ai.units.length);
+        });
         this.aiManager.update(simTime);
         if (this.openAIAIManager) {
             this.openAIAIManager.update(simTime);
         }
-        this.aiManager.aiPlayers.forEach(ai => {
-            ai.resources.updatePopulation(ai.units.length);
-        });
         this.sampleTimeline(currentTime);
         this.pruneBattles();   // time-driven: a quiet map must still let fights expire
         // Keep the selection card current. Health, and anything else it shows, moves
