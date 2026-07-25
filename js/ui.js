@@ -3398,11 +3398,22 @@ class UIManager {
         return this._tvSecOpen;
     }
 
+    // Remember an open/closed section so the next repaint honours it.
+    tvSecSet(cls, open) {
+        this.tvSectionPrefs()[cls] = !!open;
+    }
+
     tvTurnHtml(e) {
         const esc = s => this.escapeHtml(String(s == null ? '' : s));
         const pref = this.tvSectionPrefs();
+        // ontoggle writes the choice back. Without it _tvSecOpen was read but never
+        // written, so opening Reasoning by hand lasted until the next repaint — which
+        // during playback is one second. The preference is per SECTION KIND and lives on
+        // the UI, so it holds across turns, across seats and across transcripts: open
+        // Reasoning once and you can follow reasoning all the way through a match.
+        const keep = cls => ` ontoggle="game.ui.tvSecSet('${cls}', this.open)"`;
         const sec = (cls, label, text) => text
-            ? `<details class="tv-sec ${cls}"${pref[cls] ? ' open' : ''}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
+            ? `<details class="tv-sec ${cls}"${pref[cls] ? ' open' : ''}${keep(cls)}><summary>${label}</summary><pre>${esc(text)}</pre></details>`
             : '';
         // A section with nothing in it used to render as nothing at all, so a turn where
         // the model answered with pure reasoning and no reply simply lost its Reply block
@@ -3410,7 +3421,7 @@ class UIManager {
         // having said nothing. An empty answer is the single most useful thing to know
         // about such a turn, so it is stated.
         const emptySec = (cls, label, note) =>
-            `<details class="tv-sec ${cls} is-empty"${pref[cls] ? ' open' : ''}><summary>${label}</summary><pre>${esc(note)}</pre></details>`;
+            `<details class="tv-sec ${cls} is-empty"${pref[cls] ? ' open' : ''}${keep(cls)}><summary>${label}</summary><pre>${esc(note)}</pre></details>`;
         const replyText = e.assistant && e.assistant.content;
         const hadReasoning = !!(e.assistant && e.assistant.reasoning);
         const replySec = replyText
@@ -3422,7 +3433,7 @@ class UIManager {
         const act = e.parsed && e.parsed.action ? e.parsed.action : null;
         const failed = typeof e.harnessResult === 'string' && e.harnessResult.startsWith('[ERROR]');
         const state = e.state
-            ? `<details class="tv-sec tv-state"${pref['tv-state'] ? ' open' : ''} data-turn="${e.turn}"><summary>${t('spec.tvState')}</summary><pre></pre></details>`
+            ? `<details class="tv-sec tv-state"${pref['tv-state'] ? ' open' : ''}${keep('tv-state')} data-turn="${e.turn}"><summary>${t('spec.tvState')}</summary><pre></pre></details>`
             : '';
         return `
             <div class="tv-turn${failed ? ' is-error' : ''}" data-key="${e.turn}">
@@ -4484,6 +4495,7 @@ class UIManager {
         let plan = '';
         if (r._objective || (r._plan && r._plan.length)) {
             plan = '<div class="an-d-plan">'
+                + '<span class="an-d-tag">' + esc(t('an.planTag')) + '</span>'
                 + (r._objective ? '<div class="an-d-obj">🎯 ' + esc(r._objective) + '</div>' : '')
                 + ((r._plan && r._plan.length)
                     ? '<ol class="an-d-steps">' + r._plan.map(x => '<li>' + esc(x) + '</li>').join('') + '</ol>'
@@ -4524,14 +4536,22 @@ class UIManager {
             return '<span class="an-st">' + this.teamDotHtml(x.seat.seat, 8) + esc(t('an.agoS', { n: x.ageSec })) + '</span>';
         }).join('');
 
+        // The numbers go DIRECTLY under the name, above everything variable. They used to
+        // sit below the command, where the block above them changes height turn by turn —
+        // so during playback the one row you want to watch was the one that moved most.
+        // Pinned here it stays put and can be read while the rest scrolls beneath it.
         return head
+            + '<div class="an-d-nums">' + num.map(x => '<span>' + esc(x) + '</span>').join('') + '</div>'
             + '<div class="an-d-stale">' + stale + '</div>'
             + plan
-            + '<div class="an-d-act' + (bad ? ' is-bad' : '') + '"><b>' + esc(act.replace(/_/g, ' ')) + '</b>'
+            // Both blocks are labelled now. A target glyph suggests a plan; it does not
+            // say so, and the command sat as a bare word with no clue what it was.
+            + '<div class="an-d-sec' + (bad ? ' is-bad' : '') + '">'
+            + '<span class="an-d-tag">' + esc(t('an.sent')) + '</span>'
+            + '<span class="an-d-cmd">' + esc(act.replace(/_/g, ' ')) + '</span>'
             + (Object.keys(params).length ? ' <code>' + esc(JSON.stringify(params)) + '</code>' : '')
             + '</div>'
             + (reason ? '<div class="an-d-reason">“' + esc(reason) + '”</div>' : '')
-            + '<div class="an-d-nums">' + num.map(x => '<span>' + esc(x) + '</span>').join('') + '</div>'
             + this.tvTurnHtml(r);
     }
 

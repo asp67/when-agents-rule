@@ -2440,10 +2440,16 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-d-steps li { margin:1px 0; }
 .an-d-newtag { display:inline-block; margin-top:4px; font-size:0.64em; color:#4ecca3;
     background:rgba(78,204,163,0.14); border-radius:3px; padding:1px 5px; }
-.an-d-act { font-size:0.84em; padding:3px 0; }
-.an-d-act code { font-size:0.85em; color:#9cb; background:rgba(0,0,0,0.3);
+/* A small caps label on the plan and command blocks: a glyph hints, a word states. */
+.an-d-tag { display:inline-block; font-size:0.6em; letter-spacing:0.09em; text-transform:uppercase;
+    color:#7f95a8; padding-bottom:3px; }
+.an-d-sec { font-size:0.84em; padding:3px 0; }
+.an-d-cmd { font-weight:600; color:#dfe; }
+.an-d-sec.is-bad .an-d-cmd { color:#e88; }
+.an-d-sec code { font-size:0.85em; color:#9cb; background:rgba(0,0,0,0.3);
     border-radius:3px; padding:1px 4px; word-break:break-all; }
-.an-d-act.is-bad b { color:#e88; }
+/* Pinned directly under the name, so playback does not shuffle it around. */
+.an-d-nums { position:relative; }
 .an-d-reason { font-size:0.78em; color:#b9c8d6; font-style:italic; padding-bottom:5px; }
 .an-d-nums { display:flex; flex-wrap:wrap; gap:4px; padding-bottom:7px; }
 .an-d-nums span { font-size:0.66em; color:#9ab; background:rgba(255,255,255,0.05);
