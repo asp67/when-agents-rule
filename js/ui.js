@@ -3900,13 +3900,14 @@ class UIManager {
         this.anRender();
     }
 
-    anClose() { this.anUnmountStage(); this.showScreen('gameModeScreen'); }
+    anClose() { this.anStopPlay(); this.anUnmountStage(); this.showScreen('gameModeScreen'); }
 
     anLoadFile(input) {
         const f = input && input.files && input.files[0];
         if (!f) return;
         const fr = new FileReader();
         fr.onload = () => {
+            this.anStopPlay();   // a new file starts stopped, wherever the old one was
             this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
             try { this.analyzer.load(String(fr.result || ''), f.name); }
             catch (e) { console.warn('[analyzer] load failed', e); this.showErrorMessage(t('an.badFile')); return; }
@@ -3917,6 +3918,31 @@ class UIManager {
         fr.readAsText(f);
     }
 
+
+    // Play: one filtered step a second. It walks anStep(1), so it follows whatever
+    // filter and seat are set — playing the Combat filter jumps fight to fight rather
+    // than crawling through every worker reassignment in between.
+    //
+    // Stops itself at the end. anStep clamps at the last visible record, so without
+    // that check it would sit there re-rendering the same turn once a second forever.
+    anTogglePlay() {
+        if (this._anPlayTimer) { this.anStopPlay(); this.anRender(); return; }
+        const a = this.analyzer;
+        if (!a || !a.order || !a.order.length) return;
+        this._anPlayTimer = setInterval(() => {
+            const before = this.analyzer ? this.analyzer.cursor : -1;
+            this.anStep(1);
+            if (!this.analyzer || this.analyzer.cursor === before) {
+                this.anStopPlay();
+                this.anRender();   // repaint the button as stopped
+            }
+        }, 1000);
+        this.anRender();
+    }
+
+    anStopPlay() {
+        if (this._anPlayTimer) { clearInterval(this._anPlayTimer); this._anPlayTimer = null; }
+    }
     anSetMode(mode) {
         if (!this.analyzer) return;
         this.analyzer.mode = mode;
@@ -3930,9 +3956,10 @@ class UIManager {
         this.analyzer.seatFilter = (id === '*' || !id) ? null : id;
         this.anRender();
     }
-    anSeek(i) { if (this.analyzer) { this.analyzer.seek(i); this.anRender(); } }
+    // A deliberate jump takes over from playback rather than fighting it.
+    anSeek(i) { this.anStopPlay(); if (this.analyzer) { this.analyzer.seek(i); this.anRender(); } }
     anStep(d) { if (this.analyzer) { this.analyzer.step(d); this.anRender(); } }
-    anJumpSec(sec) { if (this.analyzer) { this.analyzer.seekSeconds(sec); this.anRender(); } }
+    anJumpSec(sec) { this.anStopPlay(); if (this.analyzer) { this.analyzer.seekSeconds(sec); this.anRender(); } }
 
     // A click on the plot becomes a moment. The SVG is a fixed 900x300 viewBox stretched
     // to whatever width the pane has, so the pixel is converted back through the same
@@ -4016,7 +4043,11 @@ class UIManager {
                 + (a.seatFilter === s.id ? ' selected' : '') + '>'
                 + esc(s.name || s.model || s.civ) + '</option>').join('')
             + '</select>';
+        const playing = !!this._anPlayTimer;
         bar += '<span class="an-nav"><button class="an-chip" onclick="game.ui.anStep(-1)">‹</button>'
+            + '<button class="an-chip' + (playing ? ' is-on' : '') + '" title="'
+            + esc(t(playing ? 'an.pause' : 'an.play')) + '" onclick="game.ui.anTogglePlay()">'
+            + (playing ? '⏸' : '▶') + '</button>'
             + '<button class="an-chip" onclick="game.ui.anStep(1)">›</button></span>';
         document.getElementById('anFilters').innerHTML = bar;
 
