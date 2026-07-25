@@ -184,7 +184,18 @@ class FogOfWarManager {
             const idx = i * 4;
             const fogValue = this.fogGrid[i];
             
-            if (fogValue === 0) {
+            // GRADED mode, used when a caller knows a FRACTION rather than a tier —
+            // the transcript analyzer only learns how much of each map tile a seat
+            // uncovered (map.exploration is a percentage), never which cells. Opacity
+            // then scales with that fraction: 0% discovered is full fog, 86% leaves 14%
+            // of it. Off by default, so the live game's three tiers are untouched.
+            if (this.gradedFog && fogValue > 0 && fogValue < 2) {
+                const f = Math.max(0, Math.min(1, fogValue));
+                data[idx] = Math.round(46 + (64 - 46) * f);
+                data[idx + 1] = Math.round(49 + (68 - 49) * f);
+                data[idx + 2] = Math.round(56 + (76 - 56) * f);
+                data[idx + 3] = Math.round(212 * (1 - f));
+            } else if (fogValue === 0) {
                 // Unexplored - misty dark gray (conceals the area until scouted)
                 data[idx] = 46;     // R
                 data[idx + 1] = 49; // G

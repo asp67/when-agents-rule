@@ -2383,6 +2383,17 @@ body.spectator-mode #unitInfo.spectator-card {
     background:rgba(8,14,20,0.6); border-radius:6px; padding:4px 7px; backdrop-filter:blur(2px); }
 .an-cap-txt { font-size:0.68em; color:#9ab; }
 
+
+/* The inspect card. Top-right so it never covers the HUD toggles bottom-left. */
+.an-pick-card { position:absolute; right:10px; top:10px; z-index:4; min-width:120px; max-width:210px;
+    background:rgba(8,14,20,0.78); border:1px solid rgba(255,255,255,0.12); border-radius:6px;
+    padding:6px 9px; backdrop-filter:blur(2px); }
+.an-pick-h { font-size:0.78em; font-weight:600; color:#dfe; display:flex; align-items:center; gap:5px; }
+.an-pick-o { font-size:0.66em; color:#8fa2b4; padding-top:1px; }
+.an-pick-stale { font-size:0.64em; color:#d9a441; padding-top:3px; line-height:1.35; }
+.an-pick-n { display:flex; flex-wrap:wrap; gap:4px; padding-top:4px; }
+.an-pick-n span { font-size:0.64em; color:#9ab; background:rgba(255,255,255,0.06);
+    border-radius:3px; padding:1px 4px; font-variant-numeric:tabular-nums; }
 .an-seam { cursor:row-resize; background:rgba(255,255,255,0.09); position:relative; }
 .an-seam:hover, .an-seam:active { background:rgba(78,204,163,0.55); }
 .an-seam::after { content:""; position:absolute; left:50%; top:-3px; width:44px; height:12px;

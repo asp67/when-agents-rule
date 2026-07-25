@@ -4096,6 +4096,7 @@ class UIManager {
         this._anPrevSpectator = this.game.spectatorMode;
         this.game.spectatorMode = true;
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
+        this.anBindPick();
     }
 
     anUnmountStage() {
@@ -4119,6 +4120,76 @@ class UIManager {
         }
     }
 
+
+    // Click to inspect, as in the arena. input.js cannot serve this: it returns early on
+    // spectatorMode, and its picker filters to owner 'player', which nothing in a
+    // recorded match is. So the analyzer picks for itself — any owner, nearest first,
+    // units before buildings because a unit standing on a plinth is the smaller target.
+    //
+    // Bound on the viewport rather than the canvas so the renderer keeps its own drag
+    // handling untouched, and ignored after a drag so panning never selects.
+    anBindPick() {
+        const host = document.getElementById('anViewport');
+        if (!host || this._anPickBound) return;
+        this._anPickBound = true;
+        let downAt = null;
+        host.addEventListener('mousedown', (e) => { downAt = { x: e.clientX, y: e.clientY }; }, true);
+        host.addEventListener('mouseup', (e) => {
+            if (!downAt) return;
+            const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
+            downAt = null;
+            if (moved > 4 || e.button !== 0) return;   // that was a pan, not a pick
+            this.anPickAt(e.clientX, e.clientY);
+        }, true);
+    }
+
+    anPickAt(cx, cy) {
+        const r = this.game.renderer;
+        if (!r || !r.getWorldPositionFromScreen) return;
+        const w = r.getWorldPositionFromScreen(cx, cy);
+        if (!w) return;
+        const u = r.pickUnitAt ? r.pickUnitAt(w.x, w.z) : null;
+        let pick = u, kind = 'unit';
+        if (!pick && r.getBuildingsAtPosition) {
+            const bs = r.getBuildingsAtPosition(w.x, w.z, 7);
+            pick = bs && bs[0]; kind = 'building';
+        }
+        r.deselectAll && r.deselectAll();
+        this.game.selectedBuilding = null;
+        if (!pick) { this._anPicked = null; this.anRenderPick(); return; }
+        if (kind === 'unit' && r.selectUnit) r.selectUnit(pick);
+        else { pick.selected = true; this.game.selectedBuilding = pick; }
+        this._anPicked = { kind, ent: pick };
+        this.anRenderPick();
+    }
+
+    anRenderPick() {
+        const box = document.getElementById('anPick');
+        if (!box) return;
+        const p = this._anPicked;
+        if (!p || !p.ent) { box.innerHTML = ''; box.style.display = 'none'; return; }
+        const e = p.ent, esc = x => this.escapeHtml(String(x == null ? '' : x));
+        const a = this.analyzer;
+        const owner = (a && a.seats.get(e.owner)) || {};
+        const hp = (e.maxHealth ? Math.round(100 * e.health / e.maxHealth) : null);
+        const bits = [];
+        if (e.age) bits.push(esc(e.age));
+        if (hp != null) bits.push(hp + '% hp');
+        if (e.attack) bits.push('atk ' + e.attack);
+        if (e.range) bits.push('rng ' + e.range);
+        bits.push(Math.round(e.x) + ', ' + Math.round(e.z));
+        // A remembered position says so, and when it was last seen — otherwise the card
+        // would present a stale claim with the same confidence as a live one.
+        const stale = e._anStale
+            ? '<div class="an-pick-stale">' + esc(t('an.staleAt', { n: e._anLastSeen != null ? e._anLastSeen : '?' })) + '</div>'
+            : '';
+        box.style.display = '';
+        box.innerHTML = '<div class="an-pick-h">' + this.teamDotHtml(e.seat, 10) + ' '
+            + esc(e.name || e.type) + '</div>'
+            + '<div class="an-pick-o">' + esc(owner.name || owner.model || owner.civ || '') + '</div>'
+            + stale
+            + '<div class="an-pick-n">' + bits.map(b => '<span>' + esc(b) + '</span>').join('') + '</div>';
+    }
     // The map, rebuilt exactly. mapSeed + difficulty + player count is enough:
     // TerrainManager is pure data (its scene argument is ignored) and spawn positions
     // are plain trigonometry, so the island and every node land where they did.
@@ -4151,6 +4222,9 @@ class UIManager {
         const sc = a.scene(rec, a.union);
         if (!sc) return;
 
+        // The picked entity belonged to the previous scene and has just been thrown
+        // away, so the card must not keep describing it.
+        this._anPicked = null;
         r.clearScene();
         const terrain = this.anTerrain();
         this.game.terrain = terrain;          // the renderer reads it for ground + nodes
@@ -4210,19 +4284,26 @@ class UIManager {
                 const oage = owner.epoch || 'stone';
                 const isB = e.isBuilding || (e.healthPct !== undefined &&
                     /town_center|barracks|temple|market|house|farm|pyramid|akropolis|firetemple|shrine|range|stable|tower|wonder/i.test(e.type || ''));
+                // Translucent when the position is only remembered — for units as well as
+                // buildings, which is what was missing: a stale unit stood there at full
+                // strength looking like a live sighting.
+                const fade = e.confirmed ? null : 0.4;
                 if (isB) {
                     const ent = (typeof createBuilding === 'function')
                         ? createBuilding(e.type, e.x, e.z, e.owner, owner.civilization, { instant: true, age: oage }) : null;
-                    if (ent) { ent.seat = owner.seat; ent.underConstruction = false; r.addBuilding(ent); }
+                    if (ent) { ent.seat = owner.seat; ent.underConstruction = false;
+                              ent._fade = fade; ent._anStale = !e.confirmed; r.addBuilding(ent); }
                 } else {
                     const ent = (typeof createUnit === 'function')
                         ? createUnit(e.type, e.x, e.z, e.owner, owner.civilization, oage) : null;
-                    if (ent) { ent.seat = owner.seat; r.addUnit(ent); }
+                    if (ent) { ent.seat = owner.seat; ent._fade = fade;
+                              ent._anStale = !e.confirmed; ent._anLastSeen = e.lastSeenSec; r.addUnit(ent); }
                 }
             });
         }
 
         this.anApplyFog(sc, terrain);
+        this.anRenderPick();
 
         if (a.autoCam) this.anAimCamera(rec, sc);
     }
@@ -4247,11 +4328,17 @@ class UIManager {
             fow = this._anFog = new FogOfWarManager(this.game);
         }
         this.game.fogOfWar = fow;
+        // Opacity scales with how much of a tile the seat uncovered. The transcript only
+        // ever knows the PERCENTAGE per tile — never which cells inside it — so a hard
+        // explored/unexplored edge would be inventing detail the file does not have. A
+        // graded veil says exactly what is known: this much of here has been seen.
+        fow.gradedFog = true;
         fow.fogGrid.fill(0);
 
         // In union view nothing is hidden: it is explicitly the overview no player had,
         // so pretending it has a fog would be the lie the other way round.
         if (a.union) {
+            fow.gradedFog = false;
             fow.fogGrid.fill(2);
         } else {
             const half = terrain.size / 2, N = fow.numTiles, cell = fow.gridSize;
@@ -4269,10 +4356,14 @@ class UIManager {
                     const gz0 = Math.max(0, Math.floor((z0 + half) / cell));
                     const gx1 = Math.min(N - 1, Math.floor((x0 + tile + half) / cell));
                     const gz1 = Math.min(N - 1, Math.floor((z0 + tile + half) / cell));
+                    // The fraction itself, not a flag. Clamped just under 1 so a fully
+                    // swept tile still reads as explored-and-remembered rather than as
+                    // being watched right now, which is what tier 2 means.
+                    const frac = Math.min(0.97, Math.max(0, exp[k] / 100));
                     for (let gz = gz0; gz <= gz1; gz++) {
                         for (let gx = gx0; gx <= gx1; gx++) {
                             const i = gz * N + gx;
-                            if (fow.fogGrid[i] < 1) fow.fogGrid[i] = 1;
+                            if (fow.fogGrid[i] < frac) fow.fogGrid[i] = frac;
                         }
                     }
                 });

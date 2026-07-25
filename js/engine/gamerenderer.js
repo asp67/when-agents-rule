@@ -1172,8 +1172,16 @@
                         m3.multiply(m3.translation(0, 0.5 + hNow / 2, 0), m3.scaling(1, hNow, 1)));
                 }
                 const flash = b._flashUntil && now < b._flashUntil;
+                // Same persistent fade as units: a remembered position renders
+                // translucent through the blended pass, since alpha in the opaque
+                // pass has nothing to blend against.
+                if (b._fade != null && b._fade < 1) {
+                    for (const en of eb.opaque) dl.blended.push({ buf: en.buf, tex: en.tex, tint: en.tint, model: en.model, alpha: b._fade });
+                    for (const en of eb.blended) dl.blended.push({ buf: en.buf, tex: en.tex, tint: en.tint, model: en.model, alpha: b._fade });
+                } else {
                 for (const en of eb.opaque) dl.opaque.push(flash ? { buf: en.buf, tex: en.tex, tint: FLASH, model: en.model } : en);
                 for (const en of eb.blended) dl.blended.push(en);
+                }
                 const hpct = b.health / b.maxHealth;
                 const by = (b.isWonder ? 10 : 6) * BSCALE + 1.2;
                 if (!b.underConstruction && hpct < 0.999) pushBar(b.x, by, b.z, 4.6, hpct, this._barColor(hpct));
@@ -1248,7 +1256,13 @@
                     const local = e.bone && pose.mats[e.bone] ? m3.multiply(pose.mats[e.bone], e.base) : e.base;
                     const model = m3.multiply(e.blend ? flat : world, local);
                     e.model = model; // keep the composed matrix — death ghosts snapshot it
-                    if (e.blend) dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model });
+                    // A faded entity goes through the BLENDED pass whatever its part says,
+                    // because alpha in the opaque pass has nothing to blend against. `_fade`
+                    // is persistent, unlike a death ghost: the analyzer uses it for a
+                    // position it remembers but cannot currently see.
+                    if (u._fade != null && u._fade < 1) {
+                        dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model, alpha: u._fade });
+                    } else if (e.blend) dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model });
                     else dl.opaque.push({ buf: e.buf, tex: e.tex, tint: flash ? FLASH : e.tint, model });
                 }
                 if (u.selected) {
