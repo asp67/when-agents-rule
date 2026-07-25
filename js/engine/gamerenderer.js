@@ -1266,7 +1266,15 @@
                     else dl.opaque.push({ buf: e.buf, tex: e.tex, tint: flash ? FLASH : e.tint, model });
                 }
                 if (u.selected) {
-                    const r = ue.type === 'cavalry' ? 1.5 : 1.05;
+                    // Grows with the zoom-out. A unit ring is ~1 world unit against a
+                    // building's 6, which reads fine close up and vanishes entirely when
+                    // the camera is pulled back to frame the whole island: at the far end
+                    // of the zoom range it spans well under a pixel, so a selected unit
+                    // looked unmarked while a selected building still showed. Anchored at
+                    // the default height, so the close-up view is exactly as it was and
+                    // only the wide shot changes.
+                    const grow = Math.max(1, this._halfH / 34);
+                    const r = (ue.type === 'cavalry' ? 1.5 : 1.05) * grow;
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: [0.35, 0.95, 0.55],
                         model: m3.multiply(m3.translation(u.x, 0.08, u.z), m3.scaling(r, 1, r))
