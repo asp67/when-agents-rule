@@ -4244,6 +4244,28 @@ class UIManager {
         this.anRenderPick();
     }
 
+
+    // Age and civ ids are protocol values in the transcript; a human reading it wants
+    // words. t('age.x') carries a leading glyph for the HUD, which these compact chips
+    // have no room for, so it is stripped the way the results chart already does.
+    anAgeName(id) {
+        // hasI18n, not a truthiness check on t(): a missing key comes BACK as the key
+        // itself, so `t(k) || id` would have shown "age.zzz" and looked deliberate.
+        if (!id) return '';
+        if (typeof hasI18n !== 'function' || !hasI18n(getUiLang(), 'age.' + id)) return String(id);
+        return String(t('age.' + id)).trim().replace(/^\S+\s+/, '') || String(id);
+    }
+
+    anCivName(id) {
+        if (!id) return '';
+        // getCivilization falls back to a generic civ named "Völker" for an id it does
+        // not know, so trusting its return would print a plausible civilization for a
+        // typo or a transcript from a future build. Check the table itself first.
+        const known = (typeof CIVILIZATIONS === 'object' && CIVILIZATIONS) ? !!CIVILIZATIONS[id] : false;
+        if (!known) return String(id);
+        const civ = getCivilization(id);
+        return (civ && civ.name) ? tg(civ.name) : String(id);
+    }
     anRenderPick() {
         const box = document.getElementById('anPick');
         if (!box) return;
@@ -4254,7 +4276,7 @@ class UIManager {
         const owner = (a && a.seats.get(e.owner)) || {};
         const hp = (e.maxHealth ? Math.round(100 * e.health / e.maxHealth) : null);
         const bits = [];
-        if (e.age) bits.push(esc(e.age));
+        if (e.age) bits.push(esc(this.anAgeName(e.age)));
         if (hp != null) bits.push(hp + '% hp');
         if (e.attack) bits.push('atk ' + e.attack);
         if (e.range) bits.push('rng ' + e.range);
@@ -4265,9 +4287,15 @@ class UIManager {
             ? '<div class="an-pick-stale">' + esc(t('an.staleAt', { n: e._anLastSeen != null ? e._anLastSeen : '?' })) + '</div>'
             : '';
         box.style.display = '';
+        // tg(), not the raw field. Unit and building names live in the data files as
+        // GERMAN source strings — the live game's own info card has always run them
+        // through tg(); this card was reading them straight, so every English, Spanish
+        // and Chinese user got "Dorfbewohner".
         box.innerHTML = '<div class="an-pick-h">' + this.teamDotHtml(e.seat, 10) + ' '
-            + esc(e.name || e.type) + '</div>'
-            + '<div class="an-pick-o">' + esc(owner.name || owner.model || owner.civ || '') + '</div>'
+            + esc(tg(e.name) || e.type) + '</div>'
+            // The seat's own label is a user-typed nickname and must NOT be translated;
+            // only the civ fallback is game content.
+            + '<div class="an-pick-o">' + esc(owner.name || owner.model || this.anCivName(owner.civ)) + '</div>'
             + stale
             + '<div class="an-pick-n">' + bits.map(b => '<span>' + esc(b) + '</span>').join('') + '</div>';
     }
@@ -4559,7 +4587,7 @@ class UIManager {
         const res = stt.resources || {};
         const wk = stt.workers || {};
         const num = [];
-        if (stt.epoch && stt.epoch.currentEpoch) num.push(esc(stt.epoch.currentEpoch));
+        if (stt.epoch && stt.epoch.currentEpoch) num.push(esc(this.anAgeName(stt.epoch.currentEpoch)));
         if (res.population != null) num.push('pop ' + res.population + '/' + (res.maxPopulation != null ? res.maxPopulation : '?'));
         ['food', 'wood', 'stone', 'gold'].forEach(k => {
             if (res[k] != null) num.push(k.charAt(0).toUpperCase() + Math.round(res[k]));
