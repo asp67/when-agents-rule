@@ -607,7 +607,7 @@
                 // build finishing at a third of the promised size.
                 const H = {
                     town_center: 7.9, house: 4.5, barracks: 5.6, stable: 4.5,
-                    archery_range: 4.6, academy: 4.4, market: 4.4, farm: 1.2, tower: 8.9, temple: 6
+                    archery_range: 4.6, academy: 5.1, market: 5.1, farm: 1.2, tower: 8.9, temple: 6
                 };
                 const foot = (building.isWonder ? 12 : 7);
                 const h = building.isWonder ? 8.6 : (H[building.type] || 5);

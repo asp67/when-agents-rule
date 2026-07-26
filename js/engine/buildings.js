@@ -403,38 +403,127 @@
             }
             return p;
         },
+        // The academy: where a civilization keeps and grows what it knows. It used to be
+        // a market — stalls, awnings, sacks, barrels — because that is what the building
+        // was called until v512. Nothing here trades; the progression is from talking to
+        // writing to teaching, and the iron form diverges per culture the way the temple
+        // does, because a school is the most culturally specific thing a people builds.
+        // Tallest point is 5.10 (Yamato iron), measured from real vertices rather than
+        // guessed from arguments — H.academy in gamerenderer promises exactly that to the
+        // construction shell.
         academy: (o = {}) => {
             const p = [];
             const age = ageOf(o);
+            const civ = civOf(o);
             shadow(p, 6.6);
             if (age === 'stone' || age === 'neolithic') {
-                // Trading post: rough posts under a hide canopy, goods on a mat.
-                part(p, 'box', [5.8, 0.14, 5], 'thatch', { y: 0.07 }); // woven ground mat
-                [[-2.6, -2.2], [2.6, -2.2], [-2.6, 2.2], [2.6, 2.2]].forEach(([x, z]) =>
-                    part(p, 'cylinder', [0.1, 0.13, 2.6, 5], 'bark', { x, y: 1.3, z }));
-                part(p, 'box', [6.4, 0.16, 5.6], 'leather', { y: 2.72, rx: 0.09 }); // hide canopy
-                part(p, 'sphere', [1, 8, 6], 'leather', { x: -1.4, y: 0.5, z: 0.6, sx: 0.55, sy: 0.5, sz: 0.55 });  // sacks
-                part(p, 'sphere', [1, 8, 6], 'leather', { x: -0.5, y: 0.4, z: 1.3, sx: 0.45, sy: 0.4, sz: 0.45 });
-                part(p, 'cylinder', [0.3, 0.4, 0.7, 8], 'leather', { x: 1.5, y: 0.35, z: 0.9 }); // clay pot
+                // Teaching circle: swept ground, a speaker's slab, seats in a ring, shade
+                // over the speaker, and a notched tally post — the first record kept.
+                part(p, 'disc', [4.9, 20], 'field_dirt', { y: 0.05 });
+                part(p, 'box', [1.9, 0.3, 1.3], 'stone', { y: 0.15 });
+                for (let i = 0; i < 6; i++) {
+                    const a2 = (i / 6) * Math.PI * 2 + 0.4;
+                    part(p, 'sphere', [1, 8, 6], 'stone', { x: Math.cos(a2) * 3.5, y: 0.26,
+                        z: Math.sin(a2) * 3.5, sx: 0.56, sy: 0.34, sz: 0.56 });
+                }
+                part(p, 'cylinder', [0.09, 0.12, 2.5, 5], 'bark', { x: -1.6, y: 1.25, z: -1.0 });
+                part(p, 'cylinder', [0.09, 0.12, 2.5, 5], 'bark', { x: 1.6, y: 1.25, z: -1.0 });
+                part(p, 'box', [3.8, 0.12, 2.1], 'leather', { y: 2.54, z: -0.5, rx: 0.12 });
+                part(p, 'cylinder', [0.13, 0.16, 2.2, 6], 'bark', { x: 3.1, y: 1.1, z: 2.1 });
+                [0.8, 1.2, 1.6, 2.0].forEach(y =>
+                    part(p, 'box', [0.44, 0.07, 0.07], 'wood', { x: 3.1, y, z: 2.1 }));
+                if (age === 'neolithic') {
+                    // Clay tablets drying on a rack, once there is something worth keeping.
+                    part(p, 'cylinder', [0.07, 0.07, 0.62, 4], 'bark', { x: -3.6, y: 0.31, z: 1.9 });
+                    part(p, 'cylinder', [0.07, 0.07, 0.62, 4], 'bark', { x: -2.4, y: 0.31, z: 1.9 });
+                    part(p, 'box', [1.6, 0.1, 0.9], 'wood', { x: -3.0, y: 0.63, z: 1.9 });
+                    part(p, 'box', [0.52, 0.09, 0.36], 'plaster', { x: -3.3, y: 0.73, z: 1.88 });
+                    part(p, 'box', [0.52, 0.09, 0.36], 'plaster', { x: -2.7, y: 0.73, z: 1.94, ry: 0.3 });
+                }
             } else if (age === 'bronze') {
-                // Timber stall under the striped awning — the classic signature.
-                part(p, 'box', [5.4, 2.0, 5.4], 'wood', { y: 1.0 });
-                [[3.7, 3.7], [-3.7, 3.7], [3.7, -3.7], [-3.7, -3.7]].forEach(([x, z]) =>
-                    part(p, 'cylinder', [0.1, 0.1, 2.7, 5], 'wood', { x, y: 1.35, z }));
-                part(p, 'pyramid', [8.6, 8.6, 1.7], 'awning', { y: 2.7 });
-                part(p, 'box', [0.8, 0.8, 0.8], 'wood', { x: 2.4, y: 0.4, z: 3.1 });        // crate
-                part(p, 'cylinder', [0.4, 0.4, 0.9, 8], 'bark', { x: -2.5, y: 0.45, z: 3.1 }); // barrel
+                // Scribe's hall: a timber hall on a plinth, a reading porch along the
+                // front, desks out in the light, and a gnomon — the first instrument.
+                part(p, 'box', [5.8, 0.34, 5.4], 'masonry', { y: 0.17 });
+                part(p, 'box', [5.0, 2.2, 4.3], 'wood', { y: 1.44 });
+                part(p, 'prism', [5.9, 5.1, 1.7], 'thatch', { y: 2.54 });
+                [-2.0, -0.7, 0.7, 2.0].forEach(x =>
+                    part(p, 'cylinder', [0.12, 0.14, 2.1, 6], 'bark', { x, y: 1.39, z: 2.85 }));
+                part(p, 'box', [4.6, 0.16, 0.9], 'wood', { y: 2.5, z: 2.85 });
+                part(p, 'box', [1.3, 1.7, 0.22], 'bark', { y: 1.19, z: 2.18 });
+                // Two low desks, a stack of tablets on one of them.
+                [-1.5, 1.5].forEach(x => {
+                    part(p, 'box', [1.5, 0.12, 0.85], 'wood', { x, y: 0.86, z: 3.9, rx: -0.18 });
+                    part(p, 'cylinder', [0.07, 0.07, 0.66, 4], 'bark', { x: x - 0.6, y: 0.5, z: 3.9 });
+                    part(p, 'cylinder', [0.07, 0.07, 0.66, 4], 'bark', { x: x + 0.6, y: 0.5, z: 3.9 });
+                });
+                part(p, 'box', [0.52, 0.16, 0.36], 'plaster', { x: 1.4, y: 1.0, z: 3.85 });
+                // Gnomon: a rod on a marked disc, telling the hour by its shadow.
+                part(p, 'cylinder', [0.62, 0.62, 0.12, 12], 'plaster', { x: -3.4, y: 0.4, z: 0.4 });
+                part(p, 'cylinder', [0.045, 0.055, 1.5, 4], 'bark', { x: -3.4, y: 1.2, z: 0.4, rz: 0.22 });
+                doorTrim(p, civ, 2, 2.2, 1.3, 1.7);
             } else {
-                // Iron: a stone trading house, striped awnings over the stalls out front.
-                part(p, 'box', [5.9, 0.5, 5.7], 'masonry', { y: 0.25 });
-                part(p, 'box', [5.4, 2.4, 5.0], 'plaster', { y: 1.7 });
-                part(p, 'prism', [6.4, 5.8, 2.0], 'rooftile', { y: 2.9 });
-                part(p, 'box', [1.4, 1.8, 0.24], 'wood', { y: 1.15, z: 2.56 }); // door
-                part(p, 'box', [2.4, 0.14, 1.5], 'awning', { x: -1.6, y: 2.35, z: 3.2, rx: 0.35 });
-                part(p, 'box', [2.4, 0.14, 1.5], 'awning', { x: 1.6, y: 2.35, z: 3.2, rx: 0.35 });
-                part(p, 'box', [0.8, 0.8, 0.8], 'wood', { x: 2.6, y: 0.4, z: 3.7 });
-                part(p, 'cylinder', [0.4, 0.4, 0.9, 8], 'bark', { x: -2.7, y: 0.45, z: 3.8 });
-                doorTrim(p, civOf(o), 3, 2.62, 1.4, 1.9);
+                // Iron: a real academy. Stone stylobate and hall are shared; the portico
+                // above them is where the cultures part company.
+                part(p, 'frustum', [8.2, 6.8, 7.6, 6.2, 0.8], 'masonry');
+                part(p, 'box', [5.0, 2.6, 4.2], 'plaster', { y: 2.1 });
+                part(p, 'box', [1.4, 1.9, 0.26], 'bark', { y: 1.75, z: 2.16 });
+                if (civ === 'greek') {
+                    // Stoa: a colonnade across the front under a pediment, and the
+                    // curved exedra bench where the arguing actually happens.
+                    part(p, 'prism', [6.2, 5.0, 1.5], 'plaster', { y: 3.4 });
+                    [-2.1, -0.7, 0.7, 2.1].forEach(x =>
+                        part(p, 'cylinder', [0.24, 0.28, 2.9, 9], 'plaster', { x, y: 2.25, z: 2.85 }));
+                    // Entablature over the columns, not a second pediment above the ridge:
+                    // prism is BASE-anchored, so a pediment placed by eye floated over the
+                    // roof like a spare gable. The colonnade carries a beam, as it should.
+                    part(p, 'box', [6.0, 0.36, 0.62], 'plaster', { y: 3.56, z: 2.85 });
+                    part(p, 'box', [6.0, 0.16, 0.3], 'masonry', { y: 3.8, z: 2.9 });
+                    for (let i = 0; i < 5; i++) {
+                        const a2 = -0.9 + i * 0.45;
+                        part(p, 'box', [0.9, 0.34, 0.5], 'masonry',
+                            { x: Math.sin(a2) * 3.7, y: 0.97, z: 4.2 + Math.cos(a2) * 0.5, ry: -a2 });
+                    }
+                } else if (civ === 'egyptian') {
+                    // House of Life: battered walls, a gold cornice, papyrus-bundle
+                    // columns, and an obelisk cut with the record outside the door.
+                    part(p, 'box', [5.6, 0.26, 4.8], 'gold', { y: 3.5 });
+                    part(p, 'box', [5.2, 0.9, 4.4], 'masonry', { y: 3.9 });
+                    [-2.0, 0, 2.0].forEach(x => {
+                        part(p, 'cylinder', [0.3, 0.34, 2.7, 8], 'masonry', { x, y: 2.15, z: 2.9 });
+                        part(p, 'frustum', [0.9, 0.9, 0.48, 0.48, 0.5], 'gold', { x, y: 3.7, z: 2.9 });
+                    });
+                    part(p, 'box', [3.4, 0.3, 1.2], 'masonry', { y: 4.05, z: 2.9 });
+                    part(p, 'frustum', [0.72, 0.72, 0.42, 0.42, 3.0], 'masonry', { x: -3.5, y: 1.5, z: 3.3 });
+                    part(p, 'pyramid', [0.46, 0.46, 0.5], 'gold', { x: -3.5, y: 3.25, z: 3.3 });
+                } else if (civ === 'persian') {
+                    // Talar pavilion: a slender columned porch, a glazed band in the
+                    // player's colour, a low dome, and a still pool to read beside.
+                    part(p, 'box', [5.2, 0.3, 4.4], 'cloth', { y: 3.5, team: true });
+                    part(p, 'sphere', [1, 14, 10], 'rooftile', { y: 3.62, sx: 2.5, sy: 1.35, sz: 2.2 });
+                    part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: -2.2, y: 2.3, z: 3.0 });
+                    part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: -0.75, y: 2.3, z: 3.0 });
+                    part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: 0.75, y: 2.3, z: 3.0 });
+                    part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: 2.2, y: 2.3, z: 3.0 });
+                    part(p, 'box', [5.2, 0.3, 0.9], 'cloth', { y: 3.9, z: 3.0, team: true });
+                    part(p, 'disc', [1.5, 18], 'cloth', { x: -3.4, y: 0.09, z: 3.4, blend: true });
+                } else {
+                    // Yamato: post-and-beam under a deep hipped roof, a torii at the path
+                    // and a stone lantern — you arrive through a gate, not a door.
+                    part(p, 'pyramid', [7.0, 6.0, 1.7], 'rooftile', { y: 3.4 });
+                    part(p, 'box', [6.4, 0.2, 5.4], 'wood', { y: 3.34 });
+                    [-2.4, 2.4].forEach(x =>
+                        part(p, 'cylinder', [0.17, 0.19, 3.0, 6], 'bark', { x, y: 2.3, z: 2.9 }));
+                    part(p, 'box', [5.6, 0.2, 0.24], 'bark', { y: 3.7, z: 2.9 });
+                    part(p, 'box', [5.0, 0.14, 0.18], 'cloth', { y: 3.3, z: 2.95, team: true });
+                    [-1.15, 1.15].forEach(x =>
+                        part(p, 'cylinder', [0.1, 0.12, 2.4, 5], 'bark', { x, y: 1.2, z: 4.5 }));
+                    part(p, 'box', [3.1, 0.17, 0.22], 'cloth', { y: 2.44, z: 4.5, team: true });
+                    part(p, 'box', [2.5, 0.13, 0.17], 'bark', { y: 2.06, z: 4.5 });
+                    part(p, 'cylinder', [0.2, 0.26, 0.7, 6], 'stone', { x: 3.3, y: 0.35, z: 3.6 });
+                    part(p, 'box', [0.6, 0.5, 0.6], 'plaster', { x: 3.3, y: 0.95, z: 3.6 });
+                    part(p, 'pyramid', [0.85, 0.85, 0.4], 'stone', { x: 3.3, y: 1.4, z: 3.6 });
+                }
+                doorTrim(p, civ, 3, 2.2, 1.4, 1.9);
             }
             return p;
         },
