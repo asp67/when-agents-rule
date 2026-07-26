@@ -4473,6 +4473,12 @@ class UIManager {
         // The arena builds its own fog at match start, but leaving ours installed
         // means a stale grid is on screen for the first frames of the next match.
         if (this.game.fogOfWar === this._anFog) this.game.fogOfWar = null;
+        // Drop the cache as well. The guard in anApplyFog handles a manager that was
+        // destroyed behind our back, but keeping no reference at all past the close is
+        // what stops that situation existing: the next open builds a fresh one, which
+        // costs a Float32Array and two canvases once per open and removes a whole class
+        // of stale-object bug in exchange.
+        this._anFog = null;
         const r = this.game.renderer;
         if (r) {
             if (r.clearScene) r.clearScene();
@@ -4801,7 +4807,16 @@ class UIManager {
         const a = this.analyzer;
         if (!a || !sc) return;
         let fow = this._anFog;
-        if (!fow || fow.mapSize !== terrain.size) {
+        // A destroyed manager is not a reusable one. destroy() drops fogDisplayCanvas,
+        // fogCanvas and the scratch canvas — and startArenaFromSetup calls destroy() on
+        // whatever fog happens to be installed, which is OURS whenever a match is
+        // started while this screen's fog is the one in place. Reusing the corpse threw
+        // inside updateFogTexture on a null canvas, and because that throw came from
+        // anApplyFog inside anBuildStage inside anRender, it took the whole analyzer
+        // render with it: reopen the screen and the fog was missing for good. Checking
+        // mapSize alone could not see it, since the corpse keeps its numbers.
+        const alive = !!(fow && fow.fogDisplayCanvas && fow.fogCanvas);
+        if (!alive || fow.mapSize !== terrain.size) {
             if (typeof FogOfWarManager !== 'function') return;
             // It reads game.terrain and game.renderer off the game, both of which are
             // pointed at the rebuilt map by the caller before this runs.
