@@ -3341,8 +3341,18 @@ class UIManager {
         });
         // Older turns fall off the recorder's 300-turn ring; the viewer cannot show
         // what it no longer holds, so open it and leave the reader at the top.
-        if (best) this.tvJumpTo(best.turn);
+        //
+        // Clicking a decision says which turn is wanted, so that turn is PINNED: the
+        // incremental render anchors on it instead of following the newest arrival.
+        // Without this, asking for the turn that happens to be newest left the reader
+        // at scrollTop 0 — indistinguishable from following live — and the next answer
+        // to land pushed the requested turn straight out of view.
+        if (best) { this._tvPinned = best.turn; this.tvJumpTo(best.turn); }
     }
+
+    // Stop holding the requested turn. Called whenever the reader says, by some other
+    // action, that they are done with it.
+    tvUnpin() { this._tvPinned = null; }
 
     // Scroll a turn into view and flash it: in a list where every entry looks alike,
     // landing near the right one is not the same as finding it.
@@ -3362,6 +3372,8 @@ class UIManager {
     }
 
     toggleTranscriptViewer(aiId) {
+        // A different seat, or none: whatever turn was being held belonged to the old one.
+        this.tvUnpin();
         this._transcriptFor = (this._transcriptFor === aiId) ? null : aiId;
         this._tvRendered = null;            // different model → full rebuild
         this.renderTranscriptViewer();
@@ -3379,6 +3391,8 @@ class UIManager {
     }
 
     scrollTranscriptTop() {
+        // The arrow means "back to the newest", which is the opposite of holding a turn.
+        this.tvUnpin();
         // Same call the decision log's arrow uses. A rAF tween was tried here after
         // smooth-scroll appeared dead in testing; that turned out to be the preview
         // tab being hidden (visibilityState 'hidden', zero rAF frames), which stops a
@@ -3543,7 +3557,17 @@ class UIManager {
         const body = document.getElementById('tvBody');
         if (!body) return;
         if (!body._tvBound) {
-            body.addEventListener('scroll', () => this.updateTranscriptTopBtn());
+            body.addEventListener('scroll', () => {
+                // Scrolling above the pinned turn means the reader has gone looking at
+                // newer answers, so the hold is released and the viewer follows the top
+                // again. Scrolling BELOW it, into older history, is still reading around
+                // the thing they asked for — the pin stays.
+                if (this._tvPinned != null) {
+                    const el = body.querySelector(`.tv-turn[data-key="${this._tvPinned}"]`);
+                    if (!el || body.scrollTop < el.offsetTop - 12) this.tvUnpin();
+                }
+                this.updateTranscriptTopBtn();
+            });
             // 'toggle' does not bubble, so capture it. Fills a state section the first
             // time it is opened, from the ring — the JSON never sits in the document
             // until someone actually asks for it.
@@ -3619,9 +3643,17 @@ class UIManager {
         // state JSON changes it too, and the correction was then wrong by a constant
         // ~940px no matter where the collapse happened. Anchoring on an ELEMENT is
         // exact whatever else moved.
-        const atTop = body.scrollTop <= 4;
-        let anchorEl = null, anchorGap = 0;
-        if (!atTop) {
+        // A turn the reader ASKED for outranks following the live top. It is checked
+        // first and independently of scrollTop, because a pinned turn that happens to be
+        // the newest one sits AT the top, where the follow-the-top rule would otherwise
+        // claim it.
+        const pinned = (this._tvPinned != null)
+            ? body.querySelector(`.tv-turn[data-key="${this._tvPinned}"]`) : null;
+        // Pinned to a turn the ring has since dropped: nothing left to hold on to.
+        if (this._tvPinned != null && !pinned) this.tvUnpin();
+        const atTop = !pinned && body.scrollTop <= 4;
+        let anchorEl = pinned, anchorGap = pinned ? (pinned.offsetTop - body.scrollTop) : 0;
+        if (!atTop && !anchorEl) {
             for (const el of body.children) {
                 if (el.offsetTop + el.offsetHeight > body.scrollTop) {  // first visible turn
                     anchorEl = el;
@@ -3632,7 +3664,7 @@ class UIManager {
         }
         fresh.forEach(e => body.insertAdjacentHTML('afterbegin', this.tvTurnHtml(e)));
         if (atTop) body.scrollTop = 0;
-        else if (anchorEl && anchorEl.isConnected) body.scrollTop = anchorEl.offsetTop - anchorGap;
+        else if (anchorEl && anchorEl.isConnected) body.scrollTop = Math.max(0, anchorEl.offsetTop - anchorGap);
 
         this._tvRendered = { id, keys };
         this.updateTranscriptTopBtn();
