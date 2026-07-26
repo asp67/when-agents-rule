@@ -630,7 +630,11 @@ body.spectator-mode #unitInfo.spectator-card {
 /* Count and caret travel together at the right of the header. */
 .lb-head-right { display: inline-flex; align-items: center; gap: 7px; }
 .lb-toggle { color: #6b7488; font-size: 0.8em; }
-.lb-header { cursor: pointer; user-select: none; }
+/* pointer-events must be restored: the leaderboard container is click-through so that
+   clicks reach the map, and each child that wants them opts back in (see .lb-list and
+   .lb-card). Without this the header showed a pointer cursor and a caret and swallowed
+   nothing — it looked like a button and was not one. */
+.lb-header { cursor: pointer; user-select: none; pointer-events: auto; }
 .lb-header:hover .lb-toggle { color: #cfe; }
 
 .lb-card {
