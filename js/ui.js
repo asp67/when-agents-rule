@@ -3398,6 +3398,27 @@ class UIManager {
     // a reader who does not care about a section does not care about it four turns
     // from now either, and having new entries always arrive fully expanded both
     // surprised the reader and made every insert the tallest it could be.
+
+    // Walk a seat's turns oldest-first, carrying the standing objective and plan onto
+    // each. Idempotent: called on every render over the same ring, and re-stamping a
+    // record with the same values costs nothing.
+    tvCarryPlan(turns) {
+        if (!Array.isArray(turns) || !turns.length) return;
+        const ordered = turns.slice().sort((a, b) => (a.turn || 0) - (b.turn || 0));
+        let obj = null, plan = null;
+        ordered.forEach(e => {
+            const p = e.parsed || {};
+            const hadObj = typeof p.objective === 'string' && p.objective.trim();
+            const rawPlan = Array.isArray(p.plan) ? p.plan
+                : (typeof p.plan === 'string' && p.plan.trim() ? [p.plan] : null);
+            if (hadObj) obj = p.objective.trim();
+            if (rawPlan && rawPlan.length) plan = rawPlan.slice();
+            e._objective = obj;
+            e._plan = plan;
+            e._objectiveNew = !!hadObj;
+            e._planNew = !!(rawPlan && rawPlan.length);
+        });
+    }
     tvSectionPrefs() {
         if (!this._tvSecOpen) {
             this._tvSecOpen = { 'tv-reason': true, 'tv-reply': true, 'tv-result': true, 'tv-state': false };
@@ -3410,7 +3431,28 @@ class UIManager {
         this.tvSectionPrefs()[cls] = !!open;
     }
 
-    tvTurnHtml(e) {
+    // The plan a turn was working to, as text for a tv-sec. Reads the CARRIED-FORWARD
+    // values when a caller has resolved them (_objective/_plan) and the turn's own
+    // fields otherwise: objective and plan persist across turns — "omit to keep current"
+    // — so about nine turns in ten restate neither while very much having both, and
+    // reading only the line would show a blank plan that is not blank.
+    tvPlanText(e) {
+        const obj = (e._objective != null) ? e._objective : (e.parsed && e.parsed.objective);
+        const raw = (e._plan != null) ? e._plan : (e.parsed && e.parsed.plan);
+        const steps = Array.isArray(raw) ? raw : (typeof raw === 'string' && raw.trim() ? [raw] : []);
+        if (!obj && !steps.length) return '';
+        const lines = [];
+        if (obj) lines.push('\uD83C\uDFAF ' + obj);
+        steps.forEach((x, i) => lines.push((i + 1) + '. ' + x));
+        // Said only when true, and it is the one thing worth noticing: the turn the
+        // model changed its mind is the turn to read.
+        if (e._planNew || e._objectiveNew) lines.push('(' + t('an.rewritten') + ')');
+        return lines.join('\n');
+    }
+
+    // opts.skipPlan: the analyzer renders its own richer plan card above this block and
+    // must not print it twice.
+    tvTurnHtml(e, opts) {
         const esc = s => this.escapeHtml(String(s == null ? '' : s));
         const pref = this.tvSectionPrefs();
         // ontoggle writes the choice back. Without it _tvSecOpen was read but never
@@ -3450,6 +3492,7 @@ class UIManager {
                     <span class="tv-meta">${esc(ms)}${ms && tok ? ' · ' : ''}${esc(tok)}</span>
                 </div>
                 ${sec('tv-reason', t('spec.tvReasoning'), e.assistant && e.assistant.reasoning)}
+                ${(opts && opts.skipPlan) ? '' : sec('tv-plan', t('spec.tvPlan'), this.tvPlanText(e))}
                 ${replySec}
                 ${sec('tv-result', t('spec.tvResult'), e.harnessResult)}
                 ${state}
@@ -3465,6 +3508,13 @@ class UIManager {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
         const turns = rec ? rec.recent(id) : [];
+        // Resolve objective/plan across the whole ring before anything is rendered.
+        // Stamped onto the records, not the DOM, so the incremental path below still
+        // only touches the turns that are new — and every turn then knows the plan it
+        // was working to, not just the one in ten that restated it. Entries older than
+        // the ring's first restatement show none, exactly as a truncated file does in
+        // the analyzer.
+        this.tvCarryPlan(turns);
         el.style.display = '';
 
         const head = document.getElementById('tvTitle');
@@ -4938,7 +4988,7 @@ class UIManager {
             // Both blocks are labelled now. A target glyph suggests a plan; it does not
             // say so, and the command sat as a bare word with no clue what it was.
             + cmdBlocks
-            + this.tvTurnHtml(r);
+            + this.tvTurnHtml(r, { skipPlan: true });
     }
 
     publicResults(summary) {

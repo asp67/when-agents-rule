@@ -2118,6 +2118,10 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 .tv-reason > summary { color: #c9a6ff; }
 .tv-reason pre { color: #cbb8ee; font-style: italic; }
+/* Plan takes the accent teal the analyzer plan card uses, so the same content reads as
+   the same thing in both views — and it sits apart from Reply green and Harness yellow. */
+.tv-plan > summary { color: #4ecca3; }
+.tv-plan pre { color: #bfe6d6; }
 .tv-reply > summary { color: #8cd9a4; }
 .tv-result > summary { color: #ffd45e; }
 .tv-state > summary { color: #7c869c; }

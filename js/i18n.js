@@ -157,7 +157,7 @@ const I18N = {
         'spec.hint': '🏟️ Spectator mode — move the camera with the mouse',
         'spec.cardHint': 'Click: focus camera on this base',
         'spec.pause': 'Pause this model (stop it sending requests)',
-        'spec.transcript': 'Transcript — what this model was sent and said', 'spec.tvEmpty': 'No turns recorded yet — this model has not answered.', 'spec.tvReasoning': 'Reasoning', 'spec.tvReply': 'Reply', 'spec.tvResult': 'Harness', 'spec.tvState': 'State sent',
+        'spec.transcript': 'Transcript — what this model was sent and said', 'spec.tvEmpty': 'No turns recorded yet — this model has not answered.', 'spec.tvPlan': 'Plan', 'spec.tvReasoning': 'Reasoning', 'spec.tvReply': 'Reply', 'spec.tvResult': 'Harness', 'spec.tvState': 'State sent',
         'spec.resume': 'Resume this model',
         'spec.paused': 'PAUSED',
 
@@ -517,7 +517,7 @@ const I18N = {
         'spec.hint': '🏟️ Zuschauermodus — Kamera mit der Maus bewegen',
         'spec.cardHint': 'Klicken: Kamera auf diese Basis',
         'spec.pause': 'Dieses Modell pausieren (keine Anfragen mehr senden)',
-        'spec.transcript': 'Transkript — was dieses Modell erhielt und sagte', 'spec.tvEmpty': 'Noch keine Züge aufgezeichnet — dieses Modell hat nicht geantwortet.', 'spec.tvReasoning': 'Argumentation', 'spec.tvReply': 'Antwort', 'spec.tvResult': 'Harness', 'spec.tvState': 'Gesendeter Zustand',
+        'spec.transcript': 'Transkript — was dieses Modell erhielt und sagte', 'spec.tvEmpty': 'Noch keine Züge aufgezeichnet — dieses Modell hat nicht geantwortet.', 'spec.tvPlan': 'Plan', 'spec.tvReasoning': 'Argumentation', 'spec.tvReply': 'Antwort', 'spec.tvResult': 'Harness', 'spec.tvState': 'Gesendeter Zustand',
         'spec.resume': 'Dieses Modell fortsetzen',
         'spec.paused': 'PAUSIERT',
 
@@ -870,7 +870,7 @@ const I18N = {
         'spec.hint': '🏟️ Modo espectador — mueve la cámara con el ratón',
         'spec.cardHint': 'Clic: enfocar la cámara en esta base',
         'spec.pause': 'Pausar este modelo (que deje de enviar peticiones)',
-        'spec.transcript': 'Transcripción — lo que se envió a este modelo y lo que dijo', 'spec.tvEmpty': 'Aún no hay turnos registrados: este modelo no ha respondido.', 'spec.tvReasoning': 'Razonamiento', 'spec.tvReply': 'Respuesta', 'spec.tvResult': 'Sistema', 'spec.tvState': 'Estado enviado',
+        'spec.transcript': 'Transcripción — lo que se envió a este modelo y lo que dijo', 'spec.tvEmpty': 'Aún no hay turnos registrados: este modelo no ha respondido.', 'spec.tvPlan': 'Plan', 'spec.tvReasoning': 'Razonamiento', 'spec.tvReply': 'Respuesta', 'spec.tvResult': 'Sistema', 'spec.tvState': 'Estado enviado',
         'spec.resume': 'Reanudar este modelo',
         'spec.paused': 'EN PAUSA',
 
@@ -1215,7 +1215,7 @@ const I18N = {
         'spec.hint': '🏟️ 观战模式 — 用鼠标移动镜头',
         'spec.cardHint': '点击：将镜头对准该基地',
         'spec.pause': '暂停该模型（停止发送请求）',
-        'spec.transcript': '对话记录——该模型收到了什么、说了什么', 'spec.tvEmpty': '尚无回合记录——该模型还未作答。', 'spec.tvReasoning': '推理', 'spec.tvReply': '回复', 'spec.tvResult': '框架反馈', 'spec.tvState': '发送的状态',
+        'spec.transcript': '对话记录——该模型收到了什么、说了什么', 'spec.tvEmpty': '尚无回合记录——该模型还未作答。', 'spec.tvPlan': '计划', 'spec.tvReasoning': '推理', 'spec.tvReply': '回复', 'spec.tvResult': '框架反馈', 'spec.tvState': '发送的状态',
         'spec.resume': '恢复该模型',
         'spec.paused': '已暂停',
 
