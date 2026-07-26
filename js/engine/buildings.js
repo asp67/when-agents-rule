@@ -76,6 +76,12 @@
         part(p, 'box', [r * 0.5, wallH * 0.85, 0.16], 'bark', { y: wallH * 0.45, z: r * 0.97 });
     };
 
+    // ANCHORING, because it has now cost two rounds of floating geometry: box, cylinder
+    // and sphere are CENTRE-anchored — y is the middle — while prism, pyramid and frustum
+    // are BASE-anchored, where y is the bottom face. Place a roof at the height you want
+    // its ridge and it hovers; place a plinth at half its height and it sinks. A part
+    // whose bottom is above ground with nothing beneath it is a bug you will not see in a
+    // part count or a height check — only by looking, or by testing for support.
     const builders = {
         town_center: (o = {}) => {
             const p = [];
@@ -420,10 +426,10 @@
                 // Teaching circle: swept ground, a speaker's slab, seats in a ring, shade
                 // over the speaker, and a notched tally post — the first record kept.
                 part(p, 'disc', [4.9, 20], 'field_dirt', { y: 0.05 });
-                part(p, 'box', [1.9, 0.3, 1.3], 'stone', { y: 0.15 });
+                part(p, 'box', [1.9, 0.3, 1.3], 'rock', { y: 0.15 });
                 for (let i = 0; i < 6; i++) {
                     const a2 = (i / 6) * Math.PI * 2 + 0.4;
-                    part(p, 'sphere', [1, 8, 6], 'stone', { x: Math.cos(a2) * 3.5, y: 0.26,
+                    part(p, 'sphere', [1, 8, 6], 'rock', { x: Math.cos(a2) * 3.5, y: 0.26,
                         z: Math.sin(a2) * 3.5, sx: 0.56, sy: 0.34, sz: 0.56 });
                 }
                 part(p, 'cylinder', [0.09, 0.12, 2.5, 5], 'bark', { x: -1.6, y: 1.25, z: -1.0 });
@@ -443,7 +449,7 @@
             } else if (age === 'bronze') {
                 // Scribe's hall: a timber hall on a plinth, a reading porch along the
                 // front, desks out in the light, and a gnomon — the first instrument.
-                part(p, 'box', [5.8, 0.34, 5.4], 'masonry', { y: 0.17 });
+                part(p, 'box', [5.8, 0.34, 6.6], 'masonry', { y: 0.17 });   // deep enough to carry the porch
                 part(p, 'box', [5.0, 2.2, 4.3], 'wood', { y: 1.44 });
                 part(p, 'prism', [5.9, 5.1, 1.7], 'thatch', { y: 2.54 });
                 [-2.0, -0.7, 0.7, 2.0].forEach(x =>
@@ -452,14 +458,14 @@
                 part(p, 'box', [1.3, 1.7, 0.22], 'bark', { y: 1.19, z: 2.18 });
                 // Two low desks, a stack of tablets on one of them.
                 [-1.5, 1.5].forEach(x => {
-                    part(p, 'box', [1.5, 0.12, 0.85], 'wood', { x, y: 0.86, z: 3.9, rx: -0.18 });
-                    part(p, 'cylinder', [0.07, 0.07, 0.66, 4], 'bark', { x: x - 0.6, y: 0.5, z: 3.9 });
-                    part(p, 'cylinder', [0.07, 0.07, 0.66, 4], 'bark', { x: x + 0.6, y: 0.5, z: 3.9 });
+                    part(p, 'box', [1.5, 0.12, 0.85], 'wood', { x, y: 0.72, z: 3.9, rx: -0.18 });
+                    part(p, 'cylinder', [0.07, 0.07, 0.66, 4], 'bark', { x: x - 0.6, y: 0.33, z: 3.9 });
+                    part(p, 'cylinder', [0.07, 0.07, 0.66, 4], 'bark', { x: x + 0.6, y: 0.33, z: 3.9 });
                 });
-                part(p, 'box', [0.52, 0.16, 0.36], 'plaster', { x: 1.4, y: 1.0, z: 3.85 });
+                part(p, 'box', [0.52, 0.16, 0.36], 'plaster', { x: 1.4, y: 0.86, z: 3.85 });
                 // Gnomon: a rod on a marked disc, telling the hour by its shadow.
-                part(p, 'cylinder', [0.62, 0.62, 0.12, 12], 'plaster', { x: -3.4, y: 0.4, z: 0.4 });
-                part(p, 'cylinder', [0.045, 0.055, 1.5, 4], 'bark', { x: -3.4, y: 1.2, z: 0.4, rz: 0.22 });
+                part(p, 'cylinder', [0.62, 0.62, 0.12, 12], 'plaster', { x: -3.4, y: 0.06, z: 0.4 });
+                part(p, 'cylinder', [0.045, 0.055, 1.5, 4], 'bark', { x: -3.4, y: 0.87, z: 0.4, rz: 0.22 });
                 doorTrim(p, civ, 2, 2.2, 1.3, 1.7);
             } else {
                 // Iron: a real academy. Stone stylobate and hall are shared; the portico
@@ -481,7 +487,7 @@
                     for (let i = 0; i < 5; i++) {
                         const a2 = -0.9 + i * 0.45;
                         part(p, 'box', [0.9, 0.34, 0.5], 'masonry',
-                            { x: Math.sin(a2) * 3.7, y: 0.97, z: 4.2 + Math.cos(a2) * 0.5, ry: -a2 });
+                            { x: Math.sin(a2) * 3.7, y: 0.17, z: 4.2 + Math.cos(a2) * 0.5, ry: -a2 });
                     }
                 } else if (civ === 'egyptian') {
                     // House of Life: battered walls, a gold cornice, papyrus-bundle
@@ -490,11 +496,11 @@
                     part(p, 'box', [5.2, 0.9, 4.4], 'masonry', { y: 3.9 });
                     [-2.0, 0, 2.0].forEach(x => {
                         part(p, 'cylinder', [0.3, 0.34, 2.7, 8], 'masonry', { x, y: 2.15, z: 2.9 });
-                        part(p, 'frustum', [0.9, 0.9, 0.48, 0.48, 0.5], 'gold', { x, y: 3.7, z: 2.9 });
+                        part(p, 'frustum', [0.9, 0.9, 0.48, 0.48, 0.5], 'gold', { x, y: 3.5, z: 2.9 });
                     });
                     part(p, 'box', [3.4, 0.3, 1.2], 'masonry', { y: 4.05, z: 2.9 });
-                    part(p, 'frustum', [0.72, 0.72, 0.42, 0.42, 3.0], 'masonry', { x: -3.5, y: 1.5, z: 3.3 });
-                    part(p, 'pyramid', [0.46, 0.46, 0.5], 'gold', { x: -3.5, y: 3.25, z: 3.3 });
+                    part(p, 'frustum', [0.72, 0.72, 0.42, 0.42, 3.0], 'masonry', { x: -3.5, y: 0, z: 3.3 });
+                    part(p, 'pyramid', [0.46, 0.46, 0.5], 'gold', { x: -3.5, y: 3.0, z: 3.3 });
                 } else if (civ === 'persian') {
                     // Talar pavilion: a slender columned porch, a glazed band in the
                     // player's colour, a low dome, and a still pool to read beside.
@@ -519,9 +525,9 @@
                         part(p, 'cylinder', [0.1, 0.12, 2.4, 5], 'bark', { x, y: 1.2, z: 4.5 }));
                     part(p, 'box', [3.1, 0.17, 0.22], 'cloth', { y: 2.44, z: 4.5, team: true });
                     part(p, 'box', [2.5, 0.13, 0.17], 'bark', { y: 2.06, z: 4.5 });
-                    part(p, 'cylinder', [0.2, 0.26, 0.7, 6], 'stone', { x: 3.3, y: 0.35, z: 3.6 });
+                    part(p, 'cylinder', [0.2, 0.26, 0.7, 6], 'rock', { x: 3.3, y: 0.35, z: 3.6 });
                     part(p, 'box', [0.6, 0.5, 0.6], 'plaster', { x: 3.3, y: 0.95, z: 3.6 });
-                    part(p, 'pyramid', [0.85, 0.85, 0.4], 'stone', { x: 3.3, y: 1.4, z: 3.6 });
+                    part(p, 'pyramid', [0.85, 0.85, 0.4], 'rock', { x: 3.3, y: 1.2, z: 3.6 });
                 }
                 doorTrim(p, civ, 3, 2.2, 1.4, 1.9);
             }
