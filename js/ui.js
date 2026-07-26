@@ -1786,7 +1786,7 @@ class UIManager {
             BUILDING_DEFS.stable,
             BUILDING_DEFS.farm,
             BUILDING_DEFS.tower,
-            BUILDING_DEFS.market,
+            BUILDING_DEFS.academy,
             BUILDING_DEFS.temple
         ];
         // Your civilization's Wonder (Iron age). Hidden once one already exists.
@@ -4615,7 +4615,7 @@ class UIManager {
                 // the age at last contact for something merely remembered.
                 const oage = e.epochWhenSeen || 'stone';
                 const isB = e.isBuilding || (e.healthPct !== undefined &&
-                    /town_center|barracks|temple|market|house|farm|pyramid|akropolis|firetemple|shrine|range|stable|tower|wonder/i.test(e.type || ''));
+                    /town_center|barracks|temple|academy|market|house|farm|pyramid|akropolis|firetemple|shrine|range|stable|tower|wonder/i.test(e.type || ''));
                 // Translucent when the position is only remembered — for units as well as
                 // buildings, which is what was missing: a stale unit stood there at full
                 // strength looking like a live sighting.

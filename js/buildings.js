@@ -96,17 +96,17 @@ const BUILDING_DEFS = {
         description: 'Ausbildung von Bogenschützen (benötigt Langbogen)',
         buildTime: BASE_BUILD_TIME * 1.2  // 12 seconds to build
     },
-    market: {
-        id: 'market',
-        name: 'Markt',
+    academy: {
+        id: 'academy',
+        name: 'Akademie',
         cost: { food: 100, wood: 100, stone: 100, gold: 50 },
         health: 700,
         type: 'economic',
         canResearch: true,
-        researchOptions: [], // Filled dynamically from civ techTree (researchAt: 'market')
+        researchOptions: [], // Filled dynamically from civ techTree (researchAt: 'academy')
         requiredAge: 'neolithic',
-        requiresTech: 'market',  // Requires market tech from town_center
-        description: 'Handel und Forschung fortgeschrittener Technologien',
+        requiresTech: 'academy',  // Requires academy tech from town_center
+        description: 'Forschung fortgeschrittener Technologien',
         buildTime: BASE_BUILD_TIME * 1.5  // 15 seconds to build
     },
     farm: {
@@ -133,6 +133,18 @@ const BUILDING_DEFS = {
         buildTime: BASE_BUILD_TIME * 1.2  // 12 seconds to build
     }
 };
+
+// Ids this game used to use, and what they are now. The alias exists so RECORDED data
+// still resolves — a transcript from before v512 calls the academy a "market", and the
+// analyzer builds entities straight out of those records — and for nothing else. An
+// order to build one is refused by name (see executeBuildStructure): accepting it would
+// write the dead id into new transcripts, and would quietly reward the very assumption
+// the rename exists to remove, since "market" was only ever guessed by models expecting
+// to trade with it.
+const LEGACY_BUILDING_IDS = { market: 'academy' };
+Object.keys(LEGACY_BUILDING_IDS).forEach(old => {
+    BUILDING_DEFS[old] = BUILDING_DEFS[LEGACY_BUILDING_IDS[old]];
+});
 
 // Tower firepower per epoch. Its HP already rides the generic x1.5-per-age
 // building multiplier, but firepower never scaled AT ALL — a flat 10 damage and

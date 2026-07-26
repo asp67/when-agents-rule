@@ -742,7 +742,7 @@
               },
               "researchAt": {
                 "type": "string",
-                "description": "Building type that hosts this research (e.g. town_center, market)."
+                "description": "Building type that hosts this research (e.g. town_center, academy)."
               },
               "blockedBy": {
                 "$ref": "#/$defs/blockedBy"

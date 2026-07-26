@@ -403,7 +403,7 @@
             }
             return p;
         },
-        market: (o = {}) => {
+        academy: (o = {}) => {
             const p = [];
             const age = ageOf(o);
             shadow(p, 6.6);
@@ -667,6 +667,13 @@
             return p;
         }
     };
+
+    // The same legacy ids as BUILDING_DEFS, for a sharper reason: an unknown type below
+    // returns an EMPTY part list, so without this a transcript from before v512 would
+    // replay with an invisible building standing in its own footprint. The engine cannot
+    // see LEGACY_BUILDING_IDS (it loads first and stays dependency-free), so the pairs
+    // are repeated here — and a mismatch shows up immediately as a missing building.
+    builders.market = builders.academy;
 
     // A building's parts (empty array for unknown types — callers stay safe).
     EngineBuildings.parts = (type, opts) => {

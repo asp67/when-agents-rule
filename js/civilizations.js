@@ -1,11 +1,14 @@
 // Civilizations data with unique bonuses, units, and technologies
 // Research locations:
 //   town_center  - Dorfzentrum (Altsteinzeit techs)
-//   town_center  - Dorfzentrum (Jungsteinzeit techs: Markt)
-//   market       - Markt (alle späteren Techs)
+//   town_center  - Dorfzentrum (Jungsteinzeit techs: Akademie)
+//   academy      - Akademie (alle späteren Techs)
+//                  Hieß bis v512 "market". Das Gebäude handelt NICHT und hat es nie
+//                  getan — es forscht. Modelle lasen den Namen und schlossen auf Handel,
+//                  bauten es dafür und bekamen Waffen-Upgrades. Der Name war der Fehler.
 //
 // Tech format:
-//   researchAt: 'town_center' | 'market'  (building that can research this tech)
+//   researchAt: 'town_center' | 'academy'  (building that can research this tech)
 //   requiredAge: 'stone' | 'neolithic' | 'bronze' | 'iron'
 //   requires: ['techId']  (prerequisite techs)
 //   unlocks: { unitTypes: ['cavalry'], buildings: ['stable'] }  (what this tech unlocks)
@@ -177,22 +180,22 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['archery_range'] }
             },
             // === Jungsteinzeit - am Dorfzentrum ===
-            market: {
-                name: 'Marktplatz',
+            academy: {
+                name: 'Akademie',
                 cost: { food: 200, wood: 150, stone: 0, gold: 0 },
                 researchAt: 'town_center',
                 requiredAge: 'neolithic',
                 requires: [],
-                description: 'Schaltet Markt frei für weitere Forschung',
-                unlocks: { buildings: ['market'] }
+                description: 'Schaltet die Akademie frei für weitere Forschung',
+                unlocks: { buildings: ['academy'] }
             },
-            // === Jungsteinzeit - am Markt ===
+            // === Jungsteinzeit - an der Akademie ===
             mining: {
                 name: 'Bergbau',
                 cost: { food: 50, wood: 50, stone: 50, gold: 0 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'neolithic',
-                requires: ['market'],
+                requires: ['academy'],
                 description: 'Steinabbau +25% effizienter',
                 researchTime: 20000,  // 20 seconds
                 bonus: { harvestRate: 0.25 },
@@ -201,7 +204,7 @@ const CIVILIZATIONS = {
             archery: {
                 name: 'Bogenschützen-Ausbildung',
                 cost: { food: 100, wood: 100, stone: 0, gold: 50 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'neolithic',
                 requires: [],
                 description: 'Bogenschützen +2 Angriff',
@@ -209,11 +212,11 @@ const CIVILIZATIONS = {
                 bonus: { attack: 2 },
                 appliesTo: 'ranged'
             },
-            // === Bronzezeit - am Markt ===
+            // === Bronzezeit - an der Akademie ===
             bronzeArmor: {
                 name: 'Bronzerüstung',
                 cost: { food: 0, wood: 0, stone: 150, gold: 100 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: [],
                 description: 'Alle Militäreinheiten +15 Gesundheit',
@@ -226,9 +229,9 @@ const CIVILIZATIONS = {
             // works through the exact same plumbing as Persia's and Yamato's.
             // Horseback is the same deal for every civ: neolithic, at the Town Center,
             // no prerequisite. It used to sit behind the MARKET for Egypt and Yamato,
-            // which made the stable a four-step chain (research market, build market,
+            // which made the stable a four-step chain (research academy, build academy,
             // research horseback, build stable) costing ~1300 against a barracks' 450 —
-            // and worse, while the market tech was unresearched horseback was correctly
+            // and worse, while the academy tech was unresearched horseback was correctly
             // absent from research.available, so a model reading "stable requires
             // horseback" was chasing a tech that appeared nowhere. A dead end, not a
             // plan. Levelled here rather than papered over in the state.
@@ -257,11 +260,11 @@ const CIVILIZATIONS = {
                 researchTime: 20000,
                 bonus: { healPower: 0.2 }
             },
-            // === Eisenzeit - am Markt ===
+            // === Eisenzeit - an der Akademie ===
             ironWorking: {
                 name: 'Eisenverarbeitung',
                 cost: { food: 0, wood: 0, stone: 200, gold: 200 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'iron',
                 requires: ['bronzeArmor'],
                 description: 'Alle Militäreinheiten +3 Angriff',
@@ -404,33 +407,33 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['archery_range'] }
             },
             // === Jungsteinzeit - am Dorfzentrum ===
-            market: {
-                name: 'Marktplatz',
+            academy: {
+                name: 'Akademie',
                 cost: { food: 200, wood: 150, stone: 0, gold: 0 },
                 researchAt: 'town_center',
                 requiredAge: 'neolithic',
                 requires: [],
-                description: 'Schaltet Markt frei für weitere Forschung',
+                description: 'Schaltet die Akademie frei für weitere Forschung',
                 researchTime: 20000,
-                unlocks: { buildings: ['market'] }
+                unlocks: { buildings: ['academy'] }
             },
-            // === Jungsteinzeit - am Markt ===
+            // === Jungsteinzeit - an der Akademie ===
             philosophy: {
                 name: 'Philosophie',
                 cost: { food: 200, wood: 0, stone: 0, gold: 150 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'neolithic',
-                requires: ['market'],
+                requires: ['academy'],
                 description: 'Alle Militäreinheiten +10% Gesundheit (+10 HP)',
                 researchTime: 20000,
                 bonus: { health: 10 },
                 appliesTo: 'all_military'
             },
-            // === Bronzezeit - am Markt ===
+            // === Bronzezeit - an der Akademie ===
             democracy: {
                 name: 'Demokratie',
                 cost: { food: 300, wood: 0, stone: 0, gold: 200 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: ['philosophy'],
                 description: 'Dorfzentrum -50% Ausbildzeit',
@@ -441,7 +444,7 @@ const CIVILIZATIONS = {
             phalanxArmor: {
                 name: 'Phalanx-Rüstung',
                 cost: { food: 0, wood: 50, stone: 150, gold: 100 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: [],
                 description: 'Infanterie +20 Gesundheit',
@@ -460,11 +463,11 @@ const CIVILIZATIONS = {
                 researchTime: 20000,
                 bonus: { healPower: 0.2 }
             },
-            // === Eisenzeit - am Markt ===
+            // === Eisenzeit - an der Akademie ===
             ironWorking: {
                 name: 'Eisenverarbeitung',
                 cost: { food: 0, wood: 0, stone: 200, gold: 200 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'iron',
                 requires: ['phalanxArmor'],
                 description: 'Alle Militäreinheiten +3 Angriff',
@@ -601,21 +604,21 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['archery_range'] }
             },
             // === Jungsteinzeit - am Dorfzentrum ===
-            market: {
-                name: 'Marktplatz',
+            academy: {
+                name: 'Akademie',
                 cost: { food: 200, wood: 150, stone: 0, gold: 0 },
                 researchAt: 'town_center',
                 requiredAge: 'neolithic',
                 requires: [],
-                description: 'Schaltet Markt frei für weitere Forschung',
+                description: 'Schaltet die Akademie frei für weitere Forschung',
                 researchTime: 20000,
-                unlocks: { buildings: ['market'] }
+                unlocks: { buildings: ['academy'] }
             },
-            // === Jungsteinzeit - am Markt ===
+            // === Jungsteinzeit - an der Akademie ===
             cavalryTraining: {
                 name: 'Kavallerie-Ausbildung',
                 cost: { food: 150, wood: 50, stone: 0, gold: 100 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'neolithic',
                 requires: ['horseback'],
                 description: 'Kavallerie +2 Angriff, +10 Gesundheit',
@@ -623,11 +626,11 @@ const CIVILIZATIONS = {
                 bonus: { attack: 2, health: 10 },
                 appliesTo: 'cavalry'
             },
-            // === Bronzezeit - am Markt ===
+            // === Bronzezeit - an der Akademie ===
             cavalryArmor: {
                 name: 'Kavallerie-Rüstung',
                 cost: { food: 0, wood: 0, stone: 200, gold: 150 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: ['cavalryTraining'],
                 description: 'Kavallerie +25 Gesundheit',
@@ -643,7 +646,7 @@ const CIVILIZATIONS = {
             immortals: {
                 name: 'Unsterbliche',
                 cost: { food: 0, wood: 0, stone: 150, gold: 100 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: [],
                 description: 'Alle Militäreinheiten +15 Gesundheit',
@@ -665,7 +668,7 @@ const CIVILIZATIONS = {
             archery: {
                 name: 'Bogenschützen-Ausbildung',
                 cost: { food: 100, wood: 100, stone: 0, gold: 50 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: [],
                 description: 'Bogenschützen +2 Angriff',
@@ -673,11 +676,11 @@ const CIVILIZATIONS = {
                 bonus: { attack: 2 },
                 appliesTo: 'ranged'
             },
-            // === Eisenzeit - am Markt ===
+            // === Eisenzeit - an der Akademie ===
             siege: {
                 name: 'Belagerungswaffen',
                 cost: { food: 0, wood: 200, stone: 150, gold: 200 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'iron',
                 requires: ['archery'],
                 description: 'Bogenschützen +2 Reichweite, +3 Angriff',
@@ -812,17 +815,17 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['archery_range'] }
             },
             // === Jungsteinzeit - am Dorfzentrum ===
-            market: {
-                name: 'Marktplatz',
+            academy: {
+                name: 'Akademie',
                 cost: { food: 200, wood: 150, stone: 0, gold: 0 },
                 researchAt: 'town_center',
                 requiredAge: 'neolithic',
                 requires: [],
-                description: 'Schaltet Markt frei für weitere Forschung',
+                description: 'Schaltet die Akademie frei für weitere Forschung',
                 researchTime: 20000,
-                unlocks: { buildings: ['market'] }
+                unlocks: { buildings: ['academy'] }
             },
-            // === Jungsteinzeit - am Markt ===
+            // === Jungsteinzeit - an der Akademie ===
             horseback: {
                 name: 'Pferdezucht',
                 cost: { food: 150, wood: 100, stone: 0, gold: 0 },
@@ -833,11 +836,11 @@ const CIVILIZATIONS = {
                 researchTime: 15000,
                 unlocks: { buildings: ['stable'] }
             },
-            // === Bronzezeit - am Markt ===
+            // === Bronzezeit - an der Akademie ===
             armor: {
                 name: 'Schwertrüstung',
                 cost: { food: 0, wood: 100, stone: 150, gold: 150 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: ['bushido'],
                 description: 'Infanterie +20 Gesundheit',
@@ -853,7 +856,7 @@ const CIVILIZATIONS = {
             lamellarArmor: {
                 name: 'Lamellenrüstung',
                 cost: { food: 0, wood: 0, stone: 150, gold: 100 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'bronze',
                 requires: [],
                 description: 'Alle Militäreinheiten +15 Gesundheit',
@@ -861,11 +864,11 @@ const CIVILIZATIONS = {
                 bonus: { health: 15 },
                 appliesTo: 'all_military'
             },
-            // === Eisenzeit - am Markt ===
+            // === Eisenzeit - an der Akademie ===
             ironWorking: {
                 name: 'Eisenverarbeitung',
                 cost: { food: 0, wood: 0, stone: 200, gold: 200 },
-                researchAt: 'market',
+                researchAt: 'academy',
                 requiredAge: 'iron',
                 requires: ['armor'],
                 description: 'Alle Militäreinheiten +3 Angriff',

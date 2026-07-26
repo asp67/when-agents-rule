@@ -375,7 +375,7 @@ class AIManager {
             if (tech.requiredAge && ageOrder.indexOf(tech.requiredAge) > curAge) return false;
             if (tech.requires && tech.requires.some(req => !ai.researchedTechs[req])) return false;
             // Generic host check: the tech's researchAt building must stand
-            // finished — covers town_center, market AND temple research.
+            // finished — covers town_center, academy AND temple research.
             const at = tech.researchAt || 'town_center';
             return ai.buildings.some(b => b.type === at && !b.underConstruction);
         });

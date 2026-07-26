@@ -1838,7 +1838,7 @@ class OpenAIAIManager {
         // --- Buildable structures for THIS civ (some civs lack e.g. the stable) ---
         // Only lists what your civilization can EVER build; if a type is missing,
         // your civ does not have it (don't waste turns trying).
-        const stdBuildings = ['town_center', 'house', 'farm', 'barracks', 'archery_range', 'stable', 'market', 'tower', 'temple'];
+        const stdBuildings = ['town_center', 'house', 'farm', 'barracks', 'archery_range', 'stable', 'academy', 'tower', 'temple'];
         const buildableStructures = stdBuildings.map(t => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(t) : null;
             if (!def) return null;
@@ -3674,7 +3674,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 return `[ERROR] "${techId}" is not a research tech — advancing AGES is a separate action.${ageNote} For actual technologies, use an exact ID from "research.available".`;
             }
             // Building names are the other near-miss. Several unlock techs ARE named
-            // after their building (house, farm, barracks, market), which teaches the
+            // after their building (house, farm, barracks, academy), which teaches the
             // pattern — so a model reaches for "stable" or "temple" too, where the
             // tech is called something else entirely or does not exist. The age branch
             // above has caught its own near-miss for a while; this is the same idea.
@@ -3725,14 +3725,14 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
 
         // Check we have the FINISHED building this tech is researched at —
-        // generic, so temple research works like town_center and market.
+        // generic, so temple research works like town_center and academy.
         const hostType = tech.researchAt || 'town_center';
         if (!ai.buildings.some(b => b.type === hostType && !b.underConstruction)) {
             console.log(`[OpenAIAI] ${ai.id}: Need a finished ${hostType} to research "${techId}"`);
-            if (hostType === 'market') {
-                const hasMarketTech = !!ai.researchedTechs['market'];
-                const step = hasMarketTech ? 'build a Market (build_structure "market") and wait for it to finish'
-                    : 'first research "market", then build a Market and wait for it to finish';
+            if (hostType === 'academy') {
+                const hasAcademyTech = !!ai.researchedTechs['academy'];
+                const step = hasAcademyTech ? 'build an Academy (build_structure "academy") and wait for it to finish'
+                    : 'first research "academy", then build an Academy and wait for it to finish';
                 this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
                 return `[ERROR] "${techId}" is researched at a Market, which you don't have. To enable it: ${step}.`;
             }
@@ -3823,6 +3823,15 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     }
 
     executeBuildStructure(ai, game, buildingType, targetX, targetZ) {
+        // A renamed building still RESOLVES, so that old transcripts keep rendering — but
+        // it must not be buildable, or the dead id leaks into new recordings and the model
+        // is rewarded for guessing it. Say what it became; that is the whole correction.
+        const legacy = (typeof LEGACY_BUILDING_IDS === 'object' && LEGACY_BUILDING_IDS)
+            ? LEGACY_BUILDING_IDS[String(buildingType || '').toLowerCase()] : null;
+        if (legacy) {
+            this.outcome('log.out.renamedBuilding', { from: buildingType, to: legacy });
+            return `[ERROR] There is no "${buildingType}" in this game — it is called "${legacy}" now. Build "${legacy}" instead; "buildableStructures" always lists the current names.`;
+        }
         const buildingDef = this.buildingDefFor(ai, buildingType);
         // Resolve an alias to the real id up front, so every message below — and the
         // building that ends up in friendlyBuildings — uses one name for one thing.
