@@ -617,6 +617,22 @@ body.spectator-mode #unitInfo.spectator-card {
 .lb-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 4px; }
 .lb-list::-webkit-scrollbar-track { background: transparent; }
 
+/* Collapsed leaderboard: the model banner and the rank line stay, the rest folds away.
+   Hiding the detail rather than shrinking the card keeps the two surviving lines at
+   exactly the size they had, so nothing moves except the card's height. */
+.lb-list.collapsed .lb-stats,
+.lb-list.collapsed .lb-power,
+.lb-list.collapsed .lb-advice { display: none; }
+/* The advice input was the reason cards refuse to shrink; with it gone the padding it
+   needed goes too, or a collapsed card keeps a strip of empty floor. */
+.lb-list.collapsed .lb-card { padding-bottom: 5px; }
+
+/* Count and caret travel together at the right of the header. */
+.lb-head-right { display: inline-flex; align-items: center; gap: 7px; }
+.lb-toggle { color: #6b7488; font-size: 0.8em; }
+.lb-header { cursor: pointer; user-select: none; }
+.lb-header:hover .lb-toggle { color: #cfe; }
+
 .lb-card {
     position: relative;
     flex: 0 0 auto;         /* never shrink — shrinking would clip the advice input */

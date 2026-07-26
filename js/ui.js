@@ -2028,6 +2028,23 @@ class UIManager {
         if (this.closeLbFlyout) this.closeLbFlyout(); // no flyout floating over the summary
     }
 
+
+    // Collapse the leaderboard to its first two lines per seat: the model banner and
+    // the rank line. What goes is the detail you can re-open for — the two stat rows,
+    // the power bar and the advice box — so at four seats the panel gives back most of
+    // its height without losing who is winning or what they are called.
+    //
+    // The class lives on the LIST, not on the cards, because updateSpectatorPlayerList
+    // replaces the cards' innerHTML every 1.5s and anything set on them would be gone
+    // by the next tick. Same arrangement as the decision log.
+    toggleLeaderboard() {
+        const list = document.getElementById('spectatorPlayerList');
+        const toggle = document.getElementById('lbToggle');
+        if (!list) return;
+        list.classList.toggle('collapsed');
+        const off = list.classList.contains('collapsed');
+        if (toggle) toggle.textContent = off ? '▶' : '▼';
+    }
     toggleDecisionLog() {
         const entries = document.getElementById('aiLogEntries');
         const toggle = document.getElementById('aiLogToggle');
