@@ -2446,6 +2446,16 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-seat-civ { font-style:normal; opacity:0.5; margin-left:auto; padding-left:10px; }
 
 /* Square icon buttons: equal boxes, so the row cannot sit unevenly. */
+/* Search, sized to the bar rather than stretching it — the chips and the picker keep
+   their widths and this takes what is left, down to a usable minimum. */
+.an-find { display:flex; align-items:center; gap:5px; flex:1 1 150px; min-width:110px; max-width:290px; }
+.an-search { flex:1 1 auto; min-width:60px; height:24px; font:inherit;
+    font-size:0.7em; color:#dbe2f0; background:#1a2430; border:1px solid rgba(255,255,255,0.14);
+    border-radius:5px; padding:0 7px; }
+.an-search:focus { outline:none; border-color:rgba(78,204,163,0.6); }
+.an-search::placeholder { color:#6b7488; }
+.an-count { display:inline-flex; align-items:center; height:24px; font-size:0.66em; color:#9ab;
+    font-variant-numeric:tabular-nums; white-space:nowrap; flex:0 0 auto; }
 .an-nav { display:flex; gap:4px; align-items:center; }
 .an-ico { display:inline-flex; align-items:center; justify-content:center;
     width:26px; height:24px; padding:0; }

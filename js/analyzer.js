@@ -31,6 +31,7 @@ class TranscriptAnalyzer {
         this.seats = new Map();  // playerId -> {id, seat, civ, model, name, turns:[]}
         this.filter = 'all';
         this.seatFilter = null;
+        this.textFilter = '';    // free-text search, lowercased; '' means no filter
         this.cursor = -1;
         this.mode = 'gathered';
         this.union = false;      // single seat = what that model could see
@@ -436,9 +437,41 @@ class TranscriptAnalyzer {
     }
     // ---- selection -------------------------------------------------------
 
+
+    // Everything about a turn a reader could reasonably search for, lowercased and
+    // cached on the record. Cached because the filter runs on every keystroke over
+    // every turn — 1116 of them in a real match — and rebuilding this each time turned
+    // typing into a stutter.
+    haystack(r) {
+        if (r._hay != null) return r._hay;
+        const seat = this.seats.get(r.playerId) || {};
+        const bits = [r.name, r.model, seat.name, seat.model, r.civ,
+                      // both spellings of an action: a reader types "train unit" as
+                      // readily as "train_unit", and the list shows the spaced form.
+                      ...this.commandsOf(r).flatMap(c => {
+                          const a = String((c && c.action) || '');
+                          return [a, a.replace(/_/g, ' '), JSON.stringify((c && c.params) || {})];
+                      }),
+                      r.harnessResult, r._objective,
+                      Array.isArray(r._plan) ? r._plan.join(' ') : '',
+                      // the model's own words, which the panel shows and a reader
+                      // searching for a plan they remember will look for first
+                      r.assistant,
+                      // and the markers the row itself displays, so searching what is
+                      // on screen works: an error row, a missed round, a fight
+                      (typeof r.harnessResult === 'string' && r.harnessResult.indexOf('[ERROR]') === 0) ? 'error' : '',
+                      r.type === 'round_missed' ? 'missed round' : '',
+                      (r.state && r.state.battles && r.state.battles.length) ? 'battle combat' : ''];
+        r._hay = bits.filter(Boolean).join(' \u0001 ').toLowerCase();
+        return r._hay;
+    }
     visible() {
+        const q = this.textFilter;
         return this.order.filter(r => {
             if (this.seatFilter && r.playerId !== this.seatFilter) return false;
+            // AND, not OR: the chips narrow by kind and the search narrows within it,
+            // so "Combat" plus "stone" means fights that mention stone.
+            if (q && this.haystack(r).indexOf(q) === -1) return false;
             switch (this.filter) {
                 case 'battles':  return !!(r.state && r.state.battles && r.state.battles.length);
                 case 'rejected': return typeof r.harnessResult === 'string' && r.harnessResult.startsWith('[ERROR]');

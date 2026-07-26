@@ -3990,6 +3990,27 @@ class UIManager {
     }
     anStep(d) { if (this.analyzer) { this.analyzer.step(d); this.anRender(); } }
 
+    // Free-text search over the turn list. Steps and playback both walk visible(),
+    // so narrowing here narrows those too — which is the point: type "wonder", then
+    // step through every turn that mentions it.
+    anSetSearch(v) {
+        if (!this.analyzer) return;
+        const q = String(v || '').trim().toLowerCase();
+        this._anSearchPending = q;
+        clearTimeout(this._anSearchTimer);
+        // One render per pause, not per keystroke. The list is every turn in the file —
+        // 1116 of them in a real match, ~54ms to lay out — so a six-letter word cost six
+        // full rebuilds and typing dragged behind the keys. The filtering itself is not
+        // the expense (0.34ms a pass, warm); the rebuild is.
+        this._anSearchTimer = setTimeout(() => {
+            this._anSearchTimer = null;
+            if (!this.analyzer || this.analyzer.textFilter === this._anSearchPending) return;
+            this.analyzer.textFilter = this._anSearchPending;
+            this.anRender();
+        }, 120);
+    }
+
+
     // One 24x24 box for every control icon, so a row of them cannot drift.
     anIcon(name) {
         const P = {
@@ -4227,7 +4248,32 @@ class UIManager {
             + '<button class="an-chip an-ico" title="' + esc(t('an.nextStep'))
             + '" aria-label="' + esc(t('an.nextStep')) + '" onclick="game.ui.anStep(1)">'
             + this.anIcon('next') + '</button></span>';
+        // Search, next to the step buttons and behaving like the arena's log search:
+        // it narrows the list the steppers walk, so typing and then stepping moves
+        // between matches. Rebuilt with the bar each render, so the value and the
+        // caret are restored below rather than trusted to survive.
+        const q = a.textFilter || '';
+        // Search and its match count are ONE group, so a narrow panel wraps them
+        // together. Loose in the bar the count orphaned onto a row of its own, reading
+        // like a stray number with nothing to do with the box above it.
+        bar += '<span class="an-find">'
+            + '<input id="anSearch" class="an-search" type="search" autocomplete="off"'
+            + ' value="' + esc(q) + '"'
+            + ' data-i18n-ph="log.search" placeholder="' + esc(t('log.search')) + '"'
+            + ' oninput="game.ui.anSetSearch(this.value)">'
+            + (q ? '<span class="an-count">' + a.visible().length + '/' + a.order.length + '</span>' : '')
+            + '</span>';
+        // Focus and caret first, because setting innerHTML destroyed the input the
+        // reader is typing into. Without this every keystroke lost focus after one
+        // character — the search would look broken while working perfectly.
+        const prevBox = document.getElementById('anSearch');
+        const hadFocus = prevBox && document.activeElement === prevBox;
+        const caret = hadFocus ? prevBox.selectionStart : null;
         document.getElementById('anFilters').innerHTML = bar;
+        if (hadFocus) {
+            const box = document.getElementById('anSearch');
+            if (box) { box.focus(); try { box.setSelectionRange(caret, caret); } catch (e) {} }
+        }
 
         const vis = a.visible();
         const rows = vis.map(r => {
