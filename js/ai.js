@@ -174,17 +174,21 @@ class AIManager {
             this.buildStructure(ai, 'farm');
         }
 
-        // 4) RESEARCH: start one affordable tech (the GAME advances + completes it).
+        // 4) RESEARCH HOSTS: the buildings techs are researched AT. Before research,
+        //    so a host finished this tick is available to it immediately.
+        this.ensureResearchBuildings(ai);
+
+        // 5) RESEARCH: start one affordable tech (the GAME advances + completes it).
         this.maybeStartResearch(ai);
 
-        // 5) ADVANCE AGE: when affordable and the economy can support it (the GAME
+        // 6) ADVANCE AGE: when affordable and the economy can support it (the GAME
         //    runs the timed upgrade — no instant ages).
         this.maybeAdvanceAge(ai, workers.length);
 
-        // 6) MILITARY BUILDINGS: a barracks first; stable/archery once unlocked.
+        // 7) MILITARY BUILDINGS: a barracks first; stable/archery once unlocked.
         this.ensureMilitaryBuildings(ai);
 
-        // 7) TRAIN MILITARY once the economy is on its feet (or immediately if a
+        // 8) TRAIN MILITARY once the economy is on its feet (or immediately if a
         //    rival Wonder must be answered).
         if (popFree > 0 && (workers.length >= 8 || enemyWonder)) {
             this.trainMilitary(ai);
@@ -412,6 +416,39 @@ class AIManager {
         ai.currentAgeUpgrade = { targetAge: next, progress: 0, duration: 30000 };
     }
 
+
+    // Research hosts. maybeStartResearch only offers a tech whose researchAt building
+    // stands finished, and this player only ever built houses, farms and military — so
+    // every tech hosted anywhere else was unreachable for the whole match. Between a
+    // third and half of each civ's tree, depending on the civ, including ironWorking and
+    // the armour upgrades. It even researched the ACADEMY unlock (that one is hosted at
+    // the town centre, and unlock techs sort first) and then never built the thing it had
+    // just paid to unlock.
+    //
+    // Gated in the caller, like stable and archery_range above: buildStructure checks
+    // cost and spacing but not requiresTech or requiredAge, so asking here is what keeps
+    // this player inside the same rules a model plays by.
+    ensureResearchBuildings(ai) {
+        // Declared here, not borrowed: ageOrder is a local inside maybeStartResearch,
+        // so referencing it from another method throws at RUN time and passes a syntax
+        // check clean.
+        const AGES = ['stone', 'neolithic', 'bronze', 'iron'];
+        const has = (type) => ai.buildings.some(b => b.type === type);
+        const canBuild = (type) => {
+            const def = (typeof getBuildingDef === 'function') ? getBuildingDef(type) : null;
+            if (!def || has(type)) return false;
+            if (def.requiresTech && !ai.researchedTechs[def.requiresTech]) return false;
+            const need = (typeof effectiveBuildingAge === 'function')
+                ? effectiveBuildingAge(ai.civilization, def) : (def.requiredAge || 'stone');
+            return AGES.indexOf(ai.age) >= AGES.indexOf(need);
+        };
+        // The academy first: it hosts far more techs than the temple, and the unlock is
+        // already researched by the time it becomes legal.
+        if (canBuild('academy')) { this.buildStructure(ai, 'academy'); return; }
+        // The temple hosts one tech per civ and trains priests, so it also puts healers
+        // on the field — a real gain, and the reason it comes second rather than never.
+        if (canBuild('temple')) this.buildStructure(ai, 'temple');
+    }
     // ---- Military buildings + training ---------------------------------------
     ensureMilitaryBuildings(ai) {
         const has = (type) => ai.buildings.some(b => b.type === type);
