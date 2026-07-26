@@ -1421,7 +1421,32 @@ class Game {
 
             const military = owner.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             // Idle/free military engage; units already attacking keep their orders.
-            let defenders = military.filter(u => !u.isAttacking);
+            //
+            // ...and only military within reach of the trouble. This used to be every
+            // idle unit on the map, so a scratch on an outlying farm set the whole army
+            // walking from wherever it stood — and at speeds of 0.9-2.2 that means
+            // singles and pairs arriving across a minute or more, one at a time, into
+            // whatever mass did the raiding. Feeding an army piecemeal into a deathball
+            // is the worst way to spend it.
+            //
+            // The radius is tiered by WHAT is being hit, reusing threatPriority (the
+            // ladder already exists) and expressed in BATTLE_RADIUS, which is already
+            // this game's unit of "at this fight" — one notion of scale, not two:
+            //
+            //   wonder (3)        no limit. Existential, and the ALL HANDS draft below
+            //                     is load-bearing for the stand-off described above.
+            //   town_center (2)   2x — the heart of a base; the region answers.
+            //   any building (1)  1.5x — a farm or barracks draws its neighbourhood.
+            //   a unit (0)        1x — whoever is already standing at that fight.
+            //
+            // Deliberately NOT a judgement about whether the defence can win: choosing
+            // to commit or to write the farm off is the model's call, and the harness
+            // does not make it. This only decides who counts as local.
+            const REACH = { 3: Infinity, 2: Game.BATTLE_RADIUS * 2,
+                            1: Game.BATTLE_RADIUS * 1.5, 0: Game.BATTLE_RADIUS };
+            const reach = REACH[this.threatPriority(primary.ent)];
+            let defenders = military.filter(u => !u.isAttacking &&
+                Math.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= reach);
             // A WONDER under attack is existential — it IS the win condition — so it
             // is ALL HANDS ON DECK: every worker downs tools and fights ALONGSIDE the
             // army, from anywhere on the map. For anything else workers stay a last
@@ -1466,18 +1491,37 @@ class Game {
                     !this.tendingOtherBattle(u, atk)), atk.x, atk.z);
             }
 
-            if (!defenders.length) return;
-
-            // Battle report (throttled): the defender learns it is being raided.
+            // Battle report (throttled): the defender learns it is being raided. ABOVE
+            // the no-defenders return, and that placement is the whole point.
+            //
+            // "battles" cannot carry this. A player appears in an engagement only via
+            // b.sides[id], and a side is created for the ATTACKER when it deals damage,
+            // or for whoever LOSES a unit or building. Take fire, lose nothing, send
+            // nobody, and you have no side — the raid is absent from your battles list
+            // altogether. So with the radius above, the case this reflex now declines to
+            // answer would have become the case nobody tells you about, which is exactly
+            // backwards: an unanswered raid is MORE worth reporting than an answered one,
+            // because only the model can decide what to do about it.
+            //
+            // Volume is unchanged: the 10s throttle already caps this at one line per
+            // owner, and the 14-slot events buffer is why unit deaths were moved out of
+            // prose into the battle ledger in the first place (see destroyUnit) —
+            // specifically to stop them evicting THESE warnings.
             if (!owner._lastRaidEventAt || now - owner._lastRaidEventAt > 10000) {
                 owner._lastRaidEventAt = now;
                 const entLabel = primary.ent.isWonder ? 'WONDER' : (primary.ent.type || primary.ent.unitType || 'unit');
                 const draftNote = !usingWorkers ? ''
                     : (wonderRaid ? ' — ALL HANDS: every worker downed tools to defend it'
                                   : ' — workers drafted to defend');
+                // Say so when nothing is coming, rather than leaving it to be inferred
+                // from an absence: this is the line that tells a model its army is out
+                // of position while its base is being taken apart.
+                const noneNote = defenders.length ? '' : ' — no defenders in range';
                 this.logPlayerEvent(owner,
-                    `UNDER ATTACK: your ${entLabel} at (${Math.round(primary.ent.x)}, ${Math.round(primary.ent.z)}) is taking damage from ${this.ownerName(this.getOwner(atk))}${draftNote}`);
+                    `UNDER ATTACK: your ${entLabel} at (${Math.round(primary.ent.x)}, ${Math.round(primary.ent.z)}) is taking damage from ${this.ownerName(this.getOwner(atk))}${draftNote}${noneNote}`);
             }
+
+            if (!defenders.length) return;
 
             // defenders can MIX military and drafted workers now (a wonder raid pulls
             // both), so the economy bookkeeping is per unit, not per batch.
