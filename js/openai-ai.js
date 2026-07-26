@@ -131,7 +131,10 @@ class OpenAIAIManager {
     // counted is the error that gets noticed and fixed. Any new rejection outcome added
     // below must be triaged here.
     static get UNFOREWARNED() {
-        return new Set(['trainerBusy', 'noWorkerIdleBuild', 'noClearSpot', 'assignAllCarrying']);
+        // targetGone: the id WAS in the state this seat read, and the thing died while
+        // it was thinking. Nothing in any snapshot could have warned it.
+        return new Set(['trainerBusy', 'noWorkerIdleBuild', 'noClearSpot', 'assignAllCarrying',
+                        'targetGone']);
     }
     haveString(ai) {
         const r = ai.resources;
@@ -1981,6 +1984,17 @@ class OpenAIAIManager {
             opponents: aiOpponents
         };
 
+        // Every target id this seat is being SHOWN this turn. When an attack later
+        // fails with "not found", this is what separates a target that DIED in the
+        // seconds the model spent thinking — which the state cannot forewarn and must
+        // not be scored — from an id that was invented or dragged in from a stale turn,
+        // which is a real mistake. Recorded here because this object is the only thing
+        // the model saw.
+        if (controller) {
+            controller._shownTargetIds = new Set(
+                [].concat(enemyUnits || [], enemyBuildings || [])
+                  .map(e => String(e && e.id)).filter(x => x && x !== 'undefined'));
+        }
         return {
             player: playerObj,
             clock: clockObj,
@@ -4180,6 +4194,17 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
 
         if (!target) {
+            // Was it there when the model decided? The state it answered is the only
+            // fair reference. A unit it read, aimed at, and lost while it was thinking
+            // is the harness's timing, not the model's error — the old message even
+            // told it to go and read the very list it had just read correctly.
+            const ctrl = this.aiControllers.find(c => c.aiPlayer === ai);
+            const wasShown = !!(ctrl && ctrl._shownTargetIds && ctrl._shownTargetIds.has(String(targetId)));
+            if (wasShown) {
+                console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" died before the order landed`);
+                this.outcome('log.out.targetGone', { targetId });
+                return `[ERROR] That target was gone before your order landed — it died in the seconds between the state you read and this command. Nothing was executed and this does not count against you. Targets you can see may die while you think; attack_target with targetX/targetZ instead of targetId sends an attack-move that still fights whatever is there.`;
+            }
             console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" not found`);
             this.outcome('log.out.targetNotFound', { targetId });
             return `[ERROR] Target "${targetId}" not found. ${this.attackTargetHint(ai, game)}`;
