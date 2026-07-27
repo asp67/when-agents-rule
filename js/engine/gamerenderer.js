@@ -209,6 +209,10 @@
                 white: T(TexGen.solid(), { clamp: true }),
                 ghost: T(TexGen.solid(255, 255, 255, 115), { clamp: true }),
                 ring: T(TexGen.ring(), { clamp: true }),
+                // Units get a much fatter band. Their ring is a fifth the radius of a
+                // building's, and the band scales with the radius, so the shared texture
+                // renders them a 2px hairline in selection green on green grass.
+                ringUnit: T(TexGen.ring(128, { band: 0.30 }), { clamp: true }),
                 foam: T(TexGen.foam(199))
             };
             // theme atmosphere: sun character first, then the sea beyond the map.
@@ -1295,7 +1299,7 @@
                     const natural = (ue.type === 'cavalry' ? 1.5 : 1.05) * grow;
                     const r = Math.max(natural, MIN_RING_PX * perPx);
                     dl.blended.push({
-                        buf: ringBuf, tex: this.tex.ring, tint: [0.35, 0.95, 0.55],
+                        buf: ringBuf, tex: this.tex.ringUnit, tint: [0.35, 0.95, 0.55],
                         model: m3.multiply(m3.translation(u.x, 0.08, u.z), m3.scaling(r, 1, r))
                     });
                 }
