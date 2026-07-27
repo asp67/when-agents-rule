@@ -567,21 +567,13 @@
 
     // Ring: a soft-edged annulus on transparent ground — selection rings and
     // battle pings, colored at draw time via uTint. Maps onto EngineMesh.disc.
-    // opts.band: the opaque band's width as a FRACTION OF THE RADIUS. It has to be a
-    // fraction, because the quad is scaled to the ring's world size — so a band of 0.12
-    // is 12.7px on a building ring of radius 106px and 2.2px on a unit ring of radius 18.
-    // A 2px hairline of selection green on green grass is invisible however large the
-    // circle is, which is why simply enlarging the unit ring did not fix it. Default is
-    // exactly the old geometry, so building rings are untouched.
-    TexGen.ring = (size = 128, opts = {}) => {
-        const band = Math.max(0.04, Math.min(0.5, opts.band != null ? opts.band : 0.12));
-        const outer = 0.92, inner = outer - band, fade = Math.max(0.02, inner - 0.08);
+    TexGen.ring = (size = 128) => {
         const c = canvas(size), ctx = c.getContext('2d');
         const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
         g.addColorStop(0, 'rgba(255,255,255,0)');
-        g.addColorStop(fade, 'rgba(255,255,255,0)');
-        g.addColorStop(inner, 'rgba(255,255,255,0.95)');
-        g.addColorStop(outer, 'rgba(255,255,255,0.95)');
+        g.addColorStop(0.72, 'rgba(255,255,255,0)');
+        g.addColorStop(0.8, 'rgba(255,255,255,0.95)');
+        g.addColorStop(0.92, 'rgba(255,255,255,0.95)');
         g.addColorStop(1, 'rgba(255,255,255,0)');
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, size, size);

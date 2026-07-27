@@ -33,13 +33,6 @@
           TERRAIN_LAND = TexGen.TERRAIN_LAND;
     const BSCALE = 0.78;         // engine building set → game footprint scale
 
-    // Smallest on-screen radius a unit selection ring may have, in PIXELS. A building
-    // ring measures ~31px on the analyzer stage; 13 reads clearly for a unit without
-    // swamping the sprite, and only ever enlarges a ring that would otherwise be too
-    // small to notice. Module scope, not a class property: the class here is
-    // EngineRenderer, and a reference to a name that does not exist passes node -c
-    // and throws on the first selected unit.
-    const MIN_RING_PX = 13;
 
     class EngineRenderer {
         constructor(container) {
@@ -209,10 +202,6 @@
                 white: T(TexGen.solid(), { clamp: true }),
                 ghost: T(TexGen.solid(255, 255, 255, 115), { clamp: true }),
                 ring: T(TexGen.ring(), { clamp: true }),
-                // Units get a much fatter band. Their ring is a fifth the radius of a
-                // building's, and the band scales with the radius, so the shared texture
-                // renders them a 2px hairline in selection green on green grass.
-                ringUnit: T(TexGen.ring(128, { band: 0.30 }), { clamp: true }),
                 foam: T(TexGen.foam(199))
             };
             // theme atmosphere: sun character first, then the sea beyond the map.
@@ -1279,35 +1268,16 @@
                     else dl.opaque.push({ buf: e.buf, tex: e.tex, tint: flash ? FLASH : e.tint, model });
                 }
                 if (u.selected) {
-                    // Grows with the zoom-out. A unit ring is ~1 world unit against a
-                    // building's 6, which reads fine close up and vanishes entirely when
-                    // the camera is pulled back to frame the whole island: at the far end
-                    // of the zoom range it spans well under a pixel, so a selected unit
-                    // looked unmarked while a selected building still showed. Anchored at
-                    // the default height, so the close-up view is exactly as it was and
-                    // only the wide shot changes.
-                    const grow = Math.max(1, this._halfH / 34);
-                    // ...and never smaller than MIN_RING_PX on screen. Scaling by zoom
-                    // alone was not enough, because it is anchored to _halfH 34 and so
-                    // does nothing at the default zoom — where the VIEWPORT height is the
-                    // other half of the problem. The analyzer stage is ~353px tall against
-                    // the arena canvas at ~700, so the identical world-sized ring came out
-                    // 5px there against a building ring of 31, which reads as no ring at
-                    // all under a translucent fog plane. A floor in PIXELS is the only
-                    // form that survives both a zoom and a change of viewport.
-                    const perPx = (this._halfH * 2) / Math.max(1, this.canvas.clientHeight || 1);
-                    const natural = (ue.type === 'cavalry' ? 1.5 : 1.05) * grow;
-                    const r = Math.max(natural, MIN_RING_PX * perPx);
-                    // Near-WHITE, not selection green. Measured against the terrain: the
-                    // old mid-green tint rendered at rgb(107,169,90) on grass of
-                    // rgb(113,157,79) — a distance of 17, which is nothing to an eye. The
-                    // ring is drawn unlit, so its tint reaches the screen at full strength
-                    // and the only thing that decides legibility is how far that colour
-                    // sits from the ground under it. Grass is the mid-green case, so the
-                    // ring goes light: high luminance reads on grass, sand and stone alike,
-                    // and a faint green cast keeps it recognisable as a selection.
+                    // Deliberately the same shape as the building ring above: same texture,
+                    // same tint, a fixed world radius, no zoom scaling and no pixel floor.
+                    // Every one of those was added to make an invisible ring visible, and
+                    // the ring was never the problem — spectatorPick was deleting the
+                    // selection on the same click that made it (see game.spectatorPick).
+                    // With that fixed there is nothing left to compensate for, and a marker
+                    // that behaves differently from the one next to it is its own bug.
+                    const r = ue.type === 'cavalry' ? 1.5 : 1.05;
                     dl.blended.push({
-                        buf: ringBuf, tex: this.tex.ringUnit, tint: [0.82, 1.0, 0.86], alpha: 1,
+                        buf: ringBuf, tex: this.tex.ring, tint: [0.35, 0.95, 0.55],
                         model: m3.multiply(m3.translation(u.x, 0.08, u.z), m3.scaling(r, 1, r))
                     });
                 }
