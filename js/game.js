@@ -1813,6 +1813,28 @@ class Game {
     // stat card, and — when the action cam is on — follow it. Empty ground
     // clears the selection. Mirrors a player match's select-to-inspect.
     spectatorPick(clientX, clientY) {
+        // Not on the analyzer screen. anMountStage turns spectatorMode ON so the replay
+        // inherits the full spectator camera — which also arms the renderer's
+        // click-to-inspect (it calls this whenever spectatorMode is set and the pointer
+        // did not move). That ran on every click in the replay, AFTER the analyzer's own
+        // capture-phase pick, and did two wrong things at once:
+        //
+        //   _clearSpectatorSelection() wiped the flag the analyzer had just set, without
+        //   clearing renderer.selectedUnits — so the state read as one unit selected and
+        //   no unit flagged, which is not a state selectUnit can produce;
+        //
+        //   and then it looked for a replacement among aiManager.aiPlayers, where a
+        //   replay's entities do not live. They exist only in renderer.units. So it found
+        //   nothing, cleared the selection and returned.
+        //
+        // The stat card survived because it is DOM, which is exactly why this presented
+        // as a rendering fault and cost three rounds of ring size and ring colour work
+        // before anyone looked at the flag.
+        //
+        // Same delegation rule as discoveryAt: on that screen the analyzer owns picking,
+        // through anPickAt.
+        const anScreen = document.getElementById('analyzeScreen');
+        if (anScreen && anScreen.classList.contains('active')) return;
         const rnd = this.renderer;
         if (!rnd || !rnd.worldToScreen || !rnd.canvas) return;
         const rect = rnd.canvas.getBoundingClientRect();
