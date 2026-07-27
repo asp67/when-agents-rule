@@ -4385,6 +4385,15 @@ class UIManager {
                     + this.teamDotHtml(sm.seat, 8)
                     + '<span class="an-act">⏱ ' + esc(t('an.rowMissed')) + '</span></div>';
             }
+            // A closing statement has no "parsed", so the ordinary label read it as
+            // (malformed) — which is the one thing it is not. Its own row, like a missed
+            // round: this is not a move and must not be dressed as one.
+            if (r.type === 'final_word') {
+                return '<div class="an-row is-final' + on + '" onclick="game.ui.anSeek(' + i + ')">'
+                    + '<span class="an-t">' + esc(mmss(r._sec)) + '</span>'
+                    + this.teamDotHtml(sm.seat, 8)
+                    + '<span class="an-act">\uD83D\uDCAC ' + esc(t('an.rowFinal')) + '</span></div>';
+            }
             // A batched turn is labelled by its first command with a count beside it —
             // three rows all reading "train unit" would say less than one saying +2.
             const cmds = a.commandsOf ? a.commandsOf(r) : [];
@@ -4943,6 +4952,21 @@ class UIManager {
 
         if (r.type === 'round_missed') {
             return head + '<div class="an-d-missed">⏱ ' + esc(r.note || t('an.rowMissed')) + '</div>';
+        }
+        // The last thing a model said. Shown whole and unstyled beyond a label, because
+        // this is the one record in the file that is not data about play — it is the
+        // model's own account of it, and it is worth reading as written. An action sent
+        // here was never executed and is displayed as the text it is.
+        if (r.type === 'final_word') {
+            const oc = r.outcome === 'won' ? t('an.fwWon')
+                : (r.outcome === 'defeated' ? t('an.fwDefeated') : t('an.fwLost'));
+            return head
+                + '<div class="an-d-sec"><span class="an-d-tag">' + esc(t('an.rowFinal')) + '</span>'
+                + '<span class="an-d-cmd">' + esc(oc) + '</span></div>'
+                + (r.text ? '<pre class="an-d-final">' + esc(r.text) + '</pre>'
+                          : '<div class="an-d-missed">' + esc(r.error || t('an.fwSilent')) + '</div>')
+                + (r.tokens ? '<div class="an-d-nums"><span>' + esc((r.tokens.prompt || 0) + '/'
+                    + (r.tokens.completion || 0) + ' tok') + '</span></div>' : '');
         }
 
         // Standing objective and plan, CARRIED FORWARD. They persist across turns — "omit

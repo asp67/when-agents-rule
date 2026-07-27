@@ -578,6 +578,11 @@ class OpenAIAIManager {
     // of them add about 9% output — nowhere near the cap that truncates a turn.
     static get MAX_COMMANDS_PER_TURN() { return 3; }
 
+    // How long to wait for a closing statement. Generous, because nothing is waiting on
+    // it — the summary is already on screen and the recorder files a late answer in the
+    // right place — and because a reasoning model asked an open question takes its time.
+    static get FINAL_WORD_TIMEOUT_MS() { return 60000; }
+
     // Does this parsed object order anything? Every acceptance gate in the parser used
     // to ask for a truthy .action, which a reply carrying only a "commands" list does
     // not have — so the batched shape parsed perfectly and was then thrown away as a
@@ -3475,6 +3480,136 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
     }
 
+
+    // ----------------------------------------------------------------
+    // 12b. The last word
+    // ----------------------------------------------------------------
+    // One closing question per seat, asked once: when it is knocked out, or when the
+    // match ends for whoever is still standing. Its answer is recorded and nothing else
+    // — it is never parsed, never executed, and never scored.
+    //
+    // Not scored is the whole point, and it cuts both ways. A model that writes a
+    // paragraph of reflection must not be charged for the tokens in its format fidelity,
+    // and a model that answers a farewell with one more attack order must not be charged
+    // for an action that could never have run. Both are worth reading; only one of them
+    // is a sentence. So this path touches controller.stats nowhere at all.
+    //
+    // Deliberately NOT announced in the system prompt. A model meeting this question
+    // cold tells you more than one that has been told to expect it — and it keeps the
+    // prompt, and its version, exactly where they were.
+    async askFinalWord(controller, kind, extra) {
+        if (!controller || controller._finalWordAsked) return null;
+        controller._finalWordAsked = true;
+        const model = controller.model, ai = controller.aiPlayer;
+        if (!model || !ai || !model.endpoint) return null;
+
+        // The board it is looking at as it answers. A bare "you lost" invites a bare
+        // reply; the state it lost ON is what makes the answer worth keeping.
+        let stateText = '';
+        try { stateText = this.buildCompactState(this.buildGameStateJSON(controller)) || ''; }
+        catch (e) { /* a closing question is not worth failing over */ }
+
+        // The civ ID, not getCivilization().name: that name is the German source string
+        // ("Ägypter"), while ai.civilization is exactly what the model has been reading
+        // in you.civilization all match. Model-facing text uses the identifier the model
+        // holds — the same reason ownerName answers with the seat id.
+        const who = ai.civilization;
+        const head = (kind === 'defeated')
+            ? `THE MATCH IS OVER FOR YOU. You have been defeated as ${who}: your Town Centers and the means to rebuild them are gone.`
+            : `THE MATCH HAS ENDED. ${extra && extra.won ? `You WON as ${who}.` : `You did not win. ${extra && extra.winner ? `${extra.winner} took it.` : ''}`}`;
+        const ask = [head,
+            'This is the final message you will receive; the game is closing and NOTHING you reply will be executed.',
+            'No action is expected and none will be carried out. There is nothing to play for and nothing to score.',
+            'If you have anything to say about how this went — what you were trying to do, what beat you, what you would',
+            'do differently — say it now, in your own words. Answer however you like.'].join(' ');
+        const turns = [{ role: 'user', content: (stateText ? stateText + '\n\n' : '') + ask }];
+
+        const provider = OpenAIAIManager.resolveProvider(model);
+        const auth = model.auth || (model.apiKey ? { type: 'bearer', key: model.apiKey } : { type: 'none' });
+        let headers;
+        try { headers = await OpenAIAIManager.buildAuthHeaders(auth, provider); }
+        catch (e) { headers = { 'Content-Type': 'application/json' }; }
+        const reqOpts = Object.assign({
+            temperature: model.temperature, topP: model.topP, topK: model.topK,
+            reasoning: model.reasoning, extraBody: model.extraBody,
+            maxTokens: model.maxTokens, numCtx: model.contextSize
+        }, model._reqOpts || {});
+        const req = OpenAIAIManager.buildChatRequest(
+            provider, model.endpoint, model.model || 'default', this.buildSystemPrompt(ai), turns, reqOpts);
+
+        // Its OWN abort handle, NOT controller._abort. endArena calls stop() immediately,
+        // which aborts whatever handle each controller holds — hanging this on the same
+        // one would have it cancel itself at exactly the moment it is asked.
+        const abort = new AbortController();
+        const timer = setTimeout(() => abort.abort(), OpenAIAIManager.FINAL_WORD_TIMEOUT_MS);
+        const t0 = Date.now();
+        let text = '', tokens = null, error = null;
+        try {
+            const res = await fetch(req.url, {
+                method: 'POST', headers,
+                body: JSON.stringify(req.body), signal: abort.signal
+            });
+            if (!res.ok) {
+                error = 'HTTP ' + res.status;
+            } else {
+                const data = await res.json();
+                const norm = OpenAIAIManager.normalizeResponse(provider, data);
+                text = String((norm && (norm.content || norm.reasoning)) || '').trim();
+                // extractUsage, not norm.usage: field names differ per provider and that
+                // static is where the mapping already lives (input_tokens, promptTokenCount,
+                // prompt_tokens...). Reading norm.usage recorded null for every provider.
+                tokens = OpenAIAIManager.extractUsage(provider, data) || null;
+            }
+        } catch (e) {
+            error = (e && e.name === 'AbortError') ? 'no answer within '
+                + Math.round(OpenAIAIManager.FINAL_WORD_TIMEOUT_MS / 1000) + 's' : String(e && e.message || e);
+        } finally {
+            clearTimeout(timer);
+        }
+
+        // On file as a MARKER, like a missed round: note() appends without touching the
+        // turn counter, so a closing statement can never be mistaken for a move or
+        // inflate the decision count. finish() writes the tail under its own key and
+        // exportBlob orders header -> turns -> tail, so this lands in the right place
+        // whether it arrives before or after the summary.
+        try {
+            if (this.transcripts) {
+                this.transcripts.note(ai.id, {
+                    type: 'final_word', kind, at: Date.now(),
+                    latencyMs: Date.now() - t0,
+                    outcome: (kind === 'defeated') ? 'defeated' : ((extra && extra.won) ? 'won' : 'lost'),
+                    text: text || null, tokens: tokens || null, error: error || null
+                });
+            }
+        } catch (e) { /* recording must never break the ending */ }
+
+        if (text) {
+            console.log(`[OpenAIAI] final word from ${ai.id}: ${text.slice(0, 200)}`);
+            const c2 = getCivilization(ai.civilization);
+            this.decisionLog.unshift({
+                timestamp: Date.now(), playerId: ai.id,
+                civName: (c2 && c2.name) || ai.civilization,
+                color: '#' + (((c2 && c2.color) ?? 0xffffff)).toString(16).padStart(6, '0'),
+                action: 'final_word', reason: text.slice(0, 400), params: {}, failed: false,
+                lang: model.language
+            });
+            if (this.decisionLog.length > this.maxLogEntries) this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
+        }
+        return text || null;
+    }
+
+    // Ask every seat that has not been asked yet. Returns a promise so a caller can
+    // wait, but nothing has to: the recorder places a late answer correctly either way.
+    collectFinalWords(reason, winnerAi) {
+        const jobs = (this.aiControllers || []).map(c => {
+            if (!c || c._finalWordAsked) return null;
+            const won = !!(winnerAi && c.aiPlayer === winnerAi);
+            const winner = winnerAi ? this.game.ownerName(winnerAi) : null;
+            return this.askFinalWord(c, 'ended', { won, winner, reason })
+                .catch(e => { console.warn('[OpenAIAI] final word failed', e); return null; });
+        }).filter(Boolean);
+        return Promise.all(jobs);
+    }
     // ----------------------------------------------------------------
     // 12. Action implementations
     // ----------------------------------------------------------------
@@ -5407,6 +5542,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // so any late resolution is dropped, and note it once in the spectator log.
     markDefeated(controller) {
         controller.defeated = true;
+        // Before the abort below, and deliberately fire-and-forget: this seat is out, so
+        // nothing in the match is waiting on its answer.
+        try { this.askFinalWord(controller, 'defeated'); } catch (e) { /* never block a retirement */ }
         try { if (controller._abort) controller._abort.abort(); } catch (e) { /* already settled */ }
         controller.pending = false;
         controller.pendingAttackReports = [];

@@ -2496,6 +2496,11 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-row:hover { background:rgba(255,255,255,0.06); }
 .an-row.is-cur { background:rgba(78,204,163,0.22); box-shadow:inset 2px 0 0 #4ecca3; }
 .an-row.is-bad .an-act { color:#e88; }
+/* A closing statement: the one row in the list that is not a move. */
+.an-row.is-final .an-act { color:#cbb8ee; }
+.an-d-final { white-space:pre-wrap; font-size:0.8em; line-height:1.5; color:#dfe6f2;
+    background:rgba(201,166,255,0.09); border-left:2px solid rgba(201,166,255,0.5);
+    border-radius:0 5px 5px 0; padding:8px 10px; margin:0 0 7px; }
 .an-row.is-missed .an-act { color:#d9a441; }
 .an-t { color:#7f92a3; font-variant-numeric:tabular-nums; font-size:0.92em; min-width:38px; }
 .an-act { flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

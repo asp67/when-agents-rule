@@ -4602,6 +4602,16 @@ class Game {
     endArena(winnerAi, reason) {
         if (!this.gameStarted) return; // guard against double-trigger
         this.gameStarted = false;
+        // Ask whoever is still standing for a closing statement BEFORE stop(), which
+        // aborts every controller's in-flight request. The question carries its own
+        // abort handle so it survives that, but firing first keeps the order honest:
+        // the last thing asked of a model is asked while the match is still its match.
+        // Fire-and-forget — the summary must not wait on an endpoint, and the recorder
+        // files a late reply in the right place regardless.
+        if (this.openAIAIManager && this.openAIAIManager.collectFinalWords) {
+            try { this.openAIAIManager.collectFinalWords(reason, winnerAi); }
+            catch (e) { console.warn('[arena] final words failed', e); }
+        }
         // Halt the LLM pipeline so finished-match requests stop spending quota and
         // can't spawn late units into the scene behind the summary.
         if (this.openAIAIManager) this.openAIAIManager.stop();
