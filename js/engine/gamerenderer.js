@@ -1298,8 +1298,16 @@
                     const perPx = (this._halfH * 2) / Math.max(1, this.canvas.clientHeight || 1);
                     const natural = (ue.type === 'cavalry' ? 1.5 : 1.05) * grow;
                     const r = Math.max(natural, MIN_RING_PX * perPx);
+                    // Near-WHITE, not selection green. Measured against the terrain: the
+                    // old mid-green tint rendered at rgb(107,169,90) on grass of
+                    // rgb(113,157,79) — a distance of 17, which is nothing to an eye. The
+                    // ring is drawn unlit, so its tint reaches the screen at full strength
+                    // and the only thing that decides legibility is how far that colour
+                    // sits from the ground under it. Grass is the mid-green case, so the
+                    // ring goes light: high luminance reads on grass, sand and stone alike,
+                    // and a faint green cast keeps it recognisable as a selection.
                     dl.blended.push({
-                        buf: ringBuf, tex: this.tex.ringUnit, tint: [0.35, 0.95, 0.55],
+                        buf: ringBuf, tex: this.tex.ringUnit, tint: [0.82, 1.0, 0.86], alpha: 1,
                         model: m3.multiply(m3.translation(u.x, 0.08, u.z), m3.scaling(r, 1, r))
                     });
                 }
