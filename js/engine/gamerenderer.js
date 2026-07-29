@@ -308,6 +308,26 @@
             return this._cam;
         }
 
+        // The analyzer's opening shot: the whole island, square to the screen.
+        //
+        // A reader arriving at a match knows nothing about it yet and should not have to
+        // go and find it. The play camera's 45-degree yaw is right for playing -- it is
+        // how the game has always looked -- but it turns a square map into a lozenge,
+        // which is the wrong first impression of a board someone is about to read. Yaw
+        // zero puts the coastline parallel to the frame and the whole thing is legible
+        // at a glance. MAX_HALF covers the full map with room to spare, and the constant
+        // lives here because the clamp does.
+        //
+        // Instant, unlike moveCameraTo: this is where the view STARTS. Animating in from
+        // wherever the camera happened to be would just be a lurch on arrival, and rAF
+        // does not run at all in a hidden tab, so a tween here could silently never land.
+        frameWholeMap() {
+            this.cameraTarget.set(0, 0, 0);
+            this._yaw = 0;
+            this._pitch = Math.atan(0.5);   // the default tilt, so the shot is repeatable
+            this._halfH = MAX_HALF;
+        }
+
         moveCameraTo(x, z) {
             const sx = this.cameraTarget.x, sz = this.cameraTarget.z;
             const start = performance.now();

@@ -4021,7 +4021,6 @@ class UIManager {
 
     anOpen() {
         this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
-        if (this.analyzer.autoCam === undefined) this.analyzer.autoCam = true;
         this.showScreen('analyzeScreen');
         this.anRender();
     }
@@ -4042,6 +4041,7 @@ class UIManager {
             this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
             try { this.analyzer.load(String(fr.result || ''), f.name); }
             catch (e) { console.warn('[analyzer] load failed', e); this.showErrorMessage(t('an.badFile')); return; }
+            this._anFramed = false;  // a new match gets its own opening shot
             this.resetChartCache();
             this.anRender();
         };
@@ -4067,6 +4067,7 @@ class UIManager {
                 this.anStopPlay();   // a fresh load starts stopped, as a file load does
                 this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
                 this.analyzer.load(text, 'sample-match.jsonl');
+                this._anFramed = false;
                 this.resetChartCache();
                 this.anRender();
             })
@@ -4860,6 +4861,19 @@ class UIManager {
         this.anApplyFog(sc, terrain);
         this.anRenderPick();
 
+        // One framing per file, before anything else touches the camera. Auto camera is
+        // off by default now, which means nothing else would ever point it anywhere: the
+        // analyzer used to open on the map origin while the match happened three hundred
+        // units away, staring at empty sea. Showing the whole board instead needs no
+        // aiming at all -- the action is already in frame, wherever it is.
+        //
+        // Guarded on `rec` because anOpen renders once before any transcript exists, and
+        // spending the one framing on that empty frame would leave the real one unframed.
+        if (rec && !this._anFramed) {
+            const rend = this.game.renderer;
+            if (rend && rend.frameWholeMap) rend.frameWholeMap();
+            this._anFramed = true;
+        }
         if (a.autoCam) this.anAimCamera(rec, sc);
     }
 
