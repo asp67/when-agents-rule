@@ -4049,21 +4049,18 @@ class UIManager {
         fr.readAsText(f);
     }
 
-    // The front door for anyone arriving without a transcript of their own. The
-    // analyzer is the one part of this project that needs no API key and no endpoint --
-    // it reads a file -- so a bundled match is the whole thing working, in one click,
-    // for a visitor who has not signed up for anything.
+    // Loads the match that ships in samples/. Called by the showcase boot, and only
+    // there: anyone running a clone has that file on disk and opens it with the picker
+    // like any other transcript, so a button for it was an action with nothing to do
+    // that the ordinary one did not already do.
     //
-    // Deliberately the SAME load path as a hand-picked file: no special-casing, so what
-    // a visitor sees the sample do is what the analyzer will do with their own match.
+    // Deliberately the SAME load path as a hand-picked file. No special-casing, so the
+    // bundled match exercises exactly what a visitor's own match would.
     //
     // fetch() needs an http(s) origin. Opened straight off disk as file:// this throws,
-    // and that is the one failure a first-time visitor is actually likely to hit, so it
-    // is reported with the fix rather than swallowed into the console.
+    // which is the one failure someone poking at a clone is actually likely to hit, so
+    // it is reported with the fix rather than swallowed into the console.
     anLoadSample() {
-        const btn = document.getElementById('anSampleBtn');
-        const reset = () => { if (btn) { btn.disabled = false; btn.textContent = t('an.sample'); } };
-        if (btn) { btn.disabled = true; btn.textContent = t('an.sampleLoading'); }
         fetch('samples/sample-match.jsonl')
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
             .then(text => {
@@ -4072,12 +4069,10 @@ class UIManager {
                 this.analyzer.load(text, 'sample-match.jsonl');
                 this.resetChartCache();
                 this.anRender();
-                reset();   // clickable again: the sample is a place to come BACK to
             })
             .catch(e => {
                 console.warn('[analyzer] sample load failed', e);
                 this.showErrorMessage(t('an.sampleFail'));
-                reset();
             });
     }
 

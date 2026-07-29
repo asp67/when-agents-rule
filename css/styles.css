@@ -2403,15 +2403,6 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-pick input { position:absolute; inset:0; opacity:0; cursor:pointer; }
 .an-meta { font-size:0.72em; color:#93a7b8; line-height:1.45; min-width:0; }
 .an-empty { color:#89a; padding:30px 20px; font-size:0.9em; }
-/* Sits in the bar beside the picker: the two ways to get a transcript in, next to
-   each other. It was centred in the empty state, where it dominated the screen and
-   then vanished the moment anything loaded. */
-.an-sample { padding:5px 12px; cursor:pointer; white-space:nowrap;
-    background:transparent; color:var(--gold-2); border:1px solid var(--gold);
-    border-radius:6px; font-size:0.85em; font-weight:600;
-    transition:background .15s, color .15s; }
-.an-sample:hover:not(:disabled) { background:var(--gold); color:#1a1205; }
-.an-sample:disabled { opacity:.55; cursor:default; }
 /* Showcase mode has no screen behind this one. */
 body.demo-only .an-back { display:none; }
 /* ...and no other way to the project either. A hosted copy is the first thing a
