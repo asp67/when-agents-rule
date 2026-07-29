@@ -4026,7 +4026,12 @@ class UIManager {
         this.anRender();
     }
 
-    anClose() { this.anStopPlay(); this.anUnmountStage(); this.showScreen('gameModeScreen'); }
+    anClose() {
+        // In showcase mode there is nowhere to go back TO -- the analyzer is the whole
+        // app -- so this is the one exit and it stays shut.
+        if (typeof WAR_DEMO_ONLY !== 'undefined' && WAR_DEMO_ONLY) return;
+        this.anStopPlay(); this.anUnmountStage(); this.showScreen('gameModeScreen');
+    }
 
     anLoadFile(input) {
         const f = input && input.files && input.files[0];
@@ -4067,6 +4072,7 @@ class UIManager {
                 this.analyzer.load(text, 'sample-match.jsonl');
                 this.resetChartCache();
                 this.anRender();
+                reset();   // clickable again: the sample is a place to come BACK to
             })
             .catch(e => {
                 console.warn('[analyzer] sample load failed', e);

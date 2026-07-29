@@ -4659,7 +4659,29 @@ class Game {
 
 // Initialize game when page loads
 let game;
+
+// A copy served from somewhere else is a SHOWCASE, not an installation.
+//
+// The analyzer needs no API key and no endpoint -- it reads a file -- which makes it the
+// one part of this project that is safe to hand a stranger. The arena and the campaign
+// are not: they ask for keys, and a key pasted into a page someone else controls is a
+// different proposition from one pasted into a page you are serving yourself, even
+// though both only ever keep it in your own browser. So a hosted copy opens straight
+// into the analyzer with the bundled match and offers no route to the rest.
+//
+// The rule is where the page came FROM, not who is looking: served off this machine you
+// get everything, served from anywhere else you get the showcase. ?full=1 opts back in,
+// for anyone deliberately self-hosting on a LAN address rather than just visiting.
+const WAR_LOCAL = location.protocol === 'file:'
+    || /^(localhost|127\.0\.0\.1|\[::1\]|::1)$/.test(location.hostname);
+const WAR_DEMO_ONLY = !WAR_LOCAL && !/[?&]full=1(&|$)/.test(location.search);
+
 window.addEventListener('load', () => {
     game = new Game();
     game.init();
+    if (WAR_DEMO_ONLY) {
+        document.body.classList.add('demo-only');
+        game.ui.anOpen();
+        game.ui.anLoadSample();
+    }
 });

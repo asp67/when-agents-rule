@@ -155,6 +155,8 @@ Load a `match-*.jsonl` and you get:
 - **A timeline you can scrub.** Step through turns, **play** at one a second, click the economy graph to jump, or use the chapter list — age advances, wonders, exhausted resources, combat. Filters narrow it to combat, harness errors, plan rewrites or missed rounds.
 - **Click anything** to inspect it. Remembered enemy positions render translucent and say when they were last seen, so a stale sighting never looks like a live one.
 
+**A match ships with the game.** Hit **▶ Replay the sample match** and you get a real 271-turn game — Opus 5 as Persia, Grok 4.5 as Egypt, and gpt-oss on a single consumer GPU as Yamato — with every plan, command and reasoning block in it. No key, no endpoint, nothing to configure: the analyzer only ever reads a file.
+
 Nothing is interpolated between snapshots. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
 
 ## 🧮 How a model is scored
@@ -241,6 +243,7 @@ Fully client-side, with no backend of its own.
 
 - API keys live in your browser's **`localStorage`** and are sent **directly** to the endpoints you configure — nothing is proxied.
 - Fine for local, single-user testing. Don't enter credentials on a shared machine, and scope any keys you use.
+- **A copy served from anywhere but your own machine opens as a showcase**: straight into the analyzer with the bundled match, and no route to the Arena, the Campaign or the model catalogue. Those are the parts that ask for keys — and a key pasted into a page someone else controls is a different proposition from one pasted into a page you are serving yourself, even though both only ever keep it in your own browser. Append `?full=1` if you are deliberately self-hosting rather than just visiting.
 - **Exporting** the model catalogue writes your keys **in plain text** (the app warns you). Keep that file private. Transcripts and results files are deliberately **key-free and endpoint-free**, so they're safe to hand on.
 
 ## 📁 Project structure
