@@ -4101,6 +4101,22 @@ class UIManager {
         const a = this.analyzer;
         if (!a || !a.order || !a.order.length) return;
         this._anPlayTimer = setInterval(() => {
+            // Nobody watches a hidden tab, and setInterval does not care that nobody is
+            // looking -- unlike rAF it keeps firing at full rate in the background. Left
+            // alone, tabbing away runs a whole stage rebuild, a fog pass and a detail
+            // re-render once a second for no one, and the match plays itself to the end
+            // while the reader is elsewhere. Two of these in a background tab were enough
+            // to be felt in a game running in another one: separate origins get separate
+            // renderer processes, but they share the GPU.
+            //
+            // Checked here rather than on a visibilitychange listener because this also
+            // covers a timer that was already running when the tab went away, and needs
+            // no teardown of its own.
+            if (document.visibilityState === 'hidden') {
+                this.anStopPlay();
+                this.anRender();   // so the button reads as stopped when they come back
+                return;
+            }
             const before = this.analyzer ? this.analyzer.cursor : -1;
             this.anStep(1);
             if (!this.analyzer || this.analyzer.cursor === before) {
