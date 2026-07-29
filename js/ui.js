@@ -4044,6 +4044,37 @@ class UIManager {
         fr.readAsText(f);
     }
 
+    // The front door for anyone arriving without a transcript of their own. The
+    // analyzer is the one part of this project that needs no API key and no endpoint --
+    // it reads a file -- so a bundled match is the whole thing working, in one click,
+    // for a visitor who has not signed up for anything.
+    //
+    // Deliberately the SAME load path as a hand-picked file: no special-casing, so what
+    // a visitor sees the sample do is what the analyzer will do with their own match.
+    //
+    // fetch() needs an http(s) origin. Opened straight off disk as file:// this throws,
+    // and that is the one failure a first-time visitor is actually likely to hit, so it
+    // is reported with the fix rather than swallowed into the console.
+    anLoadSample() {
+        const btn = document.getElementById('anSampleBtn');
+        const reset = () => { if (btn) { btn.disabled = false; btn.textContent = t('an.sample'); } };
+        if (btn) { btn.disabled = true; btn.textContent = t('an.sampleLoading'); }
+        fetch('samples/sample-match.jsonl')
+            .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+            .then(text => {
+                this.anStopPlay();   // a fresh load starts stopped, as a file load does
+                this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
+                this.analyzer.load(text, 'sample-match.jsonl');
+                this.resetChartCache();
+                this.anRender();
+            })
+            .catch(e => {
+                console.warn('[analyzer] sample load failed', e);
+                this.showErrorMessage(t('an.sampleFail'));
+                reset();
+            });
+    }
+
 
     // Play: one filtered step a second. It walks anStep(1), so it follows whatever
     // filter and seat are set — playing the Combat filter jumps fight to fight rather

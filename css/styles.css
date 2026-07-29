@@ -2403,6 +2403,14 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-pick input { position:absolute; inset:0; opacity:0; cursor:pointer; }
 .an-meta { font-size:0.72em; color:#93a7b8; line-height:1.45; min-width:0; }
 .an-empty { color:#89a; padding:30px 20px; font-size:0.9em; }
+/* The empty state is the first thing a visitor without a transcript sees, so it
+   carries the one action that needs nothing from them. */
+.an-sample { display:block; margin:14px auto 0; padding:9px 18px; cursor:pointer;
+    background:transparent; color:var(--gold-2); border:1px solid var(--gold);
+    border-radius:6px; font-size:1em; font-weight:600; letter-spacing:.02em;
+    transition:background .15s, color .15s; }
+.an-sample:hover:not(:disabled) { background:var(--gold); color:#1a1205; }
+.an-sample:disabled { opacity:.55; cursor:default; }
 
 /* Rows, not columns: action on top, reading underneath, seam between. */
 .an-body { flex:1 1 auto; min-height:0; display:grid; grid-template-rows:52% 6px 1fr; }
