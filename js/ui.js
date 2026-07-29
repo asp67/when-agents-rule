@@ -3513,12 +3513,12 @@ class UIManager {
         const act = e.parsed && e.parsed.action ? e.parsed.action : null;
         const failed = typeof e.harnessResult === 'string' && e.harnessResult.startsWith('[ERROR]');
         const state = e.state
-            ? `<details class="tv-sec tv-state"${pref['tv-state'] ? ' open' : ''}${keep('tv-state')} data-turn="${e.turn}"><summary>${t('spec.tvState')}</summary><pre></pre></details>`
+            ? `<details class="tv-sec tv-state"${pref['tv-state'] ? ' open' : ''}${keep('tv-state')} data-turn="${esc(e.turn)}"><summary>${t('spec.tvState')}</summary><pre></pre></details>`
             : '';
         return `
-            <div class="tv-turn${failed ? ' is-error' : ''}" data-key="${e.turn}">
+            <div class="tv-turn${failed ? ' is-error' : ''}" data-key="${esc(e.turn)}">
                 <div class="tv-turn-head">
-                    <span class="tv-n">#${e.turn}</span>
+                    <span class="tv-n">#${esc(e.turn)}</span>
                     ${act ? `<span class="tv-act">${esc(act)}</span>` : ''}
                     <span class="tv-meta">${esc(ms)}${ms && tok ? ' · ' : ''}${esc(tok)}</span>
                 </div>
