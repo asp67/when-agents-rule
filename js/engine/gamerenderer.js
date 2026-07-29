@@ -20,7 +20,16 @@
 (function () {
     const M = () => window.M3D;
     const HALF_PER_DIST = 0.3;   // camera.position.set(distance) → ortho halfH
-    const MIN_HALF = 10, MAX_HALF = 190;
+    // MAX_HALF was 190, which framed the whole map on a landscape window and nowhere
+    // else. Measured what the narrow end actually needs: the stage runs 0.486 of window
+    // height, so a 920-wide window 1600 tall gives a stage aspect of 1.18 and wants 338.
+    // 400 is the round boundary just past it -- size/2 -- which is the honest way to
+    // state the guarantee: any window at least as wide as its stage is tall can reach
+    // the full map. Below 900px the small-screen card takes over anyway.
+    //
+    // Raising it also lengthens the wheel's zoom-out in play, which is the point: the
+    // cap is what a reader hits when they try to see the whole board and cannot.
+    const MIN_HALF = 10, MAX_HALF = 400;
     // Scene ambient. Lives here rather than inline at the draw call because the
     // sea colour beyond the map has to be derived from the SAME value — two
     // copies drifting apart is exactly what put a visible seam at the horizon.
@@ -325,7 +334,15 @@
             this.cameraTarget.set(0, 0, 0);
             this._yaw = 0;
             this._pitch = Math.atan(0.5);   // the default tilt, so the shot is repeatable
-            this._halfH = MAX_HALF;
+            // Fit, rather than zoom to the cap. The two axes need different amounts: the
+            // tilt stretches how much ground a given half-height covers in depth, while
+            // across the screen it is only aspect, so whichever wants more zoom wins.
+            // Slamming to MAX_HALF instead would have opened a wide monitor on a tiny
+            // island adrift in blue the moment that cap was raised for narrow ones.
+            const size = (this.terrain && this.terrain.size > 0) ? this.terrain.size : 800;
+            const aspect = (this.W || 1) / (this.H || 1);
+            const need = Math.max(size * Math.sin(this._pitch), size / aspect) / 2;
+            this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, need * 1.06));  // 6% of coast
         }
 
         moveCameraTo(x, z) {
