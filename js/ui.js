@@ -4061,6 +4061,16 @@ class UIManager {
     // which is the one failure someone poking at a clone is actually likely to hit, so
     // it is reported with the fix rather than swallowed into the console.
     anLoadSample() {
+        // Say what is happening while it happens. The placeholder underneath reads "load
+        // a .jsonl file the Arena saved", which is right for someone who opened an empty
+        // analyzer -- and exactly wrong for the seconds a hosted copy spends fetching
+        // four megabytes on its own. A visitor's entire first impression was the page
+        // announcing it was empty and implying that fixing it was their job.
+        const empty = document.getElementById('anEmpty');
+        if (empty) empty.textContent = t('an.loadingSample');
+        // Put the placeholder back either way, so a file loaded later that turns out to
+        // be unreadable shows its own message rather than this one, frozen mid-load.
+        const restore = () => { if (empty) empty.textContent = t('an.empty'); };
         fetch('samples/sample-match.jsonl')
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
             .then(text => {
@@ -4070,9 +4080,11 @@ class UIManager {
                 this._anFramed = false;
                 this.resetChartCache();
                 this.anRender();
+                restore();
             })
             .catch(e => {
                 console.warn('[analyzer] sample load failed', e);
+                restore();
                 this.showErrorMessage(t('an.sampleFail'));
             });
     }
