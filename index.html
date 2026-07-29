@@ -4,10 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=545">
+    <link rel="stylesheet" href="css/styles.css?v=546">
 </head>
 <body>
     <!-- Start Screen -->
+    <!-- Shown instead of everything else on a screen too small to hold it. Not a
+         warning bar over a broken layout: the layout genuinely does not survive down
+         here (the turn list measures two pixels tall at 375px), and the controls are
+         drag, right-click and wheel, which a phone does not have. So it says so, and
+         points at the thing that IS worth watching on a phone. -->
+    <div id="smallScreen" class="small-screen">
+        <div class="ss-card">
+            <div class="ss-brand">WHEN AGENTS RULE</div>
+            <p class="ss-lead" data-i18n="ss.lead">Drei Sprachmodelle spielen gegeneinander.</p>
+            <p class="ss-why" data-i18n="ss.why">Dafür braucht es einen großen Bildschirm.</p>
+            <a class="ss-cta" href="https://www.youtube.com/@When-Agents-Rule" target="_blank" rel="noopener" data-i18n="ss.watch">Match ansehen</a>
+            <a class="ss-alt" href="https://github.com/asp67/when-agents-rule" target="_blank" rel="noopener" data-i18n="ss.source">Quellcode auf GitHub</a>
+            <button class="ss-anyway" onclick="document.body.classList.add('ss-off')" data-i18n="ss.anyway">Trotzdem anzeigen</button>
+        </div>
+    </div>
+
     <div id="startScreen" class="screen active">
         <div class="start-content">
             <h1 class="game-title">WHEN AGENTS RULE</h1>
@@ -482,26 +498,26 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=545"></script>
-    <script src="js/engine/glcore.js?v=545"></script>
-    <script src="js/engine/texgen.js?v=545"></script>
-    <script src="js/engine/mesh.js?v=545"></script>
-    <script src="js/engine/buildings.js?v=545"></script>
-    <script src="js/engine/units.js?v=545"></script>
-    <script src="js/engine/gamerenderer.js?v=545"></script>
-    <script src="js/i18n.js?v=545"></script>
-    <script src="js/civilizations.js?v=545"></script>
-    <script src="js/buildings.js?v=545"></script>
-    <script src="js/units.js?v=545"></script>
-    <script src="js/resources.js?v=545"></script>
-    <script src="js/terrain.js?v=545"></script>
-    <script src="js/fogofwar.js?v=545"></script>
-    <script src="js/ai.js?v=545"></script>
-    <script src="js/analyzer.js?v=545"></script>
-    <script src="js/transcript.js?v=545"></script>
-    <script src="js/openai-ai.js?v=545"></script>
-    <script src="js/input.js?v=545"></script>
-    <script src="js/ui.js?v=545"></script>
-    <script src="js/game.js?v=545"></script>
+    <script src="js/engine/math3d.js?v=546"></script>
+    <script src="js/engine/glcore.js?v=546"></script>
+    <script src="js/engine/texgen.js?v=546"></script>
+    <script src="js/engine/mesh.js?v=546"></script>
+    <script src="js/engine/buildings.js?v=546"></script>
+    <script src="js/engine/units.js?v=546"></script>
+    <script src="js/engine/gamerenderer.js?v=546"></script>
+    <script src="js/i18n.js?v=546"></script>
+    <script src="js/civilizations.js?v=546"></script>
+    <script src="js/buildings.js?v=546"></script>
+    <script src="js/units.js?v=546"></script>
+    <script src="js/resources.js?v=546"></script>
+    <script src="js/terrain.js?v=546"></script>
+    <script src="js/fogofwar.js?v=546"></script>
+    <script src="js/ai.js?v=546"></script>
+    <script src="js/analyzer.js?v=546"></script>
+    <script src="js/transcript.js?v=546"></script>
+    <script src="js/openai-ai.js?v=546"></script>
+    <script src="js/input.js?v=546"></script>
+    <script src="js/ui.js?v=546"></script>
+    <script src="js/game.js?v=546"></script>
 </body>
 </html>

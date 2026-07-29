@@ -2568,3 +2568,32 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
     .an-graph { grid-column:1 / -1; border-top:1px solid rgba(255,255,255,0.08); padding-top:7px; }
     .an-detail { border-right:none; }
 }
+
+/* ---- Too small to hold this ------------------------------------------------
+   Measured at 375x812 before writing any of it: the bar wraps to three lines, the
+   detail pane drops to 212px, and the turn list -- the only way through a match --
+   collapses to two pixels. Add controls that are drag, right-click and scroll-wheel
+   and there is no phone layout to rescue, only one to pretend about.
+   So: say it plainly, and send the reader to the video, which is the form of this
+   that a phone is actually good at. `pointer: coarse` catches tablets that are wide
+   enough to look fine and still cannot right-click. */
+.small-screen { display:none; }
+@media (max-width: 900px), (pointer: coarse) {
+    body:not(.ss-off) .small-screen {
+        display:flex; position:fixed; inset:0; z-index:9999;
+        align-items:center; justify-content:center; padding:22px;
+        background:var(--bg-0); overflow-y:auto; }
+    body:not(.ss-off) { overflow:hidden; }
+}
+.ss-card { max-width:420px; text-align:center; color:var(--muted); }
+.ss-brand { font-weight:900; letter-spacing:.16em; font-size:1.25rem; margin-bottom:18px;
+    background:linear-gradient(180deg,#fff,var(--gold-2) 55%,var(--gold));
+    -webkit-background-clip:text; background-clip:text; color:transparent; }
+.ss-lead { color:#dfe6f5; font-size:1.02rem; line-height:1.5; margin:0 0 14px; }
+.ss-why { font-size:.92rem; line-height:1.55; margin:0 0 24px; }
+.ss-cta, .ss-alt { display:block; padding:12px 18px; border-radius:8px; text-decoration:none;
+    font-weight:700; margin-bottom:10px; }
+.ss-cta { background:var(--gold); color:#1a1205; }
+.ss-alt { border:1px solid var(--gold); color:var(--gold-2); }
+.ss-anyway { margin-top:14px; background:none; border:none; color:var(--muted);
+    font-size:.85rem; text-decoration:underline; cursor:pointer; }
