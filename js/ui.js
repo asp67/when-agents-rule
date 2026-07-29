@@ -3407,9 +3407,18 @@ class UIManager {
         const pre = d && d.querySelector('pre');
         if (!pre || pre.dataset.filled) return;
         const r = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
-        const entry = (r ? r.recent(this._transcriptFor) : [])
+        let entry = (r ? r.recent(this._transcriptFor) : [])
             .find(x => String(x.turn) === d.dataset.turn);
-        if (!entry) return;
+        // The ring above belongs to the LIVE recorder. The analyzer has no live match
+        // behind it -- it is reading a file -- so that lookup found nothing and this
+        // section sat empty for every transcript ever opened here, which reads as a
+        // broken panel rather than as a panel with nothing to say. The record on screen
+        // carries its own state; anDetailHtml is already drawing numbers out of it.
+        if (!entry && this.analyzer && this.analyzer.order) {
+            const c = this.analyzer.order[this.analyzer.cursor];
+            if (c && String(c.turn) === d.dataset.turn) entry = c;
+        }
+        if (!entry || !entry.state) return;
         pre.textContent = JSON.stringify(entry.state, null, 1);
         pre.dataset.filled = '1';
     }
@@ -4416,6 +4425,7 @@ class UIManager {
         if (curEl && curEl.scrollIntoView) curEl.scrollIntoView({ block: 'nearest' });
 
         document.getElementById('anDetail').innerHTML = this.anDetailHtml(cur);
+        this.anBindDetail();
 
         // The board, plus a caption naming whose view it is. A single seat is what that
         // model could see; the union is an overview no player ever had. Those are
@@ -4448,6 +4458,24 @@ class UIManager {
     // its own canvas rather than depending on the game loop. A 2D board stood here
     // first and told you nothing: positions without terrain, scale or elevation are
     // numbers, not a situation.
+
+    // The arena's viewer binds this on its own scroll body; the analyzer reuses
+    // tvTurnHtml but never wired the other half, so a State section here opened onto an
+    // empty <pre> for every transcript ever loaded -- a panel that looks broken rather
+    // than one with nothing to say.
+    //
+    // 'toggle' does not bubble, hence capture. No mirroring pass: the analyzer shows one
+    // turn at a time, so there is exactly one section of each kind on screen. Bound once
+    // -- #anDetail outlives the innerHTML rewrite anRender does on every step.
+    anBindDetail() {
+        const box = document.getElementById('anDetail');
+        if (!box || box._anBound) return;
+        box.addEventListener('toggle', (ev) => {
+            const d = ev.target;
+            if (d && d.classList && d.classList.contains('tv-state') && d.open) this.tvFillState(d);
+        }, true);
+        box._anBound = true;
+    }
 
     anMountStage() {
         const cv = document.getElementById('gameCanvas');
