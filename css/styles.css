@@ -2414,6 +2414,16 @@ body.spectator-mode #unitInfo.spectator-card {
 .an-sample:disabled { opacity:.55; cursor:default; }
 /* Showcase mode has no screen behind this one. */
 body.demo-only .an-back { display:none; }
+/* ...and no other way to the project either. A hosted copy is the first thing a
+   stranger sees, and without this the page is a dead end: they can read a whole
+   match and never learn they could run one. Hidden on a local install, where the
+   reader plainly already has the repo. */
+.an-src { display:none; }
+body.demo-only .an-src { display:inline-block; padding:5px 12px; white-space:nowrap;
+    color:var(--gold-2); text-decoration:none; font-size:0.85em; font-weight:600;
+    border:1px solid var(--gold); border-radius:6px;
+    transition:background .15s, color .15s; }
+body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
 
 /* Rows, not columns: action on top, reading underneath, seam between. */
 .an-body { flex:1 1 auto; min-height:0; display:grid; grid-template-rows:52% 6px 1fr; }
