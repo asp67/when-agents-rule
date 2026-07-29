@@ -1,0 +1,6 @@
+# Transcripts are data, not source. They are fetched verbatim by the browser and
+# parsed a line at a time, so they must arrive as recorded -- the same bytes on a
+# Windows clone, a Linux clone, and from whatever serves them. With core.autocrlf=true
+# and no rule here, a Windows checkout rewrites every line ending in the bundled
+# sample, which is not something a data file should pick up on its way through git.
+*.jsonl -text
