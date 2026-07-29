@@ -29,6 +29,7 @@ class TranscriptAnalyzer {
         this.markers = [];       // type:"round_missed" and anything else non-turn
         this.chapters = [];      // derived: what a reader would want to jump to
         this.seats = new Map();  // playerId -> {id, seat, civ, model, name, turns:[]}
+        this._deaths = null;     // derived once per file by deathTimes()
         this.filter = 'all';
         this.seatFilter = null;
         this.textFilter = '';    // free-text search, lowercased; '' means no filter
@@ -276,6 +277,46 @@ class TranscriptAnalyzer {
     // the honest reconstruction of what that model could see, the union is the analyst's
     // overview that no player ever had. Both are useful and they are different claims,
     // so the board says which one it is showing rather than blending them.
+    // When each seat is known to be gone, in match seconds; absent while it lives.
+    //
+    // Two sources, in order of authority. A defeated seat gets a final_word record on
+    // file that says so outright -- but only matches recorded since that feature landed
+    // carry one, and this has to open older files too. So the fallback is what the
+    // survivors saw: gameStats.opponents rides in every snapshot of every seat and holds
+    // a live per-opponent headcount, which means the first living observer to report a
+    // rival at zero buildings AND zero units has witnessed the end of it.
+    //
+    // `discovered` is the part that matters. A seat that never scouted a rival reports
+    // it undiscovered with undefined counts, and reading that as zero would bury every
+    // player nobody happened to meet -- in the sample match, Yamato never found Egypt at
+    // all and would otherwise have been evidence of its death from the first turn.
+    deathTimes() {
+        if (this._deaths) return this._deaths;
+        const out = new Map();
+        this.seats.forEach(s => {
+            const fw = s.turns.find(r => r.type === 'final_word' && r.outcome === 'defeated');
+            if (fw) { out.set(s.id, fw._sec); return; }
+            let seen = null;
+            this.seats.forEach(o => {
+                if (o.id === s.id) return;
+                for (const r of o.turns) {
+                    if (r.type || !r.state) continue;
+                    const gs = r.state.gameStats;
+                    const opp = (gs && Array.isArray(gs.opponents))
+                        ? gs.opponents.find(x => x.id === s.id) : null;
+                    if (!opp || opp.discovered === false) continue;
+                    if (opp.buildings === 0 && opp.units === 0) {
+                        if (seen === null || r._sec < seen) seen = r._sec;
+                        break;
+                    }
+                }
+            });
+            if (seen !== null) out.set(s.id, seen);
+        });
+        this._deaths = out;
+        return out;
+    }
+
     scene(rec, union) {
         if (!rec) return null;
         const sec = rec._sec;
@@ -288,6 +329,7 @@ class TranscriptAnalyzer {
         // Each seat's latest snapshot at or before this moment, with its age. Nothing is
         // moved or guessed forward: a seat last heard from 200s ago is drawn where it was
         // 200s ago and labelled as such.
+        const deaths = this.deathTimes();
         this.seats.forEach(s => {
             if (!union && s.id !== rec.playerId) return;
             let last = null;
@@ -297,16 +339,28 @@ class TranscriptAnalyzer {
             }
             if (!last) return;
             const st = last.state || {};
+            // A razed civilisation owns nothing. Its last snapshot is frozen at whatever
+            // it held when it stopped answering and nothing will ever refresh it, so
+            // without this its buildings outlive it to the end of the match -- drawn on
+            // the same screen as the seat that destroyed them, which is reporting them
+            // gone. In the sample match that left six Egyptian buildings standing for the
+            // last five minutes, 262 seconds after their owner's final snapshot.
+            //
+            // Its exploration survives, though. Ground it uncovered really was uncovered,
+            // and the union fog is a record of what was seen, not of who is still alive
+            // to remember seeing it.
+            const died = deaths.get(s.id);
+            const dead = died != null && died <= sec;
             out.seats.push({
                 id: s.id, seat: s.seat, name: s.name || s.model || s.civ,
-                civilization: s.civilization, ageSec: sec - last._sec,
+                civilization: s.civilization, ageSec: sec - last._sec, dead,
                 isCurrent: s.id === rec.playerId,
                 // Its OWN epoch at its OWN last snapshot: what its buildings looked like.
                 epoch: (st.epoch && st.epoch.currentEpoch) || 'stone',
                 // Its own record of where it has been, so the union view can add them up.
                 exploration: (st.map && st.map.exploration) || null,
-                units: Array.isArray(st.friendlyUnits) ? st.friendlyUnits : [],
-                buildings: Array.isArray(st.friendlyBuildings) ? st.friendlyBuildings : []
+                units: dead ? [] : (Array.isArray(st.friendlyUnits) ? st.friendlyUnits : []),
+                buildings: dead ? [] : (Array.isArray(st.friendlyBuildings) ? st.friendlyBuildings : [])
             });
         });
 
