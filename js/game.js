@@ -3777,6 +3777,24 @@ class Game {
                         unit.harvestTarget.amount = Math.max(0, unit.harvestTarget.amount - amount);
                         if (unit.harvestTarget.amount <= 0 && this.terrain) {
                             this.terrain.depleteResourceNode(unit.harvestTarget);
+                            // The crew that emptied it KNOWS. A seat's belief about a node
+                            // is otherwise refreshed only by having something standing near
+                            // it at the moment a snapshot is built -- so a lone worker that
+                            // drained the last of one and walked off to deliver left its own
+                            // seat still believing the node full. The state then listed it,
+                            // assign_workers accepted on that same belief, and the next crew
+                            // was sent the whole way back to bare ground. Which is exactly
+                            // the report this came from.
+                            //
+                            // Leaks nothing: this miner was standing on the node. Only its
+                            // OWN owner is corrected, so a rival draining a remembered node
+                            // out of sight stays fogged, which is what knownAmount is for.
+                            if (owner && owner._knownResAmt && this.terrain.resources) {
+                                // depleteResourceNode keeps the node in the array (fog
+                                // indices are positional), so this index stays valid.
+                                const ni = this.terrain.resources.indexOf(unit.harvestTarget);
+                                if (ni >= 0) owner._knownResAmt[ni] = 0;
+                            }
                         }
                     }
 
