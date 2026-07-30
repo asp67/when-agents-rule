@@ -2763,7 +2763,29 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             // the OUTCOME of the turn pair we just pushed, so the rolling multi-turn
             // history (Option C) replays the failure too instead of a blind null.
             if (!result) {
-                controller.lastActionResult = `[ERROR] Your last response could not be parsed. Please use the execute_action tool with valid JSON containing "action" and "params" fields. Example: {"action": "wait", "params": {"reason": "analyzing situation"}}`;
+                // Three unrelated failures used to share one sentence, and that sentence
+                // told the model to "use the execute_action tool" -- a tool that appears
+                // NOWHERE else in this codebase. The prompt asks for a raw JSON object.
+                // A model cannot comply with an instruction to call something that does
+                // not exist, and small models copy our notation back verbatim, so a
+                // wrong name in an error is a wrong name in the next reply.
+                //
+                // The empty case is the one that matters. A 9B seat returned nothing on
+                // 20 of its ~100 turns, every time with the completion budget exhausted:
+                // it spent 8192 tokens deliberating and never wrote a character. That is
+                // a LENGTH failure. Telling it to fix its JSON is advice it cannot act
+                // on, because it never got as far as producing any.
+                //
+                // finish_reason is the provider's own word for it, so no guessing from
+                // token arithmetic. Its absence is not proof of the opposite -- some
+                // endpoints omit it -- hence the plainer empty-reply message as fallback.
+                const rawReply = String((norm && (norm.content || norm.reasoning)) || '');
+                const cappedOut = OpenAIAIManager.hitTokenCap(norm && norm.finish_reason);
+                controller.lastActionResult = rawReply.trim()
+                    ? `[ERROR] Your last reply could not be parsed, so nothing was executed. Answer with ONE raw JSON object and nothing else — no tool call, no prose around it, no code fence: {"action":"wait","params":{"reason":"..."}}`
+                    : (cappedOut
+                        ? `[ERROR] You returned NOTHING: your reply hit the output limit of ${askedMax} tokens before a single character of answer was written, so nothing was executed. Your thinking is spent from that same budget. Decide faster and keep "reason", "objective" and "plan" to one short sentence each — a bare {"action":"wait","params":{"reason":"thinking"}} beats an empty turn.`
+                        : `[ERROR] You returned an EMPTY reply, so nothing was executed. Answer with one raw JSON object: {"action":"wait","params":{"reason":"..."}}`);
                 const lastTurn = controller.turnLog[controller.turnLog.length - 1];
                 if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
                 stampResult(controller.lastActionResult);
