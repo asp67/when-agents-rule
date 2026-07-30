@@ -2242,6 +2242,34 @@ class UIManager {
     // + inspect) versus a player match (select + command), so each gets its own
     // rows; the camera controls are shared. Verified against input.js and the
     // renderer's key/mouse handlers.
+    // The gap between "the match is decided" and the summary. Every seat is being
+    // asked for a closing statement and each one is an endpoint round trip, so this can
+    // run to a minute. A board that has stopped moving with nothing said reads as a
+    // hang -- especially with the wonder timer sitting at zero -- so name what is being
+    // waited for and count the answers as they land.
+    //
+    // Doubles as the show: the first call builds it. total 0 means nobody is being
+    // asked (an all-rule-based match), and then there is nothing honest to display.
+    finalWordsProgress(done, total) {
+        if (!total) { this.hideFinalWordsWait(); return; }
+        let el = document.getElementById('finalWordsWait');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'finalWordsWait';
+            el.className = 'fw-wait';
+            document.body.appendChild(el);
+        }
+        el.innerHTML = '<div class="fw-card"><div class="fw-title">'
+            + this.escapeHtml(t('arena.finalWords')) + '</div><div class="fw-count">'
+            + this.escapeHtml(t('arena.finalWordsCount', { done: done, n: total }))
+            + '</div></div>';
+    }
+
+    hideFinalWordsWait() {
+        const el = document.getElementById('finalWordsWait');
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+    }
+
     showControlsCard(mode) {
         this.hideControlsCard();
         const row = (k, v) => `<div class="ck">${k}</div><div class="cv">${v}</div>`;

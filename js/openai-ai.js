@@ -3600,14 +3600,22 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
     // Ask every seat that has not been asked yet. Returns a promise so a caller can
     // wait, but nothing has to: the recorder places a late answer correctly either way.
-    collectFinalWords(reason, winnerAi) {
-        const jobs = (this.aiControllers || []).map(c => {
-            if (!c || c._finalWordAsked) return null;
+    collectFinalWords(reason, winnerAi, onProgress) {
+        const pend = (this.aiControllers || []).filter(c => c && !c._finalWordAsked);
+        const total = pend.length;
+        let done = 0;
+        // Fired once up front with (0, total) so a caller can decide whether there is
+        // anything worth showing a wait for at all -- an all-rule-based match asks
+        // nobody, and a note about closing statements would be a lie there.
+        const tick = () => { if (onProgress) { try { onProgress(done, total); } catch (e) {} } };
+        tick();
+        const jobs = pend.map(c => {
             const won = !!(winnerAi && c.aiPlayer === winnerAi);
             const winner = winnerAi ? this.game.ownerName(winnerAi) : null;
             return this.askFinalWord(c, 'ended', { won, winner, reason })
-                .catch(e => { console.warn('[OpenAIAI] final word failed', e); return null; });
-        }).filter(Boolean);
+                .catch(e => { console.warn('[OpenAIAI] final word failed', e); return null; })
+                .then(v => { done++; tick(); return v; });
+        });
         return Promise.all(jobs);
     }
     // ----------------------------------------------------------------

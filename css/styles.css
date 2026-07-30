@@ -2597,3 +2597,13 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
 .ss-alt { border:1px solid var(--gold); color:var(--gold-2); }
 .ss-anyway { margin-top:14px; background:none; border:none; color:var(--muted);
     font-size:.85rem; text-decoration:underline; cursor:pointer; }
+
+/* Shown while the seats are asked for their closing statements. Deliberately over
+   the board rather than replacing it: the last frame of the match is worth
+   looking at while you wait, and it makes clear the game is over, not stuck. */
+.fw-wait { position:fixed; inset:0; z-index:9000; display:flex; align-items:center;
+    justify-content:center; background:rgba(6,10,22,.72); }
+.fw-card { text-align:center; padding:26px 34px; border-radius:10px; max-width:430px;
+    background:var(--bg-1); border:1px solid var(--gold); color:#dfe6f5; }
+.fw-title { font-size:1.05rem; font-weight:700; color:var(--gold-2); margin-bottom:8px; }
+.fw-count { font-size:.9rem; color:var(--muted); }

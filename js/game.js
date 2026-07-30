@@ -3598,6 +3598,23 @@ class Game {
     // alike) — so nobody walks to a node they have never seen.
     retargetDepletedWorker(unit, owner) {
         const wantType = unit.harvestTarget && unit.harvestTarget.type;
+        // Say it once per node, to the owner only. A model that assigned workers to a
+        // node its state still listed -- because the state reports what the player
+        // BELIEVES, and belief lags what its own crew has just walked in on -- got an
+        // "OK", then nothing, and no way to find out why. The workers went and looked,
+        // which is exactly the evidence that corrects knownAmount, so telling the owner
+        // leaks nothing it has not already earned.
+        const node = unit.harvestTarget;
+        if (node && wantType && owner && this.logPlayerEvent) {
+            if (!owner._dryNodesTold) owner._dryNodesTold = new Set();
+            const key = wantType + '@' + Math.round(node.x) + ',' + Math.round(node.z);
+            if (!owner._dryNodesTold.has(key)) {
+                owner._dryNodesTold.add(key);
+                this.logPlayerEvent(owner, `The ${wantType} at (${Math.round(node.x)}, ${Math.round(node.z)}) `
+                    + `was already exhausted when your workers reached it — they are moving on to the nearest `
+                    + `${wantType} you have discovered, or going idle if you have none left.`);
+            }
+        }
         // Continue nearest to the DEPLETED NODE, not to wherever the worker
         // happens to stand (often the Town Center mid-delivery — measuring from
         // there sent miners to a "nearest to base" node far across the map
@@ -3660,6 +3677,21 @@ class Game {
             // No-op for today's states: a builder always arrived here with
             // isMoving false anyway.
             if (unit.isMoving && unit.task !== 'building' && unit.task !== 'repairing') {
+                // A node can run dry WHILE we walk to it -- usually our own crew
+                // finishes it. The depletion check in State 2 only fires once a worker
+                // has ARRIVED and started harvesting, so until now a crew dispatched to
+                // a node that emptied mid-journey walked the whole way to bare ground,
+                // stood there a tick, and only then looked for somewhere else to go.
+                // Across a desert map that is a long march for nothing.
+                //
+                // Carriers are exempt: they are walking to the Town Center with a load
+                // and their harvestTarget is only where they mean to return afterwards.
+                if (unit.task === 'harvesting' && !unit.carryingResource && unit.harvestTarget
+                    && !unit.harvestTarget.isFarm && unit.harvestTarget.amount !== undefined
+                    && unit.harvestTarget.amount <= 0) {
+                    this.retargetDepletedWorker(unit, owner);
+                    return;
+                }
                 const dx = unit.targetX - unit.x;
                 const dz = unit.targetZ - unit.z;
                 const dist = Math.sqrt(dx*dx + dz*dz);
@@ -4630,15 +4662,37 @@ class Game {
         // the last thing asked of a model is asked while the match is still its match.
         // Fire-and-forget — the summary must not wait on an endpoint, and the recorder
         // files a late reply in the right place regardless.
+        let pending = null;
         if (this.openAIAIManager && this.openAIAIManager.collectFinalWords) {
-            try { this.openAIAIManager.collectFinalWords(reason, winnerAi); }
-            catch (e) { console.warn('[arena] final words failed', e); }
+            try {
+                pending = this.openAIAIManager.collectFinalWords(reason, winnerAi,
+                    (done, total) => this.ui.finalWordsProgress && this.ui.finalWordsProgress(done, total));
+            } catch (e) { console.warn('[arena] final words failed', e); }
         }
         // Halt the LLM pipeline so finished-match requests stop spending quota and
-        // can't spawn late units into the scene behind the summary.
+        // can't spawn late units into the scene behind the summary. The closing
+        // questions carry their own abort handle and survive this.
         if (this.openAIAIManager) this.openAIAIManager.stop();
-        if (this.ui.teardownSpectatorUI) this.ui.teardownSpectatorUI();
-        this.ui.showArenaSummary(winnerAi, reason);
+
+        const finish = () => {
+            if (this.ui.hideFinalWordsWait) this.ui.hideFinalWordsWait();
+            if (this.ui.teardownSpectatorUI) this.ui.teardownSpectatorUI();
+            this.ui.showArenaSummary(winnerAi, reason);
+        };
+        // This used to be fire-and-forget, with the summary up before a single answer
+        // was back. Every closing statement takes an endpoint round trip, and a wonder
+        // ending asks EVERY seat at once -- so a match that ended that way recorded one
+        // reply out of three, the winner's among the missing, and whoever downloaded the
+        // transcript promptly got a hole where the best part of the record should be.
+        //
+        // So: wait. The board stays up behind a note saying what is being waited for,
+        // because a screen that looks finished and does not move reads as a hang. Bounded
+        // by askFinalWord's own 60s timeout, so a dead endpoint cannot stall the summary.
+        if (pending && typeof pending.then === 'function') {
+            pending.catch(() => null).then(finish);
+            return;
+        }
+        finish();
     }
 
     // Triggered by the spectator "Auswertung" button: end now, winner = best score.
