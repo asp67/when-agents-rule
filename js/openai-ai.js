@@ -2201,6 +2201,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
 - Resource nodes hold a finite amount and disappear when emptied.
+- "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
 
 OUTPUT EXACTLY ONE RAW JSON OBJECT
 Format: {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }, "objective": "<1 line>", "plan": ["<step>", "<step>"]}
