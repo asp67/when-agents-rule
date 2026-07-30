@@ -3743,6 +3743,21 @@ class Game {
                         unit.isHarvesting = true;
                         unit.harvestTimer = 0;
                     }
+                    // A scout that has arrived has finished scouting. explore sets this
+                    // task and nothing cleared it, so the worker stayed labelled a scout
+                    // for the rest of the match: counted under workers.scouting, never
+                    // under workers.idle, and refused by assign_workers from:"idle" --
+                    // while isIdleWorker(), and therefore pickBuilder, considered the
+                    // very same worker free. Two classifiers, one question, which is the
+                    // trap the farm-worker counting comment in buildGameStateJSON was
+                    // written about.
+                    //
+                    // The rule-based manager has cleared this for years (ai.js
+                    // manageWorkers, step a) -- so the workaround existed and was applied
+                    // to exactly the players nobody is measuring. Doing it here covers
+                    // every owner, and leaves that one as a backstop for its other case:
+                    // a scout that never arrives at all.
+                    if (unit.task === 'scouting') unit.task = null;
                     this.renderer.updateUnitPosition(unit);
                 }
                 // While moving, skip other task logic
