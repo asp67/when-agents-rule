@@ -955,8 +955,24 @@ class OpenAIAIManager {
                 list.forEach(m => {
                     if (!m || typeof m !== 'object') return;
                     const id = String(m.id || m.name || '').replace(/^models\//, '');
+                    // llama.cpp nests it: {"id":…,"owned_by":"llamacpp","meta":{"n_ctx":64000,
+                    // "n_ctx_train":262144}}. Every path below was a TOP-LEVEL one, so a
+                    // llama.cpp model reported nothing at all -- contextById stayed empty,
+                    // maxContext stayed null, hardMax became Infinity, and the one guard
+                    // that clamps a hand-set budget to what the server can actually serve
+                    // was absent on exactly the endpoints most likely to be mis-set.
+                    //
+                    // meta.n_ctx is already PER SLOT: a server started with 128k and
+                    // --parallel 2 reports 64000 here, not 128000. So nothing needs
+                    // dividing, and /slots or /props would only re-fetch this same number.
+                    //
+                    // n_ctx_train is deliberately NOT a fallback. That is what the model
+                    // was TRAINED to handle (262144 for this one), not what this server
+                    // allocated -- taking it as the ceiling would license a budget four
+                    // times larger than the slot, which is worse than having no ceiling.
                     const ctx = m.context_length || m.max_model_len || m.context_window ||
                                 m.max_context_length || m.n_ctx || m.inputTokenLimit ||
+                                (m.meta && m.meta.n_ctx) ||
                                 (m.limits && (m.limits.context_length || m.limits.max_context_tokens));
                     if (id && ctx && Number(ctx) >= 512) contextById[id] = Number(ctx);
                 });
