@@ -2798,7 +2798,15 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             // Context-length overflow (provider 400). The endpoint is FINE — our prompt
             // was just too big for this model. Ratchet the budget down so subsequent
             // turns fit, and DON'T count it as an endpoint failure (no demotion).
-            if (/context length|context window|maximum context|too many tokens|reduce the length/i.test(err.message || '')) {
+            // Every server words this differently and the ratchet only fires on a match,
+            // so a phrasing missing from here is not a smaller bug than the overflow --
+            // it IS the overflow, repeating every turn, filed as an endpoint fault.
+            // OpenAI-family says "context length"/"maximum context"; llama.cpp says
+            // neither, it says the request "exceeds the available context size" or that
+            // the "input is too large to process". Those two cost a llama.cpp seat the
+            // self-heal entirely: it would overflow, get counted against its reliability,
+            // and overflow again on identical terms next turn.
+            if (/context length|context window|maximum context|context size|exceeds the available context|input is too large|prompt is too long|too many tokens|reduce the length/i.test(err.message || '')) {
                 controller._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
                 console.warn(`[OpenAIAI] ${ai.id}: context overflow — shrinking budget to ${Math.round(controller._ctxShrink * 100)}% and retrying next turn.`);
                 controller.lastActionResult = `[ERROR] Your previous request was too large for the model's context and was dropped; the history window has been trimmed. Continue normally.`;
