@@ -3058,6 +3058,8 @@ class UIManager {
                     // simply better, when what it did was less.
                     commandsPerTurn: (st.turnsExecuted || 0)
                         ? st.actionsAttempted / st.turnsExecuted : 0,
+                    maxCommands: OpenAIAIManager.MAX_COMMANDS_PER_TURN,
+                    finalWord: controller._finalWord || null,
                     promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
                     attempted: st.actionsAttempted, succeeded: st.actionsSucceeded,
                     // Contended attempts leave the DENOMINATOR, not just the numerator.
@@ -3151,7 +3153,7 @@ class UIManager {
                     <div class="sum-tags">${tagsHtml}</div>
                     <div class="sum-metrics">
                         <div class="sum-metric"><span>⏱ ${t('sum.mResponse')}</span><b>${avgS.toFixed(1)}s</b><i>${(m.minLatency / 1000).toFixed(1)}–${(m.maxLatency / 1000).toFixed(1)}s</i></div>
-                        <div class="sum-metric"><span>\u{1F9E0} ${t('sum.mDecisions')}</span><b>${m.decisions}</b><i>${t('sum.mAnswered', { n: m.responded })}${(m.roundsMissed || 0) ? ` · ${t('sum.missedRounds', { n: m.roundsMissed })}` : ''}${(m.commandsPerTurn || 0) > 1.05 ? ` · ${t('sum.perTurn', { n: m.commandsPerTurn.toFixed(1) })}` : ''}</i></div>
+                        <div class="sum-metric"><span>\u{1F9E0} ${t('sum.mDecisions')}</span><b>${m.decisions}</b><i>${t('sum.mAnswered', { n: m.responded })}${(m.roundsMissed || 0) ? ` · ${t('sum.missedRounds', { n: m.roundsMissed })}` : ''} · ${t('sum.perTurn', { n: (m.commandsPerTurn || 0).toFixed(1), max: m.maxCommands || 3 })}</i></div>
                         <div class="sum-metric"><span>✅ ${t('sum.mSuccess')}</span><b>${Math.round(m.successRate * 100)}%</b><i>${m.succeeded}/${m.attempted - (m.contended || 0)}${(m.contended || 0) ? ` · ${t('sum.contended', { n: m.contended })}` : ''}</i></div>
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
@@ -3159,6 +3161,7 @@ class UIManager {
                         <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, cut: m.truncated || 0, na: m.noAction || 0, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
                     </div>
                     <div class="sum-actions">${topActions || `<span class="sum-chip">${t('sum.noActions')}</span>`}</div>
+                    ${m.finalWord ? `<div class="sum-word"><span class="sum-word-h">\u{1F5E3}\uFE0F ${t('sum.finalWord')}</span><p>${this.escapeHtml(m.finalWord.text || m.finalWord.error || t('sum.finalWordNone'))}</p></div>` : ''}
                     <div class="sum-final">${r.ageName} · \u{1F477} ${r.workers} · ⚔️ ${r.military} · \u{1F3DB}️ ${r.buildings} · \u{1F356}${r.food} \u{1F332}${r.wood} \u{1FAA8}${r.stone} \u{1F947}${r.gold}</div>
                 </div>`;
         });

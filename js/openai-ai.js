@@ -3630,6 +3630,17 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             }
         } catch (e) { /* recording must never break the ending */ }
 
+        // Keep it for the summary. It went to the transcript and nowhere else, so the
+        // only way to read a model's last word was to export the match and open the
+        // analyzer -- for the one screen everybody actually looks at, at the moment they
+        // are most curious about it. endArena now waits for these before showing the
+        // summary, so it is on hand by the time the cards render.
+        controller._finalWord = {
+            text: text || null,
+            outcome: (kind === 'defeated') ? 'defeated' : ((extra && extra.won) ? 'won' : 'lost'),
+            error: error || null
+        };
+
         if (text) {
             console.log(`[OpenAIAI] final word from ${ai.id}: ${text.slice(0, 200)}`);
             const c2 = getCivilization(ai.civilization);
