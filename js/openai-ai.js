@@ -4097,6 +4097,21 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         if (targetX !== undefined && targetZ !== undefined) {
             x = targetX;
             z = targetZ;
+            // The SAME limit keepUnitsAshore holds units to, so a site is buildable
+            // exactly where a worker can stand. Nothing checked this: placement only
+            // tested gaps to other buildings and clearance around resource nodes, so a
+            // house could be founded in the sea and the worker sent to build it would
+            // walk to the shoreline and stop there forever, with no error to read.
+            //
+            // Answered rather than clamped. Quietly moving the building would teach the
+            // model that (410, 350) worked, and it would keep aiming there.
+            const T = game.terrain;
+            if (T && T.isWalkable && !T.isWalkable(x, z)) {
+                const lim = Math.round(T.landLimit(x, z));
+                const cheb = Math.round(Math.max(Math.abs(x), Math.abs(z)));
+                this.outcome('log.out.offMap', { x: Math.round(x), z: Math.round(z), lim });
+                return `[ERROR] Cannot build at (${Math.round(x)}, ${Math.round(z)}): that spot is outside the playable map, so no worker can reach it. Land reaches max(|x|,|z|) = ${lim} on that bearing and your target is ${cheb}. Pick a spot inside that.`;
+            }
         } else if (tc) {
             // Default: a ring around the town centre, so buildings spread out.
             // Roughly double the old radius so bases occupy a larger footprint.
@@ -4198,6 +4213,20 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     x = b.x + (dx / dd) * (need + 1) + (Math.random() - 0.5) * 3;
                     z = b.z + (dz / dd) * (need + 1) + (Math.random() - 0.5) * 3;
                     break;
+                }
+            }
+            // Ashore. The nudges above push a candidate away from buildings and
+            // nodes with no idea where the coast is, so a crowded base could walk a
+            // site straight off the edge on its own -- the explicit-target check
+            // upstream would never see it, because the model never named this spot.
+            const T = game.terrain;
+            if (valid && T && T.isWalkable && !T.isWalkable(x, z)) {
+                valid = false;
+                if (T.clampToLand) {
+                    const c = T.clampToLand(x, z);
+                    // A little inland of the waterline, not exactly on it, so the next
+                    // pass has room to nudge without falling straight back out.
+                    x = c.x * 0.98; z = c.z * 0.98;
                 }
             }
             if (!valid) { attempts++; continue; }
