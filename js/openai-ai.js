@@ -2015,6 +2015,23 @@ class OpenAIAIManager {
             controller._shownTargetIds = new Set(
                 [].concat(enemyUnits || [], enemyBuildings || [])
                   .map(e => String(e && e.id)).filter(x => x && x !== 'undefined'));
+            // High-water marks, for the closing question only. Recorded here because
+            // this is the one place a seat's whole picture is already assembled, which
+            // is cheaper than re-reading the recorder at match end -- and it costs a
+            // handful of comparisons on a path that just built several arrays.
+            const pk = controller._peak
+                || (controller._peak = { buildings: 0, units: 0, workers: 0, pop: 0, maxPop: 0, at: 0 });
+            const nb = (friendlyBuildings || []).length, nu = (friendlyUnits || []).length;
+            if (nb > pk.buildings || nu > pk.units) {
+                pk.at = (clockObj && clockObj.matchSeconds) || pk.at;
+            }
+            if (nb > pk.buildings) pk.buildings = nb;
+            if (nu > pk.units) pk.units = nu;
+            if ((wk.total || 0) > pk.workers) pk.workers = wk.total || 0;
+            if ((resourcesObj.population || 0) > pk.pop) {
+                pk.pop = resourcesObj.population;
+                pk.maxPop = resourcesObj.maxPopulation;
+            }
         }
         return {
             player: playerObj,
@@ -3544,6 +3561,49 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // Deliberately NOT announced in the system prompt. A model meeting this question
     // cold tells you more than one that has been told to expect it — and it keeps the
     // prompt, and its version, exactly where they were.
+    // What this seat lived through, for the closing question only.
+    //
+    // A defeated player is handed a snapshot of its own wreckage and nothing else, and
+    // models read that as never having started. In one match three of four wrote
+    // exactly that -- one of them while it had commanded a 59-unit army twenty minutes
+    // earlier, and another while six of its buildings were still standing. The state is
+    // honest; it is just the last frame of a film nobody was shown.
+    //
+    // Its OWN history only. Naming what the rivals had would be omniscience it never
+    // scouted, and a post-mortem written from what a player actually knew is worth more
+    // than one written from our records -- "I was fighting partially blind" is a real
+    // observation, and it only appears if the model is reasoning from its own view.
+    //
+    // Nothing here is scored: the closing word carries no weight in any metric.
+    matchHistoryText(controller, ai) {
+        const tl = this.game && this.game._timeline;
+        const mmss = v => Math.floor(v / 60) + ':' + String(Math.max(0, Math.round(v % 60))).padStart(2, '0');
+        // Models quote our wording back verbatim, so '1 buildings' would end up in a
+        // published post-mortem.
+        const pl = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+        const pk = controller && controller._peak;
+        const lines = [];
+        if (pk && (pk.buildings || pk.units)) {
+            lines.push(`- Peak: ${pl(pk.buildings, 'building')}, ${pl(pk.units, 'unit')}, ${pl(pk.workers, 'worker')}`
+                + (pk.pop ? `, population ${pk.pop}/${pk.maxPop || '?'}` : '')
+                + ` \u2014 around ${mmss(pk.at || 0)}.`);
+        }
+        lines.push(`- At the end: ${pl((ai.buildings || []).length, 'building')}, ${pl((ai.units || []).length, 'unit')}.`);
+        if (tl) {
+            const ages = (tl.ages || []).filter(e => e.id === ai.id);
+            lines.push(ages.length
+                ? `- Ages reached: ${ages.map(e => `${e.age} at ${mmss(e.t)}`).join(', ')}.`
+                : `- Ages reached: none \u2014 you finished in the ${ai.age} age you started in.`);
+            const won = (tl.wonders || []).filter(e => e.id === ai.id);
+            if (won.length) lines.push(`- Your Wonder: ${won.map(e => `${e.event} at ${mmss(e.t)}`).join(', ')}.`);
+            const dry = (tl.exhausted || []).filter(e => e.id === ai.id);
+            if (dry.length) lines.push(`- Your discovered nodes ran out: ${dry.map(e => `${e.type} at ${mmss(e.t)}`).join(', ')}.`);
+        }
+        if (!lines.length) return '';
+        return 'YOUR MATCH IN NUMBERS \u2014 you lived through this; the state above is only the final moment.\n'
+            + lines.join('\n');
+    }
+
     async askFinalWord(controller, kind, extra) {
         if (!controller || controller._finalWordAsked) return null;
         controller._finalWordAsked = true;
@@ -3569,7 +3629,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             'No action is expected and none will be carried out. There is nothing to play for and nothing to score.',
             'If you have anything to say about how this went — what you were trying to do, what beat you, what you would',
             'do differently — say it now, in your own words. Answer however you like.'].join(' ');
-        const turns = [{ role: 'user', content: (stateText ? stateText + '\n\n' : '') + ask }];
+        const history = this.matchHistoryText(controller, ai);
+        const turns = [{ role: 'user',
+            content: (stateText ? stateText + '\n\n' : '') + (history ? history + '\n\n' : '') + ask }];
 
         const provider = OpenAIAIManager.resolveProvider(model);
         const auth = model.auth || (model.apiKey ? { type: 'bearer', key: model.apiKey } : { type: 'none' });
