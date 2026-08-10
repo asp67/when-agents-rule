@@ -2266,7 +2266,12 @@ class UIManager {
         el.innerHTML = '<div class="fw-card"><div class="fw-title">'
             + this.escapeHtml(t('arena.finalWords')) + '</div><div class="fw-count">'
             + this.escapeHtml(t('arena.finalWordsCount', { done: done, n: total }))
-            + '</div><button class="fw-skip" onclick="game._skipFinalWords && game._skipFinalWords()">'
+            // Falls back to simply closing the card. The hook is null once the ending
+            // has run, and `null && null()` is a button that is visibly there and does
+            // nothing -- which is how this became an undismissable screen rather than a
+            // stray overlay. A control the user can see must always do something, even
+            // if by then all that is left to do is get out of the way.
+            + '</div><button class="fw-skip" onclick="game._skipFinalWords ? game._skipFinalWords() : game.ui.hideFinalWordsWait()">'
             + this.escapeHtml(t('arena.finalWordsSkip')) + '</button></div>';
     }
 

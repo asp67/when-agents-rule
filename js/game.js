@@ -4695,11 +4695,28 @@ class Game {
         // the last thing asked of a model is asked while the match is still its match.
         // Fire-and-forget — the summary must not wait on an endpoint, and the recorder
         // files a late reply in the right place regardless.
+        // Declared up here rather than beside finish(), where it used to live, because
+        // the progress callback below reads it and collectFinalWords fires that callback
+        // synchronously for the opening (0, n). From further down `ended` would still be
+        // in its temporal dead zone at that moment, the read would throw into a catch
+        // that swallows it, and the wait card would never appear at all.
+        let ended = false;
         let pending = null;
         if (this.openAIAIManager && this.openAIAIManager.collectFinalWords) {
             try {
                 pending = this.openAIAIManager.collectFinalWords(reason, winnerAi,
-                    (done, total) => this.ui.finalWordsProgress && this.ui.finalWordsProgress(done, total));
+                    (done, total) => {
+                        // Skipping aborts the questions, and every abort settles a tick
+                        // LATER, counting itself done on the way out. Those late ticks
+                        // used to rebuild the wait card on top of the summary the skip
+                        // had just put up -- rebuilt holding a button wired to
+                        // _skipFinalWords, which finish() had set to null a moment
+                        // before. A full-screen overlay at z-index 9000 whose only
+                        // control did nothing: the match was over, the results were
+                        // right there behind it, and the screen could not be dismissed.
+                        if (ended) return;
+                        if (this.ui.finalWordsProgress) this.ui.finalWordsProgress(done, total);
+                    });
             } catch (e) { console.warn('[arena] final words failed', e); }
         }
         // Halt the LLM pipeline so finished-match requests stop spending quota and
@@ -4708,8 +4725,8 @@ class Game {
         if (this.openAIAIManager) this.openAIAIManager.stop();
 
         // Guarded: the wait can now end two ways -- the answers arriving, or somebody
-        // giving up on them -- and both must not run the ending twice.
-        let ended = false;
+        // giving up on them -- and both must not run the ending twice. (`ended` is
+        // declared above, where the progress callback can see it.)
         const finish = () => {
             if (ended) return;
             ended = true;
