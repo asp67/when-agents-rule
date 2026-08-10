@@ -1,0 +1,97 @@
+{
+ "schema": 1,
+ "matches": [
+  {
+   "file": "2026-07-26_opus5-grok4.5-gpt-oss_36min.jsonl",
+   "matchId": "match-20260726-204805",
+   "date": 1785091686017,
+   "duration": "36:09",
+   "turns": 271,
+   "outcome": "last_standing",
+   "seed": "rms25i061oe94",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v61",
+   "build": 526,
+   "winner": "OR1 opus-5",
+   "players": [
+    {
+     "seat": 2,
+     "name": "OR1 opus-5",
+     "model": "anthropic/claude-opus-5",
+     "civ": "Persians",
+     "power": 4145,
+     "winner": true
+    },
+    {
+     "seat": 0,
+     "name": "RTX gpt-oss:latest",
+     "model": "gpt-oss:latest",
+     "civ": "Yamato",
+     "power": 123,
+     "winner": false
+    },
+    {
+     "seat": 1,
+     "name": "OR3 grok-4.5",
+     "model": "x-ai/grok-4.5",
+     "civ": "Egyptians",
+     "power": 107,
+     "winner": false
+    }
+   ],
+   "bytes": 3906369,
+   "default": true
+  },
+  {
+   "file": "2026-08-09_kimi-k3-gemma4-qwen3.8-ornith9b_25min.jsonl",
+   "matchId": "match-20260809-223447",
+   "date": 1786307687283,
+   "duration": "25:29",
+   "turns": 490,
+   "outcome": "last_standing",
+   "seed": "rmsm9h4qw29gs",
+   "difficulty": "easy",
+   "turnBased": false,
+   "promptVersion": "agents-rule-v62",
+   "build": 563,
+   "winner": "OR2 kimi-k3",
+   "players": [
+    {
+     "seat": 3,
+     "name": "OR2 kimi-k3",
+     "model": "moonshotai/kimi-k3:nitro",
+     "civ": "Yamato",
+     "power": 4415,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "dgx-gemma4-26b-a4b-mtp",
+     "model": "Gemma4-26B",
+     "civ": "Greeks",
+     "power": 97,
+     "winner": false
+    },
+    {
+     "seat": 2,
+     "name": "OR1 qwen3.8-max",
+     "model": "qwen/qwen3.8-max:nitro",
+     "civ": "Persians",
+     "power": 58,
+     "winner": false
+    },
+    {
+     "seat": 0,
+     "name": "RTX Ornith-9B-Q8",
+     "model": "C:\\Users\\Anwender\\ggufmodels\\Ornith-1.0-9B-Q8_0.gguf",
+     "civ": "Egyptians",
+     "power": 49,
+     "winner": false
+    }
+   ],
+   "bytes": 6689558,
+   "default": false
+  }
+ ]
+}

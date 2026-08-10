@@ -7,6 +7,10 @@ class UIManager {
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
         this.ARENA_PROMPT_VERSION = 'agents-rule-v62';
+        // The match a hosted copy opens with. samples/ holds several now; the full set
+        // and its metadata are in samples/index.json, which is what a picker has to
+        // read because GitHub Pages cannot list a directory.
+        this.SAMPLE_MATCH = '2026-07-26_opus5-grok4.5-gpt-oss_36min.jsonl';
     }
 
     showScreen(screenId) {
@@ -4051,6 +4055,7 @@ class UIManager {
     }
 
     anOpen() {
+        this.anLoadSampleIndex();
         this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
         this.showScreen('analyzeScreen');
         this.anRender();
@@ -4091,7 +4096,43 @@ class UIManager {
     // fetch() needs an http(s) origin. Opened straight off disk as file:// this throws,
     // which is the one failure someone poking at a clone is actually likely to hit, so
     // it is reported with the fix rather than swallowed into the console.
-    anLoadSample() {
+    // The samples/ folder is listed by samples/index.json, because GitHub Pages
+    // cannot enumerate a directory and a hosted copy has no other way to learn what is
+    // there. Read once per session; the picker only appears when there is a choice to
+    // make, so a checkout carrying a single match shows no control at all and one
+    // carrying five needs no code change.
+    anLoadSampleIndex() {
+        if (this._sampleIndex) return Promise.resolve(this._sampleIndex);
+        return fetch('samples/index.json')
+            .then(r => (r.ok ? r.json() : null))
+            .then(ix => {
+                const list = (ix && Array.isArray(ix.matches)) ? ix.matches : [];
+                this._sampleIndex = list;
+                this.anFillSamplePicker(list);
+                return list;
+            })
+            .catch(e => { console.warn('[analyzer] sample index unavailable', e); return []; });
+    }
+
+    // One line per match, from the metadata already in the index: nothing here is
+    // derived from the transcript, so adding a match is an index entry and a file.
+    anFillSamplePicker(list) {
+        const sel = document.getElementById('anSampleSel');
+        if (!sel) return;
+        if (!list || list.length < 2) { sel.style.display = 'none'; return; }
+        const esc = v => this.escapeHtml(String(v == null ? '' : v));
+        sel.innerHTML = list.map(m => {
+            const day = m.date ? new Date(m.date).toISOString().slice(0, 10) : '';
+            const tempo = m.turnBased ? t('an.turnBased') : t('an.realTime');
+            const bits = [day, m.duration, tempo, m.winner].filter(Boolean);
+            return `<option value="${esc(m.file)}">${esc(bits.join(' \u00b7 '))}</option>`;
+        }).join('');
+        const cur = this._sampleFile || (list.find(m => m.default) || list[0] || {}).file;
+        if (cur) sel.value = cur;
+        sel.style.display = '';
+    }
+
+    anLoadSample(file0) {
         // Say what is happening while it happens. The placeholder underneath reads "load
         // a .jsonl file the Arena saved", which is right for someone who opened an empty
         // analyzer -- and exactly wrong for the seconds a hosted copy spends fetching
@@ -4102,12 +4143,22 @@ class UIManager {
         // Put the placeholder back either way, so a file loaded later that turns out to
         // be unreadable shows its own message rather than this one, frozen mid-load.
         const restore = () => { if (empty) empty.textContent = t('an.empty'); };
-        fetch('samples/sample-match.jsonl')
+        // samples/ now holds more than one match, so the name lives in one place. The
+        // set and its metadata are listed in samples/index.json, which is what a picker
+        // has to read: GitHub Pages cannot list a directory.
+        const list = this._sampleIndex || [];
+        const file = file0
+            || (list.find(m => m.default) || list[0] || {}).file
+            || this.SAMPLE_MATCH;
+        this._sampleFile = file;
+        const sel = document.getElementById('anSampleSel');
+        if (sel && sel.value !== file) sel.value = file;
+        fetch('samples/' + file)
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
             .then(text => {
                 this.anStopPlay();   // a fresh load starts stopped, as a file load does
                 this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
-                this.analyzer.load(text, 'sample-match.jsonl');
+                this.analyzer.load(text, file);
                 this._anFramed = false;
                 this.resetChartCache();
                 this.anRender();
