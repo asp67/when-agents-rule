@@ -4707,10 +4707,28 @@ class Game {
         // questions carry their own abort handle and survive this.
         if (this.openAIAIManager) this.openAIAIManager.stop();
 
+        // Guarded: the wait can now end two ways -- the answers arriving, or somebody
+        // giving up on them -- and both must not run the ending twice.
+        let ended = false;
         const finish = () => {
+            if (ended) return;
+            ended = true;
+            this._skipFinalWords = null;
             if (this.ui.hideFinalWordsWait) this.ui.hideFinalWordsWait();
             if (this.ui.teardownSpectatorUI) this.ui.teardownSpectatorUI();
             this.ui.showArenaSummary(winnerAi, reason);
+        };
+        // The way out. A match ended on purpose is worth the wait; a match ended BECAUSE
+        // an endpoint is broken is not, and there the wait is spent on the very thing
+        // that failed. Aborts the questions rather than only hiding the note, so nothing
+        // keeps running behind the summary.
+        this._skipFinalWords = () => {
+            try {
+                if (this.openAIAIManager && this.openAIAIManager.cancelFinalWords) {
+                    this.openAIAIManager.cancelFinalWords();
+                }
+            } catch (e) { console.warn('[arena] could not cancel final words', e); }
+            finish();
         };
         // This used to be fire-and-forget, with the summary up before a single answer
         // was back. Every closing statement takes an endpoint round trip, and a wonder

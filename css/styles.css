@@ -2627,3 +2627,10 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
     background:var(--bg-1); color:#cfd8ea; border:1px solid rgba(255,255,255,.16);
     font-size:0.82em; cursor:pointer; }
 .an-samples:hover { border-color:var(--gold); }
+
+/* Deliberately quiet: waiting is the right default, and this is the exit for the
+   ending nobody wanted. */
+.fw-skip { margin-top:16px; padding:6px 14px; cursor:pointer; font-size:.82rem;
+    background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,.22);
+    border-radius:6px; transition:color .15s, border-color .15s; }
+.fw-skip:hover { color:#dfe6f5; border-color:var(--gold); }

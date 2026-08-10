@@ -3657,6 +3657,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // which aborts whatever handle each controller holds — hanging this on the same
         // one would have it cancel itself at exactly the moment it is asked.
         const abort = new AbortController();
+        // Reachable from outside, so the wait can be abandoned. The handle was private
+        // and the only way out was the timeout, which is the right bound for an ending
+        // somebody wanted and far too long for one they are escaping.
+        (this._finalWordAborts || (this._finalWordAborts = [])).push(abort);
         const timer = setTimeout(() => abort.abort(), OpenAIAIManager.FINAL_WORD_TIMEOUT_MS);
         const t0 = Date.now();
         let text = '', tokens = null, error = null;
@@ -3727,6 +3731,16 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
     // Ask every seat that has not been asked yet. Returns a promise so a caller can
     // wait, but nothing has to: the recorder places a late answer correctly either way.
+    // Drop every closing question still in flight. Used when a match is ended because
+    // an endpoint is misbehaving: the answers are not worth waiting on precisely
+    // because the thing being asked is the thing that is broken.
+    cancelFinalWords() {
+        const list = this._finalWordAborts || [];
+        this._finalWordAborts = [];
+        list.forEach(a => { try { a.abort(); } catch (e) { /* already settled */ } });
+        return list.length;
+    }
+
     collectFinalWords(reason, winnerAi, onProgress) {
         const pend = (this.aiControllers || []).filter(c => c && !c._finalWordAsked);
         const total = pend.length;

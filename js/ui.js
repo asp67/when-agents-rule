@@ -2266,7 +2266,8 @@ class UIManager {
         el.innerHTML = '<div class="fw-card"><div class="fw-title">'
             + this.escapeHtml(t('arena.finalWords')) + '</div><div class="fw-count">'
             + this.escapeHtml(t('arena.finalWordsCount', { done: done, n: total }))
-            + '</div></div>';
+            + '</div><button class="fw-skip" onclick="game._skipFinalWords && game._skipFinalWords()">'
+            + this.escapeHtml(t('arena.finalWordsSkip')) + '</button></div>';
     }
 
     hideFinalWordsWait() {
