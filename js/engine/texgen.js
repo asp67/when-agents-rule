@@ -628,7 +628,12 @@
     // the renderer's ground plane and surf ribbon, and the terrain's walkability.
     TexGen.TERRAIN_SEED = 12345;
     TexGen.TERRAIN_WORLD = 1000;
-    TexGen.TERRAIN_LAND = 400;
+    // 400 put the waterline THROUGH the play square: with COAST_WOBBLE the shore ran
+    // between 387 and 413, so parts of an 800x800 map were sea. 33 of the 1764
+    // exploration cells sat in water across 14 of the 49 tiles, none of which could
+    // ever read 100% -- and one match spent 91 scouts on a tile it could not finish.
+    // 417 puts the whole square ashore with the wobble's 13 to spare.
+    TexGen.TERRAIN_LAND = 417;
     TexGen.coastNoise = (rand) => TexGen.noiseSampler(TexGen.COAST_CELLS, rand);
     // Standalone version for callers outside the texture bake. Inside TexGen.terrain
     // the coast sampler is the FIRST one drawn from the seeded stream, so drawing it

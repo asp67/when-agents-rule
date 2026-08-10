@@ -29,7 +29,7 @@
     //
     // Raising it also lengthens the wheel's zoom-out in play, which is the point: the
     // cap is what a reader hits when they try to see the whole board and cannot.
-    const MIN_HALF = 10, MAX_HALF = 400;
+    const MIN_HALF = 10, MAX_HALF = 520;
     // Scene ambient. Lives here rather than inline at the draw call because the
     // sea colour beyond the map has to be derived from the SAME value — two
     // copies drifting apart is exactly what put a visible seam at the horizon.
@@ -339,10 +339,17 @@
             // across the screen it is only aspect, so whichever wants more zoom wins.
             // Slamming to MAX_HALF instead would have opened a wide monitor on a tiny
             // island adrift in blue the moment that cap was raised for narrow ones.
-            const size = (this.terrain && this.terrain.size > 0) ? this.terrain.size : 800;
+            // Frame the COASTLINE with open water around it, not the play square. The
+            // square is entirely land now, so fitting it exactly would fill the frame
+            // edge to edge and the island would stop reading as an island -- which is
+            // what the wide B-roll, the thumbnails and the showcase's opening shot are
+            // all built on. The shore is what the eye reads as the map's edge, so that
+            // is what the shot is composed around.
+            const coast = TERRAIN_LAND + (TexGen.COAST_WOBBLE || 0) / 2;
+            const extent = coast * 2 * 1.10;   // outermost shore, plus sea to sit in
             const aspect = (this.W || 1) / (this.H || 1);
-            const need = Math.max(size * Math.sin(this._pitch), size / aspect) / 2;
-            this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, need * 1.06));  // 6% of coast
+            const need = Math.max(extent * Math.sin(this._pitch), extent / aspect) / 2;
+            this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, need * 1.06));
         }
 
         moveCameraTo(x, z) {
