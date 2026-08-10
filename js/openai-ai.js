@@ -231,10 +231,49 @@ class OpenAIAIManager {
     // rather than straddling its border. Random rather than the centre on purpose:
     // one stop reveals only a few percent of a 114-unit tile, so repeated explores
     // of the same tile need to land in different parts of it to fill it in.
-    pointInTile(game, row, col, inset) {
+    pointInTile(game, row, col, inset, owner) {
         const T = game.EXPLORE_TILES || 7;
         const size = (game.terrain && game.terrain.size) || 800;
         const cell = size / T, half = size / 2;
+
+        // Aim at the DARKEST cell this owner has in the tile, not at a random point in
+        // it. The old aim was inset by the scout's own vision radius so it never stood
+        // near an edge -- which put a tile's corner cells out of reach, since from an
+        // inset corner the corner itself is vision*sqrt(2) away. One match sent 91
+        // scouts at C5 and left it stuck at 34 of 36 cells for three hours of game
+        // time, every reply ending "expect to send scouts there again".
+        //
+        // This is not the harness playing. The model asked to explore C5; walking to
+        // the part of C5 it has not seen is what that order MEANS, where a random point
+        // mostly re-swept ground it already had.
+        //
+        // Unwalkable cells are skipped: a scout aimed into the sea is held at the
+        // shoreline by keepUnitsAshore and would leave that cell dark forever, which is
+        // the same loop wearing different clothes.
+        const G = game.EXPLORE_GRID || 42;
+        const S = Math.max(1, Math.round(G / T));
+        const cw = size / G;
+        const seen = owner && owner._explored;
+        if (seen) {
+            let bestVal = Infinity, cands = [];
+            for (let z = row * S; z < (row + 1) * S; z++) {
+                for (let x = col * S; x < (col + 1) * S; x++) {
+                    const cx = -half + (x + 0.5) * cw, cz = -half + (z + 0.5) * cw;
+                    if (game.terrain && game.terrain.isWalkable && !game.terrain.isWalkable(cx, cz)) continue;
+                    const v = seen[z * G + x] || 0;
+                    if (v < bestVal) { bestVal = v; cands = [[cx, cz]]; }
+                    else if (v === bestVal) cands.push([cx, cz]);
+                }
+            }
+            // bestVal >= 1 means every reachable cell is already seen; fall through to
+            // the old behaviour so a re-sweep for enemies still spreads out.
+            if (cands.length && bestVal < 1) {
+                const [cx, cz] = cands[Math.floor(Math.random() * cands.length)];
+                // Jitter inside the cell so two scouts at one cell do not stack.
+                return game.clampToMap(cx + (Math.random() - 0.5) * cw * 0.6,
+                                       cz + (Math.random() - 0.5) * cw * 0.6);
+            }
+        }
         const pad = Math.min(inset || 0, cell / 2 - 1);
         const x0 = col * cell - half + pad, x1 = (col + 1) * cell - half - pad;
         const z0 = row * cell - half + pad, z1 = (row + 1) * cell - half - pad;
@@ -5314,7 +5353,15 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const lastCol = String.fromCharCode(64 + T);
         // Optional: name a unit to scout with (id like "scout_cavalry" or a category
         // like "cavalry"/"worker"); omit it to auto-pick the best scout.
-        const preferredType = params.unitType ? String(params.unitType).trim() : null;
+        // move_units and attack_target take {type: count}, so a model writing
+        // {"worker": 1} here is using the vocabulary as taught. It used to be handed to
+        // String(), which yields "[object Object]" -- and that went straight into the
+        // reply the model reads, ninety-one times in one match, inside the sentence
+        // meant to explain which scout it got instead. Accept the map, take the type.
+        const rawType = params.unitType;
+        const preferredType = (rawType && typeof rawType === 'object' && !Array.isArray(rawType))
+            ? (Object.keys(rawType)[0] || null)
+            : (rawType ? String(rawType).trim() : null);
         const raw = params.tile;
         const gave = OpenAIAIManager.given(raw);
 
@@ -5344,7 +5391,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // Aim somewhere inside the tile, inset by the scout's own sight radius so it
         // reveals ground rather than hugging the border.
         const vision = game.unitVision ? game.unitVision(scout) : 15;
-        const { x: tx, z: tz } = this.pointInTile(game, t.row, t.col, vision);
+        const { x: tx, z: tz } = this.pointInTile(game, t.row, t.col, vision, ai);
         const eta = this.travelEtaSec(scout, tx, tz);
         this.releaseUnitForOrders(scout); // cleanly drop any harvest/farm/combat job
         scout.task = scout.type === 'worker' ? 'scouting' : null;
