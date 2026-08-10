@@ -3308,6 +3308,12 @@ class UIManager {
         // the button lying about the world for as long as a slow endpoint takes.
         if (pstate === 'paused')       btn.textContent = `⏸ ${t('spec.simPaused')}`;
         else if (pstate === 'pausing') btn.textContent = `⏳ ${t('spec.simPausing')}`;
+        // Locked: lead with the speed that is RUNNING and keep the choice beside it,
+        // struck through. The class alone said "not this" without ever saying what
+        // instead, so the control answered "what did I pick" while the only question
+        // being asked of it was "how fast is this going".
+        else if (locked)               btn.innerHTML = `⏱ ${this.simSpeedLabel(eff)}×`
+                                           + `<span class="sb-speed-set">${this.simSpeedLabel(set)}×</span>`;
         else                           btn.textContent = `⏱ ${this.simSpeedLabel(set)}×`;
         btn.classList.toggle('sb-on', set !== 1 || pstate !== 'running');
         btn.classList.toggle('is-paused', pstate !== 'running');

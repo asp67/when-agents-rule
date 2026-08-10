@@ -2240,7 +2240,11 @@ body.spectator-mode #unitInfo.spectator-card {
    at 1x regardless of the setting — dimmed rather than relabelled, so the chosen
    speed stays visible and the tooltip explains why it is not in effect. */
 .sb-speed { min-width: 60px; font-variant-numeric: tabular-nums; }
-.sb-speed.is-locked { opacity: 0.55; text-decoration: line-through; }
+/* The strike belongs on the CHOICE, not on the whole control: the number now
+   leading the button is the one actually running, and dimming that said the
+   opposite of what it means. */
+.sb-speed.is-locked { opacity: 1; text-decoration: none; }
+.sb-speed .sb-speed-set { margin-left: 5px; opacity: 0.55; text-decoration: line-through; }
 /* A speed a standing Wonder is holding out of reach. Struck rather than removed or
    disabled: picking one still records it for when the Wonder falls, and taking that
    away would cost a real capability to fix a display problem. */

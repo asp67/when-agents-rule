@@ -2001,7 +2001,14 @@ class OpenAIAIManager {
             // were permanently 0 and false for every seat. Tokens spent every turn to
             // imply a clock that never moved. The owner's real clock now rides on its
             // own wonder as secondsUntilYouWin.
-            wonderRequired: this.realSecs(required * 1000),
+            // NOT realSecs. Every other duration is converted to real seconds at the
+            // speed currently running, which is right for them -- but this one describes
+            // a clock that can only ever tick at 1x, because anyWonderStanding() forces
+            // the match back to 1x the moment a Wonder exists. Quoting it at 4x told a
+            // model it had to hold for 150s; it spent its economy on that promise, the
+            // Wonder went up, the speed dropped, and the requirement became 600s. A
+            // number invalidated by the one act it exists to describe.
+            wonderRequired: required,
             opponents: aiOpponents
         };
 
@@ -4244,7 +4251,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // The old build_wonder reply ended "defend it, rivals will rush it!" — an order
         // with an exclamation mark. The hold time is the part that was a fact.
         const tail = isWonderBuild
-            ? ` This is your Wonder: once complete it must stand for ${this.realSecs((game.wonderRequired || 600) * 1000)}s for you to win the match.`
+            // Raw seconds, for the same reason as gameStats.wonderRequired above: by
+            // the time this sentence is true the match is already back at 1x.
+            ? ` This is your Wonder: once complete it must stand for ${(game.wonderRequired || 600)}s for you to win the match.`
             : '';
         return pick.restore
             ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.${tail}`
