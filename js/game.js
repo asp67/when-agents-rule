@@ -195,6 +195,13 @@ class Game {
                 this.renderer.setSize(width, height);
                 this.renderer.camera.aspect = width / height;
                 this.renderer.camera.updateProjectionMatrix();
+                // Frame again now that the real size is known. The fit divides by the
+                // aspect, and until this line runs the renderer is still carrying
+                // whatever it measured while the game screen was hidden -- the window
+                // size if it was lucky, 1280x720 if it was not. Framing twice costs two
+                // divisions and no draw: the first keeps the opening frame from being
+                // wrong, this one keeps it from staying wrong.
+                this.renderer.frameWholeMap();
             }
         }, 100);
 
@@ -309,11 +316,19 @@ class Game {
         if (this.fogOfWar) this.fogOfWar.destroy(); // drop the previous game's fog overlay
         this.fogOfWar = new FogOfWarManager(this);
 
-        // Setup camera for spectator mode — angled overview that frames the battlefield
-        // (mouse wheel zooms in/out from here).
-        this.renderer.cameraTarget.set(0, 0, 0);
-        this.renderer.camera.position.set(0, 205, 265);
-        this.renderer.camera.lookAt(0, 0, 0);
+        // Open on the whole island, square to the screen -- the analyzer's opening shot,
+        // and for the same reason. A match nobody has watched yet has no interesting
+        // place to point at, so point at all of it.
+        //
+        // What this replaces was a distance in disguise. camera.position.set() is a
+        // compatibility shim that turns the eye's distance from the target into a zoom
+        // level, and (0, 205, 265) is 335 away, which lands on a half-height of 101 on a
+        // map that runs to 400. So an arena opened on a quarter of the width, centred on
+        // the one part of the board where nothing happens at 00:00: both bases start off
+        // screen and the viewer's first act is to zoom out and go looking for them. The
+        // yaw was left at the play camera's 45 degrees as well, which stands a square map
+        // up as a lozenge.
+        this.renderer.frameWholeMap();
 
         // Setup spectator UI
         this.ui.setupSpectatorUI();
