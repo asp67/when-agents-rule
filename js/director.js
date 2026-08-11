@@ -105,12 +105,21 @@ class Director {
         this.shot = null;
         this.recent = [];
         this.compareQueue = [];
+        this._shotNo = {};
     }
 
     // ---- geometry ----------------------------------------------------------
     // "Stand behind this vector and look up it." The one composition primitive.
     yawAlong(dx, dz) {
         return Math.atan2(-dx, -dz);
+    }
+    // Shortest signed distance between two angles. Comparing raw radians would call
+    // 359 degrees and 1 degree a two-turn difference.
+    angleGap(a, b) {
+        let d = a - b;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        return d;
     }
     snapYaw(a) {
         const s = Math.round(a / DIR_YAW_STEP) * DIR_YAW_STEP;
@@ -248,7 +257,20 @@ class Director {
             const v = b.isWonder ? 55 : (b.type === 'town_center' ? 40 : 22);
             if (v > w) { w = v; best = b; }
         }
-        return { b: best, w };
+        // Remembered for six seconds, because _prevHp only shows a DROP -- it compares
+        // against the last look, so a building is "under attack" in the instant a blow
+        // lands and not in the gaps between them. Read literally, an assault flickers
+        // on and off several times a second, and the framing rule that keeps the
+        // besieged building out of the way flickers with it: the camera would swing
+        // right around the back the moment nobody happened to be swinging.
+        const memo = (this._siege = this._siege || new Map());
+        const key = Math.round(f.x / 70) + ':' + Math.round(f.z / 70);
+        const now = Date.now();
+        if (best) { memo.set(key, { b: best, w, until: now + 6000 }); return { b: best, w }; }
+        const held = memo.get(key);
+        if (held && held.until > now && held.b && held.b.health > 0) return { b: held.b, w: held.w };
+        if (held) memo.delete(key);
+        return { b: null, w: 0 };
     }
 
     // How built-up the ground is. A fight among buildings is a fight FOR something and
@@ -279,12 +301,27 @@ class Director {
             const town = this.townAt(f);
             push('brawl', key,
                  100 + Math.min(45, f.n * 3) + siege.w + Math.min(18, town * 3), () => {
-                // Reverse angle each time we come back to THIS fight, so a long assault
-                // is covered from several sides rather than stared at from one.
-                const side = (this.recent.filter(k => k === key).length % 4);
+                // A MONOTONIC count per fight, not a count of the last six shots. The
+                // window saturates during a long battle -- every slot already holds this
+                // key, so the number stopped changing and the "new" shot came back on
+                // the SAME angle. All that moved was the six degrees of pan snapping
+                // back to its start, which is not a cut and not a hold: it is a stutter.
+                // Counting the fight's own shots means every return is a real angle.
+                this._shotNo = this._shotNo || {};
+                const nth = (this._shotNo[key] = (this._shotNo[key] || 0) + 1);
+                // Where to stand. With a building under attack the answer is not "any
+                // of four sides": stand OPPOSITE it, so the thing being fought over sits
+                // BEYOND the melee rather than between the camera and it. A town centre
+                // is tall and wide and will happily fill the frame with roof while the
+                // fight happens behind it. Vary within a quarter-turn of that so the
+                // coverage still changes without ever swinging around the back.
+                const facing = siege.b
+                    ? this.yawAlong(siege.b.x - f.x, siege.b.z - f.z)
+                    : Math.PI / 4;
+                const vary = siege.b ? ((nth % 3) - 1) * (Math.PI / 4) : (nth % 4) * (Math.PI / 2);
                 return {
                     x: f.x, z: f.z,
-                    yaw: this.snapYaw(side * Math.PI / 2 + Math.PI / 4),
+                    yaw: this.snapYaw(facing + vary),
                     halfH: Math.max(24, Math.min(90, f.r * 1.5 + 18)),
                     subject: { kind: 'point', x: f.x, z: f.z, combat: true, key }
                 };
@@ -563,10 +600,23 @@ class Director {
         if (this.recent.length > DIR_RECENT) this.recent.shift();
         const owner = key.split(':')[1];
         if (owner) this.lastSeen.set(owner, now);
-        pose.yaw0 = pose.yaw;                       // the compass angle the cut landed on
+
+        // Which way the arc goes. It used to alternate every shot, which is right when
+        // every shot is a new angle and wrong the moment two land on the same one: the
+        // camera then drifts left, snaps back, drifts right, snaps back -- a see-saw
+        // built out of two shots that should have been one. So the direction turns
+        // around only when the SCENE does, and a shot that lands on the same angle and
+        // the same place as the one before it is not a new scene at all: it carries the
+        // drift forward from where it got to, and does not cut.
+        const prev = this.shot;
+        const same = prev && prev.key === key
+            && Math.abs(this.angleGap(pose.yaw, prev.pose.yaw0)) < 0.02
+            && Math.hypot(pose.x - prev.pose.x, pose.z - prev.pose.z) < 30;
+        pose.yaw0 = same ? prev.pose.yaw : pose.yaw;   // no snap-back on a continuation
+        if (same) pose.yaw = prev.pose.yaw;
         return { type, key, score, pose, subject: pose.subject, born: now,
-                 until: now + dur, cutDone: false,
-                 panDir: (this.recent.length % 2) ? 1 : -1 };
+                 until: now + dur, cutDone: !!same,
+                 panDir: prev ? (same ? prev.panDir : -prev.panDir) : 1 };
     }
 
     // ---- ?dir=1 ------------------------------------------------------------
