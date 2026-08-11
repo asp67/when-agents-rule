@@ -1651,10 +1651,28 @@ class Game {
         this._combatPings = this._combatPings || [];
         this._combatPings.push({ x, z, until: now + 4000 });
         if (this._combatPings.length > 30) this._combatPings.shift();
-        // Feed for the spectator action camera (recent-fight centroid).
+        // Feed for the spectator action camera. THROTTLED PER CELL, like the battle
+        // ring above it and for a sharper reason: every damage tick was pushed, so a
+        // twenty-unit melee filled a 120-entry buffer in about a second and evicted
+        // every other fight on the map. A second battle then did not exist as far as
+        // the camera was concerned -- and "cut between two brawls" failed exactly when
+        // one of them was big, which is when it matters. Found by staging two fights
+        // and watching the director report one.
+        //
+        // One event per 25-unit cell per 350ms. That also makes the count a better
+        // measure of a fight than raw ticks were: it now counts how much GROUND is
+        // being fought over and for how long, instead of how many swings landed, so a
+        // dense scrum no longer outranks a wide assault simply by hitting more often.
         this._combatEvents = this._combatEvents || [];
-        this._combatEvents.push({ x, z, t: now });
-        if (this._combatEvents.length > 120) this._combatEvents.shift();
+        this._camCells = this._camCells || {};
+        const ck = Math.round(x / 25) + ':' + Math.round(z / 25);
+        if (!this._camCells[ck] || now - this._camCells[ck] > 350) {
+            this._camCells[ck] = now;
+            this._combatEvents.push({ x, z, t: now });
+            // Age, not count, is what the director reads (it filters to the last 6s);
+            // the cap is only a backstop against a match nobody is watching.
+            if (this._combatEvents.length > 400) this._combatEvents.shift();
+        }
     }
 
     // Spectator action camera: toggled from the status bar. When on, the renderer
