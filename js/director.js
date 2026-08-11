@@ -33,7 +33,8 @@
 // so the camera LOOKS along -(sin yaw, cos yaw). Everything below composes with
 // one helper, yawAlong(dx, dz) = atan2(-dx, -dz): "put the camera behind this
 // vector and look up it." Behind a marching army, past a tower at what it is
-// shooting, over a worker camp at the enemy town on the horizon — one rule.
+// shooting, over a worker camp at the enemy town on the horizon — one rule, and
+// behind a scout walking into fog it has not lifted yet.
 // ============================================================================
 
 const DIR_YAW_STEP = Math.PI / 4;          // eight compass angles
@@ -53,6 +54,7 @@ const DIR_SHOTS = {
     wonder:    { dur: [6000, 8000],   pitch: 0.34, track: false, push: 0.10 },
     follow:    { dur: [6000, 9000],   pitch: 0.36, track: true,  push: 0 },
     walk:      { dur: [5000, 7000],   pitch: 0.25, track: true,  push: 0 },
+    scout:     { dur: [6000, 8000],   pitch: 0.28, track: true,  push: 0 },
     site:      { dur: [5000, 7000],   pitch: 0.40, track: false, push: 0.12 },
     economy:   { dur: [6000, 8000],   pitch: 0.46, track: false, push: 0.05 },
     establish: { dur: [7000, 10000],  pitch: 0.58, track: false, push: 0.05 },
@@ -157,6 +159,48 @@ class Director {
         return { x: dx / L, z: dz / L, marching: n };
     }
 
+    // A lone unit a long way from home and still going: a scout.
+    //
+    // NOT task === 'scouting'. That flag is set only for WORKERS --
+    //     scout.task = scout.type === 'worker' ? 'scouting' : null
+    // because its job is keeping a worker out of the harvest rota, and a champion
+    // needs no such excuse. So the flag misses every military scout, which is the
+    // common case. Geometry catches both: alone, far from its own town, moving,
+    // and not on an errand.
+    //
+    // Excluding the errands matters. A worker walking to a distant node or out to
+    // build a house looks identical from a distance, and neither is exploration --
+    // though a worker explicitly marked scouting stays eligible whatever else it
+    // is carrying.
+    scoutOf(ai) {
+        const home = ai.buildings.find(b => b.type === 'town_center' && b.health > 0) || ai.buildings[0];
+        if (!home) return null;
+        let best = null, bestD = 110;          // nearer than this is just the suburbs
+        for (const u of ai.units) {
+            if (u.health <= 0 || !u.isMoving) continue;
+            if (u.targetX == null || u.targetZ == null) continue;
+            if (u.task !== 'scouting') {
+                if (u.harvestTarget || u.isHarvesting || u.isBuilding) continue;
+                if (u.task === 'harvesting' || u.task === 'carrying'
+                    || u.task === 'building' || u.task === 'farm_work') continue;
+            }
+            // Alone means ALONE: zero company, not "no crowd". Two together going
+            // somewhere is a raid and follow/walk owns it -- but each of a pair sees
+            // exactly ONE companion, so a "more than one" test waves every pair
+            // through calling itself a scout.
+            let near = 0;
+            for (const o of ai.units) {
+                if (o === u || o.health <= 0) continue;
+                if (Math.hypot(o.x - u.x, o.z - u.z) < 30) { near++; break; }
+            }
+            if (near) continue;
+            const d = Math.max(Math.hypot(u.x - home.x, u.z - home.z),
+                               Math.hypot(u.targetX - home.x, u.targetZ - home.z));
+            if (d > bestD) { bestD = d; best = u; }
+        }
+        return best;
+    }
+
     // ---- candidates --------------------------------------------------------
     candidates(now) {
         const g = this.game, out = [];
@@ -238,6 +282,24 @@ class Director {
                         subject: { kind: 'units', units: cluster }
                     }));
                 }
+            }
+
+            // Exploration is most of what a model does early and none of it was
+            // ever on camera: one unit, walking into the dark, which is the shot the
+            // whole "walk along behind them" idea was about. Framed from behind and
+            // looking up its heading, so the screen shows what it is about to find
+            // rather than where it has been.
+            const scout = this.scoutOf(ai);
+            if (scout) {
+                push('scout', 'scout:' + ai.id, 64, () => {
+                    const dx = scout.targetX - scout.x, dz = scout.targetZ - scout.z;
+                    const far = Math.hypot(dx, dz) > 6;
+                    return {
+                        x: scout.x, z: scout.z,
+                        yaw: this.snapYaw(far ? this.yawAlong(dx, dz) : 0),
+                        halfH: 26, subject: { kind: 'units', units: [scout] }
+                    };
+                });
             }
 
             // Something new going up, shown once, with a slow push in.
