@@ -2273,7 +2273,7 @@ Every other player is your enemy. No human plays for you: you command by issuing
 You win by either:
 Destroying the Town Centers and military buildings of ALL rivals, or Building your Wonder and holding it for gameStats.wonderRequired seconds.
 
-The LAST message carries your CURRENT state as JSON; decide from it and issue one action, or up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} in one reply. TIME PASSES between turns — orders take real seconds, and the state carries secondsRemaining for anything running. Work already under way continues on its own and does not occupy your turn; re-issuing it wastes the turn.
+The LAST message carries your CURRENT state as JSON; decide from it and issue one to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} actions. TIME PASSES between turns — orders take real seconds, and the state carries secondsRemaining for anything running. Work already under way continues on its own and does not occupy your turn; re-issuing it wastes the turn.
 
 - You never SEE a fight; it happens between your turns. "battles" reports each engagement, cumulative: both sides' composition, damage dealt to units and to buildings, priests' healing, and losses. Losing produces no error, so this is the only place you learn what beat you.
 - Priests never fight. They march with an attack and heal wounded units from the back on their own.
@@ -2282,18 +2282,18 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
 
-OUTPUT EXACTLY ONE RAW JSON OBJECT
-Format: {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }, "objective": "<1 line>", "plan": ["<step>", "<step>"]}
+OUTPUT ONE RAW JSON OBJECT AND NOTHING ELSE — no prose around it, no code fences. That object carries either a single action or a list.
+Format, one action:  {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }, "objective": "<1 line>", "plan": ["<step>", "<step>"]}
+Format, several:     {"commands": [{"action": "<ActionName>", "params": { ... }}, {"action": "<ActionName>", "params": { ... }}], "objective": "<1 line>", "plan": ["<step>", "<step>"]}
 
-OPTIONAL TOP-LEVEL FIELDS (beside "action", not inside "params"):
-objective: String (1 line). Persists across turns; omit to keep current.
-plan: Array of up to ${OpenAIAIManager.PLAN_MAX_STEPS} short strings. Persists across turns; omit to keep current.
-commands: Array of up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} action objects, to spend one turn on a whole beat of play.
-  Use it INSTEAD of the top-level "action": {"commands": [{"action":"...","params":{...}}, {"action":"...","params":{...}}], "objective": "..."}
-  One action is a complete reply — send "commands" only when you genuinely have several moves; a single "wait" is just as valid.
+"commands" TAKES UP TO ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} ACTION OBJECTS AND REPLACES "action". Either shape is a complete reply.
   They run IN ORDER on a board each one CHANGES, and you do not see between them, so order them so the cheap and certain moves go first:
   spend resources or population in the first command and a later one can be refused for what the first just used.
   Each is judged on its own — one refusal does not cancel the others, and you are told which number failed and why.
+
+OPTIONAL TOP-LEVEL FIELDS (beside "action"/"commands", not inside "params"):
+objective: String (1 line). Persists across turns; omit to keep current.
+plan: Array of up to ${OpenAIAIManager.PLAN_MAX_STEPS} short strings. Persists across turns; omit to keep current.
 
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
@@ -2549,7 +2549,20 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             tailNow.push(`${who} has completed a Wonder at (${worst.x}, ${worst.z}) [targetId "${worst.id}", ${worst.healthPct}% HP]. If it still stands in ${worst.secondsUntilEnemyWins}s, ${who} wins the match.`);
         }
         const lastHistResult = controller.conversationHistory.length ? String(controller.conversationHistory[controller.conversationHistory.length - 1].result) : null;
-        tailNow.push(`Here is your CURRENT game state. Analyze it and choose the single best action for THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
+        // "choose the single best action for THIS turn" stood here, in the LAST
+        // message, on every turn of every match. The system prompt has allowed three
+        // commands since July; this line never learned, and it is the more persuasive
+        // of the two by position alone -- last thing read, repeated hundreds of times.
+        // Models were paraphrasing it back verbatim ("I need to find the single best
+        // move") and then sending one command a turn. Measured over one match: the two
+        // large seats ignored it and averaged 2.5 commands a turn, while the two small
+        // ones followed it and sent one on 80% and 89% of their turns.
+        //
+        // It is the same fault as the Wonder countdown four lines above -- the harness
+        // deciding the shape of a turn rather than describing the board -- and it sat
+        // directly underneath that comment for a month. How many things to do is part
+        // of what is being measured.
+        tailNow.push(`Here is your CURRENT game state. Decide what to do on THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
         if (controller.pendingAdvice && controller.pendingAdvice.length) {
             const advice = controller.pendingAdvice.join(' ');
             controller.pendingAdvice = [];
