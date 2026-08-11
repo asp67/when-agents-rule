@@ -1275,7 +1275,12 @@ class OpenAIAIManager {
         const playerObj = {
             id: ai.id,
             civilization: ai.civilization,
-            civilizationName: civ?.name || ai.civilization,
+            // The same German source string, sent every turn of every match. Kept as
+            // a field (dropping it would change the state's shape for no gain) but
+            // translated into the model's own language.
+            civilizationName: (civ?.name && typeof tgIn === 'function')
+                ? tgIn((controller.model && controller.model.language) || 'en', civ.name)
+                : (civ?.name || ai.civilization),
             isHuman: false
         };
 
@@ -2362,9 +2367,27 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const players = ((this.game && this.game.aiManager && this.game.aiManager.aiPlayers.length) || 0)
             + ((this.game && !this.game.spectatorMode) ? 1 : 0);
 
+        // Both of these used to hand the model GERMAN, in the first two sentences it
+        // reads, in every match: civ.name is the German source string ("Ägypter",
+        // "Griechen", "Perser") and bonus.description is a German sentence
+        // ("Technologie 30% günstiger"). Nothing pointed it out because every in-match
+        // reply is JSON with English keys, and that format anchors the language all by
+        // itself -- so the leak only ever surfaced in the ONE free-form answer of a
+        // match. In match-20260811 four seats ran the same 9B model with language 'en'
+        // and one answered its closing statement entirely in German, quoting its own
+        // bonus line back word for word. Which seat mirrors it is chance; all four were
+        // being fed it.
+        //
+        // The civ is now the ID. That is what state.player.civilization says, what
+        // ownerName answers, and what every reference to a rival already looks like --
+        // one name for one thing, and no mapping to learn between the prompt and the
+        // state. The bonus is translated into the MODEL's language (not the UI's, which
+        // is a different setting entirely and belongs to whoever is watching).
+        const modelLang = (controller && controller.model && controller.model.language) || 'en';
+        const intoModelLang = (str) => (str && typeof tgIn === 'function') ? tgIn(modelLang, str) : str;
         return base
-            .replace(/\{\{civilization\}\}/g, civ?.name || ai.civilization)
-            .replace(/\{\{bonus\}\}/g, civ?.bonus?.description || 'None')
+            .replace(/\{\{civilization\}\}/g, ai.civilization)
+            .replace(/\{\{bonus\}\}/g, intoModelLang(civ?.bonus?.description) || 'None')
             .replace(/\{\{players\}\}/g, String(players || 2))
             .replace(/\{\{terrain\}\}/g, terrain)
             + langDirective;
