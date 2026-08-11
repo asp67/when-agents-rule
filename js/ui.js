@@ -720,7 +720,8 @@ class UIManager {
         // browser owns the popup here and survives the re-render.
         const modelIds = [...new Set(m.availableModels || [])]
             .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
-        const modelOpts = modelIds.map(id => `<option value="${e(id)}"></option>`).join('');
+        // Held for the filter, so typing never re-reads the DOM or the config.
+        (this._mdlIds || (this._mdlIds = {}))[m.id] = modelIds;
         // Say which of three situations this is: nothing discovered yet, a value that
         // came from the list, or one that did not. The last case used to be a "(manual)"
         // option appended to the select, and it is the one worth keeping -- a typo and a
@@ -853,10 +854,16 @@ class UIManager {
             </div>
             <div class="model-select-row">
                 <div class="arena-field" style="flex:1 1 340px"><label>${t('ar.fModelSelect')}</label>
-                    <input type="text" list="mdl-${m.id}" value="${e(m.model)}" placeholder="model-id"
-                        oninput="game.ui.setModelField(${m.id},'model',this.value)"
-                        onchange="game.ui.chooseArenaModel(${m.id}, this.value)">
-                    <datalist id="mdl-${m.id}">${modelOpts}</datalist>
+                    <div class="mdl-combo">
+                        <input type="text" class="mdl-input" id="mdlIn-${m.id}" value="${e(m.model)}"
+                            placeholder="model-id" autocomplete="off" spellcheck="false"
+                            oninput="game.ui.mdlType(${m.id}, this.value)"
+                            onfocus="game.ui.mdlShow(${m.id})"
+                            onkeydown="game.ui.mdlKey(event, ${m.id})">
+                        <button type="button" class="mdl-caret" tabindex="-1"
+                            onclick="game.ui.mdlToggle(${m.id})">▾</button>
+                        <div class="mdl-pop" id="mdlPop-${m.id}" hidden></div>
+                    </div>
                     ${modelNote}</div>
                 <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fMaxTokens')}</label>
                     <input type="number" min="64" step="64" value="${e(m.maxTokens)}" oninput="game.ui.setModelField(${m.id},'maxTokens',this.value)" placeholder="2000"></div>
@@ -1052,6 +1059,133 @@ class UIManager {
     setAuthType(id, type) { const m = this.getArenaModel(id); if (m) { m.auth.type = type; if (type === 'header' && !m.auth.headers.length) m.auth.headers.push({ name: '', value: '' }); this.saveArenaConfig(); this.renderArenaLibrary(); } }
     addAuthHeader(id) { const m = this.getArenaModel(id); if (m) { m.auth.headers.push({ name: '', value: '' }); this.saveArenaConfig(); this.renderArenaLibrary(); } }
     removeAuthHeader(id, idx) { const m = this.getArenaModel(id); if (m) { m.auth.headers.splice(idx, 1); this.saveArenaConfig(); this.renderArenaLibrary(); } }
+    // ---- model combobox ---------------------------------------------------
+    // A native <datalist> was tried first and is the wrong tool at this size: the
+    // browser owns the popup's position and height, and with 405 ids it rendered
+    // detached from the field, the full height of the page, over the hint line. None
+    // of that is reachable from CSS. So the popup is ours.
+    //
+    // Safe to own, because nothing re-renders while it is open: setModelField saves
+    // without redrawing, and only picking a value calls chooseArenaModel. That was
+    // the objection to a custom widget, and it does not apply here.
+    mdlIds(id) { return (this._mdlIds && this._mdlIds[id]) || []; }
+
+    // Every term must appear, in any order, anywhere. "qwen 27" finds
+    // qwen/qwen3.5-27b; "claude" finds anthropic/claude-opus-4, which no prefix match
+    // ever will, because every id on OpenRouter starts with a vendor nobody searches
+    // by. Ranked so a hit on the MODEL name outranks one on the vendor -- typing
+    // "gemma" should not bury google/gemma-3 under everything google ships.
+    mdlMatch(id, q) {
+        const ids = this.mdlIds(id);
+        const terms = String(q || '').toLowerCase().split(/[\s\/]+/).filter(Boolean);
+        if (!terms.length) return ids.slice(0, 400);
+        const hits = [];
+        for (const one of ids) {
+            const low = one.toLowerCase();
+            const slash = low.indexOf('/');
+            const tail = slash >= 0 ? low.slice(slash + 1) : low;
+            if (!terms.every(term => low.includes(term))) continue;
+            hits.push([tail.startsWith(terms[0]) ? 0 : (low.startsWith(terms[0]) ? 1 : 2), one]);
+        }
+        hits.sort((a, b) => a[0] - b[0] || a[1].localeCompare(b[1]));
+        return hits.map(h => h[1]).slice(0, 400);
+    }
+
+    mdlShow(id) {
+        const pop = document.getElementById('mdlPop-' + id);
+        const inp = document.getElementById('mdlIn-' + id);
+        if (!pop || !inp) return;
+        // An open box starts unfiltered even when the field holds a value: the value
+        // is what you picked last time, not what you are looking for now.
+        this._mdlQ = (this._mdlQ || {});
+        const list = this.mdlMatch(id, this._mdlQ[id] || '');
+        this._mdlOpen = id;
+        this._mdlSel = Math.max(0, list.indexOf(inp.value));
+        this.mdlPaint(id, list);
+        pop.hidden = false;
+        if (!this._mdlAway) {
+            this._mdlAway = (ev) => {
+                if (this._mdlOpen == null) return;
+                const box = document.getElementById('mdlPop-' + this._mdlOpen);
+                const field = document.getElementById('mdlIn-' + this._mdlOpen);
+                if (box && !box.contains(ev.target) && ev.target !== field
+                    && !(ev.target.classList && ev.target.classList.contains('mdl-caret'))) {
+                    this.mdlClose();
+                }
+            };
+            document.addEventListener('mousedown', this._mdlAway, true);
+        }
+    }
+
+    mdlPaint(id, list) {
+        const pop = document.getElementById('mdlPop-' + id);
+        if (!pop) return;
+        const e = (x) => this.escapeHtml(String(x == null ? '' : x));
+        if (!list.length) { pop.innerHTML = `<div class="mdl-none">${e(t('ar.modelNoMatch'))}</div>`; return; }
+        // The vendor greyed and the model name bright: on a list where every line
+        // starts with the same eleven characters, that is the difference between
+        // scanning and reading.
+        pop.innerHTML = list.map((one, i) => {
+            const cut = one.indexOf('/');
+            const head = cut >= 0 ? one.slice(0, cut + 1) : '';
+            const tail = cut >= 0 ? one.slice(cut + 1) : one;
+            return `<div class="mdl-row${i === this._mdlSel ? ' on' : ''}" data-v="${e(one)}"
+                onmousedown="game.ui.mdlPick(${id}, this.getAttribute('data-v'))"
+                >${head ? `<span class="mdl-v">${e(head)}</span>` : ''}${e(tail)}</div>`;
+        }).join('');
+        const on = pop.querySelector('.mdl-row.on');
+        if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+    }
+
+    mdlType(id, value) {
+        this.setModelField(id, 'model', value);
+        (this._mdlQ || (this._mdlQ = {}))[id] = value;
+        this._mdlSel = 0;
+        const list = this.mdlMatch(id, value);
+        const pop = document.getElementById('mdlPop-' + id);
+        if (pop) { pop.hidden = false; this._mdlOpen = id; this.mdlPaint(id, list); }
+    }
+
+    mdlToggle(id) {
+        const pop = document.getElementById('mdlPop-' + id);
+        if (pop && !pop.hidden) { this.mdlClose(); return; }
+        const inp = document.getElementById('mdlIn-' + id);
+        if (inp) inp.focus();
+        this.mdlShow(id);
+    }
+
+    mdlClose() {
+        if (this._mdlOpen == null) return;
+        const pop = document.getElementById('mdlPop-' + this._mdlOpen);
+        if (pop) pop.hidden = true;
+        this._mdlOpen = null;
+    }
+
+    mdlKey(ev, id) {
+        const pop = document.getElementById('mdlPop-' + id);
+        const open = pop && !pop.hidden;
+        const list = this.mdlMatch(id, (this._mdlQ && this._mdlQ[id]) || '');
+        if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+            ev.preventDefault();
+            if (!open) { this.mdlShow(id); return; }
+            const step = ev.key === 'ArrowDown' ? 1 : -1;
+            this._mdlSel = Math.min(list.length - 1, Math.max(0, (this._mdlSel || 0) + step));
+            this.mdlPaint(id, list);
+        } else if (ev.key === 'Enter') {
+            if (open && list[this._mdlSel || 0]) { ev.preventDefault(); this.mdlPick(id, list[this._mdlSel || 0]); }
+        } else if (ev.key === 'Escape') {
+            if (open) { ev.preventDefault(); this.mdlClose(); }
+        }
+    }
+
+    mdlPick(id, value) {
+        if (this._mdlQ) this._mdlQ[id] = '';
+        this.mdlClose();
+        const inp = document.getElementById('mdlIn-' + id);
+        if (inp) inp.value = value;
+        this.chooseArenaModel(id, value);   // saves and redraws, which is fine once closed
+    }
+
     chooseArenaModel(id, value) { const m = this.getArenaModel(id); if (m) { m.model = value; this.saveArenaConfig(); this.renderArenaLibrary(); } }
     setModelProvider(id, value) { const m = this.getArenaModel(id); if (m) { m.provider = value; this.saveArenaConfig(); this.renderArenaLibrary(); } }
 

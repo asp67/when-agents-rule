@@ -1519,6 +1519,25 @@ body.spectator-mode #unitInfo.spectator-card {
 .model-select-row .arena-field { flex: 1; min-width: 0; }
 /* The line under the model box: how many ids are behind it, or a warning that what
    is typed is not one of them. Small and quiet -- it is a status, not a control. */
+/* Anchored to the FIELD, not to the browser's idea of where a popup goes. The
+   native datalist put a 405-row list the full height of the page, detached from the
+   input and over this very note -- none of which is reachable from CSS. */
+.mdl-combo { position:relative; }
+.mdl-combo .mdl-input { width:100%; padding-right:24px; }
+.mdl-caret { position:absolute; right:2px; top:2px; bottom:2px; width:20px; padding:0;
+    background:none; border:0; color:#8fa3bb; cursor:pointer; font-size:0.75em; line-height:1; }
+.mdl-caret:hover { color:#dfe6f5; }
+.mdl-pop { position:absolute; left:0; right:0; top:calc(100% + 3px); z-index:60;
+    max-height:280px; overflow-y:auto; background:#0d1520;
+    border:1px solid rgba(255,255,255,0.18); border-radius:7px;
+    box-shadow:0 12px 28px rgba(0,0,0,0.5); }
+.mdl-pop[hidden] { display:none; }
+.mdl-row { padding:5px 9px; font-size:0.82em; cursor:pointer;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mdl-row:hover, .mdl-row.on { background:rgba(78,204,163,0.18); }
+/* Every line begins with the same vendor; greying it is what makes the list scannable. */
+.mdl-v { color:#7f93aa; }
+.mdl-none { padding:7px 9px; font-size:0.78em; color:#8fa3bb; }
 .mdl-note { display:block; margin-top:3px; font-size:0.72em; color:#8fa3bb; }
 .mdl-note.warn { color:var(--gold-2, #e3c46a); }
 /* Context budget: number input + a small "set to max" button on one row. */
