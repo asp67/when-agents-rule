@@ -201,27 +201,65 @@ class Director {
         return best;
     }
 
+    // Combat events, grouped into separate FIGHTS.
+    //
+    // They used to be averaged into a single centroid, which is only correct when
+    // there is one battle. With two, the mean lands between them -- usually on empty
+    // ground -- and because a brawl shot TRACKS its subject, every event arriving
+    // from one side dragged the frame that way and the next event dragged it back.
+    // That is the yo-yo: not the director changing its mind, but one shot aimed at
+    // the midpoint of two things happening 300 units apart.
+    //
+    // Single-link clustering at 95 units: close enough that one melee stays one
+    // fight, far enough apart that a raid on a base is not merged with a skirmish
+    // across the valley.
+    fights(now) {
+        const ev = (this.game._combatEvents || []).filter(e => now - e.t < 6000);
+        const out = [];
+        for (const e of ev) {
+            const w = 1 - (now - e.t) / 6000;
+            let f = null;
+            for (const c of out) { if (Math.hypot(c.x - e.x, c.z - e.z) <= 95) { f = c; break; } }
+            if (!f) { out.push({ x: e.x, z: e.z, sx: e.x * w, sz: e.z * w, w, n: 1, r: 0 }); continue; }
+            f.n++; f.w += w; f.sx += e.x * w; f.sz += e.z * w;
+            f.x = f.sx / f.w; f.z = f.sz / f.w;
+            f.r = Math.max(f.r, Math.hypot(e.x - f.x, e.z - f.z));
+        }
+        return out;
+    }
+
+    // Is a BUILDING losing health inside this fight? A base under assault is the
+    // match turning, a field skirmish usually is not, and the two scored the same.
+    siegeAt(f) {
+        for (const [b, hp] of this._prevHp) {
+            if (!b || b.health == null || b.health >= hp) continue;
+            if (Math.hypot(b.x - f.x, b.z - f.z) <= f.r + 70) return b;
+        }
+        return null;
+    }
+
     // ---- candidates --------------------------------------------------------
     candidates(now) {
         const g = this.game, out = [];
         const push = (type, key, score, make) => out.push({ type, key, score, make });
 
-        // A fight is the show. Score rises with how much of it is happening.
-        const ev = (g._combatEvents || []).filter(e => now - e.t < 6000);
-        if (ev.length) {
-            let sx = 0, sz = 0, sw = 0;
-            for (const e of ev) { const w = 1 - (now - e.t) / 6000; sx += e.x * w; sz += e.z * w; sw += w; }
-            const c = { x: sx / sw, z: sz / sw };
-            const spread = Math.max(...ev.map(e => Math.hypot(e.x - c.x, e.z - c.z)), 0);
-            push('brawl', 'brawl', 100 + Math.min(45, ev.length * 3), () => {
-                // Reverse angle each time we come back, so a long fight is covered
-                // from several sides instead of stared at from one.
-                const side = (this.recent.filter(k => k === 'brawl').length % 4);
+        // A fight is the show -- and each fight is its OWN candidate, so two at once
+        // compete for the camera instead of averaging into the empty ground between
+        // them. Keyed by where it is happening, coarsely, so the same battle keeps its
+        // identity across shots while a different one is a different subject.
+        for (const f of this.fights(now)) {
+            const key = 'fight:' + Math.round(f.x / 70) + ':' + Math.round(f.z / 70);
+            const siege = this.siegeAt(f);
+            push('brawl', key,
+                 100 + Math.min(45, f.n * 3) + (siege ? 30 : 0), () => {
+                // Reverse angle each time we come back to THIS fight, so a long assault
+                // is covered from several sides rather than stared at from one.
+                const side = (this.recent.filter(k => k === key).length % 4);
                 return {
-                    x: c.x, z: c.z,
+                    x: f.x, z: f.z,
                     yaw: this.snapYaw(side * Math.PI / 2 + Math.PI / 4),
-                    halfH: Math.max(24, Math.min(90, spread * 1.5 + 18)),
-                    subject: { kind: 'point', x: c.x, z: c.z, combat: true }
+                    halfH: Math.max(24, Math.min(90, f.r * 1.5 + 18)),
+                    subject: { kind: 'point', x: f.x, z: f.z, combat: true, key }
                 };
             });
         }
@@ -395,7 +433,14 @@ class Director {
     adjust(c, now) {
         let s = c.score;
         const repeats = this.recent.filter(k => k === c.key).length;
-        s -= repeats * 26;
+        // A battle that is STILL GOING is not a repeat, it is a continuation. The flat
+        // penalty took a live siege from 100 to 22 after three shots and handed the
+        // camera to the whole-map overview at 88 -- the least useful thing on screen
+        // while a town is being taken. Live action decays, but only so far; it stops
+        // being a candidate at all when the fighting stops, which is the honest way
+        // for it to end.
+        const live = c.type === 'brawl' || c.type === 'pov';
+        s -= live ? Math.min(24, repeats * 8) : repeats * 26;
         const owner = c.key.split(':')[1];
         if (owner) {
             const seen = this.lastSeen.get(owner) || 0;
@@ -452,11 +497,15 @@ class Director {
             const p = this.shot.subject ? g._resolveCamSubject(this.shot.subject) : null;
             if (p) { this.shot.pose.x = p.x; this.shot.pose.z = p.z; }
             else if (this.shot.subject && this.shot.subject.combat) {
-                const ev = (g._combatEvents || []).filter(e => now - e.t < 6000);
-                if (ev.length) {
-                    const c = this.centroid(ev);
-                    this.shot.pose.x = c.x; this.shot.pose.z = c.z;
+                // Follow the NEAREST fight, not the mean of every fight on the map.
+                // Tracking the global centroid is what made a two-battle map swing the
+                // camera between them for the whole shot.
+                let best = null, bd = 140;
+                for (const f of this.fights(now)) {
+                    const d = Math.hypot(f.x - this.shot.pose.x, f.z - this.shot.pose.z);
+                    if (d < bd) { bd = d; best = f; }
                 }
+                if (best) { this.shot.pose.x = best.x; this.shot.pose.z = best.z; }
             }
         }
         // A slow tighten over the shot. Small on purpose: enough that the frame is
