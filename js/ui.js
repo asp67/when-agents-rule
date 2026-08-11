@@ -4737,10 +4737,23 @@ class UIManager {
         if (!r || !r.getWorldPositionFromScreen) return;
         const w = r.getWorldPositionFromScreen(cx, cy);
         if (!w) return;
-        const u = r.pickUnitAt ? r.pickUnitAt(w.x, w.z) : null;
+        // Aim in PIXELS, not world units. Both hit tests below measure in world
+        // units, which means the target shrinks on screen every time you zoom out --
+        // and the analyzer opens on the whole island. On a tablet's stage that is 1.8
+        // world units per pixel, so a unit's entire click radius came to about a pixel
+        // and a half. A mouse on a tall desktop stage could just about land it, which
+        // is why this looked like it worked; a fingertip never could, and picking was
+        // the one gesture that did not survive the move to touch.
+        //
+        // Converted at the current zoom, so the tolerance is the same distance on
+        // screen wherever the camera is. Never tighter than the old numbers.
+        const perPx = (2 * r._halfH) / ((r.canvas && r.canvas.clientHeight) || r.H || 1);
+        const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        const grab = (coarse ? 22 : 11) * perPx;      // a fingertip is not a cursor
+        const u = r.pickUnitAt ? r.pickUnitAt(w.x, w.z, null, grab) : null;
         let pick = u, kind = 'unit';
         if (!pick && r.getBuildingsAtPosition) {
-            const bs = r.getBuildingsAtPosition(w.x, w.z, 7);
+            const bs = r.getBuildingsAtPosition(w.x, w.z, Math.max(7, grab));
             pick = bs && bs[0]; kind = 'building';
         }
         r.deselectAll && r.deselectAll();

@@ -959,13 +959,18 @@
             return Math.max(2.0, w * 2);
         }
 
-        pickUnitAt(x, z, owner = null) {
+        // minRadius widens the target without changing what a unit IS. The click
+        // radius is a world measurement -- it has to be, it is drawn from the unit's own
+        // size -- but that means how big it is ON SCREEN depends entirely on the zoom.
+        // Callers that know the zoom can pass a floor here; existing callers pass
+        // nothing and get exactly what they always did.
+        pickUnitAt(x, z, owner = null, minRadius = 0) {
             let best = null, bestDist = Infinity;
             this.units.forEach(unit => {
                 if (owner && unit.owner !== owner) return;
                 if (unit.health <= 0) return;
                 const dist = Math.hypot(unit.x - x, unit.z - z);
-                if (dist <= this.unitClickRadius(unit) && dist < bestDist) {
+                if (dist <= Math.max(this.unitClickRadius(unit), minRadius) && dist < bestDist) {
                     bestDist = dist;
                     best = unit;
                 }
