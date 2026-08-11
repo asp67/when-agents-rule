@@ -1517,6 +1517,10 @@ body.spectator-mode #unitInfo.spectator-card {
 
 .model-select-row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
 .model-select-row .arena-field { flex: 1; min-width: 0; }
+/* The line under the model box: how many ids are behind it, or a warning that what
+   is typed is not one of them. Small and quiet -- it is a status, not a control. */
+.mdl-note { display:block; margin-top:3px; font-size:0.72em; color:#8fa3bb; }
+.mdl-note.warn { color:var(--gold-2, #e3c46a); }
 /* Context budget: number input + a small "set to max" button on one row. */
 .ctx-budget-row { display: flex; gap: 6px; align-items: stretch; }
 .ctx-budget-row input { flex: 1; min-width: 0; }

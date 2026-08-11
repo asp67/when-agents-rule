@@ -703,11 +703,33 @@ class UIManager {
         const sel = (v) => m.auth.type === v ? 'selected' : '';
         const status = m._status ? `<span class="test-status ${m._status.cls}" id="modelStatus-${m.id}">${e(m._status.text)}</span>`
                                  : `<span class="test-status" id="modelStatus-${m.id}"></span>`;
-        let modelOpts = `<option value="">${t('ar.modelLoadHint')}</option>`;
-        if (m.availableModels.length) {
-            modelOpts = m.availableModels.map(id => `<option value="${e(id)}" ${m.model === id ? 'selected' : ''}>${e(id)}</option>`).join('');
-            if (m.model && !m.availableModels.includes(m.model)) modelOpts += `<option value="${e(m.model)}" selected>${e(m.model)} (manual)</option>`;
-        }
+        // ONE control, not two. A <select> listing everything the endpoint returned
+        // sat next to a free-text box for the same value -- and against OpenRouter that
+        // select is several hundred entries, in whatever order the API answered, with no
+        // way to filter and no way to type. Picking a model meant scrolling a wall of
+        // ids looking for one you already knew the name of.
+        //
+        // A text input backed by a <datalist> does the whole job: typing filters on
+        // SUBSTRING, so "qwen" finds "qwen/qwen3-max" where a native select's type-ahead
+        // only ever matches from the first character -- which is useless when every id
+        // begins with a vendor. Any id can still be typed by hand, which is what the
+        // manual box was for, so nothing is lost by removing it.
+        //
+        // Stateless on purpose. renderModelCard rebuilds this HTML on every change, so a
+        // custom dropdown widget would have its open state wiped mid-interaction; the
+        // browser owns the popup here and survives the re-render.
+        const modelIds = [...new Set(m.availableModels || [])]
+            .sort((a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: 'base' }));
+        const modelOpts = modelIds.map(id => `<option value="${e(id)}"></option>`).join('');
+        // Say which of three situations this is: nothing discovered yet, a value that
+        // came from the list, or one that did not. The last case used to be a "(manual)"
+        // option appended to the select, and it is the one worth keeping -- a typo and a
+        // deliberate Ollama tag look identical otherwise.
+        const modelNote = !modelIds.length
+            ? `<span class="mdl-note">${e(t('ar.modelLoadHint'))}</span>`
+            : (m.model && !modelIds.includes(m.model)
+                ? `<span class="mdl-note warn">${e(t('ar.modelNotListed'))}</span>`
+                : `<span class="mdl-note">${e(t('ar.modelPickHint', { n: modelIds.length }))}</span>`);
         const langOpts = (window.I18N_LANGS || []).map(l => `<option value="${l.code}" ${(m.language || 'en') === l.code ? 'selected' : ''}>${e((window.I18N_MODEL_LANG_NAME || {})[l.code] || l.label)}</option>`).join('');
         const expanded = !!m._expanded;
         const badge = m._status ? `<span class="mc-status ${m._status.cls}" title="${e(m._status.text)}">${m._status.cls === 'ok' ? '✓' : (m._status.cls === 'err' ? '✗' : '⏳')}</span>` : '';
@@ -830,10 +852,12 @@ class UIManager {
                 ${status}
             </div>
             <div class="model-select-row">
-                <div class="arena-field"><label>${t('ar.fModelSelect')}</label>
-                    <select onchange="game.ui.chooseArenaModel(${m.id}, this.value)">${modelOpts}</select></div>
-                <div class="arena-field"><label>${t('ar.fModelManual')}</label>
-                    <input type="text" value="${e(m.model)}" oninput="game.ui.setModelField(${m.id},'model',this.value)" placeholder="model-id"></div>
+                <div class="arena-field" style="flex:1 1 340px"><label>${t('ar.fModelSelect')}</label>
+                    <input type="text" list="mdl-${m.id}" value="${e(m.model)}" placeholder="model-id"
+                        oninput="game.ui.setModelField(${m.id},'model',this.value)"
+                        onchange="game.ui.chooseArenaModel(${m.id}, this.value)">
+                    <datalist id="mdl-${m.id}">${modelOpts}</datalist>
+                    ${modelNote}</div>
                 <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fMaxTokens')}</label>
                     <input type="number" min="64" step="64" value="${e(m.maxTokens)}" oninput="game.ui.setModelField(${m.id},'maxTokens',this.value)" placeholder="2000"></div>
                 <div class="arena-field" style="flex:0 0 210px"><label>${t('ar.fContextBudget')}</label>
