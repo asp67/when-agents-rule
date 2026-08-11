@@ -4146,15 +4146,35 @@ class UIManager {
         if (!sel) return;
         if (!list || list.length < 2) { sel.style.display = 'none'; return; }
         const esc = v => this.escapeHtml(String(v == null ? '' : v));
-        sel.innerHTML = list.map(m => {
-            const day = m.date ? new Date(m.date).toISOString().slice(0, 10) : '';
-            const tempo = m.turnBased ? t('an.turnBased') : t('an.realTime');
-            const bits = [day, m.duration, tempo, m.winner].filter(Boolean);
-            return `<option value="${esc(m.file)}">${esc(bits.join(' \u00b7 '))}</option>`;
-        }).join('');
-        const cur = this._sampleFile || (list.find(m => m.default) || list[0] || {}).file;
-        if (cur) sel.value = cur;
+        // A menu of things to DO, not a label for what is loaded. The first entry is a
+        // permanent placeholder and the control returns to it after every pick, which
+        // settles two complaints at once. It used to open already showing a match it had
+        // not loaded -- and picking that same one did nothing, because a select only
+        // fires change when the value actually changes. And once you loaded your own
+        // file it carried on naming an example in the middle of the header, as if that
+        // were what you were looking at.
+        //
+        // Nothing is lost by not showing the loaded match here: anRender already puts
+        // the file name first in anMeta, right beside this control.
+        sel.innerHTML = `<option value="">${esc(t('an.samplesPick'))}</option>`
+            + list.map(m => {
+                const day = m.date ? new Date(m.date).toISOString().slice(0, 10) : '';
+                const tempo = m.turnBased ? t('an.turnBased') : t('an.realTime');
+                const bits = [day, m.duration, tempo, m.winner].filter(Boolean);
+                return `<option value="${esc(m.file)}">${esc(bits.join(' \u00b7 '))}</option>`;
+              }).join('');
+        sel.value = '';
         sel.style.display = '';
+    }
+
+    // Back to the placeholder straight away, before the load even starts. The value
+    // has to CHANGE for a change event to fire, so without this, picking the match you
+    // just picked is silence -- which is exactly what it was.
+    anPickSample(sel) {
+        if (!sel) return;
+        const file = sel.value;
+        sel.value = '';
+        if (file) this.anLoadSample(file);
     }
 
     anLoadSample(file0) {
@@ -4176,8 +4196,6 @@ class UIManager {
             || (list.find(m => m.default) || list[0] || {}).file
             || this.SAMPLE_MATCH;
         this._sampleFile = file;
-        const sel = document.getElementById('anSampleSel');
-        if (sel && sel.value !== file) sel.value = file;
         fetch('samples/' + file)
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
             .then(text => {
