@@ -2581,13 +2581,47 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
    So: say it plainly, and send the reader to the video, which is the form of this
    that a phone is actually good at. `pointer: coarse` catches tablets that are wide
    enough to look fine and still cannot right-click. */
+/* Narrow: the filter chips wrap, and in a 130px column they wrapped to SEVEN rows --
+   141 of the column's 143 pixels -- which left the turn list two pixels tall with six
+   thousand pixels of content inside it. That measurement is what "the layout does not
+   survive a phone" was built on, and it was a wrapping bug wearing a design decision's
+   clothes. One scrolling row of chips instead, and a floor under the list so nothing
+   above it can squeeze it to nothing again.
+
+   Placed here, AFTER .an-bar2 and .an-list, on purpose: a media query carries no extra
+   specificity, so the first version of this sat above those two rules and lost to them
+   at equal weight. It read as dead CSS and measured as an unchanged layout. */
+@media (max-width: 760px) {
+    .an-bar2 { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+    .an-bar2::-webkit-scrollbar { display:none; }
+    .an-list { min-height:130px; }
+}
+
 .small-screen { display:none; }
-@media (max-width: 900px), (pointer: coarse) {
+/* This used to cover everything, with a link to the video as the way out, and it fired
+   on `pointer: coarse` at ANY width -- so a 1317px tablet that renders the analyzer
+   perfectly was shown a card telling it to go and watch a video instead. The clause was
+   honest when it was written: the controls were drag, right-click and wheel, and it said
+   so. Touch controls have since taken that reason away, and the wrapping fix above took
+   away the other one, so what is left is a preference, not an obstacle -- and a
+   preference belongs in a line you can dismiss, not in a door.
+   Width only now: a tablet is simply fine, and telling it that it should be a tablet
+   would be a strange thing for a page to do. */
+@media (max-width: 900px) {
     body:not(.ss-off) .small-screen {
-        display:flex; position:fixed; inset:0; z-index:9999;
-        align-items:center; justify-content:center; padding:22px;
-        background:var(--bg-0); overflow-y:auto; }
-    body:not(.ss-off) { overflow:hidden; }
+        display:flex; position:fixed; left:8px; right:8px; bottom:8px; z-index:9999;
+        justify-content:center; padding:0; }
+    body:not(.ss-off) .ss-card {
+        display:flex; align-items:center; justify-content:center; gap:9px; flex-wrap:wrap;
+        max-width:none; width:100%; padding:7px 11px; text-align:left;
+        background:rgba(11,16,23,0.95); border:1px solid rgba(255,255,255,0.17);
+        border-radius:9px; box-shadow:0 6px 20px rgba(0,0,0,0.45); }
+    body:not(.ss-off) .ss-brand,
+    body:not(.ss-off) .ss-lead,
+    body:not(.ss-off) .ss-alt { display:none; }
+    body:not(.ss-off) .ss-why { margin:0; font-size:0.78rem; line-height:1.35; flex:1 1 150px; }
+    body:not(.ss-off) .ss-cta { margin:0; padding:5px 10px; font-size:0.76rem; }
+    body:not(.ss-off) .ss-anyway { margin:0; font-size:0.78rem; }
 }
 .ss-card { max-width:420px; text-align:center; color:var(--muted); }
 .ss-brand { font-weight:900; letter-spacing:.16em; font-size:1.25rem; margin-bottom:18px;
