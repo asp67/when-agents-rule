@@ -2596,6 +2596,7 @@ class UIManager {
             build_structure: t('log.build_structure'),
             move_units: t('log.move_units'),
             attack_target: t('log.attack_target'),
+            attack_result: t('log.attack_result'),
             wait: t('log.wait'),
             paused: t('log.paused'),
             resumed: t('log.resumed'),

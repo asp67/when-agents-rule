@@ -4677,6 +4677,14 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         }
         // Keep the attack-move objective on solid ground.
         ({ x: targetX, z: targetZ } = game.clampToMap(mx, mz));
+        // clampToMap keeps orders on solid ground, but it did so SILENTLY: a model
+        // asking for (400, 100) -- a legal coordinate on the 800x800 map it is told
+        // about -- was answered "moving to (370, 100)" with no account of the
+        // difference, and could only conclude it had been misunderstood. The margin is
+        // real and stays; being quiet about it does not.
+        const offNote = (Math.abs(targetX - mx) > 0.5 || Math.abs(targetZ - mz) > 0.5)
+            ? ` Your (${Math.round(mx)}, ${Math.round(mz)}) lies outside the area units may be sent to, so the nearest point inside it was used.`
+            : '';
 
         // Optional {type:count} detachment closest to the destination; no map →
         // the whole combat force. Support units split out to escort, not fight.
@@ -4749,7 +4757,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         const eta = this.travelEtaSec(unitsToAttack[0], targetX, targetZ);
         this.outcome('log.out.attackMoving', { count: unitsToAttack.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
-        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${escortNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
+        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${escortNote}${offNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
     }
 
     // Each frame, resolve open attack-move orders once the units arrive/engage and
@@ -4789,7 +4797,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 const eng = onOrder.find(u => u.isAttacking && u.attackTarget && u.attackTarget.health > 0);
                 if (eng) {
                     const tg = eng.attackTarget;
-                    resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and ENGAGED an enemy ${tg.type}${tg.owner ? ` (${tg.owner})` : ''}.`, false,
+                    // "an enemy worker (ai_vrfbnoj58)" -- that id is the OWNER's, but a
+                    // bare parenthetical after a unit type reads as the unit's own id, and
+                    // it is exactly the shape targetId takes. Models copy whatever looks
+                    // copyable, so this was an invitation to attack a player id. Labelled.
+                    resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and ENGAGED an enemy ${tg.type}${tg.owner ? ` owned by ${tg.owner}` : ''}.`, false,
                         'log.out.attackEngaged', { x: Math.round(r.tx), z: Math.round(r.tz), target: tg.type });
                     continue;
                 }
@@ -4818,7 +4830,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             timestamp: Date.now(), playerId: ai.id,
             civName: civ?.name || ai.civilization,
             color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
-            action: 'attack_target', reason: '', result: msg, params: {},
+            // NOT 'attack_target'. An arrival resolves on a later tick and is a
+            // RESULT, but writing a command's action name here gave it a command's
+            // label in the log -- so a turn of three commands showed four "Attack
+            // launched" style rows and looked like the three-command cap had been
+            // broken. Its own name, the way 'advice' has one.
+            action: 'attack_result', reason: '', result: msg, params: {},
             failed: !!failed, error: failed ? msg.replace(/^\[ERROR\]\s*/, '') : null,
             lang: extra.lang || 'en'
         };
