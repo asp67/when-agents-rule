@@ -30,55 +30,86 @@
             D.errors.push('promise: ' + ((r && (r.message || r)) || 'rejected'));
         });
         if (!/[?&]diag=1(&|$)/.test(location.search)) return;
+
+        // Re-openable, because the first version fired once at load -- the one moment in
+        // the session when nothing has gone wrong yet. A report of "the analyzer is just
+        // blue" needs the reading taken WHILE it is blue, so a small button stays put and
+        // rebuilds the panel from scratch on every tap.
+        function readOut() {
+            var gl;
+            try {
+                var c = document.createElement('canvas');
+                gl = c.getContext('webgl2') ? 'webgl2'
+                   : (c.getContext('webgl') ? 'webgl (no 2)' : 'NONE');
+            } catch (err) { gl = 'threw: ' + err.message; }
+            var active = document.querySelector('.screen.active');
+            // typeof, not window.game: `game` is a top-level `let`, which lives in the
+            // script-global lexical scope and never appears as a property of window. Read
+            // the wrong way it is always undefined, and the first run of this panel duly
+            // reported "a script threw before init" on a page that had started perfectly
+            // -- which would have sent the next hour looking for a crash that did not
+            // happen. A diagnostic that lies is worse than none.
+            var G = (typeof game === 'undefined') ? null : game;
+            var an = G && G.ui && G.ui.analyzer;
+            // Measured, not assumed: an element that is present, sized and still shows
+            // nothing is a different bug from one that was never displayed, and from the
+            // outside both are the same blue rectangle.
+            function box9(sel) {
+                var el = document.querySelector(sel);
+                if (!el) return sel + ' absent';
+                var cs = getComputedStyle(el), r = el.getBoundingClientRect();
+                return sel + ' ' + cs.display + ' ' + Math.round(r.width) + 'x' + Math.round(r.height);
+            }
+            return [
+                ['url', location.href],
+                ['host', location.hostname || '(none)'],
+                ['gate', typeof WAR_LOCAL === 'undefined' ? 'script never ran'
+                        : (WAR_LOCAL ? 'private host - full app' : 'public host - showcase only')],
+                ['viewport', innerWidth + ' x ' + innerHeight + '  dpr ' + (devicePixelRatio || 1)],
+                ['webgl', gl],
+                ['game', (G ? 'built' : 'MISSING - a script threw before init')],
+                ['screen', active ? active.id : 'NONE ACTIVE - nothing is being shown'],
+                ['analyzer', an && an.order ? an.order.length + ' turns, ' + (an.fileName || '?')
+                                            : 'no transcript loaded'],
+                ['layout', [box9('.an-empty'), box9('.an-body'), box9('.an-stage canvas'),
+                            box9('.an-lower'), box9('.an-list')].join('\n           ')],
+                ['errors', D.errors.length ? D.errors.join('\n           ') : 'none'],
+                ['agent', navigator.userAgent]
+            ];
+        }
+
+        function showPanel() {
+            var old = document.getElementById('warDiagBox');
+            if (old) { old.remove(); return; }
+            var box = document.createElement('div');
+            box.id = 'warDiagBox';
+            box.style.cssText = 'position:fixed;inset:6px;z-index:99999;overflow:auto;'
+                + 'padding:12px 14px;background:#0b1017;color:#cfe;border:1px solid #4ecca3;'
+                + 'border-radius:8px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+            var head = document.createElement('div');
+            head.style.cssText = 'color:#4ecca3;font-weight:700;margin-bottom:8px';
+            head.textContent = 'diagnostics - tap anywhere to close';
+            var pre = document.createElement('pre');
+            pre.style.cssText = 'margin:0;white-space:pre-wrap;word-break:break-word';
+            pre.textContent = readOut().map(function (r) {
+                return (r[0] + '         ').slice(0, 9) + ' ' + r[1];
+            }).join('\n');
+            box.appendChild(head); box.appendChild(pre);
+            box.onclick = function () { box.remove(); };
+            document.body.appendChild(box);
+        }
+
         addEventListener('load', function () {
+            var btn = document.createElement('button');
+            btn.textContent = 'diag';
+            btn.style.cssText = 'position:fixed;right:8px;bottom:8px;z-index:99998;'
+                + 'padding:7px 12px;background:rgba(11,16,23,0.9);color:#4ecca3;'
+                + 'border:1px solid #4ecca3;border-radius:6px;font:12px/1 monospace';
+            btn.onclick = showPanel;
+            document.body.appendChild(btn);
             // After the app has had its chance to start, not at the instant of load:
             // half of what is worth reporting only exists once it has.
-            setTimeout(function () {
-                var gl;
-                try {
-                    var c = document.createElement('canvas');
-                    gl = c.getContext('webgl2') ? 'webgl2'
-                       : (c.getContext('webgl') ? 'webgl (no 2)' : 'NONE');
-                } catch (err) { gl = 'threw: ' + err.message; }
-                var active = document.querySelector('.screen.active');
-                // typeof, not window.game: `game` is a top-level `let`, which lives
-                // in the script-global lexical scope and never appears as a property of
-                // window. Read the wrong way it is always undefined, and the first run of
-                // this panel duly reported "a script threw before init" on a page that had
-                // started perfectly -- which would have sent the next hour looking for a
-                // crash that did not happen. A diagnostic that lies is worse than none.
-                var G = (typeof game === 'undefined') ? null : game;
-                var an = G && G.ui && G.ui.analyzer;
-                var rows = [
-                    ['url', location.href],
-                    ['host', location.hostname || '(none)'],
-                    ['gate', typeof WAR_LOCAL === 'undefined' ? 'script never ran'
-                            : (WAR_LOCAL ? 'private host - full app' : 'public host - showcase only')],
-                    ['viewport', innerWidth + ' x ' + innerHeight + '  dpr ' + (devicePixelRatio || 1)],
-                    ['webgl', gl],
-                    ['game', (G ? 'built' : 'MISSING - a script threw before init')],
-                    ['screen', active ? active.id : 'NONE ACTIVE - nothing is being shown'],
-                    ['analyzer', an && an.order ? an.order.length + ' turns, ' + (an.fileName || '?')
-                                                : 'no transcript loaded'],
-                    ['errors', D.errors.length ? D.errors.join('\n           ') : 'none'],
-                    ['agent', navigator.userAgent]
-                ];
-                var box = document.createElement('div');
-                box.style.cssText = 'position:fixed;inset:6px;z-index:99999;overflow:auto;'
-                    + 'padding:12px 14px;background:#0b1017;color:#cfe;border:1px solid #4ecca3;'
-                    + 'border-radius:8px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
-                var head = document.createElement('div');
-                head.style.cssText = 'color:#4ecca3;font-weight:700;margin-bottom:8px';
-                head.textContent = 'diagnostics - tap anywhere to close';
-                var pre = document.createElement('pre');
-                pre.style.cssText = 'margin:0;white-space:pre-wrap;word-break:break-word';
-                pre.textContent = rows.map(function (r) {
-                    return (r[0] + '         ').slice(0, 9) + ' ' + r[1];
-                }).join('\n');
-                box.appendChild(head); box.appendChild(pre);
-                box.onclick = function () { box.remove(); };
-                document.body.appendChild(box);
-            }, 1500);
+            setTimeout(showPanel, 1500);
         });
     })();
     </script>
