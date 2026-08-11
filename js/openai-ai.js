@@ -2288,6 +2288,11 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
 
 OUTPUT ONE RAW JSON OBJECT AND NOTHING ELSE — no prose around it, no code fences. That object carries either a single action or a list.
+
+OPTIONAL TOP-LEVEL FIELDS (beside "action"/"commands", not inside "params"):
+objective: String (1 line). Persists across turns; omit to keep current.
+plan: Array of up to ${OpenAIAIManager.PLAN_MAX_STEPS} short strings. Persists across turns; omit to keep current.
+
 Format, one action:  {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }, "objective": "<1 line>", "plan": ["<step>", "<step>"]}
 Format, several:     {"commands": [{"action": "<ActionName>", "params": { ... }}, {"action": "<ActionName>", "params": { ... }}], "objective": "<1 line>", "plan": ["<step>", "<step>"]}
 
@@ -2295,10 +2300,6 @@ Format, several:     {"commands": [{"action": "<ActionName>", "params": { ... }}
   They run IN ORDER on a board each one CHANGES, and you do not see between them, so order them so the cheap and certain moves go first:
   spend resources or population in the first command and a later one can be refused for what the first just used.
   Each is judged on its own — one refusal does not cancel the others, and you are told which number failed and why.
-
-OPTIONAL TOP-LEVEL FIELDS (beside "action"/"commands", not inside "params"):
-objective: String (1 line). Persists across turns; omit to keep current.
-plan: Array of up to ${OpenAIAIManager.PLAN_MAX_STEPS} short strings. Persists across turns; omit to keep current.
 
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
