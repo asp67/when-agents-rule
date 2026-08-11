@@ -4067,10 +4067,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             console.log(`[OpenAIAI] ${ai.id}: Need a finished ${hostType} to research "${techId}"`);
             if (hostType === 'academy') {
                 const hasAcademyTech = !!ai.researchedTechs['academy'];
-                const step = hasAcademyTech ? 'build an Academy (build_structure "academy") and wait for it to finish'
-                    : 'first research "academy", then build an Academy and wait for it to finish';
+                const step = hasAcademyTech
+                    ? 'build one (build_structure "academy") and wait for it to finish'
+                    : 'first research "academy", then build one (build_structure "academy") and wait for it to finish';
                 this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
-                return `[ERROR] "${techId}" is researched at a Market, which you don't have. To enable it: ${step}.`;
+                // "researched at a Market ... build an academy" -- one sentence, two
+                // names for one building, and the model is left to guess which of them
+                // it is being told about. The rename to academy updated the
+                // INSTRUCTION here and left the DIAGNOSIS as a literal, so the half of
+                // the sentence that names the problem kept pointing at a building that
+                // has not existed since v512. The branch below always got this right
+                // because it interpolates hostType instead of spelling anything out.
+                return `[ERROR] "${techId}" is researched at a finished academy, which you don't have. To enable it: ${step}.`;
             }
             this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
             return `[ERROR] "${techId}" is researched at a finished ${hostType}, which you don't have. Build it first (build_structure "${hostType}"), then research again.`;
