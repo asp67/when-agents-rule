@@ -4,7 +4,84 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=575">
+    <link rel="stylesheet" href="css/styles.css?v=576">
+    <!-- ?diag=1 -- the console, on the page.
+
+         A tablet has no devtools worth the name, so a report from one can only ever be
+         "it is just blue", and there is no way to tell a thrown error from a layout that
+         rendered nothing from a gate that quietly sent you somewhere else. This turns
+         that into a screenshot.
+
+         Inline and first in the head on purpose: a listener added from a script further
+         down cannot catch an error thrown while the scripts above it were parsing, which
+         is exactly the failure that leaves a blank page. Errors are collected always --
+         it costs an array -- and only shown when asked for, so nobody visiting the demo
+         gets diagnostics they did not want. The ?diag=1 in the URL doubles as a cache
+         buster for index.html itself, which the ?v= on the assets cannot do. -->
+    <script>
+    (function () {
+        var D = window.__warDiag = { errors: [] };
+        addEventListener('error', function (e) {
+            D.errors.push((e.message || 'error') + ' @ '
+                + String(e.filename || '?').split('/').pop() + ':' + (e.lineno || '?'));
+        });
+        addEventListener('unhandledrejection', function (e) {
+            var r = e.reason;
+            D.errors.push('promise: ' + ((r && (r.message || r)) || 'rejected'));
+        });
+        if (!/[?&]diag=1(&|$)/.test(location.search)) return;
+        addEventListener('load', function () {
+            // After the app has had its chance to start, not at the instant of load:
+            // half of what is worth reporting only exists once it has.
+            setTimeout(function () {
+                var gl;
+                try {
+                    var c = document.createElement('canvas');
+                    gl = c.getContext('webgl2') ? 'webgl2'
+                       : (c.getContext('webgl') ? 'webgl (no 2)' : 'NONE');
+                } catch (err) { gl = 'threw: ' + err.message; }
+                var active = document.querySelector('.screen.active');
+                // typeof, not window.game: `game` is a top-level `let`, which lives
+                // in the script-global lexical scope and never appears as a property of
+                // window. Read the wrong way it is always undefined, and the first run of
+                // this panel duly reported "a script threw before init" on a page that had
+                // started perfectly -- which would have sent the next hour looking for a
+                // crash that did not happen. A diagnostic that lies is worse than none.
+                var G = (typeof game === 'undefined') ? null : game;
+                var an = G && G.ui && G.ui.analyzer;
+                var rows = [
+                    ['url', location.href],
+                    ['host', location.hostname || '(none)'],
+                    ['gate', typeof WAR_LOCAL === 'undefined' ? 'script never ran'
+                            : (WAR_LOCAL ? 'private host - full app' : 'public host - showcase only')],
+                    ['viewport', innerWidth + ' x ' + innerHeight + '  dpr ' + (devicePixelRatio || 1)],
+                    ['webgl', gl],
+                    ['game', (G ? 'built' : 'MISSING - a script threw before init')],
+                    ['screen', active ? active.id : 'NONE ACTIVE - nothing is being shown'],
+                    ['analyzer', an && an.order ? an.order.length + ' turns, ' + (an.fileName || '?')
+                                                : 'no transcript loaded'],
+                    ['errors', D.errors.length ? D.errors.join('\n           ') : 'none'],
+                    ['agent', navigator.userAgent]
+                ];
+                var box = document.createElement('div');
+                box.style.cssText = 'position:fixed;inset:6px;z-index:99999;overflow:auto;'
+                    + 'padding:12px 14px;background:#0b1017;color:#cfe;border:1px solid #4ecca3;'
+                    + 'border-radius:8px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+                var head = document.createElement('div');
+                head.style.cssText = 'color:#4ecca3;font-weight:700;margin-bottom:8px';
+                head.textContent = 'diagnostics - tap anywhere to close';
+                var pre = document.createElement('pre');
+                pre.style.cssText = 'margin:0;white-space:pre-wrap;word-break:break-word';
+                pre.textContent = rows.map(function (r) {
+                    return (r[0] + '         ').slice(0, 9) + ' ' + r[1];
+                }).join('\n');
+                box.appendChild(head); box.appendChild(pre);
+                box.onclick = function () { box.remove(); };
+                document.body.appendChild(box);
+            }, 1500);
+        });
+    })();
+    </script>
 </head>
 <body>
     <!-- Start Screen -->
@@ -501,26 +578,26 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=575"></script>
-    <script src="js/engine/glcore.js?v=575"></script>
-    <script src="js/engine/texgen.js?v=575"></script>
-    <script src="js/engine/mesh.js?v=575"></script>
-    <script src="js/engine/buildings.js?v=575"></script>
-    <script src="js/engine/units.js?v=575"></script>
-    <script src="js/engine/gamerenderer.js?v=575"></script>
-    <script src="js/i18n.js?v=575"></script>
-    <script src="js/civilizations.js?v=575"></script>
-    <script src="js/buildings.js?v=575"></script>
-    <script src="js/units.js?v=575"></script>
-    <script src="js/resources.js?v=575"></script>
-    <script src="js/terrain.js?v=575"></script>
-    <script src="js/fogofwar.js?v=575"></script>
-    <script src="js/ai.js?v=575"></script>
-    <script src="js/analyzer.js?v=575"></script>
-    <script src="js/transcript.js?v=575"></script>
-    <script src="js/openai-ai.js?v=575"></script>
-    <script src="js/input.js?v=575"></script>
-    <script src="js/ui.js?v=575"></script>
-    <script src="js/game.js?v=575"></script>
+    <script src="js/engine/math3d.js?v=576"></script>
+    <script src="js/engine/glcore.js?v=576"></script>
+    <script src="js/engine/texgen.js?v=576"></script>
+    <script src="js/engine/mesh.js?v=576"></script>
+    <script src="js/engine/buildings.js?v=576"></script>
+    <script src="js/engine/units.js?v=576"></script>
+    <script src="js/engine/gamerenderer.js?v=576"></script>
+    <script src="js/i18n.js?v=576"></script>
+    <script src="js/civilizations.js?v=576"></script>
+    <script src="js/buildings.js?v=576"></script>
+    <script src="js/units.js?v=576"></script>
+    <script src="js/resources.js?v=576"></script>
+    <script src="js/terrain.js?v=576"></script>
+    <script src="js/fogofwar.js?v=576"></script>
+    <script src="js/ai.js?v=576"></script>
+    <script src="js/analyzer.js?v=576"></script>
+    <script src="js/transcript.js?v=576"></script>
+    <script src="js/openai-ai.js?v=576"></script>
+    <script src="js/input.js?v=576"></script>
+    <script src="js/ui.js?v=576"></script>
+    <script src="js/game.js?v=576"></script>
 </body>
 </html>
