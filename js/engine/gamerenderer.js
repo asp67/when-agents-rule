@@ -1240,7 +1240,20 @@
             if (e.touches.length === 0) {
                 this._panDrag = null;
                 this._pinch = null;
-                if (pd && !pd.moved && !wasCoord && game.spectatorPick) game.spectatorPick(pd.ox, pd.oy);
+                if (pd && !pd.moved && !wasCoord) {
+                    // The analyzer owns picking on its own screen -- spectatorPick
+                    // delegates to anPickAt there and returns. But anPickAt is reached
+                    // from mousedown/mouseup on #anViewport, and this handler cancels the
+                    // synthetic mouse events those rely on. So a tap on the replay board
+                    // fell into the gap between the two: the renderer would not pick, and
+                    // the analyzer never heard. Same delegation, made explicit.
+                    const an = document.getElementById('analyzeScreen');
+                    if (an && an.classList.contains('active')) {
+                        if (game.ui && game.ui.anPickAt) game.ui.anPickAt(pd.ox, pd.oy);
+                    } else if (game.spectatorPick) {
+                        game.spectatorPick(pd.ox, pd.oy);
+                    }
+                }
             } else if (e.touches.length === 1) {
                 // One of two lifted: carry on panning from where the remaining finger
                 // is, rather than jumping the map by the gap between them.
