@@ -853,7 +853,7 @@ class UIManager {
                 ${status}
             </div>
             <div class="model-select-row">
-                <div class="arena-field" style="flex:1 1 340px"><label>${t('ar.fModelSelect')}</label>
+                <div class="arena-field" style="flex:1 1 340px"><label>${t('ar.fModelSelect')}${modelNote}</label>
                     <div class="mdl-combo">
                         <input type="text" class="mdl-input" id="mdlIn-${m.id}" value="${e(m.model)}"
                             placeholder="model-id" autocomplete="off" spellcheck="false"
@@ -863,8 +863,7 @@ class UIManager {
                         <button type="button" class="mdl-caret" tabindex="-1"
                             onclick="game.ui.mdlToggle(${m.id})">▾</button>
                         <div class="mdl-pop" id="mdlPop-${m.id}" hidden></div>
-                    </div>
-                    ${modelNote}</div>
+                    </div></div>
                 <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fMaxTokens')}</label>
                     <input type="number" min="64" step="64" value="${e(m.maxTokens)}" oninput="game.ui.setModelField(${m.id},'maxTokens',this.value)" placeholder="2000"></div>
                 <div class="arena-field" style="flex:0 0 210px"><label>${t('ar.fContextBudget')}</label>

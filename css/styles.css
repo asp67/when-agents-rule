@@ -1538,7 +1538,12 @@ body.spectator-mode #unitInfo.spectator-card {
 /* Every line begins with the same vendor; greying it is what makes the list scannable. */
 .mdl-v { color:#7f93aa; }
 .mdl-none { padding:7px 9px; font-size:0.78em; color:#8fa3bb; }
-.mdl-note { display:block; margin-top:3px; font-size:0.72em; color:#8fa3bb; }
+/* On the LABEL, not under the box. Beneath the input it made this one field taller
+   than every other field in the row, and a flex row of unequal fields is a row that
+   does not line up -- which is what "misaligned" meant, not the popup at all.
+   The label is uppercase, bold and letter-spaced; a hint is none of those. */
+.mdl-note { margin-left:8px; font-size:0.85em; font-weight:400; color:#8fa3bb;
+    text-transform:none; letter-spacing:0; }
 .mdl-note.warn { color:var(--gold-2, #e3c46a); }
 /* Context budget: number input + a small "set to max" button on one row. */
 .ctx-budget-row { display: flex; gap: 6px; align-items: stretch; }
