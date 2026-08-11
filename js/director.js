@@ -47,9 +47,17 @@ const DIR_RECENT = 6;                      // shots remembered for anti-repeat
 // dur: [min, max] ms. pitch: elevation in radians (0.26 ~ 15deg, 0.6 ~ 34deg).
 // track: the target follows the subject while the shot runs.
 // push: fraction the frame tightens over the shot — life without motion sickness.
+// pan: radians of yaw drift ACROSS the shot. Fights only, and deliberately.
+//
+// The economy half of a match wants what it already has: no panning, a slow tighten,
+// a good fixed angle, the overview beat. It is slow play and the camera should be
+// slow with it. A fight is the opposite and often lasts seconds -- so those shots cut
+// fast, and each one arcs a few degrees while it runs, because a static frame of a
+// melee is flat and six degrees of movement is what makes it read as depth. The cut
+// still LANDS on a compass angle; the drift happens after, inside the shot.
 const DIR_SHOTS = {
     selected:  { dur: [9000, 9000],   pitch: 0.42, track: true,  push: 0 },
-    brawl:     { dur: [3500, 5000],   pitch: 0.44, track: true,  push: 0.06 },
+    brawl:     { dur: [2200, 3400],   pitch: 0.44, track: true,  push: 0.06, pan: 0.11 },
     pov:       { dur: [4000, 6000],   pitch: 0.24, track: false, push: 0 },
     wonder:    { dur: [6000, 8000],   pitch: 0.34, track: false, push: 0.10 },
     follow:    { dur: [6000, 9000],   pitch: 0.36, track: true,  push: 0 },
@@ -228,14 +236,32 @@ class Director {
         return out;
     }
 
-    // Is a BUILDING losing health inside this fight? A base under assault is the
-    // match turning, a field skirmish usually is not, and the two scored the same.
+    // WHAT is being hit, not just whether something is. A Wonder under attack is the
+    // match being decided; a town centre is a player being ended; a hut is a hut. They
+    // all scored the same, so a skirmish with more swings in it could outrank the
+    // assault that settled the game.
     siegeAt(f) {
+        let best = null, w = 0;
         for (const [b, hp] of this._prevHp) {
             if (!b || b.health == null || b.health >= hp) continue;
-            if (Math.hypot(b.x - f.x, b.z - f.z) <= f.r + 70) return b;
+            if (Math.hypot(b.x - f.x, b.z - f.z) > f.r + 70) continue;
+            const v = b.isWonder ? 55 : (b.type === 'town_center' ? 40 : 22);
+            if (v > w) { w = v; best = b; }
         }
-        return null;
+        return { b: best, w };
+    }
+
+    // How built-up the ground is. A fight among buildings is a fight FOR something and
+    // reads as one on screen -- rooftops, walls, a town to lose -- where the same
+    // number of swings in open grass is two crowds bumping into each other.
+    townAt(f) {
+        let n = 0;
+        for (const ai of this.livePlayers()) {
+            for (const b of ai.buildings) {
+                if (b.health > 0 && Math.hypot(b.x - f.x, b.z - f.z) <= 70) n++;
+            }
+        }
+        return n;
     }
 
     // ---- candidates --------------------------------------------------------
@@ -250,8 +276,9 @@ class Director {
         for (const f of this.fights(now)) {
             const key = 'fight:' + Math.round(f.x / 70) + ':' + Math.round(f.z / 70);
             const siege = this.siegeAt(f);
+            const town = this.townAt(f);
             push('brawl', key,
-                 100 + Math.min(45, f.n * 3) + (siege ? 30 : 0), () => {
+                 100 + Math.min(45, f.n * 3) + siege.w + Math.min(18, town * 3), () => {
                 // Reverse angle each time we come back to THIS fight, so a long assault
                 // is covered from several sides rather than stared at from one.
                 const side = (this.recent.filter(k => k === key).length % 4);
@@ -508,6 +535,13 @@ class Director {
                 if (best) { this.shot.pose.x = best.x; this.shot.pose.z = best.z; }
             }
         }
+        // The arc. Only shots that declare a pan get one, so the economy half stays
+        // still. Direction alternates per shot, or a run of cuts around one fight would
+        // all sweep the same way and read as one long drift instead of several angles.
+        if (spec.pan && held > DIR_SETTLE_MS * this.lapse) {
+            const k2 = Math.min(1, (held - DIR_SETTLE_MS * this.lapse) / (2000 * this.lapse));
+            this.shot.pose.yaw = this.shot.pose.yaw0 + this.shot.panDir * spec.pan * k2;
+        }
         // A slow tighten over the shot. Small on purpose: enough that the frame is
         // alive, not enough to notice as movement.
         const k = spec.push ? (1 - spec.push * Math.min(1, held / (this.shot.until - this.shot.born))) : 1;
@@ -529,7 +563,10 @@ class Director {
         if (this.recent.length > DIR_RECENT) this.recent.shift();
         const owner = key.split(':')[1];
         if (owner) this.lastSeen.set(owner, now);
-        return { type, key, score, pose, subject: pose.subject, born: now, until: now + dur, cutDone: false };
+        pose.yaw0 = pose.yaw;                       // the compass angle the cut landed on
+        return { type, key, score, pose, subject: pose.subject, born: now,
+                 until: now + dur, cutDone: false,
+                 panDir: (this.recent.length % 2) ? 1 : -1 };
     }
 
     // ---- ?dir=1 ------------------------------------------------------------
