@@ -63,6 +63,22 @@ const DIR_SHOTS = {
 class Director {
     constructor(game) {
         this.game = game;
+        // TIMELAPSE. Every duration here is in CAPTURE seconds, and a video sped up
+        // 8x in post is watched in SCREEN seconds -- so an eight-second shot becomes
+        // a one-second flicker and a careful cut becomes a stutter. Nothing about the
+        // pacing is wrong; it simply cannot know what happens to the footage later.
+        //
+        // ?lapse=8 says what happens to it. Every hold multiplies, so eight seconds
+        // on screen means sixty-four seconds of capture, and the rhythm you tuned at
+        // 1x is the rhythm that survives the edit. The interrupt margin doubles as
+        // well: a thirty-second skirmish is a four-second glance after the speed-up,
+        // and chopping a timelapse for it costs more than it shows.
+        //
+        // Settable live (game._director.lapse = 8) so a recording can change pace at
+        // the half without a reload -- which is the whole point of an eight-minute
+        // video whose first half is an economy and whose second half is a war.
+        const m = /[?&]lapse=(\d+(?:\.\d+)?)/.exec(location.search);
+        this.lapse = m ? Math.max(1, Math.min(32, parseFloat(m[1]))) : 1;
         this.shot = null;            // { type, key, score, until, pose, subject, born }
         this.recent = [];            // [key] of the last DIR_RECENT shots
         this.lastSeen = new Map();   // playerId -> when we last showed them
@@ -287,7 +303,7 @@ class Director {
                 });
             } else this.compareQueue.shift();
         }
-        if (now - this.lastOverview > DIR_OVERVIEW_EVERY) {
+        if (now - this.lastOverview > DIR_OVERVIEW_EVERY * this.lapse) {
             push('overview', 'overview', 88, () => {
                 this.lastOverview = now;
                 const size = (g.terrain && g.terrain.size) || 800;
@@ -353,9 +369,10 @@ class Director {
             const top = cands[0];
             if (top) {
                 const age = this.shot ? now - this.shot.born : Infinity;
+                const margin = DIR_INTERRUPT_MARGIN * (this.lapse > 1 ? 2 : 1);
                 const better = !this.shot
                     || expired
-                    || (age > DIR_MIN_SHOT_MS && top.adj > this.shot.score + DIR_INTERRUPT_MARGIN);
+                    || (age > DIR_MIN_SHOT_MS * this.lapse && top.adj > this.shot.score + margin);
                 if (better && (!this.shot || this.shot.type !== 'selected' || expired)) {
                     const pose = top.make();
                     if (pose) this.shot = this.begin(top.type, top.key, top.adj, pose, now);
@@ -369,7 +386,7 @@ class Director {
 
         // Track the subject — but only after the frame has been held long enough to
         // read. Moving the instant we cut is how a cut turns into a lurch.
-        if (spec.track && held > DIR_SETTLE_MS) {
+        if (spec.track && held > DIR_SETTLE_MS * this.lapse) {
             const p = this.shot.subject ? g._resolveCamSubject(this.shot.subject) : null;
             if (p) { this.shot.pose.x = p.x; this.shot.pose.z = p.z; }
             else if (this.shot.subject && this.shot.subject.combat) {
@@ -396,7 +413,7 @@ class Director {
 
     begin(type, key, score, pose, now) {
         const spec = DIR_SHOTS[type] || DIR_SHOTS.establish;
-        const dur = spec.dur[0] + Math.random() * (spec.dur[1] - spec.dur[0]);
+        const dur = (spec.dur[0] + Math.random() * (spec.dur[1] - spec.dur[0])) * this.lapse;
         this.recent.push(key);
         if (this.recent.length > DIR_RECENT) this.recent.shift();
         const owner = key.split(':')[1];
@@ -419,7 +436,9 @@ class Director {
         }
         const s = this.shot;
         const left = s ? Math.max(0, Math.round((s.until - now) / 100) / 10) : 0;
-        el.textContent = 'SHOT  ' + (s ? s.type + '  ' + s.key + '  ' + left + 's left' : '(none)') + '\n'
+        el.textContent = 'SHOT  ' + (s ? s.type + '  ' + s.key + '  ' + left + 's left' : '(none)')
+            + (this.lapse > 1 ? '   [lapse ' + this.lapse + 'x -> ' + (Math.round(left / this.lapse * 10) / 10)
+                                + 's on screen]' : '') + '\n'
             + (s ? 'pose  yaw ' + Math.round((s.pose.yaw * 180 / Math.PI)) + '°  halfH '
                  + Math.round(s.pose.halfH) + '\n' : '')
             + this.debugRows.map(c => '  ' + String(Math.round(c.adj)).padStart(4) + '  ' + c.type + '  ' + c.key).join('\n');
