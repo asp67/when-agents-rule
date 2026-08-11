@@ -2283,22 +2283,35 @@ class UIManager {
     showControlsCard(mode) {
         this.hideControlsCard();
         const row = (k, v) => `<div class="ck">${k}</div><div class="cv">${v}</div>`;
+        // A card listing mouse buttons is no help on a device that cannot produce one.
+        // Coarse pointer -> show the gestures. Only the arena has a touch reading: the
+        // campaign needs box-select and right-click commands, which is not a tablet.
+        const touch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
         const specific = (mode === 'arena')
-            ? [
+            ? (touch ? [
+                ['👆 ' + t('help.tap'), t('help.act.inspect')],
+                ['👆 ' + t('help.dragTouch'), t('help.act.pan')],
+                ['👆 ' + t('help.holdTouch'), t('help.act.coord')]
+              ] : [
                 ['🖱️ ' + t('help.lmb'), t('help.act.inspect')],
                 ['🖱️ ' + t('help.lmbDrag'), t('help.act.pan')],
                 ['🖱️ ' + t('help.rmbHold'), t('help.act.coord')]
-              ]
+              ])
             : [
                 ['🖱️ ' + t('help.lmb'), t('help.act.select')],
                 ['🖱️ ' + t('help.lmbDrag'), t('help.act.box')],
                 ['🖱️ ' + t('help.rmb'), t('help.act.command')]
               ];
-        const camera = [
-            ['⌨️ W A S D / ↑ ↓ ← →', t('help.act.pan')],
-            ['🖱️ ' + t('help.mmb'), t('help.act.rotate')],
-            ['🖱️ ' + t('help.wheel'), t('help.act.zoom')]
-        ];
+        const camera = (touch && mode === 'arena')
+            ? [
+                ['🤏 ' + t('help.pinch'), t('help.act.zoom')],
+                ['🤏 ' + t('help.twist'), t('help.act.rotate')]
+              ]
+            : [
+                ['⌨️ W A S D / ↑ ↓ ← →', t('help.act.pan')],
+                ['🖱️ ' + t('help.mmb'), t('help.act.rotate')],
+                ['🖱️ ' + t('help.wheel'), t('help.act.zoom')]
+              ];
         const grid = specific.map(([k, v]) => row(k, v)).join('')
             + `<div class="controls-sub">${t('help.camera')}</div>`
             + camera.map(([k, v]) => row(k, v)).join('');

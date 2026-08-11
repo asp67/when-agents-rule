@@ -27,18 +27,26 @@ class InputManager {
         // Release the spectator coordinate flag even if the mouse comes up off-canvas.
         window.addEventListener('mouseup', () => this.hideCoordFlag());
 
-        // Touch support
+        // Touch support. These shims give the CAMPAIGN a one-finger mouse; the arena
+        // has real gestures in the renderer instead. Bailing out before preventDefault
+        // is the whole point of the guard: this used to swallow every spectator touch
+        // and then return, which also suppressed the synthetic mouse events the browser
+        // would have sent -- so a tablet watching a match could not move the camera at
+        // all, and nothing in the code looked like it was refusing.
         canvas.addEventListener('touchstart', (e) => {
+            if (this.game.spectatorMode) return;
             e.preventDefault();
             const touch = e.touches[0];
             this.onMouseDown({ clientX: touch.clientX, clientY: touch.clientY });
         });
         canvas.addEventListener('touchmove', (e) => {
+            if (this.game.spectatorMode) return;
             e.preventDefault();
             const touch = e.touches[0];
             this.onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
         });
         canvas.addEventListener('touchend', (e) => {
+            if (this.game.spectatorMode) return;
             e.preventDefault();
             this.onMouseUp({ clientX: this.mouseDownPos.x, clientY: this.mouseDownPos.y });
         });

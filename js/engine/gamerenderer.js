@@ -171,6 +171,14 @@
             canvas.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
             canvas.addEventListener('contextmenu', (e) => e.preventDefault());
             canvas.addEventListener('wheel', (e) => this.onCanvasWheel(e), { passive: false });
+            // touch-action none, or the browser claims the gesture for page scroll and
+            // pinch-zoom before a handler ever sees it. Only the canvas: the panels
+            // beside it still need to scroll normally.
+            canvas.style.touchAction = 'none';
+            canvas.addEventListener('touchstart', (e) => this.onCanvasTouchStart(e), { passive: false });
+            canvas.addEventListener('touchmove', (e) => this.onCanvasTouchMove(e), { passive: false });
+            canvas.addEventListener('touchend', (e) => this.onCanvasTouchEnd(e), { passive: false });
+            canvas.addEventListener('touchcancel', (e) => this.onCanvasTouchEnd(e), { passive: false });
             document.addEventListener('keydown', (e) => this.onKeyDown(e));
             document.addEventListener('keyup', (e) => this.onKeyUp(e));
 
@@ -1105,6 +1113,143 @@
             if (typeof game !== 'undefined' && game && game.spectatorMode && game.disableActionCam) game.disableActionCam();
             const factor = e.deltaY > 0 ? 1.12 : (1 / 1.12);
             this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, this._halfH * factor));
+        }
+
+        // ---- touch: the same five gestures, for a tablet -------------------------
+        // The renderer only ever bound mouse events. A browser will synthesise mouse
+        // events from taps -- but InputManager's touch shims call preventDefault on
+        // every touch that reaches the canvas, which suppresses exactly that. So a
+        // tablet had no camera in the arena at all: no pan, no zoom, not even a tap to
+        // inspect. The game turns out to play well on one, so it should be watchable
+        // on one.
+        //
+        // Mapped onto the mouse controls rather than inventing a second vocabulary:
+        //
+        //   one finger dragged     left drag      pan
+        //   one finger tapped      left click     inspect
+        //   one finger held        right hold     coordinate flag
+        //   two fingers pinched    wheel          zoom
+        //   two fingers turned     middle drag    yaw, and slid up or down for pitch
+        _spectating() {
+            return !!(typeof game !== 'undefined' && game && game.spectatorMode);
+        }
+
+        _touchPair(e) {
+            const a = e.touches[0], b = e.touches[1];
+            const dx = b.clientX - a.clientX, dy = b.clientY - a.clientY;
+            return {
+                cx: (a.clientX + b.clientX) / 2, cy: (a.clientY + b.clientY) / 2,
+                dist: Math.hypot(dx, dy), angle: Math.atan2(dy, dx),
+                twist: 0, twistOn: false, tilt: 0, tiltOn: false
+            };
+        }
+
+        _clearHold() {
+            if (this._holdTimer) { clearTimeout(this._holdTimer); this._holdTimer = null; }
+        }
+
+        onCanvasTouchStart(e) {
+            if (!this._spectating()) return;   // campaign touch belongs to InputManager
+            e.preventDefault();
+            this._clearHold();
+            if (e.touches.length === 1) {
+                const x = e.touches[0].clientX, y = e.touches[0].clientY;
+                this._pinch = null;
+                this._panDrag = { x, y, ox: x, oy: y, moved: false };
+                // A finger that stays put reads as holding the right button. Cancelled
+                // by the first real movement, so a pan never waits on the timer.
+                this._holdTimer = setTimeout(() => {
+                    this._holdTimer = null;
+                    if (!this._panDrag || this._panDrag.moved) return;
+                    this._coordHold = true;
+                    if (game.inputManager) game.inputManager.showCoordFlag(x, y);
+                }, 450);
+            } else {
+                // Re-seeded on every extra finger, so a third one landing cannot leave
+                // the pair measuring from where two other fingers used to be.
+                this._panDrag = null;
+                this._pinch = this._touchPair(e);
+                if (game.disableActionCam) game.disableActionCam();
+            }
+        }
+
+        onCanvasTouchMove(e) {
+            if (!this._spectating()) return;
+            e.preventDefault();
+            if (this._pinch && e.touches.length >= 2) {
+                const p = this._pinch, now = this._touchPair(e);
+                if (p.dist > 0 && now.dist > 0) {
+                    this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, this._halfH * (p.dist / now.dist)));
+                }
+                // Turning and tilting each stay locked until the gesture clearly asks
+                // for them. Two fingers are never perfectly steady, so without the
+                // locks a plain pinch walks the map a degree at a time and the north
+                // you had is quietly gone with nothing to blame.
+                let da = now.angle - p.angle;
+                if (da > Math.PI) da -= 2 * Math.PI;
+                else if (da < -Math.PI) da += 2 * Math.PI;
+                now.twist = p.twist + da;
+                now.twistOn = p.twistOn || Math.abs(now.twist) > 0.12;   // about 7 degrees
+                if (now.twistOn) this._yaw -= da;                        // same sign as middle-drag
+                const dy = now.cy - p.cy;
+                now.tilt = p.tilt + dy;
+                now.tiltOn = p.tiltOn || Math.abs(now.tilt) > 18;        // pixels
+                if (now.tiltOn) {
+                    this._pitch = Math.max(10 * Math.PI / 180,
+                        Math.min(89 * Math.PI / 180, this._pitch + dy * 0.004));
+                }
+                this._pinch = now;
+                return;
+            }
+            if (!this._panDrag || e.touches.length !== 1) return;
+            const x = e.touches[0].clientX, y = e.touches[0].clientY;
+            if (this._coordHold) {   // the flag follows the finger; no pan while it is up
+                if (game.inputManager) game.inputManager.showCoordFlag(x, y);
+                return;
+            }
+            if (!this._panDrag.moved) {
+                // 8px, not the mouse's 5: a fingertip is wider than a cursor and a tap
+                // meant as a pick drifts more than a click does.
+                if (Math.hypot(x - this._panDrag.ox, y - this._panDrag.oy) < 8) return;
+                this._panDrag.moved = true;
+                this._clearHold();
+                if (game.disableActionCam) game.disableActionCam();
+            }
+            const dx = x - this._panDrag.x, dy = y - this._panDrag.y;
+            this._panDrag.x = x; this._panDrag.y = y;
+            const wpp = (2 * this._halfH) / (this.canvas.clientHeight || 1);
+            const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
+            const right = -dx * wpp;
+            const fwd = dy * wpp / Math.max(0.17, Math.sin(this._pitch));
+            this.cameraTarget.x += right * cy + fwd * -sy;
+            this.cameraTarget.z += right * -sy + fwd * -cy;
+        }
+
+        onCanvasTouchEnd(e) {
+            if (!this._spectating()) return;
+            e.preventDefault();
+            this._clearHold();
+            // Read BEFORE clearing: a long press ends with a finger that never moved,
+            // which is the same shape as a tap, and would otherwise also inspect.
+            const wasCoord = this._coordHold;
+            if (wasCoord) {
+                this._coordHold = false;
+                if (game.inputManager) game.inputManager.hideCoordFlag();
+            }
+            const pd = this._panDrag;
+            if (e.touches.length === 0) {
+                this._panDrag = null;
+                this._pinch = null;
+                if (pd && !pd.moved && !wasCoord && game.spectatorPick) game.spectatorPick(pd.ox, pd.oy);
+            } else if (e.touches.length === 1) {
+                // One of two lifted: carry on panning from where the remaining finger
+                // is, rather than jumping the map by the gap between them.
+                const t = e.touches[0];
+                this._pinch = null;
+                this._panDrag = { x: t.clientX, y: t.clientY, ox: t.clientX, oy: t.clientY, moved: true };
+            } else {
+                this._pinch = this._touchPair(e);
+            }
         }
 
         updateCamera(deltaTime) {

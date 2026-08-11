@@ -1963,7 +1963,9 @@ const I18N_HELP = {
         'help.act.coord': 'Coordinate flag — who discovered a spot',
         'help.act.select': 'Select a unit or building', 'help.act.box': 'Box-select units',
         'help.act.command': 'Move · attack · build / repair · place',
-        'help.act.rotate': 'Rotate & tilt the view', 'help.act.zoom': 'Zoom in / out'
+        'help.act.rotate': 'Rotate & tilt the view', 'help.act.zoom': 'Zoom in / out',
+        'help.tap': 'Tap', 'help.dragTouch': 'Drag one finger', 'help.holdTouch': 'Touch & hold',
+        'help.pinch': 'Pinch', 'help.twist': 'Twist / slide two fingers'
     },
     de: {
         'help.title': 'Steuerung', 'help.close': 'Schließen', 'help.camera': 'Kamera',
@@ -1973,7 +1975,9 @@ const I18N_HELP = {
         'help.act.coord': 'Koordinaten-Fähnchen – wer einen Ort entdeckt hat',
         'help.act.select': 'Einheit oder Gebäude auswählen', 'help.act.box': 'Einheiten mit Rahmen wählen',
         'help.act.command': 'Bewegen · angreifen · bauen / reparieren · platzieren',
-        'help.act.rotate': 'Ansicht drehen & neigen', 'help.act.zoom': 'Hinein-/Herauszoomen'
+        'help.act.rotate': 'Ansicht drehen & neigen', 'help.act.zoom': 'Hinein-/Herauszoomen',
+        'help.tap': 'Tippen', 'help.dragTouch': 'Mit einem Finger ziehen', 'help.holdTouch': 'Tippen & halten',
+        'help.pinch': 'Zwei Finger auf/zu', 'help.twist': 'Zwei Finger drehen / schieben'
     },
     es: {
         'help.title': 'Controles', 'help.close': 'Cerrar', 'help.camera': 'Cámara',
@@ -1983,7 +1987,9 @@ const I18N_HELP = {
         'help.act.coord': 'Bandera de coordenadas: quién descubrió un lugar',
         'help.act.select': 'Seleccionar unidad o edificio', 'help.act.box': 'Selección por recuadro',
         'help.act.command': 'Mover · atacar · construir / reparar · colocar',
-        'help.act.rotate': 'Girar e inclinar la vista', 'help.act.zoom': 'Acercar / alejar'
+        'help.act.rotate': 'Girar e inclinar la vista', 'help.act.zoom': 'Acercar / alejar',
+        'help.tap': 'Tocar', 'help.dragTouch': 'Arrastrar un dedo', 'help.holdTouch': 'Tocar y mantener',
+        'help.pinch': 'Pellizcar', 'help.twist': 'Girar / deslizar dos dedos'
     },
     zh: {
         'help.title': '操作说明', 'help.close': '关闭', 'help.camera': '镜头',
@@ -1993,7 +1999,9 @@ const I18N_HELP = {
         'help.act.coord': '坐标旗——谁发现了此处',
         'help.act.select': '选择单位或建筑', 'help.act.box': '框选单位',
         'help.act.command': '移动·攻击·建造/维修·放置',
-        'help.act.rotate': '旋转与俯仰视角', 'help.act.zoom': '放大/缩小'
+        'help.act.rotate': '旋转与俯仰视角', 'help.act.zoom': '放大/缩小',
+        'help.tap': '轻触', 'help.dragTouch': '单指拖动', 'help.holdTouch': '按住不放',
+        'help.pinch': '双指缩放', 'help.twist': '双指旋转 / 滑动'
     }
 };
 Object.keys(I18N_HELP).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_HELP[l]); });
