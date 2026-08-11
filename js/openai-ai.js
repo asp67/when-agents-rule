@@ -2829,6 +2829,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             if (s) {
                 s.requests++;
                 s.latencies.push(Date.now() - reqStart);
+                // WHEN, not just how long. A seat whose endpoint dies mid-match leaves
+                // no other trace of the moment it went quiet: its turns simply stop
+                // appearing, which is invisible on a card that only counts them.
+                s.lastAnswerAt = Date.now();
             }
 
             // Stamp the harness's answer onto the transcript. executeAction does this

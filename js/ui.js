@@ -3128,6 +3128,17 @@ class UIManager {
         if (m.invalidActions >= 2) tags.push({ t: t('tag.inventsActions'), cls: 'bad' });
         if (m.attempted >= 3 && m.successRate >= 0.8) tags.push({ t: t('tag.efficient'), cls: 'good' });
         else if (m.attempted >= 3 && m.successRate < 0.5) tags.push({ t: t('tag.manyFails'), cls: 'warn' });
+        // Loud, because it changes what every other number on the card MEANS. A seat
+        // that answered a third of its rounds did not play a third as well -- it played
+        // a different match from the one the ranking describes.
+        const missedShare = m.decisions ? (m.roundsMissed || 0) / m.decisions : 0;
+        if ((m.roundsMissed || 0) >= 3 && missedShare >= 0.1) {
+            tags.push({ t: t('tag.roundsMissed', { n: m.roundsMissed,
+                                                   pct: Math.round(missedShare * 100) }), cls: 'bad' });
+        }
+        if (m.silentMs >= 120000) {
+            tags.push({ t: t('tag.wentSilent', { m: Math.round(m.silentMs / 60000) }), cls: 'bad' });
+        }
         const distinct = Object.keys(m.actionCounts).length;
         if (distinct >= 5) tags.push({ t: t('tag.versatile'), cls: 'good' });
         else if (m.attempted >= 4 && distinct <= 2) tags.push({ t: t('tag.monotonous'), cls: 'warn' });
@@ -3217,8 +3228,25 @@ class UIManager {
                 // harness cut the request, so it is neither evidence for nor against the
                 // endpoint. Latency is reported as latency — that is what the mode is for.
                 const reliabilityBase = Math.max(0, st.requests - ctxOv - missed - rlLost);
+                // An outage, described rather than judged. A seat can lead a match on
+                // tech, have its endpoint go from 8s to 58s and stop, be dismantled over
+                // a stretch where it answers four rounds to the others' thirteen -- and
+                // the card will say "defeated" with no hint that it went quiet.
+                //
+                // The numbers only. Whether it would have survived is not the harness's
+                // to say: it may have had thirty workers and nothing to fight with, and
+                // deciding that is picking the winner of an argument the summary cannot
+                // see.
+                const lats = (lat || []).slice();
+                const med = (arr) => arr.length ? arr.slice().sort((a, b) => a - b)[arr.length >> 1] : 0;
+                const silentMs = st.lastAnswerAt ? Math.max(0, Date.now() - st.lastAnswerAt) : 0;
                 rep.metrics = {
                     decisions: st.requests, responded,
+                    // Split late from early, so a degrading endpoint reads as a CHANGE
+                    // rather than as a wide min-max range that could be a single blip.
+                    latEarly: lats.length >= 6 ? med(lats.slice(0, -3)) : 0,
+                    latLate: lats.length >= 6 ? med(lats.slice(-3)) : 0,
+                    silentMs,
                     avgLatency: avg,
                     minLatency: lat.length ? Math.min(...lat) : 0,
                     maxLatency: lat.length ? Math.max(...lat) : 0,
@@ -3334,6 +3362,9 @@ class UIManager {
                     <div class="sum-tags">${tagsHtml}</div>
                     <div class="sum-metrics">
                         <div class="sum-metric"><span>⏱ ${t('sum.mResponse')}</span><b>${avgS.toFixed(1)}s</b><i>${(m.minLatency / 1000).toFixed(1)}–${(m.maxLatency / 1000).toFixed(1)}s</i></div>
+                        ${(m.latLate && m.latEarly && m.latLate >= m.latEarly * 3)
+                            ? `<div class="sum-metric bad"><span>\u{1F4C9} ${t('sum.slowdown')}</span><b>${(m.latEarly / 1000).toFixed(1)}s \u2192 ${(m.latLate / 1000).toFixed(1)}s</b><i>${t('sum.slowdownHint')}</i></div>`
+                            : ''}
                         <div class="sum-metric"><span>\u{1F9E0} ${t('sum.mDecisions')}</span><b>${m.decisions}</b><i>${t('sum.mAnswered', { n: m.responded })}${(m.roundsMissed || 0) ? ` · ${t('sum.missedRounds', { n: m.roundsMissed })}` : ''} · ${t('sum.perTurn', { n: (m.commandsPerTurn || 0).toFixed(1), max: m.maxCommands || 3 })}</i></div>
                         <div class="sum-metric"><span>✅ ${t('sum.mSuccess')}</span><b>${Math.round(m.successRate * 100)}%</b><i>${m.succeeded}/${m.attempted - (m.contended || 0)}${(m.contended || 0) ? ` · ${t('sum.contended', { n: m.contended })}` : ''}</i></div>
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
