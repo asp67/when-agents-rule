@@ -1677,16 +1677,30 @@
             // spectator action camera: ease toward the director's subject
             // (locked dimetric view — the old cinematic orbit is gone by design)
             if (typeof game !== 'undefined' && game && game._actionCam && game.spectatorMode && game.gameStarted) {
-                const hot = game.getActionCamTarget();
-                if (hot) {
-                    const k = Math.min(1, deltaTime * 1.6);
-                    this.cameraTarget.x += (hot.x - this.cameraTarget.x) * k;
-                    this.cameraTarget.z += (hot.z - this.cameraTarget.z) * k;
-                    // The director controls zoom too: ease the frame height toward
-                    // the subject's desired size (tight on a unit, wide on an army).
-                    if (hot.zoom != null) {
-                        const want = Math.max(MIN_HALF, Math.min(MAX_HALF, hot.zoom));
+                const shot = game.directorPose ? game.directorPose() : null;
+                if (shot) {
+                    const want = Math.max(MIN_HALF, Math.min(MAX_HALF, shot.halfH));
+                    if (shot.cut) {
+                        // The cut IS the feature. No travel, no ease, no sailing
+                        // across whatever happens to lie between two subjects --
+                        // which is what made half of a recorded match dead air.
+                        this.cameraTarget.x = shot.x; this.cameraTarget.z = shot.z;
+                        this._halfH = want;
+                        this._yaw = shot.yaw;
+                        this._pitch = shot.pitch;
+                    } else {
+                        const k = Math.min(1, deltaTime * 1.6);
+                        this.cameraTarget.x += (shot.x - this.cameraTarget.x) * k;
+                        this.cameraTarget.z += (shot.z - this.cameraTarget.z) * k;
                         this._halfH += (want - this._halfH) * k;
+                        // Shortest way round the circle. Eased raw, a camera at 350
+                        // degrees easing toward 10 takes the 340-degree route and
+                        // spins the whole board to travel twenty.
+                        let d = shot.yaw - this._yaw;
+                        while (d > Math.PI) d -= Math.PI * 2;
+                        while (d < -Math.PI) d += Math.PI * 2;
+                        this._yaw += d * k;
+                        this._pitch += (shot.pitch - this._pitch) * k;
                     }
                 }
             }

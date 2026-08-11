@@ -1737,8 +1737,11 @@ class Game {
 
     toggleActionCam() {
         this._actionCam = !this._actionCam;
-        this._camPOI = null;
-        this._camTourIdx = null;
+        // A fresh start each time it is switched on: shot history, per-player
+        // airtime and the anti-repeat window all describe a viewing session, and
+        // carrying them across a manual takeover would make the first shot back
+        // an argument with a session nobody was watching.
+        if (this._director) this._director.reset();
         // Switching it ON adopts whatever is already selected. "Follow the selected
         // unit" has to mean the same thing whichever order you do it in, and this
         // used to clear the subject unconditionally — so picking a unit and THEN
@@ -1753,60 +1756,28 @@ class Game {
         if (this._actionCam) this.toggleActionCam();
     }
 
-    // Spectator DIRECTOR camera target.
-    //  1. Fresh combat (last 5s): its weighted centroid — fights are the show.
-    //  2. Peace: a TOUR of real subjects, ~15s each, round-robin across ALIVE
-    //     players so everyone gets airtime. Per player the most interesting
-    //     subject wins: Wonder > biggest army cluster > newest construction
-    //     site > Town Center > anything they still own. The camera therefore
-    //     always looks AT something — never at empty ground or the void (the
-    //     old idle mode orbited the world origin regardless of content).
-    // Returns { x, z, zoom } — zoom is the desired camera half-height (world
-    // units framed vertically): the renderer eases toward BOTH position and
-    // zoom, so the view tightens on a lone unit and pulls back for an army or a
-    // sprawling brawl. See _subjectZoom / MIN_HALF..MAX_HALF in the renderer.
-    getActionCamTarget() {
+    // The director's shot for this frame: { x, z, yaw, pitch, halfH, cut }.
+    //
+    // What stood here returned { x, z, zoom } and the renderer eased toward it
+    // every frame. No yaw and no pitch meant the angle never changed in a whole
+    // match, and easing toward the newest point meant every change of subject was
+    // a PAN -- seconds of empty grass at constant speed between the things worth
+    // watching. Both are properties of the SHAPE of the answer, which is why this
+    // moved to js/director.js and started answering with shots instead: a subject,
+    // a pose, a motion and a duration, cut between and moved within.
+    //
+    // The helpers stayed here (_resolveCamSubject, _subjectZoom,
+    // _biggestArmyCluster). They answer "where is this subject", which is a
+    // question about the game, not about the camera, and the director calls them.
+    directorPose() {
+        if (this._dirDebug === undefined) {
+            this._dirDebug = /[?&]dir=1(&|$)/.test(location.search);
+        }
+        if (!this._director) this._director = new Director(this);
         const now = Date.now();
-
-        // 0. Click-follow: the spectator picked a subject while the cam is on.
-        //    Track it (it moves) and frame it tightly until it dies.
-        if (this._camFollow) {
-            const pos = this._resolveCamSubject(this._camFollow);
-            if (pos) { pos.zoom = this._subjectZoom(this._camFollow); return pos; }
-            this._camFollow = null; // subject gone → hand back to the director
-        }
-
-        // 1. Fresh combat: weighted centroid, zoomed to frame the whole brawl.
-        const ev = (this._combatEvents || []).filter(e => now - e.t < 5000);
-        if (ev.length) {
-            this._camPOI = null; // a fight interrupts the tour; it restarts after
-            let sx = 0, sz = 0, sw = 0;
-            ev.forEach(e => { const w = 1 - (now - e.t) / 5000; sx += e.x * w; sz += e.z * w; sw += w; });
-            if (sw > 0) {
-                const cx = sx / sw, cz = sz / sw;
-                let spread = 0;
-                ev.forEach(e => { spread = Math.max(spread, Math.hypot(e.x - cx, e.z - cz)); });
-                return { x: cx, z: cz, zoom: Math.max(26, Math.min(80, spread * 1.4 + 16)) };
-            }
-        }
-
-        // 2. Peace tour: round-robin real subjects, framed to their size.
-        let subject = (this._camPOI && now < this._camPOI.until) ? this._camPOI.subject : null;
-        let pos = subject ? this._resolveCamSubject(subject) : null;
-        if (!pos) {
-            const players = this.aiManager.aiPlayers.filter(a => !this.isPlayerEliminated(a));
-            for (let i = 0; i < players.length && !pos; i++) {
-                this._camTourIdx = ((this._camTourIdx == null ? -1 : this._camTourIdx) + 1) % players.length;
-                subject = this._pickCamSubject(players[this._camTourIdx]);
-                if (subject) {
-                    this._camPOI = { subject, until: now + 15000 }; // 15s per tour stop
-                    pos = this._resolveCamSubject(subject);
-                }
-            }
-            if (!pos) { this._camPOI = null; subject = null; }
-        }
-        if (pos && subject) pos.zoom = this._subjectZoom(subject);
-        return pos;
+        const pose = this._director.update(now);
+        if (this._dirDebug) this._director.renderDebug(now);
+        return pose;
     }
 
     // Desired camera half-height for a director/follow subject: tight on a lone
