@@ -2116,10 +2116,34 @@ class Game {
     // enemyBuildings[].owner, enemyUnits[].owner — so naming seats by it is what makes
     // "who is hitting me" joinable with "who is where". The civ is still one lookup
     // away in gameStats.opponents.
-    ownerName(o) {
+    ownerName(o) { return this.seatLabel(o); }
+
+    // The ONE name a rival has in everything a model reads, and the only thing that
+    // changed: ai.id is untouched, every `entity.owner === ai.id` still compares raw
+    // ids, and nothing about identity moved. This is a label applied at the boundary.
+    //
+    // "ai_3naqjagyz" was chosen for a real reason -- a controlled run gives all four
+    // seats the SAME civ, so "greek" named three rivals at once and no battle report
+    // could be attributed. The id fixed that and cost readability: a closing statement
+    // about ai_3naqjagyz means nothing to anyone watching. civ + seat keeps the
+    // property that mattered (greek-1 .. greek-4 are still four distinct rivals) and
+    // reads as words.
+    //
+    // Takes an owner OBJECT or a raw id string, because half the call sites hold one
+    // and half hold the other. Unresolvable ids fall through unchanged rather than
+    // becoming "an enemy" -- losing information is worse than an ugly token.
+    //
+    // NOT the model's display name. That is the most readable option and it would tell
+    // every seat which models it is playing against, which is a change to what the
+    // benchmark measures rather than a change to how it reads.
+    seatLabel(o) {
         if (!o) return 'an unknown force';
-        if (o === this.player) return 'player';   // the id pushRival gives the human
-        return o.id || o.civilization || 'an enemy';
+        if (o === this.player || o === 'player') return 'player';
+        const list = (this.aiManager && this.aiManager.aiPlayers) || [];
+        const ai = (typeof o === 'string') ? list.find(a => a.id === o) : o;
+        if (!ai) return typeof o === 'string' ? o : 'an enemy';
+        const seat = (ai.seat != null) ? ai.seat + 1 : (list.indexOf(ai) + 1);
+        return `${ai.civilization || 'seat'}-${seat > 0 ? seat : '?'}`;
     }
 
     destroyTarget(target) {

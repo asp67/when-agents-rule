@@ -1375,7 +1375,7 @@ class OpenAIAIManager {
                     .map(oid => {
                         const foe = (game.aiManager && game.aiManager.aiPlayers.find(a => a.id === oid)) ||
                                     (oid === 'player' ? game.player : null);
-                        return Object.assign({ owner: foe ? game.ownerName(foe) : String(oid) }, sideJson(b.sides[oid]));
+                        return Object.assign({ owner: game.seatLabel(foe || oid) }, sideJson(b.sides[oid]));
                     });
                 const quiet = battleNow - b.lastAt;
                 const ongoing = quiet < Game.BATTLE_QUIET_MS;
@@ -1667,7 +1667,7 @@ class OpenAIAIManager {
                 type: bldg.type,
                 x: Math.round(bldg.x),
                 z: Math.round(bldg.z),
-                owner: bldg.owner,
+                owner: game.seatLabel(bldg.owner),
                 healthPct: Math.round((bldg.health / bldg.maxHealth) * 100),
                 visible: !!seenNow
             };
@@ -1762,7 +1762,7 @@ class OpenAIAIManager {
                 type: unit.type,
                 x: Math.round(unit.x),
                 z: Math.round(unit.z),
-                owner: unit.owner
+                owner: game.seatLabel(unit.owner)
             });
         });
 
@@ -1979,7 +1979,7 @@ class OpenAIAIManager {
         const met = ai._metRivals || new Set();
         const aiOpponents = [];
         const pushRival = (o, key) => {
-            const entry = { id: key, civilization: o.civilization, age: o.age, discovered: met.has(key) };
+            const entry = { id: game.seatLabel(o), civilization: o.civilization, age: o.age, discovered: met.has(key) };
             if (entry.discovered) {
                 entry.units = o.units.length;
                 entry.buildings = o.buildings.length;
@@ -1999,7 +1999,7 @@ class OpenAIAIManager {
             underAttack.push({
                 kind, type: ent.type, x: Math.round(ent.x), z: Math.round(ent.z),
                 healthPct: Math.round((ent.health / ent.maxHealth) * 100),
-                attackerAt: atk ? { x: Math.round(atk.x), z: Math.round(atk.z), owner: atk.owner } : null
+                attackerAt: atk ? { x: Math.round(atk.x), z: Math.round(atk.z), owner: game.seatLabel(atk.owner) } : null
             });
         };
         ai.buildings.forEach(b => scanHit(b, 'building'));
@@ -4836,7 +4836,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     // bare parenthetical after a unit type reads as the unit's own id, and
                     // it is exactly the shape targetId takes. Models copy whatever looks
                     // copyable, so this was an invitation to attack a player id. Labelled.
-                    resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and ENGAGED an enemy ${tg.type}${tg.owner ? ` owned by ${tg.owner}` : ''}.`, false,
+                    resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and ENGAGED an enemy ${tg.type}${tg.owner ? ` owned by ${this.game.seatLabel(tg.owner)}` : ''}.`, false,
                         'log.out.attackEngaged', { x: Math.round(r.tx), z: Math.round(r.tz), target: tg.type });
                     continue;
                 }
