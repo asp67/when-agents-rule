@@ -133,8 +133,11 @@ class OpenAIAIManager {
     static get UNFOREWARNED() {
         // targetGone: the id WAS in the state this seat read, and the thing died while
         // it was thinking. Nothing in any snapshot could have warned it.
+        // orderedUnitsGone: the same case seen from the other end. The HANDLES were in
+        // friendlyUnits in the state this seat read, and every one of those units died
+        // while it was thinking. A snapshot cannot forewarn that either.
         return new Set(['trainerBusy', 'noWorkerIdleBuild', 'noClearSpot', 'assignAllCarrying',
-                        'targetGone']);
+                        'targetGone', 'orderedUnitsGone']);
     }
     haveString(ai) {
         const r = ai.resources;
@@ -4485,7 +4488,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             // a different unit wearing its number. Say that, instead of quietly moving
             // whoever happens to be nearby.
             if (missing.length) note = ` (no longer yours or already dead: ${missing.join(', ')})`;
-            return Object.assign(split(picked), { note });
+            // missing/alive travel with the selection so a caller can tell "some of the
+            // named units died" from "all of them did". They are different situations
+            // and only one of them is the model's mistake.
+            return Object.assign(split(picked), { note, missing, alive: picked.length });
         }
         const hasMap = unitsMap && typeof unitsMap === 'object' && !Array.isArray(unitsMap) && Object.keys(unitsMap).length > 0;
         if (!hasMap) return Object.assign(split(ai.units.filter(u => u.type !== 'worker' && u.health > 0)), { note: '' });
@@ -4527,6 +4533,28 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     }
 
     // Human-readable tally of a player's non-worker force, for mismatch feedback.
+    // Every handle the model named is dead. That is the targetGone situation exactly:
+    // the ids WERE in friendlyUnits in the state this seat read, and the units died
+    // while it was thinking, so no snapshot could have warned it.
+    //
+    // Deliberately does NOT suggest dropping unitIds to send whatever is left. The
+    // model named those units; the ones still standing may be reserved for a different
+    // order in the same turn, and auto-substituting is the harness deciding who fights.
+    // Idle military auto-defend anyway. It states the facts and stops.
+    orderedUnitsGone(ai, missing) {
+        this.outcome('log.out.orderedUnitsGone', { ids: missing.join(', ') });
+        return `[ERROR] Every unit you named is gone: ${missing.join(', ')} died between the state you read `
+             + `and this command. Nothing was executed and this does not count against you. Handles are never `
+             + `reused, so one that is missing always means that unit died. Your surviving military: `
+             + `${this.forceComposition(ai)}.`;
+    }
+
+    // Did the model name handles, and did every one of them turn out to be gone?
+    allNamedUnitsGone(unitIds, sel) {
+        return Array.isArray(unitIds) && unitIds.length > 0
+            && sel && (sel.alive === 0) && (sel.missing || []).length > 0;
+    }
+
     forceComposition(ai) {
         const counts = {};
         ai.units.forEach(u => { if (u.type !== 'worker' && u.health > 0) counts[u.type] = (counts[u.type] || 0) + 1; });
@@ -4549,6 +4577,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ, unitIds);
         const unitsToMove = [...sel.combat, ...sel.support, ...sel.workers];
         if (unitsToMove.length === 0) {
+            if (this.allNamedUnitsGone(unitIds, sel)) return this.orderedUnitsGone(ai, sel.missing);
             const ownsMilitary = ai.units.some(u => u.type !== 'worker' && u.health > 0);
             if (ownsMilitary) {
                 this.outcome('log.out.moveNoMatch', {});
@@ -4635,6 +4664,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const unitsToAttack = sel.combat;
 
         if (unitsToAttack.length === 0) {
+            if (this.allNamedUnitsGone(unitIds, sel)) return this.orderedUnitsGone(ai, sel.missing);
             console.log(`[OpenAIAI] ${ai.id}: No units to attack with`);
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             if (ownsCombat) {
@@ -4695,6 +4725,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ, unitIds);
         const unitsToAttack = sel.combat;
         if (unitsToAttack.length === 0) {
+            if (this.allNamedUnitsGone(unitIds, sel)) return this.orderedUnitsGone(ai, sel.missing);
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             if (ownsCombat) {
                 this.outcome('log.out.attackNoMatch', {});
