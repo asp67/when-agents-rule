@@ -160,7 +160,40 @@ class Game {
     }
 
     // Start Arena from setup screen with per-player configuration
+    // Starting an arena is a long sequence with exactly one thing catching failures:
+    // nothing. showScreen('gameScreen') runs near the top, so the normal PLAYER hud is
+    // on screen from that moment, and the two lines that hide it -- along with
+    // setupSpectatorUI and the game loop -- are thousands of characters further down.
+    // Anything that throws in between leaves a game that is "started", showing the
+    // wrong interface, with no loop and no message. And because this is async and the
+    // caller does not catch, it is a silent unhandled rejection: from the outside the
+    // Start button simply stops working.
+    //
+    // Reported from a second machine on the LAN, where the library is empty and the
+    // origin is not localhost -- both things this box never exercises. Whatever the
+    // specific cause turns out to be, a half-started arena that says nothing is its own
+    // bug, and it is the reason the report reads "then nothing happens".
     async startArenaFromSetup() {
+        try {
+            return await this._startArenaFromSetup();
+        } catch (e) {
+            console.error('[arena] start failed', e);
+            this.gameStarted = false;
+            this.spectatorMode = false;
+            if (this.openAIAIManager && this.openAIAIManager.stop) {
+                try { this.openAIAIManager.stop(); } catch (_) {}
+            }
+            const msg = (e && (e.message || e.toString())) || 'unknown error';
+            if (this.ui) {
+                this.ui.showArenaSetup();
+                if (this.ui.showErrorMessage) this.ui.showErrorMessage(t('ar.startFailed', { msg }));
+                else alert(t('ar.startFailed', { msg }));
+            }
+            return null;
+        }
+    }
+
+    async _startArenaFromSetup() {
         const setup = this.ui.collectArenaSetup();
 
         // Validate: every LLM slot must point at a model with an endpoint.
