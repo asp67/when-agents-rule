@@ -4908,9 +4908,39 @@ const WAR_PRIVATE_HOST = (() => {
 const WAR_LOCAL = location.protocol === 'file:' || WAR_PRIVATE_HOST;
 const WAR_DEMO_ONLY = !WAR_LOCAL && !/[?&]full=1(&|$)/.test(location.search);
 
+// A renderer that cannot be built used to throw out of here and stop, leaving a page
+// that LOOKED fine: the menus are DOM and kept working, so the app invited a match it
+// could never draw. Pressing Start then walked into null.clearScene, which is what the
+// report "the normal player UI appears and then nothing happens" actually was.
+//
+// The engine asks for plain WebGL 1, so a machine without it usually has hardware
+// acceleration switched off, a blocklisted driver, or no GPU at all (a remote desktop
+// session is the classic). None of that is something the page can fix -- but it can say
+// so, instead of pretending and failing later.
+function warNoWebGL(e) {
+    console.error('[boot] renderer unavailable', e);
+    const box = document.createElement('div');
+    box.className = 'boot-error';
+    const p1 = document.createElement('p');
+    p1.textContent = t('boot.noWebGL');
+    const p2 = document.createElement('p');
+    p2.className = 'boot-why';
+    p2.textContent = t('boot.noWebGLWhy');
+    box.appendChild(p1); box.appendChild(p2);
+    document.body.appendChild(box);
+    document.body.classList.add('boot-failed');
+}
+
 window.addEventListener('load', () => {
     game = new Game();
-    game.init();
+    try {
+        game.init();
+    } catch (e) {
+        // Only the machine's fault is handled here. Anything else is a bug in the game
+        // and must keep its stack rather than be dressed up as a hardware notice.
+        if (e && e.noWebGL) { warNoWebGL(e); return; }
+        throw e;
+    }
     if (WAR_DEMO_ONLY) {
         document.body.classList.add('demo-only');
         game.ui.anOpen();

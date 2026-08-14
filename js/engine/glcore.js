@@ -5,8 +5,19 @@
     const GLCore = {};
 
     GLCore.createContext = (canvas, opts) => {
-        const gl = canvas.getContext('webgl', Object.assign({ antialias: true }, opts || {}));
-        if (!gl) throw new Error('WebGL not available');
+        const cfg = Object.assign({ antialias: true }, opts || {});
+        // 'experimental-webgl' is the same WebGL 1, exposed under the old name by some
+        // older builds and by drivers the browser has half-blocklisted. Costs one line
+        // and is occasionally the difference between a working machine and a black
+        // screen, so ask twice before giving up.
+        const gl = canvas.getContext('webgl', cfg) || canvas.getContext('experimental-webgl', cfg);
+        // A marked error, because the caller has to tell THIS apart from every other
+        // failure: it is the one that is about the machine rather than about the game.
+        if (!gl) {
+            const err = new Error('WebGL not available');
+            err.noWebGL = true;
+            throw err;
+        }
         gl.enable(gl.DEPTH_TEST);
         // Back-face culling is ON since the M2 winding audit: every builder's
         // triangle winding provably agrees with its outward normals

@@ -2625,6 +2625,13 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
     .an-list { min-height:130px; }
 }
 
+/* Shown when the engine cannot start at all. Covers everything on purpose: the menus
+   are DOM and would otherwise keep working, inviting a match that can never be drawn. */
+.boot-error { position:fixed; inset:0; z-index:100000; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:14px; padding:32px; text-align:center;
+    background:var(--bg-0, #0b1017); color:#dfe6f5; font-size:1.05rem; line-height:1.5; }
+.boot-error .boot-why { max-width:560px; font-size:0.86rem; color:#8fa3bb; }
+
 .small-screen { display:none; }
 /* This used to cover everything, with a link to the video as the way out, and it fired
    on `pointer: coarse` at ANY width -- so a 1317px tablet that renders the analyzer
