@@ -571,25 +571,41 @@ class OpenAIAIManager {
     // Values under a key that looks like a credential are replaced, not dropped, so the
     // reader can see that something was set without being handed it.
     //
-    // NUMBERS are exempt, because no credential is one. The name test alone caught
-    // "thinking_token_budget": 2000 — "token" as a unit of measure, not as a
-    // password — and would equally have hidden max_tokens or num_speculative_tokens.
-    // The cost was real: a redacted sampling parameter makes a transcript impossible to
-    // reproduce from, which is most of what a transcript is for.
+    // The name test alone caught "thinking_token_budget": 2000 — "token" as a unit
+    // of measure, not as a password — and would equally have hidden max_tokens or
+    // num_speculative_tokens. That cost is real: a transcript that redacts its own
+    // sampling parameters cannot be reproduced from, which is most of what it is for.
     //
-    // The exemption is typeof 'number' and nothing wider. A numeric STRING stays
-    // redacted: this list guards against a stray key pasted into a free-text field, and
-    // "is it all digits" is a weaker promise than "it is a number" when the file may
-    // be handed to someone else. A budget written as "2000" loses nothing but a
-    // transcript entry; a PIN written under "password" would lose rather more.
+    // Exempting NUMBERS looked like the fix and was not. A self-hosted endpoint takes
+    // whatever key its owner invents, and {"api_key": 12345678} — unquoted, so a JSON
+    // number — is an entirely ordinary thing to type. "No credential is a number" is
+    // false the moment the credential is chosen by the person writing the config.
+    //
+    // So the exemption is a WHITELIST of parameter names, the same principle as
+    // publicModelSettings above: a name that is not listed here is redacted, which means
+    // a parameter added later is missing from the record rather than a credential
+    // leaking into it. Value type is not consulted at all — nothing about a value
+    // distinguishes a budget from a key someone chose to make numeric.
+    //
+    // Names are compared with separators and case removed, so thinking_token_budget,
+    // thinkingTokenBudget and thinking-token-budget are one entry.
+    static get SAFE_PARAM_NAMES() {
+        return new Set([
+            'thinkingtokenbudget', 'tokenbudget', 'maxtokens', 'mintokens',
+            'maxnewtokens', 'maxcompletiontokens', 'maxprompttokens',
+            'numspeculativetokens', 'maxtokenstosample'
+        ]);
+    }
+
     static redactSecrets(obj) {
         const SECRET = /key|token|secret|password|passwd|auth|bearer|credential/i;
+        const safe = (k) => OpenAIAIManager.SAFE_PARAM_NAMES.has(String(k).replace(/[^a-z0-9]/gi, '').toLowerCase());
         const walk = (v) => {
             if (!v || typeof v !== 'object') return v;
             if (Array.isArray(v)) return v.map(walk);
             const o = {};
             Object.keys(v).forEach(k => {
-                o[k] = (SECRET.test(k) && typeof v[k] !== 'number') ? '[redacted]' : walk(v[k]);
+                o[k] = (SECRET.test(k) && !safe(k)) ? '[redacted]' : walk(v[k]);
             });
             return o;
         };
