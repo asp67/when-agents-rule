@@ -3021,6 +3021,32 @@ class UIManager {
                 return `<span class="lb-fly-chip" title="${esc(g.desc)}">${uc ? '🏗 ' : ''}${esc(k.slice(3))} ×${g.n}</span>`;
             }).join('');
 
+        // Resource nodes as THIS SEAT understands them. Read from _lastNodeCounts — the
+        // copy buildGameStateJSON keeps of the very number the model was handed — and not
+        // recomputed here. Two reasons, both load-bearing:
+        //
+        // knownAmount() ADDS to _knownResIdx whenever a node is currently visible. Calling
+        // it from a render tick would teach the seat a node it was never told about, and a
+        // node learned because a human opened a panel is the harness playing the game.
+        //
+        // And a freshly computed count would not be what the seat read. "Known" is a fact
+        // about the seat, so it updates when the seat takes its turn, not when we redraw.
+        //
+        // Deliberately NOT game.discoveredNodeCounts(), which counts LIVE amounts for the
+        // results graph: a node a rival drains out of this seat's sight still counts here
+        // at its last-seen amount, which is exactly the belief the model is acting on.
+        // Zeros are shown rather than omitted — "this seat has found no gold" is the whole
+        // point of the panel, and an absent row would read as "not applicable".
+        const known = ai._lastNodeCounts;
+        const nodeChips = known ? ['food', 'wood', 'stone', 'gold'].map(k =>
+            `<span class="lb-fly-chip">${esc(t('res.' + k))} ×${known[k] || 0}</span>`).join('') : '';
+        // A rule-based seat has no controller and is never handed a state, so it has no
+        // last-read number — but it DOES scout and it DOES know nodes. Saying "none yet"
+        // there would be a claim about that seat's knowledge, and a false one. Empty
+        // because there is nothing to report is not the same as empty because the
+        // question does not apply, and the panel should not blur the two.
+        const nodeEmpty = controller ? t('spec.flyNone') : t('spec.flyNodesNA');
+
         const colorHex = '#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0');
         el.innerHTML = `
             <div class="lb-fly-head" style="--civ:${this.legibleColor(colorHex)}">
@@ -3031,7 +3057,9 @@ class UIManager {
             <div class="lb-fly-sec"><div class="lb-fly-h">👥 ${t('spec.flyUnits', { n: ai.units.length })}</div>
                 <div class="lb-fly-body">${unitChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
             <div class="lb-fly-sec"><div class="lb-fly-h">🏛️ ${t('spec.flyBuildings', { n: ai.buildings.length })}</div>
-                <div class="lb-fly-body">${bChips || `<i>${t('spec.flyNone')}</i>`}</div></div>`;
+                <div class="lb-fly-body">${bChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
+            <div class="lb-fly-sec"><div class="lb-fly-h" title="${esc(t('spec.flyNodesTip'))}">⛏️ ${t('spec.flyNodes')}</div>
+                <div class="lb-fly-body">${nodeChips || `<i>${esc(nodeEmpty)}</i>`}</div></div>`;
     }
 
     positionLbFlyout() {
