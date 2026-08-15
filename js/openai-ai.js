@@ -570,13 +570,27 @@ class OpenAIAIManager {
 
     // Values under a key that looks like a credential are replaced, not dropped, so the
     // reader can see that something was set without being handed it.
+    //
+    // NUMBERS are exempt, because no credential is one. The name test alone caught
+    // "thinking_token_budget": 2000 — "token" as a unit of measure, not as a
+    // password — and would equally have hidden max_tokens or num_speculative_tokens.
+    // The cost was real: a redacted sampling parameter makes a transcript impossible to
+    // reproduce from, which is most of what a transcript is for.
+    //
+    // The exemption is typeof 'number' and nothing wider. A numeric STRING stays
+    // redacted: this list guards against a stray key pasted into a free-text field, and
+    // "is it all digits" is a weaker promise than "it is a number" when the file may
+    // be handed to someone else. A budget written as "2000" loses nothing but a
+    // transcript entry; a PIN written under "password" would lose rather more.
     static redactSecrets(obj) {
         const SECRET = /key|token|secret|password|passwd|auth|bearer|credential/i;
         const walk = (v) => {
             if (!v || typeof v !== 'object') return v;
             if (Array.isArray(v)) return v.map(walk);
             const o = {};
-            Object.keys(v).forEach(k => { o[k] = SECRET.test(k) ? '[redacted]' : walk(v[k]); });
+            Object.keys(v).forEach(k => {
+                o[k] = (SECRET.test(k) && typeof v[k] !== 'number') ? '[redacted]' : walk(v[k]);
+            });
             return o;
         };
         return walk(obj);
