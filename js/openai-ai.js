@@ -4326,6 +4326,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             return `[ERROR] No worker available to build ${buildingType} — all your workers are constructing other sites or fighting (neither is ever pulled). Wait for one to finish.`;
         }
 
+        // Measured before applyBuilder sends it walking, and reported below when it is
+        // material: the reply used to quote the build time alone, so a builder with a
+        // long trek ahead of it was announced as "~25s" and then took minutes, with
+        // nothing in the answer to explain the gap.
+        const walkSecs = pick.worker ? this.travelEtaSec(pick.worker, x, z) : 0;
         ai.resources.spendResources(buildingDef.cost);
         // Place a construction site and send the chosen worker to build it (pop bonus
         // is granted on completion via game.completeConstruction).
@@ -4339,11 +4344,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         this.outcome('log.out.buildStarted', { buildingName: buildingDef.name, x: Math.round(x), z: Math.round(z), secs });
         // The old build_wonder reply ended "defend it, rivals will rush it!" — an order
         // with an exclamation mark. The hold time is the part that was a fact.
-        const tail = isWonderBuild
+        const tail = (walkSecs >= 5 ? ` The builder is ~${walkSecs}s of walking away, so construction begins after it arrives.` : '')
+            + (isWonderBuild
             // Raw seconds, for the same reason as gameStats.wonderRequired above: by
             // the time this sentence is true the match is already back at 1x.
             ? ` This is your Wonder: once complete it must stand for ${(game.wonderRequired || 600)}s for you to win the match.`
-            : '';
+            : '');
         return pick.restore
             ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off ${(pick && pick.wasDoing) || 'its task'} to build (~${secs}s) and will return afterwards${pick && pick.wasDoing === 'scouting' ? ' — that scout will NOT reach the tile you sent it to' : ''}.${tail}`
             : `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).${tail}`;

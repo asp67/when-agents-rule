@@ -3037,20 +3037,40 @@ class Game {
         return 0; // idle (or aimless)
     }
 
-    // Decide who builds `site`: triage-rank every worker (workerPullRank), take
-    // the best tier present, and from that tier the worker CLOSEST to the site.
-    // Idle workers build outright; anyone else is borrowed and resumes its
-    // former task afterwards (applyBuilder saves it). Builders and fighting
-    // workers are never pulled.
+    // Decide who builds `site`: price every worker in SECONDS — the walk there, plus
+    // what interrupting its current task costs — and take the cheapest. Idle workers
+    // build outright; anyone else is borrowed and resumes its former task afterwards
+    // (applyBuilder saves it). Builders and fighting workers are never pulled.
+    //
+    // This was a strict tier sort: best workerPullRank first, distance only breaking
+    // ties INSIDE that tier. Distance therefore could not compete with rank at all, and
+    // when the best tier held exactly one worker, "the closest of the pool" was that
+    // worker no matter where it stood. Observed live: a scout that had finished
+    // exploring — arrived scouts are cleared to task=null, so they rank 0, idle — was
+    // walked ~200s across an 800-unit map for a 25s building while farmers and gatherers
+    // stood around the site untouched. Nothing malfunctioned; that was the tier sort
+    // working as designed, which is why it needed replacing rather than patching.
+    //
+    // Both costs are time, so they belong in one unit instead of in a ranking that
+    // cannot see one of them. Units cover speed*3 u/s (see the movement loop).
     pickBuilder(owner, site, opts = {}) {
         const workers = (owner.units || []).filter(u => u.type === 'worker' && u.health > 0);
         if (!workers.length) return { error: 'no_workers' };
-        let bestRank = Infinity;
-        for (const u of workers) bestRank = Math.min(bestRank, this.workerPullRank(owner, u));
-        if (bestRank === Infinity) return { error: 'no_idle' };
-        const pool = workers.filter(u => this.workerPullRank(owner, u) === bestRank);
-        let best = null, bd = Infinity;
-        pool.forEach(u => { const d = Math.hypot(u.x - site.x, u.z - site.z); if (d < bd) { bd = d; best = u; } });
+        // Seconds of value destroyed by interrupting each workerPullRank. A gatherer
+        // loses the trip it is on; a farmer a steadier income. A scout is priced far
+        // above the rest because it loses the whole walk it has ALREADY made and never
+        // reaches its tile — so it is taken only when the alternative is a very long
+        // trek or not building at all.
+        const PULL_SECS = [0, 4, 6, 8, 10, 14, 18, 45];
+        let best = null, bestRank = Infinity, bestCost = Infinity;
+        for (const u of workers) {
+            const rank = this.workerPullRank(owner, u);
+            if (rank === Infinity) continue;   // building or fighting: never pulled
+            const walk = Math.hypot(u.x - site.x, u.z - site.z) / (((u.speed || 1) * 3) || 3);
+            const cost = walk + (PULL_SECS[rank] || 0);
+            if (cost < bestCost) { bestCost = cost; best = u; bestRank = rank; }
+        }
+        if (!best) return { error: 'no_idle' };
         // What it was doing, so the caller can say so. "A worker was pulled off its
         // task" is true and useless: off WHICH task decides whether the model should
         // expect its scout to arrive, its farm to keep producing, or nothing at all.
