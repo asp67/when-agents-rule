@@ -3037,15 +3037,34 @@ class UIManager {
         // at its last-seen amount, which is exactly the belief the model is acting on.
         // Zeros are shown rather than omitted — "this seat has found no gold" is the whole
         // point of the panel, and an absent row would read as "not applicable".
-        const known = ai._lastNodeCounts;
-        const nodeChips = known ? ['food', 'wood', 'stone', 'gold'].map(k =>
-            `<span class="lb-fly-chip">${esc(t('res.' + k))} ×${known[k] || 0}</span>`).join('') : '';
-        // A rule-based seat has no controller and is never handed a state, so it has no
-        // last-read number — but it DOES scout and it DOES know nodes. Saying "none yet"
-        // there would be a claim about that seat's knowledge, and a false one. Empty
-        // because there is nothing to report is not the same as empty because the
-        // question does not apply, and the panel should not blur the two.
-        const nodeEmpty = controller ? t('spec.flyNone') : t('spec.flyNodesNA');
+        // Always four chips, zeros included. "This seat has found no gold" is the most
+        // telling reading the panel offers, and a sentence in place of the row said less
+        // than a 0 while breaking the format around it.
+        //
+        // WHICH number counts as "known" depends on the kind of seat, because the two
+        // kinds do not know things the same way — one source each, chosen to match how
+        // that seat actually decides:
+        //
+        // A model seat reasons from a snapshot it was handed, so its knowledge is
+        // _lastNodeCounts, the copy buildGameStateJSON keeps of the very number it read.
+        // Before its first turn it has been told nothing, and four zeros say precisely
+        // that. It is NOT recomputed here: knownAmount() ADDS to _knownResIdx whenever a
+        // node is visible, so calling it from a render tick would teach a seat about a
+        // node because a human opened a panel.
+        //
+        // A rule-based seat is never handed a state; it queries the world each tick, so
+        // discoveredNodeCounts — its own scouted set, live amounts — IS its knowledge.
+        // Showing it zeros for a tidy layout would have printed a plain falsehood about a
+        // seat that had scouted half the map.
+        //
+        // And deliberately NOT discoveredNodeCounts for MODEL seats: that reads live
+        // amounts, while a node a rival drains out of a model's sight has to keep
+        // counting at its last-seen value, because that is the belief it still acts on.
+        const known = controller
+            ? (ai._lastNodeCounts || { food: 0, wood: 0, stone: 0, gold: 0 })
+            : this.game.discoveredNodeCounts(ai);
+        const nodeChips = ['food', 'wood', 'stone', 'gold'].map(k =>
+            `<span class="lb-fly-chip">${esc(t('res.' + k))} ×${known[k] || 0}</span>`).join('');
 
         const colorHex = '#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0');
         el.innerHTML = `
@@ -3059,7 +3078,7 @@ class UIManager {
             <div class="lb-fly-sec"><div class="lb-fly-h">🏛️ ${t('spec.flyBuildings', { n: ai.buildings.length })}</div>
                 <div class="lb-fly-body">${bChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
             <div class="lb-fly-sec"><div class="lb-fly-h" title="${esc(t('spec.flyNodesTip'))}">⛏️ ${t('spec.flyNodes')}</div>
-                <div class="lb-fly-body">${nodeChips || `<i>${esc(nodeEmpty)}</i>`}</div></div>`;
+                <div class="lb-fly-body">${nodeChips}</div></div>`;
     }
 
     positionLbFlyout() {
