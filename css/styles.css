@@ -117,7 +117,7 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 
 /* ---------- Language picker ---------- */
 .lang-picker { margin-top: 26px; display: flex; align-items: center; justify-content: center; gap: 8px; }
-.lang-picker-inline { margin: 4px 0 18px; justify-content: flex-start; }
+.lang-picker-inline { margin: 4px 0 18px; justify-content: flex-start; flex-wrap: wrap; row-gap: 8px; }
 .lang-globe { font-size: 1.1em; opacity: 0.85; }
 .lang-select {
     background: rgba(0, 0, 0, 0.35);
@@ -1501,9 +1501,12 @@ body.spectator-mode #unitInfo.spectator-card {
     border-radius: 10px; padding: 11px 22px; cursor: pointer; font-weight: 700; font-size: 1em;
 }
 .lib-add-btn:hover { background: rgba(78,204,163,0.2); }
+/* Sitzt IN der Sprachzeile, rechts ausgerichtet: das spart die ganze Zeile, die
+   die Leiste vorher fuer sich hatte, und diese Seite ist ohnehin lang. Leer ist sie
+   ein Flex-Element ohne Breite — unter zwei Modellen kostet sie also nichts. */
 .lib-sortbar {
     display: flex; align-items: center; gap: 8px;
-    margin: 0 0 10px; min-height: 26px;
+    margin-left: auto;
 }
 .lib-sort-label { color: var(--muted); font-size: 12px; margin-right: 2px; }
 .lib-sort-btn {
