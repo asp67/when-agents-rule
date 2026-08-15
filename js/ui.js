@@ -704,6 +704,7 @@ class UIManager {
         try { localStorage.setItem('libSort', mode === 'name' ? 'name' : 'added'); }
         catch (e) { /* private browsing: the choice still applies to this session */ }
         this.renderArenaLibrary();
+        this.renderArenaSlots();   // the seat pickers follow the same order
     }
 
     // Hidden below two models: there is no order to choose between, and a control
@@ -717,21 +718,35 @@ class UIManager {
              + btn('added', t('ar.sortAdded')) + btn('name', t('ar.sortName'));
     }
 
-    // --- Rendering ---
-    renderArenaLibrary() {
-        const list = document.getElementById('modelLibraryList');
-        if (!list) return;
-        const models = this._arenaConfig.models;
-        // The ordinal is taken BEFORE sorting, and carried. "Unnamed 3" is the third
-        // model this catalog ever gained, not the third row on screen — otherwise
-        // switching the sort would rename the very models that have no name to keep,
-        // and two of them would swap identities in front of the user.
-        const rows = models.map((m, i) => ({ m, n: i + 1 }));
+    // Every model, in the order the user has asked to see models in, each carrying
+    // the ordinal it was created with.
+    //
+    // The ordinal is taken BEFORE sorting and carried alongside. "Unnamed 3" is the
+    // third model this catalog ever gained, not the third row on screen — otherwise
+    // switching the sort would rename the very models that have no name to keep, and
+    // two of them would swap identities in front of the user.
+    //
+    // ONE list for the library and for the seat pickers in arena setup. They used to
+    // order themselves independently, so a model added while the library was sorted by
+    // name sat in one place there and somewhere else in the dropdown that actually
+    // assigns it to a seat — and the list you pick a seat from is the one where being
+    // wrong costs something.
+    orderedModels() {
+        const rows = (this._arenaConfig.models || []).map((m, i) => ({ m, n: i + 1 }));
         if (this.libSortMode() === 'name') {
             // numeric, so "Unnamed 9" precedes "Unnamed 10" rather than following it.
             rows.sort((a, b) => this.modelDisplayName(a.m, a.n).localeCompare(
                 this.modelDisplayName(b.m, b.n), undefined, { sensitivity: 'base', numeric: true }));
         }
+        return rows;
+    }
+
+    // --- Rendering ---
+    renderArenaLibrary() {
+        const list = document.getElementById('modelLibraryList');
+        if (!list) return;
+        const models = this._arenaConfig.models;
+        const rows = this.orderedModels();
         const bar = document.getElementById('libSortBar');
         if (bar) bar.innerHTML = this.renderLibSortBar(models.length);
         list.innerHTML = rows.length
@@ -1003,12 +1018,15 @@ class UIManager {
         const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
         const civColor = { egyptian: '#ffd700', greek: '#4ecca3', persian: '#e94560', yamato: '#9b8cff' };
         const e = (s) => this.escapeHtml(s == null ? '' : String(s));
-        const models = this._arenaConfig.models;
+        // Same order as the library, and the same labels: modelDisplayName was the
+        // third copy of "name, or 'Unnamed N'" in this file, and three copies of one
+        // rule is how two of them come to disagree.
+        const modelRows = this.orderedModels();
         const campaign = this._setupMode === 'campaign';
         const slotTitle = (i) => campaign ? t('cmp.opp', { n: i + 1 }) : t('ar.slot', { n: i + 1 });
         list.innerHTML = this.setupSlots().slice(0, this.setupSlotCount()).map((slot, i) => {
             const civOpts = Object.keys(civNames).map(c => `<option value="${c}" ${slot.civ === c ? 'selected' : ''}>${civNames[c]}</option>`).join('');
-            const modelOpts = models.map((mm, mi) => `<option value="${mm.id}" ${slot.control === mm.id ? 'selected' : ''}>${e((mm.name && mm.name.trim()) ? mm.name : (t('ar.unnamed') + ' ' + (mi + 1)))}</option>`).join('');
+            const modelOpts = modelRows.map(({ m: mm, n: mn }) => `<option value="${mm.id}" ${slot.control === mm.id ? 'selected' : ''}>${e(this.modelDisplayName(mm, mn))}</option>`).join('');
             const isLLM = slot.control !== 'ki';
             const promptBlock = isLLM ? `
                 <div class="arena-field slot-prompt">
@@ -1022,10 +1040,13 @@ class UIManager {
                 </div>` : '';
             const collapsed = slot._collapsed !== false; // default collapsed
             // Compact summary shown on the collapsed header: civ + who controls it.
-            const ctrlModel = isLLM ? models.find(mm => mm.id === slot.control) : null;
-            const ctrlName = isLLM
-                ? (ctrlModel ? ((ctrlModel.name && ctrlModel.name.trim()) ? ctrlModel.name : t('ar.unnamed')) : t('ar.controlKi'))
-                : t('ar.controlKi');
+            // modelDisplayName, so the collapsed seat header carries the SAME label as
+            // the dropdown below it and the library behind it. It used to print a bare
+            // "Unnamed model" with no ordinal, which meant three seats driven by three
+            // different unconfigured models all read identically — on the one screen
+            // whose job is to tell you who is playing what.
+            const ctrlRow = isLLM ? modelRows.find(r => r.m.id === slot.control) : null;
+            const ctrlName = ctrlRow ? this.modelDisplayName(ctrlRow.m, ctrlRow.n) : t('ar.controlKi');
             const body = `
                 <div class="arena-slot-body">
                     <div class="arena-field-row">
