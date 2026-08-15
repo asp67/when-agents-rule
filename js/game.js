@@ -3010,17 +3010,25 @@ class Game {
 
     // Shared labor triage — which worker hurts least to pull off its task?
     //   0 idle · 1-4 gatherers (fattest stockpile first, surplus labor is the
-    //   most expendable) · 5 scouts · 6 repairers · 7 farmers (steady food goes
-    //   last). Builders and FIGHTING workers return Infinity: never pulled.
+    //   most expendable) · 5 repairers · 6 farmers (steady food goes last) ·
+    //   7 SCOUTS. Builders and FIGHTING workers return Infinity: never pulled.
+    //
+    // Scouts used to sit at 5, ahead of repairers and farmers, on the reasoning that a
+    // scout is doing nothing productive. That reads the cost backwards. A gatherer
+    // pulled from a node loses one trip; a scout pulled mid-journey loses the ENTIRE
+    // walk it has already made, and the tile it was sent to is never reached at all.
+    // The model then watches an explore it was told succeeded quietly produce nothing,
+    // with no way to find out why. Last resort now: taken only when the alternative is
+    // not building.
     // Used by pickBuilder (construction) and assign_workers (harvest orders) so
     // both kinds of pull follow one policy. Scouts/repairers need explicit
     // tiers — isIdleWorker() counts both as free.
     workerPullRank(owner, u) {
         if (u.task === 'building' || u.isBuilding) return Infinity;
         if (u.isAttacking || u.attackTarget || u.attackMove) return Infinity;
-        if (u.task === 'scouting') return 5;
-        if (u.task === 'repairing') return 6;
-        if (u.farmRef || u.task === 'farm_work') return 7;
+        if (u.task === 'repairing') return 5;
+        if (u.farmRef || u.task === 'farm_work') return 6;
+        if (u.task === 'scouting') return 7;
         if ((u.task === 'harvesting' || u.task === 'carrying') && u.harvestTarget) {
             const stockOrder = ['food', 'wood', 'stone', 'gold']
                 .sort((a, b) => (owner.resources[b] || 0) - (owner.resources[a] || 0));
@@ -3043,7 +3051,14 @@ class Game {
         const pool = workers.filter(u => this.workerPullRank(owner, u) === bestRank);
         let best = null, bd = Infinity;
         pool.forEach(u => { const d = Math.hypot(u.x - site.x, u.z - site.z); if (d < bd) { bd = d; best = u; } });
-        return { worker: best, restore: bestRank > 0 };
+        // What it was doing, so the caller can say so. "A worker was pulled off its
+        // task" is true and useless: off WHICH task decides whether the model should
+        // expect its scout to arrive, its farm to keep producing, or nothing at all.
+        const wasDoing = best && (best.task === 'scouting' ? 'scouting'
+            : (best.farmRef || best.task === 'farm_work') ? 'farming'
+            : best.task === 'repairing' ? 'repairing'
+            : (best.harvestTarget ? 'gathering' : null));
+        return { worker: best, restore: bestRank > 0, wasDoing };
     }
 
     // Configure the chosen worker to build `site`, remembering its task if borrowed.

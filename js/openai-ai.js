@@ -2314,7 +2314,7 @@ upgrade_age: (None)
 build_structure: buildingType (from buildableStructures), targetX?, targetZ?
 assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), allowSpill? (def:true; false takes only workers not carrying a load right now, and takes fewer if that is all there are), targetX?, targetZ? (which node: the one of that type nearest this point; pass the SAME value in "from" and "resourceType" to move a crew from one node to another)
 repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
-explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?
+explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?, unitIds?
 move_units: targetX, targetZ, units?, unitIds?
 attack_target: targetId (from enemyUnits/enemyBuildings) OR targetX, targetZ. Optional: units?, unitIds?. (Coords trigger attack-move; do not reissue while marching)
 delete_unit: unitType? (from friendlyUnits, def: worker), count? (def:1, max:20)
@@ -4361,7 +4361,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             ? ` This is your Wonder: once complete it must stand for ${(game.wonderRequired || 600)}s for you to win the match.`
             : '';
         return pick.restore
-            ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off its task to build (~${secs}s) and will return afterwards.${tail}`
+            ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off ${(pick && pick.wasDoing) || 'its task'} to build (~${secs}s) and will return afterwards${pick && pick.wasDoing === 'scouting' ? ' — that scout will NOT reach the tile you sent it to' : ''}.${tail}`
             : `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).${tail}`;
     }
 
@@ -4957,16 +4957,35 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // If `preferredType` is given (a unit id like "scout_cavalry" OR a category
     // like "cavalry"), an idle unit of that type is chosen when one exists; if
     // none is free we fall back to the automatic logic below.
+    // Which turn is this seat on? Used to tell "free" from "already sent scouting by
+    // an earlier command in THIS turn", which are different things and used not to be.
+    _turnOf(ai) {
+        const c = this.aiControllers.find(x => x.aiPlayer === ai);
+        return c ? c.turnCount : -1;
+    }
+
+    // A reply may carry three explore commands. pickScout used to answer all three with
+    // the SAME unit -- best scout, then best scout again -- so command 2 quietly
+    // retargeted the unit command 1 had just sent west, and command 3 retargeted it
+    // again. The model reads three OKs and believes three tiles are being swept; one
+    // unit is walking north. Observed live across several models.
+    //
+    // A unit already sent this turn is therefore not available to the next command. Not
+    // the harness choosing: it is refusing to silently undo an order the model has
+    // already been told succeeded.
     pickScout(ai, preferredType = null) {
+        const turn = this._turnOf(ai);
+        const notSentYet = (u) => u._exploreTurn !== turn;
         if (preferredType) {
             const pt = String(preferredType).trim().toLowerCase();
             const ofType = ai.units.filter(u =>
                 (u.type || '').toLowerCase() === pt || (u.unitType || '').toLowerCase() === pt);
-            if (ofType.length) {
+            const ofTypeFree = ofType.filter(notSentYet);
+            if (ofTypeFree.length) {
                 // The model explicitly named this unit, so honor it even if it is
                 // fighting — but still prefer a non-fighting one of that type first.
-                const free = ofType.filter(u => !this.isInCombat(u));
-                const pool = free.length ? free : ofType;
+                const free = ofTypeFree.filter(u => !this.isInCombat(u));
+                const pool = free.length ? free : ofTypeFree;
                 const idle = pool.find(u => u.type === 'worker' ? this.game.isIdleWorker(u) : !u.isMoving);
                 return idle || pool[0];
             }
@@ -4975,18 +4994,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         // Priests are excluded from the auto-pick: a healer wandering the dark
         // alone is a wasted (and soon dead) medic. Explicit unitType still wins.
-        const idleMilitary = ai.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && !this.isInCombat(u));
+        const idleMilitary = ai.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && !this.isInCombat(u) && notSentYet(u));
         const cav = idleMilitary.find(u => u.unitType === 'cavalry');
         if (cav) return cav;
         if (idleMilitary.length) return idleMilitary[0];
 
-        const idleWorker = ai.units.find(u => u.type === 'worker' && this.game.isIdleWorker(u));
+        const idleWorker = ai.units.find(u => u.type === 'worker' && this.game.isIdleWorker(u) && notSentYet(u));
         if (idleWorker) return idleWorker;
-        const freeWorker = ai.units.find(u => u.type === 'worker' && u.task !== 'building' && !u.isBuilding);
+        const freeWorker = ai.units.find(u => u.type === 'worker' && u.task !== 'building' && !u.isBuilding && notSentYet(u));
         if (freeWorker) return freeWorker;
 
-        return ai.units.find(u => u.unitType !== 'support' && !this.isInCombat(u)) ||
-               ai.units.find(u => u.type !== 'worker' && u.unitType !== 'support') || null;
+        return ai.units.find(u => u.unitType !== 'support' && !this.isInCombat(u) && notSentYet(u)) ||
+               ai.units.find(u => u.type !== 'worker' && u.unitType !== 'support' && notSentYet(u)) || null;
     }
 
     // Did `scout` satisfy the model's explicit unit choice? (id or category match)
@@ -5480,8 +5499,47 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             return `[ERROR] "${raw}" is not a map tile. Use a COLUMN LETTER then a ROW NUMBER: A-${lastCol} and 1-${T}, e.g. "C5" (not "5C", and not coordinates). The tiles and how much of each you have seen are in "map.exploration".`;
         }
 
-        const scout = this.pickScout(ai, preferredType);
-        if (!scout) { this.outcome('log.out.noUnitExplore', {}); return `[ERROR] No unit available to explore.`; }
+        // Explicit handles win outright, exactly as they do for move_units and
+        // attack_target. Models reached for this unprompted -- six times across 394
+        // explores, with reasons like "Militia #11 idle at base" -- and the parameter
+        // was dropped without a word, which is the vocabulary being inconsistent rather
+        // than the model being wrong.
+        const turn = this._turnOf(ai);
+        const ids = (Array.isArray(params.unitIds) && params.unitIds.length) ? params.unitIds : null;
+        let scout = null, named = null;
+        if (ids) {
+            const byHandle = new Map();
+            ai.units.forEach(u => { if (u.health > 0) byHandle.set(Number(u.handle), u); });
+            const picked = [], missing = [];
+            ids.forEach(raw => {
+                const u = byHandle.get(Number(raw));
+                if (u) { if (!picked.includes(u)) picked.push(u); } else missing.push(raw);
+            });
+            // Every handle dead is the same situation attack_target already recognises:
+            // they were in the state this seat read and died while it was thinking.
+            if (!picked.length) return this.orderedUnitsGone(ai, missing);
+            scout = picked.find(u => u._exploreTurn !== turn) || null;
+            if (!scout) {
+                this.outcome('log.out.exploreAlreadySent', {});
+                return `[ERROR] ${picked.length === 1 ? 'That unit is' : 'Those units are'} already scouting `
+                     + `this turn on an earlier command, so nothing was sent. Name a different unit, or send `
+                     + `this tile next turn.`;
+            }
+            named = missing.length ? ` (no longer yours or already dead: ${missing.join(', ')})` : '';
+        } else {
+            scout = this.pickScout(ai, preferredType);
+        }
+        if (!scout) {
+            // Distinguish "you own nothing that can scout" from "the one that could is
+            // already going somewhere else this turn". The second used to read as the
+            // first, which is a different problem with a different answer.
+            const anyLeft = ai.units.some(u => u.health > 0 && u.unitType !== 'support' && u._exploreTurn === turn);
+            this.outcome('log.out.noUnitExplore', {});
+            return anyLeft
+                ? `[ERROR] Every unit that could scout is already going somewhere else this turn on an earlier `
+                  + `command, so nothing was sent. One explore per free unit per turn; name unitIds to choose who goes.`
+                : `[ERROR] No unit available to explore.`;
+        }
         const wasBusy = scout.type === 'worker' && !this.game.isIdleWorker(scout);
         const missedChoice = preferredType && !this.scoutMatchesChoice(scout, preferredType);
 
@@ -5495,6 +5553,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         scout.isMoving = true;
         scout.targetX = tx;
         scout.targetZ = tz;
+        scout._exploreTurn = turn;   // a later command this turn must not retarget it
 
         // Report what the tile is at NOW. A tile is ~114 units across and a scout
         // sees ~15, so one pass moves it a few percent: without this the model sends
@@ -5504,8 +5563,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const label = this.tileLabel(t.row, t.col);
         const pulled = wasBusy ? ' (no worker was idle, so one was pulled off gathering — give it a job again once it arrives)' : '';
         const choiceNote = missedChoice ? ` (no idle "${preferredType}" was free, so your ${scout.type} was used instead)` : '';
+        // WHICH unit went. With several explores in one turn the model has to be able to
+        // tell them apart, and the handle is the name it already uses everywhere else.
+        const who = scout.handle != null ? ` #${scout.handle}` : '';
         this.outcome('log.out.exploreSent', { tile: label, pct, eta });
-        return `OK - Sent your ${scout.type} to scout tile ${label} (~${eta}s to arrive). ${label} is ${pct}% explored so far; one pass uncovers only part of a tile, so expect to send scouts there again.${pulled}${choiceNote}`;
+        return `OK - Sent your ${scout.type}${who}${named || ''} to scout tile ${label} (~${eta}s to arrive). ${label} is ${pct}% explored so far; one pass uncovers only part of a tile, so expect to send scouts there again.${pulled}${choiceNote}`;
     }
 
     executeDeleteUnit(ai, game, params) {
