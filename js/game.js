@@ -4517,7 +4517,32 @@ class Game {
         }
     }
     
+    // A-G / 1-7 in the gutters beside the minimap, so "explore C5" in the decision
+    // log can be found on the map without counting squares.
+    //
+    // The labels are read back OUT of tileLabelAt at each tile's centre instead of
+    // being regenerated from 65+i. Same result today, but tileLabelAt is what the
+    // models are actually given — deriving from it means the gutter cannot come to
+    // disagree with the grid, whatever happens to EXPLORE_TILES or the map size.
+    buildMinimapGutters() {
+        const cols = document.getElementById('mmCols');
+        const rows = document.getElementById('mmRows');
+        if (!cols || !rows || cols.childElementCount) return;   // built once
+        const T = this.EXPLORE_TILES || 7;
+        const size = (this.terrain && this.terrain.size) || 800;
+        const centre = i => -(size / 2) + (i + 0.5) * (size / T);
+        for (let i = 0; i < T; i++) {
+            const c = document.createElement('span');
+            c.textContent = (this.tileLabelAt(centre(i), 0).match(/^[A-Z]+/) || [''])[0];
+            cols.appendChild(c);
+            const r = document.createElement('span');
+            r.textContent = this.tileLabelAt(0, centre(i)).replace(/^[A-Z]+/, '');
+            rows.appendChild(r);
+        }
+    }
+
     updateMinimap() {
+        this.buildMinimapGutters();
         const canvas = document.getElementById('minimapCanvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 300;
@@ -4571,6 +4596,24 @@ class Game {
             
             ctx.putImageData(imageData, 0, 0);
         }
+
+        // The 7x7 explore grid. Drawn over the ground but UNDER the entities, so a
+        // unit dot is never crossed by a line — the grid is a reference, not a reading.
+        // Interior lines only; the panel border already closes the outside.
+        const gridT = this.EXPLORE_TILES || 7;
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,255,255,0.17)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 1; i < gridT; i++) {
+            // +0.5 so a 1px line lands on a pixel instead of straddling two and
+            // smearing into a soft 2px band.
+            const at = Math.round((i * 300) / gridT) + 0.5;
+            ctx.moveTo(at, 0); ctx.lineTo(at, 300);
+            ctx.moveTo(0, at); ctx.lineTo(300, at);
+        }
+        ctx.stroke();
+        ctx.restore();
 
         // Draw resources (only in explored/visible areas) - drawn AFTER fog so they stay visible
         terrainData.resources.forEach(resource => {

@@ -395,8 +395,28 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
     border: 1px solid var(--line);
     box-shadow: var(--shadow);
     z-index: 100;
+    /* Room for the A-G / 1-7 gutters. The panel is anchored bottom-right, so it
+       grows up and to the left and the map itself does not move. The small right
+       and bottom inset keeps the square canvas clear of the rounded corners. */
+    --mm-gut: 14px;
+    padding: var(--mm-gut) 4px 4px var(--mm-gut);
+    background: rgba(22,31,58,0.82);
 }
 #minimapCanvas { display: block; width: 300px; height: 300px; background: #0e1630; }
+
+/* Tile labels for the 7x7 explore grid, in the gutters beside the map. Laid out
+   with flex rather than fixed offsets: each label takes an equal share of the
+   canvas edge, so the gutters stay aligned at 300px and at the 210px spectator
+   size without a second set of numbers to keep in step. Offsets resolve against
+   the panel's PADDING box, so `left: var(--mm-gut)` is exactly the canvas edge. */
+.mm-cols, .mm-rows { position: absolute; display: flex; pointer-events: none; }
+.mm-cols { top: 0; left: var(--mm-gut); right: 4px; height: var(--mm-gut); }
+.mm-rows { left: 0; top: var(--mm-gut); bottom: 4px; width: var(--mm-gut); flex-direction: column; }
+.mm-cols span, .mm-rows span {
+    flex: 1 1 0; display: flex; align-items: center; justify-content: center;
+    font-size: 9px; line-height: 1; font-weight: 600;
+    color: var(--muted); opacity: 0.75;
+}
 
 /* ---------- Menu panels (build / train / research / upgrade) ---------- */
 .menu-panel {
@@ -568,8 +588,9 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 /* In spectator mode the bottom HUD is hidden, so drop & slightly shrink the
    minimap, and let the leaderboard reclaim the freed vertical space. The list
    scrolls if cards still don't all fit, so nothing ever overlaps the minimap. */
-body.spectator-mode .minimap { bottom: 16px; }
+body.spectator-mode .minimap { bottom: 16px; --mm-gut: 12px; }
 body.spectator-mode #minimapCanvas { width: 210px; height: 210px; }
+body.spectator-mode .mm-cols span, body.spectator-mode .mm-rows span { font-size: 8px; }
 body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
 
 /* Click-to-inspect card: #unitInfo is reparented out of the hidden bottom HUD
