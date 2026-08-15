@@ -2873,7 +2873,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 }
                 controller.lastActionResult = result.truncated
                     ? `[ERROR] Your reply was CUT OFF before the JSON closed — you ran out of output tokens, so nothing was executed. Keep "reason", "objective" and "plan" to one short sentence each and always close the JSON.`
-                    : `[ERROR] Your reply contained an "action" but was not valid JSON, so nothing was executed.${result.why ? ` The JSON parser reported: ${result.why}.` : ''} Reply with ONLY the JSON object: {"action":"...","params":{...}} — straight double quotes, and any quote INSIDE a string value must be escaped as \\" or left out.`;
+                    : `[ERROR] Your reply contained an "action" but was not valid JSON, so nothing was executed.${result.why ? ` The parser stopped here: ${result.why}.` : ''}${result.near ? ` Your reply up to that point ended: ...${result.near}` : ''}`;
                 const lastMalformed = controller.turnLog[controller.turnLog.length - 1];
                 if (lastMalformed && lastMalformed.outcome == null) lastMalformed.outcome = controller.lastActionResult;
                 controller._failStreak = 0;
@@ -3137,16 +3137,28 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     // the token it choked on point at the one character to fix. A
                     // stray unescaped quote inside "plan" is the common case and looks
                     // nothing like a shape error from the inside.
-                    let why = '';
+                    let why = '', near = '';
                     if (!cut) {
                         const cands = this.findJsonObjects(freeText);
                         const raw = cands.length ? cands[cands.length - 1] : freeText;
                         try { JSON.parse(raw); } catch (e) { why = String((e && e.message) || e).slice(0, 160); }
+                        // The text the parser had already accepted when it stopped. This
+                        // replaces a sentence that used to GUESS the cause — it named
+                        // unescaped quotes, and across a 165-turn match not one of the 52
+                        // failures was a quote: every one was a single missing '}' closing
+                        // a command object, which the guess pointed away from. An excerpt
+                        // cannot be wrong about which character broke it, and it covers
+                        // the quote case too, by showing the quote.
+                        const at = /position (\d+)/.exec(why);
+                        if (at) {
+                            const i = Math.min(raw.length, parseInt(at[1], 10));
+                            near = raw.slice(Math.max(0, i - 70), i);
+                        }
                     }
                     console.warn(`[OpenAIAI] Malformed action JSON${cut ? ' — reply hit the output-token cap' : ''}, nothing executed:`,
                         freeText.slice(0, 160));
                     logMalformed(freeText, cut);
-                    return { malformed: true, truncated: cut, why };
+                    return { malformed: true, truncated: cut, why, near };
                 }
                 console.warn(`[OpenAIAI] Reply without JSON action — nothing executed:`, freeText.substring(0, 160));
                 logNoAction(freeText);

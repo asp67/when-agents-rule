@@ -6,7 +6,7 @@ class UIManager {
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v67';
+        this.ARENA_PROMPT_VERSION = 'agents-rule-v68';
         // The match a hosted copy opens with. samples/ holds several now; the full set
         // and its metadata are in samples/index.json, which is what a picker has to
         // read because GitHub Pages cannot list a directory.
