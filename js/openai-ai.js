@@ -568,6 +568,27 @@ class OpenAIAIManager {
         return out;
     }
 
+    // The model id as it may be PUBLISHED. Local backends take a file path where an
+    // API takes a name, and a path carries the operator's username and folder layout
+    // into a file meant to be handed to someone else — found in a published sample as
+    // C:\\Users\\<name>\\ggufmodels\\Ornith-1.0-9B-Q8_0.gguf, 149 times over.
+    //
+    // Only the basename survives, which is the part that answers the question the id
+    // exists to answer: WHICH model played. Nothing is redacted here — a reader still
+    // gets a usable identifier, just not a tour of the machine.
+    //
+    // A slash alone is NOT a path: aggregator ids look like "anthropic/claude-opus-5"
+    // and must survive untouched. The marks of a real path are a backslash, a leading
+    // slash or tilde, or a drive letter.
+    static publicModelId(id) {
+        const s = String(id == null ? '' : id).trim();
+        if (!s) return s;
+        const looksLikePath = /\\/.test(s) || /^[~/]/.test(s) || /^[A-Za-z]:[\\/]/.test(s);
+        if (!looksLikePath) return s;
+        const base = s.split(/[\\/]/).filter(Boolean).pop();
+        return base || s;
+    }
+
     // Values under a key that looks like a credential are replaced, not dropped, so the
     // reader can see that something was set without being handed it.
     //
@@ -1182,7 +1203,7 @@ class OpenAIAIManager {
                     // Ollama, LiteLLM) the id is the only thing that says WHICH of
                     // hundreds of models played, so it must not be guessable-looking
                     // when it is absent. null means none was configured.
-                    model: c ? (String(c.model || '').trim() || null) : 'ki',
+                    model: c ? (OpenAIAIManager.publicModelId(c.model) || null) : 'ki',
                     // The name the results block will use, so the two agree.
                     name: c ? this._seatNames[i] : null,
                     settings: c ? OpenAIAIManager.publicModelSettings(c, s, sharedPrompt) : null
@@ -2836,7 +2857,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                         // What we ASKED for, beside what came back. A truncation is
                         // only diagnosable as a pair: the cap we set is upstream of
                         // every explanation for why the reply stopped.
-                        request: { maxTokens: askedMax, provider, model: model.model || 'default' },
+                        // publicModelId, not model.model: the REQUEST carried the full path
+                        // (the endpoint needs it), the RECORD of it does not.
+                        request: { maxTokens: askedMax, provider, model: OpenAIAIManager.publicModelId(model.model) || 'default' },
                         usageRaw: OpenAIAIManager.rawUsage(provider, data),
                         contentChars: ((norm && norm.content) || '').length
                     });

@@ -84,7 +84,7 @@
     {
      "seat": 0,
      "name": "RTX Ornith-9B-Q8",
-     "model": "C:\\Users\\Anwender\\ggufmodels\\Ornith-1.0-9B-Q8_0.gguf",
+     "model": "Ornith-1.0-9B-Q8_0.gguf",
      "civ": "Egyptians",
      "power": 49,
      "winner": false

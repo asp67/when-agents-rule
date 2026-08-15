@@ -3305,7 +3305,7 @@ class UIManager {
                 // Deliberately NO endpoint/keys — results files get shared.
                 modelConfig: controller ? {
                     provider: controller.model.provider || 'auto',
-                    modelId: controller.model.model || '',
+                    modelId: OpenAIAIManager.publicModelId(controller.model.model) || '',
                     contextBudget: controller.model.contextSize || 32768,
                     minimizeTokens: !!controller.model.minimizeTokens,
                     language: controller.model.language || 'en'
