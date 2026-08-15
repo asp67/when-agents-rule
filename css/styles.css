@@ -1501,6 +1501,23 @@ body.spectator-mode #unitInfo.spectator-card {
     border-radius: 10px; padding: 11px 22px; cursor: pointer; font-weight: 700; font-size: 1em;
 }
 .lib-add-btn:hover { background: rgba(78,204,163,0.2); }
+.lib-sortbar {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0 0 10px; min-height: 26px;
+}
+.lib-sort-label { color: var(--muted); font-size: 12px; margin-right: 2px; }
+.lib-sort-btn {
+    background: rgba(255,255,255,0.05); color: var(--muted);
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 4px 12px; font-size: 12px; cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.lib-sort-btn:hover { background: rgba(255,255,255,0.10); color: var(--text); }
+.lib-sort-btn.on {
+    background: rgba(78,204,163,0.16); color: var(--teal);
+    border-color: rgba(78,204,163,0.45);
+}
+
 .lib-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .lib-io-btn {
     background: rgba(255,255,255,0.05);

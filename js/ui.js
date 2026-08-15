@@ -685,13 +685,57 @@ class UIManager {
 
     getArenaModel(id) { return (this._arenaConfig?.models || []).find(m => m.id === id); }
 
+    // The label a model wears in the list. Shared with the sort, so the order you
+    // see is the order of the text you see — deriving it twice is how a list ends
+    // up sorted by something the reader cannot see.
+    modelDisplayName(m, n) {
+        return (m.name && m.name.trim()) ? m.name : `${t('ar.unnamed')} ${n || m.id}`;
+    }
+
+    // A VIEW setting, not a property of the catalog. It lives in its own storage key
+    // rather than in _arenaConfig because the config is what export writes to a file:
+    // a colleague importing your catalog should get your models, not your sort order.
+    libSortMode() {
+        try { return localStorage.getItem('libSort') === 'name' ? 'name' : 'added'; }
+        catch (e) { return 'added'; }
+    }
+
+    setLibSort(mode) {
+        try { localStorage.setItem('libSort', mode === 'name' ? 'name' : 'added'); }
+        catch (e) { /* private browsing: the choice still applies to this session */ }
+        this.renderArenaLibrary();
+    }
+
+    // Hidden below two models: there is no order to choose between, and a control
+    // that cannot change anything still asks to be understood.
+    renderLibSortBar(count) {
+        if (count < 2) return '';
+        const mode = this.libSortMode();
+        const btn = (key, label) => `<button class="lib-sort-btn${mode === key ? ' on' : ''}" `
+            + `onclick="game.ui.setLibSort('${key}')">${this.escapeHtml(label)}</button>`;
+        return `<span class="lib-sort-label">${this.escapeHtml(t('ar.sortBy'))}</span>`
+             + btn('added', t('ar.sortAdded')) + btn('name', t('ar.sortName'));
+    }
+
     // --- Rendering ---
     renderArenaLibrary() {
         const list = document.getElementById('modelLibraryList');
         if (!list) return;
         const models = this._arenaConfig.models;
-        list.innerHTML = models.length
-            ? models.map((m, i) => this.renderModelCard(m, i + 1)).join('')
+        // The ordinal is taken BEFORE sorting, and carried. "Unnamed 3" is the third
+        // model this catalog ever gained, not the third row on screen — otherwise
+        // switching the sort would rename the very models that have no name to keep,
+        // and two of them would swap identities in front of the user.
+        const rows = models.map((m, i) => ({ m, n: i + 1 }));
+        if (this.libSortMode() === 'name') {
+            // numeric, so "Unnamed 9" precedes "Unnamed 10" rather than following it.
+            rows.sort((a, b) => this.modelDisplayName(a.m, a.n).localeCompare(
+                this.modelDisplayName(b.m, b.n), undefined, { sensitivity: 'base', numeric: true }));
+        }
+        const bar = document.getElementById('libSortBar');
+        if (bar) bar.innerHTML = this.renderLibSortBar(models.length);
+        list.innerHTML = rows.length
+            ? rows.map(r => this.renderModelCard(r.m, r.n)).join('')
             : `<p class="lib-empty">${t('ar.libEmpty')}</p>`;
     }
 
@@ -699,7 +743,7 @@ class UIManager {
         const e = (s) => this.escapeHtml(s == null ? '' : String(s));
         // Default (unnamed) models show a LIVE translated fallback, never a baked-in
         // name, so the label follows the current GUI language.
-        const displayName = (m.name && m.name.trim()) ? m.name : `${t('ar.unnamed')} ${n || m.id}`;
+        const displayName = this.modelDisplayName(m, n);
         const sel = (v) => m.auth.type === v ? 'selected' : '';
         const status = m._status ? `<span class="test-status ${m._status.cls}" id="modelStatus-${m.id}">${e(m._status.text)}</span>`
                                  : `<span class="test-status" id="modelStatus-${m.id}"></span>`;
