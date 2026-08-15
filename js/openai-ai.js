@@ -2996,8 +2996,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const civ = getCivilization(ai.civilization);
             const civName = civ?.name || ai.civilization;
             const colorHex = '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0');
-            this.decisionLog.unshift({
-                timestamp: Date.now(),
+            this.pushDecisionFor(ai, {
                 playerId: ai.id,
                 civName: civName,
                 color: colorHex,
@@ -3005,9 +3004,6 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 reason: `Request to model failed: ${err.message.substring(0, 100)}`,
                 params: {}, failed: true
             });
-            if (this.decisionLog.length > this.maxLogEntries) {
-                this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
-            }
             return null;
         }
     }
@@ -3034,8 +3030,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const colorHex = '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0');
 
         const logFailure = (reason) => {
-            this.decisionLog.unshift({
-                timestamp: Date.now(),
+            this.pushDecisionFor(ai, {
                 playerId: ai.id,
                 civName: civName,
                 color: colorHex,
@@ -3043,17 +3038,13 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 reason: `Tool call could not be interpreted: ${reason}`,
                 params: {}, failed: true
             });
-            if (this.decisionLog.length > this.maxLogEntries) {
-                this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
-            }
         };
 
         // The model replied in prose without any JSON action: the decision log
         // shows the model's OWN words under a no-action tag — not a guessed move,
         // not a parse error.
         const logNoAction = (text) => {
-            this.decisionLog.unshift({
-                timestamp: Date.now(),
+            this.pushDecisionFor(ai, {
                 playerId: ai.id,
                 civName: civName,
                 color: colorHex,
@@ -3061,9 +3052,6 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
                 params: {}, failed: true
             });
-            if (this.decisionLog.length > this.maxLogEntries) {
-                this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
-            }
         };
 
         // A reply that CONTAINS an action but would not parse is a MALFORMED action,
@@ -3071,8 +3059,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // Logged under its own tag because "no action provided" was simply untrue,
         // and an untrue log entry is worse than none.
         const logMalformed = (text, cut) => {
-            this.decisionLog.unshift({
-                timestamp: Date.now(),
+            this.pushDecisionFor(ai, {
                 playerId: ai.id,
                 civName: civName,
                 color: colorHex,
@@ -3080,9 +3067,6 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
                 params: {}, failed: true
             });
-            if (this.decisionLog.length > this.maxLogEntries) {
-                this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
-            }
         };
 
         try {
@@ -5827,6 +5811,13 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // mover wins a contested build spot, so the order rotates by round instead of
     // permanently favouring seat one.
     flushRound(live) {
+        // Held failures first, so a seat that contributed nothing still appears in its
+        // round rather than vanishing from it.
+        for (const c of live) {
+            if (!c.pendingLog || !c.pendingLog.length) continue;
+            for (const e of c.pendingLog) this.commitDecision(e);
+            c.pendingLog = [];
+        }
         const queued = live.filter(c => c.queuedAction);
         if (queued.length > 1) queued.push(...queued.splice(0, this._roundNo % queued.length));
         for (const c of queued) {
@@ -6071,6 +6062,38 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         return true;
     }
 
+    // A harness result the model never asked to be published early.
+    //
+    // A reply that FAILS is known the moment it lands; a reply that succeeds is not
+    // applied until every seat has answered. Logging each at its own moment put a fast
+    // seat's rejection eighty seconds ahead of the round it belonged to, sitting alone
+    // between two blocks -- and read, reasonably, as that seat being served first.
+    // Nothing was executed early; only the log said so.
+    //
+    // In turn-based mode a failure is therefore held with its round and released by
+    // flushRound, beside the commands it belongs next to, sharing their timestamp.
+    // Real-time has no rounds and is untouched: there, "when it happened" IS the round.
+    //
+    // The moment the reply actually arrived is not lost -- the transcript records it
+    // per turn as latencyMs, which is where a fairness question should be answered
+    // anyway, rather than from the spacing of a viewer's log.
+    pushDecisionFor(ai, entry) {
+        const c = (this.aiControllers || []).find(x => x.aiPlayer === ai);
+        if (this.turnBased && c) { (c.pendingLog || (c.pendingLog = [])).push(entry); return; }
+        this.commitDecision(entry);
+    }
+
+    // Stamped HERE, not where the entry was built: a held entry that kept its arrival
+    // time would land in the right block wearing a timestamp eighty seconds older than
+    // its neighbours, which is the same false impression in smaller print.
+    commitDecision(entry) {
+        entry.timestamp = Date.now();
+        this.decisionLog.unshift(entry);
+        if (this.decisionLog.length > this.maxLogEntries) {
+            this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
+        }
+    }
+
     // Fire a single turn for one controller on its own independent pipeline.
     startTurn(controller, now = Date.now()) {
         // Real turn-to-turn cadence, MEASURED before lastTurnTime is overwritten.
@@ -6088,6 +6111,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         controller.lastTurnTime = now;
         controller.turnCount++;
         controller.pending = true;
+        // Anything still held here belongs to a round that has already resolved without
+        // it -- the same reason a late ANSWER is dropped rather than replayed. The stats
+        // already counted it; only the log line goes.
+        controller.pendingLog = [];
 
         console.log(`[OpenAIAI] Turn #${controller.turnCount} for ${controller.id} (${controller.aiPlayer.civilization})`);
 
