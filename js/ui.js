@@ -4,7 +4,7 @@ class UIManager {
     // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
     // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
     // steht. Beim Hochzaehlen also nur hier anfassen.
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v71'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v72'; }
 
     constructor(game) {
         this.game = game;
@@ -340,6 +340,7 @@ class UIManager {
             // false = full multi-turn rolling history (Option C, cacheable, richer).
             // true  = minimize tokens: compact one-line move history (Option A).
             minimizeTokens: opts.minimizeTokens || false,
+            toolFallback: opts.toolFallback || false,
             maxContext: opts.maxContext || null, // discovered model max (for the ↺ button/prefill)
             language: opts.language || 'en',   // language the model reasons/answers in (independent of GUI)
             availableModels: [],
@@ -450,6 +451,7 @@ class UIManager {
         if (!m.rejectedParams || typeof m.rejectedParams !== 'object') m.rejectedParams = {};
         if (m.contextSize == null) m.contextSize = '';
         m.minimizeTokens = !!m.minimizeTokens;
+        m.toolFallback = !!m.toolFallback;
         if (m.maxContext == null) m.maxContext = null;
         m.availableModelContext = {}; // runtime-only; never trust stored values
         m.auth = Object.assign({}, def.auth, m.auth || {});
@@ -982,6 +984,8 @@ class UIManager {
             <p class="auth-hint">${t('ar.maxTokensHint')}</p>
             <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
             <p class="auth-hint">${t('ar.minimizeTokensHint')}</p>
+            <label class="ctx-mini-toggle"><input type="checkbox" ${m.toolFallback ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'toolFallback',this.checked)"> ${t('ar.toolFallback')}</label>
+            <p class="auth-hint">${t('ar.toolFallbackHint')}</p>
             <p class="auth-hint">${t('ar.modelLangHint')}</p>
             ${isOllama ? `<p class="auth-hint ollama-hint">${t('ar.ollamaHint')}</p>` : ''}
             </div>
@@ -1512,6 +1516,7 @@ class UIManager {
                 contextSize: (() => { const n = parseInt(m.contextSize, 10); return (n && n >= 512) ? n : null; })(),
                 maxContext: (() => { const n = parseInt(m.maxContext, 10); return (n && n >= 512) ? n : null; })(),
                 minimizeTokens: !!m.minimizeTokens,
+                toolFallback: !!m.toolFallback,
                 language: m.language || 'en',
                 // So a parameter the endpoint refuses mid-match can be recorded against
                 // the entry it came from rather than being relearned every match.

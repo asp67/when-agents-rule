@@ -705,6 +705,9 @@ class OpenAIAIManager {
             maxTokens: conn.maxTokens || null,
             contextBudget: conn.contextSize || null,
             minimizeTokens: !!conn.minimizeTokens,
+            // Recorded because it changes what a number MEANS: a seat allowed to fall
+            // back is scored on a softer contract than one that is not.
+            toolFallback: !!conn.toolFallback,
             language: conn.language || 'en'
         };
         ['temperature', 'topP', 'topK', 'minP', 'presencePenalty', 'repetitionPenalty']
@@ -1499,6 +1502,7 @@ class OpenAIAIManager {
                 contextSize: conn.contextSize || null, // context budget (tokens); also Ollama num_ctx (null = 32768)
                 maxContext: conn.maxContext || null, // model's real max context — hard ceiling for the budget
                 minimizeTokens: !!conn.minimizeTokens, // true = compact one-line history (Option A)
+                toolFallback: !!conn.toolFallback, // true = accept inline JSON when no tool call arrives
                 language: conn.language || 'en', // language the model reasons/answers in (independent of GUI)
                 libraryId: conn.libraryId != null ? conn.libraryId : null,
                 customSystemPrompt: playerSetup.systemPrompt || null
@@ -2996,6 +3000,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 // Abort the request if the endpoint is slow/dead so the controller
                 // never gets stuck "pending" for the rest of the match. The handle is
                 // stored on the controller so stop() can abort it when the match ends.
+                controller._answeredVia = null;   // per attempt, never carried over
                 const controllerAbort = new AbortController();
                 controller._abort = controllerAbort;
                 controller._deadlineAbort = false;   // cleared per attempt; set only by noteRoundMissed
@@ -3112,6 +3117,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                         request: { maxTokens: askedMax, provider, model: OpenAIAIManager.publicModelId(model.model) || 'default' },
                         usageRaw: OpenAIAIManager.rawUsage(provider, data),
                         contentChars: ((norm && norm.content) || '').length,
+                        // Which channel actually carried the move. Makes "does this
+                        // model use the tools at this provider" a column instead of a
+                        // guess -- and shows at once when a seat is living on the
+                        // fallback rather than on the contract.
+                        answeredVia: controller._answeredVia || null,
                         // Only when the reply came back empty although tokens were
                         // BILLED. Then the tokens existed and something between the
                         // server and us dropped them -- a model cannot write 940 tokens
@@ -3331,7 +3341,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     registerNoActionReturn(controller) {
         const s = controller.stats;
         if (s) s.noActionReturns = (s.noActionReturns || 0) + 1;
-        controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: your reply contained no valid JSON action object. Reply with ONE JSON object, e.g. {"action":"wait","params":{"reason":"..."}} — or carry several in a "commands" array. Plain prose wastes the turn.`;
+        // Two faults look identical from here and have different fixes. When tool
+        // syntax was found in the raw reply the model DID call and the server missed
+        // it -- a wrong --tool-call-parser on vLLM, or a chat template without a tool
+        // section on llama.cpp. That is an operator's problem, and saying so keeps a
+        // model from being told to fix something it did correctly.
+        const miss = controller._toolContractMiss;
+        controller._toolContractMiss = null;
+        if (miss) {
+            controller.lastActionResult = (typeof miss === 'string')
+                ? `[ERROR] NO ACTION: your reply carried tool-call syntax (${miss}) but the server did not deliver it as a tool call, so nothing could be executed. This is a SERVER setting, not your mistake — the operator has to fix the tool-call parser or the chat template.`
+                : `[ERROR] NO ACTION was taken this turn: you called neither "action" nor "plan". Use the tools — one "action" call per move, up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} per turn. Plain prose wastes the turn.`;
+        } else controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: your reply contained no valid JSON action object. Reply with ONE JSON object, e.g. {"action":"wait","params":{"reason":"..."}} — or carry several in a "commands" array. Plain prose wastes the turn.`;
         const lastTurn = controller.turnLog[controller.turnLog.length - 1];
         if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
     }
@@ -3401,19 +3422,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 content_preview: (message.content || '').substring(0, 200)
             });
 
-            // 1) Structured JSON in content; then in reasoning. Reasoning models
-            //    (e.g. Qwen3) leave content empty and put the answer in
-            //    message.reasoning, so we must look there too.
-            let parsed = this.extractActionFromText(message.content);
-            if (!parsed) parsed = this.extractActionFromText(message.reasoning);
-            if (OpenAIAIManager.ordersSomething(parsed)) {
-                console.log(`[OpenAIAI] Parsed action:`, parsed);
-                return parsed;
-            }
-
-            // 2) tool_calls — the primary channel now, and EVERY call is read. Taking
-            //    only [0] would have thrown away two of three actions; it never showed
-            //    because no tools were ever declared, so the path had not once fired.
+            // 1) tool_calls — the contract, and therefore FIRST. A reply carrying
+            //    both used the channel it was offered; letting content win would
+            //    score it as though it had ignored the tools. EVERY call is read:
+            //    taking only [0] would throw away two of three actions.
             const toolCalls = message.tool_calls;
             if (toolCalls && toolCalls.length > 0) {
                 const vonTools = OpenAIAIManager.envelopeFromToolCalls(toolCalls);
@@ -3426,6 +3438,31 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 // malformed action, not silence, and it is logged as one.
                 logMalformed(JSON.stringify(toolCalls).slice(0, 220), false);
                 return { noAction: true };
+            }
+
+            // 2) Tools were offered and nothing came back. Whether the inline JSON
+            //    below is even looked at is the seat's own setting, and OFF is the
+            //    default on purpose: a seat that quietly falls back keeps playing
+            //    while its operator never learns the parser does not fit, which is
+            //    the harness compensating for a fault instead of showing it.
+            const vertrag = OpenAIAIManager.toolsSupported(
+                OpenAIAIManager.resolveProvider(controller.model || {}));
+            if (vertrag && !(controller.model && controller.model.toolFallback)) {
+                const marker = OpenAIAIManager.toolSyntaxInText(message.content || message.reasoning);
+                controller._toolContractMiss = marker || true;
+                logMalformed('no tool call' + (marker ? ' (server did not parse: ' + marker + ')' : ''), false);
+                return { noAction: true };
+            }
+            controller._answeredVia = 'content';
+
+            // 3) Structured JSON in content; then in reasoning. Reasoning models
+            //    (e.g. Qwen3) leave content empty and put the answer in
+            //    message.reasoning, so we must look there too.
+            let parsed = this.extractActionFromText(message.content);
+            if (!parsed) parsed = this.extractActionFromText(message.reasoning);
+            if (OpenAIAIManager.ordersSomething(parsed)) {
+                console.log(`[OpenAIAI] Parsed action:`, parsed);
+                return parsed;
             }
 
             // 3) Prose with NO JSON action anywhere. The old harness guessed an
