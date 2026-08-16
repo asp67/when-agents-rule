@@ -579,13 +579,38 @@ class OpenAIAIManager {
     // Deliberately absent:
     //   auth      — keys, tokens, passwords, headers. Never, in any form.
     //   endpoint  — private hostnames and, for some providers, a key in the query string.
-    //               provider + model tells a reader what they need to interpret a result.
+    //               "servedBy" below carries what a reader actually needs from it -- WHO
+    //               served the seat -- without the host, the port or the path.
     //
     // extraBody is free-form text the user typed, which is exactly where a stray key ends
     // up, so its values are redacted by name rather than trusted.
-    static publicModelSettings(conn, slot, sharedPrompt) {
+    // Ask an endpoint who is serving it. Never throws and never blocks a match: a
+    // match that cannot start because a probe timed out would be a recording feature
+    // costing a measurement, which is the wrong way round.
+    static async probeServedBy(conn) {
+        try {
+            const prov = OpenAIAIManager.resolveProvider(conn);
+            if (prov !== 'openai') return prov;   // the others name themselves
+            const r = await OpenAIAIManager.testConnection(
+                conn.endpoint, conn.auth || (conn.apiKey ? { type: 'bearer', key: conn.apiKey } : { type: 'none' }),
+                prov, 6000);
+            if (!r || !r.ok) return null;
+            // Prefer the entry for the model this seat actually plays; fall back to the
+            // endpoint-wide value. On an aggregator the two differ and the specific one
+            // is the one worth keeping.
+            const id = String(conn.model || '').replace(/^models\//, '');
+            return (r.ownedById && r.ownedById[id]) || r.servedBy || null;
+        } catch (e) { return null; }
+    }
+
+    static publicModelSettings(conn, slot, sharedPrompt, servedBy) {
         const out = {
             provider: OpenAIAIManager.resolveProvider(conn),
+            // The protocol above is not the service: vLLM, llama.cpp, LM Studio,
+            // OpenRouter and Groq all speak "openai". This is what the server calls
+            // itself, so a result can be read as (model x stack) rather than as a
+            // property of the model alone. null = the endpoint did not say.
+            servedBy: servedBy || null,
             maxTokens: conn.maxTokens || null,
             contextBudget: conn.contextSize || null,
             minimizeTokens: !!conn.minimizeTokens,
@@ -1127,6 +1152,7 @@ class OpenAIAIManager {
             const data = await resp.json();
             let models;
             const contextById = {};
+            const ownedById = {};
             if (prov === 'ollama') {
                 models = (data.models || []).map(m => m.name || m.model).filter(Boolean);
                 // /api/tags doesn't carry context length; the ↺ button does /api/show.
@@ -1159,9 +1185,22 @@ class OpenAIAIManager {
                                 (m.meta && m.meta.n_ctx) ||
                                 (m.limits && (m.limits.context_length || m.limits.max_context_tokens));
                     if (id && ctx && Number(ctx) >= 512) contextById[id] = Number(ctx);
+                    // WHO is serving, not which protocol it speaks. The list was already
+                    // being walked for the context window; this field sits right beside it.
+                    if (id && typeof m.owned_by === 'string' && m.owned_by.trim()) {
+                        ownedById[id] = m.owned_by.trim();
+                    }
                 });
             }
-            return { ok: true, models, provider: prov, contextById };
+            // One value for the whole endpoint when every model agrees, which is the
+            // normal case for a local server. A gateway serving many vendors disagrees,
+            // and then the per-model map is the honest answer and the summary stays null.
+            const eigner = Object.values(ownedById);
+            const einig = eigner.length && eigner.every(x => x === eigner[0]) ? eigner[0] : null;
+            // Anthropic and Google ARE the service; Ollama speaks its own protocol and is
+            // already distinguishable. Only the openai-compatible crowd needs asking.
+            const servedBy = (prov === 'openai') ? einig : prov;
+            return { ok: true, models, provider: prov, contextById, ownedById, servedBy };
         } catch (e) {
             if (e && e.name === 'AbortError') {
                 return { ok: false, errorCode: 'timeout', error: 'Timed out — endpoint unreachable.', provider: prov };
@@ -1281,6 +1320,10 @@ class OpenAIAIManager {
                 + `-${pad(stamp.getHours())}${pad(stamp.getMinutes())}${pad(stamp.getSeconds())}`;
             const sharedPrompt = (this.game.ui && this.game.ui._arenaConfig
                 && this.game.ui._arenaConfig.prompt) || null;
+            // Asked once per seat, all at the same time, before the header is written.
+            // Six seconds worst case for the whole match, and a failure is a null.
+            const bedient = await Promise.all(setup.map(s => s.connection
+                ? OpenAIAIManager.probeServedBy(s.connection) : Promise.resolve(null)));
             await this.transcripts.begin(matchId, setup.map((s, i) => {
                 const ai = this.game.aiManager.aiPlayers[i];
                 const c = s.connection;
@@ -1297,7 +1340,7 @@ class OpenAIAIManager {
                     model: c ? (OpenAIAIManager.publicModelId(c.model) || null) : 'ki',
                     // The name the results block will use, so the two agree.
                     name: c ? this._seatNames[i] : null,
-                    settings: c ? OpenAIAIManager.publicModelSettings(c, s, sharedPrompt) : null
+                    settings: c ? OpenAIAIManager.publicModelSettings(c, s, sharedPrompt, bedient[i]) : null
                 };
             }), {
                 systemPrompt: sharedPrompt,
