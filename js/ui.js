@@ -3907,8 +3907,13 @@ class UIManager {
         // while the Harness block below carried every word of substance. The calls ARE
         // the reply — reading them as an absence made the viewer look broken on exactly
         // the turns that went best.
+        // BOTH when both arrived. Letting content win hid the calls of any model that
+        // writes a sentence beside them — and a model narrating what it is about to do
+        // is exactly the kind that a reader wants to watch, so hiding half of it there
+        // would be the worst place to hide anything.
         const toolText = this.toolCallsAsText(e.assistant && e.assistant.tool_calls);
-        const replyText = (e.assistant && e.assistant.content) || toolText;
+        const replyText = [(e.assistant && e.assistant.content) || '', toolText]
+            .filter(x => x && String(x).trim()).join('\n\n');
         const hadReasoning = !!(e.assistant && e.assistant.reasoning);
         const replySec = replyText
             ? sec('tv-reply', t('spec.tvReply'), replyText)
