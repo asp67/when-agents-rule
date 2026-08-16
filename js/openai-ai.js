@@ -102,8 +102,16 @@ class OpenAIAIManager {
         const tools = OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(m));
         const json = '{"action":"wait","params":{"reason":"..."}}';
         if (!tools) return 'Reply with ONE raw JSON object, e.g. ' + json + '.';
+        // The "nothing worth doing" hole, closed. A 9B seat ended 28 of 53 turns with
+        // finish_reason "stop" after a median of 162 output tokens: it was not running
+        // out of room, it thought briefly, judged the turn not worth a move and said
+        // nothing at all. "Use the tools" gave it no way to express that, and wait
+        // exists for precisely this. Stating it is the contract described accurately,
+        // not a hint — every turn needs a call, including the empty one.
         const call = 'Call the "action" tool — one call per move, up to '
-            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' per turn.';
+            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' per turn. EVERY turn needs at least one call: '
+            + 'if nothing is worth doing, call it with {"action":"wait","params":{"reason":"..."}} — '
+            + 'staying silent forfeits the turn instead of skipping it.';
         return m.toolFallback
             ? call + ' If a call will not go through, one raw JSON object per action also works, e.g. ' + json + '.'
             : call;
