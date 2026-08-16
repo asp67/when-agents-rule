@@ -77,6 +77,14 @@ class OpenAIAIManager {
     static workerJob(game, u) {
         if (!u || u.type !== 'worker') return null;
         if (u.task === 'building' || u.isBuilding) return 'building';
+        // Before every gathering test, and in the same order the candidate filter
+        // in executeAssignWorkers rejects them: builders, then fighters. A worker
+        // hitting back has no task, so isIdleWorker() -- which looks at no combat
+        // flag -- called it idle and workers.idle offered a hand that could not be
+        // taken. Counting it here as what it is costs the economy tallies nothing
+        // they were entitled to and tells the model something it could not see at
+        // all: that its villagers are under attack.
+        if (u.isAttacking || u.attackTarget || u.attackMove) return 'fighting';
         if (u.task === 'scouting') return 'scouting';
         if (u.task === 'farm_work' || u.farmRef) return 'farm';
         const carrying = !!(u.carryingResource || u.task === 'carrying');
@@ -1766,6 +1774,11 @@ class OpenAIAIManager {
         });
 
         // --- Units (compact: friendly units with type + position + action) ---
+        // How a worker's JOB reads as an ACTION, for the cases where the chain below
+        // would otherwise have said "idle" without asking.
+        const JOB_ACTION = { fighting: 'attacking', building: 'building', scouting: 'scouting',
+                             farm: 'farm_work', food: 'harvesting', wood: 'harvesting',
+                             stone: 'harvesting', gold: 'harvesting', moving: 'moving' };
         const friendlyUnits = ai.units.map(u => {
             let action = 'idle';
             if (u.isAttacking) action = 'attacking';
@@ -1774,6 +1787,18 @@ class OpenAIAIManager {
             else if (u.task === 'building') action = 'building';
             else if (u.task === 'farm_work') action = 'farm_work';
             else if (u.isMoving) action = 'moving';
+            // On a WORKER "idle" is not decoration: it names a source
+            // assign_workers accepts, and a model reads it as "this one is free".
+            // The chain above never asked isIdleWorker, so it drifted both ways --
+            // a worker walking with no job read as "moving" although it IS free,
+            // and one retaliating, or holding a stale harvestTarget, read as "idle"
+            // although it is not. Let the classifier the executor uses decide, and
+            // fall back to what IT found rather than to the word "idle".
+            if (u.type === 'worker') {
+                const job = OpenAIAIManager.workerJob(this.game, u);
+                if (job === 'idle') action = 'idle';
+                else if (action === 'idle') action = JOB_ACTION[job] || 'moving';
+            }
 
             return {
                 // The one thing that makes a unit addressable. Without it "move a
@@ -1805,13 +1830,14 @@ class OpenAIAIManager {
         //     EXECUTION now, via assign_workers' allowSpill, where the truth is known.
         const wk = {
             total: 0, idle: 0, building: 0, onFarms: 0, scouting: 0, moving: 0,
-            onFood: 0, onWood: 0, onStone: 0, onGold: 0
+            fighting: 0, onFood: 0, onWood: 0, onStone: 0, onGold: 0
         };
         // Field names differ from the job names (onFarms, onWood); the JOB is decided
         // in one place -- see OpenAIAIManager.workerJob -- and only the naming lives here.
         const WK_FIELD = { building: 'building', scouting: 'scouting', farm: 'onFarms',
                            food: 'onFood', wood: 'onWood', stone: 'onStone',
-                           gold: 'onGold', idle: 'idle', moving: 'moving' };
+                           gold: 'onGold', idle: 'idle', moving: 'moving',
+                           fighting: 'fighting' };
         ai.units.forEach(u => {
             if (u.type !== 'worker') return;
             wk.total++;
