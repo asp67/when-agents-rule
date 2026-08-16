@@ -803,6 +803,22 @@ class OpenAIAIManager {
     //
     // Returns the flags to ADD, or null when the error is not one we know how to fix —
     // in which case it must surface unchanged rather than be retried blindly.
+    // {} in the normal case, so spreading it adds nothing to the record. An object
+    // rather than a value because the field should be ABSENT when there is nothing to
+    // say, not present and null on every one of thousands of rows.
+    static emptyReplyRaw(norm, usage, data) {
+        try {
+            const c = (norm && norm.content) || '', r = (norm && norm.reasoning) || '';
+            if (c.trim() || r.trim()) return {};
+            const out = (usage && usage.completion) || 0;
+            if (!out) return {};   // nothing generated either: that is a real empty turn
+            const ch = (data && Array.isArray(data.choices)) ? data.choices[0] : null;
+            return { emptyRaw: ch
+                ? JSON.stringify(ch).slice(0, 1200)
+                : 'no choices[]; top-level keys: ' + Object.keys(data || {}).join(',') };
+        } catch (e) { return {}; }
+    }
+
     static adaptToApiError(opts, errorText) {
         const e = String(errorText || '');
         const add = {};
@@ -2952,7 +2968,21 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                         // (the endpoint needs it), the RECORD of it does not.
                         request: { maxTokens: askedMax, provider, model: OpenAIAIManager.publicModelId(model.model) || 'default' },
                         usageRaw: OpenAIAIManager.rawUsage(provider, data),
-                        contentChars: ((norm && norm.content) || '').length
+                        contentChars: ((norm && norm.content) || '').length,
+                        // Only when the reply came back empty although tokens were
+                        // BILLED. Then the tokens existed and something between the
+                        // server and us dropped them -- a model cannot write 940 tokens
+                        // of nothing. Two such turns across every transcript so far, and
+                        // both times the record could say only "nothing", never "what
+                        // instead", which leaves the one question that decides the case
+                        // -- did the split into reasoning and content go wrong? -- with
+                        // no evidence at all.
+                        //
+                        // choices[0] and not the whole body: on an unfamiliar gateway the
+                        // rest may hold anything, and this is written to a file that gets
+                        // handed to other people. Without choices, only the KEY NAMES go
+                        // in, never the values.
+                        ...OpenAIAIManager.emptyReplyRaw(norm, usage, data)
                     });
                 }
                 controller._transcriptState = null;
