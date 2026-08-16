@@ -164,8 +164,9 @@ class OpenAIAIManager {
         // nothing at all. "Use the tools" gave it no way to express that, and wait
         // exists for precisely this. Stating it is the contract described accurately,
         // not a hint — every turn needs a call, including the empty one.
-        const call = 'Call the "action" tool — one call per move, up to '
-            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' per turn. EVERY turn needs at least one call: '
+        const call = 'Call an action tool — up to '
+            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' action calls per turn, any mix of them ("plan" is '
+            + 'extra and does not count). EVERY turn needs at least one call: '
             + 'if nothing is worth doing, call it with {"action":"wait","params":{"reason":"..."}} — '
             + 'staying silent forfeits the turn instead of skipping it.';
         return m.toolFallback
@@ -2737,16 +2738,15 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
 
-ACT BY CALLING THE TOOLS. Two are available to you, and they are the only way anything happens: an action written as text in the message body is a wasted turn.
+ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
 
-action — ONE call per move, up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} calls per turn. Arguments:
-  { "action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" } }
+YOUR BUDGET IS ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} ACTION CALLS PER TURN — any mix of the action tools, not ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} of each. Three different tools, or the same one three times, both count as three.
+  EVERY turn needs at least one call. When nothing is worth doing, call "wait" — staying silent forfeits the turn instead of skipping it.
   Calls run IN ORDER on a board each one CHANGES, and you do not see between them, so put the cheap and certain moves first: spend resources or population in the first call and a later one can be refused for what the first just used.
   Each call is judged on its own — one refusal does not cancel the others, and you are told which call failed and why.
+  Every action tool takes a "reason": one line, in your own words. It is what a spectator reads, and the only place you explain yourself.
 
-plan — at most ONE call per turn, and only when something changed. Arguments:
-  { "objective": "<1 line>", "plan": ["<step>", "<step>"] }
-  Up to ${OpenAIAIManager.PLAN_MAX_STEPS} short steps. Both persist across turns, so simply do not call it to keep what you already have.
+"plan" is EXTRA and does not count against those ${OpenAIAIManager.MAX_COMMANDS_PER_TURN}. At most once per turn, and only when something changed: objective is one line, plan up to ${OpenAIAIManager.PLAN_MAX_STEPS} short steps. Both persist across turns, so simply do not call it to keep what you already have.
 
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
@@ -3506,7 +3506,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         if (miss) {
             controller.lastActionResult = (typeof miss === 'string')
                 ? `[ERROR] NO ACTION: your reply carried tool-call syntax (${miss}) but the server did not deliver it as a tool call, so nothing could be executed. This is a SERVER setting, not your mistake — the operator has to fix the tool-call parser or the chat template.`
-                : `[ERROR] NO ACTION was taken this turn: you called neither "action" nor "plan". Use the tools — one "action" call per move, up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} per turn. Plain prose wastes the turn.`;
+                : `[ERROR] NO ACTION was taken this turn: you called no tool at all. ${OpenAIAIManager.howToAnswer(controller)}`;
         } else if (controller._planOnly) {
             // A plan-only turn is not a malformed one. The model worked a tool
             // correctly and simply issued no move, and it is told exactly that --
