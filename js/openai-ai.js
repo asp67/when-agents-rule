@@ -93,7 +93,7 @@ class OpenAIAIManager {
                              count: I('How many. Default 3, max 20.'),
                              from: S('food|wood|stone|gold|farm|idle — where to TAKE them. Omit to take idle first, then your largest stockpile.'),
                              allowSpill: { type: 'boolean', description: 'Default true: also move workers carrying a load, which is then lost.' } }, XZ), ['resourceType']],
-            ['repair_building', 'Send workers to repair a damaged building.',
+            ['repair_building', 'Send workers to repair a damaged building. Omit the coordinates to repair the most damaged one.',
              Object.assign({ count: I('How many workers. Default 1, max 5.') }, XZ), []],
             ['explore', 'Send a unit to scout a map tile.',
              { tile: S('Tile label from map.exploration, e.g. "C5" — column A-G, row 1-7.'),
@@ -101,7 +101,7 @@ class OpenAIAIManager {
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
             ['move_units', 'Move units to a position.',
              Object.assign({}, XZ, WHO), ['targetX', 'targetZ']],
-            ['attack_target', 'Attack a unit or building, or attack-move to a position.',
+            ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march — do not reissue it while they are still marching.',
              Object.assign({ targetId: I('Id from enemyUnits/enemyBuildings. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
              { unitType: S('Type from friendlyUnits. Default worker.'), count: I('How many. Default 1, max 20.') }, []],
@@ -109,6 +109,18 @@ class OpenAIAIManager {
              Object.assign({ buildingType: S('Type from friendlyBuildings.') }, XZ), ['buildingType']],
             ['wait', 'Do nothing this turn. Every turn needs a call; this is the one that means "none".', {}, []]
         ].map(([name, description, params, required]) => ({ name, description, params, required }));
+    }
+
+    // The action list as the prompt shows it, generated from ACTIONS. Names and
+    // parameters only: what each one MEANS is in the tool schema the model already
+    // receives, and writing it twice is how a list drifts from the code it describes.
+    static actionsBrief() {
+        return OpenAIAIManager.ACTIONS.map(a => {
+            const keys = Object.keys(a.params || {});
+            if (!keys.length) return a.name + ': (no parameters)';
+            const req = a.required || [];
+            return a.name + ': ' + keys.map(k => k + (req.indexOf(k) >= 0 ? '' : '?')).join(', ');
+        }).join('\n');
     }
 
     static get ACTION_NAMES() {
@@ -2748,22 +2760,11 @@ YOUR BUDGET IS ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} ACTION CALLS PER TURN �
 
 "plan" is EXTRA and does not count against those ${OpenAIAIManager.MAX_COMMANDS_PER_TURN}. At most once per turn, and only when something changed: objective is one line, plan up to ${OpenAIAIManager.PLAN_MAX_STEPS} short steps. Both persist across turns, so simply do not call it to keep what you already have.
 
-VALID ACTIONS & PARAMETERS (? = optional)
+VALID ACTIONS & PARAMETERS (? = optional; each tool's own schema describes what they mean)
 Note: targetX and targetZ must ALWAYS be provided together.
 Every entry in trainableUnits, buildableStructures and research.available carries "cost" and "blockedBy" — what stands between you and ordering it right now ("age", "tech", "host", "pop", "alreadyBuilt", "cost"). An empty blockedBy means nothing does.
 
-train_unit: unitType (from trainableUnits), targetX?, targetZ?
-research_tech: techId (from research.available)
-upgrade_age: (None)
-build_structure: buildingType (from buildableStructures), targetX?, targetZ?
-assign_workers: resourceType (food|wood|stone|gold|farm), count? (def:3, max:20), from? (food|wood|stone|gold|farm|idle — where to TAKE them; default: idle first, then your largest stockpile), allowSpill? (def:true; false takes only workers not carrying a load right now, and takes fewer if that is all there are), targetX?, targetZ? (which node: the one of that type nearest this point; pass the SAME value in "from" and "resourceType" to move a crew from one node to another)
-repair_building: count? (def:1, max:5), targetX?, targetZ? (omitted = most damaged)
-explore: tile (a label from map.exploration, e.g. "C5" — column A-G, row 1-7; map.yourBaseTiles says which you hold), unitType?, unitIds?
-move_units: targetX, targetZ, units?, unitIds?
-attack_target: targetId (from enemyUnits/enemyBuildings) OR targetX, targetZ. Optional: units?, unitIds?. (Coords trigger attack-move; do not reissue while marching)
-delete_unit: unitType? (from friendlyUnits, def: worker), count? (def:1, max:20)
-destroy_building: buildingType (from friendlyBuildings), targetX?, targetZ?
-wait: (None)
+${OpenAIAIManager.actionsBrief()}
 
 PARAMETER CONSTRAINTS:
 unitIds: An ARRAY of ids from friendlyUnits, e.g. [183, 12]. Moves or attacks EXACTLY those units and nothing else; "units" is ignored when it is given. Ids are never reused, so one that is gone means that unit died. Use it when WHICH unit matters — "units" picks whichever are nearest the target, which is the wrong end when you are fetching a wounded one.
