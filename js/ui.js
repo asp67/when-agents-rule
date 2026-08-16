@@ -1,12 +1,18 @@
 // UI Manager for game menus and interfaces
 class UIManager {
+    // EINE Literalstelle fuer die Prompt-Version. Die Instanz kopiert sie sich,
+    // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
+    // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
+    // steht. Beim Hochzaehlen also nur hier anfassen.
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v69'; }
+
     constructor(game) {
         this.game = game;
         this.activeMenu = null;
         // Bump when the canonical default prompt changes. On mismatch the shared
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
-        this.ARENA_PROMPT_VERSION = 'agents-rule-v69';
+        this.ARENA_PROMPT_VERSION = UIManager.ARENA_PROMPT_VERSION;
         // The match a hosted copy opens with. samples/ holds several now; the full set
         // and its metadata are in samples/index.json, which is what a picker has to
         // read because GitHub Pages cannot list a directory.
@@ -5635,7 +5641,7 @@ class UIManager {
             // version reported; if a definition changes later a recomputation will
             // disagree, and that is correct — but only if the reader can tell which
             // rules were in force.
-            build: this.buildVersion(),
+            build: UIManager.buildVersion(),
             promptVersion: this.ARENA_PROMPT_VERSION || null,
             ranking: (s.reports || []).map((r, i) => ({
                 rank: i + 1,
@@ -5679,7 +5685,7 @@ class UIManager {
 
     // Which build is running, read off a loaded script rather than kept as a constant —
     // a constant is a second place to bump and would drift from the files it names.
-    buildVersion() {
+    static buildVersion() {
         try {
             const el = document.querySelector('script[src*="js/game.js"]');
             const m = el && String(el.getAttribute('src') || '').match(/[?&]v=(\d+)/);
@@ -5778,3 +5784,19 @@ class UIManager {
         }
     }
 }
+
+// Die Startseite ist der einzige Ort, an dem ein Zuschauer sieht, welchen Stand
+// er vor sich hat. Gefuellt aus denselben zwei Quellen, die auch ins Transkript
+// gehen (build und promptVersion), damit die Anzeige nicht davon abweichen kann,
+// was tatsaechlich gelaufen ist. Kein data-i18n auf den Werten: applyI18n
+// ueberschreibt textContent, ein Sprachwechsel wuerde sie sonst leeren.
+(function stampVersions() {
+    const fill = () => {
+        const b = document.getElementById('stampBuild');
+        const p = document.getElementById('stampPrompt');
+        if (b) b.textContent = UIManager.buildVersion() || '?';
+        if (p) p.textContent = UIManager.ARENA_PROMPT_VERSION;
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fill);
+    else fill();
+})();

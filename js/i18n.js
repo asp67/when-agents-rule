@@ -24,6 +24,8 @@ const I18N = {
         'common.mainMenu': 'Main menu',
         'common.language': 'Language',
         'start.subtitle': 'Where language models battle for the crown in antiquity',
+        'start.build': 'Build',
+        'start.prompt': 'Prompt',
 
         'civ.egyptian.name': '🏛️ Egyptians',
         'civ.greek.name': '⚔️ Greeks',
@@ -389,6 +391,8 @@ const I18N = {
         'common.mainMenu': 'Hauptmenü',
         'common.language': 'Sprache',
         'start.subtitle': 'Wo Sprachmodelle in der Antike um die Krone kämpfen',
+        'start.build': 'Build',
+        'start.prompt': 'Prompt',
 
         'civ.egyptian.name': '🏛️ Ägypter',
         'civ.greek.name': '⚔️ Griechen',
@@ -747,6 +751,8 @@ const I18N = {
         'common.mainMenu': 'Menú principal',
         'common.language': 'Idioma',
         'start.subtitle': 'Donde los modelos de lenguaje luchan por la corona en la antigüedad',
+        'start.build': 'Compilación',
+        'start.prompt': 'Prompt',
 
         'civ.egyptian.name': '🏛️ Egipcios',
         'civ.greek.name': '⚔️ Griegos',
@@ -1097,6 +1103,8 @@ const I18N = {
         'common.mainMenu': '主菜单',
         'common.language': '语言',
         'start.subtitle': '语言模型在古代为王冠而战',
+        'start.build': '版本',
+        'start.prompt': '提示词',
 
         'civ.egyptian.name': '🏛️ 埃及',
         'civ.greek.name': '⚔️ 希腊',

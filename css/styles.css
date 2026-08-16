@@ -2744,3 +2744,20 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
     background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,.22);
     border-radius:6px; transition:color .15s, border-color .15s; }
 .fw-skip:hover { color:#dfe6f5; border-color:var(--gold); }
+
+/* Build- und Prompt-Version, unten rechts auf der Startseite. Bewusst leise: sie
+   beantwortet "welchen Stand sehe ich hier", ohne dem Titel Konkurrenz zu machen.
+   #startScreen ist position:absolute und damit selbst der Bezugsrahmen. Nicht
+   pointer-events:none -- die Zeile soll sich markieren und kopieren lassen. */
+.build-stamp {
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    font-size: 0.72em;
+    letter-spacing: 1px;
+    color: var(--muted);
+    opacity: 0.55;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.build-stamp b { font-weight: 600; color: var(--gold-2); }
+.build-stamp-dot { margin: 0 6px; opacity: 0.6; }
