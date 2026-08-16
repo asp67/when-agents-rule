@@ -3435,8 +3435,35 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // Return every balanced top-level { ... } substring (string-aware).
     findJsonObjects(text) {
         const objs = [];
-        let depth = 0, start = -1, inStr = false, esc = false;
-        for (let i = 0; i < text.length; i++) {
+        let from = 0, versuche = 0;
+        // Restart instead of running to the end. One object that never closes used to
+        // take every later one with it: its missing brace left the depth counter above
+        // zero, the next object's brace only raised it further, and from there nothing
+        // was emitted at all. That is what made one bad brace cost a whole turn even
+        // when the reply carried three separate objects.
+        //
+        // Nothing is repaired here. A span that does not close is DROPPED and the scan
+        // begins again at the next {. Every object handed back is still fully balanced
+        // and still has to parse on its own -- the broken one stays broken and stays
+        // reported.
+        while (from < text.length && versuche < 64) {
+            versuche++;
+            const auf = text.indexOf('{', from);
+            if (auf < 0) break;
+            const ende = OpenAIAIManager.balancedEnd(text, auf);
+            if (ende < 0) { from = auf + 1; continue; }   // schliesst nicht: naechstes { versuchen
+            objs.push(text.slice(auf, ende + 1));
+            from = ende + 1;
+        }
+        return objs;
+    }
+
+    // Index of the } that closes the { at `start`, or -1 when it never closes.
+    // String-aware, because a brace inside a "reason" is text and not structure --
+    // and reasons are where these models put their braces most often.
+    static balancedEnd(text, start) {
+        let depth = 0, inStr = false, esc = false;
+        for (let i = start; i < text.length; i++) {
             const ch = text[i];
             if (inStr) {
                 if (esc) esc = false;
@@ -3445,15 +3472,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 continue;
             }
             if (ch === '"') { inStr = true; continue; }
-            if (ch === '{') { if (depth === 0) start = i; depth++; }
-            else if (ch === '}') {
-                if (depth > 0) {
-                    depth--;
-                    if (depth === 0 && start >= 0) { objs.push(text.slice(start, i + 1)); start = -1; }
-                }
-            }
+            else if (ch === '{') depth++;
+            else if (ch === '}') { depth--; if (depth === 0) return i; }
         }
-        return objs;
+        return -1;
     }
 
     // ----------------------------------------------------------------
