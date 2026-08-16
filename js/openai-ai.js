@@ -1896,6 +1896,14 @@ class OpenAIAIManager {
         // are how a contract drifts apart.
         //
         // Gate names: "age" (epoch not reached), "tech" (unlock tech not researched),
+        // The list in the prompt is presented as CLOSED, so it has to be complete: a
+        // model that reads it as exhaustive and then meets an unlisted code has been
+        // given wrong information by us, not made a mistake of its own. "pop" was
+        // missing for months -- 187 occurrences in one 81-turn match, every one of them
+        // a unit the seat could not train because it sat at the population cap.
+        //
+        // Emitted anywhere in trainableUnits / buildableStructures / research.available:
+        //   age  tech  host  pop  cost  alreadyBuilt
         // "host" (no finished building that trains/researches it), "alreadyBuilt" (the
         // Wonder, one per player), "pop" (at the population cap), "cost" (cannot pay).
         //
@@ -2357,7 +2365,7 @@ Format, several:     {"commands": [{"action": "<ActionName>", "params": { ... }}
 
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
-Every entry in trainableUnits, buildableStructures and research.available carries "cost" and "blockedBy" — what stands between you and ordering it right now ("age", "tech", "host", "alreadyBuilt", "cost"). An empty blockedBy means nothing does.
+Every entry in trainableUnits, buildableStructures and research.available carries "cost" and "blockedBy" — what stands between you and ordering it right now ("age", "tech", "host", "pop", "alreadyBuilt", "cost"). An empty blockedBy means nothing does.
 
 train_unit: unitType (from trainableUnits), targetX?, targetZ?
 research_tech: techId (from research.available)
