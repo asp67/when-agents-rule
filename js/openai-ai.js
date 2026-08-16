@@ -977,10 +977,14 @@ class OpenAIAIManager {
     // of them add about 9% output — nowhere near the cap that truncates a turn.
     static get MAX_COMMANDS_PER_TURN() { return 3; }
 
-    // How long to wait for a closing statement. Generous, because nothing is waiting on
-    // it — the summary is already on screen and the recorder files a late answer in the
-    // right place — and because a reasoning model asked an open question takes its time.
-    static get FINAL_WORD_TIMEOUT_MS() { return 60000; }
+    // How long to wait for a closing statement: the SAME budget a move gets. The 60s
+    // it used to be was a compromise from before the skip button existed — a spectator
+    // had to sit out whatever it cost, so it was kept short. Now nobody is trapped by
+    // it, and a seat that thinks for three minutes on every move has no reason to be
+    // cut off after one when finally asked an open question. Nothing waits on the
+    // answer either: the summary is already on screen and the recorder files a late
+    // one in the right place.
+    finalWordTimeoutMs() { return this.requestAbortMs(); }
 
     // Does this parsed object order anything? Every acceptance gate in the parser used
     // to ask for a truthy .action, which a reply carrying only a "commands" list does
@@ -4332,7 +4336,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // and the only way out was the timeout, which is the right bound for an ending
         // somebody wanted and far too long for one they are escaping.
         (this._finalWordAborts || (this._finalWordAborts = [])).push(abort);
-        const timer = setTimeout(() => abort.abort(), OpenAIAIManager.FINAL_WORD_TIMEOUT_MS);
+        const timer = setTimeout(() => abort.abort(), this.finalWordTimeoutMs());
         const t0 = Date.now();
         let text = '', tokens = null, error = null;
         try {
@@ -4353,7 +4357,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             }
         } catch (e) {
             error = (e && e.name === 'AbortError') ? 'no answer within '
-                + Math.round(OpenAIAIManager.FINAL_WORD_TIMEOUT_MS / 1000) + 's' : String(e && e.message || e);
+                + Math.round(this.finalWordTimeoutMs() / 1000) + 's' : String(e && e.message || e);
         } finally {
             clearTimeout(timer);
         }
