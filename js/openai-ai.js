@@ -92,7 +92,54 @@ class OpenAIAIManager {
     // Ollama all support tool calling in their own shapes; until those shapes are
     // built, a seat there keeps answering in the prompt's JSON and is not judged
     // against a contract it was never offered.
-    static toolsSupported(provider) { return provider === 'openai'; }
+    static toolsSupported(provider) {
+        return provider === 'openai' || provider === 'ollama'
+            || provider === 'anthropic' || provider === 'google';
+    }
+
+    // The same two tools in each provider's dialect, all derived from TOOLS so the
+    // schema exists once. Anthropic calls the schema input_schema; Google wraps
+    // everything in functionDeclarations and wants no "type: function"; Ollama takes
+    // the OpenAI shape unchanged.
+    static toolsFor(provider) {
+        const T = OpenAIAIManager.TOOLS;
+        if (provider === 'anthropic') {
+            return T.map(t => ({ name: t.function.name, description: t.function.description,
+                                 input_schema: t.function.parameters }));
+        }
+        if (provider === 'google') {
+            return [{ functionDeclarations: T.map(t => ({
+                name: t.function.name, description: t.function.description,
+                parameters: t.function.parameters })) }];
+        }
+        return T;   // openai-compatible and Ollama
+    }
+
+    // A provider's tool calls in the OpenAI shape, so envelopeFromToolCalls never has
+    // to learn a second one. Anthropic puts them in the content blocks as tool_use
+    // with an "input" object; Google as parts with functionCall{name,args}. Both hand
+    // over OBJECTS rather than JSON strings, which is strictly better -- there is no
+    // string left for a missing brace to ruin.
+    static toolCallsFrom(provider, data) {
+        try {
+            if (provider === 'anthropic') {
+                const blocks = Array.isArray(data.content) ? data.content : [];
+                const out = blocks.filter(b => b && b.type === 'tool_use')
+                    .map(b => ({ id: b.id, type: 'function',
+                                 function: { name: b.name, arguments: b.input } }));
+                return out.length ? out : null;
+            }
+            if (provider === 'google') {
+                const cand = (data.candidates || [])[0];
+                const parts = (cand && cand.content && cand.content.parts) || [];
+                const out = parts.filter(p => p && p.functionCall)
+                    .map(p => ({ type: 'function',
+                                 function: { name: p.functionCall.name, arguments: p.functionCall.args } }));
+                return out.length ? out : null;
+            }
+        } catch (e) { /* a recording or parsing fault must never cost the turn */ }
+        return null;
+    }
 
     // Tool calls -> the envelope everything downstream already handles. Same trick as
     // the flat-JSON extractor: build the shape here, and executeTurn, normalizeCommands,
@@ -1022,6 +1069,7 @@ class OpenAIAIManager {
                         system: systemPrompt,
                         messages: turns.map(t => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: String(t.content) }))
                     };
+                    if (!opts.omitTools) b.tools = OpenAIAIManager.toolsFor('anthropic');
                     if (thinkingSuppressesSampling) {
                         const budget = OpenAIAIManager.anthropicThinkingBudget(reasoning.value, maxTokens);
                         if (budget != null) { b.thinking = { type: 'enabled', budget_tokens: budget }; return b; }
@@ -1040,6 +1088,7 @@ class OpenAIAIManager {
                 url: OpenAIAIManager.ollamaRoot(endpoint) + '/api/chat',
                 body: {
                     model, stream: false,
+                    ...(opts.omitTools ? {} : { tools: OpenAIAIManager.toolsFor('ollama') }),
                     ...(reasoning && reasoning.kind === 'think' ? { think: reasoning.value } : {}),
                     keep_alive: -1, // never auto-unload: the arena drives the model continuously
                     // Cap the context to a user-configurable size (default 32768).
@@ -1070,6 +1119,7 @@ class OpenAIAIManager {
             return {
                 url: OpenAIAIManager.stripSlash(endpoint) + `/models/${encodeURIComponent(model)}:generateContent`,
                 body: {
+                    ...(opts.omitTools ? {} : { tools: OpenAIAIManager.toolsFor('google') }),
                     systemInstruction: { parts: [{ text: systemPrompt }] },
                     contents: turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(t.content) }] })),
                     generationConfig: (() => {
@@ -1139,7 +1189,7 @@ class OpenAIAIManager {
             return {
                 content: blocks.filter(b => b.type === 'text').map(b => b.text).join('\n'),
                 reasoning: blocks.filter(b => b.type === 'thinking').map(b => b.thinking || '').join('\n'),
-                tool_calls: null,
+                tool_calls: OpenAIAIManager.toolCallsFrom('anthropic', data),
                 finish_reason: data.stop_reason
             };
         }
@@ -1150,7 +1200,9 @@ class OpenAIAIManager {
         if (provider === 'google') {
             const cand = (data.candidates || [])[0];
             const parts = (cand && cand.content && cand.content.parts) || [];
-            return { content: parts.map(p => p.text || '').join(''), reasoning: null, tool_calls: null, finish_reason: cand && cand.finishReason };
+            return { content: parts.map(p => p.text || '').join(''), reasoning: null,
+                     tool_calls: OpenAIAIManager.toolCallsFrom('google', data),
+                     finish_reason: cand && cand.finishReason };
         }
         const message = (data.choices && data.choices[0] && data.choices[0].message) || {};
         return { content: message.content, reasoning: message.reasoning, tool_calls: message.tool_calls, finish_reason: data.choices && data.choices[0] && data.choices[0].finish_reason };
