@@ -26,7 +26,9 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 A sandbox arena for pitting language models against one another at a task they were never trained for: running an economy and an army, in real time, inside a small RTS they've never seen. Every player is an autonomous model agent governing its own civilization, and every match ends one of two ways — a rival razed to the ground, or a Wonder held in peace.
 
-Each model is handed a compact **JSON snapshot** of its situation every turn (resources, buildings, units, fog-of-war discoveries, threats, tech tree, map bounds), a **fixed set of tools** (`train_unit`, `build_structure`, `research_tech`, `attack_target`, `explore`, …), and one instruction: **win.** Then it has to keep doing that, turn after turn, for a whole match.
+This is an **agent harness** whose task happens to be a real-time strategy game. Every turn a model is handed a compact **JSON snapshot** of its situation (resources, buildings, units, fog-of-war discoveries, threats, tech tree, map bounds), **two tools** — `action` to make a move, up to three times per turn, and `plan` to set a standing objective — and one instruction: **win.** Then it has to keep doing that, turn after turn, for a whole match.
+
+The tools are real tool calls, extracted from the chat-completion response the same way OpenCode or any other agent harness extracts them. That matters for what a result means: a malformed call costs that call, not the turn, and a model gets the same per-call feedback it would get anywhere else it is deployed.
 
 It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). With the setup held steady (same civilization, fixed map seed, resource layout equal for every player) a match isolates the model well enough for narrow comparisons.
 
@@ -135,6 +137,18 @@ While spectating you can **click a card** to fly the camera to that base, **drag
 > 💡 **The context budget is a real lever.** Default **32768** tokens; **↺ Max** fills in the model's true maximum. History is sized to it, in one of two modes: **multi-turn** (past turns replayed as compact state recaps plus the model's replies — richest memory) or **minimize tokens** (each past move as one line — cheapest, still coherent). Either way the prompt is rebuilt from scratch every turn, and if an endpoint rejects a request as too large the harness shrinks the window and keeps playing.
 >
 > **Lower budgets are much faster** — on Ollama the budget also sets `num_ctx`, and an oversized window can spill the model onto the CPU. For small local models 32K is a good default. If a model overthinks, raise its **max tokens** (the *output* budget), not its context, so it can finish reasoning *and* still emit the JSON action.
+
+## 🔧 Tool calls, and which stack served them
+
+Models act by calling tools, on all four protocols — OpenAI-compatible (vLLM, llama.cpp, LM Studio, OpenRouter, Groq …), Ollama, Anthropic and Google. Two tools, one definition, translated into each dialect: `action` (once per move, up to three per turn, run in order against a board each one changes) and `plan` (at most once, and only when something changed).
+
+**A seat that cannot work the tools fails visibly.** That is the point rather than a rough edge: a harness that quietly compensates for a broken tool-call parser hides the one thing its operator needs to know. When no call arrives the error says *which* fault it is — tool syntax found in the raw reply means the model called and the server missed it (a wrong `--tool-call-parser` on vLLM, a chat template without a tool section on llama.cpp), and no syntax means the model simply did not call.
+
+For older or smaller models, and for endpoints whose parser or template is broken, each seat has an **Accept inline JSON** switch. Off by default. Switching it on is a declaration, not a convenience — it is recorded in the transcript, because a seat allowed to fall back is scored on a softer contract than one that is not, and every turn records whether it was answered by `tool_call` or by `content`.
+
+**A result belongs to a model *and* a stack.** A model that works through Ollama and fails through OpenRouter is one of the most useful things this can tell you, so every seat records `servedBy` — what the server calls itself (`vllm`, `llamacpp`, `ollama`, …), asked once at match start and never guessed from the endpoint, which is deliberately not stored. Read a number as *(model × stack × settings)*; a bare per-model figure is not reproducible.
+
+> 💡 **On llama.cpp, set `--reasoning-format deepseek`.** The default is `auto`, and `auto` drops the reasoning trace as soon as it delivers tool calls — the tokens are billed, the thinking is gone, and the transcript shows an empty Reasoning panel on exactly the turns that went best. Set explicitly, the trace arrives alongside the calls and you can read along while the model thinks. (`deepseek-legacy` also leaves `<think>` tags in the content, which is harmless here because content is not evaluated when tool calls arrive.)
 
 ## 🎞️ Analyze Transcript
 
