@@ -2445,16 +2445,18 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
 
-OUTPUT ONE RAW JSON OBJECT AND NOTHING ELSE — no prose around it, no code fences. That object carries either a single action or a list.
+OUTPUT RAW JSON AND NOTHING ELSE — no prose around it, no code fences.
 
-OPTIONAL TOP-LEVEL FIELDS (beside "action"/"commands", not inside "params"):
+ONE OBJECT PER ACTION, up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} of them, written one after another. Each object stands on its own, so a mistake in one costs only that one:
+
+{"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }}
+{"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }}
+
+OPTIONAL, as its OWN object beside them (never inside "params"):
 objective: String (1 line). Persists across turns; omit to keep current.
 plan: Array of up to ${OpenAIAIManager.PLAN_MAX_STEPS} short strings. Persists across turns; omit to keep current.
 
-Format, one action:  {"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }, "objective": "<1 line>", "plan": ["<step>", "<step>"]}
-Format, several:     {"commands": [{"action": "<ActionName>", "params": { ... }}, {"action": "<ActionName>", "params": { ... }}], "objective": "<1 line>", "plan": ["<step>", "<step>"]}
-
-"commands" TAKES UP TO ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} ACTION OBJECTS AND REPLACES "action". Either shape is a complete reply.
+{"objective": "<1 line>", "plan": ["<step>", "<step>"]}
   They run IN ORDER on a board each one CHANGES, and you do not see between them, so order them so the cheap and certain moves go first:
   spend resources or population in the first command and a later one can be refused for what the first just used.
   Each is judged on its own — one refusal does not cancel the others, and you are told which number failed and why.
@@ -3376,22 +3378,49 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             if (OpenAIAIManager.ordersSomething(p)) return p;
         } catch (e) { /* fall through */ }
 
-        // Balanced-brace scan: collect every top-level {...} and prefer the
-        // last one that actually contains an "action" field.
+        // Balanced-brace scan, and now EVERY top-level object counts, in order --
+        // one per action is the documented shape. Taking only the last one was right
+        // while a turn was a single object; it would throw away two of three now.
+        //
+        // The envelope is assembled HERE rather than further down on purpose: what
+        // executeTurn, normalizeCommands and the transcript's "parsed" field see keeps
+        // exactly the shape they already handle, so nothing downstream -- the analyzer
+        // included -- has to learn a second one, and transcripts recorded before this
+        // stay readable by the same code that reads the new ones.
         const objs = this.findJsonObjects(t);
-        for (let i = objs.length - 1; i >= 0; i--) {
-            const raw = objs[i];
-            // "commands" too: a batched reply's own key is commands, and its actions
-            // live one level down inside it.
-            if (!/["']?(?:action|commands)["']?\s*:/.test(raw)) continue;
-            try {
-                const p = JSON.parse(raw);
-                if (OpenAIAIManager.ordersSomething(p)) return p;
-            } catch (e) { /* try repaired */ }
-            try {
-                const p = JSON.parse(this.fixJsonString(raw));
-                if (OpenAIAIManager.ordersSomething(p)) return p;
-            } catch (e) { /* next candidate */ }
+        const cmds = [];
+        const head = {};
+        let brokenAfter = 0;
+        for (const raw of objs) {
+            let p = null;
+            try { p = JSON.parse(raw); }
+            catch (e) {
+                try { p = JSON.parse(this.fixJsonString(raw)); } catch (e2) { p = null; }
+            }
+            if (!p || typeof p !== 'object') {
+                // Counted only once a real command has been read. Before that, "nothing
+                // parsed" is the honest verdict, and the caller's message names the
+                // parser position -- worth more than a vague note about a fragment.
+                if (cmds.length && /["']?(?:action|commands)["']?\s*:/.test(raw)) brokenAfter++;
+                continue;
+            }
+            // The undocumented wrapper stays welcome: an extra frame is not a mistake,
+            // and 3,719 recorded replies are shaped that way.
+            if (Array.isArray(p.commands)) {
+                p.commands.forEach(c => { if (c && typeof c.action === 'string') cmds.push(c); });
+            } else if (typeof p.action === 'string') {
+                cmds.push(p);
+            }
+            // First one wins: a model that states its objective twice meant it once.
+            if (head.objective === undefined && typeof p.objective === 'string') head.objective = p.objective;
+            if (head.plan === undefined && Array.isArray(p.plan)) head.plan = p.plan;
+        }
+        if (cmds.length) {
+            // Named, not dropped. A silently skipped fragment is the harness deciding
+            // for the model, and it would never learn which object it broke.
+            for (let i = 0; i < brokenAfter; i++) cmds.push({ action: null, _unparsed: true });
+            if (cmds.length === 1 && head.objective === undefined && head.plan === undefined) return cmds[0];
+            return Object.assign({ commands: cmds }, head);
         }
 
         // Markdown code fence
@@ -3475,7 +3504,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     // Counted, not skipped in silence. A malformed entry is a real
                     // mistake and the only way the model learns is being told which one.
                     if (controller.stats) controller.stats.invalidActions++;
-                    controller._batch.results.push('[ERROR] Not a command object: every entry in "commands" needs an "action" name as a string.');
+                    controller._batch.results.push(c && c._unparsed
+                        ? '[ERROR] One JSON object in your reply could not be parsed, so this action was skipped — the others ran. Send one complete object per action.'
+                        : '[ERROR] Not a command object: an action needs an "action" name as a string.');
                     continue;
                 }
                 try { this.executeAction(controller, c); }
