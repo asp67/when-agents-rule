@@ -57,6 +57,97 @@ class OpenAIAIManager {
     // Stone and gold ignore it — they are scarce enough to list whole.
     static get NEAREST_PER_ANCHOR() { return 10; }
 
+    // The tool surface. Two tools, because a turn is two different things: up to
+    // MAX_COMMANDS_PER_TURN actions, and at most one standing plan.
+    //
+    // The action VOCABULARY is not repeated here. It lives in the system prompt and
+    // nowhere else, because a second copy is a second thing to forget -- the same
+    // drift that cost us "pop" in blockedBy this morning. The schema says what shape
+    // a call has; the prompt says which actions exist.
+    static get TOOLS() {
+        return [
+            { type: 'function', function: {
+                name: 'action',
+                description: 'Issue ONE game action. Call it up to '
+                    + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' times per turn; they run in order '
+                    + 'against a board each one changes. Action names and their parameters are '
+                    + 'listed in the system prompt.',
+                parameters: { type: 'object', properties: {
+                    action: { type: 'string', description: 'Action name from the system prompt, e.g. train_unit' },
+                    params: { type: 'object', description: 'Parameters for that action, including a one-line "reason"' }
+                }, required: ['action'] } } },
+            { type: 'function', function: {
+                name: 'plan',
+                description: 'State your standing objective and plan. At most once per turn. '
+                    + 'Both persist across turns, so call it only when something changed.',
+                parameters: { type: 'object', properties: {
+                    objective: { type: 'string', description: 'One line.' },
+                    plan: { type: 'array', items: { type: 'string' },
+                            description: 'Up to ' + OpenAIAIManager.PLAN_MAX_STEPS + ' short steps.' }
+                }, required: [] } } }
+        ];
+    }
+
+    // Which protocols this harness can offer tools on TODAY. Anthropic, Google and
+    // Ollama all support tool calling in their own shapes; until those shapes are
+    // built, a seat there keeps answering in the prompt's JSON and is not judged
+    // against a contract it was never offered.
+    static toolsSupported(provider) { return provider === 'openai'; }
+
+    // Tool calls -> the envelope everything downstream already handles. Same trick as
+    // the flat-JSON extractor: build the shape here, and executeTurn, normalizeCommands,
+    // the transcript's "parsed" field and the analyzer all stay untouched.
+    //
+    // arguments is a JSON STRING the model wrote, so it can break exactly the way an
+    // inline object breaks. A broken one costs its own call and nothing else -- which
+    // is the whole reason for going this way.
+    static envelopeFromToolCalls(calls) {
+        const cmds = [];
+        const head = {};
+        let broken = 0;
+        for (const call of (calls || [])) {
+            const fn = (call && call.function) || {};
+            const name = String(fn.name || '').trim();
+            let args = fn.arguments;
+            if (typeof args === 'string') {
+                try { args = JSON.parse(args); }
+                catch (e) { broken++; continue; }
+            }
+            if (!args || typeof args !== 'object') { broken++; continue; }
+            if (name === 'plan') {
+                if (head.objective === undefined && typeof args.objective === 'string') head.objective = args.objective;
+                if (head.plan === undefined && Array.isArray(args.plan)) head.plan = args.plan;
+            } else if (name === 'action' || typeof args.action === 'string') {
+                // The tool NAME is the contract, but a model that calls it something
+                // else while still sending {action, params} meant the same thing.
+                if (typeof args.action === 'string') cmds.push({ action: args.action, params: args.params || {} });
+                else broken++;
+            } else {
+                broken++;
+            }
+        }
+        for (let i = 0; i < broken; i++) cmds.push({ action: null, _unparsed: true });
+        if (!cmds.length && head.objective === undefined && head.plan === undefined) {
+            return { envelope: null, broken };
+        }
+        return { envelope: Object.assign({ commands: cmds }, head), broken };
+    }
+
+    // No tool call came back. Two very different faults look identical from here, and
+    // they have different fixes: the MODEL did not call one, or the SERVER did not
+    // recognise the call it made. The raw reply tells them apart -- tool syntax sitting
+    // in the content means the model called and the parser missed it, which is a wrong
+    // --tool-call-parser on vLLM or a chat template without a tool section on
+    // llama.cpp. Saying which one saves an evening of looking in the wrong place.
+    static toolSyntaxInText(text) {
+        const t = String(text || '');
+        if (!t) return null;
+        const marker = [/<tool_call>/i, /<\/tool_call>/i, /<function[_ ]?call/i, /\bfunctools\[/i,
+                        /"name"\s*:\s*"(?:action|plan)"/i, /<\|tool[_▁]call/i];
+        const hit = marker.filter(re => re.test(t));
+        return hit.length ? t.match(hit[0])[0].slice(0, 40) : null;
+    }
+
     // ONE answer to "what is this worker doing". The state summary
     // (workers.onWood, workers.idle, ...) and assign_workers' "from" filter both read
     // it, because they were written separately and have now drifted twice.
@@ -1013,6 +1104,13 @@ class OpenAIAIManager {
         if (!opts.omitMinP) put(body, 'min_p', minP);
         if (!opts.omitPresencePenalty) put(body, 'presence_penalty', presencePenalty);
         if (!opts.omitRepetitionPenalty) put(body, 'repetition_penalty', repetitionPenalty);
+        // The tool surface goes out on every request. Not a toggle: a seat that cannot
+        // work them is a finding, and hiding the contract would hide the finding. The
+        // parse side decides what to do when nothing comes back.
+        if (!opts.omitTools) {
+            body.tools = OpenAIAIManager.TOOLS;
+            body.tool_choice = 'auto';
+        }
         if (reasoning && reasoning.kind === 'effort') body.reasoning_effort = reasoning.value;
         // Qwen and friends. Merged rather than assigned: a raw extra body may also carry
         // chat_template_kwargs, and clobbering it would lose whatever else was in there.
@@ -3313,19 +3411,21 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 return parsed;
             }
 
-            // 2) tool_calls (some models still emit these)
+            // 2) tool_calls — the primary channel now, and EVERY call is read. Taking
+            //    only [0] would have thrown away two of three actions; it never showed
+            //    because no tools were ever declared, so the path had not once fired.
             const toolCalls = message.tool_calls;
             if (toolCalls && toolCalls.length > 0) {
-                const args = toolCalls[0].function?.arguments;
-                console.log(`[OpenAIAI] Tool call fallback:`, args);
-                const fromTool = this.extractActionFromText(args);
-                if (OpenAIAIManager.ordersSomething(fromTool)) return fromTool;
-                if (typeof args === 'string' && args.trim()) {
-                    // A tool call whose arguments carry no parseable action is
-                    // still no action — we don't guess one from the text.
-                    logNoAction(args);
-                    return { noAction: true };
+                const vonTools = OpenAIAIManager.envelopeFromToolCalls(toolCalls);
+                if (vonTools.broken) controller._toolArgsBroken = vonTools.broken;
+                if (OpenAIAIManager.ordersSomething(vonTools.envelope)) {
+                    controller._answeredVia = 'tool_call';
+                    return vonTools.envelope;
                 }
+                // Calls arrived but not one carried a usable action: that is a
+                // malformed action, not silence, and it is logged as one.
+                logMalformed(JSON.stringify(toolCalls).slice(0, 220), false);
+                return { noAction: true };
             }
 
             // 3) Prose with NO JSON action anywhere. The old harness guessed an
