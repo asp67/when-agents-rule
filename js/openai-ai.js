@@ -2738,12 +2738,25 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // is a different setting entirely and belongs to whoever is watching).
         const modelLang = (controller && controller.model && controller.model.language) || 'en';
         const intoModelLang = (str) => (str && typeof tgIn === 'function') ? tgIn(modelLang, str) : str;
+        // A seat with the inline-JSON fallback switched on is told so, because the
+        // section above now says the tools are the ONLY way anything happens -- true
+        // for every other seat and false for this one. Leaving it out would hand a
+        // model an instruction it cannot follow (that is why the switch is on) and
+        // none it can. Appended per seat rather than put in the shared template: for
+        // everyone else the sentence would be a licence to ignore the contract, which
+        // is exactly what cost the last match.
+        const fallbackHint = (controller && controller.model && controller.model.toolFallback)
+            ? '\n\nIF TOOL CALLING FAILS FOR YOU: this seat also accepts the same two shapes written as raw JSON objects in your reply text, one object per line — '
+              + '{"action": "<ActionName>", "params": { … }} and {"objective": "<1 line>", "plan": ["<step>"]}. '
+              + 'Calling the tools is still the primary channel; use this only when a call does not go through.'
+            : '';
+
         return base
             .replace(/\{\{civilization\}\}/g, ai.civilization)
             .replace(/\{\{bonus\}\}/g, intoModelLang(civ?.bonus?.description) || 'None')
             .replace(/\{\{players\}\}/g, String(players || 2))
             .replace(/\{\{terrain\}\}/g, terrain)
-            + langDirective;
+            + fallbackHint + langDirective;
     }
 
 
