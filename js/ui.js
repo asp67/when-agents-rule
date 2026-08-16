@@ -3902,7 +3902,13 @@ class UIManager {
         // about such a turn, so it is stated.
         const emptySec = (cls, label, note) =>
             `<details class="tv-sec ${cls} is-empty"${pref[cls] ? ' open' : ''}${keep(cls)}><summary>${label}</summary><pre>${esc(note)}</pre></details>`;
-        const replyText = e.assistant && e.assistant.content;
+        // With tool calls the whole answer arrives in tool_calls and content is empty,
+        // so a turn that acted perfectly rendered as "the model returned nothing here"
+        // while the Harness block below carried every word of substance. The calls ARE
+        // the reply — reading them as an absence made the viewer look broken on exactly
+        // the turns that went best.
+        const toolText = this.toolCallsAsText(e.assistant && e.assistant.tool_calls);
+        const replyText = (e.assistant && e.assistant.content) || toolText;
         const hadReasoning = !!(e.assistant && e.assistant.reasoning);
         const replySec = replyText
             ? sec('tv-reply', t('spec.tvReply'), replyText)
@@ -5709,6 +5715,19 @@ class UIManager {
 
     // Which build is running, read off a loaded script rather than kept as a constant —
     // a constant is a second place to bump and would drift from the files it names.
+    // A model's tool calls as the reply they are: one line per call, the tool it
+    // reached for, then the arguments exactly as they arrived. Not prettified — a
+    // reader hunting a malformed argument wants what came in, not a tidied version.
+    toolCallsAsText(calls) {
+        if (!Array.isArray(calls) || !calls.length) return '';
+        return calls.map(c => {
+            const f = (c && c.function) || {};
+            let a = f.arguments;
+            if (typeof a !== 'string') { try { a = JSON.stringify(a); } catch (err) { a = String(a); } }
+            return (f.name || '?') + '  ' + (a || '');
+        }).join('\n');
+    }
+
     static buildVersion() {
         try {
             const el = document.querySelector('script[src*="js/game.js"]');
