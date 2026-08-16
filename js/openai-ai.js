@@ -1205,7 +1205,16 @@ class OpenAIAIManager {
                      finish_reason: cand && cand.finishReason };
         }
         const message = (data.choices && data.choices[0] && data.choices[0].message) || {};
-        return { content: message.content, reasoning: message.reasoning, tool_calls: message.tool_calls, finish_reason: data.choices && data.choices[0] && data.choices[0].finish_reason };
+        // Two spellings, and only one of them was read. OpenRouter and some gateways
+        // say "reasoning"; llama.cpp and vLLM say "reasoning_content" — the OpenAI
+        // convention their reasoning parsers follow. Reading only the first meant a
+        // llama.cpp seat recorded reasoning 0 on every turn while the server was
+        // faithfully sending thousands of characters of it, and the loss looked like
+        // a server fault worth chasing rather than a field name worth reading.
+        return { content: message.content,
+                 reasoning: message.reasoning || message.reasoning_content,
+                 tool_calls: message.tool_calls,
+                 finish_reason: data.choices && data.choices[0] && data.choices[0].finish_reason };
     }
 
     // "The reply hit the output cap", spelled differently by every provider:
