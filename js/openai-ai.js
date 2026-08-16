@@ -2758,7 +2758,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 const controllerAbort = new AbortController();
                 controller._abort = controllerAbort;
                 controller._deadlineAbort = false;   // cleared per attempt; set only by noteRoundMissed
-                const timeoutId = setTimeout(() => controllerAbort.abort(), this.requestTimeout);
+                const hardAbortMs = this.requestAbortMs();
+                const timeoutId = setTimeout(() => controllerAbort.abort(), hardAbortMs);
                 try {
                     response = await fetch(apiUrl, {
                         method: 'POST',
@@ -2776,7 +2777,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                         if (controller._deadlineAbort) {
                             throw new Error(`round deadline reached after ${Math.round(this.roundTimeoutMs() / 1000)}s — the harness cancelled the request`);
                         }
-                        throw new Error(`timed out after ${Math.round(this.requestTimeout / 1000)}s`);
+                        throw new Error(`timed out after ${Math.round(hardAbortMs / 1000)}s`);
                     }
                     throw fetchErr;
                 } finally {
@@ -5780,6 +5781,24 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     roundTimeoutMs() {
         const n = Number(this._roundTimeoutMs);
         return (isFinite(n) && n > 0) ? n : OpenAIAIManager.ROUND_TIMEOUT_DEFAULT_MS;
+    }
+
+    // The hard abort for ONE model request. In turn-based mode the round deadline is
+    // the authority, because it is the number we hand the model in
+    // clock.secondsToAnswer and the one noteRoundMissed enforces. A fixed 180s below
+    // that cut seats off while their own state promised them 240 -- the harness
+    // contradicting itself, and the model paying for the difference with the turn.
+    //
+    // The margin matters: the round deadline must fire FIRST so the abort is reported
+    // as what it is. Without it the two would race, and a missed round could be
+    // announced as "timed out" -- which reads as a dead endpoint and sends anyone
+    // debugging it after the wrong thing entirely.
+    //
+    // Real-time mode has no deadline, so the fixed guard stands: there the timeout is
+    // the only thing stopping a dead endpoint from hanging a seat for the whole match.
+    requestAbortMs() {
+        if (!this.turnBased) return this.requestTimeout;
+        return Math.max(this.requestTimeout, this.roundTimeoutMs() + 15000);
     }
 
     // A seat ran past the round deadline. Three things follow, and the first is the one
