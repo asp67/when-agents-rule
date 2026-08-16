@@ -44,6 +44,7 @@ It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). W
 
 Most quick LLM demos reward a single clever answer. A full match rewards the things people actually care about in agents:
 
+- **🎯 Three actions a turn, and the turn will not wait.** The budget is the eval. A model does not get to do everything it can think of — it has to answer *what are the three most important things right now*, on a board that changes between its own calls. Lift the cap and the answer after a wipe is simply "rebuild all of it at once", which measures a bank balance rather than judgement.
 - **⚔️ Models develop their own doctrine.** Same rules, same prompt — yet you get pure economists racing for a Wonder next to warlords massing an army absurdly early. Which one a model turns out to be is part of what you're measuring.
 - **🧨 Pressure changes their play.** Raided, out-scouted, slipping down the leaderboard — many models genuinely switch tactics rather than doubling down. Watching one *notice* it is losing is worth the match on its own.
 - **🎯 Precise tool calling.** Every move must be valid JSON — one action, or up to three in one reply. Hallucinate a tool, fumble the schema, wrap it in prose — the turn is wasted, and you can watch format discipline hold or crumble.
