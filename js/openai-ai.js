@@ -2642,21 +2642,16 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
 
-OUTPUT RAW JSON AND NOTHING ELSE — no prose around it, no code fences.
+ACT BY CALLING THE TOOLS. Two are available to you, and they are the only way anything happens: an action written as text in the message body is a wasted turn.
 
-ONE OBJECT PER ACTION, up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} of them, written one after another. Each object stands on its own, so a mistake in one costs only that one:
+action — ONE call per move, up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} calls per turn. Arguments:
+  { "action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" } }
+  Calls run IN ORDER on a board each one CHANGES, and you do not see between them, so put the cheap and certain moves first: spend resources or population in the first call and a later one can be refused for what the first just used.
+  Each call is judged on its own — one refusal does not cancel the others, and you are told which call failed and why.
 
-{"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }}
-{"action": "<ActionName>", "params": { "<key>": <value>, "reason": "<1-line explanation>" }}
-
-OPTIONAL, as its OWN object beside them (never inside "params"):
-objective: String (1 line). Persists across turns; omit to keep current.
-plan: Array of up to ${OpenAIAIManager.PLAN_MAX_STEPS} short strings. Persists across turns; omit to keep current.
-
-{"objective": "<1 line>", "plan": ["<step>", "<step>"]}
-  They run IN ORDER on a board each one CHANGES, and you do not see between them, so order them so the cheap and certain moves go first:
-  spend resources or population in the first command and a later one can be refused for what the first just used.
-  Each is judged on its own — one refusal does not cancel the others, and you are told which number failed and why.
+plan — at most ONE call per turn, and only when something changed. Arguments:
+  { "objective": "<1 line>", "plan": ["<step>", "<step>"] }
+  Up to ${OpenAIAIManager.PLAN_MAX_STEPS} short steps. Both persist across turns, so simply do not call it to keep what you already have.
 
 VALID ACTIONS & PARAMETERS (? = optional)
 Note: targetX and targetZ must ALWAYS be provided together.
