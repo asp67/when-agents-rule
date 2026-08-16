@@ -57,6 +57,38 @@ class OpenAIAIManager {
     // Stone and gold ignore it — they are scarce enough to list whole.
     static get NEAREST_PER_ANCHOR() { return 10; }
 
+    // ONE answer to "what is this worker doing". The state summary
+    // (workers.onWood, workers.idle, ...) and assign_workers' "from" filter both read
+    // it, because they were written separately and have now drifted twice.
+    //
+    // First over farms: counting only the task put a worker WALKING to a farm into
+    // onFood here and into "farm" there, so the state advertised food workers the
+    // executor would not hand over -- 22 rejected calls in a single match.
+    //
+    // Then over carryingResourceType. Seven places in game.js clear
+    // carryingResource and leave the type string set, including the stop block in
+    // moveUnits, which is exactly what puts a worker into the idle pool. Reading the
+    // type WITHOUT the load as a gate turned such a worker into a wood gatherer for
+    // the executor while the state still called it idle -- so a model asking for the
+    // idle worker the state had just published was told there were none.
+    //
+    // The gate is the load, never the label. Returns exactly one of:
+    //   'building' 'scouting' 'farm' 'food' 'wood' 'stone' 'gold' 'idle' 'moving'
+    static workerJob(game, u) {
+        if (!u || u.type !== 'worker') return null;
+        if (u.task === 'building' || u.isBuilding) return 'building';
+        if (u.task === 'scouting') return 'scouting';
+        if (u.task === 'farm_work' || u.farmRef) return 'farm';
+        const carrying = !!(u.carryingResource || u.task === 'carrying');
+        if (carrying || u.task === 'harvesting' || u.isHarvesting || u.harvestTarget) {
+            const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
+            return (rt === 'food' || rt === 'wood' || rt === 'stone' || rt === 'gold')
+                ? rt
+                : 'moving';   // job not resolved yet (in transit)
+        }
+        return (game && game.isIdleWorker && game.isIdleWorker(u)) ? 'idle' : 'moving';
+    }
+
     newStats() {
         return {
             requests: 0,          // requests that returned or definitively failed
@@ -1775,31 +1807,15 @@ class OpenAIAIManager {
             total: 0, idle: 0, building: 0, onFarms: 0, scouting: 0, moving: 0,
             onFood: 0, onWood: 0, onStone: 0, onGold: 0
         };
-        const CAP = { food: 'Food', wood: 'Wood', stone: 'Stone', gold: 'Gold' };
+        // Field names differ from the job names (onFarms, onWood); the JOB is decided
+        // in one place -- see OpenAIAIManager.workerJob -- and only the naming lives here.
+        const WK_FIELD = { building: 'building', scouting: 'scouting', farm: 'onFarms',
+                           food: 'onFood', wood: 'onWood', stone: 'onStone',
+                           gold: 'onGold', idle: 'idle', moving: 'moving' };
         ai.units.forEach(u => {
             if (u.type !== 'worker') return;
             wk.total++;
-            if (u.task === 'building' || u.isBuilding) { wk.building++; return; }
-            if (u.task === 'scouting') { wk.scouting++; return; }
-            // MUST match whereFrom() in executeAssignWorkers, which reads
-            // "farm_work || farmRef". Counting only the task put a worker WALKING to
-            // a farm, or carrying a load back from one, into onFood here and into
-            // "farm" there — so the state advertised food workers the executor would
-            // not hand over. It was the single largest source of rejected calls in a
-            // match: 22 of them, one model reading "onFood": 2, asking to pull from
-            // food, and being told "workers.onFood is 0" by the same harness that had
-            // just published the 2. Two classifiers, one question.
-            if (u.task === 'farm_work' || u.farmRef) { wk.onFarms++; return; }
-            const carrying = !!(u.carryingResource || u.task === 'carrying');
-            if (carrying || u.task === 'harvesting' || u.isHarvesting || u.harvestTarget) {
-                const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
-                const k = CAP[rt];
-                if (!k) { wk.moving++; return; }   // job not resolved yet (in transit)
-                wk['on' + k]++;
-                return;
-            }
-            if (this.game.isIdleWorker(u)) { wk.idle++; return; }
-            wk.moving++; // in transit with no recognized job
+            wk[WK_FIELD[OpenAIAIManager.workerJob(this.game, u)] || 'moving']++;
         });
 
         // Enemy units (very compact)
@@ -5288,12 +5304,13 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // deciding to thin out food is worth nothing if the pick then takes them
         // off gold. It is parsed here, above the candidate filter, because the filter
         // needs to know what was asked for before it can decide who is eligible.
-        const whereFrom = u => {
-            if (u.task === 'farm_work' || u.farmRef) return 'farm';
-            const rt = (u.harvestTarget && u.harvestTarget.type) || u.carryingResourceType;
-            if (rt) return rt;
-            return game.isIdleWorker(u) ? 'idle' : null;
-        };
+        // Same classifier as the state summary -- see OpenAIAIManager.workerJob. Only
+        // these six are addressable sources; builders, scouts and workers in transit
+        // map to null and stay out of every pool, which is also what the candidate
+        // filter above already enforces for builders and fighters.
+        const FROM_JOB = { farm: 'farm', food: 'food', wood: 'wood',
+                           stone: 'stone', gold: 'gold', idle: 'idle' };
+        const whereFrom = u => FROM_JOB[OpenAIAIManager.workerJob(game, u)] || null;
         const FROMS = ['food', 'wood', 'stone', 'gold', 'farm', 'idle'];
         const rawFrom = OpenAIAIManager.given(params.from)
             ? String(params.from).toLowerCase().trim() : null;
