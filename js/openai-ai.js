@@ -92,6 +92,23 @@ class OpenAIAIManager {
     // Ollama all support tool calling in their own shapes; until those shapes are
     // built, a seat there keeps answering in the prompt's JSON and is not judged
     // against a contract it was never offered.
+    // How THIS seat is supposed to answer, in one sentence, for use inside error
+    // messages. Three different seats need three different answers, and getting it
+    // wrong is not cosmetic: small models copy our notation straight back, so an
+    // error telling a tool seat to "reply with ONE raw JSON object and no tool call"
+    // is a wrong answer we dictated ourselves.
+    static howToAnswer(controller) {
+        const m = (controller && controller.model) || {};
+        const tools = OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(m));
+        const json = '{"action":"wait","params":{"reason":"..."}}';
+        if (!tools) return 'Reply with ONE raw JSON object, e.g. ' + json + '.';
+        const call = 'Call the "action" tool — one call per move, up to '
+            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' per turn.';
+        return m.toolFallback
+            ? call + ' If a call will not go through, one raw JSON object per action also works, e.g. ' + json + '.'
+            : call;
+    }
+
     static toolsSupported(provider) {
         return provider === 'openai' || provider === 'ollama'
             || provider === 'anthropic' || provider === 'google';
@@ -3301,10 +3318,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 const rawReply = String((norm && (norm.content || norm.reasoning)) || '');
                 const cappedOut = OpenAIAIManager.hitTokenCap(norm && norm.finish_reason);
                 controller.lastActionResult = rawReply.trim()
-                    ? `[ERROR] Your last reply could not be parsed, so nothing was executed. Answer with ONE raw JSON object and nothing else — no tool call, no prose around it, no code fence: {"action":"wait","params":{"reason":"..."}}`
+                    ? `[ERROR] Your last reply could not be parsed, so nothing was executed. ${OpenAIAIManager.howToAnswer(controller)}`
                     : (cappedOut
                         ? `[ERROR] You returned NOTHING: your reply hit the output limit of ${askedMax} tokens before a single character of answer was written, so nothing was executed. Your thinking is spent from that same budget. Decide faster and keep "reason", "objective" and "plan" to one short sentence each — a bare {"action":"wait","params":{"reason":"thinking"}} beats an empty turn.`
-                        : `[ERROR] You returned an EMPTY reply, so nothing was executed. Answer with one raw JSON object: {"action":"wait","params":{"reason":"..."}}`);
+                        : `[ERROR] You returned an EMPTY reply, so nothing was executed. ${OpenAIAIManager.howToAnswer(controller)}`);
                 const lastTurn = controller.turnLog[controller.turnLog.length - 1];
                 if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
                 stampResult(controller.lastActionResult);
@@ -3421,7 +3438,13 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             controller.lastActionResult = (typeof miss === 'string')
                 ? `[ERROR] NO ACTION: your reply carried tool-call syntax (${miss}) but the server did not deliver it as a tool call, so nothing could be executed. This is a SERVER setting, not your mistake — the operator has to fix the tool-call parser or the chat template.`
                 : `[ERROR] NO ACTION was taken this turn: you called neither "action" nor "plan". Use the tools — one "action" call per move, up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} per turn. Plain prose wastes the turn.`;
-        } else controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: your reply contained no valid JSON action object. Reply with ONE JSON object, e.g. {"action":"wait","params":{"reason":"..."}} — or carry several in a "commands" array. Plain prose wastes the turn.`;
+        } else if (controller._planOnly) {
+            // A plan-only turn is not a malformed one. The model worked a tool
+            // correctly and simply issued no move, and it is told exactly that --
+            // the plan itself is kept, not thrown away with the message.
+            controller._planOnly = false;
+            controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: you called "plan" but never "action", so your objective and plan were saved and nothing was done. ${OpenAIAIManager.howToAnswer(controller)}`;
+        } else controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: nothing executable arrived. ${OpenAIAIManager.howToAnswer(controller)} Plain prose wastes the turn.`;
         const lastTurn = controller.turnLog[controller.turnLog.length - 1];
         if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
     }
@@ -3505,6 +3528,16 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 }
                 // Calls arrived but not one carried a usable action: that is a
                 // malformed action, not silence, and it is logged as one.
+                // "plan" alone is a real answer: the model set its standing goal and
+                // chose no move. Discarding the envelope threw the plan away too and
+                // then told the model its reply held no valid JSON, which was untrue
+                // twice over.
+                const e = vonTools.envelope;
+                if (e && (e.objective !== undefined || e.plan !== undefined)) {
+                    controller._answeredVia = 'tool_call';
+                    controller._planOnly = true;
+                    return e;
+                }
                 logMalformed(JSON.stringify(toolCalls).slice(0, 220), false);
                 return { noAction: true };
             }
@@ -3757,7 +3790,20 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     // let impossible combinations through and lie about what happened.
     executeTurn(controller, envelope) {
         const cmds = this.normalizeCommands(envelope);
-        if (!cmds.length) { this.executeAction(controller, envelope); return; }
+        if (!cmds.length) {
+            // executeAction returns immediately when there is no "action", so a
+            // plan-only envelope would lose its objective there. Taken here instead.
+            if (envelope && (envelope.objective !== undefined || envelope.plan !== undefined)) {
+                if (typeof envelope.objective === 'string' && envelope.objective.trim()) {
+                    controller.objective = envelope.objective.trim();
+                }
+                if (Array.isArray(envelope.plan) && envelope.plan.length) {
+                    controller.plan = envelope.plan.slice(0, OpenAIAIManager.PLAN_MAX_STEPS);
+                }
+                if (controller._planOnly) { this.registerNoActionReturn(controller); return; }
+            }
+            this.executeAction(controller, envelope); return;
+        }
         if (cmds.length === 1) {
             // Nothing to combine: leave the single-command path byte-for-byte as it was,
             // including its transcript stamp, its feedback wording and its own counting.
@@ -3776,7 +3822,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     // mistake and the only way the model learns is being told which one.
                     if (controller.stats) controller.stats.invalidActions++;
                     controller._batch.results.push(c && c._unparsed
-                        ? '[ERROR] One JSON object in your reply could not be parsed, so this action was skipped — the others ran. Send one complete object per action.'
+                        ? '[ERROR] One of your calls could not be parsed, so that action was skipped — the others ran. Send complete arguments per call.'
                         : '[ERROR] Not a command object: an action needs an "action" name as a string.');
                     continue;
                 }
