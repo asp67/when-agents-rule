@@ -591,7 +591,8 @@ class OpenAIAIManager {
             minimizeTokens: !!conn.minimizeTokens,
             language: conn.language || 'en'
         };
-        ['temperature', 'topP', 'topK'].forEach(k => { if (conn[k] != null) out[k] = conn[k]; });
+        ['temperature', 'topP', 'topK', 'minP', 'presencePenalty', 'repetitionPenalty']
+            .forEach(k => { if (conn[k] != null) out[k] = conn[k]; });
         if (conn.reasoning) out.reasoning = conn.reasoning;
         if (conn.extraBody) out.extraBody = OpenAIAIManager.redactSecrets(conn.extraBody);
         // Only when it DIFFERS from the shared template, which the match header carries
@@ -805,6 +806,19 @@ class OpenAIAIManager {
     static adaptToApiError(opts, errorText) {
         const e = String(errorText || '');
         const add = {};
+        // The three non-OpenAI parameters, same send-then-learn rule as top_k below:
+        // they go out because most LOCAL endpoints take them, and the first endpoint
+        // that says no gets them dropped for the rest of the match. Without this a
+        // single filled-in field would cost every turn of a match against a hosted
+        // provider, which is the failure the whole mechanism exists to prevent.
+        [['omitMinP', /min_p|minP/i],
+         ['omitPresencePenalty', /presence_penalty/i],
+         ['omitRepetitionPenalty', /repetition_penalty/i]].forEach(([flag, re]) => {
+            if (!opts[flag] && re.test(e)
+                && /unsupported|not support|unrecognized|unknown|extra|not permitted|is not supported|must be/i.test(e)) {
+                add[flag] = true;
+            }
+        });
         if (!opts.useMaxCompletionTokens && /max_completion_tokens/i.test(e)) {
             add.useMaxCompletionTokens = true;
         }
@@ -851,6 +865,9 @@ class OpenAIAIManager {
         const temperature = opts.temperature != null ? Number(opts.temperature) : undefined;
         const topP = opts.topP != null ? Number(opts.topP) : undefined;
         const topK = opts.topK != null ? Number(opts.topK) : undefined;
+        const minP = opts.minP != null ? Number(opts.minP) : undefined;
+        const presencePenalty = opts.presencePenalty != null ? Number(opts.presencePenalty) : undefined;
+        const repetitionPenalty = opts.repetitionPenalty != null ? Number(opts.repetitionPenalty) : undefined;
         const maxTokens = opts.maxTokens != null ? opts.maxTokens : 2000;
         const model = modelId || 'default';
         // Only ever add a key we actually have a value for.
@@ -896,9 +913,20 @@ class OpenAIAIManager {
                     // the CPU — making every turn crawl and time out. Lower this on
                     // smaller GPUs; raise it if your game state is large and you have
                     // the VRAM.
-                    options: put(put(put({ num_predict: maxTokens, num_ctx: (opts.numCtx && opts.numCtx > 0) ? opts.numCtx : 32768 },
-                        'temperature', opts.omitTemperature ? undefined : temperature),
-                        'top_p', opts.omitTopP ? undefined : topP), 'top_k', topK),
+                    // Ollama spells the third one repeat_penalty, not repetition_penalty.
+                    // Built by hand rather than by nesting six put() calls, which was
+                    // already hard to read at three.
+                    options: (() => {
+                        const o = { num_predict: maxTokens,
+                                    num_ctx: (opts.numCtx && opts.numCtx > 0) ? opts.numCtx : 32768 };
+                        put(o, 'temperature', opts.omitTemperature ? undefined : temperature);
+                        put(o, 'top_p', opts.omitTopP ? undefined : topP);
+                        put(o, 'top_k', topK);
+                        put(o, 'min_p', minP);
+                        put(o, 'presence_penalty', presencePenalty);
+                        put(o, 'repeat_penalty', repetitionPenalty);
+                        return o;
+                    })(),
                     messages: [{ role: 'system', content: systemPrompt }, ...turns]
                 }
             };
@@ -937,6 +965,13 @@ class OpenAIAIManager {
         // send-then-learn rule the rest of this file uses, rather than punishing every
         // local gateway for one provider's omission.
         if (!opts.omitTopK) put(body, 'top_k', topK);
+        // Extensions rather than OpenAI parameters: vLLM, llama.cpp, LM Studio and
+        // OpenRouter accept them, the hosted majors do not. put() drops an undefined,
+        // so an untouched field costs a seat nothing -- and if an endpoint does refuse
+        // one, adaptToApiError below learns it from the reply, exactly like top_k.
+        if (!opts.omitMinP) put(body, 'min_p', minP);
+        if (!opts.omitPresencePenalty) put(body, 'presence_penalty', presencePenalty);
+        if (!opts.omitRepetitionPenalty) put(body, 'repetition_penalty', repetitionPenalty);
         if (reasoning && reasoning.kind === 'effort') body.reasoning_effort = reasoning.value;
         // Qwen and friends. Merged rather than assigned: a raw extra body may also carry
         // chat_template_kwargs, and clobbering it would lose whatever else was in there.
@@ -1298,6 +1333,9 @@ class OpenAIAIManager {
                 temperature: (conn.temperature == null) ? null : conn.temperature,
                 topP: (conn.topP == null) ? null : conn.topP,
                 topK: (conn.topK == null) ? null : conn.topK,
+                minP: (conn.minP == null) ? null : conn.minP,
+                presencePenalty: (conn.presencePenalty == null) ? null : conn.presencePenalty,
+                repetitionPenalty: (conn.repetitionPenalty == null) ? null : conn.repetitionPenalty,
                 reasoning: conn.reasoning == null ? '' : conn.reasoning,
                 extraBody: conn.extraBody || null,
                 maxTokens: conn.maxTokens || 2000, // per-model cap on reply length (default 2000)
@@ -2767,6 +2805,8 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             model._reqOpts = model._reqOpts || {};
             const reqOpts = () => Object.assign(
                 { temperature: model.temperature, topP: model.topP, topK: model.topK,
+                  minP: model.minP, presencePenalty: model.presencePenalty,
+                  repetitionPenalty: model.repetitionPenalty,
                   reasoning: model.reasoning, extraBody: model.extraBody,
                   maxTokens: model.maxTokens, numCtx: model.contextSize },
                 model._reqOpts);

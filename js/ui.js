@@ -327,6 +327,12 @@ class UIManager {
             temperature: opts.temperature != null ? opts.temperature : '',
             topP: opts.topP != null ? opts.topP : '',
             topK: opts.topK != null ? opts.topK : '',
+            // Extensions, not OpenAI parameters. Empty stays empty on purpose: an
+            // endpoint that does not know them rejects the whole request, so they
+            // travel only when someone deliberately fills them in.
+            minP: opts.minP != null ? opts.minP : '',
+            presencePenalty: opts.presencePenalty != null ? opts.presencePenalty : '',
+            repetitionPenalty: opts.repetitionPenalty != null ? opts.repetitionPenalty : '',
             // Per-model context budget in tokens. Sizes the rolling chat history sent
             // each turn (bigger budget = longer memory for big-context models) and is
             // also used as Ollama's num_ctx. '' = default (32768). Lower = much faster.
@@ -439,7 +445,8 @@ class UIManager {
             if (baked) m.name = '';
         }
         if (m.maxTokens == null) m.maxTokens = '';
-        ['temperature', 'topP', 'topK', 'reasoning', 'extraBody'].forEach(k => { if (m[k] == null) m[k] = ''; });
+        ['temperature', 'topP', 'topK', 'minP', 'presencePenalty', 'repetitionPenalty',
+         'reasoning', 'extraBody'].forEach(k => { if (m[k] == null) m[k] = ''; });
         if (!m.rejectedParams || typeof m.rejectedParams !== 'object') m.rejectedParams = {};
         if (m.contextSize == null) m.contextSize = '';
         m.minimizeTokens = !!m.minimizeTokens;
@@ -947,7 +954,16 @@ class UIManager {
                 <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTopK')}${rejectedTag('omitTopK')}</label>
                     <input type="number" min="1" step="1" value="${e(m.topK)}" oninput="game.ui.setModelField(${m.id},'topK',this.value)" placeholder="${e(defPh.topK)}"></div>
             </div>
+            <div class="model-select-row sampling-row">
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fMinP')}${rejectedTag('omitMinP')}</label>
+                    <input type="number" min="0" max="1" step="0.01" value="${e(m.minP)}" oninput="game.ui.setModelField(${m.id},'minP',this.value)" placeholder="${e(t('ar.samplingDefault'))}"></div>
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fPresencePenalty')}${rejectedTag('omitPresencePenalty')}</label>
+                    <input type="number" min="-2" max="2" step="0.1" value="${e(m.presencePenalty)}" oninput="game.ui.setModelField(${m.id},'presencePenalty',this.value)" placeholder="${e(t('ar.samplingDefault'))}"></div>
+                <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fRepetitionPenalty')}${rejectedTag('omitRepetitionPenalty')}</label>
+                    <input type="number" min="0" max="2" step="0.05" value="${e(m.repetitionPenalty)}" oninput="game.ui.setModelField(${m.id},'repetitionPenalty',this.value)" placeholder="${e(t('ar.samplingDefault'))}"></div>
+            </div>
             <p class="auth-hint">${t('ar.samplingHint')}</p>
+            <p class="auth-hint">${t('ar.samplingExtraHint')}</p>
             ${rejectedNote}
             <div class="model-select-row sampling-row">
                 <div class="arena-field" style="flex:0 0 230px"><label>${t('ar.fReasoning')}${rejectedTag('omitReasoning')}</label>
@@ -1488,6 +1504,9 @@ class UIManager {
                 temperature: this.numOrNull(m.temperature, 0, 2),
                 topP: this.numOrNull(m.topP, 0, 1),
                 topK: this.numOrNull(m.topK, 1, 1000, true),
+                minP: this.numOrNull(m.minP, 0, 1),
+                presencePenalty: this.numOrNull(m.presencePenalty, -2, 2),
+                repetitionPenalty: this.numOrNull(m.repetitionPenalty, 0, 2),
                 reasoning: m.reasoning == null ? '' : String(m.reasoning),
                 extraBody: this.parseExtraBody(m.extraBody).value,
                 contextSize: (() => { const n = parseInt(m.contextSize, 10); return (n && n >= 512) ? n : null; })(),
