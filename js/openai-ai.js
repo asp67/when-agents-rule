@@ -64,28 +64,84 @@ class OpenAIAIManager {
     // nowhere else, because a second copy is a second thing to forget -- the same
     // drift that cost us "pop" in blockedBy this morning. The schema says what shape
     // a call has; the prompt says which actions exist.
-    static get TOOLS() {
+    // Every action the dispatcher accepts, with its parameters. THE source: the tool
+    // schemas below are generated from it, and a test holds it against the switch in
+    // executeAction, so a case added there without an entry here fails loudly instead
+    // of quietly becoming an action no model is ever offered.
+    //
+    // "reason" is on every one of them and is not decoration: it is what the decision
+    // log shows a spectator, and the only place a model explains itself in its own
+    // words.
+    static get ACTIONS() {
+        const S = (d) => ({ type: 'string', description: d });
+        const N = (d) => ({ type: 'number', description: d });
+        const I = (d) => ({ type: 'integer', description: d });
+        const XZ = { targetX: N('Map X. Always together with targetZ.'),
+                     targetZ: N('Map Z. Always together with targetX.') };
+        const WHO = { units: { type: 'object', description: 'Object of {"type": count}, e.g. {"champion":3}, or a category like {"infantry":5}. Omit for the whole army.' },
+                      unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids from friendlyUnits. Wins over "units" when both are given.' } };
         return [
-            { type: 'function', function: {
-                name: 'action',
-                description: 'Issue ONE game action. Call it up to '
-                    + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' times per turn; they run in order '
-                    + 'against a board each one changes. Action names and their parameters are '
-                    + 'listed in the system prompt.',
-                parameters: { type: 'object', properties: {
-                    action: { type: 'string', description: 'Action name from the system prompt, e.g. train_unit' },
-                    params: { type: 'object', description: 'Parameters for that action, including a one-line "reason"' }
-                }, required: ['action'] } } },
-            { type: 'function', function: {
-                name: 'plan',
-                description: 'State your standing objective and plan. At most once per turn. '
-                    + 'Both persist across turns, so call it only when something changed.',
-                parameters: { type: 'object', properties: {
-                    objective: { type: 'string', description: 'One line.' },
-                    plan: { type: 'array', items: { type: 'string' },
-                            description: 'Up to ' + OpenAIAIManager.PLAN_MAX_STEPS + ' short steps.' }
-                }, required: [] } } }
-        ];
+            ['train_unit', 'Train one unit at a building that can produce it.',
+             Object.assign({ unitType: S('Unit id from trainableUnits.') }, XZ), ['unitType']],
+            ['research_tech', 'Start researching one technology.',
+             { techId: S('Tech id from research.available.') }, ['techId']],
+            ['upgrade_age', 'Advance to the next age. Costs are in epoch.nextEpochCost.', {}, []],
+            ['build_structure', 'Place a new building. A worker is pulled to build it.',
+             Object.assign({ buildingType: S('Building type from buildableStructures.') }, XZ), ['buildingType']],
+            ['assign_workers', 'Move workers onto a resource.',
+             Object.assign({ resourceType: S('food|wood|stone|gold|farm — what they should gather.'),
+                             count: I('How many. Default 3, max 20.'),
+                             from: S('food|wood|stone|gold|farm|idle — where to TAKE them. Omit to take idle first, then your largest stockpile.'),
+                             allowSpill: { type: 'boolean', description: 'Default true: also move workers carrying a load, which is then lost.' } }, XZ), ['resourceType']],
+            ['repair_building', 'Send workers to repair a damaged building.',
+             Object.assign({ count: I('How many workers. Default 1, max 5.') }, XZ), []],
+            ['explore', 'Send a unit to scout a map tile.',
+             { tile: S('Tile label from map.exploration, e.g. "C5" — column A-G, row 1-7.'),
+               unitType: S('Which unit type to send. Optional.'),
+               unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
+            ['move_units', 'Move units to a position.',
+             Object.assign({}, XZ, WHO), ['targetX', 'targetZ']],
+            ['attack_target', 'Attack a unit or building, or attack-move to a position.',
+             Object.assign({ targetId: I('Id from enemyUnits/enemyBuildings. Use this OR targetX/targetZ.') }, XZ, WHO), []],
+            ['delete_unit', 'Delete your own units, e.g. to free population.',
+             { unitType: S('Type from friendlyUnits. Default worker.'), count: I('How many. Default 1, max 20.') }, []],
+            ['destroy_building', 'Demolish one of your own buildings.',
+             Object.assign({ buildingType: S('Type from friendlyBuildings.') }, XZ), ['buildingType']],
+            ['wait', 'Do nothing this turn. Every turn needs a call; this is the one that means "none".', {}, []]
+        ].map(([name, description, params, required]) => ({ name, description, params, required }));
+    }
+
+    static get ACTION_NAMES() {
+        if (!OpenAIAIManager._actionNames) {
+            OpenAIAIManager._actionNames = new Set(OpenAIAIManager.ACTIONS.map(a => a.name));
+        }
+        return OpenAIAIManager._actionNames;
+    }
+
+    static get TOOLS() {
+        const reason = { type: 'string', description: 'One line, in your own words, why you are doing this.' };
+        const tools = OpenAIAIManager.ACTIONS.map(a => ({
+            type: 'function',
+            function: {
+                name: a.name,
+                description: a.description,
+                parameters: {
+                    type: 'object',
+                    properties: Object.assign({}, a.params, { reason }),
+                    required: a.required
+                }
+            }
+        }));
+        tools.push({ type: 'function', function: {
+            name: 'plan',
+            description: 'State your standing objective and plan. At most once per turn, '
+                + 'and only when something changed — both persist across turns.',
+            parameters: { type: 'object', properties: {
+                objective: { type: 'string', description: 'One line.' },
+                plan: { type: 'array', items: { type: 'string' },
+                        description: 'Up to ' + OpenAIAIManager.PLAN_MAX_STEPS + ' short steps.' }
+            }, required: [] } } });
+        return tools;
     }
 
     // Which protocols this harness can offer tools on TODAY. Anthropic, Google and
@@ -189,11 +245,16 @@ class OpenAIAIManager {
             if (name === 'plan') {
                 if (head.objective === undefined && typeof args.objective === 'string') head.objective = args.objective;
                 if (head.plan === undefined && Array.isArray(args.plan)) head.plan = args.plan;
-            } else if (name === 'action' || typeof args.action === 'string') {
-                // The tool NAME is the contract, but a model that calls it something
-                // else while still sending {action, params} meant the same thing.
-                if (typeof args.action === 'string') cmds.push({ action: args.action, params: args.params || {} });
-                else broken++;
+            } else if (OpenAIAIManager.ACTION_NAMES.has(name)) {
+                // The tool NAME is the action. Everything else in the call is its
+                // parameters, so nothing has to be unwrapped and nothing can disagree
+                // about which action was meant.
+                cmds.push({ action: name, params: args });
+            } else if (typeof args.action === 'string') {
+                // The old single-"action" shape, still accepted: a model that wraps
+                // {action, params} meant the same thing, and refusing it would fail a
+                // seat over a habit rather than over a decision.
+                cmds.push({ action: args.action, params: args.params || args });
             } else {
                 broken++;
             }
