@@ -13,10 +13,13 @@ class UIManager {
         // template is refreshed and slots that merely carried a COPY of the old
         // template are re-derived; genuine per-slot edits are preserved.
         this.ARENA_PROMPT_VERSION = UIManager.ARENA_PROMPT_VERSION;
-        // The match a hosted copy opens with. samples/ holds several now; the full set
-        // and its metadata are in samples/index.json, which is what a picker has to
-        // read because GitHub Pages cannot list a directory.
-        this.SAMPLE_MATCH = '2026-07-26_opus5-grok4.5-gpt-oss_36min.jsonl';
+        // Last resort only: the match a hosted copy opens with is the one flagged
+        // default in samples/index.json, and this is what it falls back to if that
+        // index cannot be read at all. Kept in step with that flag, so the two can
+        // never name different matches. samples/ holds several now; the full set and
+        // its metadata are in that index, which is what a picker has to read because
+        // GitHub Pages cannot list a directory.
+        this.SAMPLE_MATCH = '2026-08-17_qwen3.8-opus4.6-qwen3.6-muse-glimmer_125min.jsonl';
     }
 
     showScreen(screenId) {

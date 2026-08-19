@@ -41,7 +41,7 @@
     }
    ],
    "bytes": 3906369,
-   "default": true
+   "default": false
   },
   {
    "file": "2026-08-09_kimi-k3-gemma4-qwen3.8-ornith9b_25min.jsonl",
@@ -183,7 +183,7 @@
     }
    ],
    "bytes": 9163298,
-   "default": false
+   "default": true
   }
  ]
 }
