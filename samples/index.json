@@ -134,6 +134,56 @@
    ],
    "bytes": 8346756,
    "default": false
+  },
+  {
+   "file": "2026-08-17_qwen3.8-opus4.6-qwen3.6-muse-glimmer_125min.jsonl",
+   "matchId": "match-20260817-195216",
+   "date": 1786989136337,
+   "duration": "125:34",
+   "turns": 544,
+   "outcome": "last_standing",
+   "seed": "rmsxj6y6zb5ta",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v76",
+   "build": 640,
+   "winner": "OR4 qwen3.8-27b",
+   "players": [
+    {
+     "seat": 3,
+     "name": "OR4 qwen3.8-27b",
+     "model": "qwen/qwen3.8-27b",
+     "civ": "Yamato",
+     "power": 4617,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "OR2 muse-glimmer-30b",
+     "model": "meta/muse-glimmer-30b",
+     "civ": "Greeks",
+     "power": 328,
+     "winner": false
+    },
+    {
+     "seat": 2,
+     "name": "OR3 qwen3.6-27b",
+     "model": "qwen/qwen3.6-27b",
+     "civ": "Persians",
+     "power": 209,
+     "winner": false
+    },
+    {
+     "seat": 0,
+     "name": "OR1 claude-opus-4.6",
+     "model": "anthropic/claude-opus-4.6",
+     "civ": "Egyptians",
+     "power": 129,
+     "winner": false
+    }
+   ],
+   "bytes": 9163298,
+   "default": false
   }
  ]
 }
