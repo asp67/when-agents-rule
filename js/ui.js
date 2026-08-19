@@ -4523,6 +4523,18 @@ class UIManager {
     }
 
     anLoadSample(file0) {
+        // A call with no file of its own means "open the default", and the default is a
+        // flag in the index -- so this has to WAIT for the index. It did not: anOpen()
+        // starts that fetch without awaiting it and the hosted auto-open called this on
+        // the next line, every time finding _sampleIndex still unset and falling through
+        // to SAMPLE_MATCH. The flag decided nothing on the one path that reads it, and
+        // the bug was invisible while the constant and the flag happened to agree.
+        // Resolving to an explicit file rather than calling back in with none keeps a
+        // failed fetch from recursing: on a network error _sampleIndex stays unset.
+        if (!file0 && !this._sampleIndex) {
+            return this.anLoadSampleIndex().then(list => this.anLoadSample(
+                (list.find(m => m.default) || list[0] || {}).file || this.SAMPLE_MATCH));
+        }
         // Say what is happening while it happens. The placeholder underneath reads "load
         // a .jsonl file the Arena saved", which is right for someone who opened an empty
         // analyzer -- and exactly wrong for the seconds a hosted copy spends fetching
