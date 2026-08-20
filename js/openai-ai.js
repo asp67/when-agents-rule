@@ -3169,6 +3169,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 const controllerAbort = new AbortController();
                 controller._abort = controllerAbort;
                 controller._deadlineAbort = false;   // cleared per attempt; set only by noteRoundMissed
+                controller._abortReason = null;      // ...and this only by the three harness aborts
                 const hardAbortMs = this.requestAbortMs();
                 const timeoutId = setTimeout(() => controllerAbort.abort(), hardAbortMs);
                 try {
@@ -3187,6 +3188,16 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                         // deadline — not this timeout — had fired.
                         if (controller._deadlineAbort) {
                             throw new Error(`round deadline reached after ${Math.round(this.roundTimeoutMs() / 1000)}s — the harness cancelled the request`);
+                        }
+                        // Three other places abort this same handle — demoteToRuleBased,
+                        // markDefeated and stop() — and none of them is a timeout. Saying
+                        // so anyway put "timed out after 180s" on a request that had run
+                        // 87 s, in the transcript AND in the model's next prompt: the
+                        // harness blaming a model for its own bookkeeping.
+                        if (controller._abortReason) {
+                            const why = controller._abortReason;
+                            controller._abortReason = null;
+                            throw new Error(`the harness cancelled this request (${why}) after ${Math.round((Date.now() - tStart) / 1000)}s — not a model timeout`);
                         }
                         throw new Error(`timed out after ${Math.round(hardAbortMs / 1000)}s`);
                     }
@@ -5330,7 +5341,27 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         console.log(`[OpenAIAI] ${ai.id}: ${unitsToAttack.length} units attacking "${target.name || target.type}"`);
         this.outcome('log.out.attackDispatched', { count: unitsToAttack.length, target: target.name || target.type });
-        return `OK - ${unitsToAttack.length} units attacking "${target.name || target.type}".${sel.note}${escortNote}`;
+        // "attacking" was a lie for as long as the walk takes. Setting isAttacking only
+        // gives the order; the units then cross the map, and a model told "37 units
+        // attacking" reads the absence of damage as a tough enemy rather than as an army
+        // that has not arrived. The position branch of this same action has always said
+        // "attack-moving (~Ns)" and promised a verdict on arrival — this one said the
+        // fight had started.
+        //
+        // Same threshold the arrival resolver uses (ENGAGE = 30), so "engaging" here and
+        // "engaged" there mean the same thing.
+        const nearest = unitsToAttack.reduce((best, u) => {
+            const d = Math.hypot(u.x - target.x, u.z - target.z);
+            return (best === null || d < best.d) ? { u, d } : best;
+        }, null);
+        const inContact = nearest && nearest.d <= 30;
+        if (inContact) {
+            this.outcome('log.out.attackEngaging', { count: unitsToAttack.length, target: target.name || target.type });
+            return `OK - ${unitsToAttack.length} unit(s) engaging "${target.name || target.type}" — they are already in contact range.${sel.note}${escortNote}`;
+        }
+        const eta = this.travelEtaSec(nearest ? nearest.u : unitsToAttack[0], target.x, target.z);
+        this.outcome('log.out.attackMarching', { count: unitsToAttack.length, target: target.name || target.type, eta });
+        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet. You will be told when they arrive — don't re-issue this attack meanwhile.${sel.note}${escortNote}`;
     }
 
     executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds) {
@@ -6402,9 +6433,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             civName: civ?.name || controller.aiPlayer.civilization,
             color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
             action: 'round_missed', reason: '', params: {}, failed: true,
+            // The ROUND this belongs to. A miss is logged when the deadline expires,
+            // which is `secs` after the round opened — by then the other seats have long
+            // since acted and later rounds have scrolled past, so the entry sits nowhere
+            // near the turn it explains and reads as a seat skipped in silence. The
+            // number is the only thing that pairs them up again.
+            round: this._roundNo,
             error: msg.replace(/^\[TIMEOUT\]\s*/, ''), lang: controller.model && controller.model.language,
-            outcomeCode: 'log.out.roundMissed', outcomeParams: { secs }
+            outcomeCode: 'log.out.roundMissed', outcomeParams: { secs, round: this._roundNo }
         });
+        // Every other writer trims; this one did not, so a long match let the log grow
+        // past its own cap through exactly the entries worth keeping least.
+        if (this.decisionLog.length > this.maxLogEntries) this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
         // On file as a MARKER, not a turn. record() would increment the turn counter and
         // make a skipped round indistinguishable from a move, inflating turnsFor() and
         // the decision count with it — so note() appends without touching either.
@@ -6565,6 +6605,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         controller._demoted = true;
         const ai = controller.aiPlayer;
         this.aiControllers = this.aiControllers.filter(c => c !== controller);
+        controller._abortReason = 'handed to the rule-based AI';
         try { if (controller._abort) controller._abort.abort(); } catch (e) { /* settled */ }
         controller.pending = false;
         if (ai) {
@@ -6589,6 +6630,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // Before the abort below, and deliberately fire-and-forget: this seat is out, so
         // nothing in the match is waiting on its answer.
         try { this.askFinalWord(controller, 'defeated'); } catch (e) { /* never block a retirement */ }
+        controller._abortReason = 'seat defeated';
         try { if (controller._abort) controller._abort.abort(); } catch (e) { /* already settled */ }
         controller.pending = false;
         controller.pendingAttackReports = [];
@@ -6614,6 +6656,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
     stop() {
         this._stopped = true;
         for (const c of this.aiControllers) {
+            c._abortReason = 'match stopped';
             try { if (c._abort) c._abort.abort(); } catch (e) { /* already settled */ }
             c.pending = false;
             c.pendingAttackReports = [];     // drop unresolved arrival reports
