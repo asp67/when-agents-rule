@@ -2445,7 +2445,12 @@ class OpenAIAIManager {
         const pushRival = (o, key) => {
             const entry = { id: game.seatLabel(o), civilization: o.civilization, age: o.age, discovered: met.has(key) };
             if (entry.discovered) {
-                entry.units = o.units.length;
+                // "units" invited exactly one reading and it was the wrong one: models
+                // held their own MILITARY count against this figure and concluded a rival
+                // with 59 units fielded 59 soldiers. It is every unit the seat owns,
+                // villagers included — ten to twenty of them in a typical mid-game army.
+                // The name carries the correction; the prompt names the trap.
+                entry.unitsTotal = o.units.length;
                 entry.buildings = o.buildings.length;
             }
             aiOpponents.push(entry);
@@ -2758,6 +2763,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
 - "discoveredNodesOnMap" counts what you have FOUND, per resource. A zero means unscouted, not absent.
+- "gameStats.opponents[].unitsTotal" is EVERY unit that rival owns, villagers included — it is not an army size. Your own military count is in "workers" and "friendlyUnits"; compare like with like before deciding a fight is winnable.
 - "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
 
 ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
@@ -2907,7 +2913,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             currentResearch: gs.research && gs.research.current ? gs.research.current.techId : null,
             discoveredResourceNodeCounts: nodes,
             enemySeen: {
-                units: Array.isArray(gs.enemyUnits) ? gs.enemyUnits.length : 0,
+                // Not the same number as gameStats.opponents[].unitsTotal, and it used to
+                // share its name: this is what you can SEE right now, that is what a rival
+                // owns in total. Two "units" in one prompt is one too many.
+                unitsVisible: Array.isArray(gs.enemyUnits) ? gs.enemyUnits.length : 0,
                 buildings: Array.isArray(gs.enemyBuildings) ? gs.enemyBuildings.length : 0
             },
             threats: {

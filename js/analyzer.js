@@ -305,7 +305,10 @@ class TranscriptAnalyzer {
                     const opp = (gs && Array.isArray(gs.opponents))
                         ? gs.opponents.find(x => x.id === s.id) : null;
                     if (!opp || opp.discovered === false) continue;
-                    if (opp.buildings === 0 && opp.units === 0) {
+                    // unitsTotal since the rename; "units" is what every transcript
+                    // recorded before it, and those have to keep reading.
+                    const oppUnits = (opp.unitsTotal !== undefined) ? opp.unitsTotal : opp.units;
+                    if (opp.buildings === 0 && oppUnits === 0) {
                         if (seen === null || r._sec < seen) seen = r._sec;
                         break;
                     }
