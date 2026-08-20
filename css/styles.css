@@ -389,8 +389,14 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 }
 
 /* ---------- Minimap ---------- */
+/* The panel's geometry lives on the BODY, not on .minimap, because the fog knobs
+   sit outside the panel and so cannot inherit it from there. One set of numbers,
+   read by the panel and by the knobs beside it — the alternative is a second copy
+   that silently stops agreeing the first time either size is touched. */
+body { --mm-edge: 20px; --mm-bottom: 130px; --mm-canvas: 300px; --mm-gut: 14px; }
+
 .minimap {
-    position: absolute; bottom: 130px; right: 20px;
+    position: absolute; bottom: var(--mm-bottom); right: var(--mm-edge);
     border-radius: 12px; overflow: hidden;
     border: 1px solid var(--line);
     box-shadow: var(--shadow);
@@ -398,16 +404,10 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
     /* Room for the A-G / 1-7 gutters. The panel is anchored bottom-right, so it
        grows up and to the left and the map itself does not move. The small right
        and bottom inset keeps the square canvas clear of the rounded corners. */
-    --mm-gut: 14px;
-    /* A SECOND left gutter, for the per-seat fog knobs. Zero everywhere except
-       spectator mode, so the campaign minimap keeps the exact geometry it had.
-       The panel is anchored bottom-right and grows leftward, so widening this
-       moves the knobs in beside the map without moving the map itself. */
-    --mm-knob: 0px;
-    padding: var(--mm-gut) 4px 4px calc(var(--mm-gut) + var(--mm-knob));
+    padding: var(--mm-gut) 4px 4px var(--mm-gut);
     background: rgba(22,31,58,0.82);
 }
-#minimapCanvas { display: block; width: 300px; height: 300px; background: #0e1630; }
+#minimapCanvas { display: block; width: var(--mm-canvas); height: var(--mm-canvas); background: #0e1630; }
 
 /* Tile labels for the 7x7 explore grid, in the gutters beside the map. Laid out
    with flex rather than fixed offsets: each label takes an equal share of the
@@ -415,37 +415,49 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
    size without a second set of numbers to keep in step. Offsets resolve against
    the panel's PADDING box, so `left: var(--mm-gut)` is exactly the canvas edge. */
 .mm-cols, .mm-rows { position: absolute; display: flex; pointer-events: none; }
-.mm-cols { top: 0; left: calc(var(--mm-gut) + var(--mm-knob)); right: 4px; height: var(--mm-gut); }
-.mm-rows { left: var(--mm-knob); top: var(--mm-gut); bottom: 4px; width: var(--mm-gut); flex-direction: column; }
+.mm-cols { top: 0; left: var(--mm-gut); right: 4px; height: var(--mm-gut); }
+.mm-rows { left: 0; top: var(--mm-gut); bottom: 4px; width: var(--mm-gut); flex-direction: column; }
 .mm-cols span, .mm-rows span {
     flex: 1 1 0; display: flex; align-items: center; justify-content: center;
     font-size: 9px; line-height: 1; font-weight: 600;
     color: var(--muted); opacity: 0.75;
 }
 
-/* Per-seat fog knobs: which seat's discovered map the minimap draws. Outermost
-   left gutter, offsets resolving against the panel's padding box exactly like
-   .mm-rows, so the column stays glued to the map at either canvas size. Centred
-   vertically rather than stretched — four knobs beside a 210px map should not be
-   four knobs spread 50px apart. */
-.mm-fog {
-    position: absolute; left: 0; top: var(--mm-gut); bottom: 4px; width: var(--mm-knob);
+/* Per-seat fog knobs: which seat's discovered map the minimap draws. They sit
+   BESIDE the panel rather than inside it, so the panel keeps the width it always
+   had and no background is stretched out under them.
+   Placed off the shared numbers above: the panel's outer width is its 1px border
+   + the label gutter + the canvas + the 4px right inset + the far border, and the
+   knobs sit one gap to the left of that. Aligned to the CANVAS rather than to the
+   panel, which is why the bottom is the panel's own offset plus that same 4px
+   inset and border. Spectator-only — nothing renders them in campaign. */
+.mm-fog { display: none; }
+body.spectator-mode .mm-fog {
+    position: absolute; z-index: 100;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 5px; overflow: hidden;
+    gap: 6px;
+    right: calc(var(--mm-edge) + 1px + var(--mm-gut) + var(--mm-canvas) + 4px + 1px + 8px);
+    bottom: calc(var(--mm-bottom) + 5px);
+    height: var(--mm-canvas);
 }
+/* Standing on the 3D scene now, not on a dark panel, so each knob brings its own
+   backing -- a translucent white wash was legible over the panel and vanishes over
+   bright desert. */
 .mm-fog-knob {
-    flex: 0 0 auto; width: 22px; height: 22px; padding: 0;
+    flex: 0 0 auto; width: 24px; height: 24px; padding: 0;
     display: flex; align-items: center; justify-content: center;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.14);
-    border-radius: 6px; cursor: pointer;
-    opacity: 0.7; transition: opacity .12s, background .12s, border-color .12s;
+    background: rgba(12,17,33,0.72);
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 7px; cursor: pointer;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+    opacity: 0.82; transition: opacity .12s, background .12s, border-color .12s;
 }
-.mm-fog-knob:hover { opacity: 1; background: rgba(255,255,255,0.13); }
+.mm-fog-knob:hover { opacity: 1; background: rgba(30,40,66,0.86); }
 .mm-fog-knob.on {
-    opacity: 1; background: rgba(255,255,255,0.2);
-    border-color: rgba(255,255,255,0.6);
-    box-shadow: 0 0 0 1px rgba(255,255,255,0.18);
+    opacity: 1; background: rgba(30,40,66,0.92);
+    border-color: rgba(255,255,255,0.72);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.25), 0 2px 6px rgba(0,0,0,0.45);
 }
 .mm-fog-knob .team-dot { display: block; }
 
@@ -619,8 +631,7 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 /* In spectator mode the bottom HUD is hidden, so drop & slightly shrink the
    minimap, and let the leaderboard reclaim the freed vertical space. The list
    scrolls if cards still don't all fit, so nothing ever overlaps the minimap. */
-body.spectator-mode .minimap { bottom: 16px; --mm-gut: 12px; --mm-knob: 26px; }
-body.spectator-mode #minimapCanvas { width: 210px; height: 210px; }
+body.spectator-mode { --mm-bottom: 16px; --mm-canvas: 210px; --mm-gut: 12px; }
 body.spectator-mode .mm-cols span, body.spectator-mode .mm-rows span { font-size: 8px; }
 body.spectator-mode .spectator-leaderboard { max-height: calc(100vh - 262px); }
 
