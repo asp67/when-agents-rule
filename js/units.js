@@ -249,6 +249,12 @@ const BUILDING_AGE_ORDER = ['stone', 'neolithic', 'bronze', 'iron'];
 // on the field, and every civ defends the same wall. Pyramide/Akropolis still
 // govern every other building those civs own.
 function buildingMaxHealth(buildingDef, civ, age) {
+    // The Wonder takes NEITHER the civ bonus NOR the age scaling — flat, for everyone,
+    // so a building-health civilisation cannot field an unkillable win condition.
+    // Deliberate, but it was never said out loud: both bonus descriptions promised
+    // "all buildings", and a Greek seat spent its endgame defending a Wonder it
+    // believed was carrying +30% and wrote so in its closing statement. The
+    // descriptions now name the exception.
     if (buildingDef.type === 'wonder') return Math.max(50, buildingDef.health);
     const healthMultiplier = (civ && civ.bonus && civ.bonus.name === 'Pyramide') ? 1.5 :
                              (civ && civ.bonus && civ.bonus.name === 'Akropolis') ? 1.3 : 1.0;

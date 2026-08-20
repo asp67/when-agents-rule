@@ -32,7 +32,7 @@ const CIVILIZATIONS = {
         color: 0xffd700,
         bonus: {
             name: "Pyramide",
-            description: "+50% Wandstärke für alle Gebäude",
+            description: "+50% Wandstärke für alle Gebäude außer dem Wunder",
             effect: (game) => {
                 game.buildingHealthMultiplier = 1.5;
             }
@@ -281,7 +281,7 @@ const CIVILIZATIONS = {
         color: 0x4169e1,
         bonus: {
             name: "Akropolis",
-            description: "Alle Gebäude haben +30% mehr Gesundheit",
+            description: "Alle Gebäude außer dem Wunder haben +30% mehr Gesundheit",
             effect: (game) => {
                 game.buildingHealthMultiplier = 1.3;
             }

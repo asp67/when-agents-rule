@@ -2753,6 +2753,11 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
+- "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
+- "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
+- "recentLosses" is what you lost since last turn, and to whom.
+- "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
+- "discoveredNodesOnMap" counts what you have FOUND, per resource. A zero means unscouted, not absent.
 
 ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
 
