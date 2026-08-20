@@ -2259,17 +2259,7 @@ class UIManager {
         // Periodic refresh
         // Skip dashboard DOM work while the tab is hidden — the background driver
         // keeps the SIMULATION running, but nobody is looking at the leaderboard.
-        this._spectatorIntervals.push(setInterval(() => {
-            if (document.hidden) return;
-            this.updateSpectatorPlayerList();
-            // The fog knobs' tooltips name a seat, so they are written by hand and
-            // data-i18n-title cannot reach them. onLanguageChanged would, except that
-            // setUiLang reaches for window.game and `game` is a top-level let -- that
-            // hook has never fired. Re-render on the switch itself instead: a string
-            // compare per tick, and six buttons touched only when the language moves.
-            const lang = (typeof getUiLang === 'function') ? getUiLang() : null;
-            if (this._fogKnobLang !== lang) { this._fogKnobLang = lang; this.refreshMinimapFogKnobs(); }
-        }, 1500));
+        this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSpectatorPlayerList(); }, 1500));
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateDecisionLog(); }, 1000));
         // The viewer follows the match live; renderTranscriptViewer no-ops unless a
         // model is actually being watched and its turn count has moved.
@@ -2314,7 +2304,6 @@ class UIManager {
             `<button type="button" class="mm-fog-knob" data-seat="${ai.seat}" aria-pressed="false"
                 onclick="game.ui.toggleMinimapFogSeat(${ai.seat})">${this.teamDotHtml(ai.seat, 8)}</button>`
         ).join('');
-        this._fogKnobLang = (typeof getUiLang === 'function') ? getUiLang() : null;
         this.refreshMinimapFogKnobs();
     }
 

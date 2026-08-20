@@ -2100,9 +2100,17 @@ function setUiLang(lang) {
     try { localStorage.setItem('uiLang', lang); } catch (e) {}
     if (typeof document !== 'undefined') document.documentElement.lang = lang;
     applyI18n();
-    if (typeof window !== 'undefined' && window.game && window.game.ui && window.game.ui.onLanguageChanged) {
-        window.game.ui.onLanguageChanged();
-    }
+    // typeof, not window.game: `game` is a top-level `let`, which lives in the
+    // script-global lexical scope and NEVER appears as a property of window. Read the
+    // wrong way it is always undefined -- so this guard was false on every call and
+    // onLanguageChanged had never once run since it was written. Switching language
+    // left every JS-built panel in the old one: the open build/train/research/upgrade
+    // menu, the arena model library, the arena slot editor, the HUD's resource and age
+    // labels. Static [data-i18n] elements were fine throughout, which is exactly why
+    // it went unnoticed -- most of the screen did change. index.html's diagnostic panel
+    // already carried this same note; the fix is its pattern.
+    const G = (typeof game === 'undefined') ? null : game;
+    if (G && G.ui && G.ui.onLanguageChanged) G.ui.onLanguageChanged();
 }
 // Apply translations to all tagged elements under `root`.
 function applyI18n(root) {
