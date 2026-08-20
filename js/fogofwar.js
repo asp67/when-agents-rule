@@ -98,27 +98,59 @@ class FogOfWarManager {
     
     // Reveal fog around a position
     reveal(x, z, range) {
+        // Mark as visible (2) - this also marks as explored
+        this.revealInto(this.fogGrid, x, z, range, 2);
+    }
+
+    // The same disc, written into ANY grid of this fog's shape. reveal() is this
+    // against the manager's own fogGrid; the spectator's per-seat records are the
+    // identical geometry kept somewhere else. ONE copy of the circle walk, so a
+    // solo view and the union view can never come to disagree about what a scout
+    // actually swept -- which is the whole claim the solo view is making.
+    revealInto(grid, x, z, range, value) {
+        if (!grid) return;
         const { gx, gz } = this.getGridCoords(x, z);
         const gridRange = Math.ceil(range / this.gridSize);
-        
+
         for (let dx = -gridRange; dx <= gridRange; dx++) {
             for (let dz = -gridRange; dz <= gridRange; dz++) {
                 const nx = gx + dx;
                 const nz = gz + dz;
-                
+
                 if (nx < 0 || nx >= this.numTiles || nz < 0 || nz >= this.numTiles) continue;
-                
+
                 // Check if within range
                 const dist = Math.sqrt(dx * dx + dz * dz) * this.gridSize;
                 if (dist > range) continue;
-                
+
                 const idx = nz * this.numTiles + nx;
-                // Mark as visible (2) - this also marks as explored
-                if (this.fogGrid[idx] < 2) {
-                    this.fogGrid[idx] = 2;
-                }
+                if (grid[idx] < value) grid[idx] = value;
             }
         }
+    }
+
+    // ---- Per-seat discovery, spectator viewing aid ---------------------------
+    // "Ground this seat has ever seen", at THIS fog's resolution, accumulated by
+    // the same sweep that builds the union fog beside it. Never decays: unlike the
+    // union's tier 2 this is a record, not a state.
+    //
+    // It exists because the coarse record the game already keeps -- _explored, 42
+    // cells a side against this grid's 400 -- is far too blocky to draw. It is the
+    // right size for what it is FOR (a 7x7 percentage the models read), and about
+    // nineteen world units per cell, which turned a scout's thin trail into a
+    // column of squares the moment it was drawn at map scale.
+    //
+    // Spectator-only, and allocated per seat on first use, so a campaign never
+    // pays for it -- nothing calls this outside the spectator branch of updateFog.
+    seatExplored(seat) {
+        if (seat == null || seat < 0) return null;
+        if (!this._seatExplored) this._seatExplored = new Map();
+        let g = this._seatExplored.get(seat);
+        if (!g || g.length !== this.numTiles * this.numTiles) {
+            g = new Uint8Array(this.numTiles * this.numTiles);
+            this._seatExplored.set(seat, g);
+        }
+        return g;
     }
     
     // Update fog state
@@ -158,12 +190,22 @@ class FogOfWarManager {
         // so the spectator sees everything any player can see
         if (this.game.spectatorMode && this.game.aiManager) {
             this.game.aiManager.aiPlayers.forEach(ai => {
+                // ...and, on the same sweep, into that seat's OWN record, which the
+                // minimap draws when a fog knob is pressed. Marked 1, not 2: this one
+                // is "has ever seen", and what a seat sees right NOW is computed live
+                // at draw time. Same disc, same grid size, so the solo view and the
+                // union view are the same shapes.
+                const own = this.seatExplored(ai.seat);
                 ai.units.forEach(unit => {
-                    this.reveal(unit.x, unit.z, this.game.unitVision(unit));
+                    const range = this.game.unitVision(unit);
+                    this.reveal(unit.x, unit.z, range);
+                    this.revealInto(own, unit.x, unit.z, range, 1);
                 });
                 ai.buildings.forEach(building => {
                     if (building.underConstruction) return; // plots don't see (same rule as the player's)
-                    this.reveal(building.x, building.z, this.game.buildingVision(building));
+                    const range = this.game.buildingVision(building);
+                    this.reveal(building.x, building.z, range);
+                    this.revealInto(own, building.x, building.z, range, 1);
                 });
             });
         }

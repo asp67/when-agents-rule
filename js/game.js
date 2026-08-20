@@ -4556,16 +4556,18 @@ class Game {
     //     alone the map goes black the instant a scout walks on, which is the
     //     opposite of "what this model has found".
     //
-    //   tier 1 — _explored, the coarse "ground I have ever seen" bitmap that
-    //     markExploration already stamps at 4Hz for every seat, LLM ones included.
-    //     THAT is the discovery record, and it is the very array map.exploration
-    //     is summed out of — so this view and the seat's own state cannot drift
-    //     apart, whatever either of them comes to mean later.
+    //   tier 1 — FogOfWarManager.seatExplored(seat), "ground this seat has ever
+    //     seen", accumulated by the very same 500ms sweep that builds the union
+    //     fog drawn beside it, at the very same resolution.
     //
-    // _explored is EXPLORE_GRID (42) cells a side against the fog's 400, one cell
-    // per ~19 world units. The blocks are coarse on purpose: 42 is 6x7, so their
-    // edges fall on the 7x7 explore grid and the A-G gutters. Smoothing them would
-    // be drawing a boundary the game never tracked.
+    // That last part is the whole point. This first read tier 1 off _explored, the
+    // coarse bitmap markExploration keeps for every seat — which is the honest
+    // discovery record and is what map.exploration is summed out of, but is 42
+    // cells a side against this fog's 400, about nineteen world units each. Drawn
+    // at map scale a scout's thin trail came out as a column of squares next to a
+    // union view of the identical ground that was smooth. Same sweep, same grid,
+    // same shapes: the solo view now differs from the union only in whose sweep it
+    // counted, which is the one thing it is supposed to be saying.
     seatDiscoveryGrid(seat) {
         const fow = this.fogOfWar;
         const om = this.openAIAIManager;
@@ -4581,22 +4583,10 @@ class Game {
         const N = fow.numTiles;
         const grid = om.computeAIFogGrid(ai, this, N);
 
-        const G = this.EXPLORE_GRID;
-        const seen = ai._explored;
-        if (seen && seen.length === G * G) {
-            const per = N / G;                       // ~9.5 fog cells per bitmap cell
-            for (let gz = 0; gz < G; gz++) {
-                const z0 = Math.floor(gz * per), z1 = Math.floor((gz + 1) * per);
-                for (let gx = 0; gx < G; gx++) {
-                    if (!seen[gz * G + gx]) continue;
-                    const x0 = Math.floor(gx * per), x1 = Math.floor((gx + 1) * per);
-                    for (let z = z0; z < z1; z++) {
-                        const row = z * N;
-                        // Never over-write a 2: in sight now outranks seen once.
-                        for (let x = x0; x < x1; x++) if (grid[row + x] === 0) grid[row + x] = 1;
-                    }
-                }
-            }
+        const seen = fow.seatExplored(seat);
+        if (seen && seen.length === grid.length) {
+            // Never over-write a 2: in sight now outranks seen once.
+            for (let i = 0; i < grid.length; i++) if (grid[i] === 0 && seen[i]) grid[i] = 1;
         }
         return grid;
     }
