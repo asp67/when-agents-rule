@@ -305,9 +305,12 @@ class TranscriptAnalyzer {
                     const opp = (gs && Array.isArray(gs.opponents))
                         ? gs.opponents.find(x => x.id === s.id) : null;
                     if (!opp || opp.discovered === false) continue;
-                    // unitsTotal since the rename; "units" is what every transcript
-                    // recorded before it, and those have to keep reading.
-                    const oppUnits = (opp.unitsTotal !== undefined) ? opp.unitsTotal : opp.units;
+                    // Three spellings across three builds: "population" now, briefly
+                    // "unitsTotal", and "units" in every transcript recorded before that.
+                    // All of them have to keep reading — a rename that fixes the prompt
+                    // and silently breaks the archive is not a fix.
+                    const oppUnits = (opp.population !== undefined) ? opp.population
+                        : (opp.unitsTotal !== undefined) ? opp.unitsTotal : opp.units;
                     if (opp.buildings === 0 && oppUnits === 0) {
                         if (seen === null || r._sec < seen) seen = r._sec;
                         break;

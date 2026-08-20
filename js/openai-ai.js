@@ -2445,12 +2445,17 @@ class OpenAIAIManager {
         const pushRival = (o, key) => {
             const entry = { id: game.seatLabel(o), civilization: o.civilization, age: o.age, discovered: met.has(key) };
             if (entry.discovered) {
-                // "units" invited exactly one reading and it was the wrong one: models
-                // held their own MILITARY count against this figure and concluded a rival
-                // with 59 units fielded 59 soldiers. It is every unit the seat owns,
-                // villagers included — ten to twenty of them in a typical mid-game army.
-                // The name carries the correction; the prompt names the trap.
-                entry.unitsTotal = o.units.length;
+                // NOT "units", and not "unitsTotal" either. The tools taught a vocabulary
+                // — "units" are the fighting ones (attack_target refuses workers outright)
+                // and "workers" are the villagers — and then this field used the same word
+                // for everything a rival owns. A model reading "59 units" as 59 soldiers
+                // was applying OUR rule correctly; we were the ones breaking it. Any name
+                // containing "units" keeps that door open.
+                //
+                // "population" is the word the game already uses for exactly this, and the
+                // seat reads its own as resources.population — so the two are directly
+                // comparable, in the vocabulary the model already holds.
+                entry.population = o.units.length;
                 entry.buildings = o.buildings.length;
             }
             aiOpponents.push(entry);
@@ -2763,7 +2768,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
 - "discoveredNodesOnMap" counts what you have FOUND, per resource. A zero means unscouted, not absent.
-- "gameStats.opponents[].unitsTotal" is EVERY unit that rival owns, villagers included — it is not an army size. Your own military count is in "workers" and "friendlyUnits"; compare like with like before deciding a fight is winnable.
+- "gameStats.opponents[].population" counts EVERYTHING a discovered rival owns, villagers included — the same measure as your own "resources.population", and NOT an army size. Everywhere else in these tools "units" means fighters and "workers" means villagers; this one number does not follow that rule, which is why it is not called units.
 - "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
 
 ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
@@ -2913,10 +2918,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             currentResearch: gs.research && gs.research.current ? gs.research.current.techId : null,
             discoveredResourceNodeCounts: nodes,
             enemySeen: {
-                // Not the same number as gameStats.opponents[].unitsTotal, and it used to
-                // share its name: this is what you can SEE right now, that is what a rival
-                // owns in total. Two "units" in one prompt is one too many.
-                unitsVisible: Array.isArray(gs.enemyUnits) ? gs.enemyUnits.length : 0,
+                // Deliberately avoids "units" for the same reason: this counts whatever
+                // enemy figures are in view, fighters and villagers alike, and it is a
+                // different number from gameStats.opponents[].population.
+                entitiesVisible: Array.isArray(gs.enemyUnits) ? gs.enemyUnits.length : 0,
                 buildings: Array.isArray(gs.enemyBuildings) ? gs.enemyBuildings.length : 0
             },
             threats: {
