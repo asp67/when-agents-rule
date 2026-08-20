@@ -3110,6 +3110,11 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const provider = OpenAIAIManager.resolveProvider(model);
         console.log(`[OpenAIAI] ${ai.id}: provider=${provider}, turns=${turns.length}`);
 
+        // Outside the try on purpose: the catch needs it, and `reqStart` below is
+        // block-scoped to the try. Without an elapsed time a network failure is
+        // undiagnosable — "Failed to fetch" reads the same whether a proxy cut the
+        // connection at a fixed 100 s or the wifi blinked once.
+        const tStart = Date.now();
         try {
             // Build provider-specific auth headers + request (url, body).
             const auth = model.auth || (model.apiKey ? { type: 'bearer', key: model.apiKey } : { type: 'none' });
@@ -3469,7 +3474,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             if (s) {
                 s.requests++;
                 if (/timed out/i.test(err.message)) s.timeouts++;
-                else s.networkErrors++;
+                else {
+                    s.networkErrors++;
+                    // Kept so the card can say WHEN they die, not just how many. A
+                    // tight cluster names the culprit; a spread exonerates it.
+                    (s.networkAtMs = s.networkAtMs || []).push(Date.now() - tStart);
+                }
             }
             // In a PLAYER game (not the arena benchmark), an unreachable endpoint
             // hands this opponent to the rule-based AI so the player still faces a
@@ -3479,6 +3489,25 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 this.demoteToRuleBased(controller);
                 return null;
             }
+            // On file as a MARKER, the same way a missed round is. Until now a request
+            // that never came back left NOTHING in the transcript — record() only runs
+            // once a response exists — so a match ruined by a proxy read afterwards as a
+            // match with fewer turns, and the elapsed time that identifies the culprit
+            // was nowhere at all.
+            if (this.transcripts) {
+                try {
+                    const t0 = (this.game && this.game._timeline && this.game._timeline.t0) || Date.now();
+                    this.transcripts.note(ai && ai.id, {
+                        type: 'request_failed',
+                        at: Date.now(),
+                        round: this._roundNo,
+                        matchSeconds: Math.max(0, Math.round((Date.now() - t0) / 1000)),
+                        elapsedMs: Date.now() - tStart,
+                        message: String(err && err.message || err).slice(0, 200)
+                    });
+                } catch (e) { /* recording must never cost a turn */ }
+            }
+
             // Log network failures to decision log
             const civ = getCivilization(ai.civilization);
             const civName = civ?.name || ai.civilization;
@@ -3488,7 +3517,12 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 civName: civName,
                 color: colorHex,
                 action: 'request_failed',
-                reason: `Request to model failed: ${err.message.substring(0, 100)}`,
+                // The elapsed time is the whole diagnosis. Failures clustered at one
+                // value are something between the browser and the model cutting the
+                // connection — Cloudflare's tunnel gives up at 100 s by default and
+                // reports it as a plain fetch failure; scattered values are a real
+                // network fault.
+                reason: `Request to model failed after ${Math.round((Date.now() - tStart) / 1000)}s: ${err.message.substring(0, 90)}`,
                 params: {}, failed: true
             });
             return null;

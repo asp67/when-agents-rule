@@ -3396,6 +3396,7 @@ class UIManager {
                     minLatency: lat.length ? Math.min(...lat) : 0,
                     maxLatency: lat.length ? Math.max(...lat) : 0,
                     timeouts: st.timeouts, networkErrors: st.networkErrors, parseFails: st.parseFails,
+                    networkAtMs: st.networkAtMs || [],
                     // Subset of parseFails: replies cut off mid-JSON by the model's
                     // output-token cap. Broken out because it has a fix the others
                     // don't — raise maxTokens for that model.
@@ -3515,7 +3516,7 @@ class UIManager {
                         <div class="sum-metric"><span>\u{1F4CB} ${t('sum.mFormat')}</span><b>${Math.round(m.formatOk * 100)}%</b><i>${t('sum.mJsonOk')}</i></div>
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
                         <div class="sum-metric"><span>\u{1FA99} ${t('sum.mTokens')}</span><b>${this.fmtTokens(m.promptTokens + m.completionTokens)}</b><i>${(m.promptTokens + m.completionTokens) ? t('sum.mTokSplit', { p: this.fmtTokens(m.promptTokens), c: this.fmtTokens(m.completionTokens) }) : t('sum.mTokNone')}</i></div>
-                        <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, parse: m.parseFails, cut: m.truncated || 0, na: m.noAction || 0, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
+                        <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, net: this.netErrLabel(m), parse: m.parseFails, cut: m.truncated || 0, na: m.noAction || 0, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
                     </div>
                     <div class="sum-actions">${topActions || `<span class="sum-chip">${t('sum.noActions')}</span>`}</div>
                     ${m.finalWord ? `<div class="sum-word"><span class="sum-word-h">\u{1F5E3}\uFE0F ${t('sum.finalWord')}</span><p>${this.escapeHtml(m.finalWord.text || m.finalWord.error || t('sum.finalWordNone'))}</p></div>` : ''}
@@ -5746,6 +5747,20 @@ class UIManager {
             if (typeof a !== 'string') { try { a = JSON.stringify(a); } catch (err) { a = String(a); } }
             return (f.name || '?') + '  ' + (a || '');
         }).join('\n');
+    }
+
+    // Network failures, and WHEN they died. The count alone cannot tell a proxy
+    // cutting every request at the same second from a flaky line, and those have
+    // completely different fixes — one is a setting somebody owns, the other is not.
+    // Shown as "4@101s" when they cluster, plain "4" when they scatter.
+    netErrLabel(m) {
+        const n = m.networkErrors || 0;
+        const at = (m.networkAtMs || []).slice().sort((a, b) => a - b);
+        if (!n || at.length < 2) return String(n);
+        const med = at[Math.floor(at.length / 2)];
+        const spread = at[at.length - 1] - at[0];
+        // Within 20 % of the median is a cluster, not a coincidence.
+        return (spread <= med * 0.2) ? `${n}@${Math.round(med / 1000)}s` : String(n);
     }
 
     static buildVersion() {
