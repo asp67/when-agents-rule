@@ -2758,6 +2758,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
 - "discoveredNodesOnMap" counts what you have FOUND, per resource. A zero means unscouted, not absent.
+- "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
 
 ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
 
