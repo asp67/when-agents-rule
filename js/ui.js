@@ -52,6 +52,8 @@ class UIManager {
         } catch (e) {}
         // Force the spectator panels to rebuild on next update.
         this._lastLogSig = null;
+        // The fog knobs' tooltips name a seat, so data-i18n-title cannot reach them.
+        this.refreshMinimapFogKnobs();
     }
 
     // Reusable confirmation dialog. Calls onConfirm() if the user confirms.
@@ -2238,6 +2240,9 @@ class UIManager {
             entriesEl._topBtnWired = true;
         }
 
+        // Per-seat fog knobs beside the minimap.
+        this.buildMinimapFogKnobs();
+
         // Mark arena start for the clock
         this.arenaStartTime = Date.now();
         this._lastLogSig = null;
@@ -2254,7 +2259,17 @@ class UIManager {
         // Periodic refresh
         // Skip dashboard DOM work while the tab is hidden — the background driver
         // keeps the SIMULATION running, but nobody is looking at the leaderboard.
-        this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSpectatorPlayerList(); }, 1500));
+        this._spectatorIntervals.push(setInterval(() => {
+            if (document.hidden) return;
+            this.updateSpectatorPlayerList();
+            // The fog knobs' tooltips name a seat, so they are written by hand and
+            // data-i18n-title cannot reach them. onLanguageChanged would, except that
+            // setUiLang reaches for window.game and `game` is a top-level let -- that
+            // hook has never fired. Re-render on the switch itself instead: a string
+            // compare per tick, and six buttons touched only when the language moves.
+            const lang = (typeof getUiLang === 'function') ? getUiLang() : null;
+            if (this._fogKnobLang !== lang) { this._fogKnobLang = lang; this.refreshMinimapFogKnobs(); }
+        }, 1500));
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateDecisionLog(); }, 1000));
         // The viewer follows the match live; renderTranscriptViewer no-ops unless a
         // model is actually being watched and its turn count has moved.
@@ -2279,9 +2294,79 @@ class UIManager {
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateArenaStatus(); }, 1000));
     }
 
+    // ---- Per-seat minimap fog knobs (spectator) ------------------------------
+    // One knob per seat in the gutter left of the minimap, wearing that seat's own
+    // team badge so the knob and the leaderboard row name the same player. Press
+    // one: the minimap draws ONLY what that model has discovered. Press it again:
+    // back to every seat at once, which is the default and what the panel showed
+    // before this existed.
+    //
+    // A viewing aid, and only that. It sets one number on the game object that
+    // nothing but updateMinimap reads -- no seat's state changes, no request is
+    // made, no transcript records that anybody looked. Which model the spectator
+    // is squinting at is not part of the match.
+    buildMinimapFogKnobs() {
+        const host = document.getElementById('mmFog');
+        if (!host) return;
+        const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        this.game.minimapFogSeat = null;                 // every new match starts open
+        host.innerHTML = ais.map(ai =>
+            `<button type="button" class="mm-fog-knob" data-seat="${ai.seat}" aria-pressed="false"
+                onclick="game.ui.toggleMinimapFogSeat(${ai.seat})">${this.teamDotHtml(ai.seat, 8)}</button>`
+        ).join('');
+        this._fogKnobLang = (typeof getUiLang === 'function') ? getUiLang() : null;
+        this.refreshMinimapFogKnobs();
+    }
+
+    toggleMinimapFogSeat(seat) {
+        const g = this.game;
+        g.minimapFogSeat = (g.minimapFogSeat === seat) ? null : seat;
+        this.refreshMinimapFogKnobs();
+        // Repaint now rather than at the next 500ms tick -- a knob that answers half
+        // a second late reads as a knob that did not take.
+        if (g.updateMinimap) g.updateMinimap();
+    }
+
+    // Pressed state and tooltips. Separate from the builder because the titles name
+    // the seat (its model, or its civilization for a rule-based one) and so cannot be
+    // a static data-i18n-title -- onLanguageChanged calls this to re-render them.
+    refreshMinimapFogKnobs() {
+        const host = document.getElementById('mmFog');
+        if (!host) return;
+        const g = this.game;
+        const ais = (g.aiManager && g.aiManager.aiPlayers) || [];
+        const ctrls = (g.openAIAIManager && g.openAIAIManager.aiControllers) || [];
+        host.setAttribute('aria-label', t('mm.fogGroup'));
+        // What to call a seat: its model, or its civilization when a rule-based one
+        // has no model to name. Two seats can end up with the SAME name -- four
+        // Egypts, or one model in two chairs, which is exactly the match you would
+        // run to compare two prompts -- and then the name alone does not say which
+        // knob is which. Number those, and only those.
+        const nameOf = ai => {
+            const ctrl = ai && ctrls.find(c => c.id === ai.id);
+            return (ctrl && ctrl.model && ctrl.model.name) || this.anCivName(ai && ai.civilization);
+        };
+        const tally = {};
+        ais.forEach(a => { const n = nameOf(a); tally[n] = (tally[n] || 0) + 1; });
+
+        host.querySelectorAll('.mm-fog-knob').forEach(btn => {
+            const seat = Number(btn.dataset.seat);
+            const on = (g.minimapFogSeat === seat);
+            btn.classList.toggle('on', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            const ai = ais.find(a => a.seat === seat);
+            const n = nameOf(ai);
+            const who = (tally[n] > 1) ? `${n} #${seat + 1}` : n;
+            btn.title = on ? t('mm.fogAll') : t('mm.fogSolo', { who: who });
+        });
+    }
+
     // Stop spectator refresh timers (call when leaving the arena)
     teardownSpectatorUI() {
         document.body.classList.remove('spectator-mode');
+        // Leave the arena with the minimap open again, so a campaign started next
+        // does not inherit a seat number from a match that is over.
+        this.game.minimapFogSeat = null;
         if (this._spectatorIntervals) this._spectatorIntervals.forEach(id => clearInterval(id));
         this._spectatorIntervals = [];
         if (this.closeLbFlyout) this.closeLbFlyout(); // no flyout floating over the summary

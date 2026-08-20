@@ -4541,6 +4541,66 @@ class Game {
         }
     }
 
+    // ---- Spectator viewing aid: ONE seat's map knowledge, as a fog grid -------
+    //
+    // Returns the same 0/1/2 grid the human fog uses (0 never found, 1 found once,
+    // 2 in sight right now) at fogOfWar's resolution, but for a single AI seat.
+    // Purely a way to LOOK at the match: nothing here is written back, no model's
+    // state reads it, nothing recorded changes. The seats play on unaware.
+    //
+    // It takes TWO sources, because neither one alone is what a seat has found:
+    //
+    //   tier 2 — computeAIFogGrid, which sweeps vision around living units and
+    //     FINISHED buildings. That is all it does: measured on a running match it
+    //     writes 713 twos and, by construction, not one single 1. Drawn from it
+    //     alone the map goes black the instant a scout walks on, which is the
+    //     opposite of "what this model has found".
+    //
+    //   tier 1 — _explored, the coarse "ground I have ever seen" bitmap that
+    //     markExploration already stamps at 4Hz for every seat, LLM ones included.
+    //     THAT is the discovery record, and it is the very array map.exploration
+    //     is summed out of — so this view and the seat's own state cannot drift
+    //     apart, whatever either of them comes to mean later.
+    //
+    // _explored is EXPLORE_GRID (42) cells a side against the fog's 400, one cell
+    // per ~19 world units. The blocks are coarse on purpose: 42 is 6x7, so their
+    // edges fall on the 7x7 explore grid and the A-G gutters. Smoothing them would
+    // be drawing a boundary the game never tracked.
+    seatDiscoveryGrid(seat) {
+        const fow = this.fogOfWar;
+        const om = this.openAIAIManager;
+        if (!fow || !om || !this.aiManager) return null;
+        const ai = (this.aiManager.aiPlayers || []).find(a => a.seat === seat);
+        if (!ai) return null;
+
+        // No cache, and no reuse of a per-turn copy. Measured at the real 800 map
+        // size: 0.04ms opening game, 0.23ms at 60 units and 6 towers, 0.59ms with
+        // 200 units — against the 1.05ms updateMinimap already spends on the redraw
+        // that consumes it, twice a second. Caching this would buy a fifth of a
+        // millisecond and pay for it in staleness.
+        const N = fow.numTiles;
+        const grid = om.computeAIFogGrid(ai, this, N);
+
+        const G = this.EXPLORE_GRID;
+        const seen = ai._explored;
+        if (seen && seen.length === G * G) {
+            const per = N / G;                       // ~9.5 fog cells per bitmap cell
+            for (let gz = 0; gz < G; gz++) {
+                const z0 = Math.floor(gz * per), z1 = Math.floor((gz + 1) * per);
+                for (let gx = 0; gx < G; gx++) {
+                    if (!seen[gz * G + gx]) continue;
+                    const x0 = Math.floor(gx * per), x1 = Math.floor((gx + 1) * per);
+                    for (let z = z0; z < z1; z++) {
+                        const row = z * N;
+                        // Never over-write a 2: in sight now outranks seen once.
+                        for (let x = x0; x < x1; x++) if (grid[row + x] === 0) grid[row + x] = 1;
+                    }
+                }
+            }
+        }
+        return grid;
+    }
+
     updateMinimap() {
         this.buildMinimapGutters();
         const canvas = document.getElementById('minimapCanvas');
@@ -4551,6 +4611,55 @@ class Game {
         const terrainData = this.terrain.getMinimapData();
         const scale = 300 / terrainData.size;
 
+        // WHOSE fog. Null (the default) is every seat's put together -- which is
+        // already what the spectator's own fogGrid accumulates, since updateFog
+        // reveals around every player in spectator mode. A seat number is one of the
+        // knobs beside the minimap held down: draw that seat's discovery alone.
+        const soloGrid = (this.minimapFogSeat != null) ? this.seatDiscoveryGrid(this.minimapFogSeat) : null;
+
+        // "Has the viewer found this?" for every dot drawn below -- the same >= 1
+        // test isPositionVisible makes, asked of whichever grid is in force. Kept as
+        // one closure so a solo view can never hide the ground and then draw a rival
+        // standing on it.
+        const known = (() => {
+            if (!this.fogOfWar) return () => true;
+            if (!soloGrid) return (x, z) => this.fogOfWar.isPositionVisible(x, z);
+            const N = this.fogOfWar.numTiles, cell = this.fogOfWar.gridSize;
+            const half = terrainData.size / 2;
+            return (x, z) => {
+                const gx = Math.floor((x + half) / cell), gz = Math.floor((z + half) / cell);
+                if (gx < 0 || gx >= N || gz < 0 || gz >= N) return false;
+                return soloGrid[gz * N + gx] >= 1;
+            };
+        })();
+
+        // WHOSE fog you are looking at, said on the map itself rather than only by
+        // which knob is pressed: the found-but-not-watched band wears that seat's
+        // badge colour, and the panel gets a frame in it.
+        //
+        // The colour is scaled to the dim tier's own brightness before it is mixed
+        // in, so only the HUE moves. A raw wash of white (seat 1) or yellow (seat 6)
+        // would come out brighter than the ground it veils and read as lit -- and
+        // lit-vs-veiled is the one distinction the fog exists to make. The frame is
+        // there for the same reason from the other side: at equal brightness white
+        // is a weak wash, and a 3px border in it is not.
+        //
+        // tintA stays 0 in the default view, where the arithmetic below collapses to
+        // exactly the multiply this has always done.
+        let tintR = 0, tintG = 0, tintB = 0, tintA = 0, soloFrame = null;
+        if (soloGrid && typeof getTeamBadge === 'function') {
+            const badge = getTeamBadge(this.minimapFogSeat);
+            if (badge && badge.fill) {
+                const h = badge.fill.replace('#', '');
+                let r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+                soloFrame = badge.fill;
+                const lum = (0.299 * r + 0.587 * g + 0.114 * b) || 1;
+                const k = Math.min(1, 96 / lum);       // ~the dim tier's own luminance
+                tintR = r * k; tintG = g * k; tintB = b * k;
+                tintA = 0.5;
+            }
+        }
+
         // Themed ground color (summer/winter/desert), tuned so every node color
         // keeps contrast: wood #228B22, stone #808080, gold #FFD700, food #8B4513.
         const MINIMAP_GROUND = { easy: '#4a8c3f', medium: '#5c7480', hard: '#8f7448' };
@@ -4559,7 +4668,7 @@ class Game {
 
         // Draw fog of war overlay FIRST (so resources appear on top)
         if (this.fogOfWar) {
-            const fogGrid = this.fogOfWar.fogGrid;
+            const fogGrid = soloGrid || this.fogOfWar.fogGrid;
             const numTiles = this.fogOfWar.numTiles;
             const minimapSize = 300;
             const tilesPerPixel = numTiles / minimapSize;
@@ -4584,10 +4693,14 @@ class Game {
                         data[pixelIdx + 2] = 0;
                         data[pixelIdx + 3] = 255;
                     } else if (fogValue === 1) {
-                        // Explored but not visible - dim the bright green to dark green (matches playing field)
-                        data[pixelIdx] = Math.floor(data[pixelIdx] * 0.7);
-                        data[pixelIdx + 1] = Math.floor(data[pixelIdx + 1] * 0.7);
-                        data[pixelIdx + 2] = Math.floor(data[pixelIdx + 2] * 0.7);
+                        // Explored but not visible - dim the bright green to dark green (matches playing field),
+                        // then pull it toward the soloed seat's colour (tintA is 0 by default).
+                        const dr = data[pixelIdx] * 0.7;
+                        const dg = data[pixelIdx + 1] * 0.7;
+                        const db = data[pixelIdx + 2] * 0.7;
+                        data[pixelIdx] = Math.floor(dr + (tintR - dr) * tintA);
+                        data[pixelIdx + 1] = Math.floor(dg + (tintG - dg) * tintA);
+                        data[pixelIdx + 2] = Math.floor(db + (tintB - db) * tintA);
                         data[pixelIdx + 3] = 255;
                     }
                     // fogValue === 2 (visible) - leave pixel unchanged (bright green)
@@ -4625,7 +4738,7 @@ class Game {
             if (x < 0 || x > 300 || z < 0 || z > 300) return;
             
             // Check fog of war - only show resources in explored areas
-            if (this.fogOfWar && !this.fogOfWar.isPositionVisible(resource.x, resource.z)) return;
+            if (!known(resource.x, resource.z)) return;
             
             switch(resource.type) {
                 case 'wood': ctx.fillStyle = '#228B22'; break;
@@ -4669,7 +4782,7 @@ class Game {
             const buildingColor = colorHex;
 
             ai.buildings.forEach(building => {
-                if (this.fogOfWar && !this.fogOfWar.isPositionVisible(building.x, building.z)) return;
+                if (!known(building.x, building.z)) return;
                 const x = (building.x + terrainData.size / 2) * scale;
                 const z = (building.z + terrainData.size / 2) * scale;
                 ctx.fillStyle = buildingColor;
@@ -4677,7 +4790,7 @@ class Game {
             });
 
             ai.units.forEach(unit => {
-                if (this.fogOfWar && !this.fogOfWar.isPositionVisible(unit.x, unit.z)) return;
+                if (!known(unit.x, unit.z)) return;
                 const x = (unit.x + terrainData.size / 2) * scale;
                 const z = (unit.z + terrainData.size / 2) * scale;
                 ctx.fillStyle = unitColor;
@@ -4694,12 +4807,24 @@ class Game {
             ctx.strokeStyle = 'rgba(255, 70, 40, 0.9)';
             ctx.lineWidth = 1.5;
             this._combatPings.forEach(p => {
+                // A solo view that blacks out the ground must not ring a fight on
+                // it: this seat has not found that place, so it has not seen this.
+                if (!known(p.x, p.z)) return;
                 const x = (p.x + terrainData.size / 2) * scale;
                 const z = (p.z + terrainData.size / 2) * scale;
                 ctx.beginPath();
                 ctx.arc(x, z, pulse, 0, Math.PI * 2);
                 ctx.stroke();
             });
+        }
+
+        // Last, over everything: the soloed seat's colour around the edge.
+        if (soloFrame) {
+            ctx.save();
+            ctx.strokeStyle = soloFrame;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(1.5, 1.5, 297, 297);
+            ctx.restore();
         }
     }
 
