@@ -1208,17 +1208,37 @@ class Game {
                 const attackRange = (unit.range > 1 ? unit.range : 1.5) + buildingRadius;
                 
                 if (dist > attackRange) {
-                    // Move towards target
+                    // Move towards target — or, while still well short of it, towards
+                    // this unit's slot in the marching formation, so an army crosses the
+                    // map as a shape instead of as a converging blob. FORM_DROP is where
+                    // the shape stops mattering: inside it a unit is closing to fight and
+                    // aims at what it is fighting, which is what "march only" means.
+                    const FORM_DROP = 12;
+                    const off = unit.formationOffset;
+                    let ax = currentTarget.x, az = currentTarget.z;
+                    if (off && dist > attackRange + FORM_DROP) {
+                        // The slot travels with the target, so a fleeing enemy is chased
+                        // in formation rather than by a shape aimed at where it used to be.
+                        const aim = this.formationAim(unit, currentTarget.x + off.x, currentTarget.z + off.z);
+                        ax = aim.x; az = aim.z;
+                    } else if (off) {
+                        unit.formationOffset = null;   // arrived: ranks dissolve
+                        unit.formationAxis = null;
+                    }
+                    const adx = ax - unit.x, adz = az - unit.z;
+                    const adist = Math.sqrt(adx * adx + adz * adz) || 1;
+
                     unit.isMoving = true;
                     unit.targetX = currentTarget.x;
                     unit.targetZ = currentTarget.z;
-                    
+
                     const moveSpeed = this.moveSpeedOf(unit) * deltaTime / 1000 * 3;
-                    unit.x += (dx / dist) * moveSpeed;
-                    unit.z += (dz / dist) * moveSpeed;
+                    unit.x += (adx / adist) * moveSpeed;
+                    unit.z += (adz / adist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
                 } else {
                     // In range - attack!
+                    unit.formationOffset = null;   // fighting now; the march shape is over
                     unit.isMoving = false;
                     unit.attackTimer = (unit.attackTimer || 0) + deltaTime;
                     
@@ -3460,6 +3480,30 @@ class Game {
         return (typeof m === 'number' && m > 0) ? m : (unit.speed || 1.0);
     }
 
+    // Where a unit marching in formation should be heading RIGHT NOW.
+    //
+    // Aiming straight at its own slot is not enough. Every unit starts from roughly the
+    // same spot, so the paths to five slots a few units apart are very nearly parallel:
+    // measured on a 385-unit march, a five-man line was 1 unit wide at the start and
+    // only reached its full 16 in the last stretch. The army crossed the map as a column
+    // and fanned out at the door.
+    //
+    // So aim at the unit's LANE instead -- the line through its slot along the axis of
+    // march -- a short step ahead of wherever it has got to. The lateral error is then a
+    // real distance to be walked off at full speed, which happens in the first seconds,
+    // and the shape holds for the whole march instead of assembling on arrival.
+    static get FORMATION_LOOKAHEAD() { return 10; }
+
+    formationAim(unit, slotX, slotZ) {
+        const ax = unit && unit.formationAxis;
+        if (!ax) return { x: slotX, z: slotZ };
+        const rx = unit.x - slotX, rz = unit.z - slotZ;
+        // Negative while the unit is still short of its slot along the march.
+        const along = rx * ax.x + rz * ax.z;
+        const step = Math.min(0, along + Game.FORMATION_LOOKAHEAD);
+        return { x: slotX + ax.x * step, z: slotZ + ax.z * step };
+    }
+
     // ---- Exploration tracking (per player) ------------------------------------
     // A coarse "ground I have ever seen" bitmap per player, marked every
     // discovery sweep (250ms) around every living unit and building. Aggregated
@@ -4307,15 +4351,22 @@ class Game {
                 const dist = Math.sqrt(dx*dx + dz*dz);
                 
                 if (dist > 0.5) {
+                    // targetX/Z is already this unit's SLOT; the lane aim only decides
+                    // the route to it. Without a formation the aim is the slot itself,
+                    // which is the straight line this has always walked.
+                    const aim = this.formationAim(unit, unit.targetX, unit.targetZ);
+                    const adx = aim.x - unit.x, adz = aim.z - unit.z;
+                    const adist = Math.sqrt(adx * adx + adz * adz) || 1;
                     const moveSpeed = this.moveSpeedOf(unit) * deltaTime / 1000 * 3;
-                    unit.x += (dx / dist) * moveSpeed;
-                    unit.z += (dz / dist) * moveSpeed;
+                    unit.x += (adx / adist) * moveSpeed;
+                    unit.z += (adz / adist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
                 } else {
                     // Arrived at target - stop moving
                     unit.isMoving = false;
                     unit.x = unit.targetX;
                     unit.z = unit.targetZ;
+                    unit.formationAxis = null;   // march over
                     this.renderer.updateUnitPosition(unit);
                 }
             }

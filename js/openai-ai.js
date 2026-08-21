@@ -80,7 +80,8 @@ class OpenAIAIManager {
                      targetZ: N('Map Z. Always together with targetX.') };
         const WHO = { units: { type: 'object', description: 'Object of {"type": count}, e.g. {"champion":3}, or a category like {"infantry":5}. Omit for the whole army.' },
                       unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids from friendlyUnits. Wins over "units" when both are given.' },
-                      matchSpeed: S('Optional. "slowestUnit" holds the whole group to its slowest member so they arrive together instead of strung out. Omit to let every unit run at its own speed, which is faster for the quick ones and arrives piecemeal.') };
+                      matchSpeed: S('Optional. "slowestUnit" holds the whole group to its slowest member so they arrive together instead of strung out. Omit to let every unit run at its own speed, which is faster for the quick ones and arrives piecemeal.'),
+                      formation: S('Optional shape for the MARCH: "line" (abreast), "wedge" (point forward), "block" (square), "ranged_back" (melee in front, shooters behind). Dropped on contact — it governs the approach, not the fight. Implies matchSpeed "slowestUnit", since a shape only holds if everyone keeps pace.') };
         return [
             ['train_unit', 'Train one unit at a building that can produce it.',
              Object.assign({ unitType: S('Unit id from trainableUnits.') }, XZ), ['unitType']],
@@ -668,6 +669,99 @@ class OpenAIAIManager {
     // The slowest is computed from `speed`, never from moveSpeedOf: reading the effective
     // speed would let one held march set the pace for the next one, and a force that was
     // slowed once would keep slowing itself for the rest of the game.
+    // ---- Marching formations -------------------------------------------------
+    // Slots in MARCH-RELATIVE coordinates: +f is the direction of travel, +r is to
+    // its right. Rotated into world space by the caller, so a shape is defined once
+    // and works whichever way the army is pointed.
+    //
+    // MARCH ONLY. The shape governs where each unit is heading while it walks and is
+    // dropped the moment it is close enough to fight -- holding ranks through a melee
+    // would need re-forming logic, a way to report the formation's state back, and a
+    // whole second argument about what "holding" means when half the rank is dead.
+    static get FORMATION_SPACING() { return 4; }
+    static get FORMATIONS() { return ['line', 'wedge', 'block', 'ranged_back']; }
+
+    formationSlots(units, shape) {
+        const S = OpenAIAIManager.FORMATION_SPACING;
+        const n = units.length;
+        const out = new Map();
+        // The engine's own ranged test, not a list of unit names: range > 1 is what
+        // updateCombat uses to decide who shoots and who closes, so "ranged" here and
+        // "ranged" there cannot come to mean different things.
+        const isRanged = u => ((u && u.range) || 0) > 1;
+
+        if (shape === 'line') {
+            units.forEach((u, i) => out.set(u, { f: 0, r: (i - (n - 1) / 2) * S }));
+        } else if (shape === 'wedge') {
+            // Point first, then pairs falling back to either side.
+            units.forEach((u, i) => {
+                const k = Math.ceil(i / 2);
+                const side = (i === 0) ? 0 : ((i % 2) ? -1 : 1);
+                out.set(u, { f: -k * S, r: side * k * S });
+            });
+        } else if (shape === 'block') {
+            const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+            units.forEach((u, i) => {
+                const row = Math.floor(i / cols), col = i % cols;
+                out.set(u, { f: -row * S, r: (col - (cols - 1) / 2) * S });
+            });
+        } else if (shape === 'ranged_back') {
+            const front = units.filter(u => !isRanged(u));
+            const back = units.filter(isRanged);
+            const lay = (list, depth) => list.forEach((u, i) =>
+                out.set(u, { f: depth, r: (i - (list.length - 1) / 2) * S }));
+            lay(front, 0);
+            lay(back, -S * 1.5);
+            // Everyone shoots, or nobody does: one rank is not a formation, and a
+            // model that asked for two should be told it got one.
+            if (!front.length || !back.length) {
+                return { slots: out, degenerate: back.length ? 'every unit is ranged' : 'no ranged units' };
+            }
+        } else {
+            return { slots: null };
+        }
+        return { slots: out };
+    }
+
+    // Put a force into `shape` for the march to (tx, tz). Facing is the group's own
+    // centroid toward the destination, so the shape is oriented by where it is going
+    // rather than by any fixed compass direction. Returns per-unit world offsets.
+    applyFormation(game, units, tx, tz, shape) {
+        const want = String(shape || '').trim();
+        if (!units || !units.length) return { applied: false, note: '' };
+        if (!want) { units.forEach(u => { u.formationOffset = null; u.formationAxis = null; }); return { applied: false, note: '' }; }
+        if (OpenAIAIManager.FORMATIONS.indexOf(want) < 0) {
+            units.forEach(u => { u.formationOffset = null; u.formationAxis = null; });
+            return { applied: false, bad: want,
+                     note: ` (formation "${want}" is not a shape — valid: ${OpenAIAIManager.FORMATIONS.join(', ')}; this order marched unformed.)` };
+        }
+        const { slots, degenerate } = this.formationSlots(units, want);
+        if (!slots) { units.forEach(u => { u.formationOffset = null; u.formationAxis = null; }); return { applied: false, note: '' }; }
+
+        let cx = 0, cz = 0;
+        units.forEach(u => { cx += u.x; cz += u.z; });
+        cx /= units.length; cz /= units.length;
+        let dx = tx - cx, dz = tz - cz;
+        const d = Math.hypot(dx, dz);
+        // Already standing on the destination: no direction to face, so no rotation to
+        // apply. Point north rather than dividing by zero.
+        if (d < 0.001) { dx = 0; dz = -1; } else { dx /= d; dz /= d; }
+        // Right of the march direction.
+        const rx = -dz, rz = dx;
+
+        const offsets = new Map();
+        units.forEach(u => {
+            const s = slots.get(u) || { f: 0, r: 0 };
+            offsets.set(u, { x: s.f * dx + s.r * rx, z: s.f * dz + s.r * rz });
+            // The axis the lanes run along, so each unit can correct sideways into its
+            // own lane immediately instead of drifting into it over the whole march.
+            u.formationAxis = { x: dx, z: dz };
+        });
+        const extra = degenerate ? ` (${degenerate}, so it is a single rank)` : '';
+        return { applied: true, shape: want, offsets,
+                 note: ` Marching in ${want} formation${extra}, ${units.length} unit(s) abreast of the line of advance.` };
+    }
+
     applyMatchSpeed(units, matchSpeed) {
         const want = String(matchSpeed || '').trim();
         if (!units || !units.length) return { applied: false, note: '' };
@@ -4181,7 +4275,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
 
             case 'move_units':
                 if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ, params.unitIds, params.matchSpeed);
+                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ, params.unitIds, params.matchSpeed, params.formation);
                 } else {
                     actionResult = `[ERROR] move_units requires "targetX" and "targetZ" parameters.`;
                 }
@@ -4189,9 +4283,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
 
             case 'attack_target':
                 if (params?.targetId) {
-                    actionResult = this.executeAttackTarget(ai, game, params.targetId, params.units, params.unitIds, params.matchSpeed);
+                    actionResult = this.executeAttackTarget(ai, game, params.targetId, params.units, params.unitIds, params.matchSpeed, params.formation);
                 } else if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.units, params.unitIds, params.matchSpeed);
+                    actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.units, params.unitIds, params.matchSpeed, params.formation);
                 } else {
                     actionResult = `[ERROR] attack_target requires "targetId" or ("targetX" and "targetZ") parameters.`;
                 }
@@ -5293,7 +5387,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         return parts.length ? parts.join(', ') : '(no military)';
     }
 
-    executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds, matchSpeed) {
+    executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds, matchSpeed, formation) {
         // Validate the destination first so bad coords never strand units at NaN.
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
@@ -5331,9 +5425,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
                 : `[ERROR] You have no military units to move — omitting "units" moves your army, and you have none. ${alt}.`;
         }
 
-        // Set the pace BEFORE the etas are measured, so the number quoted back is the
-        // one the slowed group will actually keep.
-        const pace = this.applyMatchSpeed(unitsToMove, matchSpeed);
+        // A shape only holds if everyone keeps pace, so asking for one asks for the
+        // pace too -- unless the model said otherwise, in which case it said otherwise.
+        const form = this.applyFormation(game, unitsToMove, targetX, targetZ, formation);
+        const pace = this.applyMatchSpeed(unitsToMove, matchSpeed || (form.applied ? 'slowestUnit' : ''));
 
         let eta = 0;
         unitsToMove.forEach(unit => {
@@ -5342,10 +5437,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             // task=null alone would leave the farm's assignedWorker pointing at a unit
             // that has walked away, so the farm would look manned and grow nothing.
             if (unit.type === 'worker') this.releaseUnitForOrders(unit);
-            eta = Math.max(eta, this.travelEtaSec(unit, targetX, targetZ));
             unit.isMoving = true;
-            unit.targetX = targetX;
-            unit.targetZ = targetZ;
+            // Each unit walks to its OWN slot, so the group arrives as a shape rather
+            // than as everybody converging on one point. Clamped: a slot off the edge
+            // of the map is not somewhere a unit can stand.
+            const off = form.offsets && form.offsets.get(unit);
+            const dest = off ? game.clampToMap(targetX + off.x, targetZ + off.z) : { x: targetX, z: targetZ };
+            unit.targetX = dest.x;
+            unit.targetZ = dest.z;
+            // Measured to the SLOT, which is the trip this unit is actually making.
+            eta = Math.max(eta, this.travelEtaSec(unit, dest.x, dest.z));
+            unit.formationOffset = null;   // a plain move has no target to approach
             unit.isAttacking = false;
             unit.attackTarget = null;
             unit.attackMove = null;
@@ -5358,10 +5460,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         // Naming the units is what makes a wrong pick VISIBLE. Without it the reply for
         // moving the wrong crossbowman and the right one are the same sentence, so a model
         // has no way to notice and simply reissues.
-        return `OK - Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${pace.note} — ~${eta}s to arrive; let them march before re-issuing.`;
+        return `OK - Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${form.note}${pace.note} — ~${eta}s to arrive; let them march before re-issuing.`;
     }
 
-    executeAttackTarget(ai, game, targetId, unitsMap, unitIds, matchSpeed) {
+    executeAttackTarget(ai, game, targetId, unitsMap, unitIds, matchSpeed, formation) {
         // Find target in all units and buildings
         let target = null;
         target = game.getAllUnits().find(u => (u.id || '') === targetId);
@@ -5412,11 +5514,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
-        const pace = this.applyMatchSpeed(unitsToAttack, matchSpeed);
+        const form = this.applyFormation(game, unitsToAttack, target.x, target.z, formation);
+        const pace = this.applyMatchSpeed(unitsToAttack, matchSpeed || (form.applied ? 'slowestUnit' : ''));
         unitsToAttack.forEach(unit => {
             game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
             unit.attackTarget = target;
+            // These units aim at the TARGET, not at targetX, so a slot cannot be baked
+            // into a destination the way a plain move's is. It rides along instead and
+            // updateCombat aims at target+slot until the unit is close enough to fight,
+            // where it is dropped -- the shape is the approach and nothing more.
+            unit.formationOffset = (form.offsets && form.offsets.get(unit)) || null;
             // attack-move: if the target dies or slips away, keep pushing to its
             // last position and aggro whatever's nearby (enemies move).
             unit.attackMove = { x: target.x, z: target.z };
@@ -5458,10 +5566,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         // that clock is reissuing at its vanguard while the rest is still walking.
         const eta = unitsToAttack.reduce((m, u) => Math.max(m, this.travelEtaSec(u, target.x, target.z)), 0);
         this.outcome('log.out.attackMarching', { count: unitsToAttack.length, target: target.name || target.type, eta });
-        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet. You will be told when they arrive — don't re-issue this attack meanwhile.${sel.note}${pace.note}${escortNote}`;
+        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet. You will be told when they arrive — don't re-issue this attack meanwhile.${sel.note}${form.note}${pace.note}${escortNote}`;
     }
 
-    executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds, matchSpeed) {
+    executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds, matchSpeed, formation) {
         const controller = this.aiControllers.find(c => c.aiPlayer === ai);
 
         const mx = Number(targetX), mz = Number(targetZ);
@@ -5529,16 +5637,22 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             const d = Math.hypot(entity.x - targetX, entity.z - targetZ);
             if (d < minDist) { minDist = d; nearest = entity; }
         }
-        const pace = this.applyMatchSpeed(unitsToAttack, matchSpeed);
+        const form = this.applyFormation(game, unitsToAttack, targetX, targetZ, formation);
+        const pace = this.applyMatchSpeed(unitsToAttack, matchSpeed || (form.applied ? 'slowestUnit' : ''));
         unitsToAttack.forEach(unit => {
             game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
             unit.attackTarget = nearest || null;
-            unit.attackMove = { x: targetX, z: targetZ };
+            const off = (form.offsets && form.offsets.get(unit)) || null;
+            // Both branches need it: attackMove for the march when nothing is in the
+            // way, formationOffset for the approach when something already is.
+            const am = off ? game.clampToMap(targetX + off.x, targetZ + off.z) : { x: targetX, z: targetZ };
+            unit.attackMove = { x: am.x, z: am.z };
+            unit.formationOffset = off;
             unit.attackTimer = 0;
             unit.isMoving = true;
-            unit.targetX = (nearest ? nearest.x : targetX);
-            unit.targetZ = (nearest ? nearest.z : targetZ);
+            unit.targetX = (nearest ? nearest.x : am.x);
+            unit.targetZ = (nearest ? nearest.z : am.z);
             unit.task = null;
             unit._orderToken = token;
         });
@@ -5558,7 +5672,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         // move_units has always taken the max; these two now agree.
         const eta = unitsToAttack.reduce((m, u) => Math.max(m, this.travelEtaSec(u, targetX, targetZ)), 0);
         this.outcome('log.out.attackMoving', { count: unitsToAttack.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
-        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${pace.note}${escortNote}${offNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
+        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${form.note}${pace.note}${escortNote}${offNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
     }
 
     // Each frame, resolve open attack-move orders once the units arrive/engage and
@@ -5799,6 +5913,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         u._origTarget = null;  // retaliation ladder ends with the combat job
         u._retalQueue = null;
         u.marchSpeed = null;   // a new job walks at its own speed, not the last march's
+        u.formationOffset = null;
         u._orderToken = ++this._orderSeq; // reassigned → drops out of any prior attack report
     }
 
