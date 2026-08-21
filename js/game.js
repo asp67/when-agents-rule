@@ -1164,7 +1164,7 @@ class Game {
                         const dist = Math.sqrt(dx*dx + dz*dz);
                         if (dist > 1.5) {
                             unit.isMoving = true;
-                            const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
+                            const moveSpeed = this.moveSpeedOf(unit) * deltaTime / 1000 * 3;
                             unit.x += (dx / dist) * moveSpeed;
                             unit.z += (dz / dist) * moveSpeed;
                             this.renderer.updateUnitPosition(unit);
@@ -1213,7 +1213,7 @@ class Game {
                     unit.targetX = currentTarget.x;
                     unit.targetZ = currentTarget.z;
                     
-                    const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
+                    const moveSpeed = this.moveSpeedOf(unit) * deltaTime / 1000 * 3;
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
@@ -3445,6 +3445,21 @@ class Game {
         return { kind: 'ground', knowers };
     }
 
+    // The speed a unit walks at RIGHT NOW. Normally its own, which techs and age
+    // upgrades keep raising over a match. `marchSpeed` is a per-order override, set by
+    // the optional matchSpeed parameter on move_units/attack_target so a mixed force
+    // arrives together instead of strung out between its cavalry and its crossbowmen.
+    //
+    // Held BESIDE `speed`, never written over it. Overwriting would have to be undone,
+    // and the undo would land on top of whatever a tech had raised the real speed to in
+    // the meantime -- so a march would quietly cancel a research bonus. Clearing an
+    // override cannot do that.
+    moveSpeedOf(unit) {
+        if (!unit) return 1.0;
+        const m = unit.marchSpeed;
+        return (typeof m === 'number' && m > 0) ? m : (unit.speed || 1.0);
+    }
+
     // ---- Exploration tracking (per player) ------------------------------------
     // A coarse "ground I have ever seen" bitmap per player, marked every
     // discovery sweep (250ms) around every living unit and building. Aggregated
@@ -3800,7 +3815,7 @@ class Game {
                 
                 if (dist > arrivalThreshold) {
                     unit.isMoving = true; // the mover owns the flag, not whichever caller assigned the task
-                    const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
+                    const moveSpeed = this.moveSpeedOf(unit) * deltaTime / 1000 * 3;
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
@@ -4037,7 +4052,7 @@ class Game {
                     // its assigner happens to set isMoving itself; the animation
                     // depended on which caller remembered.) Facing reads isMoving too.
                     unit.isMoving = true;
-                    const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
+                    const moveSpeed = this.moveSpeedOf(unit) * deltaTime / 1000 * 3;
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
@@ -4077,7 +4092,7 @@ class Game {
                 if (dist > reach) {
                     unit.isBuilding = false;
                     unit.isMoving = true; // same as the build walk above — the mover owns the flag
-                    const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
+                    const moveSpeed = this.moveSpeedOf(unit) * deltaTime / 1000 * 3;
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
@@ -4292,7 +4307,7 @@ class Game {
                 const dist = Math.sqrt(dx*dx + dz*dz);
                 
                 if (dist > 0.5) {
-                    const moveSpeed = (unit.speed || 1.0) * deltaTime / 1000 * 3;
+                    const moveSpeed = this.moveSpeedOf(unit) * deltaTime / 1000 * 3;
                     unit.x += (dx / dist) * moveSpeed;
                     unit.z += (dz / dist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);

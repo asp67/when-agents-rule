@@ -79,7 +79,8 @@ class OpenAIAIManager {
         const XZ = { targetX: N('Map X. Always together with targetZ.'),
                      targetZ: N('Map Z. Always together with targetX.') };
         const WHO = { units: { type: 'object', description: 'Object of {"type": count}, e.g. {"champion":3}, or a category like {"infantry":5}. Omit for the whole army.' },
-                      unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids from friendlyUnits. Wins over "units" when both are given.' } };
+                      unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids from friendlyUnits. Wins over "units" when both are given.' },
+                      matchSpeed: S('Optional. "slowestUnit" holds the whole group to its slowest member so they arrive together instead of strung out. Omit to let every unit run at its own speed, which is faster for the quick ones and arrives piecemeal.') };
         return [
             ['train_unit', 'Train one unit at a building that can produce it.',
              Object.assign({ unitType: S('Unit id from trainableUnits.') }, XZ), ['unitType']],
@@ -657,8 +658,54 @@ class OpenAIAIManager {
         return this.realSecs((duration || 0) - (progress || 0));
     }
     // Seconds for a unit to walk to (tx,tz). Matches the game loop's speed*3 u/s.
+    // Hold a group to its slowest member, or release it. Returns what to tell the model.
+    //
+    // Optional on purpose. Skipping it is not an oversight to be corrected -- it buys a
+    // faster arrival for the quick half of a force and pays for it by arriving piecemeal,
+    // and choosing that is a real decision about a real trade. The harness does not make
+    // it; it just does what was asked and says which was done.
+    //
+    // The slowest is computed from `speed`, never from moveSpeedOf: reading the effective
+    // speed would let one held march set the pace for the next one, and a force that was
+    // slowed once would keep slowing itself for the rest of the game.
+    applyMatchSpeed(units, matchSpeed) {
+        const want = String(matchSpeed || '').trim();
+        if (!units || !units.length) return { applied: false, note: '' };
+        if (!want) {                                   // no request: release any prior hold
+            units.forEach(u => { u.marchSpeed = null; });
+            return { applied: false, note: '' };
+        }
+        if (want !== 'slowestUnit') {
+            // SAY so. An unknown value that is quietly dropped hands back exactly the
+            // reply a correct one would have produced minus one clause, and a model has
+            // no way to tell "ignored" from "done" -- it reads the order as matched and
+            // plans around an arrival that is not coming. The one thing it needs is the
+            // spelling, so give it the spelling.
+            units.forEach(u => { u.marchSpeed = null; });
+            return { applied: false, bad: want,
+                     note: ` (matchSpeed "${want}" is not a value — the only one is "slowestUnit"; this order was NOT speed-matched and the units will arrive strung out.)` };
+        }
+        let slow = null, setter = null;
+        units.forEach(u => {
+            const s = (u && u.speed) || 1.0;
+            if (slow === null || s < slow) { slow = s; setter = u; }
+        });
+        if (slow === null) return { applied: false, note: '' };
+        units.forEach(u => { u.marchSpeed = slow; });
+        // Name the pace AND who set it. "Matched speed" alone leaves a model unable to
+        // tell a held march from an ignored parameter, and unable to see that one
+        // crossbowman is what its cavalry is waiting for.
+        return { applied: true, speed: slow, setter,
+                 note: ` Matched to the slowest: all marching at ${slow} (${(setter && setter.type) || 'unit'} pace) so they arrive together.` };
+    }
+
     travelEtaSec(unit, tx, tz) {
-        const sp = (((unit && unit.speed) || 1.0) * 3) || 3;
+        // The speed it will ACTUALLY walk at, override included -- an ETA quoted from the
+        // natural speed of a unit being held to a slower pace is a number that will not
+        // happen, and the reply is the only clock the model has.
+        const g = this.game;
+        const base = (g && g.moveSpeedOf) ? g.moveSpeedOf(unit) : ((unit && unit.speed) || 1.0);
+        const sp = ((base || 1.0) * 3) || 3;
         const d = Math.hypot(((unit && unit.x) || 0) - tx, ((unit && unit.z) || 0) - tz);
         return Math.max(1, this.realSecs((d / sp) * 1000));
     }
@@ -2789,7 +2836,8 @@ ${OpenAIAIManager.actionsBrief()}
 
 PARAMETER CONSTRAINTS:
 unitIds: An ARRAY of ids from friendlyUnits, e.g. [183, 12]. Moves or attacks EXACTLY those units and nothing else; "units" is ignored when it is given. Ids are never reused, so one that is gone means that unit died. Use it when WHICH unit matters — "units" picks whichever are nearest the target, which is the wrong end when you are fetching a wounded one.
-units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array. move_units also accepts {"worker":N} when named explicitly — that is how you place a unit on an exact spot; attack_target never takes workers.`;
+units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array. move_units also accepts {"worker":N} when named explicitly — that is how you place a unit on an exact spot; attack_target never takes workers.
+matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your units do not all walk at the same speed, so a mixed force sent across the map arrives in the order of its speeds — cavalry first, alone, against whatever is waiting. "slowestUnit" holds everyone to the slowest member so they land together. Omitting it is a real alternative and sometimes the right one: the fast half arrives sooner, which is what you want for reinforcing a fight already happening, or when arriving at all matters more than arriving in one piece.`;
     }
 
     // ----------------------------------------------------------------
@@ -4133,7 +4181,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
             case 'move_units':
                 if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ, params.unitIds);
+                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ, params.unitIds, params.matchSpeed);
                 } else {
                     actionResult = `[ERROR] move_units requires "targetX" and "targetZ" parameters.`;
                 }
@@ -4141,9 +4189,9 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
             case 'attack_target':
                 if (params?.targetId) {
-                    actionResult = this.executeAttackTarget(ai, game, params.targetId, params.units, params.unitIds);
+                    actionResult = this.executeAttackTarget(ai, game, params.targetId, params.units, params.unitIds, params.matchSpeed);
                 } else if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.units, params.unitIds);
+                    actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.units, params.unitIds, params.matchSpeed);
                 } else {
                     actionResult = `[ERROR] attack_target requires "targetId" or ("targetX" and "targetZ") parameters.`;
                 }
@@ -5245,7 +5293,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         return parts.length ? parts.join(', ') : '(no military)';
     }
 
-    executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds) {
+    executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds, matchSpeed) {
         // Validate the destination first so bad coords never strand units at NaN.
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
@@ -5283,6 +5331,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                 : `[ERROR] You have no military units to move — omitting "units" moves your army, and you have none. ${alt}.`;
         }
 
+        // Set the pace BEFORE the etas are measured, so the number quoted back is the
+        // one the slowed group will actually keep.
+        const pace = this.applyMatchSpeed(unitsToMove, matchSpeed);
+
         let eta = 0;
         unitsToMove.forEach(unit => {
             game.clearRetaliation(unit);
@@ -5306,10 +5358,10 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         // Naming the units is what makes a wrong pick VISIBLE. Without it the reply for
         // moving the wrong crossbowman and the right one are the same sentence, so a model
         // has no way to notice and simply reissues.
-        return `OK - Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note} — ~${eta}s to arrive; let them march before re-issuing.`;
+        return `OK - Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${pace.note} — ~${eta}s to arrive; let them march before re-issuing.`;
     }
 
-    executeAttackTarget(ai, game, targetId, unitsMap, unitIds) {
+    executeAttackTarget(ai, game, targetId, unitsMap, unitIds, matchSpeed) {
         // Find target in all units and buildings
         let target = null;
         target = game.getAllUnits().find(u => (u.id || '') === targetId);
@@ -5360,6 +5412,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
+        const pace = this.applyMatchSpeed(unitsToAttack, matchSpeed);
         unitsToAttack.forEach(unit => {
             game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
@@ -5397,14 +5450,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const inContact = nearest && nearest.d <= 30;
         if (inContact) {
             this.outcome('log.out.attackEngaging', { count: unitsToAttack.length, target: target.name || target.type });
-            return `OK - ${unitsToAttack.length} unit(s) engaging "${target.name || target.type}" — they are already in contact range.${sel.note}${escortNote}`;
+            return `OK - ${unitsToAttack.length} unit(s) engaging "${target.name || target.type}" — they are already in contact range.${sel.note}${pace.note}${escortNote}`;
         }
-        const eta = this.travelEtaSec(nearest ? nearest.u : unitsToAttack[0], target.x, target.z);
+        // The LAST unit to arrive, not the NEAREST one. Quoting the closest unit's eta
+        // for a force spread across the map promises the moment the fight STARTS as
+        // though it were the moment the army is there -- and a model that reissues on
+        // that clock is reissuing at its vanguard while the rest is still walking.
+        const eta = unitsToAttack.reduce((m, u) => Math.max(m, this.travelEtaSec(u, target.x, target.z)), 0);
         this.outcome('log.out.attackMarching', { count: unitsToAttack.length, target: target.name || target.type, eta });
-        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet. You will be told when they arrive — don't re-issue this attack meanwhile.${sel.note}${escortNote}`;
+        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet. You will be told when they arrive — don't re-issue this attack meanwhile.${sel.note}${pace.note}${escortNote}`;
     }
 
-    executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds) {
+    executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds, matchSpeed) {
         const controller = this.aiControllers.find(c => c.aiPlayer === ai);
 
         const mx = Number(targetX), mz = Number(targetZ);
@@ -5472,6 +5529,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
             const d = Math.hypot(entity.x - targetX, entity.z - targetZ);
             if (d < minDist) { minDist = d; nearest = entity; }
         }
+        const pace = this.applyMatchSpeed(unitsToAttack, matchSpeed);
         unitsToAttack.forEach(unit => {
             game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
@@ -5493,9 +5551,14 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         const escorted = game.escortSupportUnits(sel.support, targetX, targetZ);
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
 
-        const eta = this.travelEtaSec(unitsToAttack[0], targetX, targetZ);
+        // The LAST unit to arrive, not the first one in the list. This quoted
+        // unitsToAttack[0], so a mixed force was promised its scout cavalry's eta and
+        // the model read the missing damage as a tough enemy rather than as an army
+        // still walking -- the same lie "units attacking" used to tell, one field over.
+        // move_units has always taken the max; these two now agree.
+        const eta = unitsToAttack.reduce((m, u) => Math.max(m, this.travelEtaSec(u, targetX, targetZ)), 0);
         this.outcome('log.out.attackMoving', { count: unitsToAttack.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
-        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${escortNote}${offNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
+        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${pace.note}${escortNote}${offNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
     }
 
     // Each frame, resolve open attack-move orders once the units arrive/engage and
@@ -5735,6 +5798,7 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
         u.attackMove = null;
         u._origTarget = null;  // retaliation ladder ends with the combat job
         u._retalQueue = null;
+        u.marchSpeed = null;   // a new job walks at its own speed, not the last march's
         u._orderToken = ++this._orderSeq; // reassigned → drops out of any prior attack report
     }
 
