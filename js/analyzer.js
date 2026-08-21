@@ -208,21 +208,40 @@ class TranscriptAnalyzer {
     // the first sighting lets the board reveal the map as the reader scrubs instead of
     // showing at second zero what nobody had found yet.
     //
-    // Nodes are never removed once seen. A node that stops appearing may have been
-    // emptied or may simply have fallen outside the nearest-N window, and the file
-    // cannot tell those apart — so the board says "discovered by now", which is true,
-    // rather than guessing at "still there", which would not be.
+    // A node's DISAPPEARANCE still says nothing: it may have been emptied, or may
+    // simply have fallen outside the nearest-N window, and silence cannot tell those
+    // apart. So absence is never read as death — the board says "discovered by now",
+    // which is true, rather than "still there", which would not be.
+    //
+    // But the file is not silent any more. recentEvents reports emptied nodes BY
+    // COORDINATE ("The wood at (13, -306) was already exhausted when your workers
+    // reached it"), which is a fact with a timestamp rather than an inference from
+    // a gap. Those retire a node at a known second, and a scrub past that second
+    // stops drawing a forest that is not there.
+    //
+    // Partial by nature, and deliberately so: the event fires only when THIS seat's
+    // workers walk into the empty node, so one a rival drained out of sight produces
+    // nothing and the trees stay up. That is the same "as this seat knows it" claim
+    // the rest of the board makes, not a hole in it. Measured on a real match, 96 of
+    // 112 emptied-node reports name a node the board had drawn; the other 16 were
+    // never inside anyone's nearest-N window, so there was nothing to retire.
+    static get NODE_GONE_RE() {
+        return /^(?:(\d+)s ago:\s*)?The (\w+) at \((-?\d+),\s*(-?\d+)\) was already exhausted/;
+    }
+
     _indexNodes() {
         this.nodeIndex = [];
         const seen = new Map();
+        const keyOf = (type, x, z) => type + '@' + Math.round(x) + ',' + Math.round(z);
         this.order.forEach(r => {
-            if (r.type) return;
+            if (!TranscriptAnalyzer.hasBoard(r)) return;
             ((r.state && r.state.nearestNodes) || []).forEach(n => {
                 if (typeof n.x !== 'number' || typeof n.z !== 'number') return;
-                const key = n.type + '@' + Math.round(n.x) + ',' + Math.round(n.z);
+                const key = keyOf(n.type, n.x, n.z);
                 let e = seen.get(key);
                 if (!e) {
-                    e = { type: n.type, x: n.x, z: n.z, firstSec: r._sec, seats: new Map() };
+                    e = { type: n.type, x: n.x, z: n.z, firstSec: r._sec,
+                          seats: new Map(), goneSeats: new Map(), goneSec: null };
                     seen.set(key, e);
                     this.nodeIndex.push(e);
                 }
@@ -232,9 +251,43 @@ class TranscriptAnalyzer {
                 if (!e.seats.has(r.playerId)) e.seats.set(r.playerId, r._sec);
             });
         });
+
+        // Second pass for the emptied reports, because a node can be reported empty in
+        // the same snapshot that first lists it and the index must exist before it can
+        // be marked. "Ns ago" is how long BEFORE this snapshot it happened, so the real
+        // second is the snapshot's minus that — a report read at face value would retire
+        // the node up to two minutes late.
+        this.order.forEach(r => {
+            if (!TranscriptAnalyzer.hasBoard(r)) return;
+            ((r.state && r.state.recentEvents) || []).forEach(line => {
+                if (typeof line !== 'string') return;
+                const m = TranscriptAnalyzer.NODE_GONE_RE.exec(line);
+                if (!m) return;
+                const e = seen.get(keyOf(m[2], Number(m[3]), Number(m[4])));
+                if (!e) return;                       // never drawn, nothing to retire
+                const at = Math.max(0, r._sec - (Number(m[1]) || 0));
+                // Earliest wins on both counts: the first time THIS seat learned it, and
+                // the first time ANYBODY did.
+                const prev = e.goneSeats.get(r.playerId);
+                if (prev == null || at < prev) e.goneSeats.set(r.playerId, at);
+                if (e.goneSec == null || at < e.goneSec) e.goneSec = at;
+            });
+        });
         this.nodeIndex.sort((a, b) => a.firstSec - b.firstSec);
     }
 
+
+    // A record the board can be read off. Every turn qualifies. A marker never did,
+    // which was right up until final_word began carrying the closing snapshot -- the
+    // board the match ACTUALLY ended on, which in a slow match is minutes past the last
+    // move. Testing for the STATE rather than for the kind means a future marker that
+    // carries one is included without anybody remembering to come back here, and one
+    // that does not (round_missed) stays out on its own merits.
+    //
+    // Deliberately NOT used by _carryForward: a closing statement has no objective or
+    // plan, and letting it through would restate the last live plan as though the model
+    // still meant it.
+    static hasBoard(r) { return !!r && (!r.type || !!r.state); }
 
     // What age a seat had reached at a given moment, from its OWN snapshot. Enemy
     // entries in the state carry no age of their own, so this is the only way to build
@@ -244,7 +297,7 @@ class TranscriptAnalyzer {
         if (!st) return 'stone';
         let last = null;
         for (const r of st.turns) {
-            if (r.type) continue;
+            if (!TranscriptAnalyzer.hasBoard(r)) continue;
             if (r._sec <= sec) last = r; else break;
         }
         return (last && last.state && last.state.epoch && last.state.epoch.currentEpoch) || 'stone';
@@ -328,9 +381,18 @@ class TranscriptAnalyzer {
         const sec = rec._sec;
         const out = { sec, union: !!union, seats: [], nodes: [], enemies: [] };
 
-        out.nodes = (this.nodeIndex || []).filter(n => n.firstSec <= sec && (union
+        out.nodes = (this.nodeIndex || []).filter(n => {
+            if (n.firstSec > sec) return false;
             // ...and had seen it BY now, not merely at some point in the match.
-            ? true : (n.seats.get(rec.playerId) != null && n.seats.get(rec.playerId) <= sec)));
+            if (!union && !(n.seats.get(rec.playerId) != null && n.seats.get(rec.playerId) <= sec)) return false;
+            // Emptied, and known to be emptied BY NOW. The union asks whether anybody
+            // had found it out yet; a single seat asks only about its own workers,
+            // because a node a rival drained is still a forest to a seat that has not
+            // walked back into it -- and this board draws what that seat knew.
+            const gone = union ? n.goneSec : n.goneSeats.get(rec.playerId);
+            if (gone != null && gone <= sec) return false;
+            return true;
+        });
 
         // Each seat's latest snapshot at or before this moment, with its age. Nothing is
         // moved or guessed forward: a seat last heard from 200s ago is drawn where it was
@@ -340,7 +402,7 @@ class TranscriptAnalyzer {
             if (!union && s.id !== rec.playerId) return;
             let last = null;
             for (const r of s.turns) {
-                if (r.type) continue;
+                if (!TranscriptAnalyzer.hasBoard(r)) continue;
                 if (r._sec <= sec) last = r; else break;
             }
             if (!last) return;
@@ -387,7 +449,7 @@ class TranscriptAnalyzer {
             const remembered = new Map();
             if (seat) {
                 for (const r of seat.turns) {
-                    if (r.type) continue;
+                    if (!TranscriptAnalyzer.hasBoard(r)) continue;
                     if (r._sec > sec) break;
                     ((r.state && r.state.enemyUnits) || []).forEach(u => {
                         if (typeof u.x === 'number') remembered.set(String(u.id), { e: u, at: r._sec });
@@ -401,7 +463,7 @@ class TranscriptAnalyzer {
             const bLastSeen = new Map(), bFirstKnown = new Map();
             if (seat) {
                 for (const r of seat.turns) {
-                    if (r.type) continue;
+                    if (!TranscriptAnalyzer.hasBoard(r)) continue;
                     if (r._sec > sec) break;
                     ((r.state && r.state.enemyBuildings) || []).forEach(b => {
                         const k = String(b.id);
@@ -467,7 +529,7 @@ class TranscriptAnalyzer {
         if (col >= 0 && col < SPAN && row >= 0 && row < SPAN) {
             this.seats.forEach(st => {
                 let last = null;
-                for (const r of st.turns) { if (r.type) continue; if (r._sec <= sec) last = r; else break; }
+                for (const r of st.turns) { if (!TranscriptAnalyzer.hasBoard(r)) continue; if (r._sec <= sec) last = r; else break; }
                 const exp = last && last.state && last.state.map && last.state.map.exploration;
                 if (exp && exp[key] > 0) knowers.push(idOf(st));
             });
@@ -486,7 +548,7 @@ class TranscriptAnalyzer {
         this.seats.forEach(st => {
             if (out && out.secs != null) return;
             let last = null;
-            for (const r of st.turns) { if (r.type) continue; if (r._sec <= sec) last = r; else break; }
+            for (const r of st.turns) { if (!TranscriptAnalyzer.hasBoard(r)) continue; if (r._sec <= sec) last = r; else break; }
             const w = last && ((last.state && last.state.friendlyBuildings) || [])
                 .find(b => b.wonder === true || b.isWonder === true);
             if (!w) return;

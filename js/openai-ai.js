@@ -4359,8 +4359,18 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
 
         // The board it is looking at as it answers. A bare "you lost" invites a bare
         // reply; the state it lost ON is what makes the answer worth keeping.
-        let stateText = '';
-        try { stateText = this.buildCompactState(this.buildGameStateJSON(controller)) || ''; }
+        //
+        // Kept as the OBJECT as well as the rendered text. The model has always been
+        // shown this -- it is why a closing statement can quote its own final food pile
+        // to the last digit -- but it was rendered, sent and dropped, so the transcript
+        // ended at the last MOVE and the analyzer's final frame was a board minutes
+        // short of the ending it is captioned with. Recording it costs one state per
+        // seat, once, and makes the last frame the actual last frame.
+        let stateText = '', stateJson = null;
+        try {
+            stateJson = this.buildGameStateJSON(controller);
+            stateText = this.buildCompactState(stateJson) || '';
+        }
         catch (e) { /* a closing question is not worth failing over */ }
 
         // The civ ID, not getCivilization().name: that name is the German source string
@@ -4438,7 +4448,17 @@ units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}
                     type: 'final_word', kind, at: Date.now(),
                     latencyMs: Date.now() - t0,
                     outcome: (kind === 'defeated') ? 'defeated' : ((extra && extra.won) ? 'won' : 'lost'),
-                    text: text || null, tokens: tokens || null, error: error || null
+                    text: text || null, tokens: tokens || null, error: error || null,
+                    // Same shape and same key as every turn's snapshot, so anything that
+                    // already reads a state off a record reads this one without knowing
+                    // it is the last.
+                    state: stateJson || null,
+                    // The seconds this board is FROM. A final_word is not a turn and
+                    // carries no turn number, so without this the analyzer can only file
+                    // it at the moment the request returned -- which is however long the
+                    // model took to write its closing statement, not when the match ended.
+                    matchSeconds: (stateJson && stateJson.clock && stateJson.clock.matchSeconds != null)
+                        ? stateJson.clock.matchSeconds : null
                 });
             }
         } catch (e) { /* recording must never break the ending */ }
