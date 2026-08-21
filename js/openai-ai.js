@@ -169,7 +169,11 @@ class OpenAIAIManager {
     // is a wrong answer we dictated ourselves.
     static howToAnswer(controller) {
         const m = (controller && controller.model) || {};
-        const tools = OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(m));
+        // ...and a model whose endpoint has REFUSED the tools array is in the same
+        // position as a provider that never had one: the JSON is not a fallback for
+        // it any more, it is the only channel it has.
+        const tools = OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(m))
+            && !(m._reqOpts && m._reqOpts.omitTools);
         const json = '{"action":"wait","params":{"reason":"..."}}';
         if (!tools) return 'Reply with ONE raw JSON object, e.g. ' + json + '.';
         // The "nothing worth doing" hole, closed. A 9B seat ended 28 of 53 turns with
@@ -1385,7 +1389,7 @@ class OpenAIAIManager {
         } catch (e) { return {}; }
     }
 
-    static adaptToApiError(opts, errorText) {
+    static adaptToApiError(opts, errorText, model) {
         const e = String(errorText || '');
         const add = {};
         // The three non-OpenAI parameters, same send-then-learn rule as top_k below:
@@ -1428,7 +1432,36 @@ class OpenAIAIManager {
             && /unsupported|not support|unrecognized|unknown|extra|not permitted|is not supported|invalid/i.test(e)) {
             add.omitReasoning = true;
         }
+        // A model that cannot take tools AT ALL is not a parameter to drop, it is a
+        // different contract: Ollama answers "<model> does not support tools" and
+        // refuses the request outright, so the model never even loads. Dropping the
+        // tools array is only survivable when the seat is allowed to answer in raw
+        // JSON -- without that it would act with no channel at all and forfeit every
+        // turn in silence, which is strictly worse than a visible error. So the switch
+        // is thrown only for a fallback seat; for the others the error carries the
+        // hint (see hintForApiError) naming the setting that would make it playable.
+        if (!opts.omitTools && model && model.toolFallback
+            && /\btools?\b/i.test(e)
+            && /does not support|not supported|unsupported|does not accept/i.test(e)) {
+            add.omitTools = true;
+        }
         return Object.keys(add).length ? add : null;
+    }
+
+    // Turn an endpoint's refusal into an instruction the OPERATOR can act on. The raw
+    // body is kept verbatim in front of it -- this only appends the missing half, which
+    // is which switch in the model library answers that particular complaint.
+    static hintForApiError(errorText, model) {
+        const e = String(errorText || '');
+        if (/\btools?\b/i.test(e) && /does not support|not supported|unsupported|does not accept/i.test(e)) {
+            // Only worth saying when the operator can still act on it. With the flag
+            // already set this same 400 is adapted away instead of thrown, so the
+            // remaining case is always the one that needs the switch thrown.
+            if (!(model && model.toolFallback)) {
+                return 'no tool support -- enable "Tool fallback" for this model.';
+            }
+        }
+        return '';
     }
 
     // Build {url, body} for one chat turn. `turns` is the user/assistant history
@@ -3723,8 +3756,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
                 }
 
                 const fix = (response.status === 400 && !adapted)
-                    ? OpenAIAIManager.adaptToApiError(model._reqOpts, errorText) : null;
-                if (!fix) throw new Error(`API error (${response.status}): ${errorText}`);
+                    ? OpenAIAIManager.adaptToApiError(model._reqOpts, errorText, model) : null;
+                // Hint FIRST: the spectator log truncates at 90 characters, and a
+                // provider's error body will happily eat all of them on its own.
+                const hint = !fix ? OpenAIAIManager.hintForApiError(errorText, model) : '';
+                if (!fix) throw new Error(hint
+                    ? `API error (${response.status}): ${hint} Server said: ${errorText}`
+                    : `API error (${response.status}): ${errorText}`);
                 adapted = true;
                 Object.assign(model._reqOpts, fix);
                 try { model._onLearn(fix); } catch (e) { /* display only */ }
