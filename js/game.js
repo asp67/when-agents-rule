@@ -3516,10 +3516,29 @@ class Game {
     // laid eyes on whom -- and asking it twice would be two scans that could disagree
     // about what happened.
     //
-    // ENTER-vision semantics, not still-visible. A CONTACT is the moment something
-    // comes into view; an enemy that stands in sight for ten minutes is one contact,
-    // not six hundred. That is what a contact MEANS, and it is also what keeps this
-    // affordable in the buffer it writes to: recentEvents holds 14 and shows 8, and
+    // Three moments, not one. A thing ENTERS sight, it may MOVE while watched, and it
+    // LEAVES sight -- and the pair that matters most is the first and the last, because
+    // two positions in chronological order are a HEADING, and a heading is what says
+    // which way something's home is.
+    //
+    // Enter and lost are what make that readable inside a SINGLE turn: the aggregation
+    // below collapses repeats of one rival's one unit type into a line, so a stream of
+    // "still there, moved a bit" reports would arrive as one position however many were
+    // logged. "Sighted at A" and "lost at B" are different lines and both survive it.
+    //
+    // The move report is kept as well but earns its place differently: it is the only
+    // signal for something that stays in view for a long time, where enter-and-lost says
+    // nothing until it finally goes. Threshold CONTACT_MOVED_DIST of real displacement,
+    // so a besieging army parked in view stays quiet. Buildings never move.
+    //
+    // LOST is also the moment a model's knowledge of a position goes stale, which is a
+    // fact worth having on its own -- "it was there and I cannot see it now" is a
+    // different state from "it is there".
+    //
+    // A kill is NOT a lost contact: the thing did not slip away, it died, and KILL/LOSS
+    // already say so. Dead entities are dropped silently.
+    //
+    // Affordable in the buffer it writes to: recentEvents holds 14 and shows 8, and
     // this file already carries two scars from features that flooded it and evicted
     // the UNDER ATTACK warnings. Per-seat, per-turn, CONTACT may take at most
     // CONTACT_MAX_PER_TURN of those slots -- it is context, and it does not get to
@@ -3528,7 +3547,20 @@ class Game {
     // Reported ONLY where the seat can actually see: the same vision radii its own fog
     // uses. A contact for something a seat could not have seen would be the harness
     // handing it a free scout.
-    static get CONTACT_MAX_PER_TURN() { return 3; }
+    // Per TURN, and it has to be counted as such. This is enforced where the lines are
+    // written, which happens about once a second per seat -- so a cap applied per scan
+    // is a cap of itself times the length of a turn, and a 45-second turn against a
+    // 14-slot ring would leave the ring holding nothing but contacts. The budget resets
+    // when the seat's state-build counter moves, which is the same clock the entries
+    // expire on.
+    //
+    // Four of the eight lines a model is shown: enough for a sighting, a move and a loss
+    // with one spare, and it still leaves half the window for the report that something
+    // is being destroyed right now.
+    static get CONTACT_MAX_PER_TURN() { return 4; }
+    // Roughly ten seconds of walking for a scout, and further than a unit can drift by
+    // standing still. Below this a contact is the same contact.
+    static get CONTACT_MOVED_DIST() { return 25; }
     static get CONTACT_CAMERA_RANGE() { return 100; }
 
     // ONE seat per call, cycling. The scan is O(my things x their things) and at four
@@ -3560,9 +3592,10 @@ class Game {
 
         players.forEach(viewer => {
             if (viewer !== only) return;
-            const seen = viewer._contactSeen || (viewer._contactSeen = new Set());
-            const nowSeen = new Set();
+            const seen = viewer._contactSeen || (viewer._contactSeen = new Map());
+            const nowSeen = new Map();
             const fresh = new Map();     // "seat|type" -> {n, x, z, dist}
+            const lost = new Map();      // the same, for things that just left sight
             const myEyes = eyes.get(viewer) || [];
             if (!myEyes.length) { viewer._contactSeen = nowSeen; return; }
 
@@ -3605,8 +3638,30 @@ class Game {
                     }
                     if (sawAt !== null) {
                         const key = String(t.id);
-                        nowSeen.add(key);
-                        if (!seen.has(key)) {
+                        const was = seen.get(key);
+                        // New, or it has gone somewhere since we last said so.
+                        const moved = was && Math.hypot(t.x - was.rx, t.z - was.rz) >= Game.CONTACT_MOVED_DIST;
+                        const report = !was || moved;
+                        // TWO positions are kept, and the difference between them is the
+                        // whole point.
+                        //   rx,rz -- where we last SAID it was. The move threshold measures
+                        //     from here, or a unit creeping 24 units a look would never trip
+                        //     it by inches.
+                        //   x,z -- where it is NOW, refreshed every look whether or not
+                        //     anything was said. This is what a loss reports, and it has to
+                        //     be the last place it was SEEN rather than the last place it was
+                        //     mentioned: reporting the latter puts the loss at the same
+                        //     coordinate as the sighting, and two identical points are not a
+                        //     heading, which was the entire reason for reporting the loss.
+                        // The entity and its name ride along so the loss can be reported
+                        // without a second search for something by then out of sight.
+                        nowSeen.set(key, {
+                            x: t.x, z: t.z,
+                            rx: report ? t.x : (was ? was.rx : t.x),
+                            rz: report ? t.z : (was ? was.rz : t.z),
+                            e: t, who: this.seatLabel(other), type: t.type || 'unit'
+                        });
+                        if (report) {
                             const k = this.seatLabel(other) + '|' + (t.type || 'unit');
                             const cur = fresh.get(k);
                             if (!cur) {
@@ -3634,17 +3689,46 @@ class Game {
                 }
             });
 
+            // Gone from sight: in the last look, not in this one. Reported at the last
+            // place it WAS, which with the sighting that opened the pass is a heading.
+            seen.forEach((was, key) => {
+                if (nowSeen.has(key) || !was || !was.e) return;
+                if (was.e.health <= 0) return;         // killed, not lost — KILL/LOSS said it
+                const k = was.who + '|' + was.type + '|lost';
+                const cur = lost.get(k);
+                if (!cur) lost.set(k, { n: 1, x: was.x, z: was.z, who: was.who, type: was.type });
+                else cur.n++;
+            });
+
             viewer._contactSeen = nowSeen;
-            if (!fresh.size) return;
-            // Closest first: if only three lines fit, they should be the three that are
-            // most about to matter.
-            [...fresh.values()].sort((a, b) => a.dist - b.dist)
-                .slice(0, Game.CONTACT_MAX_PER_TURN)
-                .forEach(f => {
-                    const at = `(${Math.round(f.x)}, ${Math.round(f.z)})`;
-                    const n = f.n > 1 ? `${f.n}x ` : '';
-                    this.logPlayerEvent(viewer, `CONTACT: ${n}${f.who}'s ${f.type} sighted at ${at}`, 1);
-                });
+            if (!fresh.size && !lost.size) return;
+            // Closest first: if only a few lines fit, they should be the ones most about
+            // to matter. Sightings before losses -- something arriving outranks something
+            // leaving -- but a loss still gets a slot, because dropping it is what would
+            // leave a heading half-drawn.
+            // One budget for the whole turn, refilled when the seat next builds a state.
+            const seq = viewer._turnSeq || 0;
+            if (viewer._contactBudgetSeq !== seq) {
+                viewer._contactBudgetSeq = seq;
+                viewer._contactBudget = Game.CONTACT_MAX_PER_TURN;
+            }
+            if (!(viewer._contactBudget > 0)) return;
+
+            const at = (o) => `(${Math.round(o.x)}, ${Math.round(o.z)})`;
+            const many = (o) => o.n > 1 ? `${o.n}x ` : '';
+            const seenLines = [...fresh.values()].sort((a, b) => a.dist - b.dist)
+                .map(f => `CONTACT: ${many(f)}${f.who}'s ${f.type} sighted at ${at(f)}`);
+            const lostLines = [...lost.values()]
+                .map(l => `CONTACT LOST: ${many(l)}${l.who}'s ${l.type}, last seen at ${at(l)}`);
+            // Losses first when the budget is nearly out: a sighting with no loss is a
+            // position, a loss with no sighting still says the thing is no longer where
+            // the model last had it, and the pair is worth more than a second position.
+            const lines = (viewer._contactBudget <= lostLines.length)
+                ? lostLines.concat(seenLines) : seenLines.concat(lostLines);
+            lines.slice(0, viewer._contactBudget).forEach(line => {
+                viewer._contactBudget--;
+                this.logPlayerEvent(viewer, line, 1);
+            });
         });
 
         // Kept PER VIEWER, because only one was scanned: overwriting the whole feed

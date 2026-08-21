@@ -2908,7 +2908,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
 - "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
-- A "CONTACT" line is a rival unit or building coming into your sight, with where it was. It is a sighting at a MOMENT and is gone from this list next turn — what it means is yours to carry. Something roaming far from anywhere you have looked is a direction worth scouting; things repeatedly seen in one quarter are usually near something they came from.
+- A "CONTACT" line is a rival unit or building coming into your sight, and "CONTACT LOST" is one leaving it, each with where it was. Both are moments, and both are gone from this list next turn — what they MEAN is yours to carry. A sighting and a loss of the same unit are two positions in order, which is a heading: follow it back and it points at where that unit came from. Something roaming far from anywhere you have looked is a direction worth scouting. A "CONTACT LOST" also means your knowledge of that position is now old — it is where the unit WAS, not where it is.
 - "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
