@@ -83,6 +83,11 @@ class AIManager {
             if (this.game.updateRivalContacts && !this.game.spectatorMode && this.game.player) {
                 this.game.updateRivalContacts(this.game.player);
             }
+            // Who just laid eyes on whom. On the discovery beat rather than a beat of
+            // its own: a sighting between two 250ms samples is a unit that moved less
+            // than a third of its own vision radius, so nothing is missed that a finer
+            // scan would have caught, and everything else here already runs at 4Hz.
+            if (this.game.detectContacts) this.game.detectContacts();
         }
 
         this.thinkTimer += deltaTime;

@@ -1934,9 +1934,12 @@ class OpenAIAIManager {
         // nothing outlives the turn after. Two rather than one so an event landing just
         // after a state was built is still seen. A wall-clock window cannot express
         // this — turn length belongs to the model, not to the game.
+        // Expiry is per ENTRY now, not one window for everything: e.ttl state-builds,
+        // defaulting to the 2 this has always used. A CONTACT asks for 1, because a
+        // sighting repeated next turn reads as a second sighting of the same scout.
         const buildRecentEvents = () => {
             const seq = ai._turnSeq = (ai._turnSeq || 0) + 1;
-            return (ai.events || []).filter(e => (e.seq || 0) >= seq - 2).slice(-8).map(e =>
+            return (ai.events || []).filter(e => (e.seq || 0) >= seq - (e.ttl || 2)).slice(-8).map(e =>
                 `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
         };
 
@@ -2905,6 +2908,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
 - "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
+- A "CONTACT" line is a rival unit or building coming into your sight, with where it was. It is a sighting at a MOMENT and is gone from this list next turn — what it means is yours to carry. Something roaming far from anywhere you have looked is a direction worth scouting; things repeatedly seen in one quarter are usually near something they came from.
 - "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.

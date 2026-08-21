@@ -2119,7 +2119,12 @@ class Game {
     // Rolling per-player battle report. Serialized into the LLM game state as
     // "recentEvents" so a model learns about losses, kills and raids it can't
     // otherwise see (the state is a snapshot; deaths between turns were silent).
-    logPlayerEvent(ownerObj, text) {
+    // `ttl` is how many state builds the entry survives, defaulting to the 2 that
+    // everything here has always used. A CONTACT passes 1: it is a sighting at a
+    // moment, and a moment restated next turn reads as a second sighting -- the model
+    // would see one scout twice and count two. What it saw stays in its own history,
+    // which is where "where have they been roaming" is actually answered.
+    logPlayerEvent(ownerObj, text, ttl) {
         if (!ownerObj) return;
         ownerObj.events = ownerObj.events || [];
         // "seq" is the state-build counter this event was logged under, and it is what
@@ -2127,7 +2132,8 @@ class Game {
         // apart at 1x, a quarter of that at 4x, and a minute apart for a slow model, so
         // any fixed number of seconds means something different for every player in the
         // same match. A turn count means the same thing for all of them.
-        ownerObj.events.push({ at: Date.now(), seq: ownerObj._turnSeq || 0, text });
+        ownerObj.events.push({ at: Date.now(), seq: ownerObj._turnSeq || 0, text,
+                               ttl: (typeof ttl === 'number' && ttl > 0) ? ttl : 2 });
         if (ownerObj.events.length > 14) ownerObj.events.shift();
     }
 
@@ -3502,6 +3508,153 @@ class Game {
         const along = rx * ax.x + rz * ax.z;
         const step = Math.min(0, along + Game.FORMATION_LOOKAHEAD);
         return { x: slotX + ax.x * step, z: slotZ + ax.z * step };
+    }
+
+    // ---- Cross-seat contact ---------------------------------------------------
+    // One scan, two consumers: a CONTACT line in the sighting seat's recentEvents, and
+    // a feed the spectator camera can cut to. They ask the same question -- who just
+    // laid eyes on whom -- and asking it twice would be two scans that could disagree
+    // about what happened.
+    //
+    // ENTER-vision semantics, not still-visible. A CONTACT is the moment something
+    // comes into view; an enemy that stands in sight for ten minutes is one contact,
+    // not six hundred. That is what a contact MEANS, and it is also what keeps this
+    // affordable in the buffer it writes to: recentEvents holds 14 and shows 8, and
+    // this file already carries two scars from features that flooded it and evicted
+    // the UNDER ATTACK warnings. Per-seat, per-turn, CONTACT may take at most
+    // CONTACT_MAX_PER_TURN of those slots -- it is context, and it does not get to
+    // push out the report that something is being destroyed right now.
+    //
+    // Reported ONLY where the seat can actually see: the same vision radii its own fog
+    // uses. A contact for something a seat could not have seen would be the harness
+    // handing it a free scout.
+    static get CONTACT_MAX_PER_TURN() { return 3; }
+    static get CONTACT_CAMERA_RANGE() { return 100; }
+
+    // ONE seat per call, cycling. The scan is O(my things x their things) and at four
+    // seats of 200 it measured 11.9ms done all at once -- a 12ms stall inside a 16ms
+    // frame, four times a second, for a spectator convenience. Round-robin at the same
+    // 4Hz gives each seat a look once a second and costs a quarter of that per tick.
+    //
+    // Nothing is lost to the delay: the fastest unit in the game covers 2.2 units in
+    // that second, against vision radii of 12 to 60. A contact cannot slip through a
+    // gap that small.
+    detectContacts() {
+        const players = (this.aiManager && this.aiManager.aiPlayers) || [];
+        if (players.length < 2) return;
+        this._contactTurnIdx = ((this._contactTurnIdx || 0) + 1) % players.length;
+        const only = players[this._contactTurnIdx];
+        const cam = [];
+
+        // Vision sources per seat, built once: living units and FINISHED buildings,
+        // the same rule the fog uses (a construction plot sees nothing).
+        const eyes = new Map();
+        players.forEach(p => {
+            const list = [];
+            (p.units || []).forEach(u => { if (u.health > 0) list.push({ e: u, r: this.unitVision(u) }); });
+            (p.buildings || []).forEach(b => {
+                if (b.health > 0 && !b.underConstruction) list.push({ e: b, r: this.buildingVision(b) });
+            });
+            eyes.set(p, list);
+        });
+
+        players.forEach(viewer => {
+            if (viewer !== only) return;
+            const seen = viewer._contactSeen || (viewer._contactSeen = new Set());
+            const nowSeen = new Set();
+            const fresh = new Map();     // "seat|type" -> {n, x, z, dist}
+            const myEyes = eyes.get(viewer) || [];
+            if (!myEyes.length) { viewer._contactSeen = nowSeen; return; }
+
+            // One circle around everything this seat owns, so a rival on the far side of
+            // the map is dismissed in a single hypot instead of one per unit I own. At
+            // 200 units a side that is the difference between a quarter of a million
+            // distance checks a second and a few thousand: the inner loop only runs for
+            // rivals that are plausibly close to SOMETHING of mine.
+            let cx = 0, cz = 0;
+            myEyes.forEach(s => { cx += s.e.x; cz += s.e.z; });
+            cx /= myEyes.length; cz /= myEyes.length;
+            let reach = 0;
+            myEyes.forEach(s => {
+                const d = Math.hypot(s.e.x - cx, s.e.z - cz) + Math.max(s.r, Game.CONTACT_CAMERA_RANGE);
+                if (d > reach) reach = d;
+            });
+
+            players.forEach(other => {
+                if (other === viewer) return;
+                const targets = [];
+                (other.units || []).forEach(u => { if (u.health > 0) targets.push(u); });
+                (other.buildings || []).forEach(b => { if (b.health > 0) targets.push(b); });
+                const pairBest = { dist: Infinity, x: 0, z: 0, target: null, hit: false };
+
+                targets.forEach(t => {
+                    // Cheap rejection first: outside the circle round everything I own,
+                    // no eye of mine can see it and no unit of mine is near it.
+                    if (Math.hypot(t.x - cx, t.z - cz) > reach) return;
+                    // Both answers in one pass: the CLOSEST of my things to it (the
+                    // camera's question, which counts near misses nobody saw) and
+                    // whether any of them could actually see it (the event's question).
+                    // No early exit -- breaking on the first seeing eye leaves `best` a
+                    // partial minimum, and the camera would then read a distance that
+                    // is merely the first one tried.
+                    let best = Infinity, sawAt = null;
+                    for (const src of myEyes) {
+                        const d = Math.hypot(src.e.x - t.x, src.e.z - t.z);
+                        if (d < best) best = d;
+                        if (sawAt === null && d <= src.r) sawAt = d;
+                    }
+                    if (sawAt !== null) {
+                        const key = String(t.id);
+                        nowSeen.add(key);
+                        if (!seen.has(key)) {
+                            const k = this.seatLabel(other) + '|' + (t.type || 'unit');
+                            const cur = fresh.get(k);
+                            if (!cur) {
+                                fresh.set(k, { n: 1, x: t.x, z: t.z, dist: sawAt,
+                                               who: this.seatLabel(other), type: t.type || 'unit' });
+                            } else {
+                                cur.n++;
+                                // Report the nearest one of its kind: that is the one
+                                // whose position is worth having.
+                                if (sawAt < cur.dist) { cur.dist = sawAt; cur.x = t.x; cur.z = t.z; }
+                            }
+                        }
+                    }
+                    // The camera cuts to ONE thing. Keeping every pair inside 100
+                    // built 417 throwaway objects a scan in a big fight, to choose one
+                    // from — so keep only the closest for this pair of seats.
+                    if (best <= Game.CONTACT_CAMERA_RANGE && best < pairBest.dist) {
+                        pairBest.dist = best; pairBest.x = t.x; pairBest.z = t.z;
+                        pairBest.target = t; pairBest.hit = true;
+                    }
+                });
+                if (pairBest.hit) {
+                    cam.push({ viewer, other, dist: pairBest.dist, x: pairBest.x, z: pairBest.z,
+                               target: pairBest.target });
+                }
+            });
+
+            viewer._contactSeen = nowSeen;
+            if (!fresh.size) return;
+            // Closest first: if only three lines fit, they should be the three that are
+            // most about to matter.
+            [...fresh.values()].sort((a, b) => a.dist - b.dist)
+                .slice(0, Game.CONTACT_MAX_PER_TURN)
+                .forEach(f => {
+                    const at = `(${Math.round(f.x)}, ${Math.round(f.z)})`;
+                    const n = f.n > 1 ? `${f.n}x ` : '';
+                    this.logPlayerEvent(viewer, `CONTACT: ${n}${f.who}'s ${f.type} sighted at ${at}`, 1);
+                });
+        });
+
+        // Kept PER VIEWER, because only one was scanned: overwriting the whole feed
+        // each tick would leave the camera looking at a single seat's contacts and
+        // blind to the other three until their turn came round.
+        this._contactFeedBy = this._contactFeedBy || {};
+        this._contactFeedBy[only.id] = cam;
+        this._contactFeed = Object.keys(this._contactFeedBy)
+            .reduce((all, k) => all.concat(this._contactFeedBy[k]), [])
+            .sort((a, b) => a.dist - b.dist);
     }
 
     // ---- Exploration tracking (per player) ------------------------------------
