@@ -3610,6 +3610,26 @@ class Game {
     // Roughly ten seconds of walking for a scout, and further than a unit can drift by
     // standing still. Below this a contact is the same contact.
     static get CONTACT_MOVED_DIST() { return 25; }
+    // How far a thing must have gone between being sighted and being lost for the pair
+    // to be worth two lines. A pair that names one coordinate twice is not a heading,
+    // it is the same fact said twice -- something sitting on the edge of vision,
+    // flickering in and out without going anywhere.
+    //
+    // The number is measured, not chosen. Across a real match the nineteen
+    // sighted-then-lost pairs fall in two clumps and nothing lies between them: TWELVE
+    // at exactly 0.0, then 5.8, 6.4, 10.0, 13.2, 14.0, 15.1, 36.2. So the cut belongs
+    // in the empty space, and anywhere from 2 to 5 drops all twelve and keeps all
+    // seven. Three: clear of the +/-1 that integer coordinates can invent, and clear of
+    // the smallest real movement by nearly a factor of two.
+    //
+    // Deliberately NOT set to the eight I first guessed at, which would have thrown
+    // away the 5.8 and the 6.4 -- two units that genuinely walked somewhere, and whose
+    // bearings are exactly what the pair exists to carry. A stationary thing is the
+    // only thing being filtered here.
+    static get CONTACT_FLAP_DIST() { return 3; }
+    // ...and how many turns before a thing parked at the edge is worth mentioning again
+    // even though it has not moved.
+    static get CONTACT_FLAP_TURNS() { return 3; }
     static get CONTACT_CAMERA_RANGE() { return 100; }
 
     // ONE seat per call, cycling. The scan is O(my things x their things) and at four
@@ -3645,6 +3665,11 @@ class Game {
             const nowSeen = new Map();
             const fresh = new Map();     // "seat|type" -> {n, x, z, dist}
             const lost = new Map();      // the same, for things that just left sight
+            const turnSeq = viewer._turnSeq || 0;
+            // Short memory of what went out of sight and where, so a thing bobbing on
+            // the edge of vision is recognised as the same thing coming back.
+            const gone = viewer._contactGone || (viewer._contactGone = new Map());
+            if (gone.size > 400) gone.clear();        // a match-long map is a leak
             const myEyes = eyes.get(viewer) || [];
             if (!myEyes.length) { viewer._contactSeen = nowSeen; return; }
 
@@ -3694,9 +3719,17 @@ class Game {
                     if (sawAt !== null) {
                         const key = String(t.id);
                         const was = seen.get(key);
+                        // Coming back into view having not gone anywhere is not news. It
+                        // is the same thing standing where we last saw it, which the
+                        // model was already told; saying it again spends a line to
+                        // repeat a coordinate. After a few turns it is worth confirming.
+                        const back = !was && gone.get(key);
+                        const parked = back && Math.hypot(t.x - back.x, t.z - back.z) < Game.CONTACT_FLAP_DIST
+                                            && (turnSeq - back.seq) < Game.CONTACT_FLAP_TURNS;
                         // New, or it has gone somewhere since we last said so.
                         const moved = was && Math.hypot(t.x - was.rx, t.z - was.rz) >= Game.CONTACT_MOVED_DIST;
-                        const report = !was || moved;
+                        const report = (!was && !parked) || moved;
+                        if (back) gone.delete(key);
                         // TWO positions are kept, and the difference between them is the
                         // whole point.
                         //   rx,rz -- where we last SAID it was. The move threshold measures
@@ -3714,6 +3747,10 @@ class Game {
                             x: t.x, z: t.z,
                             rx: report ? t.x : (was ? was.rx : t.x),
                             rz: report ? t.z : (was ? was.rz : t.z),
+                            // Where THIS pass through our vision began. The loss is
+                            // measured against it, not against the last thing we said.
+                            sx: was ? was.sx : t.x,
+                            sz: was ? was.sz : t.z,
                             e: t, who: this.seatLabel(other), type: t.type || 'unit'
                         });
                         if (report) {
@@ -3749,6 +3786,11 @@ class Game {
             seen.forEach((was, key) => {
                 if (nowSeen.has(key) || !was || !was.e) return;
                 if (was.e.health <= 0) return;         // killed, not lost — KILL/LOSS said it
+                // Remembered either way, so that coming straight back is not "new".
+                gone.set(key, { x: was.x, z: was.z, seq: turnSeq });
+                // Lost where it was found: the pair draws no line, so it is one fact
+                // reported twice. The sighting already said where it is.
+                if (Math.hypot(was.x - was.sx, was.z - was.sz) < Game.CONTACT_FLAP_DIST) return;
                 const k = was.who + '|' + was.type + '|lost';
                 const cur = lost.get(k);
                 if (!cur) lost.set(k, { n: 1, x: was.x, z: was.z, who: was.who, type: was.type });
