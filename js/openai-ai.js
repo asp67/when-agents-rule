@@ -3564,7 +3564,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             // moves). Counted separately from parse failures — the endpoint and
             // the reply are fine, the model just didn't issue an action.
             if (result && result.noAction) {
-                this.registerNoActionReturn(controller);
+                this.registerNoActionReturn(controller,
+                    OpenAIAIManager.hitTokenCap(norm && norm.finish_reason), askedMax);
                 controller._failStreak = 0;
                 return stampResult(controller.lastActionResult);
             }
@@ -3746,9 +3747,38 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
     // A reply arrived but carried no JSON action: count it as its own outcome
     // (a valid RETURN — it keeps its latency — but a wasted turn) and tell the
     // model unambiguously that nothing was done.
-    registerNoActionReturn(controller) {
+    registerNoActionReturn(controller, cappedOut, askedMax) {
         const s = controller.stats;
         if (s) s.noActionReturns = (s.noActionReturns || 0) + 1;
+
+        // RAN OUT OF ROOM outranks every other reading of a silent turn, and it has to
+        // be said first because it is the only one the model can act on. A reasoning
+        // model that spends its whole budget thinking arrives here looking exactly like
+        // one that chatted instead of calling a tool -- no tool call, a reply that will
+        // not parse -- and was told "you called no tool at all", which is true and
+        // useless: it never got as far as calling anything, and it cannot fix its
+        // formatting when formatting was never the problem.
+        //
+        // The other message that says this properly is one branch over, and unreachable
+        // from here: it fires only on an EMPTY reply, and a model that filled 8000
+        // tokens with reasoning has a very non-empty one.
+        //
+        // The one fact the model does not otherwise have is that thinking is charged to
+        // the same budget as the answer. Nothing tells it the size of that budget --
+        // max_tokens is applied to the stream and never appears in the prompt -- so
+        // this is the only channel through which it can learn the shape of the limit
+        // it keeps hitting.
+        if (cappedOut) {
+            if (s) s.cappedOutTurns = (s.cappedOutTurns || 0) + 1;
+            controller.lastActionResult =
+                `[ERROR] NO ACTION: you hit the output limit of ${askedMax || 'the configured'} tokens before writing a tool call, so the turn was forfeited. `
+                + `Your reasoning is spent from that SAME budget -- it is not free, and there is no separate allowance for it. `
+                + `Think in fewer words, decide sooner, and call a tool while you still have room. `
+                + `If you are unsure, {"action":"wait","params":{"reason":"..."}} costs almost nothing and keeps the turn.`;
+            const cappedTurn = controller.turnLog[controller.turnLog.length - 1];
+            if (cappedTurn && cappedTurn.outcome == null) cappedTurn.outcome = controller.lastActionResult;
+            return;
+        }
         // Two faults look identical from here and have different fixes. When tool
         // syntax was found in the raw reply the model DID call and the server missed
         // it -- a wrong --tool-call-parser on vLLM, or a chat template without a tool
