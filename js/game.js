@@ -1219,7 +1219,11 @@ class Game {
                     if (off && dist > attackRange + FORM_DROP) {
                         // The slot travels with the target, so a fleeing enemy is chased
                         // in formation rather than by a shape aimed at where it used to be.
-                        const aim = this.formationAim(unit, currentTarget.x + off.x, currentTarget.z + off.z);
+                        // Clamped to LAND, like a move order's slot: an approach slot in
+                        // the water is a unit walking at the sea while keepUnitsAshore
+                        // shoves it back, once a tick, for as long as the order stands.
+                        const slot = this.clampSlot(currentTarget.x + off.x, currentTarget.z + off.z);
+                        const aim = this.formationAim(unit, slot.x, slot.z);
                         ax = aim.x; az = aim.z;
                     } else if (off) {
                         unit.formationOffset = null;   // arrived: ranks dissolve
@@ -3233,6 +3237,51 @@ class Game {
         };
         sweep(this.player);
         ((this.aiManager && this.aiManager.aiPlayers) || []).forEach(sweep);
+    }
+
+    // Somewhere a unit can actually STAND. A formation hands out fixed slots, and a
+    // slot nobody can occupy is not a slot -- it is a unit walking at a place it will
+    // be shoved out of, once a frame, for as long as the order stands. That is the
+    // jitter asp67 saw: a rank marching into a base, pinned and vibrating, going
+    // nowhere. And with matchSpeed holding the group to its slowest member, units that
+    // never arrive are a formation that never arrives.
+    //
+    // Two things make a spot unstandable. The coast, which clampToMap's square box
+    // already keeps well clear of (its +/-370 sits inside a shoreline that runs 390 to
+    // 416) -- kept anyway, since it costs nothing and the box is not the coast.
+    //
+    // And BUILDINGS, which is the one that was actually biting. EngineRenderer pushes
+    // every unit out of a radial clearance ring around every building each frame; a
+    // slot inside one is a tug of war between the mover and the push-out that neither
+    // wins. Resolved the same way the renderer resolves it -- straight out along the
+    // radius -- and with the same numbers, because a slot cleared by a different rule
+    // than the one enforcing it is a slot that is only sometimes legal.
+    //
+    // Farms are excluded there, so they are excluded here.
+    static get UNIT_BUILDING_CLEARANCE() { return 4.5; }
+    static get WONDER_CLEARANCE() { return 7.0; }
+
+    clampSlot(x, z) {
+        const p = this.clampToMap(x, z);
+        const t = this.terrain;
+        let { x: sx, z: sz } = (t && t.clampToLand) ? t.clampToLand(p.x, p.z) : p;
+
+        // One pass out of each ring, nearest first. A slot wedged between two rings can
+        // still end up inside one -- the unit is then pushed the last step by the
+        // renderer and stands beside its rank instead of in it, which is a formation
+        // slightly out of shape rather than a formation that never gets there.
+        const blds = this.getAllBuildings ? this.getAllBuildings() : [];
+        for (const b of blds) {
+            if (!b || b.health <= 0 || b.type === 'farm') continue;
+            const clr = (b.isWonder ? Game.WONDER_CLEARANCE : Game.UNIT_BUILDING_CLEARANCE) + 0.5;
+            const dx = sx - b.x, dz = sz - b.z;
+            const d = Math.hypot(dx, dz);
+            if (d >= clr) continue;
+            if (d < 0.01) { sx = b.x + clr; continue; }   // dead centre: any direction out
+            sx = b.x + (dx / d) * clr;
+            sz = b.z + (dz / d) * clr;
+        }
+        return { x: sx, z: sz };
     }
 
     clampToMap(x, z, margin = 30) {

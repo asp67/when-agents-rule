@@ -81,7 +81,7 @@ class OpenAIAIManager {
         const WHO = { units: { type: 'object', description: 'Object of {"type": count}, e.g. {"champion":3}, or a category like {"infantry":5}. Omit for the whole army.' },
                       unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids from friendlyUnits. Wins over "units" when both are given.' },
                       matchSpeed: S('Optional. "slowestUnit" holds the whole group to its slowest member so they arrive together instead of strung out. Omit to let every unit run at its own speed, which is faster for the quick ones and arrives piecemeal.'),
-                      formation: S('Optional shape for the MARCH: "line" (abreast), "wedge" (point forward), "block" (square), "ranged_back" (melee in front, shooters behind). Dropped on contact — it governs the approach, not the fight. Implies matchSpeed "slowestUnit", since a shape only holds if everyone keeps pace.') };
+                      formation: S('Optional shape for the MARCH: "line" (two ranks abreast), "wedge" (filled triangle, point forward, shooters in the rear ranks), "block" (four-to-five deep, shooters on both flanks), "ranged_back" (three ranks of melee, a gap, three ranks of shooters). Dropped on contact — it governs the approach, not the fight. Implies matchSpeed "slowestUnit", since a shape only holds if everyone keeps pace.') };
         return [
             ['train_unit', 'Train one unit at a building that can produce it.',
              Object.assign({ unitType: S('Unit id from trainableUnits.') }, XZ), ['unitType']],
@@ -683,39 +683,76 @@ class OpenAIAIManager {
 
     formationSlots(units, shape) {
         const S = OpenAIAIManager.FORMATION_SPACING;
-        const n = units.length;
         const out = new Map();
         // The engine's own ranged test, not a list of unit names: range > 1 is what
         // updateCombat uses to decide who shoots and who closes, so "ranged" here and
         // "ranged" there cannot come to mean different things.
         const isRanged = u => ((u && u.range) || 0) > 1;
+        const melee = units.filter(u => !isRanged(u));
+        const shot  = units.filter(isRanged);
+
+        // Fill `list` into `rows` ranks starting at rank `from`, centred on the axis of
+        // march. Front rank first, so a half-filled formation is short at the BACK
+        // rather than ragged at the front where it meets somebody.
+        const ranks = (list, rows, from) => {
+            if (!list.length) return 0;
+            const w = Math.ceil(list.length / rows);
+            list.forEach((u, i) => {
+                const row = Math.floor(i / w), col = i % w;
+                // Each rank centres on its OWN count, so a short back rank sits behind
+                // the middle of the one in front instead of hanging off its left.
+                const inRow = Math.min(w, list.length - row * w);
+                out.set(u, { f: -(from + row) * S, r: (col - (inRow - 1) / 2) * S });
+            });
+            return Math.ceil(list.length / w);
+        };
 
         if (shape === 'line') {
-            units.forEach((u, i) => out.set(u, { f: 0, r: (i - (n - 1) / 2) * S }));
+            // Two deep. One rank is the widest front a given number of units can have,
+            // which is what put outer slots into the sea and across half a village; two
+            // halves the width for a shape that still reads as a line.
+            ranks(units, 2, 0);
         } else if (shape === 'wedge') {
-            // Point first, then pairs falling back to either side.
-            units.forEach((u, i) => {
-                const k = Math.ceil(i / 2);
-                const side = (i === 0) ? 0 : ((i % 2) ? -1 : 1);
-                out.set(u, { f: -k * S, r: side * k * S });
-            });
+            // A FILLED triangle, point forward: rank k holds k+1. Melee fills from the
+            // point back, so the tip is what closes; the shooters land in the wide rear
+            // ranks, which is where a triangle has room for them anyway.
+            const order = melee.concat(shot);
+            let i = 0, k = 0;
+            while (i < order.length) {
+                const wide = Math.min(k + 1, order.length - i);
+                for (let j = 0; j < wide; j++) {
+                    out.set(order[i + j], { f: -k * S, r: (j - (wide - 1) / 2) * S });
+                }
+                i += wide; k++;
+            }
         } else if (shape === 'block') {
-            const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
-            units.forEach((u, i) => {
-                const row = Math.floor(i / cols), col = i % cols;
-                out.set(u, { f: -row * S, r: (col - (cols - 1) / 2) * S });
+            // Deep and square-ish, with the shooters on BOTH flanks and the melee in
+            // the middle: a column that can be hit from either side and answers with
+            // its own edges. Five deep once there are enough to fill it, four below.
+            const depth = units.length >= 20 ? 5 : 4;
+            const cols = Math.max(1, Math.ceil(units.length / depth));
+            // Column order from the outside in, so the shooters -- laid first -- take
+            // the flanks and the melee fills what is left, the middle.
+            const mid = (cols - 1) / 2;
+            const byEdge = Array.from({ length: cols }, (_, c) => c)
+                .sort((a, b) => Math.abs(b - mid) - Math.abs(a - mid));
+            const seats = [];
+            byEdge.forEach(c => { for (let row = 0; row < depth; row++) seats.push({ c, row }); });
+            shot.concat(melee).forEach((u, i) => {
+                const s = seats[i];
+                if (!s) return;
+                out.set(u, { f: -s.row * S, r: (s.c - mid) * S });
             });
         } else if (shape === 'ranged_back') {
-            const front = units.filter(u => !isRanged(u));
-            const back = units.filter(isRanged);
-            const lay = (list, depth) => list.forEach((u, i) =>
-                out.set(u, { f: depth, r: (i - (list.length - 1) / 2) * S }));
-            lay(front, 0);
-            lay(back, -S * 1.5);
-            // Everyone shoots, or nobody does: one rank is not a formation, and a
-            // model that asked for two should be told it got one.
-            if (!front.length || !back.length) {
-                return { slots: out, degenerate: back.length ? 'every unit is ranged' : 'no ranged units' };
+            // Three ranks of melee, an empty rank, three of shot. The gap is the point:
+            // it is what stops the shooters being caught in the first contact, and it
+            // is why this is not just "block with the archers at the back".
+            const meleeRows = ranks(melee, 3, 0);
+            ranks(shot, 3, (meleeRows || 0) + 1);
+            // Everyone shoots, or nobody does: one body is not two, and a model that
+            // asked for a screen and a firing line should be told it got one of them.
+            if (!melee.length || !shot.length) {
+                return { slots: out, degenerate: shot.length ? 'every unit is ranged' : 'no ranged units' };
             }
         } else {
             return { slots: null };
@@ -5446,7 +5483,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             // than as everybody converging on one point. Clamped: a slot off the edge
             // of the map is not somewhere a unit can stand.
             const off = form.offsets && form.offsets.get(unit);
-            const dest = off ? game.clampToMap(targetX + off.x, targetZ + off.z) : { x: targetX, z: targetZ };
+            const dest = off ? game.clampSlot(targetX + off.x, targetZ + off.z) : { x: targetX, z: targetZ };
             unit.targetX = dest.x;
             unit.targetZ = dest.z;
             // Measured to the SLOT, which is the trip this unit is actually making.
@@ -5650,7 +5687,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             const off = (form.offsets && form.offsets.get(unit)) || null;
             // Both branches need it: attackMove for the march when nothing is in the
             // way, formationOffset for the approach when something already is.
-            const am = off ? game.clampToMap(targetX + off.x, targetZ + off.z) : { x: targetX, z: targetZ };
+            const am = off ? game.clampSlot(targetX + off.x, targetZ + off.z) : { x: targetX, z: targetZ };
             unit.attackMove = { x: am.x, z: am.z };
             unit.formationOffset = off;
             unit.attackTimer = 0;
