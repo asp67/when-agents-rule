@@ -1002,6 +1002,125 @@ class OpenAIAIManager {
     // Ask an endpoint who is serving it. Never throws and never blocks a match: a
     // match that cannot start because a probe timed out would be a recording feature
     // costing a measurement, which is the wrong way round.
+    // ---- What can this endpoint actually do? --------------------------------
+    //
+    // Not inferred from the URL. detectProvider matches an address, which is a guess
+    // that holds until somebody runs vLLM on a custom port behind a proxy, or next
+    // month's server ships -- and a wrong guess here is a seat that answers in a
+    // format we cannot read, reported to its owner as a broken model.
+    //
+    // So ASK, and remember. Every stack publishes what it can do; no two agree on
+    // where, and none of them is OpenAI, which publishes nothing at all:
+    //
+    //   llama.cpp  GET /props            -> chat_template_caps AND the whole Jinja
+    //                                       template. The richest of the three.
+    //   SGLang     GET /get_server_info  -> tool_call_parser / reasoning_parser BY
+    //                                       NAME. A null parser means tool calls come
+    //                                       back as unparsed text -- an operator's
+    //                                       misconfiguration we can see before a match
+    //                                       rather than after a forfeited turn.
+    //   vLLM       GET /version          -> only that it is vLLM. It exposes 25 routes
+    //                                       and not one of them names its tool parser.
+    //                                       What it does have is /v1/chat/completions
+    //                                       /render, which returns the token ids of the
+    //                                       prompt it WOULD build -- ground truth, and
+    //                                       better than any self-description.
+    //   Ollama     GET /api/version, then POST /api/show -> capabilities: [tools, ...]
+    //
+    // Never throws, never blocks. An unknown stack returns nulls and everything carries
+    // on exactly as before -- the probe can only ever ADD knowledge, so a server we have
+    // never seen degrades to today's behaviour instead of to an error.
+    static async probeCapabilities(conn, timeoutMs = 5000) {
+        const out = { stack: null, tools: null, parallelTools: null, toolParser: null,
+                      reasoningControl: null, contextLength: null, probedAt: Date.now(), note: null };
+        try {
+            const raw = OpenAIAIManager.stripSlash((conn && conn.endpoint) || '');
+            if (!raw) return out;
+            const root = OpenAIAIManager.stripSlash(raw.replace(/\/(v1|api)$/i, ''));
+            let headers = { 'Content-Type': 'application/json' };
+            try {
+                const auth = (conn && conn.auth) || (conn && conn.apiKey ? { type: 'bearer', key: conn.apiKey } : { type: 'none' });
+                headers = await OpenAIAIManager.buildAuthHeaders(auth, 'openai');
+            } catch (e) { /* an unauthenticated probe is still worth trying */ }
+
+            const get = async (path, opts) => {
+                try {
+                    const r = await OpenAIAIManager.fetchWithTimeout(root + path,
+                        Object.assign({ method: 'GET', headers }, opts || {}), timeoutMs);
+                    if (!r || !r.ok) return null;
+                    return await r.json();
+                } catch (e) { return null; }
+            };
+
+            // What a template LETS you steer is not what a server accepts: a model whose
+            // template has no reasoning_effort cannot be dialled down at any layer, and
+            // knowing that up front is worth more than a sweep that discovers it slowly.
+            const fromTemplate = (tpl) => {
+                if (!tpl || typeof tpl !== 'string') return null;
+                if (/reasoning_effort/.test(tpl)) return 'reasoning_effort';
+                if (/enable_thinking/.test(tpl)) return 'enable_thinking';
+                return null;
+            };
+
+            const props = await get('/props');
+            if (props && props.chat_template_caps) {
+                const c = props.chat_template_caps || {};
+                out.stack = 'llama.cpp';
+                out.tools = !!c.supports_tools && !!c.supports_tool_calls;
+                out.parallelTools = !!c.supports_parallel_tool_calls;
+                out.reasoningControl = fromTemplate(props.chat_template);
+                const g = props.default_generation_settings || {};
+                out.contextLength = g.n_ctx || null;
+                out.note = out.tools ? null : 'template declares no tool support';
+                return out;
+            }
+
+            const si = await get('/get_server_info');
+            if (si && Object.prototype.hasOwnProperty.call(si, 'tool_call_parser')) {
+                out.stack = 'sglang';
+                out.toolParser = si.tool_call_parser || null;
+                out.tools = !!si.tool_call_parser;
+                out.parallelTools = out.tools ? null : false;   // not declared; unknown when on
+                out.reasoningControl = si.reasoning_parser ? 'reasoning_effort' : null;
+                out.contextLength = si.context_length || null;
+                out.note = out.tools ? null
+                    : 'no --tool-call-parser configured: tool calls will arrive as plain text';
+                return out;
+            }
+
+            const ver = await get('/version');
+            if (ver && ver.version) {
+                out.stack = 'vllm';
+                // It will not name its parser, but it does state the window, and a seat
+                // configured past it overflows every turn for a reason nobody can see.
+                const mods = await get('/v1/models');
+                const first = mods && mods.data && mods.data[0];
+                if (first && first.max_model_len) out.contextLength = first.max_model_len;
+                // It will not say. Tools are assumed present because the OpenAI route is,
+                // and the handshake settles it if it matters; the render route is noted
+                // because it is how the template can be read when we need the truth.
+                out.tools = null;
+                out.note = 'vLLM names no tool parser; use /v1/chat/completions/render to read the prompt';
+                return out;
+            }
+
+            const oll = await get('/api/version');
+            if (oll && oll.version) {
+                out.stack = 'ollama';
+                try {
+                    const r = await OpenAIAIManager.fetchWithTimeout(root + '/api/show',
+                        { method: 'POST', headers, body: JSON.stringify({ model: (conn && conn.model) || '' }) }, timeoutMs);
+                    const show = (r && r.ok) ? await r.json() : null;
+                    const caps = (show && show.capabilities) || [];
+                    out.tools = caps.length ? caps.indexOf('tools') >= 0 : null;
+                    out.reasoningControl = caps.indexOf('thinking') >= 0 ? 'think' : null;
+                } catch (e) { /* the version alone still identifies the stack */ }
+                return out;
+            }
+        } catch (e) { /* a probe that fails tells us nothing, and that is allowed */ }
+        return out;
+    }
+
     static async probeServedBy(conn) {
         try {
             const prov = OpenAIAIManager.resolveProvider(conn);

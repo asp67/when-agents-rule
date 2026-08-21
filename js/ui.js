@@ -424,6 +424,47 @@ class UIManager {
     // library entry so the card can say so, and so a later match does not spend a request
     // rediscovering it. Observed behaviour, not a guess from the model id — which is the
     // only sort of capability claim this file is willing to make.
+    // What an endpoint told us about itself, kept on the library entry beside the
+    // parameters it has refused. Same reasoning as noteModelRejection: an observation
+    // that cost a round trip is worth more than the round trip, and rediscovering it
+    // every match is how a cheap probe becomes an expensive one.
+    //
+    // Overwrites rather than merges. A rejection accumulates -- an endpoint that refused
+    // top_k still refuses it -- but a capability report describes the server as it is
+    // NOW, and a server whose model or flags changed must not carry its old answer
+    // forward under a new configuration.
+    noteModelCapabilities(libraryId, caps) {
+        if (libraryId == null || !caps) return;
+        // A probe that identified nothing is not a finding, it is a failed probe -- the
+        // endpoint was down, or is a stack we do not know. Storing it would erase a good
+        // answer from last week because the server happens to be off this minute.
+        if (!caps.stack) return;
+        const cfg = this._arenaConfig;
+        const m = cfg && (cfg.models || []).find(x => x.id === libraryId);
+        if (!m) return;
+        m.capabilities = caps;
+        this.saveArenaConfig();
+        if (document.getElementById('modelLibraryList')) this.renderArenaLibrary();
+    }
+
+    // One line for the card: what this endpoint is, and the two things that decide
+    // whether a seat will work at all -- can it call tools, and can its thinking be
+    // steered. Silent when nothing was learned, so an unprobed or unknown endpoint
+    // shows no worse than it did before there was a probe.
+    capabilitySummary(m) {
+        const c = m && m.capabilities;
+        if (!c || !c.stack) return '';
+        const bits = [c.stack];
+        if (c.tools === false) bits.push('NO TOOL SUPPORT');
+        else if (c.tools === true) bits.push('tools' + (c.parallelTools ? ' (parallel)' : ''));
+        if (c.toolParser) bits.push(c.toolParser);
+        if (c.reasoningControl === 'reasoning_effort') bits.push('thinking: graded');
+        else if (c.reasoningControl === 'enable_thinking') bits.push('thinking: on/off only');
+        else if (c.reasoningControl === 'think') bits.push('thinking: on/off only');
+        if (c.contextLength) bits.push((c.contextLength / 1024).toFixed(0) + 'k ctx');
+        return bits.join(' · ') + (c.note ? ' — ' + c.note : '');
+    }
+
     noteModelRejection(libraryId, flags) {
         if (libraryId == null || !flags) return;
         const cfg = this._arenaConfig;
@@ -782,6 +823,14 @@ class UIManager {
         const sel = (v) => m.auth.type === v ? 'selected' : '';
         const status = m._status ? `<span class="test-status ${m._status.cls}" id="modelStatus-${m.id}">${e(m._status.text)}</span>`
                                  : `<span class="test-status" id="modelStatus-${m.id}"></span>`;
+        // What the endpoint said about itself when it was last tested. Empty until a
+        // probe has run and empty for a stack we do not recognise, so a card is never
+        // worse off than it was before this line existed. The two facts that earn the
+        // space: whether tool calls work at all, and whether this model's thinking can
+        // be dialled or only switched -- the second is the difference between tuning a
+        // seat and discovering, slowly, that it has no knob.
+        const capText = this.capabilitySummary(m);
+        const capLine = capText ? `<div class="model-caps">${e(capText)}</div>` : '';
         // ONE control, not two. A <select> listing everything the endpoint returned
         // sat next to a free-text box for the same value -- and against OpenRouter that
         // select is several hundred entries, in whatever order the API answered, with no
@@ -931,6 +980,7 @@ class UIManager {
                 <button class="test-btn" onclick="game.ui.testArenaModel(${m.id})">${t('ar.test')}</button>
                 ${status}
             </div>
+            ${capLine}
             <div class="model-select-row">
                 <div class="arena-field" style="flex:1 1 340px"><label>${t('ar.fModelSelect')}${modelNote}</label>
                     <div class="mdl-combo">
@@ -1471,6 +1521,17 @@ class UIManager {
             const n = m.availableModels.length;
             const provNote = res.provider ? ` [${res.provider}]` : '';
             m._status = { cls: 'ok', text: n ? t('ar.testOk', { prov: provNote, n }) : t('ar.testOkNoList', { prov: provNote }) };
+            // Ask the endpoint what it can do, now that we know it answers at all. It is
+            // a handful of GETs against routes that either exist or 404 -- measured at 6
+            // to 33ms across llama.cpp, SGLang and vLLM -- and it never throws, so the
+            // worst case is the blank card this button already produced. Deliberately
+            // AFTER the status is set: the connection test is what the user pressed, and
+            // its result must not wait on an extra.
+            try {
+                const caps = await OpenAIAIManager.probeCapabilities(
+                    { endpoint: (m.endpoint || '').trim(), auth: this.cleanAuth(m.auth), model: m.model });
+                if (caps && caps.stack) this.noteModelCapabilities(id, caps);
+            } catch (e) { /* a probe that fails leaves the card as it was */ }
         } else {
             // errorCode maps to a localized ar.err.* message; fall back to the raw
             // (English) error string for anything unmapped.

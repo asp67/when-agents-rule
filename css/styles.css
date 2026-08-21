@@ -461,6 +461,15 @@ body.spectator-mode .mm-fog {
 }
 .mm-fog-knob .team-dot { display: block; }
 
+/* What the endpoint said it can do, under the Test button. Quiet by design: it is
+   reference, not a warning, and it is absent entirely until a probe has run. */
+.model-caps {
+    margin: -2px 0 6px 2px;
+    font-size: 11px; line-height: 1.4;
+    color: var(--muted); opacity: 0.85;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* ---------- Menu panels (build / train / research / upgrade) ---------- */
 .menu-panel {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
