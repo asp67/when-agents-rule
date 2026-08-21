@@ -1467,7 +1467,17 @@ class OpenAIAIManager {
                     const b = {
                         model, max_tokens: maxTokens,
                         system: systemPrompt,
-                        messages: turns.map(t => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: String(t.content) }))
+                        // Anthropic carries tool results as a tool_result BLOCK inside a
+                        // user message, not as its own role. That dialect is not written
+                        // here because it cannot be tested from this machine, and an
+                        // unverified wire format in a benchmark is worse than an honest
+                        // older one — so the turns are flattened to the prose form every
+                        // provider was served before the tool channel existed. Worth
+                        // noting the gap is smaller than it looks: Anthropic's results
+                        // ARE user-turn content, so prose-in-a-user-turn is already close
+                        // to native for it, and OpenAI-style was the one being mistreated.
+                        messages: OpenAIAIManager.flattenToolTurns(turns)
+                            .map(t => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: String(t.content) }))
                     };
                     if (!opts.omitTools) b.tools = OpenAIAIManager.toolsFor('anthropic');
                     if (thinkingSuppressesSampling) {
@@ -1511,7 +1521,10 @@ class OpenAIAIManager {
                         put(o, 'repeat_penalty', repetitionPenalty);
                         return o;
                     })(),
-                    messages: [{ role: 'system', content: systemPrompt }, ...turns]
+                    // Ollama's native chat API takes the same role:"tool" message the
+                    // OpenAI route does, so the same renderer serves both.
+                    messages: [{ role: 'system', content: systemPrompt },
+                               ...OpenAIAIManager.toolTurnsForOpenAI(turns, true)]
                 }
             };
         }
@@ -1521,7 +1534,11 @@ class OpenAIAIManager {
                 body: {
                     ...(opts.omitTools ? {} : { tools: OpenAIAIManager.toolsFor('google') }),
                     systemInstruction: { parts: [{ text: systemPrompt }] },
-                    contents: turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(t.content) }] })),
+                    // Google wants functionCall/functionResponse parts. Not written here
+                    // for the same reason as Anthropic above: untestable from this
+                    // machine, so it keeps the prose form rather than an unverified one.
+                    contents: OpenAIAIManager.flattenToolTurns(turns)
+                        .map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(t.content) }] })),
                     generationConfig: (() => {
                         const g = put(put(put({ maxOutputTokens: maxTokens },
                             'temperature', opts.omitTemperature ? undefined : temperature),
@@ -1532,10 +1549,13 @@ class OpenAIAIManager {
                 }
             };
         }
-        // openai-compatible (default)
+        // openai-compatible (default). This is the path that reaches llama.cpp, vLLM,
+        // SGLang, LM Studio, OpenRouter and everything behind it — which is to say very
+        // nearly everything — so it is the one that gets the protocol properly.
         const body = {
             model,
-            messages: [{ role: 'system', content: systemPrompt }, ...turns]
+            messages: [{ role: 'system', content: systemPrompt },
+                       ...OpenAIAIManager.toolTurnsForOpenAI(turns)]
         };
         // Reasoning models on the real OpenAI API rename the reply cap and refuse any
         // temperature but the default. Both flags are set by adaptToApiError after the
@@ -3276,15 +3296,157 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         const turns = [];
         picked.forEach((p, j) => {
             // The OUTCOME of the previous turn's action is observed right before this
-            // turn's state — thread it in so the model sees the consequence of each
-            // decision (e.g. "REJECTED: no idle worker"), not just the decisions. This
-            // is what stops it repeating a rejected command once the window fills.
-            const prevOutcome = j > 0 ? picked[j - 1].outcome : null;
-            const userContent = (prevOutcome ? `RESULT of your previous action: ${prevOutcome}\n\n` : '') + p.user;
+            // turn's state, so the model sees the consequence of each decision (e.g.
+            // "REJECTED: no idle worker"), not just the decisions. This is what stops it
+            // repeating a rejected command once the window fills.
+            //
+            // WHERE it is threaded depends on how the model answered. A turn that came
+            // back as tool calls is answered in the TOOL channel; one that came back as
+            // prose is answered as prose in the user turn, exactly as before.
+            //
+            // The evidence is the turn itself, which is why this needs no capability
+            // negotiation and cannot guess wrong: a server that delivered tool_calls
+            // demonstrably speaks the protocol, and one that did not, demonstrably does
+            // not. Nothing is inferred from a URL and nothing has to be asked.
+            //
+            // It matters because a model trained on the tool loop attends to role:"tool"
+            // as the channel the environment speaks in, while prose in a user turn is
+            // just more prompt. Told "REJECTED: no idle worker" as narration, a
+            // tool-trained model may weigh it as context; told the same thing as the
+            // RESULT OF THE CALL IT MADE, it is being answered. The harness was partly
+            // measuring whether a model reads narration, which is not the skill under
+            // test.
+            const prev = j > 0 ? picked[j - 1] : null;
+            const prevOutcome = prev ? prev.outcome : null;
+            const prevViaTools = !!(prev && prev.toolCalls && prev.toolCalls.length);
+
+            if (prevOutcome && prevViaTools) {
+                // Every call must be answered: an OpenAI-compatible server rejects a
+                // conversation with a tool_call left dangling. The harness produces ONE
+                // outcome per turn (up to three actions resolve into a single reply), so
+                // the first call carries it and the rest point at it rather than
+                // repeating several hundred characters per extra call.
+                turns.push({ role: 'tool', results: prev.toolCalls.map((c, k) => ({
+                    id: c.id, name: c.name,
+                    content: k === 0 ? String(prevOutcome)
+                                     : '(covered by the result of ' + prev.toolCalls[0].name + ' above)'
+                })) });
+            }
+            const userContent = ((prevOutcome && !prevViaTools)
+                ? `RESULT of your previous action: ${prevOutcome}
+
+` : '') + p.user;
             turns.push({ role: 'user', content: userContent });
-            turns.push({ role: 'assistant', content: p.assistant || '(no reply)' });
+            // The assistant turn carries the calls it actually made, so the exchange the
+            // model is shown is the one that happened rather than a prose retelling of
+            // it. Providers that cannot render them fall back to the text.
+            if (p.toolCalls && p.toolCalls.length) {
+                turns.push({ role: 'assistant', content: p.assistant || null, toolCalls: p.toolCalls });
+            } else {
+                turns.push({ role: 'assistant', content: p.assistant || '(no reply)' });
+            }
         });
+
+        // The MOST RECENT turn's calls have to be answered too, and nothing above does
+        // it: the loop answers picked[j-1] when it reaches turn j, so the last one is
+        // always left open. Its result is not missing -- the caller has always put it in
+        // the current user message as prose -- but an assistant message carrying
+        // tool_calls followed by a user message is a protocol violation, and a strict
+        // OpenAI-compatible server rejects the whole request rather than the turn.
+        //
+        // That is a whole-match failure from a dangling id, so it is answered here and
+        // the caller is told (via _prevViaTools on the controller) not to repeat it as
+        // prose. Found by asserting the invariant -- every called id answered, no answer
+        // without a call -- rather than by watching requests fail.
+        const last = picked[picked.length - 1];
+        if (last && last.toolCalls && last.toolCalls.length) {
+            const text = last.outcome
+                || '(this action had not resolved when the next state was built)';
+            turns.push({ role: 'tool', results: last.toolCalls.map((c, k) => ({
+                id: c.id, name: c.name,
+                content: k === 0 ? String(text)
+                                 : '(covered by the result of ' + last.toolCalls[0].name + ' above)'
+            })) });
+        }
         return turns;
+    }
+
+    // Did the last recorded turn answer with tool calls? The caller needs this BEFORE it
+    // builds the current user message, to decide whether the previous result belongs in
+    // that message as prose or has already been delivered through the tool channel --
+    // and it cannot wait for buildRollingTurns, whose budget depends on that message's
+    // length. Saying it twice is not harmless: the model would read one outcome as two
+    // events, one of them unattributed.
+    lastTurnUsedTools(controller) {
+        const log = (controller && controller.turnLog) || [];
+        const last = log[log.length - 1];
+        return !!(last && last.toolCalls && last.toolCalls.length);
+    }
+
+    // Render the neutral turn list into OpenAI's tool protocol. Separate from the request
+    // builder so the same turns can be FLATTENED instead for providers whose dialect is
+    // not implemented here — the alternative is four hand-written dialects, two of which
+    // nobody on this machine can test, inside the thing used to measure models.
+    // `objectArgs` is the one place OpenAI and Ollama disagree, and it is not
+    // cosmetic: OpenAI carries function arguments as a JSON STRING, Ollama's native API
+    // wants the parsed OBJECT. Send a string to /api/chat and it answers
+    //   400 "Value looks like object, but can't find closing '}' symbol"
+    // which reads like malformed JSON and is in fact well-formed JSON in the wrong
+    // shape. Caught by replaying one real exchange against all four servers; three
+    // accepted it and this one did not.
+    static toolTurnsForOpenAI(turns, objectArgs) {
+        const out = [];
+        const args = (s) => {
+            if (!objectArgs) return s;
+            try { return JSON.parse(s || '{}'); } catch (e) { return {}; }
+        };
+        (turns || []).forEach(t => {
+            if (t.role === 'tool' && Array.isArray(t.results)) {
+                // tool_name alongside the id: Ollama pairs a result to its call by NAME
+                // and ignores tool_call_id, OpenAI does the reverse. Sending both costs a
+                // few bytes and means one renderer serves both.
+                t.results.forEach(r => out.push({
+                    role: 'tool', tool_call_id: r.id, tool_name: r.name, content: String(r.content)
+                }));
+                return;
+            }
+            if (t.role === 'assistant' && t.toolCalls && t.toolCalls.length) {
+                out.push({
+                    role: 'assistant',
+                    content: t.content || null,
+                    tool_calls: t.toolCalls.map(c => ({
+                        id: c.id, type: 'function',
+                        function: { name: c.name, arguments: args(c.args) }
+                    }))
+                });
+                return;
+            }
+            out.push({ role: t.role, content: String(t.content == null ? '' : t.content) });
+        });
+        return out;
+    }
+
+    // ...and the universal floor. Anything that cannot speak the protocol gets the
+    // conversation it got before this existed: outcomes as prose in the user turn, calls
+    // described in the assistant turn. Not a degraded mode to apologise for -- it is what
+    // every provider has been served since the beginning, and it is why an unimplemented
+    // dialect costs nothing instead of breaking a seat.
+    static flattenToolTurns(turns) {
+        const out = [];
+        (turns || []).forEach(t => {
+            if (t.role === 'tool' && Array.isArray(t.results)) {
+                const first = t.results[0];
+                if (first) out.push({ role: 'user', content: `RESULT of your previous action: ${first.content}` });
+                return;
+            }
+            if (t.role === 'assistant' && t.toolCalls && t.toolCalls.length) {
+                const said = t.toolCalls.map(c => `${c.name}(${c.args})`).join(' ');
+                out.push({ role: 'assistant', content: (t.content ? t.content + ' ' : '') + said });
+                return;
+            }
+            out.push({ role: t.role, content: String(t.content == null ? '' : t.content) });
+        });
+        return out;
     }
 
     // ----------------------------------------------------------------
@@ -3419,7 +3581,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             // states the result of the previous action so a rejected command is never
             // silently repeated. The stable system-prompt prefix stays cacheable.
             const preface = [...head];
-            if (prevResult) {
+            // Prose only when the tool channel did not already carry it. A turn answered
+            // with tool calls gets its result as the answer to those calls; repeating it
+            // here would show the model the same outcome twice, once as a reply and once
+            // as narration.
+            if (prevResult && !this.lastTurnUsedTools(controller)) {
                 preface.push(`RESULT of your PREVIOUS action — learn from it; do NOT repeat a rejected action, fix the cause first: ${prevResult}`);
             }
             const currentUser = [...preface, ...tailNow].join('\n\n');
@@ -3643,9 +3809,29 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             // the compact state we showed + the model's (trimmed) reply.
             if (controller._pendingTurnUser != null) {
                 const replyText = (norm && (norm.content || norm.reasoning)) ? String(norm.content || norm.reasoning) : '';
+                // The CALLS, not just the prose. A tool result has to name the call it
+                // answers, and the id only exists here -- one line further on the reply is
+                // a 600-character string and the ids are gone. Kept trimmed: the arguments
+                // are echoed back to the model as its own words, so they are worth having
+                // exactly, but a runaway argument blob must not grow the history without
+                // bound.
+                const calls = (norm && Array.isArray(norm.tool_calls)) ? norm.tool_calls : [];
+                const toolCalls = calls.map((c, i) => {
+                    const fn = (c && c.function) || {};
+                    const args = typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments || {});
+                    return {
+                        // Some servers omit the id entirely. The protocol needs one to pair
+                        // the answer with the call, so an absent id gets a synthetic one
+                        // rather than an undefined that would break the pairing silently.
+                        id: (c && c.id) || ('call_' + (controller.turnLog.length) + '_' + i),
+                        name: fn.name || 'unknown',
+                        args: String(args || '{}').slice(0, 1200)
+                    };
+                });
                 controller.turnLog.push({
                     user: controller._pendingTurnUser,
                     assistant: replyText.replace(/\s+/g, ' ').trim().slice(0, 600),
+                    toolCalls: toolCalls.length ? toolCalls : null,
                     outcome: null // filled by recordAction once this turn's action resolves
                 });
                 controller._pendingTurnUser = null;
