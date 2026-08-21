@@ -2943,7 +2943,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
 - Resource nodes hold a finite amount and disappear when emptied.
-- "nearestNodes" lists the 10 nearest food/wood per Town Center and all stone/gold nodes.
+- "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
 - "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
 - A "CONTACT" line is a rival unit or building coming into your sight, and "CONTACT LOST" is one leaving it, each with where it was. Both are moments, and both are gone from this list next turn — what they MEAN is yours to carry. A sighting and a loss of the same unit are two positions in order, which is a heading: follow it back and it points at where that unit came from. Something roaming far from anywhere you have looked is a direction worth scouting. A "CONTACT LOST" also means your knowledge of that position is now old — it is where the unit WAS, not where it is.
 - "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
