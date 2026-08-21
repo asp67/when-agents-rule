@@ -67,10 +67,12 @@ const DIR_SHOTS = {
     selected:  { dur: [9000, 9000],   pitch: 0.42, track: true,  push: 0 },
     brawl:     { dur: [2200, 3400],   pitch: 0.44, track: true,  push: 0.06, pan: 0.11 },
     pov:       { dur: [4000, 6000],   pitch: 0.24, track: false, push: 0 },
-    // Low and tracking, because the subject is two things closing on each other and
-    // the interest is entirely in the gap between them. Short: a near miss IS short,
-    // and holding it past the moment turns a discovery into two units standing about.
-    contact:   { dur: [3000, 4200],   pitch: 0.22, track: true,  push: 0.05 },
+    // Pitch is SCOUT's, not a lower one of its own. Nearly every contact is cut to
+    // from the scout shot -- it is the same unit, one second later, having found
+    // somebody -- and arriving at a different elevation made a continuation read as a
+    // jump to somewhere else. Short duration still: a near miss IS short, and holding
+    // it past the moment turns a discovery into two units standing about.
+    contact:   { dur: [3000, 4200],   pitch: 0.28, track: true,  push: 0.05 },
     wonder:    { dur: [6000, 8000],   pitch: 0.34, track: false, push: 0.10 },
     follow:    { dur: [6000, 9000],   pitch: 0.36, track: true,  push: 0 },
     walk:      { dur: [5000, 7000],   pitch: 0.25, track: true,  push: 0 },
@@ -495,13 +497,29 @@ class Director {
                     const dx = them.x - mine.x, dz = them.z - mine.z;
                     const L = Math.hypot(dx, dz) || 1;
                     return {
-                        // Stand just behind the unit that walked into them and look up
-                        // the gap, so the rival sits BEYOND our own scout rather than
-                        // the two of them being framed as equals from the side.
-                        x: mine.x + (dx / L) * (L * 0.35),
-                        z: mine.z + (dz / L) * (L * 0.35),
+                        // Framed on OUR unit and looking up the gap, so the rival comes
+                        // into the shot as it closes rather than the pair being framed
+                        // as equals from a distance that fits them both.
+                        //
+                        // This used to sit a third of the way along the gap and open the
+                        // frame wide enough to hold both -- up to halfH 80 against the
+                        // scout shot's 26, so the cut FROM a scout was a three-fold pull
+                        // back at the exact moment the interesting thing had just been
+                        // found. Nudged toward the rival rather than centred on it, and
+                        // held near the scout's own framing.
+                        // Opened BETWEEN them, not on our unit: at a hundred units of
+                        // gap a frame centred on the scout leaves the thing it just
+                        // found off the top of the screen, and a shot about a meeting
+                        // with one party missing is a shot of somebody staring at grass.
+                        // The shot TRACKS our unit, so it eases onto the scout over the
+                        // next second anyway while the rival closes -- the midpoint is
+                        // where it starts, not where it stays.
+                        x: mine.x + dx * 0.5,
+                        z: mine.z + dz * 0.5,
                         yaw: this.snapYaw(this.yawAlong(dx, dz)),
-                        halfH: Math.max(26, Math.min(80, L * 0.85 + 22)),
+                        // 26 is the scout shot's exact value; this opens a little with
+                        // the gap and stops well short of where it was.
+                        halfH: Math.max(26, Math.min(42, 24 + L * 0.22)),
                         subject: { kind: 'ent', ent: mine }
                     };
                 });
