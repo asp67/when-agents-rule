@@ -3618,7 +3618,7 @@ class Game {
                 const targets = [];
                 (other.units || []).forEach(u => { if (u.health > 0) targets.push(u); });
                 (other.buildings || []).forEach(b => { if (b.health > 0) targets.push(b); });
-                const pairBest = { dist: Infinity, x: 0, z: 0, target: null, hit: false };
+                const pairBest = { dist: Infinity, x: 0, z: 0, target: null, mine: null, hit: false };
 
                 targets.forEach(t => {
                     // Cheap rejection first: outside the circle round everything I own,
@@ -3630,10 +3630,16 @@ class Game {
                     // No early exit -- breaking on the first seeing eye leaves `best` a
                     // partial minimum, and the camera would then read a distance that
                     // is merely the first one tried.
-                    let best = Infinity, sawAt = null;
+                    let best = Infinity, sawAt = null, nearMine = null;
                     for (const src of myEyes) {
                         const d = Math.hypot(src.e.x - t.x, src.e.z - t.z);
-                        if (d < best) best = d;
+                        // Prefer a UNIT over a building at equal distance: the shot is
+                        // "from the thing that walked into them", and a barracks did not
+                        // walk anywhere.
+                        if (d < best || (d === best && nearMine && nearMine.type &&
+                                         BUILDING_DEFS[nearMine.type] && !BUILDING_DEFS[src.e.type])) {
+                            best = d; nearMine = src.e;
+                        }
                         if (sawAt === null && d <= src.r) sawAt = d;
                     }
                     if (sawAt !== null) {
@@ -3680,12 +3686,12 @@ class Game {
                     // from — so keep only the closest for this pair of seats.
                     if (best <= Game.CONTACT_CAMERA_RANGE && best < pairBest.dist) {
                         pairBest.dist = best; pairBest.x = t.x; pairBest.z = t.z;
-                        pairBest.target = t; pairBest.hit = true;
+                        pairBest.target = t; pairBest.mine = nearMine; pairBest.hit = true;
                     }
                 });
                 if (pairBest.hit) {
                     cam.push({ viewer, other, dist: pairBest.dist, x: pairBest.x, z: pairBest.z,
-                               target: pairBest.target });
+                               target: pairBest.target, mine: pairBest.mine, at: Date.now() });
                 }
             });
 

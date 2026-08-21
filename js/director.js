@@ -43,6 +43,14 @@ const DIR_MIN_SHOT_MS = 1500;              // no interrupt before this
 const DIR_INTERRUPT_MARGIN = 35;           // how much better a rival shot must be
 const DIR_OVERVIEW_EVERY = 75000;          // the "how is everyone doing" beat
 const DIR_RECENT = 6;                      // shots remembered for anti-repeat
+// How long before the camera will cut to another first-contact. An army walking past
+// an enemy camp trips the detector once per rival entity it passes -- without this the
+// shot list is a strobe of near-identical two-unit stares. One every twenty seconds is
+// often enough to catch the meetings and rare enough that each one still reads as an
+// event. Per PAIR of seats as well, so two rivals meeting repeatedly on one border do
+// not crowd out a third pair meeting for the first time.
+const DIR_CONTACT_COOLDOWN_MS = 20000;
+const DIR_CONTACT_PAIR_COOLDOWN_MS = 45000;
 
 // dur: [min, max] ms. pitch: elevation in radians (0.26 ~ 15deg, 0.6 ~ 34deg).
 // track: the target follows the subject while the shot runs.
@@ -59,6 +67,10 @@ const DIR_SHOTS = {
     selected:  { dur: [9000, 9000],   pitch: 0.42, track: true,  push: 0 },
     brawl:     { dur: [2200, 3400],   pitch: 0.44, track: true,  push: 0.06, pan: 0.11 },
     pov:       { dur: [4000, 6000],   pitch: 0.24, track: false, push: 0 },
+    // Low and tracking, because the subject is two things closing on each other and
+    // the interest is entirely in the gap between them. Short: a near miss IS short,
+    // and holding it past the moment turns a discovery into two units standing about.
+    contact:   { dur: [3000, 4200],   pitch: 0.22, track: true,  push: 0.05 },
     wonder:    { dur: [6000, 8000],   pitch: 0.34, track: false, push: 0.10 },
     follow:    { dur: [6000, 9000],   pitch: 0.36, track: true,  push: 0 },
     walk:      { dur: [5000, 7000],   pitch: 0.25, track: true,  push: 0 },
@@ -452,6 +464,49 @@ class Director {
             const age = this._prevAge.get(ai.id);
             this._prevAge.set(ai.id, ai.age);
             if (age && age !== ai.age) this.compareQueue = this.livePlayers().slice();
+        }
+
+        // Two seats walking into each other. Not a fight -- a fight is already the
+        // highest-scoring thing here -- but the moment BEFORE one, which is otherwise
+        // invisible: a scout cresting onto somebody's border, two armies finding each
+        // other in open ground. game.detectContacts() maintains this feed for the
+        // CONTACT lines the models read; the camera is its second reader, and it asks a
+        // slightly different question -- near misses count, whether or not anybody
+        // actually looked.
+        //
+        // Scored to lose to a brawl and beat everything else, which is the rule asp67
+        // set: battle footage overrides, nothing else does.
+        // Only what is still true. A viewer's entries stand until that viewer is
+        // scanned again -- about a second at four seats, longer at more -- so without an
+        // age check the camera can cut to a meeting that finished while it waited its
+        // turn in the round-robin.
+        const feed = (g._contactFeed || []).filter(c =>
+            c && c.mine && c.target && (now - (c.at || 0)) < 3000);
+        if (feed.length && now - (this._lastContactShot || 0) > DIR_CONTACT_COOLDOWN_MS * this.lapse) {
+            this._contactPairAt = this._contactPairAt || {};
+            for (const c of feed) {
+                const pair = [c.viewer.id, c.other.id].sort().join('~');
+                if (now - (this._contactPairAt[pair] || 0) < DIR_CONTACT_PAIR_COOLDOWN_MS * this.lapse) continue;
+                const mine = c.mine, them = c.target;
+                if (mine.health <= 0 || them.health <= 0) continue;
+                push('contact', 'contact:' + pair, 90, () => {
+                    this._lastContactShot = now;
+                    this._contactPairAt[pair] = now;
+                    const dx = them.x - mine.x, dz = them.z - mine.z;
+                    const L = Math.hypot(dx, dz) || 1;
+                    return {
+                        // Stand just behind the unit that walked into them and look up
+                        // the gap, so the rival sits BEYOND our own scout rather than
+                        // the two of them being framed as equals from the side.
+                        x: mine.x + (dx / L) * (L * 0.35),
+                        z: mine.z + (dz / L) * (L * 0.35),
+                        yaw: this.snapYaw(this.yawAlong(dx, dz)),
+                        halfH: Math.max(26, Math.min(80, L * 0.85 + 22)),
+                        subject: { kind: 'ent', ent: mine }
+                    };
+                });
+                break;   // one contact shot offered at a time, the closest
+            }
         }
 
         // The comparison beats: a sweep of every camp at an IDENTICAL pose, and a
