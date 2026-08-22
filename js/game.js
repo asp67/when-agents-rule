@@ -822,15 +822,26 @@ class Game {
         this._jitterClock = 0;
         const scan = owner => ((owner && owner.units) || []).forEach(u => {
             if (!u || u.health <= 0 || !u.isMoving) { if (u) u._jPath = 0, u._jN = 0, u._jFrom = null; return; }
-            if (!u._jFrom) { u._jFrom = { x: u.x, z: u.z }; u._jLast = { x: u.x, z: u.z }; u._jPath = 0; u._jN = 0; }
+            if (!u._jFrom) { u._jFrom = { x: u.x, z: u.z }; u._jLast = { x: u.x, z: u.z }; u._jPath = 0; u._jN = 0; u._jTrail = []; u._jTasks = []; u._jAims = []; }
             u._jPath += Math.hypot(u.x - u._jLast.x, u.z - u._jLast.z);
             u._jLast = { x: u.x, z: u.z };
+            // The shape of the path, and what the unit thought it was doing while it
+            // walked. Without these the record cannot separate a unit that is PINNED
+            // from a worker hauling between a node and a drop-off standing next to it:
+            // both walk a long way and arrive nowhere, and only one of them is a fault.
+            u._jTrail.push([+u.x.toFixed(1), +u.z.toFixed(1)]);
+            u._jTasks.push(u.task || (u.isAttacking ? 'attack' : '-'));
+            // The DESTINATION, not just the job label. A haul whose round trip is
+            // longer than one window keeps the same task the whole way and would read
+            // as pinned on the label alone; what gives it away is that it is being
+            // aimed somewhere new. A pinned unit is aimed at one place it cannot reach.
+            u._jAims.push(Math.round(u.targetX || 0) + ',' + Math.round(u.targetZ || 0));
             if (++u._jN < Game.JITTER_WINDOW) return;
             const net = Math.hypot(u.x - u._jFrom.x, u.z - u._jFrom.z);
             if (u._jPath >= Game.JITTER_MIN_PATH && net < Game.JITTER_RATIO * u._jPath) {
                 this.recordJitter(u, owner, u._jPath, net);
             }
-            u._jFrom = { x: u.x, z: u.z }; u._jPath = 0; u._jN = 0;
+            u._jFrom = { x: u.x, z: u.z }; u._jPath = 0; u._jN = 0; u._jTrail = []; u._jTasks = []; u._jAims = [];
         });
         scan(this.player);
         ((this.aiManager && this.aiManager.aiPlayers) || []).forEach(scan);
@@ -849,6 +860,12 @@ class Game {
             rings.push({ type: b.type, x: Math.round(b.x), z: Math.round(b.z),
                          dist: +d.toFixed(2), clearance: clr, inside: d < clr });
         });
+        // A worker that changed job mid-window, or set a load down, WAS getting
+        // somewhere -- just not anywhere far. That is a short haul, not a pin, and
+        // filing it as jitter would bury the real ones under the economy.
+        const tasks = Array.from(new Set(u._jTasks || []));
+        const aims = Array.from(new Set(u._jAims || []));
+        const cycled = tasks.length > 1 || aims.length > 1;
         const off = u.formationOffset;
         const slotX = (u.targetX || 0) + (off ? off.x : 0);
         const slotZ = (u.targetZ || 0) + (off ? off.z : 0);
@@ -864,9 +881,18 @@ class Game {
             slotLegal: [+legal.x.toFixed(2), +legal.z.toFixed(2)],
             slotIllegalBy: +Math.hypot(legal.x - slotX, legal.z - slotZ).toFixed(2),
             walked: +path.toFixed(2), got: +net.toFixed(2),
+            // 'haul': it changed job while walking, so the walking was the job.
+            // 'pinned': one job, full speed, no ground gained. That is the fault.
+            verdict: cycled ? 'haul' : 'pinned',
+            task: tasks.join('>') || null,
+            aims: aims.length,
+            carrying: !!u.carryingResource,
+            harvest: u.harvestTarget ? (u.harvestTarget.type || 'node') : null,
+            distToTarget: +Math.hypot(u.x - (u.targetX || 0), u.z - (u.targetZ || 0)).toFixed(2),
+            trail: u._jTrail ? u._jTrail.slice() : [],
             marchSpeed: u.marchSpeed, ownSpeed: u.speed, catchup: u.formationCatchup,
             axis: u.formationAxis ? [+u.formationAxis.x.toFixed(2), +u.formationAxis.z.toFixed(2)] : null,
-            attacking: !!u.isAttacking, task: u.task || null, rings
+            attacking: !!u.isAttacking, rings
         });
         while (this._jitterLog.length > Game.JITTER_LOG_MAX) this._jitterLog.shift();
     }
@@ -876,10 +902,21 @@ class Game {
         const log = this._jitterLog || [];
         if (!log.length) { console.log('[jitter] nothing recorded'); return log; }
         const rows = n ? log.slice(-n) : log;
+        // One unit stuck for three minutes and one unit caught once are the same
+        // number of rows and completely different problems, so say which this is.
+        const pinned = rows.filter(r => r.verdict !== 'haul');
+        const byUnit = {};
+        pinned.forEach(r => { const k = r.type + '#' + r.id; byUnit[k] = (byUnit[k] || 0) + 1; });
+        const worst = Object.entries(byUnit).sort((a, b) => b[1] - a[1])[0];
+        console.log('[jitter] ' + rows.length + ' episodes: ' + pinned.length + ' pinned, '
+            + (rows.length - pinned.length) + ' haul'
+            + (worst ? ' | worst: ' + worst[0] + ' x' + worst[1] : '')
+            + ' | distinct pinned units: ' + Object.keys(byUnit).length);
         if (raw) { console.log(JSON.stringify(rows, null, 2)); return rows; }
         console.table(rows.map(r => ({
             at: r.at, unit: r.type + '#' + r.id, owner: r.owner,
-            walked: r.walked, got: r.got, slotIllegalBy: r.slotIllegalBy,
+            verdict: r.verdict, task: r.task, aims: r.aims, carrying: r.carrying,
+            walked: r.walked, got: r.got, dist: r.distToTarget, slotIllegalBy: r.slotIllegalBy,
             insideRings: r.rings.filter(x => x.inside).map(x => x.type).join(',') || '-',
             catchup: r.catchup, marchSpeed: r.marchSpeed
         })));
