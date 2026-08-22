@@ -774,6 +774,7 @@ class Game {
     // or several times to replay a long/throttled frame without losing time.
     simulateStep(dt) {
         // Unit work + movement (movement is the teleport-sensitive part — keep dt small)
+        this.measureFormationLead();
         this.updateWorkerTasks(dt);
         this.updateUnitMovement(dt);
         // Timed production / economy
@@ -890,7 +891,7 @@ class Game {
             harvest: u.harvestTarget ? (u.harvestTarget.type || 'node') : null,
             distToTarget: +Math.hypot(u.x - (u.targetX || 0), u.z - (u.targetZ || 0)).toFixed(2),
             trail: u._jTrail ? u._jTrail.slice() : [],
-            marchSpeed: u.marchSpeed, ownSpeed: u.speed, catchup: u.formationCatchup,
+            marchSpeed: u.marchSpeed, ownSpeed: u.speed, outOfPlace: !!u.formationGroup,
             axis: u.formationAxis ? [+u.formationAxis.x.toFixed(2), +u.formationAxis.z.toFixed(2)] : null,
             attacking: !!u.isAttacking, rings
         });
@@ -918,7 +919,7 @@ class Game {
             verdict: r.verdict, task: r.task, aims: r.aims, carrying: r.carrying,
             walked: r.walked, got: r.got, dist: r.distToTarget, slotIllegalBy: r.slotIllegalBy,
             insideRings: r.rings.filter(x => x.inside).map(x => x.type).join(',') || '-',
-            catchup: r.catchup, marchSpeed: r.marchSpeed
+            outOfPlace: r.outOfPlace, marchSpeed: r.marchSpeed
         })));
         return rows;
     }
@@ -1364,7 +1365,7 @@ class Game {
                     } else if (off) {
                         unit.formationOffset = null;   // arrived: ranks dissolve
                         unit.formationAxis = null;
-                        unit.formationCatchup = 0;
+                        unit.formationGroup = null;
                     }
                     const adx = ax - unit.x, adz = az - unit.z;
                     const adist = Math.sqrt(adx * adx + adz * adz) || 1;
@@ -3705,6 +3706,53 @@ class Game {
     // and the undo would land on top of whatever a tech had raised the real speed to in
     // the meantime -- so a march would quietly cancel a research bonus. Clearing an
     // override cannot do that.
+    // How far along its own lane the FOREMOST member of each formation has got.
+    //
+    // "In position" cannot be judged from a unit alone: every unit in a marching
+    // formation is far from its final slot for the whole march, so distance-to-slot
+    // says nothing. What DOES say something is the comparison -- a formed-up body has
+    // every member equally far from its own slot, because the slots move with the
+    // destination. A unit that is further from its slot than its neighbours is the one
+    // out of place, whether it started at the back of a half-turn or is still opening
+    // out from the huddle at the start of a march.
+    //
+    // One pass over the units per tick, keyed by the group stamped on them at order
+    // time. Cheap, and it is the only place the word "group" exists after the order.
+    measureFormationLead() {
+        const info = this._formLead || (this._formLead = new Map());
+        info.clear();
+        const alongOf = (u) => (u.x - u.targetX) * u.formationAxis.x
+                             + (u.z - u.targetZ) * u.formationAxis.z;
+        const all = this.getAllUnits();
+        all.forEach(u => {
+            if (!u || !u.formationAxis || !u.formationGroup) return;
+            const a = alongOf(u), cur = info.get(u.formationGroup);
+            if (cur === undefined) info.set(u.formationGroup, { lead: a, trailing: 0 });
+            else if (a > cur.lead) cur.lead = a;
+        });
+        // Second pass, because "trailing" is measured against the lead the first pass
+        // found. Who is still out of place decides whether the ones who are NOT have to
+        // wait for them.
+        all.forEach(u => {
+            if (!u || !u.formationAxis || !u.formationGroup) return;
+            const g = info.get(u.formationGroup);
+            if (g && alongOf(u) < g.lead - Game.FORMATION_IN_PLACE) g.trailing++;
+        });
+    }
+
+    // Close enough to its place to be held to the march pace again. Half a rank.
+    static get FORMATION_IN_PLACE() { return 1.0; }
+
+    // What the formed-up part of a body does while the rest is still finding its
+    // place: it eases off, to a fraction of the march pace.
+    //
+    // Without this the SLOWEST unit can never form up, and the slowest unit is exactly
+    // the one the pace is set to. Releasing it to "its own speed" hands it the pace it
+    // was already being held to -- it gains nothing on the ranks ahead and marches out
+    // of position for the whole approach. Every other unit could catch up and it could
+    // not, which is the one case the release existed to cover.
+    static get FORMATION_REFORM_PACE() { return 0.6; }
+
     moveSpeedOf(unit, deltaTime) {
         if (!unit) return 1.0;
         const own = unit.speed || 1.0;
@@ -3712,18 +3760,27 @@ class Game {
         if (!(typeof m === 'number' && m > 0)) return own;
         const pace = Math.min(m, own);
         // matchSpeed sets the pace of the FORMATION, not a leash on every unit. A unit
-        // that has to move forward THROUGH its own group -- which is what a half-turn
-        // asks of the melee -- can never do it at the shared pace, because everyone it
-        // needs to pass is moving just as fast. So it spends a debt instead: it runs at
-        // its own speed, and the debt is paid down by the distance it actually GAINS on
-        // the formation, not by the distance it covers. When the debt is clear it falls
-        // back into the shared pace and the shape holds again.
-        const debt = unit.formationCatchup;
-        if (!(debt > 0)) return pace;
-        if (deltaTime > 0 && own > pace) {
-            unit.formationCatchup = Math.max(0, debt - (own - pace) * deltaTime / 1000 * 3);
+        // out of its place runs at its own speed until it FINDS that place, and is held
+        // to the pace again the moment it has.
+        //
+        // Released on arrival, not on a budget. What stood here handed each unit a debt
+        // in world units and drew it down by the distance it should have been gaining --
+        // which a blocked unit pays off while standing still, arriving nowhere with
+        // nothing left to spend. Measured on a half-turn: the debt hit zero after four
+        // seconds and the melee spent the rest of the march in the wrong order, frozen,
+        // looking exactly like congestion and caused by arithmetic. A unit that cannot
+        // get through now keeps trying for as long as it takes.
+        const ax = unit.formationAxis, g = (this._formLead && unit.formationGroup != null)
+            ? this._formLead.get(unit.formationGroup) : undefined;
+        if (ax && g) {
+            const along = (unit.x - unit.targetX) * ax.x + (unit.z - unit.targetZ) * ax.z;
+            if (along < g.lead - Game.FORMATION_IN_PLACE) return own;   // still finding its place
+            // In place, but the body is not: hold back so the stragglers can close. The
+            // slowest of them is running at exactly this pace, so anything at or above
+            // it leaves that one behind permanently.
+            if (g.trailing > 0) return pace * Game.FORMATION_REFORM_PACE;
         }
-        return own;
+        return pace;
     }
 
     // Where a unit marching in formation should be heading RIGHT NOW.
@@ -4892,7 +4949,7 @@ class Game {
                     unit.x = unit.targetX;
                     unit.z = unit.targetZ;
                     unit.formationAxis = null;   // march over
-                    unit.formationCatchup = 0;    // ...and so does any debt it owed
+                    unit.formationGroup = null;
                     this.renderer.updateUnitPosition(unit);
                 }
             }

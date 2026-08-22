@@ -4,6 +4,7 @@
 // Controllers come from the setup screen via initFromSetup (Arena and Campaign).
 
 class OpenAIAIManager {
+    static _formationSeq = 0;
     constructor(game) {
         this.game = game;
         this.aiControllers = []; // One per AI player
@@ -868,14 +869,14 @@ class OpenAIAIManager {
     applyFormation(game, units, tx, tz, shape) {
         const want = String(shape || '').trim();
         if (!units || !units.length) return { applied: false, note: '' };
-        if (!want) { units.forEach(u => { u.formationOffset = null; u.formationAxis = null; u.formationCatchup = 0; }); return { applied: false, note: '' }; }
+        if (!want) { units.forEach(u => { u.formationOffset = null; u.formationAxis = null; u.formationGroup = null; }); return { applied: false, note: '' }; }
         if (OpenAIAIManager.FORMATIONS.indexOf(want) < 0) {
-            units.forEach(u => { u.formationOffset = null; u.formationAxis = null; u.formationCatchup = 0; });
+            units.forEach(u => { u.formationOffset = null; u.formationAxis = null; u.formationGroup = null; });
             return { applied: false, bad: want,
                      note: ` (formation "${want}" is not a shape — valid: ${OpenAIAIManager.FORMATIONS.join(', ')}; this order marched unformed.)` };
         }
         const { slots, degenerate } = this.formationSlots(units, want);
-        if (!slots) { units.forEach(u => { u.formationOffset = null; u.formationAxis = null; u.formationCatchup = 0; }); return { applied: false, note: '' }; }
+        if (!slots) { units.forEach(u => { u.formationOffset = null; u.formationAxis = null; u.formationGroup = null; }); return { applied: false, note: '' }; }
 
         let cx = 0, cz = 0;
         units.forEach(u => { cx += u.x; cz += u.z; });
@@ -888,6 +889,11 @@ class OpenAIAIManager {
         // Right of the march direction.
         const rx = -dz, rz = dx;
 
+        // One id for this body of troops, stamped on every member below. It is the
+        // only thing that still says "these march together" once the order has been
+        // given, and measureFormationLead needs it to know whose place a unit is out of.
+        const gid = ++OpenAIAIManager._formationSeq;
+
         const offsets = new Map();
         units.forEach(u => {
             const s = slots.get(u) || { f: 0, r: 0 };
@@ -895,29 +901,12 @@ class OpenAIAIManager {
             // The axis the lanes run along, so each unit can correct sideways into its
             // own lane immediately instead of drifting into it over the whole march.
             u.formationAxis = { x: dx, z: dz };
-            // How far FORWARD through its own group this unit has to travel to reach
-            // the rank it was given. Measured here because this is the one moment the
-            // group's centre and axis are both known; a tick later there is no "group"
-            // left to measure against, only single units walking.
-            //
-            // It is zero for an ordinary march -- everyone keeps the rank they already
-            // had -- and large exactly when the army is told to turn round, where the
-            // old front rank is now the back one. That case is why it exists: with
-            // matchSpeed every unit moves at the same pace, so relative order along the
-            // march can NEVER change, and the melee ordered to the front spends the
-            // whole march walking behind the shooters it was meant to screen.
-            const curAlong = (u.x - cx) * dx + (u.z - cz) * dz;
-            const need = s.f - curAlong;
-            u.formationCatchup = need > OpenAIAIManager.FORMATION_CATCHUP_MIN ? need : 0;
+            u.formationGroup = gid;
         });
         const extra = degenerate ? ` (${degenerate}, so it is a single rank)` : '';
         return { applied: true, shape: want, offsets,
                  note: ` Marching in ${want} formation${extra}, ${units.length} unit(s) abreast of the line of advance.` };
     }
-
-    // Below this a unit is already in its rank for practical purposes, and letting it
-    // off the shared pace would only make the formation ragged for no gain.
-    static get FORMATION_CATCHUP_MIN() { return 2; }
 
     // Narrowest a rank may be before depth is traded away for frontage.
     static get FORMATION_MIN_WIDTH() { return 3; }
@@ -6048,7 +6037,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
             // Measured to the SLOT, which is the trip this unit is actually making.
             eta = Math.max(eta, this.travelEtaSec(unit, dest.x, dest.z));
             unit.formationOffset = null;   // a plain move has no target to approach
-            unit.formationCatchup = 0;
+            unit.formationGroup = null;
             unit.isAttacking = false;
             unit.attackTarget = null;
             unit.attackMove = null;
@@ -6520,7 +6509,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         u._retalQueue = null;
         u.marchSpeed = null;   // a new job walks at its own speed, not the last march's
         u.formationOffset = null;
-        u.formationCatchup = 0;
+        u.formationGroup = null;
         u._orderToken = ++this._orderSeq; // reassigned → drops out of any prior attack report
     }
 
