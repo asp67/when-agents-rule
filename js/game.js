@@ -5366,30 +5366,17 @@ class Game {
         })();
 
         // WHOSE fog you are looking at, said on the map itself rather than only by
-        // which knob is pressed: the found-but-not-watched band wears that seat's
-        // badge colour, and the panel gets a frame in it.
+        // which knob is pressed: the panel wears a frame in that seat's badge colour.
         //
-        // The colour is scaled to the dim tier's own brightness before it is mixed
-        // in, so only the HUE moves. A raw wash of white (seat 1) or yellow (seat 6)
-        // would come out brighter than the ground it veils and read as lit -- and
-        // lit-vs-veiled is the one distinction the fog exists to make. The frame is
-        // there for the same reason from the other side: at equal brightness white
-        // is a weak wash, and a 3px border in it is not.
-        //
-        // tintA stays 0 in the default view, where the arithmetic below collapses to
-        // exactly the multiply this has always done.
-        let tintR = 0, tintG = 0, tintB = 0, tintA = 0, soloFrame = null;
+        // The band itself used to be tinted the same colour as well. It read as a
+        // rendering fault rather than a legend -- a green map going faintly purple
+        // looks like something has gone wrong with the map, not like an answer to
+        // "whose is this". The frame says the same thing at the edge, where nothing
+        // has to be discoloured to carry it.
+        let soloFrame = null;
         if (soloGrid && typeof getTeamBadge === 'function') {
             const badge = getTeamBadge(this.minimapFogSeat);
-            if (badge && badge.fill) {
-                const h = badge.fill.replace('#', '');
-                let r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
-                soloFrame = badge.fill;
-                const lum = (0.299 * r + 0.587 * g + 0.114 * b) || 1;
-                const k = Math.min(1, 96 / lum);       // ~the dim tier's own luminance
-                tintR = r * k; tintG = g * k; tintB = b * k;
-                tintA = 0.5;
-            }
+            if (badge && badge.fill) soloFrame = badge.fill;
         }
 
         // Themed ground color (summer/winter/desert), tuned so every node color
@@ -5425,14 +5412,11 @@ class Game {
                         data[pixelIdx + 2] = 0;
                         data[pixelIdx + 3] = 255;
                     } else if (fogValue === 1) {
-                        // Explored but not visible - dim the bright green to dark green (matches playing field),
-                        // then pull it toward the soloed seat's colour (tintA is 0 by default).
-                        const dr = data[pixelIdx] * 0.7;
-                        const dg = data[pixelIdx + 1] * 0.7;
-                        const db = data[pixelIdx + 2] * 0.7;
-                        data[pixelIdx] = Math.floor(dr + (tintR - dr) * tintA);
-                        data[pixelIdx + 1] = Math.floor(dg + (tintG - dg) * tintA);
-                        data[pixelIdx + 2] = Math.floor(db + (tintB - db) * tintA);
+                        // Explored but not visible - dim the bright green to dark green
+                        // (matches playing field).
+                        data[pixelIdx] = Math.floor(data[pixelIdx] * 0.7);
+                        data[pixelIdx + 1] = Math.floor(data[pixelIdx + 1] * 0.7);
+                        data[pixelIdx + 2] = Math.floor(data[pixelIdx + 2] * 0.7);
                         data[pixelIdx + 3] = 255;
                     }
                     // fogValue === 2 (visible) - leave pixel unchanged (bright green)
