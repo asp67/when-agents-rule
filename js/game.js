@@ -3726,9 +3726,14 @@ class Game {
         const all = this.getAllUnits();
         all.forEach(u => {
             if (!u || !u.formationAxis || !u.formationGroup) return;
-            const a = alongOf(u), cur = info.get(u.formationGroup);
-            if (cur === undefined) info.set(u.formationGroup, { lead: a, trailing: 0 });
-            else if (a > cur.lead) cur.lead = a;
+            const a = alongOf(u);
+            let cur = info.get(u.formationGroup);
+            if (cur === undefined) {
+                cur = { lead: a, trailing: 0, n: 0, cx: 0, cz: 0, target: null, charging: false };
+                info.set(u.formationGroup, cur);
+            } else if (a > cur.lead) cur.lead = a;
+            cur.n++; cur.cx += u.x; cur.cz += u.z;
+            if (!cur.target && u.attackTarget && u.attackTarget.health > 0) cur.target = u.attackTarget;
         });
         // Second pass, because "trailing" is measured against the lead the first pass
         // found. Who is still out of place decides whether the ones who are NOT have to
@@ -3738,7 +3743,33 @@ class Game {
             const g = info.get(u.formationGroup);
             if (g && alongOf(u) < g.lead - Game.FORMATION_IN_PLACE) g.trailing++;
         });
+        // Closest point of approach. A body held to its slowest member cannot catch
+        // anything quicker than that member, and marching further in the same shape
+        // does not change it: the distance falls to a minimum, then grows for the rest
+        // of the pursuit. That minimum is the moment the approach has failed and the
+        // fast units should be let off the leash to run the quarry down -- which is
+        // what the shape was escorting them to do.
+        //
+        // Sticky, and per body: once a chase is on it stays on for that order, or the
+        // charge would call itself off the instant it started closing again.
+        const chase = this._formChase || (this._formChase = new Map());
+        const seen = new Set();
+        info.forEach((g, gid) => {
+            seen.add(gid);
+            if (!g.n || !g.target) return;
+            const d = Math.hypot(g.cx / g.n - g.target.x, g.cz / g.n - g.target.z);
+            const st = chase.get(gid) || { min: d, charging: false };
+            if (d < st.min) st.min = d;
+            else if (!st.charging && d > st.min + Game.FORMATION_CHARGE_SLACK) st.charging = true;
+            chase.set(gid, st);
+            g.charging = st.charging;
+        });
+        chase.forEach((_, gid) => { if (!seen.has(gid)) chase.delete(gid); });
     }
+
+    // How far the quarry has to pull away before the approach is called off. A couple
+    // of world units, so a target jinking on the spot does not sound the charge.
+    static get FORMATION_CHARGE_SLACK() { return 2.0; }
 
     // Close enough to its place to be held to the march pace again. Half a rank.
     static get FORMATION_IN_PLACE() { return 1.0; }
@@ -3773,6 +3804,11 @@ class Game {
         const ax = unit.formationAxis, g = (this._formLead && unit.formationGroup != null)
             ? this._formLead.get(unit.formationGroup) : undefined;
         if (ax && g) {
+            // The chase is on: the shape has done its job and nothing is held back.
+            // The action surface already tells the model a formation governs the
+            // APPROACH and is dropped on contact -- this is that sentence coming true
+            // for a target that never let the approach finish.
+            if (g.charging) return own;
             const along = (unit.x - unit.targetX) * ax.x + (unit.z - unit.targetZ) * ax.z;
             if (along < g.lead - Game.FORMATION_IN_PLACE) return own;   // still finding its place
             // In place, but the body is not: hold back so the stragglers can close. The
