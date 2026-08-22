@@ -2893,8 +2893,31 @@ class UIManager {
         let html = '';
         const now = Date.now();
         view.forEach(({ entry, actionLabel, detail }, idx) => {
+            // The head used to say how long ago the move was taken. Two things wrong
+            // with that: the panel already carries the match clock, so "when" was
+            // answered above -- and the number did not actually tick. This list only
+            // repaints when the log CHANGES, so a card sat there reading "5s" for as
+            // long as the seat took to move again.
+            //
+            // Move number and answer time do not age, and they are the two things a
+            // reader wants from a card: which turn to open in the transcript, and how
+            // long the seat thought about it. Entries that are not a model's move --
+            // a pause, a piece of advice, an attack landing -- have neither, so those
+            // keep the relative time and the tooltip says which of the two it is.
             const secondsAgo = Math.floor((now - entry.timestamp) / 1000);
-            const timeStr = secondsAgo < 5 ? t('log.now') : `${secondsAgo}s`;
+            let timeStr;
+            if (entry.move) {
+                // One decimal below ten seconds. The quick seats answer in 1.6s and the
+                // slow ones in 118s; rounding the fast end to whole seconds would flatten
+                // the only part of the range where a tenth still means something.
+                const secs = entry.latencyMs != null ? entry.latencyMs / 1000 : null;
+                const ms = secs == null ? '' : (secs < 10 ? secs.toFixed(1) : Math.round(secs)) + 's';
+                timeStr = `<b class="log-move">#${entry.move}</b>${ms ? ' ' + ms : ''}`;
+                timeStr = `<span class="log-time" title="${t('log.headTip', { n: entry.move })}">${timeStr}</span>`;
+            } else {
+                timeStr = `<span class="log-time" title="${t('log.agoTip')}">`
+                    + `${secondsAgo < 5 ? t('log.now') : secondsAgo + 's'}</span>`;
+            }
             const civColor = this.legibleColor(entry.color);
             const newCls = idx === 0 ? ' is-new' : '';
             // Stable per-entry id so we can pin the reader's scroll to one entry.
@@ -2906,7 +2929,7 @@ class UIManager {
                 html += `
                     <div class="ai-log-entry is-advice${newCls}" data-key="${key}" style="border-left-color: ${civColor}">
                         <div class="log-line1">
-                            <span class="log-time">${timeStr}</span>
+                            ${timeStr}
                             ${this.teamDotHtml(seatOf[entry.playerId], 9)}
                             <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(tg(entry.civName))}</span>
                             <span class="log-action">${t('log.advice')}</span>
@@ -2936,7 +2959,7 @@ class UIManager {
                     linked ? ` onclick="game.ui.openTranscriptAt(${key})" title="${t('log.openTranscript')}"` : ''
                 } style="border-left-color: ${civColor}">
                     <div class="log-line1">
-                        <span class="log-time">${timeStr}</span>
+                        ${timeStr}
                         ${this.teamDotHtml(seatOf[entry.playerId], 9)}
                         <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(tg(entry.civName))}</span>
                         <span class="log-action">${actionLabel}${this.escapeHtml(detail)}${entry.failed ? ` <span class="log-x">✗ ${t('log.rejected')}</span>` : ''}</span>

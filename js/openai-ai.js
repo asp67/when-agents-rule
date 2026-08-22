@@ -3874,6 +3874,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // undiagnosable — "Failed to fetch" reads the same whether a proxy cut the
         // connection at a fixed 100 s or the wifi blinked once.
         const tStart = Date.now();
+        // Which move this is and how long it took are stamped onto the controller when
+        // the reply lands, and read from there by every decision-log entry the turn
+        // produces. Cleared first: a request that never comes back must not hand the
+        // previous turn's numbers to the entry that reports its failure.
+        controller._moveNo = null;
+        controller._moveMs = null;
         try {
             // Build provider-specific auth headers + request (url, body).
             const auth = model.auth || (model.apiKey ? { type: 'bearer', key: model.apiKey } : { type: 'none' });
@@ -4028,6 +4034,18 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     `provider reported completion=${usage ? usage.completion : 'n/a'}, content=${((norm && norm.content) || '').length} chars. ` +
                     `A completion far below the ask means the cap came from the endpoint, not from here.`);
             }
+            // The number the transcript is about to file this exchange under, and the
+            // wall time it cost. Both live on the controller because one move can be
+            // reported from three places -- executeAction, a parse failure inside
+            // parseResponse, an entry held for the next round flush -- and all three are
+            // describing the same move.
+            //
+            // turnsFor + 1 is exactly what record() below is about to assign: the same
+            // counter, read one call early because parseResponse writes its failure
+            // entries before the turn exists. Nothing else runs for this seat in
+            // between, so the log's #7 and the transcript's #7 cannot drift apart.
+            controller._moveNo = ((this.transcripts && this.transcripts.turnsFor(ai.id)) || 0) + 1;
+            controller._moveMs = Date.now() - reqStart;
             const result = this.parseResponse(norm, controller);
 
             // Transcript: the exchange VERBATIM, for after-the-fact analysis. Separate
@@ -4834,6 +4852,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             playerId: ai.id,
             civName: civName,
             color: colorHex,
+            // The move that ordered this, and what it cost to get. A batched reply
+            // writes several entries carrying the same pair, which is the point: it
+            // shows at a glance that three commands came out of one inference.
+            move: controller._moveNo,
+            latencyMs: controller._moveMs,
             action: action,
             reason: params?.reason || '',
             params: params || {},
@@ -7679,6 +7702,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // anyway, rather than from the spacing of a viewer's log.
     pushDecisionFor(ai, entry) {
         const c = (this.aiControllers || []).find(x => x.aiPlayer === ai);
+        // Same stamp executeAction takes, for the entries written when a reply arrived
+        // but would not parse. Null on the failure path -- the controller's pair is
+        // cleared per request and only set once a reply exists -- and the log then
+        // falls back to saying how long ago the entry was written.
+        if (c && entry.move === undefined) { entry.move = c._moveNo; entry.latencyMs = c._moveMs; }
         if (this.turnBased && c) { (c.pendingLog || (c.pendingLog = [])).push(entry); return; }
         this.commitDecision(entry);
     }

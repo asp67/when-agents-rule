@@ -1201,11 +1201,16 @@ body.spectator-mode #unitInfo.spectator-card {
     gap: 6px;
 }
 .ai-log-entry .log-time {
-    color: #6b7488;
+    /* Same grey as .tv-meta in the transcript viewer: the head of a log card and
+       the head of a transcript turn now say the same two things, so they should
+       not say them in two different colours. */
+    color: #7c869c;
     font-size: 0.88em;
     font-variant-numeric: tabular-nums;
     flex: 0 0 auto;
 }
+/* The move number, in .tv-n's pale blue for the same reason. */
+.ai-log-entry .log-move { color: #8cb4ff; font-weight: 800; }
 .ai-log-entry .log-civ {
     font-weight: 700;
     flex: 0 0 auto;
