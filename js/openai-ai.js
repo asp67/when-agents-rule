@@ -682,7 +682,27 @@ class OpenAIAIManager {
     // dropped the moment it is close enough to fight -- holding ranks through a melee
     // would need re-forming logic, a way to report the formation's state back, and a
     // whole second argument about what "holding" means when half the rank is dead.
-    static get FORMATION_SPACING() { return 4; }
+    // Distance between neighbouring slots. Chosen by looking at twenty real units
+    // standing in each shape rather than at the arithmetic, because a number of world
+    // units means nothing until two soldiers are that far apart on screen.
+    //
+    // Three constants have to stay in order here:
+    //   SEPARATION_DIST         1.2  same-owner units shove each other below this
+    //   FORMATION_SPACING       2    where neighbours are placed
+    //   UNIT_BUILDING_CLEARANCE 4.5  how far a building pushes a unit out
+    //
+    // 2 sits 1.67x above the shove threshold, so a formed-up body never fights its own
+    // separation -- which is the pinned-and-vibrating failure, manufactured on purpose.
+    // It reads as a cohort rather than a scattering.
+    //
+    // What made 2 look wrong at first was not the distance. It was cavalry standing
+    // shoulder to shoulder INSIDE a rank of foot, which no army has ever done; the
+    // horse went to the wings and the spacing stopped being the problem. Worth
+    // remembering before anyone widens this again to fix a look.
+    //
+    // At 4 the shapes were needlessly large -- a twenty-man line was 20 wide, wider
+    // than most gaps between buildings, which is why lines snagged on clearance rings.
+    static get FORMATION_SPACING() { return 2; }
     static get FORMATIONS() { return ['line', 'wedge', 'block', 'ranged_back']; }
 
     formationSlots(units, shape) {
@@ -698,9 +718,20 @@ class OpenAIAIManager {
         // makes "ranged" and "rearmost" the same sentence for them, in every shape,
         // without a second rule per shape to keep in step with the first.
         const isSupport = u => !!(u && u.unitType === 'support');
-        const melee = units.filter(u => !isRanged(u));
+        // Horse is its own arm. Every shape here sorted by "can it shoot", which put
+        // cavalry shoulder to shoulder inside a rank of foot -- the one detail that
+        // made a formed-up body look wrong on screen. They ride on the WINGS, level
+        // with the front: what it looks like in every painting of a battle line, and
+        // what their speed is actually for.
+        const isCav = u => !!(u && u.unitType === 'cavalry');
+        let cav   = units.filter(isCav);
+        let melee = units.filter(u => !isRanged(u) && !isCav(u));
         const shot  = units.filter(isRanged)
             .sort((a, b) => (isSupport(a) ? 1 : 0) - (isSupport(b) ? 1 : 0));
+        // Wings need a body to flank. An all-horse force has no foot to stand beside,
+        // so there the horse IS the line and takes the shape it would otherwise escort.
+        if (!melee.length) { melee = cav; cav = []; }
+        const bodyN = melee.length + shot.length;
 
         // Fill `list` into `rows` ranks starting at rank `from`, centred on the axis of
         // march. Front rank first, so a half-filled formation is short at the BACK
@@ -757,8 +788,8 @@ class OpenAIAIManager {
             // Deep and square-ish, with the shooters on BOTH flanks and the melee in
             // the middle: a column that can be hit from either side and answers with
             // its own edges. Five deep once there are enough to fill it, four below.
-            const depth = units.length >= 20 ? 5 : 4;
-            const cols = Math.max(1, Math.ceil(units.length / depth));
+            const depth = bodyN >= 20 ? 5 : 4;
+            const cols = Math.max(1, Math.ceil(bodyN / depth));
             // Column order from the outside in, so the shooters -- laid first -- take
             // the flanks and the melee fills what is left, the middle.
             const mid = (cols - 1) / 2;
@@ -783,8 +814,15 @@ class OpenAIAIManager {
                 .map(c => ({ c, row: 0 }));
             const behind = [];
             byEdge.forEach(c => { for (let row = 1; row < depth; row++) behind.push({ c, row }); });
-            const flank = behind.filter(s => isFlank(s.c));
-            const inner = behind.filter(s => !isFlank(s.c));
+            // Front to back, not column by column. Seats are laid out per column for
+            // the outside-in ordering, but FILLED per row -- otherwise a body that does
+            // not divide evenly leaves its empty seats wherever the last column happens
+            // to be, which for the inner region is the middle. A block with a hole
+            // punched through the centre of it is worse than one that is short at the
+            // back, and the back is where a short rank belongs.
+            const rowFirst = (a, b) => a.row - b.row || Math.abs(a.c - mid) - Math.abs(b.c - mid);
+            const flank = behind.filter(s => isFlank(s.c)).sort(rowFirst);
+            const inner = behind.filter(s => !isFlank(s.c)).sort(rowFirst);
             // Melee mans the front, then the middle; shooters take the flanks. Each
             // queue falls back to the other so a lopsided force still fills the shape
             // instead of leaving holes -- a melee-poor army gets a thinner melee front,
@@ -807,6 +845,19 @@ class OpenAIAIManager {
             }
         } else {
             return { slots: null };
+        }
+        // Two columns of horse, one either side of whatever the body turned out to be,
+        // starting level with its front rank. Placed AFTER the shape rather than inside
+        // it, so all four shapes get wings from one rule instead of four.
+        if (cav.length) {
+            let maxR = 0;
+            out.forEach(v => { maxR = Math.max(maxR, Math.abs(v.r)); });
+            const lane = maxR + S;
+            const left = Math.ceil(cav.length / 2);
+            cav.forEach((u, i) => {
+                const onLeft = i < left;
+                out.set(u, { f: -(onLeft ? i : i - left) * S, r: (onLeft ? -1 : 1) * lane });
+            });
         }
         return { slots: out };
     }
