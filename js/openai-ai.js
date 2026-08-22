@@ -420,8 +420,12 @@ class OpenAIAIManager {
         // orderedUnitsGone: the same case seen from the other end. The HANDLES were in
         // friendlyUnits in the state this seat read, and every one of those units died
         // while it was thinking. A snapshot cannot forewarn that either.
+        // assignIdleRaced: workers.idle said N when this seat read the state and says 0
+        // now. Idle is the one worker pool that empties itself -- a dry node makes a
+        // worker idle until the next pass reassigns it, 0.2-2s later -- so a seat that
+        // asked for idle hands answered a true number that expired while it thought.
         return new Set(['trainerBusy', 'noWorkerIdleBuild', 'noClearSpot', 'assignAllCarrying',
-                        'targetGone', 'orderedUnitsGone']);
+                        'targetGone', 'orderedUnitsGone', 'assignIdleRaced']);
     }
     haveString(ai) {
         const r = ai.resources;
@@ -2721,6 +2725,14 @@ class OpenAIAIManager {
             wk.total++;
             wk[WK_FIELD[OpenAIAIManager.workerJob(this.game, u)] || 'moving']++;
         });
+        // What this snapshot PROMISED, kept for the executor. workers.idle flickers:
+        // a worker whose node runs dry is idle until the next pass puts it on another
+        // one, and measured on a six-worker seat that is 0.2-2s at a time, non-zero in
+        // 28% of samples. A seat that reads "idle: 3", thinks for eight seconds and
+        // asks for idle hands is not making a mistake -- it is answering a state that
+        // expired while it thought, which is the definition of a contended turn and
+        // not of a rejected one.
+        if (controller) controller._sentIdle = wk.idle;
 
         // Enemy units (very compact)
         const enemyUnits = [];
@@ -6830,10 +6842,20 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // And say which of the two situations it is. "0 are on it, and none of
                 // those can be pulled" read as two separate reasons and left the real
                 // one — that there is simply nobody there — impossible to pick out.
-                const why = onIt === 0
+                // Did the state this seat read promise them? Only "idle" can evaporate
+                // on its own; the four resources and the farms do not empty themselves
+                // between the snapshot and the order.
+                // The controller is not a parameter here; found the way pushDecisionFor
+                // finds it, from the player this action belongs to.
+                const ctl = (this.aiControllers || []).find(x => x.aiPlayer === ai);
+                const promised = (from === 'idle' && ctl && ctl._sentIdle > 0) ? ctl._sentIdle : 0;
+                const why = promised
+                    ? `the ${promised} idle worker(s) your state showed were picked up again before this order landed`
+                    : onIt === 0
                     ? `you have no workers on "${from}" (workers.${FIELD[from]} is 0)`
                     : `all ${onIt} of them are constructing or fighting, and those are never pulled`;
-                this.outcome('log.out.assignFromEmpty', { from, res: resourceType });
+                this.outcome(promised ? 'log.out.assignIdleRaced' : 'log.out.assignFromEmpty',
+                             { from, res: resourceType, had: promised });
                 return `[ERROR] No workers could be taken from "${from}": ${why}. Omitting "from" uses ingame worker selection, which takes idle workers first, then your largest stockpile.`;
             }
             candidates = pool;   // STRICT: an explicit source is not quietly widened
