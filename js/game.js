@@ -1366,6 +1366,7 @@ class Game {
                         unit.formationOffset = null;   // arrived: ranks dissolve
                         unit.formationAxis = null;
                         unit.formationGroup = null;
+                        unit.marchSpeed = null;
                     }
                     const adx = ax - unit.x, adz = az - unit.z;
                     const adist = Math.sqrt(adx * adx + adz * adz) || 1;
@@ -3729,10 +3730,12 @@ class Game {
             const a = alongOf(u);
             let cur = info.get(u.formationGroup);
             if (cur === undefined) {
-                cur = { lead: a, trailing: 0, n: 0, cx: 0, cz: 0, target: null, charging: false };
+                cur = { lead: a, trailing: 0, n: 0, cx: 0, cz: 0, target: null,
+                        charging: false, fastest: 0 };
                 info.set(u.formationGroup, cur);
             } else if (a > cur.lead) cur.lead = a;
             cur.n++; cur.cx += u.x; cur.cz += u.z;
+            cur.fastest = Math.max(cur.fastest, u.speed || 1);
             if (!cur.target && u.attackTarget && u.attackTarget.health > 0) cur.target = u.attackTarget;
         });
         // Second pass, because "trailing" is measured against the lead the first pass
@@ -3758,18 +3761,61 @@ class Game {
             seen.add(gid);
             if (!g.n || !g.target) return;
             const d = Math.hypot(g.cx / g.n - g.target.x, g.cz / g.n - g.target.z);
-            const st = chase.get(gid) || { min: d, charging: false };
-            if (d < st.min) st.min = d;
-            else if (!st.charging && d > st.min + Game.FORMATION_CHARGE_SLACK) st.charging = true;
+            const now = Date.now();
+            const st = chase.get(gid) || { min: d, minAt: now, charging: false };
+            // A real gain, not noise: two units of jitter must not keep resetting the
+            // clock and hold the charge off forever.
+            if (d < st.min - 0.25) { st.min = d; st.minAt = now; }
+            // ...but only break the shape if breaking it can achieve something. If the
+            // quarry is quicker than the quickest unit here, the charge catches nothing
+            // and costs the formation -- it drags the body apart across the map, which
+            // is the exact outcome the shape exists to prevent. A hopeless chase is
+            // better conducted in good order. Its own top speed, not its current pace:
+            // assume it can run, and only let go when we can still outrun it.
+            const tgt = g.target.speed;
+            g.tgtSpeed = (typeof tgt === 'number' && tgt > 0) ? tgt : 0;
+            const canCatch = !g.tgtSpeed || g.fastest > g.tgtSpeed + Game.FORMATION_CHASE_MARGIN;
+            // STOPPED GAINING, not "losing ground". Waiting for the gap to grow only
+            // catches a quarry that runs away from us; one running ALONGSIDE at our own
+            // pace holds the distance flat forever, so the minimum never moves, the
+            // gap never exceeds it, and the horse stays leashed against something it
+            // could have caught. The clock since the last real gain covers both: a
+            // quarry pulling away stops improving it immediately, and so does one
+            // matching us exactly.
+            const sounding = canCatch && !st.charging
+                && (now - st.minAt) > Game.FORMATION_STALL_MS;
+            if (sounding) st.charging = true;
             chase.set(gid, st);
             g.charging = st.charging;
+            // Cut the OTHER leash. Releasing a unit from the pace is only half of it:
+            // formationAim clamps every unit's aim to its own slot, and on an attack
+            // that slot is the target PLUS an offset. So a charger sprints to a spot
+            // beside the quarry and stops dead there -- released, gaining, and then
+            // snapping back into place, which is what asp67 watched it do.
+            //
+            // A charge leaves the formation altogether: no slot, no lane, no shared
+            // pace. The march speed has to go with the rest or moveSpeedOf finds a
+            // unit with no group and holds it to the pace anyway.
+            if (sounding) {
+                all.forEach(u => {
+                    if (!u || u.formationGroup !== gid) return;
+                    if (!((u.speed || 1) > g.tgtSpeed + Game.FORMATION_CHASE_MARGIN)) return;
+                    u.formationOffset = null;
+                    u.formationAxis = null;
+                    u.formationGroup = null;
+                    u.marchSpeed = null;
+                });
+            }
         });
         chase.forEach((_, gid) => { if (!seen.has(gid)) chase.delete(gid); });
     }
 
-    // How far the quarry has to pull away before the approach is called off. A couple
-    // of world units, so a target jinking on the spot does not sound the charge.
-    static get FORMATION_CHARGE_SLACK() { return 2.0; }
+    // How long the approach may go without gaining ground before it is called off.
+    static get FORMATION_STALL_MS() { return 3000; }
+
+    // How much faster than the quarry the fastest chaser has to be before the charge is
+    // worth sounding. Matching its speed is not catching it.
+    static get FORMATION_CHASE_MARGIN() { return 0.05; }
 
     // Close enough to its place to be held to the march pace again. Half a rank.
     static get FORMATION_IN_PLACE() { return 1.0; }
@@ -3804,11 +3850,17 @@ class Game {
         const ax = unit.formationAxis, g = (this._formLead && unit.formationGroup != null)
             ? this._formLead.get(unit.formationGroup) : undefined;
         if (ax && g) {
-            // The chase is on: the shape has done its job and nothing is held back.
-            // The action surface already tells the model a formation governs the
-            // APPROACH and is dropped on contact -- this is that sentence coming true
-            // for a target that never let the approach finish.
-            if (g.charging) return own;
+            // The chase is on -- but only for the ones who can win it. A unit no
+            // faster than the quarry adds nothing by breaking ranks and subtracts a
+            // formation, so the horse goes and the foot keeps marching in good order
+            // behind it. Authoritative while charging: this returns for both answers,
+            // because the out-of-place test below would otherwise release the very
+            // units this is holding back (the chargers race ahead, which makes
+            // everyone left behind look out of place, which is exactly what they now
+            // are and exactly what they should not sprint to fix).
+            if (g.charging) {
+                return own > (g.tgtSpeed || 0) + Game.FORMATION_CHASE_MARGIN ? own : pace;
+            }
             const along = (unit.x - unit.targetX) * ax.x + (unit.z - unit.targetZ) * ax.z;
             if (along < g.lead - Game.FORMATION_IN_PLACE) return own;   // still finding its place
             // In place, but the body is not: hold back so the stragglers can close. The
@@ -4986,6 +5038,11 @@ class Game {
                     unit.z = unit.targetZ;
                     unit.formationAxis = null;   // march over
                     unit.formationGroup = null;
+                    // ...and the pace with it. matchSpeed belongs to the march; a unit
+                    // that kept it after arriving was held to the old body's slowest
+                    // member for the rest of its life, with no group left that could
+                    // ever release it again.
+                    unit.marchSpeed = null;
                     this.renderer.updateUnitPosition(unit);
                 }
             }

@@ -126,7 +126,7 @@ const UNIT_DEFS = {
         name: 'Priester',
         cost: { food: 50, wood: 0, stone: 0, gold: 30 },
         health: 60,
-        speed: 1.2,
+        speed: 1.0,   // a priest walks with the foot, not ahead of it
         attack: 3,
         range: 3,
         type: 'support',
