@@ -1749,7 +1749,7 @@ function tg(str) { return tgIn(_uiLang, str); }
 const I18N_OUTCOMES = {
     de: {
         'log.out.reassigned': '{count} Arbeiter zu {res} bei ({x}, {z}) umverteilt ({near}). Abgezogen: {pulled}.',
-        'log.out.notDiscovered': 'Noch kein {res} entdeckt – niemand umverteilt. Schicke selbst einen Kundschafter mit explore.',
+        'log.out.notDiscovered': '{res}: nichts entdeckt. Eine Ressource existiert für dich erst, wenn eine deiner Einheiten sie gesehen hat.',
         'log.out.farmAllManned': 'Alle {count} Farm(en) sind bereits besetzt – nichts zu tun. Eine Farm wächst nur nach, solange ihr Arbeiter dort steht.',
         'log.out.farmManned': '{count} Arbeiter zu {count} Farm(en) geschickt. Abgezogen: {pulled}.{remaining}',
         'log.out.farmLeft': ' {left} Farm(en) bleiben unbesetzt.',
@@ -1767,7 +1767,7 @@ const I18N_OUTCOMES = {
     },
     es: {
         'log.out.reassigned': '{count} trabajador(es) reasignados a {res} en ({x}, {z}) ({near}). Retirados: {pulled}.',
-        'log.out.notDiscovered': 'Aún no se ha descubierto {res}; nadie fue reasignado. Envía tú un explorador con explore.',
+        'log.out.notDiscovered': '{res}: nada descubierto. Un recurso existe para ti solo cuando una de tus unidades lo ha visto.',
         'log.out.farmAllManned': 'Las {count} granja(s) ya están atendidas; nada que hacer. Una granja solo regenera comida mientras su trabajador está en ella.',
         'log.out.farmManned': '{count} trabajador(es) enviados a {count} granja(s). Retirados: {pulled}.{remaining}',
         'log.out.farmLeft': ' {left} granja(s) siguen sin atender.',
@@ -1785,7 +1785,7 @@ const I18N_OUTCOMES = {
     },
     zh: {
         'log.out.reassigned': '已将 {count} 名工人重新分配到 ({x}, {z}) 的{res}（{near}）。抽调自：{pulled}。',
-        'log.out.notDiscovered': '尚未发现{res}，未重新分配工人。请自行用 explore 派出侦察兵。',
+        'log.out.notDiscovered': '{res}：尚未发现。资源只有在你的单位看到之后才对你存在。',
         'log.out.farmAllManned': '全部 {count} 座农场都已有人耕作，无需操作。农场只有在工人驻守时才会产出食物。',
         'log.out.farmManned': '已派 {count} 名工人耕作 {count} 座农场。抽调自：{pulled}。{remaining}',
         'log.out.farmLeft': ' 还有 {left} 座农场无人耕作。',

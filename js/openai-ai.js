@@ -5417,7 +5417,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
                     const costStr = tcDef ? this.costString(tcDef.cost) : '100 food, 100 wood, 100 stone, 100 gold';
                     this.outcome('log.out.noTCTrain', {});
-                    return `[ERROR] You have NO Town Center, so you cannot train workers. Rebuild one: build_structure with buildingType="town_center" and a targetX/targetZ on open ground (costs ${costStr}; one of your existing workers constructs it). Until a Town Center stands you cannot make new workers.`;
+                    return `[ERROR] worker: requires a Town Center. You have none. town_center costs ${costStr}.`;
                 }
                 const bdef = getBuildingDef(reqB);
                 const tech = bdef && bdef.requiresTech;
@@ -5626,7 +5626,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (ai.currentAgeUpgrade) {
             console.log(`[OpenAIAI] ${ai.id}: Already upgrading age`);
             this.outcome('log.out.alreadyUpgrading', { age: ai.currentAgeUpgrade.targetAge });
-            return `[ERROR] Already upgrading age to "${ai.currentAgeUpgrade.targetAge}". Wait for completion.`;
+            return `[ERROR] upgrade_age: already advancing to "${ai.currentAgeUpgrade.targetAge}".`;
         }
 
         const nextAge = ages[currentIdx + 1];
@@ -5812,7 +5812,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
         if (pick.error === 'no_idle') {
             this.outcome('log.out.noWorkerIdleBuild', { buildingType });
-            return `[ERROR] No worker available to build ${buildingType} — all your workers are constructing other sites or fighting (neither is ever pulled). Wait for one to finish.`;
+            return `[ERROR] ${buildingType}: no worker available. All are constructing or fighting; neither is ever pulled.`;
         }
 
         // Measured before applyBuilder sends it walking, and reported below when it is
@@ -6729,7 +6729,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (discovered.length === 0) {
             const have = this.discoveredResourceSummary(ai, game);
             this.outcome('log.out.notDiscovered', { res: resourceType });
-            return `[ERROR] No ${resourceType} has been discovered yet, so no workers were reassigned. You have currently discovered: ${have}. Only resources you have scouted exist for you — "discoveredNodesOnMap" counts them per type and "nearestNodes" gives the coordinates of the ones near your bases. Send a scout yourself with explore and a tile picked from "map.exploration"; once ${resourceType} shows a count above 0, call assign_workers again.`;
+            return `[ERROR] ${resourceType}: none discovered. Discovered so far: ${have}. A resource exists for you only once one of your units has seen it.`;
         }
 
         // Which node? Explicit targetX/targetZ picks the discovered node nearest
