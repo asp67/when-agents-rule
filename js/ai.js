@@ -425,7 +425,7 @@ class AIManager {
     // Research hosts. maybeStartResearch only offers a tech whose researchAt building
     // stands finished, and this player only ever built houses, farms and military — so
     // every tech hosted anywhere else was unreachable for the whole match. Between a
-    // third and half of each civ's tree, depending on the civ, including ironWorking and
+    // third and half of each civ's tree, depending on the civ, including iron_working and
     // the armour upgrades. It even researched the ACADEMY unlock (that one is hosted at
     // the town centre, and unlock techs sort first) and then never built the thing it had
     // just paid to unlock.

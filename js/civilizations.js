@@ -213,7 +213,7 @@ const CIVILIZATIONS = {
                 appliesTo: 'ranged'
             },
             // === Bronzezeit - an der Akademie ===
-            bronzeArmor: {
+            bronze_armor: {
                 name: 'Bronzerüstung',
                 cost: { food: 0, wood: 0, stone: 150, gold: 100 },
                 researchAt: 'academy',
@@ -261,12 +261,12 @@ const CIVILIZATIONS = {
                 bonus: { healPower: 0.2 }
             },
             // === Eisenzeit - an der Akademie ===
-            ironWorking: {
+            iron_working: {
                 name: 'Eisenverarbeitung',
                 cost: { food: 0, wood: 0, stone: 200, gold: 200 },
                 researchAt: 'academy',
                 requiredAge: 'iron',
-                requires: ['bronzeArmor'],
+                requires: ['bronze_armor'],
                 description: 'Alle Militäreinheiten +3 Angriff',
                 researchTime: 30000,  // 30 seconds
                 bonus: { attack: 3 },
@@ -441,7 +441,7 @@ const CIVILIZATIONS = {
                 bonus: { trainSpeed: 0.5 },
                 appliesTo: 'town_center'
             },
-            phalanxArmor: {
+            phalanx_armor: {
                 name: 'Phalanx-Rüstung',
                 cost: { food: 0, wood: 50, stone: 150, gold: 100 },
                 researchAt: 'academy',
@@ -464,12 +464,12 @@ const CIVILIZATIONS = {
                 bonus: { healPower: 0.2 }
             },
             // === Eisenzeit - an der Akademie ===
-            ironWorking: {
+            iron_working: {
                 name: 'Eisenverarbeitung',
                 cost: { food: 0, wood: 0, stone: 200, gold: 200 },
                 researchAt: 'academy',
                 requiredAge: 'iron',
-                requires: ['phalanxArmor'],
+                requires: ['phalanx_armor'],
                 description: 'Alle Militäreinheiten +3 Angriff',
                 researchTime: 30000,
                 bonus: { attack: 3 },
@@ -615,7 +615,7 @@ const CIVILIZATIONS = {
                 unlocks: { buildings: ['academy'] }
             },
             // === Jungsteinzeit - an der Akademie ===
-            cavalryTraining: {
+            cavalry_training: {
                 name: 'Kavallerie-Ausbildung',
                 cost: { food: 150, wood: 50, stone: 0, gold: 100 },
                 researchAt: 'academy',
@@ -627,12 +627,12 @@ const CIVILIZATIONS = {
                 appliesTo: 'cavalry'
             },
             // === Bronzezeit - an der Akademie ===
-            cavalryArmor: {
+            cavalry_armor: {
                 name: 'Kavallerie-Rüstung',
                 cost: { food: 0, wood: 0, stone: 200, gold: 150 },
                 researchAt: 'academy',
                 requiredAge: 'bronze',
-                requires: ['cavalryTraining'],
+                requires: ['cavalry_training'],
                 description: 'Kavallerie +25 Gesundheit',
                 researchTime: 25000,
                 bonus: { health: 25 },
@@ -853,7 +853,7 @@ const CIVILIZATIONS = {
             // this game. Same effect and same bill as Egypt's Bronze Armor; the
             // Shrine's -30% still comes off on top, as it does for every Yamato
             // tech.
-            lamellarArmor: {
+            lamellar_armor: {
                 name: 'Lamellenrüstung',
                 cost: { food: 0, wood: 0, stone: 150, gold: 100 },
                 researchAt: 'academy',
@@ -865,7 +865,7 @@ const CIVILIZATIONS = {
                 appliesTo: 'all_military'
             },
             // === Eisenzeit - an der Akademie ===
-            ironWorking: {
+            iron_working: {
                 name: 'Eisenverarbeitung',
                 cost: { food: 0, wood: 0, stone: 200, gold: 200 },
                 researchAt: 'academy',

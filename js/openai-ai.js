@@ -5482,8 +5482,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         return `OK - Training ${unitType} at ${free.type} (${Math.round(free.x)}, ${Math.round(free.z)}) (~${this.realSecs(free.productionDuration || 5000)}s to produce; that building is busy until it finishes).${note}`;
     }
 
+    // Six techs used to be camelCase while every other identifier in the game -- ten
+    // buildings, eleven units, twenty other techs -- joined its words with an
+    // underscore. One namespace, two spellings, and the only way to know which applied
+    // to a given word was to have seen it. Renamed; the old spellings still resolve, so
+    // a model that learned them from an older transcript is not punished for our
+    // inconsistency. Same courtesy the formation rename got.
+    static get TECH_ALIASES() {
+        return { ironWorking: 'iron_working', cavalryTraining: 'cavalry_training',
+                 bronzeArmor: 'bronze_armor', cavalryArmor: 'cavalry_armor',
+                 lamellarArmor: 'lamellar_armor', phalanxArmor: 'phalanx_armor' };
+    }
+
     executeResearchTech(ai, game, techId) {
         const civ = getCivilization(ai.civilization);
+        techId = OpenAIAIManager.TECH_ALIASES[techId] || techId;
         const tech = civ?.techTree?.[techId];
         if (!tech) {
             console.log(`[OpenAIAI] ${ai.id}: Unknown tech "${techId}"`);
