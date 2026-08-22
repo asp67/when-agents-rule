@@ -5274,9 +5274,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     popCapAdvice(ai) {
         const cap = (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100;
         if (ai.resources.maxPopulation >= cap) {
-            return `You are at the HARD population cap of ${cap} — houses and Town Centers can NOT raise it any further. The only way to free a slot is delete_unit: remove a worker if you need more military units or a military unit if you need more workers.`;
+            return `Hard population cap ${cap} reached; houses and Town Centers do not raise it further. delete_unit frees a slot.`;
         }
-        return `Build houses (+5 each) or a Town Center (+10) to raise maxPopulation (up to the hard cap of ${cap}), or delete_unit to free room now.`;
+        return `maxPopulation is raised by houses (+5) and Town Centers (+10), to a hard cap of ${cap}. delete_unit frees a slot.`;
     }
 
     // Log the population rejection with the RIGHT advice: at the hard cap, houses
@@ -5361,7 +5361,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (finishedOfType.length === 0) {
                 if (ai.buildings.some(b => rightType(b) && b.underConstruction)) {
                     this.outcome('log.out.buildingUnderConstr', { building: reqB, unitType });
-                    return `[ERROR] Your ${reqB} is still under construction. Wait for it to finish, then train ${unitType}.`;
+                    return `[ERROR] ${reqB}: still under construction.`;
                 }
                 // Owning no Town Center is not the same as not having got round to a
                 // barracks yet: it ends worker production outright, and the way back is
@@ -5382,10 +5382,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 }
                 if (tech && !ai.researchedTechs[tech]) {
                     this.outcome('log.out.unitBuildingNotUnlocked', { unitType, building: reqB, tech });
-                    return `[ERROR] ${unitType} is trained at a ${reqB}. You have not unlocked ${reqB}: it needs the tech "${tech}", which is not researched.`;
+                    return `[ERROR] ${unitType}: requires ${reqB}, not unlocked. Prerequisite: tech "${tech}".`;
                 }
                 this.outcome('log.out.unitBuildingNotBuilt', { unitType, building: reqB });
-                return `[ERROR] ${unitType} is trained at a ${reqB}, which you have not built yet. build_structure "${reqB}" and wait for it to finish, then train.`;
+                return `[ERROR] ${unitType}: requires ${reqB}, not built.`;
             }
 
             // 2) ADVANCE: the building exists but the unit is gated to a later epoch.
@@ -5393,7 +5393,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 const minAge = this.minAgeForUnit(unitType);
                 if (minAge && ageOrder.indexOf(minAge) > ageOrder.indexOf(ai.age)) {
                     this.outcome('log.out.unitNeedsAge', { unitType, minAge, age: ai.age });
-                    return `[ERROR] ${unitType} needs the ${minAge} age. You are in ${ai.age}. Your ${reqB} trains it from that age on.`;
+                    return `[ERROR] ${unitType}: requires ${minAge} age. Current age: ${ai.age}.`;
                 }
                 this.outcome('log.out.buildingCannotTrainTier', { building: reqB, unitType });
                 return `[ERROR] Your ${reqB} cannot train ${unitType} at your current tier. Check what it can produce for your age.`;
@@ -5405,7 +5405,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (trainers.length === 0) {
             // Only reached for unique units with no tier mapping (reqB null).
             this.outcome('log.out.noBuildingTrains', { unitType });
-            return `[ERROR] No finished building of yours can train ${unitType}. Infantry come from a barracks, archers from an archery_range, cavalry from a stable.`;
+            return `[ERROR] ${unitType}: no finished building can train it. Trained at: barracks (infantry), archery_range (archers), stable (cavalry), temple (priest).`;
         }
 
         // 3) POPULATION (structural train-time gate).
@@ -5420,7 +5420,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (freeTrainers.length === 0) {
             const tName = trainers[0].type;
             this.outcome('log.out.trainerBusy', { building: tName });
-            return `[ERROR] Your ${tName} is busy producing right now. Wait for it to finish, or build another ${tName} to train in parallel.`;
+            return `[ERROR] ${tName}: all busy producing.`;
         }
 
         // 5) RESOURCES.
@@ -5494,7 +5494,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (ai.currentResearch) {
             console.log(`[OpenAIAI] ${ai.id}: Already researching a tech`);
             this.outcome('log.out.alreadyResearching', { techId: ai.currentResearch.techId });
-            return `[ERROR] Already researching "${ai.currentResearch.techId}". Only one tech runs at a time; "research.current" shows its secondsRemaining.`;
+            return `[ERROR] research_tech: "${ai.currentResearch.techId}" already running. One at a time; secondsRemaining in "research.current".`;
         }
 
         // Check age requirement
@@ -5502,7 +5502,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (ageOrder.indexOf(tech.requiredAge) > ageOrder.indexOf(ai.age)) {
             console.log(`[OpenAIAI] ${ai.id}: Tech "${techId}" requires ${tech.requiredAge}`);
             this.outcome('log.out.techNeedsAge', { techId, reqAge: tech.requiredAge, age: ai.age });
-            return `[ERROR] "${techId}" needs the ${tech.requiredAge} age. You are in ${ai.age}.`;
+            return `[ERROR] ${techId}: requires ${tech.requiredAge} age. Current age: ${ai.age}.`;
         }
 
         // Check prerequisites
@@ -5511,7 +5511,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 if (!ai.researchedTechs[req]) {
                     console.log(`[OpenAIAI] ${ai.id}: Missing prerequisite "${req}" for "${techId}"`);
                     this.outcome('log.out.missingPrereq', { req, techId });
-                    return `[ERROR] "${techId}" requires "${req}", which is not researched.`;
+                    return `[ERROR] ${techId}: unmet prerequisite "${req}".`;
                 }
             }
         }
@@ -5522,22 +5522,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!ai.buildings.some(b => b.type === hostType && !b.underConstruction)) {
             console.log(`[OpenAIAI] ${ai.id}: Need a finished ${hostType} to research "${techId}"`);
             if (hostType === 'academy') {
-                const hasAcademyTech = !!ai.researchedTechs['academy'];
-                const step = hasAcademyTech
-                    ? 'build one (build_structure "academy") and wait for it to finish'
-                    : 'first research "academy", then build one (build_structure "academy") and wait for it to finish';
                 this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
-                // "researched at a Market ... build an academy" -- one sentence, two
-                // names for one building, and the model is left to guess which of them
-                // it is being told about. The rename to academy updated the
-                // INSTRUCTION here and left the DIAGNOSIS as a literal, so the half of
-                // the sentence that names the problem kept pointing at a building that
-                // has not existed since v512. The branch below always got this right
-                // because it interpolates hostType instead of spelling anything out.
-                return `[ERROR] "${techId}" is researched at a finished academy, which you don't have. To enable it: ${step}.`;
+                return `[ERROR] ${techId}: researched at ${hostType}. None finished.`;
             }
             this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
-            return `[ERROR] "${techId}" is researched at a finished ${hostType}. You have none.`;
+            return `[ERROR] ${techId}: researched at ${hostType}. None finished.`;
         }
 
         const costMultiplier = ai.techCostMultiplier || 1;
@@ -5630,7 +5619,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             ? LEGACY_BUILDING_IDS[String(buildingType || '').toLowerCase()] : null;
         if (legacy) {
             this.outcome('log.out.renamedBuilding', { from: buildingType, to: legacy });
-            return `[ERROR] There is no "${buildingType}" in this game — that type is called "${legacy}" now. "buildableStructures" always lists the current names.`;
+            return `[ERROR] ${buildingType}: unknown type, renamed to "${legacy}". Current names in "buildableStructures".`;
         }
         const buildingDef = this.buildingDefFor(ai, buildingType);
         // Resolve an alias to the real id up front, so every message below — and the
@@ -5660,7 +5649,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (effAge && ageOrder.indexOf(ai.age) < ageOrder.indexOf(effAge)) {
             console.log(`[OpenAIAI] ${ai.id}: ${buildingType} needs ${effAge}`);
             this.outcome('log.out.buildingNeedsAge', { buildingType, effAge, age: ai.age });
-            return `[ERROR] ${buildingType} needs the ${effAge} age. You are in ${ai.age}.`;
+            return `[ERROR] ${buildingType}: requires ${effAge} age. Current age: ${ai.age}.`;
         }
 
         // RESEARCH next: the building's enabling tech.
@@ -5674,7 +5663,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 return `[ERROR] Your civilization cannot build ${buildingType} — it has no "${buildingDef.requiresTech}" technology. Use a different building. See "buildableStructures" for what you CAN build (e.g. barracks for infantry, archery_range for archers).`;
             }
             this.outcome('log.out.buildNeedsTech', { tech: buildingDef.requiresTech, buildingType });
-            return `[ERROR] ${buildingType} requires the tech "${buildingDef.requiresTech}", which is not researched. Researchable techs are listed in "research.available".`;
+            return `[ERROR] ${buildingType}: unmet prerequisite: tech "${buildingDef.requiresTech}". Researchable techs in "research.available".`;
         }
 
         // One Wonder per player, whether it is finished or still going up.
@@ -5747,7 +5736,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!spot) {
             console.log(`[OpenAIAI] ${ai.id}: Could not find valid position for ${buildingType}`);
             this.outcome('log.out.noClearSpot', { buildingType });
-            return `[ERROR] No clear spot for ${buildingType} anywhere near (${Math.round(x)}, ${Math.round(z)}) — buildings or resource nodes occupy it.`;
+            return `[ERROR] ${buildingType}: no clear spot near (${Math.round(x)}, ${Math.round(z)}). Occupied by buildings or resource nodes.`;
         }
         ({ x, z } = spot);
 
@@ -6543,7 +6532,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
         const costStr = tcDef ? Object.entries(tcDef.cost || {}).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${k}`).join(', ') : 'its cost';
         this.outcome('log.out.noTCWorkers', {});
-        return `[ERROR] You have no finished Town Center. Workers deliver what they gather to a Town Center, so nothing they harvest is banked while you have none. A town_center costs ${costStr}.`;
+        return `[ERROR] No finished Town Center. Gathered resources are delivered to a Town Center; none are banked without one. town_center costs ${costStr}.`;
     }
 
     // executeHarvestResource lived here. Removed: it was assign_workers with the
@@ -7175,7 +7164,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     attackTargetHint(ai, game) {
         return this.hasVisibleEnemies(ai, game)
             ? 'To list valid targets, read "enemyUnits" and "enemyBuildings" in the game state — those are the enemies you have DISCOVERED (each with an "id", its x,z and owner). Attack one of those coordinates, or pass its exact "id" as params.targetId.'
-            : 'You have not discovered any enemies yet, so "enemyUnits" and "enemyBuildings" are empty. Nothing appears in them until one of your own units sees it.';
+            : 'No known enemy units or buildings. "enemyUnits" and "enemyBuildings" list only what one of your own units has seen.';
     }
 
     // ----------------------------------------------------------------
