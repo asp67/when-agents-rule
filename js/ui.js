@@ -2370,6 +2370,11 @@ class UIManager {
 
     toggleMinimapFogSeat(seat) {
         const g = this.game;
+        // A click is the viewer taking the wheel. While the director is driving it sets
+        // the fog itself on every cut, so without this the knob would appear to work and
+        // then snap back at the next shot -- which reads as a broken knob rather than as
+        // a camera doing its job. Released when auto-camera is toggled.
+        g._minimapFogManual = true;
         g.minimapFogSeat = (g.minimapFogSeat === seat) ? null : seat;
         this.refreshMinimapFogKnobs();
         // Repaint now rather than at the next 500ms tick -- a knob that answers half

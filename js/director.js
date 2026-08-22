@@ -356,7 +356,7 @@ class Director {
                 if (prev == null || b.health >= prev) continue;
                 const threat = this.nearestEnemyTo(ai, b);
                 if (!threat) continue;
-                push('pov', 'pov:' + (b.id || b.type) , 92 + (b.isWonder ? 12 : 0), () => {
+                push('pov', 'pov:' + ai.id + ':' + (b.id || b.type), 92 + (b.isWonder ? 12 : 0), () => {
                     const dx = threat.x - b.x, dz = threat.z - b.z;
                     const L = Math.hypot(dx, dz) || 1;
                     return {
@@ -421,7 +421,7 @@ class Director {
             // Something new going up, shown once, with a slow push in.
             const site = [...bs].reverse().find(b => b.underConstruction && !this._sites.has(b.id || b));
             if (site) {
-                push('site', 'site:' + (site.id || bs.length), 48, () => {
+                push('site', 'site:' + ai.id + ':' + (site.id || bs.length), 48, () => {
                     this._sites.add(site.id || site);
                     const h = this.horizonFor(ai, site);
                     return {
@@ -671,8 +671,19 @@ class Director {
         const dur = (spec.dur[0] + Math.random() * (spec.dur[1] - spec.dur[0])) * this.lapse;
         this.recent.push(key);
         if (this.recent.length > DIR_RECENT) this.recent.shift();
+        // Segment 1 of the key is the seat this shot is ABOUT, for every shot that is
+        // about one seat. pov and site used to put a building id here instead, which
+        // fed adjust() a name no seat answers to: the seat whose town was being taken
+        // was on screen at score 92 and still collecting the full "not shown lately"
+        // bonus, because nothing had marked it seen. Now they carry the owner too.
         const owner = key.split(':')[1];
         if (owner) this.lastSeen.set(owner, now);
+        // ...and the same fact answers "whose map is this", which the spectator minimap
+        // wants. Null for the shots that belong to nobody -- overview, a brawl, two
+        // seats meeting -- and null is exactly the value that means "show every seat".
+        const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        const who = owner ? ais.find(a => a && a.id === owner) : null;
+        const seat = who && who.seat != null ? who.seat : null;
 
         // Which way the arc goes. It used to alternate every shot, which is right when
         // every shot is a new angle and wrong the moment two land on the same one: the
@@ -687,7 +698,7 @@ class Director {
             && Math.hypot(pose.x - prev.pose.x, pose.z - prev.pose.z) < 30;
         pose.yaw0 = same ? prev.pose.yaw : pose.yaw;   // no snap-back on a continuation
         if (same) pose.yaw = prev.pose.yaw;
-        return { type, key, score, pose, subject: pose.subject, born: now,
+        return { type, key, score, pose, subject: pose.subject, seat, born: now,
                  until: now + dur, cutDone: !!same,
                  panDir: prev ? (same ? prev.panDir : -prev.panDir) : 1 };
     }

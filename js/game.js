@@ -1923,6 +1923,18 @@ class Game {
         // pressing Auto silently started a tour instead, while the unit stayed
         // selected and its card stayed on screen. Only the other order worked.
         this._camFollow = this._actionCam ? this._selectionAsCamSubject() : null;
+        // Each session of auto-camera starts following again. A knob clicked during the
+        // LAST session was an instruction about that session; carrying it over would
+        // leave the fog pinned to a seat for reasons nobody can see any more.
+        this._minimapFogManual = false;
+        this._fogShotKey = null;
+        // Handing control back hands the map back too: a fog left soloed on whichever
+        // seat the camera happened to stop on is not a state anyone chose.
+        if (!this._actionCam && this.minimapFogSeat != null) {
+            this.minimapFogSeat = null;
+            if (this.ui && this.ui.refreshMinimapFogKnobs) this.ui.refreshMinimapFogKnobs();
+            this.updateMinimap();
+        }
         const btn = document.getElementById('actionCamBtn');
         if (btn) btn.classList.toggle('sb-on', this._actionCam);
     }
@@ -1952,7 +1964,34 @@ class Game {
         const now = Date.now();
         const pose = this._director.update(now);
         if (this._dirDebug) this._director.renderDebug(now);
+        this.followMinimapFogToShot();
         return pose;
+    }
+
+    // While the director is driving, the minimap shows the map of whoever is on
+    // screen: solo the seat a single-seat shot is about, open it back up to every seat
+    // for the shots that belong to nobody -- the overview, a brawl, two seats meeting.
+    // Watching a raid through the raider's own fog is a different thing from watching
+    // it through God's, and the director already knows which seat it picked.
+    //
+    // Spectator only. It moves the same field a click on the knobs moves and nothing
+    // else, so it cannot touch game state, model state or the transcript.
+    //
+    // Only on a CHANGE of shot, not every frame: this runs from directorPose(), which
+    // the renderer calls sixty times a second, and repainting the minimap at that rate
+    // to set a field to the value it already holds is a cost that does not announce
+    // itself.
+    followMinimapFogToShot() {
+        if (!this._actionCam || this._minimapFogManual) return;
+        const shot = this._director && this._director.shot;
+        const key = shot ? shot.key : null;
+        if (key === this._fogShotKey) return;
+        this._fogShotKey = key;
+        const want = shot && shot.seat != null ? shot.seat : null;
+        if (this.minimapFogSeat === want) return;
+        this.minimapFogSeat = want;
+        if (this.ui && this.ui.refreshMinimapFogKnobs) this.ui.refreshMinimapFogKnobs();
+        this.updateMinimap();
     }
 
     // Desired camera half-height for a director/follow subject: tight on a lone
