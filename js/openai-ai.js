@@ -731,7 +731,15 @@ class OpenAIAIManager {
             // Two deep. One rank is the widest front a given number of units can have,
             // which is what put outer slots into the sea and across half a village; two
             // halves the width for a shape that still reads as a line.
-            ranks(units, 2, 0);
+            //
+            // Those two ranks are the MELEE, and the shooters form up behind them. What
+            // stood here laid the whole army out in array order and never looked at what
+            // anything was, so who screened whom came down to the order units happened
+            // to sit in -- list the shooters first and both priests stood in the rank
+            // that takes the charge. Same order, same shape, different casualties, and
+            // nothing the model could see or control. A line is a line of TROOPS.
+            const meleeRows = ranks(melee, 2, 0);
+            ranks(shot, 2, meleeRows || 0);
         } else if (shape === 'wedge') {
             // A FILLED triangle, point forward: rank k holds k+1. Melee fills from the
             // point back, so the tip is what closes; the shooters land in the wide rear
@@ -756,13 +764,36 @@ class OpenAIAIManager {
             const mid = (cols - 1) / 2;
             const byEdge = Array.from({ length: cols }, (_, c) => c)
                 .sort((a, b) => Math.abs(b - mid) - Math.abs(a - mid));
-            const seats = [];
-            byEdge.forEach(c => { for (let row = 0; row < depth; row++) seats.push({ c, row }); });
-            shot.concat(melee).forEach((u, i) => {
-                const s = seats[i];
-                if (!s) return;
-                out.set(u, { f: -s.row * S, r: (s.c - mid) * S });
-            });
+            // Row 0 is the CONTACT rank and belongs to the melee across its whole
+            // width, flanks included. Shooters take the flank columns from row 1 back.
+            // Filling the flanks from row 0 put archers at the corners of the front
+            // face, which is the first thing anything charging the block reaches -- the
+            // shooters were on the flanks and in the contact line at the same time, and
+            // only the second half of that was intended.
+            // Row 0 is the CONTACT rank and belongs to the melee across its whole
+            // width, flanks included; the shooters hold the flank columns from row 1
+            // back. Filling the flanks from row 0 put archers on the corners of the
+            // front face -- the first thing anything charging the block reaches. They
+            // were on the flanks AND in the contact line, and only one of those was
+            // the intention.
+            const edge = Math.max(...Array.from({ length: cols }, (_, c) => Math.abs(c - mid)));
+            const isFlank = (c) => Math.abs(Math.abs(c - mid) - edge) < 1e-6;
+            const front = Array.from({ length: cols }, (_, c) => c)
+                .sort((a, b) => Math.abs(a - mid) - Math.abs(b - mid))   // fill middle out
+                .map(c => ({ c, row: 0 }));
+            const behind = [];
+            byEdge.forEach(c => { for (let row = 1; row < depth; row++) behind.push({ c, row }); });
+            const flank = behind.filter(s => isFlank(s.c));
+            const inner = behind.filter(s => !isFlank(s.c));
+            // Melee mans the front, then the middle; shooters take the flanks. Each
+            // queue falls back to the other so a lopsided force still fills the shape
+            // instead of leaving holes -- a melee-poor army gets a thinner melee front,
+            // which is an honest picture of what it has rather than a hidden failure.
+            const mQ = melee.slice(), sQ = shot.slice();
+            const place = (u, s) => { if (u && s) out.set(u, { f: -s.row * S, r: (s.c - mid) * S }); };
+            front.forEach(s => place(mQ.shift() || sQ.shift(), s));
+            flank.forEach(s => place(sQ.shift() || mQ.shift(), s));
+            inner.forEach(s => place(mQ.shift() || sQ.shift(), s));
         } else if (shape === 'ranged_back') {
             // Three ranks of melee, an empty rank, three of shot. The gap is the point:
             // it is what stops the shooters being caught in the first contact, and it
