@@ -816,6 +816,7 @@ class Game {
     static get JITTER_MIN_PATH()  { return 1.5; }   // walked less than this: not trying
     static get JITTER_RATIO()     { return 0.25; }  // got less than this share of it
     static get JITTER_LOG_MAX()   { return 40; }
+    static get JITTER_PER_UNIT()  { return 4; }   // records kept per unit; the tally counts all
 
     sampleJitter(deltaTime) {
         this._jitterClock = (this._jitterClock || 0) + deltaTime;
@@ -850,6 +851,16 @@ class Game {
 
     recordJitter(u, owner, path, net) {
         if (!this._jitterLog) this._jitterLog = [];
+        // Count every episode, keep only a few records per unit. One stuck worker took
+        // 34 of the ring's 40 slots last time and evicted everything else, so the log
+        // proved that worker was stuck and could say nothing at all about whether
+        // anything ELSE was -- which is exactly the question a log with forty slots is
+        // for. The tally below is unbounded, so nothing is hidden by the cap; only the
+        // repeat evidence for a unit already well documented is dropped.
+        const tally = this._jitterCount || (this._jitterCount = new Map());
+        const uid = (u.type || '?') + '#' + u.id;
+        tally.set(uid, (tally.get(uid) || 0) + 1);
+        if ((this._jitterLog.filter(r => r.type + '#' + r.id === uid).length) >= Game.JITTER_PER_UNIT) return;
         // Which rings it is caught between. Same rule and same numbers clampSlot uses,
         // so a slot this says is illegal is one clampSlot would also have moved.
         const rings = [];
@@ -908,7 +919,10 @@ class Game {
         const pinned = rows.filter(r => r.verdict !== 'haul');
         const byUnit = {};
         pinned.forEach(r => { const k = r.type + '#' + r.id; byUnit[k] = (byUnit[k] || 0) + 1; });
-        const worst = Object.entries(byUnit).sort((a, b) => b[1] - a[1])[0];
+        // Worst offender by the TRUE count, not by how many of its records fit.
+        const tally = this._jitterCount || new Map();
+        const worst = Object.keys(byUnit).map(k => [k, tally.get(k) || byUnit[k]])
+            .sort((a, b) => b[1] - a[1])[0];
         console.log('[jitter] ' + rows.length + ' episodes: ' + pinned.length + ' pinned, '
             + (rows.length - pinned.length) + ' haul'
             + (worst ? ' | worst: ' + worst[0] + ' x' + worst[1] : '')
