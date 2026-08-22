@@ -2742,11 +2742,6 @@ class UIManager {
         const p = entry.outcomeParams || {};
         const v = Object.assign({}, p);
         const EMO = { food: '🍖', wood: '🌲', stone: '🪨', gold: '🥇' };
-        const emojiCost = c => {
-            if (!c) return '—';
-            const parts = ['food', 'wood', 'stone', 'gold'].filter(r => c[r]).map(r => `${EMO[r]}${c[r]}`);
-            return parts.length ? parts.join(' ') : '—';
-        };
         // resPlain.*, NOT res.*: the UI's res.* carry an emoji for the HUD, and these
         // words go inside a sentence. They used to be the same key, so whichever i18n
         // block merged last won — which silently stripped the emoji off the German,
@@ -2760,14 +2755,14 @@ class UIManager {
             if (AGES.includes(v[k])) v[k] = tIn(lang, 'age.' + v[k]);
         });
         if (AGES.includes(v.res) === false && hasI18n(lang, 'resPlain.' + v.res)) v.res = tIn(lang, 'resPlain.' + v.res);
-        // "from" is a worker SOURCE: the four resources, plus farm and idle. Same
-        // fallback chain as a pulled-breakdown key, so it does not sit in a German
-        // sentence as a raw English token next to an already-localized {res}.
-        if (v.from != null) {
-            v.from = hasI18n(lang, 'resPlain.' + v.from) ? tIn(lang, 'resPlain.' + v.from)
-                   : hasI18n(lang, 'pull.' + v.from) ? tIn(lang, 'pull.' + v.from)
-                   : v.from;
-        }
+        // "from" used to be localized here — resPlain, then pull, then the raw token —
+        // because it sat inside a German sentence ("Aus Leerlauf konnten keine Arbeiter
+        // abgezogen werden") where an English word would have looked dropped in.
+        // Those sentences are gone. What replaced them quotes "from" as what it is, the
+        // API value the model typed, beside the state field that reports it — and there
+        // the translation actively lied: „Leerlauf": leer (workers.idle ist 0) names the
+        // same field twice, once in a word the model cannot send. An identifier stays an
+        // identifier in every language.
         // Pull breakdown {idle:3, wood:2}: resource keys get the resource word, the
         // rest (idle/scout/repair/farm) their own label; unknown keys pass through.
         const pulledClause = obj => Object.keys(obj || {}).map(k =>
@@ -2783,7 +2778,7 @@ class UIManager {
                 v.remaining = (p.left > 0) ? tIn(lang, 'log.out.farmLeft', { left: p.left }) : ''; break;
             case 'log.out.cannotAfford':
                 v.what = p.age ? tIn(lang, 'age.' + p.age) : tgIn(lang, p.whatName || '');
-                v.need = emojiCost(p.need); v.have = emojiCost(p.have); break;
+                break;
             case 'log.out.trainUnit':
                 v.unit = tgIn(lang, p.unitName || ''); break;
             case 'log.out.buildStarted':

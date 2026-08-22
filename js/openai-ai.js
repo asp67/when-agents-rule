@@ -424,18 +424,28 @@ class OpenAIAIManager {
         // now. Idle is the one worker pool that empties itself -- a dry node makes a
         // worker idle until the next pass reassigns it, 0.2-2s later -- so a seat that
         // asked for idle hands answered a true number that expired while it thought.
+        // assignIdleFighting: the same pool emptied by an ambush. The seat could not
+        // have known either; a worker hitting back is reclassified out of idle by
+        // workerJob, and that happened after the snapshot went out.
+        // Its sibling assignIdleTaken is deliberately NOT here: there the seat spent
+        // the idle hands itself, earlier in the same reply, and could have counted.
         return new Set(['trainerBusy', 'noWorkerIdleBuild', 'noClearSpot', 'assignAllCarrying',
-                        'targetGone', 'orderedUnitsGone', 'assignIdleRaced']);
+                        'targetGone', 'orderedUnitsGone', 'assignIdleRaced', 'assignIdleFighting']);
     }
-    haveString(ai) {
-        const r = ai.resources;
-        return `${Math.floor(r.food)} food, ${Math.floor(r.wood)} wood, ${Math.floor(r.stone)} stone, ${Math.floor(r.gold)} gold`;
-    }
-    // Stock as a {food,wood,stone,gold} object — the localized log renders it as
-    // language-neutral emoji, so no resource words to translate.
-    haveObj(ai) {
-        const r = ai.resources;
-        return { food: Math.floor(r.food), wood: Math.floor(r.wood), stone: Math.floor(r.stone), gold: Math.floor(r.gold) };
+    // haveString / haveObj lived here: the player's stock as a sentence and as an object,
+    // built for the four affordability rejections and used nowhere else. Both are gone
+    // with the tail they served. The state hands the model its own resources block and
+    // the price of every unit, building, tech and age before it acts -- quoting either
+    // back inside the refusal was the state read aloud, not information.
+    //
+    // Idle workers spent by an earlier call in THIS turn. Counted at each site that
+    // takes one; an unaccounted site only ever undercounts, which fails safe -- the
+    // rejection then falls back to stating the pool is empty rather than charging the
+    // model for something it did not do.
+    noteIdleTaken(ai, n) {
+        if (!n) return;
+        const c = (this.aiControllers || []).find(x => x.aiPlayer === ai);
+        if (c) c._idleTaken = (c._idleTaken || 0) + n;
     }
     // Convert a worker "pulledFrom" label map (idle / scouting / repairing / farming
     // / spare / "from wood") into the {idle,scout,repair,farm,spare,<resource>} shape
@@ -2733,6 +2743,12 @@ class OpenAIAIManager {
         // expired while it thought, which is the definition of a contended turn and
         // not of a rejected one.
         if (controller) controller._sentIdle = wk.idle;
+        // ...and the tally of how many of them this turn's own calls spend. A reply may
+        // carry three commands; if the first builds and the second asks for idle hands,
+        // the pool was emptied by the model, not by the clock. That is the one version
+        // of this rejection the model can act on, so it has to be told apart from the
+        // two it cannot -- see the empty-pool branch in executeAssignWorkers.
+        if (controller) controller._idleTaken = 0;
 
         // Enemy units (very compact)
         const enemyUnits = [];
@@ -5495,8 +5511,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // 5) RESOURCES.
         if (!ai.resources.hasResources(unitDef.cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${unitType}`);
-            this.outcome('log.out.cannotAfford', { whatName: unitDef.name, need: unitDef.cost, have: this.haveObj(ai) });
-            return `[ERROR] Cannot afford ${unitType} (needs ${this.costString(unitDef.cost)}). You have ${this.haveString(ai)}.`;
+            this.outcome('log.out.cannotAfford', { whatName: unitDef.name });
+            return `[ERROR] Cannot afford ${unitType}.`;
         }
 
         // TRAIN — at the structure the model targeted (params.targetX/Z), else the
@@ -5621,8 +5637,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
         if (!ai.resources.hasResources(adjustedCost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford tech "${techId}"`);
-            this.outcome('log.out.cannotAfford', { whatName: tech.name, need: adjustedCost, have: this.haveObj(ai) });
-            return `[ERROR] Cannot afford tech "${techId}" (needs ${this.costString(adjustedCost)}). You have ${this.haveString(ai)}.`;
+            this.outcome('log.out.cannotAfford', { whatName: tech.name });
+            return `[ERROR] Cannot afford tech "${techId}".`;
         }
 
         ai.resources.spendResources(adjustedCost);
@@ -5657,8 +5673,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const cost = AGE_COSTS[nextAge];
         if (!ai.resources.hasResources(cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford upgrade to ${nextAge}`);
-            this.outcome('log.out.cannotAfford', { age: nextAge, need: cost, have: this.haveObj(ai) });
-            return `[ERROR] Cannot afford the upgrade to ${nextAge} (needs ${this.costString(cost)}). You have ${this.haveString(ai)}.`;
+            this.outcome('log.out.cannotAfford', { age: nextAge });
+            return `[ERROR] Cannot afford the upgrade to ${nextAge}.`;
         }
 
         ai.resources.spendResources(cost);
@@ -5756,8 +5772,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
         if (!ai.resources.hasResources(buildingDef.cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${buildingType}`);
-            this.outcome('log.out.cannotAfford', { whatName: buildingDef.name, need: buildingDef.cost, have: this.haveObj(ai) });
-            return `[ERROR] Cannot afford ${buildingType} (needs ${this.costString(buildingDef.cost)}). You have ${this.haveString(ai)}.`;
+            this.outcome('log.out.cannotAfford', { whatName: buildingDef.name });
+            return `[ERROR] Cannot afford ${buildingType}.`;
         }
 
         // Find placement position
@@ -5842,6 +5858,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // material: the reply used to quote the build time alone, so a builder with a
         // long trek ahead of it was announced as "~25s" and then took minutes, with
         // nothing in the answer to explain the gap.
+        // pick.restore is set only when the builder was pulled off a task, so its
+        // absence means this build just spent an idle hand.
+        if (!pick.restore) this.noteIdleTaken(ai, 1);
         const walkSecs = pick.worker ? this.travelEtaSec(pick.worker, x, z) : 0;
         ai.resources.spendResources(buildingDef.cost);
         // Place a construction site and send the chosen worker to build it (pop bonus
@@ -6722,6 +6741,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             w.targetZ = f.z + (Math.random() - 0.5) * 3;
             manned++;
         }
+        this.noteIdleTaken(ai, pulledFrom['idle'] || 0);
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const left = open.length - manned;
         const short = left > 0 ? ` ${left} farm(s) still stand unmanned — you ran out of spare workers.` : '';
@@ -6803,7 +6823,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const from = rawFrom === 'farms' ? 'farm' : rawFrom;
         if (from !== null && !FROMS.includes(from)) {
             this.outcome('log.out.assignBadFrom', {});
-            return `[ERROR] assign_workers "from" is where workers are TAKEN FROM and must be one of ${FROMS.join('|')} — omit it to use ingame worker selection, which takes idle workers first, then your largest stockpile. Got ${JSON.stringify(params.from)}.`;
+            // The tail here read "omit it to use ingame worker selection, which takes idle
+            // workers first, then your largest stockpile" -- word for word the description
+            // of the "from" parameter the model is handed every single turn. Saying it
+            // again inside the refusal is not help, it is the schema read back.
+            return `[ERROR] assign_workers "from": expected ${FROMS.join('|')}. Got ${JSON.stringify(params.from)}.`;
         }
         // Same source and destination is only a no-op WITHOUT coordinates. With them the
         // model is naming a NODE — take the workers already on gold and move them to the
@@ -6865,21 +6889,57 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // And say which of the two situations it is. "0 are on it, and none of
                 // those can be pulled" read as two separate reasons and left the real
                 // one — that there is simply nobody there — impossible to pick out.
-                // Did the state this seat read promise them? Only "idle" can evaporate
-                // on its own; the four resources and the farms do not empty themselves
-                // between the snapshot and the order.
-                // The controller is not a parameter here; found the way pushDecisionFor
-                // finds it, from the player this action belongs to.
-                const ctl = (this.aiControllers || []).find(x => x.aiPlayer === ai);
-                const promised = (from === 'idle' && ctl && ctl._sentIdle > 0) ? ctl._sentIdle : 0;
-                const why = promised
-                    ? `the ${promised} idle worker(s) your state showed were picked up again before this order landed`
-                    : onIt === 0
-                    ? `you have no workers on "${from}" (workers.${FIELD[from]} is 0)`
-                    : `all ${onIt} of them are constructing or fighting, and those are never pulled`;
-                this.outcome(promised ? 'log.out.assignIdleRaced' : 'log.out.assignFromEmpty',
-                             { from, res: resourceType, had: promised });
-                return `[ERROR] No workers could be taken from "${from}": ${why}. Omitting "from" uses ingame worker selection, which takes idle workers first, then your largest stockpile.`;
+                if (from === 'idle') {
+                    // "idle" is the one pool that empties itself, and this refusal used to
+                    // explain that in a sentence and a half: the state showed N, they were
+                    // picked up again, and by the way here is what omitting "from" would do.
+                    // All of it prose, and the first half of it usually not even true.
+                    //
+                    // Four different things end up here and only two of them are the
+                    // model's doing. The controller is not a parameter; found the way
+                    // pushDecisionFor finds it, from the player this action belongs to.
+                    const ctl = (this.aiControllers || []).find(x => x.aiPlayer === ai);
+                    const sent = ctl ? (ctl._sentIdle || 0) : null;   // null: cannot tell
+                    const taken = (ctl && ctl._idleTaken) || 0;
+                    const ambushed = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
+                    // 1. The state said none and it was asked anyway. Nothing expired; the
+                    //    seat read past a zero, and that is a plain misread of a published
+                    //    field — the same one the four resources get, in the same words.
+                    if (sent === 0) {
+                        this.outcome('log.out.assignFromEmpty', { from, field: FIELD[from] });
+                        return `[ERROR] assign_workers "idle": empty (workers.idle is 0).`;
+                    }
+                    // 2. It spent the idle hands itself, in an earlier call of this same
+                    //    reply. Worth naming: it is the one version of this rejection the
+                    //    seat could have counted before sending.
+                    if (taken > 0) {
+                        this.outcome('log.out.assignIdleTaken', { n: taken });
+                        return `[ERROR] assign_workers "idle": empty, ${taken} taken by earlier calls this turn.`;
+                    }
+                    // 3. Its villagers are under attack. workerJob reclassifies a worker
+                    //    hitting back as 'fighting', so an ambush empties workers.idle
+                    //    between the snapshot and the order arriving.
+                    if (ambushed > 0) {
+                        this.outcome('log.out.assignIdleFighting', { n: ambushed });
+                        return `[ERROR] assign_workers "idle": empty, ${ambushed} worker(s) under attack.`;
+                    }
+                    // 4. Otherwise the count we published had already expired when the model
+                    //    read it, which is OUR staleness. The bare fact and no apology: a
+                    //    seat that answered a number we gave it does not need to be told the
+                    //    number moved, and saying it in prose invited the reading that it had
+                    //    done something wrong.
+                    this.outcome('log.out.assignIdleRaced', {});
+                    return `[ERROR] assign_workers "idle": empty.`;
+                }
+                // The four resources and the farms do not empty themselves between the
+                // snapshot and the order, so for those the state is still the answer and
+                // the refusal only has to name which reading was wrong.
+                if (onIt === 0) {
+                    this.outcome('log.out.assignFromEmpty', { from, field: FIELD[from] });
+                    return `[ERROR] assign_workers "${from}": empty (workers.${FIELD[from]} is 0).`;
+                }
+                this.outcome('log.out.assignFromBusy', { from, n: onIt });
+                return `[ERROR] assign_workers "${from}": all ${onIt} are constructing or fighting.`;
             }
             candidates = pool;   // STRICT: an explicit source is not quietly widened
         }
@@ -6952,6 +7012,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             w.harvestAmount = 0;
             moved++;
         }
+        this.noteIdleTaken(ai, pulledFrom['idle'] || 0);
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const short = moved < count
             ? (!allowSpill
@@ -7026,6 +7087,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             this.outcome('log.out.noWorkersRepair', {});
             return `[ERROR] No workers available to repair (all are constructing).`;
         }
+        // Counted BEFORE assignWorkersToBuilding retasks them, or they all read as
+        // repairers and the idle ones among them would go unnoticed.
+        this.noteIdleTaken(ai, workers.filter(w => OpenAIAIManager.workerJob(game, w) === 'idle').length);
         workers.forEach(w => {
             if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
             w.farmRef = null;
