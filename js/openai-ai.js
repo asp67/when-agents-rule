@@ -1546,8 +1546,7 @@ class OpenAIAIManager {
                         // noting the gap is smaller than it looks: Anthropic's results
                         // ARE user-turn content, so prose-in-a-user-turn is already close
                         // to native for it, and OpenAI-style was the one being mistreated.
-                        messages: OpenAIAIManager.flattenToolTurns(turns)
-                            .map(t => ({ role: t.role === 'assistant' ? 'assistant' : 'user', content: String(t.content) }))
+                        messages: OpenAIAIManager.toolTurnsForAnthropic(turns)
                     };
                     if (!opts.omitTools) b.tools = OpenAIAIManager.toolsFor('anthropic');
                     if (thinkingSuppressesSampling) {
@@ -3496,6 +3495,54 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         return out;
     }
 
+    // Anthropic's own dialect: calls are tool_use BLOCKS inside the assistant turn and
+    // outcomes are tool_result blocks inside a user turn, paired by tool_use_id.
+    //
+    // This was left unwritten on purpose -- the comment in the anthropic branch said an
+    // unverified wire format is worse than an honest older one, and nothing on this
+    // machine could verify it. Unsloth Studio serves /v1/messages locally, so that
+    // precondition is gone and the dialect can be written and checked instead of guessed.
+    //
+    // The merge pass at the end is not tidiness. Anthropic requires the roles to
+    // ALTERNATE, and a tool_result user turn lands directly before the next user turn --
+    // two user messages in a row, which is a 400. Merging their block lists is what the
+    // real clients do, and it is invisible to the model: one turn carrying the outcomes
+    // and the new orders, exactly as a person would write it.
+    static toolTurnsForAnthropic(turns) {
+        const out = [];
+        (turns || []).forEach(t => {
+            if (t.role === 'tool' && Array.isArray(t.results) && t.results.length) {
+                out.push({ role: 'user', content: t.results.map(r => ({
+                    type: 'tool_result', tool_use_id: r.id, content: String(r.content) })) });
+                return;
+            }
+            if (t.role === 'assistant' && t.toolCalls && t.toolCalls.length) {
+                const blocks = [];
+                if (t.content) blocks.push({ type: 'text', text: String(t.content) });
+                t.toolCalls.forEach(c => {
+                    // args ride as a JSON STRING everywhere else; Anthropic wants the
+                    // object. A call whose arguments will not parse still has to appear,
+                    // or the tool_result answering it has no tool_use to pair with.
+                    let input = {};
+                    try { input = JSON.parse(c.args || '{}'); } catch (e) { input = {}; }
+                    blocks.push({ type: 'tool_use', id: c.id, name: c.name, input });
+                });
+                out.push({ role: 'assistant', content: blocks });
+                return;
+            }
+            out.push({ role: t.role === 'assistant' ? 'assistant' : 'user',
+                       content: String(t.content == null ? '' : t.content) });
+        });
+        const merged = [];
+        out.forEach(m => {
+            const prev = merged[merged.length - 1];
+            if (!prev || prev.role !== m.role) { merged.push(m); return; }
+            const asBlocks = (c) => Array.isArray(c) ? c : [{ type: 'text', text: String(c) }];
+            prev.content = asBlocks(prev.content).concat(asBlocks(m.content));
+        });
+        return merged;
+    }
+
     // ...and the universal floor. Anything that cannot speak the protocol gets the
     // conversation it got before this existed: outcomes as prose in the user turn, calls
     // described in the assistant turn. Not a degraded mode to apologise for -- it is what
@@ -3505,8 +3552,16 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Your u
         const out = [];
         (turns || []).forEach(t => {
             if (t.role === 'tool' && Array.isArray(t.results)) {
-                const first = t.results[0];
-                if (first) out.push({ role: 'user', content: `RESULT of your previous action: ${first.content}` });
+                // EVERY result, not just the first. A turn is up to three calls and the
+                // seats average close to that, so reporting results[0] threw away two
+                // outcomes in three -- and the model was left to infer what its second
+                // and third orders had done from the next game state alone.
+                if (t.results.length) {
+                    out.push({ role: 'user', content: t.results.length === 1
+                        ? `RESULT of your previous action: ${t.results[0].content}`
+                        : t.results.map((r, i) => `RESULT ${i + 1}/${t.results.length}`
+                            + ` (${r.name}): ${r.content}`).join('\n') });
+                }
                 return;
             }
             if (t.role === 'assistant' && t.toolCalls && t.toolCalls.length) {
