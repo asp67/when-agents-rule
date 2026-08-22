@@ -82,7 +82,7 @@ class OpenAIAIManager {
         const WHO = { units: { type: 'object', description: 'Object of {"type": count}, e.g. {"champion":3}, or a category like {"infantry":5}. Omit for the whole army.' },
                       unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids from friendlyUnits. Wins over "units" when both are given.' },
                       matchSpeed: S('Optional. "slowestUnit" holds the whole group to its slowest member so they arrive together instead of strung out. Omit to let every unit run at its own speed, which is faster for the quick ones and arrives piecemeal.'),
-                      formation: S('Optional shape for the MARCH: "line" (two ranks abreast), "wedge" (filled triangle, point forward, shooters in the rear ranks), "block" (four-to-five deep, shooters on both flanks), "ranged_back" (three ranks of melee, a gap, three ranks of shooters). Dropped on contact — it governs the approach, not the fight. Implies matchSpeed "slowestUnit", since a shape only holds if everyone keeps pace.') };
+                      formation: S('Optional shape for the MARCH. EVERY shape keeps the shooters out of the contact rank and puts the cavalry on the wings, so the choice is about frontage and depth, not about who is protected. "line" — the widest front, most units able to fight at once, but shallow and the hardest shape to route past buildings. "wedge" — a point of melee that concentrates on one spot; narrow, for punching through a line rather than holding one. "block" — the smallest footprint for its numbers, deep, shooters shielded on both flanks; slowest to bring its numbers to bear. "screen" — melee ranks, an EMPTY rank, then the shooters: the gap keeps the shooters clear of the first clash, at the cost of being the longest column. Dropped on contact — it governs the approach, not the fight. Implies matchSpeed "slowestUnit", since a shape only holds if everyone keeps pace.') };
         return [
             ['train_unit', 'Train one unit at a building that can produce it.',
              Object.assign({ unitType: S('Unit id from trainableUnits.') }, XZ), ['unitType']],
@@ -704,7 +704,23 @@ class OpenAIAIManager {
     // At 4 the shapes were needlessly large -- a twenty-man line was 20 wide, wider
     // than most gaps between buildings, which is why lines snagged on clearance rings.
     static get FORMATION_SPACING() { return 2; }
-    static get FORMATIONS() { return ['line', 'wedge', 'block', 'ranged_back']; }
+    // "ranged_back" was the name of a shape and, to a model reading a list, the name
+    // of the only shape that keeps its shooters out of the fight. Across 46 saved
+    // transcripts it took 56% of every formation ever chosen, line took 41%, block one
+    // pick, and wedge was never chosen ONCE. It did not win an argument about tactics;
+    // it won because the other three sounded like they were missing something.
+    //
+    // They are not, and now they really are not: every shape keeps the shooters out of
+    // the contact rank and puts the horse on the wings. What this one alone has is the
+    // GAP -- an empty rank between the melee and the shooters -- so it is named for
+    // that. A screen is a body put in front of another to keep it out of the first
+    // clash, which is the whole idea.
+    static get FORMATIONS() { return ['line', 'wedge', 'block', 'screen']; }
+
+    // Old name, still answered. A model that learned "ranged_back" from anywhere gets
+    // the shape rather than an error, and the transcripts already recorded under it
+    // stay readable by the code that reads the new ones.
+    static get FORMATION_ALIASES() { return { ranged_back: 'screen' }; }
 
     formationSlots(units, shape) {
         const S = OpenAIAIManager.FORMATION_SPACING;
@@ -833,7 +849,7 @@ class OpenAIAIManager {
             front.forEach(s => place(mQ.shift() || sQ.shift(), s));
             flank.forEach(s => place(sQ.shift() || mQ.shift(), s));
             inner.forEach(s => place(mQ.shift() || sQ.shift(), s));
-        } else if (shape === 'ranged_back') {
+        } else if (shape === 'screen') {
             // Three ranks of melee, an empty rank, three of shot. The gap is the point:
             // it is what stops the shooters being caught in the first contact, and it
             // is why this is not just "block with the archers at the back".
@@ -867,7 +883,8 @@ class OpenAIAIManager {
     // centroid toward the destination, so the shape is oriented by where it is going
     // rather than by any fixed compass direction. Returns per-unit world offsets.
     applyFormation(game, units, tx, tz, shape) {
-        const want = String(shape || '').trim();
+        const want = OpenAIAIManager.FORMATION_ALIASES[String(shape || '').trim()]
+            || String(shape || '').trim();
         if (!units || !units.length) return { applied: false, note: '' };
         if (!want) { units.forEach(u => { u.formationOffset = null; u.formationAxis = null; u.formationGroup = null; }); return { applied: false, note: '' }; }
         if (OpenAIAIManager.FORMATIONS.indexOf(want) < 0) {
