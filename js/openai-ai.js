@@ -4962,7 +4962,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // returns nothing, synthesize a result instead of dropping it (which would
         // leave the model with no idea its command did anything).
         if (actionResult == null || actionResult === '') {
-            actionResult = `[ERROR] Action "${action}" produced no result. Pick a different action.`;
+            actionResult = `[ERROR] Action "${action}" produced no result.`;
         }
 
         // Behavior metrics + flag the log entry if the action was rejected.
@@ -5382,7 +5382,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 }
                 if (tech && !ai.researchedTechs[tech]) {
                     this.outcome('log.out.unitBuildingNotUnlocked', { unitType, building: reqB, tech });
-                    return `[ERROR] ${unitType} is trained at a ${reqB}, which you have not unlocked. research_tech "${tech}" first, then build_structure "${reqB}", then train.`;
+                    return `[ERROR] ${unitType} is trained at a ${reqB}. You have not unlocked ${reqB}: it needs the tech "${tech}", which is not researched.`;
                 }
                 this.outcome('log.out.unitBuildingNotBuilt', { unitType, building: reqB });
                 return `[ERROR] ${unitType} is trained at a ${reqB}, which you have not built yet. build_structure "${reqB}" and wait for it to finish, then train.`;
@@ -5393,7 +5393,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 const minAge = this.minAgeForUnit(unitType);
                 if (minAge && ageOrder.indexOf(minAge) > ageOrder.indexOf(ai.age)) {
                     this.outcome('log.out.unitNeedsAge', { unitType, minAge, age: ai.age });
-                    return `[ERROR] ${unitType} needs the ${minAge} age (you are in ${ai.age}). Advance your age first (upgrade_age); your ${reqB} will train it then.`;
+                    return `[ERROR] ${unitType} needs the ${minAge} age. You are in ${ai.age}. Your ${reqB} trains it from that age on.`;
                 }
                 this.outcome('log.out.buildingCannotTrainTier', { building: reqB, unitType });
                 return `[ERROR] Your ${reqB} cannot train ${unitType} at your current tier. Check what it can produce for your age.`;
@@ -5405,7 +5405,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (trainers.length === 0) {
             // Only reached for unique units with no tier mapping (reqB null).
             this.outcome('log.out.noBuildingTrains', { unitType });
-            return `[ERROR] No finished building can train ${unitType}. Build the matching military building first (barracks=infantry, archery_range=archers, stable=cavalry).`;
+            return `[ERROR] No finished building of yours can train ${unitType}. Infantry come from a barracks, archers from an archery_range, cavalry from a stable.`;
         }
 
         // 3) POPULATION (structural train-time gate).
@@ -5494,7 +5494,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (ai.currentResearch) {
             console.log(`[OpenAIAI] ${ai.id}: Already researching a tech`);
             this.outcome('log.out.alreadyResearching', { techId: ai.currentResearch.techId });
-            return `[ERROR] Already researching "${ai.currentResearch.techId}". Wait for it to complete first.`;
+            return `[ERROR] Already researching "${ai.currentResearch.techId}". Only one tech runs at a time; "research.current" shows its secondsRemaining.`;
         }
 
         // Check age requirement
@@ -5502,7 +5502,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (ageOrder.indexOf(tech.requiredAge) > ageOrder.indexOf(ai.age)) {
             console.log(`[OpenAIAI] ${ai.id}: Tech "${techId}" requires ${tech.requiredAge}`);
             this.outcome('log.out.techNeedsAge', { techId, reqAge: tech.requiredAge, age: ai.age });
-            return `[ERROR] "${techId}" needs the ${tech.requiredAge} age, but you are in ${ai.age}. Advance your age first (upgrade_age).`;
+            return `[ERROR] "${techId}" needs the ${tech.requiredAge} age. You are in ${ai.age}.`;
         }
 
         // Check prerequisites
@@ -5511,7 +5511,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 if (!ai.researchedTechs[req]) {
                     console.log(`[OpenAIAI] ${ai.id}: Missing prerequisite "${req}" for "${techId}"`);
                     this.outcome('log.out.missingPrereq', { req, techId });
-                    return `[ERROR] Missing prerequisite "${req}" for "${techId}". Research "${req}" first.`;
+                    return `[ERROR] "${techId}" requires "${req}", which is not researched.`;
                 }
             }
         }
@@ -5537,7 +5537,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 return `[ERROR] "${techId}" is researched at a finished academy, which you don't have. To enable it: ${step}.`;
             }
             this.outcome('log.out.researchedElsewhere', { techName: tech.name, hostName: (getBuildingDef(hostType) || {}).name || hostType });
-            return `[ERROR] "${techId}" is researched at a finished ${hostType}, which you don't have. Build it first (build_structure "${hostType}"), then research again.`;
+            return `[ERROR] "${techId}" is researched at a finished ${hostType}. You have none.`;
         }
 
         const costMultiplier = ai.techCostMultiplier || 1;
@@ -5630,7 +5630,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             ? LEGACY_BUILDING_IDS[String(buildingType || '').toLowerCase()] : null;
         if (legacy) {
             this.outcome('log.out.renamedBuilding', { from: buildingType, to: legacy });
-            return `[ERROR] There is no "${buildingType}" in this game — it is called "${legacy}" now. Build "${legacy}" instead; "buildableStructures" always lists the current names.`;
+            return `[ERROR] There is no "${buildingType}" in this game — that type is called "${legacy}" now. "buildableStructures" always lists the current names.`;
         }
         const buildingDef = this.buildingDefFor(ai, buildingType);
         // Resolve an alias to the real id up front, so every message below — and the
@@ -5660,7 +5660,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (effAge && ageOrder.indexOf(ai.age) < ageOrder.indexOf(effAge)) {
             console.log(`[OpenAIAI] ${ai.id}: ${buildingType} needs ${effAge}`);
             this.outcome('log.out.buildingNeedsAge', { buildingType, effAge, age: ai.age });
-            return `[ERROR] ${buildingType} needs the ${effAge} age (you are in ${ai.age}). Advance your age first (upgrade_age), then build it.`;
+            return `[ERROR] ${buildingType} needs the ${effAge} age. You are in ${ai.age}.`;
         }
 
         // RESEARCH next: the building's enabling tech.
@@ -5674,7 +5674,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 return `[ERROR] Your civilization cannot build ${buildingType} — it has no "${buildingDef.requiresTech}" technology. Use a different building. See "buildableStructures" for what you CAN build (e.g. barracks for infantry, archery_range for archers).`;
             }
             this.outcome('log.out.buildNeedsTech', { tech: buildingDef.requiresTech, buildingType });
-            return `[ERROR] You must research "${buildingDef.requiresTech}" before you can build ${buildingType}. Use research_tech first (it should appear in "research.available"), then build.`;
+            return `[ERROR] ${buildingType} requires the tech "${buildingDef.requiresTech}", which is not researched. Researchable techs are listed in "research.available".`;
         }
 
         // One Wonder per player, whether it is finished or still going up.
@@ -5709,7 +5709,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 const lim = Math.round(T.landLimit(x, z));
                 const cheb = Math.round(Math.max(Math.abs(x), Math.abs(z)));
                 this.outcome('log.out.offMap', { x: Math.round(x), z: Math.round(z), lim });
-                return `[ERROR] Cannot build at (${Math.round(x)}, ${Math.round(z)}): that spot is outside the playable map, so no worker can reach it. Land reaches max(|x|,|z|) = ${lim} on that bearing and your target is ${cheb}. Pick a spot inside that.`;
+                return `[ERROR] Cannot build at (${Math.round(x)}, ${Math.round(z)}): that spot is outside the playable map, so no worker can reach it. Land reaches max(|x|,|z|) = ${lim} on that bearing; your target is ${cheb}.`;
             }
         } else if (tc) {
             // Default: a ring around the town centre, so buildings spread out.
@@ -5747,7 +5747,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!spot) {
             console.log(`[OpenAIAI] ${ai.id}: Could not find valid position for ${buildingType}`);
             this.outcome('log.out.noClearSpot', { buildingType });
-            return `[ERROR] Could not find a clear spot for ${buildingType} (too crowded by buildings or resource nodes). Try a different targetX/targetZ.`;
+            return `[ERROR] No clear spot for ${buildingType} anywhere near (${Math.round(x)}, ${Math.round(z)}) — buildings or resource nodes occupy it.`;
         }
         ({ x, z } = spot);
 
@@ -6088,7 +6088,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (wasShown) {
                 console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" died before the order landed`);
                 this.outcome('log.out.targetGone', { targetId });
-                return `[ERROR] That target was gone before your order landed — it died in the seconds between the state you read and this command. Nothing was executed and this does not count against you. Targets you can see may die while you think; attack_target with targetX/targetZ instead of targetId sends an attack-move that still fights whatever is there.`;
+                return `[ERROR] That target was gone before your order landed — it died in the seconds between the state you read and this command. Nothing was executed and this does not count against you. Targets you can see may die while you think. targetId names one exact entity; targetX/targetZ sends an attack-move that fights whatever is there.`;
             }
             console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" not found`);
             this.outcome('log.out.targetNotFound', { targetId });
@@ -6118,7 +6118,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const priestNote = ai.units.some(u => u.unitType === 'support')
                 ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send.' : '';
             this.outcome('log.out.noMilitaryAttack', {});
-            return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
+            return `[ERROR] No military units available to attack.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
         // The clergy marches in the shape with everyone else. They are still split out
@@ -6214,7 +6214,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const priestNote = ai.units.some(u => u.unitType === 'support')
                 ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send.' : '';
             this.outcome('log.out.noMilitaryAttack', {});
-            return `[ERROR] No military units available to attack. Train units first.${priestNote} ${this.attackTargetHint(ai, game)}`;
+            return `[ERROR] No military units available to attack.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
         // INSTANT checks on what sits AT the designated coordinates. Friendly target
@@ -6543,7 +6543,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
         const costStr = tcDef ? Object.entries(tcDef.cost || {}).filter(([, v]) => v > 0).map(([k, v]) => `${v} ${k}`).join(', ') : 'its cost';
         this.outcome('log.out.noTCWorkers', {});
-        return `[ERROR] You have NO finished Town Center, so workers have nowhere to DELIVER what they gather — harvesting is pointless right now. FIRST rebuild one: build_structure with buildingType="town_center" and targetX/targetZ on open ground (costs ${costStr}). Once it stands, reassign your workers to resources.`;
+        return `[ERROR] You have no finished Town Center. Workers deliver what they gather to a Town Center, so nothing they harvest is banked while you have none. A town_center costs ${costStr}.`;
     }
 
     // executeHarvestResource lived here. Removed: it was assign_workers with the
@@ -6745,7 +6745,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const relocating = OpenAIAIManager.given(params.targetX) || OpenAIAIManager.given(params.targetZ);
         if (from !== null && from === resourceType && !relocating) {
             this.outcome('log.out.assignFromSame', { res: resourceType });
-            return `[ERROR] "from" and "resourceType" are both "${resourceType}" with no target, which would move workers onto the job they already have. Add "targetX"/"targetZ" to move them to a different ${resourceType} node, choose a different source, or omit "from".`;
+            return `[ERROR] "from" and "resourceType" are both "${resourceType}" with no target, which would move workers onto the job they already have. A move needs somewhere to move to: "targetX"/"targetZ" for a different ${resourceType} node, or a "from" that differs from "resourceType".`;
         }
 
         // Triage, when the model does not name a source: idle workers first, then
@@ -6798,7 +6798,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     ? `you have no workers on "${from}" (workers.${FIELD[from]} is 0)`
                     : `all ${onIt} of them are constructing or fighting, and those are never pulled`;
                 this.outcome('log.out.assignFromEmpty', { from, res: resourceType });
-                return `[ERROR] No workers could be taken from "${from}": ${why}. Choose a source that has workers assigned to it, or omit "from" to use ingame worker selection.`;
+                return `[ERROR] No workers could be taken from "${from}": ${why}. Omitting "from" uses ingame worker selection, which takes idle workers first, then your largest stockpile.`;
             }
             candidates = pool;   // STRICT: an explicit source is not quietly widened
         }
@@ -7175,7 +7175,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     attackTargetHint(ai, game) {
         return this.hasVisibleEnemies(ai, game)
             ? 'To list valid targets, read "enemyUnits" and "enemyBuildings" in the game state — those are the enemies you have DISCOVERED (each with an "id", its x,z and owner). Attack one of those coordinates, or pass its exact "id" as params.targetId.'
-            : 'You have not discovered any enemies yet, so "enemyUnits" and "enemyBuildings" are empty. Scout first (explore); enemies appear in those lists once one of your units sees them, then you can attack them.';
+            : 'You have not discovered any enemies yet, so "enemyUnits" and "enemyBuildings" are empty. Nothing appears in them until one of your own units sees it.';
     }
 
     // ----------------------------------------------------------------
