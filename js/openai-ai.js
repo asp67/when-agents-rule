@@ -920,11 +920,23 @@ class OpenAIAIManager {
         };
 
         // Anthropic Messages API: key goes in x-api-key, plus version + browser-access.
+        //
+        // AND in Authorization, because "Anthropic dialect" is not the same thing as
+        // "api.anthropic.com". Anthropic itself authenticates with x-api-key; every
+        // local or proxied server that SPEAKS the dialect -- Unsloth Studio, OpenRouter,
+        // LiteLLM -- authenticates with a bearer token, and this branch used to send
+        // x-api-key only and return before the bearer case could run. Measured against
+        // Unsloth's /v1/messages: x-api-key alone is a 401, on every turn, for the whole
+        // match. Sending both costs one header and is ignored by whichever server does
+        // not want it; sending one costs the seat.
         if (provider === 'anthropic') {
             headers['anthropic-version'] = '2023-06-01';
             headers['anthropic-dangerous-direct-browser-access'] = 'true';
             const key = await primaryKey();
-            if (key) headers['x-api-key'] = key;
+            if (key) {
+                headers['x-api-key'] = key;
+                if (!headers['Authorization']) headers['Authorization'] = `Bearer ${key}`;
+            }
             applyCustomHeaders();
             return headers;
         }
