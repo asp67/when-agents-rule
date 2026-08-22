@@ -85,12 +85,12 @@ class OpenAIAIManager {
                       formation: S('Optional shape for the MARCH. Every shape keeps the shooters out of the contact rank and the cavalry on the wings. "line" — two ranks of melee, shooters behind, the widest front. "wedge" — a filled triangle, melee at the point. "block" — four to five deep, melee across the front, shooters on both flanks behind it. "screen" — melee ranks, an empty rank, then the shooters. Dropped on contact — it governs the approach, not the fight. Implies matchSpeed "slowestUnit".') };
         return [
             ['train_unit', 'Train one unit at a building that can produce it.',
-             Object.assign({ unitType: S('Unit id from trainableUnits.') }, XZ), ['unitType']],
+             Object.assign({ unitType: S('Unit id from units.trainable.') }, XZ), ['unitType']],
             ['research_tech', 'Start researching one technology.',
              { techId: S('Tech id from research.available.') }, ['techId']],
             ['upgrade_age', 'Advance to the next age. Costs are in epoch.nextEpochCost.', {}, []],
             ['build_structure', 'Place a new building. A worker is pulled to build it.',
-             Object.assign({ buildingType: S('Building type from buildableStructures.') }, XZ), ['buildingType']],
+             Object.assign({ buildingType: S('Building type from buildings.buildable.') }, XZ), ['buildingType']],
             ['assign_workers', 'Move workers onto a resource.',
              Object.assign({ resourceType: S('food|wood|stone|gold|farm — what they should gather.'),
                              count: I('How many. Default 3, max 20.'),
@@ -715,6 +715,32 @@ class OpenAIAIManager {
     // GAP -- an empty rank between the melee and the shooters -- so it is named for
     // that. A screen is a body put in front of another to keep it out of the first
     // clash, which is the whole idea.
+    // Gates that mean "not yet", as against "not right now". A unit whose only
+    // problem is money is still a trainable unit; one with no building to train it in
+    // is not, however rich you are.
+    static get STRUCTURAL_BLOCKS() { return ['age', 'tech', 'host', 'alreadyBuilt']; }
+
+    // Partition a state list (array, or the units' host->age->entries object) into the
+    // things that can be ordered and the things that cannot, keyed { <openName>, blocked }.
+    static splitByBlock(src, openName) {
+        const isBlocked = e => (e.blockedBy || []).some(b => OpenAIAIManager.STRUCTURAL_BLOCKS.indexOf(b) >= 0);
+        const strip = e => { const o = Object.assign({}, e); if (!(o.blockedBy || []).length) delete o.blockedBy; return o; };
+        if (Array.isArray(src)) {
+            return { [openName]: src.filter(e => !isBlocked(e)).map(strip),
+                     blocked:    src.filter(isBlocked) };
+        }
+        const open = {}, blocked = {};
+        Object.entries(src || {}).forEach(([host, byAge]) => {
+            Object.entries(byAge || {}).forEach(([age, list]) => {
+                const o = list.filter(e => !isBlocked(e)).map(strip);
+                const b = list.filter(isBlocked);
+                if (o.length) ((open[host] = open[host] || {})[age] = o);
+                if (b.length) ((blocked[host] = blocked[host] || {})[age] = b);
+            });
+        });
+        return { [openName]: open, blocked };
+    }
+
     static get FORMATIONS() { return ['line', 'wedge', 'block', 'screen']; }
 
     // Old name, still answered. A model that learned "ranged_back" from anywhere gets
@@ -3071,8 +3097,16 @@ class OpenAIAIManager {
             enemyUnits: enemyUnits,
             research: researchObj,
             unlockedContent: unlockedContent,
-            trainableUnits: trainableUnits,
-            buildableStructures: buildableStructures,
+            // A list called "trainable" that holds things you cannot train is a lie the
+            // model plans from, and the state is the worst place to keep one. Split on
+            // the STRUCTURAL gates -- age, tech, host, alreadyBuilt -- which is what
+            // separates "not yet possible" from "possible, not right now".
+            //
+            // cost and pop stay on the available side, wearing their blockedBy. They
+            // change every few seconds, and a list that shuffled entries in and out as
+            // resources ticked would be a worse lie than the one being fixed.
+            units: OpenAIAIManager.splitByBlock(trainableUnits, 'trainable'),
+            buildings: OpenAIAIManager.splitByBlock(buildableStructures, 'buildable'),
             // Omitted in peacetime, like "battles": a match where nothing has been
             // destroyed should pay nothing for the field.
             ...(recentLosses.length ? { recentLosses } : {}),
@@ -3273,7 +3307,7 @@ YOUR BUDGET IS ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} ACTION CALLS PER TURN �
 
 VALID ACTIONS & PARAMETERS (? = optional; each tool's own schema describes what they mean)
 Note: targetX and targetZ must ALWAYS be provided together.
-Every entry in trainableUnits, buildableStructures and research.available carries "cost" and "blockedBy" — what stands between you and ordering it right now ("age", "tech", "host", "pop", "alreadyBuilt", "cost"). An empty blockedBy means nothing does.
+"units" and "buildings" each split in two: "units.trainable" / "buildings.buildable" are what you can order now, and "units.blocked" / "buildings.blocked" are what you cannot, each entry carrying "blockedBy" ("age", "tech", "host", "alreadyBuilt") and, for buildings, "requiresTech" and "requiredAge". Entries on the open side carry "cost", and a "blockedBy" of "cost" or "pop" when that is all that stands in the way.
 
 ${OpenAIAIManager.actionsBrief()}
 
@@ -5343,9 +5377,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // the bare id rather than making the model work it out.
             const stripped = String(unitType).replace(/\s*\(.*\)\s*$/, '').trim();
             const parenNote = (stripped !== String(unitType) && getUnitDefFor(ai.civilization, stripped))
-                ? ` Pass just "${stripped}" — "trainableUnits" groups ids under the age they need, and the age is not part of the id.`
+                ? ` Pass just "${stripped}" — "units.trainable" groups ids under the age they need; the age is not part of the id.`
                 : '';
-            return `[ERROR] Unknown unit type "${unitType}".${catNote}${parenNote} ${this.trainableListString(ai)} See "trainableUnits" in the state for the age each one needs.`;
+            return `[ERROR] Unknown unit type "${unitType}".${catNote}${parenNote} ${this.trainableListString(ai)} See "units.trainable" and "units.blocked" for the age each one needs.`;
         }
 
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
