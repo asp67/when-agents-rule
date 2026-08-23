@@ -4591,11 +4591,22 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // it keeps hitting.
         if (cappedOut) {
             if (s) s.cappedOutTurns = (s.cappedOutTurns || 0) + 1;
+            // Two sentences, both facts, and the second is the only one the model could
+            // not have known: max_tokens is applied to the stream and never appears in
+            // the prompt, so nothing else tells it that thinking is charged to the same
+            // allowance as the answer.
+            //
+            // What went with them: "Think in fewer words, decide sooner, and call a tool
+            // while you still have room", and an offer of the wait call. Both are advice
+            // about how to behave, and one seat spent its entire 4096-token budget
+            // looping the phrase "respect the 4096 token limit" after reading it. That
+            // is one quant misbehaving, not proof of harm — but a model that has just
+            // proved it cannot stop writing is the worst possible audience for a
+            // sentence telling it to write less, and the wait call is described in the
+            // tool list it already has.
             controller.lastActionResult =
-                `[ERROR] NO ACTION: you hit the output limit of ${askedMax || 'the configured'} tokens before writing a tool call, so the turn was forfeited. `
-                + `Your reasoning is spent from that SAME budget -- it is not free, and there is no separate allowance for it. `
-                + `Think in fewer words, decide sooner, and call a tool while you still have room. `
-                + `If you are unsure, {"action":"wait","params":{"reason":"..."}} costs almost nothing and keeps the turn.`;
+                `[ERROR] NO ACTION: output limit of ${askedMax || 'the configured amount'} tokens reached before a tool call, so the turn was forfeited. `
+                + `Reasoning is spent from that same budget; there is no separate allowance for it.`;
             const cappedTurn = controller.turnLog[controller.turnLog.length - 1];
             if (cappedTurn && cappedTurn.outcome == null) cappedTurn.outcome = controller.lastActionResult;
             return;
