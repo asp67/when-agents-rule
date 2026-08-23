@@ -791,162 +791,24 @@ class Game {
         // time so the leaderboard age never lags behind the actual game.
         this.updateResearchProgress(dt);
         this.updateAgeUpgradeProgress(dt);
-        this.sampleJitter(dt);
     }
 
-    // ---- Jitter recorder ------------------------------------------------------
-    // A pinned unit vibrates for about five seconds and then frees itself. That is far
-    // too short a window to read by hand: asp67 watched one do it twice on an attack
-    // into Persia and could not pull the state either time. So the simulation records
-    // it instead, and the console reads the recording afterwards -- game.dumpJitter().
+    // A jitter recorder lived here: it sampled every moving unit every 200ms and
+    // filed an episode whenever one walked a long way and arrived nowhere -- the
+    // signature of a unit shoved out of a building ring, walking back in, and shoved
+    // out again once a frame. asp67 could not catch one by hand because a pinned unit
+    // frees itself in about five seconds.
     //
-    // What it looks for is not "stuck". A pinned unit MOVES; that is the whole problem.
-    // It is shoved out of a building ring, walks back in, and is shoved out again, once
-    // a frame, covering real distance and arriving nowhere. So the test is path against
-    // progress: how far the unit walked in the window, versus how far it actually got.
-    // Walking a long way to end up where it started is the signature, and it separates
-    // this cleanly from a unit that is merely slow, blocked, or standing still.
+    // It did its job. It measured the formation work, it survived a classifier bug of
+    // its own (a task-change escape hatch that swallowed the very fault it was built
+    // for), and after that was fixed it read 0 pinned across three consecutive
+    // matches. Removed rather than left switched off: a sampler that runs every tick
+    // for a fault nobody can reproduce is a cost with no reader.
     //
-    // Sampled rather than per-frame, because a reversal is only meaningful over a
-    // distance a single frame cannot cover -- at 60fps the noise is larger than the
-    // signal. The expensive part, naming which buildings are pinning it, runs only when
-    // an episode is actually recorded, which is rare.
-    static get JITTER_SAMPLE_MS() { return 200; }   // one look per window slice
-    static get JITTER_WINDOW()    { return 10; }    // slices per verdict (~2s)
-    static get JITTER_MIN_PATH()  { return 1.5; }   // walked less than this: not trying
-    static get JITTER_RATIO()     { return 0.25; }  // got less than this share of it
-    static get JITTER_LOG_MAX()   { return 40; }
-    static get JITTER_PER_UNIT()  { return 4; }   // records kept per unit; the tally counts all
-
-    sampleJitter(deltaTime) {
-        this._jitterClock = (this._jitterClock || 0) + deltaTime;
-        if (this._jitterClock < Game.JITTER_SAMPLE_MS) return;
-        this._jitterClock = 0;
-        const scan = owner => ((owner && owner.units) || []).forEach(u => {
-            if (!u || u.health <= 0 || !u.isMoving) { if (u) u._jPath = 0, u._jN = 0, u._jFrom = null; return; }
-            if (!u._jFrom) { u._jFrom = { x: u.x, z: u.z }; u._jLast = { x: u.x, z: u.z }; u._jPath = 0; u._jN = 0; u._jTrail = []; u._jTasks = []; u._jAims = []; }
-            u._jPath += Math.hypot(u.x - u._jLast.x, u.z - u._jLast.z);
-            u._jLast = { x: u.x, z: u.z };
-            // The shape of the path, and what the unit thought it was doing while it
-            // walked. Without these the record cannot separate a unit that is PINNED
-            // from a worker hauling between a node and a drop-off standing next to it:
-            // both walk a long way and arrive nowhere, and only one of them is a fault.
-            u._jTrail.push([+u.x.toFixed(1), +u.z.toFixed(1)]);
-            u._jTasks.push(u.task || (u.isAttacking ? 'attack' : '-'));
-            // The DESTINATION, not just the job label. A haul whose round trip is
-            // longer than one window keeps the same task the whole way and would read
-            // as pinned on the label alone; what gives it away is that it is being
-            // aimed somewhere new. A pinned unit is aimed at one place it cannot reach.
-            u._jAims.push(Math.round(u.targetX || 0) + ',' + Math.round(u.targetZ || 0));
-            if (++u._jN < Game.JITTER_WINDOW) return;
-            const net = Math.hypot(u.x - u._jFrom.x, u.z - u._jFrom.z);
-            if (u._jPath >= Game.JITTER_MIN_PATH && net < Game.JITTER_RATIO * u._jPath) {
-                this.recordJitter(u, owner, u._jPath, net);
-            }
-            u._jFrom = { x: u.x, z: u.z }; u._jPath = 0; u._jN = 0; u._jTrail = []; u._jTasks = []; u._jAims = [];
-        });
-        scan(this.player);
-        ((this.aiManager && this.aiManager.aiPlayers) || []).forEach(scan);
-    }
-
-    recordJitter(u, owner, path, net) {
-        if (!this._jitterLog) this._jitterLog = [];
-        // Count every episode, keep only a few records per unit. One stuck worker took
-        // 34 of the ring's 40 slots last time and evicted everything else, so the log
-        // proved that worker was stuck and could say nothing at all about whether
-        // anything ELSE was -- which is exactly the question a log with forty slots is
-        // for. The tally below is unbounded, so nothing is hidden by the cap; only the
-        // repeat evidence for a unit already well documented is dropped.
-        const tally = this._jitterCount || (this._jitterCount = new Map());
-        const uid = (u.type || '?') + '#' + u.id;
-        tally.set(uid, (tally.get(uid) || 0) + 1);
-        if ((this._jitterLog.filter(r => r.type + '#' + r.id === uid).length) >= Game.JITTER_PER_UNIT) return;
-        // Which rings it is caught between. Same rule and same numbers clampSlot uses,
-        // so a slot this says is illegal is one clampSlot would also have moved.
-        const rings = [];
-        ((this.getAllBuildings && this.getAllBuildings()) || []).forEach(b => {
-            if (!b || b.health <= 0 || b.type === 'farm') return;
-            const clr = (b.isWonder ? Game.WONDER_CLEARANCE : Game.UNIT_BUILDING_CLEARANCE) + 0.5;
-            const d = Math.hypot(u.x - b.x, u.z - b.z);
-            if (d > clr + 3) return;
-            rings.push({ type: b.type, x: Math.round(b.x), z: Math.round(b.z),
-                         dist: +d.toFixed(2), clearance: clr, inside: d < clr });
-        });
-        // A worker that changed job mid-window, or set a load down, WAS getting
-        // somewhere -- just not anywhere far. That is a short haul, not a pin, and
-        // filing it as jitter would bury the real ones under the economy.
-        const tasks = Array.from(new Set(u._jTasks || []));
-        const aims = Array.from(new Set(u._jAims || []));
-        const cycled = tasks.length > 1 || aims.length > 1;
-        const off = u.formationOffset;
-        const slotX = (u.targetX || 0) + (off ? off.x : 0);
-        const slotZ = (u.targetZ || 0) + (off ? off.z : 0);
-        const legal = this.clampSlot ? this.clampSlot(slotX, slotZ) : { x: slotX, z: slotZ };
-        const illegalBy = +Math.hypot(legal.x - slotX, legal.z - slotZ).toFixed(2);
-        this._jitterLog.push({
-            at: new Date().toISOString().slice(11, 19),
-            id: u.id, type: u.type, unitType: u.unitType, owner: (owner && owner.id) || '?',
-            pos: [+u.x.toFixed(2), +u.z.toFixed(2)],
-            target: [+(u.targetX || 0).toFixed(2), +(u.targetZ || 0).toFixed(2)],
-            slot: [+slotX.toFixed(2), +slotZ.toFixed(2)],
-            // If these differ, the unit is walking at a place it may not stand -- the
-            // mover and the renderer's push-out are fighting over it.
-            slotLegal: [+legal.x.toFixed(2), +legal.z.toFixed(2)],
-            slotIllegalBy: illegalBy,
-            walked: +path.toFixed(2), got: +net.toFixed(2),
-            // 'haul': it changed job while walking, so the walking was the job.
-            // 'pinned': one job, full speed, no ground gained. That is the fault.
-            //
-            // An ILLEGAL slot outranks the haul escape hatch, because the two look
-            // identical from here and only one is a bug. A unit aimed where it may not
-            // stand is pulled in by the mover and pushed out by the renderer on every
-            // frame, and that churn flips its task and its aim — which is precisely
-            // what `cycled` tests for. So the one fault this recorder exists to catch
-            // was filing itself under the category invented to ignore normal walking.
-            // Measured 2026-08-23: a worker sent to a Town Center's exact centre
-            // shivered there for a minute and the log reported 0 pinned episodes.
-            verdict: (illegalBy > 0.5 || cycled === false) ? 'pinned' : 'haul',
-            task: tasks.join('>') || null,
-            aims: aims.length,
-            carrying: !!u.carryingResource,
-            harvest: u.harvestTarget ? (u.harvestTarget.type || 'node') : null,
-            distToTarget: +Math.hypot(u.x - (u.targetX || 0), u.z - (u.targetZ || 0)).toFixed(2),
-            trail: u._jTrail ? u._jTrail.slice() : [],
-            marchSpeed: u.marchSpeed, ownSpeed: u.speed, outOfPlace: !!u.formationGroup,
-            axis: u.formationAxis ? [+u.formationAxis.x.toFixed(2), +u.formationAxis.z.toFixed(2)] : null,
-            attacking: !!u.isAttacking, rings
-        });
-        while (this._jitterLog.length > Game.JITTER_LOG_MAX) this._jitterLog.shift();
-    }
-
-    // Console reader. game.dumpJitter() for the table, game.dumpJitter(0, true) for raw.
-    dumpJitter(n, raw) {
-        const log = this._jitterLog || [];
-        if (!log.length) { console.log('[jitter] nothing recorded'); return log; }
-        const rows = n ? log.slice(-n) : log;
-        // One unit stuck for three minutes and one unit caught once are the same
-        // number of rows and completely different problems, so say which this is.
-        const pinned = rows.filter(r => r.verdict !== 'haul');
-        const byUnit = {};
-        pinned.forEach(r => { const k = r.type + '#' + r.id; byUnit[k] = (byUnit[k] || 0) + 1; });
-        // Worst offender by the TRUE count, not by how many of its records fit.
-        const tally = this._jitterCount || new Map();
-        const worst = Object.keys(byUnit).map(k => [k, tally.get(k) || byUnit[k]])
-            .sort((a, b) => b[1] - a[1])[0];
-        console.log('[jitter] ' + rows.length + ' episodes: ' + pinned.length + ' pinned, '
-            + (rows.length - pinned.length) + ' haul'
-            + (worst ? ' | worst: ' + worst[0] + ' x' + worst[1] : '')
-            + ' | distinct pinned units: ' + Object.keys(byUnit).length);
-        if (raw) { console.log(JSON.stringify(rows, null, 2)); return rows; }
-        console.table(rows.map(r => ({
-            at: r.at, unit: r.type + '#' + r.id, owner: r.owner,
-            verdict: r.verdict, task: r.task, aims: r.aims, carrying: r.carrying,
-            walked: r.walked, got: r.got, dist: r.distToTarget, slotIllegalBy: r.slotIllegalBy,
-            insideRings: r.rings.filter(x => x.inside).map(x => x.type).join(',') || '-',
-            outOfPlace: r.outOfPlace, marchSpeed: r.marchSpeed
-        })));
-        return rows;
-    }
+    // If it is ever needed again, the shape worth rebuilding is path-against-progress
+    // over a ~2s window, with clampSlot's own numbers deciding whether the unit was
+    // aimed somewhere it may not stand -- that last part is what finally caught it.
+    // See git history: game.dumpJitter().
 
     moveUnits(targetX, targetZ) {
         // In spectator mode, no unit control
