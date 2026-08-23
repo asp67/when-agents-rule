@@ -2717,7 +2717,18 @@ class OpenAIAIManager {
                              stone: 'harvesting', gold: 'harvesting', moving: 'moving' };
         const friendlyUnits = ai.units.map(u => {
             let action = 'idle';
-            if (u.isAttacking) action = 'attacking';
+            // isAttacking means "under a combat order", not "in contact". The engine
+            // gates the whole attack-move loop on it -- the aggro scan AND the walk to
+            // the objective -- so it goes up the moment the order is issued and stays up
+            // for the entire march. The flag is load-bearing and correct; calling it
+            // "attacking" in the state was not. An army two minutes from the enemy read
+            // as fighting, which is the one thing a commander cannot check by looking.
+            // A live target is the difference, and it is the same test the "marching"
+            // block and the arrival resolver use.
+            if (u.isAttacking) {
+                const inContact = u.attackTarget && u.attackTarget.health > 0;
+                action = (!inContact && u.attackMove) ? 'marching' : 'attacking';
+            }
             else if (u.task === 'harvesting') action = 'harvesting';
             else if (u.task === 'carrying' || u.carryingResource) action = 'returning';
             else if (u.task === 'building') action = 'building';
@@ -3297,47 +3308,9 @@ class OpenAIAIManager {
     // ----------------------------------------------------------------
     // 6. Helper: Get unit action JSON
     // ----------------------------------------------------------------
-    getUnitActionJSON(unit) {
-        let actionType = 'idle';
-        const target = null;
-        const targetPosition = null;
-        const harvestInfo = null;
-        const buildInfo = null;
-
-        if (unit.isAttacking) {
-            actionType = 'attacking';
-        } else if (unit.task === 'harvesting') {
-            actionType = unit.isMoving ? 'moving' : 'harvesting';
-        } else if (unit.task === 'carrying' || unit.carryingResource) {
-            actionType = 'returning_resources';
-        } else if (unit.task === 'building') {
-            actionType = 'building';
-        } else if (unit.task === 'farm_work') {
-            actionType = 'farm_work';
-        } else if (unit.isMoving) {
-            actionType = 'moving';
-        }
-
-        return {
-            type: actionType,
-            target: target,
-            targetPosition: unit.isMoving ? {
-                x: Math.round(unit.targetX * 10) / 10,
-                z: Math.round(unit.targetZ * 10) / 10
-            } : null,
-            harvestInfo: unit.carryingResource || unit.task === 'harvesting' ? {
-                resourceType: unit.carryingResourceType || (unit.harvestTarget ? unit.harvestTarget.type : 'food'),
-                carriedAmount: unit.harvestAmount || 0,
-                maxCarry: unit.maxHarvest || 15
-            } : null,
-            buildInfo: unit.task === 'building' && unit.buildTarget ? {
-                buildingType: unit.buildTarget.type,
-                progress: unit.buildProgress || 0,
-                duration: 5000,
-                progressPercent: Math.round(((unit.buildProgress || 0) / 5000) * 100)
-            } : null
-        };
-    }
+    // getUnitActionJSON lived here: a second unit-activity classifier, called from
+    // nowhere. It carried the same isAttacking reading the list above just lost, so
+    // leaving it meant the next reader could fix the copy nobody runs.
 
     // ----------------------------------------------------------------
     // 7. Canonical system prompt (SINGLE SOURCE OF TRUTH)
@@ -6257,14 +6230,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             }
             console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" not found`);
             this.outcome('log.out.targetNotFound', { targetId });
-            return `[ERROR] Target "${targetId}" not found. ${this.attackTargetHint(ai, game)}`;
+            return `[ERROR] Target "${targetId}" not found.`;
         }
 
         // Friendly-fire guard: a model must not attack its own units/buildings.
         if (this.isOwnedByAI(target, ai)) {
             console.log(`[OpenAIAI] ${ai.id}: Refused self-attack on "${target.name || target.type}"`);
             this.outcome('log.out.targetIsOwn', { target: target.name || target.type });
-            return `[ERROR] Target "${target.name || target.type}" is your own ${target.type}. You cannot attack your own units or buildings. ${this.attackTargetHint(ai, game)}`;
+            return `[ERROR] Target "${target.name || target.type}" is your own ${target.type}.`;
         }
 
         // Optional {type:count} detachment closest to the target; no map → the
@@ -6278,12 +6251,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             if (ownsCombat) {
                 this.outcome('log.out.attackNoMatch', {});
-                return `[ERROR] attack matched none of your COMBAT units${sel.note}. Name types you own (e.g. {"champion":3}) or omit "units" to send your whole army. Your military: ${this.forceComposition(ai)}. ${this.attackTargetHint(ai, game)}`;
+                return `[ERROR] attack matched none of your COMBAT units${sel.note}. Your military: ${this.forceComposition(ai)}.`;
             }
             const priestNote = ai.units.some(u => u.unitType === 'support')
                 ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send.' : '';
             this.outcome('log.out.noMilitaryAttack', {});
-            return `[ERROR] No military units available to attack.${priestNote} ${this.attackTargetHint(ai, game)}`;
+            return `[ERROR] No military units available to attack.${priestNote}`;
         }
 
         // The clergy marches in the shape with everyone else. They are still split out
@@ -6359,7 +6332,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
             this.outcome('log.out.attackNeedsCoords', {});
-            return `[ERROR] attack needs numeric "targetX"/"targetZ" (or a "targetId"). Got targetX=${JSON.stringify(targetX)}, targetZ=${JSON.stringify(targetZ)}. ${this.attackTargetHint(ai, game)}`;
+            return `[ERROR] attack needs numeric "targetX"/"targetZ" (or a "targetId"). Got targetX=${JSON.stringify(targetX)}, targetZ=${JSON.stringify(targetZ)}.`;
         }
         // Keep the attack-move objective on solid ground.
         ({ x: targetX, z: targetZ } = game.clampToMap(mx, mz));
@@ -6381,12 +6354,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             if (ownsCombat) {
                 this.outcome('log.out.attackNoMatch', {});
-                return `[ERROR] attack matched none of your COMBAT units${sel.note}. Name types you own (e.g. {"champion":3}) or omit "units" to send your whole army. Your military: ${this.forceComposition(ai)}. ${this.attackTargetHint(ai, game)}`;
+                return `[ERROR] attack matched none of your COMBAT units${sel.note}. Your military: ${this.forceComposition(ai)}.`;
             }
             const priestNote = ai.units.some(u => u.unitType === 'support')
                 ? ' Priests never fight — on an attack they escort your army and heal, but you have no COMBAT units to send.' : '';
             this.outcome('log.out.noMilitaryAttack', {});
-            return `[ERROR] No military units available to attack.${priestNote} ${this.attackTargetHint(ai, game)}`;
+            return `[ERROR] No military units available to attack.${priestNote}`;
         }
 
         // Two rejections stood here: coordinates sitting on a resource node, and
@@ -7352,36 +7325,18 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // fog-of-war filtering used to build the game state: an enemy counts only if
     // it is currently visible — EXCEPT enemy wonders, which are always revealed
     // to everyone, so a known wonder counts even with zero scouting.
-    hasVisibleEnemies(ai, game) {
-        // Remembered enemy buildings (discovered earlier, still alive) are valid
-        // targets even when not currently in sight.
-        if (ai._knownEnemyBuildings) {
-            for (const b of ai._knownEnemyBuildings) {
-                if (b && b.health > 0 && !this.isOwnedByAI(b, ai)) return true;
-            }
-        }
-        for (const b of game.getAllBuildings()) {
-            if (this.isOwnedByAI(b, ai)) continue;
-            if (b.health <= 0) continue;
-            if (b.isWonder || this.isPositionVisibleToAI(ai, b.x, b.z, game)) return true;
-        }
-        for (const u of game.getAllUnits()) {
-            if (this.isOwnedByAI(u, ai)) continue;
-            if (u.health <= 0) continue;
-            if (this.isPositionVisibleToAI(ai, u.x, u.z, game)) return true;
-        }
-        return false;
-    }
-
-    // Shared guidance appended to attack errors so the model's next step is always
-    // actionable: how to LIST the valid, already-discovered targets — or scout if
-    // none are known yet. "enemyUnits"/"enemyBuildings" only ever contain enemies
-    // you have already discovered (fog hides the rest).
-    attackTargetHint(ai, game) {
-        return this.hasVisibleEnemies(ai, game)
-            ? 'To list valid targets, read "enemyUnits" and "enemyBuildings" in the game state — those are the enemies you have DISCOVERED (each with an "id", its x,z and owner). Attack one of those coordinates, or pass its exact "id" as params.targetId.'
-            : 'No known enemy units or buildings. "enemyUnits" and "enemyBuildings" list only what one of your own units has seen.';
-    }
+    // attackTargetHint and its only caller hasVisibleEnemies lived here. The hint was
+    // appended to every attack rejection, in one of two forms. With enemies in sight:
+    // "To list valid targets, read enemyUnits and enemyBuildings in the game state …
+    // Attack one of those coordinates, or pass its exact id as params.targetId."
+    // Without: "No known enemy units or buildings. enemyUnits and enemyBuildings list
+    // only what one of your own units has seen."
+    //
+    // The first is the schema and the state read back, phrased as an instruction. The
+    // second is the fog rule, which the system prompt already states — "enemyUnits is
+    // what you can SEE right now; an empty list means nothing is in sight, not that
+    // nothing exists" — and an empty enemyUnits in the state says the rest. Six
+    // rejections carried it; each of them now names its own failure and stops.
 
     // ----------------------------------------------------------------
     // 13. Independent per-model update loop
