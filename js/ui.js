@@ -3267,8 +3267,16 @@ class UIManager {
             const k = u.type === 'worker' ? 'worker' : (u.unitType || 'infantry');
             unitGroups[k] = (unitGroups[k] || 0) + 1;
         });
+        // The chip's LABEL, not only its tip. Techs and buildings on this panel go
+        // through tg() and the resource rows through resPlain.*, so the unit column was
+        // the only one still showing a raw English key while everything around it
+        // changed language. tg() cannot help here: these are unit CLASSES, not unit
+        // defs, and the class exists only as this grouping. uclass.* is the head half of
+        // the utype.* line the tooltip already carries, so chip and tip name the same
+        // thing in the same words.
+        const uclass = k => { const key = 'uclass.' + k; return t(key) !== key ? t(key) : k; };
         const unitChips = Object.entries(unitGroups)
-            .map(([k, n]) => `<span class="lb-fly-chip" title="${esc(this.getUnitTypeDescription(k))}">${unitIcons[k] || '⚔️'} ${esc(k)} ×${n}</span>`).join('');
+            .map(([k, n]) => `<span class="lb-fly-chip" title="${esc(this.getUnitTypeDescription(k))}">${unitIcons[k] || '⚔️'} ${esc(uclass(k))} ×${n}</span>`).join('');
 
         // Buildings grouped by type; an "uc:" key prefix separates sites still
         // under construction from finished ones (rendered with a 🏗 marker). Each
