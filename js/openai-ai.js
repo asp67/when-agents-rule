@@ -355,7 +355,10 @@ class OpenAIAIManager {
             promptTokens: 0,      // cumulative token usage as reported by the provider
             completionTokens: 0,  // (0/0 when the endpoint doesn't report usage)
             parseFails: 0,        // response unusable: empty, truncated, or parser crashed
-            truncatedReplies: 0,  // ...of those, cut off mid-JSON by the output-token cap
+            truncatedReplies: 0,  // replies the PROVIDER stopped at the output cap, whether or
+                                  // not anything usable survived. Not a subset of parseFails:
+                                  // a reply cut mid-tool-call that still ran two actions is a
+                                  // reply the model did not finish, and it used to read clean.
             noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
             actionsAttempted: 0,  // actions handed to executeAction
             turnsExecuted: 0,     // turns that ran at least one command. actionsAttempted
@@ -4131,6 +4134,27 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // truncated the body. Those need opposite fixes, so don't guess.
             const askedMax = model.maxTokens || 2000;
             if (OpenAIAIManager.hitTokenCap(norm && norm.finish_reason)) {
+                // COUNTED HERE, once per reply, and not down in the malformed branch where
+                // it used to live. There it only fired when the reply was a total loss, so
+                // the case that actually costs a seat the most went unrecorded: a reply cut
+                // mid-tool-call that still yielded one or two usable actions is a reply the
+                // model did not finish, and it read as a clean turn.
+                //
+                // The seat that lost 39 rounds to a truncated tool call reported
+                // truncated: 0 for the match that truncation ruined. asp67: "It is a model
+                // weakness, that we should honestly report."
+                //
+                // The test is the PROVIDER's finish_reason, not our parser finding the JSON
+                // cut. Those disagree in exactly one place and it matters: JSON cut while
+                // the finish reason is NOT the cap means the transport truncated the body,
+                // which is the network's fault and not the model's. That case keeps its
+                // place in parseFails and stays out of this number.
+                // controller.stats, not `s` — that binding is declared 160 lines below
+                // this point and reading it here is a dead-zone throw that node --check
+                // cannot see.
+                if (controller.stats) {
+                    controller.stats.truncatedReplies = (controller.stats.truncatedReplies || 0) + 1;
+                }
                 console.warn(`[OpenAIAI] ${ai.id}: reply stopped at a token cap — we asked max_tokens=${askedMax}, ` +
                     `provider reported completion=${usage ? usage.completion : 'n/a'}, content=${((norm && norm.content) || '').length} chars. ` +
                     `A completion far below the ask means the cap came from the endpoint, not from here.`);
@@ -4318,10 +4342,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // format fault it can fix, so unlike a prose reply it gets told — and it
             // counts as a parse failure, which formatOk already subtracts.
             if (result && result.malformed) {
-                if (s) {
-                    s.parseFails++;
-                    if (result.truncated) s.truncatedReplies = (s.truncatedReplies || 0) + 1;
-                }
+                // parseFails only. The truncation itself is counted once per reply
+                // where the provider reports it, above; counting it again here would
+                // double every capped reply that also failed to parse.
+                if (s) s.parseFails++;
                 controller.lastActionResult = result.truncated
                     ? `[ERROR] Your reply was CUT OFF before the JSON closed — you ran out of output tokens, so nothing was executed. Keep "reason", "objective" and "plan" to one short sentence each and always close the JSON.`
                     : `[ERROR] Your reply contained an "action" but was not valid JSON, so nothing was executed.${result.why ? ` The parser stopped here: ${result.why}.` : ''}${result.near ? ` Your reply up to that point ended: ...${result.near}` : ''}`;
