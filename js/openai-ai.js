@@ -2576,8 +2576,6 @@ class OpenAIAIManager {
         const ageUpActive = !!ai.currentAgeUpgrade; // hosted at a Town Center
         let researchAssigned = false, ageAssigned = false;
 
-        const bSummary = { total: 0, idle: 0, busy: 0, underConstruction: 0, producing: 0, researching: 0, advancingAge: 0, farmsUnmanned: 0, byType: {} };
-
         // Seconds a finished Wonder must be held. Needed by BOTH the owner's view of
         // its own wonder and every rival's view of it — one definition, because the
         // two countdowns are the same clock read from opposite sides.
@@ -2655,18 +2653,6 @@ class OpenAIAIManager {
                 // predicate the simulation gates regrowth on.
                 obj.farmed = !!game.farmFarmer(b);
             }
-
-            // accumulate the aggregate
-            bSummary.total++;
-            bSummary.byType[b.type] = (bSummary.byType[b.type] || 0) + 1;
-            if (constructing) bSummary.underConstruction++;
-            if (producing) bSummary.producing++;
-            if (researching) bSummary.researching++;
-            if (advancing) bSummary.advancingAge++;
-            if (busy) bSummary.busy++; else bSummary.idle++;
-            // Standing idle costs nothing; a farm standing UNMANNED costs food every
-            // second, and nothing else in this summary would ever say so.
-            if (b.type === 'farm' && !constructing && !game.farmFarmer(b)) bSummary.farmsUnmanned++;
 
             return obj;
         });
@@ -3160,7 +3146,18 @@ class OpenAIAIManager {
             discoveredNodesOnMap: discoveredNodesOnMap,
             nearestNodes: nearestNodes,
             friendlyBuildings: friendlyBuildings,
-            buildings: bSummary,
+            // No tally of the above. There was one -- total / idle / busy /
+            // underConstruction / producing / researching / advancingAge / farmsUnmanned
+            // / byType -- and every field of it was a count of friendlyBuildings, which
+            // is right there: type gives byType and total, busy and activity give the
+            // four states, and farmed gives farmsUnmanned from the same predicate. It
+            // was a second copy that could drift from the first, and it did: it shared
+            // the key "buildings" with the buildable list below, so the list silently
+            // won and the tally reached no model for a day without anything changing.
+            //
+            // Counting a thirty-entry list is work, and doing it for the model is the
+            // one argument for keeping it -- an argument that helps the weakest seats
+            // most, which is the difference this whole thing exists to measure.
             enemyBuildings: enemyBuildings,
             friendlyUnits: friendlyUnits,
             workers: wk,
