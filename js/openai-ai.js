@@ -104,7 +104,7 @@ class OpenAIAIManager {
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
             ['move_units', 'Move units to a position.',
              Object.assign({}, XZ, WHO), ['targetX', 'targetZ']],
-            ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march — do not reissue it while they are still marching.',
+            ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "marching" in the state carries its secondsRemaining.',
              Object.assign({ targetId: I('Id from enemyUnits/enemyBuildings. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
              { unitType: S('Type from friendlyUnits. Default worker.'), count: I('How many. Default 1, max 20.') }, []],
@@ -2327,6 +2327,48 @@ class OpenAIAIManager {
                 `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
         };
 
+        // --- Marching: attack orders still on the way ---
+        // The system prompt promises the state carries secondsRemaining "for anything
+        // running", and a march was the one running thing it did not. Research and the
+        // age upgrade each publish a countdown; an army crossing 600 units of map for
+        // ninety seconds published nothing at all, so from one turn to the next there
+        // was no way to tell an order still walking from an order that never took. The
+        // action description covered the gap with an instruction -- "do not reissue it
+        // while they are still marching" -- which is the harness deciding a turn for the
+        // model because it withheld the fact the decision needs.
+        //
+        // Read off the UNITS, not off pendingAttackReports. attackMove is set by both
+        // attack branches (coordinates and targetId), cleared by move_units and cleared
+        // by the engine on arrival, so it is the order itself rather than the
+        // bookkeeping kept alongside it for the arrival check -- and it cannot go stale,
+        // because the same line that stops the unit walking unsets it.
+        //
+        // Grouped by order token: one attack is one entry however many units carry it,
+        // and with a formation every unit walks to its own slot, so grouping by
+        // destination would have split one army into twenty marches. The destination
+        // reported is the mean of those slots, which is the point that was ordered.
+        // Units already in contact drop out -- that is a fight, and "battles" has it.
+        // Contact is a live target, not the isAttacking flag: executeAttackPosition sets
+        // that flag on every unit the moment the order goes out, so an army 128 seconds
+        // from the enemy already reads isAttacking true with attackTarget null. Same
+        // predicate the arrival resolver uses, so both agree on what "engaged" means.
+        const marchBy = new Map();
+        ai.units.forEach(u => {
+            const inContact = u.isAttacking && u.attackTarget && u.attackTarget.health > 0;
+            if (!u.attackMove || inContact) return;
+            const row = marchBy.get(u._orderToken) || { n: 0, sx: 0, sz: 0, eta: 0 };
+            row.n++; row.sx += u.attackMove.x; row.sz += u.attackMove.z;
+            row.eta = Math.max(row.eta, this.travelEtaSec(u, u.attackMove.x, u.attackMove.z));
+            marchBy.set(u._orderToken, row);
+        });
+        const marching = [...marchBy.values()].map(r => ({
+            to: [Math.round(r.sx / r.n), Math.round(r.sz / r.n)],
+            units: r.n,
+            // Same word research and epoch use. One vocabulary for one idea, so a model
+            // that learned to read a countdown once can read all three.
+            secondsRemaining: r.eta
+        }));
+
         // --- Battles: what actually happened in the fighting ---
         // A model cannot watch a fight — it decides between snapshots. Each entry is
         // ONE engagement (clustered by location), CUMULATIVE since it began, so the
@@ -3112,6 +3154,7 @@ class OpenAIAIManager {
             // Omitted entirely in peacetime — this rides the per-turn channel, so a
             // quiet game should pay nothing for it.
             ...(battles.length ? { battles } : {}),
+            ...(marching.length ? { marching } : {}),
             bonuses: bonusesObj,
             map: mapObj,
             discoveredNodesOnMap: discoveredNodesOnMap,
@@ -3783,11 +3826,15 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // on an unparseable previous reply, the current state JSON, and spectator advice.
         const tailNow = [];
         // A "RESULTS OF YOUR EARLIER ATTACK ORDER(S)" block used to be spliced in here.
-        // It reported five verdicts and the state had grown to carry three of them
-        // already: a force that arrived and engaged shows up as friendlyUnits[].action
-        // "attacking" at those coordinates AND as a "battles" entry with both sides'
-        // composition, damage and losses, growing turn over turn. Saying it a third
-        // time in prose cost tokens to tell the model what it was already reading.
+        // It reported five verdicts and "battles" had grown to carry three of them: a
+        // force that arrived and engaged is an entry with both sides' composition,
+        // damage and losses, growing turn over turn. Saying it again in prose cost
+        // tokens to tell the model what it was already reading.
+        //
+        // Not friendlyUnits[].action, which was the other half of this argument and is
+        // wrong: "attacking" is stamped on every unit the moment an attack order goes
+        // out, so it reads the same at the start of a two-minute march as it does in
+        // the melee. Telling those apart is what "marching" is for.
         //
         // The two verdicts nothing else could carry -- arrived at an empty spot, never
         // arrived at all -- are now recentEvents lines, which is the channel for "what
@@ -6386,10 +6433,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // Only two of the five outcomes are written anywhere, and both go to recentEvents
     // as the harness's answer to "what became of my order". The other three -- engaged,
     // in contact, destroyed on the way -- are dropped: each is a FIGHT, and a fight is
-    // already in the state twice over, as friendlyUnits[].action and as a cumulative
-    // "battles" entry that names composition, damage and losses. The two that survive
-    // are the ones where nothing happened, and nothing happening is exactly what no
-    // other block can report.
+    // already a "battles" entry naming composition, damage and losses, cumulative and
+    // growing. The two that survive are the ones where nothing happened, and nothing
+    // happening is exactly what no other block can report.
     updateAttackReports(now) {
         const ARRIVE = 7, ENGAGE = 30, MAXWAIT = 120000;
         for (const controller of this.aiControllers) {
