@@ -4132,6 +4132,18 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // between, so the log's #7 and the transcript's #7 cannot drift apart.
             controller._moveNo = ((this.transcripts && this.transcripts.turnsFor(ai.id)) || 0) + 1;
             controller._moveMs = Date.now() - reqStart;
+
+            // The self-heal ladder resets HERE, where a reply demonstrably exists, and
+            // not on any of the three exits below. Those distinguish how the reply
+            // PARSED, which is a different question: the ladder is about the endpoint
+            // refusing the request shape, and a reply of any kind proves it did not.
+            // Resetting on the parse-clean exit alone left a streak counting across a
+            // healthy turn, so two failures either side of a good answer read as four
+            // and healed a seat that had nothing wrong with it.
+            controller._sameErrStreak = 0;
+            controller._lastErrKey = null;
+            controller._healStage = 0;
+
             const result = this.parseResponse(norm, controller);
 
             // Transcript: the exchange VERBATIM, for after-the-fact analysis. Separate
@@ -4426,6 +4438,70 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     (s.networkAtMs = s.networkAtMs || []).push(Date.now() - tStart);
                 }
             }
+            // SELF-HEAL. The same endpoint error, over and over, is not a flaky network:
+            // a network is flaky in different ways each time. It is the shape of a
+            // request the server cannot accept, and the only part of a request this
+            // harness carries forward from turn to turn is the replayed history. So when
+            // an error repeats verbatim, the history is the suspect and the harness backs
+            // it out rather than sending the same rejected shape until the match ends.
+            //
+            // Measured before this existed: one truncated tool call cost a seat 39
+            // consecutive rounds, every request refused at the server. That specific
+            // cause is fixed where it starts, above; this is the net under it, for the
+            // next cause nobody has met yet.
+            //
+            // Two steps, cheapest first. The tool calls are the only structured thing we
+            // replay -- everything else is a string, and a string cannot fail to parse --
+            // so dropping just those keeps the whole move history and degrades the turn
+            // into the prose form the harness already supports for non-tool models. Only
+            // if that does not clear it does the history itself go.
+            //
+            // Transport failures are excluded on purpose. "Failed to fetch" says nothing
+            // reached the server, so nothing we sent can be at fault, and throwing away a
+            // seat's memory over a dropped wifi packet would be a worse bug than the one
+            // being healed.
+            const errKey = String(err.message || '').slice(0, 120);
+            const fromServer = /API error \(\d+\)/.test(errKey);
+            if (fromServer && errKey === controller._lastErrKey) {
+                controller._sameErrStreak = (controller._sameErrStreak || 1) + 1;
+            } else {
+                controller._sameErrStreak = 1;
+                controller._healStage = 0;
+            }
+            controller._lastErrKey = fromServer ? errKey : null;
+            const HEAL_STRIP = 3, HEAL_DROP = 6;
+            const log = controller.turnLog || [];
+            let healed = null;
+            if (fromServer && controller._sameErrStreak >= HEAL_DROP && (controller._healStage || 0) < 2 && log.length) {
+                controller.turnLog = [];
+                controller._healStage = 2;
+                healed = `the recorded history of this match was dropped after ${controller._sameErrStreak} identical endpoint errors`;
+            } else if (fromServer && controller._sameErrStreak >= HEAL_STRIP && (controller._healStage || 0) < 1
+                       && log.some(p => p.toolCalls && p.toolCalls.length)) {
+                log.forEach(p => { p.toolCalls = null; });
+                controller._healStage = 1;
+                healed = `the tool calls in your recorded history were dropped after ${controller._sameErrStreak} identical endpoint errors`;
+            }
+            if (healed) {
+                console.warn(`[OpenAIAI] ${ai.id}: self-heal — ${healed}. Error was: ${errKey}`);
+                // The model is told, because the harness just changed what it remembers.
+                // Stated as what happened, with no instruction attached: the board did not
+                // move, and what to do about a thinner history is the model's business.
+                controller.lastActionResult =
+                    `[NOTE] Your last ${controller._sameErrStreak} requests were refused by your endpoint with the same error, so `
+                    + `${healed}. The game state is unchanged; nothing you ordered was undone.`;
+                const hCiv = getCivilization(ai.civilization);
+                this.pushDecisionFor(ai, {
+                    playerId: ai.id,
+                    civName: (hCiv && hCiv.name) || ai.civilization,
+                    color: '#' + (((hCiv && hCiv.color) ?? 0xffffff)).toString(16).padStart(6, '0'),
+                    action: 'self_heal', reason: healed, params: {}, failed: false, isControl: true,
+                    lang: (controller.model && controller.model.language) || 'en',
+                    outcomeCode: controller._healStage === 2 ? 'log.out.healDropped' : 'log.out.healStripped',
+                    outcomeParams: { n: controller._sameErrStreak }
+                });
+            }
+
             // In a PLAYER game (not the arena benchmark), an unreachable endpoint
             // hands this opponent to the rule-based AI so the player still faces a
             // real opponent. The arena keeps failures as-is (they're part of the eval).

@@ -2830,6 +2830,7 @@ class UIManager {
             move_units: t('log.move_units'),
             attack_target: t('log.attack_target'),
             wait: t('log.wait'),
+            self_heal: t('log.self_heal'),
             paused: t('log.paused'),
             resumed: t('log.resumed'),
             defeated: t('log.defeated'),
