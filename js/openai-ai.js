@@ -4195,19 +4195,51 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // are echoed back to the model as its own words, so they are worth having
                 // exactly, but a runaway argument blob must not grow the history without
                 // bound.
+                // A call whose arguments are not valid JSON must NEVER enter the history.
+                // It is replayed verbatim on every later turn, and an OpenAI-dialect
+                // server parses the calls in the messages it RECEIVES, not just the ones
+                // it emits: llama.cpp answers the whole request with HTTP 500 "Failed to
+                // parse tool call arguments as JSON" and the seat is dead from then on.
+                //
+                // Measured 2026-08-23: one reply stopped at the server's token cap in the
+                // middle of an argument -- {"tile":"C -- and froze a seat for 39
+                // consecutive rounds, every one of them refused before the model saw it,
+                // until the match ended. The harness had handled the truncation correctly
+                // at the time: it skipped the unparsed call, ran the other two, and told
+                // the model so. Then it stored the wreck and read it back forever.
+                //
+                // The 1200-char trim was the same hazard from the other end -- cutting
+                // valid arguments mid-string produces invalid JSON -- so the cap now
+                // decides WHETHER a call is kept, not how much of it to keep.
+                //
+                // A dropped call is missing from the replayed history and from nothing
+                // else: the transcript keeps the reply verbatim, and the outcome line
+                // still says what the turn did.
+                const ARG_MAX = 1200;
                 const calls = (norm && Array.isArray(norm.tool_calls)) ? norm.tool_calls : [];
-                const toolCalls = calls.map((c, i) => {
+                const toolCalls = [];
+                let dropped = 0;
+                calls.forEach((c, i) => {
                     const fn = (c && c.function) || {};
-                    const args = typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments || {});
-                    return {
+                    const raw = typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments || {});
+                    const args = String(raw || '{}');
+                    if (args.length > ARG_MAX) { dropped++; return; }
+                    try { JSON.parse(args); } catch (e) { dropped++; return; }
+                    toolCalls.push({
                         // Some servers omit the id entirely. The protocol needs one to pair
                         // the answer with the call, so an absent id gets a synthetic one
                         // rather than an undefined that would break the pairing silently.
                         id: (c && c.id) || ('call_' + (controller.turnLog.length) + '_' + i),
                         name: fn.name || 'unknown',
-                        args: String(args || '{}').slice(0, 1200)
-                    };
+                        args
+                    });
                 });
+                if (dropped) {
+                    console.warn(`[OpenAIAI] ${ai.id}: ${dropped} of ${calls.length} tool call(s) kept out of the ` +
+                        `replayed history — arguments were not valid JSON or exceeded ${ARG_MAX} chars ` +
+                        `(finish_reason=${norm && norm.finish_reason}). Replaying them would make every later ` +
+                        `request unparseable to the endpoint.`);
+                }
                 controller.turnLog.push({
                     user: controller._pendingTurnUser,
                     assistant: replyText.replace(/\s+/g, ' ').trim().slice(0, 600),
