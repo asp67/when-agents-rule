@@ -1598,6 +1598,22 @@
 
         // Floating civ name plate above Town Centers (canvas → texture, cached
         // per civ) — the spectator's whose-base-is-whose anchor.
+        // The civ name is BAKED INTO the banner texture, so no amount of re-rendering
+        // reaches it: the cache hands back the picture taken in whatever language was
+        // active when that seat's first Town Center was drawn, and only a page reload —
+        // which builds a new renderer with an empty cache — ever changed it. Switching
+        // the UI to English left 希腊 floating over the Greek base.
+        //
+        // Dropping the entries is the whole fix: _assembleFrame calls _bannerFor for
+        // every Town Center on every frame, so the next frame re-bakes each one in the
+        // current language. Called between frames from the UI, never mid-draw, so the
+        // textures being deleted are not in the display list anyone is about to submit.
+        invalidateBanners() {
+            if (!this._bannerTex) return;
+            this._bannerTex.forEach(tex => { try { this.gl.deleteTexture(tex); } catch (e) {} });
+            this._bannerTex.clear();
+        }
+
         _bannerFor(building) {
             const civId = building.civilization || 'x';
             // Cache per (civ, SEAT), not per civ: with two seats on the same civ (a

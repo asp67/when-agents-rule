@@ -60,6 +60,14 @@ class UIManager {
                 this.updateAge(this.game.player.age);
             }
         } catch (e) {}
+        // The Town Center banners are TEXTURES with the civ name painted into them, so
+        // they are the one piece of text on screen that no DOM pass can reach. The
+        // renderer re-bakes them once its cache is empty.
+        try {
+            const rnd = this.game && this.game.renderer;
+            if (rnd && rnd.invalidateBanners) rnd.invalidateBanners();
+        } catch (e) {}
+
         // Force the spectator panels to rebuild on next update.
         this._lastLogSig = null;
         // The fog knobs' tooltips name a seat, so data-i18n-title cannot reach them.
