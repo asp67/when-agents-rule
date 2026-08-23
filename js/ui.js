@@ -4,7 +4,7 @@ class UIManager {
     // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
     // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
     // steht. Beim Hochzaehlen also nur hier anfassen.
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v91'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v92'; }
 
     constructor(game) {
         this.game = game;

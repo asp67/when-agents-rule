@@ -2745,12 +2745,24 @@ class OpenAIAIManager {
             enemyBuildings.push(entry);
         });
 
-        // --- Units (compact: friendly units with type + position + action) ---
-        // How a worker's JOB reads as an ACTION, for the cases where the chain below
-        // would otherwise have said "idle" without asking.
-        const JOB_ACTION = { fighting: 'attacking', building: 'building', scouting: 'scouting',
-                             farm: 'farm_work', food: 'harvesting', wood: 'harvesting',
-                             stone: 'harvesting', gold: 'harvesting', moving: 'moving' };
+        // --- Units (compact: friendly units with type + position, and for fighters
+        //     what they are doing) ---
+        //
+        // WORKERS CARRY NO "action". It was the third translation table between the
+        // same two vocabularies -- JOB_ACTION turned food/wood/stone/gold into
+        // "harvesting", farm into "farm_work", fighting into "attacking" -- and those
+        // invented words were what models typed into assign_workers' "from". Measured
+        // across one match: 48% of worker actions read "returning", a word that names
+        // no pool at all, and "returning" is exactly what four rejected calls sent.
+        //
+        // Aligning it with the job name would have fixed the leak and left a field that
+        // says per unit what "workers" already says per pool. asp67: "remove action, it
+        // is just a dublette of job." The pool tally answers how many; "from" moves them
+        // by pool; neither needs a per-worker label. It cost 289 chars a state, 2.5% of
+        // the whole thing, to restate a total and teach a wrong word.
+        //
+        // Fighters keep theirs. They have no pools, so nothing to collide with, and
+        // marching-vs-attacking is a distinction the state cannot make any other way.
         const friendlyUnits = ai.units.map(u => {
             let action = 'idle';
             // isAttacking means "under a combat order", not "in contact". The engine
@@ -2770,18 +2782,6 @@ class OpenAIAIManager {
             else if (u.task === 'building') action = 'building';
             else if (u.task === 'farm_work') action = 'farm_work';
             else if (u.isMoving) action = 'moving';
-            // On a WORKER "idle" is not decoration: it names a source
-            // assign_workers accepts, and a model reads it as "this one is free".
-            // The chain above never asked isIdleWorker, so it drifted both ways --
-            // a worker walking with no job read as "moving" although it IS free,
-            // and one retaliating, or holding a stale harvestTarget, read as "idle"
-            // although it is not. Let the classifier the executor uses decide, and
-            // fall back to what IT found rather than to the word "idle".
-            if (u.type === 'worker') {
-                const job = OpenAIAIManager.workerJob(this.game, u);
-                if (job === 'idle') action = 'idle';
-                else if (action === 'idle') action = JOB_ACTION[job] || 'moving';
-            }
 
             return {
                 // The one thing that makes a unit addressable. Without it "move a
@@ -2792,7 +2792,8 @@ class OpenAIAIManager {
                 x: Math.round(u.x),
                 z: Math.round(u.z),
                 healthPct: Math.round((u.health / u.maxHealth) * 100),
-                action: action
+                // Omitted entirely on a worker -- see the note above the map.
+                ...(u.type === 'worker' ? {} : { action })
             };
         });
 
@@ -3385,6 +3386,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
+- "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool.
 - "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
 - A "CONTACT" line is a rival unit or building coming into your sight, and "CONTACT LOST" is one leaving it, each with where it was. Both are moments, and both are gone from this list next turn — what they MEAN is yours to carry. A sighting and a loss of the same unit are two positions in order, which is a heading: follow it back and it points at where that unit came from. Something roaming far from anywhere you have looked is a direction worth scouting. A "CONTACT LOST" also means your knowledge of that position is now old — it is where the unit WAS, not where it is.
 - "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
