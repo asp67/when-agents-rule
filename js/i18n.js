@@ -89,7 +89,7 @@ const I18N = {
         'log.search': 'Search …', 'log.noMatches': 'No entries match this filter.',
         'log.train_unit': '⚔️ Unit trained', 'log.research_tech': '🔬 Technology researched',
         'log.upgrade_age': '⬆️ Age advanced', 'log.build_structure': '🏗️ Building constructed', 'log.move_units': '📍 Units moved',
-        'log.attack_target': '💥 Attack launched', 'log.attack_result': '🎯 Attack outcome', 'log.wait': '⏳ Waiting', 'log.advice': '💬 Your advice (queued for the next turn)',
+        'log.attack_target': '💥 Attack launched', 'log.wait': '⏳ Waiting', 'log.advice': '💬 Your advice (queued for the next turn)',
         'log.explore': '🧭 Scout sent', 'log.assign_workers': '🔁 Workers reassigned', 'log.delete_unit': '🗑️ Unit deleted', 'log.destroy_building': '🧨 Building razed',
         'log.paused': '⏸ Paused by spectator', 'log.resumed': '▶ Resumed by spectator', 'log.defeated': '💀 Defeated — stopped',
         'log.openTranscript': 'Open this exchange in the transcript',
@@ -466,7 +466,7 @@ const I18N = {
         'log.search': 'Suchen …', 'log.noMatches': 'Keine Einträge passen zu diesem Filter.',
         'log.train_unit': '⚔️ Einheit trainiert', 'log.research_tech': '🔬 Technologie erforscht',
         'log.upgrade_age': '⬆️ Epoche aufgerüstet', 'log.build_structure': '🏗️ Gebäude gebaut', 'log.move_units': '📍 Einheiten bewegt',
-        'log.attack_target': '💥 Angriff gestartet', 'log.attack_result': '🎯 Angriffs-Ergebnis', 'log.wait': '⏳ Wartet', 'log.advice': '💬 Dein Rat (für den nächsten Zug vorgemerkt)',
+        'log.attack_target': '💥 Angriff gestartet', 'log.wait': '⏳ Wartet', 'log.advice': '💬 Dein Rat (für den nächsten Zug vorgemerkt)',
         'log.explore': '🧭 Späher entsandt', 'log.assign_workers': '🔁 Arbeiter umverteilt', 'log.delete_unit': '🗑️ Einheit gelöscht', 'log.destroy_building': '🧨 Gebäude abgerissen',
         'log.paused': '⏸ Vom Zuschauer pausiert', 'log.resumed': '▶ Vom Zuschauer fortgesetzt', 'log.defeated': '💀 Besiegt — gestoppt',
         'log.openTranscript': 'Diesen Austausch im Transkript öffnen',
@@ -836,7 +836,7 @@ const I18N = {
         'log.search': 'Buscar …', 'log.noMatches': 'Ninguna entrada coincide con este filtro.',
         'log.train_unit': '⚔️ Unidad entrenada', 'log.research_tech': '🔬 Tecnología investigada',
         'log.upgrade_age': '⬆️ Edad avanzada', 'log.build_structure': '🏗️ Edificio construido', 'log.move_units': '📍 Unidades movidas',
-        'log.attack_target': '💥 Ataque lanzado', 'log.attack_result': '🎯 Resultado del ataque', 'log.wait': '⏳ Esperando', 'log.advice': '💬 Tu consejo (en cola para el próximo turno)',
+        'log.attack_target': '💥 Ataque lanzado', 'log.wait': '⏳ Esperando', 'log.advice': '💬 Tu consejo (en cola para el próximo turno)',
         'log.explore': '🧭 Explorador enviado', 'log.assign_workers': '🔁 Obreros reasignados', 'log.delete_unit': '🗑️ Unidad eliminada', 'log.destroy_building': '🧨 Edificio derribado',
         'log.paused': '⏸ Pausado por el espectador', 'log.resumed': '▶ Reanudado por el espectador', 'log.defeated': '💀 Derrotado — detenido',
         'log.openTranscript': 'Abrir este intercambio en la transcripción',
@@ -1198,7 +1198,7 @@ const I18N = {
         'log.search': '搜索 ……', 'log.noMatches': '没有条目符合此筛选。',
         'log.train_unit': '⚔️ 训练了单位', 'log.research_tech': '🔬 研究了科技',
         'log.upgrade_age': '⬆️ 升级了时代', 'log.build_structure': '🏗️ 建造了建筑', 'log.move_units': '📍 移动了单位',
-        'log.attack_target': '💥 发起了进攻', 'log.attack_result': '🎯 进攻结果', 'log.wait': '⏳ 等待中', 'log.advice': '💬 你的建议（已排入下一回合）',
+        'log.attack_target': '💥 发起了进攻', 'log.wait': '⏳ 等待中', 'log.advice': '💬 你的建议（已排入下一回合）',
         'log.explore': '🧭 派出侦察', 'log.assign_workers': '🔁 重新分配工人', 'log.delete_unit': '🗑️ 删除单位', 'log.destroy_building': '🧨 拆除建筑',
         'log.paused': '⏸ 已被观众暂停', 'log.resumed': '▶ 已被观众恢复', 'log.defeated': '💀 已被击败 — 已停止',
         'log.openTranscript': '在记录中打开这次交互',
@@ -1852,7 +1852,6 @@ const I18N_OUTCOMES_2 = {
         'log.out.attackNeedsCoords': 'Angriff braucht numerische „targetX"/„targetZ" (oder „targetId").',
         'log.out.attackOwnGround': '({x}, {z}) ist dein eigenes „{type}" – nicht angreifbar.',
         'log.out.attackResourceNode': '({x}, {z}) ist ein {res}-Vorkommen, kein Angriffsziel.',
-        'log.out.attackEmpty': 'Angriffstrupp erreichte ({x}, {z}), fand aber kein Ziel – leer.',
         'log.out.noTCWorkers': 'Kein fertiges Dorfzentrum – Arbeiter können nirgends abliefern.',
         'log.out.farmUnderConstr': 'Deine Farm ist noch im Bau – nichts zu besetzen.',
         'log.out.noFinishedFarms': 'Keine fertigen Farmen.',
@@ -1891,11 +1890,7 @@ const I18N_OUTCOMES_2 = {
         'log.out.attackMoving': '{count} Einheit(en) rücken auf ({x}, {z}) vor (~{eta}s).',
         'log.out.attackMarching': '{count} Einheit(en) marschieren zu „{target}“ (~{eta}s) — noch kein Kampf.',
         'log.out.attackEngaging': '{count} Einheit(en) greifen „{target}“ an — bereits in Reichweite.',
-        'log.out.exploreSent': 'Kundschafter erkundet Feld {tile} – bisher {pct}% (~{eta}s).',
-        'log.out.attackDestroyedEnRoute': 'Angriffstrupp auf dem Weg nach ({x}, {z}) vernichtet.',
-        'log.out.attackEngaged': 'Angriffstrupp erreichte ({x}, {z}) und griff feindliche(n) „{target}" an.',
-        'log.out.attackContact': 'Angriffstrupp erreichte ({x}, {z}) – Feindkontakt, Gefecht läuft.',
-        'log.out.attackTooSlow': 'Angriffstrupp erreichte ({x}, {z}) nicht rechtzeitig (blockiert oder unterwegs im Kampf).'
+        'log.out.exploreSent': 'Kundschafter erkundet Feld {tile} – bisher {pct}% (~{eta}s).'
     },
     es: {
         'log.out.noTCTrain': 'Sin Centro urbano no se pueden entrenar trabajadores.',
@@ -1935,7 +1930,6 @@ const I18N_OUTCOMES_2 = {
         'log.out.attackNeedsCoords': 'El ataque necesita «targetX»/«targetZ» numéricos (o «targetId»).',
         'log.out.attackOwnGround': '({x}, {z}) es tu propio «{type}»; no atacable.',
         'log.out.attackResourceNode': '({x}, {z}) es un yacimiento de {res}, no un objetivo.',
-        'log.out.attackEmpty': 'La fuerza llegó a ({x}, {z}) pero no halló objetivo; vacío.',
         'log.out.noTCWorkers': 'Sin Centro urbano terminado; los trabajadores no tienen dónde entregar.',
         'log.out.farmUnderConstr': 'Tu granja aún se construye; nada que atender.',
         'log.out.noFinishedFarms': 'Sin granjas terminadas.',
@@ -1974,11 +1968,7 @@ const I18N_OUTCOMES_2 = {
         'log.out.attackMoving': '{count} unidad(es) avanzan hacia ({x}, {z}) (~{eta}s).',
         'log.out.attackMarching': '{count} unidad(es) marchan hacia «{target}» (~{eta}s); aún no combaten.',
         'log.out.attackEngaging': '{count} unidad(es) atacan «{target}»: ya están a distancia.',
-        'log.out.exploreSent': 'Explorador va a la casilla {tile} — {pct}% explorada (~{eta}s).',
-        'log.out.attackDestroyedEnRoute': 'Fuerza de ataque destruida camino a ({x}, {z}).',
-        'log.out.attackEngaged': 'La fuerza llegó a ({x}, {z}) y atacó a «{target}» enemigo.',
-        'log.out.attackContact': 'La fuerza llegó a ({x}, {z}): contacto con el enemigo, combate en curso.',
-        'log.out.attackTooSlow': 'La fuerza no llegó a ({x}, {z}) a tiempo (bloqueada o combatiendo por el camino).'
+        'log.out.exploreSent': 'Explorador va a la casilla {tile} — {pct}% explorada (~{eta}s).'
     },
     zh: {
         'log.out.noTCTrain': '没有镇中心，无法训练工人。',
@@ -2018,7 +2008,6 @@ const I18N_OUTCOMES_2 = {
         'log.out.attackNeedsCoords': '攻击需要数字“targetX”/“targetZ”（或“targetId”）。',
         'log.out.attackOwnGround': '({x}, {z}) 是你自己的“{type}”，无法攻击。',
         'log.out.attackResourceNode': '({x}, {z}) 是{res}资源点，不是攻击目标。',
-        'log.out.attackEmpty': '攻击部队抵达 ({x}, {z}) 但未发现目标，空无一物。',
         'log.out.noTCWorkers': '没有已完成的镇中心，工人无处交付。',
         'log.out.farmUnderConstr': '你的农场仍在建造，暂无可耕作。',
         'log.out.noFinishedFarms': '没有已建成的农场。',
@@ -2057,11 +2046,7 @@ const I18N_OUTCOMES_2 = {
         'log.out.attackMoving': '{count} 个单位向 ({x}, {z}) 进攻推进（约 {eta} 秒）。',
         'log.out.attackMarching': '{count} 个单位正向“{target}”行军（约 {eta} 秒），尚未交战。',
         'log.out.attackEngaging': '{count} 个单位正在攻击“{target}”——已在射程内。',
-        'log.out.exploreSent': '侦察兵前往 {tile} 格——已探索 {pct}%（约 {eta} 秒）。',
-        'log.out.attackDestroyedEnRoute': '攻击部队在前往 ({x}, {z}) 途中被歼灭。',
-        'log.out.attackEngaged': '攻击部队抵达 ({x}, {z})，已与敌方“{target}”交战。',
-        'log.out.attackContact': '攻击部队抵达 ({x}, {z})：遭遇敌人，战斗中。',
-        'log.out.attackTooSlow': '攻击部队未能及时抵达 ({x}, {z})（受阻或途中交战）。'
+        'log.out.exploreSent': '侦察兵前往 {tile} 格——已探索 {pct}%（约 {eta} 秒）。'
     }
 };
 Object.keys(I18N_OUTCOMES_2).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_OUTCOMES_2[l]); });

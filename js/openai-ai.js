@@ -2227,7 +2227,6 @@ class OpenAIAIManager {
                 pendingAdvice: [], // Spectator advice to inject into the next prompt
                 objective: '', // Model-authored standing goal ("why"), persists until it changes it
                 plan: [], // Model-authored short ordered sub-goals, persists until rewritten
-                pendingArrivalMessages: [], // deferred attack outcomes, delivered on arrival
                 pendingAttackReports: [], // open attack-move orders awaiting an arrival verdict
                 stats: this.newStats() // Behavior/performance metrics for the summary
             };
@@ -3783,11 +3782,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // (tail) Everything framing the PRESENT turn: deferred attack outcomes, a note
         // on an unparseable previous reply, the current state JSON, and spectator advice.
         const tailNow = [];
-        if (controller.pendingArrivalMessages && controller.pendingArrivalMessages.length) {
-            const msgs = controller.pendingArrivalMessages;
-            controller.pendingArrivalMessages = [];
-            tailNow.push(`RESULTS OF YOUR EARLIER ATTACK ORDER(S) — your units have now arrived:\n` + msgs.map(m => `- ${m}`).join('\n'));
-        }
+        // A "RESULTS OF YOUR EARLIER ATTACK ORDER(S)" block used to be spliced in here.
+        // It reported five verdicts and the state had grown to carry three of them
+        // already: a force that arrived and engaged shows up as friendlyUnits[].action
+        // "attacking" at those coordinates AND as a "battles" entry with both sides'
+        // composition, damage and losses, growing turn over turn. Saying it a third
+        // time in prose cost tokens to tell the model what it was already reading.
+        //
+        // The two verdicts nothing else could carry -- arrived at an empty spot, never
+        // arrived at all -- are now recentEvents lines, which is the channel for "what
+        // became of your orders since last turn". They belong there and nowhere else:
+        // both are non-events, and "battles" only exists when there WAS a fight.
         // A completed rival Wonder is a live loss timer, restated beside the state each
         // turn because a reply can take ~30s and the number moves the whole time.
         //
@@ -6248,8 +6253,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // gives the order; the units then cross the map, and a model told "37 units
         // attacking" reads the absence of damage as a tough enemy rather than as an army
         // that has not arrived. The position branch of this same action has always said
-        // "attack-moving (~Ns)" and promised a verdict on arrival — this one said the
-        // fight had started.
+        // "attack-moving (~Ns)" — this one said the fight had started.
         //
         // Same threshold the arrival resolver uses (ENGAGE = 30), so "engaging" here and
         // "engaged" there mean the same thing.
@@ -6374,11 +6378,18 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // move_units has always taken the max; these two now agree.
         const eta = unitsToAttack.reduce((m, u) => Math.max(m, this.travelEtaSec(u, targetX, targetZ)), 0);
         this.outcome('log.out.attackMoving', { count: unitsToAttack.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
-        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${form.note}${pace.note}${escortNote}${offNote} You will be told on arrival whether they engaged an enemy or found no valid target there — don't re-issue this attack meanwhile.`;
+        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${form.note}${pace.note}${escortNote}${offNote}`;
     }
 
-    // Each frame, resolve open attack-move orders once the units arrive/engage and
-    // queue the verdict for the model's NEXT prompt (and the spectator log).
+    // Each frame, close out open attack-move orders once they resolve.
+    //
+    // Only two of the five outcomes are written anywhere, and both go to recentEvents
+    // as the harness's answer to "what became of my order". The other three -- engaged,
+    // in contact, destroyed on the way -- are dropped: each is a FIGHT, and a fight is
+    // already in the state twice over, as friendlyUnits[].action and as a cumulative
+    // "battles" entry that names composition, damage and losses. The two that survive
+    // are the ones where nothing happened, and nothing happening is exactly what no
+    // other block can report.
     updateAttackReports(now) {
         const ARRIVE = 7, ENGAGE = 30, MAXWAIT = 120000;
         for (const controller of this.aiControllers) {
@@ -6387,79 +6398,51 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const ai = controller.aiPlayer;
             for (let i = reports.length - 1; i >= 0; i--) {
                 const r = reports[i];
-                // The verdict already reaches the MODEL synchronously — it is drained
-                // into the next prompt as "RESULTS OF YOUR EARLIER ATTACK ORDER(S)".
-                // The code/params here are for the spectator LOG, which could not use
-                // the executeAction outcome side-channel because this resolves on a
-                // later tick; without them the arrival line was the last one stuck in
-                // English while the rest of the log spoke the model's language.
-                const resolve = (msg, failed, code, params) => {
-                    controller.pendingArrivalMessages = controller.pendingArrivalMessages || [];
-                    controller.pendingArrivalMessages.push(msg);
-                    this.logArrival(ai, msg, failed, {
-                        lang: (controller.model && controller.model.language) || 'en', code, params
-                    });
+                // Close the report. With a message, it lands in recentEvents on the next
+                // state build; without one, the order simply stops being tracked.
+                const resolve = (msg) => {
+                    if (msg) this.game.logPlayerEvent(ai, msg);
                     reports.splice(i, 1);
                 };
                 const onOrder = r.units.filter(u => u.health > 0 && ai.units.includes(u) && u._orderToken === r.token);
                 if (onOrder.length === 0) {
-                    if (r.units.every(u => u.health <= 0)) {
-                        resolve(`Your attack force sent to (${Math.round(r.tx)}, ${Math.round(r.tz)}) was destroyed before arriving.`, true,
-                            'log.out.attackDestroyedEnRoute', { x: Math.round(r.tx), z: Math.round(r.tz) });
-                    } else {
-                        reports.splice(i, 1); // those units got a new order — report superseded
-                    }
+                    // Wiped out on the way, or reassigned. Neither is written: the deaths
+                    // are in the battle that caused them, and a superseded order is not an
+                    // outcome at all.
+                    reports.splice(i, 1);
                     continue;
                 }
+                // Engaged, or arrived beside a live enemy: both are a fight, and a fight
+                // reports itself. Close the order and write nothing.
                 const eng = onOrder.find(u => u.isAttacking && u.attackTarget && u.attackTarget.health > 0);
-                if (eng) {
-                    const tg = eng.attackTarget;
-                    // "an enemy worker (ai_vrfbnoj58)" -- that id is the OWNER's, but a
-                    // bare parenthetical after a unit type reads as the unit's own id, and
-                    // it is exactly the shape targetId takes. Models copy whatever looks
-                    // copyable, so this was an invitation to attack a player id. Labelled.
-                    resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and ENGAGED an enemy ${tg.type}${tg.owner ? ` owned by ${this.game.seatLabel(tg.owner)}` : ''}.`, false,
-                        'log.out.attackEngaged', { x: Math.round(r.tx), z: Math.round(r.tz), target: tg.type });
-                    continue;
-                }
+                if (eng) { resolve(null); continue; }
                 const arrived = onOrder.some(u => Math.hypot(u.x - r.tx, u.z - r.tz) <= ARRIVE) || onOrder.every(u => !u.isMoving);
                 if (arrived) {
                     const enemyNear = [...this.game.getAllUnits(), ...this.game.getAllBuildings()]
                         .some(e => e.health > 0 && !this.isOwnedByAI(e, ai) && Math.hypot(e.x - r.tx, e.z - r.tz) <= ENGAGE);
-                    if (enemyNear) resolve(`Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}); an enemy is there and they are engaging.`, false,
-                        'log.out.attackContact', { x: Math.round(r.tx), z: Math.round(r.tz) });
-                    else resolve(`[ERROR] Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) but found NO valid target — the spot is empty (the enemy moved or was already destroyed). ${this.attackTargetHint(ai, this.game)}`, true,
-                        'log.out.attackEmpty', { x: Math.round(r.tx), z: Math.round(r.tz) });
+                    // The one arrival worth a line. No fight starts, so no battle entry is
+                    // ever written, and the order's own units go quiet in the state -- from
+                    // the model's side an empty clearing and a march still in progress look
+                    // identical. Stated as what was found, with no advice attached.
+                    resolve(enemyNear ? null
+                        : `Your attack force reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) and found no target there.`);
                     continue;
                 }
+                // Two minutes and still walking. Also invisible from the state: the units
+                // are alive and somewhere, and the model has no way to tell a long march
+                // from one that will never finish.
                 if (now - r.startTime > MAXWAIT) {
-                    resolve(`Your attack force did not reach (${Math.round(r.tx)}, ${Math.round(r.tz)}) in time (blocked or fighting along the way).`, true,
-                        'log.out.attackTooSlow', { x: Math.round(r.tx), z: Math.round(r.tz) });
+                    resolve(`Your attack force has not reached (${Math.round(r.tx)}, ${Math.round(r.tz)}) — blocked or fighting on the way.`);
                 }
             }
         }
     }
 
-    // Add a deferred attack outcome to the spectator decision log.
-    logArrival(ai, msg, failed, extra = {}) {
-        const civ = getCivilization(ai.civilization);
-        const entry = {
-            timestamp: Date.now(), playerId: ai.id,
-            civName: civ?.name || ai.civilization,
-            color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
-            // NOT 'attack_target'. An arrival resolves on a later tick and is a
-            // RESULT, but writing a command's action name here gave it a command's
-            // label in the log -- so a turn of three commands showed four "Attack
-            // launched" style rows and looked like the three-command cap had been
-            // broken. Its own name, the way 'advice' has one.
-            action: 'attack_result', reason: '', result: msg, params: {},
-            failed: !!failed, error: failed ? msg.replace(/^\[ERROR\]\s*/, '') : null,
-            lang: extra.lang || 'en'
-        };
-        if (extra.code) { entry.outcomeCode = extra.code; entry.outcomeParams = extra.params || {}; }
-        this.decisionLog.unshift(entry);
-        if (this.decisionLog.length > this.maxLogEntries) this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
-    }
+    // logArrival lived here: it wrote an "Attack outcome" card into the spectator log
+    // for each of the five arrival verdicts, with its own outcome codes because the
+    // executeAction side-channel could not reach a result that resolves on a later tick.
+    // Gone with the verdicts. What is left of them is two recentEvents lines, which the
+    // spectator reads in the state panel like everything else the harness reports.
 
     // Resources are hidden until SCOUTED. Update the AI's discovery memory and
     // return the discovered (visible-or-remembered) nodes of a given type.
@@ -7611,7 +7594,6 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         try { if (controller._abort) controller._abort.abort(); } catch (e) { /* already settled */ }
         controller.pending = false;
         controller.pendingAttackReports = [];
-        controller.pendingArrivalMessages = [];
         const ai = controller.aiPlayer;
         if (ai) {
             const civ = getCivilization(ai.civilization);
@@ -7637,7 +7619,6 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             try { if (c._abort) c._abort.abort(); } catch (e) { /* already settled */ }
             c.pending = false;
             c.pendingAttackReports = [];     // drop unresolved arrival reports
-            c.pendingArrivalMessages = [];   // and any undelivered verdicts
         }
         this.pendingRequests.clear();
     }
