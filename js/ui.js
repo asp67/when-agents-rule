@@ -41,7 +41,17 @@ class UIManager {
 
         const active = (id) => { const el = document.getElementById(id); return el && el.classList.contains('active'); };
         if (this._arenaConfig && active('modelLibraryScreen')) this.renderArenaLibrary();
-        if (this._arenaConfig && active('arenaSetupScreen')) { this.renderArenaSlots(); this.updateLibrarySummary(); }
+        // renderSetupOptions too, not just the slots. It builds the difficulty table and
+        // the campaign civ picker by writing t() straight into innerHTML, which no
+        // data-i18n attribute can reach — so those two were the only things on the setup
+        // screen that stayed in the previous language until the page was reloaded.
+        // Calling the parent rather than renderDifficultyTable covers the civ names as
+        // well, and covers whatever dynamic control is added there next.
+        if (this._arenaConfig && active('arenaSetupScreen')) {
+            this.renderSetupOptions();
+            this.renderArenaSlots();
+            this.updateLibrarySummary();
+        }
 
         // Refresh live HUD bits immediately (they also refresh each tick).
         try {
