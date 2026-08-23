@@ -95,7 +95,7 @@ class OpenAIAIManager {
              Object.assign({ resourceType: S('food|wood|stone|gold|farm — what they should gather.'),
                              count: I('How many. Default 3, max 20.'),
                              from: S('Any key from "workers" — where to TAKE them. "building" and "fighting" are taken when that ends. Omit to take idle first, then your largest stockpile.'),
-                             allowSpill: { type: 'boolean', description: 'Default true: also move workers carrying a load, which is then lost.' } }, XZ), ['resourceType']],
+                             whenCarrying: S('spillLoad|deliverLoad|skipAssignment — what a chosen worker does if it is carrying. Default spillLoad: move now, the load is lost.') }, XZ), ['resourceType']],
             ['repair_building', 'Send workers to repair a damaged building. Omit the coordinates to repair the most damaged one.',
              Object.assign({ count: I('How many workers. Default 1, max 5.') }, XZ), []],
             ['explore', 'Send a unit to scout a map tile.',
@@ -2390,8 +2390,21 @@ class OpenAIAIManager {
                      || { n: 0, sx: 0, sz: 0, eta: 0, timed: false, order: 'assign_workers' };
             row.n++; row.sx += q.node.x; row.sz += q.node.z;
             const site = u.buildTarget;
-            if (site) { row.timed = true;
-                        row.eta = Math.max(row.eta, this.secsLeft(site.buildProgress, site.buildTime)); }
+            if (site) {
+                row.timed = true;
+                row.eta = Math.max(row.eta, this.secsLeft(site.buildProgress, site.buildTime));
+            } else if (u.carryingResource || u.task === 'carrying') {
+                // A delivery has a clock too: the walk home. The reply already quotes it,
+                // so the state has to agree — a countdown that exists in one place and not
+                // the other is the reader's problem, not the walker's.
+                const tc = (ai.buildings || [])
+                    .filter(b => b.type === 'town_center' && !b.underConstruction)
+                    .reduce((best, b) => {
+                        const d = Math.hypot(b.x - u.x, b.z - u.z);
+                        return (!best || d < best.d) ? { b, d } : best;
+                    }, null);
+                if (tc) { row.timed = true; row.eta = Math.max(row.eta, this.travelEtaSec(u, tc.b.x, tc.b.z)); }
+            }
             queuedBy.set(q.token, row);
         });
 
@@ -7190,23 +7203,43 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // whole cycle stale by the time the order arrives, describing different
         // workers. What the model CAN say is what it wants done when the moment comes.
         const carrying = u => !!(u.carryingResource || u.task === 'carrying');
-        let allowSpill = true;
-        if (OpenAIAIManager.given(params.allowSpill)) {
+        // ONE question with THREE answers: what should a chosen worker do if it is
+        // carrying? Two of them existed as a boolean and the third did not, which is
+        // why the third is the one a commander actually wants -- keep the load, take
+        // the worker anyway, just not this second.
+        //
+        // A second boolean would have been able to contradict the first (allowSpill
+        // false plus deliverFirst true has no meaning, and somebody would send it).
+        // An enum cannot: the answers are mutually exclusive because they are answers.
+        //
+        // allowSpill stays as a silent alias. It is the spelling every model has seen
+        // so far, and breaking it buys nothing.
+        const CARRY = ['spillLoad', 'deliverLoad', 'skipAssignment'];
+        let whenCarrying = 'spillLoad';
+        if (OpenAIAIManager.given(params.whenCarrying)) {
+            const v = String(params.whenCarrying).trim();
+            const hit = CARRY.find(k => k.toLowerCase() === v.toLowerCase());
+            if (!hit) {
+                this.outcome('log.out.assignBadCarry', {});
+                return `[ERROR] assign_workers "whenCarrying": expected ${CARRY.join('|')}. Got ${JSON.stringify(params.whenCarrying)}.`;
+            }
+            whenCarrying = hit;
+        } else if (OpenAIAIManager.given(params.allowSpill)) {
             const v = typeof params.allowSpill === 'string'
                 ? params.allowSpill.trim().toLowerCase() : params.allowSpill;
-            if (v === true || v === 'true') allowSpill = true;
-            else if (v === false || v === 'false') allowSpill = false;
+            if (v === true || v === 'true') whenCarrying = 'spillLoad';
+            else if (v === false || v === 'false') whenCarrying = 'skipAssignment';
             else {
                 this.outcome('log.out.assignBadSpill', {});
-                return `[ERROR] assign_workers "allowSpill" must be true or false. true (the default) moves the workers you asked for even if some are carrying a load, which is lost. false moves only workers not carrying anything right now, and moves fewer if that is all there are. Got ${JSON.stringify(params.allowSpill)}.`;
+                return `[ERROR] assign_workers "allowSpill": expected true or false. Got ${JSON.stringify(params.allowSpill)}.`;
             }
         }
-        if (!allowSpill) {
+        if (whenCarrying === 'skipAssignment') {
             const free = candidates.filter(u => !carrying(u));
             if (!free.length) {
                 const held = candidates.length;
                 this.outcome('log.out.assignAllCarrying', { n: held, res: resourceType });
-                return `[ERROR] Nobody could be moved without losing a load: all ${held} available worker(s) are carrying one right now. "allowSpill": true takes them anyway and loses what they hold.`;
+                return `[ERROR] All ${held} available worker(s) are carrying a load.`;
             }
             candidates = free;
         }
@@ -7222,7 +7255,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const loaded = u => carrying(u) ? 1 : 0;
         candidates.sort((a, b) => (rank(a) - rank(b)) || (loaded(a) - loaded(b)));
 
-        let moved = 0;
+        let moved = 0, deferred = 0, deferSecs = 0;
+        const deferToken = ++this._orderSeq;
         const pulledFrom = {};
         const spilled = {};      // resource -> amount destroyed by pulling a loaded worker
         for (const w of candidates) {
@@ -7230,6 +7264,24 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const r = rank(w);
             const label = r === 0 ? 'idle' : r === 5 ? 'repairing' : r === 6 ? 'farming' : r === 7 ? 'scouting' : `from ${w.harvestTarget.type}`;
             pulledFrom[label] = (pulledFrom[label] || 0) + 1;
+            // deliverLoad: this one keeps walking to the drop-off and takes the new job
+            // the moment the load is banked. The order is held on the unit and fires at
+            // game.applyQueuedAssign, the same slot the build and fight queues use --
+            // the delivery point is simply a third place a worker becomes free.
+            //
+            // It still counts against `count`: the model asked for N workers on wood and
+            // is getting N, some of them a walk later. Reporting it as "fewer than
+            // requested" would be the harness calling a delay a shortfall.
+            if (whenCarrying === 'deliverLoad' && carrying(w)) {
+                w._orderToken = deferToken;
+                w._queuedAssign = { token: deferToken, node, resourceType };
+                const tc = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction)
+                    .reduce((best, b) => { const d = Math.hypot(b.x - w.x, b.z - w.z);
+                                           return (!best || d < best.d) ? { b, d } : best; }, null);
+                if (tc) deferSecs = Math.max(deferSecs, this.travelEtaSec(w, tc.b.x, tc.b.z));
+                deferred++; moved++;
+                continue;
+            }
             // A carried load is destroyed by the reassignment. Sorted last, so this
             // only happens once the free workers run out — but it is a real cost and
             // the model can only learn it from being told.
@@ -7255,8 +7307,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         this.noteIdleTaken(ai, pulledFrom['idle'] || 0);
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const short = moved < count
-            ? (!allowSpill
-                ? ` Fewer than requested: only ${moved} were empty-handed at that moment, and "allowSpill": false left the rest gathering.`
+            ? (whenCarrying === 'skipAssignment'
+                ? ` Fewer than requested: only ${moved} were empty-handed at that moment, and "whenCarrying": "skipAssignment" left the rest gathering.`
                 : from !== null
                     ? ` Fewer than requested: only ${moved} could be taken from "${from}".`
                     : ` Fewer than requested: the others are constructing or fighting (never pulled), already on ${resourceType}, or you don't have that many workers.`)
@@ -7272,6 +7324,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const spillTxt = Object.keys(spilled).length
             ? ` Returning workers spilled ${Object.entries(spilled).map(([r, n]) => `${n} ${r}`).join(', ')} they were carrying.`
             : '';
+        // Who is coming later, and when. The order was accepted in full, so the count
+        // above already includes them; without this line the difference between a
+        // worker walking to the node and one still walking home would be invisible
+        // until ordersInProgress showed it a turn later.
+        const deferTxt = deferred
+            ? ` ${deferred} of them are carrying and go after the drop-off (~${deferSecs}s).`
+            : '';
         // Gathering is a ROUND TRIP: walk out, gather, carry it back to a Town Center.
         // The state gives node coordinates and nothing about what distance costs, and
         // models were picking far nodes as if delivery were free. Report the haul on
@@ -7283,8 +7342,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             return (!best || d < best.d) ? { b, d } : best;
         }, null);
         const haul = nearTC ? ` Each load is a ~${Math.max(1, Math.round(nearTC.d / (3 * 1.0)))}s walk back to your nearest Town Center.` : '';
-        this.outcome('log.out.reassigned', { count: moved, res: resourceType, x: Math.round(node.x), z: Math.round(node.z), near: (gaveX || gaveZ) ? 'target' : 'tc', pulled: this.pulledCounts(pulledFrom) });
-        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${spillTxt}${haul}${short}`;
+        this.outcome('log.out.reassigned', { count: moved, res: resourceType, x: Math.round(node.x), z: Math.round(node.z), near: (gaveX || gaveZ) ? 'target' : 'tc', pulled: this.pulledCounts(pulledFrom), deferred });
+        return `OK - Reassigned ${moved} worker(s) to harvest ${resourceType} at (${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote} — pulled: ${src}.${deferTxt}${spillTxt}${haul}${short}`;
     }
 
     // Put workers on fixing a damaged own building (free; uses the build task's

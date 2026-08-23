@@ -4761,7 +4761,14 @@ class Game {
                 unit.carryingResource = false;
                 unit.carryingResourceType = null;
                 unit.harvestAmount = 0;
-                
+
+                // The load is banked, so this is the third place a worker becomes free —
+                // beside finishing a build and finishing a fight, and served by the same
+                // slot. assign_workers "whenCarrying": "deliverLoad" parks the new job
+                // here so the walk home is not thrown away: the model gets the worker it
+                // asked for AND the resources it had already earned.
+                if (this.applyQueuedAssign(unit)) return;
+
                 // Return to resource to continue harvesting
                 if (unit.harvestTarget) {
                     // For farms, check if farm still has food
