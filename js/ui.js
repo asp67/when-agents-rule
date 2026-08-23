@@ -51,6 +51,9 @@ class UIManager {
             this.renderSetupOptions();
             this.renderArenaSlots();
             this.updateLibrarySummary();
+            // The diff button's label and the panel's empty-message are written by JS,
+            // so they are the same kind of thing renderSetupOptions was missing.
+            this.renderTemplateDiff();
         }
 
         // Refresh live HUD bits immediately (they also refresh each tick).
@@ -152,6 +155,7 @@ class UIManager {
         this.updateLibrarySummary();
         const ta = document.getElementById('arenaSharedPrompt');
         if (ta) ta.value = this._arenaConfig.prompt || this.getArenaDefaultPrompt();
+        this.renderTemplateDiff();
     }
 
     // Swap the screen's heading/subtitle/section-2/start-button text between the
@@ -1174,7 +1178,12 @@ class UIManager {
                 ${collapsed ? '' : body}
             </div>`;
         }).join('');
+        this._afterSlotsRendered();
     }
+
+    // Slot markup is built with the slot's OWN state; the derived case depends on the
+    // template as well, so it is stamped on afterwards by the one function that knows.
+    _afterSlotsRendered() { this.refreshDerivedSlotBadges(); }
 
     toggleArenaSlot(i) {
         const s = this.setupSlots()[i];
@@ -1435,8 +1444,16 @@ class UIManager {
     // "what exactly does this opponent do differently?" without the full wall.
     renderSlotDiffHtml(slot) {
         const base = this._arenaConfig.prompt || '';
-        const ops = this.diffLines(base, slot.prompt != null ? slot.prompt : base);
-        if (!ops.some(o => o.t !== 'same')) return `<div class="diff-empty">${t('ar.slotDiffEmpty')}</div>`;
+        return this.renderPromptDiffHtml(base, slot.prompt != null ? slot.prompt : base, 'ar.slotDiffEmpty');
+    }
+
+    // The same diff, against whichever pair of texts. Written for slot-vs-template
+    // and now also used for template-vs-default: an edited shared prompt is the one
+    // every seat inherits, so if any text on this screen deserves a visible diff it
+    // is that one, and it was the only one without.
+    renderPromptDiffHtml(baseText, editedText, emptyKey) {
+        const ops = this.diffLines(baseText || '', editedText || '');
+        if (!ops.some(o => o.t !== 'same')) return `<div class="diff-empty">${t(emptyKey)}</div>`;
         const esc = (s) => this.escapeHtml(s);
         const CTX = 2;
         const show = new Array(ops.length).fill(false);
@@ -1511,13 +1528,90 @@ class UIManager {
         this.saveSetup();
         this.renderArenaSlots();
     }
-    onTemplatePromptInput(value) { if (this._arenaConfig) { this._arenaConfig.prompt = value; this.saveArenaConfig(); } }
+    // Does the shared template still say what the build shipped? Trimmed, because a
+    // trailing newline is not an edit anybody meant to make.
+    templateEdited() {
+        const cur = ((this._arenaConfig && this._arenaConfig.prompt) || '').trim();
+        return !!cur && cur !== this.getArenaDefaultPrompt().trim();
+    }
+
+    // Badge, diff button, reset button and an open diff panel, all from one state.
+    // Mirrors what setSlotPrompt does for a slot, so the template behaves like the
+    // thing it is: another editable prompt, with the same tells.
+    renderTemplateDiff() {
+        const edited = this.templateEdited();
+        const badge = document.getElementById('tmplPromptBadge');
+        const btn = document.getElementById('tmplDiffBtn');
+        const reset = document.getElementById('tmplResetBtn');
+        const panel = document.getElementById('tmplDiff');
+        if (badge) badge.style.display = edited ? '' : 'none';
+        if (reset) reset.style.display = edited ? '' : 'none';
+        if (btn) {
+            btn.style.display = edited ? '' : 'none';
+            btn.textContent = this._tmplDiffOpen ? t('ar.slotDiffHide') : t('ar.slotDiffShow');
+        }
+        if (panel) {
+            const open = edited && this._tmplDiffOpen;
+            panel.style.display = open ? '' : 'none';
+            if (open) {
+                panel.innerHTML = this.renderPromptDiffHtml(
+                    this.getArenaDefaultPrompt(), (this._arenaConfig && this._arenaConfig.prompt) || '',
+                    'ar.tmplDiffEmpty');
+            }
+        }
+        this.refreshDerivedSlotBadges();
+    }
+
+    toggleTemplateDiff() { this._tmplDiffOpen = !this._tmplDiffOpen; this.renderTemplateDiff(); }
+
+    // The template alone. resetArenaPrompts also clears every per-slot prompt, which
+    // is the right button when you want a clean slate and the wrong one when you only
+    // want the default text back under the per-seat edits you meant to keep.
+    resetTemplatePrompt() {
+        if (!this._arenaConfig) return;
+        this._arenaConfig.prompt = this.getArenaDefaultPrompt();
+        const ta = document.getElementById('arenaSharedPrompt');
+        if (ta) ta.value = this._arenaConfig.prompt;
+        this._tmplDiffOpen = false;
+        this.saveSetup();
+        this.renderArenaSlots();
+        this.renderTemplateDiff();
+    }
+
+    // A slot that follows the template inherits whatever the template says, so when
+    // the template is edited those slots are running non-default text without having
+    // been touched. They said nothing at all before, which is how a line nobody
+    // remembered adding rode into a benchmark on every seat at once.
+    //
+    // Badges only -- no innerHTML rebuild. This runs on every keystroke in the
+    // template, and redrawing the slot list under the cursor would be its own bug.
+    refreshDerivedSlotBadges() {
+        const tmplEdited = this.templateEdited();
+        (this.setupSlots() || []).forEach((s, i) => {
+            const badge = document.getElementById('slotPromptBadge' + i);
+            if (!badge) return;
+            const own = s.prompt != null;
+            const derived = !own && tmplEdited && s.control && s.control !== 'ki';
+            badge.style.display = (own || derived) ? '' : 'none';
+            badge.textContent = '\u270e ' + t(own ? 'ar.promptEdited' : 'ar.slotFollowsEdited');
+            badge.title = t(own ? 'ar.promptEditedTitle' : 'ar.slotFollowsEditedTitle');
+            badge.classList.toggle('is-derived', derived);
+        });
+    }
+
+    onTemplatePromptInput(value) {
+        if (!this._arenaConfig) return;
+        this._arenaConfig.prompt = value;
+        this.saveArenaConfig();
+        this.renderTemplateDiff();
+    }
     applyTemplateToAllSlots() {
         const tmpl = (document.getElementById('arenaSharedPrompt') || {}).value || this._arenaConfig.prompt || '';
         this._arenaConfig.prompt = tmpl;
         this.setupSlots().forEach(s => { s.prompt = null; }); // every slot follows the template again
         this.saveSetup();
         this.renderArenaSlots();
+        this.renderTemplateDiff();
     }
 
     async testArenaModel(id) {
@@ -1643,8 +1737,10 @@ class UIManager {
         if (this._campaignConfig) this._campaignConfig.slots.forEach(s => { s.prompt = null; });
         const ta = document.getElementById('arenaSharedPrompt');
         if (ta) ta.value = def;
+        this._tmplDiffOpen = false;
         this.saveSetup();
         this.renderArenaSlots();
+        this.renderTemplateDiff();
     }
 
     showTutorial() {

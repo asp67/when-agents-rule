@@ -2817,3 +2817,11 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
 }
 .build-stamp b { font-weight: 600; color: var(--gold-2); }
 .build-stamp-dot { margin: 0 6px; opacity: 0.6; }
+
+/* Template-prompt state row: the same tells a per-slot prompt has always had,
+   finally on the template every seat inherits. */
+.tmpl-prompt-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tmpl-prompt-bar .hdr-add-btn { margin: 0; }
+/* A seat wearing an edited DEFAULT has not been touched itself, so it is stated
+   more quietly than a seat somebody edited on purpose. */
+.slot-prompt-badge.is-derived { opacity: 0.75; font-style: italic; }
