@@ -2327,7 +2327,7 @@ class OpenAIAIManager {
                 `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
         };
 
-        // --- Marching: attack orders still on the way ---
+        // --- Marching: orders still on the way ---
         // The system prompt promises the state carries secondsRemaining "for anything
         // running", and a march was the one running thing it did not. Research and the
         // age upgrade each publish a countdown; an army crossing 600 units of map for
@@ -2352,16 +2352,33 @@ class OpenAIAIManager {
         // that flag on every unit the moment the order goes out, so an army 128 seconds
         // from the enemy already reads isAttacking true with attackTarget null. Same
         // predicate the arrival resolver uses, so both agree on what "engaged" means.
+        // A plain move_units walk counts too. It is the same kind of fact -- an order
+        // still running, with a time left -- and it had the same instruction standing
+        // in for it ("let them march before re-issuing"). Recognised by a destination
+        // this manager stamped that the unit is still walking to: any later order,
+        // from the model or from the engine, overwrites targetX/targetZ and the match
+        // fails, so the mark cannot outlive the walk.
+        const NEAR = 1;
         const marchBy = new Map();
         ai.units.forEach(u => {
             const inContact = u.isAttacking && u.attackTarget && u.attackTarget.health > 0;
-            if (!u.attackMove || inContact) return;
-            const row = marchBy.get(u._orderToken) || { n: 0, sx: 0, sz: 0, eta: 0 };
-            row.n++; row.sx += u.attackMove.x; row.sz += u.attackMove.z;
-            row.eta = Math.max(row.eta, this.travelEtaSec(u, u.attackMove.x, u.attackMove.z));
+            let to = null, action = null;
+            if (u.attackMove && !inContact) {
+                to = u.attackMove; action = 'attack_target';
+            } else if (u._moveOrderTo && u.isMoving && !u.task && !u.attackMove && !u.isAttacking
+                       && Math.hypot(u.targetX - u._moveOrderTo.x, u.targetZ - u._moveOrderTo.z) < NEAR) {
+                to = u._moveOrderTo; action = 'move_units';
+            }
+            if (!to) return;
+            const row = marchBy.get(u._orderToken) || { n: 0, sx: 0, sz: 0, eta: 0, action };
+            row.n++; row.sx += to.x; row.sz += to.z;
+            row.eta = Math.max(row.eta, this.travelEtaSec(u, to.x, to.z));
             marchBy.set(u._orderToken, row);
         });
         const marching = [...marchBy.values()].map(r => ({
+            // The command that started it, spelled the way the model spelled it, so an
+            // entry can be matched back to the order that made it.
+            action: r.action,
             to: [Math.round(r.sx / r.n), Math.round(r.sz / r.n)],
             units: r.n,
             // Same word research and epoch use. One vocabulary for one idea, so a model
@@ -5699,7 +5716,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         console.log(`[OpenAIAI] ${ai.id}: Researching "${tech.name}" (${techId})`);
         const researchSecs = this.realSecs(tech.researchTime || 15000);
         this.outcome('log.out.researchStarted', { techName: tech.name, secs: researchSecs });
-        return `OK - Researching "${techId}" — ~${researchSecs}s to complete. Only one tech at a time; don't re-issue until "research.current" is empty (it shows secondsRemaining).`;
+        return `OK - Researching "${techId}" — ~${researchSecs}s, secondsRemaining in "research.current". One tech at a time.`;
     }
 
     executeUpgradeAge(ai, game) {
@@ -5735,7 +5752,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         console.log(`[OpenAIAI] ${ai.id}: Upgrading to ${nextAge}`);
         const ageSecs = this.realSecs(ai.currentAgeUpgrade.duration || 30000);
         this.outcome('log.out.ageUpStarted', { age: nextAge, secs: ageSecs });
-        return `OK - Advancing to the ${nextAge} age — ~${ageSecs}s to complete. Keep developing meanwhile; "epoch.upgradeInProgress" shows secondsRemaining, so don't re-issue upgrade_age until it is done.`;
+        return `OK - Advancing to the ${nextAge} age — ~${ageSecs}s, secondsRemaining in "epoch.upgradeInProgress".`;
     }
 
     // The civ's Wonder, or null. Its id differs per civilization (akropolis, pyramid,
@@ -6175,6 +6192,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const form = this.applyFormation(game, unitsToMove, targetX, targetZ, formation);
         const pace = this.applyMatchSpeed(unitsToMove, matchSpeed || (form.applied ? 'slowestUnit' : ''));
 
+        // One token for the whole order, minted here rather than inside the loop. Per
+        // unit it still did its original job -- a unit whose token changed has left its
+        // old attack report -- but it also made every unit its own group, and the state
+        // reported a move of three workers as three marches of one.
+        const orderToken = ++this._orderSeq;
         let eta = 0;
         unitsToMove.forEach(unit => {
             game.clearRetaliation(unit);
@@ -6192,13 +6214,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             unit.targetZ = dest.z;
             // Measured to the SLOT, which is the trip this unit is actually making.
             eta = Math.max(eta, this.travelEtaSec(unit, dest.x, dest.z));
+            // Where this unit was SENT, so the state can publish the walk that is
+            // still running. Self-expiring: any later order overwrites targetX/targetZ,
+            // and the reader below only counts a unit whose target still matches this.
+            unit._moveOrderTo = { x: dest.x, z: dest.z };
             unit.formationOffset = null;   // a plain move has no target to approach
             unit.formationGroup = null;
             unit.isAttacking = false;
             unit.attackTarget = null;
             unit.attackMove = null;
             unit.task = null;
-            unit._orderToken = ++this._orderSeq; // new order → leaves any prior attack report
+            unit._orderToken = orderToken;
         });
 
         console.log(`[OpenAIAI] ${ai.id}: Moving ${unitsToMove.length} units to (${Math.round(targetX)}, ${Math.round(targetZ)})`);
@@ -6206,7 +6232,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Naming the units is what makes a wrong pick VISIBLE. Without it the reply for
         // moving the wrong crossbowman and the right one are the same sentence, so a model
         // has no way to notice and simply reissues.
-        return `OK - Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${form.note}${pace.note} — ~${eta}s to arrive; let them march before re-issuing.`;
+        return `OK - Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${form.note}${pace.note} — ~${eta}s to arrive.`;
     }
 
     executeAttackTarget(ai, game, targetId, unitsMap, unitIds, matchSpeed, formation) {
@@ -6267,6 +6293,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const marching = unitsToAttack.concat((sel.support || []).filter(u => u && u.health > 0));
         const form = this.applyFormation(game, marching, target.x, target.z, formation);
         const pace = this.applyMatchSpeed(marching, matchSpeed || (form.applied ? 'slowestUnit' : ''));
+        // One token for the whole order, minted here rather than inside the loop. Per
+        // unit it still did its original job -- a unit whose token changed has left its
+        // old attack report -- but it also made every unit its own group, and the state
+        // reported one army marching on one target as N marches of one unit.
+        const orderToken = ++this._orderSeq;
         unitsToAttack.forEach(unit => {
             game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
@@ -6284,7 +6315,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             unit.targetX = target.x;
             unit.targetZ = target.z;
             unit.task = null;
-            unit._orderToken = ++this._orderSeq; // new order → leaves any prior attack report
+            unit._orderToken = orderToken;
         });
         // Priests march along as healers (never engage) — the whole clergy on a
         // full-army order, only the named priests on a detachment.
@@ -6316,7 +6347,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // that clock is reissuing at its vanguard while the rest is still walking.
         const eta = unitsToAttack.reduce((m, u) => Math.max(m, this.travelEtaSec(u, target.x, target.z)), 0);
         this.outcome('log.out.attackMarching', { count: unitsToAttack.length, target: target.name || target.type, eta });
-        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet. You will be told when they arrive — don't re-issue this attack meanwhile.${sel.note}${form.note}${pace.note}${escortNote}`;
+        // "You will be told when they arrive" outlived the thing that told them, and
+        // a promise the harness no longer keeps is worse than no promise. The clock is
+        // in "marching" now, and it counts down every turn instead of once.
+        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet.${sel.note}${form.note}${pace.note}${escortNote}`;
     }
 
     executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds, matchSpeed, formation) {
@@ -6355,28 +6389,28 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             return `[ERROR] No military units available to attack.${priestNote} ${this.attackTargetHint(ai, game)}`;
         }
 
-        // INSTANT checks on what sits AT the designated coordinates. Friendly target
-        // and resource node are rejected immediately (no move). Empty space and a
-        // valid enemy both dispatch the army and report the verdict ON ARRIVAL.
-        const HIT = 8, RES = 5;
-        let atSpot = null, nd = HIT;
-        for (const e of [...game.getAllUnits(), ...game.getAllBuildings()]) {
-            if (e.health <= 0) continue;
-            const d = Math.hypot(e.x - targetX, e.z - targetZ);
-            if (d <= nd) { nd = d; atSpot = e; }
-        }
-        if (atSpot && this.isOwnedByAI(atSpot, ai)) {
-            this.outcome('log.out.attackOwnGround', { x: Math.round(targetX), z: Math.round(targetZ), type: atSpot.type });
-            return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is on your own ${atSpot.type}. You cannot attack your own units/buildings. ${this.attackTargetHint(ai, game)}`;
-        }
-        if (!atSpot) {
-            const res = (game.terrain && game.terrain.resources) || [];
-            const node = res.find(r => r.amount > 0 && Math.hypot(r.x - targetX, r.z - targetZ) <= RES);
-            if (node) {
-                this.outcome('log.out.attackResourceNode', { x: Math.round(targetX), z: Math.round(targetZ), res: node.type });
-                return `[ERROR] (${Math.round(targetX)}, ${Math.round(targetZ)}) is a ${node.type} resource node, not an attack target. Workers gather it with assign_workers. ${this.attackTargetHint(ai, game)}`;
-            }
-        }
+        // Two rejections stood here: coordinates sitting on a resource node, and
+        // coordinates sitting on something of the player's own. Both are gone, because
+        // both misread the order. targetX/targetZ is a DESTINATION, not a target --
+        // the army marches there and engages whatever it meets on the way and around
+        // it. Nothing about that requires an enemy to be standing on the exact point.
+        //
+        // The refusals were worse than strict, they were wrong about what the model
+        // had asked. One live seat sent its army to sweep an unexplored sector for a
+        // rival's last two buildings and was told "(-140, 175) is a wood resource node,
+        // not an attack target. Workers gather it with assign_workers" -- a lecture
+        // about harvesting, in answer to a reconnaissance in force, because a tree
+        // happened to grow at the coordinate it named. The order was good and the
+        // harness threw it away.
+        //
+        // Own ground is the same mistake read the other way: attack-moving onto your
+        // own Town Center is how you send the army home to defend it, and the seed
+        // loop below already skips friendly entities, so nothing is targeted that
+        // should not be. What is actually AT the destination is answered on arrival:
+        // an empty spot writes "found no target there" into recentEvents.
+        //
+        // attack_target with a targetId still refuses your own things. That one names
+        // a target, and you cannot attack your own.
 
         // Seed an initial target if an enemy is already near the spot; either way the
         // units attack-MOVE to the location and engage whatever they meet on the way.
