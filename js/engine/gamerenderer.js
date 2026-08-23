@@ -1789,7 +1789,18 @@
                     const clr = building.isWonder ? WONDER_CLEARANCE : UNIT_BUILDING_CLEARANCE;
                     const dx = unit.x - building.x, dz = unit.z - building.z;
                     const dist = Math.sqrt(dx * dx + dz * dz);
-                    if (dist < clr && dist > 0.01) {
+                    // DEAD CENTRE is the one place this push could not reach. The old
+                    // guard was `dist > 0.01`, meant to avoid dividing by zero, and it
+                    // meant a unit standing exactly on a building's origin was left
+                    // there forever — inside the mesh, permanently. Not a rare spot: a
+                    // plain move snaps onto its destination exactly, so anything aimed
+                    // at a building's coordinates lands on 0.00 and stops being pushed
+                    // at the instant it most needs to be. game.clampSlot has always
+                    // handled this case ("dead centre: any direction out"); the
+                    // continuous push simply never learned it.
+                    if (dist <= 0.01) {
+                        unit.x = building.x + clr;
+                    } else if (dist < clr) {
                         const push = (clr - dist) * 0.05 * sepK; // dt-scaled, like the pass above
                         unit.x += (dx / dist) * push;
                         unit.z += (dz / dist) * push;

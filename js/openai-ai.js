@@ -6332,8 +6332,15 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // Each unit walks to its OWN slot, so the group arrives as a shape rather
             // than as everybody converging on one point. Clamped: a slot off the edge
             // of the map is not somewhere a unit can stand.
+            // clampSlot ALWAYS, not only when a formation supplied an offset. Without a
+            // formation the raw point went straight through, so "move my worker to my
+            // Town Center" -- which is what a model types when it means "go build it" --
+            // aimed the unit at a spot inside a building. The mover then walked it in
+            // while the renderer's clearance push shoved it out, once per frame, and a
+            // worker spent a minute shivering on the ring before anything broke the tie.
+            // A lone unit is not entitled to stand somewhere a formation slot may not.
             const off = form.offsets && form.offsets.get(unit);
-            const dest = off ? game.clampSlot(targetX + off.x, targetZ + off.z) : { x: targetX, z: targetZ };
+            const dest = game.clampSlot(targetX + (off ? off.x : 0), targetZ + (off ? off.z : 0));
             unit.targetX = dest.x;
             unit.targetZ = dest.z;
             // Measured to the SLOT, which is the trip this unit is actually making.
@@ -6798,6 +6805,18 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         u.attackMove = null;
         u._origTarget = null;  // retaliation ladder ends with the combat job
         u._retalQueue = null;
+        // The BUILD job too. This cleared every other kind of work and left the build
+        // state standing, so a worker pulled off a construction site kept buildTarget
+        // and isBuilding while its task went null. That worker is then a phantom
+        // builder: workerJob reports it as "building" so the state counts it and
+        // assign_workers would queue it, workerPullRank returns Infinity so nothing may
+        // pull it, and State 4 will not run for it because State 4 needs the task. It
+        // also loses the renderer's clearance exemption, which is keyed on the task —
+        // so it is a builder to every tally and to nothing that moves it.
+        u.buildTarget = null;
+        u.isBuilding = false;
+        u.repairTarget = null;
+        u._formerTask = null;  // no task to come back to: this IS the new job
         u.marchSpeed = null;   // a new job walks at its own speed, not the last march's
         u.formationOffset = null;
         u.formationGroup = null;

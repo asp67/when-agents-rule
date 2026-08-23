@@ -882,6 +882,7 @@ class Game {
         const slotX = (u.targetX || 0) + (off ? off.x : 0);
         const slotZ = (u.targetZ || 0) + (off ? off.z : 0);
         const legal = this.clampSlot ? this.clampSlot(slotX, slotZ) : { x: slotX, z: slotZ };
+        const illegalBy = +Math.hypot(legal.x - slotX, legal.z - slotZ).toFixed(2);
         this._jitterLog.push({
             at: new Date().toISOString().slice(11, 19),
             id: u.id, type: u.type, unitType: u.unitType, owner: (owner && owner.id) || '?',
@@ -891,11 +892,20 @@ class Game {
             // If these differ, the unit is walking at a place it may not stand -- the
             // mover and the renderer's push-out are fighting over it.
             slotLegal: [+legal.x.toFixed(2), +legal.z.toFixed(2)],
-            slotIllegalBy: +Math.hypot(legal.x - slotX, legal.z - slotZ).toFixed(2),
+            slotIllegalBy: illegalBy,
             walked: +path.toFixed(2), got: +net.toFixed(2),
             // 'haul': it changed job while walking, so the walking was the job.
             // 'pinned': one job, full speed, no ground gained. That is the fault.
-            verdict: cycled ? 'haul' : 'pinned',
+            //
+            // An ILLEGAL slot outranks the haul escape hatch, because the two look
+            // identical from here and only one is a bug. A unit aimed where it may not
+            // stand is pulled in by the mover and pushed out by the renderer on every
+            // frame, and that churn flips its task and its aim — which is precisely
+            // what `cycled` tests for. So the one fault this recorder exists to catch
+            // was filing itself under the category invented to ignore normal walking.
+            // Measured 2026-08-23: a worker sent to a Town Center's exact centre
+            // shivered there for a minute and the log reported 0 pinned episodes.
+            verdict: (illegalBy > 0.5 || cycled === false) ? 'pinned' : 'haul',
             task: tasks.join('>') || null,
             aims: aims.length,
             carrying: !!u.carryingResource,
