@@ -1790,6 +1790,42 @@ class Game {
     // A worker's fight is over: send it back to the economy job it was drafted
     // from (or the nearest surviving node of that type). Also clears combat
     // state for non-drafted workers so none is left half-fighting, half-gathering.
+    // A worker the model assigned WHILE it was building or fighting. Both jobs end at a
+    // moment the harness knows and the model cannot predict, so the order is held on the
+    // unit and applied here — at the two places that already decide what a freed worker
+    // does next, and which already restore a saved task (_formerTask, _draftReturn).
+    // This is one more writer to a slot the engine was reading anyway.
+    //
+    // Returns true when it fired, so the caller skips its own restore.
+    //
+    // A superseded order does not fire: every later command bumps _orderToken (see
+    // releaseUnitForOrders and both attack paths), and a queue that outlived its token
+    // belongs to a plan the model has already replaced. A worker that dies takes its
+    // queue with it — nothing to assign, nothing to clean up.
+    applyQueuedAssign(unit) {
+        const q = unit && unit._queuedAssign;
+        if (!q) return false;
+        unit._queuedAssign = null;
+        if (q.token !== unit._orderToken) return false;
+        // The node can run dry while the worker is busy. Then there is nowhere to walk
+        // to, so let the normal restore have it and the idle pass find it a job.
+        if (!q.node || q.node.amount <= 0) return false;
+        if (unit.farmRef && unit.farmRef.assignedWorker === unit) unit.farmRef.assignedWorker = null;
+        unit.farmRef = null;
+        unit._formerTask = null;
+        unit.task = 'harvesting';
+        unit.harvestTarget = q.node;
+        unit.buildTarget = null;
+        unit.repairTarget = null;
+        unit.isHarvesting = false;
+        unit.carryingResource = false;
+        unit.harvestAmount = 0;
+        unit.isMoving = true;
+        unit.targetX = q.node.x + (Math.random() - 0.5) * 2;
+        unit.targetZ = q.node.z + (Math.random() - 0.5) * 2;
+        return true;
+    }
+
     resumeWorkerAfterCombat(unit) {
         if (unit.type !== 'worker') return;
         const r = unit._draftReturn;
@@ -1797,6 +1833,7 @@ class Game {
         unit.attackMove = null;
         unit.isAttacking = false;
         unit.attackTarget = null;
+        if (this.applyQueuedAssign(unit)) return;   // ordered onward while it was fighting
         if (!r) return;
         if (r.farmRef && r.farmRef.health > 0 && !r.farmRef.assignedWorker) {
             unit.task = 'farm_work';
@@ -4352,6 +4389,8 @@ class Game {
         unit.isMoving = false;
         unit.task = null;
         unit.buildTarget = null;
+
+        if (this.applyQueuedAssign(unit)) return;   // ordered onward while it was building
 
         if (unit._formerTask) {
             const f = unit._formerTask;

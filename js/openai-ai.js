@@ -94,7 +94,7 @@ class OpenAIAIManager {
             ['assign_workers', 'Move workers onto a resource.',
              Object.assign({ resourceType: S('food|wood|stone|gold|farm — what they should gather.'),
                              count: I('How many. Default 3, max 20.'),
-                             from: S('food|wood|stone|gold|farm|idle — where to TAKE them. Omit to take idle first, then your largest stockpile.'),
+                             from: S('Any key from "workers" — where to TAKE them. "building" and "fighting" are taken when that ends. Omit to take idle first, then your largest stockpile.'),
                              allowSpill: { type: 'boolean', description: 'Default true: also move workers carrying a load, which is then lost.' } }, XZ), ['resourceType']],
             ['repair_building', 'Send workers to repair a damaged building. Omit the coordinates to repair the most damaged one.',
              Object.assign({ count: I('How many workers. Default 1, max 5.') }, XZ), []],
@@ -104,7 +104,7 @@ class OpenAIAIManager {
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
             ['move_units', 'Move units to a position.',
              Object.assign({}, XZ, WHO), ['targetX', 'targetZ']],
-            ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "marching" in the state carries its secondsRemaining.',
+            ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining.',
              Object.assign({ targetId: I('Id from enemyUnits/enemyBuildings. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
              { unitType: S('Type from friendlyUnits. Default worker.'), count: I('How many. Default 1, max 20.') }, []],
@@ -2327,7 +2327,7 @@ class OpenAIAIManager {
                 `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
         };
 
-        // --- Marching: orders still on the way ---
+        // --- Orders in progress: accepted, not yet carried out ---
         // The system prompt promises the state carries secondsRemaining "for anything
         // running", and a march was the one running thing it did not. Research and the
         // age upgrade each publish a countdown; an army crossing 600 units of map for
@@ -2362,28 +2362,51 @@ class OpenAIAIManager {
         const marchBy = new Map();
         ai.units.forEach(u => {
             const inContact = u.isAttacking && u.attackTarget && u.attackTarget.health > 0;
-            let to = null, action = null;
+            let to = null, order = null;
             if (u.attackMove && !inContact) {
-                to = u.attackMove; action = 'attack_target';
+                to = u.attackMove; order = 'attack_target';
             } else if (u._moveOrderTo && u.isMoving && !u.task && !u.attackMove && !u.isAttacking
                        && Math.hypot(u.targetX - u._moveOrderTo.x, u.targetZ - u._moveOrderTo.z) < NEAR) {
-                to = u._moveOrderTo; action = 'move_units';
+                to = u._moveOrderTo; order = 'move_units';
             }
             if (!to) return;
-            const row = marchBy.get(u._orderToken) || { n: 0, sx: 0, sz: 0, eta: 0, action };
+            const row = marchBy.get(u._orderToken) || { n: 0, sx: 0, sz: 0, eta: 0, timed: true, order };
             row.n++; row.sx += to.x; row.sz += to.z;
             row.eta = Math.max(row.eta, this.travelEtaSec(u, to.x, to.z));
             marchBy.set(u._orderToken, row);
         });
-        const marching = [...marchBy.values()].map(r => ({
+        // Queued worker assignments, ordered while the worker was building or
+        // fighting. Same block as the marches because it is the same kind of fact --
+        // an order the harness accepted and has not finished -- and yesterday's lesson
+        // says an accepted order the state does not show is a promise nobody keeps.
+        //
+        // A build has a clock, so it carries one. A fight does not, and inventing a
+        // number for it would be worse than leaving the field out.
+        const queuedBy = new Map();
+        ai.units.forEach(u => {
+            const q = u._queuedAssign;
+            if (!q || !q.node || u.health <= 0 || q.token !== u._orderToken) return;
+            const row = queuedBy.get(q.token)
+                     || { n: 0, sx: 0, sz: 0, eta: 0, timed: false, order: 'assign_workers' };
+            row.n++; row.sx += q.node.x; row.sz += q.node.z;
+            const site = u.buildTarget;
+            if (site) { row.timed = true;
+                        row.eta = Math.max(row.eta, this.secsLeft(site.buildProgress, site.buildTime)); }
+            queuedBy.set(q.token, row);
+        });
+
+        const ordersInProgress = [...marchBy.values(), ...queuedBy.values()].map(r => ({
             // The command that started it, spelled the way the model spelled it, so an
-            // entry can be matched back to the order that made it.
-            action: r.action,
+            // entry can be matched back to the order that made it. NOT "action": that
+            // key already means a unit's activity in friendlyUnits, and one word for two
+            // things is what this whole change is undoing.
+            order: r.order,
             to: [Math.round(r.sx / r.n), Math.round(r.sz / r.n)],
             units: r.n,
             // Same word research and epoch use. One vocabulary for one idea, so a model
-            // that learned to read a countdown once can read all three.
-            secondsRemaining: r.eta
+            // that learned to read a countdown once can read all of them. Absent on a
+            // queued assignment waiting on a FIGHT, which has no clock to read.
+            ...(r.timed === false ? {} : { secondsRemaining: r.eta })
         }));
 
         // --- Battles: what actually happened in the fighting ---
@@ -2723,8 +2746,8 @@ class OpenAIAIManager {
             // for the entire march. The flag is load-bearing and correct; calling it
             // "attacking" in the state was not. An army two minutes from the enemy read
             // as fighting, which is the one thing a commander cannot check by looking.
-            // A live target is the difference, and it is the same test the "marching"
-            // block and the arrival resolver use.
+            // A live target is the difference, and it is the same test ordersInProgress
+            // and the arrival resolver use.
             if (u.isAttacking) {
                 const inContact = u.attackTarget && u.attackTarget.health > 0;
                 action = (!inContact && u.attackMove) ? 'marching' : 'attacking';
@@ -2775,20 +2798,26 @@ class OpenAIAIManager {
         //     a reply takes 1.6-36s, so by the time the action lands the figure is a
         //     whole cycle old and describes different workers. Spilling is decided at
         //     EXECUTION now, via assign_workers' allowSpill, where the truth is known.
+        // Keyed by the JOB NAME workerJob returns, which is also what assign_workers'
+        // "from" takes. There used to be a table here renaming them on the way out --
+        // food became onFood, farm became onFarms -- and "from" then asked for the
+        // original name back. Models read workers.onStone, sent "onStone", and were
+        // refused for spelling a word we had taught them: twelve times in one match,
+        // and once with "returning" and "harvesting" lifted off friendlyUnits[].action
+        // in the match before. That is not a model failing to read the schema, it is
+        // the schema disagreeing with the state it describes.
+        //
+        // The comment further up records this pair drifting twice already, both times
+        // over MEANING, both times fixed by sharing workerJob. This is the third, over
+        // NAMING, and the fix is the same shape: one classifier, one word.
         const wk = {
-            total: 0, idle: 0, building: 0, onFarms: 0, scouting: 0, moving: 0,
-            fighting: 0, onFood: 0, onWood: 0, onStone: 0, onGold: 0
+            total: 0, idle: 0, building: 0, farm: 0, scouting: 0, moving: 0,
+            fighting: 0, food: 0, wood: 0, stone: 0, gold: 0
         };
-        // Field names differ from the job names (onFarms, onWood); the JOB is decided
-        // in one place -- see OpenAIAIManager.workerJob -- and only the naming lives here.
-        const WK_FIELD = { building: 'building', scouting: 'scouting', farm: 'onFarms',
-                           food: 'onFood', wood: 'onWood', stone: 'onStone',
-                           gold: 'onGold', idle: 'idle', moving: 'moving',
-                           fighting: 'fighting' };
         ai.units.forEach(u => {
             if (u.type !== 'worker') return;
             wk.total++;
-            wk[WK_FIELD[OpenAIAIManager.workerJob(this.game, u)] || 'moving']++;
+            wk[OpenAIAIManager.workerJob(this.game, u) || 'moving']++;
         });
         // What this snapshot PROMISED, kept for the executor. workers.idle flickers:
         // a worker whose node runs dry is idle until the next pass puts it on another
@@ -3168,7 +3197,7 @@ class OpenAIAIManager {
             // Omitted entirely in peacetime — this rides the per-turn channel, so a
             // quiet game should pay nothing for it.
             ...(battles.length ? { battles } : {}),
-            ...(marching.length ? { marching } : {}),
+            ...(ordersInProgress.length ? { ordersInProgress } : {}),
             bonuses: bonusesObj,
             map: mapObj,
             discoveredNodesOnMap: discoveredNodesOnMap,
@@ -3490,9 +3519,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // harvesting* keys after the split and would have replayed four
             // undefineds into every past turn.
             workers: {
-                total: wk.total, onFood: wk.onFood, onWood: wk.onWood,
-                onStone: wk.onStone, onGold: wk.onGold,
-                onFarms: wk.onFarms, building: wk.building, idle: wk.idle, scouting: wk.scouting
+                total: wk.total, food: wk.food, wood: wk.wood,
+                stone: wk.stone, gold: wk.gold,
+                farm: wk.farm, building: wk.building, idle: wk.idle, scouting: wk.scouting
             },
             militaryUnitCount: fu.filter(u => u.type !== 'worker').length,
             buildingsByType: b.byType || {},
@@ -3821,7 +3850,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Not friendlyUnits[].action, which was the other half of this argument and is
         // wrong: "attacking" is stamped on every unit the moment an attack order goes
         // out, so it reads the same at the start of a two-minute march as it does in
-        // the melee. Telling those apart is what "marching" is for.
+        // the melee. Telling those apart is what the "marching" activity is for, and
+        // the order behind it is in ordersInProgress.
         //
         // The two verdicts nothing else could carry -- arrived at an empty spot, never
         // arrived at all -- are now recentEvents lines, which is the channel for "what
@@ -6322,7 +6352,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         this.outcome('log.out.attackMarching', { count: unitsToAttack.length, target: target.name || target.type, eta });
         // "You will be told when they arrive" outlived the thing that told them, and
         // a promise the harness no longer keeps is worse than no promise. The clock is
-        // in "marching" now, and it counts down every turn instead of once.
+        // in "ordersInProgress" now, and it counts down every turn instead of once.
         return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet.${sel.note}${form.note}${pace.note}${escortNote}`;
     }
 
@@ -6756,7 +6786,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const w = candidates[manned];
             if (!w) break;
             const r = rank(w);
-            const label = r === 0 ? 'idle' : r === 5 ? 'scouting' : r === 6 ? 'repairing'
+            const label = r === 0 ? 'idle' : r === 5 ? 'repairing' : r === 6 ? 'farming'
+                : r === 7 ? 'scouting'
                 : (w.harvestTarget ? `from ${w.harvestTarget.type}` : 'spare');
             pulledFrom[label] = (pulledFrom[label] || 0) + 1;
             w._formerTask = null;
@@ -6847,13 +6878,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // these six are addressable sources; builders, scouts and workers in transit
         // map to null and stay out of every pool, which is also what the candidate
         // filter above already enforces for builders and fighters.
-        const FROM_JOB = { farm: 'farm', food: 'food', wood: 'wood',
-                           stone: 'stone', gold: 'gold', idle: 'idle' };
-        const whereFrom = u => FROM_JOB[OpenAIAIManager.workerJob(game, u)] || null;
-        const FROMS = ['food', 'wood', 'stone', 'gold', 'farm', 'idle'];
+        // No table. workerJob names the pool, the state publishes it under that name,
+        // and "from" takes it back unchanged -- so a model reading workers.stone: 6
+        // writes from: "stone" and is right the first time.
+        const whereFrom = u => OpenAIAIManager.workerJob(game, u);
+        // Every pool the state reports is addressable, including the two that are busy
+        // now and free later (see the queue below). "total" is a sum, not a pool.
+        const FROMS = ['food', 'wood', 'stone', 'gold', 'farm', 'idle',
+                       'scouting', 'moving', 'building', 'fighting'];
+        // The names the state used to publish still work. Breaking a model that learned
+        // them buys nothing, and they were our spelling before they were its mistake.
+        const FROM_ALIAS = { onfood: 'food', onwood: 'wood', onstone: 'stone',
+                             ongold: 'gold', onfarms: 'farm', farms: 'farm' };
         const rawFrom = OpenAIAIManager.given(params.from)
             ? String(params.from).toLowerCase().trim() : null;
-        const from = rawFrom === 'farms' ? 'farm' : rawFrom;
+        const from = rawFrom === null ? null : (FROM_ALIAS[rawFrom] || rawFrom);
         if (from !== null && !FROMS.includes(from)) {
             this.outcome('log.out.assignBadFrom', {});
             // The tail here read "omit it to use ingame worker selection, which takes idle
@@ -6874,6 +6913,37 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (from !== null && from === resourceType && !relocating) {
             this.outcome('log.out.assignFromSame', { res: resourceType });
             return `[ERROR] "from" and "resourceType" are both "${resourceType}" with no target, which would move workers onto the job they already have. A move needs somewhere to move to: "targetX"/"targetZ" for a different ${resourceType} node, or a "from" that differs from "resourceType".`;
+        }
+
+        // building and fighting are pools with a LATER availability, not forbidden
+        // ones. Refusing them read as policy and was really the harness declining to
+        // represent a delay it can already measure -- every site publishes
+        // buildSecondsRemaining. The order is held on the worker and fires at
+        // game.applyQueuedAssign, the one place that decides what a freed worker does
+        // next; a later command supersedes it through _orderToken, and a worker that
+        // dies takes it along, which is the whole of the cleanup.
+        if (from === 'building' || from === 'fighting') {
+            const pool = ai.units.filter(u => u.type === 'worker' && u.health > 0
+                && OpenAIAIManager.workerJob(game, u) === from);
+            if (!pool.length) {
+                this.outcome('log.out.assignFromEmpty', { from, field: from });
+                return `[ERROR] assign_workers "${from}": empty (workers.${from} is 0).`;
+            }
+            const take = pool.slice(0, count);
+            const token = ++this._orderSeq;
+            take.forEach(w => { w._orderToken = token; w._queuedAssign = { token, node, resourceType }; });
+            // A build has a clock and a fight does not. Say which, rather than inventing
+            // a number for the one that cannot have one.
+            let secs = 0;
+            take.forEach(w => { const b = w.buildTarget;
+                if (b) secs = Math.max(secs, this.secsLeft(b.buildProgress, b.buildTime)); });
+            const when = (from === 'building' && secs > 0)
+                ? ` They finish building in ~${secs}s and go then.`
+                : ` They go when the ${from === 'building' ? 'build' : 'fight'} ends.`;
+            this.outcome('log.out.assignQueued',
+                         { count: take.length, res: resourceType, from, secs: secs || 0 });
+            return `OK - ${take.length} worker(s) queued for ${resourceType} at `
+                 + `(${Math.round(node.x)}, ${Math.round(node.z)}) — the node ${nodeNote}.${when}`;
         }
 
         // Triage, when the model does not name a source: idle workers first, then
@@ -6912,13 +6982,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const pool = candidates.filter(u => whereFrom(u) === from);
             if (!pool.length) {
                 const onIt = ai.units.filter(u => u.type === 'worker' && whereFrom(u) === from).length;
-                // Name the field that ACTUALLY exists. This was built as
-                // "workers.on" + capitalise(from), which is right for the four
-                // resources and wrong for the other two: it produced workers.onIdle
-                // and workers.onFarm, neither of which is in the state. A model sent
-                // to check a field that does not exist has nowhere to go.
-                const FIELD = { food: 'onFood', wood: 'onWood', stone: 'onStone',
-                                gold: 'onGold', farm: 'onFarms', idle: 'idle' };
+                // A table used to live here translating the source name into the state
+                // field that reports it -- food into onFood, farm into onFarms -- because
+                // the two had different names. They have one name now, so "workers." and
+                // the source is the field, and there is nothing left to get wrong.
                 // And say which of the two situations it is. "0 are on it, and none of
                 // those can be pulled" read as two separate reasons and left the real
                 // one — that there is simply nobody there — impossible to pick out.
@@ -6939,7 +7006,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     //    seat read past a zero, and that is a plain misread of a published
                     //    field — the same one the four resources get, in the same words.
                     if (sent === 0) {
-                        this.outcome('log.out.assignFromEmpty', { from, field: FIELD[from] });
+                        this.outcome('log.out.assignFromEmpty', { from, field: from });
                         return `[ERROR] assign_workers "idle": empty (workers.idle is 0).`;
                     }
                     // 2. It spent the idle hands itself, in an earlier call of this same
@@ -6968,8 +7035,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // snapshot and the order, so for those the state is still the answer and
                 // the refusal only has to name which reading was wrong.
                 if (onIt === 0) {
-                    this.outcome('log.out.assignFromEmpty', { from, field: FIELD[from] });
-                    return `[ERROR] assign_workers "${from}": empty (workers.${FIELD[from]} is 0).`;
+                    this.outcome('log.out.assignFromEmpty', { from, field: from });
+                    return `[ERROR] assign_workers "${from}": empty (workers.${from} is 0).`;
                 }
                 this.outcome('log.out.assignFromBusy', { from, n: onIt });
                 return `[ERROR] assign_workers "${from}": all ${onIt} are constructing or fighting.`;
@@ -7021,7 +7088,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         for (const w of candidates) {
             if (moved >= count) break;
             const r = rank(w);
-            const label = r === 0 ? 'idle' : r === 5 ? 'scouting' : r === 6 ? 'repairing' : r === 7 ? 'farming' : `from ${w.harvestTarget.type}`;
+            const label = r === 0 ? 'idle' : r === 5 ? 'repairing' : r === 6 ? 'farming' : r === 7 ? 'scouting' : `from ${w.harvestTarget.type}`;
             pulledFrom[label] = (pulledFrom[label] || 0) + 1;
             // A carried load is destroyed by the reassignment. Sorted last, so this
             // only happens once the free workers run out — but it is a real cost and
