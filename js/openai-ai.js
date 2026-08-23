@@ -3378,6 +3378,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
 - "discoveredNodesOnMap" counts what you have FOUND, per resource. A zero means unscouted, not absent.
+- Population: each unit occupies a population slot. Houses raise maxPopulation by 5, Town Centers by 10, to a population cap of ${(typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100}.
 - "gameStats.opponents[].population" counts EVERYTHING a discovered rival owns, villagers included — the same measure as your own "resources.population", and NOT an army size. Everywhere else in these tools "units" means fighters and "workers" means villagers; this one number does not follow that rule, which is why it is not called units.
 - "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
 
@@ -4368,6 +4369,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 controller.lastActionResult = `[ERROR] The endpoint refused this turn with a rate limit and the retry did not clear it. Nothing was executed; continue normally.`;
                 return null;
             }
+            // The move it was TRYING to make, and how long it hung before dying. The
+            // pair is cleared at the start of every request and normally set when a
+            // reply lands -- but a request that never returns is still an attempt at a
+            // move, and the elapsed time is the whole diagnosis of what killed it.
+            // Without them the log card fell back to "now", the one reading that says
+            // nothing: a proxy cutting the connection at a fixed 100 s and a wifi blink
+            // looked identical, and the card sat among numbered moves wearing no number.
+            //
+            // The number is the turn the transcript will file the NEXT reply under, so a
+            // failure and the retry that succeeds both read #8. That is what happened:
+            // two attempts at move 8, one of which did not come back.
+            controller._moveNo = ((this.transcripts && this.transcripts.turnsFor(ai.id)) || 0) + 1;
+            controller._moveMs = Date.now() - tStart;
             // Behavior metrics: classify the failure
             const s = controller.stats;
             if (s) {
@@ -4421,7 +4435,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // connection — Cloudflare's tunnel gives up at 100 s by default and
                 // reports it as a plain fetch failure; scattered values are a real
                 // network fault.
-                reason: `Request to model failed after ${Math.round((Date.now() - tStart) / 1000)}s: ${err.message.substring(0, 90)}`,
+                reason: `Request to model failed: ${err.message.substring(0, 90)}`,
                 params: {}, failed: true
             });
             return null;
@@ -5425,25 +5439,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // 12. Action implementations
     // ----------------------------------------------------------------
     // Advice tailored to whether houses can still help or the hard cap is reached.
-    popCapAdvice(ai) {
-        const cap = (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100;
-        if (ai.resources.maxPopulation >= cap) {
-            return `Hard population cap ${cap} reached; houses and Town Centers do not raise it further. delete_unit frees a slot.`;
-        }
-        return `maxPopulation is raised by houses (+5) and Town Centers (+10), to a hard cap of ${cap}. delete_unit frees a slot.`;
-    }
+    // popCapAdvice lived here and returned a paragraph: how maxPopulation is raised,
+    // by how much, up to what, and that delete_unit frees a slot. All of it true, none
+    // of it an answer to "why was this train refused" -- it was the rulebook, read out
+    // at the moment the model could least act on it. The rule is in the system prompt
+    // now, in the same words the two refusals use, so the refusal can just be the fact.
 
-    // Log the population rejection with the RIGHT advice: at the hard cap, houses
-    // and Town Centers are useless and only delete_unit frees a slot. Mirrors the
-    // branch in popCapAdvice above so the log never contradicts what the model was
-    // told. (The localized log line used to flatten both cases into "build houses",
-    // which read as bad advice at 100/100 even though the model's English text was
-    // correct.)
+    // Same split as the rejection above, on the same test, so the spectator log and the
+    // model never disagree about which of the two situations this is: below the cap the
+    // slots can still be built, at it they cannot.
     popCapOutcome(ai) {
         const cap = (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100;
         const hard = ai.resources.maxPopulation >= cap;
-        this.outcome(hard ? 'log.out.populationHardCap' : 'log.out.populationLimit',
-            { pop: Math.floor(ai.resources.population), max: ai.resources.maxPopulation, cap });
+        this.outcome(hard ? 'log.out.populationHardCap' : 'log.out.populationLimit', { cap });
     }
 
     // Pick which finished, non-busy building actually trains the unit. If the model
@@ -5566,7 +5574,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (ai.resources.population >= ai.resources.maxPopulation) {
             console.log(`[OpenAIAI] ${ai.id}: Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation})`);
             this.popCapOutcome(ai);
-            return `[ERROR] Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation}). ${this.popCapAdvice(ai)}`;
+            // Two different situations, and the difference is the only thing worth
+            // saying: below the cap more slots can be built, at it they cannot.
+            const popCap = (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100;
+            return ai.resources.maxPopulation >= popCap
+                ? `[ERROR] Population cap of ${popCap} reached.`
+                : `[ERROR] No available population slots.`;
         }
 
         // 4) BUSY: a trainer exists but all are mid-production (transient).
@@ -7492,6 +7505,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             civName: civ?.name || controller.aiPlayer.civilization,
             color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
             action: 'round_missed', reason: '', params: {}, failed: true,
+            // Same head as every other lost turn: which move went missing, and the
+            // time the seat was given for it. A card reading "now" beside a column of
+            // numbered moves is the one entry a reader cannot place.
+            move: ((this.transcripts && this.transcripts.turnsFor(controller.aiPlayer.id)) || 0) + 1,
+            latencyMs: this.roundTimeoutMs(),
             // The ROUND this belongs to. A miss is logged when the deadline expires,
             // which is `secs` after the round opened — by then the other seats have long
             // since acted and later rounds have scrolled past, so the entry sits nowhere

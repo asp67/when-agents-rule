@@ -1763,8 +1763,8 @@ const I18N_OUTCOMES = {
         'log.out.researchStarted': '{tech} wird erforscht (~{secs} s). Nur eine Technologie gleichzeitig.',
         'log.out.researchedElsewhere': '{tech}: Erforschung an {host}. Keiner fertiggestellt.',
         'log.out.ageUpStarted': 'Aufstieg in die {age} läuft (~{secs} s).',
-        'log.out.populationLimit': 'Bevölkerungslimit erreicht: {pop}/{max}. Häuser (+5) und Dorfzentren (+10) erhöhen maxPopulation.',
-        'log.out.populationHardCap': 'Hartes Bevölkerungslimit {max} erreicht; Häuser und Dorfzentren erhöhen es nicht weiter. delete_unit gibt einen Platz frei.',
+        'log.out.populationLimit': 'Keine freien Bevölkerungsplätze.',
+        'log.out.populationHardCap': 'Bevölkerungsgrenze {cap} erreicht.',
         'log.near.tc': 'nächstes Dorfzentrum', 'log.near.target': 'nächste beim Ziel',
         'resPlain.food': 'Nahrung', 'resPlain.wood': 'Holz', 'resPlain.stone': 'Stein', 'resPlain.gold': 'Gold',
         'pull.idle': 'Leerlauf', 'pull.scout': 'Kundschafter', 'pull.repair': 'Reparatur', 'pull.farm': 'Farm', 'pull.spare': 'übrig'
@@ -1781,8 +1781,8 @@ const I18N_OUTCOMES = {
         'log.out.researchStarted': 'Investigando {tech} (~{secs} s). Solo una tecnología a la vez.',
         'log.out.researchedElsewhere': '{tech}: se investiga en {host}. Ninguno terminado.',
         'log.out.ageUpStarted': 'Avanzando a {age} (~{secs} s).',
-        'log.out.populationLimit': 'Límite de población alcanzado: {pop}/{max}. Casas (+5) y Centros Urbanos (+10) elevan maxPopulation.',
-        'log.out.populationHardCap': 'Límite duro de población {max} alcanzado; casas y Centros Urbanos no lo elevan más. delete_unit libera una plaza.',
+        'log.out.populationLimit': 'No hay plazas de población libres.',
+        'log.out.populationHardCap': 'Límite de población {cap} alcanzado.',
         'log.near.tc': 'el más cercano a tu Centro urbano', 'log.near.target': 'el más cercano a tu objetivo',
         'resPlain.food': 'comida', 'resPlain.wood': 'madera', 'resPlain.stone': 'piedra', 'resPlain.gold': 'oro',
         'pull.idle': 'inactivos', 'pull.scout': 'exploradores', 'pull.repair': 'reparación', 'pull.farm': 'granja', 'pull.spare': 'de reserva'
@@ -1799,8 +1799,8 @@ const I18N_OUTCOMES = {
         'log.out.researchStarted': '正在研究{tech}（约 {secs} 秒）。一次只能研究一项。',
         'log.out.researchedElsewhere': '{tech}：在{host}研究。没有已建成的。',
         'log.out.ageUpStarted': '正在进入{age}（约 {secs} 秒）。',
-        'log.out.populationLimit': '已达人口上限：{pop}/{max}。房屋（+5）和镇中心（+10）可提高 maxPopulation。',
-        'log.out.populationHardCap': '已达人口硬上限（{pop}/{max}）。房屋和镇中心无法再提高上限；delete_unit 可腾出名额。',
+        'log.out.populationLimit': '没有空余的人口名额。',
+        'log.out.populationHardCap': '已达人口上限 {cap}。',
         'log.near.tc': '最靠近你的镇中心', 'log.near.target': '最靠近你的目标',
         'resPlain.food': '食物', 'resPlain.wood': '木材', 'resPlain.stone': '石头', 'resPlain.gold': '黄金',
         'pull.idle': '空闲', 'pull.scout': '侦察', 'pull.repair': '维修', 'pull.farm': '农场', 'pull.spare': '闲置'
