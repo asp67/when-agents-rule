@@ -5141,6 +5141,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const seat = controller.seat || controller;
         if (controller._sentIdle !== undefined) seat._sentIdle = controller._sentIdle;
         seat._idleTaken = 0;
+        // What THIS reply has already done, so the duplicate check can tell a board that
+        // changed under the seat from a seat that changed it itself. A reply may carry
+        // three commands: "build barracks, build barracks" is a deliberate pair, and the
+        // second must not be read as blind just because the first moved the count. Same
+        // line the idle pool already draws between assignIdleRaced and assignIdleTaken.
+        controller._builtThisTurn = {};
+        controller._startedResearchThisTurn = false;
+        controller._startedAgeThisTurn = false;
 
         const cmds = this.normalizeCommands(envelope);
         if (!cmds.length) {
@@ -5987,7 +5995,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // Same fact the ERROR above states; only the blame differs. The seat read
                 // "research.researched" correctly -- the list it was handed did not have
                 // this yet -- so it is told what it has, not what it should have checked.
-                return `OK - "${techId}" is already researched. Nothing was spent.`;
+                // No cost clause: the tech was paid for, just not by this order, and the
+                // treasury the seat sees next turn already reflects that.
+                return `OK - "${techId}" is researched.`;
             }
             console.log(`[OpenAIAI] ${ai.id}: Tech "${techId}" already researched`);
             this.outcome('log.out.alreadyResearched', { techId });
@@ -6000,14 +6010,15 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // that cannot happen -- the seat is the only thing that starts research, so
             // a clash is its own doing and is scored. With them, a sibling started one
             // after the snapshot went out and the seat had no way to know.
-            const blind = controller && controller._shownResearching === null;
+            const blind = controller && controller._shownResearching === null
+                          && !controller._startedResearchThisTurn;
             if (blind && running === techId) {
                 // It asked for exactly what is now running, so its intent is met and the
                 // next state will agree. Same reasoning as a duplicate building: report
                 // the success it actually got.
                 this.noteLaneDuplicate(controller, 'tech:' + techId);
                 this.outcome('log.out.laneDuplicateTech', { techId });
-                return `OK - "${techId}" is already being researched. Nothing was spent.`;
+                return `OK - "${techId}" is being researched.`;
             }
             console.log(`[OpenAIAI] ${ai.id}: Already researching a tech`);
             // A DIFFERENT tech is running, so this one genuinely did not start and
@@ -6067,6 +6078,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
 
         ai.resources.spendResources(adjustedCost);
+        if (controller) controller._startedResearchThisTurn = true;
         ai.currentResearch = {
             techId: techId,
             progress: 0,
@@ -6092,10 +6104,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // Simpler than the research case: there is only one next age, so a seat
             // whose board showed no advance running and finds one now asked for exactly
             // what is happening. Intent met, and the next state will agree.
-            if (controller && controller._shownAgeUpgrading === false) {
+            if (controller && controller._shownAgeUpgrading === false
+                && !controller._startedAgeThisTurn) {
                 this.noteLaneDuplicate(controller, 'age:' + ai.currentAgeUpgrade.targetAge);
                 this.outcome('log.out.laneDuplicateAge', { age: ai.currentAgeUpgrade.targetAge });
-                return `OK - already advancing to "${ai.currentAgeUpgrade.targetAge}". Nothing was spent.`;
+                return `OK - advancing to "${ai.currentAgeUpgrade.targetAge}".`;
             }
             this.outcome('log.out.alreadyUpgrading', { age: ai.currentAgeUpgrade.targetAge });
             return `[ERROR] upgrade_age: already advancing to "${ai.currentAgeUpgrade.targetAge}".`;
@@ -6111,6 +6124,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
 
         ai.resources.spendResources(cost);
+        if (controller) controller._startedAgeThisTurn = true;
         ai.currentAgeUpgrade = {
             targetAge: nextAge,
             progress: 0,
@@ -6197,13 +6211,22 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // The building this order duplicates, or null. Null whenever the lane was never
     // told anything (no snapshot recorded) -- silence is not evidence of a duplicate.
     blindDuplicateBuilding(controller, ai, buildingType, x, z) {
+        if (!this.couldBeBlindDuplicate(controller, ai, buildingType)) return null;
+        return this.sameSettlement(ai, x, z, buildingType);
+    }
+
+    // The count half of the test, split out because it needs no position and so can run
+    // before the placement is settled -- which is what lets the affordability refusal be
+    // held back until we know whether this order was moot anyway.
+    couldBeBlindDuplicate(controller, ai, buildingType) {
         const shownMap = controller && controller._shownBuildings;
-        if (!shownMap) return null;
-        const shown = shownMap[buildingType] || 0;
+        if (!shownMap) return false;                 // no snapshot: silence is not evidence
+        const mine = (controller._builtThisTurn || {})[buildingType] || 0;
         // Under construction counts: one is on its way, so the intent is met.
         const standing = (ai.buildings || []).filter(b => b && b.type === buildingType).length;
-        if (standing <= shown) return null;          // nothing appeared since the snapshot
-        return this.sameSettlement(ai, x, z, buildingType);
+        // shown + what THIS reply put up. Anything beyond that appeared while the seat
+        // was thinking; anything at or below it, the seat did itself and meant to.
+        return standing > (shownMap[buildingType] || 0) + mine;
     }
 
     noteLaneDuplicate(controller, what) {
@@ -6275,11 +6298,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             return `[ERROR] You are already building or holding a Wonder.`;
         }
 
-        if (!ai.resources.hasResources(buildingDef.cost)) {
+        // Held back when this order MIGHT be a blind duplicate, because then "cannot
+        // afford" is very likely the sibling's doing too -- it just spent the money on
+        // the twin -- and reporting a shortfall for a building the seat is about to be
+        // told it already has is both a distraction and a scored rejection for something
+        // it could not have known. Ordinary orders still meet this check exactly here.
+        const cannotAfford = () => {
+            if (ai.resources.hasResources(buildingDef.cost)) return null;
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${buildingType}`);
             this.outcome('log.out.cannotAfford', { whatName: buildingDef.name });
             return `[ERROR] Cannot afford ${buildingType}.`;
-        }
+        };
+        const maybeDuplicate = this.couldBeBlindDuplicate(controller, ai, buildingType);
+        if (!maybeDuplicate) { const poor = cannotAfford(); if (poor) return poor; }
 
         // Find placement position
         let x, z;
@@ -6368,13 +6399,29 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // to comprehend, every turn, forever -- for a distinction that changes nothing
             // it can act on.
             //
-            // Two clauses survive. The position, because it is the twin's and not the one
-            // asked for -- inside one settlement that is metres, but a settlement can be
-            // wide. And the cost, because a reply may carry two more commands and a seat
-            // that believes it just spent 200 wood will plan the rest of the turn poorer
-            // than it is.
-            return `OK - ${buildingType} already stands at (${tx}, ${tz}). Nothing was spent.`;
+            // "Nothing was spent" was in an earlier draft and was simply wrong. THIS order
+            // spent nothing, but the building's cost did leave the treasury -- the twin
+            // paid it -- so a seat told nothing was spent would then read resources lower
+            // than it was promised. One barracks was ordered, one barracks was paid for,
+            // and the ledger already matches what the seat expects. Saying anything about
+            // the cost can only contradict it.
+            //
+            // "already" goes for asp67's reason: it invites "already? I never ordered one
+            // before" -- a question about a history the seat does not have.
+            //
+            // And "stands" was its own puzzle: a seat that just asked for a barracks
+            // cannot have a finished one, so the word contradicts the order it answers.
+            // The twin is usually a construction site -- it was ordered about one round
+            // ago -- so say which it is. That matches how the research replies read, and
+            // for the same reason: describing the actual state is honest at no cost.
+            // The position stays, because it is the twin's and not the one asked for,
+            // and a settlement can be wide.
+            const how = twin.underConstruction ? 'is being built' : 'is built';
+            return `OK - ${buildingType} ${how} at (${tx}, ${tz}).`;
         }
+        // Not a duplicate after all -- the count moved but this site is its own
+        // settlement, so the order stands and now meets the check it skipped above.
+        if (maybeDuplicate) { const poor = cannotAfford(); if (poor) return poor; }
 
         // Decide who will build it BEFORE spending. Only idle workers build; a busy
         // worker is borrowed (and resumes its task) only when at the population cap.
@@ -6401,6 +6448,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!pick.restore) this.noteIdleTaken(ai, 1);
         const walkSecs = pick.worker ? this.travelEtaSec(pick.worker, x, z) : 0;
         ai.resources.spendResources(buildingDef.cost);
+        if (controller) {
+            const mine = controller._builtThisTurn || (controller._builtThisTurn = {});
+            mine[buildingType] = (mine[buildingType] || 0) + 1;
+        }
         // Place a construction site and send the chosen worker to build it (pop bonus
         // is granted on completion via game.completeConstruction).
         const building = createBuilding(buildingType, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
