@@ -6274,15 +6274,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!ai) return;
         const cmds = this.normalizeCommands(actionData) || [];
         const civ = getCivilization(ai.civilization);
-        // Committed straight, NOT held for flushRound. A held entry lives in the lane's
-        // pendingLog until the next flush, and startTurn empties that at kickoff -- so a
-        // lane freed by this very drop wiped its own card before any flush could take it.
-        // Every card written, zero cards arriving, and only the counter to show for it.
+        // Held on the SEAT, not on the lane and not committed on the spot.
         //
-        // Holding is for entries that belong to a ROUND's action block. This one belongs
-        // to no round -- that is what being dropped means -- so it goes the way the other
-        // control entries go, the same as round_missed and self_heal.
-        this.commitDecision({
+        // The lane's own pendingLog is emptied by startTurn at kickoff, and the lane
+        // freed by this very drop is the next one kicked off -- so a card held there
+        // wiped itself before any flush could take it. Committing immediately fixed
+        // that and broke the order instead: the round's action cards are held until
+        // flushRound, so a drop landing mid-round jumped ahead of the actions of a
+        // reply issued two rounds earlier. Reading down the log that shows as #33,
+        // #30, #30, #30, #31, #28 -- numbers going backwards, which is what asp67 saw.
+        //
+        // A seat-level queue is neither: startTurn never touches it, and flushRound
+        // drains it into the round the drop actually happened in.
+        const entry = {
             timestamp: Date.now(), playerId: ai.id,
             move: controller._moveNo, latencyMs: controller._moveMs,
             civName: civ?.name || ai.civilization,
@@ -6292,7 +6296,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             outcomeCode: 'log.out.laneDropped',
             outcomeParams: { n: cmds.length },
             lang: controller.model && controller.model.language
-        });
+        };
+        const seat = controller.seat || controller;
+        if (this.turnBased) (seat.pendingControl || (seat.pendingControl = [])).push(entry);
+        else this.commitDecision(entry);   // free-running has no round to hold it for
     }
 
     noteLaneDuplicate(controller, what) {
@@ -8390,6 +8397,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Held failures first, so a seat that contributed nothing still appears in its
         // round rather than vanishing from it.
         for (const c of live) {
+            // Control entries first: a dropped answer happened DURING the round, before
+            // the moves below run at its close. commitDecision unshifts, so committing
+            // it first is what puts it under them where it belongs.
+            if (c.pendingControl && c.pendingControl.length) {
+                for (const e of c.pendingControl) this.commitDecision(e);
+                c.pendingControl = [];
+            }
             for (const lane of (c.lanes || [])) {
                 if (!lane.pendingLog || !lane.pendingLog.length) continue;
                 for (const e of lane.pendingLog) this.commitDecision(e);
@@ -8521,6 +8535,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         try { this.askFinalWord(controller, 'defeated'); } catch (e) { /* never block a retirement */ }
         this.abortLanes(controller, 'seat defeated');
         controller.seat.pendingAttackReports = [];
+        controller.seat.pendingControl = [];      // a held card outlives nothing
         const ai = controller.aiPlayer;
         if (ai) {
             const civ = getCivilization(ai.civilization);
@@ -8544,6 +8559,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         for (const c of this.aiControllers) {
             this.abortLanes(c, 'match stopped');
             c.pendingAttackReports = [];     // drop unresolved arrival reports
+            c.pendingControl = [];           // ...and any card held for a round that will not come
         }
         this.pendingRequests.clear();
     }

@@ -2979,6 +2979,7 @@ class UIManager {
             defeated: t('log.defeated'),
             explore: t('log.explore'),
             round_missed: t('log.round_missed'),
+            lane_answer_dropped: t('log.lane_answer_dropped'),
             assign_workers: t('log.assign_workers'),
             delete_unit: t('log.delete_unit'),
             destroy_building: t('log.destroy_building'),
