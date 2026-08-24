@@ -440,8 +440,15 @@ class OpenAIAIManager {
         // workerJob, and that happened after the snapshot went out.
         // Its sibling assignIdleTaken is deliberately NOT here: there the seat spent
         // the idle hands itself, earlier in the same reply, and could have counted.
+        // laneResearchBusy: "research.current" said null when this seat read the state
+        // and a different tech is running now. Only reachable with more than one lane --
+        // a single-lane seat is the only thing that starts research, so a clash there is
+        // its own doing and stays scored. Its sibling case, ordering the tech that is
+        // now running, never arrives here at all: the intent is met, so it is reported
+        // as the success it got.
         return new Set(['trainerBusy', 'noWorkerIdleBuild', 'noClearSpot', 'assignAllCarrying',
-                        'targetGone', 'orderedUnitsGone', 'assignIdleRaced', 'assignIdleFighting']);
+                        'targetGone', 'orderedUnitsGone', 'assignIdleRaced', 'assignIdleFighting',
+                        'laneResearchBusy']);
     }
     // haveString / haveObj lived here: the player's stock as a sentence and as an object,
     // built for the four affordability rejections and used nowhere else. Both are gone
@@ -3281,6 +3288,12 @@ class OpenAIAIManager {
             });
             controller._shownBuildings = shownB;
             controller._shownResearched = new Set(Object.keys(ai.researchedTechs || {}));
+            // What the board said was RUNNING, which the completed set cannot answer.
+            // null means "nothing running" and is the only value that makes a later
+            // clash blind; absent (never recorded) is not null, so a caller without a
+            // snapshot fails safe into the ordinary path.
+            controller._shownResearching = ai.currentResearch ? ai.currentResearch.techId : null;
+            controller._shownAgeUpgrading = !!ai.currentAgeUpgrade;
             // High-water marks, for the closing question only. Recorded here because
             // this is the one place a seat's whole picture is already assembled, which
             // is cheaper than re-reading the recorder at match end -- and it costs a
@@ -5326,7 +5339,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 break;
 
             case 'upgrade_age':
-                actionResult = this.executeUpgradeAge(ai, game);
+                actionResult = this.executeUpgradeAge(ai, game, controller);
                 break;
 
             case 'build_structure':
@@ -5982,9 +5995,29 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
 
         if (ai.currentResearch) {
+            const running = ai.currentResearch.techId;
+            // The board this lane was handed said nothing was running. Without lanes
+            // that cannot happen -- the seat is the only thing that starts research, so
+            // a clash is its own doing and is scored. With them, a sibling started one
+            // after the snapshot went out and the seat had no way to know.
+            const blind = controller && controller._shownResearching === null;
+            if (blind && running === techId) {
+                // It asked for exactly what is now running, so its intent is met and the
+                // next state will agree. Same reasoning as a duplicate building: report
+                // the success it actually got.
+                this.noteLaneDuplicate(controller, 'tech:' + techId);
+                this.outcome('log.out.laneDuplicateTech', { techId });
+                return `OK - "${techId}" is already being researched. Nothing was spent.`;
+            }
             console.log(`[OpenAIAI] ${ai.id}: Already researching a tech`);
-            this.outcome('log.out.alreadyResearching', { techId: ai.currentResearch.techId });
-            return `[ERROR] research_tech: "${ai.currentResearch.techId}" already running. One at a time; secondsRemaining in "research.current".`;
+            // A DIFFERENT tech is running, so this one genuinely did not start and
+            // saying otherwise would be a promise the next state breaks. The words stay
+            // exactly as they were -- they are accurate and carry no blame. Only the
+            // accounting changes: a blind clash goes to the contended column instead of
+            // being scored as a mistake the seat could have avoided.
+            this.outcome(blind ? 'log.out.laneResearchBusy' : 'log.out.alreadyResearching',
+                         { techId: running });
+            return `[ERROR] research_tech: "${running}" already running. One at a time; secondsRemaining in "research.current".`;
         }
 
         // Check age requirement
@@ -6045,7 +6078,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         return `OK - Researching "${techId}" — ~${researchSecs}s, secondsRemaining in "research.current". One tech at a time.`;
     }
 
-    executeUpgradeAge(ai, game) {
+    executeUpgradeAge(ai, game, controller) {
         const ages = ['stone', 'neolithic', 'bronze', 'iron'];
         const currentIdx = ages.indexOf(ai.age);
         if (currentIdx >= ages.length - 1) {
@@ -6056,6 +6089,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
         if (ai.currentAgeUpgrade) {
             console.log(`[OpenAIAI] ${ai.id}: Already upgrading age`);
+            // Simpler than the research case: there is only one next age, so a seat
+            // whose board showed no advance running and finds one now asked for exactly
+            // what is happening. Intent met, and the next state will agree.
+            if (controller && controller._shownAgeUpgrading === false) {
+                this.noteLaneDuplicate(controller, 'age:' + ai.currentAgeUpgrade.targetAge);
+                this.outcome('log.out.laneDuplicateAge', { age: ai.currentAgeUpgrade.targetAge });
+                return `OK - already advancing to "${ai.currentAgeUpgrade.targetAge}". Nothing was spent.`;
+            }
             this.outcome('log.out.alreadyUpgrading', { age: ai.currentAgeUpgrade.targetAge });
             return `[ERROR] upgrade_age: already advancing to "${ai.currentAgeUpgrade.targetAge}".`;
         }
