@@ -6274,8 +6274,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!ai) return;
         const cmds = this.normalizeCommands(actionData) || [];
         const civ = getCivilization(ai.civilization);
-        this.pushDecisionFor(ai, {
+        // Committed straight, NOT held for flushRound. A held entry lives in the lane's
+        // pendingLog until the next flush, and startTurn empties that at kickoff -- so a
+        // lane freed by this very drop wiped its own card before any flush could take it.
+        // Every card written, zero cards arriving, and only the counter to show for it.
+        //
+        // Holding is for entries that belong to a ROUND's action block. This one belongs
+        // to no round -- that is what being dropped means -- so it goes the way the other
+        // control entries go, the same as round_missed and self_heal.
+        this.commitDecision({
             timestamp: Date.now(), playerId: ai.id,
+            move: controller._moveNo, latencyMs: controller._moveMs,
             civName: civ?.name || ai.civilization,
             color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
             action: 'lane_answer_dropped', reason: '', params: {}, failed: false, error: null,
@@ -6283,7 +6292,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             outcomeCode: 'log.out.laneDropped',
             outcomeParams: { n: cmds.length },
             lang: controller.model && controller.model.language
-        }, controller);
+        });
     }
 
     noteLaneDuplicate(controller, what) {
@@ -8780,7 +8789,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                         // so it must not touch the action counters. It is the third drain
                         // beside blind duplicates and truncated replies, and the only one
                         // that was invisible.
-                        this.noteLaneDropped(controller, actionData);
+                        // the LANE, not the seat: _moveNo and _moveMs are per-request,
+                        // so the card would otherwise arrive with no move number and no
+                        // inference time -- the two fields that place it in the log.
+                        this.noteLaneDropped(lane, actionData);
                     }
                     return;
                 }
