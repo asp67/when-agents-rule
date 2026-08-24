@@ -8285,7 +8285,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // together and buy nothing.
     fillLanes(live, now) {
         for (const c of live) {
-            if (this.seatAnswered(c)) continue;      // its answer for this round is already in
+            // NOT gated on whether the seat has already answered. That skip was the
+            // drain: a seat that answered early sat with a free lane doing nothing
+            // while the round waited on the OTHER seat, and by the time the next round
+            // opened the pipeline had emptied. Both lanes then started together, landed
+            // together, and emptied together -- 13 of 38 rounds asking both at once,
+            // with landings 0s apart between two-minute droughts.
+            //
+            // A pipeline is full or it is not a pipeline. A lane that comes free takes
+            // fresh work at once; its answer serves whichever round is open when it
+            // lands. One answer per round is still enforced, but at the ANSWER, where
+            // it belongs -- not by leaving hardware idle.
             if (!(c._kickoffBudget > 0)) continue;   // this round's asks are spent -- see below
             if (!this.freeLane(c)) continue;         // every lane in the air
             // The stagger applies whenever this seat ALREADY has a request out -- we are
@@ -8323,8 +8333,16 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // empty, both prime) and one thereafter (one lands, one is still thinking).
     resetKickoffBudget(live) {
         for (const c of live) {
-            const cap = (c.lanes || []).length;
-            c._kickoffBudget = Math.max(0, cap - c.lanes.filter(l => l.busy).length);
+            // The lane count, flat -- not "minus the ones already working". Subtracting
+            // them was right while a seat could only be asked before it answered; now a
+            // lane that frees mid-round must be able to take work, and the old figure
+            // was exactly zero in that case. Which re-drained the pipeline it was meant
+            // to keep full.
+            //
+            // What it still bounds is a seat with a broken endpoint: at most `lanes`
+            // fresh asks per round, so a refusing seat cannot be retried in a loop
+            // until the deadline. That is the whole job this number has left.
+            c._kickoffBudget = (c.lanes || []).length;
         }
     }
 
