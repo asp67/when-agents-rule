@@ -2197,6 +2197,9 @@ class OpenAIAIManager {
                 minimizeTokens: !!conn.minimizeTokens, // true = compact one-line history (Option A)
                 toolFallback: !!conn.toolFallback, // true = accept inline JSON when no tool call arrives
                 language: conn.language || 'en', // language the model reasons/answers in (independent of GUI)
+                // EXPERIMENTAL. How many overlapping requests this seat may keep in the
+                // air. 1 is today's behaviour exactly. See the lane pool below.
+                lanes: Math.max(1, Math.min(4, Number(conn.lanes) || 1)),
                 libraryId: conn.libraryId != null ? conn.libraryId : null,
                 customSystemPrompt: playerSetup.systemPrompt || null
             };
@@ -2221,7 +2224,6 @@ class OpenAIAIManager {
                 model: modelInfo,
                 lastTurnTime: 0,
                 turnCount: 0,
-                pending: false,
                 paused: false, // spectator can pause a model (e.g. when it runs out of quota)
                 conversationHistory: [], // Stores {action, result} for feedback loop
                 turnLog: [], // Rolling multi-turn pairs {user, assistant} for Option C
@@ -2233,6 +2235,47 @@ class OpenAIAIManager {
                 pendingAttackReports: [], // open attack-move orders awaiting an arrival verdict
                 stats: this.newStats() // Behavior/performance metrics for the summary
             };
+
+            // ---- Lanes ---------------------------------------------------------
+            // A LANE owns one request; the SEAT owns the match. Each lane is a facade
+            // over the controller (Object.create), so anything it does not set itself
+            // -- aiPlayer, conversationHistory, turnLog, stats, objective, plan -- is
+            // read straight off the seat. One brain, several mouths.
+            //
+            // Per-turn scratch (_abort, _moveNo, _pendingTurnUser, _answeredVia...) is
+            // written on the lane, so two overlapping requests cannot stamp over each
+            // other's. That is the whole reason lanes are objects rather than a counter.
+            //
+            // Two kinds of field must NOT land on a lane:
+            //   * endpoint health -- _failStreak, _sameErrStreak, _lastErrKey, _healStage.
+            //     N lanes would each need their own N failures before the self-heal
+            //     ladder fired, so a poisoned history would take N times as long to
+            //     clear. The history is shared; its remedy has to be too.
+            //   * anything a SEAT lookup reads back -- _moveNo, _moveMs, _sentIdle,
+            //     _idleTaken. pushDecisionFor and noteIdleTaken find the controller by
+            //     aiPlayer, which yields the seat and never a lane, so a value written
+            //     on the lane would read as undefined there.
+            // Both are written through `.seat`, which points at the controller from a
+            // lane and at itself from the seat -- so the same line is correct either way.
+            //
+            // Lanes are built once and reused for the whole match. A lane rebuilt per
+            // turn would drop the very fields above between turns.
+            controller.seat = controller;
+            controller.lanes = [];
+            for (let i = 0; i < modelInfo.lanes; i++) {
+                const lane = Object.create(controller);
+                lane.laneNo = i;
+                lane.busy = false;
+                controller.lanes.push(lane);
+            }
+            // Kept as a read-only view so every existing reader -- including ui.js's
+            // "thinking" dot -- keeps working without knowing lanes exist. The setter
+            // is deliberately release-only: nothing may claim a lane through it.
+            Object.defineProperty(controller, 'pending', {
+                get() { return (this.lanes || []).some(l => l.busy); },
+                set(v) { if (!v) (this.lanes || []).forEach(l => { l.busy = false; }); },
+                enumerable: false, configurable: true
+            });
 
             this.aiControllers.push(controller);
             console.log(`[OpenAIAI] Assigned model "${modelInfo.name}" (${modelInfo.endpoint}) to AI "${ai.civilization}" (${ai.id})`);
@@ -2843,13 +2886,13 @@ class OpenAIAIManager {
         // asks for idle hands is not making a mistake -- it is answering a state that
         // expired while it thought, which is the definition of a contended turn and
         // not of a rejected one.
-        if (controller) controller._sentIdle = wk.idle;
+        if (controller) controller.seat._sentIdle = wk.idle;
         // ...and the tally of how many of them this turn's own calls spend. A reply may
         // carry three commands; if the first builds and the second asks for idle hands,
         // the pool was emptied by the model, not by the clock. That is the one version
         // of this rejection the model can act on, so it has to be told apart from the
         // two it cannot -- see the empty-pool branch in executeAssignWorkers.
-        if (controller) controller._idleTaken = 0;
+        if (controller) controller.seat._idleTaken = 0;
 
         // Enemy units (very compact)
         const enemyUnits = [];
@@ -3982,8 +4025,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // the reply lands, and read from there by every decision-log entry the turn
         // produces. Cleared first: a request that never comes back must not hand the
         // previous turn's numbers to the entry that reports its failure.
-        controller._moveNo = null;
-        controller._moveMs = null;
+        controller.seat._moveNo = null;
+        controller.seat._moveMs = null;
         try {
             // Build provider-specific auth headers + request (url, body).
             const auth = model.auth || (model.apiKey ? { type: 'bearer', key: model.apiKey } : { type: 'none' });
@@ -4169,8 +4212,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // counter, read one call early because parseResponse writes its failure
             // entries before the turn exists. Nothing else runs for this seat in
             // between, so the log's #7 and the transcript's #7 cannot drift apart.
-            controller._moveNo = ((this.transcripts && this.transcripts.turnsFor(ai.id)) || 0) + 1;
-            controller._moveMs = Date.now() - reqStart;
+            controller.seat._moveNo = ((this.transcripts && this.transcripts.turnsFor(ai.id)) || 0) + 1;
+            controller.seat._moveMs = Date.now() - reqStart;
 
             // The self-heal ladder resets HERE, where a reply demonstrably exists, and
             // not on any of the three exits below. Those distinguish how the reply
@@ -4179,9 +4222,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // Resetting on the parse-clean exit alone left a streak counting across a
             // healthy turn, so two failures either side of a good answer read as four
             // and healed a seat that had nothing wrong with it.
-            controller._sameErrStreak = 0;
-            controller._lastErrKey = null;
-            controller._healStage = 0;
+            controller.seat._sameErrStreak = 0;
+            controller.seat._lastErrKey = null;
+            controller.seat._healStage = 0;
 
             const result = this.parseResponse(norm, controller);
 
@@ -4334,7 +4377,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (result && result.noAction) {
                 this.registerNoActionReturn(controller,
                     OpenAIAIManager.hitTokenCap(norm && norm.finish_reason), askedMax);
-                controller._failStreak = 0;
+                controller.seat._failStreak = 0;
                 return stampResult(controller.lastActionResult);
             }
 
@@ -4351,7 +4394,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     : `[ERROR] Your reply contained an "action" but was not valid JSON, so nothing was executed.${result.why ? ` The parser stopped here: ${result.why}.` : ''}${result.near ? ` Your reply up to that point ended: ...${result.near}` : ''}`;
                 const lastMalformed = controller.turnLog[controller.turnLog.length - 1];
                 if (lastMalformed && lastMalformed.outcome == null) lastMalformed.outcome = controller.lastActionResult;
-                controller._failStreak = 0;
+                controller.seat._failStreak = 0;
                 return stampResult(controller.lastActionResult);
             }
 
@@ -4389,7 +4432,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 stampResult(controller.lastActionResult);
             }
 
-            controller._failStreak = 0; // endpoint reachable (parse problems aside)
+            controller.seat._failStreak = 0; // endpoint reachable (parse problems aside)
             return result;
         } catch (err) {
             console.error(`[OpenAIAI] Request failed for ${ai.id}:`, err);
@@ -4405,7 +4448,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // self-heal entirely: it would overflow, get counted against its reliability,
             // and overflow again on identical terms next turn.
             if (/context length|context window|maximum context|context size|exceeds the available context|input is too large|prompt is too long|too many tokens|reduce the length/i.test(err.message || '')) {
-                controller._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
+                controller.seat._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
                 console.warn(`[OpenAIAI] ${ai.id}: context overflow — shrinking budget to ${Math.round(controller._ctxShrink * 100)}% and retrying next turn.`);
                 controller.lastActionResult = `[ERROR] Your previous request was too large for the model's context and was dropped; the history window has been trimmed. Continue normally.`;
                 // Count it — a lost turn is a lost turn. Tracked separately from
@@ -4463,8 +4506,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // The number is the turn the transcript will file the NEXT reply under, so a
             // failure and the retry that succeeds both read #8. That is what happened:
             // two attempts at move 8, one of which did not come back.
-            controller._moveNo = ((this.transcripts && this.transcripts.turnsFor(ai.id)) || 0) + 1;
-            controller._moveMs = Date.now() - tStart;
+            controller.seat._moveNo = ((this.transcripts && this.transcripts.turnsFor(ai.id)) || 0) + 1;
+            controller.seat._moveMs = Date.now() - tStart;
             // Behavior metrics: classify the failure
             const s = controller.stats;
             if (s) {
@@ -4502,23 +4545,23 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const errKey = String(err.message || '').slice(0, 120);
             const fromServer = /API error \(\d+\)/.test(errKey);
             if (fromServer && errKey === controller._lastErrKey) {
-                controller._sameErrStreak = (controller._sameErrStreak || 1) + 1;
+                controller.seat._sameErrStreak = (controller._sameErrStreak || 1) + 1;
             } else {
-                controller._sameErrStreak = 1;
-                controller._healStage = 0;
+                controller.seat._sameErrStreak = 1;
+                controller.seat._healStage = 0;
             }
-            controller._lastErrKey = fromServer ? errKey : null;
+            controller.seat._lastErrKey = fromServer ? errKey : null;
             const HEAL_STRIP = 3, HEAL_DROP = 6;
             const log = controller.turnLog || [];
             let healed = null;
             if (fromServer && controller._sameErrStreak >= HEAL_DROP && (controller._healStage || 0) < 2 && log.length) {
                 controller.turnLog = [];
-                controller._healStage = 2;
+                controller.seat._healStage = 2;
                 healed = `the recorded history of this match was dropped after ${controller._sameErrStreak} identical endpoint errors`;
             } else if (fromServer && controller._sameErrStreak >= HEAL_STRIP && (controller._healStage || 0) < 1
                        && log.some(p => p.toolCalls && p.toolCalls.length)) {
                 log.forEach(p => { p.toolCalls = null; });
-                controller._healStage = 1;
+                controller.seat._healStage = 1;
                 healed = `the tool calls in your recorded history were dropped after ${controller._sameErrStreak} identical endpoint errors`;
             }
             if (healed) {
@@ -4544,7 +4587,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // In a PLAYER game (not the arena benchmark), an unreachable endpoint
             // hands this opponent to the rule-based AI so the player still faces a
             // real opponent. The arena keeps failures as-is (they're part of the eval).
-            controller._failStreak = (controller._failStreak || 0) + 1;
+            controller.seat._failStreak = (controller._failStreak || 0) + 1;
             if (!this.game.spectatorMode && controller._failStreak >= 2) {
                 this.demoteToRuleBased(controller);
                 return null;
@@ -7716,8 +7759,16 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Flag it BEFORE aborting: the rejection this causes is about to surface in
         // sendToOpenAI's catch, which otherwise cannot tell our own scissors from a
         // failing endpoint and used to bill the model for both.
-        controller._deadlineAbort = true;
-        try { if (controller._abort) controller._abort.abort(); } catch (e) { /* already settled */ }
+        // Cut only the lanes that were asked THIS round. The handle is written per
+        // request, so it lives on the lane -- reaching for controller._abort would find
+        // nothing, and the deadline would be announced to the log while the request it
+        // was meant to cancel ran happily on. A lane still working on an earlier round's
+        // question is deliberately left alone: it is mid-pipeline, not overdue.
+        for (const l of (controller.lanes || [])) {
+            if (!l.busy || l.askedInRound !== this._roundNo) continue;
+            l._deadlineAbort = true;
+            try { if (l._abort) l._abort.abort(); } catch (e) { /* already settled */ }
+        }
         const msg = `[TIMEOUT] Your answer did not arrive within ${secs}s of the state being sent, so this round was played without you. Every round gives every player the same ${secs}s; see clock.secondsToAnswer.`;
         controller.conversationHistory.push({
             action: 'round_missed', reason: '', result: msg, failed: true
@@ -7775,6 +7826,26 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // leaves the number untouched, so the number alone would let that answer through.
     roundStillOpen(round) { return this._roundPhase === 'wait' && round === this._roundNo; }
 
+    // ---- Lane pool ----------------------------------------------------------
+    // At one lane these are exactly the old `controller.pending` boolean, spelled
+    // out. At more than one they are the only place that knows the difference.
+    seatBusy(c) { return !!(c && c.lanes && c.lanes.some(l => l.busy)); }
+    freeLane(c) { return (c && c.lanes && c.lanes.find(l => !l.busy)) || null; }
+    releaseLanes(c) { if (c && c.lanes) c.lanes.forEach(l => { l.busy = false; }); }
+
+    // Stop every request this seat has out. The abort handle is written per REQUEST
+    // and therefore lives on the lane -- reaching for controller._abort would find
+    // nothing and cancel nothing, which is how a retired seat kept talking.
+    abortLanes(c, reason) {
+        if (!c) return;
+        c._abortReason = reason;
+        for (const l of (c.lanes || [])) {
+            l._abortReason = reason;
+            try { if (l._abort) l._abort.abort(); } catch (e) { /* already settled */ }
+        }
+        this.releaseLanes(c);
+    }
+
     updateTurnBased(now, pausing) {
         const live = this.aiControllers.filter(c => {
             if (this.isControllerDefeated(c)) { if (!c.defeated) this.markDefeated(c); return false; }
@@ -7783,14 +7854,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!live.length) return;
 
         if (this._roundPhase === 'wait') {
-            if (live.some(c => c.pending)) {
+            if (live.some(c => this.seatBusy(c))) {
                 if (now - this._roundStartedAt <= this.roundTimeoutMs()) return;
                 // One unreachable endpoint must not stall the other three: release
                 // them, let the round resolve, and the slow seat simply misses it.
                 // Missing seats are told so on their next turn — a deadline enforced
                 // in silence is one a model cannot budget against.
-                live.filter(c => c.pending).forEach(c => this.noteRoundMissed(c));
-                live.forEach(c => { c.pending = false; });
+                live.filter(c => this.seatBusy(c)).forEach(c => this.noteRoundMissed(c));
+                live.forEach(c => this.releaseLanes(c));
             }
             this.flushRound(live);
             this._roundPhase = 'ask';
@@ -7857,7 +7928,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // the gate has to let the round finish rather than jump the fence.
         const pausing = !!(this.game && this.game.pauseState !== 'running');
         if (pausing) {
-            const busy = this.aiControllers.some(c => c.pending || c.queuedAction);
+            const busy = this.aiControllers.some(c => this.seatBusy(c) || c.queuedAction);
             if (!busy) {
                 this.game.pauseState = 'paused';
                 if (this.game.ui && this.game.ui.updateSimSpeedButton) this.game.ui.updateSimSpeedButton();
@@ -7878,7 +7949,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             }
             if (controller.paused) continue;                                  // spectator paused it
             if (pausing) continue;                                            // pause requested: open nothing new
-            if (controller.pending) continue;                                 // own pipeline busy
+            if (!this.freeLane(controller)) continue;                          // every lane busy
             if (now - controller.lastTurnTime < this.turnInterval) continue;  // small breather
             this.startTurn(controller, now);
         }
@@ -7900,14 +7971,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // Player game only: an LLM opponent whose endpoint is unreachable is handed to
     // the rule-based AI so the human still has a real opponent. Removes the LLM
     // controller and lets aiManager drive that player from now on.
-    demoteToRuleBased(controller) {
-        if (controller._demoted) return;
+    demoteToRuleBased(lane) {
+        // Called from inside the send path, so what arrives is a LANE. Retiring a seat
+        // is a seat operation: the identity filter below compares against the objects in
+        // aiControllers, and a lane is never one of them -- it would match nothing, log
+        // the handover, and leave the LLM controller in the list still firing requests.
+        const controller = (lane && lane.seat) || lane;
+        if (!controller || controller._demoted) return;
         controller._demoted = true;
         const ai = controller.aiPlayer;
         this.aiControllers = this.aiControllers.filter(c => c !== controller);
-        controller._abortReason = 'handed to the rule-based AI';
-        try { if (controller._abort) controller._abort.abort(); } catch (e) { /* settled */ }
-        controller.pending = false;
+        this.abortLanes(controller, 'handed to the rule-based AI');
         if (ai) {
             this.game.aiManager.openAIControlled.delete(ai.id); // rule-based brain takes over
             const civ = getCivilization(ai.civilization);
@@ -7925,14 +7999,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
     // Permanently retire a defeated controller: abort its in-flight request, mark it
     // so any late resolution is dropped, and note it once in the spectator log.
-    markDefeated(controller) {
+    markDefeated(lane) {
+        const controller = (lane && lane.seat) || lane;   // seat operation; see demoteToRuleBased
+        if (!controller) return;
         controller.defeated = true;
         // Before the abort below, and deliberately fire-and-forget: this seat is out, so
         // nothing in the match is waiting on its answer.
         try { this.askFinalWord(controller, 'defeated'); } catch (e) { /* never block a retirement */ }
-        controller._abortReason = 'seat defeated';
-        try { if (controller._abort) controller._abort.abort(); } catch (e) { /* already settled */ }
-        controller.pending = false;
+        this.abortLanes(controller, 'seat defeated');
         controller.pendingAttackReports = [];
         const ai = controller.aiPlayer;
         if (ai) {
@@ -7955,9 +8029,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     stop() {
         this._stopped = true;
         for (const c of this.aiControllers) {
-            c._abortReason = 'match stopped';
-            try { if (c._abort) c._abort.abort(); } catch (e) { /* already settled */ }
-            c.pending = false;
+            this.abortLanes(c, 'match stopped');
             c.pendingAttackReports = [];     // drop unresolved arrival reports
         }
         this.pendingRequests.clear();
@@ -8107,8 +8179,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
     }
 
-    // Fire a single turn for one controller on its own independent pipeline.
+    // Fire a single turn for one controller on the first free lane it has.
     startTurn(controller, now = Date.now()) {
+        // Both callers already check, but a seat with every lane in the air must never
+        // silently overwrite one: that is the failure the pool exists to make impossible.
+        const lane = this.freeLane(controller);
+        if (!lane) return;
         // Real turn-to-turn cadence, MEASURED before lastTurnTime is overwritten.
         // This is the model's own thinking time plus the breather plus any scheduling
         // delay it met — the only number that converts the state's seconds into
@@ -8123,18 +8199,22 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
         controller.lastTurnTime = now;
         controller.turnCount++;
-        controller.pending = true;
+        lane.busy = true;
+        lane.askedInRound = this._roundNo;
         // Anything still held here belongs to a round that has already resolved without
         // it -- the same reason a late ANSWER is dropped rather than replayed. The stats
         // already counted it; only the log line goes.
         controller.pendingLog = [];
 
-        console.log(`[OpenAIAI] Turn #${controller.turnCount} for ${controller.id} (${controller.aiPlayer.civilization})`);
+        const tag = controller.lanes.length > 1 ? ` lane ${lane.laneNo + 1}/${controller.lanes.length}` : '';
+        console.log(`[OpenAIAI] Turn #${controller.turnCount} for ${controller.id} (${controller.aiPlayer.civilization})${tag}`);
 
-        const gameState = this.buildGameStateJSON(controller);
-        const askedInRound = this._roundNo;
+        // From here down the LANE is the controller: every per-request field the send
+        // path writes lands on it, and everything else falls through to the seat.
+        const gameState = this.buildGameStateJSON(lane);
+        const askedInRound = lane.askedInRound;
 
-        const promise = this.sendToOpenAI(controller, gameState)
+        const promise = this.sendToOpenAI(lane, gameState)
             .then(actionData => {
                 if (this._stopped || controller.defeated) return; // ended or defeated mid-flight — drop it
                 if (!actionData) {
@@ -8149,17 +8229,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     if (this.roundStillOpen(askedInRound)) controller.queuedAction = actionData;
                     return;
                 }
-                this.executeTurn(controller, actionData);
+                this.executeTurn(lane, actionData);
             })
             .catch(err => {
                 console.error(`[OpenAIAI] Turn failed for ${controller.id}:`, err);
             })
             .finally(() => {
-                controller.pending = false;
-                this.pendingRequests.delete(controller.id);
+                lane.busy = false;
+                this.pendingRequests.delete(`${controller.id}:${lane.laneNo}`);
             });
 
-        this.pendingRequests.set(controller.id, promise);
+        this.pendingRequests.set(`${controller.id}:${lane.laneNo}`, promise);
     }
 }
 
