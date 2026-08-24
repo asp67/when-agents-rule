@@ -3716,6 +3716,7 @@ class UIManager {
                     // not in the error total: nothing was refused and nothing was spent.
                     // It belongs beside `lanes` in the header as the other half of one
                     // trade — the decision rate a seat gained, and what that cost it.
+                    laneDropped: st.laneDropped || 0,
                     laneDuplicates: st.laneDuplicates || 0,
                     laneDuplicatesBy: st.laneDuplicatesBy || {},
                     contextOverflows: ctxOv, roundsMissed: missed,

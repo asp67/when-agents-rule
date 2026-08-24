@@ -360,6 +360,7 @@ class OpenAIAIManager {
                                   // a reply cut mid-tool-call that still ran two actions is a
                                   // reply the model did not finish, and it used to read clean.
             noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
+            laneDropped: 0,       // EXPERIMENTAL: complete replies no round could take.
             laneDuplicates: 0,    // EXPERIMENTAL, rolling inference only. Orders dropped because
             laneDuplicatesBy: {}, // the thing had appeared after the board that lane was given.
                                   // Reported, never compensated: this is the price of the
@@ -6262,6 +6263,29 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         return standing > (shownMap[buildingType] || 0) + mine;
     }
 
+    // A complete reply no round could use. Counted and shown, never silently dropped:
+    // it is a paid-for inference that produced nothing, and the only drain of the three
+    // that had no number. Logged as a control entry so it cannot touch the action
+    // counters -- nothing was attempted, so nothing may be scored.
+    noteLaneDropped(controller, actionData) {
+        const s = controller && controller.stats;
+        if (s) s.laneDropped = (s.laneDropped || 0) + 1;
+        const ai = controller && controller.aiPlayer;
+        if (!ai) return;
+        const cmds = this.normalizeCommands(actionData) || [];
+        const civ = getCivilization(ai.civilization);
+        this.pushDecisionFor(ai, {
+            timestamp: Date.now(), playerId: ai.id,
+            civName: civ?.name || ai.civilization,
+            color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
+            action: 'lane_answer_dropped', reason: '', params: {}, failed: false, error: null,
+            isControl: true,
+            outcomeCode: 'log.out.laneDropped',
+            outcomeParams: { n: cmds.length },
+            lang: controller.model && controller.model.language
+        }, controller);
+    }
+
     noteLaneDuplicate(controller, what) {
         const s = controller && controller.stats;
         if (!s) return;
@@ -8258,8 +8282,16 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // first answer and binned the second, and the seat paid two inferences per
             // round for one turn of play -- 14 requests over 7 rounds, measured.
             // At one lane a busy lane means no free lane, so this never runs.
-            const busy = c.lanes.filter(l => l.busy).length;
-            if (busy > 0 && c._lastKickoff && (now - c._lastKickoff) < this.laneStagger(c)) continue;
+            // Unconditional. Gating on "is a lane already busy" fails in exactly the
+            // case that matters: when BOTH lanes have come free, busy is 0, the test is
+            // skipped, and the pair is launched back to back -- so they land together,
+            // free together, and launch together again. Self-reinforcing, and measured
+            // at 13 of 38 rounds asking both lanes at once, with landings 0s apart
+            // bracketed by two-minute droughts. What the gate is for is the SPACING
+            // between one seat's consecutive asks, which has nothing to do with how
+            // many are in the air at the time.
+            if (c.lanes.length > 1 && c._lastKickoff
+                && (now - c._lastKickoff) < this.laneStagger(c)) continue;
             c._kickoffBudget--;
             this.startTurn(c, now);
         }
@@ -8736,6 +8768,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                         // record that lane wrote, and the idle counts it is judged
                         // against came from the state that lane was sent.
                         controller.answeringLane = lane;
+                    } else {
+                        // A complete, valid, paid-for inference that no round will take.
+                        // It used to vanish here, which made the log look misaligned --
+                        // failures were still written by parseResponse on their way out,
+                        // so a lane seat showed every one of its refusals and only the
+                        // successes a round happened to use. Measured on one match: 11 of
+                        // 50 replies, every one carrying real commands.
+                        //
+                        // Logged as a control entry, not an action: nothing was executed,
+                        // so it must not touch the action counters. It is the third drain
+                        // beside blind duplicates and truncated replies, and the only one
+                        // that was invisible.
+                        this.noteLaneDropped(controller, actionData);
                     }
                     return;
                 }
