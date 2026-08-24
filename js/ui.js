@@ -500,6 +500,14 @@ class UIManager {
         if (document.getElementById('modelLibraryList')) this.renderArenaLibrary();
     }
 
+    // EXPERIMENTAL — rolling inference. How many requests this model may keep in the
+    // air at once. Clamped to 1..4 in one place so a hand-edited config, an old stored
+    // entry and the picker cannot disagree; 1 is ordinary play and the default.
+    laneCountOf(m) {
+        const n = parseInt(m && m.lanes, 10);
+        return (n >= 1 && n <= 4) ? n : 1;
+    }
+
     normalizeArenaModel(m) {
         const def = this.makeArenaModel();
         m.availableModels = Array.isArray(m.availableModels) ? m.availableModels : [];
@@ -520,6 +528,7 @@ class UIManager {
         if (m.contextSize == null) m.contextSize = '';
         m.minimizeTokens = !!m.minimizeTokens;
         m.toolFallback = !!m.toolFallback;
+        m.lanes = this.laneCountOf(m);
         if (m.maxContext == null) m.maxContext = null;
         m.availableModelContext = {}; // runtime-only; never trust stored values
         m.auth = Object.assign({}, def.auth, m.auth || {});
@@ -1063,6 +1072,14 @@ class UIManager {
             <p class="auth-hint">${t('ar.minimizeTokensHint')}</p>
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.toolFallback ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'toolFallback',this.checked)"> ${t('ar.toolFallback')}</label>
             <p class="auth-hint">${t('ar.toolFallbackHint')}</p>
+            <div class="model-select-row"><div class="arena-field">
+                <label>${t('ar.fLanes')} <span class="xp-tag">${t('ar.experimental')}</span></label>
+                <select onchange="game.ui.setModelLanes(${m.id},this.value)">
+                    ${[1, 2, 3, 4].map(n => `<option value="${n}"${this.laneCountOf(m) === n ? ' selected' : ''}>${n === 1 ? t('ar.lanesOff') : t('ar.lanesN').replace('{n}', n)}</option>`).join('')}
+                </select>
+            </div></div>
+            <p class="auth-hint">${t('ar.lanesHint')}</p>
+            ${this.laneCountOf(m) > 1 ? `<p class="auth-hint lanes-warn">${t('ar.lanesWarn')}</p>` : ''}
             <p class="auth-hint">${t('ar.modelLangHint')}</p>
             ${isOllama ? `<p class="auth-hint ollama-hint">${t('ar.ollamaHint')}</p>` : ''}
             </div>
@@ -1193,6 +1210,16 @@ class UIManager {
     // --- Handlers ---
     setModelField(id, field, value) { const m = this.getArenaModel(id); if (m) { m[field] = value; this.saveArenaConfig(); } }
     setModelBool(id, field, value) { const m = this.getArenaModel(id); if (m) { m[field] = !!value; this.saveArenaConfig(); } }
+
+    // Re-renders, unlike setModelBool: the warning line under the picker only exists
+    // above one lane, so the card has to be redrawn for it to appear or go.
+    setModelLanes(id, value) {
+        const m = this.getArenaModel(id);
+        if (!m) return;
+        m.lanes = this.laneCountOf({ lanes: value });
+        this.saveArenaConfig();
+        this.renderArenaLibrary();
+    }
 
     // Fill the context budget with the model's maximum context window. The
     // endpoint's own answers win: first the per-model context map captured during
@@ -1696,6 +1723,8 @@ class UIManager {
                 minimizeTokens: !!m.minimizeTokens,
                 toolFallback: !!m.toolFallback,
                 language: m.language || 'en',
+                // EXPERIMENTAL: overlapping requests for this seat. 1 is normal play.
+                lanes: this.laneCountOf(m),
                 // So a parameter the endpoint refuses mid-match can be recorded against
                 // the entry it came from rather than being relearned every match.
                 libraryId: m.id,

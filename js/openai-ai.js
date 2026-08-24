@@ -1337,6 +1337,12 @@ class OpenAIAIManager {
             toolFallback: !!conn.toolFallback,
             language: conn.language || 'en'
         };
+        // EXPERIMENTAL — rolling inference. Recorded only when it is not 1, because at
+        // 1 it describes ordinary play and belongs in no header. When it IS set it is
+        // the single most important condition on the result: this seat answered as
+        // often as its lane count allowed, so its turn count is not comparable with a
+        // single-lane run of the same model, and neither is its tokens-per-game-second.
+        if (conn.lanes > 1) out.lanes = conn.lanes;
         ['temperature', 'topP', 'topK', 'minP', 'presencePenalty', 'repetitionPenalty']
             .forEach(k => { if (conn[k] != null) out[k] = conn[k]; });
         if (conn.reasoning) out.reasoning = conn.reasoning;
@@ -2266,6 +2272,10 @@ class OpenAIAIManager {
                 const lane = Object.create(controller);
                 lane.laneNo = i;
                 lane.busy = false;
+                // Own property, deliberately. `lane.pendingLog || (lane.pendingLog = [])`
+                // would otherwise resolve through the prototype and push a lane's held
+                // entries into the seat's array -- where a sibling's kickoff clears them.
+                lane.pendingLog = [];
                 controller.lanes.push(lane);
             }
             // Kept as a read-only view so every existing reader -- including ui.js's
@@ -4260,6 +4270,18 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                         // guess -- and shows at once when a seat is living on the
                         // fallback rather than on the contract.
                         answeredVia: controller._answeredVia || null,
+                        // EXPERIMENTAL — rolling inference. Which of the seat's lanes
+                        // produced this, and how many it has. Without the pair, an N=3
+                        // match and an N=2 match are indistinguishable in the archive
+                        // and the experiment yields nothing: these two columns are what
+                        // let a real match compute f(N) -- per-lane latency against the
+                        // single-lane baseline -- and show whether the lanes held their
+                        // spacing or drifted into phase. Omitted entirely at one lane,
+                        // so ordinary transcripts do not grow a field that says 0 of 1.
+                        ...(controller.lanes && controller.lanes.length > 1
+                            ? { lane: controller.laneNo, lanes: controller.lanes.length,
+                                askedInRound: controller.askedInRound }
+                            : {}),
                         // Only when the reply came back empty although tokens were
                         // BILLED. Then the tokens existed and something between the
                         // server and us dropped them -- a model cannot write 940 tokens
@@ -4581,7 +4603,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     lang: (controller.model && controller.model.language) || 'en',
                     outcomeCode: controller._healStage === 2 ? 'log.out.healDropped' : 'log.out.healStripped',
                     outcomeParams: { n: controller._sameErrStreak }
-                });
+                }, controller);
             }
 
             // In a PLAYER game (not the arena benchmark), an unreachable endpoint
@@ -4627,7 +4649,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // network fault.
                 reason: `Request to model failed: ${err.message.substring(0, 90)}`,
                 params: {}, failed: true
-            });
+            }, controller);
             return null;
         }
     }
@@ -4718,7 +4740,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 action: 'tool_call_failed',
                 reason: `Tool call could not be interpreted: ${reason}`,
                 params: {}, failed: true
-            });
+            }, controller);
         };
 
         // The model replied in prose without any JSON action: the decision log
@@ -4732,7 +4754,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 action: 'no_action_provided',
                 reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
                 params: {}, failed: true
-            });
+            }, controller);
         };
 
         // A reply that CONTAINS an action but would not parse is a MALFORMED action,
@@ -4747,7 +4769,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 action: cut ? 'reply_truncated' : 'malformed_action',
                 reason: String(text).replace(/\s+/g, ' ').trim().slice(0, 220),
                 params: {}, failed: true
-            });
+            }, controller);
         };
 
         try {
@@ -7767,6 +7789,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         for (const l of (controller.lanes || [])) {
             if (!l.busy || l.askedInRound !== this._roundNo) continue;
             l._deadlineAbort = true;
+            // Refuse this lane's answer even if the reply beats the abort home: the seat
+            // has already been recorded as missing this round and the board moved on.
+            l.missed = true;
             try { if (l._abort) l._abort.abort(); } catch (e) { /* already settled */ }
         }
         const msg = `[TIMEOUT] Your answer did not arrive within ${secs}s of the state being sent, so this round was played without you. Every round gives every player the same ${secs}s; see clock.secondsToAnswer.`;
@@ -7833,6 +7858,66 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     freeLane(c) { return (c && c.lanes && c.lanes.find(l => !l.busy)) || null; }
     releaseLanes(c) { if (c && c.lanes) c.lanes.forEach(l => { l.busy = false; }); }
 
+    // Has this seat put an answer on the table for the round now open? THIS, not
+    // "is a request out", is what a round waits for. At one lane the two are the
+    // same sentence; at more than one a seat almost always has a request out --
+    // that is the point of the pipeline -- and asking the old question would leave
+    // every round hanging until the deadline.
+    seatAnswered(c) { return !!c && c.answeredRound === this._roundNo; }
+
+    // How far apart two lanes of one seat should be kicked off: the seat's own
+    // recent reply time divided by its lane count, so N lanes land evenly spaced
+    // rather than in a clump. Measured, never configured -- an endpoint that slows
+    // down as the context grows (+77% across a match is normal here) would make any
+    // constant wrong by the second half.
+    laneStagger(c) {
+        const cap = (c.lanes || []).length || 1;
+        const lat = (c.laneLatencies || []).slice().sort((a, b) => a - b);
+        const med = lat.length ? lat[Math.floor(lat.length / 2)] : 0;
+        return Math.max(this.turnInterval, (med || this.turnInterval * cap) / cap);
+    }
+
+    // Top up each seat's pipeline. Called at round open AND every tick while a round
+    // is open, because the second lane of a seat must start PART WAY through a round,
+    // not at its edge -- starting both at the same instant would have them land
+    // together and buy nothing.
+    fillLanes(live, now) {
+        for (const c of live) {
+            if (this.seatAnswered(c)) continue;      // its answer for this round is already in
+            if (!(c._kickoffBudget > 0)) continue;   // this round's asks are spent -- see below
+            if (!this.freeLane(c)) continue;         // every lane in the air
+            // The stagger applies whenever this seat ALREADY has a request out -- we are
+            // topping a pipeline up, not starting one, and the new lane has to land in
+            // the gap rather than beside its sibling.
+            //
+            // Asking instead how many lanes are free reads one lane too late: the moment
+            // the first starts, exactly one is free, so the test was never true and both
+            // launched in the same tick. They then landed together, the round took the
+            // first answer and binned the second, and the seat paid two inferences per
+            // round for one turn of play -- 14 requests over 7 rounds, measured.
+            // At one lane a busy lane means no free lane, so this never runs.
+            const busy = c.lanes.filter(l => l.busy).length;
+            if (busy > 0 && c._lastKickoff && (now - c._lastKickoff) < this.laneStagger(c)) continue;
+            c._kickoffBudget--;
+            this.startTurn(c, now);
+        }
+    }
+
+    // How many fresh asks a seat may open in the round about to start: enough to fill
+    // its lanes, counting the ones already working on an earlier round's question.
+    //
+    // At one lane that is exactly one, which is what stops a seat whose request just
+    // errored from being handed another the same round -- a failing endpoint would
+    // otherwise be retried until the deadline, which is how a poisoned history once
+    // cost 39 consecutive rounds. At two lanes it is two on the first round (both
+    // empty, both prime) and one thereafter (one lands, one is still thinking).
+    resetKickoffBudget(live) {
+        for (const c of live) {
+            const cap = (c.lanes || []).length;
+            c._kickoffBudget = Math.max(0, cap - c.lanes.filter(l => l.busy).length);
+        }
+    }
+
     // Stop every request this seat has out. The abort handle is written per REQUEST
     // and therefore lives on the lane -- reaching for controller._abort would find
     // nothing and cancel nothing, which is how a retired seat kept talking.
@@ -7854,14 +7939,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!live.length) return;
 
         if (this._roundPhase === 'wait') {
-            if (live.some(c => this.seatBusy(c))) {
+            // Keep the pipelines full while the round runs. A seat whose second lane
+            // is still free is mid-priming; it must get going now, not at the next
+            // round edge, or its lanes never spread apart.
+            this.fillLanes(live, now);
+            if (live.some(c => !this.seatAnswered(c))) {
                 if (now - this._roundStartedAt <= this.roundTimeoutMs()) return;
                 // One unreachable endpoint must not stall the other three: release
                 // them, let the round resolve, and the slow seat simply misses it.
                 // Missing seats are told so on their next turn — a deadline enforced
                 // in silence is one a model cannot budget against.
-                live.filter(c => this.seatBusy(c)).forEach(c => this.noteRoundMissed(c));
-                live.forEach(c => this.releaseLanes(c));
+                live.filter(c => !this.seatAnswered(c)).forEach(c => this.noteRoundMissed(c));
+                // Only the lanes that owed THIS round are released; noteRoundMissed has
+                // just cut them. A lane still working an earlier round's question is
+                // mid-pipeline and is left alone -- releasing it would free a slot the
+                // request still occupies, and the next kickoff would overwrite it.
             }
             this.flushRound(live);
             this._roundPhase = 'ask';
@@ -7880,7 +7972,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         this._roundPhase = 'wait';
         // Clearing first matters for a seat that was paused mid-round: its answer to a
         // question two rounds old must not be waiting in the queue when it comes back.
-        live.forEach(c => { c.queuedAction = null; this.startTurn(c, now); });
+        // answeredRound goes with it -- it is the round's own tally of who has spoken.
+        live.forEach(c => { c.queuedAction = null; c.answeredRound = null; });
+        this.resetKickoffBudget(live);
+        this.fillLanes(live, now);
     }
 
     // Where a round takes effect. Every move runs here, back to back, with no
@@ -7892,9 +7987,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Held failures first, so a seat that contributed nothing still appears in its
         // round rather than vanishing from it.
         for (const c of live) {
-            if (!c.pendingLog || !c.pendingLog.length) continue;
-            for (const e of c.pendingLog) this.commitDecision(e);
-            c.pendingLog = [];
+            for (const lane of (c.lanes || [])) {
+                if (!lane.pendingLog || !lane.pendingLog.length) continue;
+                for (const e of lane.pendingLog) this.commitDecision(e);
+                lane.pendingLog = [];
+            }
         }
         const queued = live.filter(c => c.queuedAction);
         if (queued.length > 1) queued.push(...queued.splice(0, this._roundNo % queued.length));
@@ -7951,6 +8048,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (pausing) continue;                                            // pause requested: open nothing new
             if (!this.freeLane(controller)) continue;                          // every lane busy
             if (now - controller.lastTurnTime < this.turnInterval) continue;  // small breather
+            // Free-running has no round edge to space lanes against, so the stagger is
+            // the only thing keeping a seat's lanes apart. Without it they clump on the
+            // 1.5s breather, land together, and cost N times the tokens for one turn's
+            // worth of play. Inert at one lane, where the seat has nothing to clump with.
+            if (controller.lanes.length > 1
+                && (now - controller._lastKickoff) < this.laneStagger(controller)) continue;
             this.startTurn(controller, now);
         }
     }
@@ -8157,14 +8260,18 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // The moment the reply actually arrived is not lost -- the transcript records it
     // per turn as latencyMs, which is where a fairness question should be answered
     // anyway, rather than from the spacing of a viewer's log.
-    pushDecisionFor(ai, entry) {
+    pushDecisionFor(ai, entry, lane) {
         const c = (this.aiControllers || []).find(x => x.aiPlayer === ai);
         // Same stamp executeAction takes, for the entries written when a reply arrived
         // but would not parse. Null on the failure path -- the controller's pair is
         // cleared per request and only set once a reply exists -- and the log then
         // falls back to saying how long ago the entry was written.
         if (c && entry.move === undefined) { entry.move = c._moveNo; entry.latencyMs = c._moveMs; }
-        if (this.turnBased && c) { (c.pendingLog || (c.pendingLog = [])).push(entry); return; }
+        // Held on the LANE that produced it when the caller knows which one -- every
+        // caller inside the send path does, because there `controller` IS the lane. A
+        // seat-wide list would let one lane's kickoff clear entries its sibling had
+        // already written. Falls back to the seat for any caller without a lane.
+        if (this.turnBased && c) { const b = lane || c; (b.pendingLog || (b.pendingLog = [])).push(entry); return; }
         this.commitDecision(entry);
     }
 
@@ -8198,13 +8305,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (gaps.length > 10) gaps.shift();
         }
         controller.lastTurnTime = now;
+        controller._lastKickoff = now;   // what the stagger measures from
         controller.turnCount++;
         lane.busy = true;
         lane.askedInRound = this._roundNo;
+        lane.missed = false;             // set only by noteRoundMissed, and only on this round's lanes
+        // Which request owns the lane. An aborted request settles a tick or two after
+        // the abort, and its .finally must not free a slot a NEWER request has since
+        // taken -- that would put two live requests on one lane and quietly break the
+        // only mutex the pool has. Same shape as the order token in the executor.
+        const token = (lane.token = (lane.token || 0) + 1);
         // Anything still held here belongs to a round that has already resolved without
         // it -- the same reason a late ANSWER is dropped rather than replayed. The stats
-        // already counted it; only the log line goes.
-        controller.pendingLog = [];
+        // already counted it; only the log line goes. Per LANE: a sibling's kickoff must
+        // not clear entries this seat's other request has already written.
+        lane.pendingLog = [];
 
         const tag = controller.lanes.length > 1 ? ` lane ${lane.laneNo + 1}/${controller.lanes.length}` : '';
         console.log(`[OpenAIAI] Turn #${controller.turnCount} for ${controller.id} (${controller.aiPlayer.civilization})${tag}`);
@@ -8212,7 +8327,6 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // From here down the LANE is the controller: every per-request field the send
         // path writes lands on it, and everything else falls through to the seat.
         const gameState = this.buildGameStateJSON(lane);
-        const askedInRound = lane.askedInRound;
 
         const promise = this.sendToOpenAI(lane, gameState)
             .then(actionData => {
@@ -8221,12 +8335,27 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     console.warn(`[OpenAIAI] No action returned for ${controller.id}`);
                     return;
                 }
+                // The seat's own reply time, for the stagger. Only real answers count:
+                // an aborted request settles fast and would shrink the spacing that the
+                // abort is evidence of needing.
+                const lat = controller.laneLatencies || (controller.laneLatencies = []);
+                lat.push(Date.now() - now);
+                if (lat.length > 10) lat.shift();
+
                 if (this.turnBased) {
                     // Hold it for flushRound. Arriving first must not mean taking
                     // effect first. An answer to a round that has already resolved
                     // (this seat timed out and the others moved on without it) is
                     // dropped rather than replayed onto a board it never saw.
-                    if (this.roundStillOpen(askedInRound)) controller.queuedAction = actionData;
+                    //
+                    // A lane asked in an EARLIER round is not stale, it is mid-pipeline,
+                    // and its answer is exactly what the current round is waiting for --
+                    // so the test is no longer "were you asked this round" but "has this
+                    // seat answered yet, and were you cut for missing a deadline".
+                    if (this._roundPhase === 'wait' && !lane.missed && !this.seatAnswered(controller)) {
+                        controller.queuedAction = actionData;
+                        controller.answeredRound = this._roundNo;
+                    }
                     return;
                 }
                 this.executeTurn(lane, actionData);
@@ -8235,6 +8364,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 console.error(`[OpenAIAI] Turn failed for ${controller.id}:`, err);
             })
             .finally(() => {
+                if (lane.token !== token) return;   // a newer request already owns this lane
                 lane.busy = false;
                 this.pendingRequests.delete(`${controller.id}:${lane.laneNo}`);
             });

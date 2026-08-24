@@ -1525,6 +1525,31 @@ body.spectator-mode #unitInfo.spectator-card {
 .auth-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .auth-grid .arena-field.full { grid-column: 1 / -1; }
 .auth-hint { font-size: 0.85em; color: #8b97ad; padding: 2px; }
+
+/* EXPERIMENTAL — rolling inference. The tag rides beside the field label so the
+   picker cannot be mistaken for a settled setting; the warning appears only above
+   one lane, where sharing an endpoint stops being free. Same amber the Ollama hint
+   uses, because it carries the same weight: read this before you rely on it. */
+.xp-tag {
+    font-size: 0.72em;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #f0a500;
+    border: 1px solid rgba(240, 165, 0, 0.45);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+.auth-hint.lanes-warn {
+    color: #cdd6e8;
+    background: rgba(240, 165, 0, 0.10);
+    border-left: 3px solid rgba(240, 165, 0, 0.6);
+    border-radius: 4px;
+    padding: 7px 10px;
+    margin-top: 4px;
+    line-height: 1.4;
+}
 .auth-hint.ollama-hint {
     color: #cdd6e8;
     background: rgba(240, 165, 0, 0.10);
