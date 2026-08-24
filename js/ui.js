@@ -3711,6 +3711,13 @@ class UIManager {
                     // don't — raise maxTokens for that model.
                     truncated: st.truncatedReplies || 0,
                     noAction: st.noActionReturns || 0,
+                    // EXPERIMENTAL, rolling inference. Orders dropped because the thing
+                    // had appeared after the board that lane was given. NOT an error and
+                    // not in the error total: nothing was refused and nothing was spent.
+                    // It belongs beside `lanes` in the header as the other half of one
+                    // trade — the decision rate a seat gained, and what that cost it.
+                    laneDuplicates: st.laneDuplicates || 0,
+                    laneDuplicatesBy: st.laneDuplicatesBy || {},
                     contextOverflows: ctxOv, roundsMissed: missed,
                     rateLimited: st.rateLimited || 0, rateLimitLost: rlLost,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,

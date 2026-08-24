@@ -360,6 +360,14 @@ class OpenAIAIManager {
                                   // a reply cut mid-tool-call that still ran two actions is a
                                   // reply the model did not finish, and it used to read clean.
             noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
+            laneDuplicates: 0,    // EXPERIMENTAL, rolling inference only. Orders dropped because
+            laneDuplicatesBy: {}, // the thing had appeared after the board that lane was given.
+                                  // Reported, never compensated: this is the price of the
+                                  // pipeline, and it is also the instrument for choosing the
+                                  // lane count. Blind siblings grow with N while the decision
+                                  // gain grows sub-linearly, so the crossing point is where
+                                  // these two curves meet — refund it and that signal is gone.
+                                  // Measured at 7.8% of commands on the first two-lane match.
             actionsAttempted: 0,  // actions handed to executeAction
             turnsExecuted: 0,     // turns that ran at least one command. actionsAttempted
                                   // divided by this is commands-per-turn — reported beside
@@ -3257,6 +3265,22 @@ class OpenAIAIManager {
             controller.seat._shownTargetIds = new Set(
                 [].concat(enemyUnits || [], enemyBuildings || [])
                   .map(e => String(e && e.id)).filter(x => x && x !== 'undefined'));
+
+            // What this snapshot PROMISED about the player's own progress, for the
+            // duplicate check in the executor. On the LANE, deliberately: two lanes are
+            // sent different snapshots, and the whole question is what THIS one saw.
+            //
+            // A second lane is asked before the first lane's answer has landed, so it is
+            // shown a board without that answer's building or tech on it. Ordering the
+            // same thing is then the only reasonable reading of what it was given -- not
+            // a mistake, and not something the model could have avoided. Measured over
+            // one match: 4 of 13 builds and 3 of 10 rejections came from exactly this.
+            const shownB = {};
+            (friendlyBuildings || []).forEach(b => {
+                const k = b && b.type; if (k) shownB[k] = (shownB[k] || 0) + 1;
+            });
+            controller._shownBuildings = shownB;
+            controller._shownResearched = new Set(Object.keys(ai.researchedTechs || {}));
             // High-water marks, for the closing question only. Recorded here because
             // this is the one place a seat's whole picture is already assembled, which
             // is cheaper than re-reading the recorder at match end -- and it costs a
@@ -5295,7 +5319,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
             case 'research_tech':
                 if (params?.techId) {
-                    actionResult = this.executeResearchTech(ai, game, params.techId);
+                    actionResult = this.executeResearchTech(ai, game, params.techId, controller);
                 } else {
                     actionResult = `[ERROR] research_tech requires "techId" parameter.`;
                 }
@@ -5307,7 +5331,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
             case 'build_structure':
                 if (params?.buildingType) {
-                    actionResult = this.executeBuildStructure(ai, game, params.buildingType, params?.targetX, params?.targetZ);
+                    actionResult = this.executeBuildStructure(ai, game, params.buildingType, params?.targetX, params?.targetZ, controller);
                 } else {
                     actionResult = `[ERROR] build_structure requires "buildingType" parameter.`;
                 }
@@ -5898,7 +5922,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                  lamellarArmor: 'lamellar_armor', phalanxArmor: 'phalanx_armor' };
     }
 
-    executeResearchTech(ai, game, techId) {
+    executeResearchTech(ai, game, techId, controller) {
         const civ = getCivilization(ai.civilization);
         techId = OpenAIAIManager.TECH_ALIASES[techId] || techId;
         const tech = civ?.techTree?.[techId];
@@ -5937,6 +5961,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
 
         if (ai.researchedTechs[techId]) {
+            // Was it researched AFTER the board this lane was given? Then the seat did
+            // check the list, the list simply did not have it yet -- and the old reply
+            // told it to go and read the very list it had just read correctly. Three of
+            // one match's ten rejections were this, all of them charged to the model for
+            // the harness's own concurrency.
+            const shown = controller && controller._shownResearched;
+            if (shown && !shown.has(techId)) {
+                this.noteLaneDuplicate(controller, 'tech:' + techId);
+                console.log(`[OpenAIAI] ${ai.id}: dropped duplicate research "${techId}" — completed after this lane's state`);
+                this.outcome('log.out.laneDuplicateTech', { techId });
+                // Same fact the ERROR above states; only the blame differs. The seat read
+                // "research.researched" correctly -- the list it was handed did not have
+                // this yet -- so it is told what it has, not what it should have checked.
+                return `OK - "${techId}" is already researched. Nothing was spent.`;
+            }
             console.log(`[OpenAIAI] ${ai.id}: Tech "${techId}" already researched`);
             this.outcome('log.out.alreadyResearched', { techId });
             return `[ERROR] Tech "${techId}" already researched! Check "research.researched" list before researching.`;
@@ -6062,7 +6101,79 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         return null;
     }
 
-    executeBuildStructure(ai, game, buildingType, targetX, targetZ) {
+    // ---- Blind duplicates ---------------------------------------------------
+    // Rolling inference asks one brain twice about one board and hides each answer
+    // from the other, so a lane can order a building that already stands. The model
+    // could not have known: the board it was given did not have it. Dropping that
+    // order is the harness cleaning up after its own concurrency -- the same footing
+    // as "that target died in the seconds between the state you read and this
+    // command" -- and not a judgement about play.
+    //
+    // The test is INFORMEDNESS, not price. Cost was the first criterion tried and it
+    // is the wrong one: a model building a house it was not shown is acting on a
+    // stale board whether the house costs 50 or 500. So there is no exemption list,
+    // which also means nothing to maintain when a building type is added -- a new
+    // structure is covered on the day it appears.
+    //
+    // "shown N, N+1 or more stand" reads as: your intent was N+1, and it is already
+    // met. It leaves deliberate repeats alone by construction, because the third of
+    // three consecutive orders is sent a board that already contains the first:
+    //
+    //     order 1   shown 0, none stand   intent 1, unmet   -> build   (1 stands)
+    //     order 2   shown 0, one stands   intent 1, met     -> DROP    (1 stands)
+    //     order 3   shown 1, one stands   intent 2, unmet   -> build   (2 stand)
+    //
+    // Three orders, two buildings -- which is what a model deliberately putting up a
+    // second tower does, and it costs that model one round, not the tower.
+    LANE_LINK_RADIUS() { return 60; }   // 3x the widest gap measured inside a real town
+
+    // Same settlement as an existing one of this type? Distance to the twin cannot
+    // answer it: a late-game town outgrows any fixed radius, so a temple at the far
+    // end of one would read as a separate site. Connectivity does answer it -- a town
+    // is a chain of buildings within LINK of each other however far it sprawls, and a
+    // forward base is separated from that chain by open ground, so it falls out as its
+    // own cluster no matter how near or far it happens to be.
+    sameSettlement(ai, x, z, buildingType) {
+        const all = (ai.buildings || []).filter(b => b && Number.isFinite(b.x));
+        const link = this.LANE_LINK_RADIUS();
+        const near = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) <= link;
+        const here = { x, z };
+        const reached = new Set();
+        let frontier = all.filter(b => near(b, here));
+        frontier.forEach(b => reached.add(b));
+        while (frontier.length) {
+            const next = [];
+            for (const b of all) {
+                if (reached.has(b)) continue;
+                if (frontier.some(f => near(b, f))) { reached.add(b); next.push(b); }
+            }
+            frontier = next;
+        }
+        for (const b of reached) if (b.type === buildingType) return b;
+        return null;
+    }
+
+    // The building this order duplicates, or null. Null whenever the lane was never
+    // told anything (no snapshot recorded) -- silence is not evidence of a duplicate.
+    blindDuplicateBuilding(controller, ai, buildingType, x, z) {
+        const shownMap = controller && controller._shownBuildings;
+        if (!shownMap) return null;
+        const shown = shownMap[buildingType] || 0;
+        // Under construction counts: one is on its way, so the intent is met.
+        const standing = (ai.buildings || []).filter(b => b && b.type === buildingType).length;
+        if (standing <= shown) return null;          // nothing appeared since the snapshot
+        return this.sameSettlement(ai, x, z, buildingType);
+    }
+
+    noteLaneDuplicate(controller, what) {
+        const s = controller && controller.stats;
+        if (!s) return;
+        s.laneDuplicates = (s.laneDuplicates || 0) + 1;
+        (s.laneDuplicatesBy || (s.laneDuplicatesBy = {}))[what] =
+            ((s.laneDuplicatesBy || {})[what] || 0) + 1;
+    }
+
+    executeBuildStructure(ai, game, buildingType, targetX, targetZ, controller) {
         // A renamed building still RESOLVES, so that old transcripts keep rendering — but
         // it must not be buildable, or the dead id leaks into new recordings and the model
         // is rewarded for guessing it. Say what it became; that is the whole correction.
@@ -6190,6 +6301,39 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             return `[ERROR] ${buildingType}: no clear spot near (${Math.round(x)}, ${Math.round(z)}). Occupied by buildings or resource nodes.`;
         }
         ({ x, z } = spot);
+
+        // Before a worker is chosen and before anything is spent: did this order ask
+        // for something that appeared after the board this lane was given? Placed
+        // here rather than earlier because the answer depends on the FINAL position --
+        // a forward base is allowed, and we only know where it landed once the spot
+        // is settled.
+        const twin = this.blindDuplicateBuilding(controller, ai, buildingType, x, z);
+        if (twin) {
+            this.noteLaneDuplicate(controller, buildingType);
+            const tx = Math.round(twin.x), tz = Math.round(twin.z);
+            console.log(`[OpenAIAI] ${ai.id}: dropped duplicate ${buildingType} — one already at (${tx}, ${tz})`);
+            this.outcome('log.out.laneDuplicateBuilding', { buildingType, x: tx, z: tz });
+            // Plain success, because it IS one: the seat wanted a barracks and a barracks
+            // stands. The rule only fires once the count has reached what this order was
+            // for, so the model's expectation already matches the next state and there is
+            // nothing to explain.
+            //
+            // An earlier draft said "after the state you read", and that was worse than
+            // wordy -- it hints at a second session, and there is no honest short way to
+            // finish that thought. The lanes share one history, one objective, one plan;
+            // the seat is one agent with one memory and experiences itself as continuous,
+            // which is exactly what the shared history is for. asp67: being told you are
+            // "only responsible for half your work" would swallow a lot of tokens trying
+            // to comprehend, every turn, forever -- for a distinction that changes nothing
+            // it can act on.
+            //
+            // Two clauses survive. The position, because it is the twin's and not the one
+            // asked for -- inside one settlement that is metres, but a settlement can be
+            // wide. And the cost, because a reply may carry two more commands and a seat
+            // that believes it just spent 200 wood will plan the rest of the turn poorer
+            // than it is.
+            return `OK - ${buildingType} already stands at (${tx}, ${tz}). Nothing was spent.`;
+        }
 
         // Decide who will build it BEFORE spending. Only idle workers build; a busy
         // worker is borrowed (and resumes its task) only when at the population cap.
