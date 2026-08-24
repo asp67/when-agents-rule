@@ -446,9 +446,14 @@ class OpenAIAIManager {
         // its own doing and stays scored. Its sibling case, ordering the tech that is
         // now running, never arrives here at all: the intent is met, so it is reported
         // as the success it got.
+        // assignFromRaced: workers.<pool> said N when this seat read the state and
+        // says 0 now, and this reply's own calls do not account for all N. The
+        // resource pools were assumed not to empty on their own -- true until a
+        // sibling lane could empty them, and true again for the two cases that stay
+        // scored: reading past a published zero, and spending the hands itself.
         return new Set(['trainerBusy', 'noWorkerIdleBuild', 'noClearSpot', 'assignAllCarrying',
                         'targetGone', 'orderedUnitsGone', 'assignIdleRaced', 'assignIdleFighting',
-                        'laneResearchBusy']);
+                        'laneResearchBusy', 'assignFromRaced']);
     }
     // haveString / haveObj lived here: the player's stock as a sentence and as an object,
     // built for the four affordability rejections and used nowhere else. Both are gone
@@ -464,6 +469,25 @@ class OpenAIAIManager {
         if (!n) return;
         const c = (this.aiControllers || []).find(x => x.aiPlayer === ai);
         if (c) c._idleTaken = (c._idleTaken || 0) + n;
+    }
+
+    // The same tally for EVERY pool, so an empty one can say whether this reply emptied
+    // it. Found the same way and kept on the seat for the same reason: the refusal that
+    // reads it has no controller in scope and looks the player up.
+    //
+    // pulledCounts is what normalises the puller's own labels ("from wood", "farming")
+    // into pool names; scouting is the one it renames, so it is put back here rather
+    // than teaching a fourth vocabulary about the other three.
+    notePulledFrom(ai, pulledFrom) {
+        const counts = this.pulledCounts(pulledFrom);
+        if (!counts || !Object.keys(counts).length) return;
+        const c = (this.aiControllers || []).find(x => x.aiPlayer === ai);
+        if (!c) return;
+        const acc = c._pulledThisTurn || (c._pulledThisTurn = {});
+        Object.keys(counts).forEach(k => {
+            const pool = (k === 'scout') ? 'scouting' : k;
+            acc[pool] = (acc[pool] || 0) + counts[k];
+        });
     }
     // Convert a worker "pulledFrom" label map (idle / scouting / repairing / farming
     // / spare / "from wood") into the {idle,scout,repair,farm,spare,<resource>} shape
@@ -2915,6 +2939,13 @@ class OpenAIAIManager {
         // lanes are sent different ones. executeTurn republishes the answering lane's
         // value to the seat, which is where the executor's seat-lookup reads it.
         if (controller) controller._sentIdle = wk.idle;
+        // ...and the whole tally, for the same reason one pool over. The refusal below
+        // assumes "the four resources and the farms do not empty themselves between the
+        // snapshot and the order", which is true of a single-lane seat and false of a
+        // pipelined one: a sibling can move every villager off wood after this board went
+        // out. Keeping what WAS published is the only way to tell that apart from a seat
+        // reading past a zero it was shown.
+        if (controller) controller._shownWorkers = Object.assign({}, wk);
         // ...and the tally of how many of them this turn's own calls spend. A reply may
         // carry three commands; if the first builds and the second asks for idle hands,
         // the pool was emptied by the model, not by the clock. That is the one version
@@ -5141,6 +5172,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const seat = controller.seat || controller;
         if (controller._sentIdle !== undefined) seat._sentIdle = controller._sentIdle;
         seat._idleTaken = 0;
+        seat._pulledThisTurn = {};
+        if (controller._shownWorkers) seat._shownWorkers = controller._shownWorkers;
         // What THIS reply has already done, so the duplicate check can tell a board that
         // changed under the seat from a seat that changed it itself. A reply may carry
         // three commands: "build barracks, build barracks" is a deliberate pair, and the
@@ -7345,6 +7378,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             manned++;
         }
         this.noteIdleTaken(ai, pulledFrom['idle'] || 0);
+        this.notePulledFrom(ai, pulledFrom);
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const left = open.length - manned;
         const short = left > 0 ? ` ${left} farm(s) still stand unmanned — you ran out of spare workers.` : '';
@@ -7571,9 +7605,26 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     return `[ERROR] assign_workers "idle": empty.`;
                 }
                 // The four resources and the farms do not empty themselves between the
-                // snapshot and the order, so for those the state is still the answer and
-                // the refusal only has to name which reading was wrong.
+                // snapshot and the order -- true of a seat that is the only thing moving
+                // its villagers, and false of a pipelined one. A sibling can clear every
+                // hand off wood after this board went out, and then "workers.wood is 0"
+                // contradicts the number the seat was actually shown and charges it for
+                // reading correctly. So these pools get the split idle already has.
                 if (onIt === 0) {
+                    const ctl = (this.aiControllers || []).find(x => x.aiPlayer === ai);
+                    const shown = (ctl && ctl._shownWorkers) ? (ctl._shownWorkers[from] || 0) : null;
+                    const mine = (ctl && ctl._pulledThisTurn && ctl._pulledThisTurn[from]) || 0;
+                    // The board showed hands here, and this reply did not account for all
+                    // of them, so something else emptied it while the seat was thinking.
+                    // Bare fact, no apology -- the wording assignIdleRaced already settled
+                    // for exactly this situation one pool over.
+                    if (shown !== null && shown > 0 && mine < shown) {
+                        this.outcome('log.out.assignFromRaced', { from });
+                        return `[ERROR] assign_workers "${from}": empty.`;
+                    }
+                    // shown 0: read past a published zero. mine >= shown: spent by its own
+                    // earlier calls this reply. Both are the seat's, and both keep the
+                    // reading the message always gave.
                     this.outcome('log.out.assignFromEmpty', { from, field: from });
                     return `[ERROR] assign_workers "${from}": empty (workers.${from} is 0).`;
                 }
@@ -7691,6 +7742,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             moved++;
         }
         this.noteIdleTaken(ai, pulledFrom['idle'] || 0);
+        this.notePulledFrom(ai, pulledFrom);
         const src = Object.entries(pulledFrom).map(([k, n]) => `${n} ${k}`).join(', ');
         const short = moved < count
             ? (whenCarrying === 'skipAssignment'
