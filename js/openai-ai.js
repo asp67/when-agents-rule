@@ -8437,9 +8437,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // on, the idle count the state advertised -- was written by that lane, and
             // the seat sees whichever lane wrote last. The seat is the fallback for a
             // single-lane seat, where the two are the same object anyway.
-            const actor = c.answeringLane || c;
+            // A facade over the answering lane carrying that answer's own context, so
+            // the lane's newer request -- already in flight by now -- is neither read
+            // from nor written over. Falls through to the lane, and past it to the seat,
+            // for everything the answer does not pin.
+            let actor = c.answeringLane || c;
+            if (c.answeringLane && c.answerContext) {
+                actor = Object.assign(Object.create(c.answeringLane), c.answerContext);
+            }
             c.queuedAction = null;
             c.answeringLane = null;
+            c.answerContext = null;
             if (this._stopped || c.defeated) continue;
             try { this.executeTurn(actor, action); }
             catch (err) { console.error(`[OpenAIAI] Queued action failed for ${c.id}:`, err); }
@@ -8554,6 +8562,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         this.abortLanes(controller, 'seat defeated');
         controller.seat.pendingAttackReports = [];
         controller.seat.pendingControl = [];      // a held card outlives nothing
+        controller.seat.answerContext = null;
         const ai = controller.aiPlayer;
         if (ai) {
             const civ = getCivilization(ai.civilization);
@@ -8578,6 +8587,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             this.abortLanes(c, 'match stopped');
             c.pendingAttackReports = [];     // drop unresolved arrival reports
             c.pendingControl = [];           // ...and any card held for a round that will not come
+            c.answerContext = null;
         }
         this.pendingRequests.clear();
     }
@@ -8826,6 +8836,29 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                         // record that lane wrote, and the idle counts it is judged
                         // against came from the state that lane was sent.
                         controller.answeringLane = lane;
+                        // Everything the executor will need about THIS answer, pinned now.
+                        //
+                        // The lane is handed straight back to the pipeline and may open a
+                        // new request before flushRound runs. That request clears _moveNo
+                        // and _moveMs at its start and rebuilds every "what was I shown"
+                        // field for its own board -- so by execution time the lane no
+                        // longer describes the answer being executed. The visible symptom
+                        // was cards arriving with no inference time on them; the quiet one
+                        // was the duplicate and raced-pool checks judging an order against
+                        // a snapshot it never saw.
+                        //
+                        // The lane was never the right owner of this. An answer's context
+                        // belongs to the answer.
+                        controller.answerContext = {
+                            _moveNo: lane._moveNo, _moveMs: lane._moveMs,
+                            _shownBuildings: lane._shownBuildings,
+                            _shownResearched: lane._shownResearched,
+                            _shownResearching: lane._shownResearching,
+                            _shownAgeUpgrading: lane._shownAgeUpgrading,
+                            _shownWorkers: lane._shownWorkers,
+                            _sentIdle: lane._sentIdle,
+                            _logTurn: lane._logTurn
+                        };
                     } else {
                         // A complete, valid, paid-for inference that no round will take.
                         // It used to vanish here, which made the log look misaligned --
