@@ -5311,7 +5311,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // which language, and clear any structured outcome from the previous action.
         logEntry.lang = (controller && controller.model && controller.model.language) || 'en';
         this._pendingOutcome = null;
-        this.decisionLog.unshift(logEntry);
+        this.commitDecision(logEntry);
         // Trim log
         if (this.decisionLog.length > this.maxLogEntries) {
             this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);
@@ -5743,7 +5743,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (text) {
             console.log(`[OpenAIAI] final word from ${ai.id}: ${text.slice(0, 200)}`);
             const c2 = getCivilization(ai.civilization);
-            this.decisionLog.unshift({
+            this.commitDecision({
                 timestamp: Date.now(), playerId: ai.id,
                 civName: (c2 && c2.name) || ai.civilization,
                 color: '#' + (((c2 && c2.color) ?? 0xffffff)).toString(16).padStart(6, '0'),
@@ -8175,7 +8175,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             action: 'round_missed', reason: '', result: msg, failed: true
         });
         const civ = getCivilization(controller.aiPlayer.civilization);
-        this.decisionLog.unshift({
+        this.commitDecision({
             timestamp: Date.now(), playerId: controller.aiPlayer.id,
             civName: civ?.name || controller.aiPlayer.civilization,
             color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
@@ -8512,7 +8512,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (ai) {
             this.game.aiManager.openAIControlled.delete(ai.id); // rule-based brain takes over
             const civ = getCivilization(ai.civilization);
-            this.decisionLog.unshift({
+            this.commitDecision({
                 timestamp: Date.now(), playerId: ai.id,
                 civName: civ?.name || ai.civilization,
                 color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
@@ -8539,7 +8539,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const ai = controller.aiPlayer;
         if (ai) {
             const civ = getCivilization(ai.civilization);
-            this.decisionLog.unshift({
+            this.commitDecision({
                 timestamp: Date.now(), playerId: ai.id,
                 civName: civ?.name || ai.civilization,
                 color: '#' + ((civ?.color ?? 0xffffff)).toString(16).padStart(6, '0'),
@@ -8616,7 +8616,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         controller.paused = !!paused;
         const ai = controller.aiPlayer;
         const civ = ai ? getCivilization(ai.civilization) : null;
-        this.decisionLog.unshift({
+        this.commitDecision({
             timestamp: Date.now(),
             playerId: aiId,
             civName: civ?.name || (ai ? ai.civilization : aiId),
@@ -8653,7 +8653,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // was queued (it is attached to this model's next prompt).
         const ai = controller.aiPlayer;
         const civ = ai ? getCivilization(ai.civilization) : null;
-        this.decisionLog.unshift({
+        this.commitDecision({
             timestamp: Date.now(),
             playerId: aiId,
             civName: civ?.name || (ai ? ai.civilization : aiId),
@@ -8713,6 +8713,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // its neighbours, which is the same false impression in smaller print.
     commitDecision(entry) {
         entry.timestamp = Date.now();
+        // ...and the round, for the same reason and in the same place. In turn-based
+        // play the card's number should be the ROUND, not the seat's reply count.
+        //
+        // Those two used to be the same number: one lane, one reply per round, so
+        // "replies so far" and "rounds so far" advanced together and #38 was honestly
+        // both. Two things pulled them apart -- a reply that fails to parse still burns
+        // a reply number, and a pipelined seat produces more replies than there are
+        // rounds. Read as a round number, which is how it reads, the column then looks
+        // scrambled: 33, 30, 30, 30, 31, 28.
+        //
+        // asp67's call: turn-based games carry the turn, unrestricted games carry each
+        // model's own count and are allowed to drift -- there are no rounds there to
+        // carry instead. The reply ordinal is not lost either way; the transcript keeps
+        // it as `turn` alongside `askedInRound`.
+        if (this.turnBased && entry.round === undefined) entry.round = this._roundNo;
         this.decisionLog.unshift(entry);
         if (this.decisionLog.length > this.maxLogEntries) {
             this.decisionLog = this.decisionLog.slice(0, this.maxLogEntries);

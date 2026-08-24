@@ -3045,14 +3045,19 @@ class UIManager {
             // keep the relative time and the tooltip says which of the two it is.
             const secondsAgo = Math.floor((now - entry.timestamp) / 1000);
             let timeStr;
-            if (entry.move) {
+            // The ROUND when there is one, the seat's own reply count when there is not.
+            // In turn-based play every card of a round carries the same number, so the
+            // column reads straight down; in an unrestricted game there are no rounds and
+            // each model's count drifts on its own, which is the honest thing to show.
+            const headNo = (entry.round != null) ? entry.round : entry.move;
+            if (headNo) {
                 // One decimal below ten seconds. The quick seats answer in 1.6s and the
                 // slow ones in 118s; rounding the fast end to whole seconds would flatten
                 // the only part of the range where a tenth still means something.
                 const secs = entry.latencyMs != null ? entry.latencyMs / 1000 : null;
                 const ms = secs == null ? '' : (secs < 10 ? secs.toFixed(1) : Math.round(secs)) + 's';
-                timeStr = `<b class="log-move">#${entry.move}</b>${ms ? ' ' + ms : ''}`;
-                timeStr = `<span class="log-time" title="${t('log.headTip', { n: entry.move })}">${timeStr}</span>`;
+                timeStr = `<b class="log-move">#${headNo}</b>${ms ? ' ' + ms : ''}`;
+                timeStr = `<span class="log-time" title="${t(entry.round != null ? 'log.roundTip' : 'log.headTip', { n: headNo })}">${timeStr}</span>`;
             } else {
                 timeStr = `<span class="log-time" title="${t('log.agoTip')}">`
                     + `${secondsAgo < 5 ? t('log.now') : secondsAgo + 's'}</span>`;
