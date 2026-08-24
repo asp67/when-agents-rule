@@ -6204,13 +6204,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // which also means nothing to maintain when a building type is added -- a new
     // structure is covered on the day it appears.
     //
-    // "shown N, N+1 or more stand" reads as: your intent was N+1, and it is already
-    // met. It leaves deliberate repeats alone by construction, because the third of
-    // three consecutive orders is sent a board that already contains the first:
+    // "shown N, N+1 or more PLACED" reads as: your intent was N+1, and it is already
+    // met. Placed, not finished -- see couldBeBlindDuplicate. It leaves deliberate
+    // repeats alone by construction, because the third of three consecutive orders is
+    // sent a board that already contains the first:
     //
-    //     order 1   shown 0, none stand   intent 1, unmet   -> build   (1 stands)
-    //     order 2   shown 0, one stands   intent 1, met     -> DROP    (1 stands)
-    //     order 3   shown 1, one stands   intent 2, unmet   -> build   (2 stand)
+    //     order 1   shown 0, none placed   intent 1, unmet  -> build   (1 placed)
+    //     order 2   shown 0, one placed    intent 1, met    -> DROP    (1 placed)
+    //     order 3   shown 1, one placed    intent 2, unmet  -> build   (2 placed)
     //
     // Three orders, two buildings -- which is what a model deliberately putting up a
     // second tower does, and it costs that model one round, not the tower.
@@ -6256,11 +6257,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const shownMap = controller && controller._shownBuildings;
         if (!shownMap) return false;                 // no snapshot: silence is not evidence
         const mine = (controller._builtThisTurn || {})[buildingType] || 0;
-        // Under construction counts: one is on its way, so the intent is met.
-        const standing = (ai.buildings || []).filter(b => b && b.type === buildingType).length;
+        // PLACED, not standing: a construction site counts. A twin ordered a round ago
+        // is almost always still going up, and it is the ORDER that has already been
+        // made -- waiting for the roof would let every duplicate through in the window
+        // where duplicates actually happen.
+        const placed = (ai.buildings || []).filter(b => b && b.type === buildingType).length;
         // shown + what THIS reply put up. Anything beyond that appeared while the seat
         // was thinking; anything at or below it, the seat did itself and meant to.
-        return standing > (shownMap[buildingType] || 0) + mine;
+        return placed > (shownMap[buildingType] || 0) + mine;
     }
 
     // A complete reply no round could use. Counted and shown, never silently dropped:
