@@ -3245,15 +3245,24 @@ class OpenAIAIManager {
         // which is a real mistake. Recorded here because this object is the only thing
         // the model saw.
         if (controller) {
-            controller._shownTargetIds = new Set(
+            // Both of these are written HERE, on a lane, and read elsewhere off the
+            // SEAT -- the target-gone check finds its controller from the aiPlayer, and
+            // the closing question is asked of the seat. Written on the lane they would
+            // never reach either reader: _shownTargetIds would read as undefined, so
+            // "that target died while you were thinking" would stop firing and the model
+            // would be charged for the harness's own timing; _peak would read as
+            // undefined and the final word would lose its "Peak:" line entirely.
+            // Both are true at ONE lane as well -- the lane, not the seat, has built
+            // state ever since the pool landed.
+            controller.seat._shownTargetIds = new Set(
                 [].concat(enemyUnits || [], enemyBuildings || [])
                   .map(e => String(e && e.id)).filter(x => x && x !== 'undefined'));
             // High-water marks, for the closing question only. Recorded here because
             // this is the one place a seat's whole picture is already assembled, which
             // is cheaper than re-reading the recorder at match end -- and it costs a
             // handful of comparisons on a path that just built several arrays.
-            const pk = controller._peak
-                || (controller._peak = { buildings: 0, units: 0, workers: 0, pop: 0, maxPop: 0, at: 0 });
+            const pk = controller.seat._peak
+                || (controller.seat._peak = { buildings: 0, units: 0, workers: 0, pop: 0, maxPop: 0, at: 0 });
             const nb = (friendlyBuildings || []).length, nu = (friendlyUnits || []).length;
             if (nb > pk.buildings || nu > pk.units) {
                 pk.at = (clockObj && clockObj.matchSeconds) || pk.at;
@@ -3974,7 +3983,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         tailNow.push(`Here is your CURRENT game state. Decide what to do on THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
         if (controller.pendingAdvice && controller.pendingAdvice.length) {
             const advice = controller.pendingAdvice.join(' ');
-            controller.pendingAdvice = [];
+            controller.seat.pendingAdvice = [];
             tailNow.push(`SPECTATOR ADVICE (a human observer suggests — weigh it, you still decide): ${advice}`);
         }
 
@@ -4431,7 +4440,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // where the provider reports it, above; counting it again here would
                 // double every capped reply that also failed to parse.
                 if (s) s.parseFails++;
-                controller.lastActionResult = result.truncated
+                controller.seat.lastActionResult = result.truncated
                     ? `[ERROR] Your reply was CUT OFF before the JSON closed — you ran out of output tokens, so nothing was executed. Keep "reason", "objective" and "plan" to one short sentence each and always close the JSON.`
                     : `[ERROR] Your reply contained an "action" but was not valid JSON, so nothing was executed.${result.why ? ` The parser stopped here: ${result.why}.` : ''}${result.near ? ` Your reply up to that point ended: ...${result.near}` : ''}`;
                 const lastMalformed = this.logTurnFor(controller);
@@ -4464,7 +4473,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // endpoints omit it -- hence the plainer empty-reply message as fallback.
                 const rawReply = String((norm && (norm.content || norm.reasoning)) || '');
                 const cappedOut = OpenAIAIManager.hitTokenCap(norm && norm.finish_reason);
-                controller.lastActionResult = rawReply.trim()
+                controller.seat.lastActionResult = rawReply.trim()
                     ? `[ERROR] Your last reply could not be parsed, so nothing was executed. ${OpenAIAIManager.howToAnswer(controller)}`
                     : (cappedOut
                         ? `[ERROR] You returned NOTHING: your reply hit the output limit of ${askedMax} tokens before a single character of answer was written, so nothing was executed. Your thinking is spent from that same budget. Decide faster and keep "reason", "objective" and "plan" to one short sentence each — a bare {"action":"wait","params":{"reason":"thinking"}} beats an empty turn.`
@@ -4492,7 +4501,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (/context length|context window|maximum context|context size|exceeds the available context|input is too large|prompt is too long|too many tokens|reduce the length/i.test(err.message || '')) {
                 controller.seat._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
                 console.warn(`[OpenAIAI] ${ai.id}: context overflow — shrinking budget to ${Math.round(controller._ctxShrink * 100)}% and retrying next turn.`);
-                controller.lastActionResult = `[ERROR] Your previous request was too large for the model's context and was dropped; the history window has been trimmed. Continue normally.`;
+                controller.seat.lastActionResult = `[ERROR] Your previous request was too large for the model's context and was dropped; the history window has been trimmed. Continue normally.`;
                 // Count it — a lost turn is a lost turn. Tracked separately from
                 // network errors (the endpoint is fine, our prompt was too big) so
                 // the reliability metric stays honest without demoting the model.
@@ -4534,7 +4543,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     // to every question it was asked.
                     controller.stats.rateLimitLost = (controller.stats.rateLimitLost || 0) + 1;
                 }
-                controller.lastActionResult = `[ERROR] The endpoint refused this turn with a rate limit and the retry did not clear it. Nothing was executed; continue normally.`;
+                controller.seat.lastActionResult = `[ERROR] The endpoint refused this turn with a rate limit and the retry did not clear it. Nothing was executed; continue normally.`;
                 return null;
             }
             // The move it was TRYING to make, and how long it hung before dying. The
@@ -4615,7 +4624,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // The model is told, because the harness just changed what it remembers.
                 // Stated as what happened, with no instruction attached: the board did not
                 // move, and what to do about a thinner history is the model's business.
-                controller.lastActionResult =
+                controller.seat.lastActionResult =
                     `[NOTE] Your last ${controller._sameErrStreak} requests were refused by your endpoint with the same error, so `
                     + `${healed}. The game state is unchanged; nothing you ordered was undone.`;
                 const hCiv = getCivilization(ai.civilization);
@@ -4717,7 +4726,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // proved it cannot stop writing is the worst possible audience for a
             // sentence telling it to write less, and the wait call is described in the
             // tool list it already has.
-            controller.lastActionResult =
+            controller.seat.lastActionResult =
                 `[ERROR] NO ACTION: output limit of ${askedMax || 'the configured amount'} tokens reached before a tool call, so the turn was forfeited. `
                 + `Reasoning is spent from that same budget; there is no separate allowance for it.`;
             const cappedTurn = this.logTurnFor(controller);
@@ -4732,7 +4741,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const miss = controller._toolContractMiss;
         controller._toolContractMiss = null;
         if (miss) {
-            controller.lastActionResult = (typeof miss === 'string')
+            controller.seat.lastActionResult = (typeof miss === 'string')
                 ? `[ERROR] NO ACTION: your reply carried tool-call syntax (${miss}) but the server did not deliver it as a tool call, so nothing could be executed. This is a SERVER setting, not your mistake — the operator has to fix the tool-call parser or the chat template.`
                 : `[ERROR] NO ACTION was taken this turn: you called no tool at all. ${OpenAIAIManager.howToAnswer(controller)}`;
         } else if (controller._planOnly) {
@@ -4740,8 +4749,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // correctly and simply issued no move, and it is told exactly that --
             // the plan itself is kept, not thrown away with the message.
             controller._planOnly = false;
-            controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: you called "plan" but never "action", so your objective and plan were saved and nothing was done. ${OpenAIAIManager.howToAnswer(controller)}`;
-        } else controller.lastActionResult = `[ERROR] NO ACTION was taken this turn: nothing executable arrived. ${OpenAIAIManager.howToAnswer(controller)} Plain prose wastes the turn.`;
+            controller.seat.lastActionResult = `[ERROR] NO ACTION was taken this turn: you called "plan" but never "action", so your objective and plan were saved and nothing was done. ${OpenAIAIManager.howToAnswer(controller)}`;
+        } else controller.seat.lastActionResult = `[ERROR] NO ACTION was taken this turn: nothing executable arrived. ${OpenAIAIManager.howToAnswer(controller)} Plain prose wastes the turn.`;
         const lastTurn = this.logTurnFor(controller);
         if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
     }
@@ -5102,10 +5111,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // plan-only envelope would lose its objective there. Taken here instead.
             if (envelope && (envelope.objective !== undefined || envelope.plan !== undefined)) {
                 if (typeof envelope.objective === 'string' && envelope.objective.trim()) {
-                    controller.objective = envelope.objective.trim();
+                    controller.seat.objective = envelope.objective.trim();
                 }
                 if (Array.isArray(envelope.plan) && envelope.plan.length) {
-                    controller.plan = envelope.plan.slice(0, OpenAIAIManager.PLAN_MAX_STEPS);
+                    controller.seat.plan = envelope.plan.slice(0, OpenAIAIManager.PLAN_MAX_STEPS);
                 }
                 if (controller._planOnly) { this.registerNoActionReturn(controller); return; }
             }
@@ -5148,7 +5157,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // spent the resource.
             const combined = results.map((r, i) =>
                 'Command ' + (i + 1) + '/' + results.length + ': ' + r).join('\n');
-            controller.lastActionResult = combined;
+            controller.seat.lastActionResult = combined;
             if (controller.turnLog && controller.turnLog.length) {
                 const lastTurn = this.logTurnFor(controller);
                 if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = combined;
@@ -5189,7 +5198,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (controller.stats && !controller._batch) controller.stats.turnsExecuted++;
         if (!actionData || !actionData.action) {
             console.warn(`[OpenAIAI] No action data for ${ai.id}`);
-            controller.lastActionResult = `[ERROR] No valid action data received.`;
+            controller.seat.lastActionResult = `[ERROR] No valid action data received.`;
             return;
         }
 
@@ -5243,7 +5252,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const objRaw = (params && params.objective !== undefined) ? params.objective : src.objective;
         const planRaw = (params && params.plan !== undefined) ? params.plan : src.plan;
         if (typeof objRaw === 'string' && objRaw.trim()) {
-            controller.objective = objRaw.trim().slice(0, 300);
+            controller.seat.objective = objRaw.trim().slice(0, 300);
         }
         // A plan sent as one string is kept as a single step rather than dropped. Its
         // intent is unambiguous; splitting "[1] a, [2] b" into steps would be the
@@ -5251,7 +5260,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const planArr = Array.isArray(planRaw) ? planRaw
             : (typeof planRaw === 'string' && planRaw.trim()) ? [planRaw] : null;
         if (planArr) {
-            controller.plan = planArr
+            controller.seat.plan = planArr
                 .filter(s => typeof s === 'string' && s.trim())
                 .slice(0, OpenAIAIManager.PLAN_MAX_STEPS)
                 .map(s => s.trim().slice(0, 120));
@@ -5440,9 +5449,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // sent each turn is decided at request time by the model's context budget
             // (buildMoveHistoryText), not by this cap.
             if (controller.conversationHistory.length > this.maxHistoryEntries) {
-                controller.conversationHistory = controller.conversationHistory.slice(-this.maxHistoryEntries);
+                // .seat, for the same reason as turnLog's trim. This runs as the LANE
+                // (flushRound executes the move as whichever lane answered), and an
+                // assignment there would put a private copy on that lane while its
+                // sibling kept the seat's -- one shared history becoming two, silently,
+                // at whatever moment the 400th action happens to be recorded.
+                controller.seat.conversationHistory = controller.conversationHistory.slice(-this.maxHistoryEntries);
             }
-            controller.lastActionResult = actionResult;
+            controller.seat.lastActionResult = actionResult;
             // One command of several: executeTurn owns the turn-level bookkeeping and
             // stamps the combined answer once at the end. noteResult SEALS the turn, so
             // a second call here would find nothing open and commands 2 and 3 would
@@ -6721,7 +6735,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             unit._orderToken = token;
         });
         if (controller) {
-            controller.pendingAttackReports = controller.pendingAttackReports || [];
+            controller.seat.pendingAttackReports = controller.seat.pendingAttackReports || [];
             controller.pendingAttackReports.push({ token, tx: targetX, tz: targetZ, units: unitsToAttack.slice(), startTime: Date.now() });
         }
         // Priests march along as healers (never engage) — the whole clergy on a
@@ -8161,7 +8175,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // nothing in the match is waiting on its answer.
         try { this.askFinalWord(controller, 'defeated'); } catch (e) { /* never block a retirement */ }
         this.abortLanes(controller, 'seat defeated');
-        controller.pendingAttackReports = [];
+        controller.seat.pendingAttackReports = [];
         const ai = controller.aiPlayer;
         if (ai) {
             const civ = getCivilization(ai.civilization);
@@ -8269,7 +8283,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!controller) return false;
         const t = String(text || '').trim();
         if (!t) return false;
-        if (!controller.pendingAdvice) controller.pendingAdvice = [];
+        if (!controller.pendingAdvice) controller.seat.pendingAdvice = [];
         const advice = t.slice(0, 400);
         controller.pendingAdvice.push(advice);
         console.log(`[OpenAIAI] Advice queued for ${aiId}: ${advice}`);
