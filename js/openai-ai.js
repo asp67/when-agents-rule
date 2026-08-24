@@ -8159,6 +8159,22 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // every round hanging until the deadline.
     seatAnswered(c) { return !!c && c.answeredRound === this._roundNo; }
 
+    // Is there anything left to WAIT for from this seat this round? Answered counts, and
+    // so does having run out of ways to answer: no fresh ask left in the budget and no
+    // request still in the air.
+    //
+    // The round predicate used to be "is a request out", and a request that FAILED
+    // cleared that instantly, so a seat with a broken endpoint simply contributed
+    // nothing and the round moved on. Asking "has it answered" instead lost that: a
+    // seat whose every request 400s never answers, so every round sat until the
+    // deadline -- 150s of a frozen game per round, for an endpoint that was refusing
+    // in two seconds. Answered OR out of options restores it without giving up what
+    // the lane pipeline needs.
+    seatSettled(c) {
+        if (this.seatAnswered(c)) return true;
+        return !(c._kickoffBudget > 0) && !this.seatBusy(c);
+    }
+
     // How far apart two lanes of one seat should be kicked off: the seat's own
     // recent reply time divided by its lane count, so N lanes land evenly spaced
     // rather than in a clump. Measured, never configured -- an endpoint that slows
@@ -8237,13 +8253,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // is still free is mid-priming; it must get going now, not at the next
             // round edge, or its lanes never spread apart.
             this.fillLanes(live, now);
-            if (live.some(c => !this.seatAnswered(c))) {
+            if (live.some(c => !this.seatSettled(c))) {
                 if (now - this._roundStartedAt <= this.roundTimeoutMs()) return;
                 // One unreachable endpoint must not stall the other three: release
                 // them, let the round resolve, and the slow seat simply misses it.
                 // Missing seats are told so on their next turn — a deadline enforced
                 // in silence is one a model cannot budget against.
-                live.filter(c => !this.seatAnswered(c)).forEach(c => this.noteRoundMissed(c));
+                live.filter(c => this.seatBusy(c)).forEach(c => this.noteRoundMissed(c));
                 // Only the lanes that owed THIS round are released; noteRoundMissed has
                 // just cut them. A lane still working an earlier round's question is
                 // mid-pipeline and is left alone -- releasing it would free a slot the
