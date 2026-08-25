@@ -14,6 +14,13 @@ Thumbs.db
 # Local dev scratch / notes
 Prompt.txt
 error.md
+# Private research and planning written for asp67, not part of the project. Listed
+# rather than merely left untracked: this remote is public, and an untracked file is
+# one `git add -A` away from being published irreversibly.
+FEASIBILITY-REVIEW.md
+*-REVIEW.md
+# Thumbnail/scene scratch for the video build, which lives outside this repo.
+thumb_*.html
 
 # Exported model catalogues — these can contain API keys in plain text. NEVER commit.
 llm-colosseum-models.json
