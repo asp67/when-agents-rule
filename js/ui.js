@@ -500,6 +500,14 @@ class UIManager {
         if (document.getElementById('modelLibraryList')) this.renderArenaLibrary();
     }
 
+    // EXPERIMENTAL — rolling inference. How many requests this model may keep in the
+    // air at once. Clamped to 1..4 in one place so a hand-edited config, an old stored
+    // entry and the picker cannot disagree; 1 is ordinary play and the default.
+    laneCountOf(m) {
+        const n = parseInt(m && m.lanes, 10);
+        return (n >= 1 && n <= 4) ? n : 1;
+    }
+
     normalizeArenaModel(m) {
         const def = this.makeArenaModel();
         m.availableModels = Array.isArray(m.availableModels) ? m.availableModels : [];
@@ -520,6 +528,7 @@ class UIManager {
         if (m.contextSize == null) m.contextSize = '';
         m.minimizeTokens = !!m.minimizeTokens;
         m.toolFallback = !!m.toolFallback;
+        m.lanes = this.laneCountOf(m);
         if (m.maxContext == null) m.maxContext = null;
         m.availableModelContext = {}; // runtime-only; never trust stored values
         m.auth = Object.assign({}, def.auth, m.auth || {});
@@ -1063,6 +1072,14 @@ class UIManager {
             <p class="auth-hint">${t('ar.minimizeTokensHint')}</p>
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.toolFallback ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'toolFallback',this.checked)"> ${t('ar.toolFallback')}</label>
             <p class="auth-hint">${t('ar.toolFallbackHint')}</p>
+            <div class="model-select-row"><div class="arena-field">
+                <label>${t('ar.fLanes')} <span class="xp-tag">${t('ar.experimental')}</span></label>
+                <select onchange="game.ui.setModelLanes(${m.id},this.value)">
+                    ${[1, 2, 3, 4].map(n => `<option value="${n}"${this.laneCountOf(m) === n ? ' selected' : ''}>${n === 1 ? t('ar.lanesOff') : t('ar.lanesN').replace('{n}', n)}</option>`).join('')}
+                </select>
+            </div></div>
+            <p class="auth-hint">${t('ar.lanesHint')}</p>
+            ${this.laneCountOf(m) > 1 ? `<p class="auth-hint lanes-warn">${t('ar.lanesWarn')}</p>` : ''}
             <p class="auth-hint">${t('ar.modelLangHint')}</p>
             ${isOllama ? `<p class="auth-hint ollama-hint">${t('ar.ollamaHint')}</p>` : ''}
             </div>
@@ -1193,6 +1210,16 @@ class UIManager {
     // --- Handlers ---
     setModelField(id, field, value) { const m = this.getArenaModel(id); if (m) { m[field] = value; this.saveArenaConfig(); } }
     setModelBool(id, field, value) { const m = this.getArenaModel(id); if (m) { m[field] = !!value; this.saveArenaConfig(); } }
+
+    // Re-renders, unlike setModelBool: the warning line under the picker only exists
+    // above one lane, so the card has to be redrawn for it to appear or go.
+    setModelLanes(id, value) {
+        const m = this.getArenaModel(id);
+        if (!m) return;
+        m.lanes = this.laneCountOf({ lanes: value });
+        this.saveArenaConfig();
+        this.renderArenaLibrary();
+    }
 
     // Fill the context budget with the model's maximum context window. The
     // endpoint's own answers win: first the per-model context map captured during
@@ -1696,6 +1723,8 @@ class UIManager {
                 minimizeTokens: !!m.minimizeTokens,
                 toolFallback: !!m.toolFallback,
                 language: m.language || 'en',
+                // EXPERIMENTAL: overlapping requests for this seat. 1 is normal play.
+                lanes: this.laneCountOf(m),
                 // So a parameter the endpoint refuses mid-match can be recorded against
                 // the entry it came from rather than being relearned every match.
                 libraryId: m.id,
@@ -2950,6 +2979,7 @@ class UIManager {
             defeated: t('log.defeated'),
             explore: t('log.explore'),
             round_missed: t('log.round_missed'),
+            lane_answer_dropped: t('log.lane_answer_dropped'),
             assign_workers: t('log.assign_workers'),
             delete_unit: t('log.delete_unit'),
             destroy_building: t('log.destroy_building'),
@@ -3015,14 +3045,19 @@ class UIManager {
             // keep the relative time and the tooltip says which of the two it is.
             const secondsAgo = Math.floor((now - entry.timestamp) / 1000);
             let timeStr;
-            if (entry.move) {
+            // The ROUND when there is one, the seat's own reply count when there is not.
+            // In turn-based play every card of a round carries the same number, so the
+            // column reads straight down; in an unrestricted game there are no rounds and
+            // each model's count drifts on its own, which is the honest thing to show.
+            const headNo = (entry.round != null) ? entry.round : entry.move;
+            if (headNo) {
                 // One decimal below ten seconds. The quick seats answer in 1.6s and the
                 // slow ones in 118s; rounding the fast end to whole seconds would flatten
                 // the only part of the range where a tenth still means something.
                 const secs = entry.latencyMs != null ? entry.latencyMs / 1000 : null;
                 const ms = secs == null ? '' : (secs < 10 ? secs.toFixed(1) : Math.round(secs)) + 's';
-                timeStr = `<b class="log-move">#${entry.move}</b>${ms ? ' ' + ms : ''}`;
-                timeStr = `<span class="log-time" title="${t('log.headTip', { n: entry.move })}">${timeStr}</span>`;
+                timeStr = `<b class="log-move">#${headNo}</b>${ms ? ' ' + ms : ''}`;
+                timeStr = `<span class="log-time" title="${t(entry.round != null ? 'log.roundTip' : 'log.headTip', { n: headNo })}">${timeStr}</span>`;
             } else {
                 timeStr = `<span class="log-time" title="${t('log.agoTip')}">`
                     + `${secondsAgo < 5 ? t('log.now') : secondsAgo + 's'}</span>`;
@@ -3682,6 +3717,20 @@ class UIManager {
                     // don't — raise maxTokens for that model.
                     truncated: st.truncatedReplies || 0,
                     noAction: st.noActionReturns || 0,
+                    // EXPERIMENTAL, rolling inference. Orders dropped because the thing
+                    // had appeared after the board that lane was given. NOT an error and
+                    // not in the error total: nothing was refused and nothing was spent.
+                    // It belongs beside `lanes` in the header as the other half of one
+                    // trade — the decision rate a seat gained, and what that cost it.
+                    laneDropped: st.laneDropped || 0,
+                    laneDuplicates: st.laneDuplicates || 0,
+                    laneDuplicatesBy: st.laneDuplicatesBy || {},
+                    // Rounds a single-lane seat would have forfeited. Not an error and not
+                    // a credit either -- the seat played the round on its own answer. It
+                    // sits with the other two because all three are the SAME trade priced
+                    // three ways: what staggering bought, and what it threw away to buy it.
+                    laneCount: st.laneCount || 1,
+                    laneRescued: st.laneRescued || 0,
                     contextOverflows: ctxOv, roundsMissed: missed,
                     rateLimited: st.rateLimited || 0, rateLimitLost: rlLost,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
@@ -3797,6 +3846,9 @@ class UIManager {
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
                         <div class="sum-metric"><span>\u{1FA99} ${t('sum.mTokens')}</span><b>${this.fmtTokens(m.promptTokens + m.completionTokens)}</b><i>${(m.promptTokens + m.completionTokens) ? t('sum.mTokSplit', { p: this.fmtTokens(m.promptTokens), c: this.fmtTokens(m.completionTokens) }) : t('sum.mTokNone')}</i></div>
                         <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, net: this.netErrLabel(m), parse: m.parseFails, cut: m.truncated || 0, na: m.noAction || 0, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
+                        ${(m.laneCount || 1) > 1
+                            ? `<div class="sum-metric" title="${t('sum.laneTip')}"><span>\u{1F500} ${t('sum.mLanes')}</span><b>${m.laneRescued || 0}</b><i>${t('sum.laneBreak', { lanes: m.laneCount, dup: m.laneDuplicates || 0, drop: m.laneDropped || 0 })}</i></div>`
+                            : ''}
                     </div>
                     <div class="sum-actions">${topActions || `<span class="sum-chip">${t('sum.noActions')}</span>`}</div>
                     ${m.finalWord ? `<div class="sum-word"><span class="sum-word-h">\u{1F5E3}\uFE0F ${t('sum.finalWord')}</span><p>${this.escapeHtml(m.finalWord.text || m.finalWord.error || t('sum.finalWordNone'))}</p></div>` : ''}

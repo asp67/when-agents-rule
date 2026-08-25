@@ -92,10 +92,14 @@ class TranscriptRecorder {
     // is held OPEN until noteResult stamps that on, or until the next turn
     // displaces it. Queuing immediately meant a flush landing in that window
     // wrote the line without the result, and no later amend could reach it.
-    record(playerId, entry) {
+    // `lane` says WHICH in-flight request this turn belongs to. A single-lane seat
+    // passes nothing and behaves exactly as before; a pipelined one must pass it, or
+    // whichever request records last steals the next result.
+    record(playerId, entry, lane) {
         if (!this.matchId || !playerId) return;
         try {
-            this._seal(playerId);                       // the previous turn is done
+            const key = this._key(playerId, lane);
+            this._seal(key);                            // this LANE's previous turn is done
             const n = (this.counts.get(playerId) || 0) + 1;
             this.counts.set(playerId, n);
             const full = Object.assign({ turn: n, playerId }, this.meta.get(playerId) || {},
@@ -105,7 +109,7 @@ class TranscriptRecorder {
             ring.push(full);
             if (ring.length > this.MEM_CAP) ring.splice(0, ring.length - this.MEM_CAP);
             this.mem.set(playerId, ring);
-            this.open.set(playerId, full);
+            this.open.set(key, full);
         } catch (e) {
             console.warn('[transcript] record failed', e);
         }
@@ -126,7 +130,9 @@ class TranscriptRecorder {
     note(playerId, entry) {
         if (!this.matchId || !playerId) return;
         try {
-            this._seal(playerId);
+            // ALL of this seat's open turns: a marker must not jump ahead of any turn
+            // it follows, and a pipelined seat has more than one in flight.
+            this._sealAllFor(playerId);
             const buf = this.pending.get(playerId) || [];
             buf.push(JSON.stringify(Object.assign({ playerId },
                 this.meta.get(playerId) || {}, entry)) + '\n');
@@ -161,10 +167,29 @@ class TranscriptRecorder {
     }
 
     // Move an open turn into the disk queue.
-    _seal(playerId) {
-        const t = this.open.get(playerId);
+    // playerId on its own, or playerId + lane once a seat has more than one request
+    // in the air. One slot per seat was the bug: the sibling's record sealed the
+    // first one, so the result landed on the wrong row.
+    _key(playerId, lane) {
+        return (lane === undefined || lane === null) ? String(playerId)
+                                                     : String(playerId) + '|' + lane;
+    }
+
+    // Every open turn a player has, for the callers that must close all of them.
+    _sealAllFor(playerId) {
+        for (const k of [...this.open.keys()]) {
+            const t = this.open.get(k);
+            if (t && t.playerId === playerId) this._seal(k);
+        }
+    }
+
+    // Takes a KEY, not a player: one lane must seal without touching its sibling's
+    // open turn. The player id comes back off the entry, which carries it.
+    _seal(key) {
+        const t = this.open.get(key);
         if (!t) return;
-        this.open.delete(playerId);
+        this.open.delete(key);
+        const playerId = t.playerId;
         const buf = this.pending.get(playerId) || [];
         buf.push(JSON.stringify(t) + '\n');
         this.pending.set(playerId, buf);
@@ -205,12 +230,13 @@ class TranscriptRecorder {
     // because the action has to execute first — so it is stamped onto the open turn,
     // which is then sealed. The ring holds the same object, so the in-memory copy
     // gains the result too.
-    noteResult(playerId, harnessResult) {
+    noteResult(playerId, harnessResult, lane) {
         if (!this.matchId || !playerId) return;
-        const t = this.open.get(playerId);
-        if (!t) return;                    // already sealed by the next turn
+        const key = this._key(playerId, lane);
+        const t = this.open.get(key);
+        if (!t) return;                    // already sealed by THIS lane's next turn
         t.harnessResult = harnessResult;
-        this._seal(playerId);
+        this._seal(key);
     }
 
     // Last N turns for a player, newest last — for an on-screen viewer.
