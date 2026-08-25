@@ -8488,21 +8488,34 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // whole point of the mode. JS still has to run them in SOME order, and the first
     // mover wins a contested build spot, so the order rotates by round instead of
     // permanently favouring seat one.
-    flushRound(live) {
-        // A rescue: this seat lost a lane to a failure during the round and still has an
-        // answer to play, so the round it would have forfeited on one lane is a round it
-        // gets to act in. Counted here because here is where "did the seat answer" is
-        // finally true or false -- queuedAction is what flushRound is about to spend.
-        //
-        // Single-lane seats are excluded by construction rather than by a flag: with one
-        // lane a failure means no queuedAction, so the condition cannot hold.
+    // A rescue: this seat lost a lane to a failure during the round and still has an
+    // answer to play, so a round it would have forfeited on one lane is a round it gets
+    // to act in. Called from flushRound, where "did the seat answer" is finally true or
+    // false -- queuedAction is what flushRound is about to spend.
+    //
+    // Single-lane seats are excluded by construction rather than by a flag: with one lane
+    // a failure means no queuedAction, so the condition cannot hold. The explicit length
+    // check is belt and braces, and it is what makes that reasoning readable.
+    //
+    // Its own method because flushRound executes the round, and a counter that can only
+    // be exercised by running a whole match is a counter nobody checks. This one cannot
+    // be tested by a normal match at all: the seats that would rescue are the flaky ones,
+    // and a healthy pairing produces zero -- which is indistinguishable from broken.
+    notePipelineRescues(live) {
+        let n = 0;
         for (const c of live) {
             if (!c.stats || (c.lanes || []).length < 2) continue;
             if (!c.queuedAction) continue;
             if (this.laneFailTotal(c) > (c._failMark || 0)) {
                 c.stats.laneRescued = (c.stats.laneRescued || 0) + 1;
+                n++;
             }
         }
+        return n;
+    }
+
+    flushRound(live) {
+        this.notePipelineRescues(live);
         // Held failures first, so a seat that contributed nothing still appears in its
         // round rather than vanishing from it.
         for (const c of live) {
