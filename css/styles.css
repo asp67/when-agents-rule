@@ -608,7 +608,16 @@ body.spectator-mode .mm-fog {
     color: #f0a500;
     font-weight: 700;
 }
+/* Both are SPANs in the markup, and an inline box ignores width and height outright.
+   The track got away with it by accident -- it is a direct child of the flexed
+   .sb-wonder, so it is blockified into a flex item and its 90x6 applies. The fill sits
+   one level deeper inside the track, which is not a flex container, so it stayed inline
+   and rendered 0x0 no matter what percentage was written onto it. The bar therefore
+   drew its groove and never filled, for the whole life of arena mode. The player-game
+   bar is unaffected because #wonderFill is a DIV. Declared explicitly on both here, so
+   neither depends on what display mode a parent happens to have. */
 .sb-wonder .sb-wonder-track {
+    display: block;
     width: 90px;
     height: 6px;
     border-radius: 3px;
@@ -616,6 +625,7 @@ body.spectator-mode .mm-fog {
     overflow: hidden;
 }
 .sb-wonder .sb-wonder-fill {
+    display: block;
     height: 100%;
     background: linear-gradient(90deg, #f0a500, #ffd45e);
     border-radius: 3px;
