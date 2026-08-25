@@ -6274,6 +6274,30 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     noteLaneDropped(controller, actionData) {
         const s = controller && controller.stats;
         if (s) s.laneDropped = (s.laneDropped || 0) + 1;
+
+        // Take the reply back out of the rolling history. The record is pushed when a
+        // reply LANDS, before the round decides whether to use it, so a dropped answer
+        // leaves one behind with no outcome -- and buildRollingTurns renders that as
+        // "(this action had not resolved when the next state was built)".
+        //
+        // That is not merely noise, it is a false claim: the action did not fail to
+        // resolve, it was never executed. A seat reading its own recent decisions and
+        // finding half of them apparently gone nowhere is being told something untrue
+        // about itself. Measured: 54 of 110 replies dropped on one seat, whose success
+        // rate that match was 0.392 against 0.758 with none dropped.
+        //
+        // asp67: nothing changed, no decision was applied, so any history of it is dead
+        // weight. It also buys back the context those turns were costing.
+        //
+        // The TRANSCRIPT keeps it -- the inference happened and was paid for, and the
+        // analysis needs to see it. Only what the model is shown about itself changes.
+        const rec = controller && controller._logTurn;
+        const log = (controller && controller.turnLog) || null;
+        if (rec && log) {
+            const i = log.indexOf(rec);
+            if (i !== -1) log.splice(i, 1);   // splice, not reassign: the array is the seat's
+            controller._logTurn = null;       // nothing may fill an outcome on it now
+        }
         const ai = controller && controller.aiPlayer;
         if (!ai) return;
         const cmds = this.normalizeCommands(actionData) || [];
