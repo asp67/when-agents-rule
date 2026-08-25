@@ -360,6 +360,18 @@ class OpenAIAIManager {
                                   // a reply cut mid-tool-call that still ran two actions is a
                                   // reply the model did not finish, and it used to read clean.
             noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
+            laneCount: 1,         // lanes this seat ran, so the summary can tell a clean
+                                  // 2-lane pipeline from a seat that never had lanes at all
+            laneRescued: 0,       // EXPERIMENTAL: rounds this seat PLAYED that a single-lane
+                                  // seat would have forfeited -- one lane came back with
+                                  // nothing playable and a sibling answered the round anyway.
+                                  // The third benefit of staggering, after cadence and board
+                                  // freshness, and the only one that pays out on the weak end
+                                  // of the field: a reliable model has nothing to rescue.
+                                  // Do NOT expect p^N. Measured 31%->24% and 64%->55% where
+                                  // independence predicts 9% and 41% -- lane failures
+                                  // CORRELATE, because one model meeting one prompt under one
+                                  // overload spirals in both lanes at once.
             laneDropped: 0,       // EXPERIMENTAL: complete replies no round could take.
             laneDuplicates: 0,    // EXPERIMENTAL, rolling inference only. Orders dropped because
             laneDuplicatesBy: {}, // the thing had appeared after the board that lane was given.
@@ -2318,6 +2330,7 @@ class OpenAIAIManager {
                 lane.pendingLog = [];
                 controller.lanes.push(lane);
             }
+            if (controller.stats) controller.stats.laneCount = controller.lanes.length;
             // Kept as a read-only view so every existing reader -- including ui.js's
             // "thinking" dot -- keeps working without knowing lanes exist. The setter
             // is deliberately release-only: nothing may claim a lane through it.
@@ -8306,11 +8319,36 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // rather than in a clump. Measured, never configured -- an endpoint that slows
     // down as the context grows (+77% across a match is normal here) would make any
     // constant wrong by the second half.
+    // Spacing between a seat's lane kickoffs BEFORE any of its own latencies are known.
+    // Only turn 1 has no measurement to go on, and turn 1 is the worst moment to guess
+    // small: every lane opens on the same untouched board, so N identical full-context
+    // prefills race each other for N answers to one question.
+    LANE_COLD_START_STAGGER() { return 10000; }
+
     laneStagger(c) {
         const cap = (c.lanes || []).length || 1;
         const lat = (c.laneLatencies || []).slice().sort((a, b) => a - b);
         const med = lat.length ? lat[Math.floor(lat.length / 2)] : 0;
-        return Math.max(this.turnInterval, (med || this.turnInterval * cap) / cap);
+        // The old cold-start fallback was `(this.turnInterval * cap) / cap` -- the lane
+        // count cancels, so it returned turnInterval whatever N was, and a 3-lane seat
+        // opened all three inside 3s of match start. asp67 caught it watching the box:
+        // three concurrent prefills of the same turn-1 state, which is the one board on
+        // which the extra lanes cannot even disagree. Prefill is compute-bound and does
+        // NOT batch, so that burst is paid in full and buys nothing.
+        if (!med) return Math.max(this.turnInterval, this.LANE_COLD_START_STAGGER());
+        return Math.max(this.turnInterval, med / cap);
+    }
+
+    // Reply-level failures only: a request that came back with nothing playable in it.
+    // Deliberately NOT invalidActions/actionsRejected -- those are per-command verdicts
+    // on a reply that DID answer, and a seat whose answer was merely wrong was never in
+    // danger of losing the round. This is the counter a rescue is measured against.
+    laneFailTotal(c) {
+        const s = c.stats;
+        if (!s) return 0;
+        return (s.timeouts || 0) + (s.networkErrors || 0) + (s.parseFails || 0)
+             + (s.truncatedReplies || 0) + (s.noActionReturns || 0)
+             + (s.contextOverflows || 0);
     }
 
     // Top up each seat's pipeline. Called at round open AND every tick while a round
@@ -8436,6 +8474,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // question two rounds old must not be waiting in the queue when it comes back.
         // answeredRound goes with it -- it is the round's own tally of who has spoken.
         live.forEach(c => { c.queuedAction = null; c.answeredRound = null; });
+        // Watermark for the rescue counter. Comparing totals across the round beats
+        // hooking each failure path: timeouts, truncation, parse breaks and prose-only
+        // replies all end a lane's turn the same way, and a counter that has to be
+        // wired into six call sites is a counter that misses the seventh one added later.
+        live.forEach(c => { c._failMark = this.laneFailTotal(c); });
         this.resetKickoffBudget(live);
         this.fillLanes(live, now);
     }
@@ -8446,6 +8489,20 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // mover wins a contested build spot, so the order rotates by round instead of
     // permanently favouring seat one.
     flushRound(live) {
+        // A rescue: this seat lost a lane to a failure during the round and still has an
+        // answer to play, so the round it would have forfeited on one lane is a round it
+        // gets to act in. Counted here because here is where "did the seat answer" is
+        // finally true or false -- queuedAction is what flushRound is about to spend.
+        //
+        // Single-lane seats are excluded by construction rather than by a flag: with one
+        // lane a failure means no queuedAction, so the condition cannot hold.
+        for (const c of live) {
+            if (!c.stats || (c.lanes || []).length < 2) continue;
+            if (!c.queuedAction) continue;
+            if (this.laneFailTotal(c) > (c._failMark || 0)) {
+                c.stats.laneRescued = (c.stats.laneRescued || 0) + 1;
+            }
+        }
         // Held failures first, so a seat that contributed nothing still appears in its
         // round rather than vanishing from it.
         for (const c of live) {

@@ -3725,6 +3725,12 @@ class UIManager {
                     laneDropped: st.laneDropped || 0,
                     laneDuplicates: st.laneDuplicates || 0,
                     laneDuplicatesBy: st.laneDuplicatesBy || {},
+                    // Rounds a single-lane seat would have forfeited. Not an error and not
+                    // a credit either -- the seat played the round on its own answer. It
+                    // sits with the other two because all three are the SAME trade priced
+                    // three ways: what staggering bought, and what it threw away to buy it.
+                    laneCount: st.laneCount || 1,
+                    laneRescued: st.laneRescued || 0,
                     contextOverflows: ctxOv, roundsMissed: missed,
                     rateLimited: st.rateLimited || 0, rateLimitLost: rlLost,
                     invalidActions: st.invalidActions, rejected: st.actionsRejected,
@@ -3840,6 +3846,9 @@ class UIManager {
                         <div class="sum-metric"><span>\u{1F4AC} ${t('sum.mReasons')}</span><b>${Math.round(m.reasonRate * 100)}%</b><i>${t('sum.mOfMoves')}</i></div>
                         <div class="sum-metric"><span>\u{1FA99} ${t('sum.mTokens')}</span><b>${this.fmtTokens(m.promptTokens + m.completionTokens)}</b><i>${(m.promptTokens + m.completionTokens) ? t('sum.mTokSplit', { p: this.fmtTokens(m.promptTokens), c: this.fmtTokens(m.completionTokens) }) : t('sum.mTokNone')}</i></div>
                         <div class="sum-metric${errTotal ? ' err' : ''}"><span>⚠️ ${t('sum.mErrors')}</span><b>${errTotal}</b><i>${t('sum.errBreak', { to: m.timeouts, net: this.netErrLabel(m), parse: m.parseFails, cut: m.truncated || 0, na: m.noAction || 0, inv: m.invalidActions, rej: m.rejected, ctx: m.contextOverflows || 0 })}</i></div>
+                        ${(m.laneCount || 1) > 1
+                            ? `<div class="sum-metric" title="${t('sum.laneTip')}"><span>\u{1F500} ${t('sum.mLanes')}</span><b>${m.laneRescued || 0}</b><i>${t('sum.laneBreak', { lanes: m.laneCount, dup: m.laneDuplicates || 0, drop: m.laneDropped || 0 })}</i></div>`
+                            : ''}
                     </div>
                     <div class="sum-actions">${topActions || `<span class="sum-chip">${t('sum.noActions')}</span>`}</div>
                     ${m.finalWord ? `<div class="sum-word"><span class="sum-word-h">\u{1F5E3}\uFE0F ${t('sum.finalWord')}</span><p>${this.escapeHtml(m.finalWord.text || m.finalWord.error || t('sum.finalWordNone'))}</p></div>` : ''}
