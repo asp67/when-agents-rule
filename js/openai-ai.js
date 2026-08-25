@@ -4382,7 +4382,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                         // handed to other people. Without choices, only the KEY NAMES go
                         // in, never the values.
                         ...OpenAIAIManager.emptyReplyRaw(norm, usage, data)
-                    });
+                    }, controller.laneNo);   // which lane's turn this is
                 }
                 controller._transcriptState = null;
             } catch (e) { console.warn('[transcript] capture failed', e); }
@@ -4483,7 +4483,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const stampResult = (msg) => {
                 try {
                     if (this.transcripts) {
-                        this.transcripts.noteResult(controller.aiPlayer && controller.aiPlayer.id, msg);
+                        this.transcripts.noteResult(controller.aiPlayer && controller.aiPlayer.id, msg,
+                                                    controller.laneNo);
                     }
                 } catch (e) { /* recording must never break a turn */ }
                 return null;
@@ -5243,7 +5244,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             }
             try {
                 if (this.transcripts) this.transcripts.noteResult(
-                    controller.aiPlayer && controller.aiPlayer.id, combined);
+                    controller.aiPlayer && controller.aiPlayer.id, combined, controller.laneNo);
             } catch (e) { /* recording must never break a turn */ }
         }
     }
@@ -5552,7 +5553,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // exchange, and it arrives after the reply was recorded.
             try {
                 if (this.transcripts) this.transcripts.noteResult(
-                    controller.aiPlayer && controller.aiPlayer.id, actionResult);
+                    controller.aiPlayer && controller.aiPlayer.id, actionResult, controller.laneNo);
             } catch (e) { /* recording must never break a turn */ }
         }
     }
