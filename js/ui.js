@@ -19,7 +19,7 @@ class UIManager {
         // never name different matches. samples/ holds several now; the full set and
         // its metadata are in that index, which is what a picker has to read because
         // GitHub Pages cannot list a directory.
-        this.SAMPLE_MATCH = '2026-08-17_qwen3.8-opus4.6-qwen3.6-muse-glimmer_125min.jsonl';
+        this.SAMPLE_MATCH = '2026-08-26_deepseek-v4-glm5.3-qwen3.8-gpt5.6_103min.jsonl';
     }
 
     showScreen(screenId) {

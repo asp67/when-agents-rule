@@ -183,7 +183,7 @@
     }
    ],
    "bytes": 9163298,
-   "default": true
+   "default": false
   },
   {
    "file": "2026-08-26_deepseek-v4-glm5.3-qwen3.8-gpt5.6_103min.jsonl",
@@ -233,7 +233,7 @@
     }
    ],
    "bytes": 6710739,
-   "default": false
+   "default": true
   }
  ]
 }
