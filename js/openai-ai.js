@@ -2390,16 +2390,30 @@ class OpenAIAIManager {
         };
 
         // --- Resources ---
+        // Amounts only. Population used to live in here and did not belong: one object
+        // carrying both stockpiles and head counts is the same trap the node counts fell
+        // into, where a model read "gold: 18" as an amount because the object beside it
+        // held amounts under the very same keys.
         const resourcesObj = {
             food: Math.floor(ai.resources.food),
             wood: Math.floor(ai.resources.wood),
             stone: Math.floor(ai.resources.stone),
-            gold: Math.floor(ai.resources.gold),
-            population: ai.resources.population,
-            maxPopulation: ai.resources.maxPopulation,
-            populationFree: ai.resources.maxPopulation - ai.resources.population,
-            // Hard ceiling — houses raise maxPopulation only up to this value.
-            populationHardCap: (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100
+            gold: Math.floor(ai.resources.gold)
+        };
+
+        // --- Population ---
+        // capacityNow is what the houses and Town Centers standing right now allow;
+        // capacityCeiling is the game's hard limit, which building more can never pass.
+        // Two ceilings need names that say which one binds: a model anchoring on the 100
+        // concludes it has room for ninety more and stops building houses.
+        //
+        // No "free" field. It was here (populationFree = capacity - used) and is gone on
+        // purpose: subtracting two numbers that both stand right there is the model's
+        // work, the same reason the undiscovered node count is not pre-computed either.
+        const populationObj = {
+            used: ai.resources.population,
+            capacityNow: ai.resources.maxPopulation,
+            capacityCeiling: (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100
         };
 
         // --- Battle report: losses, kills and raids since a while back ---
@@ -2417,7 +2431,7 @@ class OpenAIAIManager {
         // which is why building losses were moved into their own ledger. The quiet end
         // was not. One match left "your last discovered food node has been emptied" in
         // this list for THIRTY-TWO MINUTES, still labelled as news at "2755s ago",
-        // beside a discoveredNodesOnMap.food that by then read 8. True when it fired,
+        // beside a nodes.discovered.food that by then read 8. True when it fired,
         // false for most of the match it was shown in — and worse than never sending
         // it, because the model had no reason to distrust the one channel that exists
         // to tell it what changed.
@@ -2602,16 +2616,19 @@ class OpenAIAIManager {
             // positions only names a real place when there is exactly one cluster;
             // with a second base, or a base rebuilt after the first fell, it points
             // at empty ground between them.
-            // How many nodes of each type are STILL on the map, right now. Compare
-            // against "discoveredNodesOnMap" (what you have found) to judge whether more
-            // scouting is worth it — and watch it fall to see the world running dry.
+            // The world's node counts used to sit HERE as map.nodesLeftOnMap, while the
+            // player's own counts sat at the top level as discoveredNodesOnMap. Two
+            // numbers meant to be compared, in two different places, neither saying its
+            // unit — and a model duly read "stone: 40, gold: 18" as amounts and declared
+            // the map mined out while forty stone nodes stood on it. Both now live under
+            // "nodes" (see below), where the container names the unit once and the two
+            // populations sit side by side.
             //
             // This replaces the prose biome brief the prompt used to carry. That line
             // said "food is scarce"; the difficulty preset it described is literally a
             // multiplier on these counts — 98 food instead of 392 on a winter map, 49
             // and half the stone on a desert one. The number says the same thing, and
             // unlike the sentence it keeps saying it as the match wears on.
-            nodesLeftOnMap: Object.assign({}, (game.terrain && game.terrain.nodesLeftOnMap) ? game.terrain.nodesLeftOnMap() : {}),
             yourBaseTiles: (() => {
                 const out = {};
                 ai.buildings.forEach(b => {
@@ -2653,6 +2670,12 @@ class OpenAIAIManager {
         // coordinate (discoveredNodesOfType sees them all), so a remembered far node
         // stays targetable — it just is not recited every turn.
         if (!ai._knownResIdx) ai._knownResIdx = new Set();
+        // Every node of each type still standing in the world, found or not. Shipped
+        // beside the discovered counts under "nodes" so the two are read together: the
+        // gap between them is what is still out there unscouted. Deliberately NOT
+        // pre-subtracted — that inference is the model's.
+        const totalNodesOnMap = Object.assign({ food: 0, wood: 0, stone: 0, gold: 0 },
+            (game.terrain && game.terrain.nodesLeftOnMap) ? game.terrain.nodesLeftOnMap() : {});
         const discoveredNodesOnMap = { food: 0, wood: 0, stone: 0, gold: 0 };
         const byType = { food: [], wood: [], stone: [], gold: [] };
         if (game.terrain && game.terrain.resources) {
@@ -2699,7 +2722,7 @@ class OpenAIAIManager {
                     // knows one thing and must not speak for the rest of the economy.
                     // Naming the field ties the event to the number that moved, which is
                     // the whole point of having it.
-                    game.logPlayerEvent(ai, `Your last discovered ${k} node has been emptied — discoveredNodesOnMap.${k} is now 0.`);
+                    game.logPlayerEvent(ai, `Your last discovered ${k} node has been emptied — nodes.discovered.${k} is now 0.`);
                 }
             });
         }
@@ -3218,7 +3241,7 @@ class OpenAIAIManager {
                 // containing "units" keeps that door open.
                 //
                 // "population" is the word the game already uses for exactly this, and the
-                // seat reads its own as resources.population — so the two are directly
+                // seat reads its own as population.used — so the two are directly
                 // comparable, in the vocabulary the model already holds.
                 entry.population = o.units.length;
                 entry.buildings = o.buildings.length;
@@ -3362,6 +3385,7 @@ class OpenAIAIManager {
             clock: clockObj,
             epoch: epochObj,
             resources: resourcesObj,
+            population: populationObj,
             recentEvents: buildRecentEvents(),
             // Omitted entirely in peacetime — this rides the per-turn channel, so a
             // quiet game should pay nothing for it.
@@ -3369,7 +3393,15 @@ class OpenAIAIManager {
             ...(ordersInProgress.length ? { ordersInProgress } : {}),
             bonuses: bonusesObj,
             map: mapObj,
-            discoveredNodesOnMap: discoveredNodesOnMap,
+            // Counts of NODES, never amounts. The container carries the unit so the leaf
+            // keys can stay food/wood/stone/gold — those strings travel straight into
+            // assign_workers, and a "foodNodes" key here came back as
+            // resourceType: "foodNodes" in the tool call. Naming the unit outside the
+            // object is what lets both facts be stated without teaching a wrong word.
+            nodes: {
+                discovered: discoveredNodesOnMap,
+                totalOnMap: totalNodesOnMap
+            },
             nearestNodes: nearestNodes,
             friendlyBuildings: friendlyBuildings,
             // No tally of the above. There was one -- total / idle / busy /
@@ -3547,9 +3579,9 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
-- "discoveredNodesOnMap" counts what you have FOUND, per resource. A zero means unscouted, not absent.
-- Population: each unit occupies a population slot. Houses raise maxPopulation by 5, Town Centers by 10, to a population cap of ${(typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100}.
-- "gameStats.opponents[].population" counts EVERYTHING a discovered rival owns, villagers included — the same measure as your own "resources.population", and NOT an army size. Everywhere else in these tools "units" means fighters and "workers" means villagers; this one number does not follow that rule, which is why it is not called units.
+- "nodes" holds COUNTS OF NODES, never amounts of resource. "nodes.discovered" counts the ones you have FOUND and not seen emptied; "nodes.totalOnMap" counts every one still standing in the world, found or not. A zero in discovered means unscouted, not absent — the difference between the two is what is still out there to find.
+- Population: each unit occupies a population slot. "population.capacityNow" is what your standing Houses and Town Centers allow and is the limit that binds you today; Houses raise it by 5 and Town Centers by 10, never past "population.capacityCeiling" (${(typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100}).
+- "gameStats.opponents[].population" counts EVERYTHING a discovered rival owns, villagers included — the same measure as your own "population.used", and NOT an army size. Everywhere else in these tools "units" means fighters and "workers" means villagers; this one number does not follow that rule, which is why it is not called units.
 - "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
 
 ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
@@ -3672,9 +3704,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const r = gs.resources || {}, ep = gs.epoch || {}, wk = gs.workers || {}, b = gs.buildings || {}, th = gs.threats || {};
         const fu = Array.isArray(gs.friendlyUnits) ? gs.friendlyUnits : [];
         // Already counts. This used to tally a 1231-entry array on every recap.
-        const dn = gs.discoveredNodesOnMap;
+        // Reads gs.nodes.discovered since the node counts moved under "nodes" —
+        // the same trap the harvesting* keys sprang after their split.
+        const dn = (gs.nodes && gs.nodes.discovered) || null;
         const nodes = Object.assign({ food: 0, wood: 0, stone: 0, gold: 0 },
             (dn && typeof dn === 'object' && !Array.isArray(dn)) ? dn : {});
+        const pop = gs.population || {};
         // The keys mirror the FULL state schema (resources / workers / buildings /
         // research / threats), so the model reads this past-turn recap exactly like
         // the live state it already knows — no new shorthand to learn. "pastTurnRecap"
@@ -3685,7 +3720,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 currentEpoch: ep.currentEpoch || (gs.player && gs.player.age) || 'unknown',
                 advancingTo: ep.upgradeInProgress ? ep.upgradeInProgress.targetEpoch : null
             },
-            resources: { food: r.food, wood: r.wood, stone: r.stone, gold: r.gold, population: r.population, maxPopulation: r.maxPopulation },
+            resources: { food: r.food, wood: r.wood, stone: r.stone, gold: r.gold },
+            population: { used: pop.used, capacityNow: pop.capacityNow },
             // Mirrors the live state's key names. The recap kept reading the old
             // harvesting* keys after the split and would have replayed four
             // undefineds into every past turn.
