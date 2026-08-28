@@ -1458,6 +1458,12 @@ class OpenAIAIManager {
     static get SAFE_PARAM_NAMES() {
         return new Set([
             'thinkingtokenbudget', 'tokenbudget', 'maxtokens', 'mintokens',
+            // llama.cpp's cap on thinking, under both names it accepts. Note the word
+            // ORDER differs from thinkingtokenbudget above, so that entry does not
+            // cover them — and a budget of 1500 versus none is the difference between
+            // a seat playing 81 of 82 rounds and 49, which makes it exactly the kind
+            // of setting a transcript must carry.
+            'reasoningbudgettokens', 'thinkingbudgettokens',
             'maxnewtokens', 'maxcompletiontokens', 'maxprompttokens',
             'numspeculativetokens', 'maxtokenstosample'
         ]);
