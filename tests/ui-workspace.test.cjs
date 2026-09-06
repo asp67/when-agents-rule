@@ -119,7 +119,7 @@ function renderFrame(replayMode) {
         _lastTime: 83.333, updateCamera: noop, _computeCam: () => ({ view: [], proj: [], haze: [] }),
         _assembleFrame: noop, _syncFog: noop,
         gl: new Proxy({}, { get: () => noop }), prog: { uniforms: {} },
-        _sky: [0, 0, 0], _sun: [], sunDir: [], _dl: { opaque: [], blended: [], bars: [] } });
+        tex: { white: {} }, _sky: [0, 0, 0], _sun: [], sunDir: [], _dl: { opaque: [], blended: [], bars: [] } });
     const before = structuredClone(units);
     r.animate(); h.setTime(116.667); h.frames.shift()();
     return { before, after: units };

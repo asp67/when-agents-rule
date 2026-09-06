@@ -772,8 +772,44 @@
 
     // A building's parts (empty array for unknown types — callers stay safe).
     EngineBuildings.parts = (type, opts) => {
-        const b = builders[type];
-        return b ? b(opts || {}) : [];
+        const b = builders[type], options = opts || {};
+        const parts = b ? b(options) : [];
+        if (options.civ !== 'greek' || (TIER[options.age] || 0) < 2) return parts;
+        // Refine existing architecture. Decorative parts are excluded from the
+        // renderer's footprint measurement so visual work cannot change clearance.
+        const ornaments=[];
+        for (const p of parts) {
+            if (p.tex === 'plaster' || p.tex === 'masonry') p.tex='limestone';
+            if (p.kind === 'cylinder' && p.tex === 'limestone' && p.args[2] > 1.5 && p.args[0] < .5) {
+                p.args=[p.args[0],p.args[1],p.args[2],16];p.key='cylinder:'+p.args.join(',');
+                const h=p.args[2], radius=Math.max(p.args[0],p.args[1]);
+                for (const top of [-1,1]) {
+                    const m=M().multiply(p.m,M().translation(0,top*(h/2-.10),0));
+                    ornaments.push({kind:'box',args:[radius*2.9,.20,radius*2.9],tex:'limestone',m,visualOnly:true});
+                }
+            }
+            if (p.kind === 'box' && p.tex === 'limestone' && p.args[0]>3 && p.args[1]>1.8 && p.args[2]>2) {
+                for (const side of [-1,1]) {
+                    ornaments.push({kind:'box',args:[.60,.82,.06],tex:'wood',
+                        m:M().multiply(p.m,M().translation(side*p.args[0]*.30,.12,p.args[2]/2+.015)),visualOnly:true});
+                    ornaments.push({kind:'box',args:[.78,.12,.16],tex:'limestone',
+                        m:M().multiply(p.m,M().translation(side*p.args[0]*.30,-.34,p.args[2]/2+.04)),visualOnly:true});
+                }
+            }
+            if (p.kind === 'prism' && (p.tex === 'limestone' || p.tex === 'rooftile')) {
+                const [w,d,h]=p.args;
+                // Stone cornice under terracotta tiles; retain the original silhouette.
+                const cornice={kind:'box',args:[w,.16,d],tex:'limestone',
+                    m:M().multiply(p.m,M().translation(0,.08,0)),visualOnly:true};
+                ornaments.push(cornice);
+                p.tex='rooftile';
+                for(const side of [-1,1]) {
+                    ornaments.push({kind:'box',args:[w*.88,.14,.12],tex:'limestone',
+                        m:M().multiply(p.m,M().translation(0,.23,side*(d/2+.01))),visualOnly:true});
+                }
+            }
+        }
+        return parts.concat(ornaments);
     };
 
     // Generic construction site sized to a footprint: plinth, a unit-height

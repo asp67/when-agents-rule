@@ -112,48 +112,16 @@
                 updateProjectionMatrix: () => {}
             };
 
-            const VS = `
-                attribute vec3 aPosition;
-                attribute vec3 aNormal;
-                attribute vec2 aUv;
-                uniform mat4 uProj, uView, uModel;
-                uniform vec2 uUvOffset;   // slow drift for foam/water
-                varying vec3 vNormal;
-                varying vec2 vUv;
-                varying float vDepth;     // view-space distance, for the haze
-                void main() {
-                    vNormal = mat3(uModel) * aNormal;
-                    vUv = aUv + uUvOffset;
-                    vec4 vp = uView * uModel * vec4(aPosition, 1.0);
-                    vDepth = -vp.z;
-                    gl_Position = uProj * vp;
-                }`;
-            const FS = `
-                precision mediump float;
-                uniform sampler2D uTex;
-                uniform vec3 uSunDir, uSunColor, uAmbient, uTint;
-                uniform float uUnlit;
-                uniform float uAlpha;     // fades: ghosts, dust, foam pulse
-                uniform vec3 uSky;        // the colour behind everything
-                uniform vec2 uHaze;       // (start, end) view depth
-                varying vec3 vNormal;
-                varying vec2 vUv;
-                varying float vDepth;
-                void main() {
-                    vec4 t = texture2D(uTex, vUv);
-                    vec3 base = t.rgb * uTint;
-                    vec3 n = normalize(vNormal);
-                    vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
-                    vec3 col = mix(base * light, base, uUnlit);
-                    // Fade toward the sky with distance, so the sea has ALREADY
-                    // become sky by the time the far plane cuts it. That is what
-                    // lets the horizon read as a horizon rather than as a clip line
-                    // sliding up and down the frame as you zoom.
-                    float h = clamp((vDepth - uHaze.x) / max(1.0, uHaze.y - uHaze.x), 0.0, 1.0);
-                    gl_FragColor = vec4(mix(col, uSky, h), t.a * uAlpha);
-                }`;
-            this.prog = GLCore.compileProgram(this.gl, VS, FS);
-            this.sunDir = M().normalize([-0.35, 0.9, 0.45]);
+            this.prog = GLCore.compileProgram(this.gl, EngineAtmosphere.vertex, EngineAtmosphere.fragment);
+            this.shadowProg = GLCore.compileProgram(this.gl, EngineAtmosphere.shadowVertex, EngineAtmosphere.shadowFragment);
+            this.sunDir = M().normalize([-0.65, 0.72, 0.36]);
+            this.visualStyle = 'cinematic';
+            this._shadowTarget = null;
+            this._lightMatrix = M().identity();
+            this._shadowStrength = 0;
+            let quality = 'balanced';
+            try { quality = localStorage.getItem('warGraphicsQuality') || quality; } catch (e) {}
+            this.setGraphicsQuality(quality);
 
             this._geo = new Map();          // 'kind:args' → GPU buffers
             this._resEntries = new WeakMap(); // resource → prebaked entries
@@ -189,6 +157,42 @@
         }
 
         // ---- materials -------------------------------------------------------
+        setGraphicsQuality(value) {
+            const sizes = { low: 0, balanced: 1024, cinematic: 2048 };
+            if (!Object.prototype.hasOwnProperty.call(sizes,value)) value = 'balanced';
+            if (this.graphicsQuality === value) return;
+            this.graphicsQuality = value;
+            EngineAtmosphere.disposeShadowTarget(this.gl,this._shadowTarget);
+            this._shadowTarget = sizes[value] ? EngineAtmosphere.createShadowTarget(this.gl,sizes[value]) : null;
+            try { localStorage.setItem('warGraphicsQuality',value); } catch (e) {}
+        }
+
+        _renderShadows() {
+            const target = this._shadowTarget;
+            this._shadowStrength = target && this.visualStyle !== 'classic'
+                ? Math.max(0,Math.min(1,(160-this._halfH)/60)) : 0;
+            if (!this._shadowStrength) return;
+            const gl = this.gl, m = M(), span = Math.max(65, Math.min(300,this._halfH*2.4));
+            const step = span*2/target.size;
+            const x = Math.round(this.cameraTarget.x/step)*step, z = Math.round(this.cameraTarget.z/step)*step;
+            const eye = [x+this.sunDir[0]*450,this.sunDir[1]*450,z+this.sunDir[2]*450];
+            this._lightMatrix = m.multiply(m.ortho(-span,span,-span,span,1,1000),m.lookAt(eye,[x,0,z],[0,1,0]));
+            gl.bindFramebuffer(gl.FRAMEBUFFER,target.framebuffer);
+            gl.viewport(0,0,target.size,target.size);
+            gl.clearColor(1,1,1,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+            gl.useProgram(this.shadowProg);
+            gl.uniformMatrix4fv(this.shadowProg.uniforms.uLightMatrix,false,this._lightMatrix);
+            gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1,1);
+            // Only geometry already admitted by the visibility/fog pass can cast.
+            for (const obj of this._dl.opaque) {
+                if (obj === this._ground || obj === this._sea || obj.noShadow) continue;
+                gl.uniformMatrix4fv(this.shadowProg.uniforms.uModel,false,obj.model);
+                GLCore.drawMesh(gl,this.shadowProg,obj.buf);
+            }
+            gl.disable(gl.POLYGON_OFFSET_FILL);
+            gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+        }
+
         _buildTextures(theme) {
             if (this._theme === theme && this.tex) return;
             this._theme = theme;
@@ -197,9 +201,11 @@
                 : (theme === 'desert' ? [110, 116, 62] : [74, 112, 58]);
             const T = (c, o) => GLCore.createTextureFromCanvas(gl, c, o);
             this.tex = {
+                coast: T(TexGen.coastMask(), { clamp: true }),
                 terrain: T(TexGen.terrain(theme, TERRAIN_SEED, 2048, TERRAIN_WORLD, TERRAIN_LAND), { clamp: true }),
                 openWater: T(TexGen.openWater(theme, 5)),   // tiles — no clamp
                 masonry: T(TexGen.masonry(22)),
+                limestone: T(TexGen.limestone()),
                 wood: T(TexGen.wood(33)),
                 bark: T(TexGen.bark(44)),
                 foliage: T(TexGen.foliage(55, canopyBase)),
@@ -224,8 +230,8 @@
                 foam: T(TexGen.foam(199))
             };
             // theme atmosphere: sun character first, then the sea beyond the map.
-            this._sun = theme === 'winter' ? [0.74, 0.78, 0.88]
-                : (theme === 'desert' ? [0.95, 0.84, 0.60] : [0.85, 0.78, 0.66]);
+            this._sun = theme === 'winter' ? [0.74, 0.77, 0.83]
+                : (theme === 'desert' ? [0.99, 0.82, 0.59] : [0.96, 0.84, 0.66]);
             // The colour behind everything, and the colour distance fades toward.
             // This used to be derived as lit waterDeep, because the clear colour WAS
             // the sea past the map rim and any mismatch showed as a hard edge. The
@@ -256,7 +262,7 @@
             if (this._footprint.has(key)) return this._footprint.get(key);
             let ex = 0, ez = 0;
             for (const p of parts) {
-                if (p.blend || p.tex === 'shadow') continue; // the contact shadow isn't structure
+                if (p.blend || p.tex === 'shadow' || p.visualOnly) continue; // the contact shadow isn't structure
                 const gen = EngineMesh[p.kind];
                 if (!gen) continue;
                 const P = gen(...p.args).positions;
@@ -480,7 +486,7 @@
             this._buildTextures(theme);
             this._ground = {
                 buf: this._buf('gridPlane', [TERRAIN_WORLD, 1, 1]),
-                tex: this.tex.terrain, model: M().identity()
+                tex: this.tex.terrain, model: M().identity(), material: 1
             };
             // Open sea under everything, far past anything the camera can reach, so
             // the water's grain carries on to the horizon instead of stopping dead at
@@ -490,7 +496,7 @@
             const SEA = 12000;
             this._sea = {
                 buf: this._buf('gridPlane', [SEA, 1, SEA / TexGen.OPEN_WATER_TILE]),
-                tex: this.tex.openWater, model: M().translation(0, -0.35, 0)
+                tex: this.tex.openWater, model: M().translation(0, -0.35, 0), material: 2
             };
             // Replace THREE resource meshes with engine handles: fog toggles
             // handle.visible, depletion nulls res.mesh — both drive our draw.
@@ -597,7 +603,12 @@
                 if (this._theme === 'winter') {
                     add('cylinder', [0, 1, 1, 8], 'foliage', TRS(res.x, 3.1 * s, res.z, 2.2 * s, 3.4 * s, 2.2 * s));
                 } else {
-                    add('sphere', [1, 10, 7], 'foliage', TRS(res.x, 3.3 * s, res.z, 1.9 * s, 1.6 * s, 1.9 * s, rot));
+                    // Uneven crowns with a visible fork: one resource remains one tree.
+                    for (let branch=0; branch<3; branch++) {
+                        const a=rot+branch*2.094, dx=Math.cos(a), dz=Math.sin(a);
+                        add('cylinder',[0.10,0.18,1.7,6],'bark',TRS(res.x+dx*.45*s,2.1*s,res.z+dz*.45*s,s,s,s,rot));
+                        add('sphere',[1,10,7],'foliage',TRS(res.x+dx*.86*s,(3.1+branch*.26)*s,res.z+dz*.86*s,1.4*s,1.2*s,1.45*s,a));
+                    }
                 }
             } else if (res.type === 'stone') {
                 add('disc', [2.0, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
@@ -1848,6 +1859,7 @@
             const bb = M().billboard(cam.view);
             this._assembleFrame(now / 1000, deltaTime, bb);
             this._syncFog();
+            this._renderShadows();
 
             gl.viewport(0, 0, this.W, this.H);
             gl.clearColor(this._sky[0], this._sky[1], this._sky[2], 1); // deep sea beyond the map
@@ -1862,12 +1874,28 @@
             gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(this.prog.uniforms.uTex, 0);
+            gl.uniform3fv(this.prog.uniforms.uEye,cam.eye);
+            gl.uniform1f(this.prog.uniforms.uTime,(now/1000)%4096);
+            gl.uniform1f(this.prog.uniforms.uAtmosphere,this.visualStyle === 'classic' ? 0 : 1);
+            gl.uniformMatrix4fv(this.prog.uniforms.uLightMatrix,false,this._lightMatrix);
+            gl.uniform1f(this.prog.uniforms.uShadowStrength,this._shadowStrength);
+            gl.uniform1f(this.prog.uniforms.uShadowTexel,this._shadowTarget ? 1/this._shadowTarget.size : 1);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D,this._shadowTarget ? this._shadowTarget.texture : this.tex.white);
+            gl.uniform1i(this.prog.uniforms.uShadowMap,1);
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D,this.tex.coast || this.tex.white);
+            gl.uniform1i(this.prog.uniforms.uCoast,2);
+            gl.activeTexture(gl.TEXTURE0);
 
             const draw = (list) => {
                 for (const obj of list) {
                     gl.bindTexture(gl.TEXTURE_2D, obj.tex);
+                    const metal = obj.tex === this.tex.gold || obj.tex === this.tex.iron;
+                    gl.uniform1f(this.prog.uniforms.uMaterial,obj.material || (metal ? 3 : 0));
                     gl.uniform3fv(this.prog.uniforms.uTint, obj.tint || this.WHITE);
-                    gl.uniform1f(this.prog.uniforms.uAlpha, obj.alpha == null ? 1 : obj.alpha);
+                    gl.uniform1f(this.prog.uniforms.uAlpha, (obj.alpha == null ? 1 : obj.alpha)
+                        * (obj.tex === this.tex.shadow ? 1-this._shadowStrength*.45 : 1));
                     gl.uniform2f(this.prog.uniforms.uUvOffset,
                         obj.uvOff ? obj.uvOff[0] : 0, obj.uvOff ? obj.uvOff[1] : 0);
                     gl.uniformMatrix4fv(this.prog.uniforms.uModel, false, obj.model);

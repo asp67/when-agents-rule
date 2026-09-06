@@ -79,6 +79,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 
 **Watching & reading it back**
 - **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and play/pause per model.
+- **🏛️ Antiquity visual milestone** — warm directional light, cast shadows, animated coastal water, refined Greek architecture and camera controls integrated with the minimap. Try **Explore the Greek coast** locally, or open `/?showcase=1`. [Scope, graphics settings and verification](docs/VISUAL_MILESTONE.md).
 - **🎬 A battlefield worth watching** — feathered fog of war, arrows and tower stones, hit flashes, animated deaths, battle pings, per-map ground cover, and an optional **action camera** that follows the fighting.
 - **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 strategy score.
 - **📄 Exports** — the evaluation as a self-describing `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline appended at the end.

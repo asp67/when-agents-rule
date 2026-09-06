@@ -2141,6 +2141,70 @@ Object.keys(I18N_OUTCOMES_2).forEach(l => { I18N[l] = Object.assign(I18N[l] || {
 
 // Controls-reference card (the "?" button in both HUDs).
 // Presentation controls: local preferences, independent of match settings.
+const I18N_ART = {
+    "en": {
+        "art.kicker": "An arena for autonomous minds",
+        "art.enter": "Explore the Greek coast",
+        "art.analyze": "Analyze a match",
+        "art.cameraOptions": "Camera and graphics",
+        "art.quality": "Graphics",
+        "art.low": "Low",
+        "art.balanced": "Balanced",
+        "art.cinematic": "Cinematic",
+        "art.light": "Lighting",
+        "art.atmospheric": "Atmospheric",
+        "art.simple": "Simple lighting",
+        "art.showcase": "Greek coast · playable showcase",
+        "art.showcaseHint": "An advanced Greek settlement against a rule-based opponent. No model connection required."
+    },
+    "de": {
+        "art.kicker": "Eine Arena für autonome Denker",
+        "art.enter": "Die griechische Küste erkunden",
+        "art.analyze": "Ein Match analysieren",
+        "art.cameraOptions": "Kamera und Grafik",
+        "art.quality": "Grafik",
+        "art.low": "Niedrig",
+        "art.balanced": "Ausgewogen",
+        "art.cinematic": "Filmisch",
+        "art.light": "Licht",
+        "art.atmospheric": "Atmosphärisch",
+        "art.simple": "Einfache Beleuchtung",
+        "art.showcase": "Griechische Küste · spielbare Vorschau",
+        "art.showcaseHint": "Eine ausgebaute griechische Siedlung gegen einen regelbasierten Gegner. Keine Modellverbindung erforderlich."
+    },
+    "es": {
+        "art.kicker": "Una arena para mentes autónomas",
+        "art.enter": "Explorar la costa griega",
+        "art.analyze": "Analizar una partida",
+        "art.cameraOptions": "Cámara y gráficos",
+        "art.quality": "Gráficos",
+        "art.low": "Bajos",
+        "art.balanced": "Equilibrados",
+        "art.cinematic": "Cinematográficos",
+        "art.light": "Iluminación",
+        "art.atmospheric": "Atmosférica",
+        "art.simple": "Iluminación sencilla",
+        "art.showcase": "Costa griega · muestra jugable",
+        "art.showcaseHint": "Una colonia griega avanzada contra un rival de reglas. No requiere conexión a un modelo."
+    },
+    "zh": {
+        "art.kicker": "自主智能的竞技场",
+        "art.enter": "探索希腊海岸",
+        "art.analyze": "分析一场对局",
+        "art.cameraOptions": "相机与画质",
+        "art.quality": "画质",
+        "art.low": "低",
+        "art.balanced": "均衡",
+        "art.cinematic": "电影级",
+        "art.light": "光照",
+        "art.atmospheric": "氛围光照",
+        "art.simple": "基础光照",
+        "art.showcase": "希腊海岸 · 可玩预览",
+        "art.showcaseHint": "使用一座发展成熟的希腊城镇，对抗规则驱动的对手。无需连接模型。"
+    }
+};
+Object.keys(I18N_ART).forEach(l=>Object.assign(I18N[l],I18N_ART[l]));
+
 const I18N_VIEW = {
     "en": {
         "view.connection": "Connection",
@@ -2161,7 +2225,7 @@ const I18N_VIEW = {
         "view.playRate": "Play filtered entries: {n} steps per second",
         "view.camera": "Camera",
         "view.overview": "Overview",
-        "view.selection": "Selection",
+        "view.selection": "Focus selected",
         "view.reset": "Reset view",
         "view.zoomIn": "Zoom in",
         "view.zoomOut": "Zoom out",
@@ -2189,7 +2253,7 @@ const I18N_VIEW = {
         "view.playRate": "Gefilterte Einträge abspielen: {n} Schritte pro Sekunde",
         "view.camera": "Kamera",
         "view.overview": "Übersicht",
-        "view.selection": "Auswahl",
+        "view.selection": "Auswahl fokussieren",
         "view.reset": "Ansicht zurücksetzen",
         "view.zoomIn": "Vergrößern",
         "view.zoomOut": "Verkleinern",
@@ -2217,7 +2281,7 @@ const I18N_VIEW = {
         "view.playRate": "Reproducir entradas filtradas: {n} pasos por segundo",
         "view.camera": "Cámara",
         "view.overview": "Vista general",
-        "view.selection": "Selección",
+        "view.selection": "Enfocar selección",
         "view.reset": "Restablecer vista",
         "view.zoomIn": "Acercar",
         "view.zoomOut": "Alejar",
@@ -2245,7 +2309,7 @@ const I18N_VIEW = {
         "view.playRate": "播放筛选后的条目：每秒 {n} 步",
         "view.camera": "相机",
         "view.overview": "全图",
-        "view.selection": "所选对象",
+        "view.selection": "聚焦所选对象",
         "view.reset": "重置视图",
         "view.zoomIn": "放大",
         "view.zoomOut": "缩小",

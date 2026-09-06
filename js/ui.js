@@ -181,15 +181,35 @@ class UIManager {
 
     renderCameraControls() {
         const box = document.getElementById('cameraControls');
-        if (!box || this._cameraControlsLanguage === getUiLang()) return;
+        if (!box) return;
+        const analyzer = document.getElementById('analyzeScreen');
+        const dock = document.getElementById(analyzer && analyzer.classList.contains('active') ? 'anCameraDock' : 'mapToolsDock');
+        if (dock && box.parentElement !== dock) dock.appendChild(box);
+        if (this._cameraControlsLanguage === getUiLang()) return;
         this._cameraControlsLanguage = getUiLang();
         const esc = s => this.escapeHtml(String(s));
-        const buttons = [['overview', t('view.overview')], ['selection', t('view.selection')],
-            ['reset', t('view.reset')], ['zoomIn', '+'], ['zoomOut', '−'],
-            ['turnLeft', '↶'], ['turnRight', '↷']];
-        box.innerHTML = `<summary>${esc(t('view.camera'))}</summary><div class="camera-actions">`
-            + buttons.map(([action, label]) => `<button type="button" title="${esc(t('view.' + action))}" aria-label="${esc(t('view.' + action))}" onclick="game.ui.cameraAction('${action}')">${esc(label)}</button>`).join('')
-            + '</div>';
+        const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
+        const icons = {
+            overview:'M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z M9 3v16 M15 5v16',
+            selection:'M8 3H3v5 M16 3h5v5 M21 16v5h-5 M8 21H3v-5 M8 12h8 M12 8v8',
+            zoomIn:'M5 12h14 M12 5v14', zoomOut:'M5 12h14',
+            more:'M5 9l7 7 7-7', reset:'M4 10a8 8 0 1 1 1 8 M4 4v6h6',
+            turnLeft:'M8 5L3 10l5 5 M3 10h11a6 6 0 0 1 6 6',
+            turnRight:'M16 5l5 5-5 5 M21 10H10a6 6 0 0 0-6 6'
+        };
+        const button = action => `<button type="button" title="${esc(t('view.'+action))}" aria-label="${esc(t('view.'+action))}" onclick="game.ui.cameraAction('${action}')">${svg(icons[action])}</button>`;
+        box.setAttribute('aria-label',t('view.camera'));
+        box.innerHTML = ['overview','selection','zoomIn','zoomOut'].map(button).join('')
+            + `<details class="camera-more"><summary title="${esc(t('art.cameraOptions'))}" aria-label="${esc(t('art.cameraOptions'))}">${svg(icons.more)}</summary>
+                <div class="camera-popover"><div class="camera-secondary">${['reset','turnLeft','turnRight'].map(button).join('')}</div>
+                <label>${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['low','balanced','cinematic'].map(k=>`<option value="${k}">${esc(t('art.'+k))}</option>`).join('')}</select></label>
+                <label>${esc(t('art.light'))}<select onchange="game.renderer.visualStyle=this.value"><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label></div></details>`;
+        box.querySelector('select').value = this.game.renderer.graphicsQuality || 'balanced';
+        box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
+    }
+
+    setGraphicsQuality(value) {
+        this.game.renderer.setGraphicsQuality(value);
     }
 
     cameraAction(action) {

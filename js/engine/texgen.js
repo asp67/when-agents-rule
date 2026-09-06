@@ -593,6 +593,23 @@
         return c;
     };
 
+    // Fine limestone courses: a restrained warm stone for the Greek milestone.
+    TexGen.limestone = (seed=317,size=256) => {
+        const rand=TexGen.rng(seed), c=canvas(size), ctx=c.getContext('2d');
+        noisyFill(ctx,size,[206,198,173],[{noise:TexGen.valueNoise(size,32,rand),amp:14}]);
+        for(let row=0;row<8;row++) {
+            const y=row*size/8;
+            ctx.fillStyle='rgba(63,60,49,.22)';ctx.fillRect(0,y,size,1);
+            for(let col=-1;col<4;col++) {
+                const x=(col+(row%2)*.5)*size/3;
+                ctx.fillRect(x,y,1,size/8);
+                ctx.fillStyle='rgba(255,247,221,.2)';ctx.fillRect(x+1,y+1,size/3-2,1);
+                ctx.fillStyle='rgba(63,60,49,.22)';
+            }
+        }
+        return c;
+    };
+
     // ---- Terrain mega-texture ---------------------------------------------------
     // One big canvas covering the whole map (classic pre-baked look): deep water
     // at the rim, a noise-wobbled coastline, wet + dry beach bands, then the
@@ -600,9 +617,9 @@
     // noise SAMPLERS (no full-res temporaries).
     TexGen.TERRAIN_PALETTES = {
         summer: {
-            waterDeep: [22, 54, 84], water: [38, 86, 118], wetSand: [166, 148, 108],
+            waterDeep: [16, 47, 62], water: [44, 111, 112], wetSand: [166, 148, 108],
             sand: [214, 196, 148], soil: [124, 98, 60],
-            grass: [98, 140, 76], grassDark: [76, 116, 60]
+            grass: [126, 141, 89], grassDark: [80, 104, 66]
         },
         winter: {
             waterDeep: [26, 52, 74], water: [44, 84, 108], wetSand: [148, 158, 166],
@@ -684,6 +701,20 @@
         }
         ctx.putImageData(img, 0, 0);
         return c;
+    };
+
+    // A separate mask preserves full colour precision in the terrain canvas.
+    TexGen.coastMask = (size = 512) => {
+        const c=canvas(size), ctx=c.getContext('2d'), img=ctx.createImageData(size,size);
+        const coast=TexGen.coastSampler(TexGen.TERRAIN_SEED);
+        for (let y=0;y<size;y++) for (let x=0;x<size;x++) {
+            const u=x/size,v=y/size;
+            const dist=Math.max(Math.abs((u-.5)*TexGen.TERRAIN_WORLD),Math.abs((v-.5)*TexGen.TERRAIN_WORLD))+coast(u,v);
+            const value=Math.round(255*Math.max(0,Math.min(1,(dist-TexGen.TERRAIN_LAND-3)/10)));
+            const i=(y*size+x)*4;
+            img.data[i]=img.data[i+1]=img.data[i+2]=value; img.data[i+3]=255;
+        }
+        ctx.putImageData(img,0,0); return c;
     };
 
     TexGen.terrain = (theme, seed, size = 2048, worldSize = 1000, landHalf = 400) => {

@@ -1,0 +1,117 @@
+/* Antiquity visual milestone. Loaded after the functional layouts. */
+:root {
+    --bg-0:#171a18; --bg-1:#222622; --bg-2:#2b302a; --panel:#20241f;
+    --text:#ede9dd; --muted:#aaa99a; --line:rgba(221,211,180,.16);
+    --gold:#bc9a62; --gold-2:#dec594; --teal:#91ad92;
+    --red:#bc7060; --red-2:#d58b74;
+    --shadow:0 12px 40px rgba(0,0,0,.24);
+}
+body { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg-0); }
+button,input,select,textarea { font-family:inherit; }
+#startScreen,#civilizationScreen,#gameModeScreen {
+    background:radial-gradient(ellipse at 78% 40%,#474b3b 0,transparent 55%),#191e19;
+}
+#startScreen { justify-content:flex-start; align-items:center; overflow:auto; }
+.start-content { position:relative; z-index:1; text-align:left; padding:60px clamp(28px,8vw,160px); max-width:1000px; }
+.start-kicker { color:var(--gold-2); text-transform:uppercase; letter-spacing:.22em; font-size:.72rem; margin-bottom:32px; }
+.game-title { font-family:Georgia,"Times New Roman",serif; font-size:clamp(3.8rem,7.6vw,8rem);
+    font-weight:400; line-height:.96; letter-spacing:-.035em; color:var(--text);
+    background:none; -webkit-text-fill-color:currentColor; filter:none; margin-bottom:28px; }
+.subtitle { text-transform:none; letter-spacing:.02em; font-size:1rem; max-width:450px; line-height:1.6; margin-bottom:30px; }
+.subtitle::after { display:none; }
+.menu-buttons { align-items:flex-start; gap:8px; }
+.menu-btn { min-width:230px; padding:12px 22px; border:1px solid var(--line); border-radius:3px;
+    box-shadow:none; background:rgba(25,30,25,.8); color:var(--text); font-weight:500; letter-spacing:.03em; }
+.menu-btn:hover { background:#343c30; border-color:var(--gold); transform:none; box-shadow:none; }
+.showcase-launch { background:var(--gold); color:#171b16; border-color:var(--gold); }
+.showcase-launch:hover { background:var(--gold-2); color:#171b16; }
+.start-content .lang-picker { justify-content:flex-start; margin-top:30px; }
+.lang-select,.lang-select option { background:var(--bg-0); border-color:var(--line); border-radius:3px; }
+.start-inscription { position:absolute; right:6vw; bottom:18vh; display:flex; gap:clamp(18px,4vw,60px);
+    font:clamp(5rem,13vw,14rem)/1 Georgia,serif; color:rgba(222,197,148,.075); pointer-events:none; }
+.selection-content h2,.arena-section-head h3,.arena-title { font-family:Georgia,serif; font-weight:400; color:var(--text); }
+.mode-card,.civ-card,.model-card,.arena-section { border-radius:4px; background:var(--bg-1); box-shadow:none; }
+.mode-card:hover,.civ-card:hover { transform:translateY(-2px); border-color:var(--gold); box-shadow:none; }
+.mode-card::before,.civ-card::before { display:none; }
+.model-card { border-left-width:2px; border-left-color:var(--gold); }
+.model-card-header,.model-card-body,.model-section,.model-advanced { color:var(--text); }
+.arena-field input,.arena-field select,.arena-field textarea,.mdl-pop { background:#181d18; color:var(--text); border-color:var(--line); border-radius:3px; }
+.mc-auth { background:#30382e; color:#c9cfbe; border-radius:3px; }
+.auth-hint,.mc-sub { color:var(--muted); }
+
+/* The world supplies colour. The furniture uses one neutral surface and one accent. */
+#gameCanvas canvas { filter:none; }
+#gameScreen::after { background:radial-gradient(ellipse at center,transparent 60%,rgba(18,20,16,.14)); }
+.hud,.spectator-statusbar,.lb-header,.ai-log-header,.an-topbar {
+    background:rgba(25,30,25,.95); border-color:var(--line); box-shadow:none; backdrop-filter:blur(8px);
+}
+.spectator-statusbar { border-radius:4px; gap:12px; padding:10px 16px; }
+.sb-brand { font-family:Georgia,serif; font-weight:400; letter-spacing:.14em; background:none; -webkit-text-fill-color:var(--gold-2); }
+.sb-time { color:var(--text); font-variant-numeric:tabular-nums; }
+.sb-end,.sb-auto,.sb-speed,.sb-pause,.quit-game-btn,.action-btn,.an-chip,.an-seat-btn {
+    border-radius:3px; background:#30372d; color:var(--text); border:1px solid var(--line); box-shadow:none;
+}
+.sb-end:hover,.sb-auto:hover,.action-btn:hover,.an-chip:hover { background:#424b3b; border-color:var(--gold); transform:none; box-shadow:none; }
+.an-chip.is-on,.sb-auto.active { background:#4c5943; border-color:#738465; }
+#topHUD { padding:12px 20px; }
+#bottomHUD { border-top:1px solid var(--line); }
+.ai-decision-log,.spectator-leaderboard { border-radius:4px; }
+.ai-log-header,.lb-header { color:var(--gold-2); font-size:.78rem; letter-spacing:.08em; }
+.ai-log-entry,.lb-card { background:rgba(27,33,27,.93); border-radius:3px; box-shadow:none; }
+.ai-log-entry { border-left-width:2px; line-height:1.5; }
+.lb-card { border-color:var(--line); }
+.lb-model-banner { background:rgba(0,0,0,.2); border-radius:2px; font-family:inherit; }
+.lb-name,.lb-rankline { color:var(--text); }
+.lb-advice-input,.ai-log-search { background:#151a15; border-color:var(--line); border-radius:3px; }
+.an-body,.an-lower { background:#191e19; }
+.an-workspace-tools,.an-bar,.an-detail,.an-graph { background:var(--bg-0); border-color:var(--line); }
+.an-d-sec,.an-d-obj,.an-d-final,.an-d-reason,.an-row { background:transparent; }
+.an-row.sel { background:#354030; }
+.an-d-head,.an-list,.an-pick-card { border-color:var(--line); }
+.an-pick-card { background:rgba(24,30,24,.95); border-radius:3px; padding:10px 12px; }
+.an-stage-hud { background:rgba(24,30,24,.93); border:1px solid var(--line); border-radius:3px; }
+
+/* Camera controls are part of the minimap frame; advanced controls open inward. */
+.minimap { border-radius:4px; background:rgba(24,30,24,.96); overflow:visible; }
+#minimapCanvas { background:#202a22; }
+.mm-rows { bottom:45px; }
+.map-tools-dock { margin-left:calc(-1 * var(--mm-gut)); margin-right:-4px; margin-bottom:-4px;
+    padding:4px 6px; border-top:1px solid var(--line); }
+.camera-controls { position:relative; inset:auto; transform:none; display:flex; justify-content:space-between;
+    align-items:center; width:100%; max-width:none; gap:3px; border:0; background:transparent; border-radius:0; z-index:5; }
+.camera-controls button,.camera-more > summary { display:grid; place-items:center; width:34px; height:34px;
+    min-width:34px; padding:7px; border:1px solid transparent; border-radius:3px; background:transparent;
+    color:var(--text); cursor:pointer; list-style:none; }
+.camera-more > summary::-webkit-details-marker { display:none; }
+.camera-controls svg { width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:1.5;
+    stroke-linecap:round; stroke-linejoin:round; }
+.camera-controls button:hover,.camera-more[open] > summary,.camera-more > summary:hover { background:#3a4534; color:var(--gold-2); border-color:var(--line); }
+.camera-more { position:relative; }
+.camera-popover { position:absolute; right:0; bottom:calc(100% + 8px); width:215px; padding:12px;
+    background:#242c22; border:1px solid var(--line); border-radius:4px; box-shadow:var(--shadow); }
+.camera-secondary { display:flex; justify-content:space-between; padding-bottom:9px; margin-bottom:10px; border-bottom:1px solid var(--line); }
+.camera-popover label { display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:.75rem; margin-top:8px; }
+.camera-popover select { width:125px; min-height:32px; background:#171d16; color:var(--text); border:1px solid var(--line); border-radius:3px; }
+.an-camera-dock { position:absolute; right:10px; bottom:10px; width:200px; padding:4px 6px;
+    background:rgba(24,30,24,.96); border:1px solid var(--line); border-radius:4px; z-index:8; }
+.an-stage .camera-controls { top:auto; left:auto; transform:none; }
+body.spectator-mode .spectator-leaderboard { max-height:calc(100vh - 312px); }
+body.spectator-mode .mm-fog { bottom:calc(var(--mm-bottom) + 42px); }
+.visual-showcase-label { position:absolute; left:20px; top:70px; max-width:340px;
+    color:var(--gold-2); background:rgba(25,30,25,.92); padding:12px 16px; border-left:2px solid var(--gold);
+    font:1rem/1.35 Georgia,serif; z-index:101; }
+.visual-showcase-label small { display:block; margin-top:5px; color:var(--muted); font:.73rem/1.5 system-ui,sans-serif; }
+@media(max-width:900px) {
+    body { --mm-canvas:180px; --mm-gut:12px; --mm-edge:12px; }
+    .start-content { padding:32px; }
+    .start-inscription { display:none; }
+    .an-stage-hud { max-width:calc(100% - 225px); }
+    .visual-showcase-label { max-width:260px; font-size:.9rem; }
+}
+@media(max-width:600px) {
+    .game-title { font-size:3.6rem; }
+    .an-camera-dock { width:182px; right:6px; bottom:6px; }
+    .an-stage-hud { left:6px; bottom:51px; max-width:calc(100% - 12px); }
+    .visual-showcase-label { top:100px; left:12px; max-width:210px; }
+}
+@media(prefers-reduced-motion:reduce) { .mode-card:hover,.civ-card:hover { transform:none; } }
