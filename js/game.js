@@ -118,8 +118,8 @@ class Game {
         // route back to the appropriate menu on the next load.
         this.gameStarted = false;
         if (this.ui && this.ui.teardownSpectatorUI) this.ui.teardownSpectatorUI();
-        try { sessionStorage.setItem('altertum_return', this.spectatorMode ? 'arena' : 'mode'); } catch (e) {}
-        location.reload();
+        try { sessionStorage.setItem('altertum_return', this._showcaseCivilization ? 'start' : (this.spectatorMode ? 'arena' : 'mode')); } catch (e) {}
+        this.reloadToMenu();
     }
 
     showCampaignSetup() {

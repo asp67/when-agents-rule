@@ -206,14 +206,19 @@
             const T = (c, o) => GLCore.createTextureFromCanvas(gl, c, o);
             this.tex = {
                 coast: T(TexGen.coastMask(), { clamp: true }),
-                terrain: T(TexGen.terrain(theme, TERRAIN_SEED, 2048, TERRAIN_WORLD, TERRAIN_LAND), { clamp: true }),
+                terrain: T(TexGen.terrain(theme, TERRAIN_SEED, 1024, TERRAIN_WORLD, TERRAIN_LAND), { clamp: true }),
+                groundDetail: T(TexGen.groundDetail(theme)),
+                worldBark: T(TexGen.worldSurface('bark',theme,44)),
+                worldFoliage: T(TexGen.worldSurface('foliage',theme,55)),
+                worldStone: T(TexGen.worldSurface('stone',theme,77)),
+                worldOre: T(TexGen.worldSurface('ore',theme,88)),
                 openWater: T(TexGen.openWater(theme, 5)),   // tiles — no clamp
                 masonry: T(TexGen.masonry(22)),
                 limestone: T(TexGen.limestone()),
                 wood: T(TexGen.wood(33)),
                 bark: T(TexGen.bark(44)),
                 foliage: T(TexGen.foliage(55, canopyBase)),
-                berries: T(TexGen.foliage(66, [64, 100, 52], { berries: true })),
+                berries: T(TexGen.worldSurface('berries',theme,66)),
                 rock: T(TexGen.rock(77)),
                 gold: T(TexGen.rock(88, { gold: true })),
                 plaster: T(TexGen.plaster(99)),
@@ -238,6 +243,13 @@
                 ring: T(TexGen.ring(), { clamp: true }),
                 foam: T(TexGen.foam(199))
             };
+            // Project the terrain colour onto its soil -> cover palette axis.
+            // Keeping this in a uniform leaves the colour texture fully opaque.
+            const palette=TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
+            const axis=palette.soil.map((soil,i)=>((palette.grass[i]+palette.grassDark[i])*.5-soil)/255);
+            const norm=Math.max(.0001,axis.reduce((sum,v)=>sum+v*v,0));
+            this._groundCover=axis.map(v=>v/norm);
+            this._groundCover.push(-this._groundCover.reduce((sum,v,i)=>sum+v*palette.soil[i]/255,0));
             // theme atmosphere: sun character first, then the sea beyond the map.
             this._sun = theme === 'winter' ? [0.74, 0.77, 0.83]
                 : (theme === 'desert' ? [0.99, 0.82, 0.59] : [0.96, 0.84, 0.66]);
@@ -529,8 +541,8 @@
             }];
 
             const m3 = M();
-            // Ambient ground cover: real 3D shrubbery again — the flecks painted
-            // into the mega-texture were too subtle alone and the map read bleak.
+            // Actual ground cover sits above the blended terrain surface; no
+            // duplicate painted bushes, flowers or pebble spots underneath it.
             // Prebaked entries, themed, seeded (a map seed reproduces the scatter),
             // drawn only below halfH 90 (sub-pixel beyond) and culled per prop.
             let pSeed = 424242;
@@ -551,25 +563,20 @@
             const bush = (snowCap) => {
                 const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                 const s = 0.45 + rng() * 0.5;
-                prop('sphere', [1, 7, 5], 'foliage', this.WHITE, x, s * 0.5, z, s, s * 0.55, s, rng() * 6.28);
+                prop('sphere', [1, 7, 5], 'worldFoliage', this.WHITE, x, s * 0.5, z, s, s * 0.55, s, rng() * 6.28);
                 if (rng() < 0.7) {
                     const a = rng() * 6.28, d = s * 0.8, s2 = s * (0.45 + rng() * 0.3);
-                    prop('sphere', [1, 7, 5], 'foliage', [0.88, 0.95, 0.85], x + Math.cos(a) * d, s2 * 0.5, z + Math.sin(a) * d, s2, s2 * 0.55, s2, rng() * 6.28);
+                    prop('sphere', [1, 7, 5], 'worldFoliage', [0.88, 0.95, 0.85], x + Math.cos(a) * d, s2 * 0.5, z + Math.sin(a) * d, s2, s2 * 0.55, s2, rng() * 6.28);
                 }
                 if (snowCap) prop('sphere', [1, 7, 5], 'white', [0.93, 0.96, 1], x, s * 0.78, z, s * 0.72, s * 0.2, s * 0.72);
             };
             const pebble = (tint) => {
                 const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                 const s = 0.14 + rng() * 0.14;
-                prop('sphere', [1, 6, 4], 'rock', tint, x, s * 0.5, z, s * 1.4, s * 0.6, s, rng() * 6.28);
+                prop('sphere', [1, 6, 4], 'worldStone', tint, x, s * 0.5, z, s * 1.4, s * 0.6, s, rng() * 6.28);
             };
             if (theme === 'winter') {
                 for (let i = 0; i < 220; i++) bush(true);
-                for (let i = 0; i < 120; i++) { // snow patches
-                    const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
-                    const s = 0.6 + rng() * 1.1;
-                    prop('disc', [1, 10], 'white', [0.93, 0.96, 0.98], x, 0.04, z, s, 1, s * (0.7 + rng() * 0.5), rng() * 6.28);
-                }
                 for (let i = 0; i < 150; i++) pebble([0.62, 0.68, 0.76]);
             } else if (theme === 'desert') {
                 for (let i = 0; i < 180; i++) bush(false);
@@ -577,8 +584,8 @@
                 for (let i = 0; i < 90; i++) pebble([0.9, 0.8, 0.62]);
             } else {
                 for (let i = 0; i < 260; i++) bush(false);
-                const petals = [[1, 0.98, 0.9], [1, 0.83, 0.35], [0.93, 0.55, 0.7]];
-                for (let i = 0; i < 200; i++) { // flower tufts
+                const petals = [[0.85, 0.84, 0.70], [0.78, 0.68, 0.40], [0.64, 0.57, 0.62]];
+                for (let i = 0; i < 100; i++) { // sparse, muted flower tufts
                     const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                     const s = 0.11 + rng() * 0.08;
                     prop('sphere', [1, 5, 4], 'white', petals[(rng() * 3) | 0], x, 0.16, z, s, s, s);
@@ -608,9 +615,9 @@
                 (blend ? e.blended : e.opaque).push({ buf: this._buf(kind, args), tex: this.tex[tex], model });
             if (res.type === 'wood') {
                 add('disc', [2.2, 14], 'shadow', TRS(res.x, 0.05, res.z, s, 1, s), true);
-                add('cylinder', [0.24, 0.4, 2.4, 7], 'bark', TRS(res.x, 1.2 * s, res.z, s, s, s, rot));
+                add('cylinder', [0.24, 0.4, 2.4, 7], 'worldBark', TRS(res.x, 1.2 * s, res.z, s, s, s, rot));
                 if (this._theme === 'winter') {
-                    add('cylinder', [0, 1, 1, 8], 'foliage', TRS(res.x, 3.1 * s, res.z, 2.2 * s, 3.4 * s, 2.2 * s));
+                    add('cylinder', [0, 1, 1, 8], 'worldFoliage', TRS(res.x, 3.1 * s, res.z, 2.2 * s, 3.4 * s, 2.2 * s));
                 } else {
                     // Branch endpoints start inside the trunk and finish inside a
                     // single crown. Previously three upright stubs were detached.
@@ -619,16 +626,16 @@
                         let fork=m3.multiply(m3.translation(res.x+dx*.45*s,2.2*s,res.z+dz*.45*s),m3.rotationY(a));
                         fork=m3.multiply(fork,m3.rotationX(Math.atan2(.9,1.4)));
                         fork=m3.multiply(fork,m3.scaling(s,s,s));
-                        add('cylinder',[.09,.19,Math.hypot(.9,1.4),8],'bark',fork);
+                        add('cylinder',[.09,.19,Math.hypot(.9,1.4),8],'worldBark',fork);
                     }
-                    add('canopy',[i%4],'foliage',TRS(res.x,3.3*s,res.z,2.15*s,1.38*s,1.88*s,rot));
+                    add('canopy',[i%4],'worldFoliage',TRS(res.x,3.3*s,res.z,2.15*s,1.38*s,1.88*s,rot));
                 }
             } else if (res.type === 'stone') {
                 add('disc', [2.0, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
-                add('sphere', [1, 9, 6], 'rock', TRS(res.x, 0.9 - sink(2.3), res.z, 1.7, 1.15, 1.5, rot));
+                add('sphere', [1, 9, 6], 'worldStone', TRS(res.x, 0.9 - sink(2.3), res.z, 1.7, 1.15, 1.5, rot));
             } else if (res.type === 'gold') {
                 add('disc', [1.8, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
-                add('sphere', [1, 9, 6], 'gold', TRS(res.x, 0.8 - sink(2.1), res.z, 1.5, 1.05, 1.4, rot));
+                add('sphere', [1, 9, 6], 'worldOre', TRS(res.x, 0.8 - sink(2.1), res.z, 1.5, 1.05, 1.4, rot));
             } else { // food: berry bush
                 add('sphere', [1, 9, 6], 'berries', TRS(res.x, 0.55 - sink(1.4), res.z, 1.15, 0.7, 1.15, rot));
             }
@@ -1934,6 +1941,10 @@
             gl.activeTexture(gl.TEXTURE2);
             gl.bindTexture(gl.TEXTURE_2D,this.tex.coast || this.tex.white);
             gl.uniform1i(this.prog.uniforms.uCoast,2);
+            gl.activeTexture(gl.TEXTURE3);
+            gl.bindTexture(gl.TEXTURE_2D,this.tex.groundDetail || this.tex.white);
+            gl.uniform1i(this.prog.uniforms.uGroundDetail,3);
+            gl.uniform4fv(this.prog.uniforms.uGroundCover,this._groundCover || [0,0,0,0]);
             gl.activeTexture(gl.TEXTURE0);
 
             const draw = (list) => {

@@ -135,7 +135,7 @@ test('unit batches share geometry across seats while keeping team and badge tint
 
 test('tree forks meet the trunk, with a single closed canopy and unchanged resource data',()=>{
     const s=context(),r=Object.create(s.EngineRenderer.prototype);
-    Object.assign(r,{_resEntries:new WeakMap(),_theme:'summer',tex:{shadow:'shadow',bark:'bark',foliage:'foliage'}});
+    Object.assign(r,{_resEntries:new WeakMap(),_theme:'summer',tex:{shadow:'shadow',worldBark:'bark',worldFoliage:'foliage'}});
     r._buf=(kind,args)=>({kind,args});
     for(let i=0;i<4;i++) {
         const res={type:'wood',x:17,z:-32,amount:100},before={...res};

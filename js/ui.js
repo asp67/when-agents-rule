@@ -4684,7 +4684,7 @@ class UIManager {
     async leaveArenaSummary(toMainMenu) {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         try { if (rec) await rec.purge(); } catch (e) { /* leaving anyway */ }
-        if (toMainMenu) location.reload();
+        if (toMainMenu) this.game.reloadToMenu();
         else this.game.showArenaSetup();
     }
 

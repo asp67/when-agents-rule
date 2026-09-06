@@ -43,7 +43,8 @@
         #else
         precision mediump float;
         #endif
-        uniform sampler2D uTex, uShadowMap, uCoast;
+        uniform sampler2D uTex, uShadowMap, uCoast, uGroundDetail;
+        uniform vec4 uGroundCover;
         uniform vec3 uSunDir, uSunColor, uAmbient, uTint, uSky, uEye;
         uniform vec3 uShadowRight, uShadowUp;
         uniform float uShadowDepthPerTexel;
@@ -110,6 +111,18 @@
             vec3 eye = normalize(uEye-vWorld);
             float water = uMaterial > 1.5 && uMaterial < 2.5 ? 1.0
                 : (uMaterial > 0.5 && uMaterial < 1.5 ? texture2D(uCoast,vUv).r : 0.0);
+            if (uMaterial > 0.5 && uMaterial < 1.5) {
+                // Mipmapped detail lives in world metres, so close-up ground no
+                // longer magnifies a single map texel into a smooth colour blob.
+                // A second rotated scale breaks repetition; fade it in overview
+                // shots and underwater rather than producing distant shimmer.
+                vec2 a=texture2D(uGroundDetail,vWorld.xz/16.0).rg-vec2(0.502);
+                vec2 b=texture2D(uGroundDetail,mat2(0.8,0.6,-0.6,0.8)*vWorld.xz/39.0).rg-vec2(0.502);
+                float cover=clamp(dot(vec4(base,1.0),uGroundCover),0.0,1.0);
+                float grain=mix(a.g, a.r, cover)*0.85+mix(b.g,b.r,cover)*0.35;
+                float nearDetail=1.0-smoothstep(120.0,320.0,distance(uEye,vWorld));
+                base*=1.0+grain*nearDetail*(1.0-water);
+            }
             float sun = max(dot(n,uSunDir),0.0);
             vec3 legacy = base*(uAmbient + uSunColor*sun);
             // Cool sky fill against warm sun; material colour remains legible in shade.

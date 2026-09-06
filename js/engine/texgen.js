@@ -605,18 +605,18 @@
     TexGen.TERRAIN_PALETTES = {
         summer: {
             waterDeep: [16, 47, 62], water: [44, 111, 112], wetSand: [166, 148, 108],
-            sand: [214, 196, 148], soil: [124, 98, 60],
-            grass: [126, 141, 89], grassDark: [80, 104, 66]
+            sand: [214, 196, 148], soil: [151, 133, 99],
+            grass: [130, 145, 91], grassDark: [79, 109, 66]
         },
         winter: {
             waterDeep: [26, 52, 74], water: [44, 84, 108], wetSand: [148, 158, 166],
-            sand: [186, 194, 200], soil: [148, 152, 158],
-            grass: [214, 224, 230], grassDark: [180, 198, 208]
+            sand: [186, 194, 200], soil: [126, 134, 136],
+            grass: [225, 232, 230], grassDark: [178, 199, 208]
         },
         desert: {
             waterDeep: [30, 76, 92], water: [50, 108, 120], wetSand: [178, 148, 102],
             sand: [224, 194, 138], soil: [188, 148, 94],
-            grass: [198, 170, 112], grassDark: [170, 142, 90]
+            grass: [223, 195, 143], grassDark: [196, 161, 112]
         }
     };
 
@@ -704,91 +704,139 @@
         ctx.putImageData(img,0,0); return c;
     };
 
-    TexGen.terrain = (theme, seed, size = 2048, worldSize = 1000, landHalf = 400) => {
-        const P = TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
-        const rand = TexGen.rng(seed || 7);
-        const nCoast = TexGen.coastNoise(rand);
-        const nPatch = TexGen.noiseSampler(10, rand);
-        const nGrain = TexGen.noiseSampler(56, rand);
-        // Its own seeded stream, so the land's noise above is untouched.
-        const seaGrain = TexGen.openWaterGrain();
-        const c = canvas(size), ctx = c.getContext('2d');
-        const img = ctx.createImageData(size, size);
-        const d = img.data;
-        const mix = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-        for (let py = 0; py < size; py++) {
-            const v = py / size;
-            const wz = (v - 0.5) * worldSize;
-            for (let px = 0; px < size; px++) {
-                const u = px / size;
-                const wx = (u - 0.5) * worldSize;
-                // square island: chebyshev distance from centre + coast wobble
-                const dist = Math.max(Math.abs(wx), Math.abs(wz)) + (nCoast(u, v) - 0.5) * TexGen.COAST_WOBBLE;
-                let col;
-                if (dist > landHalf + 42) {
-                    col = P.waterDeep;
-                } else if (dist > landHalf + 10) {
-                    col = mix(P.water, P.waterDeep, (dist - landHalf - 10) / 32);
-                } else if (dist > landHalf + 3) {
-                    col = mix(P.wetSand, P.water, (dist - landHalf - 3) / 7);
-                } else if (dist > landHalf - 15) {
-                    col = mix(P.sand, P.wetSand, (dist - (landHalf - 15)) / 18);
-                } else {
-                    // interior: grass/dark patches with soil breaks
-                    const p = nPatch(u, v);
-                    col = p < 0.32
-                        ? mix(P.soil, P.grassDark, p / 0.32)
-                        : mix(P.grassDark, P.grass, (p - 0.32) / 0.68);
-                    // fade the last few units toward the beach so the edge breathes
-                    if (dist > landHalf - 26) col = mix(col, P.sand, (dist - (landHalf - 26)) / 11 * 0.5);
-                }
-                // Grain: the land's own field inshore, crossfading to the OPEN-WATER
-                // field as the shallows deepen, so by the time this texture reaches
-                // its rim it is carrying the identical noise the sea plane beyond it
-                // is drawing — the two meet mid-swell instead of at a seam.
-                const gLand = (nGrain(u, v) - 0.5) * 16;
-                const gSea = seaGrain(wx / TexGen.OPEN_WATER_TILE, wz / TexGen.OPEN_WATER_TILE);
-                const kSea = Math.max(0, Math.min(1, (dist - (landHalf + 10)) / 32));
-                const g = gLand * (1 - kSea) + gSea * kSea;
-                const i = (py * size + px) * 4;
-                d[i] = clamp255(col[0] + g);
-                d[i + 1] = clamp255(col[1] + g);
-                d[i + 2] = clamp255(col[2] + g * 0.9);
-                d[i + 3] = 255;
-            }
-        }
-        ctx.putImageData(img, 0, 0);
+    const smooth = (a,b,x) => {
+        const t=Math.max(0,Math.min(1,(x-a)/(b-a)));
+        return t*t*(3-2*t);
+    };
 
-        // Ambient ground cover baked straight into the mega-texture (M6): the
-        // bushes/flowers/snow/pebbles that used to be instanced props are now
-        // painted flecks — the classic pre-rendered read, zero runtime cost.
-        const texPerUnit = size / worldSize;
-        const landTexHalf = (landHalf - 30) * texPerUnit; // stay off the beach
-        const cx = size / 2;
-        const fleck = (colors, count, rMin, rMax, alpha) => {
-            for (let i = 0; i < count; i++) {
-                const px = cx + (rand() * 2 - 1) * landTexHalf;
-                const py = cx + (rand() * 2 - 1) * landTexHalf;
-                const r = rMin + rand() * (rMax - rMin);
-                const col = colors[(rand() * colors.length) | 0];
-                ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
-                ctx.beginPath();
-                ctx.ellipse(px, py, r, r * (0.6 + rand() * 0.4), rand() * 3.14, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        };
-        if (theme === 'winter') {
-            fleck([[242, 246, 248]], 800, 2, 6, 0.7);                                  // snow patches
-            fleck([[95, 132, 113], [111, 149, 127]], 420, 1.6, 3.4, 0.75);             // frosted bushes
-            fleck([[93, 102, 114]], 260, 0.9, 2.0, 0.8);                               // slate pebbles
-        } else if (theme === 'desert') {
-            fleck([[154, 122, 88]], 480, 1.4, 3.0, 0.8);                               // rust rocks
-            fleck([[138, 125, 67], [156, 143, 85]], 380, 1.6, 3.2, 0.8);               // dry bushes
-        } else {
-            fleck([[63, 143, 61], [85, 168, 78]], 950, 1.6, 3.6, 0.8);                 // lush bushes
-            fleck([[245, 242, 232], [255, 215, 94], [232, 139, 176]], 520, 0.9, 1.6, 0.9); // flowers
-            fleck([[125, 116, 106]], 300, 0.9, 1.8, 0.7);                              // pebbles
+    // Two surface families in R/G: organic cover and exposed earth. This small,
+    // seamless sheet is sampled in world space, independently of map resolution.
+    // Seeded wrapped strokes produce grass fibre, wind-packed snow and sand grain
+    // without painting fake objects or highlights into the map.
+    TexGen.groundDetail = (theme, size=256) => {
+        const rand=TexGen.rng(936), broad=TexGen.noiseSampler(12,rand);
+        const fine=TexGen.noiseSampler(88,rand), c=canvas(size), ctx=c.getContext('2d');
+        const img=ctx.createImageData(size,size), d=img.data;
+        for(let y=0;y<size;y++) for(let x=0;x<size;x++) {
+            const u=x/size,v=y/size, grain=(fine(u,v)-.5)*32;
+            const drift=Math.sin((u*12+v*4+(broad(u,v)-.5)*.5)*Math.PI*2);
+            const i=(y*size+x)*4;
+            d[i]=clamp255(128+(broad(u,v)-.5)*26+grain*.6
+                +(theme==='summer'?0:drift*(theme==='winter'?5:9)));
+            d[i+1]=clamp255(128+grain+(broad(u,v)-.5)*14);
+            d[i+2]=128;d[i+3]=255;
         }
+        ctx.putImageData(img,0,0);
+        if(theme==='summer') {
+            ctx.lineWidth=.65;
+            for(let i=0;i<4600;i++) {
+                const x=rand()*size,y=rand()*size,dx=(rand()-.5)*3,dy=1+rand()*3;
+                const g=108+Math.floor(rand()*42);
+                ctx.strokeStyle=`rgb(${g},128,128)`;
+                // Wrap every stroke, including the diagonal corners of the tile.
+                for(const ox of [-size,0,size]) for(const oy of [-size,0,size]) {
+                    if(x+ox < -4 || x+ox > size+4 || y+oy < -4 || y+oy > size+4) continue;
+                    ctx.beginPath();ctx.moveTo(x+ox,y+oy);ctx.lineTo(x+ox+dx,y+oy+dy);ctx.stroke();
+                }
+            }
+        }
+        return c;
+    };
+
+    // World-only materials. The existing bark/rock/foliage painters are also used
+    // by costumes and architecture, so those shared materials stay independent.
+    TexGen.worldSurface = (kind, theme, seed=77, size=128) => {
+        const rand=TexGen.rng(seed), broad=TexGen.noiseSampler(5,rand);
+        const medium=TexGen.noiseSampler(13,rand), fine=TexGen.noiseSampler(42,rand);
+        const c=canvas(size),ctx=c.getContext('2d'),img=ctx.createImageData(size,size);
+        const base=kind==='bark'?[102,83,59]:(kind==='foliage' || kind==='berries')
+            ?(theme==='winter'?[66,91,78]:theme==='desert'?[113,118,72]:[86,111,65])
+            :(theme==='winter'?[146,154,161]:theme==='desert'?[166,147,120]:[150,148,130]);
+        for(let y=0;y<size;y++) for(let x=0;x<size;x++) {
+            const u=x/size,v=y/size;
+            const b=broad(u,v),m=medium(u,v),f=fine(u,v);
+            let tone=(b-.5)*22+(m-.5)*7+(f-.5)*3;
+            if(kind==='bark') {
+                const ridge=medium(u,v*.12);
+                tone=(ridge-.5)*30+(f-.5)*3;
+            } else if(kind==='stone' || kind==='ore') {
+                // Broad mineral beds, with muted inclusions instead of random
+                // black cracks and white speckles that resemble baked glitter.
+                tone=(b-.5)*29+(m-.5)*10+(f-.5)*4;
+            }
+            const ore=kind==='ore'?smooth(.60,.72,m*.7+b*.3):0;
+            const i=(y*size+x)*4;
+            for(let ch=0;ch<3;ch++) {
+                const rock=base[ch]+tone;
+                img.data[i+ch]=clamp255(rock+([198,156,65][ch]-rock)*ore*.9);
+            }
+            img.data[i+3]=255;
+        }
+        ctx.putImageData(img,0,0);
+        if(kind==='berries') {
+            // Matte fruit clusters retain food recognition without white dots.
+            for(let i=0;i<24;i++) {
+                const x=rand()*size,y=rand()*size,r=size*(.009+rand()*.008);
+                ctx.fillStyle=i%3?'#9e5144':'#ba6751';
+                for(const ox of [-size,0,size]) for(const oy of [-size,0,size]) {
+                    if(x+ox+r<0 || x+ox-r>size || y+oy+r<0 || y+oy-r>size) continue;
+                    ctx.beginPath();ctx.arc(x+ox,y+oy,r,0,Math.PI*2);ctx.fill();
+                }
+            }
+        }
+        return c;
+    };
+
+    TexGen.terrain = (theme, seed, size = 2048, worldSize = 1000, landHalf = 400) => {
+        const P=TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
+        const rand=TexGen.rng(seed || 7);
+        const nCoast=TexGen.coastNoise(rand); // MUST remain first: foam/walkability share this stream.
+        const broad=TexGen.noiseSampler(7,rand), patch=TexGen.noiseSampler(23,rand);
+        const broken=TexGen.noiseSampler(67,rand), grain=TexGen.noiseSampler(191,rand);
+        const seaGrain=TexGen.openWaterGrain();
+        const c=canvas(size),ctx=c.getContext('2d'),img=ctx.createImageData(size,size),d=img.data;
+        for(let y=0;y<size;y++) for(let x=0;x<size;x++) {
+            const u=x/size,v=y/size,wx=(u-.5)*worldSize,wz=(v-.5)*worldSize;
+            const dist=Math.max(Math.abs(wx),Math.abs(wz))+(nCoast(u,v)-.5)*TexGen.COAST_WOBBLE;
+            const h=dist-landHalf;
+            let r,g,b,cover=0;
+            const sea=seaGrain(wx/TexGen.OPEN_WATER_TILE,wz/TexGen.OPEN_WATER_TILE);
+            if(h>=42) {
+                r=P.waterDeep[0]+sea;g=P.waterDeep[1]+sea;b=P.waterDeep[2]+sea*.9;
+            } else {
+                // Domain-warped patches avoid the large square noise grid. Fine
+                // breakup follows the same cover field rather than random dots.
+                const macro=broad(u,v);
+                const p=patch(u+(macro-.5)*.07,v+(macro-.5)*.045);
+                const m=broken(u,v),f=grain(u,v);
+                const field=macro*.50+p*.36+m*.14;
+                cover=smooth(theme==='summer'?.30:.24,theme==='summer'?.58:.66,field);
+                const lush=smooth(.28,.74,p*.6+macro*.4);
+                let variation=(m-.5)*5+(f-.5)*3;
+                if(theme==='desert' || theme==='winter') {
+                    const wind=Math.sin((u*27+v*11+(macro-.5)*3+p*.4)*Math.PI*2);
+                    variation+=wind*(theme==='desert'?3.5:2);
+                }
+                const beach=smooth(-34,-13,h+(p-.5)*6);
+                const wet=smooth(-9,3,h),shallow=smooth(3,13,h),deep=smooth(13,42,h);
+                const kSea=smooth(10,42,h);
+                const color=[0,0,0];
+                for(let ch=0;ch<3;ch++) {
+                    const plant=P.grassDark[ch]+(P.grass[ch]-P.grassDark[ch])*lush;
+                    let value=P.soil[ch]+(plant-P.soil[ch])*cover;
+                    value+=(P.sand[ch]-value)*beach;
+                    value+=(P.wetSand[ch]-value)*wet;
+                    value+=(P.water[ch]-value)*shallow;
+                    value+=(P.waterDeep[ch]-value)*deep;
+                    color[ch]=value+variation*(1-kSea)+sea*kSea*(ch===2?.9:1);
+                }
+                [r,g,b]=color;
+            }
+            const i=(y*size+x)*4;
+            d[i]=clamp255(r);d[i+1]=clamp255(g);d[i+2]=clamp255(b);
+            d[i+3]=255;
+        }
+        ctx.putImageData(img,0,0);
         return c;
     };
 

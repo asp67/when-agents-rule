@@ -20,6 +20,8 @@ button,input,select,textarea { font-family:inherit; }
 .subtitle { text-transform:none; letter-spacing:.02em; font-size:1rem; max-width:450px; line-height:1.6; margin-bottom:30px; }
 .subtitle::after { display:none; }
 .menu-buttons { align-items:flex-start; gap:8px; }
+#startScreen .menu-buttons { width:max-content; min-width:min(260px,100%); max-width:100%; align-items:stretch; }
+#startScreen .menu-buttons > .menu-btn { min-width:0; overflow-wrap:anywhere; }
 .menu-btn { min-width:230px; padding:12px 22px; border:1px solid var(--line); border-radius:3px;
     box-shadow:none; background:rgba(25,30,25,.8); color:var(--text); font-weight:500; letter-spacing:.03em; }
 .menu-btn:hover { background:#343c30; border-color:var(--gold); transform:none; box-shadow:none; }

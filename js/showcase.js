@@ -60,7 +60,19 @@ Game.prototype.loadShowcaseCivilization = function (civilization) {
     const url=new URL(location.href);
     url.searchParams.set('showcase','1');
     url.searchParams.set('civ',Game.showcaseCivilization(civilization));
-    location.assign(url.href);
+    // Replace this demo rather than stacking a history entry for every civ.
+    location.replace(url.href);
+};
+
+// A reload is our clean game reset. Remove demo routing first, otherwise every
+// Back/Main menu action immediately starts the showcase again on window.load.
+Game.prototype.reloadToMenu = function () {
+    const url=new URL(location.href);
+    if(this._showcaseCivilization || url.searchParams.get('showcase')==='1') {
+        url.searchParams.delete('showcase');
+        url.searchParams.delete('civ');
+        location.replace(url.href);
+    } else location.reload();
 };
 
 Game.prototype.focusShowcaseWorkers = function () {
