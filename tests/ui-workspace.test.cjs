@@ -217,3 +217,18 @@ test('Selection uses current unit groups ahead of a previous building and reject
     h.ui.cameraAction('selection');
     assert.equal(r.cameraTarget.x, 0); assert.equal(r.cameraTarget.z, 0);
 });
+
+test('analyzer rebuilds keep recorded cosmetic identities for friendly and remembered units', () => {
+    const h=harness(), made=[];
+    let nextHandle=100;
+    h.context.createUnit=(type,x,z,owner,civilization)=>({type,x,z,owner,civilization,handle:++nextHandle});
+    h.ui.anTerrain=()=>({resources:[]});h.ui.anApplyFog=()=>{};h.ui.anRenderPick=()=>{};
+    Object.assign(h.renderer,{clearScene:()=>{},setTerrain:()=>{},addUnit:u=>made.push(u)});
+    h.ui.analyzer={union:false,autoCam:false,seats:new Map([['enemy',{civilization:'yamato',seat:2}]]),
+        scene:()=>({nodes:[],seats:[{id:'player',seat:1,civilization:'greek',buildings:[],
+            units:[{id:7,type:'worker',x:0,z:0}]}],
+            enemies:[{id:'recorded-enemy-42',type:'worker',x:2,z:3,owner:'enemy',confirmed:false}]})};
+    h.ui.anBuildStage({});h.ui.anBuildStage({});
+    assert.deepEqual(made.map(u=>u._appearanceId),[7,'recorded-enemy-42',7,'recorded-enemy-42']);
+    assert.notEqual(made[0].handle,made[2].handle,'factory handles change on seek');
+});

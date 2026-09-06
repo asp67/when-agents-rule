@@ -5890,6 +5890,9 @@ class UIManager {
                 // about a recorded match — so the badge is set from the transcript.
                 ent.seat = s.seat;
                 if (u.healthPct != null) ent.health = Math.max(1, (ent.maxHealth || 100) * u.healthPct / 100);
+                // Rebuilt factories allocate fresh handles on every seek. Use the
+                // recorded identity for cosmetics so facial hair does not flicker.
+                ent._appearanceId = u.id ?? '';
                 ent.isAttacking = u.action === 'attacking';
                 r.addUnit(ent);
             });
@@ -5928,6 +5931,7 @@ class UIManager {
                     const ent = (typeof createUnit === 'function')
                         ? createUnit(e.type, e.x, e.z, e.owner, owner.civilization, oage) : null;
                     if (ent) { ent.seat = owner.seat; ent._fade = fade;
+                              ent._appearanceId = e.id ?? '';
                               ent._anStale = !e.confirmed; ent._anLastSeen = e.lastSeenSec; r.addUnit(ent); }
                 }
             });

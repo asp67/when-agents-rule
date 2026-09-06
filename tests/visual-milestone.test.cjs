@@ -80,10 +80,10 @@ test('shadow pass uses only admitted opaque geometry and restores the default fr
 test('all civilization/unit tiers produce outward, finite geometry within WebGL 1 index limits',()=>{
     const s=context();
     for(const civ of ['greek','egyptian','yamato','persian']) {
-        for(const type of s.EngineUnits.TYPES) for(const tier of [1,2,3]) {
-            const options={civ,tier,badge:'circle'};
+        for(const type of s.EngineUnits.TYPES) for(const tier of [1,2,3]) for(const variant of (civ==='greek'?[0,1,2]:civ==='yamato'?[0,1]:[0])) {
+            const options={civ,tier,variant,badge:'circle'};
             const parts=s.EngineUnits.parts(type,options), batches=s.EngineUnits.batches(parts);
-            assert.deepEqual(options,{civ,tier,badge:'circle'},'composition must not mutate caller options');
+            assert.deepEqual(options,{civ,tier,variant,badge:'circle'},'composition must not mutate caller options');
             for(const b of batches) {
                 const label=`${civ}/${type}/${tier}/${b.tex}/${b.bone}`;
                 assert.ok(b.mesh.positions.every(Number.isFinite),label);
@@ -91,7 +91,7 @@ test('all civilization/unit tiers produce outward, finite geometry within WebGL 
                 assert.equal(s.EngineMesh.auditWinding(b.mesh),0,label);
                 assert.ok(b.mesh.indices.every(i=>i>=0 && i<65536 && i<b.mesh.positions.length/3),label);
             }
-            if(type==='infantry' && tier>=2) assert.ok(batches.length<=20,'armor detail must stay batched');
+            if(type==='infantry' && tier>=2) assert.ok(batches.length<=22,'armor, mouth and hair detail must stay batched');
         }
     }
     // The standing chariot rider uses a separate composition from mounted cavalry.
@@ -155,7 +155,7 @@ test('Yamato and Persian civilian hat rims sit above the eyebrows and overlap th
     const s=context();
     for(const civ of ['yamato','persian']) for(const type of ['worker','ranged']) {
         const parts=s.EngineUnits.parts(type,{civ,tier:1});
-        const brow=parts.find(p=>p.kind==='box' && p.tex==='bark' && p.args[0]===.067);
+        const brow=parts.find(p=>p.kind==='box' && p.tex.startsWith('hair') && p.args[0]===.067);
         const hat=parts.find(p=>p.kind==='cylinder' && (civ==='yamato'
             ? p.tex==='thatch' && p.args[1]===.37
             : p.tex==='cloth' && p.args[0]===.09 && p.args[1]===.23));
@@ -164,5 +164,98 @@ test('Yamato and Persian civilian hat rims sit above the eyebrows and overlap th
         const bottom=hat.m[13]-hat.args[2]/2, browTop=brow.m[13]+brow.args[1]/2;
         assert.ok(bottom>browTop && bottom-browTop<.025,civ+'/'+type+' brow clearance');
         assert.ok(bottom<head.m[13]+head.m[5],civ+'/'+type+' must overlap skull');
+    }
+});
+
+
+test('every handheld assembly tilts away from the body and stays anchored to its palm under animation',()=>{
+    const s=context(),m=s.M3D;
+    const transform=(a,p)=>[0,1,2].map(r=>a[r]*p[0]+a[4+r]*p[1]+a[8+r]*p[2]+a[12+r]);
+    const cases=[['worker',1,'axe'],['infantry',1,'club'],['infantry',2,'sword'],
+        ['ranged',1,'bow'],['ranged',2,'crossbow'],['ranged',3,'bow'],['priest',1,'staff'],
+        ['cavalry',1,'javelin'],['cavalry',2,'spear'],['cavalry',3,'lance'],['cavalry',1,'chariot-spear','horse_carriage']];
+    for(const [type,tier,name,unit] of cases) {
+        const parts=s.EngineUnits.parts(type,{civ:'egyptian',tier,unit});
+        const held=parts.filter(p=>p.attachment===name);
+        assert.ok(held.length,name);
+        const {grip,gripFrame:frame,bone}=held[0];
+        const palm=parts.find(p=>p.tex==='skin' && p.bone===bone && grip.every((v,i)=>Math.abs(v-p.m[12+i])<1e-6));
+        assert.ok(palm,name+' palm');
+        // Long shafts lean forward and out, away from the upper arm. A crossbow
+        // has a horizontal stock: its forward end tilts upward instead.
+        if(name==='crossbow') assert.ok(frame[9]>.1,name+' pitch');
+        else {
+            assert.ok(frame[6]>.3,name+' forward pitch');
+            assert.ok(frame[4]*Math.sign(grip[0])>.1,name+' outward pitch');
+        }
+        for(const animation of ['idle','walk','attack','harvest']) for(const t of [0,.23,.61,1.07]) {
+            const pose=s.EngineUnits.pose(type,animation,t,.3),arm=pose.mats[bone]||m.identity();
+            const expected=transform(arm,Array.from(palm.m).slice(12,15));
+            for(const piece of held) {
+                assert.equal(piece.bone,palm.bone,name+' must follow the palm bone');
+                assert.equal(piece.gripFrame,frame,name+' pieces share one rigid grip frame');
+                const actual=transform(m.multiply(arm,piece.gripFrame),[0,0,0]);
+                actual.forEach((v,i)=>assert.ok(Math.abs(v-expected[i])<1e-6,name+' animated grip'));
+            }
+        }
+    }
+});
+
+test('civilization facial hair covers every human class, with visible mouths and stable color variants',()=>{
+    const s=context();
+    const palettes={greek:['hairBlack','hairBrown','hairBlond'],persian:['hairBlack'],yamato:['hairBrown','hairWhite'],egyptian:['hairBlack']};
+    for(const [civ,colors] of Object.entries(palettes)) {
+        const variants=new Set(Array.from({length:12},(_,i)=>s.EngineUnits.appearanceVariant(civ,'worker'+i)));
+        assert.equal(variants.size,colors.length,civ+' variety');
+        for(const variant of variants) for(const type of s.EngineUnits.TYPES) {
+            const parts=s.EngineUnits.parts(type,{civ,variant});
+            assert.equal(parts.filter(p=>p.tex==='mouth' && !p.bone).length,1,civ+'/'+type+' human mouth');
+            const beard=parts.filter(p=>p.tex===colors[variant] && p.kind==='sphere' && !p.bone && p.m[13]<(type==='cavalry'?1.78:1.42));
+            assert.ok(beard.length,civ+'/'+type+' beard');
+        }
+    }
+    const r=Object.create(s.EngineRenderer.prototype);
+    s.GLCore={createMeshBuffers:(_,mesh)=>({mesh})};s.getTeamBadge=()=>({shape:'circle'});
+    Object.assign(r,{units:[],gl:{},tex:new Proxy({},{get:(_,key)=>key}),WHITE:[1,1,1]});
+    r._badgeTints=()=>({fill:[1,0,0],rim:[0,1,0]});
+    const units=Array.from({length:3},(_,i)=>({unitType:'worker',type:'worker',civilization:'greek',seat:1,color:0xff0000,handle:i+1}));
+    for(const u of units) r.addUnit(u);
+    assert.equal(r._unitModels.size,3,'cache must preserve all three appearances');
+    for(const u of units) {
+        const color=palettes.greek[s.EngineUnits.appearanceVariant('greek',u.handle)];
+        assert.ok(u._engine.entries.some(e=>e.tex===color));
+        const previous=u._engine.entries.map(e=>e.buf);
+        r.addUnit(u);
+        assert.equal(r.units.length,3,'recomposition must not duplicate units');
+        u._engine.entries.forEach((e,i)=>assert.equal(e.buf,previous[i],'same handle reuses appearance'));
+        const replay={...u,handle:u.handle+1,_appearanceId:u.handle};r.addUnit(replay);
+        replay._engine.entries.forEach((e,i)=>assert.equal(e.buf,previous[i],'recorded handle retains appearance'));
+        r.removeUnit(replay);
+    }
+});
+
+test('horse legs stand symmetrically, remain joined at the hips, and carry a proportionate centered head',()=>{
+    const s=context(),m=s.M3D;
+    for(const tier of [1,2,3]) {
+        const parts=s.EngineUnits.parts('cavalry',{civ:'persian',tier});
+        const legs=parts.filter(p=>p.kind==='cylinder' && /^leg[FB][LR]$/.test(p.bone));
+        assert.equal(legs.length,4);
+        for(const leg of legs) {
+            assert.ok(Math.abs(leg.m[4])<1e-6 && Math.abs(leg.m[6])<1e-6,'straight rest leg');
+            const twin=legs.find(p=>p.bone!==leg.bone && Math.abs(p.m[12]+leg.m[12])<1e-6 && p.m[14]===leg.m[14]);
+            assert.ok(twin,'mirrored leg');
+            const hip=[leg.m[12],leg.m[13]+leg.args[2]/2,leg.m[14]];
+            for(const t of [0,.19,.57,.91]) {
+                const pose=s.EngineUnits.pose('cavalry','walk',t),a=pose.mats[leg.bone]||m.identity();
+                const moved=[0,1,2].map(r=>a[r]*hip[0]+a[4+r]*hip[1]+a[8+r]*hip[2]+a[12+r]);
+                assert.ok(moved.every((v,i)=>Math.abs(v-hip[i])<1e-6),'leg rotates at connected hip');
+            }
+        }
+        const skull=parts.find(p=>p.bone==='head' && p.tex==='leather' && p.kind==='sphere' && Math.abs(p.m[13]-1.48)<1e-6);
+        const body=parts.find(p=>!p.bone && p.tex==='leather' && Math.abs(p.m[13]-.90)<1e-6);
+        assert.ok(skull && body);
+        assert.equal(skull.m[12],0,'head stays on centerline');
+        const radius=p=>Math.hypot(p.m[8],p.m[9],p.m[10]);
+        assert.ok(radius(skull)/radius(body)>.4,'skull has substantial length relative to barrel');
     }
 });

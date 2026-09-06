@@ -224,6 +224,11 @@
                 shadow: T(TexGen.shadowBlob(), { clamp: true }),
                 cloth: T(TexGen.cloth(155)),
                 skin: T(TexGen.skin(166)),
+                hairBlack: T(TexGen.solid(25,22,23)),
+                hairBrown: T(TexGen.solid(65,39,25)),
+                hairBlond: T(TexGen.solid(170,128,58)),
+                hairWhite: T(TexGen.solid(214,209,195)),
+                mouth: T(TexGen.solid(83,37,31)),
                 leather: T(TexGen.leather(177)),
                 iron: T(TexGen.iron(188)),
                 white: T(TexGen.solid(), { clamp: true }),
@@ -662,8 +667,9 @@
             const tint = this._tintOf(unit.color);
             const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(unit.seat) : null;
             const badge = this._badgeTints(unit.seat, tint);
-            const options={civ:unit.civilization,unit:unit.type,badge:bdef?bdef.shape:null};
-            const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge]);
+            const options={civ:unit.civilization,unit:unit.type,badge:bdef?bdef.shape:null,
+                variant:EngineUnits.appearanceVariant(unit.civilization,unit._appearanceId ?? unit.handle ?? unit.id ?? '')};
+            const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge,options.variant]);
             if(!this._unitModels) this._unitModels=new Map();
             if(!this._unitModels.has(modelKey)) {
                 const batches=EngineUnits.batches(EngineUnits.parts(engineType,options));
