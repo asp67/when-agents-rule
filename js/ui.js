@@ -23,10 +23,13 @@ class UIManager {
     }
 
     showScreen(screenId) {
+        if(this.game.renderer && this.game.renderer.cancelPointerGesture) this.game.renderer.cancelPointerGesture();
         document.querySelectorAll('.screen').forEach(screen => {
             screen.classList.remove('active');
         });
         document.getElementById(screenId).classList.add('active');
+        this.applyViewPreferences();
+        this.renderCameraControls();
     }
 
     // Called by setUiLang() after static [data-i18n] elements are re-translated.
@@ -75,40 +78,225 @@ class UIManager {
         this._lastLogSig = null;
         // The fog knobs' tooltips name a seat, so data-i18n-title cannot reach them.
         this.refreshMinimapFogKnobs();
+        if (this._sampleIndex) this.anFillSamplePicker(this._sampleIndex);
+        this.renderCameraControls();
+        if (active('analyzeScreen')) this.anRender();
+    }
+
+    // Presentation settings stay separate from model settings and match exports.
+    viewPreferences() {
+        if (this._viewPreferences) return this._viewPreferences;
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem('warViewPreferencesV1')) || {}; } catch (e) {}
+        const layout = ['balanced', 'watch', 'read', 'compare', 'custom'].includes(saved.layout) ? saved.layout : 'balanced';
+        return this._viewPreferences = {
+            layout,
+            split: Number.isFinite(saved.split) ? Math.max(20, Math.min(80, saved.split)) : 52,
+            text: saved.text === 'compact' ? 'compact' : 'comfortable',
+            rate: [0.5, 1, 2, 4].includes(saved.rate) ? saved.rate : 1
+        };
+    }
+
+    saveViewPreferences() {
+        try { localStorage.setItem('warViewPreferencesV1', JSON.stringify(this.viewPreferences())); } catch (e) {}
+    }
+
+    applyViewPreferences() {
+        const p = this.viewPreferences();
+        document.body.dataset.reading = p.text;
+        const body = document.getElementById('anBody');
+        if (body) {
+            body.dataset.layout = p.layout;
+            body.style.gridTemplateRows = p.split + '% 6px minmax(0, 1fr)';
+        }
+        const seam = document.getElementById('anSeam');
+        if (seam) seam.setAttribute('aria-valuenow', Math.round(p.split));
+    }
+
+    setReadingSize(value) {
+        if (!['compact', 'comfortable'].includes(value)) return;
+        this.viewPreferences().text = value;
+        this.saveViewPreferences();
+        this.applyViewPreferences();
+        this.game.renderer.onWindowResize();
+    }
+
+    anSetLayout(value) {
+        const splits = { balanced: 52, watch: 70, read: 28, compare: 40 };
+        if (!Object.prototype.hasOwnProperty.call(splits, value) && value !== 'custom') return;
+        const p = this.viewPreferences();
+        p.layout = value;
+        if (Object.prototype.hasOwnProperty.call(splits, value)) p.split = splits[value];
+        this.saveViewPreferences();
+        this.applyViewPreferences();
+        this.game.renderer.onWindowResize();
+    }
+
+    anSetReplayRate(value) {
+        const rate = Number(value);
+        if (![0.5, 1, 2, 4].includes(rate)) return;
+        const playing = !!this._anPlayTimer;
+        this.anStopPlay();
+        this.viewPreferences().rate = rate;
+        this.saveViewPreferences();
+        if (playing) this.anTogglePlay();
+        else this.anRender();
+    }
+
+    anScrub(value) {
+        const index = Number(value);
+        if (!Number.isInteger(index) || !this.analyzer) return;
+        this.anStopPlay();
+        this.analyzer.seek(index);
+        this.anRender();
+        const slider = document.getElementById('anTimeline');
+        if (slider) slider.focus({ preventScroll: true });
+    }
+
+    anRenderWorkspaceTools(has) {
+        const tools = document.getElementById('anWorkspaceTools');
+        if (!tools) return;
+        tools.hidden = !has;
+        if (!has) return;
+        const esc = s => this.escapeHtml(String(s));
+        if (this._anToolsLanguage !== getUiLang()) {
+            this._anToolsLanguage = getUiLang();
+            const options = keys => keys.map(k => `<option value="${k}">${esc(t('view.' + k))}</option>`).join('');
+            tools.innerHTML = `<label>${esc(t('view.layout'))}<select id="anLayout" onchange="game.ui.anSetLayout(this.value)">${options(['balanced','watch','read','compare','custom'])}</select></label>
+                <label>${esc(t('view.text'))}<select id="anReadingSize" onchange="game.ui.setReadingSize(this.value)">${options(['comfortable','compact'])}</select></label>
+                <label>${esc(t('view.replayRate'))}<select id="anReplayRate" onchange="game.ui.anSetReplayRate(this.value)">${[0.5,1,2,4].map(n => `<option value="${n}">${n.toLocaleString(getUiLang())}</option>`).join('')}</select></label>
+                <label class="an-timeline-label">${esc(t('view.timelineAll'))}<input id="anTimeline" type="range" min="0" step="1" onchange="game.ui.anScrub(this.value)"></label>
+                <output id="anTimelinePosition" for="anTimeline"></output>`;
+        }
+        const p = this.viewPreferences(), a = this.analyzer;
+        document.getElementById('anLayout').value = p.layout;
+        document.getElementById('anReadingSize').value = p.text;
+        document.getElementById('anReplayRate').value = p.rate;
+        const slider = document.getElementById('anTimeline');
+        slider.max = a.order.length - 1;
+        slider.value = a.cursor;
+        const position = t('view.position', { n: a.cursor + 1, total: a.order.length });
+        slider.setAttribute('aria-valuetext', position);
+        document.getElementById('anTimelinePosition').textContent = position;
+    }
+
+    renderCameraControls() {
+        const box = document.getElementById('cameraControls');
+        if (!box) return;
+        const analyzer = document.getElementById('analyzeScreen');
+        const dock = document.getElementById(analyzer && analyzer.classList.contains('active') ? 'anCameraDock' : 'mapToolsDock');
+        if (dock && box.parentElement !== dock) dock.appendChild(box);
+        const watching=!!(this.game.spectatorMode || (analyzer && analyzer.classList.contains('active')));
+        const state=[getUiLang(),watching,!!this.game.renderer.panMode].join(':');
+        if(this._cameraControlsLanguage===state) return;
+        this._cameraControlsLanguage=state;
+        const wasOpen=!!box.querySelector('details[open]');
+        if(this.game.renderer.updatePointerCursor) this.game.renderer.updatePointerCursor();
+        const esc = s => this.escapeHtml(String(s));
+        const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
+        const icons = {
+            pan:'M8 13V7a1.5 1.5 0 0 1 3 0v5-8a1.5 1.5 0 0 1 3 0v8-6a1.5 1.5 0 0 1 3 0v7-4a1.5 1.5 0 0 1 3 0v6c0 4-2 7-6 7h-1c-2 0-3-1-4-3l-4-5a1.5 1.5 0 0 1 2-2l2 2',
+            overview:'M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z M9 3v16 M15 5v16',
+            selection:'M8 3H3v5 M16 3h5v5 M21 16v5h-5 M8 21H3v-5 M8 12h8 M12 8v8',
+            zoomIn:'M5 12h14 M12 5v14', zoomOut:'M5 12h14',
+            more:'M5 9l7 7 7-7', reset:'M4 10a8 8 0 1 1 1 8 M4 4v6h6',
+            turnLeft:'M8 5L3 10l5 5 M3 10h11a6 6 0 0 1 6 6',
+            turnRight:'M16 5l5 5-5 5 M21 10H10a6 6 0 0 0-6 6'
+        };
+        const button = action => `<button type="button" ${action==='pan'?`aria-pressed="${!!this.game.renderer.panMode}"`: ''} title="${esc(t('view.'+action))}" aria-label="${esc(t('view.'+action))}" onclick="game.ui.cameraAction('${action}')">${svg(icons[action])}</button>`;
+        box.setAttribute('aria-label',t('view.camera'));
+        box.innerHTML = ['overview','selection','zoomIn','zoomOut'].map(button).join('')
+            + `<details class="camera-more"><summary title="${esc(t('art.cameraOptions'))}" aria-label="${esc(t('art.cameraOptions'))}">${svg(icons.more)}</summary>
+                <div class="camera-popover"><div class="camera-secondary">${(watching?['reset','turnLeft','turnRight']:['pan','reset','turnLeft','turnRight']).map(button).join('')}</div>
+                <label>${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['low','balanced','cinematic'].map(k=>`<option value="${k}">${esc(t('art.'+k))}</option>`).join('')}</select></label>
+                <label>${esc(t('art.light'))}<select onchange="game.renderer.visualStyle=this.value"><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label></div></details>`;
+        if(wasOpen) box.querySelector('details').open=true;
+        box.querySelector('select').value = this.game.renderer.graphicsQuality || 'balanced';
+        box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
+    }
+
+    setGraphicsQuality(value) {
+        this.game.renderer.setGraphicsQuality(value);
+    }
+
+    cameraAction(action) {
+        const r = this.game.renderer;
+        if (!r) return;
+        if(action==='pan') {
+            r.cancelPointerGesture();
+            r.panMode=!r.panMode;
+            this.renderCameraControls();
+            const hand=document.querySelector('#cameraControls button[aria-pressed]');
+            if(hand) hand.focus();
+            return;
+        }
+        // Spectator picks set entity.selected directly; campaign/replay also keep
+        // a selectedUnits list. Use the flags rendered by all three modes.
+        const valid = ent => ent && !(ent.health <= 0)
+            && Number.isFinite(ent.x) && Number.isFinite(ent.z);
+        const units = (r.units || []).filter(u => u.selected && valid(u));
+        const candidate = this.game.selectedBuilding;
+        const building = valid(candidate) && (r.buildings || []).includes(candidate)
+            && (candidate.selected || (this._infoSubject && this._infoSubject.building === candidate))
+            ? candidate : null;
+        // A previous building reference can survive selecting a unit or group.
+        const point = units.length ? {
+            x: units.reduce((sum, u) => sum + u.x, 0) / units.length,
+            z: units.reduce((sum, u) => sum + u.z, 0) / units.length
+        } : building;
+        if (action === 'selection' && !point) { this.showInfoMessage(t('view.noSelection')); return; }
+        this.game.disableActionCam();
+        r.setCameraView(action, point);
+    }
+
+    updateAnalyzerAutoCamButton() {
+        const btn = document.querySelector('[data-an-auto-camera]');
+        if (btn && this.analyzer) {
+            btn.classList.toggle('is-on', this.analyzer.autoCam);
+            btn.setAttribute('aria-pressed', !!this.analyzer.autoCam);
+        }
+    }
+
+    // Native modality keeps focus inside the dialog and restores it to the opener.
+    // Keep keyboard events away from the camera and replay shortcuts underneath.
+    mountDialog(dialog) {
+        document.querySelectorAll('dialog.ui-dialog').forEach(old => {
+            old.close();
+            old.remove();
+        });
+        dialog.classList.add('ui-dialog');
+        dialog.addEventListener('keydown', e => e.stopPropagation());
+        dialog.addEventListener('close', () => dialog.remove(), { once: true });
+        dialog.addEventListener('mousedown', e => {
+            if (e.target === dialog) dialog.close();
+        });
+        if (this.game && this.game.renderer) this.game.renderer.keysPressed = {};
+        document.body.appendChild(dialog);
+        dialog.showModal();
     }
 
     // Reusable confirmation dialog. Calls onConfirm() if the user confirms.
     showConfirm(message, onConfirm, opts = {}) {
-        const old = document.getElementById('confirmOverlay');
-        if (old) old.remove();
-
-        const overlay = document.createElement('div');
+        const overlay = document.createElement('dialog');
         overlay.id = 'confirmOverlay';
         overlay.className = 'confirm-overlay';
+        overlay.setAttribute('aria-labelledby', 'confirmTitle');
+        overlay.setAttribute('aria-describedby', 'confirmMessage');
         overlay.innerHTML = `
-            <div class="confirm-dialog" role="dialog" aria-modal="true">
-                <h3 class="confirm-title">${opts.title || t('dlg.quitTitle')}</h3>
-                <p class="confirm-message">${message}</p>
+            <div class="confirm-dialog">
+                <h3 class="confirm-title" id="confirmTitle">${opts.title || t('dlg.quitTitle')}</h3>
+                <p class="confirm-message" id="confirmMessage">${message}</p>
                 <div class="confirm-actions">
-                    <button class="menu-btn confirm-cancel">${opts.cancelLabel || t('dlg.keepPlaying')}</button>
-                    <button class="menu-btn confirm-ok">${opts.confirmLabel || t('dlg.quitConfirm')}</button>
+                    <button type="button" class="menu-btn confirm-cancel" autofocus>${opts.cancelLabel || t('dlg.keepPlaying')}</button>
+                    <button type="button" class="menu-btn confirm-ok">${opts.confirmLabel || t('dlg.quitConfirm')}</button>
                 </div>
             </div>`;
-        document.body.appendChild(overlay);
-
-        const close = () => {
-            document.removeEventListener('keydown', onKey);
-            overlay.remove();
+        overlay.querySelector('.confirm-cancel').onclick = () => overlay.close();
+        overlay.querySelector('.confirm-ok').onclick = () => {
+            overlay.close();
+            if (onConfirm) onConfirm();
         };
-        const onKey = (e) => {
-            if (e.key === 'Escape') close();
-            else if (e.key === 'Enter') { close(); if (onConfirm) onConfirm(); }
-        };
-        document.addEventListener('keydown', onKey);
-        overlay.querySelector('.confirm-cancel').onclick = close;
-        overlay.querySelector('.confirm-ok').onclick = () => { close(); if (onConfirm) onConfirm(); };
-        // Click on the dimmed backdrop cancels.
-        overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+        this.mountDialog(overlay);
     }
 
     showStartScreen() {
@@ -970,18 +1158,27 @@ class UIManager {
             : '';
         const epPlaceholder = provPlaceholders[m.provider || 'auto'] || provPlaceholders.auto;
         const sub = e(m.model || m.endpoint || t('ar.notConfigured'));
+        const advanced = this._modelAdvanced || (this._modelAdvanced = new Map());
+        const advancedOpen = advanced.has(m.id) ? advanced.get(m.id)
+            : !!(extraBodyErr || thinkingConflicts || rejectedNames.length);
         return `
         <div class="model-card ${expanded ? 'expanded' : 'collapsed'}">
-            <div class="model-card-header" onclick="game.ui.toggleArenaModel(${m.id})">
+            <div class="model-card-header">
+                <button type="button" class="model-card-toggle" id="modelToggle-${m.id}"
+                    aria-expanded="${expanded}" aria-controls="modelBody-${m.id}"
+                    onclick="game.ui.toggleArenaModel(${m.id})">
                 <span class="mc-toggle">▶</span>
                 <span class="mc-name">${e(displayName)}</span>
                 <span class="mc-sub">${sub}</span>
                 <span class="mc-auth">${provLabels[m.provider || 'auto']}</span>
                 <span class="mc-auth">${authLabels[m.auth.type] || ''}</span>
                 ${badge}
+                </button>
                 <button class="model-remove" title="${t('ar.removeModel')}" onclick="event.stopPropagation(); game.ui.removeArenaModel(${m.id})">✕</button>
             </div>
-            <div class="model-card-body">
+            <div class="model-card-body" id="modelBody-${m.id}">
+            <section class="model-section" aria-labelledby="modelConnection-${m.id}">
+            <h3 id="modelConnection-${m.id}">${t('view.connection')}</h3>
             <div class="model-card-top">
                 <div class="arena-field"><label>${t('ar.fName')}</label>
                     <input type="text" value="${e(m.name)}" oninput="game.ui.setModelField(${m.id},'name',this.value)" placeholder="${t('ar.fNamePh')}"></div>
@@ -1012,6 +1209,9 @@ class UIManager {
                 ${status}
             </div>
             ${capLine}
+            </section>
+            <section class="model-section" aria-labelledby="modelBudgets-${m.id}">
+            <h3 id="modelBudgets-${m.id}">${t('view.budgets')}</h3>
             <div class="model-select-row">
                 <div class="arena-field" style="flex:1 1 340px"><label>${t('ar.fModelSelect')}${modelNote}</label>
                     <div class="mdl-combo">
@@ -1034,6 +1234,16 @@ class UIManager {
                 <div class="arena-field" style="flex:0 0 170px"><label>${t('ar.fModelLang')}</label>
                     <select onchange="game.ui.setModelField(${m.id},'language',this.value)">${langOpts}</select></div>
             </div>
+            <p class="auth-hint">${t('ar.maxTokensHint')}</p>
+            <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
+            <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
+            <p class="auth-hint">${t('ar.minimizeTokensHint')}</p>
+            <p class="auth-hint">${t('ar.modelLangHint')}</p>
+            </section>
+            <details class="model-advanced" ${advancedOpen ? 'open' : ''}
+                ontoggle="if(this.isConnected) game.ui.setModelAdvanced(${m.id},this.open)">
+            <summary>${t('view.advanced')}</summary>
+            <div class="model-section">
             <div class="model-select-row sampling-row">
                 <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTemperature')}${rejectedTag('omitTemperature')}</label>
                     <input type="number" min="0" max="2" step="0.05" value="${e(m.temperature)}" oninput="game.ui.setModelField(${m.id},'temperature',this.value)" placeholder="${e(defPh.temperature)}"></div>
@@ -1066,10 +1276,6 @@ class UIManager {
                     placeholder='{"chat_template_kwargs": {"enable_thinking": true}}'>${e(m.extraBody)}</textarea>
             </div></div>
             <p class="auth-hint${extraBodyErr ? ' extra-body-err' : ''}">${extraBodyErr ? this.escapeHtml(extraBodyErr) : t('ar.extraBodyHint')}</p>
-            <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
-            <p class="auth-hint">${t('ar.maxTokensHint')}</p>
-            <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
-            <p class="auth-hint">${t('ar.minimizeTokensHint')}</p>
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.toolFallback ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'toolFallback',this.checked)"> ${t('ar.toolFallback')}</label>
             <p class="auth-hint">${t('ar.toolFallbackHint')}</p>
             <div class="model-select-row"><div class="arena-field">
@@ -1080,8 +1286,8 @@ class UIManager {
             </div></div>
             <p class="auth-hint">${t('ar.lanesHint')}</p>
             ${this.laneCountOf(m) > 1 ? `<p class="auth-hint lanes-warn">${t('ar.lanesWarn')}</p>` : ''}
-            <p class="auth-hint">${t('ar.modelLangHint')}</p>
             ${isOllama ? `<p class="auth-hint ollama-hint">${t('ar.ollamaHint')}</p>` : ''}
+            </div></details>
             </div>
         </div>`;
     }
@@ -1390,7 +1596,17 @@ class UIManager {
 
     toggleArenaModel(id) {
         const m = this.getArenaModel(id);
-        if (m) { m._expanded = !m._expanded; this.renderArenaLibrary(); }
+        if (m) {
+            m._expanded = !m._expanded;
+            this.renderArenaLibrary();
+            const btn = document.getElementById('modelToggle-' + id);
+            if (btn) btn.focus({ preventScroll: true });
+        }
+    }
+
+    setModelAdvanced(id, open) {
+        if (!this._modelAdvanced) this._modelAdvanced = new Map();
+        this._modelAdvanced.set(id, !!open);
     }
 
     addArenaModel() {
@@ -2821,54 +3037,47 @@ class UIManager {
     showControlsCard(mode) {
         this.hideControlsCard();
         const row = (k, v) => `<div class="ck">${k}</div><div class="cv">${v}</div>`;
-        // A card listing mouse buttons is no help on a device that cannot produce one.
-        // Coarse pointer -> show the gestures. Only the arena has a touch reading: the
-        // campaign needs box-select and right-click commands, which is not a tablet.
-        const touch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-        const specific = (mode === 'arena')
-            ? (touch ? [
-                ['👆 ' + t('help.tap'), t('help.act.inspect')],
-                ['👆 ' + t('help.dragTouch'), t('help.act.pan')],
-                ['👆 ' + t('help.holdTouch'), t('help.act.coord')]
-              ] : [
-                ['🖱️ ' + t('help.lmb'), t('help.act.inspect')],
-                ['🖱️ ' + t('help.lmbDrag'), t('help.act.pan')],
-                ['🖱️ ' + t('help.rmbHold'), t('help.act.coord')]
-              ])
-            : [
-                ['🖱️ ' + t('help.lmb'), t('help.act.select')],
-                ['🖱️ ' + t('help.lmbDrag'), t('help.act.box')],
-                ['🖱️ ' + t('help.rmb'), t('help.act.command')]
-              ];
-        const camera = (touch && mode === 'arena')
-            ? [
-                ['🤏 ' + t('help.pinch'), t('help.act.zoom')],
-                ['🤏 ' + t('help.twist'), t('help.act.rotate')]
-              ]
-            : [
-                ['⌨️ W A S D / ↑ ↓ ← →', t('help.act.pan')],
-                ['🖱️ ' + t('help.mmb'), t('help.act.rotate')],
-                ['🖱️ ' + t('help.wheel'), t('help.act.zoom')]
-              ];
+        const touch=!!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        const spectator=mode==='arena';
+        const specific=touch ? [
+            [t('help.tap'),t(spectator?'help.act.inspect':'help.act.select')],
+            [t('help.dragTouch'),t('help.act.pan')],
+            [t(spectator?'help.holdTouch':'help.holdRelease'),t(spectator?'help.act.coord':'help.act.command')]
+        ] : (spectator ? [
+            [t('help.lmb'),t('help.act.inspect')],
+            [t('help.lmbDrag'),t('help.act.pan')],
+            [t('help.rmbHold'),t('help.act.coord')]
+        ] : [
+            [t('help.lmb'),t('help.act.select')],
+            [t('help.lmbDrag'),t('help.act.box')],
+            [t('help.rmb'),t('help.act.command')],
+            [t('help.rmbDrag'),t('help.act.pan')],
+            [t('help.panTool'),t('help.act.pan')]
+        ]);
+        const camera=touch ? [
+            [t('help.pinch'),t('help.act.zoom')],
+            [t('help.twist'),t('help.act.rotate')]
+        ] : [
+            ['W A S D / ↑ ↓ ← →',t('help.act.pan')],
+            [t('help.mmb'),t('help.act.rotate')],
+            [t('help.wheel'),t('help.act.zoom')]
+        ];
         const grid = specific.map(([k, v]) => row(k, v)).join('')
             + `<div class="controls-sub">${t('help.camera')}</div>`
             + camera.map(([k, v]) => row(k, v)).join('');
-        const el = document.createElement('div');
+        const el = document.createElement('dialog');
         el.className = 'controls-overlay';
         el.id = 'controlsOverlay';
-        el.onclick = (e) => { if (e.target === el) this.hideControlsCard(); };
+        el.setAttribute('aria-labelledby', 'controlsTitle');
         el.innerHTML = `<div class="controls-card">
-                <div class="controls-head"><span>${t('help.title')}</span><button class="controls-close" onclick="game.ui.hideControlsCard()" aria-label="${t('help.close')}">✕</button></div>
+                <div class="controls-head"><span id="controlsTitle">${t('help.title')}</span><button type="button" class="controls-close" autofocus onclick="game.ui.hideControlsCard()" aria-label="${t('help.close')}">✕</button></div>
                 <div class="controls-grid">${grid}</div>
             </div>`;
-        document.body.appendChild(el);
-        this._controlsEsc = (e) => { if (e.key === 'Escape') this.hideControlsCard(); };
-        document.addEventListener('keydown', this._controlsEsc);
+        this.mountDialog(el);
     }
     hideControlsCard() {
         const el = document.getElementById('controlsOverlay');
-        if (el) el.remove();
-        if (this._controlsEsc) { document.removeEventListener('keydown', this._controlsEsc); this._controlsEsc = null; }
+        if (el) { el.close(); el.remove(); }
     }
 
     // Localize a harness action outcome into the ENTRY'S MODEL language for the log
@@ -3920,8 +4129,8 @@ class UIManager {
     // ---- In-match transcript viewer ------------------------------------------
     // One panel, re-targeted rather than one per model: the spyglass on another
     // card swaps whose exchange is shown instead of stacking a second window over
-    // the match. Reads the recorder's in-memory ring (last 300 turns), so opening
-    // it costs nothing and it follows the match live.
+    // the match. Read the recorder's ring, but mount only a small page: even
+    // in-memory turns become expensive once their full replies enter the DOM.
     // Which log entries have an exchange behind them. Spectator advice and the
     // harness's own pause/resume/defeat notices are written without a model turn,
     // so there is nothing to open.
@@ -4055,26 +4264,21 @@ class UIManager {
         const mgr = this.game.openAIAIManager;
         const entry = ((mgr && mgr.decisionLog) || []).find(e => e._uid === Number(key));
         if (!entry) return;
-        this._transcriptFor = entry.playerId;
-        this._tvRendered = null;              // may be a different model → full rebuild
-        this.renderTranscriptViewer();
-        this.updateSpectatorPlayerList();     // repaint the spyglass active states
-
         const turns = (mgr && mgr.transcripts) ? mgr.transcripts.recent(entry.playerId) : [];
         let best = null, bestD = Infinity;
         turns.forEach(x => {
             const d = Math.abs((x.at || 0) - entry.timestamp);
             if (d < bestD) { bestD = d; best = x; }
         });
-        // Older turns fall off the recorder's 300-turn ring; the viewer cannot show
-        // what it no longer holds, so open it and leave the reader at the top.
-        //
-        // Clicking a decision says which turn is wanted, so that turn is PINNED: the
-        // incremental render anchors on it instead of following the newest arrival.
-        // Without this, asking for the turn that happens to be newest left the reader
-        // at scrollTop 0 — indistinguishable from following live — and the next answer
-        // to land pushed the requested turn straight out of view.
-        if (best) { this._tvPinned = best.turn; this.tvJumpTo(best.turn); }
+        // Choose the page BEFORE rendering; a log jump must not build every turn
+        // merely to locate one card near the bottom of the recorder's ring.
+        this._transcriptFor = entry.playerId;
+        this._tvWindowEnd = best ? best.turn : null;
+        this._tvPinned = best ? best.turn : null;
+        this._tvRendered = null;
+        this.renderTranscriptViewer();
+        this.updateSpectatorPlayerList();
+        if (best) this.tvJumpTo(best.turn);
     }
 
     // Stop holding the requested turn. Called whenever the reader says, by some other
@@ -4101,6 +4305,7 @@ class UIManager {
     toggleTranscriptViewer(aiId) {
         // A different seat, or none: whatever turn was being held belonged to the old one.
         this.tvUnpin();
+        this._tvWindowEnd = null;
         this._transcriptFor = (this._transcriptFor === aiId) ? null : aiId;
         this._tvRendered = null;            // different model → full rebuild
         this.renderTranscriptViewer();
@@ -4114,18 +4319,34 @@ class UIManager {
         const body = document.getElementById('tvBody');
         const btn = document.getElementById('tvTopBtn');
         if (!body || !btn) return;
-        btn.classList.toggle('visible', body.scrollTop > 24);
+        btn.classList.toggle('visible', body.scrollTop > 24 || this._tvWindowEnd != null);
     }
 
     scrollTranscriptTop() {
-        // The arrow means "back to the newest", which is the opposite of holding a turn.
         this.tvUnpin();
-        // Same call the decision log's arrow uses. A rAF tween was tried here after
-        // smooth-scroll appeared dead in testing; that turned out to be the preview
-        // tab being hidden (visibilityState 'hidden', zero rAF frames), which stops a
-        // hand-rolled animation just as dead. Nothing was wrong with the platform API.
+        this._tvWindowEnd = null;
+        this.renderTranscriptViewer();
         const body = document.getElementById('tvBody');
         if (body) body.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Fixed-size pages keep a long arena's DOM and section-toggle work bounded.
+    // Hold by turn identity, not offset: new answers cannot shift an older page.
+    tvPageSize() { return 8; }
+
+    tvPage(direction) {
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        const turns = rec ? rec.recent(this._transcriptFor) : [];
+        if (!turns.length) return;
+        const current = this._tvRendered;
+        const key = current && current.keys[current.keys.length - 1];
+        const found = turns.findIndex(e => e.turn === key);
+        const end = found < 0 ? turns.length : found + 1;
+        const next = Math.max(1, Math.min(turns.length, end + direction * this.tvPageSize()));
+        this.tvUnpin();
+        this._tvWindowEnd = next === turns.length ? null : turns[next - 1].turn;
+        this._tvRendered = null;
+        this.renderTranscriptViewer();
     }
 
     // Fill a state section's <pre> on first open, from the ring. The JSON never sits
@@ -4279,39 +4500,54 @@ class UIManager {
 
     renderTranscriptViewer() {
         const el = document.getElementById('transcriptViewer');
-        if (!el) return;
-        const id = this._transcriptFor;
-        if (!id) { el.style.display = 'none'; this._tvRendered = null; return; }
-
-        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
-        const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
-        const turns = rec ? rec.recent(id) : [];
-        // Resolve objective/plan across the whole ring before anything is rendered.
-        // Stamped onto the records, not the DOM, so the incremental path below still
-        // only touches the turns that are new — and every turn then knows the plan it
-        // was working to, not just the one in ten that restated it. Entries older than
-        // the ring's first restatement show none, exactly as a truncated file does in
-        // the analyzer.
-        this.tvCarryPlan(turns);
-        el.style.display = '';
-
-        const head = document.getElementById('tvTitle');
-        const cnt = document.getElementById('tvCount');
-        if (head) head.innerHTML = `${this.teamDotHtml(ai && ai.seat, 11)}<span>${this.escapeHtml(
-            (turns.length && turns[turns.length - 1].name) || (ai && ai.civilization) || id)}</span>`;
-        if (cnt) cnt.textContent = turns.length ? `${turns.length}` : '';
-
         const body = document.getElementById('tvBody');
-        if (!body) return;
+        if (!el || !body) return;
+        const id = this._transcriptFor;
+        if (!id) {
+            el.style.display = 'none';
+            if (body.firstChild) body.replaceChildren();
+            this._tvRendered = null;
+            this._tvWindowEnd = null;
+            return;
+        }
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        const turns = rec ? rec.recent(id) : [];
+        const lang = typeof getUiLang === 'function' ? getUiLang() : 'en';
+        const prev = this._tvRendered;
+        const same = prev && prev.id === id && prev.source === rec && prev.lang === lang;
+        // A retained page's newest turn can eventually fall out of the memory ring.
+        // In that case show the oldest available page, not an unrelated live jump.
+        const found = this._tvWindowEnd == null ? -1 : turns.findIndex(e => e.turn === this._tvWindowEnd);
+        const end = this._tvWindowEnd == null ? turns.length
+            : found >= 0 ? found + 1 : Math.min(this.tvPageSize(), turns.length);
+        const start = Math.max(0, end - this.tvPageSize());
+        const page = turns.slice(start, end);
+        if (this._tvWindowEnd != null) this._tvWindowEnd = page.at(-1)?.turn ?? null;
+        const keys = page.map(e => e.turn);
+        const first = turns[0]?.turn, last = turns.at(-1)?.turn;
+        const resultChanged = same && page.some(e => prev.results.get(e.turn) !== e.harnessResult);
+        const pageChanged = !same || keys.length !== prev.keys.length || keys.some((k,i) => k !== prev.keys[i]);
+        const ringChanged = !same || first !== prev.first || last !== prev.last || turns.length !== prev.total;
+        // No markup, sorting, layout reads or scroll writes on the one-second idle beat.
+        const windowChanged = !same || prev.windowEnd !== this._tvWindowEnd;
+        if (!pageChanged && !ringChanged && !resultChanged && !windowChanged) return;
+        if (ringChanged) this.tvCarryPlan(turns);
+        el.style.display = '';
+        const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
+        const title = `${this.teamDotHtml(ai && ai.seat, 11)}<span>${this.escapeHtml(
+            turns.at(-1)?.name || (ai && ai.civilization) || id)}</span>`;
+        const head = document.getElementById('tvTitle');
+        if (head && head.innerHTML !== title) head.innerHTML = title;
+        const cnt = document.getElementById('tvCount');
+        const count = turns.length ? `${turns.length}` : '';
+        if (cnt && cnt.textContent !== count) cnt.textContent = count;
         if (!body._tvBound) {
             body.addEventListener('scroll', () => {
-                // Scrolling above the pinned turn means the reader has gone looking at
-                // newer answers, so the hold is released and the viewer follows the top
-                // again. Scrolling BELOW it, into older history, is still reading around
-                // the thing they asked for — the pin stays.
-                if (this._tvPinned != null) {
-                    const el = body.querySelector(`.tv-turn[data-key="${this._tvPinned}"]`);
-                    if (!el || body.scrollTop < el.offsetTop - 12) this.tvUnpin();
+                // Reading down the current page holds it as fresh turns arrive.
+                if (body.scrollTop > 4 && this._tvWindowEnd == null && this._tvRendered) {
+                    this._tvWindowEnd = this._tvRendered.keys.at(-1) ?? null;
+                    const latest = document.getElementById('tvLatest');
+                    if (latest) latest.disabled = false;
                 }
                 this.updateTranscriptTopBtn();
             });
@@ -4349,71 +4585,59 @@ class UIManager {
             body._tvBound = true;
         }
 
-        if (!turns.length) {
-            body.innerHTML = `<div class="tv-empty">${t('spec.tvEmpty')}</div>`;
-            this._tvRendered = { id, keys: [] };
-            return;
-        }
-
-        // Rebuilding the whole list on every turn was the freeze: 251ms at 25 turns,
-        // 5.7s at the 300 cap, and it grew as a match ran. The list only ever changes
-        // by gaining turns at the top and shedding them off the bottom, so do exactly
-        // that. It also removes the need to save and restore scroll position, open
-        // sections and their inner scroll — untouched nodes simply keep all three.
-        const keys = turns.map(e => e.turn);
-        const prev = (this._tvRendered && this._tvRendered.id === id) ? this._tvRendered.keys : null;
-        if (!prev) {
-            body.innerHTML = turns.slice().reverse().map(e => this.tvTurnHtml(e)).join('');
+        if (!same) {
+            body.replaceChildren();
             body.scrollTop = 0;
-            this._tvRendered = { id, keys };
-            this.updateTranscriptTopBtn();
-            return;
         }
-        if (prev.length === keys.length && prev[prev.length - 1] === keys[keys.length - 1]) {
-            this.updateTranscriptTopBtn();
-            return;                       // nothing new
-        }
-
-        const prevSet = new Set(prev);
-        const fresh = turns.filter(e => !prevSet.has(e.turn));
-        const gone = prev.filter(k => !keys.includes(k));
-        gone.forEach(k => {
-            const n = body.querySelector(`[data-key="${k}"]`);
-            if (n) n.remove();            // fell off the ring
-        });
-
-        // Insert ascending at the top so the newest ends up first, then put the
-        // reader back on the entry they were looking at.
-        //
-        // NOT a scrollHeight delta: that assumes insertion is the only thing that
-        // changed height, and it is not — collapsing a section or lazily filling a
-        // state JSON changes it too, and the correction was then wrong by a constant
-        // ~940px no matter where the collapse happened. Anchoring on an ELEMENT is
-        // exact whatever else moved.
-        // A turn the reader ASKED for outranks following the live top. It is checked
-        // first and independently of scrollTop, because a pinned turn that happens to be
-        // the newest one sits AT the top, where the follow-the-top rule would otherwise
-        // claim it.
-        const pinned = (this._tvPinned != null)
-            ? body.querySelector(`.tv-turn[data-key="${this._tvPinned}"]`) : null;
-        // Pinned to a turn the ring has since dropped: nothing left to hold on to.
-        if (this._tvPinned != null && !pinned) this.tvUnpin();
-        const atTop = !pinned && body.scrollTop <= 4;
-        let anchorEl = pinned, anchorGap = pinned ? (pinned.offsetTop - body.scrollTop) : 0;
-        if (!atTop && !anchorEl) {
-            for (const el of body.children) {
-                if (el.offsetTop + el.offsetHeight > body.scrollTop) {  // first visible turn
-                    anchorEl = el;
-                    anchorGap = el.offsetTop - body.scrollTop;
-                    break;
+        if (!page.length && (!same || prev.keys.length)) {
+            body.innerHTML = `<div class="tv-empty">${t('spec.tvEmpty')}</div>`;
+        } else if (page.length) {
+            if (same && !prev.keys.length) body.replaceChildren();
+            const wanted = new Set(keys.map(String));
+            for (const node of [...body.children]) if (!wanted.has(node.dataset.key)) node.remove();
+            // Reuse existing cards, including each <pre>'s own reading position.
+            // At most eight full replies can be mounted, even on the initial open.
+            let cursor = body.firstElementChild;
+            for (const entry of page.slice().reverse()) {
+                let node = [...body.children].find(n => n.dataset.key === String(entry.turn));
+                if (!node) {
+                    const container = document.createElement('div');
+                    container.innerHTML = this.tvTurnHtml(entry);
+                    node = container.firstElementChild;
+                } else if (prev.results.get(entry.turn) !== entry.harnessResult) {
+                    // Harness results arrive after record(); the old count-only guard
+                    // hid them until the entire panel was reopened.
+                    const result = node.querySelector('.tv-result');
+                    if (result) result.querySelector('pre').textContent = entry.harnessResult || '';
+                    else if (entry.harnessResult) {
+                        const container = document.createElement('div');
+                        container.innerHTML = `<details class="tv-sec tv-result"${this.tvSectionPrefs()['tv-result'] ? ' open' : ''}><summary>${t('spec.tvResult')}</summary><pre></pre></details>`;
+                        container.firstElementChild.querySelector('pre').textContent = entry.harnessResult;
+                        node.insertBefore(container.firstElementChild, node.querySelector('.tv-state'));
+                    }
+                    node.classList.toggle('is-error', typeof entry.harnessResult === 'string' && entry.harnessResult.startsWith('[ERROR]'));
                 }
+                if (node !== cursor) body.insertBefore(node, cursor);
+                cursor = node.nextElementSibling;
             }
+            if (this._tvWindowEnd == null && this._tvPinned == null) body.scrollTop = 0;
         }
-        fresh.forEach(e => body.insertAdjacentHTML('afterbegin', this.tvTurnHtml(e)));
-        if (atTop) body.scrollTop = 0;
-        else if (anchorEl && anchorEl.isConnected) body.scrollTop = Math.max(0, anchorEl.offsetTop - anchorGap);
-
-        this._tvRendered = { id, keys };
+        this._tvRendered = { id, source: rec, lang, keys, first, last, total: turns.length, windowEnd: this._tvWindowEnd,
+            results: new Map(page.map(e => [e.turn, e.harnessResult])) };
+        const labels = { tvOlder: 'spec.tvOlder', tvNewer: 'spec.tvNewer', tvLatest: 'spec.tvLatest' };
+        for (const [key,label] of Object.entries(labels)) {
+            const button = document.getElementById(key);
+            if (button && button.textContent !== t(label)) button.textContent = t(label);
+        }
+        const older = document.getElementById('tvOlder'), newer = document.getElementById('tvNewer');
+        const latest = document.getElementById('tvLatest'), range = document.getElementById('tvRange');
+        if (older) older.disabled = start === 0;
+        if (newer) newer.disabled = end === turns.length;
+        if (latest) latest.disabled = !turns.length || (this._tvWindowEnd == null && this._tvPinned == null);
+        if (range) {
+            const text = page.length ? `#${keys[0]}–${keys.at(-1)}` : '';
+            if (range.textContent !== text) range.textContent = text;
+        }
         this.updateTranscriptTopBtn();
     }
 
@@ -4460,7 +4684,7 @@ class UIManager {
     async leaveArenaSummary(toMainMenu) {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         try { if (rec) await rec.purge(); } catch (e) { /* leaving anyway */ }
-        if (toMainMenu) location.reload();
+        if (toMainMenu) this.game.reloadToMenu();
         else this.game.showArenaSetup();
     }
 
@@ -4801,9 +5025,8 @@ class UIManager {
     // it is reported with the fix rather than swallowed into the console.
     // The samples/ folder is listed by samples/index.json, because GitHub Pages
     // cannot enumerate a directory and a hosted copy has no other way to learn what is
-    // there. Read once per session; the picker only appears when there is a choice to
-    // make, so a checkout carrying a single match shows no control at all and one
-    // carrying five needs no code change.
+    // there. Read once per session; even one bundled match remains selectable after
+    // opening a local transcript. The picker counts entries rather than hardcoding it.
     anLoadSampleIndex() {
         if (this._sampleIndex) return Promise.resolve(this._sampleIndex);
         return fetch('samples/index.json')
@@ -4822,7 +5045,7 @@ class UIManager {
     anFillSamplePicker(list) {
         const sel = document.getElementById('anSampleSel');
         if (!sel) return;
-        if (!list || list.length < 2) { sel.style.display = 'none'; return; }
+        if (!list || !list.length) { sel.style.display = 'none'; return; }
         const esc = v => this.escapeHtml(String(v == null ? '' : v));
         // A menu of things to DO, not a label for what is loaded. The first entry is a
         // permanent placeholder and the control returns to it after every pick, which
@@ -4834,7 +5057,7 @@ class UIManager {
         //
         // Nothing is lost by not showing the loaded match here: anRender already puts
         // the file name first in anMeta, right beside this control.
-        sel.innerHTML = `<option value="">${esc(t('an.samplesPick'))}</option>`
+        sel.innerHTML = `<option value="">${esc(t('an.samplesPick'))} (${list.length})</option>`
             + list.map(m => {
                 const day = m.date ? new Date(m.date).toISOString().slice(0, 10) : '';
                 const tempo = m.turnBased ? t('an.turnBased') : t('an.realTime');
@@ -4905,7 +5128,7 @@ class UIManager {
     }
 
 
-    // Play: one filtered step a second. It walks anStep(1), so it follows whatever
+    // Play: filtered steps at the saved reading rate. It walks anStep(1), so it follows whatever
     // filter and seat are set — playing the Combat filter jumps fight to fight rather
     // than crawling through every worker reassignment in between.
     //
@@ -4938,7 +5161,7 @@ class UIManager {
                 this.anStopPlay();
                 this.anRender();   // repaint the button as stopped
             }
-        }, 1000);
+        }, 1000 / this.viewPreferences().rate);
         this.anRender();
     }
 
@@ -5134,6 +5357,7 @@ class UIManager {
         const meta = document.getElementById('anMeta');
         if (!body || !empty) return;
         const has = !!(a && a.order && a.order.length);
+        this.anRenderWorkspaceTools(has);
         body.style.display = has ? '' : 'none';
         empty.style.display = has ? 'none' : '';
         if (meta) meta.innerHTML = '';
@@ -5226,8 +5450,8 @@ class UIManager {
             + '" aria-label="' + esc(t('an.prevStep')) + '" onclick="game.ui.anStep(-1)">'
             + this.anIcon('prev') + '</button>'
             + '<button class="an-chip an-ico' + (playing ? ' is-on' : '') + '" title="'
-            + esc(t(playing ? 'an.pause' : 'an.play')) + '" aria-label="'
-            + esc(t(playing ? 'an.pause' : 'an.play')) + '" onclick="game.ui.anTogglePlay()">'
+            + esc(playing ? t('an.pause') : t('view.playRate', { n: this.viewPreferences().rate })) + '" aria-label="'
+            + esc(playing ? t('an.pause') : t('view.playRate', { n: this.viewPreferences().rate })) + '" onclick="game.ui.anTogglePlay()">'
             + this.anIcon(playing ? 'pause' : 'play') + '</button>'
             + '<button class="an-chip an-ico" title="' + esc(t('an.nextStep'))
             + '" aria-label="' + esc(t('an.nextStep')) + '" onclick="game.ui.anStep(1)">'
@@ -5314,7 +5538,7 @@ class UIManager {
             const sn = a.seats.get(cur && cur.playerId) || {};
             hud.innerHTML = '<button class="an-chip' + (a.union ? ' is-on' : '')
                 + '" onclick="game.ui.anToggleUnion()">' + esc(t('an.union')) + '</button>'
-                + '<button class="an-chip' + (a.autoCam ? ' is-on' : '')
+                + '<button data-an-auto-camera aria-pressed="' + !!a.autoCam + '" class="an-chip' + (a.autoCam ? ' is-on' : '')
                 + '" onclick="game.ui.anToggleAutoCam()">' + esc(t('an.autoCam')) + '</button>'
                 + '<span class="an-cap-txt">' + esc(a.union ? t('an.viewAll')
                     : t('an.viewSeat', { s: sn.name || sn.model || sn.civ || '?' })) + '</span>';
@@ -5363,10 +5587,13 @@ class UIManager {
                 this._anCanvasHome = { parent: cv.parentElement, next: cv.nextSibling };
             }
             host.appendChild(cv);
+            this._anPrevSpectator = this.game.spectatorMode;
         }
         // Spectator input: no orders to give in a recording.
-        this._anPrevSpectator = this.game.spectatorMode;
         this.game.spectatorMode = true;
+        this.game.renderer.replayMode = true;
+        if(this.game.renderer.cancelPointerGesture) this.game.renderer.cancelPointerGesture();
+        this.renderCameraControls();
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
         this.anBindPick();
         this.anBindKeys();
@@ -5382,6 +5609,8 @@ class UIManager {
         if (this._anPrevSpectator !== undefined) {
             this.game.spectatorMode = this._anPrevSpectator;
             this._anPrevSpectator = undefined;
+            if(this.game.renderer.cancelPointerGesture) this.game.renderer.cancelPointerGesture();
+            this.renderCameraControls();
         }
         // The arena builds its own fog at match start, but leaving ours installed
         // means a stale grid is on screen for the first frames of the next match.
@@ -5394,6 +5623,9 @@ class UIManager {
         this._anFog = null;
         const r = this.game.renderer;
         if (r) {
+            r.replayMode = false;
+            this._anPicked = null;
+            this.game.selectedBuilding = null;
             if (r.clearScene) r.clearScene();
             if (r.onWindowResize) r.onWindowResize();
         }
@@ -5412,12 +5644,14 @@ class UIManager {
         if (!host || this._anPickBound) return;
         this._anPickBound = true;
         let downAt = null;
-        host.addEventListener('mousedown', (e) => { downAt = { x: e.clientX, y: e.clientY }; }, true);
+        host.addEventListener('mousedown', (e) => {
+            downAt = e.target.closest('.camera-controls') ? null : { x: e.clientX, y: e.clientY };
+        }, true);
         host.addEventListener('mouseup', (e) => {
             if (!downAt) return;
             const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
             downAt = null;
-            if (moved > 4 || e.button !== 0) return;   // that was a pan, not a pick
+            if (moved > 4 || e.button !== 0 || e.target.closest('.camera-controls')) return;   // that was a pan, not a pick
             this.anPickAt(e.clientX, e.clientY);
         }, true);
     }
@@ -5671,6 +5905,9 @@ class UIManager {
                 // about a recorded match — so the badge is set from the transcript.
                 ent.seat = s.seat;
                 if (u.healthPct != null) ent.health = Math.max(1, (ent.maxHealth || 100) * u.healthPct / 100);
+                // Rebuilt factories allocate fresh handles on every seek. Use the
+                // recorded identity for cosmetics so facial hair does not flicker.
+                ent._appearanceId = u.id ?? '';
                 ent.isAttacking = u.action === 'attacking';
                 r.addUnit(ent);
             });
@@ -5709,6 +5946,7 @@ class UIManager {
                     const ent = (typeof createUnit === 'function')
                         ? createUnit(e.type, e.x, e.z, e.owner, owner.civilization, oage) : null;
                     if (ent) { ent.seat = owner.seat; ent._fade = fade;
+                              ent._appearanceId = e.id ?? '';
                               ent._anStale = !e.confirmed; ent._anLastSeen = e.lastSeenSec; r.addUnit(ent); }
                 }
             });
@@ -5854,10 +6092,14 @@ class UIManager {
             const r = body.getBoundingClientRect();
             const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
             const pct = Math.max(20, Math.min(80, (y / r.height) * 100));
-            body.style.gridTemplateRows = pct + '% 6px 1fr';
+            const p = this.viewPreferences();
+            p.split = pct; p.layout = 'custom';
+            this.applyViewPreferences();
             if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
         };
         const up = () => {
+            this.saveViewPreferences();
+            this.anRenderWorkspaceTools(true);
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', up);
             window.removeEventListener('touchmove', move);
@@ -5867,6 +6109,18 @@ class UIManager {
         window.addEventListener('mouseup', up);
         window.addEventListener('touchmove', move, { passive: false });
         window.addEventListener('touchend', up);
+    }
+
+    anSplitKey(ev) {
+        if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(ev.key)) return;
+        ev.preventDefault(); ev.stopPropagation();
+        const p = this.viewPreferences();
+        p.split = ev.key === 'Home' ? 20 : ev.key === 'End' ? 80
+            : Math.max(20, Math.min(80, p.split + (ev.key === 'ArrowUp' ? -5 : 5)));
+        p.layout = 'custom';
+        this.saveViewPreferences(); this.applyViewPreferences();
+        this.anRenderWorkspaceTools(true);
+        this.game.renderer.onWindowResize();
     }
 
 

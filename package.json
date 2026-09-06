@@ -24,6 +24,7 @@
   ],
   "scripts": {
     "start": "npx http-server . -p 8080 -o",
-    "dev": "npx http-server . -p 8080 -c-1 -o"
+    "dev": "npx http-server . -p 8080 -c-1 -o",
+    "test": "node --test tests/*.test.cjs"
   }
 }

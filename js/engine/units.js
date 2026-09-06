@@ -74,100 +74,188 @@
         badgeParts(shape, { y, z, r, lenFill, lenRim }).forEach(e => p.push(e));
     };
 
-    // Civ-identifying HEADGEAR — the most readable identity channel at unit
-    // scale. kind: 'civil' (workers/archers), 'military' (infantry + cavalry
-    // riders), 'priest'. (x, y, z) is the head centre, s scales for riders.
-    // No civ (engine-test) falls back to the original generic looks.
-    const headgear = (p, civ, kind, x, y, z, s = 1) => {
-        const S = (v) => +(v * s).toFixed(3);
-        if (civ === 'greek') {
-            if (kind === 'military') {
-                // Corinthian-style dome with a team-colored crest
-                part(p, 'sphere', [1, 8, 6], 'iron', { x, y: y + S(0.03), z, sx: S(0.19), sy: S(0.15), sz: S(0.19) });
-                part(p, 'box', [S(0.05), S(0.13), S(0.36)], 'cloth', { x, y: y + S(0.2), z, team: true });
-            } else if (kind === 'priest') {
-                part(p, 'cylinder', [S(0.19), S(0.19), S(0.06), 8], 'foliage', { x, y: y + S(0.06), z }); // laurel wreath
-            } else {
-                part(p, 'cylinder', [S(0.185), S(0.185), S(0.07), 8], 'cloth', { x, y: y + S(0.05), z, team: true }); // headband
-            }
-        } else if (civ === 'egyptian') {
-            // Nemes-style headcloth with a neck flap; gold accents by station
-            part(p, 'sphere', [1, 8, 6], 'cloth', { x, y: y + S(0.05), z, sx: S(0.19), sy: S(0.13), sz: S(0.19), team: true });
-            part(p, 'box', [S(0.3), S(0.24), S(0.06)], 'cloth', { x, y: y - S(0.06), z: z - S(0.15), team: true });
-            if (kind === 'priest') part(p, 'cylinder', [S(0.13), S(0.13), S(0.1), 8], 'gold', { x, y: y + S(0.18), z });
-            if (kind === 'military') part(p, 'cylinder', [S(0.24), S(0.26), S(0.06), 8], 'gold', { x, y: y - S(0.2), z }); // collar
-        } else if (civ === 'yamato') {
-            if (kind === 'military') {
-                // kabuto: iron dome, flared brim, small gold maedate crest
-                part(p, 'sphere', [1, 8, 6], 'iron', { x, y: y + S(0.03), z, sx: S(0.18), sy: S(0.14), sz: S(0.18) });
-                part(p, 'cylinder', [S(0.26), S(0.3), S(0.05), 8], 'iron', { x, y: y - S(0.03), z });
-                part(p, 'box', [S(0.16), S(0.1), S(0.03)], 'gold', { x, y: y + S(0.14), z: z + S(0.15) });
-            } else if (kind === 'priest') {
-                part(p, 'cylinder', [S(0.05), S(0.11), S(0.22), 6], 'bark', { x, y: y + S(0.16), z }); // eboshi cap
-            } else {
-                part(p, 'cylinder', [S(0.02), S(0.33), S(0.14), 8], 'thatch', { x, y: y + S(0.12), z }); // kasa
-            }
-        } else if (civ === 'persian') {
-            // soft domed cap rising to a point (tiara); soldiers wear iron underneath
-            if (kind === 'military') part(p, 'sphere', [1, 8, 6], 'iron', { x, y, z, sx: S(0.185), sy: S(0.12), sz: S(0.185) });
-            part(p, 'cylinder', [S(0.06), S(0.17), S(0.2), 8], 'cloth', { x, y: y + S(0.13), z, team: true });
+    const oval = (p, tex, x, y, z, sx, sy, sz, extra = {}) =>
+        part(p,'sphere',Math.max(sx,sy,sz)<.11?[1,8,5]:[1,12,8],tex,{x,y,z,sx,sy,sz,...extra});
+
+    // Joined rider limbs: author endpoints, then orient a tapered cylinder along
+    // them. The same joint coordinates serve both adjacent segments and their cap.
+    const riderLimb = (p,name,tex,a,b,ra,rb,bone=null) => {
+        const d=b.map((v,i)=>v-a[i]),length=Math.hypot(...d);
+        part(p,'cylinder',[rb,ra,length,10],tex,{
+            x:(a[0]+b[0])/2,y:(a[1]+b[1])/2,z:(a[2]+b[2])/2,
+            ry:Math.atan2(d[0],d[2]),rx:Math.atan2(Math.hypot(d[0],d[2]),d[1]),bone
+        });
+        Object.assign(p[p.length-1],{riderLimb:name,jointStart:a,jointEnd:b});
+    };
+
+    // Stable cosmetic variants: the same recorded handle keeps its appearance
+    // through redraws, age upgrades and replay, without touching simulation RNG.
+    EngineUnits.appearanceVariant = (civ,identity='') => {
+        let hash=0;
+        for(const char of String(identity)) hash=(hash*31+char.charCodeAt(0))>>>0;
+        return hash%(civ==='greek'?3:civ==='yamato'?2:1);
+    };
+    const hairMaterial = o => o.civ==='greek' ? ['hairBlack','hairBrown','hairBlond'][(o.variant||0)%3]
+        : o.civ==='yamato' ? ['hairBrown','hairWhite'][(o.variant||0)%2] : 'hairBlack';
+
+    // Large faces with a visible mouth under the moustache. These are stylized
+    // cultural silhouettes, not ceremonial regalia or a historical uniform.
+    const face = (p,x,y,z,s=1,o={}) => {
+        const hair=hairMaterial(o);
+        oval(p,'skin',x,y,z,.225*s,.235*s,.20*s);
+        oval(p,'skin',x,y-.005*s,z+.196*s,.048*s,.057*s,.05*s);
+        for(const side of [-1,1]) {
+            oval(p,'hairBlack',x+side*.079*s,y+.038*s,z+.185*s,.018*s,.024*s,.014*s);
+            part(p,'box',[.067*s,.022*s,.02*s],hair,
+                {x:x+side*.078*s,y:y+.085*s,z:z+.182*s,rz:side*-.13});
+        }
+        // Lip surround keeps the dark mouth legible even inside a black beard.
+        oval(p,'skin',x,y-.081*s,z+.203*s,.069*s,.022*s,.018*s);
+        oval(p,'mouth',x,y-.079*s,z+.218*s,.053*s,.008*s,.008*s);
+        if(o.civ==='yamato') {
+            // Separated moustache and tapered chin beard, white or dark brown.
+            for(const side of [-1,1]) oval(p,hair,x+side*.052*s,y-.050*s,z+.203*s,
+                .061*s,.022*s,.030*s,{rz:side*-.22});
+            oval(p,hair,x,y-.194*s,z+.13*s,.082*s,.110*s,.074*s);
+        } else if(o.civ==='egyptian') {
+            // Short, rounded natural chin growth; no long square royal false beard.
+            oval(p,hair,x,y-.183*s,z+.115*s,.080*s,.075*s,.078*s);
+            for(const side of [-1,1]) oval(p,hair,x+side*.042*s,y-.049*s,z+.202*s,.043*s,.014*s,.024*s);
         } else {
-            // generic fallback (no civ given)
-            if (kind === 'military') {
-                part(p, 'sphere', [1, 8, 6], 'iron', { x, y: y + S(0.03), z, sx: S(0.19), sy: S(0.15), sz: S(0.19) });
-            } else if (kind === 'priest') {
-                part(p, 'sphere', [1, 8, 6], 'cloth', { x, y: y + S(0.06), z, sx: S(0.185), sy: S(0.11), sz: S(0.185), team: true });
-            } else {
-                part(p, 'cylinder', [S(0.02), S(0.3), S(0.16), 8], 'thatch', { x, y: y + S(0.11), z });
+            const rich=o.civ==='persian';
+            for(const side of [-1,1]) {
+                oval(p,hair,x+side*.125*s,y-.112*s,z+.12*s,.078*s,.096*s,.085*s);
+                oval(p,hair,x+side*.049*s,y-.047*s,z+.209*s,.060*s,.024*s,.033*s);
             }
+            oval(p,hair,x,y-.194*s,z+.123*s,(rich?.155:.137)*s,(rich?.112:.098)*s,.104*s);
         }
     };
 
-    // Shared humanoid trunk: booted legs, team tunic, head, arms (~1.6 tall).
-    const humanoid = (p, opts = {}) => {
-        shadow(p, 0.72);
-        part(p, 'cylinder', [0.075, 0.09, 0.62, 5], 'leather', { x: -0.13, y: 0.37, bone: 'legL' });
-        part(p, 'cylinder', [0.075, 0.09, 0.62, 5], 'leather', { x: 0.13, y: 0.37, bone: 'legR' });
-        part(p, 'cylinder', [0.23, 0.3, 0.62, 7], 'cloth', { y: 0.99, team: true });
-        badge(p, opts.badge, 1.08, 0, 0.085, 0.60, 0.57); // torso r≈0.255 at chest height — caps sit proud
-        part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.47, sx: 0.17, sy: 0.17, sz: 0.17 });
-        part(p, 'cylinder', [0.06, 0.07, 0.52, 5], opts.sleeves || 'skin', { x: -0.34, y: 0.96, rz: -0.1, bone: 'armL' });
-        part(p, 'cylinder', [0.06, 0.07, 0.52, 5], opts.sleeves || 'skin', { x: 0.34, y: 0.96, rz: 0.1, bone: 'armR' });
+    // Each weapon is authored around its grip, then moved/tilted as ONE rigid
+    // assembly before the arm pose. The bottom of a shaft cannot drift off the palm.
+    const held = (p,name,bone,grip,build,pitch=.42) => {
+        const pieces=[];build(pieces);
+        const m=M(), outward=grip[0]<0?.12:-.12;
+        const frame=m.multiply(m.translation(...grip),m.multiply(m.rotationX(pitch),m.rotationZ(outward)));
+        for(const piece of pieces) {
+            piece.m=m.multiply(frame,piece.m);
+            piece.bone=bone;
+            piece.attachment=name;piece.grip=grip;piece.gripFrame=frame;
+            p.push(piece);
+        }
     };
 
-    // The HORSE, rebuilt joint by joint (shared by every cavalry tier). All
-    // numbers are solved so parts EMBED in their parent instead of floating:
-    // leg tops sink into the body underside, the neck root sits inside the
-    // chest sphere, the head overlaps the neck top, the tail roots inside the
-    // rump. +Z is forward; positive rx leans a cylinder's +Y axis toward +Z.
-    // Neck/head/ears/mane/muzzle share bone 'head' (walk nod); legs carry
-    // their hooves on the same bone so they swing as one limb.
-    const horse = (p, tier) => {
-        shadow(p, 1.05);
-        part(p, 'sphere', [1, 10, 7], 'leather', { y: 0.86, sx: 0.30, sy: 0.34, sz: 0.62 });            // barrel
-        part(p, 'sphere', [1, 8, 6], 'leather', { y: 0.92, z: 0.48, sx: 0.26, sy: 0.30, sz: 0.30 });    // chest
-        part(p, 'sphere', [1, 8, 6], 'leather', { y: 0.90, z: -0.44, sx: 0.27, sy: 0.31, sz: 0.34 });   // rump
-        const leg = (x, z, bone) => {
-            part(p, 'cylinder', [0.045, 0.06, 0.62, 5], 'leather', { x, y: 0.36, z, bone });            // top embeds at y 0.67
-            part(p, 'cylinder', [0.065, 0.07, 0.09, 5], 'bark', { x, y: 0.075, z, bone });              // hoof
+    const headgear = (p,civ,kind,x,y,z,s=1) => {
+        const S=v=>v*s, military=kind==='military';
+        y+=S(.075); // brow clears the eyes; the shell still overlaps the skull
+        const dome=(tex,team=false)=>part(p,'dome',[1,16],tex,
+            {x,y:y+S(.045),z,sx:S(.253),sy:S(.24),sz:S(.235),team});
+        if(military && civ!=='egyptian') {
+            dome('iron');
+            oval(p,'iron',x,y-S(.085),z-S(.17),S(.20),S(.16),S(.075));
+            part(p,'cylinder',[S(.252),S(.255),S(.055),16],'iron',{x,y:y+S(.044),z});
+            // Rounded cheek guards frame the exposed face instead of hiding it.
+            for(const side of [-1,1]) oval(p,'iron',x+side*S(.214),y-S(.08),z+S(.035),S(.048),S(.14),S(.16));
+        }
+        if(civ==='greek') {
+            if(military) {
+                // A curved sagittal plume, broad in profile like the reference.
+                part(p,'dome',[1,16],'cloth',{x,y:y+S(.22),z:z-S(.025),sx:S(.047),sy:S(.24),sz:S(.33),team:true});
+                part(p,'box',[S(.065),S(.04),S(.33)],'gold',{x,y:y+S(.225),z});
+            } else part(p,'cylinder',[S(.222),S(.228),S(.045),12],kind==='priest'?'foliage':'cloth',
+                {x,y:y+S(.085),z,team:kind!=='priest'});
+        } else if(civ==='egyptian') {
+            dome('cloth',true);
+            for(const side of [-1,1]) oval(p,'cloth',x+side*S(.213),y-S(.07),z-S(.055),S(.067),S(.20),S(.16),{team:true});
+            part(p,'cylinder',[S(.232),S(.235),S(.04),12],'gold',{x,y:y+S(.05),z});
+            if(kind==='priest') part(p,'cylinder',[S(.105),S(.17),S(.19),12],'gold',{x,y:y+S(.29),z});
+        } else if(civ==='yamato') {
+            if(military) {
+                part(p,'cylinder',[S(.235),S(.31),S(.12),12],'iron',{x,y:y-S(.04),z:z-S(.035)});
+                for(const side of [-1,1]) part(p,'cylinder',[S(.014),S(.035),S(.20),8],'gold',
+                    {x:x+side*S(.07),y:y+S(.21),z:z+S(.21),rz:side*-.55});
+            } else if(kind==='priest') part(p,'cylinder',[S(.065),S(.15),S(.29),10],'bark',{x,y:y+S(.18),z});
+            // Brim at head centre + .11: just above the .085-high eyebrows.
+            else part(p,'cylinder',[S(.025),S(.37),S(.18),16],'thatch',{x,y:y+S(.125),z});
+        } else if(civ==='persian') {
+            // Unarmored heads need a lower cap; the military cap rests on its helmet.
+            const lift=military?.24:.16;
+            part(p,'cylinder',[S(.09),S(.23),S(.25),12],'cloth',{x,y:y+S(lift),z,team:true});
+            oval(p,'cloth',x,y+S(lift+.13),z,S(.10),S(.06),S(.10),{team:true});
+        } else if(!military) {
+            if(kind==='priest') dome('cloth',true);
+            else part(p,'cylinder',[S(.025),S(.35),S(.17),12],'thatch',{x,y:y+S(.20),z});
+        }
+    };
+
+    const cape = (p,y=1.25,z=-.22,s=1) => {
+        // Flared cloth mantle; folds carry a silhouette from the rear view too.
+        part(p,'frustum',[.64*s,.09*s,.40*s,.065*s,.72*s],'cloth',
+            {y:y-.72*s,z:z-.13*s,rx:.12,team:true});
+        for(const side of [-1,1]) part(p,'cylinder',[.025*s,.045*s,.68*s,6],'cloth',
+            {x:side*.19*s,y:y-.35*s,z:z-.09*s,rz:side*-.14,rx:.12,team:true});
+    };
+    const shoulders = (p,tex='iron',y=1.23,s=1) => {
+        for(const side of [-1,1]) oval(p,tex,side*.33*s,y,0,.16*s,.115*s,.20*s,
+            {bone:side<0?'armL':'armR'});
+    };
+    const humanoid = (p,opts={}) => {
+        shadow(p,.72);
+        for(const side of [-1,1]) {
+            const bone=side<0?'legL':'legR';
+            part(p,'cylinder',[.10,.115,.55,10],'leather',{x:side*.13,y:.37,bone});
+            oval(p,'leather',side*.13,.13,.055,.115,.115,.19,{bone});
+            const arm=side<0?'armL':'armR';
+            part(p,'cylinder',[.10,.085,.42,10],opts.sleeves||'leather',
+                {x:side*.34,y:1.0,rz:side*.10,bone:arm});
+            oval(p,'skin',side*.37,.77,.045,.09,.11,.095,{bone:arm});
+        }
+        part(p,'cylinder',[.24,.31,.65,12],'cloth',{y:.98,sz:.78,team:true});
+        part(p,'cylinder',[.259,.267,.075,12],'leather',{y:.88,sz:.8});
+        part(p,'box',[.08,.065,.045],'gold',{y:.88,z:.22});
+        face(p,0,1.49,0,1,opts);
+        badge(p,opts.badge,1.08,0,.087,.57,.54);
+    };
+
+    // Symmetric horse anatomy around +Z. The neck, head, muzzle, ears and
+    // bridle all share one pivot; paired legs begin straight beneath the body.
+    const HORSE_HIP_Y=.88, HORSE_HALF_STANCE=.18, HORSE_LEG_BOTTOM=.05;
+    const horse = (p,tier) => {
+        shadow(p,1.05);
+        oval(p,'leather',0,.90,0,.32,.34,.62);
+        oval(p,'leather',0,.94,.44,.29,.32,.31);
+        oval(p,'leather',0,.92,-.44,.30,.32,.31);
+        const leg=(x,z,bone)=>{
+            // Bury the entire top rim in the chest/rump, including at full
+            // stride. Keep the hoof end at its original height on the ground.
+            part(p,'cylinder',[.075,.060,HORSE_HIP_Y-HORSE_LEG_BOTTOM,9],'leather',
+                {x,y:(HORSE_HIP_Y+HORSE_LEG_BOTTOM)/2,z,bone});
+            oval(p,'leather',x,.33,z,.078,.095,.082,{bone});
+            oval(p,'bark',x,.085,z+.018,.090,.075,.125,{bone});
         };
-        leg(-0.16, 0.46, 'legFL'); leg(0.16, 0.46, 'legFR');
-        leg(-0.16, -0.46, 'legBL'); leg(0.16, -0.46, 'legBR');
-        part(p, 'cylinder', [0.085, 0.14, 0.5, 6], 'leather', { y: 1.18, z: 0.62, rx: 0.6, bone: 'head' });   // neck: root (0,0.97,0.48) in chest, top (0,1.39,0.76)
-        part(p, 'box', [0.15, 0.17, 0.3], 'leather', { y: 1.43, z: 0.86, rx: 0.25, bone: 'head' });           // head, overlaps neck top
-        part(p, 'box', [0.10, 0.11, 0.16], 'leather', { y: 1.38, z: 1.02, rx: 0.25, bone: 'head' });          // muzzle
-        part(p, 'cylinder', [0, 0.028, 0.09, 4], 'bark', { x: -0.05, y: 1.56, z: 0.80, bone: 'head' });       // ears
-        part(p, 'cylinder', [0, 0.028, 0.09, 4], 'bark', { x: 0.05, y: 1.56, z: 0.80, bone: 'head' });
-        part(p, 'box', [0.045, 0.44, 0.10], 'bark', { y: 1.25, z: 0.53, rx: 0.6, bone: 'head' });             // mane strip on the neck's back edge
-        part(p, 'cylinder', [0.05, 0.02, 0.5, 4], 'bark', { y: 0.79, z: -0.85, rx: -2.6 });                   // tail: roots at (0,1.0,-0.72) inside the rump
-        part(p, 'box', [0.4, 0.07, 0.46], 'cloth', { y: 1.16, z: 0.02, team: true });                          // saddle blanket
-        if (tier >= 2) part(p, 'box', [0.22, 0.09, 0.28], 'leather', { y: 1.22 });                             // saddle seat
-        if (tier >= 3) {
-            // barding: chamfron on the face, chest plate, flank plates
-            part(p, 'box', [0.13, 0.05, 0.26], 'iron', { y: 1.52, z: 0.88, rx: 0.25, bone: 'head' });
-            part(p, 'box', [0.34, 0.3, 0.08], 'iron', { y: 0.98, z: 0.74, rx: 0.25 });
-            part(p, 'box', [0.06, 0.26, 0.6], 'iron', { x: -0.29, y: 0.94 });
-            part(p, 'box', [0.06, 0.26, 0.6], 'iron', { x: 0.29, y: 0.94 });
+        leg(-HORSE_HALF_STANCE,.44,'legFL');leg(HORSE_HALF_STANCE,.44,'legFR');
+        leg(-HORSE_HALF_STANCE,-.44,'legBL');leg(HORSE_HALF_STANCE,-.44,'legBR');
+        oval(p,'leather',0,1.19,.55,.18,.35,.23,{rx:.38,bone:'head'});
+        oval(p,'leather',0,1.48,.84,.17,.20,.29,{rx:.38,bone:'head'});
+        oval(p,'leather',0,1.36,1.07,.14,.115,.18,{rx:.12,bone:'head'});
+        for(const side of [-1,1]) {
+            oval(p,'hairBlack',side*.152,1.52,.91,.019,.023,.026,{bone:'head'});
+            oval(p,'hairBlack',side*.087,1.38,1.214,.022,.015,.017,{bone:'head'});
+            part(p,'cylinder',[0,.052,.19,8],'leather',{x:side*.10,y:1.70,z:.70,rx:-.13,bone:'head'});
+            // Bridle cheeks connect skull and muzzle; entirely on the head bone.
+            part(p,'box',[.022,.032,.32],'bark',{x:side*.144,y:1.43,z:1.01,rx:.35,bone:'head'});
+        }
+        oval(p,'mouth',0,1.33,1.238,.082,.009,.008,{bone:'head'});
+        oval(p,'bark',0,1.30,.40,.050,.27,.11,{rx:.38,bone:'head'});
+        // A short forelock, rooted between the ears, replaces the detached mane bar.
+        oval(p,'bark',0,1.66,.77,.062,.075,.105,{bone:'head'});
+        part(p,'cylinder',[.065,.030,.47,8],'bark',{y:.77,z:-.79,rx:-2.9});
+        part(p,'box',[.45,.07,.46],'cloth',{y:1.21,z:.02,team:true});
+        if(tier>=2) part(p,'box',[.24,.075,.29],'leather',{y:1.25});
+        if(tier>=3) {
+            oval(p,'iron',0,1.58,.98,.12,.045,.20,{rx:.38,bone:'head'});
+            oval(p,'iron',0,.98,.714,.25,.22,.055);
+            for(const side of [-1,1]) oval(p,'iron',side*.30,.96,0,.035,.22,.47);
         }
     };
 
@@ -177,73 +265,80 @@
     const builders = {
         worker: (o = {}) => {
             const p = [];
-            humanoid(p, { badge: o.badge });
-            headgear(p, o.civ, 'civil', 0, 1.5, 0);
-            part(p, 'cylinder', [0.028, 0.028, 0.55, 4], 'bark', { x: 0.37, y: 0.86, z: 0.08, bone: 'armR' });
-            part(p, 'box', [0.06, 0.18, 0.26], 'iron', { x: 0.37, y: 1.1, z: 0.18, bone: 'armR' }); // axe head
+            humanoid(p, o);
+            headgear(p, o.civ, 'civil', 0, 1.49, 0);
+            held(p,'axe','armR',[.37,.77,.045],q=>{
+                part(q,'cylinder',[.028,.028,.55,8],'wood',{y:.09});
+                part(q,'box',[.065,.18,.25],'iron',{y:.33,z:.08});
+            });
             return p;
         },
         infantry: (o = {}) => {
-            const tier = o.tier || 2;
-            const p = [];
-            humanoid(p, { sleeves: tier >= 3 ? 'leather' : undefined, badge: o.badge });
-            headgear(p, o.civ, 'military', 0, 1.47, 0);
-            if (tier === 1) {
-                // militia: a knobbed wooden club and no shield — a levy, not a soldier
-                part(p, 'cylinder', [0.04, 0.055, 0.5, 5], 'bark', { x: 0.37, y: 0.95, z: 0.22, rx: 0.5, bone: 'armR' });
-                part(p, 'sphere', [1, 6, 5], 'bark', { x: 0.37, y: 1.14, z: 0.42, sx: 0.075, sy: 0.075, sz: 0.075, bone: 'armR' });
+            const tier=o.tier||2, p=[];
+            humanoid(p,o);
+            headgear(p,o.civ,tier===1?'civil':'military',0,1.49,0);
+            if(tier===1) {
+                held(p,'club','armR',[.37,.77,.045],q=>
+                    part(q,'cylinder',[.075,.045,.65,9],'wood',{y:.23}),.35);
             } else {
-                part(p, 'box', [0.055, 0.62, 0.1], 'iron', { x: 0.37, y: 0.98, z: 0.26, rx: 0.5, bone: 'armR' }); // sword
-                part(p, 'box', [0.16, 0.05, 0.06], tier >= 3 ? 'gold' : 'iron', { x: 0.37, y: 0.74, z: 0.12, bone: 'armR' }); // guard
-                if (o.civ === 'persian') {
-                    // tall rectangular shield — the Persian signature; iron for champions
-                    part(p, 'box', [0.38, 0.62, 0.06], tier >= 3 ? 'iron' : 'thatch', { x: -0.4, y: 0.92, z: 0.16, bone: 'armL' });
-                } else {
-                    part(p, 'cylinder', [0.27, 0.27, 0.06, 9], tier >= 3 ? 'iron' : 'wood', { x: -0.4, y: 0.95, z: 0.14, rx: Math.PI / 2, bone: 'armL' }); // round shield
+                shoulders(p);
+                // Polished breastplate behind a team-colour tabard.
+                oval(p,'iron',0,1.15,0,.27,.19,.235);
+                part(p,'frustum',[.30,.04,.25,.04,.53],'cloth',{y:.67,z:.22,team:true});
+                badge(p,o.badge,1.12,0,.08,.61,.58);
+                cape(p);
+                // Convex shield: rim, painted face and raised boss follow the left arm.
+                const shieldX=-.43, shieldY=.99;
+                oval(p,'iron',shieldX,shieldY,.19,.29,.37,.085,{bone:'armL'});
+                oval(p,'cloth',shieldX,shieldY,.23,.247,.319,.072,{bone:'armL',team:true});
+                oval(p,'iron',shieldX,shieldY,.29,.075,.075,.045,{bone:'armL'});
+                held(p,'sword','armR',[.37,.77,.045],q=>{
+                    part(q,'cylinder',[.036,.036,.20,8],'leather',{});
+                    part(q,'box',[.26,.055,.075],'iron',{y:.12});
+                    part(q,'cylinder',[0,.075,.69,4],'iron',{y:.48,sz:.34});
+                });
+                if(tier>=3) {
+                    part(p,'cylinder',[.245,.25,.035,12],'gold',{y:1.28,sz:.80});
+                    for(const side of [-1,1]) oval(p,'iron',side*.13,.38,.07,.105,.19,.09,{bone:side<0?'legL':'legR'});
                 }
-            }
-            if (tier >= 3) {
-                // champion: pauldrons + a back banner in team color over the head
-                part(p, 'sphere', [1, 6, 5], 'iron', { x: -0.31, y: 1.28, sx: 0.11, sy: 0.08, sz: 0.11 });
-                part(p, 'sphere', [1, 6, 5], 'iron', { x: 0.31, y: 1.28, sx: 0.11, sy: 0.08, sz: 0.11 });
-                part(p, 'cylinder', [0.018, 0.018, 0.85, 4], 'bark', { y: 1.35, z: -0.24 });
-                part(p, 'box', [0.26, 0.34, 0.03], 'cloth', { y: 1.72, z: -0.24, team: true });
             }
             return p;
         },
         ranged: (o = {}) => {
             const tier = o.tier || 1;
             const p = [];
-            humanoid(p, { sleeves: tier >= 2 ? 'leather' : undefined, badge: o.badge });
+            humanoid(p, { ...o, sleeves: 'leather' });
+            if(tier>=2) shoulders(p,'leather');
             if (tier >= 2) headgear(p, o.civ, 'military', 0, 1.47, 0);
-            else if (o.civ) headgear(p, o.civ, 'civil', 0, 1.5, 0);
+            else if (o.civ) headgear(p, o.civ, 'civil', 0, 1.49, 0);
             else part(p, 'sphere', [1, 8, 6], 'leather', { y: 1.53, sx: 0.18, sy: 0.11, sz: 0.18 }); // generic cap
-            if (tier === 2) {
-                // crossbow held level: stock, iron lath across it, stirrup nose —
-                // a horizontal weapon reads instantly against the archer's tall stave
-                part(p, 'box', [0.05, 0.06, 0.6], 'wood', { x: 0.36, y: 1.05, z: 0.3, bone: 'armR' });
-                part(p, 'cylinder', [0.022, 0.022, 0.5, 4], 'iron', { x: 0.36, y: 1.07, z: 0.52, rz: Math.PI / 2, bone: 'armR' });
-                part(p, 'box', [0.05, 0.1, 0.05], 'iron', { x: 0.36, y: 1.0, z: 0.56, bone: 'armR' });
+            if(tier===2) {
+                held(p,'crossbow','armR',[.37,.77,.045],q=>{
+                    part(q,'box',[.055,.065,.60],'wood',{y:.045,z:.17});
+                    part(q,'cylinder',[.022,.022,.50,8],'iron',{y:.06,z:.39,rz:Math.PI/2});
+                    part(q,'box',[.055,.10,.05],'iron',{z:.44});
+                },-.22);
             } else {
-                part(p, 'cylinder', [0.026, 0.026, tier >= 3 ? 1.3 : 1.15, 4], 'wood', { x: -0.37, y: 0.95, z: 0.14, rz: 0.14, bone: 'armL' }); // bow stave
-                if (tier >= 3) part(p, 'cylinder', [0.032, 0.032, 0.36, 4], 'gold', { x: -0.37, y: 0.95, z: 0.14, rz: 0.14, bone: 'armL' }); // gilt grip
+                held(p,'bow','armL',[-.37,.77,.045],q=>{
+                    part(q,'cylinder',[.026,.026,tier>=3?1.3:1.15,8],'wood',{y:.12});
+                    if(tier>=3) part(q,'cylinder',[.034,.034,.16,8],'gold',{});
+                });
             }
             part(p, 'cylinder', [0.07, 0.09, 0.5, 5], 'bark', { x: 0.1, y: 1.12, z: -0.28, rz: 0.5 }); // quiver
-            if (tier >= 3) part(p, 'box', [0.34, 0.5, 0.04], 'cloth', { y: 1.05, z: -0.26, team: true }); // elite cape
+            if (tier >= 3) cape(p);
             return p;
         },
         priest: (o = {}) => {
-            const p = [];
-            shadow(p, 0.78);
-            part(p, 'cylinder', [0.21, 0.37, 1.25, 8], 'cloth', { y: 0.67 }); // cream robe (no legs)
-            part(p, 'box', [0.42, 0.5, 0.06], 'cloth', { y: 0.98, z: 0.2, team: true }); // sash
-            badge(p, o.badge, 1.05, 0, 0.085, 0.60, 0.57); // clears robe (r≈0.24) and sash (z 0.23)
-            part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.47, sx: 0.17, sy: 0.17, sz: 0.17 });
-            headgear(p, o.civ, 'priest', 0, 1.5, 0);
-            part(p, 'cylinder', [0.06, 0.07, 0.52, 5], 'cloth', { x: -0.34, y: 0.96, rz: -0.1, bone: 'armL' });
-            part(p, 'cylinder', [0.06, 0.07, 0.52, 5], 'cloth', { x: 0.34, y: 0.96, rz: 0.1, bone: 'armR' });
-            part(p, 'cylinder', [0.028, 0.028, 1.35, 5], 'bark', { x: 0.37, y: 0.72, z: 0.08, bone: 'armR' }); // staff
-            part(p, 'sphere', [1, 8, 6], 'gold', { x: 0.37, y: 1.42, z: 0.08, sx: 0.08, sy: 0.08, sz: 0.08, bone: 'armR' });
+            const p=[];
+            humanoid(p,{...o,sleeves:'cloth'});
+            part(p,'cylinder',[.235,.37,.83,14],'cloth',{y:.51,sz:.85});
+            part(p,'frustum',[.18,.035,.15,.035,.85],'cloth',{y:.12,z:.27,team:true});
+            cape(p,1.25,-.23,1.12);
+            headgear(p,o.civ,'priest',0,1.49,0);
+            held(p,'staff','armR',[.37,.77,.045],q=>{
+                part(q,'cylinder',[.035,.035,1.42,10],'wood',{y:.07});
+                oval(q,'gold',0,.83,0,.10,.13,.10);
+            });
             return p;
         },
         cavalry: (o = {}) => {
@@ -263,35 +358,61 @@
                 part(p, 'cylinder', [0.022, 0.022, 0.62, 4], 'bark', { x: 0.2, y: 0.5, z: -0.72, rx: 1.45 });
                 part(p, 'cylinder', [0.14, 0.17, 0.44, 6], 'cloth', { y: 1.06, z: -1.18, team: true });        // rider
                 badge(p, o.badge, 1.10, -1.18, 0.06, 0.41, 0.38);                                              // rider chest badge
-                part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.41, z: -1.18, sx: 0.13, sy: 0.13, sz: 0.13 });
+                face(p,0,1.41,-1.18,.75,o);
                 headgear(p, o.civ, 'military', 0, 1.44, -1.18, 0.75);                                          // helmet
-                part(p, 'cylinder', [0.045, 0.055, 0.36, 4], 'skin', { x: 0.18, y: 1.22, z: -1.02, rz: 0.2, rx: 0.3 });
-                part(p, 'cylinder', [0.018, 0.018, 1.5, 4], 'wood', { x: 0.24, y: 1.32, z: -0.8, rx: 0.5 });   // spear
-                part(p, 'cylinder', [0, 0.028, 0.12, 4], 'iron', { x: 0.24, y: 1.98, z: -0.44, rx: 0.5 });     // spear tip
+                for(const side of [-1,1]) {
+                    const suffix=side<0?'L':'R', shoulder=[side*.18,1.24,-1.18];
+                    const elbow=[side*.24,1.10,-1.12];
+                    const hand=side<0?[-.20,1.10,-.91]:[.22,1.07,-1.04];
+                    riderLimb(p,'upperArm'+suffix,'leather',shoulder,elbow,.070,.064);
+                    oval(p,'leather',...elbow,.066,.067,.066);
+                    riderLimb(p,'forearm'+suffix,'skin',elbow,hand,.061,.052);
+                    oval(p,'skin',...hand,.065,.075,.067);
+                }
+                held(p,'chariot-spear',null,[.22,1.07,-1.04],q=>{
+                    part(q,'cylinder',[.022,.022,1.35,8],'wood',{y:.555});
+                    part(q,'cylinder',[0,.037,.14,6],'iron',{y:1.29});
+                });
                 return p;
             }
             const tier = o.tier || 2;
             const p = [];
             horse(p, tier);
-            // rider: torso seated over the blanket, legs hugging the barrel
-            part(p, 'cylinder', [0.16, 0.2, 0.46, 6], 'cloth', { y: 1.47, team: true });
+            // A seated pelvis meets the saddle. Thighs wrap outward and forward
+            // to the knees; calves hang outside the horse, with boots facing +Z.
+            part(p, 'cylinder', [0.19, 0.22, 0.46, 12], 'cloth', { y: 1.47, team: true });
             badge(p, o.badge, 1.52, 0, 0.07, 0.48, 0.45); // rider chest — torso r≈0.18 here
-            part(p, 'cylinder', [0.05, 0.06, 0.4, 4], 'leather', { x: -0.28, y: 1.18, z: 0.05, rz: -0.35 });
-            part(p, 'cylinder', [0.05, 0.06, 0.4, 4], 'leather', { x: 0.28, y: 1.18, z: 0.05, rz: 0.35 });
-            part(p, 'sphere', [1, 8, 6], 'skin', { y: 1.85, sx: 0.14, sy: 0.14, sz: 0.14 });
-            headgear(p, o.civ, tier === 1 ? 'civil' : 'military', 0, 1.88, 0, 0.8);
-            part(p, 'cylinder', [0.05, 0.06, 0.4, 4], tier >= 3 ? 'leather' : 'skin', { x: 0.24, y: 1.55, z: 0.04, rz: 0.15, bone: 'armR' });
-            if (tier === 1) {
-                // scout: a short javelin, bareback but for the blanket
-                part(p, 'cylinder', [0.016, 0.016, 1.1, 4], 'wood', { x: 0.3, y: 1.52, z: 0.2, rx: 0.4, bone: 'armR' });
-            } else if (tier === 2) {
-                part(p, 'cylinder', [0.02, 0.02, 1.6, 4], 'wood', { x: 0.32, y: 1.55, z: 0.2, rx: 0.4, bone: 'armR' }); // spear
-            } else {
-                // heavy: a true lance with an iron tip and a team pennant
-                part(p, 'cylinder', [0.028, 0.028, 1.9, 4], 'wood', { x: 0.32, y: 1.55, z: 0.2, rx: 0.4, bone: 'armR' });
-                part(p, 'cylinder', [0, 0.03, 0.14, 4], 'iron', { x: 0.32, y: 2.29, z: 0.61, rx: 0.4, bone: 'armR' });
-                part(p, 'box', [0.05, 0.16, 0.22], 'cloth', { x: 0.32, y: 2.2, z: 0.62, team: true, bone: 'armR' });
+            for(const side of [-1,1]) {
+                const suffix=side<0?'L':'R',hip=[side*.14,1.32,-.08];
+                const knee=[side*.37,1.10,.22],ankle=[side*.38,.81,.14];
+                riderLimb(p,'thigh'+suffix,'leather',hip,knee,.105,.095);
+                oval(p,'leather',...knee,.10,.10,.10);
+                riderLimb(p,'calf'+suffix,'leather',knee,ankle,.085,.072);
+                oval(p,'leather',side*.38,.79,.22,.10,.085,.16);
+                if(tier>=3) oval(p,'iron',side*.37,1.11,.285,.080,.090,.040);
             }
+            face(p,0,1.85,0,.8,o);
+            if(tier>=2) {
+                oval(p,'iron',0,1.59,0,.20,.12,.18);
+                cape(p,1.68,-.16,.7);
+            }
+            headgear(p, o.civ, tier === 1 ? 'civil' : 'military', 0, 1.88, 0, 0.8);
+            for(const side of [-1,1]) {
+                const suffix=side<0?'L':'R',bone='arm'+suffix;
+                const shoulder=[side*.25,1.66,0],elbow=[side*.34,1.46,.06];
+                const hand=side<0?[-.29,1.40,.25]:[.35,1.31,.14];
+                riderLimb(p,'upperArm'+suffix,'leather',shoulder,elbow,.092,.083,bone);
+                oval(p,'leather',...elbow,.085,.085,.085,{bone});
+                riderLimb(p,'forearm'+suffix,tier>=3?'leather':'skin',elbow,hand,.078,.068,bone);
+                oval(p,'skin',...hand,.082,.090,.085,{bone});
+                oval(p,tier>=2?'iron':'leather',...shoulder,.125,.10,.15,{bone});
+            }
+            held(p,tier===1?'javelin':tier===2?'spear':'lance','armR',[.35,1.31,.14],q=>{
+                const length=tier===1?1.1:tier===2?1.3:1.45;
+                part(q,'cylinder',[.025,.025,length,8],'wood',{y:length/2-.12});
+                part(q,'cylinder',[0,.035,.14,6],'iron',{y:length-.05});
+                if(tier>=3) part(q,'box',[.035,.16,.22],'cloth',{y:length-.21,z:.11,team:true});
+            });
             return p;
         }
     };
@@ -314,9 +435,9 @@
     const PIVOTS = {
         worker: HUMAN_PIVOTS, infantry: HUMAN_PIVOTS, ranged: HUMAN_PIVOTS, priest: HUMAN_PIVOTS,
         cavalry: {
-            legFL: [-0.16, 0.67, 0.46], legFR: [0.16, 0.67, 0.46],
-            legBL: [-0.16, 0.67, -0.46], legBR: [0.16, 0.67, -0.46],
-            armR: [0.24, 1.72, 0.04],
+            legFL: [-HORSE_HALF_STANCE, HORSE_HIP_Y, 0.44], legFR: [HORSE_HALF_STANCE, HORSE_HIP_Y, 0.44],
+            legBL: [-HORSE_HALF_STANCE, HORSE_HIP_Y, -0.44], legBR: [HORSE_HALF_STANCE, HORSE_HIP_Y, -0.44],
+            armL: [-0.25, 1.66, 0], armR: [0.25, 1.66, 0],
             head: [0, 0.98, 0.5] // neck root — the walk nod swings the whole neck
         }
     };
@@ -325,16 +446,28 @@
     // headgear/accents; opts.unit (specific id like 'champion') picks the tier
     // dressing. Omit both for the generic look (engine-test).
     EngineUnits.parts = (type, opts) => {
-        const o = opts || {};
+        const o = { ...opts };
         if (o.tier == null) o.tier = TIER[o.unit] || (type === 'ranged' ? 1 : 2);
         const b = builders[type];
         return b ? b(o) : [];
     };
 
+    // Material/ownership/bone are all part of the batch key. Team and badge
+    // colours stay per instance; cached geometry can be shared across seats.
+    EngineUnits.batches = parts => {
+        const groups=new Map();
+        for(const p of parts) {
+            const key=JSON.stringify([p.tex,p.team,p.accent,p.bone,p.blend]);
+            if(!groups.has(key)) groups.set(key,{...p,parts:[]});
+            groups.get(key).parts.push(p);
+        }
+        return [...groups.values()].map(group=>({...group,mesh:window.EngineMesh.mergeParts(group.parts)}));
+    };
+
     // Per-type render metadata: health-bar height above the ground.
     EngineUnits.META = {
-        worker: { barY: 2.0 }, infantry: { barY: 2.0 }, ranged: { barY: 2.0 },
-        priest: { barY: 2.0 }, cavalry: { barY: 2.45 }
+        worker: { barY: 2.15 }, infantry: { barY: 2.15 }, ranged: { barY: 2.15 },
+        priest: { barY: 2.15 }, cavalry: { barY: 2.45 }
     };
 
     // Cosmetic animation: returns { mats, bob } — mats maps bone name → matrix
@@ -352,16 +485,16 @@
         if (type === 'cavalry') {
             if (anim === 'walk') {
                 const s = Math.sin(t * 7 + phase);
-                swing('legFL', m3.rotationX(s * 0.55)); swing('legBR', m3.rotationX(s * 0.55));
-                swing('legFR', m3.rotationX(-s * 0.55)); swing('legBL', m3.rotationX(-s * 0.55));
-                swing('head', m3.rotationX(Math.sin(t * 7 + phase + 1) * 0.07)); // the trot nod
-                bob = Math.abs(s) * 0.06;
+                swing('legFL', m3.rotationX(s * 0.40)); swing('legBR', m3.rotationX(s * 0.40));
+                swing('legFR', m3.rotationX(-s * 0.40)); swing('legBL', m3.rotationX(-s * 0.40));
+                swing('head', m3.rotationX(Math.sin(t * 7 + phase + 1) * 0.035)); // the trot nod
+                bob = Math.abs(s) * 0.035;
             } else if (anim === 'attack') {
                 // couch the spear forward
                 const s = Math.sin(t * 7.5 + phase);
                 swing('armR', m3.rotationX(-0.3 - Math.max(0, s) * 0.5));
             } else { // idle: a slow grazing bow of the neck
-                swing('head', m3.rotationX(Math.max(0, Math.sin(t * 0.9 + phase)) * 0.12));
+                swing('head', m3.rotationX(Math.max(0, Math.sin(t * 0.9 + phase)) * 0.04));
             }
         } else if (anim === 'walk') {
             const s = Math.sin(t * 6.5 + phase);

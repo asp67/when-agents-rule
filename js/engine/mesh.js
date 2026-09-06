@@ -155,10 +155,82 @@
             for (let x = 0; x < wSeg; x++) {
                 const a = y * row + x, b = a + 1, c = a + row, d = c + 1;
                 // CCW seen from outside (lat-long rings run north→south)
-                indices.push(a, b, c, b, d, c);
+                if (y > 0) indices.push(a, b, c);
+                if (y < hSeg - 1) indices.push(b, d, c);
             }
         }
         return { positions, normals, uvs, indices };
+    };
+
+    // A closed curved shell. Used for sculpted helmets and crest plumes.
+    EngineMesh.dome = (r, segments = 16) => {
+        const mesh=EngineMesh.sphere(r,segments,12), count=7*(segments+1);
+        mesh.positions=mesh.positions.slice(0,count*3);
+        mesh.normals=mesh.normals.slice(0,count*3);
+        mesh.uvs=mesh.uvs.slice(0,count*2);
+        const indices=[];
+        for(let i=0;i<mesh.indices.length;i+=3) {
+            const tri=mesh.indices.slice(i,i+3);
+            if(tri.every(v=>v<count)) indices.push(...tri);
+        }
+        mesh.positions.push(0,0,0); mesh.normals.push(0,-1,0);mesh.uvs.push(.5,.5);
+        for(let i=0;i<=segments;i++) {
+            const angle=i/segments*Math.PI*2, x=Math.cos(angle), z=Math.sin(angle);
+            mesh.positions.push(x*r,0,z*r);mesh.normals.push(0,-1,0);mesh.uvs.push(x*.5+.5,z*.5+.5);
+            if(i<segments) indices.push(count,count+i+1,count+i+2);
+        }
+        mesh.indices=indices;
+        return mesh;
+    };
+
+    // One continuous crown, with broad asymmetric lobes and a scalloped silhouette.
+    // No intersecting canopy balls and no random per-vertex spikes.
+    EngineMesh.canopy = (variant = 0) => {
+        const mesh=EngineMesh.sphere(1,24,16);
+        for (let i=0;i<mesh.positions.length;i+=3) {
+            const x=mesh.positions[i], y=mesh.positions[i+1], z=mesh.positions[i+2];
+            const theta=Math.atan2(z,x), ring=Math.sqrt(x*x+z*z);
+            const lobe=1 + ring*(0.16*Math.sin(theta*3+variant)+0.13*Math.cos(theta*5-variant));
+            mesh.positions[i]=x*lobe*(1+0.10*y)+0.12*y;
+            mesh.positions[i+1]=y*(y<0?0.72:0.88)+0.13*ring*Math.sin(theta*3+variant);
+            mesh.positions[i+2]=z*lobe*(1+0.10*y);
+        }
+        // Area-weighted surface normals, welded across the UV seam and poles.
+        const sums=new Map(), keys=[];
+        for(let i=0;i<mesh.positions.length;i+=3) {
+            const key=mesh.positions.slice(i,i+3).map(v=>(Math.abs(v)<1e-5?0:v).toFixed(5)).join(':');
+            keys.push(key); if(!sums.has(key)) sums.set(key,[0,0,0]);
+        }
+        for(let i=0;i<mesh.indices.length;i+=3) {
+            const ids=mesh.indices.slice(i,i+3), pts=ids.map(j=>mesh.positions.slice(j*3,j*3+3));
+            const n=window.M3D.cross(window.M3D.sub(pts[1],pts[0]),window.M3D.sub(pts[2],pts[0]));
+            for(const j of ids) { const sum=sums.get(keys[j]); for(let k=0;k<3;k++) sum[k]+=n[k]; }
+        }
+        keys.forEach((key,i)=>mesh.normals.splice(i*3,3,...window.M3D.normalize(sums.get(key))));
+        return mesh;
+    };
+
+    // Bake TRS into vertices before batching. Bones are applied afterwards, so
+    // weapons, hands and armor keep their original animation pivots.
+    EngineMesh.mergeParts = (parts) => {
+        const out={positions:[],normals:[],uvs:[],indices:[]};
+        for(const part of parts) {
+            const src=EngineMesh[part.kind](...part.args), m=part.m, offset=out.positions.length/3;
+            const scale2=[0,1,2].map(c=>m[c*4]**2+m[c*4+1]**2+m[c*4+2]**2);
+            for(let i=0;i<src.positions.length;i+=3) {
+                const p=src.positions.slice(i,i+3), n=src.normals.slice(i,i+3).map((v,c)=>v/scale2[c]);
+                const normal=[];
+                for(let r=0;r<3;r++) {
+                    out.positions.push(m[r]*p[0]+m[4+r]*p[1]+m[8+r]*p[2]+m[12+r]);
+                    normal.push(m[r]*n[0]+m[4+r]*n[1]+m[8+r]*n[2]);
+                }
+                out.normals.push(...window.M3D.normalize(normal));
+            }
+            out.uvs.push(...src.uvs);
+            out.indices.push(...src.indices.map(i=>i+offset));
+        }
+        if(out.positions.length/3>65535) throw new Error('Unit batch exceeds WebGL 1 index range');
+        return out;
     };
 
     // Hip-point pyramid roof over a w×d rectangle: eaves at y=0, apex at (0,h,0).

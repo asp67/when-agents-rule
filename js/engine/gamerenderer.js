@@ -62,6 +62,8 @@
             this.keysPressed = {};
             this._marqueeEl = null;
             this._halfH = 34;
+            this.replayMode = false;
+            this._cameraMoveId = 0;
 
             this._yaw = Math.PI / 4;          // middle-drag horizontal turns the map
             this._pitch = Math.atan(0.5);     // middle-drag vertical tilts (10°..89°)
@@ -110,48 +112,16 @@
                 updateProjectionMatrix: () => {}
             };
 
-            const VS = `
-                attribute vec3 aPosition;
-                attribute vec3 aNormal;
-                attribute vec2 aUv;
-                uniform mat4 uProj, uView, uModel;
-                uniform vec2 uUvOffset;   // slow drift for foam/water
-                varying vec3 vNormal;
-                varying vec2 vUv;
-                varying float vDepth;     // view-space distance, for the haze
-                void main() {
-                    vNormal = mat3(uModel) * aNormal;
-                    vUv = aUv + uUvOffset;
-                    vec4 vp = uView * uModel * vec4(aPosition, 1.0);
-                    vDepth = -vp.z;
-                    gl_Position = uProj * vp;
-                }`;
-            const FS = `
-                precision mediump float;
-                uniform sampler2D uTex;
-                uniform vec3 uSunDir, uSunColor, uAmbient, uTint;
-                uniform float uUnlit;
-                uniform float uAlpha;     // fades: ghosts, dust, foam pulse
-                uniform vec3 uSky;        // the colour behind everything
-                uniform vec2 uHaze;       // (start, end) view depth
-                varying vec3 vNormal;
-                varying vec2 vUv;
-                varying float vDepth;
-                void main() {
-                    vec4 t = texture2D(uTex, vUv);
-                    vec3 base = t.rgb * uTint;
-                    vec3 n = normalize(vNormal);
-                    vec3 light = uAmbient + uSunColor * max(dot(n, uSunDir), 0.0);
-                    vec3 col = mix(base * light, base, uUnlit);
-                    // Fade toward the sky with distance, so the sea has ALREADY
-                    // become sky by the time the far plane cuts it. That is what
-                    // lets the horizon read as a horizon rather than as a clip line
-                    // sliding up and down the frame as you zoom.
-                    float h = clamp((vDepth - uHaze.x) / max(1.0, uHaze.y - uHaze.x), 0.0, 1.0);
-                    gl_FragColor = vec4(mix(col, uSky, h), t.a * uAlpha);
-                }`;
-            this.prog = GLCore.compileProgram(this.gl, VS, FS);
-            this.sunDir = M().normalize([-0.35, 0.9, 0.45]);
+            this.prog = GLCore.compileProgram(this.gl, EngineAtmosphere.vertex, EngineAtmosphere.fragment);
+            this.shadowProg = GLCore.compileProgram(this.gl, EngineAtmosphere.shadowVertex, EngineAtmosphere.shadowFragment);
+            this.sunDir = M().normalize([-0.65, 0.72, 0.36]);
+            this.visualStyle = 'cinematic';
+            this._shadowTarget = null;
+            this._lightMatrix = M().identity();
+            this._shadowStrength = 0;
+            let quality = 'balanced';
+            try { quality = localStorage.getItem('warGraphicsQuality') || quality; } catch (e) {}
+            this.setGraphicsQuality(quality);
 
             this._geo = new Map();          // 'kind:args' → GPU buffers
             this._resEntries = new WeakMap(); // resource → prebaked entries
@@ -167,8 +137,10 @@
 
             window.addEventListener('resize', () => this.onWindowResize());
             canvas.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
-            canvas.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
-            canvas.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
+            window.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
+            window.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
+            window.addEventListener('blur', () => this.cancelPointerGesture());
+            document.addEventListener('visibilitychange', () => { if(document.hidden) this.cancelPointerGesture(); });
             canvas.addEventListener('contextmenu', (e) => e.preventDefault());
             canvas.addEventListener('wheel', (e) => this.onCanvasWheel(e), { passive: false });
             // touch-action none, or the browser claims the gesture for page scroll and
@@ -178,7 +150,7 @@
             canvas.addEventListener('touchstart', (e) => this.onCanvasTouchStart(e), { passive: false });
             canvas.addEventListener('touchmove', (e) => this.onCanvasTouchMove(e), { passive: false });
             canvas.addEventListener('touchend', (e) => this.onCanvasTouchEnd(e), { passive: false });
-            canvas.addEventListener('touchcancel', (e) => this.onCanvasTouchEnd(e), { passive: false });
+            canvas.addEventListener('touchcancel', () => this.cancelPointerGesture(), { passive: false });
             document.addEventListener('keydown', (e) => this.onKeyDown(e));
             document.addEventListener('keyup', (e) => this.onKeyUp(e));
 
@@ -187,21 +159,66 @@
         }
 
         // ---- materials -------------------------------------------------------
+        setGraphicsQuality(value) {
+            const sizes = { low: 0, balanced: 1024, cinematic: 2048 };
+            if (!Object.prototype.hasOwnProperty.call(sizes,value)) value = 'balanced';
+            if (this.graphicsQuality === value) return;
+            this.graphicsQuality = value;
+            EngineAtmosphere.disposeShadowTarget(this.gl,this._shadowTarget);
+            this._shadowTarget = sizes[value] ? EngineAtmosphere.createShadowTarget(this.gl,sizes[value]) : null;
+            try { localStorage.setItem('warGraphicsQuality',value); } catch (e) {}
+        }
+
+        _renderShadows() {
+            const target = this._shadowTarget;
+            this._shadowStrength = target && this.visualStyle !== 'classic'
+                ? Math.max(0,Math.min(1,(160-this._halfH)/60)) : 0;
+            if (!this._shadowStrength) return;
+            const gl = this.gl;
+            const camera=EngineAtmosphere.shadowCamera(M(),this.cameraTarget,this._halfH,target.size,this.sunDir);
+            this._lightMatrix=camera.matrix;
+            this._shadowCamera=camera;
+            // RG stores numeric depth. Dithering those colour bytes corrupts it.
+            const dither=gl.isEnabled(gl.DITHER);
+            gl.disable(gl.DITHER);
+            gl.bindFramebuffer(gl.FRAMEBUFFER,target.framebuffer);
+            gl.viewport(0,0,target.size,target.size);
+            gl.clearColor(1,1,1,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+            gl.useProgram(this.shadowProg);
+            gl.uniformMatrix4fv(this.shadowProg.uniforms.uLightMatrix,false,this._lightMatrix);
+            // Receiver-plane comparisons provide the bias for the packed map.
+            // Only geometry already admitted by the visibility/fog pass can cast.
+            for (const obj of this._dl.opaque) {
+                if (obj === this._ground || obj === this._sea || obj.noShadow) continue;
+                gl.uniformMatrix4fv(this.shadowProg.uniforms.uModel,false,obj.model);
+                GLCore.drawMesh(gl,this.shadowProg,obj.buf);
+            }
+            gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+            if (dither) gl.enable(gl.DITHER);
+        }
+
         _buildTextures(theme) {
             if (this._theme === theme && this.tex) return;
             this._theme = theme;
             const gl = this.gl;
             const canopyBase = theme === 'winter' ? [58, 92, 66]
-                : (theme === 'desert' ? [110, 116, 62] : [74, 112, 58]);
+                : (theme === 'desert' ? [110, 116, 62] : [83, 108, 61]);
             const T = (c, o) => GLCore.createTextureFromCanvas(gl, c, o);
             this.tex = {
-                terrain: T(TexGen.terrain(theme, TERRAIN_SEED, 2048, TERRAIN_WORLD, TERRAIN_LAND), { clamp: true }),
+                coast: T(TexGen.coastMask(), { clamp: true }),
+                terrain: T(TexGen.terrain(theme, TERRAIN_SEED, 1024, TERRAIN_WORLD, TERRAIN_LAND), { clamp: true }),
+                groundDetail: T(TexGen.groundDetail(theme)),
+                worldBark: T(TexGen.worldSurface('bark',theme,44)),
+                worldFoliage: T(TexGen.worldSurface('foliage',theme,55)),
+                worldStone: T(TexGen.worldSurface('stone',theme,77)),
+                worldOre: T(TexGen.worldSurface('ore',theme,88)),
                 openWater: T(TexGen.openWater(theme, 5)),   // tiles — no clamp
                 masonry: T(TexGen.masonry(22)),
+                limestone: T(TexGen.limestone()),
                 wood: T(TexGen.wood(33)),
                 bark: T(TexGen.bark(44)),
                 foliage: T(TexGen.foliage(55, canopyBase)),
-                berries: T(TexGen.foliage(66, [64, 100, 52], { berries: true })),
+                berries: T(TexGen.worldSurface('berries',theme,66)),
                 rock: T(TexGen.rock(77)),
                 gold: T(TexGen.rock(88, { gold: true })),
                 plaster: T(TexGen.plaster(99)),
@@ -214,6 +231,11 @@
                 shadow: T(TexGen.shadowBlob(), { clamp: true }),
                 cloth: T(TexGen.cloth(155)),
                 skin: T(TexGen.skin(166)),
+                hairBlack: T(TexGen.solid(25,22,23)),
+                hairBrown: T(TexGen.solid(65,39,25)),
+                hairBlond: T(TexGen.solid(170,128,58)),
+                hairWhite: T(TexGen.solid(214,209,195)),
+                mouth: T(TexGen.solid(83,37,31)),
                 leather: T(TexGen.leather(177)),
                 iron: T(TexGen.iron(188)),
                 white: T(TexGen.solid(), { clamp: true }),
@@ -221,9 +243,16 @@
                 ring: T(TexGen.ring(), { clamp: true }),
                 foam: T(TexGen.foam(199))
             };
+            // Project the terrain colour onto its soil -> cover palette axis.
+            // Keeping this in a uniform leaves the colour texture fully opaque.
+            const palette=TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
+            const axis=palette.soil.map((soil,i)=>((palette.grass[i]+palette.grassDark[i])*.5-soil)/255);
+            const norm=Math.max(.0001,axis.reduce((sum,v)=>sum+v*v,0));
+            this._groundCover=axis.map(v=>v/norm);
+            this._groundCover.push(-this._groundCover.reduce((sum,v,i)=>sum+v*palette.soil[i]/255,0));
             // theme atmosphere: sun character first, then the sea beyond the map.
-            this._sun = theme === 'winter' ? [0.74, 0.78, 0.88]
-                : (theme === 'desert' ? [0.95, 0.84, 0.60] : [0.85, 0.78, 0.66]);
+            this._sun = theme === 'winter' ? [0.74, 0.77, 0.83]
+                : (theme === 'desert' ? [0.99, 0.82, 0.59] : [0.96, 0.84, 0.66]);
             // The colour behind everything, and the colour distance fades toward.
             // This used to be derived as lit waterDeep, because the clear colour WAS
             // the sea past the map rim and any mismatch showed as a hard edge. The
@@ -254,7 +283,7 @@
             if (this._footprint.has(key)) return this._footprint.get(key);
             let ex = 0, ez = 0;
             for (const p of parts) {
-                if (p.blend || p.tex === 'shadow') continue; // the contact shadow isn't structure
+                if (p.blend || p.tex === 'shadow' || p.visualOnly) continue; // the contact shadow isn't structure
                 const gen = EngineMesh[p.kind];
                 if (!gen) continue;
                 const P = gen(...p.args).positions;
@@ -339,6 +368,7 @@
         // wherever the camera happened to be would just be a lurch on arrival, and rAF
         // does not run at all in a hidden tab, so a tween here could silently never land.
         frameWholeMap() {
+            this.cancelCameraMove();
             this.cameraTarget.set(0, 0, 0);
             this._yaw = 0;
             this._pitch = Math.atan(0.5);   // the default tilt, so the shot is repeatable
@@ -361,15 +391,42 @@
         }
 
         moveCameraTo(x, z) {
+            if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+            const moveId = ++this._cameraMoveId;
             const sx = this.cameraTarget.x, sz = this.cameraTarget.z;
             const start = performance.now();
             const step = () => {
+                if (moveId !== this._cameraMoveId) return;
                 const k = Math.min(1, (performance.now() - start) / 500);
                 this.cameraTarget.x = sx + (x - sx) * k;
                 this.cameraTarget.z = sz + (z - sz) * k;
                 if (k < 1) requestAnimationFrame(step);
             };
             step();
+        }
+
+        cancelCameraMove() { this._cameraMoveId++; }
+
+        // Explicit camera commands share the same bounds as pointer gestures.
+        // They only change the view, never entity positions or simulation speed.
+        setCameraView(action, point) {
+            this.cancelCameraMove();
+            if (action === 'overview') { this.frameWholeMap(); return; }
+            if (action === 'reset') {
+                this._yaw = Math.PI / 4;
+                this._pitch = Math.atan(0.5);
+                this._halfH = 34;
+            } else if (action === 'selection') {
+                if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.z)) return;
+                this.cameraTarget.set(point.x, 0, point.z);
+                this._halfH = Math.min(this._halfH, 55);
+            } else if (action === 'zoomIn' || action === 'zoomOut') {
+                this._halfH *= action === 'zoomIn' ? 1 / 1.25 : 1.25;
+            } else if (action === 'turnLeft' || action === 'turnRight') {
+                this._yaw += (action === 'turnLeft' ? -1 : 1) * Math.PI / 4;
+            }
+            this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, this._halfH));
+            this._clampTarget();
         }
 
         animateCamera(x, y, z) { this.moveCameraTo(x, z - 80); }
@@ -450,7 +507,7 @@
             this._buildTextures(theme);
             this._ground = {
                 buf: this._buf('gridPlane', [TERRAIN_WORLD, 1, 1]),
-                tex: this.tex.terrain, model: M().identity()
+                tex: this.tex.terrain, model: M().identity(), material: 1
             };
             // Open sea under everything, far past anything the camera can reach, so
             // the water's grain carries on to the horizon instead of stopping dead at
@@ -460,7 +517,7 @@
             const SEA = 12000;
             this._sea = {
                 buf: this._buf('gridPlane', [SEA, 1, SEA / TexGen.OPEN_WATER_TILE]),
-                tex: this.tex.openWater, model: M().translation(0, -0.35, 0)
+                tex: this.tex.openWater, model: M().translation(0, -0.35, 0), material: 2
             };
             // Replace THREE resource meshes with engine handles: fog toggles
             // handle.visible, depletion nulls res.mesh — both drive our draw.
@@ -484,8 +541,8 @@
             }];
 
             const m3 = M();
-            // Ambient ground cover: real 3D shrubbery again — the flecks painted
-            // into the mega-texture were too subtle alone and the map read bleak.
+            // Actual ground cover sits above the blended terrain surface; no
+            // duplicate painted bushes, flowers or pebble spots underneath it.
             // Prebaked entries, themed, seeded (a map seed reproduces the scatter),
             // drawn only below halfH 90 (sub-pixel beyond) and culled per prop.
             let pSeed = 424242;
@@ -506,25 +563,20 @@
             const bush = (snowCap) => {
                 const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                 const s = 0.45 + rng() * 0.5;
-                prop('sphere', [1, 7, 5], 'foliage', this.WHITE, x, s * 0.5, z, s, s * 0.55, s, rng() * 6.28);
+                prop('sphere', [1, 7, 5], 'worldFoliage', this.WHITE, x, s * 0.5, z, s, s * 0.55, s, rng() * 6.28);
                 if (rng() < 0.7) {
                     const a = rng() * 6.28, d = s * 0.8, s2 = s * (0.45 + rng() * 0.3);
-                    prop('sphere', [1, 7, 5], 'foliage', [0.88, 0.95, 0.85], x + Math.cos(a) * d, s2 * 0.5, z + Math.sin(a) * d, s2, s2 * 0.55, s2, rng() * 6.28);
+                    prop('sphere', [1, 7, 5], 'worldFoliage', [0.88, 0.95, 0.85], x + Math.cos(a) * d, s2 * 0.5, z + Math.sin(a) * d, s2, s2 * 0.55, s2, rng() * 6.28);
                 }
                 if (snowCap) prop('sphere', [1, 7, 5], 'white', [0.93, 0.96, 1], x, s * 0.78, z, s * 0.72, s * 0.2, s * 0.72);
             };
             const pebble = (tint) => {
                 const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                 const s = 0.14 + rng() * 0.14;
-                prop('sphere', [1, 6, 4], 'rock', tint, x, s * 0.5, z, s * 1.4, s * 0.6, s, rng() * 6.28);
+                prop('sphere', [1, 6, 4], 'worldStone', tint, x, s * 0.5, z, s * 1.4, s * 0.6, s, rng() * 6.28);
             };
             if (theme === 'winter') {
                 for (let i = 0; i < 220; i++) bush(true);
-                for (let i = 0; i < 120; i++) { // snow patches
-                    const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
-                    const s = 0.6 + rng() * 1.1;
-                    prop('disc', [1, 10], 'white', [0.93, 0.96, 0.98], x, 0.04, z, s, 1, s * (0.7 + rng() * 0.5), rng() * 6.28);
-                }
                 for (let i = 0; i < 150; i++) pebble([0.62, 0.68, 0.76]);
             } else if (theme === 'desert') {
                 for (let i = 0; i < 180; i++) bush(false);
@@ -532,8 +584,8 @@
                 for (let i = 0; i < 90; i++) pebble([0.9, 0.8, 0.62]);
             } else {
                 for (let i = 0; i < 260; i++) bush(false);
-                const petals = [[1, 0.98, 0.9], [1, 0.83, 0.35], [0.93, 0.55, 0.7]];
-                for (let i = 0; i < 200; i++) { // flower tufts
+                const petals = [[0.85, 0.84, 0.70], [0.78, 0.68, 0.40], [0.64, 0.57, 0.62]];
+                for (let i = 0; i < 100; i++) { // sparse, muted flower tufts
                     const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                     const s = 0.11 + rng() * 0.08;
                     prop('sphere', [1, 5, 4], 'white', petals[(rng() * 3) | 0], x, 0.16, z, s, s, s);
@@ -563,18 +615,27 @@
                 (blend ? e.blended : e.opaque).push({ buf: this._buf(kind, args), tex: this.tex[tex], model });
             if (res.type === 'wood') {
                 add('disc', [2.2, 14], 'shadow', TRS(res.x, 0.05, res.z, s, 1, s), true);
-                add('cylinder', [0.24, 0.4, 2.4, 7], 'bark', TRS(res.x, 1.2 * s, res.z, s, s, s, rot));
+                add('cylinder', [0.24, 0.4, 2.4, 7], 'worldBark', TRS(res.x, 1.2 * s, res.z, s, s, s, rot));
                 if (this._theme === 'winter') {
-                    add('cylinder', [0, 1, 1, 8], 'foliage', TRS(res.x, 3.1 * s, res.z, 2.2 * s, 3.4 * s, 2.2 * s));
+                    add('cylinder', [0, 1, 1, 8], 'worldFoliage', TRS(res.x, 3.1 * s, res.z, 2.2 * s, 3.4 * s, 2.2 * s));
                 } else {
-                    add('sphere', [1, 10, 7], 'foliage', TRS(res.x, 3.3 * s, res.z, 1.9 * s, 1.6 * s, 1.9 * s, rot));
+                    // Branch endpoints start inside the trunk and finish inside a
+                    // single crown. Previously three upright stubs were detached.
+                    for(let branch=0;branch<2;branch++) {
+                        const a=rot+branch*2.6, dx=Math.sin(a), dz=Math.cos(a);
+                        let fork=m3.multiply(m3.translation(res.x+dx*.45*s,2.2*s,res.z+dz*.45*s),m3.rotationY(a));
+                        fork=m3.multiply(fork,m3.rotationX(Math.atan2(.9,1.4)));
+                        fork=m3.multiply(fork,m3.scaling(s,s,s));
+                        add('cylinder',[.09,.19,Math.hypot(.9,1.4),8],'worldBark',fork);
+                    }
+                    add('canopy',[i%4],'worldFoliage',TRS(res.x,3.3*s,res.z,2.15*s,1.38*s,1.88*s,rot));
                 }
             } else if (res.type === 'stone') {
                 add('disc', [2.0, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
-                add('sphere', [1, 9, 6], 'rock', TRS(res.x, 0.9 - sink(2.3), res.z, 1.7, 1.15, 1.5, rot));
+                add('sphere', [1, 9, 6], 'worldStone', TRS(res.x, 0.9 - sink(2.3), res.z, 1.7, 1.15, 1.5, rot));
             } else if (res.type === 'gold') {
                 add('disc', [1.8, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
-                add('sphere', [1, 9, 6], 'gold', TRS(res.x, 0.8 - sink(2.1), res.z, 1.5, 1.05, 1.4, rot));
+                add('sphere', [1, 9, 6], 'worldOre', TRS(res.x, 0.8 - sink(2.1), res.z, 1.5, 1.05, 1.4, rot));
             } else { // food: berry bush
                 add('sphere', [1, 9, 6], 'berries', TRS(res.x, 0.55 - sink(1.4), res.z, 1.15, 0.7, 1.15, rot));
             }
@@ -615,13 +676,21 @@
             const tint = this._tintOf(unit.color);
             const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(unit.seat) : null;
             const badge = this._badgeTints(unit.seat, tint);
-            const entries = EngineUnits.parts(engineType, {
-                civ: unit.civilization, unit: unit.type,
-                badge: bdef ? bdef.shape : null // per-seat badge shape on the chest
-            }).map(p => ({
-                buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
-                tint: p.accent ? badge[p.accent] : (p.team ? tint : this.WHITE),
-                base: p.m, bone: p.bone, blend: p.blend, model: p.m
+            const options={civ:unit.civilization,unit:unit.type,badge:bdef?bdef.shape:null,
+                variant:EngineUnits.appearanceVariant(unit.civilization,unit._appearanceId ?? unit.handle ?? unit.id ?? '')};
+            const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge,options.variant]);
+            if(!this._unitModels) this._unitModels=new Map();
+            if(!this._unitModels.has(modelKey)) {
+                const batches=EngineUnits.batches(EngineUnits.parts(engineType,options));
+                this._unitModels.set(modelKey,batches.map(p=>({
+                    buf:GLCore.createMeshBuffers(this.gl,p.mesh), texName:p.tex,
+                    team:p.team,accent:p.accent,bone:p.bone,blend:p.blend
+                })));
+            }
+            const entries=this._unitModels.get(modelKey).map(p=>({
+                buf:p.buf,tex:this.tex[p.texName],
+                tint:p.accent?badge[p.accent]:(p.team?tint:this.WHITE),
+                base:M().identity(),bone:p.bone,blend:p.blend,model:M().identity()
             }));
             unit._engine = { type: engineType, entries, phase: (this.units.length * 1.37) % 6.28 };
             // inert THREE-shaped handles for game.js/fogofwar.js property pokes
@@ -1038,7 +1107,7 @@
             return true;
         }
 
-        // ---- input (locked camera: every drag pans, wheel zooms) -----------------
+        // ---- input: spectator navigation / campaign selection and navigation ----
         isEditableTarget(el) {
             if (!el) return false;
             const tag = el.tagName;
@@ -1054,61 +1123,83 @@
             this.keysPressed[event.key.toLowerCase()] = false;
         }
 
+        updatePointerCursor() {
+            if(this.canvas && this.canvas.style) this.canvas.style.cursor=
+                this._panDrag && this._panDrag.moved ? 'grabbing' : (this._spectating() || this.panMode ? 'grab' : '');
+        }
+
+        cancelPointerGesture() {
+            this._clearHold();
+            this._panDrag=null; this._rotateDrag=null; this._pinch=null;
+            this._coordHold=false; this._touchCommandReady=false;
+            this.keysPressed={};
+            if(typeof game!=='undefined' && game && game.inputManager) game.inputManager.cancelGesture();
+            this.updatePointerCursor();
+        }
+
+        _manualPan(dx,dy) {
+            ++this._cameraMoveId; // an outstanding focus/overview tween cannot pull back
+            const wpp=(2*this._halfH)/(this.canvas.clientHeight||1);
+            const cy=Math.cos(this._yaw),sy=Math.sin(this._yaw);
+            const right=-dx*wpp,forward=dy*wpp/Math.max(.17,Math.sin(this._pitch));
+            this.cameraTarget.x+=right*cy-forward*sy;
+            this.cameraTarget.z-=right*sy+forward*cy;
+            this._clampTarget();
+        }
+
         onCanvasMouseDown(event) {
-            const spectator = typeof game !== 'undefined' && game && game.spectatorMode;
-            if (event.button === 1) {
-                // middle mouse TURNS the map (yaw only — pitch stays dimetric)
-                if (spectator && game.disableActionCam) game.disableActionCam();
-                this._rotateDrag = { x: event.clientX, y: event.clientY };
+            if(Date.now()<(this._ignoreMouseUntil||0)) return;
+            const spectator=this._spectating();
+            if(event.button===1) {
+                if(typeof game!=='undefined' && game && game.disableActionCam) game.disableActionCam();
+                this._rotateDrag={x:event.clientX,y:event.clientY};
                 event.preventDefault();
-            } else if (event.button === 0 && spectator) {
-                // Defer the manual-cam takeover until this becomes a real DRAG.
-                // A press-release without movement is a pick (mouseup handles it),
-                // which inspects the entity and KEEPS the action cam following.
-                this._panDrag = { x: event.clientX, y: event.clientY, ox: event.clientX, oy: event.clientY, moved: false };
+            } else if((event.button===0 && (spectator || this.panMode)) || (event.button===2 && !spectator)) {
+                this._panDrag={x:event.clientX,y:event.clientY,ox:event.clientX,oy:event.clientY,
+                    moved:false,button:event.button,spectator};
                 event.preventDefault();
             }
+            this.updatePointerCursor();
         }
 
         onCanvasMouseMove(event) {
-            if (this._rotateDrag) {
-                const dx = event.clientX - this._rotateDrag.x;
-                const dy = event.clientY - this._rotateDrag.y;
-                this._rotateDrag = { x: event.clientX, y: event.clientY };
-                this._yaw -= dx * 0.006;   // horizontal: turn around the look-at point
-                // vertical: tilt between near-flat and (almost) top-down; 89° keeps
-                // lookAt's up vector from degenerating
-                this._pitch = Math.max(10 * Math.PI / 180,
-                    Math.min(89 * Math.PI / 180, this._pitch + dy * 0.004));
+            if(Date.now()<(this._ignoreMouseUntil||0)) return;
+            if(this._rotateDrag) {
+                const dx=event.clientX-this._rotateDrag.x,dy=event.clientY-this._rotateDrag.y;
+                this._rotateDrag={x:event.clientX,y:event.clientY};
+                this._yaw-=dx*.006;
+                this._pitch=Math.max(10*Math.PI/180,Math.min(89*Math.PI/180,this._pitch+dy*.004));
                 return;
             }
-            if (!this._panDrag) return;
-            if (!this._panDrag.moved) {
-                // Below the click threshold it's still a potential pick — don't pan.
-                if (Math.hypot(event.clientX - this._panDrag.ox, event.clientY - this._panDrag.oy) < 5) return;
-                this._panDrag.moved = true; // real drag → the user takes the camera
-                if (typeof game !== 'undefined' && game && game.disableActionCam) game.disableActionCam();
+            const pd=this._panDrag;
+            if(!pd) return;
+            if(pd.spectator!==this._spectating()) { this.cancelPointerGesture(); return; }
+            if(!pd.moved) {
+                if(Math.hypot(event.clientX-pd.ox,event.clientY-pd.oy)<5) return;
+                pd.moved=true;
+                if(typeof game!=='undefined' && game && game.disableActionCam) game.disableActionCam();
             }
-            const dx = event.clientX - this._panDrag.x;
-            const dy = event.clientY - this._panDrag.y;
-            this._panDrag.x = event.clientX;
-            this._panDrag.y = event.clientY;
-            const wpp = (2 * this._halfH) / (this.canvas.clientHeight || 1);
-            // grab-and-drag: world follows the cursor (basis follows yaw + pitch)
-            const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
-            const right = -dx * wpp;
-            const fwd = dy * wpp / Math.max(0.17, Math.sin(this._pitch));
-            this.cameraTarget.x += right * cy + fwd * -sy;
-            this.cameraTarget.z += right * -sy + fwd * -cy;
+            this._manualPan(event.clientX-pd.x,event.clientY-pd.y);
+            pd.x=event.clientX;pd.y=event.clientY;
+            this.updatePointerCursor();
         }
 
         onCanvasMouseUp(event) {
-            const pd = this._panDrag;
-            this._panDrag = null;
-            this._rotateDrag = null;
-            // A left press that never dragged is a click → inspect that entity.
-            if (pd && !pd.moved && typeof game !== 'undefined' && game && game.spectatorMode && game.spectatorPick) {
-                game.spectatorPick(pd.ox, pd.oy);
+            const pd=this._panDrag;
+            if(pd && event.button!==pd.button) return;
+            this._panDrag=null;this._rotateDrag=null;
+            this.updatePointerCursor();
+            const onCanvas=!event.target || event.target===this.canvas;
+            if(pd && !pd.moved && Math.hypot(event.clientX-pd.ox,event.clientY-pd.oy)<5
+                && onCanvas && pd.button===0 && pd.spectator && this._spectating()
+                && game.spectatorPick) {
+                // Replay's viewport owns mouse picking, avoiding a duplicate pick.
+                if(!this.replayMode) game.spectatorPick(event.clientX,event.clientY);
+            } else if(pd && !pd.moved && pd.button===0 && !pd.spectator && !this._spectating()
+                && onCanvas && Math.hypot(event.clientX-pd.ox,event.clientY-pd.oy)<5
+                && typeof game!=='undefined' && game && game.inputManager) {
+                // The hand tool changes drags, not ordinary unit/building clicks.
+                game.inputManager.touchAction(event.clientX,event.clientY);
             }
         }
 
@@ -1120,21 +1211,9 @@
             this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, this._halfH * factor));
         }
 
-        // ---- touch: the same five gestures, for a tablet -------------------------
-        // The renderer only ever bound mouse events. A browser will synthesise mouse
-        // events from taps -- but InputManager's touch shims call preventDefault on
-        // every touch that reaches the canvas, which suppresses exactly that. So a
-        // tablet had no camera in the arena at all: no pan, no zoom, not even a tap to
-        // inspect. The game turns out to play well on one, so it should be watchable
-        // on one.
-        //
-        // Mapped onto the mouse controls rather than inventing a second vocabulary:
-        //
-        //   one finger dragged     left drag      pan
-        //   one finger tapped      left click     inspect
-        //   one finger held        right hold     coordinate flag
-        //   two fingers pinched    wheel          zoom
-        //   two fingers turned     middle drag    yaw, and slid up or down for pitch
+        // One finger pans in either mode, tap inspects/selects. A stationary
+        // campaign hold arms a command, committed only on release. Multitouch,
+        // movement, cancellation and leaving the screen discard that command.
         _spectating() {
             return !!(typeof game !== 'undefined' && game && game.spectatorMode);
         }
@@ -1154,8 +1233,12 @@
         }
 
         onCanvasTouchStart(e) {
-            if (!this._spectating()) return;   // campaign touch belongs to InputManager
             e.preventDefault();
+            this._ignoreMouseUntil=Date.now()+800;
+            this._touchSpectator=this._spectating();
+            this._touchCommandReady=false;
+            this._coordHold=false;
+            if(typeof game!=='undefined' && game && game.inputManager) game.inputManager.cancelGesture();
             this._clearHold();
             if (e.touches.length === 1) {
                 const x = e.touches[0].clientX, y = e.touches[0].clientY;
@@ -1166,8 +1249,12 @@
                 this._holdTimer = setTimeout(() => {
                     this._holdTimer = null;
                     if (!this._panDrag || this._panDrag.moved) return;
-                    this._coordHold = true;
-                    if (game.inputManager) game.inputManager.showCoordFlag(x, y);
+                    if(this._spectating()) {
+                        this._coordHold=true;
+                        if(game.inputManager) game.inputManager.showCoordFlag(x,y);
+                    } else {
+                        this._touchCommandReady=true;
+                    }
                 }, 450);
             } else {
                 // Re-seeded on every extra finger, so a third one landing cannot leave
@@ -1179,8 +1266,9 @@
         }
 
         onCanvasTouchMove(e) {
-            if (!this._spectating()) return;
+            if(this._touchSpectator!==this._spectating()) { this.cancelPointerGesture(); return; }
             e.preventDefault();
+            this._ignoreMouseUntil=Date.now()+800;
             if (this._pinch && e.touches.length >= 2) {
                 const p = this._pinch, now = this._touchPair(e);
                 if (p.dist > 0 && now.dist > 0) {
@@ -1217,22 +1305,20 @@
                 // meant as a pick drifts more than a click does.
                 if (Math.hypot(x - this._panDrag.ox, y - this._panDrag.oy) < 8) return;
                 this._panDrag.moved = true;
+                this._touchCommandReady=false;
                 this._clearHold();
                 if (game.disableActionCam) game.disableActionCam();
             }
             const dx = x - this._panDrag.x, dy = y - this._panDrag.y;
             this._panDrag.x = x; this._panDrag.y = y;
-            const wpp = (2 * this._halfH) / (this.canvas.clientHeight || 1);
-            const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
-            const right = -dx * wpp;
-            const fwd = dy * wpp / Math.max(0.17, Math.sin(this._pitch));
-            this.cameraTarget.x += right * cy + fwd * -sy;
-            this.cameraTarget.z += right * -sy + fwd * -cy;
+            this._manualPan(dx,dy);
+            this.updatePointerCursor();
         }
 
         onCanvasTouchEnd(e) {
-            if (!this._spectating()) return;
+            if(this._touchSpectator!==this._spectating()) { this.cancelPointerGesture(); return; }
             e.preventDefault();
+            this._ignoreMouseUntil=Date.now()+800;
             this._clearHold();
             // Read BEFORE clearing: a long press ends with a finger that never moved,
             // which is the same shape as a tap, and would otherwise also inspect.
@@ -1245,7 +1331,9 @@
             if (e.touches.length === 0) {
                 this._panDrag = null;
                 this._pinch = null;
-                if (pd && !pd.moved && !wasCoord) {
+                const released=e.changedTouches && e.changedTouches[0];
+                const x=released?released.clientX:(pd?pd.x:0), y=released?released.clientY:(pd?pd.y:0);
+                if (pd && !pd.moved && !wasCoord && Math.hypot(x-pd.ox,y-pd.oy)<8) {
                     // The analyzer owns picking on its own screen -- spectatorPick
                     // delegates to anPickAt there and returns. But anPickAt is reached
                     // from mousedown/mouseup on #anViewport, and this handler cancels the
@@ -1255,11 +1343,16 @@
                     const an = document.getElementById('analyzeScreen');
                     if (an && an.classList.contains('active')) {
                         if (game.ui && game.ui.anPickAt) game.ui.anPickAt(pd.ox, pd.oy);
-                    } else if (game.spectatorPick) {
-                        game.spectatorPick(pd.ox, pd.oy);
+                    } else if(this._spectating() && game.spectatorPick) {
+                        game.spectatorPick(x,y);
+                    } else if(game.inputManager) {
+                        game.inputManager.touchAction(x,y,this._touchCommandReady);
                     }
                 }
+                this._touchCommandReady=false;
+                this.updatePointerCursor();
             } else if (e.touches.length === 1) {
+                this._touchCommandReady=false;
                 // One of two lifted: carry on panning from where the remaining finger
                 // is, rather than jumping the map by the gap between them.
                 const t = e.touches[0];
@@ -1743,70 +1836,74 @@
             // display separated ~2.4x harder than a 60Hz one — the framerate
             // silently tuned the combat. Normalised to 60Hz so the constants keep
             // their old meaning; clamped so one long frame can't fling anyone.
-            const SEPARATION_DIST = 1.2, SEPARATION_FORCE = 0.03;
-            const sepK = Math.min(3, Math.max(0, deltaTime) * 60);
-            for (let i = 0; i < this.units.length; i++) {
-                for (let j = i + 1; j < this.units.length; j++) {
-                    const a = this.units[i], b = this.units[j];
-                    if (a.owner !== b.owner) continue; // an enemy is not a wall
-                    const dx = b.x - a.x, dz = b.z - a.z;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
-                    if (dist < SEPARATION_DIST && dist > 0.01) {
-                        const push = (SEPARATION_DIST - dist) * SEPARATION_FORCE * sepK;
-                        const nx = dx / dist, nz = dz / dist;
-                        a.x -= nx * push; a.z -= nz * push;
-                        b.x += nx * push; b.z += nz * push;
+            // A transcript is a snapshot: presentation must not push its recorded
+            // entities apart or out of buildings between turns.
+            if (!this.replayMode) {
+                const SEPARATION_DIST = 1.2, SEPARATION_FORCE = 0.03;
+                const sepK = Math.min(3, Math.max(0, deltaTime) * 60);
+                for (let i = 0; i < this.units.length; i++) {
+                    for (let j = i + 1; j < this.units.length; j++) {
+                        const a = this.units[i], b = this.units[j];
+                        if (a.owner !== b.owner) continue; // an enemy is not a wall
+                        const dx = b.x - a.x, dz = b.z - a.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        if (dist < SEPARATION_DIST && dist > 0.01) {
+                            const push = (SEPARATION_DIST - dist) * SEPARATION_FORCE * sepK;
+                            const nx = dx / dist, nz = dz / dist;
+                            a.x -= nx * push; a.z -= nz * push;
+                            b.x += nx * push; b.z += nz * push;
+                        }
                     }
                 }
-            }
-            const UNIT_BUILDING_CLEARANCE = 4.5;
-            // Wonders are far bigger than ordinary buildings (largest footprint:
-            // the 13×13 pyramid — faces at 5.07, corners at 7.17 world units), so
-            // the flat 4.5 let units walk straight THROUGH them. One uniform
-            // radius for ALL wonders keeps the four civs balanced. Attackability
-            // is unaffected: combatants are exempt from the push below, and
-            // ranged reach (7.5+) out-ranges the zone anyway.
-            const WONDER_CLEARANCE = 7.0;
-            this.units.forEach(unit => {
-                // A marcher that has NOT yet acquired a target still ghosts every
-                // building: the radial clearance rings around a packed base overlap
-                // into channels it cannot thread, and it used to pin against them
-                // and slide along the walls forever instead of closing in —
-                // "can't reach the barracks from the side".
-                if (unit.isAttacking && !unit.attackTarget && unit.attackMove) return;
-                this.buildings.forEach(building => {
-                    if (building.type === 'farm') return;
-                    if (unit.task === 'building' && unit.buildTarget === building) return;
-                    if (unit.task === 'repairing' && unit.repairTarget === building) return;
-                    // Ghost through the ONE building you're attacking, so melee can
-                    // close on it — the same per-target shape as the build/repair
-                    // exemptions above. This used to exempt a combatant from EVERY
-                    // building on the map, so the instant a unit retaliated it lost
-                    // all clearance and its own squadmates' separation shoved it
-                    // bodily THROUGH the nearest wall. Two pushes, one exempting
-                    // fighters and one exempting nobody, disagreeing.
-                    if (unit.isAttacking && unit.attackTarget === building) return;
-                    const clr = building.isWonder ? WONDER_CLEARANCE : UNIT_BUILDING_CLEARANCE;
-                    const dx = unit.x - building.x, dz = unit.z - building.z;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
-                    // DEAD CENTRE is the one place this push could not reach. The old
-                    // guard was `dist > 0.01`, meant to avoid dividing by zero, and it
-                    // meant a unit standing exactly on a building's origin was left
-                    // there forever — inside the mesh, permanently. Not a rare spot: a
-                    // plain move snaps onto its destination exactly, so anything aimed
-                    // at a building's coordinates lands on 0.00 and stops being pushed
-                    // at the instant it most needs to be. game.clampSlot has always
-                    // handled this case ("dead centre: any direction out"); the
-                    // continuous push simply never learned it.
-                    if (dist <= 0.01) {
-                        unit.x = building.x + clr;
-                    } else if (dist < clr) {
-                        const push = (clr - dist) * 0.05 * sepK; // dt-scaled, like the pass above
-                        unit.x += (dx / dist) * push;
-                        unit.z += (dz / dist) * push;
-                    }
+                const UNIT_BUILDING_CLEARANCE = 4.5;
+                // Wonders are far bigger than ordinary buildings (largest footprint:
+                // the 13×13 pyramid — faces at 5.07, corners at 7.17 world units), so
+                // the flat 4.5 let units walk straight THROUGH them. One uniform
+                // radius for ALL wonders keeps the four civs balanced. Attackability
+                // is unaffected: combatants are exempt from the push below, and
+                // ranged reach (7.5+) out-ranges the zone anyway.
+                const WONDER_CLEARANCE = 7.0;
+                this.units.forEach(unit => {
+                    // A marcher that has NOT yet acquired a target still ghosts every
+                    // building: the radial clearance rings around a packed base overlap
+                    // into channels it cannot thread, and it used to pin against them
+                    // and slide along the walls forever instead of closing in —
+                    // "can't reach the barracks from the side".
+                    if (unit.isAttacking && !unit.attackTarget && unit.attackMove) return;
+                    this.buildings.forEach(building => {
+                        if (building.type === 'farm') return;
+                        if (unit.task === 'building' && unit.buildTarget === building) return;
+                        if (unit.task === 'repairing' && unit.repairTarget === building) return;
+                        // Ghost through the ONE building you're attacking, so melee can
+                        // close on it — the same per-target shape as the build/repair
+                        // exemptions above. This used to exempt a combatant from EVERY
+                        // building on the map, so the instant a unit retaliated it lost
+                        // all clearance and its own squadmates' separation shoved it
+                        // bodily THROUGH the nearest wall. Two pushes, one exempting
+                        // fighters and one exempting nobody, disagreeing.
+                        if (unit.isAttacking && unit.attackTarget === building) return;
+                        const clr = building.isWonder ? WONDER_CLEARANCE : UNIT_BUILDING_CLEARANCE;
+                        const dx = unit.x - building.x, dz = unit.z - building.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        // DEAD CENTRE is the one place this push could not reach. The old
+                        // guard was `dist > 0.01`, meant to avoid dividing by zero, and it
+                        // meant a unit standing exactly on a building's origin was left
+                        // there forever — inside the mesh, permanently. Not a rare spot: a
+                        // plain move snaps onto its destination exactly, so anything aimed
+                        // at a building's coordinates lands on 0.00 and stops being pushed
+                        // at the instant it most needs to be. game.clampSlot has always
+                        // handled this case ("dead centre: any direction out"); the
+                        // continuous push simply never learned it.
+                        if (dist <= 0.01) {
+                            unit.x = building.x + clr;
+                        } else if (dist < clr) {
+                            const push = (clr - dist) * 0.05 * sepK; // dt-scaled, like the pass above
+                            unit.x += (dx / dist) * push;
+                            unit.z += (dz / dist) * push;
+                        }
+                    });
                 });
-            });
+            }
 
             // draw ------------------------------------------------------------
             const gl = this.gl;
@@ -1814,6 +1911,7 @@
             const bb = M().billboard(cam.view);
             this._assembleFrame(now / 1000, deltaTime, bb);
             this._syncFog();
+            this._renderShadows();
 
             gl.viewport(0, 0, this.W, this.H);
             gl.clearColor(this._sky[0], this._sky[1], this._sky[2], 1); // deep sea beyond the map
@@ -1828,12 +1926,35 @@
             gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(this.prog.uniforms.uTex, 0);
+            gl.uniform3fv(this.prog.uniforms.uEye,cam.eye);
+            gl.uniform1f(this.prog.uniforms.uTime,(now/1000)%4096);
+            gl.uniform1f(this.prog.uniforms.uAtmosphere,this.visualStyle === 'classic' ? 0 : 1);
+            gl.uniformMatrix4fv(this.prog.uniforms.uLightMatrix,false,this._lightMatrix);
+            gl.uniform1f(this.prog.uniforms.uShadowStrength,this._shadowStrength);
+            gl.uniform1f(this.prog.uniforms.uShadowTexel,this._shadowTarget ? 1/this._shadowTarget.size : 1);
+            gl.uniform1f(this.prog.uniforms.uShadowDepthPerTexel,this._shadowCamera ? this._shadowCamera.depthPerTexel : 0);
+            gl.uniform3fv(this.prog.uniforms.uShadowRight,this._shadowCamera ? this._shadowCamera.right : this.WHITE);
+            gl.uniform3fv(this.prog.uniforms.uShadowUp,this._shadowCamera ? this._shadowCamera.up : this.WHITE);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D,this._shadowTarget ? this._shadowTarget.texture : this.tex.white);
+            gl.uniform1i(this.prog.uniforms.uShadowMap,1);
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D,this.tex.coast || this.tex.white);
+            gl.uniform1i(this.prog.uniforms.uCoast,2);
+            gl.activeTexture(gl.TEXTURE3);
+            gl.bindTexture(gl.TEXTURE_2D,this.tex.groundDetail || this.tex.white);
+            gl.uniform1i(this.prog.uniforms.uGroundDetail,3);
+            gl.uniform4fv(this.prog.uniforms.uGroundCover,this._groundCover || [0,0,0,0]);
+            gl.activeTexture(gl.TEXTURE0);
 
             const draw = (list) => {
                 for (const obj of list) {
                     gl.bindTexture(gl.TEXTURE_2D, obj.tex);
+                    const metal = obj.tex === this.tex.gold || obj.tex === this.tex.iron;
+                    gl.uniform1f(this.prog.uniforms.uMaterial,obj.material || (metal ? 3 : 0));
                     gl.uniform3fv(this.prog.uniforms.uTint, obj.tint || this.WHITE);
-                    gl.uniform1f(this.prog.uniforms.uAlpha, obj.alpha == null ? 1 : obj.alpha);
+                    gl.uniform1f(this.prog.uniforms.uAlpha, (obj.alpha == null ? 1 : obj.alpha)
+                        * (obj.tex === this.tex.shadow ? 1-this._shadowStrength*.45 : 1));
                     gl.uniform2f(this.prog.uniforms.uUvOffset,
                         obj.uvOff ? obj.uvOff[0] : 0, obj.uvOff ? obj.uvOff[1] : 0);
                     gl.uniformMatrix4fv(this.prog.uniforms.uModel, false, obj.model);

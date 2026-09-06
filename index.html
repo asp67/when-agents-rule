@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=768">
+    <link rel="stylesheet" href="css/styles.css?v=781">
+    <link rel="stylesheet" href="css/antiquity.css?v=781">
     <!-- ?diag=1 -- the console, on the page.
 
          A tablet has no devtools worth the name, so a report from one can only ever be
@@ -116,16 +117,12 @@
 </head>
 <body>
     <!-- Start Screen -->
-    <!-- Shown instead of everything else on a screen too small to hold it. Not a
-         warning bar over a broken layout: the layout genuinely does not survive down
-         here (the turn list measures two pixels tall at 375px), and the controls are
-         drag, right-click and wheel, which a phone does not have. So it says so, and
-         points at the thing that IS worth watching on a phone. -->
+    <!-- Dismissible viewing advice on narrow screens; tablets support gestures. -->
     <div id="smallScreen" class="small-screen">
         <div class="ss-card">
             <div class="ss-brand">WHEN AGENTS RULE</div>
             <p class="ss-lead" data-i18n="ss.lead">Drei Sprachmodelle spielen gegeneinander.</p>
-            <p class="ss-why" data-i18n="ss.why">Dafür braucht es einen großen Bildschirm.</p>
+            <p class="ss-why" data-i18n="ss.why">Am besten auf Tablet oder Desktop.</p>
             <a class="ss-cta" href="https://www.youtube.com/watch?v=dnP8sLgj7Vg" target="_blank" rel="noopener" data-i18n="ss.watch">Match ansehen</a>
             <a class="ss-alt" href="https://github.com/asp67/when-agents-rule" target="_blank" rel="noopener" data-i18n="ss.source">Quellcode auf GitHub</a>
             <button class="ss-anyway" onclick="document.body.classList.add('ss-off')" data-i18n="ss.anyway">Trotzdem anzeigen</button>
@@ -134,10 +131,13 @@
 
     <div id="startScreen" class="screen active">
         <div class="start-content">
-            <h1 class="game-title">WHEN AGENTS RULE</h1>
+            <p class="start-kicker" data-i18n="art.kicker">An arena for autonomous minds</p>
+            <h1 class="game-title">WHEN<br>AGENTS RULE</h1>
             <p class="subtitle" data-i18n="start.subtitle">Wo Sprachmodelle in der Antike um die Krone kämpfen</p>
             <div class="menu-buttons">
+                <button class="menu-btn showcase-launch" onclick="game.startVisualShowcase()" data-i18n="art.enter">Explore civilizations</button>
                 <button class="menu-btn" onclick="game.showGameModeSelection()" data-i18n="common.play">Spielen</button>
+                <button class="menu-btn" onclick="game.ui.anOpen()" data-i18n="art.analyze">Analyze a match</button>
                 <button class="menu-btn" onclick="game.showTutorial()" data-i18n="common.tutorial">Tutorial</button>
             </div>
             <div class="lang-picker">
@@ -150,6 +150,7 @@
                 </select>
             </div>
         </div>
+        <div class="start-inscription" aria-hidden="true"><span>Ι</span><span>ΙΙ</span><span>ΙΙΙ</span><span>ΙV</span></div>
         <div class="build-stamp">
             <span data-i18n="start.build">Build</span> <b id="stampBuild">–</b>
             <span class="build-stamp-dot">·</span>
@@ -163,19 +164,19 @@
         <div class="selection-content">
             <h2 data-i18n="mode.title">Wähle Spielmodus</h2>
             <div class="mode-grid">
-                <div class="mode-card" onclick="game.showCampaignSetup()">
-                    <h3 data-i18n="mode.campaign">Kampagne</h3>
-                    <p data-i18n="mode.campaignDesc">Spiele selbst gegen 1–5 Gegner (Modelle oder regelbasierte KI)</p>
-                </div>
-                <div class="mode-card" onclick="game.showArenaSetup()">
-                    <h3 data-i18n="mode.arena">🏟️ Arena</h3>
-                    <p data-i18n="mode.arenaDesc">4 Computer-Gegner kämpfen gegeneinander (ohne Spieler)</p>
-                    <p style="font-size:0.8em; color:#aaa;" data-i18n="mode.arenaSub">Konfiguriere Endpunkte und System Prompts</p>
-                </div>
-                <div class="mode-card" onclick="game.ui.anOpen()">
-                    <h3 data-i18n="mode.analyze">🎬 Transkript</h3>
-                    <p data-i18n="mode.analyzeDesc">Ein gespeichertes Match Zug für Zug nachlesen</p>
-                </div>
+                <button type="button" class="mode-card" onclick="game.showCampaignSetup()">
+                    <span class="mode-name" data-i18n="mode.campaign">Kampagne</span>
+                    <span class="mode-description" data-i18n="mode.campaignDesc">Spiele selbst gegen 1–5 Gegner (Modelle oder regelbasierte KI)</span>
+                </button>
+                <button type="button" class="mode-card" onclick="game.showArenaSetup()">
+                    <span class="mode-name" data-i18n="mode.arena">🏟️ Arena</span>
+                    <span class="mode-description" data-i18n="mode.arenaDesc">2–4 Computer-Gegner kämpfen gegeneinander (ohne Spieler)</span>
+                    <span class="mode-description" data-i18n="mode.arenaSub">Konfiguriere Endpunkte und System Prompts</span>
+                </button>
+                <button type="button" class="mode-card" onclick="game.ui.anOpen()">
+                    <span class="mode-name" data-i18n="mode.analyze">🎬 Transkript</span>
+                    <span class="mode-description" data-i18n="mode.analyzeDesc">Ein gespeichertes Match Zug für Zug nachlesen</span>
+                </button>
             </div>
             <button class="menu-btn back-btn" onclick="game.showStartScreen()" data-i18n="common.back">Zurück</button>
         </div>
@@ -199,13 +200,17 @@
             <button class="sb-end an-back" onclick="game.ui.anClose()" data-i18n="common.back">Zurück</button>
         </div>
         <div id="anEmpty" class="an-empty" data-i18n="an.empty">Lade eine .jsonl-Datei, die die Arena gespeichert hat.</div>
+        <div id="anWorkspaceTools" class="an-workspace-tools" hidden></div>
         <div id="anBody" class="an-body" style="display:none;">
             <div class="an-stage">
                 <div id="anViewport" class="an-viewport"></div>
+                <div id="anCameraDock" class="an-camera-dock"></div>
                 <div class="an-pick-card" id="anPick" style="display:none;"></div>
                 <div class="an-stage-hud" id="anStageHud"></div>
             </div>
-            <div class="an-seam" id="anSeam" onmousedown="game.ui.anSplitStart(event)" ontouchstart="game.ui.anSplitStart(event)"></div>
+            <div class="an-seam" id="anSeam" role="separator" tabindex="0" aria-orientation="horizontal"
+                aria-valuemin="20" aria-valuemax="80" aria-valuenow="52" aria-label="Map height (%)" data-i18n-aria="view.mapHeight"
+                onkeydown="game.ui.anSplitKey(event)" onmousedown="game.ui.anSplitStart(event)" ontouchstart="game.ui.anSplitStart(event)"></div>
             <div class="an-lower">
                 <div class="an-scrub">
                     <div class="an-bar2" id="anFilters"></div>
@@ -327,6 +332,12 @@
                 <button class="tv-close" onclick="game.ui.closeTranscriptViewer()" title="Close">✕</button>
             </div>
             <div class="tv-body" id="tvBody"></div>
+            <div class="tv-nav">
+                <button id="tvOlder" onclick="game.ui.tvPage(-1)" data-i18n="spec.tvOlder">Older</button>
+                <span id="tvRange" aria-live="polite"></span>
+                <button id="tvNewer" onclick="game.ui.tvPage(1)" data-i18n="spec.tvNewer">Newer</button>
+                <button id="tvLatest" onclick="game.ui.scrollTranscriptTop()" data-i18n="spec.tvLatest">Latest</button>
+            </div>
             <button id="tvTopBtn" class="tv-top-btn" title="Scroll to top" onclick="game.ui.scrollTranscriptTop()">▲</button>
         </div>
 
@@ -336,6 +347,7 @@
             <div class="mm-cols" id="mmCols" aria-hidden="true"></div>
             <div class="mm-rows" id="mmRows" aria-hidden="true"></div>
             <canvas id="minimapCanvas"></canvas>
+            <div id="mapToolsDock" class="map-tools-dock"><div id="cameraControls" class="camera-controls" role="toolbar" onkeydown="event.stopPropagation()" onfocusin="if(typeof game !== 'undefined' &amp;&amp; game) game.renderer.keysPressed = {}"></div></div>
         </div>
 
         <!-- Wonder victory countdown (shown while the player holds a finished Wonder) -->
@@ -436,8 +448,8 @@
     <!-- Arena Setup Screen -->
     <div id="arenaSetupScreen" class="screen">
         <div class="arena-setup-content">
-            <h2 id="setupTitle" data-i18n="ar.title">🏟️ Arena — Konfiguration</h2>
-            <p id="setupSubtitle" class="arena-setup-subtitle" data-i18n="ar.subtitle">Verbinde beliebig viele Modelle und lass vier davon gegeneinander antreten.</p>
+            <h2 id="setupTitle" data-i18n="ar.title">Arena — Konfiguration</h2>
+            <p id="setupSubtitle" class="arena-setup-subtitle" data-i18n="ar.subtitle">Verbinde beliebig viele Modelle und lass 2–4 davon gegeneinander antreten.</p>
             <div class="lang-picker lang-picker-inline">
                 <span class="lang-globe">🌐</span>
                 <select class="lang-select" data-i18n-lang onchange="setUiLang(this.value)" aria-label="Language">
@@ -459,7 +471,7 @@
                 </div>
                 <div class="lib-summary">
                     <span id="libSummaryCount" class="lib-summary-count">0 Modelle konfiguriert</span>
-                    <button class="lib-open-btn" onclick="game.ui.showModelLibrary()" data-i18n="ar.libOpen">📚 Bibliothek verwalten →</button>
+                    <button class="lib-open-btn" onclick="game.ui.showModelLibrary()" data-i18n="ar.libOpen">Bibliothek verwalten →</button>
                 </div>
             </div>
 
@@ -554,7 +566,7 @@
     <!-- Model Library Screen (managed separately from arena setup) -->
     <div id="modelLibraryScreen" class="screen">
         <div class="arena-setup-content">
-            <h2 data-i18n="ar.libTitle">📚 Modell-Bibliothek</h2>
+            <h2 data-i18n="ar.libTitle">Modell-Bibliothek</h2>
             <p class="arena-setup-subtitle" data-i18n="ar.libSub">Füge beliebig viele OpenAI-kompatible Modelle hinzu, teste die Verbindung und wähle das Modell. Alle Authentifizierungsarten werden unterstützt.</p>
             <div class="lang-picker lang-picker-inline">
                 <span class="lang-globe">🌐</span>
@@ -585,7 +597,7 @@
             <h1 id="endTitle">SIEG!</h1>
             <p id="endMessage">Du hast das Spiel gewonnen!</p>
             <div class="menu-buttons">
-                <button class="menu-btn" onclick="location.reload()" data-i18n="common.mainMenu">Hauptmenü</button>
+                <button class="menu-btn" onclick="game.reloadToMenu()" data-i18n="common.mainMenu">Hauptmenü</button>
             </div>
         </div>
     </div>
@@ -624,27 +636,29 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=768"></script>
-    <script src="js/engine/glcore.js?v=768"></script>
-    <script src="js/engine/texgen.js?v=768"></script>
-    <script src="js/engine/mesh.js?v=768"></script>
-    <script src="js/engine/buildings.js?v=768"></script>
-    <script src="js/engine/units.js?v=768"></script>
-    <script src="js/engine/gamerenderer.js?v=768"></script>
-    <script src="js/i18n.js?v=768"></script>
-    <script src="js/civilizations.js?v=768"></script>
-    <script src="js/buildings.js?v=768"></script>
-    <script src="js/units.js?v=768"></script>
-    <script src="js/resources.js?v=768"></script>
-    <script src="js/terrain.js?v=768"></script>
-    <script src="js/fogofwar.js?v=768"></script>
-    <script src="js/ai.js?v=768"></script>
-    <script src="js/analyzer.js?v=768"></script>
-    <script src="js/transcript.js?v=768"></script>
-    <script src="js/openai-ai.js?v=768"></script>
-    <script src="js/input.js?v=768"></script>
-    <script src="js/director.js?v=768"></script>
-    <script src="js/ui.js?v=768"></script>
-    <script src="js/game.js?v=768"></script>
+    <script src="js/engine/math3d.js?v=781"></script>
+    <script src="js/engine/glcore.js?v=781"></script>
+    <script src="js/engine/texgen.js?v=781"></script>
+    <script src="js/engine/mesh.js?v=781"></script>
+    <script src="js/engine/buildings.js?v=781"></script>
+    <script src="js/engine/units.js?v=781"></script>
+    <script src="js/engine/atmosphere.js?v=781"></script>
+    <script src="js/engine/gamerenderer.js?v=781"></script>
+    <script src="js/i18n.js?v=781"></script>
+    <script src="js/civilizations.js?v=781"></script>
+    <script src="js/buildings.js?v=781"></script>
+    <script src="js/units.js?v=781"></script>
+    <script src="js/resources.js?v=781"></script>
+    <script src="js/terrain.js?v=781"></script>
+    <script src="js/fogofwar.js?v=781"></script>
+    <script src="js/ai.js?v=781"></script>
+    <script src="js/analyzer.js?v=781"></script>
+    <script src="js/transcript.js?v=781"></script>
+    <script src="js/openai-ai.js?v=781"></script>
+    <script src="js/input.js?v=781"></script>
+    <script src="js/director.js?v=781"></script>
+    <script src="js/ui.js?v=781"></script>
+    <script src="js/game.js?v=781"></script>
+    <script src="js/showcase.js?v=781"></script>
 </body>
 </html>

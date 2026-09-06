@@ -118,8 +118,8 @@ class Game {
         // route back to the appropriate menu on the next load.
         this.gameStarted = false;
         if (this.ui && this.ui.teardownSpectatorUI) this.ui.teardownSpectatorUI();
-        try { sessionStorage.setItem('altertum_return', this.spectatorMode ? 'arena' : 'mode'); } catch (e) {}
-        location.reload();
+        try { sessionStorage.setItem('altertum_return', this._showcaseCivilization ? 'start' : (this.spectatorMode ? 'arena' : 'mode')); } catch (e) {}
+        this.reloadToMenu();
     }
 
     showCampaignSetup() {
@@ -388,7 +388,7 @@ class Game {
     // opponentConfigs (optional): Campaign per-opponent setup entries
     // ({ civ, type:'ki'|'llm', connection?, systemPrompt? }). When given, opponents
     // use these civs/controllers instead of the round-robin default.
-    startGame(mode, numAI, opponentConfigs = null) {
+    startGame(mode, numAI, opponentConfigs = null, visualShowcase = false) {
         this.ui.showScreen('gameScreen');
         this.gameStarted = true;
 
@@ -452,12 +452,13 @@ class Game {
 
         // Regenerate the map with the chosen difficulty (fresh resources each game,
         // scaled by difficulty) before placing Town Centers / clearing nodes under them.
-        this.difficulty = (typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy';
+        this.difficulty = visualShowcase ? 'easy' : ((typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy');
         this.terrain.difficulty = this.difficulty;
-        this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed();
+        this.terrain.seed = visualShowcase ? 'greek-coast-01' : ((this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed());
         this.mapSeed = this.terrain.seed;
         // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
         // generator needs the spawns before it runs (they are already computed above).
+        if (visualShowcase) spawnPositions[0] = { x: 0, z: -348 };
         this.terrain.spawns = spawnPositions;
         this._battles = []; // fresh match, no carried-over engagements
         this.resetTimeline();  // ...and a fresh graph
@@ -574,6 +575,8 @@ class Game {
             this.renderer.cameraTarget.set(playerSpawn.x, 0, playerSpawn.z);
             this.renderer.camera.lookAt(this.renderer.cameraTarget);
         }
+
+        if (visualShowcase) this.prepareVisualShowcase();
 
         // Initialize fog of war
         if (this.fogOfWar) this.fogOfWar.destroy(); // drop the previous game's fog overlay
@@ -1903,6 +1906,14 @@ class Game {
 
     disableActionCam() {
         if (this._actionCam) this.toggleActionCam();
+        if (this.renderer && this.renderer.cancelCameraMove) this.renderer.cancelCameraMove();
+        // The replay has its own auto-camera toggle. Manual gestures must release
+        // that too, or the next recorded turn steals the camera back.
+        const screen = document.getElementById('analyzeScreen');
+        if (screen && screen.classList.contains('active') && this.ui && this.ui.analyzer) {
+            this.ui.analyzer.autoCam = false;
+            this.ui.updateAnalyzerAutoCamButton();
+        }
     }
 
     // The director's shot for this frame: { x, z, yaw, pitch, halfH, cut }.

@@ -73,17 +73,19 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 **The models**
 - **🔌 Bring any model** — OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter, …), **Anthropic**, **Ollama**, **Google (Gemini)**, with auto-detection. Mix local and cloud in one match.
 - **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or OAuth2.
-- **🧰 Model library** — add, **test connection**, pick the served model, and set per-model **max tokens**, **context budget**, **language**, **temperature / top-p / top-k**, **thinking/reasoning** settings, and a raw request-body passthrough for anything newer than this harness. Saved locally, exportable/importable.
+- **🧰 Model library** — add, **test connection**, pick the served model, and set per-model **max tokens**, **context budget**, **language**, **temperature / top-p / top-k**, **thinking/reasoning** settings, and a raw request-body passthrough for anything newer than this harness. Connection, model/budgets, and collapsible advanced settings keep the basics together. Saved locally, exportable/importable.
 - **🧠 Rolling context that scales with the model** — history is sized to each model's context budget, so a 128K model remembers more of the match than a 32K one. Default is a real multi-turn conversation; a **minimize-tokens** toggle switches to compact one-line history.
 - **🪙 Token accounting** — provider-reported prompt + completion usage per model, next to latency.
 
 **Watching & reading it back**
 - **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and play/pause per model.
+- **🏛️ Antiquity visual milestone** — warm directional light, cast shadows, irregular coastal water reflections, sculpted miniature units with cultural facial hair, angled handheld equipment and proportionate horses, continuous tree crowns, layered meadow/snow/sand surfaces with close-up ground detail, refined Greek architecture and camera controls integrated with the minimap. Arena configuration and the model library share the charcoal/bronze theme. Try **Explore civilizations** locally: choose Greek, Egyptian, Yamato or Persian inside the showcase, then use **Inspect workers** for a close-up. Direct links: `/?showcase=1&civ=greek` (also `egyptian`, `yamato`, `persian`). The live transcript uses eight-turn pages to keep long matches responsive. [Scope, graphics settings and verification](docs/VISUAL_MILESTONE.md).
 - **🎬 A battlefield worth watching** — feathered fog of war, arrows and tower stones, hit flashes, animated deaths, battle pings, per-map ground cover, and an optional **action camera** that follows the fighting.
 - **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 strategy score.
 - **📄 Exports** — the evaluation as a self-describing `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline appended at the end.
 - **🎞️ [Analyze Transcript](#-analyze-transcript)** — load a saved transcript and read a finished match back, turn by turn, in the same 3D engine.
 - **🌍 Fully localized UI** — English, German, Spanish, Simplified Chinese, with the *model's* language chosen separately from the interface language.
+- **⌨️ Reading and navigation** — keyboard-accessible mode selection and modal dialogs, selectable transcript text, readable model names, and reduced interface motion when requested by your device settings.
 
 **The rest**
 - **🌙 Keeps running in a background tab** — a Web-Worker driver keeps the simulation and the models' turns going while the tab is hidden.
@@ -127,6 +129,17 @@ Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
 
 While spectating you can **click a card** to fly the camera to that base, **drag** to pan, send a model **advice**, or **pause** one entirely. The decision log streams every move with the model's own reason, and flags rejections:
 
+| Input | Spectator / replay | Campaign |
+| --- | --- | --- |
+| Left click / tap | Inspect a unit or building | Select a unit or building |
+| Left mouse drag | Pan map; no box selection | Box-select units |
+| Right mouse drag | Read coordinates while held | Pan map; releasing a drag issues no order |
+| Right click | Coordinate flag | Move, attack, repair or confirm placement |
+| One-finger drag / pinch | Pan / zoom | Pan / zoom |
+| Touch and hold | Coordinate flag | Hold still, then release to issue an order |
+
+For left-button-only campaign navigation, open the minimap's camera-options chevron and enable the **hand tool**. Switch it off to restore mouse box selection. Touch always uses one-finger panning. Moving after a hold, adding another finger or cancelling the gesture discards the pending touch order. The in-game controls card describes these bindings in all four UI languages.
+
 <div align="center">
 
 ![The streaming decision log](Screenshots/Scene2.png)
@@ -167,7 +180,9 @@ Load a `match-*.jsonl` and you get:
 
 - **The board in the real engine.** The arena's own renderer with the full camera — pan, rotate, zoom. The map is rebuilt exactly from the recorded seed, and **fog is per seat**: only what that model had discovered is lit, with opacity scaled to how much of each tile it swept. Switch to **All seats** for the cumulated view, where ground nobody ever scouted stays dark.
 - **What the model was thinking.** Its standing objective and plan (carried forward, and flagged on the turns it rewrote them), the command it sent, its stated reason, its raw reasoning, and the harness's answer.
-- **A timeline you can scrub.** Step through turns, **play** at one a second, click the economy graph to jump, or use the chapter list — age advances, wonders, exhausted resources, combat. Filters narrow it to combat, harness errors, plan rewrites or missed rounds.
+- **A timeline you can scrub.** Step through turns, **play** at 0.5, 1, 2, or 4 entries a second through the filtered list, use the all-entry slider, click the economy graph to jump, or use the chapter list — age advances, wonders, exhausted resources, combat. Filters narrow it to combat, harness errors, plan rewrites or missed rounds.
+- **Saved reading views.** Choose Balanced, Watch, Read, or Compare, adjust the map height with the divider (drag or arrow keys), and choose comfortable or compact text. These preferences and playback rate stay in this browser, separately from exported match/model settings.
+- **Visible camera controls.** Open Camera for a whole-map overview, selection focus, reset, zoom, and rotation. Manual camera input turns automatic following off. These controls are also available in live play.
 - **Click anything** to inspect it. Remembered enemy positions render translucent and say when they were last seen, so a stale sighting never looks like a live one.
 
 **Five real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint, nothing to configure: the analyzer only ever reads a file. `samples/index.json` lists them with their models, tempo and result.
@@ -178,7 +193,7 @@ Load a `match-*.jsonl` and you get:
 - `2026-08-17_qwen3.8-opus4.6-qwen3.6-muse-glimmer_125min.jsonl` — 544 turns over two hours, **turn-based** (120 s a round), four seats. Qwen 3.8 27B as Yamato, Claude Opus 4.6 as Egypt, Qwen 3.6 27B as Persia, Muse-Glimmer 30B as the Greeks. Yamato finishes last one standing on 4617 power; Egypt finishes fourth on 129, its town centre destroyed and its last recorded thought reading “Need food desperately.” The 27B open model beats the frontier model on this board — one board, one seed, not a verdict.
 - `2026-08-26_deepseek-v4-glm5.3-qwen3.8-gpt5.6_103min.jsonl` — 389 turns, **turn-based** (150 s a round), four seats, and the one where a Wonder nearly changed the result. deepseek-v4-flash as Persia, glm-5.3-flash as the Greeks, Qwen3.8 27B running locally as Egypt, gpt-5.6-luna as Yamato. Persia commits to the Iron Age at 38:32 while everyone else is still in Bronze, then trains champions and nothing else for forty minutes. Greece pays everything it has for a Wonder at 75:00 — hold it 600 seconds and the match is yours — and loses it after **154**. Egypt is eliminated with 10,070 food and zero workers left to spend it.
 
-Nothing is interpolated between snapshots. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
+Nothing is interpolated between snapshots. Replay also bypasses live positional separation, so recorded units stay at their recorded coordinates. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
 
 ## 🧮 How a model is scored
 
