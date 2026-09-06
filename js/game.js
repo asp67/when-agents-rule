@@ -1903,6 +1903,14 @@ class Game {
 
     disableActionCam() {
         if (this._actionCam) this.toggleActionCam();
+        if (this.renderer && this.renderer.cancelCameraMove) this.renderer.cancelCameraMove();
+        // The replay has its own auto-camera toggle. Manual gestures must release
+        // that too, or the next recorded turn steals the camera back.
+        const screen = document.getElementById('analyzeScreen');
+        if (screen && screen.classList.contains('active') && this.ui && this.ui.analyzer) {
+            this.ui.analyzer.autoCam = false;
+            this.ui.updateAnalyzerAutoCamButton();
+        }
     }
 
     // The director's shot for this frame: { x, z, yaw, pitch, halfH, cut }.

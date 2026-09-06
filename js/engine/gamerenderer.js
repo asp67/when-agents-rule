@@ -62,6 +62,8 @@
             this.keysPressed = {};
             this._marqueeEl = null;
             this._halfH = 34;
+            this.replayMode = false;
+            this._cameraMoveId = 0;
 
             this._yaw = Math.PI / 4;          // middle-drag horizontal turns the map
             this._pitch = Math.atan(0.5);     // middle-drag vertical tilts (10°..89°)
@@ -339,6 +341,7 @@
         // wherever the camera happened to be would just be a lurch on arrival, and rAF
         // does not run at all in a hidden tab, so a tween here could silently never land.
         frameWholeMap() {
+            this.cancelCameraMove();
             this.cameraTarget.set(0, 0, 0);
             this._yaw = 0;
             this._pitch = Math.atan(0.5);   // the default tilt, so the shot is repeatable
@@ -361,15 +364,42 @@
         }
 
         moveCameraTo(x, z) {
+            if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+            const moveId = ++this._cameraMoveId;
             const sx = this.cameraTarget.x, sz = this.cameraTarget.z;
             const start = performance.now();
             const step = () => {
+                if (moveId !== this._cameraMoveId) return;
                 const k = Math.min(1, (performance.now() - start) / 500);
                 this.cameraTarget.x = sx + (x - sx) * k;
                 this.cameraTarget.z = sz + (z - sz) * k;
                 if (k < 1) requestAnimationFrame(step);
             };
             step();
+        }
+
+        cancelCameraMove() { this._cameraMoveId++; }
+
+        // Explicit camera commands share the same bounds as pointer gestures.
+        // They only change the view, never entity positions or simulation speed.
+        setCameraView(action, point) {
+            this.cancelCameraMove();
+            if (action === 'overview') { this.frameWholeMap(); return; }
+            if (action === 'reset') {
+                this._yaw = Math.PI / 4;
+                this._pitch = Math.atan(0.5);
+                this._halfH = 34;
+            } else if (action === 'selection') {
+                if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.z)) return;
+                this.cameraTarget.set(point.x, 0, point.z);
+                this._halfH = Math.min(this._halfH, 55);
+            } else if (action === 'zoomIn' || action === 'zoomOut') {
+                this._halfH *= action === 'zoomIn' ? 1 / 1.25 : 1.25;
+            } else if (action === 'turnLeft' || action === 'turnRight') {
+                this._yaw += (action === 'turnLeft' ? -1 : 1) * Math.PI / 4;
+            }
+            this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, this._halfH));
+            this._clampTarget();
         }
 
         animateCamera(x, y, z) { this.moveCameraTo(x, z - 80); }
@@ -1743,70 +1773,74 @@
             // display separated ~2.4x harder than a 60Hz one — the framerate
             // silently tuned the combat. Normalised to 60Hz so the constants keep
             // their old meaning; clamped so one long frame can't fling anyone.
-            const SEPARATION_DIST = 1.2, SEPARATION_FORCE = 0.03;
-            const sepK = Math.min(3, Math.max(0, deltaTime) * 60);
-            for (let i = 0; i < this.units.length; i++) {
-                for (let j = i + 1; j < this.units.length; j++) {
-                    const a = this.units[i], b = this.units[j];
-                    if (a.owner !== b.owner) continue; // an enemy is not a wall
-                    const dx = b.x - a.x, dz = b.z - a.z;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
-                    if (dist < SEPARATION_DIST && dist > 0.01) {
-                        const push = (SEPARATION_DIST - dist) * SEPARATION_FORCE * sepK;
-                        const nx = dx / dist, nz = dz / dist;
-                        a.x -= nx * push; a.z -= nz * push;
-                        b.x += nx * push; b.z += nz * push;
+            // A transcript is a snapshot: presentation must not push its recorded
+            // entities apart or out of buildings between turns.
+            if (!this.replayMode) {
+                const SEPARATION_DIST = 1.2, SEPARATION_FORCE = 0.03;
+                const sepK = Math.min(3, Math.max(0, deltaTime) * 60);
+                for (let i = 0; i < this.units.length; i++) {
+                    for (let j = i + 1; j < this.units.length; j++) {
+                        const a = this.units[i], b = this.units[j];
+                        if (a.owner !== b.owner) continue; // an enemy is not a wall
+                        const dx = b.x - a.x, dz = b.z - a.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        if (dist < SEPARATION_DIST && dist > 0.01) {
+                            const push = (SEPARATION_DIST - dist) * SEPARATION_FORCE * sepK;
+                            const nx = dx / dist, nz = dz / dist;
+                            a.x -= nx * push; a.z -= nz * push;
+                            b.x += nx * push; b.z += nz * push;
+                        }
                     }
                 }
-            }
-            const UNIT_BUILDING_CLEARANCE = 4.5;
-            // Wonders are far bigger than ordinary buildings (largest footprint:
-            // the 13×13 pyramid — faces at 5.07, corners at 7.17 world units), so
-            // the flat 4.5 let units walk straight THROUGH them. One uniform
-            // radius for ALL wonders keeps the four civs balanced. Attackability
-            // is unaffected: combatants are exempt from the push below, and
-            // ranged reach (7.5+) out-ranges the zone anyway.
-            const WONDER_CLEARANCE = 7.0;
-            this.units.forEach(unit => {
-                // A marcher that has NOT yet acquired a target still ghosts every
-                // building: the radial clearance rings around a packed base overlap
-                // into channels it cannot thread, and it used to pin against them
-                // and slide along the walls forever instead of closing in —
-                // "can't reach the barracks from the side".
-                if (unit.isAttacking && !unit.attackTarget && unit.attackMove) return;
-                this.buildings.forEach(building => {
-                    if (building.type === 'farm') return;
-                    if (unit.task === 'building' && unit.buildTarget === building) return;
-                    if (unit.task === 'repairing' && unit.repairTarget === building) return;
-                    // Ghost through the ONE building you're attacking, so melee can
-                    // close on it — the same per-target shape as the build/repair
-                    // exemptions above. This used to exempt a combatant from EVERY
-                    // building on the map, so the instant a unit retaliated it lost
-                    // all clearance and its own squadmates' separation shoved it
-                    // bodily THROUGH the nearest wall. Two pushes, one exempting
-                    // fighters and one exempting nobody, disagreeing.
-                    if (unit.isAttacking && unit.attackTarget === building) return;
-                    const clr = building.isWonder ? WONDER_CLEARANCE : UNIT_BUILDING_CLEARANCE;
-                    const dx = unit.x - building.x, dz = unit.z - building.z;
-                    const dist = Math.sqrt(dx * dx + dz * dz);
-                    // DEAD CENTRE is the one place this push could not reach. The old
-                    // guard was `dist > 0.01`, meant to avoid dividing by zero, and it
-                    // meant a unit standing exactly on a building's origin was left
-                    // there forever — inside the mesh, permanently. Not a rare spot: a
-                    // plain move snaps onto its destination exactly, so anything aimed
-                    // at a building's coordinates lands on 0.00 and stops being pushed
-                    // at the instant it most needs to be. game.clampSlot has always
-                    // handled this case ("dead centre: any direction out"); the
-                    // continuous push simply never learned it.
-                    if (dist <= 0.01) {
-                        unit.x = building.x + clr;
-                    } else if (dist < clr) {
-                        const push = (clr - dist) * 0.05 * sepK; // dt-scaled, like the pass above
-                        unit.x += (dx / dist) * push;
-                        unit.z += (dz / dist) * push;
-                    }
+                const UNIT_BUILDING_CLEARANCE = 4.5;
+                // Wonders are far bigger than ordinary buildings (largest footprint:
+                // the 13×13 pyramid — faces at 5.07, corners at 7.17 world units), so
+                // the flat 4.5 let units walk straight THROUGH them. One uniform
+                // radius for ALL wonders keeps the four civs balanced. Attackability
+                // is unaffected: combatants are exempt from the push below, and
+                // ranged reach (7.5+) out-ranges the zone anyway.
+                const WONDER_CLEARANCE = 7.0;
+                this.units.forEach(unit => {
+                    // A marcher that has NOT yet acquired a target still ghosts every
+                    // building: the radial clearance rings around a packed base overlap
+                    // into channels it cannot thread, and it used to pin against them
+                    // and slide along the walls forever instead of closing in —
+                    // "can't reach the barracks from the side".
+                    if (unit.isAttacking && !unit.attackTarget && unit.attackMove) return;
+                    this.buildings.forEach(building => {
+                        if (building.type === 'farm') return;
+                        if (unit.task === 'building' && unit.buildTarget === building) return;
+                        if (unit.task === 'repairing' && unit.repairTarget === building) return;
+                        // Ghost through the ONE building you're attacking, so melee can
+                        // close on it — the same per-target shape as the build/repair
+                        // exemptions above. This used to exempt a combatant from EVERY
+                        // building on the map, so the instant a unit retaliated it lost
+                        // all clearance and its own squadmates' separation shoved it
+                        // bodily THROUGH the nearest wall. Two pushes, one exempting
+                        // fighters and one exempting nobody, disagreeing.
+                        if (unit.isAttacking && unit.attackTarget === building) return;
+                        const clr = building.isWonder ? WONDER_CLEARANCE : UNIT_BUILDING_CLEARANCE;
+                        const dx = unit.x - building.x, dz = unit.z - building.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        // DEAD CENTRE is the one place this push could not reach. The old
+                        // guard was `dist > 0.01`, meant to avoid dividing by zero, and it
+                        // meant a unit standing exactly on a building's origin was left
+                        // there forever — inside the mesh, permanently. Not a rare spot: a
+                        // plain move snaps onto its destination exactly, so anything aimed
+                        // at a building's coordinates lands on 0.00 and stops being pushed
+                        // at the instant it most needs to be. game.clampSlot has always
+                        // handled this case ("dead centre: any direction out"); the
+                        // continuous push simply never learned it.
+                        if (dist <= 0.01) {
+                            unit.x = building.x + clr;
+                        } else if (dist < clr) {
+                            const push = (clr - dist) * 0.05 * sepK; // dt-scaled, like the pass above
+                            unit.x += (dx / dist) * push;
+                            unit.z += (dz / dist) * push;
+                        }
+                    });
                 });
-            });
+            }
 
             // draw ------------------------------------------------------------
             const gl = this.gl;

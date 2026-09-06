@@ -1511,10 +1511,10 @@ body.spectator-mode #unitInfo.spectator-card {
     border-radius: 10px;
     overflow: hidden;
 }
-/* Collapsible header (whole row is the toggle) */
+/* A native toggle and a separate remove button keep both keyboard accessible. */
 .model-card-header {
     display: flex; align-items: center; gap: 10px;
-    padding: 11px 14px; cursor: pointer; user-select: none;
+    padding: 4px 14px; user-select: none;
 }
 .model-card-header:hover { background: rgba(255, 255, 255, 0.04); }
 .mc-toggle { color: #9aa6bd; font-size: 0.8em; transition: transform 0.15s; flex: 0 0 auto; }
@@ -2925,4 +2925,55 @@ dialog.ui-dialog > .confirm-dialog, dialog.ui-dialog > .controls-card {
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
     }
+}
+
+/* Group connection basics separately from optional provider tuning. */
+.model-card-toggle { display:flex; align-items:center; flex-wrap:wrap; gap:8px;
+    flex:1; min-width:0; padding:10px 0; border:0; background:transparent;
+    color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.model-card-toggle .mc-name, .model-card-toggle .mc-sub { white-space:normal;
+    overflow-wrap:anywhere; max-width:100%; }
+.model-card-toggle .mc-sub { flex-basis:180px; }
+.model-section { display:flex; flex-direction:column; gap:10px; min-width:0;
+    padding:12px 0; border-top:1px solid rgba(255,255,255,.1); }
+.model-section h3 { margin:0; color:var(--text); font-size:1rem; }
+.model-advanced > summary { padding:12px 0; color:var(--gold-2); cursor:pointer; }
+.model-remove { min-width:36px; min-height:36px; }
+body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
+
+.an-workspace-tools { display:flex; align-items:center; flex-wrap:wrap; gap:10px;
+    padding:8px 12px; flex:0 0 auto; border-bottom:1px solid rgba(255,255,255,.1);
+    background:var(--bg-1); font-size:.8rem; }
+.an-workspace-tools[hidden] { display:none; }
+.an-workspace-tools label { display:flex; align-items:center; gap:6px; }
+.an-workspace-tools select { min-height:32px; max-width:160px; padding:4px 6px;
+    border:1px solid rgba(255,255,255,.22); border-radius:5px;
+    background:var(--bg-0); color:var(--text); font:inherit; }
+.an-workspace-tools .an-timeline-label { flex:1 1 220px; }
+.an-timeline-label input { flex:1; min-width:80px; accent-color:var(--gold); }
+#anTimelinePosition { font-variant-numeric:tabular-nums; color:var(--muted); }
+.an-seam:focus-visible { z-index:5; background:var(--gold); }
+@media (min-width:1001px) {
+    .an-body[data-layout="read"] .an-lower {
+        grid-template-columns:minmax(140px,1fr) minmax(300px,3fr) minmax(240px,1.4fr); }
+    .an-body[data-layout="compare"] .an-lower {
+        grid-template-columns:minmax(140px,1fr) minmax(260px,1.5fr) minmax(300px,3fr); }
+}
+.camera-controls { position:absolute; top:68px; left:50%; transform:translateX(-50%);
+    z-index:20; width:max-content; max-width:calc(100% - 24px);
+    border:1px solid rgba(255,255,255,.25); border-radius:8px;
+    background:rgba(8,14,20,.94); color:var(--text); font-size:.8125rem; }
+.camera-controls summary { padding:9px 12px; cursor:pointer; }
+.camera-actions { display:flex; flex-wrap:wrap; gap:6px; padding:0 8px 8px; max-width:480px; }
+.camera-actions button { min-width:36px; min-height:36px; padding:6px 10px;
+    border:1px solid rgba(255,255,255,.22); border-radius:5px; background:var(--bg-1);
+    color:var(--text); font:inherit; cursor:pointer; }
+.camera-actions button:hover { border-color:var(--gold); }
+.an-stage .camera-controls { top:10px; left:10px; transform:none; }
+@media (max-width:600px) {
+    .model-card-top { flex-wrap:wrap; }
+    .model-card-top .arena-field { flex-basis:100%; }
+    .auth-grid { grid-template-columns:minmax(0,1fr); }
+    .an-workspace-tools { gap:6px; padding:6px 8px; }
+    .an-workspace-tools label { flex-wrap:wrap; }
 }

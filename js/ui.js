@@ -27,6 +27,8 @@ class UIManager {
             screen.classList.remove('active');
         });
         document.getElementById(screenId).classList.add('active');
+        this.applyViewPreferences();
+        this.renderCameraControls();
     }
 
     // Called by setUiLang() after static [data-i18n] elements are re-translated.
@@ -76,6 +78,141 @@ class UIManager {
         // The fog knobs' tooltips name a seat, so data-i18n-title cannot reach them.
         this.refreshMinimapFogKnobs();
         if (this._sampleIndex) this.anFillSamplePicker(this._sampleIndex);
+        this.renderCameraControls();
+        if (active('analyzeScreen')) this.anRender();
+    }
+
+    // Presentation settings stay separate from model settings and match exports.
+    viewPreferences() {
+        if (this._viewPreferences) return this._viewPreferences;
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem('warViewPreferencesV1')) || {}; } catch (e) {}
+        const layout = ['balanced', 'watch', 'read', 'compare', 'custom'].includes(saved.layout) ? saved.layout : 'balanced';
+        return this._viewPreferences = {
+            layout,
+            split: Number.isFinite(saved.split) ? Math.max(20, Math.min(80, saved.split)) : 52,
+            text: saved.text === 'compact' ? 'compact' : 'comfortable',
+            rate: [0.5, 1, 2, 4].includes(saved.rate) ? saved.rate : 1
+        };
+    }
+
+    saveViewPreferences() {
+        try { localStorage.setItem('warViewPreferencesV1', JSON.stringify(this.viewPreferences())); } catch (e) {}
+    }
+
+    applyViewPreferences() {
+        const p = this.viewPreferences();
+        document.body.dataset.reading = p.text;
+        const body = document.getElementById('anBody');
+        if (body) {
+            body.dataset.layout = p.layout;
+            body.style.gridTemplateRows = p.split + '% 6px minmax(0, 1fr)';
+        }
+        const seam = document.getElementById('anSeam');
+        if (seam) seam.setAttribute('aria-valuenow', Math.round(p.split));
+    }
+
+    setReadingSize(value) {
+        if (!['compact', 'comfortable'].includes(value)) return;
+        this.viewPreferences().text = value;
+        this.saveViewPreferences();
+        this.applyViewPreferences();
+        this.game.renderer.onWindowResize();
+    }
+
+    anSetLayout(value) {
+        const splits = { balanced: 52, watch: 70, read: 28, compare: 40 };
+        if (!Object.prototype.hasOwnProperty.call(splits, value) && value !== 'custom') return;
+        const p = this.viewPreferences();
+        p.layout = value;
+        if (Object.prototype.hasOwnProperty.call(splits, value)) p.split = splits[value];
+        this.saveViewPreferences();
+        this.applyViewPreferences();
+        this.game.renderer.onWindowResize();
+    }
+
+    anSetReplayRate(value) {
+        const rate = Number(value);
+        if (![0.5, 1, 2, 4].includes(rate)) return;
+        const playing = !!this._anPlayTimer;
+        this.anStopPlay();
+        this.viewPreferences().rate = rate;
+        this.saveViewPreferences();
+        if (playing) this.anTogglePlay();
+        else this.anRender();
+    }
+
+    anScrub(value) {
+        const index = Number(value);
+        if (!Number.isInteger(index) || !this.analyzer) return;
+        this.anStopPlay();
+        this.analyzer.seek(index);
+        this.anRender();
+        const slider = document.getElementById('anTimeline');
+        if (slider) slider.focus({ preventScroll: true });
+    }
+
+    anRenderWorkspaceTools(has) {
+        const tools = document.getElementById('anWorkspaceTools');
+        if (!tools) return;
+        tools.hidden = !has;
+        if (!has) return;
+        const esc = s => this.escapeHtml(String(s));
+        if (this._anToolsLanguage !== getUiLang()) {
+            this._anToolsLanguage = getUiLang();
+            const options = keys => keys.map(k => `<option value="${k}">${esc(t('view.' + k))}</option>`).join('');
+            tools.innerHTML = `<label>${esc(t('view.layout'))}<select id="anLayout" onchange="game.ui.anSetLayout(this.value)">${options(['balanced','watch','read','compare','custom'])}</select></label>
+                <label>${esc(t('view.text'))}<select id="anReadingSize" onchange="game.ui.setReadingSize(this.value)">${options(['comfortable','compact'])}</select></label>
+                <label>${esc(t('view.replayRate'))}<select id="anReplayRate" onchange="game.ui.anSetReplayRate(this.value)">${[0.5,1,2,4].map(n => `<option value="${n}">${n.toLocaleString(getUiLang())}</option>`).join('')}</select></label>
+                <label class="an-timeline-label">${esc(t('view.timelineAll'))}<input id="anTimeline" type="range" min="0" step="1" onchange="game.ui.anScrub(this.value)"></label>
+                <output id="anTimelinePosition" for="anTimeline"></output>`;
+        }
+        const p = this.viewPreferences(), a = this.analyzer;
+        document.getElementById('anLayout').value = p.layout;
+        document.getElementById('anReadingSize').value = p.text;
+        document.getElementById('anReplayRate').value = p.rate;
+        const slider = document.getElementById('anTimeline');
+        slider.max = a.order.length - 1;
+        slider.value = a.cursor;
+        const position = t('view.position', { n: a.cursor + 1, total: a.order.length });
+        slider.setAttribute('aria-valuetext', position);
+        document.getElementById('anTimelinePosition').textContent = position;
+    }
+
+    renderCameraControls() {
+        const box = document.getElementById('cameraControls');
+        if (!box || this._cameraControlsLanguage === getUiLang()) return;
+        this._cameraControlsLanguage = getUiLang();
+        const esc = s => this.escapeHtml(String(s));
+        const buttons = [['overview', t('view.overview')], ['selection', t('view.selection')],
+            ['reset', t('view.reset')], ['zoomIn', '+'], ['zoomOut', '−'],
+            ['turnLeft', '↶'], ['turnRight', '↷']];
+        box.innerHTML = `<summary>${esc(t('view.camera'))}</summary><div class="camera-actions">`
+            + buttons.map(([action, label]) => `<button type="button" title="${esc(t('view.' + action))}" aria-label="${esc(t('view.' + action))}" onclick="game.ui.cameraAction('${action}')">${esc(label)}</button>`).join('')
+            + '</div>';
+    }
+
+    cameraAction(action) {
+        const r = this.game.renderer;
+        if (!r) return;
+        const units = (r.selectedUnits || []).filter(u => Number.isFinite(u.x) && Number.isFinite(u.z));
+        const building = this.game.selectedBuilding;
+        const picked = this._anPicked && this._anPicked.ent;
+        const point = picked || building || (units.length ? {
+            x: units.reduce((sum, u) => sum + u.x, 0) / units.length,
+            z: units.reduce((sum, u) => sum + u.z, 0) / units.length
+        } : null);
+        if (action === 'selection' && !point) { this.showInfoMessage(t('view.noSelection')); return; }
+        this.game.disableActionCam();
+        r.setCameraView(action, point);
+    }
+
+    updateAnalyzerAutoCamButton() {
+        const btn = document.querySelector('[data-an-auto-camera]');
+        if (btn && this.analyzer) {
+            btn.classList.toggle('is-on', this.analyzer.autoCam);
+            btn.setAttribute('aria-pressed', !!this.analyzer.autoCam);
+        }
     }
 
     // Native modality keeps focus inside the dialog and restores it to the opener.
@@ -979,18 +1116,27 @@ class UIManager {
             : '';
         const epPlaceholder = provPlaceholders[m.provider || 'auto'] || provPlaceholders.auto;
         const sub = e(m.model || m.endpoint || t('ar.notConfigured'));
+        const advanced = this._modelAdvanced || (this._modelAdvanced = new Map());
+        const advancedOpen = advanced.has(m.id) ? advanced.get(m.id)
+            : !!(extraBodyErr || thinkingConflicts || rejectedNames.length);
         return `
         <div class="model-card ${expanded ? 'expanded' : 'collapsed'}">
-            <div class="model-card-header" onclick="game.ui.toggleArenaModel(${m.id})">
+            <div class="model-card-header">
+                <button type="button" class="model-card-toggle" id="modelToggle-${m.id}"
+                    aria-expanded="${expanded}" aria-controls="modelBody-${m.id}"
+                    onclick="game.ui.toggleArenaModel(${m.id})">
                 <span class="mc-toggle">▶</span>
                 <span class="mc-name">${e(displayName)}</span>
                 <span class="mc-sub">${sub}</span>
                 <span class="mc-auth">${provLabels[m.provider || 'auto']}</span>
                 <span class="mc-auth">${authLabels[m.auth.type] || ''}</span>
                 ${badge}
+                </button>
                 <button class="model-remove" title="${t('ar.removeModel')}" onclick="event.stopPropagation(); game.ui.removeArenaModel(${m.id})">✕</button>
             </div>
-            <div class="model-card-body">
+            <div class="model-card-body" id="modelBody-${m.id}">
+            <section class="model-section" aria-labelledby="modelConnection-${m.id}">
+            <h3 id="modelConnection-${m.id}">${t('view.connection')}</h3>
             <div class="model-card-top">
                 <div class="arena-field"><label>${t('ar.fName')}</label>
                     <input type="text" value="${e(m.name)}" oninput="game.ui.setModelField(${m.id},'name',this.value)" placeholder="${t('ar.fNamePh')}"></div>
@@ -1021,6 +1167,9 @@ class UIManager {
                 ${status}
             </div>
             ${capLine}
+            </section>
+            <section class="model-section" aria-labelledby="modelBudgets-${m.id}">
+            <h3 id="modelBudgets-${m.id}">${t('view.budgets')}</h3>
             <div class="model-select-row">
                 <div class="arena-field" style="flex:1 1 340px"><label>${t('ar.fModelSelect')}${modelNote}</label>
                     <div class="mdl-combo">
@@ -1043,6 +1192,16 @@ class UIManager {
                 <div class="arena-field" style="flex:0 0 170px"><label>${t('ar.fModelLang')}</label>
                     <select onchange="game.ui.setModelField(${m.id},'language',this.value)">${langOpts}</select></div>
             </div>
+            <p class="auth-hint">${t('ar.maxTokensHint')}</p>
+            <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
+            <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
+            <p class="auth-hint">${t('ar.minimizeTokensHint')}</p>
+            <p class="auth-hint">${t('ar.modelLangHint')}</p>
+            </section>
+            <details class="model-advanced" ${advancedOpen ? 'open' : ''}
+                ontoggle="if(this.isConnected) game.ui.setModelAdvanced(${m.id},this.open)">
+            <summary>${t('view.advanced')}</summary>
+            <div class="model-section">
             <div class="model-select-row sampling-row">
                 <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fTemperature')}${rejectedTag('omitTemperature')}</label>
                     <input type="number" min="0" max="2" step="0.05" value="${e(m.temperature)}" oninput="game.ui.setModelField(${m.id},'temperature',this.value)" placeholder="${e(defPh.temperature)}"></div>
@@ -1075,10 +1234,6 @@ class UIManager {
                     placeholder='{"chat_template_kwargs": {"enable_thinking": true}}'>${e(m.extraBody)}</textarea>
             </div></div>
             <p class="auth-hint${extraBodyErr ? ' extra-body-err' : ''}">${extraBodyErr ? this.escapeHtml(extraBodyErr) : t('ar.extraBodyHint')}</p>
-            <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
-            <p class="auth-hint">${t('ar.maxTokensHint')}</p>
-            <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
-            <p class="auth-hint">${t('ar.minimizeTokensHint')}</p>
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.toolFallback ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'toolFallback',this.checked)"> ${t('ar.toolFallback')}</label>
             <p class="auth-hint">${t('ar.toolFallbackHint')}</p>
             <div class="model-select-row"><div class="arena-field">
@@ -1089,8 +1244,8 @@ class UIManager {
             </div></div>
             <p class="auth-hint">${t('ar.lanesHint')}</p>
             ${this.laneCountOf(m) > 1 ? `<p class="auth-hint lanes-warn">${t('ar.lanesWarn')}</p>` : ''}
-            <p class="auth-hint">${t('ar.modelLangHint')}</p>
             ${isOllama ? `<p class="auth-hint ollama-hint">${t('ar.ollamaHint')}</p>` : ''}
+            </div></details>
             </div>
         </div>`;
     }
@@ -1399,7 +1554,17 @@ class UIManager {
 
     toggleArenaModel(id) {
         const m = this.getArenaModel(id);
-        if (m) { m._expanded = !m._expanded; this.renderArenaLibrary(); }
+        if (m) {
+            m._expanded = !m._expanded;
+            this.renderArenaLibrary();
+            const btn = document.getElementById('modelToggle-' + id);
+            if (btn) btn.focus({ preventScroll: true });
+        }
+    }
+
+    setModelAdvanced(id, open) {
+        if (!this._modelAdvanced) this._modelAdvanced = new Map();
+        this._modelAdvanced.set(id, !!open);
     }
 
     addArenaModel() {
@@ -4910,7 +5075,7 @@ class UIManager {
     }
 
 
-    // Play: one filtered step a second. It walks anStep(1), so it follows whatever
+    // Play: filtered steps at the saved reading rate. It walks anStep(1), so it follows whatever
     // filter and seat are set — playing the Combat filter jumps fight to fight rather
     // than crawling through every worker reassignment in between.
     //
@@ -4943,7 +5108,7 @@ class UIManager {
                 this.anStopPlay();
                 this.anRender();   // repaint the button as stopped
             }
-        }, 1000);
+        }, 1000 / this.viewPreferences().rate);
         this.anRender();
     }
 
@@ -5139,6 +5304,7 @@ class UIManager {
         const meta = document.getElementById('anMeta');
         if (!body || !empty) return;
         const has = !!(a && a.order && a.order.length);
+        this.anRenderWorkspaceTools(has);
         body.style.display = has ? '' : 'none';
         empty.style.display = has ? 'none' : '';
         if (meta) meta.innerHTML = '';
@@ -5231,8 +5397,8 @@ class UIManager {
             + '" aria-label="' + esc(t('an.prevStep')) + '" onclick="game.ui.anStep(-1)">'
             + this.anIcon('prev') + '</button>'
             + '<button class="an-chip an-ico' + (playing ? ' is-on' : '') + '" title="'
-            + esc(t(playing ? 'an.pause' : 'an.play')) + '" aria-label="'
-            + esc(t(playing ? 'an.pause' : 'an.play')) + '" onclick="game.ui.anTogglePlay()">'
+            + esc(playing ? t('an.pause') : t('view.playRate', { n: this.viewPreferences().rate })) + '" aria-label="'
+            + esc(playing ? t('an.pause') : t('view.playRate', { n: this.viewPreferences().rate })) + '" onclick="game.ui.anTogglePlay()">'
             + this.anIcon(playing ? 'pause' : 'play') + '</button>'
             + '<button class="an-chip an-ico" title="' + esc(t('an.nextStep'))
             + '" aria-label="' + esc(t('an.nextStep')) + '" onclick="game.ui.anStep(1)">'
@@ -5319,7 +5485,7 @@ class UIManager {
             const sn = a.seats.get(cur && cur.playerId) || {};
             hud.innerHTML = '<button class="an-chip' + (a.union ? ' is-on' : '')
                 + '" onclick="game.ui.anToggleUnion()">' + esc(t('an.union')) + '</button>'
-                + '<button class="an-chip' + (a.autoCam ? ' is-on' : '')
+                + '<button data-an-auto-camera aria-pressed="' + !!a.autoCam + '" class="an-chip' + (a.autoCam ? ' is-on' : '')
                 + '" onclick="game.ui.anToggleAutoCam()">' + esc(t('an.autoCam')) + '</button>'
                 + '<span class="an-cap-txt">' + esc(a.union ? t('an.viewAll')
                     : t('an.viewSeat', { s: sn.name || sn.model || sn.civ || '?' })) + '</span>';
@@ -5368,10 +5534,11 @@ class UIManager {
                 this._anCanvasHome = { parent: cv.parentElement, next: cv.nextSibling };
             }
             host.appendChild(cv);
+            this._anPrevSpectator = this.game.spectatorMode;
         }
         // Spectator input: no orders to give in a recording.
-        this._anPrevSpectator = this.game.spectatorMode;
         this.game.spectatorMode = true;
+        this.game.renderer.replayMode = true;
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
         this.anBindPick();
         this.anBindKeys();
@@ -5399,6 +5566,9 @@ class UIManager {
         this._anFog = null;
         const r = this.game.renderer;
         if (r) {
+            r.replayMode = false;
+            this._anPicked = null;
+            this.game.selectedBuilding = null;
             if (r.clearScene) r.clearScene();
             if (r.onWindowResize) r.onWindowResize();
         }
@@ -5417,12 +5587,14 @@ class UIManager {
         if (!host || this._anPickBound) return;
         this._anPickBound = true;
         let downAt = null;
-        host.addEventListener('mousedown', (e) => { downAt = { x: e.clientX, y: e.clientY }; }, true);
+        host.addEventListener('mousedown', (e) => {
+            downAt = e.target.closest('.camera-controls') ? null : { x: e.clientX, y: e.clientY };
+        }, true);
         host.addEventListener('mouseup', (e) => {
             if (!downAt) return;
             const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
             downAt = null;
-            if (moved > 4 || e.button !== 0) return;   // that was a pan, not a pick
+            if (moved > 4 || e.button !== 0 || e.target.closest('.camera-controls')) return;   // that was a pan, not a pick
             this.anPickAt(e.clientX, e.clientY);
         }, true);
     }
@@ -5859,10 +6031,14 @@ class UIManager {
             const r = body.getBoundingClientRect();
             const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
             const pct = Math.max(20, Math.min(80, (y / r.height) * 100));
-            body.style.gridTemplateRows = pct + '% 6px 1fr';
+            const p = this.viewPreferences();
+            p.split = pct; p.layout = 'custom';
+            this.applyViewPreferences();
             if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
         };
         const up = () => {
+            this.saveViewPreferences();
+            this.anRenderWorkspaceTools(true);
             window.removeEventListener('mousemove', move);
             window.removeEventListener('mouseup', up);
             window.removeEventListener('touchmove', move);
@@ -5872,6 +6048,18 @@ class UIManager {
         window.addEventListener('mouseup', up);
         window.addEventListener('touchmove', move, { passive: false });
         window.addEventListener('touchend', up);
+    }
+
+    anSplitKey(ev) {
+        if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(ev.key)) return;
+        ev.preventDefault(); ev.stopPropagation();
+        const p = this.viewPreferences();
+        p.split = ev.key === 'Home' ? 20 : ev.key === 'End' ? 80
+            : Math.max(20, Math.min(80, p.split + (ev.key === 'ArrowUp' ? -5 : 5)));
+        p.layout = 'custom';
+        this.saveViewPreferences(); this.applyViewPreferences();
+        this.anRenderWorkspaceTools(true);
+        this.game.renderer.onWindowResize();
     }
 
 

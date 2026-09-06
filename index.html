@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>When Agents Rule</title>
-    <link rel="stylesheet" href="css/styles.css?v=769">
+    <link rel="stylesheet" href="css/styles.css?v=770">
     <!-- ?diag=1 -- the console, on the page.
 
          A tablet has no devtools worth the name, so a report from one can only ever be
@@ -195,13 +195,16 @@
             <button class="sb-end an-back" onclick="game.ui.anClose()" data-i18n="common.back">Zurück</button>
         </div>
         <div id="anEmpty" class="an-empty" data-i18n="an.empty">Lade eine .jsonl-Datei, die die Arena gespeichert hat.</div>
+        <div id="anWorkspaceTools" class="an-workspace-tools" hidden></div>
         <div id="anBody" class="an-body" style="display:none;">
             <div class="an-stage">
                 <div id="anViewport" class="an-viewport"></div>
                 <div class="an-pick-card" id="anPick" style="display:none;"></div>
                 <div class="an-stage-hud" id="anStageHud"></div>
             </div>
-            <div class="an-seam" id="anSeam" onmousedown="game.ui.anSplitStart(event)" ontouchstart="game.ui.anSplitStart(event)"></div>
+            <div class="an-seam" id="anSeam" role="separator" tabindex="0" aria-orientation="horizontal"
+                aria-valuemin="20" aria-valuemax="80" aria-valuenow="52" aria-label="Map height (%)" data-i18n-aria="view.mapHeight"
+                onkeydown="game.ui.anSplitKey(event)" onmousedown="game.ui.anSplitStart(event)" ontouchstart="game.ui.anSplitStart(event)"></div>
             <div class="an-lower">
                 <div class="an-scrub">
                     <div class="an-bar2" id="anFilters"></div>
@@ -272,7 +275,7 @@
 
     <!-- Game Screen -->
     <div id="gameScreen" class="screen">
-        <div id="gameCanvas"></div>
+        <div id="gameCanvas"><details id="cameraControls" class="camera-controls" onkeydown="event.stopPropagation()" onfocusin="if(typeof game !== 'undefined' &amp;&amp; game) game.renderer.keysPressed = {}"></details></div>
         
         <!-- Top HUD -->
         <div id="topHUD" class="hud">
@@ -620,27 +623,27 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
-    <script src="js/engine/math3d.js?v=769"></script>
-    <script src="js/engine/glcore.js?v=769"></script>
-    <script src="js/engine/texgen.js?v=769"></script>
-    <script src="js/engine/mesh.js?v=769"></script>
-    <script src="js/engine/buildings.js?v=769"></script>
-    <script src="js/engine/units.js?v=769"></script>
-    <script src="js/engine/gamerenderer.js?v=769"></script>
-    <script src="js/i18n.js?v=769"></script>
-    <script src="js/civilizations.js?v=769"></script>
-    <script src="js/buildings.js?v=769"></script>
-    <script src="js/units.js?v=769"></script>
-    <script src="js/resources.js?v=769"></script>
-    <script src="js/terrain.js?v=769"></script>
-    <script src="js/fogofwar.js?v=769"></script>
-    <script src="js/ai.js?v=769"></script>
-    <script src="js/analyzer.js?v=769"></script>
-    <script src="js/transcript.js?v=769"></script>
-    <script src="js/openai-ai.js?v=769"></script>
-    <script src="js/input.js?v=769"></script>
-    <script src="js/director.js?v=769"></script>
-    <script src="js/ui.js?v=769"></script>
-    <script src="js/game.js?v=769"></script>
+    <script src="js/engine/math3d.js?v=770"></script>
+    <script src="js/engine/glcore.js?v=770"></script>
+    <script src="js/engine/texgen.js?v=770"></script>
+    <script src="js/engine/mesh.js?v=770"></script>
+    <script src="js/engine/buildings.js?v=770"></script>
+    <script src="js/engine/units.js?v=770"></script>
+    <script src="js/engine/gamerenderer.js?v=770"></script>
+    <script src="js/i18n.js?v=770"></script>
+    <script src="js/civilizations.js?v=770"></script>
+    <script src="js/buildings.js?v=770"></script>
+    <script src="js/units.js?v=770"></script>
+    <script src="js/resources.js?v=770"></script>
+    <script src="js/terrain.js?v=770"></script>
+    <script src="js/fogofwar.js?v=770"></script>
+    <script src="js/ai.js?v=770"></script>
+    <script src="js/analyzer.js?v=770"></script>
+    <script src="js/transcript.js?v=770"></script>
+    <script src="js/openai-ai.js?v=770"></script>
+    <script src="js/input.js?v=770"></script>
+    <script src="js/director.js?v=770"></script>
+    <script src="js/ui.js?v=770"></script>
+    <script src="js/game.js?v=770"></script>
 </body>
 </html>

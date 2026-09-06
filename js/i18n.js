@@ -2140,6 +2140,123 @@ const I18N_OUTCOMES_2 = {
 Object.keys(I18N_OUTCOMES_2).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_OUTCOMES_2[l]); });
 
 // Controls-reference card (the "?" button in both HUDs).
+// Presentation controls: local preferences, independent of match settings.
+const I18N_VIEW = {
+    "en": {
+        "view.connection": "Connection",
+        "view.budgets": "Model and budgets",
+        "view.advanced": "Advanced settings",
+        "view.layout": "View",
+        "view.balanced": "Balanced",
+        "view.watch": "Watch",
+        "view.read": "Read",
+        "view.compare": "Compare",
+        "view.custom": "Custom",
+        "view.text": "Text",
+        "view.comfortable": "Comfortable",
+        "view.compact": "Compact",
+        "view.replayRate": "Steps / second",
+        "view.timelineAll": "All entries",
+        "view.position": "Entry {n} of {total}",
+        "view.playRate": "Play filtered entries: {n} steps per second",
+        "view.camera": "Camera",
+        "view.overview": "Overview",
+        "view.selection": "Selection",
+        "view.reset": "Reset view",
+        "view.zoomIn": "Zoom in",
+        "view.zoomOut": "Zoom out",
+        "view.turnLeft": "Rotate left",
+        "view.turnRight": "Rotate right",
+        "view.noSelection": "Select a unit or building first.",
+        "view.mapHeight": "Map height (%)"
+    },
+    "de": {
+        "view.connection": "Verbindung",
+        "view.budgets": "Modell und Budgets",
+        "view.advanced": "Erweiterte Einstellungen",
+        "view.layout": "Ansicht",
+        "view.balanced": "Ausgewogen",
+        "view.watch": "Beobachten",
+        "view.read": "Lesen",
+        "view.compare": "Vergleichen",
+        "view.custom": "Individuell",
+        "view.text": "Text",
+        "view.comfortable": "Gut lesbar",
+        "view.compact": "Kompakt",
+        "view.replayRate": "Schritte / Sekunde",
+        "view.timelineAll": "Alle Einträge",
+        "view.position": "Eintrag {n} von {total}",
+        "view.playRate": "Gefilterte Einträge abspielen: {n} Schritte pro Sekunde",
+        "view.camera": "Kamera",
+        "view.overview": "Übersicht",
+        "view.selection": "Auswahl",
+        "view.reset": "Ansicht zurücksetzen",
+        "view.zoomIn": "Vergrößern",
+        "view.zoomOut": "Verkleinern",
+        "view.turnLeft": "Nach links drehen",
+        "view.turnRight": "Nach rechts drehen",
+        "view.noSelection": "Wähle zuerst eine Einheit oder ein Gebäude aus.",
+        "view.mapHeight": "Kartenhöhe (%)"
+    },
+    "es": {
+        "view.connection": "Conexión",
+        "view.budgets": "Modelo y presupuestos",
+        "view.advanced": "Ajustes avanzados",
+        "view.layout": "Vista",
+        "view.balanced": "Equilibrada",
+        "view.watch": "Observar",
+        "view.read": "Leer",
+        "view.compare": "Comparar",
+        "view.custom": "Personalizada",
+        "view.text": "Texto",
+        "view.comfortable": "Cómodo",
+        "view.compact": "Compacto",
+        "view.replayRate": "Pasos / segundo",
+        "view.timelineAll": "Todas las entradas",
+        "view.position": "Entrada {n} de {total}",
+        "view.playRate": "Reproducir entradas filtradas: {n} pasos por segundo",
+        "view.camera": "Cámara",
+        "view.overview": "Vista general",
+        "view.selection": "Selección",
+        "view.reset": "Restablecer vista",
+        "view.zoomIn": "Acercar",
+        "view.zoomOut": "Alejar",
+        "view.turnLeft": "Girar a la izquierda",
+        "view.turnRight": "Girar a la derecha",
+        "view.noSelection": "Selecciona primero una unidad o un edificio.",
+        "view.mapHeight": "Altura del mapa (%)"
+    },
+    "zh": {
+        "view.connection": "连接",
+        "view.budgets": "模型与预算",
+        "view.advanced": "高级设置",
+        "view.layout": "视图",
+        "view.balanced": "均衡",
+        "view.watch": "观看",
+        "view.read": "阅读",
+        "view.compare": "比较",
+        "view.custom": "自定义",
+        "view.text": "文本",
+        "view.comfortable": "舒适",
+        "view.compact": "紧凑",
+        "view.replayRate": "步 / 秒",
+        "view.timelineAll": "所有条目",
+        "view.position": "第 {n} 条，共 {total} 条",
+        "view.playRate": "播放筛选后的条目：每秒 {n} 步",
+        "view.camera": "相机",
+        "view.overview": "全图",
+        "view.selection": "所选对象",
+        "view.reset": "重置视图",
+        "view.zoomIn": "放大",
+        "view.zoomOut": "缩小",
+        "view.turnLeft": "向左旋转",
+        "view.turnRight": "向右旋转",
+        "view.noSelection": "请先选择一个单位或建筑。",
+        "view.mapHeight": "地图高度（%）"
+    }
+};
+Object.keys(I18N_VIEW).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_VIEW[l]); });
+
 const I18N_HELP = {
     en: {
         'help.title': 'Controls', 'help.close': 'Close', 'help.camera': 'Camera',
@@ -2217,6 +2334,7 @@ function applyI18n(root) {
     root.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.getAttribute('data-i18n-html')); });
     root.querySelectorAll('[data-i18n-ph]').forEach(el => { el.setAttribute('placeholder', t(el.getAttribute('data-i18n-ph'))); });
     root.querySelectorAll('[data-i18n-title]').forEach(el => { el.setAttribute('title', t(el.getAttribute('data-i18n-title'))); });
+    root.querySelectorAll('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', t(el.getAttribute('data-i18n-aria'))); });
     // Keep any GUI language <select> in sync with the active language.
     root.querySelectorAll('[data-i18n-lang]').forEach(el => { el.value = _uiLang; });
     // Keep any difficulty <select> in sync with the saved difficulty.
