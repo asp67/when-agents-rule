@@ -9,7 +9,7 @@ function context() {
         TexGen:{TERRAIN_WORLD:1000,TERRAIN_LAND:417,TERRAIN_SEED:12345}};
     scope.document={createElement:()=>({getContext:()=>({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)}),putImageData(img){scope.lastImage=img;}})})};
     vm.createContext(scope);
-    for(const name of ['math3d','mesh','texgen','atmosphere','buildings','gamerenderer']) {
+    for(const name of ['math3d','mesh','texgen','atmosphere','units','buildings','gamerenderer']) {
         vm.runInContext(fs.readFileSync(path.join(root,'js/engine',name+'.js'),'utf8'),scope);
         Object.assign(scope,scope.window);
     }
@@ -75,4 +75,78 @@ test('shadow pass uses only admitted opaque geometry and restores the default fr
     assert.equal(gl.calls.at(-1)[0],'bindFramebuffer');assert.equal(gl.calls.at(-1)[2],null);
     assert.ok(Array.from(r._lightMatrix).every(Number.isFinite));
     r.visualStyle='classic';drawn.length=0;r._renderShadows();assert.equal(drawn.length,0);
+});
+
+test('all civilization/unit tiers produce outward, finite geometry within WebGL 1 index limits',()=>{
+    const s=context();
+    for(const civ of ['greek','egyptian','yamato','persian']) {
+        for(const type of s.EngineUnits.TYPES) for(const tier of [1,2,3]) {
+            const options={civ,tier,badge:'circle'};
+            const parts=s.EngineUnits.parts(type,options), batches=s.EngineUnits.batches(parts);
+            assert.deepEqual(options,{civ,tier,badge:'circle'},'composition must not mutate caller options');
+            for(const b of batches) {
+                const label=`${civ}/${type}/${tier}/${b.tex}/${b.bone}`;
+                assert.ok(b.mesh.positions.every(Number.isFinite),label);
+                assert.ok(b.mesh.normals.every(Number.isFinite),label);
+                assert.equal(s.EngineMesh.auditWinding(b.mesh),0,label);
+                assert.ok(b.mesh.indices.every(i=>i>=0 && i<65536 && i<b.mesh.positions.length/3),label);
+            }
+            if(type==='infantry' && tier>=2) assert.ok(batches.length<=20,'armor detail must stay batched');
+        }
+    }
+    // The standing chariot rider uses a separate composition from mounted cavalry.
+    for(const b of s.EngineUnits.batches(s.EngineUnits.parts('cavalry',{civ:'egyptian',unit:'horse_carriage'}))) {
+        assert.equal(s.EngineMesh.auditWinding(b.mesh),0);
+    }
+});
+
+test('baking scaled armor preserves positions and unit normals through every limb pose',()=>{
+    const s=context(),m=s.M3D;
+    const transform=(a,p,w)=>[0,1,2].map(r=>a[r]*p[0]+a[4+r]*p[1]+a[8+r]*p[2]+a[12+r]*w);
+    const parts=s.EngineUnits.parts('infantry',{civ:'greek',tier:3,badge:'diamond'});
+    for(const animation of ['idle','walk','attack','harvest']) {
+        const pose=s.EngineUnits.pose('infantry',animation,.61,.3);
+        for(const part of parts) {
+            const original=s.EngineMesh[part.kind](...part.args), baked=s.EngineMesh.mergeParts([part]);
+            const bone=pose.mats[part.bone]||m.identity();
+            for(let i=0;i<original.positions.length;i+=3) {
+                const expected=transform(bone,transform(part.m,original.positions.slice(i,i+3),1),1);
+                const actual=transform(bone,baked.positions.slice(i,i+3),1);
+                actual.forEach((v,k)=>assert.ok(Math.abs(v-expected[k])<1e-6));
+                assert.ok(Math.abs(Math.hypot(...baked.normals.slice(i,i+3))-1)<1e-6);
+            }
+        }
+    }
+});
+
+test('unit batches share geometry across seats while keeping team and badge tints per instance',()=>{
+    const s=context(),r=Object.create(s.EngineRenderer.prototype);
+    s.GLCore={createMeshBuffers:(_,mesh)=>({mesh})};
+    s.getTeamBadge=()=>({shape:'circle'});
+    Object.assign(r,{units:[],gl:{},tex:new Proxy({},{get:(_,key)=>key}),WHITE:[1,1,1]});
+    r._badgeTints=seat=>({fill:[seat,0,0],rim:[0,seat,0]});
+    const a={unitType:'infantry',type:'warrior',civilization:'greek',seat:1,color:0xff0000};
+    const b={...a,seat:2,color:0x0000ff};
+    r.addUnit(a);r.addUnit(b);
+    assert.equal(r._unitModels.size,1);
+    a._engine.entries.forEach((entry,i)=>assert.equal(entry.buf,b._engine.entries[i].buf));
+    assert.ok(a._engine.entries.some((entry,i)=>JSON.stringify(entry.tint)!==JSON.stringify(b._engine.entries[i].tint)));
+});
+
+test('tree forks meet the trunk, with a single closed canopy and unchanged resource data',()=>{
+    const s=context(),r=Object.create(s.EngineRenderer.prototype);
+    Object.assign(r,{_resEntries:new WeakMap(),_theme:'summer',tex:{shadow:'shadow',bark:'bark',foliage:'foliage'}});
+    r._buf=(kind,args)=>({kind,args});
+    for(let i=0;i<4;i++) {
+        const res={type:'wood',x:17,z:-32,amount:100},before={...res};
+        const entries=r._resourceEntries(res,i), crowns=entries.opaque.filter(e=>e.buf.kind==='canopy');
+        assert.equal(crowns.length,1);
+        assert.equal(s.EngineMesh.auditWinding(s.EngineMesh.canopy(i)),0);
+        for(const fork of entries.opaque.filter(e=>e.buf.kind==='cylinder'&&e.buf.args[0]===.09)) {
+            const half=fork.buf.args[2]/2,m=fork.model;
+            assert.ok(Math.hypot(m[12]-m[4]*half-res.x,m[14]-m[6]*half-res.z)<1e-5,'fork bottom must meet trunk axis');
+        }
+        assert.deepEqual(res,before);
+        assert.equal(r._resourceEntries(res,i),entries,'resource geometry stays cached');
+    }
 });

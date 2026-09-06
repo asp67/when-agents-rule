@@ -198,7 +198,7 @@
             this._theme = theme;
             const gl = this.gl;
             const canopyBase = theme === 'winter' ? [58, 92, 66]
-                : (theme === 'desert' ? [110, 116, 62] : [74, 112, 58]);
+                : (theme === 'desert' ? [110, 116, 62] : [83, 108, 61]);
             const T = (c, o) => GLCore.createTextureFromCanvas(gl, c, o);
             this.tex = {
                 coast: T(TexGen.coastMask(), { clamp: true }),
@@ -603,12 +603,16 @@
                 if (this._theme === 'winter') {
                     add('cylinder', [0, 1, 1, 8], 'foliage', TRS(res.x, 3.1 * s, res.z, 2.2 * s, 3.4 * s, 2.2 * s));
                 } else {
-                    // Uneven crowns with a visible fork: one resource remains one tree.
-                    for (let branch=0; branch<3; branch++) {
-                        const a=rot+branch*2.094, dx=Math.cos(a), dz=Math.sin(a);
-                        add('cylinder',[0.10,0.18,1.7,6],'bark',TRS(res.x+dx*.45*s,2.1*s,res.z+dz*.45*s,s,s,s,rot));
-                        add('sphere',[1,10,7],'foliage',TRS(res.x+dx*.86*s,(3.1+branch*.26)*s,res.z+dz*.86*s,1.4*s,1.2*s,1.45*s,a));
+                    // Branch endpoints start inside the trunk and finish inside a
+                    // single crown. Previously three upright stubs were detached.
+                    for(let branch=0;branch<2;branch++) {
+                        const a=rot+branch*2.6, dx=Math.sin(a), dz=Math.cos(a);
+                        let fork=m3.multiply(m3.translation(res.x+dx*.45*s,2.2*s,res.z+dz*.45*s),m3.rotationY(a));
+                        fork=m3.multiply(fork,m3.rotationX(Math.atan2(.9,1.4)));
+                        fork=m3.multiply(fork,m3.scaling(s,s,s));
+                        add('cylinder',[.09,.19,Math.hypot(.9,1.4),8],'bark',fork);
                     }
+                    add('canopy',[i%4],'foliage',TRS(res.x,3.3*s,res.z,2.15*s,1.38*s,1.88*s,rot));
                 }
             } else if (res.type === 'stone') {
                 add('disc', [2.0, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
@@ -656,13 +660,20 @@
             const tint = this._tintOf(unit.color);
             const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(unit.seat) : null;
             const badge = this._badgeTints(unit.seat, tint);
-            const entries = EngineUnits.parts(engineType, {
-                civ: unit.civilization, unit: unit.type,
-                badge: bdef ? bdef.shape : null // per-seat badge shape on the chest
-            }).map(p => ({
-                buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
-                tint: p.accent ? badge[p.accent] : (p.team ? tint : this.WHITE),
-                base: p.m, bone: p.bone, blend: p.blend, model: p.m
+            const options={civ:unit.civilization,unit:unit.type,badge:bdef?bdef.shape:null};
+            const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge]);
+            if(!this._unitModels) this._unitModels=new Map();
+            if(!this._unitModels.has(modelKey)) {
+                const batches=EngineUnits.batches(EngineUnits.parts(engineType,options));
+                this._unitModels.set(modelKey,batches.map(p=>({
+                    buf:GLCore.createMeshBuffers(this.gl,p.mesh), texName:p.tex,
+                    team:p.team,accent:p.accent,bone:p.bone,blend:p.blend
+                })));
+            }
+            const entries=this._unitModels.get(modelKey).map(p=>({
+                buf:p.buf,tex:this.tex[p.texName],
+                tint:p.accent?badge[p.accent]:(p.team?tint:this.WHITE),
+                base:M().identity(),bone:p.bone,blend:p.blend,model:M().identity()
             }));
             unit._engine = { type: engineType, entries, phase: (this.units.length * 1.37) % 6.28 };
             // inert THREE-shaped handles for game.js/fogofwar.js property pokes

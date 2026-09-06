@@ -8,13 +8,15 @@ Serve the repository over HTTP and open `http://localhost:8080/?showcase=1`, or 
 
 ## What changed
 
-- A shared charcoal, limestone and bronze theme covers the start page, model library, live HUD and analyzer. The start title uses a system serif font; no fonts or other assets are downloaded.
+- A shared charcoal, limestone and bronze theme covers the start page, Arena/campaign configuration, model library, live HUD and analyzer. Configuration and library now include nested controls, expanded model settings, authentication hints, model pickers, prompt editors, empty states and action buttons; team colors and connection-status colors remain distinct. The start title uses a system serif font; no fonts or other assets are downloaded.
 - Camera controls belong to the minimap frame during play. In the analyzer they occupy the lower-right edge of the viewport. Overview, focus selected, and zoom are visible; the chevron opens reset, rotation and graphics settings.
 - Directional cast shadows use a WebGL 1 colour/depth framebuffer and a nine-sample filter. Only opaque geometry already admitted to the visible scene is submitted as a caster. Remembered/translucent entities do not gain solid shadows.
 - Lighting now accounts for nonuniform model scaling, adds cool sky fill against warm sunlight, and preserves bright stone with a mild tone curve. Metallic surfaces receive a restrained highlight.
-- World-coordinate water normals animate reflected sky and sunlight. A separate mask follows the same coast sampler as the terrain and foam, joining the coastal and offshore water treatment. The playable square remains land.
+- World-coordinate water normals animate reflected sky and sunlight. The former crossing sine waves produced a repeating bright lattice; they have been replaced by two scales of advected gradient noise, softer sunlight reflections, distance-attenuated fine slopes, and much quieter baked water grain. A separate mask follows the same coast sampler as the terrain and foam, joining the coastal and offshore water treatment. The playable square remains land.
 - Greek Bronze/Iron buildings gain limestone courses, column capitals, cornices, terracotta roofs and window details. Decorative parts do not enlarge the measured structural footprint. Other civilizations retain their existing compositions in this milestone.
-- Summer trees have uneven, branched crowns and the summer terrain uses a quieter olive palette. Resource locations, quantities, ownership and collision rules are unaffected.
+- Units now use miniature-soldier proportions inspired by the supplied thumbnail: exposed faces, sculpted helmets, rounded armor, convex shields, flared capes and distinct weapons. Workers, ranged units, priests and cavalry riders share the revised faces and cultural headgear; infantry armor grows with tier. The four civilization identities, per-seat badges and existing limb pivots are retained. This is procedural artwork, not an imported or exact recreation of the thumbnail.
+- Unit parts are baked and grouped by material, bone, team mask and badge accent; cached GPU geometry is shared across seats while colors remain per instance. A Greek champion uses 20 batches for 45 visible/shadow parts. More triangles still cost GPU time; hardware performance has not been measured.
+- Summer/desert trees use one continuous, asymmetrical, scalloped crown instead of overlapping spheres. Angled forks meet the trunk and terminate inside the canopy. Broad foliage color replaces the speckled highlight texture. Winter retains its conifer silhouette. The summer terrain uses a quieter olive palette. Resource locations, quantities, ownership and collision rules are unaffected.
 
 ## Compare and tune
 
@@ -32,9 +34,10 @@ Graphics quality is saved locally, separately from match/model exports. Shadow t
 
 ## Verification and limits
 
-- `node --test tests/*.test.cjs` exercises camera/replay state, water-mask alignment, Greek geometry winding, shadow fallback and target disposal, and visibility-limited shadow submission.
+- `node --test tests/*.test.cjs` exercises camera/replay state, water-mask alignment, Greek geometry winding, shadow fallback and target disposal, visibility-limited shadow submission, all unit/civilization tiers, baked geometry under limb poses, per-seat tint isolation and connected tree forks.
 - Both main and shadow shader pairs compile and link with glslangValidator, including the lower-precision fragment variant.
 - An offline application startup check, with real procedural texture generation and mocked GPU calls, reaches the playable showcase and verifies moving the camera toolbar between game and analyzer docks.
+- Offline mesh inspection checks the new unit proportions from front/rear and the tree silhouette using flat material swatches and CPU lighting. It does not render the game shaders or establish final image quality.
 - Browser visual verification and hardware frame-rate measurements remain pending: the available browser blocks the local preview. The checks above do not establish screenshot quality or browser GPU correctness.
 
-The broader design programme still includes a rendered start-page backdrop, further civilization/unit artwork, richer combat animation, and a more substantial results/setup redesign. Those are not represented as complete by this milestone.
+The broader design programme still includes a rendered start-page backdrop, further civilization architecture and unit refinements, richer combat animation, and a more substantial results redesign. Those are not represented as complete by this milestone.

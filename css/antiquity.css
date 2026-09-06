@@ -39,6 +39,83 @@ button,input,select,textarea { font-family:inherit; }
 .mc-auth { background:#30382e; color:#c9cfbe; border-radius:3px; }
 .auth-hint,.mc-sub { color:var(--muted); }
 
+/* Configuration and library: include expanded cards, popups and empty states. */
+#arenaSetupScreen,#modelLibraryScreen {
+    background:var(--bg-0); color:var(--text); color-scheme:dark;
+    padding:clamp(16px,3vw,48px);
+}
+.arena-setup-content { max-width:1240px; padding:0; }
+.arena-setup-content > h2 {
+    font:400 clamp(2rem,4vw,3.5rem)/1.15 Georgia,serif;
+    letter-spacing:-.025em; color:var(--text); text-align:left; margin:12px 0;
+}
+.arena-setup-subtitle { text-align:left; color:var(--muted); max-width:800px; line-height:1.65; font-size:1rem; }
+.arena-setup-content > .lang-picker { border-bottom:1px solid var(--line); padding-bottom:20px; margin-bottom:28px; flex-wrap:wrap; }
+.arena-section { border-color:var(--line); padding:24px; margin-bottom:24px; }
+.arena-section-head { gap:16px; margin-bottom:22px; }
+.arena-step { background:transparent; color:var(--gold-2); border:1px solid var(--gold); border-radius:3px; font-weight:500; }
+.arena-section-head h3 { font-size:1.4rem; }
+.arena-section-head p,.lib-empty,.lib-summary-count,.arena-slot-summary,.arena-slot-caret,
+.auth-divider,.auth-hint,.arena-hint,.mc-toggle,.mdl-note,.mdl-none,.mdl-v { color:var(--muted); }
+.arena-section-head p { max-width:850px; line-height:1.6; }
+.arena-player-config,.arena-slot { background:#1b201b; border-color:var(--line); border-radius:3px; }
+.arena-slot { border-left:3px solid var(--civ,var(--gold)); padding:16px; }
+.arena-player-header { background:#2a3128; }
+.arena-slot-title,.mc-name,.model-section h3,.ctx-mini-toggle { color:var(--text); font-weight:600; }
+.campaign-setup-row { background:#272e25; border-color:var(--line); border-radius:3px; padding:18px; gap:20px; }
+.arena-field label { color:var(--gold-2); text-transform:none; letter-spacing:.015em; font-weight:500; }
+.arena-field select,.arena-field input[type="text"],.arena-field input[type="number"],
+.arena-prompt-textarea,.arena-field select option {
+    color:var(--text); background:#151a15; border-color:var(--line); border-radius:3px;
+}
+.arena-prompt-textarea { font-size:.85rem; line-height:1.6; padding:14px; }
+.arena-field select:focus,.arena-field input:focus,.arena-prompt-textarea:focus { border-color:var(--gold); outline:2px solid rgba(222,197,148,.3); outline-offset:2px; }
+.arena-setup-content input[type="checkbox"] { accent-color:var(--gold); }
+.model-card { border-color:var(--line); border-left:2px solid var(--gold); }
+.model-card.expanded { border-top-color:var(--gold); }
+.model-card-header { padding:6px 18px; }
+.model-card-body { padding:4px 18px 18px; gap:16px; }
+.model-section { border-color:var(--line); }
+.model-card-header:hover { background:#2c342a; }
+.mc-auth { color:var(--gold-2); background:#38362a; }
+.auth-hint.ollama-hint,.auth-hint.lanes-warn { color:var(--text); background:#383225; border-left-color:var(--gold); border-radius:2px; }
+.xp-tag,.slot-prompt-badge { color:var(--gold-2); border-color:var(--gold); background:#383225; }
+.mdl-pop { background:#20271f; border-color:var(--line); }
+.mdl-caret { color:var(--muted); }
+.mdl-row:hover,.mdl-row.on { background:#3b4535; }
+.slot-diff { background:#151a15; border-color:var(--line); border-radius:3px; }
+.hdr-add-btn,.lib-add-btn,.lib-io-btn,.ctx-max-btn,.lib-sort-btn,.hr-del {
+    background:transparent; color:var(--text); border:1px solid var(--line); border-radius:3px; font-weight:500;
+}
+.hdr-add-btn:hover,.lib-add-btn:hover,.lib-io-btn:hover,.ctx-max-btn:hover,.hr-del:hover,.lib-sort-btn:hover {
+    background:#343d2f; color:var(--gold-2); border-color:var(--gold);
+}
+.lib-sort-btn.on { background:#3b3c2d; color:var(--gold-2); border-color:var(--gold); }
+.lib-open-btn,.test-btn,#setupStartBtn {
+    background:var(--gold); color:#171b16; border:1px solid var(--gold); border-radius:3px; font-weight:600;
+}
+.lib-open-btn:hover,.test-btn:hover,#setupStartBtn:hover { background:var(--gold-2); filter:none; }
+.model-remove { background:#362722; color:#edab99; border-color:#785044; border-radius:3px; }
+.model-remove:hover { background:#52332b; }
+.mc-status.ok,.test-status.ok { color:#aad1a5; }
+.mc-status.err,.test-status.err { color:#f0a08e; }
+.mc-status.pending,.test-status.pending { color:var(--gold-2); }
+.arena-setup-buttons { justify-content:flex-start; flex-wrap:wrap; border-top:1px solid var(--line); margin-top:28px; padding-top:22px; }
+.arena-setup-buttons .back-btn { background:transparent; }
+.arena-setup-buttons .back-btn:hover { background:#343c30; box-shadow:none; }
+.arena-setup-buttons .menu-btn { min-width:0; padding:12px 22px; font-size:.95rem; }
+@media(max-width:600px) {
+    .arena-section { padding:16px; }
+    .arena-section-head { gap:10px; }
+    .campaign-setup-row { padding:12px; }
+    .campaign-setup-row .f-turnbased { min-width:0; flex-basis:100%; }
+    .auth-grid,.arena-slots,.arena-players-grid { grid-template-columns:minmax(0,1fr); }
+    .arena-field-row,.model-card-top,.header-row { flex-wrap:wrap; }
+    .arena-field-row > .arena-field { min-width:0; flex-basis:100%; }
+    .lib-sortbar { margin-left:0; flex-wrap:wrap; }
+    .lib-actions > button { flex:1 1 auto; }
+}
+
 /* The world supplies colour. The furniture uses one neutral surface and one accent. */
 #gameCanvas canvas { filter:none; }
 #gameScreen::after { background:radial-gradient(ellipse at center,transparent 60%,rgba(18,20,16,.14)); }

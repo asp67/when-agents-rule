@@ -38,6 +38,21 @@
         varying vec2 vUv;
         varying float vDepth;
         varying vec4 vShadow;
+        // Bounded arithmetic also works on WebGL 1 mediump implementations.
+        float waveHash(vec2 p) {
+            p = fract(p * vec2(0.1031,0.11369));
+            p += dot(p,p.yx+19.19);
+            return fract((p.x+p.y)*p.x);
+        }
+        // Value and analytic gradient of a smooth, aperiodic wave field.
+        vec3 waveField(vec2 p) {
+            vec2 i=floor(p), f=fract(p), u=f*f*(3.0-2.0*f);
+            vec2 du=6.0*f*(1.0-f);
+            float a=waveHash(i), b=waveHash(i+vec2(1.0,0.0));
+            float c=waveHash(i+vec2(0.0,1.0)), d=waveHash(i+vec2(1.0));
+            return vec3(mix(mix(a,b,u.x),mix(c,d,u.x),u.y),
+                mix(b-a,d-c,u.y)*du.x, mix(c-a,d-b,u.x)*du.y);
+        }
         float shadowSample(vec2 uv, float depth) {
             vec2 enc = texture2D(uShadowMap, uv).rg;
             return step(depth, dot(enc, vec2(1.0, 1.0 / 255.0)));
@@ -70,19 +85,27 @@
             vec3 light = skyFill + uSunColor*sun*visibility(n);
             vec3 col = base*light;
             if (uMaterial > 2.5 && uMaterial < 3.5) {
-                col += vec3(0.70,0.58,0.37)*pow(max(dot(n,normalize(eye+uSunDir)),0.0),40.0)*0.32;
+                // Broad polished highlight plus sky rim; silver stays silver.
+                vec3 specTint=mix(vec3(1.0),base,0.3);
+                float spec=pow(max(dot(n,normalize(eye+uSunDir)),0.0),48.0);
+                float rim=pow(1.0-max(dot(n,eye),0.0),4.0);
+                col += specTint*spec*0.85 + uSky*rim*0.22;
             }
             if (water > 0.01) {
                 // World coordinates keep offshore and coastal waves continuous.
                 vec2 p = vWorld.xz;
-                float a = p.x*0.20+p.y*0.13+uTime*0.65;
-                float b = p.x*-0.11+p.y*0.25-uTime*0.43;
-                vec3 wn = normalize(vec3(cos(a)*0.16+cos(b)*0.10,1.0,sin(a)*0.12+sin(b)*0.16));
-                float fresnel = pow(1.0-max(dot(eye,wn),0.0),3.0);
-                float glint = pow(max(dot(wn,normalize(eye+uSunDir)),0.0),90.0);
-                vec3 sea = mix(base*vec3(0.66,0.94,1.03),uSky*0.82,fresnel*0.65);
-                sea += vec3(1.0,0.86,0.63)*glint*0.65;
-                sea += vec3(0.018,0.035,0.034)*sin(a+b);
+                vec3 swell=waveField(p*0.032+vec2(uTime*0.018,-uTime*0.009));
+                mat2 turn=mat2(0.8,0.6,-0.6,0.8);
+                vec3 chop=waveField(turn*p*0.11+vec2(-uTime*0.055,uTime*0.023));
+                // Suppress fine slopes in distant/overview shots; no glitter aliasing.
+                float detail=1.0-smoothstep(100.0,550.0,distance(uEye,vWorld));
+                vec2 grad=swell.yz*0.13 + vec2(dot(turn[0],chop.yz),dot(turn[1],chop.yz))*0.075*detail;
+                vec3 wn=normalize(vec3(-grad.x,1.0,-grad.y));
+                float fresnel=0.035+0.965*pow(1.0-max(dot(eye,wn),0.0),5.0);
+                float glint=pow(max(dot(wn,normalize(eye+uSunDir)),0.0),48.0);
+                vec3 sea=mix(base*vec3(0.72,0.96,1.02),uSky*0.72,fresnel*0.8);
+                sea += vec3(1.0,0.91,0.74)*glint*0.42;
+                sea *= 0.98+swell.x*0.04;
                 col = mix(col,sea,water);
             }
             // A mild shoulder preserves bright plaster without bleaching the scene.

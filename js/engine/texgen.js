@@ -213,25 +213,12 @@
         const rand = TexGen.rng(seed || 5);
         const size = opts.size || 128;
         const c = canvas(size), ctx = c.getContext('2d');
-        noisyFill(ctx, size, base || [74, 112, 58], [
-            { noise: TexGen.valueNoise(size, 9, rand), amp: 26 },
-            { noise: TexGen.valueNoise(size, 28, rand), amp: 14 }
+        // Broad colour masses; lighting and crown shape supply the detail.
+        // Bright baked flecks used to look like spots glued onto green balloons.
+        noisyFill(ctx,size,base||[83,108,61],[
+            {noise:TexGen.valueNoise(size,5,rand),amp:12},
+            {noise:TexGen.valueNoise(size,12,rand),amp:4}
         ]);
-        // shadowed leaf clumps
-        for (let i = 0; i < 26; i++) {
-            const x = rand() * size, y = rand() * size, r = 5 + rand() * 12;
-            const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-            g.addColorStop(0, 'rgba(20,36,16,0.28)');
-            g.addColorStop(1, 'rgba(20,36,16,0)');
-            ctx.fillStyle = g;
-            ctx.fillRect(x - r, y - r, r * 2, r * 2);
-        }
-        // lit leaf flecks
-        for (let i = 0; i < size * 6; i++) {
-            const v = 120 + rand() * 90;
-            ctx.fillStyle = `rgba(${v * 0.62 | 0},${v | 0},${v * 0.45 | 0},0.45)`;
-            ctx.fillRect(rand() * size, rand() * size, 1.5, 1.5);
-        }
         // berries
         if (opts.berries) {
             for (let i = 0; i < 42; i++) {
@@ -682,7 +669,7 @@
         const rand = TexGen.rng(seed);
         const broad = TexGen.noiseSampler(6, rand);    // ~67-unit swell
         const fine = TexGen.noiseSampler(22, rand);    // ~18-unit grain
-        return (u, v) => (broad(u, v) - 0.5) * 7 + (fine(u, v) - 0.5) * 11;
+        return (u, v) => (broad(u, v) - 0.5) * 3 + (fine(u, v) - 0.5) * 2;
     };
     TexGen.openWater = (theme, seed = TexGen.OPEN_WATER_SEED, size = 512) => {
         const P = (TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer).waterDeep;
