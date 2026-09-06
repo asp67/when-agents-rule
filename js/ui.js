@@ -195,13 +195,20 @@ class UIManager {
     cameraAction(action) {
         const r = this.game.renderer;
         if (!r) return;
-        const units = (r.selectedUnits || []).filter(u => Number.isFinite(u.x) && Number.isFinite(u.z));
-        const building = this.game.selectedBuilding;
-        const picked = this._anPicked && this._anPicked.ent;
-        const point = picked || building || (units.length ? {
+        // Spectator picks set entity.selected directly; campaign/replay also keep
+        // a selectedUnits list. Use the flags rendered by all three modes.
+        const valid = ent => ent && !(ent.health <= 0)
+            && Number.isFinite(ent.x) && Number.isFinite(ent.z);
+        const units = (r.units || []).filter(u => u.selected && valid(u));
+        const candidate = this.game.selectedBuilding;
+        const building = valid(candidate) && (r.buildings || []).includes(candidate)
+            && (candidate.selected || (this._infoSubject && this._infoSubject.building === candidate))
+            ? candidate : null;
+        // A previous building reference can survive selecting a unit or group.
+        const point = units.length ? {
             x: units.reduce((sum, u) => sum + u.x, 0) / units.length,
             z: units.reduce((sum, u) => sum + u.z, 0) / units.length
-        } : null);
+        } : building;
         if (action === 'selection' && !point) { this.showInfoMessage(t('view.noSelection')); return; }
         this.game.disableActionCam();
         r.setCameraView(action, point);

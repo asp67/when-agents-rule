@@ -167,3 +167,53 @@ test('repeated analyzer renders restore campaign input and clear replay state on
     assert.equal(h.ui.game.spectatorMode, false);
     assert.equal(h.ui.game.fogOfWar, null);
 });
+
+function selectionHarness() {
+    const h = harness(), r = h.renderer;
+    h.context.window.addEventListener = () => {};
+    h.context.location = { hostname: 'localhost', protocol: 'http:', search: '' };
+    h.context.t = key => key;
+    vm.runInContext(source('js/game.js') + '\nthis.Game = Game;', h.context);
+    const game = Object.create(h.context.Game.prototype);
+    Object.assign(game, { renderer: r, ui: h.ui, aiManager: { aiPlayers: [] },
+        getAllUnits: () => r.units, disableActionCam: () => {} });
+    h.ui.game = game;
+    h.ui.updateUnitInfo = (unit, building) => { h.ui._infoSubject = { unit, building }; };
+    game.updateUnitInfo = (...args) => h.ui.updateUnitInfo(...args);
+    h.ui.showInfoMessage = message => { h.message = message; };
+    Object.assign(r, { units: [], buildings: [], selectedUnits: [],
+        canvas: { getBoundingClientRect: () => ({ left: 0, top: 0 }) },
+        worldToScreen: (x, y, z) => ({ x, y: z }) });
+    return { ...h, game };
+}
+
+test('Selection focuses a unit picked through the live spectator path', () => {
+    const h = selectionHarness(), r = h.renderer;
+    const unit = { x: 70, z: 90, health: 100 };
+    r.units = [unit];
+    h.game.aiManager.aiPlayers = [{ units: [unit], buildings: [] }];
+    h.game.spectatorPick(70, 90);
+    assert.equal(unit.selected, true);
+    h.ui.cameraAction('selection');
+    assert.equal(r.cameraTarget.x, 70);
+    assert.equal(r.cameraTarget.z, 90);
+});
+
+test('Selection uses current unit groups ahead of a previous building and rejects stale selections', () => {
+    const h = selectionHarness(), r = h.renderer;
+    const building = { x: -100, z: -100, health: 100 };
+    const units = [{ x: 40, z: 60, health: 100 }, { x: 80, z: 100, health: 100 }];
+    r.units = units; r.buildings = [building];
+    h.game.selectedBuilding = building;
+    r.selectMultipleUnits(units);
+    h.ui.cameraAction('selection');
+    assert.equal(r.cameraTarget.x, 60); assert.equal(r.cameraTarget.z, 80);
+    h.game.selectBuilding(building);
+    h.ui.cameraAction('selection');
+    assert.equal(r.cameraTarget.x, -100); assert.equal(r.cameraTarget.z, -100);
+    // A replay rebuild removes the old entity, even if an old reference survives.
+    r.buildings = [];
+    r.setCameraView('overview');
+    h.ui.cameraAction('selection');
+    assert.equal(r.cameraTarget.x, 0); assert.equal(r.cameraTarget.z, 0);
+});
