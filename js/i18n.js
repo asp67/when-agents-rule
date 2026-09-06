@@ -2144,7 +2144,7 @@ Object.keys(I18N_OUTCOMES_2).forEach(l => { I18N[l] = Object.assign(I18N[l] || {
 const I18N_ART = {
     "en": {
         "art.kicker": "An arena for autonomous minds",
-        "art.enter": "Explore the Greek coast",
+        "art.enter": "Explore the civilizations",
         "art.analyze": "Analyze a match",
         "art.cameraOptions": "Camera and graphics",
         "art.quality": "Graphics",
@@ -2154,12 +2154,15 @@ const I18N_ART = {
         "art.light": "Lighting",
         "art.atmospheric": "Atmospheric",
         "art.simple": "Simple lighting",
-        "art.showcase": "Greek coast · playable showcase",
-        "art.showcaseHint": "An advanced Greek settlement against a rule-based opponent. No model connection required."
+        "art.showcase": "Civilizations · playable showcase",
+        "art.showcaseHint": "An advanced settlement with every unit class. Loading a civilization restarts this demo on the same map. No model connection required.",
+        "art.civilization": "Civilization",
+        "art.loadCivilization": "Load civilization",
+        "art.workers": "Inspect workers"
     },
     "de": {
         "art.kicker": "Eine Arena für autonome Denker",
-        "art.enter": "Die griechische Küste erkunden",
+        "art.enter": "Zivilisationen erkunden",
         "art.analyze": "Ein Match analysieren",
         "art.cameraOptions": "Kamera und Grafik",
         "art.quality": "Grafik",
@@ -2169,12 +2172,15 @@ const I18N_ART = {
         "art.light": "Licht",
         "art.atmospheric": "Atmosphärisch",
         "art.simple": "Einfache Beleuchtung",
-        "art.showcase": "Griechische Küste · spielbare Vorschau",
-        "art.showcaseHint": "Eine ausgebaute griechische Siedlung gegen einen regelbasierten Gegner. Keine Modellverbindung erforderlich."
+        "art.showcase": "Zivilisationen · spielbare Vorschau",
+        "art.showcaseHint": "Eine ausgebaute Siedlung mit allen Einheitenklassen. Das Laden einer Zivilisation startet diese Vorschau auf derselben Karte neu. Keine Modellverbindung nötig.",
+        "art.civilization": "Zivilisation",
+        "art.loadCivilization": "Zivilisation laden",
+        "art.workers": "Arbeiter ansehen"
     },
     "es": {
         "art.kicker": "Una arena para mentes autónomas",
-        "art.enter": "Explorar la costa griega",
+        "art.enter": "Explorar las civilizaciones",
         "art.analyze": "Analizar una partida",
         "art.cameraOptions": "Cámara y gráficos",
         "art.quality": "Gráficos",
@@ -2184,12 +2190,15 @@ const I18N_ART = {
         "art.light": "Iluminación",
         "art.atmospheric": "Atmosférica",
         "art.simple": "Iluminación sencilla",
-        "art.showcase": "Costa griega · muestra jugable",
-        "art.showcaseHint": "Una colonia griega avanzada contra un rival de reglas. No requiere conexión a un modelo."
+        "art.showcase": "Civilizaciones · muestra jugable",
+        "art.showcaseHint": "Una colonia avanzada con todas las clases de unidades. Cargar una civilización reinicia esta muestra en el mismo mapa. No requiere conexión a un modelo.",
+        "art.civilization": "Civilización",
+        "art.loadCivilization": "Cargar civilización",
+        "art.workers": "Ver trabajadores"
     },
     "zh": {
         "art.kicker": "自主智能的竞技场",
-        "art.enter": "探索希腊海岸",
+        "art.enter": "探索各个文明",
         "art.analyze": "分析一场对局",
         "art.cameraOptions": "相机与画质",
         "art.quality": "画质",
@@ -2199,8 +2208,11 @@ const I18N_ART = {
         "art.light": "光照",
         "art.atmospheric": "氛围光照",
         "art.simple": "基础光照",
-        "art.showcase": "希腊海岸 · 可玩预览",
-        "art.showcaseHint": "使用一座发展成熟的希腊城镇，对抗规则驱动的对手。无需连接模型。"
+        "art.showcase": "文明 · 可玩预览",
+        "art.showcaseHint": "一座包含所有单位类别的高级城镇。加载文明会在同一地图上重新开始预览。无需连接模型。",
+        "art.civilization": "文明",
+        "art.loadCivilization": "加载文明",
+        "art.workers": "查看工人"
     }
 };
 Object.keys(I18N_ART).forEach(l=>Object.assign(I18N[l],I18N_ART[l]));

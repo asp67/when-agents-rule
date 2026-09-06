@@ -4,7 +4,11 @@ This branch introduces the first playable slice of the new direction: warm stone
 
 ## Open the scene
 
-Serve the repository over HTTP and open `http://localhost:8080/?showcase=1`, or choose **Explore the Greek coast** on the local start page. The showcase is an explicitly advanced campaign start: a Greek Iron Age settlement, 11 buildings and 15 units, against one rule-based opponent. It uses the fixed resource seed `greek-coast-01`; no configured model endpoint is used. The advanced starting resources and settlement are specific to this demonstration, not a fair model comparison. Ordinary campaign and arena starts retain their existing rules.
+Serve the repository over HTTP and choose **Explore the civilizations** on the local start page. Pick Greek, Egyptian, Yamato or Persian before launching, or use the civilization picker and **Load civilization** in the showcase. Loading starts a fresh demo on the same coast; it does not convert an existing settlement in place.
+
+Direct links use `http://localhost:8080/?showcase=1&civ=greek` (also `egyptian`, `yamato`, `persian`). Omitting `civ` retains the Greek default. The showcase is an explicitly advanced Iron Age campaign start: 11 buildings and 15 units against one rule-based opponent. The lineup includes workers, three infantry tiers, three ranged tiers, three cavalry tiers and a priest. **Inspect workers** brings the camera to the starting workers at close zoom to check faces and headgear.
+
+All four variants use the fixed resource seed `greek-coast-01` and the same settlement layout; the seed name is retained for comparison with earlier previews. No configured model endpoint is used. Advanced starting resources and the settlement are specific to this demonstration, not a fair model comparison. Ordinary campaign and arena starts retain their existing rules.
 
 ## What changed
 
@@ -14,7 +18,7 @@ Serve the repository over HTTP and open `http://localhost:8080/?showcase=1`, or 
 - Lighting now accounts for nonuniform model scaling, adds cool sky fill against warm sunlight, and preserves bright stone with a mild tone curve. Metallic surfaces receive a restrained highlight.
 - World-coordinate water normals animate reflected sky and sunlight. The former crossing sine waves produced a repeating bright lattice; they have been replaced by two scales of advected gradient noise, softer sunlight reflections, distance-attenuated fine slopes, and much quieter baked water grain. A separate mask follows the same coast sampler as the terrain and foam, joining the coastal and offshore water treatment. The playable square remains land.
 - Greek Bronze/Iron buildings gain limestone courses, column capitals, cornices, terracotta roofs and window details. Decorative parts do not enlarge the measured structural footprint. Other civilizations retain their existing compositions in this milestone.
-- Units now use miniature-soldier proportions inspired by the supplied thumbnail: exposed faces, sculpted helmets, rounded armor, convex shields, flared capes and distinct weapons. Workers, ranged units, priests and cavalry riders share the revised faces and cultural headgear; infantry armor grows with tier. The four civilization identities, per-seat badges and existing limb pivots are retained. This is procedural artwork, not an imported or exact recreation of the thumbnail.
+- Units now use miniature-soldier proportions inspired by the supplied thumbnail: exposed faces, sculpted helmets, rounded armor, convex shields, flared capes and distinct weapons. Workers, ranged units, priests and cavalry riders share the revised faces and cultural headgear; infantry armor grows with tier. Civilian Yamato brims and Persian caps now sit just above the eyebrows instead of sharing the military helmet offset. The four civilization identities, per-seat badges and existing limb pivots are retained. This is procedural artwork, not an imported or exact recreation of the thumbnail.
 - Unit parts are baked and grouped by material, bone, team mask and badge accent; cached GPU geometry is shared across seats while colors remain per instance. A Greek champion uses 20 batches for 45 visible/shadow parts. More triangles still cost GPU time; hardware performance has not been measured.
 - Summer/desert trees use one continuous, asymmetrical, scalloped crown instead of overlapping spheres. Angled forks meet the trunk and terminate inside the canopy. Broad foliage color replaces the speckled highlight texture. Winter retains its conifer silhouette. The summer terrain uses a quieter olive palette. Resource locations, quantities, ownership and collision rules are unaffected.
 
@@ -36,7 +40,7 @@ Graphics quality is saved locally, separately from match/model exports. Shadow t
 
 - `node --test tests/*.test.cjs` exercises camera/replay state, water-mask alignment, Greek geometry winding, shadow fallback and target disposal, visibility-limited shadow submission, all unit/civilization tiers, baked geometry under limb poses, per-seat tint isolation and connected tree forks.
 - Both main and shadow shader pairs compile and link with glslangValidator, including the lower-precision fragment variant.
-- An offline application startup check, with real procedural texture generation and mocked GPU calls, reaches the playable showcase and verifies moving the camera toolbar between game and analyzer docks.
+- An offline application startup check, with real procedural texture generation and mocked GPU calls, reaches all four civilization showcases, checks that every unit/building belongs to the chosen civilization, verifies the five unit classes, worker close-up and civilization-switch URL, and checks moving the camera toolbar between game and analyzer docks.
 - Offline mesh inspection checks the new unit proportions from front/rear and the tree silhouette using flat material swatches and CPU lighting. It does not render the game shaders or establish final image quality.
 - Browser visual verification and hardware frame-rate measurements remain pending: the available browser blocks the local preview. The checks above do not establish screenshot quality or browser GPU correctness.
 

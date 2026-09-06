@@ -150,3 +150,19 @@ test('tree forks meet the trunk, with a single closed canopy and unchanged resou
         assert.equal(r._resourceEntries(res,i),entries,'resource geometry stays cached');
     }
 });
+
+test('Yamato and Persian civilian hat rims sit above the eyebrows and overlap the head',()=>{
+    const s=context();
+    for(const civ of ['yamato','persian']) for(const type of ['worker','ranged']) {
+        const parts=s.EngineUnits.parts(type,{civ,tier:1});
+        const brow=parts.find(p=>p.kind==='box' && p.tex==='bark' && p.args[0]===.067);
+        const hat=parts.find(p=>p.kind==='cylinder' && (civ==='yamato'
+            ? p.tex==='thatch' && p.args[1]===.37
+            : p.tex==='cloth' && p.args[0]===.09 && p.args[1]===.23));
+        const head=parts.find(p=>p.kind==='sphere' && p.tex==='skin' && Math.abs(p.m[13]-1.49)<1e-5);
+        assert.ok(brow && hat && head,civ+'/'+type);
+        const bottom=hat.m[13]-hat.args[2]/2, browTop=brow.m[13]+brow.args[1]/2;
+        assert.ok(bottom>browTop && bottom-browTop<.025,civ+'/'+type+' brow clearance');
+        assert.ok(bottom<head.m[13]+head.m[5],civ+'/'+type+' must overlap skull');
+    }
+});

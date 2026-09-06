@@ -121,11 +121,14 @@
                 part(p,'cylinder',[S(.235),S(.31),S(.12),12],'iron',{x,y:y-S(.04),z:z-S(.035)});
                 for(const side of [-1,1]) part(p,'cylinder',[S(.014),S(.035),S(.20),8],'gold',
                     {x:x+side*S(.07),y:y+S(.21),z:z+S(.21),rz:side*-.55});
-            } else if(kind==='priest') part(p,'cylinder',[S(.065),S(.15),S(.29),10],'bark',{x,y:y+S(.24),z});
-            else part(p,'cylinder',[S(.025),S(.37),S(.18),16],'thatch',{x,y:y+S(.20),z});
+            } else if(kind==='priest') part(p,'cylinder',[S(.065),S(.15),S(.29),10],'bark',{x,y:y+S(.18),z});
+            // Brim at head centre + .11: just above the .085-high eyebrows.
+            else part(p,'cylinder',[S(.025),S(.37),S(.18),16],'thatch',{x,y:y+S(.125),z});
         } else if(civ==='persian') {
-            part(p,'cylinder',[S(.09),S(.23),S(.25),12],'cloth',{x,y:y+S(.24),z,team:true});
-            oval(p,'cloth',x,y+S(.37),z,S(.10),S(.06),S(.10),{team:true});
+            // Unarmored heads need a lower cap; the military cap rests on its helmet.
+            const lift=military?.24:.16;
+            part(p,'cylinder',[S(.09),S(.23),S(.25),12],'cloth',{x,y:y+S(lift),z,team:true});
+            oval(p,'cloth',x,y+S(lift+.13),z,S(.10),S(.06),S(.10),{team:true});
         } else if(!military) {
             if(kind==='priest') dome('cloth',true);
             else part(p,'cylinder',[S(.025),S(.35),S(.17),12],'thatch',{x,y:y+S(.20),z});
@@ -205,7 +208,7 @@
         worker: (o = {}) => {
             const p = [];
             humanoid(p, { badge: o.badge });
-            headgear(p, o.civ, 'civil', 0, 1.5, 0);
+            headgear(p, o.civ, 'civil', 0, 1.49, 0);
             part(p, 'cylinder', [0.028, 0.028, 0.55, 4], 'bark', { x: 0.37, y: 0.86, z: 0.08, bone: 'armR' });
             part(p, 'box', [0.06, 0.18, 0.26], 'iron', { x: 0.37, y: 1.1, z: 0.18, bone: 'armR' }); // axe head
             return p;
@@ -245,7 +248,7 @@
             humanoid(p, { sleeves: 'leather', badge: o.badge });
             if(tier>=2) shoulders(p,'leather');
             if (tier >= 2) headgear(p, o.civ, 'military', 0, 1.47, 0);
-            else if (o.civ) headgear(p, o.civ, 'civil', 0, 1.5, 0);
+            else if (o.civ) headgear(p, o.civ, 'civil', 0, 1.49, 0);
             else part(p, 'sphere', [1, 8, 6], 'leather', { y: 1.53, sx: 0.18, sy: 0.11, sz: 0.18 }); // generic cap
             if (tier === 2) {
                 // crossbow held level: stock, iron lath across it, stirrup nose —
