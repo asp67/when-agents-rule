@@ -259,3 +259,47 @@ test('horse legs stand symmetrically, remain joined at the hips, and carry a pro
         assert.ok(radius(skull)/radius(body)>.4,'skull has substantial length relative to barrel');
     }
 });
+
+test('mounted riders have complete, equally substantial arms and connected seated legs',()=>{
+    const s=context(),m=s.M3D;
+    const point=(a,p)=>[0,1,2].map(r=>a[r]*p[0]+a[4+r]*p[1]+a[8+r]*p[2]+a[12+r]);
+    const near=(a,b,label)=>assert.ok(a.every((v,i)=>Math.abs(v-b[i])<1e-6),label);
+    for(const civ of ['greek','egyptian','yamato','persian']) for(const tier of [1,2,3]) {
+        const parts=s.EngineUnits.parts('cavalry',{civ,tier});
+        const limbs=new Map(parts.filter(p=>p.riderLimb).map(p=>[p.riderLimb,p]));
+        assert.equal(limbs.size,8,'two upper arms, forearms, thighs and calves');
+        for(const [name,p] of limbs) {
+            near(point(p.m,[0,-p.args[2]/2,0]),p.jointStart,name+' start');
+            near(point(p.m,[0,p.args[2]/2,0]),p.jointEnd,name+' end');
+            const twin=limbs.get(name.slice(0,-1)+(name.endsWith('L')?'R':'L'));
+            assert.deepEqual(p.args.slice(0,2),twin.args.slice(0,2),'paired limb thickness');
+        }
+        for(const side of ['L','R']) {
+            const upper=limbs.get('upperArm'+side),forearm=limbs.get('forearm'+side);
+            assert.ok(upper.args[1]>=.08 && forearm.args[1]>=.07,'arms comparable to foot soldiers');
+            near(upper.jointEnd,forearm.jointStart,'joined elbow');
+            const palm=parts.find(p=>p.tex==='skin' && p.kind==='sphere' && p.bone==='arm'+side
+                && point(p.m,[0,0,0]).every((v,i)=>Math.abs(v-forearm.jointEnd[i])<1e-6));
+            assert.ok(palm,'hand meets forearm');
+            for(const anim of ['idle','walk','attack']) for(const t of [0,.2,.6]) {
+                const pose=s.EngineUnits.pose('cavalry',anim,t);
+                const a=pose.mats[upper.bone]||m.identity(),b=pose.mats[forearm.bone]||m.identity();
+                near(point(m.multiply(a,upper.m),[0,upper.args[2]/2,0]),
+                    point(m.multiply(b,forearm.m),[0,-forearm.args[2]/2,0]),'animated elbow');
+                near(point(a,upper.jointStart),upper.jointStart,'shoulder pivot stays attached');
+            }
+            const thigh=limbs.get('thigh'+side),calf=limbs.get('calf'+side);
+            near(thigh.jointEnd,calf.jointStart,'joined knee');
+            assert.ok(Math.abs(calf.jointEnd[0])>.32,'calf stays outside horse barrel');
+            assert.ok(thigh.jointEnd[2]>thigh.jointStart[2] && calf.jointEnd[2]<calf.jointStart[2],'bent riding knee');
+            assert.equal(thigh.bone,null,'rider thighs do not inherit horse leg motion');
+            assert.equal(calf.bone,null,'rider calves do not inherit horse leg motion');
+            assert.ok(parts.some(p=>p.tex==='leather' && p.kind==='sphere' && !p.bone
+                && Math.abs(p.m[12]-calf.jointEnd[0])<1e-6 && p.m[13]<calf.jointEnd[1]
+                && p.m[14]>calf.jointEnd[2]),'forward boot below ankle');
+        }
+    }
+    const chariot=s.EngineUnits.parts('cavalry',{civ:'egyptian',unit:'horse_carriage'});
+    for(const name of ['upperArmL','forearmL','upperArmR','forearmR'])
+        assert.ok(chariot.some(p=>p.riderLimb===name),'chariot '+name);
+});

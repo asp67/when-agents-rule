@@ -77,6 +77,17 @@
     const oval = (p, tex, x, y, z, sx, sy, sz, extra = {}) =>
         part(p,'sphere',Math.max(sx,sy,sz)<.11?[1,8,5]:[1,12,8],tex,{x,y,z,sx,sy,sz,...extra});
 
+    // Joined rider limbs: author endpoints, then orient a tapered cylinder along
+    // them. The same joint coordinates serve both adjacent segments and their cap.
+    const riderLimb = (p,name,tex,a,b,ra,rb,bone=null) => {
+        const d=b.map((v,i)=>v-a[i]),length=Math.hypot(...d);
+        part(p,'cylinder',[rb,ra,length,10],tex,{
+            x:(a[0]+b[0])/2,y:(a[1]+b[1])/2,z:(a[2]+b[2])/2,
+            ry:Math.atan2(d[0],d[2]),rx:Math.atan2(Math.hypot(d[0],d[2]),d[1]),bone
+        });
+        Object.assign(p[p.length-1],{riderLimb:name,jointStart:a,jointEnd:b});
+    };
+
     // Stable cosmetic variants: the same recorded handle keeps its appearance
     // through redraws, age upgrades and replay, without touching simulation RNG.
     EngineUnits.appearanceVariant = (civ,identity='') => {
@@ -345,8 +356,15 @@
                 badge(p, o.badge, 1.10, -1.18, 0.06, 0.41, 0.38);                                              // rider chest badge
                 face(p,0,1.41,-1.18,.75,o);
                 headgear(p, o.civ, 'military', 0, 1.44, -1.18, 0.75);                                          // helmet
-                part(p, 'cylinder', [0.045, 0.055, 0.36, 4], 'skin', { x: 0.18, y: 1.22, z: -1.02, rz: 0.2, rx: 0.3 });
-                oval(p,'skin',.22,1.07,-1.04,.065,.075,.067);
+                for(const side of [-1,1]) {
+                    const suffix=side<0?'L':'R', shoulder=[side*.18,1.24,-1.18];
+                    const elbow=[side*.24,1.10,-1.12];
+                    const hand=side<0?[-.20,1.10,-.91]:[.22,1.07,-1.04];
+                    riderLimb(p,'upperArm'+suffix,'leather',shoulder,elbow,.070,.064);
+                    oval(p,'leather',...elbow,.066,.067,.066);
+                    riderLimb(p,'forearm'+suffix,'skin',elbow,hand,.061,.052);
+                    oval(p,'skin',...hand,.065,.075,.067);
+                }
                 held(p,'chariot-spear',null,[.22,1.07,-1.04],q=>{
                     part(q,'cylinder',[.022,.022,1.35,8],'wood',{y:.555});
                     part(q,'cylinder',[0,.037,.14,6],'iron',{y:1.29});
@@ -356,22 +374,36 @@
             const tier = o.tier || 2;
             const p = [];
             horse(p, tier);
-            // rider: torso seated over the blanket, legs hugging the barrel
-            part(p, 'cylinder', [0.16, 0.2, 0.46, 6], 'cloth', { y: 1.47, team: true });
+            // A seated pelvis meets the saddle. Thighs wrap outward and forward
+            // to the knees; calves hang outside the horse, with boots facing +Z.
+            part(p, 'cylinder', [0.19, 0.22, 0.46, 12], 'cloth', { y: 1.47, team: true });
             badge(p, o.badge, 1.52, 0, 0.07, 0.48, 0.45); // rider chest — torso r≈0.18 here
-            part(p, 'cylinder', [0.05, 0.06, 0.4, 4], 'leather', { x: -0.28, y: 1.18, z: 0.05, rz: -0.35 });
-            part(p, 'cylinder', [0.05, 0.06, 0.4, 4], 'leather', { x: 0.28, y: 1.18, z: 0.05, rz: 0.35 });
+            for(const side of [-1,1]) {
+                const suffix=side<0?'L':'R',hip=[side*.14,1.32,-.08];
+                const knee=[side*.37,1.10,.22],ankle=[side*.38,.81,.14];
+                riderLimb(p,'thigh'+suffix,'leather',hip,knee,.105,.095);
+                oval(p,'leather',...knee,.10,.10,.10);
+                riderLimb(p,'calf'+suffix,'leather',knee,ankle,.085,.072);
+                oval(p,'leather',side*.38,.79,.22,.10,.085,.16);
+                if(tier>=3) oval(p,'iron',side*.37,1.11,.285,.080,.090,.040);
+            }
             face(p,0,1.85,0,.8,o);
             if(tier>=2) {
                 oval(p,'iron',0,1.59,0,.20,.12,.18);
                 cape(p,1.68,-.16,.7);
-                oval(p,'iron',-.24,1.66,0,.12,.09,.15);
-                oval(p,'iron',.24,1.66,0,.12,.09,.15,{bone:'armR'});
             }
             headgear(p, o.civ, tier === 1 ? 'civil' : 'military', 0, 1.88, 0, 0.8);
-            part(p, 'cylinder', [0.05, 0.06, 0.4, 4], tier >= 3 ? 'leather' : 'skin', { x: 0.24, y: 1.55, z: 0.04, rz: 0.15, bone: 'armR' });
-            oval(p,'skin',.275,1.36,.06,.072,.080,.073,{bone:'armR'});
-            held(p,tier===1?'javelin':tier===2?'spear':'lance','armR',[.275,1.36,.06],q=>{
+            for(const side of [-1,1]) {
+                const suffix=side<0?'L':'R',bone='arm'+suffix;
+                const shoulder=[side*.25,1.66,0],elbow=[side*.34,1.46,.06];
+                const hand=side<0?[-.29,1.40,.25]:[.35,1.31,.14];
+                riderLimb(p,'upperArm'+suffix,'leather',shoulder,elbow,.092,.083,bone);
+                oval(p,'leather',...elbow,.085,.085,.085,{bone});
+                riderLimb(p,'forearm'+suffix,tier>=3?'leather':'skin',elbow,hand,.078,.068,bone);
+                oval(p,'skin',...hand,.082,.090,.085,{bone});
+                oval(p,tier>=2?'iron':'leather',...shoulder,.125,.10,.15,{bone});
+            }
+            held(p,tier===1?'javelin':tier===2?'spear':'lance','armR',[.35,1.31,.14],q=>{
                 const length=tier===1?1.1:tier===2?1.3:1.45;
                 part(q,'cylinder',[.025,.025,length,8],'wood',{y:length/2-.12});
                 part(q,'cylinder',[0,.035,.14,6],'iron',{y:length-.05});
@@ -401,7 +433,7 @@
         cavalry: {
             legFL: [-0.21, 0.68, 0.44], legFR: [0.21, 0.68, 0.44],
             legBL: [-0.21, 0.68, -0.44], legBR: [0.21, 0.68, -0.44],
-            armR: [0.24, 1.72, 0.04],
+            armL: [-0.25, 1.66, 0], armR: [0.25, 1.66, 0],
             head: [0, 0.98, 0.5] // neck root — the walk nod swings the whole neck
         }
     };
