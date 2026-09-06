@@ -174,25 +174,27 @@
             this._shadowStrength = target && this.visualStyle !== 'classic'
                 ? Math.max(0,Math.min(1,(160-this._halfH)/60)) : 0;
             if (!this._shadowStrength) return;
-            const gl = this.gl, m = M(), span = Math.max(65, Math.min(300,this._halfH*2.4));
-            const step = span*2/target.size;
-            const x = Math.round(this.cameraTarget.x/step)*step, z = Math.round(this.cameraTarget.z/step)*step;
-            const eye = [x+this.sunDir[0]*450,this.sunDir[1]*450,z+this.sunDir[2]*450];
-            this._lightMatrix = m.multiply(m.ortho(-span,span,-span,span,1,1000),m.lookAt(eye,[x,0,z],[0,1,0]));
+            const gl = this.gl;
+            const camera=EngineAtmosphere.shadowCamera(M(),this.cameraTarget,this._halfH,target.size,this.sunDir);
+            this._lightMatrix=camera.matrix;
+            this._shadowCamera=camera;
+            // RG stores numeric depth. Dithering those colour bytes corrupts it.
+            const dither=gl.isEnabled(gl.DITHER);
+            gl.disable(gl.DITHER);
             gl.bindFramebuffer(gl.FRAMEBUFFER,target.framebuffer);
             gl.viewport(0,0,target.size,target.size);
             gl.clearColor(1,1,1,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
             gl.useProgram(this.shadowProg);
             gl.uniformMatrix4fv(this.shadowProg.uniforms.uLightMatrix,false,this._lightMatrix);
-            gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1,1);
+            // Receiver-plane comparisons provide the bias for the packed map.
             // Only geometry already admitted by the visibility/fog pass can cast.
             for (const obj of this._dl.opaque) {
                 if (obj === this._ground || obj === this._sea || obj.noShadow) continue;
                 gl.uniformMatrix4fv(this.shadowProg.uniforms.uModel,false,obj.model);
                 GLCore.drawMesh(gl,this.shadowProg,obj.buf);
             }
-            gl.disable(gl.POLYGON_OFFSET_FILL);
             gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+            if (dither) gl.enable(gl.DITHER);
         }
 
         _buildTextures(theme) {
@@ -1923,6 +1925,9 @@
             gl.uniformMatrix4fv(this.prog.uniforms.uLightMatrix,false,this._lightMatrix);
             gl.uniform1f(this.prog.uniforms.uShadowStrength,this._shadowStrength);
             gl.uniform1f(this.prog.uniforms.uShadowTexel,this._shadowTarget ? 1/this._shadowTarget.size : 1);
+            gl.uniform1f(this.prog.uniforms.uShadowDepthPerTexel,this._shadowCamera ? this._shadowCamera.depthPerTexel : 0);
+            gl.uniform3fv(this.prog.uniforms.uShadowRight,this._shadowCamera ? this._shadowCamera.right : this.WHITE);
+            gl.uniform3fv(this.prog.uniforms.uShadowUp,this._shadowCamera ? this._shadowCamera.up : this.WHITE);
             gl.activeTexture(gl.TEXTURE1);
             gl.bindTexture(gl.TEXTURE_2D,this._shadowTarget ? this._shadowTarget.texture : this.tex.white);
             gl.uniform1i(this.prog.uniforms.uShadowMap,1);

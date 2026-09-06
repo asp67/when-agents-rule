@@ -2,6 +2,19 @@
 // A separate mask keeps terrain and offshore water shading continuous.
 (function () {
     const EngineAtmosphere = {};
+    // Snap in the light's image plane: rounding world X/Z leaves fractional
+    // shadow texels after the sun rotation, which makes edges crawl during pans.
+    EngineAtmosphere.shadowCamera = (m, target, halfH, size, sun) => {
+        const span=Math.max(65,Math.min(300,halfH*2.4)), worldTexel=2*span/size;
+        const right=m.normalize(m.cross([0,1,0],sun)), up=m.cross(sun,right);
+        const center=[target.x,0,target.z];
+        const dx=Math.round(m.dot(right,center)/worldTexel)*worldTexel-m.dot(right,center);
+        const dy=Math.round(m.dot(up,center)/worldTexel)*worldTexel-m.dot(up,center);
+        const snapped=center.map((v,i)=>v+right[i]*dx+up[i]*dy);
+        const eye=snapped.map((v,i)=>v+sun[i]*450);
+        return { matrix:m.multiply(m.ortho(-span,span,-span,span,1,1000),m.lookAt(eye,snapped,[0,1,0])),
+            right,up,worldTexel,depthPerTexel:worldTexel/999 };
+    };
     EngineAtmosphere.vertex = `
         attribute vec3 aPosition, aNormal;
         attribute vec2 aUv;
@@ -32,6 +45,8 @@
         #endif
         uniform sampler2D uTex, uShadowMap, uCoast;
         uniform vec3 uSunDir, uSunColor, uAmbient, uTint, uSky, uEye;
+        uniform vec3 uShadowRight, uShadowUp;
+        uniform float uShadowDepthPerTexel;
         uniform float uUnlit, uAlpha, uTime, uMaterial, uAtmosphere, uShadowStrength, uShadowTexel;
         uniform vec2 uHaze;
         varying vec3 vNormal, vWorld;
@@ -61,15 +76,32 @@
             if (uShadowStrength <= 0.0) return 1.0;
             vec3 p = vShadow.xyz / vShadow.w * 0.5 + 0.5;
             if (p.x <= 0.01 || p.x >= 0.99 || p.y <= 0.01 || p.y >= 0.99 || p.z <= 0.0 || p.z >= 1.0) return 1.0;
-            float bias = max(0.00015, 0.0007 * (1.0 - max(dot(n,uSunDir),0.0)));
-            float lit = 0.0;
+            float ndl = max(dot(n,uSunDir),0.0);
+            // Each PCF tap samples a different point on the receiving surface.
+            // Compare against that point's plane depth, not the centre depth.
+            // A small texel-scaled margin covers packing and curved-normal error.
+            vec2 slope = vec2(dot(n,uShadowRight),dot(n,uShadowUp))
+                / max(ndl,0.2) * uShadowDepthPerTexel;
+            float bias = 2.0/65025.0 + uShadowDepthPerTexel*(0.10+0.35*(1.0-ndl));
+            #ifndef GL_FRAGMENT_PRECISION_HIGH
+            bias = max(bias,0.001);
+            #endif
+            vec2 pixel = p.xy/uShadowTexel;
+            vec2 base = floor(pixel)+0.5;
+            float lit = 0.0, weightSum = 0.0;
             for (int y = -1; y <= 1; y++) {
                 for (int x = -1; x <= 1; x++) {
-                    lit += shadowSample(p.xy + vec2(float(x),float(y))*uShadowTexel, p.z-bias);
+                    vec2 delta = base+vec2(float(x),float(y))-pixel;
+                    // Tent weights soften texel transitions without extra lookups.
+                    vec2 weights = max(vec2(0.0),vec2(1.5)-abs(delta));
+                    float weight = weights.x*weights.y;
+                    lit += weight*shadowSample((base+vec2(float(x),float(y)))*uShadowTexel,
+                        p.z+dot(slope,delta)-bias);
+                    weightSum += weight;
                 }
             }
             float edge = smoothstep(0.01,0.08,min(min(p.x,p.y),min(1.0-p.x,1.0-p.y)));
-            return mix(1.0, lit/9.0, uShadowStrength*edge);
+            return mix(1.0, lit/weightSum, uShadowStrength*edge);
         }
         void main() {
             vec4 t = texture2D(uTex, vUv);
@@ -127,7 +159,13 @@
         precision mediump float;
         #endif
         void main() {
-            vec2 enc = fract(gl_FragCoord.z*vec2(1.0,255.0));
+            // The far plane must not wrap back to encoded zero.
+            #ifdef GL_FRAGMENT_PRECISION_HIGH
+            float depth = min(gl_FragCoord.z,1.0-1.0/65025.0);
+            #else
+            float depth = min(gl_FragCoord.z,1.0-1.0/1024.0);
+            #endif
+            vec2 enc = fract(depth*vec2(1.0,255.0));
             enc.x -= enc.y/255.0;
             gl_FragColor = vec4(enc,0.0,1.0);
         }`;

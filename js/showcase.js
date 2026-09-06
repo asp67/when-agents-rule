@@ -5,8 +5,7 @@ Game.showcaseCivilization = value => Game.SHOWCASE_CIVILIZATIONS.includes(value)
 
 Game.prototype.startVisualShowcase = function (civilization) {
     if (this.gameStarted) return;
-    const picker=document.getElementById('startShowcaseCivilization');
-    this._showcaseCivilization=Game.showcaseCivilization(civilization || (picker && picker.value));
+    this._showcaseCivilization=Game.showcaseCivilization(civilization);
     this.player.civilization=this._showcaseCivilization;
     this.spectatorMode = false;
     document.body.classList.remove('spectator-mode');

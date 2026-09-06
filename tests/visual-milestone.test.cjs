@@ -18,8 +18,8 @@ function context() {
 function fakeGL(complete=true) {
     let id=0;
     const calls=[];
-    const gl={calls,FRAMEBUFFER_COMPLETE:123,FRAMEBUFFER:1,TEXTURE_2D:2,RENDERBUFFER:3,
-        createTexture:()=>({texture:++id}),createRenderbuffer:()=>({depth:++id}),createFramebuffer:()=>({fb:++id}),
+    const gl={calls,FRAMEBUFFER_COMPLETE:123,FRAMEBUFFER:1,TEXTURE_2D:2,RENDERBUFFER:3,DITHER:4,
+        isEnabled:()=>true,createTexture:()=>({texture:++id}),createRenderbuffer:()=>({depth:++id}),createFramebuffer:()=>({fb:++id}),
         checkFramebufferStatus:()=>complete?123:0};
     for(const name of ['bindTexture','texImage2D','texParameteri','bindRenderbuffer','renderbufferStorage','bindFramebuffer','framebufferTexture2D','framebufferRenderbuffer','deleteTexture','deleteRenderbuffer','deleteFramebuffer','viewport','clearColor','clear','useProgram','uniformMatrix4fv','enable','disable','polygonOffset']) gl[name]=(...args)=>calls.push([name,...args]);
     return gl;
@@ -72,7 +72,7 @@ test('shadow pass uses only admitted opaque geometry and restores the default fr
         cameraTarget:{x:0,z:-340},sunDir:s.M3D.normalize([-.65,.72,.36]),shadowProg:{uniforms:{}},
         _ground:ground,_sea:sea,_dl:{opaque:[ground,sea,unit,prop]}});
     r._renderShadows();assert.deepEqual(drawn,['visible-unit']);
-    assert.equal(gl.calls.at(-1)[0],'bindFramebuffer');assert.equal(gl.calls.at(-1)[2],null);
+    assert.ok(gl.calls.some(c=>c[0]==='bindFramebuffer'&&c[2]===null));
     assert.ok(Array.from(r._lightMatrix).every(Number.isFinite));
     r.visualStyle='classic';drawn.length=0;r._renderShadows();assert.equal(drawn.length,0);
 });
@@ -335,5 +335,65 @@ test('horse leg caps stay fully inside the actual body mesh throughout the strid
                     m.dot(n,p.map((v,i)=>v-a[i])) < -1e-4))),leg.bone+' cap must be buried, frame '+frame);
             }
         }
+    }
+});
+
+test('shadow projection moves in whole light-space texels at every active zoom and quality',()=>{
+    const s=context(),m=s.M3D,sun=m.normalize([-.65,.72,.36]);
+    const project=(a,p)=>[0,1,2].map(r=>.5+.5*(a[r]*p[0]+a[4+r]*p[1]+a[8+r]*p[2]+a[12+r]));
+    for(const size of [1024,2048]) for(const zoom of [10,27,48,100,125,159]) {
+        const a=s.EngineAtmosphere.shadowCamera(m,{x:0,z:0},zoom,size,sun);
+        for(const move of [.1,.4,1,3,17]) {
+            const b=s.EngineAtmosphere.shadowCamera(m,{x:a.worldTexel*move,z:-a.worldTexel*move/3},zoom,size,sun);
+            const p=project(a.matrix,[17,3,-12]),q=project(b.matrix,[17,3,-12]);
+            for(let i=0;i<2;i++) {
+                const pixels=(p[i]-q[i])*size;
+                assert.ok(Math.abs(pixels-Math.round(pixels))<.002,'fractional shadow-map drift');
+            }
+            assert.ok(Array.from(b.matrix).every(Number.isFinite));
+        }
+        assert.ok(Math.abs(m.dot(a.right,sun))<1e-6 && Math.abs(m.dot(a.up,sun))<1e-6);
+        assert.equal(a.depthPerTexel,a.worldTexel/999);
+    }
+});
+
+test('receiver-plane comparisons cover PCF sample depths without erasing nearby occluders',()=>{
+    const s=context(),m=s.M3D,sun=m.normalize([-.65,.72,.36]);
+    let oldFalseShadows=0;
+    // Independent plane intersections in world space validate the gradient used
+    // by the shader; this is numerical verification, not a GPU rasterization test.
+    for(const size of [1024,2048]) for(const zoom of [10,48,100,159]) {
+        const camera=s.EngineAtmosphere.shadowCamera(m,{x:100,z:-200},zoom,size,sun);
+        for(const normal of [[0,1,0],sun,m.normalize([-.4,1,.5]),m.normalize([.3,1,-.2])]) {
+            const ndl=m.dot(normal,sun);
+            const slope=[m.dot(normal,camera.right),m.dot(normal,camera.up)].map(v=>v/Math.max(ndl,.2)*camera.depthPerTexel);
+            const bias=2/65025+camera.depthPerTexel*(.10+.35*(1-ndl));
+            for(const fx of [.01,.3,.7,.99]) for(const fy of [.01,.7,.99]) for(const x of [-1,0,1]) for(const y of [-1,0,1]) {
+                const delta=[x+.5-fx,y+.5-fy];
+                const lateral=camera.right.map((v,i)=>(v*delta[0]+camera.up[i]*delta[1])*camera.worldTexel);
+                const alongSun=-m.dot(normal,lateral)/ndl;
+                const stored=Math.floor((.45-alongSun/999)*65025)/65025;
+                const expected=.45+slope[0]*delta[0]+slope[1]*delta[1]-bias;
+                assert.ok(expected<=stored,'plane shadows itself');
+                assert.ok(expected>stored-1/999,'one-world-unit occluder must still shadow the plane');
+                const oldBias=Math.max(.00015,.0007*(1-ndl));
+                if(.45-oldBias>stored)oldFalseShadows++;
+            }
+        }
+    }
+    assert.ok(oldFalseShadows>0,'fixture must expose the previous comparison failure');
+    assert.match(s.EngineAtmosphere.fragment,/p\.z\+dot\(slope,delta\)-bias/);
+});
+
+test('packed shadow writes disable dithering and restore its previous state',()=>{
+    for(const initiallyOn of [true,false]) {
+        const s=context(),r=Object.create(s.EngineRenderer.prototype),gl=fakeGL();let enabled=initiallyOn,draws=0;
+        gl.isEnabled=cap=>{assert.equal(cap,gl.DITHER);return enabled;};
+        gl.disable=cap=>{assert.equal(cap,gl.DITHER);enabled=false;};
+        gl.enable=cap=>{assert.equal(cap,gl.DITHER);enabled=true;};
+        s.GLCore={drawMesh:()=>{assert.equal(enabled,false,'numeric depth must not be dithered');draws++;}};
+        Object.assign(r,{gl,_shadowTarget:{framebuffer:{},size:2048},visualStyle:'cinematic',_halfH:48,
+            cameraTarget:{x:0,z:-340},sunDir:s.M3D.normalize([-.65,.72,.36]),shadowProg:{uniforms:{}},_dl:{opaque:[{buf:{}}]}});
+        r._renderShadows();assert.equal(draws,1);assert.equal(enabled,initiallyOn);
     }
 });

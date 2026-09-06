@@ -2144,7 +2144,7 @@ Object.keys(I18N_OUTCOMES_2).forEach(l => { I18N[l] = Object.assign(I18N[l] || {
 const I18N_ART = {
     "en": {
         "art.kicker": "An arena for autonomous minds",
-        "art.enter": "Explore the civilizations",
+        "art.enter": "Explore civilizations",
         "art.analyze": "Analyze a match",
         "art.cameraOptions": "Camera and graphics",
         "art.quality": "Graphics",

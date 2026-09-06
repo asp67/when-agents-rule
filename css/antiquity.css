@@ -195,8 +195,7 @@ body.spectator-mode .mm-fog { bottom:calc(var(--mm-bottom) + 42px); }
 
 .camera-controls button[aria-pressed="true"] { background:#4a5038; color:var(--gold-2); border-color:var(--gold); }
 
-.showcase-civ-picker { display:flex; align-items:center; gap:12px; margin-bottom:4px; color:var(--muted); font-size:.8rem; }
-.showcase-civ-picker select,.showcase-tools select { background:var(--bg-0); color:var(--text); border:1px solid var(--line); border-radius:3px; padding:8px; min-height:36px; }
+.showcase-tools select { background:var(--bg-0); color:var(--text); border:1px solid var(--line); border-radius:3px; padding:8px; min-height:36px; }
 .visual-showcase-label > label { display:block; margin:10px 0 5px; color:var(--muted); font:.75rem system-ui,sans-serif; }
 .showcase-tools { display:flex; gap:6px; margin-bottom:6px; }
 .showcase-tools select { flex:1; min-width:0; }
