@@ -219,18 +219,22 @@
 
     // Symmetric horse anatomy around +Z. The neck, head, muzzle, ears and
     // bridle all share one pivot; paired legs begin straight beneath the body.
+    const HORSE_HIP_Y=.88, HORSE_HALF_STANCE=.18, HORSE_LEG_BOTTOM=.05;
     const horse = (p,tier) => {
         shadow(p,1.05);
         oval(p,'leather',0,.90,0,.32,.34,.62);
         oval(p,'leather',0,.94,.44,.29,.32,.31);
         oval(p,'leather',0,.92,-.44,.30,.32,.31);
         const leg=(x,z,bone)=>{
-            part(p,'cylinder',[.075,.060,.63,9],'leather',{x,y:.365,z,bone});
+            // Bury the entire top rim in the chest/rump, including at full
+            // stride. Keep the hoof end at its original height on the ground.
+            part(p,'cylinder',[.075,.060,HORSE_HIP_Y-HORSE_LEG_BOTTOM,9],'leather',
+                {x,y:(HORSE_HIP_Y+HORSE_LEG_BOTTOM)/2,z,bone});
             oval(p,'leather',x,.33,z,.078,.095,.082,{bone});
             oval(p,'bark',x,.085,z+.018,.090,.075,.125,{bone});
         };
-        leg(-.21,.44,'legFL');leg(.21,.44,'legFR');
-        leg(-.21,-.44,'legBL');leg(.21,-.44,'legBR');
+        leg(-HORSE_HALF_STANCE,.44,'legFL');leg(HORSE_HALF_STANCE,.44,'legFR');
+        leg(-HORSE_HALF_STANCE,-.44,'legBL');leg(HORSE_HALF_STANCE,-.44,'legBR');
         oval(p,'leather',0,1.19,.55,.18,.35,.23,{rx:.38,bone:'head'});
         oval(p,'leather',0,1.48,.84,.17,.20,.29,{rx:.38,bone:'head'});
         oval(p,'leather',0,1.36,1.07,.14,.115,.18,{rx:.12,bone:'head'});
@@ -431,8 +435,8 @@
     const PIVOTS = {
         worker: HUMAN_PIVOTS, infantry: HUMAN_PIVOTS, ranged: HUMAN_PIVOTS, priest: HUMAN_PIVOTS,
         cavalry: {
-            legFL: [-0.21, 0.68, 0.44], legFR: [0.21, 0.68, 0.44],
-            legBL: [-0.21, 0.68, -0.44], legBR: [0.21, 0.68, -0.44],
+            legFL: [-HORSE_HALF_STANCE, HORSE_HIP_Y, 0.44], legFR: [HORSE_HALF_STANCE, HORSE_HIP_Y, 0.44],
+            legBL: [-HORSE_HALF_STANCE, HORSE_HIP_Y, -0.44], legBR: [HORSE_HALF_STANCE, HORSE_HIP_Y, -0.44],
             armL: [-0.25, 1.66, 0], armR: [0.25, 1.66, 0],
             head: [0, 0.98, 0.5] // neck root — the walk nod swings the whole neck
         }

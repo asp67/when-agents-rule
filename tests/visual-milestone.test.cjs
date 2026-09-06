@@ -303,3 +303,37 @@ test('mounted riders have complete, equally substantial arms and connected seate
     for(const name of ['upperArmL','forearmL','upperArmR','forearmR'])
         assert.ok(chariot.some(p=>p.riderLimb===name),'chariot '+name);
 });
+
+test('horse leg caps stay fully inside the actual body mesh throughout the stride',()=>{
+    const s=context(),m=s.M3D;
+    const transform=(a,p)=>[0,1,2].map(r=>a[r]*p[0]+a[4+r]*p[1]+a[8+r]*p[2]+a[12+r]);
+    // The body is a union of convex, faceted ellipsoids. Checking its triangle
+    // planes catches exposed rims that an ideal smooth-ellipsoid test can miss.
+    for(const options of [{tier:1},{tier:2},{tier:3},{unit:'horse_carriage'}]) {
+        const parts=s.EngineUnits.parts('cavalry',{civ:'egyptian',...options});
+        const bodies=parts.filter(p=>p.kind==='sphere' && p.tex==='leather' && !p.bone
+            && p.m[12]===0 && p.m[13]>.85 && p.m[13]<1);
+        assert.equal(bodies.length,3);
+        const hulls=bodies.map(body=>{
+            const mesh=s.EngineMesh.mergeParts([body]),planes=[];
+            for(let i=0;i<mesh.indices.length;i+=3) {
+                const [a,b,c]=mesh.indices.slice(i,i+3).map(j=>mesh.positions.slice(j*3,j*3+3));
+                const normal=m.cross(b.map((v,j)=>v-a[j]),c.map((v,j)=>v-a[j]));
+                if(Math.hypot(...normal)>1e-8) planes.push([a,m.normalize(normal)]);
+            }
+            return planes;
+        });
+        for(const leg of parts.filter(p=>p.kind==='cylinder' && /^leg[FB][LR]$/.test(p.bone))) {
+            const mesh=s.EngineMesh.cylinder(...leg.args),cap=[];
+            for(let i=0;i<mesh.positions.length;i+=3)
+                if(Math.abs(mesh.positions[i+1]-leg.args[2]/2)<1e-6) cap.push(mesh.positions.slice(i,i+3));
+            assert.ok(cap.length>=leg.args[3]+1,'complete top rim and center');
+            for(let frame=0;frame<=32;frame++) {
+                const pose=s.EngineUnits.pose('cavalry','walk',frame*2*Math.PI/(32*7));
+                const matrix=m.multiply(pose.mats[leg.bone],leg.m),points=cap.map(p=>transform(matrix,p));
+                assert.ok(hulls.some(planes=>points.every(p=>planes.every(([a,n])=>
+                    m.dot(n,p.map((v,i)=>v-a[i])) < -1e-4))),leg.bone+' cap must be buried, frame '+frame);
+            }
+        }
+    }
+});
