@@ -75,40 +75,49 @@ class UIManager {
         this._lastLogSig = null;
         // The fog knobs' tooltips name a seat, so data-i18n-title cannot reach them.
         this.refreshMinimapFogKnobs();
+        if (this._sampleIndex) this.anFillSamplePicker(this._sampleIndex);
+    }
+
+    // Native modality keeps focus inside the dialog and restores it to the opener.
+    // Keep keyboard events away from the camera and replay shortcuts underneath.
+    mountDialog(dialog) {
+        document.querySelectorAll('dialog.ui-dialog').forEach(old => {
+            old.close();
+            old.remove();
+        });
+        dialog.classList.add('ui-dialog');
+        dialog.addEventListener('keydown', e => e.stopPropagation());
+        dialog.addEventListener('close', () => dialog.remove(), { once: true });
+        dialog.addEventListener('mousedown', e => {
+            if (e.target === dialog) dialog.close();
+        });
+        if (this.game && this.game.renderer) this.game.renderer.keysPressed = {};
+        document.body.appendChild(dialog);
+        dialog.showModal();
     }
 
     // Reusable confirmation dialog. Calls onConfirm() if the user confirms.
     showConfirm(message, onConfirm, opts = {}) {
-        const old = document.getElementById('confirmOverlay');
-        if (old) old.remove();
-
-        const overlay = document.createElement('div');
+        const overlay = document.createElement('dialog');
         overlay.id = 'confirmOverlay';
         overlay.className = 'confirm-overlay';
+        overlay.setAttribute('aria-labelledby', 'confirmTitle');
+        overlay.setAttribute('aria-describedby', 'confirmMessage');
         overlay.innerHTML = `
-            <div class="confirm-dialog" role="dialog" aria-modal="true">
-                <h3 class="confirm-title">${opts.title || t('dlg.quitTitle')}</h3>
-                <p class="confirm-message">${message}</p>
+            <div class="confirm-dialog">
+                <h3 class="confirm-title" id="confirmTitle">${opts.title || t('dlg.quitTitle')}</h3>
+                <p class="confirm-message" id="confirmMessage">${message}</p>
                 <div class="confirm-actions">
-                    <button class="menu-btn confirm-cancel">${opts.cancelLabel || t('dlg.keepPlaying')}</button>
-                    <button class="menu-btn confirm-ok">${opts.confirmLabel || t('dlg.quitConfirm')}</button>
+                    <button type="button" class="menu-btn confirm-cancel" autofocus>${opts.cancelLabel || t('dlg.keepPlaying')}</button>
+                    <button type="button" class="menu-btn confirm-ok">${opts.confirmLabel || t('dlg.quitConfirm')}</button>
                 </div>
             </div>`;
-        document.body.appendChild(overlay);
-
-        const close = () => {
-            document.removeEventListener('keydown', onKey);
-            overlay.remove();
+        overlay.querySelector('.confirm-cancel').onclick = () => overlay.close();
+        overlay.querySelector('.confirm-ok').onclick = () => {
+            overlay.close();
+            if (onConfirm) onConfirm();
         };
-        const onKey = (e) => {
-            if (e.key === 'Escape') close();
-            else if (e.key === 'Enter') { close(); if (onConfirm) onConfirm(); }
-        };
-        document.addEventListener('keydown', onKey);
-        overlay.querySelector('.confirm-cancel').onclick = close;
-        overlay.querySelector('.confirm-ok').onclick = () => { close(); if (onConfirm) onConfirm(); };
-        // Click on the dimmed backdrop cancels.
-        overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+        this.mountDialog(overlay);
     }
 
     showStartScreen() {
@@ -2853,22 +2862,19 @@ class UIManager {
         const grid = specific.map(([k, v]) => row(k, v)).join('')
             + `<div class="controls-sub">${t('help.camera')}</div>`
             + camera.map(([k, v]) => row(k, v)).join('');
-        const el = document.createElement('div');
+        const el = document.createElement('dialog');
         el.className = 'controls-overlay';
         el.id = 'controlsOverlay';
-        el.onclick = (e) => { if (e.target === el) this.hideControlsCard(); };
+        el.setAttribute('aria-labelledby', 'controlsTitle');
         el.innerHTML = `<div class="controls-card">
-                <div class="controls-head"><span>${t('help.title')}</span><button class="controls-close" onclick="game.ui.hideControlsCard()" aria-label="${t('help.close')}">✕</button></div>
+                <div class="controls-head"><span id="controlsTitle">${t('help.title')}</span><button type="button" class="controls-close" autofocus onclick="game.ui.hideControlsCard()" aria-label="${t('help.close')}">✕</button></div>
                 <div class="controls-grid">${grid}</div>
             </div>`;
-        document.body.appendChild(el);
-        this._controlsEsc = (e) => { if (e.key === 'Escape') this.hideControlsCard(); };
-        document.addEventListener('keydown', this._controlsEsc);
+        this.mountDialog(el);
     }
     hideControlsCard() {
         const el = document.getElementById('controlsOverlay');
-        if (el) el.remove();
-        if (this._controlsEsc) { document.removeEventListener('keydown', this._controlsEsc); this._controlsEsc = null; }
+        if (el) { el.close(); el.remove(); }
     }
 
     // Localize a harness action outcome into the ENTRY'S MODEL language for the log
@@ -4801,9 +4807,8 @@ class UIManager {
     // it is reported with the fix rather than swallowed into the console.
     // The samples/ folder is listed by samples/index.json, because GitHub Pages
     // cannot enumerate a directory and a hosted copy has no other way to learn what is
-    // there. Read once per session; the picker only appears when there is a choice to
-    // make, so a checkout carrying a single match shows no control at all and one
-    // carrying five needs no code change.
+    // there. Read once per session; even one bundled match remains selectable after
+    // opening a local transcript. The picker counts entries rather than hardcoding it.
     anLoadSampleIndex() {
         if (this._sampleIndex) return Promise.resolve(this._sampleIndex);
         return fetch('samples/index.json')
@@ -4822,7 +4827,7 @@ class UIManager {
     anFillSamplePicker(list) {
         const sel = document.getElementById('anSampleSel');
         if (!sel) return;
-        if (!list || list.length < 2) { sel.style.display = 'none'; return; }
+        if (!list || !list.length) { sel.style.display = 'none'; return; }
         const esc = v => this.escapeHtml(String(v == null ? '' : v));
         // A menu of things to DO, not a label for what is loaded. The first entry is a
         // permanent placeholder and the control returns to it after every pick, which
@@ -4834,7 +4839,7 @@ class UIManager {
         //
         // Nothing is lost by not showing the loaded match here: anRender already puts
         // the file name first in anMeta, right beside this control.
-        sel.innerHTML = `<option value="">${esc(t('an.samplesPick'))}</option>`
+        sel.innerHTML = `<option value="">${esc(t('an.samplesPick'))} (${list.length})</option>`
             + list.map(m => {
                 const day = m.date ? new Date(m.date).toISOString().slice(0, 10) : '';
                 const tempo = m.turnBased ? t('an.turnBased') : t('an.realTime');

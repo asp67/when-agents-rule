@@ -52,8 +52,10 @@ body {
     background: #1a1a2e;
     color: #e0e0e0;
     overflow: hidden;
-    user-select: none;
 }
+
+/* Text is readable and copyable; dragging the battlefield must not select it. */
+canvas, button { user-select: none; }
 
 .screen {
     display: none;
@@ -73,6 +75,8 @@ body {
     --line: rgba(255,255,255,0.08);
     --red:#e94560; --red-2:#ff5d77; --teal:#4ecca3; --gold:#f0a500; --gold-2:#ffd45e;
     --text:#e7ecf5; --muted:#9aa6bf;
+    --text-reading: 0.9375rem;
+    --text-detail: 0.8125rem;
     --shadow: 0 18px 50px rgba(0,0,0,0.5);
 }
 
@@ -215,8 +219,10 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 }
 .civ-card:hover::before, .mode-card:hover::before { opacity: 1; }
 
-.civ-card h3, .mode-card h3 { font-size: 1.4em; color: #fff; margin-bottom: 12px; font-weight: 800; }
-.civ-card p, .mode-card p { margin: 7px 0; font-size: 0.92em; color: var(--muted); line-height: 1.45; }
+.mode-card { font: inherit; color: inherit; text-align: inherit; }
+.mode-name, .mode-description { display: block; }
+.civ-card h3, .mode-name { font-size: 1.4em; color: #fff; margin-bottom: 12px; font-weight: 800; }
+.civ-card p, .mode-description { margin: 7px 0; font-size: 0.92em; color: var(--muted); line-height: 1.45; }
 .civ-card p:first-of-type { color: var(--teal); font-weight: 600; }
 
 /* per-civilization accent stripe */
@@ -845,9 +851,9 @@ body.spectator-mode #unitInfo.spectator-card {
     flex: 1 1 auto;
     min-width: 0;
     text-align: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
 }
 /* Play/pause toggle on each model card. */
 .lb-pause {
@@ -2009,7 +2015,7 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 .sum-card:nth-child(1) .sum-rank, .sum-card.winner .sum-rank { background: linear-gradient(145deg,#ffe27a,#f0a500); }
 .sum-id { flex: 1; min-width: 0; }
-.sum-model { font-weight: 800; font-size: 1.08em; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sum-model { font-weight: 800; font-size: 1.08em; color: #fff; overflow-wrap: anywhere; line-height: 1.35; }
 .sum-civ { font-size: 0.82em; color: #aeb8cc; margin-top: 1px; }
 .sum-power { font-size: 1.4em; font-weight: 800; color: #fff; flex: 0 0 auto; }
 
@@ -2860,3 +2866,63 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
 /* A seat wearing an edited DEFAULT has not been touched itself, so it is stated
    more quietly than a seat somebody edited on purpose. */
 .slot-prompt-badge.is-derived { opacity: 0.75; font-style: italic; }
+
+/* Shared reading sizes use rem so nested panels never shrink the same text twice. */
+.tv-sec pre, .an-d-final, .an-d-obj, .an-d-steps, .an-d-reason, .an-d-sec {
+    font-size: var(--text-reading);
+    line-height: 1.55;
+}
+.an-meta, .an-cap-txt, .an-d-nums span, .an-st, .an-d-tag,
+.tv-turn-head, .tv-sec > summary, .an-row, .an-chapter, .ai-log-entry {
+    font-size: var(--text-detail);
+    line-height: 1.45;
+}
+.an-meta, .an-cap-txt, .an-d-nums span, .an-st, .an-d-tag, .tv-meta {
+    color: var(--muted);
+}
+.an-d-head, .tv-turn-head { flex-wrap: wrap; overflow-wrap: anywhere; }
+.an-row { min-height: 30px; }
+.an-chip, .an-seat-btn, .an-ico, .an-search, .an-count {
+    min-height: 30px;
+    height: auto;
+    font-size: var(--text-detail);
+}
+
+/* The dialog is the full-screen hit area; its card keeps the existing styling.
+   Native showModal() supplies focus containment, Escape and an inert background. */
+dialog.ui-dialog {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 16px;
+    border: 0;
+    color: var(--text);
+}
+dialog.ui-dialog:not([open]) { display: none; }
+dialog.ui-dialog::backdrop { background: transparent; }
+dialog.ui-dialog > .confirm-dialog, dialog.ui-dialog > .controls-card {
+    max-height: 100%;
+    overflow-y: auto;
+}
+
+/* Include custom controls and the hidden native file input's visible label. */
+:is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+    outline: 2px solid var(--gold-2);
+    outline-offset: 3px;
+}
+.an-pick:focus-within { outline: 2px solid var(--gold-2); outline-offset: 3px; }
+.mode-card:focus-visible::before { opacity: 1; }
+
+/* Respect reduced motion in the interface; simulation timing is unaffected. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}

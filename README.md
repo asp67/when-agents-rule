@@ -84,6 +84,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **📄 Exports** — the evaluation as a self-describing `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline appended at the end.
 - **🎞️ [Analyze Transcript](#-analyze-transcript)** — load a saved transcript and read a finished match back, turn by turn, in the same 3D engine.
 - **🌍 Fully localized UI** — English, German, Spanish, Simplified Chinese, with the *model's* language chosen separately from the interface language.
+- **⌨️ Reading and navigation** — keyboard-accessible mode selection and modal dialogs, selectable transcript text, readable model names, and reduced interface motion when requested by your device settings.
 
 **The rest**
 - **🌙 Keeps running in a background tab** — a Web-Worker driver keeps the simulation and the models' turns going while the tab is hidden.
