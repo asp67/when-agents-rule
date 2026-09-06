@@ -23,6 +23,7 @@ class UIManager {
     }
 
     showScreen(screenId) {
+        if(this.game.renderer && this.game.renderer.cancelPointerGesture) this.game.renderer.cancelPointerGesture();
         document.querySelectorAll('.screen').forEach(screen => {
             screen.classList.remove('active');
         });
@@ -185,11 +186,16 @@ class UIManager {
         const analyzer = document.getElementById('analyzeScreen');
         const dock = document.getElementById(analyzer && analyzer.classList.contains('active') ? 'anCameraDock' : 'mapToolsDock');
         if (dock && box.parentElement !== dock) dock.appendChild(box);
-        if (this._cameraControlsLanguage === getUiLang()) return;
-        this._cameraControlsLanguage = getUiLang();
+        const watching=!!(this.game.spectatorMode || (analyzer && analyzer.classList.contains('active')));
+        const state=[getUiLang(),watching,!!this.game.renderer.panMode].join(':');
+        if(this._cameraControlsLanguage===state) return;
+        this._cameraControlsLanguage=state;
+        const wasOpen=!!box.querySelector('details[open]');
+        if(this.game.renderer.updatePointerCursor) this.game.renderer.updatePointerCursor();
         const esc = s => this.escapeHtml(String(s));
         const svg = path => `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="${path}"/></svg>`;
         const icons = {
+            pan:'M8 13V7a1.5 1.5 0 0 1 3 0v5-8a1.5 1.5 0 0 1 3 0v8-6a1.5 1.5 0 0 1 3 0v7-4a1.5 1.5 0 0 1 3 0v6c0 4-2 7-6 7h-1c-2 0-3-1-4-3l-4-5a1.5 1.5 0 0 1 2-2l2 2',
             overview:'M3 5l6-2 6 2 6-2v16l-6 2-6-2-6 2z M9 3v16 M15 5v16',
             selection:'M8 3H3v5 M16 3h5v5 M21 16v5h-5 M8 21H3v-5 M8 12h8 M12 8v8',
             zoomIn:'M5 12h14 M12 5v14', zoomOut:'M5 12h14',
@@ -197,13 +203,14 @@ class UIManager {
             turnLeft:'M8 5L3 10l5 5 M3 10h11a6 6 0 0 1 6 6',
             turnRight:'M16 5l5 5-5 5 M21 10H10a6 6 0 0 0-6 6'
         };
-        const button = action => `<button type="button" title="${esc(t('view.'+action))}" aria-label="${esc(t('view.'+action))}" onclick="game.ui.cameraAction('${action}')">${svg(icons[action])}</button>`;
+        const button = action => `<button type="button" ${action==='pan'?`aria-pressed="${!!this.game.renderer.panMode}"`: ''} title="${esc(t('view.'+action))}" aria-label="${esc(t('view.'+action))}" onclick="game.ui.cameraAction('${action}')">${svg(icons[action])}</button>`;
         box.setAttribute('aria-label',t('view.camera'));
         box.innerHTML = ['overview','selection','zoomIn','zoomOut'].map(button).join('')
             + `<details class="camera-more"><summary title="${esc(t('art.cameraOptions'))}" aria-label="${esc(t('art.cameraOptions'))}">${svg(icons.more)}</summary>
-                <div class="camera-popover"><div class="camera-secondary">${['reset','turnLeft','turnRight'].map(button).join('')}</div>
+                <div class="camera-popover"><div class="camera-secondary">${(watching?['reset','turnLeft','turnRight']:['pan','reset','turnLeft','turnRight']).map(button).join('')}</div>
                 <label>${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['low','balanced','cinematic'].map(k=>`<option value="${k}">${esc(t('art.'+k))}</option>`).join('')}</select></label>
                 <label>${esc(t('art.light'))}<select onchange="game.renderer.visualStyle=this.value"><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label></div></details>`;
+        if(wasOpen) box.querySelector('details').open=true;
         box.querySelector('select').value = this.game.renderer.graphicsQuality || 'balanced';
         box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
     }
@@ -215,6 +222,14 @@ class UIManager {
     cameraAction(action) {
         const r = this.game.renderer;
         if (!r) return;
+        if(action==='pan') {
+            r.cancelPointerGesture();
+            r.panMode=!r.panMode;
+            this.renderCameraControls();
+            const hand=document.querySelector('#cameraControls button[aria-pressed]');
+            if(hand) hand.focus();
+            return;
+        }
         // Spectator picks set entity.selected directly; campaign/replay also keep
         // a selectedUnits list. Use the flags rendered by all three modes.
         const valid = ent => ent && !(ent.health <= 0)
@@ -3022,35 +3037,31 @@ class UIManager {
     showControlsCard(mode) {
         this.hideControlsCard();
         const row = (k, v) => `<div class="ck">${k}</div><div class="cv">${v}</div>`;
-        // A card listing mouse buttons is no help on a device that cannot produce one.
-        // Coarse pointer -> show the gestures. Only the arena has a touch reading: the
-        // campaign needs box-select and right-click commands, which is not a tablet.
-        const touch = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-        const specific = (mode === 'arena')
-            ? (touch ? [
-                ['👆 ' + t('help.tap'), t('help.act.inspect')],
-                ['👆 ' + t('help.dragTouch'), t('help.act.pan')],
-                ['👆 ' + t('help.holdTouch'), t('help.act.coord')]
-              ] : [
-                ['🖱️ ' + t('help.lmb'), t('help.act.inspect')],
-                ['🖱️ ' + t('help.lmbDrag'), t('help.act.pan')],
-                ['🖱️ ' + t('help.rmbHold'), t('help.act.coord')]
-              ])
-            : [
-                ['🖱️ ' + t('help.lmb'), t('help.act.select')],
-                ['🖱️ ' + t('help.lmbDrag'), t('help.act.box')],
-                ['🖱️ ' + t('help.rmb'), t('help.act.command')]
-              ];
-        const camera = (touch && mode === 'arena')
-            ? [
-                ['🤏 ' + t('help.pinch'), t('help.act.zoom')],
-                ['🤏 ' + t('help.twist'), t('help.act.rotate')]
-              ]
-            : [
-                ['⌨️ W A S D / ↑ ↓ ← →', t('help.act.pan')],
-                ['🖱️ ' + t('help.mmb'), t('help.act.rotate')],
-                ['🖱️ ' + t('help.wheel'), t('help.act.zoom')]
-              ];
+        const touch=!!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        const spectator=mode==='arena';
+        const specific=touch ? [
+            [t('help.tap'),t(spectator?'help.act.inspect':'help.act.select')],
+            [t('help.dragTouch'),t('help.act.pan')],
+            [t(spectator?'help.holdTouch':'help.holdRelease'),t(spectator?'help.act.coord':'help.act.command')]
+        ] : (spectator ? [
+            [t('help.lmb'),t('help.act.inspect')],
+            [t('help.lmbDrag'),t('help.act.pan')],
+            [t('help.rmbHold'),t('help.act.coord')]
+        ] : [
+            [t('help.lmb'),t('help.act.select')],
+            [t('help.lmbDrag'),t('help.act.box')],
+            [t('help.rmb'),t('help.act.command')],
+            [t('help.rmbDrag'),t('help.act.pan')],
+            [t('help.panTool'),t('help.act.pan')]
+        ]);
+        const camera=touch ? [
+            [t('help.pinch'),t('help.act.zoom')],
+            [t('help.twist'),t('help.act.rotate')]
+        ] : [
+            ['W A S D / ↑ ↓ ← →',t('help.act.pan')],
+            [t('help.mmb'),t('help.act.rotate')],
+            [t('help.wheel'),t('help.act.zoom')]
+        ];
         const grid = specific.map(([k, v]) => row(k, v)).join('')
             + `<div class="controls-sub">${t('help.camera')}</div>`
             + camera.map(([k, v]) => row(k, v)).join('');
@@ -5566,6 +5577,8 @@ class UIManager {
         // Spectator input: no orders to give in a recording.
         this.game.spectatorMode = true;
         this.game.renderer.replayMode = true;
+        if(this.game.renderer.cancelPointerGesture) this.game.renderer.cancelPointerGesture();
+        this.renderCameraControls();
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
         this.anBindPick();
         this.anBindKeys();
@@ -5581,6 +5594,8 @@ class UIManager {
         if (this._anPrevSpectator !== undefined) {
             this.game.spectatorMode = this._anPrevSpectator;
             this._anPrevSpectator = undefined;
+            if(this.game.renderer.cancelPointerGesture) this.game.renderer.cancelPointerGesture();
+            this.renderCameraControls();
         }
         // The arena builds its own fog at match start, but leaving ours installed
         // means a stale grid is on screen for the first frames of the next match.

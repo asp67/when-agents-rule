@@ -2323,6 +2323,10 @@ Object.keys(I18N_VIEW).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18
 
 const I18N_HELP = {
     en: {
+        "view.pan": "Drag map with the left mouse button",
+        "help.rmbDrag": "Right drag",
+        "help.panTool": "Hand tool (camera options) + left drag",
+        "help.holdRelease": "Hold still, then release",
         'help.title': 'Controls', 'help.close': 'Close', 'help.camera': 'Camera',
         'help.lmb': 'Left click', 'help.lmbDrag': 'Left drag', 'help.rmb': 'Right click',
         'help.rmbHold': 'Right (hold)', 'help.mmb': 'Middle drag', 'help.wheel': 'Mouse wheel',
@@ -2335,6 +2339,10 @@ const I18N_HELP = {
         'help.pinch': 'Pinch', 'help.twist': 'Twist / slide two fingers'
     },
     de: {
+        "view.pan": "Karte mit linker Maustaste ziehen",
+        "help.rmbDrag": "Rechts ziehen",
+        "help.panTool": "Hand-Werkzeug (Kameraoptionen) + links ziehen",
+        "help.holdRelease": "Ruhig halten, dann loslassen",
         'help.title': 'Steuerung', 'help.close': 'Schließen', 'help.camera': 'Kamera',
         'help.lmb': 'Linksklick', 'help.lmbDrag': 'Links ziehen', 'help.rmb': 'Rechtsklick',
         'help.rmbHold': 'Rechts halten', 'help.mmb': 'Mittlere Taste ziehen', 'help.wheel': 'Mausrad',
@@ -2347,6 +2355,10 @@ const I18N_HELP = {
         'help.pinch': 'Zwei Finger auf/zu', 'help.twist': 'Zwei Finger drehen / schieben'
     },
     es: {
+        "view.pan": "Arrastrar el mapa con el botón izquierdo",
+        "help.rmbDrag": "Arrastrar der.",
+        "help.panTool": "Herramienta mano (opciones de cámara) + arrastrar izq.",
+        "help.holdRelease": "Mantener quieto y soltar",
         'help.title': 'Controles', 'help.close': 'Cerrar', 'help.camera': 'Cámara',
         'help.lmb': 'Clic izquierdo', 'help.lmbDrag': 'Arrastrar izq.', 'help.rmb': 'Clic derecho',
         'help.rmbHold': 'Der. (mantener)', 'help.mmb': 'Arrastrar central', 'help.wheel': 'Rueda del ratón',
@@ -2359,6 +2371,10 @@ const I18N_HELP = {
         'help.pinch': 'Pellizcar', 'help.twist': 'Girar / deslizar dos dedos'
     },
     zh: {
+        "view.pan": "用鼠标左键拖动地图",
+        "help.rmbDrag": "右键拖动",
+        "help.panTool": "手形工具（镜头选项）+ 左键拖动",
+        "help.holdRelease": "按住不动，然后松开",
         'help.title': '操作说明', 'help.close': '关闭', 'help.camera': '镜头',
         'help.lmb': '左键单击', 'help.lmbDrag': '左键拖动', 'help.rmb': '右键单击',
         'help.rmbHold': '右键按住', 'help.mmb': '中键拖动', 'help.wheel': '鼠标滚轮',

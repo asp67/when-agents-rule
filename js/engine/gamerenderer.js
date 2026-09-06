@@ -137,8 +137,10 @@
 
             window.addEventListener('resize', () => this.onWindowResize());
             canvas.addEventListener('mousedown', (e) => this.onCanvasMouseDown(e));
-            canvas.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
-            canvas.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
+            window.addEventListener('mousemove', (e) => this.onCanvasMouseMove(e));
+            window.addEventListener('mouseup', (e) => this.onCanvasMouseUp(e));
+            window.addEventListener('blur', () => this.cancelPointerGesture());
+            document.addEventListener('visibilitychange', () => { if(document.hidden) this.cancelPointerGesture(); });
             canvas.addEventListener('contextmenu', (e) => e.preventDefault());
             canvas.addEventListener('wheel', (e) => this.onCanvasWheel(e), { passive: false });
             // touch-action none, or the browser claims the gesture for page scroll and
@@ -148,7 +150,7 @@
             canvas.addEventListener('touchstart', (e) => this.onCanvasTouchStart(e), { passive: false });
             canvas.addEventListener('touchmove', (e) => this.onCanvasTouchMove(e), { passive: false });
             canvas.addEventListener('touchend', (e) => this.onCanvasTouchEnd(e), { passive: false });
-            canvas.addEventListener('touchcancel', (e) => this.onCanvasTouchEnd(e), { passive: false });
+            canvas.addEventListener('touchcancel', () => this.cancelPointerGesture(), { passive: false });
             document.addEventListener('keydown', (e) => this.onKeyDown(e));
             document.addEventListener('keyup', (e) => this.onKeyUp(e));
 
@@ -1090,7 +1092,7 @@
             return true;
         }
 
-        // ---- input (locked camera: every drag pans, wheel zooms) -----------------
+        // ---- input: spectator navigation / campaign selection and navigation ----
         isEditableTarget(el) {
             if (!el) return false;
             const tag = el.tagName;
@@ -1106,61 +1108,83 @@
             this.keysPressed[event.key.toLowerCase()] = false;
         }
 
+        updatePointerCursor() {
+            if(this.canvas && this.canvas.style) this.canvas.style.cursor=
+                this._panDrag && this._panDrag.moved ? 'grabbing' : (this._spectating() || this.panMode ? 'grab' : '');
+        }
+
+        cancelPointerGesture() {
+            this._clearHold();
+            this._panDrag=null; this._rotateDrag=null; this._pinch=null;
+            this._coordHold=false; this._touchCommandReady=false;
+            this.keysPressed={};
+            if(typeof game!=='undefined' && game && game.inputManager) game.inputManager.cancelGesture();
+            this.updatePointerCursor();
+        }
+
+        _manualPan(dx,dy) {
+            ++this._cameraMoveId; // an outstanding focus/overview tween cannot pull back
+            const wpp=(2*this._halfH)/(this.canvas.clientHeight||1);
+            const cy=Math.cos(this._yaw),sy=Math.sin(this._yaw);
+            const right=-dx*wpp,forward=dy*wpp/Math.max(.17,Math.sin(this._pitch));
+            this.cameraTarget.x+=right*cy-forward*sy;
+            this.cameraTarget.z-=right*sy+forward*cy;
+            this._clampTarget();
+        }
+
         onCanvasMouseDown(event) {
-            const spectator = typeof game !== 'undefined' && game && game.spectatorMode;
-            if (event.button === 1) {
-                // middle mouse TURNS the map (yaw only — pitch stays dimetric)
-                if (spectator && game.disableActionCam) game.disableActionCam();
-                this._rotateDrag = { x: event.clientX, y: event.clientY };
+            if(Date.now()<(this._ignoreMouseUntil||0)) return;
+            const spectator=this._spectating();
+            if(event.button===1) {
+                if(typeof game!=='undefined' && game && game.disableActionCam) game.disableActionCam();
+                this._rotateDrag={x:event.clientX,y:event.clientY};
                 event.preventDefault();
-            } else if (event.button === 0 && spectator) {
-                // Defer the manual-cam takeover until this becomes a real DRAG.
-                // A press-release without movement is a pick (mouseup handles it),
-                // which inspects the entity and KEEPS the action cam following.
-                this._panDrag = { x: event.clientX, y: event.clientY, ox: event.clientX, oy: event.clientY, moved: false };
+            } else if((event.button===0 && (spectator || this.panMode)) || (event.button===2 && !spectator)) {
+                this._panDrag={x:event.clientX,y:event.clientY,ox:event.clientX,oy:event.clientY,
+                    moved:false,button:event.button,spectator};
                 event.preventDefault();
             }
+            this.updatePointerCursor();
         }
 
         onCanvasMouseMove(event) {
-            if (this._rotateDrag) {
-                const dx = event.clientX - this._rotateDrag.x;
-                const dy = event.clientY - this._rotateDrag.y;
-                this._rotateDrag = { x: event.clientX, y: event.clientY };
-                this._yaw -= dx * 0.006;   // horizontal: turn around the look-at point
-                // vertical: tilt between near-flat and (almost) top-down; 89° keeps
-                // lookAt's up vector from degenerating
-                this._pitch = Math.max(10 * Math.PI / 180,
-                    Math.min(89 * Math.PI / 180, this._pitch + dy * 0.004));
+            if(Date.now()<(this._ignoreMouseUntil||0)) return;
+            if(this._rotateDrag) {
+                const dx=event.clientX-this._rotateDrag.x,dy=event.clientY-this._rotateDrag.y;
+                this._rotateDrag={x:event.clientX,y:event.clientY};
+                this._yaw-=dx*.006;
+                this._pitch=Math.max(10*Math.PI/180,Math.min(89*Math.PI/180,this._pitch+dy*.004));
                 return;
             }
-            if (!this._panDrag) return;
-            if (!this._panDrag.moved) {
-                // Below the click threshold it's still a potential pick — don't pan.
-                if (Math.hypot(event.clientX - this._panDrag.ox, event.clientY - this._panDrag.oy) < 5) return;
-                this._panDrag.moved = true; // real drag → the user takes the camera
-                if (typeof game !== 'undefined' && game && game.disableActionCam) game.disableActionCam();
+            const pd=this._panDrag;
+            if(!pd) return;
+            if(pd.spectator!==this._spectating()) { this.cancelPointerGesture(); return; }
+            if(!pd.moved) {
+                if(Math.hypot(event.clientX-pd.ox,event.clientY-pd.oy)<5) return;
+                pd.moved=true;
+                if(typeof game!=='undefined' && game && game.disableActionCam) game.disableActionCam();
             }
-            const dx = event.clientX - this._panDrag.x;
-            const dy = event.clientY - this._panDrag.y;
-            this._panDrag.x = event.clientX;
-            this._panDrag.y = event.clientY;
-            const wpp = (2 * this._halfH) / (this.canvas.clientHeight || 1);
-            // grab-and-drag: world follows the cursor (basis follows yaw + pitch)
-            const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
-            const right = -dx * wpp;
-            const fwd = dy * wpp / Math.max(0.17, Math.sin(this._pitch));
-            this.cameraTarget.x += right * cy + fwd * -sy;
-            this.cameraTarget.z += right * -sy + fwd * -cy;
+            this._manualPan(event.clientX-pd.x,event.clientY-pd.y);
+            pd.x=event.clientX;pd.y=event.clientY;
+            this.updatePointerCursor();
         }
 
         onCanvasMouseUp(event) {
-            const pd = this._panDrag;
-            this._panDrag = null;
-            this._rotateDrag = null;
-            // A left press that never dragged is a click → inspect that entity.
-            if (pd && !pd.moved && typeof game !== 'undefined' && game && game.spectatorMode && game.spectatorPick) {
-                game.spectatorPick(pd.ox, pd.oy);
+            const pd=this._panDrag;
+            if(pd && event.button!==pd.button) return;
+            this._panDrag=null;this._rotateDrag=null;
+            this.updatePointerCursor();
+            const onCanvas=!event.target || event.target===this.canvas;
+            if(pd && !pd.moved && Math.hypot(event.clientX-pd.ox,event.clientY-pd.oy)<5
+                && onCanvas && pd.button===0 && pd.spectator && this._spectating()
+                && game.spectatorPick) {
+                // Replay's viewport owns mouse picking, avoiding a duplicate pick.
+                if(!this.replayMode) game.spectatorPick(event.clientX,event.clientY);
+            } else if(pd && !pd.moved && pd.button===0 && !pd.spectator && !this._spectating()
+                && onCanvas && Math.hypot(event.clientX-pd.ox,event.clientY-pd.oy)<5
+                && typeof game!=='undefined' && game && game.inputManager) {
+                // The hand tool changes drags, not ordinary unit/building clicks.
+                game.inputManager.touchAction(event.clientX,event.clientY);
             }
         }
 
@@ -1172,21 +1196,9 @@
             this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, this._halfH * factor));
         }
 
-        // ---- touch: the same five gestures, for a tablet -------------------------
-        // The renderer only ever bound mouse events. A browser will synthesise mouse
-        // events from taps -- but InputManager's touch shims call preventDefault on
-        // every touch that reaches the canvas, which suppresses exactly that. So a
-        // tablet had no camera in the arena at all: no pan, no zoom, not even a tap to
-        // inspect. The game turns out to play well on one, so it should be watchable
-        // on one.
-        //
-        // Mapped onto the mouse controls rather than inventing a second vocabulary:
-        //
-        //   one finger dragged     left drag      pan
-        //   one finger tapped      left click     inspect
-        //   one finger held        right hold     coordinate flag
-        //   two fingers pinched    wheel          zoom
-        //   two fingers turned     middle drag    yaw, and slid up or down for pitch
+        // One finger pans in either mode, tap inspects/selects. A stationary
+        // campaign hold arms a command, committed only on release. Multitouch,
+        // movement, cancellation and leaving the screen discard that command.
         _spectating() {
             return !!(typeof game !== 'undefined' && game && game.spectatorMode);
         }
@@ -1206,8 +1218,12 @@
         }
 
         onCanvasTouchStart(e) {
-            if (!this._spectating()) return;   // campaign touch belongs to InputManager
             e.preventDefault();
+            this._ignoreMouseUntil=Date.now()+800;
+            this._touchSpectator=this._spectating();
+            this._touchCommandReady=false;
+            this._coordHold=false;
+            if(typeof game!=='undefined' && game && game.inputManager) game.inputManager.cancelGesture();
             this._clearHold();
             if (e.touches.length === 1) {
                 const x = e.touches[0].clientX, y = e.touches[0].clientY;
@@ -1218,8 +1234,12 @@
                 this._holdTimer = setTimeout(() => {
                     this._holdTimer = null;
                     if (!this._panDrag || this._panDrag.moved) return;
-                    this._coordHold = true;
-                    if (game.inputManager) game.inputManager.showCoordFlag(x, y);
+                    if(this._spectating()) {
+                        this._coordHold=true;
+                        if(game.inputManager) game.inputManager.showCoordFlag(x,y);
+                    } else {
+                        this._touchCommandReady=true;
+                    }
                 }, 450);
             } else {
                 // Re-seeded on every extra finger, so a third one landing cannot leave
@@ -1231,8 +1251,9 @@
         }
 
         onCanvasTouchMove(e) {
-            if (!this._spectating()) return;
+            if(this._touchSpectator!==this._spectating()) { this.cancelPointerGesture(); return; }
             e.preventDefault();
+            this._ignoreMouseUntil=Date.now()+800;
             if (this._pinch && e.touches.length >= 2) {
                 const p = this._pinch, now = this._touchPair(e);
                 if (p.dist > 0 && now.dist > 0) {
@@ -1269,22 +1290,20 @@
                 // meant as a pick drifts more than a click does.
                 if (Math.hypot(x - this._panDrag.ox, y - this._panDrag.oy) < 8) return;
                 this._panDrag.moved = true;
+                this._touchCommandReady=false;
                 this._clearHold();
                 if (game.disableActionCam) game.disableActionCam();
             }
             const dx = x - this._panDrag.x, dy = y - this._panDrag.y;
             this._panDrag.x = x; this._panDrag.y = y;
-            const wpp = (2 * this._halfH) / (this.canvas.clientHeight || 1);
-            const cy = Math.cos(this._yaw), sy = Math.sin(this._yaw);
-            const right = -dx * wpp;
-            const fwd = dy * wpp / Math.max(0.17, Math.sin(this._pitch));
-            this.cameraTarget.x += right * cy + fwd * -sy;
-            this.cameraTarget.z += right * -sy + fwd * -cy;
+            this._manualPan(dx,dy);
+            this.updatePointerCursor();
         }
 
         onCanvasTouchEnd(e) {
-            if (!this._spectating()) return;
+            if(this._touchSpectator!==this._spectating()) { this.cancelPointerGesture(); return; }
             e.preventDefault();
+            this._ignoreMouseUntil=Date.now()+800;
             this._clearHold();
             // Read BEFORE clearing: a long press ends with a finger that never moved,
             // which is the same shape as a tap, and would otherwise also inspect.
@@ -1297,7 +1316,9 @@
             if (e.touches.length === 0) {
                 this._panDrag = null;
                 this._pinch = null;
-                if (pd && !pd.moved && !wasCoord) {
+                const released=e.changedTouches && e.changedTouches[0];
+                const x=released?released.clientX:(pd?pd.x:0), y=released?released.clientY:(pd?pd.y:0);
+                if (pd && !pd.moved && !wasCoord && Math.hypot(x-pd.ox,y-pd.oy)<8) {
                     // The analyzer owns picking on its own screen -- spectatorPick
                     // delegates to anPickAt there and returns. But anPickAt is reached
                     // from mousedown/mouseup on #anViewport, and this handler cancels the
@@ -1307,11 +1328,16 @@
                     const an = document.getElementById('analyzeScreen');
                     if (an && an.classList.contains('active')) {
                         if (game.ui && game.ui.anPickAt) game.ui.anPickAt(pd.ox, pd.oy);
-                    } else if (game.spectatorPick) {
-                        game.spectatorPick(pd.ox, pd.oy);
+                    } else if(this._spectating() && game.spectatorPick) {
+                        game.spectatorPick(x,y);
+                    } else if(game.inputManager) {
+                        game.inputManager.touchAction(x,y,this._touchCommandReady);
                     }
                 }
+                this._touchCommandReady=false;
+                this.updatePointerCursor();
             } else if (e.touches.length === 1) {
+                this._touchCommandReady=false;
                 // One of two lifted: carry on panning from where the remaining finger
                 // is, rather than jumping the map by the gap between them.
                 const t = e.touches[0];

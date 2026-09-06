@@ -129,6 +129,17 @@ Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
 
 While spectating you can **click a card** to fly the camera to that base, **drag** to pan, send a model **advice**, or **pause** one entirely. The decision log streams every move with the model's own reason, and flags rejections:
 
+| Input | Spectator / replay | Campaign |
+| --- | --- | --- |
+| Left click / tap | Inspect a unit or building | Select a unit or building |
+| Left mouse drag | Pan map; no box selection | Box-select units |
+| Right mouse drag | Read coordinates while held | Pan map; releasing a drag issues no order |
+| Right click | Coordinate flag | Move, attack, repair or confirm placement |
+| One-finger drag / pinch | Pan / zoom | Pan / zoom |
+| Touch and hold | Coordinate flag | Hold still, then release to issue an order |
+
+For left-button-only campaign navigation, open the minimap's camera-options chevron and enable the **hand tool**. Switch it off to restore mouse box selection. Touch always uses one-finger panning. Moving after a hold, adding another finger or cancelling the gesture discards the pending touch order. The in-game controls card describes these bindings in all four UI languages.
+
 <div align="center">
 
 ![The streaming decision log](Screenshots/Scene2.png)

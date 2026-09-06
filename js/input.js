@@ -21,38 +21,40 @@ class InputManager {
         const canvas = this.renderer.renderer.domElement;
 
         canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
-        canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
-        canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
+        window.addEventListener('mousemove', (e) => {
+            if(e.target===canvas || this.isDragging || this.isRightDragging) this.onMouseMove(e);
+        });
+        window.addEventListener('mouseup', (e) => {
+            try { if(e.target===canvas) this.onMouseUp(e); }
+            finally { this.cancelGesture(); }
+        });
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-        // Release the spectator coordinate flag even if the mouse comes up off-canvas.
-        window.addEventListener('mouseup', () => this.hideCoordFlag());
+        // Touch gestures belong to the renderer in BOTH modes. It forwards only
+        // completed taps/holds here, with an explicit button and release position.
+    }
 
-        // Touch support. These shims give the CAMPAIGN a one-finger mouse; the arena
-        // has real gestures in the renderer instead. Bailing out before preventDefault
-        // is the whole point of the guard: this used to swallow every spectator touch
-        // and then return, which also suppressed the synthetic mouse events the browser
-        // would have sent -- so a tablet watching a match could not move the camera at
-        // all, and nothing in the code looked like it was refusing.
-        canvas.addEventListener('touchstart', (e) => {
-            if (this.game.spectatorMode) return;
-            e.preventDefault();
-            const touch = e.touches[0];
-            this.onMouseDown({ clientX: touch.clientX, clientY: touch.clientY });
-        });
-        canvas.addEventListener('touchmove', (e) => {
-            if (this.game.spectatorMode) return;
-            e.preventDefault();
-            const touch = e.touches[0];
-            this.onMouseMove({ clientX: touch.clientX, clientY: touch.clientY });
-        });
-        canvas.addEventListener('touchend', (e) => {
-            if (this.game.spectatorMode) return;
-            e.preventDefault();
-            this.onMouseUp({ clientX: this.mouseDownPos.x, clientY: this.mouseDownPos.y });
-        });
+    cancelGesture() {
+        this.isDragging=false;
+        this.isRightDragging=false;
+        this.hasDragged=false;
+        this.hasRightDragged=false;
+        this.renderer.hideSelectionBox();
+        this.hideCoordFlag();
+    }
+
+    touchAction(clientX,clientY,command=false) {
+        if(this.game.spectatorMode) return;
+        const bounds=this.renderer.renderer.domElement.getBoundingClientRect();
+        if(clientX<bounds.left || clientX>bounds.right || clientY<bounds.top || clientY>bounds.bottom) return;
+        const event={clientX,clientY,button:command?2:0,fromTouch:true};
+        this.cancelGesture();
+        this.onMouseDown(event);
+        try { this.onMouseUp(event); } finally { this.cancelGesture(); }
     }
 
     onMouseDown(event) {
+        if(!event.fromTouch && Date.now()<(this.renderer._ignoreMouseUntil||0)) return;
+        this.cancelGesture();
         // Spectator/arena: no unit selection or commands — don't start a drag-select
         // (camera pan/rotate/zoom is handled separately by the renderer). Right-click,
         // though, drops a coordinate flag so the spectator can read off map positions
@@ -62,7 +64,7 @@ class InputManager {
             return;
         }
         // Skip middle-mouse-button - let Renderer handle camera rotation
-        if (event.button === 1) return;
+        if (event.button === 1 || (event.button===0 && this.renderer.panMode && !event.fromTouch)) return;
 
         const rect = this.renderer.renderer.domElement.getBoundingClientRect();
         const x = event.clientX - rect.left;
@@ -145,11 +147,11 @@ class InputManager {
     }
 
     onMouseMove(event) {
-        // While the spectator holds right-click, keep the coordinate flag under the cursor.
-        if (this._coordFlag && this._coordFlag.style.display !== 'none') {
-            this.showCoordFlag(event.clientX, event.clientY);
+        if(this.game.spectatorMode) {
+            if(this.isDragging || this.isRightDragging) this.cancelGesture();
+            if(this._coordFlag && this._coordFlag.style.display!=='none') this.showCoordFlag(event.clientX,event.clientY);
+            return;
         }
-
         const rect = this.renderer.renderer.domElement.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
@@ -169,7 +171,7 @@ class InputManager {
             const dx = Math.abs(x - this.dragStartX);
             const dy = Math.abs(y - this.dragStartY);
 
-            if (dx > this.dragThreshold || dy > this.dragThreshold) {
+            if (Math.hypot(dx,dy) >= this.dragThreshold) {
                 this.hasDragged = true;
                 this.renderer.showSelectionBox(
                     this.dragStartX, this.dragStartY,
@@ -181,19 +183,22 @@ class InputManager {
         if (this.isRightDragging) {
             const dx = Math.abs(event.clientX - this.mouseDownPos.x);
             const dy = Math.abs(event.clientY - this.mouseDownPos.y);
-            if (dx > this.dragThreshold || dy > this.dragThreshold) {
+            if (Math.hypot(dx,dy) >= this.dragThreshold) {
                 this.hasRightDragged = true;
             }
         }
     }
 
     onMouseUp(event) {
+        if(!event.fromTouch && Date.now()<(this.renderer._ignoreMouseUntil||0)) { this.cancelGesture(); return; }
         // In spectator mode, disable all interactions (selection, movement, building)
         if (this.game.spectatorMode) {
-            this.isDragging = false;
-            this.isRightDragging = false;
+            this.cancelGesture();
             return;
         }
+        if(event.button===1) return;
+        // Measure the release too: a browser can coalesce the final mousemove.
+        if(this.isDragging || this.isRightDragging) this.onMouseMove(event);
 
         if (this.isDragging && !this.hasDragged) {
             // Single click - select player unit or player building
