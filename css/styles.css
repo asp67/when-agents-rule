@@ -2225,11 +2225,12 @@ body.spectator-mode #unitInfo.spectator-card {
     display: flex;
     flex-direction: column;
     z-index: 26;
-    background: rgba(10, 13, 28, 0.94);
+    background: #191e19;
     border: 1px solid rgba(140, 180, 255, 0.35);
     border-radius: 11px;
     box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(7px);
+    /* Avoid re-filtering the moving WebGL scene behind a deep text panel. */
+    contain: layout paint;
     overflow: hidden;
 }
 
@@ -2316,7 +2317,7 @@ body.spectator-mode #unitInfo.spectator-card {
    in the panel's own blue rather than the log's green. */
 .tv-top-btn {
     position: absolute;
-    bottom: 12px;
+    bottom: 48px;
     right: 14px;
     width: 30px;
     height: 30px;
@@ -2977,3 +2978,10 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
     .an-workspace-tools { gap:6px; padding:6px 8px; }
     .an-workspace-tools label { flex-wrap:wrap; }
 }
+
+/* The transcript mounts one page while the arena keeps drawing behind it. */
+.tv-nav { display:flex; align-items:center; gap:6px; padding:7px; flex-shrink:0; border-top:1px solid rgba(255,255,255,.12); }
+.tv-nav button { padding:5px 8px; border:1px solid #656553; border-radius:3px; color:#e6ddc9; background:#30372d; cursor:pointer; font:inherit; font-size:.75em; }
+.tv-nav button:disabled { opacity:.45; cursor:default; }
+.tv-nav button:focus-visible { outline:2px solid #d5bb81; outline-offset:2px; }
+#tvRange { flex:1; color:#c0bdab; text-align:center; font-size:.75em; white-space:nowrap; }

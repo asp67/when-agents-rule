@@ -4129,8 +4129,8 @@ class UIManager {
     // ---- In-match transcript viewer ------------------------------------------
     // One panel, re-targeted rather than one per model: the spyglass on another
     // card swaps whose exchange is shown instead of stacking a second window over
-    // the match. Reads the recorder's in-memory ring (last 300 turns), so opening
-    // it costs nothing and it follows the match live.
+    // the match. Read the recorder's ring, but mount only a small page: even
+    // in-memory turns become expensive once their full replies enter the DOM.
     // Which log entries have an exchange behind them. Spectator advice and the
     // harness's own pause/resume/defeat notices are written without a model turn,
     // so there is nothing to open.
@@ -4264,26 +4264,21 @@ class UIManager {
         const mgr = this.game.openAIAIManager;
         const entry = ((mgr && mgr.decisionLog) || []).find(e => e._uid === Number(key));
         if (!entry) return;
-        this._transcriptFor = entry.playerId;
-        this._tvRendered = null;              // may be a different model → full rebuild
-        this.renderTranscriptViewer();
-        this.updateSpectatorPlayerList();     // repaint the spyglass active states
-
         const turns = (mgr && mgr.transcripts) ? mgr.transcripts.recent(entry.playerId) : [];
         let best = null, bestD = Infinity;
         turns.forEach(x => {
             const d = Math.abs((x.at || 0) - entry.timestamp);
             if (d < bestD) { bestD = d; best = x; }
         });
-        // Older turns fall off the recorder's 300-turn ring; the viewer cannot show
-        // what it no longer holds, so open it and leave the reader at the top.
-        //
-        // Clicking a decision says which turn is wanted, so that turn is PINNED: the
-        // incremental render anchors on it instead of following the newest arrival.
-        // Without this, asking for the turn that happens to be newest left the reader
-        // at scrollTop 0 — indistinguishable from following live — and the next answer
-        // to land pushed the requested turn straight out of view.
-        if (best) { this._tvPinned = best.turn; this.tvJumpTo(best.turn); }
+        // Choose the page BEFORE rendering; a log jump must not build every turn
+        // merely to locate one card near the bottom of the recorder's ring.
+        this._transcriptFor = entry.playerId;
+        this._tvWindowEnd = best ? best.turn : null;
+        this._tvPinned = best ? best.turn : null;
+        this._tvRendered = null;
+        this.renderTranscriptViewer();
+        this.updateSpectatorPlayerList();
+        if (best) this.tvJumpTo(best.turn);
     }
 
     // Stop holding the requested turn. Called whenever the reader says, by some other
@@ -4310,6 +4305,7 @@ class UIManager {
     toggleTranscriptViewer(aiId) {
         // A different seat, or none: whatever turn was being held belonged to the old one.
         this.tvUnpin();
+        this._tvWindowEnd = null;
         this._transcriptFor = (this._transcriptFor === aiId) ? null : aiId;
         this._tvRendered = null;            // different model → full rebuild
         this.renderTranscriptViewer();
@@ -4323,18 +4319,34 @@ class UIManager {
         const body = document.getElementById('tvBody');
         const btn = document.getElementById('tvTopBtn');
         if (!body || !btn) return;
-        btn.classList.toggle('visible', body.scrollTop > 24);
+        btn.classList.toggle('visible', body.scrollTop > 24 || this._tvWindowEnd != null);
     }
 
     scrollTranscriptTop() {
-        // The arrow means "back to the newest", which is the opposite of holding a turn.
         this.tvUnpin();
-        // Same call the decision log's arrow uses. A rAF tween was tried here after
-        // smooth-scroll appeared dead in testing; that turned out to be the preview
-        // tab being hidden (visibilityState 'hidden', zero rAF frames), which stops a
-        // hand-rolled animation just as dead. Nothing was wrong with the platform API.
+        this._tvWindowEnd = null;
+        this.renderTranscriptViewer();
         const body = document.getElementById('tvBody');
         if (body) body.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Fixed-size pages keep a long arena's DOM and section-toggle work bounded.
+    // Hold by turn identity, not offset: new answers cannot shift an older page.
+    tvPageSize() { return 8; }
+
+    tvPage(direction) {
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        const turns = rec ? rec.recent(this._transcriptFor) : [];
+        if (!turns.length) return;
+        const current = this._tvRendered;
+        const key = current && current.keys[current.keys.length - 1];
+        const found = turns.findIndex(e => e.turn === key);
+        const end = found < 0 ? turns.length : found + 1;
+        const next = Math.max(1, Math.min(turns.length, end + direction * this.tvPageSize()));
+        this.tvUnpin();
+        this._tvWindowEnd = next === turns.length ? null : turns[next - 1].turn;
+        this._tvRendered = null;
+        this.renderTranscriptViewer();
     }
 
     // Fill a state section's <pre> on first open, from the ring. The JSON never sits
@@ -4488,39 +4500,54 @@ class UIManager {
 
     renderTranscriptViewer() {
         const el = document.getElementById('transcriptViewer');
-        if (!el) return;
-        const id = this._transcriptFor;
-        if (!id) { el.style.display = 'none'; this._tvRendered = null; return; }
-
-        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
-        const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
-        const turns = rec ? rec.recent(id) : [];
-        // Resolve objective/plan across the whole ring before anything is rendered.
-        // Stamped onto the records, not the DOM, so the incremental path below still
-        // only touches the turns that are new — and every turn then knows the plan it
-        // was working to, not just the one in ten that restated it. Entries older than
-        // the ring's first restatement show none, exactly as a truncated file does in
-        // the analyzer.
-        this.tvCarryPlan(turns);
-        el.style.display = '';
-
-        const head = document.getElementById('tvTitle');
-        const cnt = document.getElementById('tvCount');
-        if (head) head.innerHTML = `${this.teamDotHtml(ai && ai.seat, 11)}<span>${this.escapeHtml(
-            (turns.length && turns[turns.length - 1].name) || (ai && ai.civilization) || id)}</span>`;
-        if (cnt) cnt.textContent = turns.length ? `${turns.length}` : '';
-
         const body = document.getElementById('tvBody');
-        if (!body) return;
+        if (!el || !body) return;
+        const id = this._transcriptFor;
+        if (!id) {
+            el.style.display = 'none';
+            if (body.firstChild) body.replaceChildren();
+            this._tvRendered = null;
+            this._tvWindowEnd = null;
+            return;
+        }
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        const turns = rec ? rec.recent(id) : [];
+        const lang = typeof getUiLang === 'function' ? getUiLang() : 'en';
+        const prev = this._tvRendered;
+        const same = prev && prev.id === id && prev.source === rec && prev.lang === lang;
+        // A retained page's newest turn can eventually fall out of the memory ring.
+        // In that case show the oldest available page, not an unrelated live jump.
+        const found = this._tvWindowEnd == null ? -1 : turns.findIndex(e => e.turn === this._tvWindowEnd);
+        const end = this._tvWindowEnd == null ? turns.length
+            : found >= 0 ? found + 1 : Math.min(this.tvPageSize(), turns.length);
+        const start = Math.max(0, end - this.tvPageSize());
+        const page = turns.slice(start, end);
+        if (this._tvWindowEnd != null) this._tvWindowEnd = page.at(-1)?.turn ?? null;
+        const keys = page.map(e => e.turn);
+        const first = turns[0]?.turn, last = turns.at(-1)?.turn;
+        const resultChanged = same && page.some(e => prev.results.get(e.turn) !== e.harnessResult);
+        const pageChanged = !same || keys.length !== prev.keys.length || keys.some((k,i) => k !== prev.keys[i]);
+        const ringChanged = !same || first !== prev.first || last !== prev.last || turns.length !== prev.total;
+        // No markup, sorting, layout reads or scroll writes on the one-second idle beat.
+        const windowChanged = !same || prev.windowEnd !== this._tvWindowEnd;
+        if (!pageChanged && !ringChanged && !resultChanged && !windowChanged) return;
+        if (ringChanged) this.tvCarryPlan(turns);
+        el.style.display = '';
+        const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
+        const title = `${this.teamDotHtml(ai && ai.seat, 11)}<span>${this.escapeHtml(
+            turns.at(-1)?.name || (ai && ai.civilization) || id)}</span>`;
+        const head = document.getElementById('tvTitle');
+        if (head && head.innerHTML !== title) head.innerHTML = title;
+        const cnt = document.getElementById('tvCount');
+        const count = turns.length ? `${turns.length}` : '';
+        if (cnt && cnt.textContent !== count) cnt.textContent = count;
         if (!body._tvBound) {
             body.addEventListener('scroll', () => {
-                // Scrolling above the pinned turn means the reader has gone looking at
-                // newer answers, so the hold is released and the viewer follows the top
-                // again. Scrolling BELOW it, into older history, is still reading around
-                // the thing they asked for — the pin stays.
-                if (this._tvPinned != null) {
-                    const el = body.querySelector(`.tv-turn[data-key="${this._tvPinned}"]`);
-                    if (!el || body.scrollTop < el.offsetTop - 12) this.tvUnpin();
+                // Reading down the current page holds it as fresh turns arrive.
+                if (body.scrollTop > 4 && this._tvWindowEnd == null && this._tvRendered) {
+                    this._tvWindowEnd = this._tvRendered.keys.at(-1) ?? null;
+                    const latest = document.getElementById('tvLatest');
+                    if (latest) latest.disabled = false;
                 }
                 this.updateTranscriptTopBtn();
             });
@@ -4558,71 +4585,59 @@ class UIManager {
             body._tvBound = true;
         }
 
-        if (!turns.length) {
-            body.innerHTML = `<div class="tv-empty">${t('spec.tvEmpty')}</div>`;
-            this._tvRendered = { id, keys: [] };
-            return;
-        }
-
-        // Rebuilding the whole list on every turn was the freeze: 251ms at 25 turns,
-        // 5.7s at the 300 cap, and it grew as a match ran. The list only ever changes
-        // by gaining turns at the top and shedding them off the bottom, so do exactly
-        // that. It also removes the need to save and restore scroll position, open
-        // sections and their inner scroll — untouched nodes simply keep all three.
-        const keys = turns.map(e => e.turn);
-        const prev = (this._tvRendered && this._tvRendered.id === id) ? this._tvRendered.keys : null;
-        if (!prev) {
-            body.innerHTML = turns.slice().reverse().map(e => this.tvTurnHtml(e)).join('');
+        if (!same) {
+            body.replaceChildren();
             body.scrollTop = 0;
-            this._tvRendered = { id, keys };
-            this.updateTranscriptTopBtn();
-            return;
         }
-        if (prev.length === keys.length && prev[prev.length - 1] === keys[keys.length - 1]) {
-            this.updateTranscriptTopBtn();
-            return;                       // nothing new
-        }
-
-        const prevSet = new Set(prev);
-        const fresh = turns.filter(e => !prevSet.has(e.turn));
-        const gone = prev.filter(k => !keys.includes(k));
-        gone.forEach(k => {
-            const n = body.querySelector(`[data-key="${k}"]`);
-            if (n) n.remove();            // fell off the ring
-        });
-
-        // Insert ascending at the top so the newest ends up first, then put the
-        // reader back on the entry they were looking at.
-        //
-        // NOT a scrollHeight delta: that assumes insertion is the only thing that
-        // changed height, and it is not — collapsing a section or lazily filling a
-        // state JSON changes it too, and the correction was then wrong by a constant
-        // ~940px no matter where the collapse happened. Anchoring on an ELEMENT is
-        // exact whatever else moved.
-        // A turn the reader ASKED for outranks following the live top. It is checked
-        // first and independently of scrollTop, because a pinned turn that happens to be
-        // the newest one sits AT the top, where the follow-the-top rule would otherwise
-        // claim it.
-        const pinned = (this._tvPinned != null)
-            ? body.querySelector(`.tv-turn[data-key="${this._tvPinned}"]`) : null;
-        // Pinned to a turn the ring has since dropped: nothing left to hold on to.
-        if (this._tvPinned != null && !pinned) this.tvUnpin();
-        const atTop = !pinned && body.scrollTop <= 4;
-        let anchorEl = pinned, anchorGap = pinned ? (pinned.offsetTop - body.scrollTop) : 0;
-        if (!atTop && !anchorEl) {
-            for (const el of body.children) {
-                if (el.offsetTop + el.offsetHeight > body.scrollTop) {  // first visible turn
-                    anchorEl = el;
-                    anchorGap = el.offsetTop - body.scrollTop;
-                    break;
+        if (!page.length && (!same || prev.keys.length)) {
+            body.innerHTML = `<div class="tv-empty">${t('spec.tvEmpty')}</div>`;
+        } else if (page.length) {
+            if (same && !prev.keys.length) body.replaceChildren();
+            const wanted = new Set(keys.map(String));
+            for (const node of [...body.children]) if (!wanted.has(node.dataset.key)) node.remove();
+            // Reuse existing cards, including each <pre>'s own reading position.
+            // At most eight full replies can be mounted, even on the initial open.
+            let cursor = body.firstElementChild;
+            for (const entry of page.slice().reverse()) {
+                let node = [...body.children].find(n => n.dataset.key === String(entry.turn));
+                if (!node) {
+                    const container = document.createElement('div');
+                    container.innerHTML = this.tvTurnHtml(entry);
+                    node = container.firstElementChild;
+                } else if (prev.results.get(entry.turn) !== entry.harnessResult) {
+                    // Harness results arrive after record(); the old count-only guard
+                    // hid them until the entire panel was reopened.
+                    const result = node.querySelector('.tv-result');
+                    if (result) result.querySelector('pre').textContent = entry.harnessResult || '';
+                    else if (entry.harnessResult) {
+                        const container = document.createElement('div');
+                        container.innerHTML = `<details class="tv-sec tv-result"${this.tvSectionPrefs()['tv-result'] ? ' open' : ''}><summary>${t('spec.tvResult')}</summary><pre></pre></details>`;
+                        container.firstElementChild.querySelector('pre').textContent = entry.harnessResult;
+                        node.insertBefore(container.firstElementChild, node.querySelector('.tv-state'));
+                    }
+                    node.classList.toggle('is-error', typeof entry.harnessResult === 'string' && entry.harnessResult.startsWith('[ERROR]'));
                 }
+                if (node !== cursor) body.insertBefore(node, cursor);
+                cursor = node.nextElementSibling;
             }
+            if (this._tvWindowEnd == null && this._tvPinned == null) body.scrollTop = 0;
         }
-        fresh.forEach(e => body.insertAdjacentHTML('afterbegin', this.tvTurnHtml(e)));
-        if (atTop) body.scrollTop = 0;
-        else if (anchorEl && anchorEl.isConnected) body.scrollTop = Math.max(0, anchorEl.offsetTop - anchorGap);
-
-        this._tvRendered = { id, keys };
+        this._tvRendered = { id, source: rec, lang, keys, first, last, total: turns.length, windowEnd: this._tvWindowEnd,
+            results: new Map(page.map(e => [e.turn, e.harnessResult])) };
+        const labels = { tvOlder: 'spec.tvOlder', tvNewer: 'spec.tvNewer', tvLatest: 'spec.tvLatest' };
+        for (const [key,label] of Object.entries(labels)) {
+            const button = document.getElementById(key);
+            if (button && button.textContent !== t(label)) button.textContent = t(label);
+        }
+        const older = document.getElementById('tvOlder'), newer = document.getElementById('tvNewer');
+        const latest = document.getElementById('tvLatest'), range = document.getElementById('tvRange');
+        if (older) older.disabled = start === 0;
+        if (newer) newer.disabled = end === turns.length;
+        if (latest) latest.disabled = !turns.length || (this._tvWindowEnd == null && this._tvPinned == null);
+        if (range) {
+            const text = page.length ? `#${keys[0]}–${keys.at(-1)}` : '';
+            if (range.textContent !== text) range.textContent = text;
+        }
         this.updateTranscriptTopBtn();
     }
 

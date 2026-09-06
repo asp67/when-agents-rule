@@ -2219,6 +2219,7 @@ Object.keys(I18N_ART).forEach(l=>Object.assign(I18N[l],I18N_ART[l]));
 
 const I18N_VIEW = {
     "en": {
+        "spec.tvOlder": "Older", "spec.tvNewer": "Newer", "spec.tvLatest": "Latest",
         "view.connection": "Connection",
         "view.budgets": "Model and budgets",
         "view.advanced": "Advanced settings",
@@ -2247,6 +2248,7 @@ const I18N_VIEW = {
         "view.mapHeight": "Map height (%)"
     },
     "de": {
+        "spec.tvOlder": "Ältere", "spec.tvNewer": "Neuere", "spec.tvLatest": "Neueste",
         "view.connection": "Verbindung",
         "view.budgets": "Modell und Budgets",
         "view.advanced": "Erweiterte Einstellungen",
@@ -2275,6 +2277,7 @@ const I18N_VIEW = {
         "view.mapHeight": "Kartenhöhe (%)"
     },
     "es": {
+        "spec.tvOlder": "Anteriores", "spec.tvNewer": "Siguientes", "spec.tvLatest": "Últimos",
         "view.connection": "Conexión",
         "view.budgets": "Modelo y presupuestos",
         "view.advanced": "Ajustes avanzados",
@@ -2303,6 +2306,7 @@ const I18N_VIEW = {
         "view.mapHeight": "Altura del mapa (%)"
     },
     "zh": {
+        "spec.tvOlder": "较早", "spec.tvNewer": "较新", "spec.tvLatest": "最新",
         "view.connection": "连接",
         "view.budgets": "模型与预算",
         "view.advanced": "高级设置",
