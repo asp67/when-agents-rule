@@ -1908,6 +1908,10 @@
             // draw ------------------------------------------------------------
             const gl = this.gl;
             const cam = this._computeCam();
+            if (typeof game !== 'undefined' && game?._actionCam && game.spectatorMode
+                && game.gameStarted && game._director) {
+                game._director.measureCoverage(this, Date.now());
+            }
             const bb = M().billboard(cam.view);
             this._assembleFrame(now / 1000, deltaTime, bb);
             this._syncFog();

@@ -1296,7 +1296,7 @@ class Game {
                                 { x: currentTarget.x, y: 1.1, z: currentTarget.z }, 'arrow');
                         }
                         this.renderer.flashHit(currentTarget);
-                        this.notifyCombat(currentTarget.x, currentTarget.z);
+                        this.notifyCombat(currentTarget.x, currentTarget.z, unit, currentTarget, dealt);
 
                         // Visual feedback on health bar
                         if (currentTarget.healthBar) {
@@ -1442,7 +1442,7 @@ class Game {
                     { x: tower.x, y: 4.6, z: tower.z },
                     { x: unit.x, y: 1.0, z: unit.z }, 'stone');
                 this.renderer.flashHit(unit);
-                this.notifyCombat(unit.x, unit.z);
+                this.notifyCombat(unit.x, unit.z, tower, unit, dmg);
 
                 // Brief red flash on the struck unit's health bar.
                 if (unit.healthBar) {
@@ -1760,8 +1760,13 @@ class Game {
     // Called whenever damage lands. Purely presentational: spawns a throttled
     // battle ring in the world (max one per ~35-unit area / 5s), queues a minimap
     // ping, and records the event for the spectator action camera. No game effect.
-    notifyCombat(x, z) {
+    notifyCombat(x, z, attacker, target, damage) {
         const now = Date.now();
+        // Camera urgency is independent of the throttled visual pings below.
+        if (this._actionCam && this.spectatorMode) {
+            if (!this._director && typeof Director !== 'undefined') this._director = new Director(this);
+            if (this._director) this._director.observeCombat(attacker, target, damage, now, x, z);
+        }
         // World ring — throttled per coarse map cell so a melee doesn't strobe.
         this._pingCells = this._pingCells || {};
         const key = Math.round(x / 35) + ':' + Math.round(z / 35);

@@ -4875,6 +4875,20 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // the plan itself is kept, not thrown away with the message.
             controller._planOnly = false;
             controller.seat.lastActionResult = `[ERROR] NO ACTION was taken this turn: you called "plan" but never "action", so your objective and plan were saved and nothing was done. ${OpenAIAIManager.howToAnswer(controller)}`;
+            const ai = controller.aiPlayer;
+            const civ = getCivilization(ai.civilization);
+            // This runs during execution (after flushRound drained pendingLog).
+            // Commit now, like executeAction, with the answering lane's stamps.
+            this.commitDecision({
+                playerId: ai.id,
+                civName: civ?.name || ai.civilization,
+                color: '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0'),
+                action: 'plan_only',
+                move: controller._moveNo,
+                latencyMs: controller._moveMs,
+                reason: controller.seat.objective || (controller.seat.plan || []).join(' → '),
+                params: {}, failed: true
+            });
         } else controller.seat.lastActionResult = `[ERROR] NO ACTION was taken this turn: nothing executable arrived. ${OpenAIAIManager.howToAnswer(controller)} Plain prose wastes the turn.`;
         const lastTurn = this.logTurnFor(controller);
         if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;

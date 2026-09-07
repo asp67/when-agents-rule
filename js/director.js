@@ -66,6 +66,7 @@ const DIR_CONTACT_PAIR_COOLDOWN_MS = 45000;
 const DIR_SHOTS = {
     selected:  { dur: [9000, 9000],   pitch: 0.42, track: true,  push: 0 },
     brawl:     { dur: [2200, 3400],   pitch: 0.44, track: true,  push: 0.06, pan: 0.11 },
+    imminent:  { dur: [1800, 2400],   pitch: 0.44, track: true,  push: 0 },
     pov:       { dur: [4000, 6000],   pitch: 0.24, track: false, push: 0 },
     // Pitch is SCOUT's, not a lower one of its own. Nearly every contact is cut to
     // from the scout shot -- it is the same unit, one second later, having found
@@ -113,6 +114,10 @@ class Director {
         this._sites = new Set();     // building ids already shown as sites
         this.debugRows = [];
         this._nextEval = 0;
+        this.encounters = [];
+        this._encounterSeq = 0;
+        this.coverage = [];
+        this.staleCombatCuts = 0;
     }
 
     reset() {
@@ -120,6 +125,130 @@ class Director {
         this.recent = [];
         this.compareQueue = [];
         this._shotNo = {};
+        this.encounters = [];
+        this.coverage = [];
+        this._nextEval = 0;
+        this._coverageAt = null;
+        this._visibleEncounters = new Set();
+        this.staleCombatCuts = 0;
+        this._prevHp.clear();
+        this._siege = new Map();
+    }
+
+    encounterAt(x, z, now) {
+        let e = this.encounters.find(f => now - f.seenAt < 2500
+            && Math.hypot(f.x - x, f.z - z) < 70);
+        if (!e) {
+            e = { key: 'engagement:' + ++this._encounterSeq, x, z, seenAt: now,
+                participants: new Set(), hits: [], threats: [], firstHit: null,
+                firstCovered: null, visibleMs: 0, lastHit: null };
+            this.encounters.push(e);
+        }
+        e.seenAt = now;
+        return e;
+    }
+
+    observeCombat(attacker, target, damage, now, x, z) {
+        const e = this.encounterAt(x, z, now);
+        const fresh = e.firstHit == null;
+        if (attacker) e.participants.add(attacker);
+        if (target) e.participants.add(target);
+        e.firstHit ??= now;
+        e.lastHit = now;
+        e.hits.push({ t: now, damage: Math.max(0, damage || 0), attacker, target });
+        // A wake-up, not a camera cut: the director still arbitrates simultaneous fights.
+        const decisive = target && (target.isWonder || target.type === 'town_center')
+            && target.health <= (damage || 0) * 2;
+        if (fresh || (decisive && !e.criticalWake)) this._nextEval = 0;
+        if (decisive) e.criticalWake = true;
+    }
+
+    // Predict only attacks that are about to connect. A cross-map order, a
+    // retreating target, and an idle neighbour must not steal the camera.
+    scanThreats(now) {
+        const g = this.game, speed = g.effectiveSimSpeed ? g.effectiveSimSpeed() : 1;
+        const players = this.livePlayers();
+        const units = players.flatMap(p => p.units).filter(u => u.health > 0);
+        const entities = players.flatMap(p => p.units.concat(p.buildings)).filter(e => e.health > 0);
+        const buildings = new Set(players.flatMap(p => p.buildings));
+        const cells = new Map();
+        for (const e of entities) {
+            const k = Math.floor(e.x / 40) + ':' + Math.floor(e.z / 40);
+            if (!cells.has(k)) cells.set(k, []);
+            cells.get(k).push(e);
+        }
+        for (const e of this.encounters) e.threats = [];
+        const velocity = u => {
+            if (!u.isMoving) return { x: 0, z: 0 };
+            const dx = (u.targetX ?? u.x) - u.x, dz = (u.targetZ ?? u.z) - u.z;
+            const len = Math.hypot(dx, dz) || 1;
+            const v = Math.min(u.speed || 0, u.marchSpeed ?? Infinity) * 3 * speed;
+            return { x: dx / len * v, z: dz / len * v };
+        };
+        for (const u of units) {
+            if (!(u.attack > 0) || u.unitType === 'support') continue;
+            let target = u.isAttacking && u.attackTarget;
+            if (!target && u.attackMove) {
+                let best = Infinity;
+                const cx = Math.floor(u.x / 40), cz = Math.floor(u.z / 40);
+                for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) {
+                    for (const t of cells.get((cx + dx) + ':' + (cz + dz)) || []) {
+                        const d = Math.hypot(t.x - u.x, t.z - u.z);
+                        if (t.owner !== u.owner && t.owner != null && d < best) { best = d; target = t; }
+                    }
+                }
+            }
+            if (!target || target.health <= 0 || target.owner === u.owner) continue;
+            const building = target.isWonder || buildings.has(target);
+            const range = (u.range > 1 ? u.range : 1.5) + (building ? (target.isWonder ? 4.6 : 3.5) : 0);
+            const dx = target.x - u.x, dz = target.z - u.z, dist = Math.hypot(dx, dz);
+            const a = velocity(u), b = velocity(target);
+            const closing = dist ? ((a.x - b.x) * dx + (a.z - b.z) * dz) / dist : 0;
+            const eta = dist <= range ? 0 : closing > 0 ? (dist - range) / closing : Infinity;
+            if (eta > 2) continue;
+            const e = this.encounterAt(target.x, target.z, now);
+            e.participants.add(u); e.participants.add(target);
+            e.threats.push({ u, target, eta, building });
+        }
+        // Retain a bounded diagnostic history, not live entity references forever.
+        this.encounters = this.encounters.filter(e => {
+            for (const p of e.participants) if (p.health <= 0) e.participants.delete(p);
+            e.hits = e.hits.filter(h => now - h.t < 1500 / speed);
+            if (now - e.seenAt <= 3000) return true;
+            if (e.firstHit != null) {
+                this.coverage.push({ key: e.key, firstHit: e.firstHit, lastHit: e.lastHit,
+                    firstCovered: e.firstCovered, visibleMs: e.visibleMs,
+                    latencyMs: e.firstCovered == null ? null : Math.max(0, e.firstCovered - e.firstHit) });
+                if (this.coverage.length > 200) this.coverage.shift();
+            }
+            return false;
+        });
+    }
+
+    liveFights(now) {
+        return this.encounters.map(e => {
+            const hits = e.hits;
+            const ongoing = e.threats.some(t => t.eta === 0);
+            const active = ongoing || hits.some(h => h.target?.health > 0 && h.attacker?.health > 0);
+            const imminent = !active && e.threats.length > 0;
+            const live = [...e.participants].filter(p => p.health > 0);
+            const c = this.centroid(live) || e;
+            let importance = 0;
+            const targets = new Map(e.threats.map(t => [t.target, t.building]));
+            for (const h of hits) if (h.target?.health > 0) targets.set(h.target,
+                h.target.isWonder || h.target.type === 'town_center' || targets.get(h.target));
+            for (const [target, building] of targets) {
+                const recentDamage = hits.filter(h => h.target === target).reduce((n, h) => n + h.damage, 0);
+                const fragile = recentDamage > 0 && target.health <= recentDamage * 2;
+                const value = target.isWonder ? 55 : target.type === 'town_center' ? 40 : building ? 15 : 0;
+                importance = Math.max(importance, value + (fragile && value >= 40 ? 35 : 0));
+            }
+            return { ...c, key: e.key, encounter: e, active, imminent,
+                priority: active ? (importance >= 70 ? 3 : 2) : imminent ? 1 : 0,
+                score: (active ? 110 : imminent ? 95 : 20) + importance
+                    + Math.min(30, live.length * 2) + Math.min(20, hits.length * 2),
+                r: this.spread(live, c), n: live.length };
+        });
     }
 
     // ---- geometry ----------------------------------------------------------
@@ -232,38 +361,17 @@ class Director {
         return best;
     }
 
-    // Combat events, grouped into separate FIGHTS.
-    //
-    // They used to be averaged into a single centroid, which is only correct when
-    // there is one battle. With two, the mean lands between them -- usually on empty
-    // ground -- and because a brawl shot TRACKS its subject, every event arriving
-    // from one side dragged the frame that way and the next event dragged it back.
-    // That is the yo-yo: not the director changing its mind, but one shot aimed at
-    // the midpoint of two things happening 300 units apart.
-    //
-    // Single-link clustering at 95 units: close enough that one melee stays one
-    // fight, far enough apart that a raid on a base is not merged with a skirmish
-    // across the valley.
+    // Stable encounter identities survive the approach and the fight. Old damage
+    // is retained for diagnostics but cannot offer a new shot of empty ground.
     fights(now) {
-        const ev = (this.game._combatEvents || []).filter(e => now - e.t < 6000);
-        const out = [];
-        for (const e of ev) {
-            const w = 1 - (now - e.t) / 6000;
-            let f = null;
-            for (const c of out) { if (Math.hypot(c.x - e.x, c.z - e.z) <= 95) { f = c; break; } }
-            if (!f) { out.push({ x: e.x, z: e.z, sx: e.x * w, sz: e.z * w, w, n: 1, r: 0 }); continue; }
-            f.n++; f.w += w; f.sx += e.x * w; f.sz += e.z * w;
-            f.x = f.sx / f.w; f.z = f.sz / f.w;
-            f.r = Math.max(f.r, Math.hypot(e.x - f.x, e.z - f.z));
-        }
-        return out;
+        return this.liveFights(now).filter(f => f.active || f.imminent);
     }
 
     // WHAT is being hit, not just whether something is. A Wonder under attack is the
     // match being decided; a town centre is a player being ended; a hut is a hut. They
     // all scored the same, so a skirmish with more swings in it could outrank the
     // assault that settled the game.
-    siegeAt(f) {
+    siegeAt(f, now) {
         let best = null, w = 0;
         for (const [b, hp] of this._prevHp) {
             if (!b || b.health == null || b.health >= hp) continue;
@@ -279,7 +387,6 @@ class Director {
         // right around the back the moment nobody happened to be swinging.
         const memo = (this._siege = this._siege || new Map());
         const key = Math.round(f.x / 70) + ':' + Math.round(f.z / 70);
-        const now = Date.now();
         if (best) { memo.set(key, { b: best, w, until: now + 6000 }); return { b: best, w }; }
         const held = memo.get(key);
         if (held && held.until > now && held.b && held.b.health > 0) return { b: held.b, w: held.w };
@@ -303,6 +410,7 @@ class Director {
     // ---- candidates --------------------------------------------------------
     candidates(now) {
         const g = this.game, out = [];
+        this.scanThreats(now);
         const push = (type, key, score, make) => out.push({ type, key, score, make });
 
         // A fight is the show -- and each fight is its OWN candidate, so two at once
@@ -310,11 +418,11 @@ class Director {
         // them. Keyed by where it is happening, coarsely, so the same battle keeps its
         // identity across shots while a different one is a different subject.
         for (const f of this.fights(now)) {
-            const key = 'fight:' + Math.round(f.x / 70) + ':' + Math.round(f.z / 70);
-            const siege = this.siegeAt(f);
+            const key = f.key;
+            const siege = this.siegeAt(f, now);
             const town = this.townAt(f);
-            push('brawl', key,
-                 100 + Math.min(45, f.n * 3) + siege.w + Math.min(18, town * 3), () => {
+            push(f.imminent ? 'imminent' : 'brawl', key,
+                 f.score + Math.min(18, town * 3), () => {
                 // A MONOTONIC count per fight, not a count of the last six shots. The
                 // window saturates during a long battle -- every slot already holds this
                 // key, so the number stopped changing and the "new" shot came back on
@@ -336,10 +444,11 @@ class Director {
                 return {
                     x: f.x, z: f.z,
                     yaw: this.snapYaw(facing + vary),
-                    halfH: Math.max(24, Math.min(90, f.r * 1.5 + 18)),
+                    halfH: Math.max(24, f.r * 1.5 + 18),
                     subject: { kind: 'point', x: f.x, z: f.z, combat: true, key }
                 };
             });
+            Object.assign(out[out.length - 1], { priority: f.priority, encounter: f.encounter });
         }
 
         for (const ai of this.livePlayers()) {
@@ -576,9 +685,9 @@ class Director {
         // while a town is being taken. Live action decays, but only so far; it stops
         // being a candidate at all when the fighting stops, which is the honest way
         // for it to end.
-        const live = c.type === 'brawl' || c.type === 'pov';
+        const live = c.type === 'brawl' || c.type === 'pov' || c.type === 'imminent';
         s -= live ? Math.min(24, repeats * 8) : repeats * 26;
-        const owner = c.key.split(':')[1];
+        const owner = c.encounter ? null : c.key.split(':')[1];
         if (owner) {
             const seen = this.lastSeen.get(owner) || 0;
             s += Math.min(22, (now - seen) / 4000);
@@ -605,21 +714,41 @@ class Director {
 
         const expired = !this.shot || now >= this.shot.until;
         if (expired || now >= this._nextEval) {
-            this._nextEval = now + 500;
+            this._nextEval = now + 100;
             const cands = this.candidates(now)
                 .map(c => ({ ...c, adj: this.adjust(c, now) }))
-                .sort((a, b) => b.adj - a.adj);
+                .sort((a, b) => (b.priority || 0) - (a.priority || 0) || b.adj - a.adj);
             this.debugRows = cands.slice(0, 6);
             const top = cands[0];
             if (top) {
                 const age = this.shot ? now - this.shot.born : Infinity;
                 const margin = DIR_INTERRUPT_MARGIN * (this.lapse > 1 ? 2 : 1);
-                const better = !this.shot
-                    || expired
-                    || (age > DIR_MIN_SHOT_MS * this.lapse && top.adj > this.shot.score + margin);
-                if (better && (!this.shot || this.shot.type !== 'selected' || expired)) {
+                const current = this.shot && cands.find(c => c.key === this.shot.key);
+                const priority = top.priority || 0, currentPriority = current?.priority || 0;
+                const speed = g.effectiveSimSpeed ? g.effectiveSimSpeed() : 1;
+                const fightHold = Math.max(300, 800 / speed);
+                const urgent = priority > currentPriority
+                    && (currentPriority < 2 || priority === 3 || age >= fightHold);
+                const different = !this.shot || top.key !== this.shot.key;
+                const sameCombat = !different && priority > 0;
+                const ended = this.shot?.subject?.combat && !current && age >= 350;
+                // Compare against what is on screen NOW, not its score when it began.
+                const better = !this.shot || urgent || ended
+                    || (expired && (!sameCombat || top.type === 'brawl'))
+                    || (different && age >= (priority >= 2 ? fightHold : DIR_MIN_SHOT_MS * this.lapse)
+                        && priority >= currentPriority && top.adj > (current?.adj || 0) + (priority >= 2 ? 12 : margin));
+                if (better && (!this.shot || this.shot.type !== 'selected' || !g._camFollow)) {
                     const pose = top.make();
-                    if (pose) this.shot = this.begin(top.type, top.key, top.adj, pose, now);
+                    if (pose) {
+                        this.shot = this.begin(top.type, top.key, top.adj, pose, now);
+                        this.shot.priority = priority;
+                    }
+                } else if (sameCombat && this.shot.type !== 'selected') {
+                    this.shot.type = top.type;
+                    this.shot.priority = priority;
+                    // A continuing fight keeps its composition instead of cutting
+                    // away or restarting the shot just because a timer elapsed.
+                    this.shot.until = Math.max(this.shot.until, now + 1000);
                 }
             }
         }
@@ -637,12 +766,11 @@ class Director {
                 // Follow the NEAREST fight, not the mean of every fight on the map.
                 // Tracking the global centroid is what made a two-battle map swing the
                 // camera between them for the whole shot.
-                let best = null, bd = 140;
-                for (const f of this.fights(now)) {
-                    const d = Math.hypot(f.x - this.shot.pose.x, f.z - this.shot.pose.z);
-                    if (d < bd) { bd = d; best = f; }
+                const best = this.fights(now).find(f => f.key === this.shot.key);
+                if (best) {
+                    this.shot.pose.x = best.x; this.shot.pose.z = best.z;
+                    this.shot.pose.halfH = Math.max(24, best.r * 1.5 + 18);
                 }
-                if (best) { this.shot.pose.x = best.x; this.shot.pose.z = best.z; }
             }
         }
         // The arc. Only shots that declare a pan get one, so the economy half stays
@@ -658,12 +786,41 @@ class Director {
 
         const cut = !this.shot.cutDone;
         this.shot.cutDone = true;
+        if (cut && this.shot.type === 'brawl') this._checkCombatCut = true;
         return {
             x: this.shot.pose.x, z: this.shot.pose.z,
             yaw: this.shot.pose.yaw, pitch: spec.pitch,
             halfH: this.shot.pose.halfH * k,
             cut
         };
+    }
+
+    // Called after the renderer has applied the pose and rebuilt its camera.
+    // Measuring the actual projection catches tracking lag and off-screen targets.
+    measureCoverage(renderer, now) {
+        const elapsed = this._coverageAt == null ? 0 : Math.min(250, now - this._coverageAt);
+        this._coverageAt = now;
+        const visible = new Set();
+        const onScreen = p => {
+            if (!p || p.health <= 0) return false;
+            const screen = renderer.worldToScreen(p.x, 1, p.z);
+            const w = renderer.canvas.clientWidth, h = renderer.canvas.clientHeight;
+            return screen && screen.x >= w * 0.05 && screen.x <= w * 0.95
+                && screen.y >= h * 0.05 && screen.y <= h * 0.95;
+        };
+        for (const f of this.fights(now)) {
+            if (!f.active || this.shot?.type === 'selected') continue;
+            const e = f.encounter;
+            const pairs = e.threats.filter(t => t.eta === 0).map(t => [t.u, t.target])
+                .concat(e.hits.map(h => [h.attacker, h.target]));
+            if (!pairs.some(pair => pair.every(onScreen))) continue;
+            visible.add(e.key);
+            e.firstCovered ??= now;
+            if (this._visibleEncounters?.has(e.key)) e.visibleMs += elapsed;
+        }
+        if (this._checkCombatCut && !visible.size) this.staleCombatCuts++;
+        this._checkCombatCut = false;
+        this._visibleEncounters = visible;
     }
 
     begin(type, key, score, pose, now) {
@@ -723,6 +880,9 @@ class Director {
                                 + 's on screen]' : '') + '\n'
             + (s ? 'pose  yaw ' + Math.round((s.pose.yaw * 180 / Math.PI)) + '°  halfH '
                  + Math.round(s.pose.halfH) + '\n' : '')
+            + 'coverage  ' + this.coverage.length + ' finished, '
+                + this.coverage.filter(e => e.firstCovered == null).length + ' missed, '
+                + this.staleCombatCuts + ' empty combat cuts\n'
             + this.debugRows.map(c => '  ' + String(Math.round(c.adj)).padStart(4) + '  ' + c.type + '  ' + c.key).join('\n');
     }
 }

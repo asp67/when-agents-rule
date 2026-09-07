@@ -3196,6 +3196,7 @@ class UIManager {
             // they belong in the same table — they were emitted as pre-baked English
             // strings and stayed English in every language.
             no_action_provided: t('log.no_action_provided'),
+            plan_only: t('log.plan_only'),
             malformed_action: t('log.malformed_action'),
             reply_truncated: t('log.reply_truncated'),
             tool_call_failed: t('log.tool_call_failed'),
