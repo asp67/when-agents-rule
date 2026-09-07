@@ -105,7 +105,7 @@ class OpenAIAIManager {
             ['move_units', 'Move units to a position.',
              Object.assign({}, XZ, WHO), ['targetX', 'targetZ']],
             ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining.',
-             Object.assign({ targetId: I('Id from enemyUnits/enemyBuildings. Use this OR targetX/targetZ.') }, XZ, WHO), []],
+             Object.assign({ targetId: S('Copy the exact string id from enemyUnits or enemyBuildings, including the unit_ or building_ prefix and full suffix. Do not shorten it or convert it to a number. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
              { unitType: S('Type from friendlyUnits. Default worker.'), count: I('How many. Default 1, max 20.') }, []],
             ['destroy_building', 'Demolish one of your own buildings.',
