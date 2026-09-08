@@ -124,6 +124,7 @@ test('unit batches share geometry across seats while keeping team and badge tint
     s.GLCore={createMeshBuffers:(_,mesh)=>({mesh})};
     s.getTeamBadge=()=>({shape:'circle'});
     Object.assign(r,{units:[],gl:{},tex:new Proxy({},{get:(_,key)=>key}),WHITE:[1,1,1]});
+    r._flagTexture=(seat,tint)=>({seat,tint});
     r._badgeTints=seat=>({fill:[seat,0,0],rim:[0,seat,0]});
     const a={unitType:'infantry',type:'warrior',civilization:'greek',seat:1,color:0xff0000};
     const b={...a,seat:2,color:0x0000ff};
@@ -217,6 +218,7 @@ test('civilization facial hair covers every human class, with visible mouths and
     const r=Object.create(s.EngineRenderer.prototype);
     s.GLCore={createMeshBuffers:(_,mesh)=>({mesh})};s.getTeamBadge=()=>({shape:'circle'});
     Object.assign(r,{units:[],gl:{},tex:new Proxy({},{get:(_,key)=>key}),WHITE:[1,1,1]});
+    r._flagTexture=(seat,tint)=>({seat,tint});
     r._badgeTints=()=>({fill:[1,0,0],rim:[0,1,0]});
     const units=Array.from({length:3},(_,i)=>({unitType:'worker',type:'worker',civilization:'greek',seat:1,color:0xff0000,handle:i+1}));
     for(const u of units) r.addUnit(u);
@@ -471,4 +473,31 @@ test('early stable and archery entrances face clear ground; stable hitching rail
    assert.ok(rail);assert.ok(rail.m[12]<-4);assert.equal(rail.m[14],0);
   }
  }
+});
+
+test('unit ownership is painted onto existing surfaces without adding badge geometry',()=>{
+ const s=context();
+ for(const type of Object.keys(s.EngineUnits.META))for(const civ of ['greek','egyptian','persian','yamato']){
+  const plain=s.EngineUnits.parts(type,{civ,tier:3}),marked=s.EngineUnits.parts(type,{civ,tier:3,badge:'star'});
+  assert.equal(marked.length,plain.length,`${type}: no badge meshes`);
+  assert.ok(marked.every(p=>!p.accent),`${type}: no solid ownership tags`);
+  marked.forEach((p,i)=>{assert.deepEqual(p.args,plain[i].args);assert.deepEqual(p.m,plain[i].m);});
+  for(const batch of s.EngineUnits.batches(marked))assert.ok(batch.mesh.uvs.every(Number.isFinite));
+ }
+});
+
+test('every cape carries the player marking on its existing rear fabric, including mounted and support units',()=>{
+ const s=context();let count=0;
+ for(const civ of ['greek','egyptian','persian','yamato'])for(const type of s.EngineUnits.TYPES)for(const tier of [1,2,3]){
+  const parts=s.EngineUnits.parts(type,{civ,tier,badge:'diamond'});
+  const capes=parts.filter(p=>p.capePaint);count+=capes.length;
+  for(const cape of capes){
+   assert.deepEqual(cape.badgePaint,cape.capePaint);
+   const batch=s.EngineUnits.batches(parts).find(b=>b.parts.includes(cape));
+   assert.ok(batch.badgePaint);
+   assert.ok(batch.mesh.uvs.every(Number.isFinite));
+   assert.ok(batch.mesh.uvs.some((v,i)=>i%2===0&&v<.5)&&batch.mesh.uvs.some((v,i)=>i%2===0&&v>.5));
+  }
+ }
+ assert.ok(count>=16,'all cultural cape families exercised');
 });

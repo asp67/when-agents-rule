@@ -518,7 +518,7 @@
                     part(p, 'pyramid', [0.46, 0.46, 0.5], 'gold', { x: -3.5, y: 3.0, z: 3.3 });
                 } else if (civ === 'persian') {
                     // Talar pavilion: a slender columned porch, a glazed band in the
-                    // player's colour, a low dome, and a still pool to read beside.
+                    // player's colour and a low dome.
                     part(p, 'box', [5.2, 0.3, 4.4], 'cloth', { y: 3.5, team: true });
                     part(p, 'sphere', [1, 14, 10], 'rooftile', { y: 3.62, sx: 2.5, sy: 1.35, sz: 2.2 });
                     part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: -2.2, y: 2.3, z: 3.0 });
@@ -526,7 +526,6 @@
                     part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: 0.75, y: 2.3, z: 3.0 });
                     part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: 2.2, y: 2.3, z: 3.0 });
                     part(p, 'box', [5.2, 0.3, 0.9], 'cloth', { y: 3.9, z: 3.0, team: true });
-                    part(p, 'disc', [1.5, 18], 'cloth', { x: -3.4, y: 0.09, z: 3.4, blend: true });
                 } else {
                     // Yamato: post-and-beam under a deep hipped roof, a torii at the path
                     // and a stone lantern — you arrive through a gate, not a door.
@@ -889,7 +888,7 @@
     EngineBuildings.settlement = (type, civ, foot) => {
         const parts=[];
         if (!['town_center','house','market'].includes(type)) return {parts};
-        const x=-foot.ex-.5,z=foot.ez*.35;
+        const x=-foot.ex-1.7,z=foot.ez*.35;
         const jarTint=civ==='persian'?[.25,.58,.60]:civ==='egyptian'?[.75,.58,.35]:[.68,.33,.20];
         for(let i=0;i<2;i++) {
             const px=x+i*.6,pz=z+.9+i*.2,h=i?.55:.8;
@@ -910,29 +909,75 @@
         return {parts,fire};
     };
 
-    // Free-standing beside the entrance: no fixtures through sloped tent walls,
-    // and no obstruction of the stable's side hitching rail or central runner.
-    EngineBuildings.entranceLamp = (type, age, civ, foot) => {
+    // Locate a facade surface beside the doorway, ignoring ground and roof slopes.
+    EngineBuildings.lampMount = (parts,side=-1) => {
+        const obstacles=parts.filter(p=>['rooftile','neutralRoof','thatch','leather'].includes(p.tex)
+            || (p.visualOnly&&p.tint&&Math.max(...p.tint)<.35)).map(p=>{
+            const mesh=window.EngineMesh[p.kind](...p.args),m=p.m,lo=[Infinity,Infinity,Infinity],hi=[-Infinity,-Infinity,-Infinity];
+            for(let i=0;i<mesh.positions.length;i+=3)for(let k=0;k<3;k++){
+                const v=m[k]*mesh.positions[i]+m[k+4]*mesh.positions[i+1]+m[k+8]*mesh.positions[i+2]+m[k+12];
+                lo[k]=Math.min(lo[k],v);hi[k]=Math.max(hi[k],v);
+            }
+            return {lo,hi};
+        });
+        for(const y of [1.74,1.35,.95,.75])for(const x of [1.35,1.65,1.1,2.0,2.4,2.8].map(v=>v*side)){
+            let front=-Infinity;
+            for(const p of parts){
+                if(p.blend||p.visualOnly||['shadow','cloth'].includes(p.tex))continue;
+                const mesh=window.EngineMesh[p.kind](...p.args),m=p.m;
+                const point=i=>{const k=i*3,a=mesh.positions[k],b=mesh.positions[k+1],c=mesh.positions[k+2];
+                    return [m[0]*a+m[4]*b+m[8]*c+m[12],m[1]*a+m[5]*b+m[9]*c+m[13],m[2]*a+m[6]*b+m[10]*c+m[14]];};
+                for(let i=0;i<mesh.indices.length;i+=3){
+                    const a=point(mesh.indices[i]),b=point(mesh.indices[i+1]),c=point(mesh.indices[i+2]);
+                    const n=M().cross(b.map((v,k)=>v-a[k]),c.map((v,k)=>v-a[k]));
+                    if(n[2]<=0||Math.abs(n[1])>Math.hypot(...n)*.55)continue;
+                    const d=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);
+                    if(Math.abs(d)<1e-8)continue;
+                    const u=((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/d;
+                    const v=((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/d;
+                    if(u>=0&&v>=0&&u+v<=1)front=Math.max(front,u*a[2]+v*b[2]+(1-u-v)*c[2]);
+                }
+            }
+            if(front>0&&!obstacles.some(o=>o.lo[0]<x+.34&&o.hi[0]>x-.34
+                &&o.lo[1]<y+.75&&o.hi[1]>y-.18&&o.lo[2]<front+.65&&o.hi[2]>front-.10))return {x,y,z:front};
+        }
+        return null;
+    };
+    EngineBuildings.entranceLamp = (type, age, civ, foot, buildingParts, side=-1, standalone=false) => {
         const parts=[];
         if(type==='farm')return {parts};
-        const x=-1.65,z=foot.ez+.45,early=['stone','neolithic'].includes(age);
-        part(parts,'cylinder',[.18,.26,.13,8],'stone',{x,y:.065,z});
-        part(parts,'cylinder',[.055,.075,1.65,6],early||civ==='yamato'?'bark':'iron',{x,y:.9,z});
+        const early=['stone','neolithic'].includes(age);
+        const mount=early?null:standalone?{x:side*1.8,y:1.74,z:8.2}:EngineBuildings.lampMount(buildingParts||EngineBuildings.parts(type,{age,civ}),side);
+        if(!early&&!mount)return {parts};
+        const x=early?side*1.65:mount.x,z=early?foot.ez+.45:mount.z+.32;
         if(early){
+            part(parts,'cylinder',[.18,.26,.13,8],'stone',{x,y:.065,z});
+            part(parts,'cylinder',[.055,.075,1.65,6],'bark',{x,y:.9,z});
             part(parts,'cylinder',[.13,.09,.3,7],'leather',{x,y:1.72,z,tint:[.45,.32,.20]});
             return {parts,light:[x,1.94,z],early:true};
         }
+        // Bracket penetrates the facade slightly; no ground post in later eras.
+        const finish=lightY=>{
+            const dy=mount.y-1.74;
+            for(const p of parts)p.m=M().multiply(M().translation(0,dy,0),p.m);
+            return {parts,light:[x,lightY+dy,z],early:false,mount};
+        };
+        if(standalone){
+            part(parts,'cylinder',[.22,.3,.15,8],'stone',{x,y:.075,z});
+            part(parts,'cylinder',[.07,.09,1.65,6],civ==='yamato'?'wood':'iron',{x,y:.9,z});
+        }else part(parts,'box',[.14,.34,.10],'iron',{x,y:1.78,z:mount.z+.025});
+        if(!standalone)part(parts,'box',[.10,.09,.42],'iron',{x,y:1.70,z:mount.z+.17});
         if(civ==='greek'||civ==='egyptian'){
             part(parts,'cylinder',[.23,.12,.17,9],'white',{x,y:1.77,z,tint:civ==='greek'?[.64,.29,.14]:[.78,.57,.29]});
             part(parts,'disc',[.17,9],'white',{x,y:1.86,z,tint:[.12,.085,.045]});
-            return {parts,light:[x,1.94,z],early:false};
+            return finish(1.94);
         }
         const tex=civ==='yamato'?'wood':'iron';
         part(parts,'box',[.48,.08,.48],tex,{x,y:1.74,z});
         for(const dx of [-.19,.19])for(const dz of [-.19,.19])
             part(parts,'box',[.045,.48,.045],tex,{x:x+dx,y:2,z:z+dz});
         part(parts,'prism',[.61,.20,.58],civ==='yamato'?'wood':'gold',{x,y:2.24,z});
-        return {parts,light:[x,1.98,z],early:false};
+        return finish(1.98);
     };
 
     EngineBuildings.TYPES = Object.keys(builders);

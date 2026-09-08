@@ -447,6 +447,22 @@
     // Single quad centred at the origin facing +Z — health bars and other
     // billboarded rectangles (pair with M3D.billboard so it faces the camera).
     // repU tiles the texture along the width (shoreline foam strips).
+    // Shared front/back fabric surface, with enough vertices for a smooth fold.
+    EngineMesh.flag = (w,h,segments=12) => {
+        const positions=[],normals=[],uvs=[],indices=[];
+        for(const side of [1,-1]){
+            const base=positions.length/3;
+            for(let i=0;i<=segments;i++)for(const y of [-h/2,h/2]){
+                positions.push(w*(i/segments-.5),y,side*.002);
+                normals.push(0,0,side);uvs.push(i/segments,y<0?1:0);
+            }
+            for(let i=0;i<segments;i++){
+                const a=base+i*2;
+                indices.push(...(side===1?[a,a+2,a+1,a+2,a+3,a+1]:[a,a+1,a+2,a+2,a+1,a+3]));
+            }
+        }
+        return {positions,normals,uvs,indices};
+    };
     EngineMesh.quad = (w, h, repU = 1) => {
         const x = w / 2, y = h / 2;
         return {

@@ -82,7 +82,7 @@
         varying mediump float vGrassTip, vPebble;
         uniform vec4 uGroundCover;
         uniform vec3 uSunDir, uSunColor, uAmbient, uTint, uSky, uEye;
-        uniform vec4 uLocalLight;
+        uniform vec4 uLocalLights[3];
         uniform vec3 uShadowRight, uShadowUp;
         uniform float uShadowDepthPerTexel;
         uniform float uUnlit, uAlpha, uTime, uNight, uMaterial, uAtmosphere, uShadowStrength, uShadowTexel;
@@ -179,12 +179,15 @@
             vec3 light = skyFill + uSunColor*sun*visibility(n);
             vec3 col = base*light;
             // One nearby entrance lamp per building, without extra light/shadow passes.
-            if(uLocalLight.w>0.0){
-                vec3 delta=uLocalLight.xyz-vWorld;
+            for(int i=0;i<3;i++){
+              vec4 localLight=uLocalLights[i];
+              if(localLight.w>0.0){
+                vec3 delta=localLight.xyz-vWorld;
                 float d2=dot(delta,delta);
                 float facing=max(0.0,dot(n,delta*inversesqrt(max(.01,d2))));
-                vec3 glow=base*vec3(1.0,.46,.12)*facing*uLocalLight.w*1.8/(1.0+d2*1.7);
+                vec3 glow=base*vec3(1.0,.46,.12)*facing*localLight.w*1.8/(1.0+d2*1.7);
                 col+=glow;legacy+=glow;
+              }
             }
             if (uMaterial > 2.5 && uMaterial < 3.5) {
                 // Broad polished highlight plus sky rim; silver stays silver.

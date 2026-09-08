@@ -678,6 +678,23 @@
         // Fill/rim tints of an entity's team badge (per-seat ownership circle).
         // No seat (engine-test, defensive) → both fall back to the team tint so
         // the badge dissolves into the cloth instead of showing a wrong color.
+        _flagTexture(seat,tint,unit=false) {
+            if(!this._flagTextures)this._flagTextures=new Map();
+            const key=JSON.stringify([seat,tint,unit]);
+            if(this._flagTextures.has(key))return this._flagTextures.get(key);
+            const c=document.createElement('canvas');c.width=256;c.height=unit?256:128;
+            const ctx=c.getContext('2d');ctx.drawImage(TexGen.cloth(155),0,0,256,c.height);
+            ctx.globalCompositeOperation='multiply';
+            ctx.fillStyle=`rgb(${tint.map(v=>Math.round(v*255)).join(',')})`;ctx.fillRect(0,0,256,c.height);
+            ctx.globalCompositeOperation='source-over';
+            if(typeof drawTeamBadgeOnCanvas==='function'&&seat!=null){
+                ctx.save();ctx.translate(128,c.height/2);if(!unit)ctx.scale((256/.85)/(128/.55),1);
+                drawTeamBadgeOnCanvas(ctx,seat,0,0,unit?128:60,true);ctx.restore();
+            }
+            const tex=GLCore.createTextureFromCanvas(this.gl,c,{clamp:true});
+            this._flagTextures.set(key,tex);return tex;
+        }
+
         _badgeTints(seat, fallback) {
             const b = (typeof getTeamBadge === 'function') ? getTeamBadge(seat) : null;
             return b ? { fill: this._hexTint(b.fill), rim: this._hexTint(b.rim) }
@@ -705,12 +722,12 @@
                 const batches=EngineUnits.batches(EngineUnits.parts(engineType,options));
                 this._unitModels.set(modelKey,batches.map(p=>({
                     buf:GLCore.createMeshBuffers(this.gl,p.mesh), texName:p.tex,
-                    team:p.team,accent:p.accent,bone:p.bone,blend:p.blend
+                    team:p.team,accent:p.accent,bone:p.bone,blend:p.blend,badgePaint:p.badgePaint
                 })));
             }
             const entries=this._unitModels.get(modelKey).map(p=>({
-                buf:p.buf,tex:this.tex[p.texName],
-                tint:p.accent?badge[p.accent]:(p.team?tint:this.WHITE),
+                buf:p.buf,tex:p.badgePaint?this._flagTexture(unit.seat,tint,true):this.tex[p.texName],
+                tint:p.badgePaint?this.WHITE:(p.accent?badge[p.accent]:(p.team?tint:this.WHITE)),
                 base:M().identity(),bone:p.bone,blend:p.blend,model:M().identity()
             }));
             unit._engine = { type: engineType, entries, phase: (this.units.length * 1.37) % 6.28 };
@@ -792,12 +809,15 @@
                 const fp = this._meshFootprint(parts, `${building.type}|${building.age}|${building.civilization}`);
                 const offX = fp.ex + 0.55, offZ = fp.ez + 0.55;
                 const dressing=EngineBuildings.settlement(building.type,building.civilization,fp);
-                const lamp=EngineBuildings.entranceLamp(building.type,building.age,building.civilization,fp);
-                dressing.parts.push(...lamp.parts);
-                if(lamp.light){
-                    const [x,y,z]=lamp.light;
-                    eb.lamp={position:[world[0]*x+world[8]*z+world[12],world[5]*y+world[13],world[2]*x+world[10]*z+world[14]],early:lamp.early};
-                    eb.lamp.pool=m3.multiply(world,m3.multiply(m3.translation(x,.035,z),m3.scaling(2.1,1,1.8)));
+                eb.lamps=[];
+                for(const side of (building.type==='town_center'||building.isWonder?[-1,1]:[-1])){
+                    const lamp=EngineBuildings.entranceLamp(building.type,building.age,building.civilization,fp,parts,side,!!building.isWonder);
+                    dressing.parts.push(...lamp.parts);
+                    if(lamp.light){
+                        const [x,y,z]=lamp.light;
+                        eb.lamps.push({position:[world[0]*x+world[8]*z+world[12],world[5]*y+world[13],world[2]*x+world[10]*z+world[14]],early:lamp.early,
+                            pool:m3.multiply(world,m3.multiply(m3.translation(x,.035,z),m3.scaling(2.1,1,1.8)))});
+                    }
                 }
                 eb.details=dressing.parts.map(p=>({buf:this._buf(p.kind,p.args),tex:this.tex[p.tex],
                     tint:p.tint||this.WHITE,model:m3.multiply(world,p.m)}));
@@ -813,28 +833,12 @@
                     model: m3.multiply(world, m3.translation(offX, 1.3, offZ))
                 });
                 eb.opaque.push({
-                    buf: this._buf('box', [0.85, 0.55, 0.07]), tex: this.tex.cloth, tint,
+                    buf: this._buf('flag', [0.85, 0.55, 12]), tex: this._flagTexture(building.seat,tint), tint:this.WHITE,
                     model: m3.multiply(world, m3.translation(offX + 0.45, 2.25, offZ))
                 });
                 eb.flagAnchor=m3.multiply(world,m3.translation(offX+.025,2.25,offZ));
                 eb.flagParts=[{entry:eb.opaque[eb.opaque.length-1],local:m3.translation(.425,0,0)}];
-                // Team badge on the flag: the seat's ownership mark (per-seat
-                // SHAPE + color, fill + contrast rim) — the same prism shapes
-                // units wear on the chest (EngineUnits.badgeParts), so their
-                // caps read on BOTH flag faces. The flag cloth stays civ-
-                // colored — the mark is what separates same-civ players.
-                const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(building.seat) : null;
-                if (bdef) {
-                    const bt = this._badgeTints(building.seat, tint);
-                    const flagT = m3.translation(offX + 0.45, 2.25, offZ);
-                    EngineUnits.badgeParts(bdef.shape, { r: 0.14, lenFill: 0.13, lenRim: 0.10 }).forEach(p => {
-                        eb.opaque.push({
-                            buf: this._buf(p.kind, p.args), tex: this.tex[p.tex], tint: bt[p.accent],
-                            model: m3.multiply(world, m3.multiply(flagT, p.m))
-                        });
-                        eb.flagParts.push({entry:eb.opaque[eb.opaque.length-1],local:m3.multiply(m3.translation(.425,0,0),p.m)});
-                    });
-                }
+                // The badge is printed into this same fabric, on both faces.
                 // …and a team-color runner out the FRONT door: the walls are
                 // near-symmetric in the early ages, so this ground strip is the
                 // orientation cue that reads at any zoom. Long enough (z 3.2→7)
@@ -975,6 +979,7 @@
         }
 
         clearScene() {
+            if(this._flagTextures){this._flagTextures.forEach(tex=>this.gl.deleteTexture(tex));this._flagTextures.clear();}
             this.resetEffects();
             this.units.forEach(u => { u._engine = null; u.mesh = null; });
             this.buildings.forEach(b => { b._engine = null; b.mesh = null; });
@@ -1524,10 +1529,10 @@
                 const eb = b._engine;
                 if (!eb || (b.mesh && b.mesh.visible === false) || this._cull(b.x, b.z, 18)) continue;
                 const distance=Math.hypot(b.x-this.cameraTarget.x,b.z-this.cameraTarget.z);
-                const detailFade=Math.max(0,Math.min(1,(100-distance)/30,(100-this._halfH)/35));
+                const detailFade=Math.max(0,Math.min(1,(300-distance)/90,(300-this._halfH)/105));
                 // Clear the previous frame's light when hidden, zoomed out or disabled.
-                for(const en of eb.opaque)en.localLight=null;
-                for(const en of eb.details||[])en.localLight=null;
+                for(const en of eb.opaque)en.localLights=null;
+                for(const en of eb.details||[])en.localLights=null;
                 if(eb.flagParts) {
                     const angle=this.graphicsQuality==='cinematic'?.12*Math.sin(ambientTime*1.7+b.x*.1)+.04*Math.sin(ambientTime*3.1+b.z*.1):0;
                     const flag=m3.multiply(eb.flagAnchor,m3.rotationY(angle));
@@ -1537,32 +1542,39 @@
                 if(this.graphicsQuality==='cinematic'&&detailFade>0&&!(b._fade<1)) {
                     if(eb.wear)dl.blended.push({...eb.wear,alpha:eb.wear.alpha*detailFade});
                     if(eb.details&&courtyards++<24){
-                        if(eb.lamp&&lampNight>0&&(!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(eb.lamp.position[0],eb.lamp.position[2]))){
-                            const [x,y,z]=eb.lamp.position;
+                        const lights=new Float32Array(12);let lightIndex=0;
+                        const addLight=(x,y,z,strength)=>{if(lightIndex<3)lights.set([x,y,z,strength],4*lightIndex++);};
+                        for(const en of eb.opaque)en.localLights=lights;
+                        for(const en of eb.details)en.localLights=lights;
+                        for(const lamp of eb.lamps||[]){
+                        if(lamp&&lampNight>0&&(!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(lamp.position[0],lamp.position[2]))){
+                            const [x,y,z]=lamp.position;
                             const flicker=1+.05*Math.sin(ambientTime*8+x)+.025*Math.sin(ambientTime*13+z);
-                            const strength=lampNight*detailFade*flicker;
-                            const localLight=[x,y,z,strength];
-                            for(const en of eb.opaque)en.localLight=localLight;
-                            for(const en of eb.details)en.localLight=localLight;
-                            dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.20,model:eb.lamp.pool});
-                            for(const [w,h,tint,alpha] of [[.65,.75,[1,.35,.045],.3],[.15,eb.lamp.early?.34:.16,[1,.76,.28],.95]])
-                                dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,
+                            const strength=2*lampNight*detailFade*flicker;
+                            addLight(x,y,z,strength);
+                            dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.20,additive:true,model:lamp.pool});
+                            for(const [w,h,tint,alpha] of [[.65,.75,[1,.35,.045],.3],[.15,lamp.early?.34:.16,[1,.76,.28],.95]])
+                                dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,
                                     model:m3.multiply(m3.multiply(m3.translation(x,y,z),bb),m3.scaling(w,h*flicker,1))});
+                        }
                         }
                         // Alpha fade shares the existing blended pass near the limit.
                         for(const p of eb.details) (detailFade===1?dl.opaque:dl.blended).push(detailFade===1?p:{...p,alpha:detailFade});
                         const visible=eb.fire&&(!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(eb.fire[0],eb.fire[2]));
                         if(eb.fire&&visible&&hearths++<8){
                             const [x,y,z]=eb.fire,phase=ambientTime+b.x*.17+b.z*.11;
-                            const mote=(px,py,pz,w,h,tint,alpha)=>dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*detailFade,
+                            addLight(x,y+.55,z,3*detailFade);
+                            dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.38,.07],alpha:.4*detailFade,additive:true,
+                                model:m3.multiply(m3.translation(x,.04,z),m3.scaling(2.4,1,2.4))});
+                            const mote=(px,py,pz,w,h,tint,alpha,emission=0)=>dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*detailFade*(emission||1),additive:!!emission,
                                 model:m3.multiply(m3.multiply(m3.translation(px,py,pz),bb),m3.scaling(w,h,1))});
                             for(let i=0;i<3;i++){
                                 const age=((phase*.18+i/3)%1+1)%1;
                                 mote(x+age*.65,y+.5+age*2.8,z+age*.25,.45+age*.8,.6+age*.9,[.43,.44,.45],Math.sin(age*Math.PI)*.18);
                             }
                             const flicker=1+.12*Math.sin(phase*9)+.08*Math.sin(phase*13);
-                            mote(x,y+.42,z,.5,.65*flicker,[1,.30,.035],.85);
-                            mote(x,y+.29,z,.23,.32*flicker,[1,.78,.22],.95);
+                            mote(x,y+.42,z,.5,.65*flicker,[1,.30,.035],.85,3);
+                            mote(x,y+.29,z,.23,.32*flicker,[1,.78,.22],.95,3);
                         }
                     }
                 }
@@ -1579,10 +1591,10 @@
                 // translucent through the blended pass, since alpha in the opaque
                 // pass has nothing to blend against.
                 if (b._fade != null && b._fade < 1) {
-                    for (const en of eb.opaque) dl.blended.push({ buf: en.buf, tex: en.tex, tint: en.tint, model: en.model, alpha: b._fade });
+                    for (const en of eb.opaque) dl.blended.push({ ...en, alpha: b._fade });
                     for (const en of eb.blended) dl.blended.push({ buf: en.buf, tex: en.tex, tint: en.tint, model: en.model, alpha: b._fade });
                 } else {
-                for (const en of eb.opaque) dl.opaque.push(flash ? { buf: en.buf, tex: en.tex, tint: FLASH, model: en.model } : en);
+                for (const en of eb.opaque) dl.opaque.push(flash ? { ...en, tint: FLASH } : en);
                 for (const en of eb.blended) dl.blended.push(en);
                 }
                 const hpct = b.health / b.maxHealth;
@@ -2095,9 +2107,11 @@
                     gl.uniform2f(this.prog.uniforms.uUvOffset,
                         obj.uvOff ? obj.uvOff[0] : 0, obj.uvOff ? obj.uvOff[1] : 0);
                     gl.uniform4fv(this.prog.uniforms.uCloth,obj.cloth||[0,0,0,0]);
-                    gl.uniform4fv(this.prog.uniforms.uLocalLight,obj.localLight||[0,0,0,0]);
+                    gl.uniform4fv(this.prog.uniforms.uLocalLights,obj.localLights||(this._noLocalLights ||= new Float32Array(12)));
                     gl.uniformMatrix4fv(this.prog.uniforms.uModel, false, obj.model);
+                    if(obj.additive)gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
                     GLCore.drawMesh(gl, this.prog, obj.buf);
+                    if(obj.additive)gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
                 }
             };
 

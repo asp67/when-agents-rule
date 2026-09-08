@@ -71,7 +71,11 @@
     // Shared with the building renderer: flag badges use the exact same shapes.
     EngineUnits.badgeParts = badgeParts;
     const badge = (p, shape, y, z, r, lenFill, lenRim) => {
-        badgeParts(shape, { y, z, r, lenFill, lenRim }).forEach(e => p.push(e));
+        if(!shape)return;
+        // Paint the existing torso/tabard rather than pushing a prism through it.
+        const host=[...p].reverse().find(e=>e.tex==='cloth'&&e.team&&!e.bone
+            &&Math.abs(e.m[12])<.01&&Math.abs(e.m[14]-z)<.3);
+        if(host)host.badgePaint={y,width:r*4};
     };
 
     const oval = (p, tex, x, y, z, sx, sy, sz, extra = {}) =>
@@ -192,6 +196,8 @@
         // Flared cloth mantle; folds carry a silhouette from the rear view too.
         part(p,'frustum',[.64*s,.09*s,.40*s,.065*s,.72*s],'cloth',
             {y:y-.72*s,z:z-.13*s,rx:.12,team:true});
+        // Mark the broad fabric panel; the narrow edge folds stay plain cloth.
+        p[p.length-1].capePaint={y:y-.34*s,width:.60*s};
         for(const side of [-1,1]) part(p,'cylinder',[.025*s,.045*s,.68*s,6],'cloth',
             {x:side*.19*s,y:y-.35*s,z:z-.09*s,rz:side*-.14,rx:.12,team:true});
     };
@@ -449,7 +455,9 @@
         const o = { ...opts };
         if (o.tier == null) o.tier = TIER[o.unit] || (type === 'ranged' ? 1 : 2);
         const b = builders[type];
-        return b ? b(o) : [];
+        const parts=b ? b(o) : [];
+        if(o.badge)for(const p of parts)if(p.capePaint)p.badgePaint=p.capePaint;
+        return parts;
     };
 
     // Material/ownership/bone are all part of the batch key. Team and badge
@@ -457,11 +465,28 @@
     EngineUnits.batches = parts => {
         const groups=new Map();
         for(const p of parts) {
-            const key=JSON.stringify([p.tex,p.team,p.accent,p.bone,p.blend]);
+            const key=JSON.stringify([p.tex,p.team,p.accent,p.bone,p.blend,!!p.badgePaint]);
             if(!groups.has(key)) groups.set(key,{...p,parts:[]});
             groups.get(key).parts.push(p);
         }
-        return [...groups.values()].map(group=>({...group,mesh:window.EngineMesh.mergeParts(group.parts)}));
+        return [...groups.values()].map(group=>{
+            const mesh=window.EngineMesh.mergeParts(group.parts);
+            if(group.badgePaint){
+                let offset=0;
+                for(const part of group.parts){
+                const {y,width}=part.badgePaint;
+                const count=window.EngineMesh[part.kind](...part.args).positions.length/3;
+                // Project onto both sides of the actual torso surface. No overlay,
+                // depth offset, floating cap or additional transparency pass.
+                for(let i=offset;i<offset+count;i++){
+                    mesh.uvs[i*2]=.5+mesh.positions[i*3]/width;
+                    mesh.uvs[i*2+1]=.5+(y-mesh.positions[i*3+1])/width;
+                }
+                offset+=count;
+                }
+            }
+            return {...group,mesh};
+        });
     };
 
     // Per-type render metadata: health-bar height above the ground.
