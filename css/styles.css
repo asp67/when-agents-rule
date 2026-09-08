@@ -1153,7 +1153,15 @@ body.spectator-mode #unitInfo.spectator-card {
     backdrop-filter: blur(7px);
 }
 
-.ai-log-entries.collapsed { display: none; }
+.ai-decision-log.collapsed { height: auto; max-height: calc(100vh - 28px); }
+.ai-log-entries.collapsed { flex: 0 1 auto; }
+.ai-log-entries.collapsed .ai-log-entry { padding: 6px 7px; margin-bottom: 4px; animation: none; }
+.ai-log-entries.collapsed .ai-log-entry:last-child { margin-bottom: 0; }
+.ai-log-entries.collapsed .log-reason,
+.ai-log-entries.collapsed .log-error,
+.ai-log-entries.collapsed .log-outcome { display: none; }
+.ai-log-entries.collapsed .log-line1 { white-space: nowrap; }
+.ai-log-entries.collapsed .log-action { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 .ai-log-entry {
     padding: 7px 9px;

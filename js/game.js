@@ -792,6 +792,7 @@ class Game {
     // or several times to replay a long/throttled frame without losing time.
     simulateStep(dt) {
         // Unit work + movement (movement is the teleport-sensitive part — keep dt small)
+        if(this._standingOrders)this._standingOrders.update(dt);
         this.measureFormationLead();
         this.updateWorkerTasks(dt);
         this.updateUnitMovement(dt);
@@ -1083,6 +1084,7 @@ class Game {
     }
 
     noteRetaliation(victim, attacker) {
+        if (victim?._standingOrder) return;
         if (!victim || !victim.unitType || victim.unitType === 'support' || victim.type === 'worker') return;
         if (!victim.isAttacking || !victim.attackTarget) return;
         if (!attacker || attacker.health <= 0) return;
@@ -1142,6 +1144,13 @@ class Game {
         return (orig && orig.health > 0) ? orig : null;
     }
 
+    attackRangeAgainst(unit, target) {
+        // Share the mesh stand-off with pursuit checks: attacking a wall from
+        // outside the building is productive combat, not a stalled chase.
+        const building = target.isWonder || !!(target.type && BUILDING_DEFS[target.type]);
+        return (unit.range > 1 ? unit.range : 1.5) + (building ? (target.isWonder ? 4.6 : 3.5) : 0);
+    }
+
     updateCombat(deltaTime) {
         // Iterate a SNAPSHOT: destroyTarget() splices renderer.units mid-loop, and a
         // live-array forEach then skips the unit that slides into the freed index —
@@ -1149,6 +1158,7 @@ class Game {
         // during this pass are skipped by the health guard instead.
         this.getAllUnits().slice().forEach(unit => {
             if (unit.health <= 0) return;
+            if(unit._standingOrder?.mode==='scout')return;
             // Skip workers - they don't attack unless explicitly ordered
             if (unit.type === 'worker' && !unit.isAttacking) return;
 
@@ -1159,6 +1169,8 @@ class Game {
                 unit.attackTarget = this.nextRetaliationTarget(unit);
                 if (!unit.attackTarget) unit._acquireTimer = 150;
             }
+
+            if(unit._standingOrder&&!unit.attackTarget){unit.isAttacking=false;return;}
 
             // Pending retaliation state with no live target (any path that nulled
             // the target) resolves through the ladder before the generic scan.
@@ -1244,9 +1256,7 @@ class Game {
                 // Wonders are NOT in BUILDING_DEFS (civ-unique buildings) — without
                 // the isWonder check they were treated as units, so melee attackers
                 // burrowed to 1.5 of the monument's CENTER, deep inside the walls.
-                const isBuilding = currentTarget.isWonder || !!(currentTarget.type && BUILDING_DEFS[currentTarget.type]);
-                const buildingRadius = isBuilding ? (currentTarget.isWonder ? 4.6 : 3.5) : 0;
-                const attackRange = (unit.range > 1 ? unit.range : 1.5) + buildingRadius;
+                const attackRange = this.attackRangeAgainst(unit, currentTarget);
                 
                 if (dist > attackRange) {
                     // Move towards target — or, while still well short of it, towards
@@ -1560,7 +1570,7 @@ class Game {
             const REACH = { 3: Infinity, 2: Game.BATTLE_RADIUS * 2,
                             1: Game.BATTLE_RADIUS * 1.5, 0: Game.BATTLE_RADIUS };
             const reach = REACH[this.threatPriority(primary.ent)];
-            let defenders = military.filter(u => !u.isAttacking &&
+            let defenders = military.filter(u => !u._standingOrder && !u.isAttacking &&
                 Math.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= reach);
             // A WONDER under attack is existential — it IS the win condition — so it
             // is ALL HANDS ON DECK: every worker downs tools and fights ALONGSIDE the
@@ -1576,7 +1586,7 @@ class Game {
                 // building fell and the threat list finally emptied. (It also
                 // overwrote _draftReturn with the already-drafted state, losing the
                 // economy job the worker should return to.)
-                hands = owner.units.filter(u => u.type === 'worker' && u.health > 0 &&
+                hands = owner.units.filter(u => u.type === 'worker' && u.health > 0 && !u._standingOrder &&
                     !u.isAttacking &&
                     (wonderRaid || Math.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= 28));
                 defenders = defenders.concat(hands);
@@ -1601,7 +1611,7 @@ class Game {
                 u.isAttacking && Math.hypot(u.x - atk.x, u.z - atk.z) <= Game.BATTLE_RADIUS);
             if (defenceOnSite) {
                 this.escortSupportUnits(owner.units.filter(u =>
-                    u.unitType === 'support' && u.health > 0 &&
+                    u.unitType === 'support' && u.health > 0 && !u._standingOrder &&
                     !(u.isMoving && Math.hypot(u.targetX - atk.x, u.targetZ - atk.z) < 12) &&
                     !this.tendingOtherBattle(u, atk)), atk.x, atk.z);
             }
@@ -3515,6 +3525,7 @@ class Game {
 
     resetTimeline() {
         this._environmentSeconds = 0;
+        this._standingOrders = null;
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
         // Handles are per MATCH: without this they keep climbing across restarts in one
         // session, and a transcript's ids stop starting at 1.
@@ -5012,13 +5023,12 @@ class Game {
                     unit.isMoving = false;
                     unit.x = unit.targetX;
                     unit.z = unit.targetZ;
-                    unit.formationAxis = null;   // march over
-                    unit.formationGroup = null;
+                    if(!unit._standingOrder){unit.formationAxis = null;unit.formationGroup = null;}
                     // ...and the pace with it. matchSpeed belongs to the march; a unit
                     // that kept it after arriving was held to the old body's slowest
                     // member for the rest of its life, with no group left that could
                     // ever release it again.
-                    unit.marchSpeed = null;
+                    if(!unit._standingOrder)unit.marchSpeed = null;
                     this.renderer.updateUnitPosition(unit);
                 }
             }

@@ -4,7 +4,7 @@ class UIManager {
     // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
     // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
     // steht. Beim Hochzaehlen also nur hier anfassen.
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v95'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v96'; }
 
     constructor(game) {
         this.game = game;
@@ -2813,6 +2813,9 @@ class UIManager {
             const off = entries.classList.contains('collapsed');
             if (toggle) toggle.textContent = off ? '▶' : '▼';
             if (filter) filter.classList.toggle('collapsed', off);
+            document.getElementById('aiDecisionLog')?.classList.toggle('collapsed', off);
+            entries.scrollTop = 0;
+            this.updateDecisionLog();
         }
     }
 
@@ -3147,6 +3150,20 @@ class UIManager {
         return tIn(lang, code, v);
     }
 
+    compactDecisionEntries(log) {
+        // A fast seat must not displace a slower seat's latest response. Keep all
+        // commands from each latest turn; advice and delayed outcomes do not replace it.
+        const latest = new Map(), fallback = new Map();
+        for (const entry of log) {
+            if (entry.isAdvice) continue;
+            if (!fallback.has(entry.playerId)) fallback.set(entry.playerId, entry);
+            if (entry.move != null && !latest.has(entry.playerId)) latest.set(entry.playerId, entry.move);
+        }
+        return log.filter(entry => !entry.isAdvice && (latest.has(entry.playerId)
+            ? entry.move === latest.get(entry.playerId)
+            : entry === fallback.get(entry.playerId)));
+    }
+
     updateDecisionLog() {
         const entriesEl = document.getElementById('aiLogEntries');
         const countEl = document.getElementById('aiLogCount');
@@ -3156,6 +3173,7 @@ class UIManager {
         this.renderLogPlayerChips();
         const f = this.logFilter();
         const filtering = !!(f.players.size || f.text);
+        const compact = entriesEl.classList.contains('collapsed');
 
         if (log.length === 0) {
             if (countEl) countEl.textContent = '';
@@ -3171,7 +3189,7 @@ class UIManager {
         // filter is part of the signature: without it, typing in the search box
         // would not repaint until the next decision arrived.
         const sig = [getUiLang(), log.length, (log[0] ? log[0].timestamp : 0),
-                     [...f.players].sort().join(','), f.text].join(':');
+                     [...f.players].sort().join(','), f.text, compact].join(':');
         if (sig === this._lastLogSig) return;
         this._lastLogSig = sig;
 
@@ -3214,7 +3232,7 @@ class UIManager {
         // filters have run — so a search reaches the entire history, not just the
         // 160 entries that would have been rendered anyway.
         const view = [];
-        for (const entry of log) {
+        for (const entry of compact ? this.compactDecisionEntries(log) : log) {
             if (f.players.size && !f.players.has(entry.playerId)) continue;
             const pp = entry.params || {};
             const hasT = pp.targetX !== undefined && pp.targetZ !== undefined;
@@ -3231,7 +3249,7 @@ class UIManager {
             if (view.length >= 160) break;
         }
 
-        if (countEl) countEl.textContent = filtering ? `(${view.length}/${log.length})` : `(${log.length})`;
+        if (countEl) countEl.textContent = filtering || compact ? `(${view.length}/${log.length})` : `(${log.length})`;
 
         if (view.length === 0) {
             entriesEl.innerHTML = `<div class="ai-log-empty" style="color:#6b7488;font-size:0.8em;padding:14px 8px;text-align:center;">${t('log.noMatches')}</div>`;

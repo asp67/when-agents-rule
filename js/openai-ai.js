@@ -82,7 +82,7 @@ class OpenAIAIManager {
         const WHO = { units: { type: 'object', description: 'Object of {"type": count}, e.g. {"champion":3}, or a category like {"infantry":5}. Omit for the whole army.' },
                       unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids from friendlyUnits. Wins over "units" when both are given.' },
                       matchSpeed: S('Optional. "slowestUnit" holds the whole group to its slowest member so they arrive together instead of strung out. Omit to let every unit run at its own speed, which is faster for the quick ones and arrives piecemeal.'),
-                      formation: S('Optional shape for the MARCH. Every shape keeps the shooters out of the contact rank and the cavalry on the wings. "line" — two ranks of melee, shooters behind, the widest front. "wedge" — a filled triangle, melee at the point. "block" — four to five deep, melee across the front, shooters on both flanks behind it. "screen" — melee ranks, an empty rank, then the shooters. Dropped on contact — it governs the approach, not the fight. Implies matchSpeed "slowestUnit".') };
+                      formation: S('Optional shape for the MARCH. Every shape keeps the shooters out of the contact rank and the cavalry on the wings. "line" — two ranks of melee, shooters behind, the widest front. "wedge" — a filled triangle, melee at the point. "block" — four to five deep, melee across the front, shooters on both flanks behind it. "screen" — melee ranks, an empty rank, then the shooters. Reforms after combat; reassigned units leave the group. Implies matchSpeed "slowestUnit".') };
         return [
             ['train_unit', 'Train one unit at a building that can produce it.',
              Object.assign({ unitType: S('Unit id from units.trainable.') }, XZ), ['unitType']],
@@ -102,8 +102,9 @@ class OpenAIAIManager {
              { tile: S('Tile label from map.exploration, e.g. "C5" — column A-G, row 1-7.'),
                unitType: S('Which unit type to send. Optional.'),
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
-            ['move_units', 'Move units to a position.',
-             Object.assign({}, XZ, WHO), ['targetX', 'targetZ']],
+            ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat.',
+             Object.assign({mode:{type:'string',enum:['march','scout','guard','patrol'],description:'Default march. Scout: travel without combat. Guard: travel then defend the position. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
+                targets:{type:'string',enum:['any','military'],description:'Guard/patrol/march incidental targets: any enemy unit (default), or military only. Pursuit is bounded; explicit attack_target remains a commitment.'}}, XZ, WHO), ['targetX', 'targetZ']],
             ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining.',
              Object.assign({ targetId: S('Copy the exact string id from enemyUnits or enemyBuildings, including the unit_ or building_ prefix and full suffix. Do not shorten it or convert it to a number. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
@@ -752,10 +753,7 @@ class OpenAIAIManager {
     // its right. Rotated into world space by the caller, so a shape is defined once
     // and works whichever way the army is pointed.
     //
-    // MARCH ONLY. The shape governs where each unit is heading while it walks and is
-    // dropped the moment it is close enough to fight -- holding ranks through a melee
-    // would need re-forming logic, a way to report the formation's state back, and a
-    // whole second argument about what "holding" means when half the rank is dead.
+    // Shapes govern the approach; standing orders restore them after combat.
     // Distance between neighbouring slots. Chosen by looking at twenty real units
     // standing in each shape rather than at the arithmetic, because a number of world
     // units means nothing until two soldiers are that far apart on screen.
@@ -824,15 +822,11 @@ class OpenAIAIManager {
     formationSlots(units, shape) {
         const S = OpenAIAIManager.FORMATION_SPACING;
         const out = new Map();
-        // The engine's own ranged test, not a list of unit names: range > 1 is what
-        // updateCombat uses to decide who shoots and who closes, so "ranged" here and
-        // "ranged" there cannot come to mean different things.
-        const isRanged = u => ((u && u.range) || 0) > 1;
-        // A priest has range 3, so the test above already calls it ranged -- but it is
-        // the one ranged unit that must never be shot at, and every shape fills its
-        // ranged group front-first. Sorting support to the END of that group is what
-        // makes "ranged" and "rearmost" the same sentence for them, in every shape,
-        // without a second rule per shape to keep in step with the first.
+        // Use combat range for shooters; support belongs in the same ranks even
+        // if its healing range changes. A formation slot never makes it a fighter.
+        const isRanged = u => u?.unitType === 'support' || ((u && u.range) || 0) > 1;
+        // Every shape fills its ranged group front-first. Sort support last so
+        // priests get the rear slots without a separate placement rule per shape.
         const isSupport = u => !!(u && u.unitType === 'support');
         // Horse is its own arm. Every shape here sorted by "can it shoot", which put
         // cavalry shoulder to shoulder inside a rank of foot -- the one detail that
@@ -2494,6 +2488,7 @@ class OpenAIAIManager {
         const NEAR = 1;
         const marchBy = new Map();
         ai.units.forEach(u => {
+            if(u._standingOrder&&u._standingOrder.token===u._orderToken)return;
             const inContact = u.isAttacking && u.attackTarget && u.attackTarget.health > 0;
             let to = null, order = null;
             if (u.attackMove && !inContact) {
@@ -2554,6 +2549,8 @@ class OpenAIAIManager {
             // queued assignment waiting on a FIGHT, which has no clock to read.
             ...(r.timed === false ? {} : { secondsRemaining: r.eta })
         }));
+
+        if(game._standingOrders)ordersInProgress.push(...game._standingOrders.summary(ai));
 
         // --- Battles: what actually happened in the fighting ---
         // A model cannot watch a fight — it decides between snapshots. Each entry is
@@ -2934,8 +2931,9 @@ class OpenAIAIManager {
                 x: Math.round(u.x),
                 z: Math.round(u.z),
                 healthPct: Math.round((u.health / u.maxHealth) * 100),
-                // Omitted entirely on a worker -- see the note above the map.
-                ...(u.type === 'worker' ? {} : { action })
+                // Workers report jobs elsewhere; standing groups report intent once
+                // in ordersInProgress instead of repeating it on every soldier.
+                ...(u.type === 'worker'||(u._standingOrder&&u._standingOrder.token===u._orderToken) ? {} : { action })
             };
         });
 
@@ -3617,6 +3615,7 @@ ${OpenAIAIManager.actionsBrief()}
 PARAMETER CONSTRAINTS:
 unitIds: An ARRAY of ids from friendlyUnits, e.g. [183, 12]. Moves or attacks EXACTLY those units and nothing else; "units" is ignored when it is given. Ids are never reused, so one that is gone means that unit died. Use it when WHICH unit matters — "units" picks whichever are nearest the target, which is the wrong end when you are fetching a wounded one.
 units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array. move_units also accepts {"worker":N} when named explicitly — that is how you place a unit on an exact spot; attack_target never takes workers.
+move_units mode: march (default), scout (no combat), guard (hold destination), patrol (repeat current position ↔ destination). Optional targets: any (default) or military. Standing orders persist through incidental combat and regrouping; new orders replace them only for selected units. ordersInProgress lists each assignment once with unitIds; battles/encounters report combat. Formation recovery slows the main body so priests and other stragglers can rejoin.
 matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows your units to walk in unison until they reach the fight.`;
     }
 
@@ -5472,7 +5471,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
             case 'move_units':
                 if (params?.targetX !== undefined && params?.targetZ !== undefined) {
-                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ, params.unitIds, params.matchSpeed, params.formation);
+                    actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ, params.unitIds, params.matchSpeed, params.formation, params.mode, params.targets);
                 } else {
                     actionResult = `[ERROR] move_units requires "targetX" and "targetZ" parameters.`;
                 }
@@ -6856,7 +6855,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         return parts.length ? parts.join(', ') : '(no military)';
     }
 
-    executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds, matchSpeed, formation) {
+    executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds, matchSpeed, formation, mode='march', targets='any') {
+        if(!['march','scout','guard','patrol'].includes(mode)||!['any','military'].includes(targets))
+            return '[ERROR] mode must be march, scout, guard or patrol; targets must be any or military.';
         // Validate the destination first so bad coords never strand units at NaN.
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {
@@ -6941,12 +6942,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             unit._orderToken = orderToken;
         });
 
+        game.setStandingOrder?.(this,ai,unitsToMove,{x:targetX,z:targetZ},{mode,targets,formation,matchSpeed});
         console.log(`[OpenAIAI] ${ai.id}: Moving ${unitsToMove.length} units to (${Math.round(targetX)}, ${Math.round(targetZ)})`);
         this.outcome('log.out.moveUnits', { count: unitsToMove.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
         // Naming the units is what makes a wrong pick VISIBLE. Without it the reply for
         // moving the wrong crossbowman and the right one are the same sentence, so a model
         // has no way to notice and simply reissues.
-        return `OK - Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${form.note}${pace.note} — ~${eta}s to arrive.`;
+        return `OK - ${mode}: Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${form.note}${pace.note} — ~${eta}s to arrive.`;
     }
 
     executeAttackTarget(ai, game, targetId, unitsMap, unitIds, matchSpeed, formation) {
@@ -7035,6 +7037,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // full-army order, only the named priests on a detachment.
         const escorted = game.escortSupportUnits(sel.support, target.x, target.z);
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
+        game.setStandingOrder?.(this,ai,marching,{x:target.x,z:target.z},{mode:'march',target,formation,matchSpeed});
 
         console.log(`[OpenAIAI] ${ai.id}: ${unitsToAttack.length} units attacking "${target.name || target.type}"`);
         this.outcome('log.out.attackDispatched', { count: unitsToAttack.length, target: target.name || target.type });
@@ -7162,6 +7165,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // full-army order, only the named priests on a detachment.
         const escorted = game.escortSupportUnits(sel.support, targetX, targetZ);
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
+        game.setStandingOrder?.(this,ai,unitsToAttack.concat(sel.support||[]),{x:targetX,z:targetZ},{mode:'march',attack:true,formation,matchSpeed});
 
         // The LAST unit to arrive, not the first one in the list. This quoted
         // unitsToAttack[0], so a mixed force was promised its scout cavalry's eta and
