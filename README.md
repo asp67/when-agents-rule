@@ -14,9 +14,9 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 <br>
 
-[![When Agents Rule — a typical match (click to watch)](Screenshots/ArenaPoster.png)](Screenshots/Arena.gif)
+[![Current Greek settlement — click for the day/night cycle](Screenshots/ArenaPoster.png)](Screenshots/Arena.gif)
 
-<sub><i>A typical match: models giving orders turn by turn, economies growing, an age advancing before your eyes — <b>click the image for the animated tour</b>.</i></sub>
+<sub><i>Summer Valley in the current renderer — <b>click for a full day/night lighting cycle</b>. Captured in Explore civilizations; the 12-minute cycle is accelerated for this demonstration.</i></sub>
 
 </div>
 
@@ -26,7 +26,7 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 A sandbox arena for pitting language models against one another at a task they were never trained for: running an economy and an army, in real time, inside a small RTS they've never seen. Every player is an autonomous model agent governing its own civilization, and every match ends one of two ways — a rival razed to the ground, or a Wonder held in peace.
 
-This is an **agent harness** whose task happens to be a real-time strategy game. Every turn a model is handed a compact **JSON snapshot** of its situation (resources, buildings, units, fog-of-war discoveries, threats, tech tree, map bounds), **two tools** — `action` to make a move, up to three times per turn, and `plan` to set a standing objective — and one instruction: **win.** Then it has to keep doing that, turn after turn, for a whole match.
+This is an **agent harness** whose task happens to be a real-time strategy game. Every turn a model is handed a compact **JSON snapshot** of its situation (resources, buildings, units, fog-of-war discoveries, threats, tech tree, map bounds), **named command tools** — such as `move_units`, `attack_target` and `research_tech`, sharing a budget of three commands per turn — plus an independent `plan` tool to save its objective — and one instruction: **win.** Then it has to keep doing that, turn after turn, for a whole match.
 
 The tools are real tool calls, extracted from the chat-completion response the same way OpenCode or any other agent harness extracts them. That matters for what a result means: a malformed call costs that call, not the turn, and a model gets the same per-call feedback it would get anywhere else it is deployed.
 
@@ -34,9 +34,11 @@ It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). W
 
 <div align="center">
 
-![A live When Agents Rule match](Screenshots/Scene1.png)
+| Winter · Yamato | Desert · Persia |
+|:---:|:---:|
+| ![Winter pines, bare trees and Yamato architecture](Screenshots/Winter.png) | ![Persian settlement at dusk on desert terrain](Screenshots/Desert.png) |
 
-<sub><i>A live match on the Winter map — the fog-limited 3D world, the streaming decision log (left), the ranked leaderboard with advice inputs (right), and the minimap. Both seats here are ornith:9b, one a full age ahead of the other.</i></sub>
+<sub><i>Current Iron Age showcase captures: seasonal trees, snow and sand, ground cover, cultural architecture and entrance lighting. These are playable art previews, not recorded model matches.</i></sub>
 
 </div>
 
@@ -56,9 +58,9 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 
 <div align="center">
 
-![An iron-age model overruns a stone-age rival](Screenshots/Clash.gif)
+![Infantry, archers and priests moving together on a formation patrol](Screenshots/Formations.gif)
 
-<sub><i>Doctrine, decided: an iron-age model marches on a rival still in the stone age, wipes it from the map, and the results screen calls the match.</i></sub>
+<sub><i>A staged patrol using the actual movement system: infantry leads, archers and priests follow in ranged ranks, and the army keeps its formation. Standing orders continue between model replies.</i></sub>
 
 </div>
 
@@ -70,6 +72,9 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **⏱ Speed control** — 1× / 1.5× / 2× / 4×, plus **Pause** (which waits for answers already in flight, so no move is thrown away). Held at 1× while a Wonder stands, so the countdown can't be sped past.
 - **🌱 Seeded maps & fair placement** — the same seed reproduces the exact layout; food and wood fill an even 7×7 grid while scarce **stone and gold are placed identically for every player**. The map stops being a confound.
 
+- **🛡️ Persistent army orders** — march, scout without attacking, guard a position, or patrol between two points. Incidental pursuit is bounded; survivors reform and resume their assignment, including priests in ranged slots. A new order replaces the selected units' previous assignment.
+- **🌗 Day and night** — a cosmetic 12-minute cycle with warm dusk, cool nights, campfires and entrance lights. Simulation speed does not accelerate the lighting cycle.
+
 **The models**
 - **🔌 Bring any model** — OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter, …), **Anthropic**, **Ollama**, **Google (Gemini)**, with auto-detection. Mix local and cloud in one match.
 - **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or OAuth2.
@@ -78,8 +83,8 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **🪙 Token accounting** — provider-reported prompt + completion usage per model, next to latency.
 
 **Watching & reading it back**
-- **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and play/pause per model.
-- **🏛️ Antiquity visual milestone** — warm directional light, cast shadows, irregular coastal water reflections, sculpted miniature units with cultural facial hair, angled handheld equipment and proportionate horses, continuous tree crowns, layered meadow/snow/sand surfaces with close-up ground detail, refined Greek architecture and camera controls integrated with the minimap. Arena configuration and the model library share the charcoal/bronze theme. Try **Explore civilizations** locally: choose Greek, Egyptian, Yamato or Persian inside the showcase, then use **Inspect workers** for a close-up. Direct links: `/?showcase=1&civ=greek` (also `egyptian`, `yamato`, `persian`). The live transcript uses eight-turn pages to keep long matches responsive. [Scope, graphics settings and verification](docs/VISUAL_MILESTONE.md).
+- **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and play/pause per model. Collapse the decisions panel to the latest turn’s command headlines for each seat.
+- **🏛️ Antiquity visual milestone** — warm directional light, cast shadows, irregular coastal water reflections, sculpted miniature units with cultural facial hair, angled handheld equipment and proportionate horses, continuous tree crowns, layered meadow/snow/sand surfaces with close-up ground detail, refined Greek architecture and camera controls integrated with the minimap. Arena configuration and the model library share the charcoal/bronze theme. Try **Explore civilizations** locally: choose civilization, summer/winter/desert, Stone through Iron Age, and time of day. Iron Age includes the civilization's Wonder; **Inspect workers** gives a close-up. Direct links: `/?showcase=1&civ=greek` (also `egyptian`, `yamato`, `persian`). The live transcript uses eight-turn pages to keep long matches responsive. [Scope, graphics settings and verification](docs/VISUAL_MILESTONE.md).
 - **🎬 A battlefield worth watching** — feathered fog of war, arrows and tower stones, hit flashes, animated deaths, battle pings, per-map ground cover, and an optional **action camera** that follows the fighting.
 - **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 strategy score.
 - **📄 Exports** — the evaluation as a self-describing `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline appended at the end.
@@ -121,9 +126,9 @@ Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
 
 <div align="center">
 
-![Adding a model in 30 seconds](Screenshots/ManageModels.gif)
+![Current model library and connection settings](Screenshots/ModelLibrary.png)
 
-<sub><i>Hands-on in 30 seconds: add a model, paste the Ollama endpoint, auto-detect the served models, pick <code>ornith:9b</code>, set its options — and back to the arena setup.</i></sub>
+<sub><i>The current model library: configure a provider, connection and model settings. Fresh browser profile; no credentials or private endpoints shown.</i></sub>
 
 </div>
 
@@ -142,9 +147,9 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 <div align="center">
 
-![The streaming decision log](Screenshots/Scene2.png)
+![Egyptian settlement after nightfall](Screenshots/Night.png)
 
-<sub><i>The decision log in action: attack orders with the model's own reasoning, worker reassignments — and a rejected action (an archery range attempted before its age) flagged in red.</i></sub>
+<sub><i>Night in the Egyptian showcase: entrance lamps and campfires illuminate the settlement. The cosmetic day/night cycle runs at real-time pace, independently of the game speed setting.</i></sub>
 
 </div>
 
@@ -154,7 +159,7 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 ## 🔧 Tool calls, and which stack served them
 
-Models act by calling tools, on all four protocols — OpenAI-compatible (vLLM, llama.cpp, LM Studio, OpenRouter, Groq …), Ollama, Anthropic and Google. Two tools, one definition, translated into each dialect: `action` (once per move, up to three per turn, run in order against a board each one changes) and `plan` (at most once, and only when something changed).
+Models act by calling tools, on all four protocols — OpenAI-compatible (vLLM, llama.cpp, LM Studio, OpenRouter, Groq …), Ollama, Anthropic and Google. Named game-command tools share one definition translated into each dialect. Up to three game commands run in order per turn, plus one independent `plan` call when the objective or plan changes. A plan-only reply is a successful plan update; saved plan steps are not automatically executed.
 
 **A seat that cannot work the tools fails visibly.** That is the point rather than a rough edge: a harness that quietly compensates for a broken tool-call parser hides the one thing its operator needs to know. When no call arrives the error says *which* fault it is — tool syntax found in the raw reply means the model called and the server missed it (a wrong `--tool-call-parser` on vLLM, a chat template without a tool section on llama.cpp), and no syntax means the model simply did not call.
 
@@ -172,7 +177,7 @@ A third mode beside Arena and Campaign, and the other half of the round trip: a 
 
 ![Reading a finished match back in the analyzer](Screenshots/AnalyzeTranscript.png)
 
-<sub><i>A finished match, reopened: the board in the same 3D engine with per-seat fog, the turn list on the left, the model's plan, command and reasoning in the middle, and the economy graph with a playhead on the right.</i></sub>
+<sub><i>Episode 6 reopened in build 819: an existing recorded match rendered with the current engine, with the turn list, saved plan and economy graph. The header retains the original recording's build and prompt version.</i></sub>
 
 </div>
 
@@ -198,14 +203,6 @@ Load a `match-*.jsonl` and you get:
 Nothing is interpolated between snapshots. Replay also bypasses live positional separation, so recorded units stay at their recorded coordinates. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
 
 ## 🧮 How a model is scored
-
-<div align="center">
-
-![End-of-match model evaluation](Screenshots/ModelEvaluation.png)
-
-<sub><i>End-of-match evaluation of a four-model match (won by Wonder) — each model's 0–100 strategy score and the raw stats behind it.</i></sub>
-
-</div>
 
 The **Strategy Score** (0–100) is a transparent composite — no black box:
 
