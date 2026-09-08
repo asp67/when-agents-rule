@@ -1975,12 +1975,14 @@ class Game {
     // to set a field to the value it already holds is a cost that does not announce
     // itself.
     followMinimapFogToShot() {
-        if (!this._actionCam || this._minimapFogManual) return;
+        if (!this._actionCam || !this.spectatorMode) return;
         const shot = this._director && this._director.shot;
         const key = shot ? shot.key : null;
-        if (key === this._fogShotKey) return;
-        this._fogShotKey = key;
         const want = shot && shot.seat != null ? shot.seat : null;
+        if (key === this._fogShotKey && want === this._fogShotSeat) return;
+        this._fogShotKey = key;
+        this._fogShotSeat = want;
+        this._minimapFogManual = false;
         if (this.minimapFogSeat === want) return;
         this.minimapFogSeat = want;
         if (this.ui && this.ui.refreshMinimapFogKnobs) this.ui.refreshMinimapFogKnobs();

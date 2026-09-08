@@ -703,7 +703,7 @@ class Director {
         if (g._camFollow) {
             const pos = g._resolveCamSubject(g._camFollow);
             if (pos) {
-                if (!this.shot || this.shot.type !== 'selected') {
+                if (!this.shot || this.shot.type !== 'selected' || this.shot.subject !== g._camFollow) {
                     this.shot = this.begin('selected', 'selected', 999, {
                         x: pos.x, z: pos.z, yaw: this.snapYaw(g.renderer._yaw),
                         halfH: g._subjectZoom(g._camFollow), subject: g._camFollow
@@ -839,7 +839,11 @@ class Director {
         // wants. Null for the shots that belong to nobody -- overview, a brawl, two
         // seats meeting -- and null is exactly the value that means "show every seat".
         const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
-        const who = owner ? ais.find(a => a && a.id === owner) : null;
+        const selectedOwners = type==='selected' ? [...new Set(
+            (pose.subject?.kind==='ent'?[pose.subject.ent]:(pose.subject?.units||[]))
+                .filter(e=>e&&e.health>0).map(e=>e.owner))] : [];
+        const seatOwner=type==='selected'?(selectedOwners.length===1?selectedOwners[0]:null):owner;
+        const who = seatOwner ? ais.find(a => a && a.id === seatOwner) : null;
         const seat = who && who.seat != null ? who.seat : null;
 
         // Which way the arc goes. It used to alternate every shot, which is right when

@@ -2720,6 +2720,9 @@ class UIManager {
         if (!host) return;
         const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
         this.game.minimapFogSeat = null;                 // every new match starts open
+        this.game._fogShotKey = undefined;
+        this.game._fogShotSeat = undefined;
+        this.game._minimapFogManual = false;
         host.innerHTML = ais.map(ai =>
             `<button type="button" class="mm-fog-knob" data-seat="${ai.seat}" aria-pressed="false"
                 onclick="game.ui.toggleMinimapFogSeat(${ai.seat})">${this.teamDotHtml(ai.seat, 8)}</button>`
@@ -2729,10 +2732,8 @@ class UIManager {
 
     toggleMinimapFogSeat(seat) {
         const g = this.game;
-        // A click is the viewer taking the wheel. While the director is driving it sets
-        // the fog itself on every cut, so without this the knob would appear to work and
-        // then snap back at the next shot -- which reads as a broken knob rather than as
-        // a camera doing its job. Released when auto-camera is toggled.
+        // Keep the viewer's choice for this shot. Auto Camera resumes filter
+        // following at the next subject change; manual camera keeps it pinned.
         g._minimapFogManual = true;
         g.minimapFogSeat = (g.minimapFogSeat === seat) ? null : seat;
         this.refreshMinimapFogKnobs();
