@@ -294,7 +294,7 @@ test('mounted riders have complete, equally substantial arms and connected seate
             assert.ok(thigh.jointEnd[2]>thigh.jointStart[2] && calf.jointEnd[2]<calf.jointStart[2],'bent riding knee');
             assert.equal(thigh.bone,null,'rider thighs do not inherit horse leg motion');
             assert.equal(calf.bone,null,'rider calves do not inherit horse leg motion');
-            assert.ok(parts.some(p=>p.tex==='leather' && p.kind==='sphere' && !p.bone
+            assert.ok(parts.some(p=>p.tex==='leather' && p.kind==='shoe' && !p.bone
                 && Math.abs(p.m[12]-calf.jointEnd[0])<1e-6 && p.m[13]<calf.jointEnd[1]
                 && p.m[14]>calf.jointEnd[2]),'forward boot below ankle');
         }
@@ -396,4 +396,79 @@ test('packed shadow writes disable dithering and restore its previous state',()=
             cameraTarget:{x:0,z:-340},sunDir:s.M3D.normalize([-.65,.72,.36]),shadowProg:{uniforms:{}},_dl:{opaque:[{buf:{}}]}});
         r._renderShadows();assert.equal(draws,1);assert.equal(enabled,initiallyOn);
     }
+});
+
+test('seasonal trees have finite outward geometry, varied silhouettes and bounded material batches',()=>{
+ const s=context();
+ for(const style of ['pine','bare','desert'])for(let v=0;v<4;v++)for(const mat of ['bark','foliage','snow']){
+  const mesh=s.EngineMesh.seasonalTree(style,v,mat);
+  assert.ok(mesh.positions.every(Number.isFinite));assert.ok(mesh.normals.every(Number.isFinite));
+  assert.equal(s.EngineMesh.auditWinding(mesh),0,style+'/'+v+'/'+mat);
+  assert.ok(mesh.positions.length/3<65536);
+  if(style==='bare'&&mat!=='bark')assert.equal(mesh.indices.length,0);
+ }
+ assert.notDeepEqual(s.EngineMesh.seasonalTree('pine',0,'foliage'),s.EngineMesh.seasonalTree('pine',1,'foliage'));
+ const r=Object.create(s.EngineRenderer.prototype);r._buf=(kind,args)=>({kind,args});
+ r.tex={shadow:'shadow',worldBark:'bark',worldFoliage:'foliage',white:'snow'};
+ for(const theme of ['winter','desert']){
+  r._theme=theme;r._resEntries=new WeakMap();let bare=0;
+  for(let i=0;i<20;i++){
+   const res={type:'wood',x:i,z:0,amount:100},before={...res},e=r._resourceEntries(res,i);
+   assert.ok(e.opaque.length<=3);assert.deepEqual(res,before);
+   if(e.opaque[0].buf.args[0]==='bare'){bare++;assert.equal(e.opaque.length,1);}
+  }
+  assert.equal(bare,theme==='winter'?4:0);
+ }
+});
+
+test('flat shoe soles stay slightly embedded throughout the humanoid stride',()=>{
+ const s=context(),mesh=s.EngineMesh.shoe();
+ const sole=mesh.positions.filter((_,i)=>i%3===1);
+ assert.equal(Math.min(...sole),-.02);assert.ok(sole.filter(y=>y===-.02).length>10);
+ const parts=s.EngineUnits.parts('worker',{civ:'greek',tier:1}).filter(p=>p.kind==='shoe');
+ assert.equal(parts.length,2);
+ for(let step=0;step<80;step++){
+  const pose=s.EngineUnits.pose('worker','walk',step*.025),ys=[];
+  for(const p of parts){
+   const m=s.M3D.multiply(pose.mats[p.bone],p.m);
+   for(let i=0;i<mesh.positions.length;i+=3)ys.push(m[1]*mesh.positions[i]+m[5]*mesh.positions[i+1]+m[9]*mesh.positions[i+2]+m[13]+pose.bob);
+  }
+  const low=Math.min(...ys);assert.ok(low>=-.04&&low<=0,'supporting sole must stay grounded: '+low);
+ }
+});
+
+test('all building families and cultural finishes have valid geometry; tent doors follow the cone',()=>{
+ const s=context(),checked=new Set();
+ for(const civ of ['egyptian','greek','yamato','persian'])for(const age of ['stone','neolithic','bronze','iron'])for(const type of s.EngineBuildings.TYPES){
+  const parts=s.EngineBuildings.parts(type,{civ,age});assert.ok(parts.length,type);
+  for(const p of parts){
+   assert.ok(p.m.every(Number.isFinite),type+'/'+civ+'/'+age);
+   if(p.tint)assert.ok(p.tint.every(v=>Number.isFinite(v)&&v>=0));
+   const key=p.kind+JSON.stringify(p.args);if(checked.has(key))continue;checked.add(key);
+   const mesh=s.EngineMesh[p.kind](...p.args);assert.ok(mesh.positions.every(Number.isFinite));
+   assert.equal(s.EngineMesh.auditWinding(mesh),0,key);
+  }
+ }
+ for(const [type,r,h] of [['town_center',5.2,7.6],['house',2.6,4.3]]){
+  const door=s.EngineBuildings.parts(type,{civ:'yamato',age:'stone'}).find(p=>p.tex==='white'&&p.tint?.[0]===.105);
+  assert.ok(door);const slope=r*Math.cos(Math.PI/10)/h;
+  for(const side of [-1,1]){
+   const y=door.m[13]+side*door.args[1]/2*door.m[5],z=door.m[14]+side*door.args[1]/2*door.m[6];
+   assert.ok(Math.abs(z-((h-y)*slope+.035))<1e-5,'door stays flush with sloping tent facet');
+  }
+ }
+});
+
+test('early stable and archery entrances face clear ground; stable hitching rail is beside the hall',()=>{
+ const s=context();
+ for(const civ of ['greek','egyptian','yamato','persian'])for(const age of ['neolithic','bronze'])for(const type of ['stable','archery_range']){
+  const parts=s.EngineBuildings.parts(type,{civ,age});
+  const door=parts.find(p=>p.kind==='box'&&p.tex==='bark'&&p.args[2]===.28&&p.m[14]>2);
+  assert.ok(door,type+'/'+civ+'/'+age);assert.equal(door.m[12],0);
+  assert.ok(Math.abs(door.m[13]-door.args[1]/2)<1e-6);
+  if(type==='stable'){
+   const rail=parts.find(p=>p.kind==='box'&&p.args[2]===4.8);
+   assert.ok(rail);assert.ok(rail.m[12]<-4);assert.equal(rail.m[14],0);
+  }
+ }
 });

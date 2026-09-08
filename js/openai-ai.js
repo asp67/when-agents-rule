@@ -110,7 +110,7 @@ class OpenAIAIManager {
              { unitType: S('Type from friendlyUnits. Default worker.'), count: I('How many. Default 1, max 20.') }, []],
             ['destroy_building', 'Demolish one of your own buildings.',
              Object.assign({ buildingType: S('Type from friendlyBuildings.') }, XZ), ['buildingType']],
-            ['wait', 'Do nothing this turn. Every turn needs a call; this is the one that means "none".', {}, []]
+            ['wait', 'Leave the game orders unchanged. Use when you have neither a game command nor a plan update this turn.', {}, []]
         ].map(([name, description, params, required]) => ({ name, description, params, required }));
     }
 
@@ -150,7 +150,10 @@ class OpenAIAIManager {
         tools.push({ type: 'function', function: {
             name: 'plan',
             description: 'State your standing objective and plan. At most once per turn, '
-                + 'and only when something changed — both persist across turns.',
+                + 'and only when something changed — both persist across turns. '
+                + 'You may call this together with up to ' + OpenAIAIManager.MAX_COMMANDS_PER_TURN
+                + ' game-command tools in the SAME response. It uses none of those command slots. '
+                + 'A plan-only update is valid, but does not execute the steps in the plan.',
             parameters: { type: 'object', properties: {
                 objective: { type: 'string', description: 'One line.' },
                 plan: { type: 'array', items: { type: 'string' },
@@ -183,11 +186,11 @@ class OpenAIAIManager {
         // nothing at all. "Use the tools" gave it no way to express that, and wait
         // exists for precisely this. Stating it is the contract described accurately,
         // not a hint — every turn needs a call, including the empty one.
-        const call = 'Call an action tool — up to '
-            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' action calls per turn, any mix of them ("plan" is '
-            + 'extra and does not count). EVERY turn needs at least one call: '
-            + 'if nothing is worth doing, call it with {"action":"wait","params":{"reason":"..."}} — '
-            + 'staying silent forfeits the turn instead of skipping it.';
+        const call = 'In ONE response, you may call "plan" once AND up to '
+            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' game-command tools. The plan uses no command slot. '
+            + 'A plan-only update is valid; its steps are saved, not executed. '
+            + 'If you have neither commands nor a plan update, call "wait" with {"reason":"..."}. '
+            + 'Staying silent forfeits the turn.';
         return m.toolFallback
             ? call + ' If a call will not go through, one raw JSON object per action also works, e.g. ' + json + '.'
             : call;
@@ -360,6 +363,7 @@ class OpenAIAIManager {
                                   // a reply cut mid-tool-call that still ran two actions is a
                                   // reply the model did not finish, and it used to read clean.
             noActionReturns: 0,   // model answered in prose with NO JSON action — nothing executed
+            planOnlyUpdates: 0,  // successful planning turns, separate from game commands
             laneCount: 1,         // lanes this seat ran, so the summary can tell a clean
                                   // 2-lane pipeline from a seat that never had lanes at all
             laneRescued: 0,       // EXPERIMENTAL: rounds this seat PLAYED that a single-lane
@@ -3012,7 +3016,8 @@ class OpenAIAIManager {
                 type: unit.type,
                 x: Math.round(unit.x),
                 z: Math.round(unit.z),
-                owner: game.seatLabel(unit.owner)
+                owner: game.seatLabel(unit.owner),
+                ...(unit.type === 'worker' ? { carrying: game.observedWorkerLoad(unit) } : {})
             });
         });
 
@@ -3576,7 +3581,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - You never SEE a fight; it happens between your turns. "battles" reports each engagement, cumulative: both sides' composition, damage dealt to units and to buildings, priests' healing, and losses. Losing produces no error, so this is the only place you learn what beat you.
 - Priests never fight. They march with an attack and heal wounded units from the back on their own.
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
-- "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists.
+- "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists. Workers include "carrying": empty, food, wood, stone, gold, or unknown. CONTACT LOST cargo describes the last visible observation, not the worker's current hidden state.
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
 - "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool.
@@ -3592,13 +3597,16 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 
 ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
 
-YOUR BUDGET IS ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} ACTION CALLS PER TURN — any mix of the action tools, not ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} of each. Three different tools, or the same one three times, both count as three.
-  EVERY turn needs at least one call. When nothing is worth doing, call "wait" — staying silent forfeits the turn instead of skipping it.
+IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} GAME COMMANDS. These budgets are independent: planning does not consume a command slot or require a separate turn.
+  Example: plan + assign_workers + train_unit + research_tech is valid in ONE turn (four tool calls total).
+  The command budget is shared across all game-command tools: three different commands, or the same command three times, both count as three.
+  A plan-only turn is a successful plan update. Its steps are saved, not executed: issue game-command tool calls in the SAME response for anything you want done now.
+  When you have neither game commands nor a plan update, call "wait". Staying silent forfeits the turn.
   Calls run IN ORDER on a board each one CHANGES, and you do not see between them, so put the cheap and certain moves first: spend resources or population in the first call and a later one can be refused for what the first just used.
   Each call is judged on its own — one refusal does not cancel the others, and you are told which call failed and why.
   Every action tool takes a "reason": one line, in your own words. It is what a spectator reads, and the only place you explain yourself.
 
-"plan" is EXTRA and does not count against those ${OpenAIAIManager.MAX_COMMANDS_PER_TURN}. At most once per turn, and only when something changed: objective is one line, plan up to ${OpenAIAIManager.PLAN_MAX_STEPS} short steps. Both persist across turns, so simply do not call it to keep what you already have.
+"plan" saves your objective (one line) and plan (up to ${OpenAIAIManager.PLAN_MAX_STEPS} short steps). Call it only when something changed. Both persist across turns, so omit it to keep them and still issue up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} game commands.
 
 VALID ACTIONS & PARAMETERS (? = optional; each tool's own schema describes what they mean)
 Note: targetX and targetZ must ALWAYS be provided together.
@@ -4815,6 +4823,26 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // A reply arrived but carried no JSON action: count it as its own outcome
     // (a valid RETURN — it keeps its latency — but a wasted turn) and tell the
     // model unambiguously that nothing was done.
+    registerPlanUpdate(controller) {
+        controller._planOnly = false;
+        if (controller.stats) controller.stats.planOnlyUpdates = (controller.stats.planOnlyUpdates || 0) + 1;
+        const result = 'OK - Plan saved. No game commands were issued. You may call plan once AND up to '
+            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' game-command tools in the same response; saved plan steps are not executed automatically.';
+        controller.seat.lastActionResult = result;
+        const ai = controller.aiPlayer, civ = getCivilization(ai.civilization);
+        // Called at execution time, including after the round's pending logs drained.
+        this.commitDecision({ playerId: ai.id, civName: civ?.name || ai.civilization,
+            color: '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0'),
+            action: 'plan_only', move: controller._moveNo, latencyMs: controller._moveMs,
+            reason: controller.seat.objective || (controller.seat.plan || []).join(' → '),
+            params: {}, failed: false });
+        const turn = this.logTurnFor(controller);
+        if (turn && turn.outcome == null) turn.outcome = result;
+        try {
+            if (this.transcripts) this.transcripts.noteResult(ai.id, result, controller.laneNo);
+        } catch (e) { /* recording must never break a turn */ }
+    }
+
     registerNoActionReturn(controller, cappedOut, askedMax) {
         const s = controller.stats;
         if (s) s.noActionReturns = (s.noActionReturns || 0) + 1;
@@ -4869,26 +4897,6 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             controller.seat.lastActionResult = (typeof miss === 'string')
                 ? `[ERROR] NO ACTION: your reply carried tool-call syntax (${miss}) but the server did not deliver it as a tool call, so nothing could be executed. This is a SERVER setting, not your mistake — the operator has to fix the tool-call parser or the chat template.`
                 : `[ERROR] NO ACTION was taken this turn: you called no tool at all. ${OpenAIAIManager.howToAnswer(controller)}`;
-        } else if (controller._planOnly) {
-            // A plan-only turn is not a malformed one. The model worked a tool
-            // correctly and simply issued no move, and it is told exactly that --
-            // the plan itself is kept, not thrown away with the message.
-            controller._planOnly = false;
-            controller.seat.lastActionResult = `[ERROR] NO ACTION was taken this turn: you called "plan" but never "action", so your objective and plan were saved and nothing was done. ${OpenAIAIManager.howToAnswer(controller)}`;
-            const ai = controller.aiPlayer;
-            const civ = getCivilization(ai.civilization);
-            // This runs during execution (after flushRound drained pendingLog).
-            // Commit now, like executeAction, with the answering lane's stamps.
-            this.commitDecision({
-                playerId: ai.id,
-                civName: civ?.name || ai.civilization,
-                color: '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0'),
-                action: 'plan_only',
-                move: controller._moveNo,
-                latencyMs: controller._moveMs,
-                reason: controller.seat.objective || (controller.seat.plan || []).join(' → '),
-                params: {}, failed: true
-            });
         } else controller.seat.lastActionResult = `[ERROR] NO ACTION was taken this turn: nothing executable arrived. ${OpenAIAIManager.howToAnswer(controller)} Plain prose wastes the turn.`;
         const lastTurn = this.logTurnFor(controller);
         if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;
@@ -5265,7 +5273,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 if (Array.isArray(envelope.plan) && envelope.plan.length) {
                     controller.seat.plan = envelope.plan.slice(0, OpenAIAIManager.PLAN_MAX_STEPS);
                 }
-                if (controller._planOnly) { this.registerNoActionReturn(controller); return; }
+                this.registerPlanUpdate(controller); return;
             }
             this.executeAction(controller, envelope); return;
         }

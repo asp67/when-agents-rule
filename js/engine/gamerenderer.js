@@ -164,6 +164,7 @@
             if (!Object.prototype.hasOwnProperty.call(sizes,value)) value = 'balanced';
             if (this.graphicsQuality === value) return;
             this.graphicsQuality = value;
+            if (value !== 'cinematic' && this._grass) { this._grass.dispose(); this._grass = null; }
             EngineAtmosphere.disposeShadowTarget(this.gl,this._shadowTarget);
             this._shadowTarget = sizes[value] ? EngineAtmosphere.createShadowTarget(this.gl,sizes[value]) : null;
             try { localStorage.setItem('warGraphicsQuality',value); } catch (e) {}
@@ -224,11 +225,13 @@
                 plaster: T(TexGen.plaster(99)),
                 thatch: T(TexGen.thatch(111)),
                 rooftile: T(TexGen.rooftile(122)),
+                neutralRoof: T(TexGen.neutralRoof()),
                 awning: T(TexGen.awning(133)),
                 field: T(TexGen.field(144, 128, 'rows')),
                 field_dirt: T(TexGen.field(144, 128, 'dirt')),
                 field_patchy: T(TexGen.field(144, 128, 'patchy')),
                 shadow: T(TexGen.shadowBlob(), { clamp: true }),
+                mote: T(TexGen.softMote(), { clamp: true }),
                 cloth: T(TexGen.cloth(155)),
                 skin: T(TexGen.skin(166)),
                 hairBlack: T(TexGen.solid(25,22,23)),
@@ -261,6 +264,8 @@
             // the sea reaches the far plane already wearing this colour.
             this._sky = theme === 'winter' ? [0.60, 0.67, 0.76]
                 : (theme === 'desert' ? [0.66, 0.71, 0.75] : [0.42, 0.60, 0.79]);
+            this._daySun = this._sun.slice();
+            this._daySky = this._sky.slice();
         }
 
         _buf(kind, args) {
@@ -344,7 +349,9 @@
                 // Generous clip slack: at low pitch the visible ground stretches far
                 // past the look-at point (and close under the eye) — the tighter
                 // planes made units pop out of sight at the frame edges.
-                proj: m3.perspective(FOVY, aspect, Math.max(2, dist - 1400), FAR),
+                // Keep foreground sea inside the frustum at maximum zoom and low
+                // pitch. Subtracting a fixed 1400 from dist clipped the lower view.
+                proj: m3.perspective(FOVY, aspect, Math.max(2, dist * 0.05), FAR),
                 // Haze tied to the far plane, so geometry is fully faded BEFORE it is
                 // clipped at EVERY zoom — otherwise the cut moves with dist and the
                 // horizon slides. The map is 800 across and the eye sits ~dist away,
@@ -501,6 +508,9 @@
         }
 
         setTerrain(terrain) {
+            if (this._grass) { this._grass.dispose(); this._grass = null; }
+            if(this._clutterVisibilityTex){this.gl.deleteTexture(this._clutterVisibilityTex);this._clutterVisibilityTex=null;}
+            this._clutterFow=null;
             this.terrain = terrain;
             const theme = terrain.difficulty === 'medium' ? 'winter'
                 : (terrain.difficulty === 'hard' ? 'desert' : 'summer');
@@ -615,10 +625,21 @@
                 (blend ? e.blended : e.opaque).push({ buf: this._buf(kind, args), tex: this.tex[tex], model });
             if (res.type === 'wood') {
                 add('disc', [2.2, 14], 'shadow', TRS(res.x, 0.05, res.z, s, 1, s), true);
-                add('cylinder', [0.24, 0.4, 2.4, 7], 'worldBark', TRS(res.x, 1.2 * s, res.z, s, s, s, rot));
-                if (this._theme === 'winter') {
-                    add('cylinder', [0, 1, 1, 8], 'worldFoliage', TRS(res.x, 3.1 * s, res.z, 2.2 * s, 3.4 * s, 2.2 * s));
+                if (this._theme === 'winter' || this._theme === 'desert') {
+                    const bare=this._theme==='winter' && ((i*37+11)%10)<2;
+                    const style=this._theme==='desert'?'desert':bare?'bare':'pine';
+                    const model=TRS(res.x,0,res.z,s,s,s,rot);
+                    add('seasonalTree',[style,i%4,'bark'],'worldBark',model);
+                    if(!bare){
+                        add('seasonalTree',[style,i%4,'foliage'],'worldFoliage',model);
+                        e.opaque[e.opaque.length-1].tint=this._theme==='desert'?[.78,.78,.66]:[.82,.94,1];
+                    }
+                    if(style==='pine'){
+                        add('seasonalTree',[style,i%4,'snow'],'white',model);
+                        e.opaque[e.opaque.length-1].tint=[.87,.92,.96];
+                    }
                 } else {
+                    add('cylinder', [0.24, 0.4, 2.4, 7], 'worldBark', TRS(res.x, 1.2 * s, res.z, s, s, s, rot));
                     // Branch endpoints start inside the trunk and finish inside a
                     // single crown. Previously three upright stubs were detached.
                     for(let branch=0;branch<2;branch++) {
@@ -746,10 +767,14 @@
                 parts = EngineBuildings.parts(type, { age: building.age, civ: building.civilization });
             }
             const eb = { opaque: [], blended: [], shell: null, world };
+            const grassFoot = this._meshFootprint(parts, `${building.type}|${building.age}|${building.civilization}|${!!building.underConstruction}`);
+            const ca = Math.abs(Math.cos(building.rotationY || 0)), sa = Math.abs(Math.sin(building.rotationY || 0));
+            building._grassFootprint = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*BSCALE + 1,
+                ez: (grassFoot.ex*sa + grassFoot.ez*ca)*BSCALE + 1 };
             parts.forEach((p, i) => {
                 const entry = {
                     buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
-                    tint: p.team ? tint : this.WHITE, // cultural trim in the player color
+                    tint: p.team ? tint : (p.tint || this.WHITE), // authored cultural finishes; flags retain player colors
                     model: m3.multiply(world, p.m), base: p.m
                 };
                 if (i === shellIdx) { entry.tint = tint; eb.shell = entry; }
@@ -766,6 +791,23 @@
                 // mattered most.
                 const fp = this._meshFootprint(parts, `${building.type}|${building.age}|${building.civilization}`);
                 const offX = fp.ex + 0.55, offZ = fp.ez + 0.55;
+                const dressing=EngineBuildings.settlement(building.type,building.civilization,fp);
+                const lamp=EngineBuildings.entranceLamp(building.type,building.age,building.civilization,fp);
+                dressing.parts.push(...lamp.parts);
+                if(lamp.light){
+                    const [x,y,z]=lamp.light;
+                    eb.lamp={position:[world[0]*x+world[8]*z+world[12],world[5]*y+world[13],world[2]*x+world[10]*z+world[14]],early:lamp.early};
+                    eb.lamp.pool=m3.multiply(world,m3.multiply(m3.translation(x,.035,z),m3.scaling(2.1,1,1.8)));
+                }
+                eb.details=dressing.parts.map(p=>({buf:this._buf(p.kind,p.args),tex:this.tex[p.tex],
+                    tint:p.tint||this.WHITE,model:m3.multiply(world,p.m)}));
+                if(dressing.fire){
+                    const [x,y,z]=dressing.fire;
+                    eb.fire=[world[0]*x+world[8]*z+world[12],world[5]*y+world[13],world[2]*x+world[10]*z+world[14]];
+                }
+                if(building.type!=='farm')eb.wear={buf:this._buf('disc',[1,18]),tex:this.tex.mote,
+                    tint:this._theme==='winter'?[.45,.43,.37]:[.32,.25,.16],alpha:.26,
+                    model:m3.multiply(world,m3.multiply(m3.translation(0,.025,fp.ez+.5),m3.scaling(1.45,1,2.3)))};
                 eb.opaque.push({
                     buf: this._buf('cylinder', [0.07, 0.09, 2.6, 5]), tex: this.tex.bark, tint: this.WHITE,
                     model: m3.multiply(world, m3.translation(offX, 1.3, offZ))
@@ -774,6 +816,8 @@
                     buf: this._buf('box', [0.85, 0.55, 0.07]), tex: this.tex.cloth, tint,
                     model: m3.multiply(world, m3.translation(offX + 0.45, 2.25, offZ))
                 });
+                eb.flagAnchor=m3.multiply(world,m3.translation(offX+.025,2.25,offZ));
+                eb.flagParts=[{entry:eb.opaque[eb.opaque.length-1],local:m3.translation(.425,0,0)}];
                 // Team badge on the flag: the seat's ownership mark (per-seat
                 // SHAPE + color, fill + contrast rim) — the same prism shapes
                 // units wear on the chest (EngineUnits.badgeParts), so their
@@ -788,6 +832,7 @@
                             buf: this._buf(p.kind, p.args), tex: this.tex[p.tex], tint: bt[p.accent],
                             model: m3.multiply(world, m3.multiply(flagT, p.m))
                         });
+                        eb.flagParts.push({entry:eb.opaque[eb.opaque.length-1],local:m3.multiply(m3.translation(.425,0,0),p.m)});
                     });
                 }
                 // …and a team-color runner out the FRONT door: the walls are
@@ -1439,10 +1484,17 @@
             }
 
             // ambient shrubbery/flowers/pebbles — skipped when zoomed far out
+            if (this.graphicsQuality === 'cinematic' && typeof EngineGrass !== 'undefined') {
+                if (!this._grass) this._grass = new EngineGrass.Grass(this);
+                const grassStart = performance.now();
+                dl.opaque.push(...this._grass.frame());
+                this.grassStats.cpuMs = performance.now() - grassStart;
+            }
             // (sub-pixel at halfH 90+, and the draw-call budget thanks us)
             if (this._props && this._halfH < 90) {
                 for (const pr of this._props) {
                     if (this._cull(pr.x, pr.z, 3)) continue;
+                    if (typeof EngineGrass !== 'undefined' && !EngineGrass.visibleRect(this.game?.fogOfWar,pr.x,pr.z,3,3,true)) continue;
                     dl.opaque.push(pr);
                 }
             }
@@ -1461,10 +1513,59 @@
                 }
             }
 
+            // Cosmetic motion pauses with the simulation. Keep a hard particle
+            // budget: at most eight hearths, five two-triangle sprites each.
+            const ambientTime=this.game?._environmentSeconds||0;
+            const lightTime=this.game?._showcaseCivilization?(this.game._showcaseLightSeconds||0):ambientTime;
+            const lampNight=window.EngineAtmosphere.daylight(lightTime,[1,1,1],[1,1,1]).night;
+            let hearths=0, courtyards=0;
             // buildings
             for (const b of this.buildings) {
                 const eb = b._engine;
                 if (!eb || (b.mesh && b.mesh.visible === false) || this._cull(b.x, b.z, 18)) continue;
+                const distance=Math.hypot(b.x-this.cameraTarget.x,b.z-this.cameraTarget.z);
+                const detailFade=Math.max(0,Math.min(1,(100-distance)/30,(100-this._halfH)/35));
+                // Clear the previous frame's light when hidden, zoomed out or disabled.
+                for(const en of eb.opaque)en.localLight=null;
+                for(const en of eb.details||[])en.localLight=null;
+                if(eb.flagParts) {
+                    const angle=this.graphicsQuality==='cinematic'?.12*Math.sin(ambientTime*1.7+b.x*.1)+.04*Math.sin(ambientTime*3.1+b.z*.1):0;
+                    const flag=m3.multiply(eb.flagAnchor,m3.rotationY(angle));
+                    const cloth=this.graphicsQuality==='cinematic'?[flag[12],flag[14],flag[0]/BSCALE,flag[2]/BSCALE]:null;
+                    for(const p of eb.flagParts){p.entry.model=m3.multiply(flag,p.local);p.entry.cloth=cloth;}
+                }
+                if(this.graphicsQuality==='cinematic'&&detailFade>0&&!(b._fade<1)) {
+                    if(eb.wear)dl.blended.push({...eb.wear,alpha:eb.wear.alpha*detailFade});
+                    if(eb.details&&courtyards++<24){
+                        if(eb.lamp&&lampNight>0&&(!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(eb.lamp.position[0],eb.lamp.position[2]))){
+                            const [x,y,z]=eb.lamp.position;
+                            const flicker=1+.05*Math.sin(ambientTime*8+x)+.025*Math.sin(ambientTime*13+z);
+                            const strength=lampNight*detailFade*flicker;
+                            const localLight=[x,y,z,strength];
+                            for(const en of eb.opaque)en.localLight=localLight;
+                            for(const en of eb.details)en.localLight=localLight;
+                            dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.20,model:eb.lamp.pool});
+                            for(const [w,h,tint,alpha] of [[.65,.75,[1,.35,.045],.3],[.15,eb.lamp.early?.34:.16,[1,.76,.28],.95]])
+                                dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,
+                                    model:m3.multiply(m3.multiply(m3.translation(x,y,z),bb),m3.scaling(w,h*flicker,1))});
+                        }
+                        // Alpha fade shares the existing blended pass near the limit.
+                        for(const p of eb.details) (detailFade===1?dl.opaque:dl.blended).push(detailFade===1?p:{...p,alpha:detailFade});
+                        const visible=eb.fire&&(!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(eb.fire[0],eb.fire[2]));
+                        if(eb.fire&&visible&&hearths++<8){
+                            const [x,y,z]=eb.fire,phase=ambientTime+b.x*.17+b.z*.11;
+                            const mote=(px,py,pz,w,h,tint,alpha)=>dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*detailFade,
+                                model:m3.multiply(m3.multiply(m3.translation(px,py,pz),bb),m3.scaling(w,h,1))});
+                            for(let i=0;i<3;i++){
+                                const age=((phase*.18+i/3)%1+1)%1;
+                                mote(x+age*.65,y+.5+age*2.8,z+age*.25,.45+age*.8,.6+age*.9,[.43,.44,.45],Math.sin(age*Math.PI)*.18);
+                            }
+                            const flicker=1+.12*Math.sin(phase*9)+.08*Math.sin(phase*13);
+                            mote(x,y+.42,z,.5,.65*flicker,[1,.30,.035],.85);
+                            mote(x,y+.29,z,.23,.32*flicker,[1,.78,.22],.95);
+                        }
+                    }
+                }
                 if (b.underConstruction && eb.shell) {
                     // Unit-height shell box grown from the plinth to pct of the
                     // final building height (b._shellH, set in _composeBuilding).
@@ -1754,6 +1855,21 @@
         // fog display canvas → GL texture (uploaded only when fog marked it dirty)
         _syncFog() {
             const fow = this.game && this.game.fogOfWar;
+            this._clutterFogActive = !!fow?.fogGrid;
+            if (this._clutterFogActive && (this._clutterFow!==fow || this._clutterFogVersion!==fow.visibilityVersion)) {
+                const gl=this.gl,n=fow.numTiles,bytes=new Uint8Array(n*n);
+                for(let i=0;i<bytes.length;i++)bytes[i]=fow.fogGrid[i]>=1?255:0;
+                if(!this._clutterVisibilityTex)this._clutterVisibilityTex=gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D,this._clutterVisibilityTex);
+                gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+                gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,n,n,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,bytes);
+                gl.pixelStorei(gl.UNPACK_ALIGNMENT,4);
+                gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+                this._clutterFow=fow;this._clutterFogVersion=fow.visibilityVersion;
+            }
             if (!fow || !fow.fogDisplayCanvas) { this._fogEntry = null; return; }
             const gl = this.gl;
             if (this._fogCanvas !== fow.fogDisplayCanvas) {
@@ -1915,6 +2031,11 @@
             const bb = M().billboard(cam.view);
             this._assembleFrame(now / 1000, deltaTime, bb);
             this._syncFog();
+            const atmosphere = window.EngineAtmosphere.daylight(
+                this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0),
+                this._daySun, this._daySky);
+            this._sun = atmosphere.sun;
+            this._sky = atmosphere.sky;
             this._renderShadows();
 
             gl.viewport(0, 0, this.W, this.H);
@@ -1925,13 +2046,23 @@
             gl.uniformMatrix4fv(this.prog.uniforms.uView, false, cam.view);
             gl.uniform3fv(this.prog.uniforms.uSunDir, this.sunDir);
             gl.uniform3fv(this.prog.uniforms.uSunColor, this._sun);
-            gl.uniform3fv(this.prog.uniforms.uAmbient, AMBIENT);
+            gl.uniform3fv(this.prog.uniforms.uAmbient, AMBIENT.map((v,i)=>v*(1-atmosphere.night*[0.60,0.51,0.34][i])));
+            gl.uniform1f(this.prog.uniforms.uNight, atmosphere.night);
             gl.uniform3fv(this.prog.uniforms.uSky, this._sky);
             gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(this.prog.uniforms.uTex, 0);
             gl.uniform3fv(this.prog.uniforms.uEye,cam.eye);
-            gl.uniform1f(this.prog.uniforms.uTime,(now/1000)%4096);
+            // No time reset: the old modulo teleported waves every 68 minutes.
+            gl.uniform1f(this.prog.uniforms.uTime,now/1000);
+            gl.uniform1f(this.prog.uniforms.uGrassTime,(now/1000)%(Math.PI*20));
+            gl.uniform1f(this.prog.uniforms.uClothTime,(this.game?._environmentSeconds||0)%Math.PI);
+            gl.uniform1f(this.prog.uniforms.uClutterFog,this._clutterFogActive?1:0);
+            gl.uniform1f(this.prog.uniforms.uClutterMapSize,this.game?.fogOfWar?.mapSize || 800);
+            gl.activeTexture(gl.TEXTURE4);
+            gl.bindTexture(gl.TEXTURE_2D,this._clutterVisibilityTex || this.tex.white);
+            gl.uniform1i(this.prog.uniforms.uClutterVisibility,4);
+            gl.activeTexture(gl.TEXTURE0);
             gl.uniform1f(this.prog.uniforms.uAtmosphere,this.visualStyle === 'classic' ? 0 : 1);
             gl.uniformMatrix4fv(this.prog.uniforms.uLightMatrix,false,this._lightMatrix);
             gl.uniform1f(this.prog.uniforms.uShadowStrength,this._shadowStrength);
@@ -1948,11 +2079,13 @@
             gl.activeTexture(gl.TEXTURE3);
             gl.bindTexture(gl.TEXTURE_2D,this.tex.groundDetail || this.tex.white);
             gl.uniform1i(this.prog.uniforms.uGroundDetail,3);
+            gl.uniform1f(this.prog.uniforms.uPebbleGround,this.graphicsQuality === 'cinematic' && this._theme !== 'winter' ? 1 : 0);
             gl.uniform4fv(this.prog.uniforms.uGroundCover,this._groundCover || [0,0,0,0]);
             gl.activeTexture(gl.TEXTURE0);
 
             const draw = (list) => {
                 for (const obj of list) {
+                    gl.uniform1f(this.prog.uniforms.uVegetation,obj.vegetation?1:0);
                     gl.bindTexture(gl.TEXTURE_2D, obj.tex);
                     const metal = obj.tex === this.tex.gold || obj.tex === this.tex.iron;
                     gl.uniform1f(this.prog.uniforms.uMaterial,obj.material || (metal ? 3 : 0));
@@ -1961,6 +2094,8 @@
                         * (obj.tex === this.tex.shadow ? 1-this._shadowStrength*.45 : 1));
                     gl.uniform2f(this.prog.uniforms.uUvOffset,
                         obj.uvOff ? obj.uvOff[0] : 0, obj.uvOff ? obj.uvOff[1] : 0);
+                    gl.uniform4fv(this.prog.uniforms.uCloth,obj.cloth||[0,0,0,0]);
+                    gl.uniform4fv(this.prog.uniforms.uLocalLight,obj.localLight||[0,0,0,0]);
                     gl.uniformMatrix4fv(this.prog.uniforms.uModel, false, obj.model);
                     GLCore.drawMesh(gl, this.prog, obj.buf);
                 }
@@ -1981,6 +2116,7 @@
             gl.enable(gl.DEPTH_TEST);
             gl.depthMask(true);
             gl.disable(gl.BLEND);
+            this._completedFrames=(this._completedFrames || 0)+1;
         }
     }
 

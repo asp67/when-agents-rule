@@ -4,7 +4,7 @@ class UIManager {
     // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
     // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
     // steht. Beim Hochzaehlen also nur hier anfassen.
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v93'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v95'; }
 
     constructor(game) {
         this.game = game;
@@ -3927,6 +3927,7 @@ class UIManager {
                     // don't — raise maxTokens for that model.
                     truncated: st.truncatedReplies || 0,
                     noAction: st.noActionReturns || 0,
+                    planOnly: st.planOnlyUpdates || 0,
                     // EXPERIMENTAL, rolling inference. Orders dropped because the thing
                     // had appeared after the board that lane was given. NOT an error and
                     // not in the error total: nothing was refused and nothing was spent.

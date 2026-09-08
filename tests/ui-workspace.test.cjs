@@ -25,6 +25,7 @@ function harness(saved = null) {
     });
     vm.runInContext(source('js/ui.js') + '\nthis.UIManager = UIManager;', context);
     vm.runInContext(source('js/analyzer.js') + '\nthis.TranscriptAnalyzer = TranscriptAnalyzer;', context);
+    vm.runInContext(source('js/engine/atmosphere.js'), context);
     vm.runInContext(source('js/engine/gamerenderer.js'), context);
     const renderer = Object.create(context.window.EngineRenderer.prototype);
     Object.assign(renderer, { _cameraMoveId: 0, _halfH: 34, _yaw: 0, _pitch: .5,
@@ -119,7 +120,7 @@ function renderFrame(replayMode) {
         _lastTime: 83.333, updateCamera: noop, _computeCam: () => ({ view: [], proj: [], haze: [] }),
         _assembleFrame: noop, _syncFog: noop,
         gl: new Proxy({}, { get: () => noop }), prog: { uniforms: {} },
-        tex: { white: {} }, _sky: [0, 0, 0], _sun: [], sunDir: [], _dl: { opaque: [], blended: [], bars: [] } });
+        tex: { white: {} }, _daySky: [0.42,0.60,0.79], _daySun: [0.96,0.84,0.66], sunDir: [], _dl: { opaque: [], blended: [], bars: [] } });
     const before = structuredClone(units);
     r.animate(); h.setTime(116.667); h.frames.shift()();
     return { before, after: units };

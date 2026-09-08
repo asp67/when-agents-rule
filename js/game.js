@@ -174,7 +174,16 @@ class Game {
     // specific cause turns out to be, a half-started arena that says nothing is its own
     // bug, and it is the reason the report reads "then nothing happens".
     async startArenaFromSetup() {
+        if (this._arenaStarting) return;
+        this._arenaStarting = true;
+        const cover=document.createElement('div');
+        cover.className='arena-loading';cover.setAttribute('role','status');
+        const crest=document.createElement('img');crest.src='favicon.svg';crest.alt='';
+        const label=document.createElement('p');label.textContent=t('ar.loadingWorld');
+        cover.append(crest,label);document.body.appendChild(cover);
         try {
+            // Let the opaque cover paint before synchronous terrain generation.
+            await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
             return await this._startArenaFromSetup();
         } catch (e) {
             console.error('[arena] start failed', e);
@@ -190,6 +199,21 @@ class Game {
                 else alert(t('ar.startFailed', { msg }));
             }
             return null;
+        } finally {
+            cover.remove();
+            this._arenaStarting = false;
+        }
+    }
+
+    async waitForArenaScene() {
+        const renderer=this.renderer,started=performance.now();
+        let frame=renderer._completedFrames || 0,stable=0;
+        while(stable<3) {
+            await new Promise(resolve=>requestAnimationFrame(resolve));
+            if(performance.now()-started>15000) throw new Error('Scene preparation timed out.');
+            if((renderer._completedFrames || 0)===frame)continue;
+            frame=renderer._completedFrames;
+            stable=renderer.grassStats?.uploaded>0?0:stable+1;
         }
     }
 
@@ -218,25 +242,10 @@ class Game {
         // every match after the first sped up without a word.
         if (this.ui) this.ui._simSpeedWarned = false;
         this.ui.showScreen('gameScreen');
-        this.gameStarted = true;
-
-        // Resize renderer now that container is visible
-        setTimeout(() => {
-            const width = this.renderer.container.clientWidth;
-            const height = this.renderer.container.clientHeight;
-            if (width > 0 && height > 0) {
-                this.renderer.setSize(width, height);
-                this.renderer.camera.aspect = width / height;
-                this.renderer.camera.updateProjectionMatrix();
-                // Frame again now that the real size is known. The fit divides by the
-                // aspect, and until this line runs the renderer is still carrying
-                // whatever it measured while the game screen was hidden -- the window
-                // size if it was lucky, 1280x720 if it was not. Framing twice costs two
-                // divisions and no draw: the first keeps the opening frame from being
-                // wrong, this one keeps it from staying wrong.
-                this.renderer.frameWholeMap();
-            }
-        }, 100);
+        this.gameStarted = false;
+        // The visible game container can now be measured beneath the overlay.
+        const width=this.renderer.container.clientWidth,height=this.renderer.container.clientHeight;
+        if(width>0 && height>0)this.renderer.setSize(width,height);
 
         // Clear scene
         this.renderer.clearScene();
@@ -378,6 +387,8 @@ class Game {
         const oppBar = document.getElementById('opponentsBar');
         if (oppBar) oppBar.style.display = 'none';
 
+        await this.waitForArenaScene();
+        this.gameStarted = true;
         // Start game loop
         this.lastFrameTime = Date.now();
         this.wonderTimer = 0;
@@ -452,7 +463,7 @@ class Game {
 
         // Regenerate the map with the chosen difficulty (fresh resources each game,
         // scaled by difficulty) before placing Town Centers / clearing nodes under them.
-        this.difficulty = visualShowcase ? 'easy' : ((typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy');
+        this.difficulty = visualShowcase ? ({summer:'easy',winter:'medium',desert:'hard'}[this._showcaseTerrain] || 'easy') : ((typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy');
         this.terrain.difficulty = this.difficulty;
         this.terrain.seed = visualShowcase ? 'greek-coast-01' : ((this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed());
         this.mapSeed = this.terrain.seed;
@@ -703,6 +714,10 @@ class Game {
         // Fine simulation in ≤100ms sub-steps so the FULL elapsed time is advanced.
         const STEP_MAX = 100;
         const budgeted = this.simBudget(simTime);
+        // Ambient motion and daylight follow elapsed time, not the fast-forward
+        // multiplier for units/research. They still stop with an actual pause.
+        this._environmentSeconds = (this._environmentSeconds || 0)
+            + (this.pauseState === 'paused' ? 0 : simTime / 1000);
         let remaining = budgeted;
         while (remaining > 0) {
             const step = Math.min(STEP_MAX, remaining);
@@ -3497,6 +3512,7 @@ class Game {
     }
 
     resetTimeline() {
+        this._environmentSeconds = 0;
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
         // Handles are per MATCH: without this they keep climbing across restarts in one
         // session, and a transcript's ids stop starting at 1.
@@ -3915,6 +3931,14 @@ class Game {
     // Nothing is lost to the delay: the fastest unit in the game covers 2.2 units in
     // that second, against vision radii of 12 to 60. A contact cannot slip through a
     // gap that small.
+    // Observable cargo only: never consult a task, destination or harvest target.
+    observedWorkerLoad(unit) {
+        if (unit.type !== 'worker') return undefined;
+        if (!unit.carryingResource || !(unit.harvestAmount > 0)) return 'empty';
+        return ['food', 'wood', 'stone', 'gold'].includes(unit.carryingResourceType)
+            ? unit.carryingResourceType : 'unknown';
+    }
+
     detectContacts() {
         const players = (this.aiManager && this.aiManager.aiPlayers) || [];
         if (players.length < 2) return;
@@ -3994,16 +4018,17 @@ class Game {
                     if (sawAt !== null) {
                         const key = String(t.id);
                         const was = seen.get(key);
+                        const carrying = this.observedWorkerLoad(t);
                         // Coming back into view having not gone anywhere is not news. It
                         // is the same thing standing where we last saw it, which the
                         // model was already told; saying it again spends a line to
                         // repeat a coordinate. After a few turns it is worth confirming.
                         const back = !was && gone.get(key);
                         const parked = back && Math.hypot(t.x - back.x, t.z - back.z) < Game.CONTACT_FLAP_DIST
-                                            && (turnSeq - back.seq) < Game.CONTACT_FLAP_TURNS;
+                                            && (turnSeq - back.seq) < Game.CONTACT_FLAP_TURNS && back.carrying === carrying;
                         // New, or it has gone somewhere since we last said so.
                         const moved = was && Math.hypot(t.x - was.rx, t.z - was.rz) >= Game.CONTACT_MOVED_DIST;
-                        const report = (!was && !parked) || moved;
+                        const report = (!was && !parked) || moved || (was && was.carrying !== carrying);
                         if (back) gone.delete(key);
                         // TWO positions are kept, and the difference between them is the
                         // whole point.
@@ -4026,14 +4051,14 @@ class Game {
                             // measured against it, not against the last thing we said.
                             sx: was ? was.sx : t.x,
                             sz: was ? was.sz : t.z,
-                            e: t, who: this.seatLabel(other), type: t.type || 'unit'
+                            e: t, who: this.seatLabel(other), type: t.type || 'unit', carrying
                         });
                         if (report) {
-                            const k = this.seatLabel(other) + '|' + (t.type || 'unit');
+                            const k = this.seatLabel(other) + '|' + (t.type || 'unit') + '|' + (carrying || '');
                             const cur = fresh.get(k);
                             if (!cur) {
                                 fresh.set(k, { n: 1, x: t.x, z: t.z, dist: sawAt,
-                                               who: this.seatLabel(other), type: t.type || 'unit' });
+                                               who: this.seatLabel(other), type: t.type || 'unit', carrying });
                             } else {
                                 cur.n++;
                                 // Report the nearest one of its kind: that is the one
@@ -4062,13 +4087,13 @@ class Game {
                 if (nowSeen.has(key) || !was || !was.e) return;
                 if (was.e.health <= 0) return;         // killed, not lost — KILL/LOSS said it
                 // Remembered either way, so that coming straight back is not "new".
-                gone.set(key, { x: was.x, z: was.z, seq: turnSeq });
+                gone.set(key, { x: was.x, z: was.z, seq: turnSeq, carrying: was.carrying });
                 // Lost where it was found: the pair draws no line, so it is one fact
                 // reported twice. The sighting already said where it is.
                 if (Math.hypot(was.x - was.sx, was.z - was.sz) < Game.CONTACT_FLAP_DIST) return;
-                const k = was.who + '|' + was.type + '|lost';
+                const k = was.who + '|' + was.type + '|lost|' + (was.carrying || '');
                 const cur = lost.get(k);
-                if (!cur) lost.set(k, { n: 1, x: was.x, z: was.z, who: was.who, type: was.type });
+                if (!cur) lost.set(k, { n: 1, x: was.x, z: was.z, who: was.who, type: was.type, carrying: was.carrying });
                 else cur.n++;
             });
 
@@ -4088,10 +4113,11 @@ class Game {
 
             const at = (o) => `(${Math.round(o.x)}, ${Math.round(o.z)})`;
             const many = (o) => o.n > 1 ? `${o.n}x ` : '';
+            const load = o => o.carrying === undefined ? '' : o.carrying === 'empty' ? ', empty-handed' : `, carrying ${o.carrying}`;
             const seenLines = [...fresh.values()].sort((a, b) => a.dist - b.dist)
-                .map(f => `CONTACT: ${many(f)}${f.who}'s ${f.type} sighted at ${at(f)}`);
+                .map(f => `CONTACT: ${many(f)}${f.who}'s ${f.type} sighted at ${at(f)}${load(f)}`);
             const lostLines = [...lost.values()]
-                .map(l => `CONTACT LOST: ${many(l)}${l.who}'s ${l.type}, last seen at ${at(l)}`);
+                .map(l => `CONTACT LOST: ${many(l)}${l.who}'s ${l.type}, last seen at ${at(l)}${load(l)}`);
             // Losses first when the budget is nearly out: a sighting with no loss is a
             // position, a loss with no sighting still says the thing is no longer where
             // the model last had it, and the pair is worth more than a second position.
@@ -5500,7 +5526,7 @@ class Game {
         }
 
         // Check if player built and holds a wonder
-        const playerWonders = this.player.buildings.filter(b =>
+        const playerWonders = this._showcaseCivilization ? [] : this.player.buildings.filter(b =>
             (b.isWonder || b.type === 'pyramid' || b.type === 'akropolis' ||
              b.type === 'firetemple' || b.type === 'shrine') && !b.underConstruction
         );

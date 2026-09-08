@@ -47,3 +47,10 @@ test('ordinary campaigns and arenas retain their existing return destinations',(
   assert.deepEqual(calls,[['reload']]);assert.equal(stored.altertum_return,spectatorMode?'arena':'mode');
  }
 });
+
+test('showcase selectors preserve terrain and age in the URL and menu clears them',()=>{
+ const {game,calls}=setup('http://localhost:5173/?showcase=1&civ=greek');
+ game._showcaseCivilization='greek';game.loadShowcaseCivilization('yamato','winter','bronze');
+ const url=new URL(calls[0][1]);assert.equal(url.searchParams.get('terrain'),'winter');assert.equal(url.searchParams.get('age'),'bronze');
+ const next=setup(url.href);next.game.reloadToMenu();assert.equal(next.calls[0][1],'http://localhost:5173/');
+});

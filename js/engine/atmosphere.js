@@ -2,6 +2,21 @@
 // A separate mask keeps terrain and offshore water shading continuous.
 (function () {
     const EngineAtmosphere = {};
+    // Twelve unpaused real-time minutes, starting at noon. Cosmetic only; exploration
+    // and unit sight never depend on this clock. Preview scenes stay at noon.
+    EngineAtmosphere.daylight = (seconds, sun, sky) => {
+        const phase = ((seconds % 720) + 720) % 720 / 720;
+        const elevation = Math.cos(phase * Math.PI * 2);
+        const smooth = (a,b,x) => { const t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); };
+        const day = smooth(-0.25,0.35,elevation);
+        const warm = (1-smooth(0.05,0.65,Math.abs(elevation))) * day;
+        const blend = (a,b,t) => a.map((v,i)=>v+(b[i]-v)*t);
+        return {
+            night: 1-day,
+            sun: blend([0.18,0.24,0.38],blend(sun,[1.0,0.49,0.24],warm*0.8),day),
+            sky: blend([0.075,0.105,0.19],blend(sky,[0.67,0.40,0.32],warm*0.6),day)
+        };
+    };
     // Snap in the light's image plane: rounding world X/Z leaves fractional
     // shadow texels after the sun rotation, which makes edges crawl during pans.
     EngineAtmosphere.shadowCamera = (m, target, halfH, size, sun) => {
@@ -20,12 +35,29 @@
         attribute vec2 aUv;
         uniform mat4 uProj, uView, uModel, uLightMatrix;
         uniform vec2 uUvOffset;
+        uniform mediump float uGrassTime, uVegetation;
+        uniform vec4 uCloth;
+        uniform float uClothTime;
+        varying mediump float vGrassTip, vPebble;
         varying vec3 vNormal, vWorld;
         varying vec2 vUv;
         varying float vDepth;
         varying vec4 vShadow;
         void main() {
             vec4 world = uModel * vec4(aPosition, 1.0);
+            // Pole edge stays pinned; the ownership badge follows the same fold.
+            if(dot(uCloth.zw,uCloth.zw)>.5){
+                float along=max(0.0,dot(world.xz-uCloth.xy,uCloth.zw));
+                float fold=sin(along*7.0-uClothTime*2.0)*along*.09;
+                world.xz+=vec2(-uCloth.w,uCloth.z)*fold;
+            }
+            vPebble = aUv.x < -0.5 ? 1.0 : 0.0;
+            vGrassTip = clamp((aPosition.y-0.018) / 0.562, 0.0, 1.0);
+            if (uVegetation > 0.5 && vPebble < 0.5) {
+                float gust = sin(world.x*0.17 + world.z*0.11 + uGrassTime*1.3)
+                    + 0.45*sin(world.x*0.37 - world.z*0.23 + uGrassTime*2.1);
+                world.xz += vec2(0.045,0.025)*gust*vGrassTip*vGrassTip*uModel[1][1];
+            }
             // Inverse-transpose for orthogonal TRS columns, including nonuniform scale.
             mat3 basis = mat3(uModel);
             vec3 scale2 = vec3(dot(basis[0],basis[0]), dot(basis[1],basis[1]), dot(basis[2],basis[2]));
@@ -44,11 +76,16 @@
         precision mediump float;
         #endif
         uniform sampler2D uTex, uShadowMap, uCoast, uGroundDetail;
+        uniform sampler2D uClutterVisibility;
+        uniform float uClutterMapSize, uClutterFog, uPebbleGround;
+        uniform mediump float uVegetation;
+        varying mediump float vGrassTip, vPebble;
         uniform vec4 uGroundCover;
         uniform vec3 uSunDir, uSunColor, uAmbient, uTint, uSky, uEye;
+        uniform vec4 uLocalLight;
         uniform vec3 uShadowRight, uShadowUp;
         uniform float uShadowDepthPerTexel;
-        uniform float uUnlit, uAlpha, uTime, uMaterial, uAtmosphere, uShadowStrength, uShadowTexel;
+        uniform float uUnlit, uAlpha, uTime, uNight, uMaterial, uAtmosphere, uShadowStrength, uShadowTexel;
         uniform vec2 uHaze;
         varying vec3 vNormal, vWorld;
         varying vec2 vUv;
@@ -105,8 +142,15 @@
             return mix(1.0, lit/weightSum, uShadowStrength*edge);
         }
         void main() {
+            if (uVegetation > 0.5 && uClutterFog > 0.5) {
+                vec2 fogUv = vWorld.xz / uClutterMapSize + 0.5;
+                if (min(fogUv.x,fogUv.y) < 0.0 || max(fogUv.x,fogUv.y) > 1.0
+                    || texture2D(uClutterVisibility,fogUv).r < 0.99) discard;
+            }
             vec4 t = texture2D(uTex, vUv);
             vec3 base = t.rgb * uTint;
+            if (uVegetation > 0.5) base *= mix(0.90,1.06,vGrassTip);
+            if (uVegetation > 0.5 && vPebble > 0.5) base = mix(vec3(.19,.175,.15),vec3(.32,.30,.265),vUv.y);
             vec3 n = normalize(vNormal);
             vec3 eye = normalize(uEye-vWorld);
             float water = uMaterial > 1.5 && uMaterial < 2.5 ? 1.0
@@ -122,34 +166,49 @@
                 float grain=mix(a.g, a.r, cover)*0.85+mix(b.g,b.r,cover)*0.35;
                 float nearDetail=1.0-smoothstep(120.0,320.0,distance(uEye,vWorld));
                 base*=1.0+grain*nearDetail*(1.0-water);
+                float patch=clamp((.5+.28*sin(vWorld.x*.047+vWorld.z*.023)+.22*sin(vWorld.z*.061-vWorld.x*.019)-.3)/.4,0.0,1.0);
+                float gravel=texture2D(uGroundDetail,vWorld.xz/16.0).b;
+                float dry=1.0-smoothstep(.45,.9,cover);
+                base=mix(base,base*.56,gravel*dry*patch*(1.0-water)*uPebbleGround);
             }
             float sun = max(dot(n,uSunDir),0.0);
             vec3 legacy = base*(uAmbient + uSunColor*sun);
             // Cool sky fill against warm sun; material colour remains legible in shade.
             vec3 skyFill = mix(vec3(0.21,0.22,0.19),vec3(0.44,0.49,0.54), n.y*0.5+0.5);
+            skyFill *= mix(vec3(1.0),vec3(0.40,0.49,0.66),uNight);
             vec3 light = skyFill + uSunColor*sun*visibility(n);
             vec3 col = base*light;
+            // One nearby entrance lamp per building, without extra light/shadow passes.
+            if(uLocalLight.w>0.0){
+                vec3 delta=uLocalLight.xyz-vWorld;
+                float d2=dot(delta,delta);
+                float facing=max(0.0,dot(n,delta*inversesqrt(max(.01,d2))));
+                vec3 glow=base*vec3(1.0,.46,.12)*facing*uLocalLight.w*1.8/(1.0+d2*1.7);
+                col+=glow;legacy+=glow;
+            }
             if (uMaterial > 2.5 && uMaterial < 3.5) {
                 // Broad polished highlight plus sky rim; silver stays silver.
                 vec3 specTint=mix(vec3(1.0),base,0.3);
                 float spec=pow(max(dot(n,normalize(eye+uSunDir)),0.0),48.0);
                 float rim=pow(1.0-max(dot(n,eye),0.0),4.0);
-                col += specTint*spec*0.85 + uSky*rim*0.22;
+                col += specTint*uSunColor*spec*0.85 + uSky*rim*0.22;
             }
             if (water > 0.01) {
                 // World coordinates keep offshore and coastal waves continuous.
-                vec2 p = vWorld.xz;
-                vec3 swell=waveField(p*0.032+vec2(uTime*0.018,-uTime*0.009));
+                // Both scales ride the same current instead of fighting each
+                // other. Spatial rotation still keeps the surface irregular.
+                vec2 p = vWorld.xz - vec2(0.56,-0.28)*uTime;
+                vec3 swell=waveField(p*0.032);
                 mat2 turn=mat2(0.8,0.6,-0.6,0.8);
-                vec3 chop=waveField(turn*p*0.11+vec2(-uTime*0.055,uTime*0.023));
+                vec3 chop=waveField(turn*p*0.11);
                 // Suppress fine slopes in distant/overview shots; no glitter aliasing.
                 float detail=1.0-smoothstep(100.0,550.0,distance(uEye,vWorld));
                 vec2 grad=swell.yz*0.13 + vec2(dot(turn[0],chop.yz),dot(turn[1],chop.yz))*0.075*detail;
                 vec3 wn=normalize(vec3(-grad.x,1.0,-grad.y));
                 float fresnel=0.035+0.965*pow(1.0-max(dot(eye,wn),0.0),5.0);
                 float glint=pow(max(dot(wn,normalize(eye+uSunDir)),0.0),48.0);
-                vec3 sea=mix(base*vec3(0.72,0.96,1.02),uSky*0.72,fresnel*0.8);
-                sea += vec3(1.0,0.91,0.74)*glint*0.42;
+                vec3 sea=mix(base*vec3(0.72,0.96,1.02)*mix(vec3(1.0),vec3(0.38,0.48,0.65),uNight),uSky*0.72,fresnel*0.8);
+                sea += uSunColor*glint*0.42;
                 sea *= 0.98+swell.x*0.04;
                 col = mix(col,sea,water);
             }

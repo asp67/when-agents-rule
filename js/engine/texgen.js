@@ -340,6 +340,16 @@
         return c;
     };
 
+    // Neutral tiles preserve the clay relief while accepting glazed/slate colors.
+    TexGen.neutralRoof = () => {
+        const c=TexGen.rooftile(122),ctx=c.getContext('2d'),img=ctx.getImageData(0,0,c.width,c.height);
+        for(let i=0;i<img.data.length;i+=4){
+            const v=Math.min(255,(img.data[i]*.3+img.data[i+1]*.59+img.data[i+2]*.11)*1.35);
+            img.data[i]=img.data[i+1]=img.data[i+2]=v;
+        }
+        ctx.putImageData(img,0,0);return c;
+    };
+
     // Plaster: warm whitewash with hairline cracks and a strong vertical baked-AO
     // gradient (lit near the eaves, grounded at the footing).
     TexGen.plaster = (seed = 10, size = 128) => {
@@ -569,6 +579,14 @@
 
     // Soft round contact shadow (real alpha) — the blob that grounds buildings
     // and units on any terrain. Drawn blended, not lit.
+    TexGen.softMote = (size = 64) => {
+        const c=canvas(size),ctx=c.getContext('2d');
+        const g=ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+        g.addColorStop(0,'rgba(255,255,255,0.8)');
+        g.addColorStop(.4,'rgba(255,255,255,0.45)');
+        g.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=g;ctx.fillRect(0,0,size,size);return c;
+    };
     TexGen.shadowBlob = (size = 128) => {
         const c = canvas(size), ctx = c.getContext('2d');
         const g = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size / 2);
@@ -740,6 +758,16 @@
                 }
             }
         }
+        // Blue channel: wrapped fine gravel, mipmapped along with the ground detail.
+        const gravel=ctx.getImageData(0,0,size,size), pixels=gravel.data, cells=48;
+        const seeds=Array.from({length:cells*cells},()=>[.25+rand()*.5,.25+rand()*.5,.14+rand()*.18]);
+        for(let y=0;y<size;y++)for(let x=0;x<size;x++) {
+            const gx=x/size*cells,gz=y/size*cells,ix=Math.floor(gx),iz=Math.floor(gz);
+            const [cx,cz,r]=seeds[iz*cells+ix];
+            const distance=Math.hypot(gx-ix-cx,(gz-iz-cz)*1.2);
+            pixels[(y*size+x)*4+2]=clamp255((r-distance)*cells*80);
+        }
+        ctx.putImageData(gravel,0,0);
         return c;
     };
 
@@ -787,12 +815,28 @@
         return c;
     };
 
-    TexGen.terrain = (theme, seed, size = 2048, worldSize = 1000, landHalf = 400) => {
-        const P=TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
+    // Shared field: vegetation placement reads precisely the same moisture patches
+    // as the ground painter, including its random-stream ordering and domain warp.
+    TexGen.terrainFields = seed => {
         const rand=TexGen.rng(seed || 7);
         const nCoast=TexGen.coastNoise(rand); // MUST remain first: foam/walkability share this stream.
         const broad=TexGen.noiseSampler(7,rand), patch=TexGen.noiseSampler(23,rand);
         const broken=TexGen.noiseSampler(67,rand), grain=TexGen.noiseSampler(191,rand);
+        return { nCoast, broad, patch, broken, grain };
+    };
+    TexGen.grassCoverSampler = (theme, seed, worldSize = 1000) => {
+        const { broad, patch, broken } = TexGen.terrainFields(seed);
+        return (x,z) => {
+            const u=x/worldSize+.5,v=z/worldSize+.5,macro=broad(u,v);
+            const p=patch(u+(macro-.5)*.07,v+(macro-.5)*.045);
+            const field=macro*.50+p*.36+broken(u,v)*.14;
+            const cover=smooth(theme==='summer'?.30:.24,theme==='summer'?.58:.66,field);
+            return smooth(.45,.9,cover);
+        };
+    };
+    TexGen.terrain = (theme, seed, size = 2048, worldSize = 1000, landHalf = 400) => {
+        const P=TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
+        const { nCoast, broad, patch, broken, grain } = TexGen.terrainFields(seed);
         const seaGrain=TexGen.openWaterGrain();
         const c=canvas(size),ctx=c.getContext('2d'),img=ctx.createImageData(size,size),d=img.data;
         for(let y=0;y<size;y++) for(let x=0;x<size;x++) {

@@ -14,7 +14,7 @@
         if (t.rx) m = m3.multiply(m, m3.rotationX(t.rx));
         if (t.rz) m = m3.multiply(m, m3.rotationZ(t.rz));
         if (t.sx || t.sy || t.sz) m = m3.multiply(m, m3.scaling(t.sx || 1, t.sy || 1, t.sz || 1));
-        arr.push({ kind, args, tex, m, blend: !!t.blend, team: !!t.team, key: kind + ':' + args.join(',') });
+        arr.push({ kind, args, tex, m, blend: !!t.blend, team: !!t.team, tint: t.tint || null, visualOnly: !!t.visualOnly, key: kind + ':' + args.join(',') });
     };
     const shadow = (arr, r) => part(arr, 'disc', [r, 18], 'shadow', { y: 0.06, blend: true });
 
@@ -65,7 +65,14 @@
                 rx: Math.sin(a) * 0.3, rz: -Math.cos(a) * 0.3
             });
         }
-        part(p, 'box', [r * 0.42, h * 0.34, 0.14], 'bark', { y: h * 0.17, z: r * 0.92 });
+        // The +Z cone facet slopes inward: fit the entrance to that plane.
+        const slope=r*Math.cos(Math.PI/10)/h, tilt=-Math.atan(slope);
+        const doorH=h*.34, centerY=doorH/2, centerZ=(h-centerY)*slope+.035;
+        part(p,'box',[r*.32,doorH/Math.cos(tilt),.045],'white',
+            {y:centerY,z:centerZ,rx:tilt,tint:[.105,.083,.061]});
+        // Folded hide edges run down the same sloping surface.
+        for(const side of [-1,1])part(p,'box',[r*.055,doorH/Math.cos(tilt),.065],'leather',
+            {x:side*r*.185,y:centerY,z:centerZ+.035,rx:tilt,visualOnly:true,tint:[1.28,1.14,.9]});
     };
 
     // Dome hut: low round wall under a leather/thatch dome with a smoke cap.
@@ -307,7 +314,7 @@
                 part(p, 'box', [7.76, 0.2, 5.76], 'bark', { y: 0.9 });
                 part(p, 'prism', [8.6, 6.4, 2.2], 'thatch', { y: 2.4 });
                 part(p, 'box', [2.2, 2.0, 0.3], 'bark', { y: 1.0, z: 2.86 });
-                [[-2.4, 3.6], [-1.2, 3.8], [0, 3.7], [1.2, 3.8], [2.4, 3.6]].forEach(([x, z]) =>
+                [[-2.4, 3.6], [-1.2, 3.8], [1.2, 3.8], [2.4, 3.6]].forEach(([x, z]) =>
                     part(p, 'cylinder', [0.03, 0.13, 1.7, 5], 'bark', { x, y: 0.85, z }));
             } else if (age === 'bronze') {
                 // Training hall: timber on a stone footing, a practice dummy in the yard.
@@ -337,10 +344,10 @@
             const p = [];
             const age = ageOf(o);
             shadow(p, 6.2);
-            const corral = (z = 3.6) => { // shared hitching rail
-                [-2.2, 0, 2.2].forEach(x =>
-                    part(p, 'cylinder', [0.09, 0.11, 1.1, 5], 'bark', { x, y: 0.55, z }));
-                part(p, 'box', [4.8, 0.16, 0.16], 'wood', { y: 0.95, z });
+            const corral = () => { // hitching rail beside the stable; front approach stays open
+                [-2.2, 0, 2.2].forEach(z =>
+                    part(p, 'cylinder', [0.09, 0.11, 1.1, 5], 'bark', { x:-4.1, y: 0.55, z }));
+                part(p, 'box', [0.16, 0.16, 4.8], 'wood', { x:-4.1, y: 0.95 });
             };
             if (age === 'stone') {
                 // Hitching camp: a hide lean-to, the rail, and a water trough.
@@ -369,6 +376,10 @@
                 corral();
                 part(p, 'cylinder', [0.5, 0.5, 0.9, 8], 'thatch', { x: 4.3, y: 0.5, z: 1.6, rx: Math.PI / 2 });
                 part(p, 'box', [1.5, 0.4, 0.7], 'bark', { x: 4.4, y: 0.2, z: -0.6 });
+            }
+            if(age==='neolithic' || age==='bronze') {
+                const z=age==='neolithic'?2.35:2.55;
+                part(p,'box',[1.9,1.9,.28],'bark',{y:.95,z});
             }
             return p;
         },
@@ -406,6 +417,10 @@
                 part(p, 'box', [1.7, 1.8, 0.28], 'wood', { y: 0.9, z: 2.55 });
                 part(p, 'pyramid', [7, 6, 2.2], 'rooftile', { y: 2.4 });
                 target();
+            }
+            if(age==='neolithic' || age==='bronze') {
+                const z=age==='neolithic'?2.35:2.55;
+                part(p,'box',[1.7,1.8,.28],'bark',{y:.9,z});
             }
             return p;
         },
@@ -774,7 +789,47 @@
     EngineBuildings.parts = (type, opts) => {
         const b = builders[type], options = opts || {};
         const parts = b ? b(options) : [];
-        if (options.civ !== 'greek' || (TIER[options.age] || 0) < 2) return parts;
+        const palette={
+            egyptian:{wall:[1.12,1.02,.82],roof:[1.05,.88,.62],accent:[.21,.58,.64],hide:[1.4,1.21,.92]},
+            greek:{wall:[1.08,1.08,1.03],roof:[1.08,.89,.78],accent:[.24,.43,.72],hide:[1.3,1.28,1.17]},
+            yamato:{wall:[1.05,.96,.83],roof:[.60,.70,.73],accent:[.78,.28,.18],hide:[1.27,1.18,.99]},
+            persian:{wall:[1.14,1.01,.83],roof:[.55,.88,.91],accent:[.18,.62,.68],hide:[1.36,1.1,.86]}
+        }[options.civ];
+        const tier=TIER[options.age] || 0,details=[];
+        if(palette)for(const p of parts){
+            if(!p.team && !p.tint){
+                if(['plaster','masonry','limestone'].includes(p.tex))p.tint=palette.wall;
+                if(p.tex==='rooftile'){p.tint=palette.roof;if(options.civ==='yamato'||options.civ==='persian')p.tex='neutralRoof';}
+                if(p.tex==='leather')p.tint=palette.hide;
+            }
+            if(tier===0 && p.kind==='prism' && p.tex==='leather' && p.args[0]>3){
+                const [w,d,h]=p.args,doorH=h*.57,tilt=-Math.atan(d/(2*h));
+                const face=[];
+                part(face,'box',[Math.min(1.35,w*.22),doorH/Math.cos(tilt),.045],'white',
+                    {y:doorH/2,z:d/2*(1-doorH/(2*h))+.035,rx:tilt,tint:[.105,.083,.061],visualOnly:true});
+                for(const f of face){f.m=M().multiply(p.m,f.m);details.push(f);}
+            }
+            // Paint bands and small shutters on existing vertical walls only.
+            if(tier>=1 && p.kind==='box' && ['wood','plaster','masonry'].includes(p.tex)
+                && p.args[0]>3 && p.args[1]>1.8 && p.args[2]>2){
+                const [w,h,d]=p.args;
+                const ornament=(args,tex,x,y,z,tint)=>details.push({kind:'box',args,tex,tint,
+                    m:M().multiply(p.m,M().translation(x,y,z)),visualOnly:true});
+                for(const side of [-1,1]){
+                    ornament([w*.94,.16,.065],'white',0,h*.34,side*(d/2+.025),palette.accent);
+                    if(options.civ!=='greek')for(const x of [-w*.29,w*.29]){
+                        ornament([.58,.70,.065],'white',x,.02,side*(d/2+.03),[.15,.13,.11]);
+                        for(const offset of [-.19,0,.19])ornament([.045,.7,.085],'wood',x+offset,.02,side*(d/2+.075),palette.wall);
+                    }
+                }
+            }
+            if(p.team && p.kind==='box' && p.args[0]>1 && p.args[1]<.6 && p.args[2]<1 && tier>=2){
+                // Cultural trim differs from the player-colored flag and runner.
+                p.team=false;p.tint=palette.accent;
+            }
+        }
+        parts.push(...details);
+        if (options.civ !== 'greek' || tier < 2) return parts;
         // Refine existing architecture. Decorative parts are excluded from the
         // renderer's footprint measurement so visual work cannot change clearance.
         const ornaments=[];
@@ -828,6 +883,56 @@
         part(p, 'box', [w, 0.14, 0.14], 'wood', { y: ph - 0.15, z: pz });
         part(p, 'box', [w, 0.14, 0.14], 'wood', { y: ph - 0.15, z: -pz });
         return p;
+    };
+
+    // Optional courtyard dressing, deliberately separate from collision bounds.
+    EngineBuildings.settlement = (type, civ, foot) => {
+        const parts=[];
+        if (!['town_center','house','market'].includes(type)) return {parts};
+        const x=-foot.ex-.5,z=foot.ez*.35;
+        const jarTint=civ==='persian'?[.25,.58,.60]:civ==='egyptian'?[.75,.58,.35]:[.68,.33,.20];
+        for(let i=0;i<2;i++) {
+            const px=x+i*.6,pz=z+.9+i*.2,h=i?.55:.8;
+            if(civ==='yamato') {
+                part(parts,'cylinder',[.25,.27,h,8],'wood',{x:px,y:h/2,z:pz});
+                for(const y of [h*.2,h*.8])part(parts,'cylinder',[.275,.275,.055,8],'bark',{x:px,y,z:pz});
+            } else {
+                part(parts,'cylinder',[.24,.17,h*.65,8],'white',{x:px,y:h*.325,z:pz,tint:jarTint});
+                part(parts,'cylinder',[.12,.24,h*.35,8],'white',{x:px,y:h*.825,z:pz,tint:jarTint});
+                part(parts,'disc',[.10,8],'white',{x:px,y:h+.006,z:pz,tint:[.13,.10,.075]});
+            }
+        }
+        if(type==='market')return {parts};
+        const fire=[x,0,z-.7];
+        part(parts,'cylinder',[.46,.5,.16,10],'stone',{x,y:.08,z:fire[2]});
+        part(parts,'disc',[.36,10],'white',{x,y:.167,z:fire[2],tint:[.10,.07,.055]});
+        for(const rx of [-.55,.55])part(parts,'box',[.12,.10,.62],'bark',{x,y:.21,z:fire[2],ry:rx});
+        return {parts,fire};
+    };
+
+    // Free-standing beside the entrance: no fixtures through sloped tent walls,
+    // and no obstruction of the stable's side hitching rail or central runner.
+    EngineBuildings.entranceLamp = (type, age, civ, foot) => {
+        const parts=[];
+        if(type==='farm')return {parts};
+        const x=-1.65,z=foot.ez+.45,early=['stone','neolithic'].includes(age);
+        part(parts,'cylinder',[.18,.26,.13,8],'stone',{x,y:.065,z});
+        part(parts,'cylinder',[.055,.075,1.65,6],early||civ==='yamato'?'bark':'iron',{x,y:.9,z});
+        if(early){
+            part(parts,'cylinder',[.13,.09,.3,7],'leather',{x,y:1.72,z,tint:[.45,.32,.20]});
+            return {parts,light:[x,1.94,z],early:true};
+        }
+        if(civ==='greek'||civ==='egyptian'){
+            part(parts,'cylinder',[.23,.12,.17,9],'white',{x,y:1.77,z,tint:civ==='greek'?[.64,.29,.14]:[.78,.57,.29]});
+            part(parts,'disc',[.17,9],'white',{x,y:1.86,z,tint:[.12,.085,.045]});
+            return {parts,light:[x,1.94,z],early:false};
+        }
+        const tex=civ==='yamato'?'wood':'iron';
+        part(parts,'box',[.48,.08,.48],tex,{x,y:1.74,z});
+        for(const dx of [-.19,.19])for(const dz of [-.19,.19])
+            part(parts,'box',[.045,.48,.045],tex,{x:x+dx,y:2,z:z+dz});
+        part(parts,'prism',[.61,.20,.58],civ==='yamato'?'wood':'gold',{x,y:2.24,z});
+        return {parts,light:[x,1.98,z],early:false};
     };
 
     EngineBuildings.TYPES = Object.keys(builders);

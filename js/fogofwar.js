@@ -219,6 +219,7 @@ class FogOfWarManager {
     
     // Update fog texture
     updateFogTexture() {
+        this.visibilityVersion = (this.visibilityVersion || 0) + 1;
         const imageData = this.fogCtx.createImageData(this.numTiles, this.numTiles);
         const data = imageData.data;
         

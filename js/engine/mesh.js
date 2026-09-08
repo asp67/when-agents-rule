@@ -233,6 +233,81 @@
         return out;
     };
 
+    // Rounded uppers, broad planar sole; the resting sole overlaps ground by 0.02.
+    EngineMesh.shoe = (width=.23,height=.20,length=.38) => {
+        const out=EngineMesh.sphere(1,10,8);
+        for(let i=0;i<out.positions.length;i+=3){
+            const y=out.positions[i+1];
+            out.positions[i]*=width/2;out.positions[i+2]*=length/2;
+            out.positions[i+1]=(Math.max(-.6,y)+.6)*height/1.6-.02;
+            if(y<=-.6){out.normals[i]=0;out.normals[i+1]=-1;out.normals[i+2]=0;}
+            else {
+                const n=window.M3D.normalize([out.normals[i]/(width/2),out.normals[i+1]/(height/1.6),out.normals[i+2]/(length/2)]);
+                out.normals.splice(i,3,...n);
+            }
+        }
+        return out;
+    };
+
+    // Scalloped branch skirts give conifers an uneven silhouette.
+    EngineMesh.pineBough = (variant = 0) => {
+        const out=EngineMesh.cylinder(0,1,1,18);
+        for(let i=0;i<out.positions.length;i+=3){
+            const x=out.positions[i],z=out.positions[i+2],radius=Math.hypot(x,z);
+            if(radius<.01)continue;
+            const a=Math.atan2(z,x),r=.88+.13*Math.cos(a*9)+.07*Math.sin(a*3+variant);
+            out.positions[i]*=r;out.positions[i+2]*=r;
+            out.positions[i+1]+=.11*Math.sin(a*5+variant)+.07*Math.cos(a*9);
+        }
+        return out;
+    };
+
+    // Seasonal resource trees: a few reusable variants, batched by material.
+    EngineMesh.seasonalTree = (style, variant = 0, material = 'bark') => {
+        const m=window.M3D,parts=[];
+        const add=(kind,args,texture,position,scale=[1,1,1])=>{
+            if(texture===material)parts.push({kind,args,m:m.multiply(m.translation(...position),m.scaling(...scale))});
+        };
+        const branch=(a,b,r0,r1)=>{
+            if(material!=='bark')return;
+            const delta=b.map((v,i)=>v-a[i]),length=Math.hypot(...delta),up=delta.map(v=>v/length);
+            const right=m.normalize(m.cross(Math.abs(up[1])>.99?[1,0,0]:[0,1,0],up));
+            const forward=m.cross(right,up),mid=a.map((v,i)=>(v+b[i])/2);
+            parts.push({kind:'cylinder',args:[r1,r0,length,6],m:[...right,0,...up,0,...forward,0,...mid,1]});
+        };
+        if(style==='pine') {
+            const height=5.1+variant*.38,width=1.6+(variant%3)*.18;
+            branch([0,0,0],[0,height*.79,0],.29,.045);
+            for(let tier=0;tier<4;tier++) {
+                const y=1.65+tier*(height-2)/4,r=width*(1-tier*.21),h=1.9-tier*.18;
+                const ox=Math.sin(tier*2+variant)*.15,oz=Math.cos(tier*2.7+variant)*.12;
+                add('pineBough',[tier+variant],'foliage',[ox,y,oz],[r,h,r*.87]);
+                // Snow rests on upper boughs, leaving dark needles visible below.
+                add('pineBough',[tier+variant],'snow',[ox+.03,y+h*.19+.035,oz],[r*.64,h*.64,r*.87*.64]);
+                for(let j=0;j<3;j++){
+                    const a=j*2.094+tier+variant,tip=[ox+Math.cos(a)*r*.9,y-h*.3,oz+Math.sin(a)*r*.78];
+                    branch([0,y-.38,0],tip,.07,.015);
+                }
+            }
+        } else {
+            const desert=style==='desert',lean=(variant-1.5)*.09;
+            branch([0,0,0],[lean,2.4,0],.3,.15);
+            branch([lean,2.4,0],[lean*.8,3.8,.1],.15,.035);
+            for(let j=0;j<5;j++) {
+                const a=j*2.399+variant*.7,y=1.5+j*.29;
+                const reach=(desert?1.8:1.35)+(j%2)*.3;
+                const start=[lean*y/2.4,y,0],joint=[Math.cos(a)*reach*.65,y+.85,Math.sin(a)*reach*.65];
+                const tip=[Math.cos(a)*reach,y+(desert?1.25:1.7),Math.sin(a)*reach];
+                branch(start,joint,.12,.065);branch(joint,tip,.065,.012);
+                const split=[joint[0]+Math.cos(a+.8)*.65,joint[1]+.75,joint[2]+Math.sin(a+.8)*.65];
+                branch(joint,split,.045,.009);
+                branch(tip,[tip[0]+Math.cos(a-.7)*.38,tip[1]+.4,tip[2]+Math.sin(a-.7)*.38],.018,.004);
+                if(desert && (j+variant)%3!==0)add('canopy',[(j+variant)%4],'foliage',tip,[.64,.27,.55]);
+            }
+        }
+        return EngineMesh.mergeParts(parts);
+    };
+
     // Hip-point pyramid roof over a w×d rectangle: eaves at y=0, apex at (0,h,0).
     // Four sloped faces with per-face normals; a downward base quad closes it.
     EngineMesh.pyramid = (w, d, h) => {

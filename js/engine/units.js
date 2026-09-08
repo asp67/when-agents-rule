@@ -204,7 +204,7 @@
         for(const side of [-1,1]) {
             const bone=side<0?'legL':'legR';
             part(p,'cylinder',[.10,.115,.55,10],'leather',{x:side*.13,y:.37,bone});
-            oval(p,'leather',side*.13,.13,.055,.115,.115,.19,{bone});
+            part(p,'shoe',[.23,.20,.38],'leather',{x:side*.13,z:.055,bone});
             const arm=side<0?'armL':'armR';
             part(p,'cylinder',[.10,.085,.42,10],opts.sleeves||'leather',
                 {x:side*.34,y:1.0,rz:side*.10,bone:arm});
@@ -388,7 +388,7 @@
                 riderLimb(p,'thigh'+suffix,'leather',hip,knee,.105,.095);
                 oval(p,'leather',...knee,.10,.10,.10);
                 riderLimb(p,'calf'+suffix,'leather',knee,ankle,.085,.072);
-                oval(p,'leather',side*.38,.79,.22,.10,.085,.16);
+                part(p,'shoe',[.20,.15,.32],'leather',{x:side*.38,y:.725,z:.22});
                 if(tier>=3) oval(p,'iron',side*.37,1.11,.285,.080,.090,.040);
             }
             face(p,0,1.85,0,.8,o);
@@ -500,7 +500,10 @@
             const s = Math.sin(t * 6.5 + phase);
             swing('legL', m3.rotationX(s * 0.55)); swing('legR', m3.rotationX(-s * 0.55));
             swing('armL', m3.rotationX(-s * 0.35)); swing('armR', m3.rotationX(s * 0.35));
-            bob = Math.abs(Math.cos(t * 6.5 + phase)) * 0.04;
+            // Ground the lower sole throughout the stride instead of lifting both feet.
+            const angle=Math.abs(s*.55);
+            const soleY=.68+(-.02-.68)*Math.cos(angle)-(.055+.19*.8)*Math.sin(angle);
+            bob=-.02-soleY;
         } else if (anim === 'harvest') {
             // overhead chop, weapon rides the same bone
             const s = Math.sin(t * 5.5 + phase);

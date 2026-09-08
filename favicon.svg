@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>When Agents Rule</title>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#171e1b"/>
+  <path d="M12 12H52V33Q52 48 32 56Q12 48 12 33Z" fill="#2d3b30" stroke="#bc9a62" stroke-width="2"/>
+  <path d="M18 23L25 29L32 18L39 29L46 23L42 39H22Z" fill="#dec594"/>
+  <path d="M22 43H42" stroke="#bc9a62" stroke-width="3" stroke-linecap="round"/>
+  <path d="M32 29L35 33L32 37L29 33Z" fill="#171e1b"/>
+</svg>
