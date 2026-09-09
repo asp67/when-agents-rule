@@ -2,19 +2,35 @@
 // A separate mask keeps terrain and offshore water shading continuous.
 (function () {
     const EngineAtmosphere = {};
+    // Seconds of full day, dusk, full night and dawn. Every season totals 720s.
+    EngineAtmosphere.daySchedule = theme => theme==='winter' ? [210,90,330,90]
+        : theme==='desert' ? [300,60,300,60] : [330,90,210,90];
+    EngineAtmosphere.previewTime = (theme,period) => {
+        const [day,dusk,night,dawn]=EngineAtmosphere.daySchedule(theme);
+        return ({noon:0,dusk:day/2+dusk/2,night:day/2+dusk+night/2,
+            dawn:day/2+dusk+night+dawn/2})[period]??0;
+    };
     // Twelve unpaused real-time minutes, starting at noon. Cosmetic only; exploration
-    // and unit sight never depend on this clock. Preview scenes stay at noon.
-    EngineAtmosphere.daylight = (seconds, sun, sky) => {
-        const phase = ((seconds % 720) + 720) % 720 / 720;
-        const elevation = Math.cos(phase * Math.PI * 2);
+    // and unit sight never depend on this clock. Remap the existing light curve so
+    // its full-day/full-night thresholds land on the exact seasonal boundaries.
+    EngineAtmosphere.daylight = (seconds, sun, sky, theme='summer') => {
+        const [day,dusk,night,dawn]=EngineAtmosphere.daySchedule(theme);
+        const time=((seconds+day/2)%720+720)%720;
+        const dayEdge=Math.acos(.35),nightEdge=Math.acos(-.25),tau=Math.PI*2;
+        let angle;
+        if(time<day)angle=-dayEdge+time/day*2*dayEdge;
+        else if(time<day+dusk)angle=dayEdge+(time-day)/dusk*(nightEdge-dayEdge);
+        else if(time<day+dusk+night)angle=nightEdge+(time-day-dusk)/night*(tau-2*nightEdge);
+        else angle=tau-nightEdge+(time-day-dusk-night)/dawn*(nightEdge-dayEdge);
+        const elevation = Math.cos(angle);
         const smooth = (a,b,x) => { const t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); };
-        const day = smooth(-0.25,0.35,elevation);
-        const warm = (1-smooth(0.05,0.65,Math.abs(elevation))) * day;
+        const daylight = smooth(-0.25,0.35,elevation);
+        const warm = (1-smooth(0.05,0.65,Math.abs(elevation))) * daylight;
         const blend = (a,b,t) => a.map((v,i)=>v+(b[i]-v)*t);
         return {
-            night: 1-day,
-            sun: blend([0.18,0.24,0.38],blend(sun,[1.0,0.49,0.24],warm*0.8),day),
-            sky: blend([0.075,0.105,0.19],blend(sky,[0.67,0.40,0.32],warm*0.6),day)
+            night: 1-daylight,
+            sun: blend([0.18,0.24,0.38],blend(sun,[1.0,0.49,0.24],warm*0.8),daylight),
+            sky: blend([0.075,0.105,0.19],blend(sky,[0.67,0.40,0.32],warm*0.6),daylight)
         };
     };
     // Snap in the light's image plane: rounding world X/Z leaves fractional

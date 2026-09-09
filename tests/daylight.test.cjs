@@ -33,3 +33,22 @@ test('real ticks keep ambient time at 1x while simulation accelerates, and freez
   assert.equal(simulated,pauseState==='paused'?0:1000*speed);
  }
 });
+
+test('each season has the requested full-day, dusk, full-night and dawn durations',()=>{
+ const atmosphere=scope.window.EngineAtmosphere;
+ for(const [theme,want] of [['desert',[300,60,300,60]],['winter',[210,90,330,90]],['summer',[330,90,210,90]]]){
+  const totals=[0,0,0,0],light=t=>atmosphere.daylight(t,sun,sky,theme);
+  for(let t=.5;t<720;t++){
+   const n=light(t).night;
+   if(n<1e-10)totals[0]++;else if(n>1-1e-10)totals[2]++;
+   else if(light(t+.1).night>n)totals[1]++;else totals[3]++;
+  }
+  assert.deepEqual(totals,want,theme);
+  for(const phase of ['dusk','dawn']){
+   const sample=light(atmosphere.previewTime(theme,phase));assert.ok(sample.night>0&&sample.night<1);
+  }
+  assert.equal(light(atmosphere.previewTime(theme,'night')).night,1);
+  assert.deepEqual(light(720),light(0));
+  for(let t=0;t<720;t+=.5)for(const key of ['sun','sky'])light(t)[key].forEach((v,i)=>assert.ok(Math.abs(v-light(t+.5)[key][i])<.02));
+ }
+});

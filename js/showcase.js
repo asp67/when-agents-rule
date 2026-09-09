@@ -16,7 +16,7 @@ Game.prototype.startVisualShowcase = function (civilization, terrain, age, time)
     this._showcaseTerrain=Game.showcaseTerrain(terrain);
     this._showcaseAge=Game.showcaseAge(age);
     this._showcaseTime=Game.showcaseTime(time);
-    this._showcaseLightSeconds=Game.SHOWCASE_TIMES[this._showcaseTime];
+    this._showcaseLightSeconds=window.EngineAtmosphere.previewTime(this._showcaseTerrain,this._showcaseTime);
     this.player.civilization=this._showcaseCivilization;
     this.spectatorMode = false;
     document.body.classList.remove('spectator-mode');
@@ -81,7 +81,7 @@ Game.prototype.prepareVisualShowcase = function () {
     label.querySelector('#showcaseTime').value=this._showcaseTime || 'noon';
     label.querySelector('#showcaseTime').addEventListener('change',event=>{
         this._showcaseTime=Game.showcaseTime(event.target.value);
-        this._showcaseLightSeconds=Game.SHOWCASE_TIMES[this._showcaseTime];
+        this._showcaseLightSeconds=window.EngineAtmosphere.previewTime(this._showcaseTerrain,this._showcaseTime);
         const url=new URL(location.href);
         url.searchParams.set('time',this._showcaseTime);
         window.history.replaceState(null,'',url.href);

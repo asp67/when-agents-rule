@@ -1522,7 +1522,7 @@
             // budget: at most eight hearths, five two-triangle sprites each.
             const ambientTime=this.game?._environmentSeconds||0;
             const lightTime=this.game?._showcaseCivilization?(this.game._showcaseLightSeconds||0):ambientTime;
-            const lampNight=window.EngineAtmosphere.daylight(lightTime,[1,1,1],[1,1,1]).night;
+            const lampNight=window.EngineAtmosphere.daylight(lightTime,[1,1,1],[1,1,1],this._theme).night;
             let hearths=0, courtyards=0;
             // buildings
             for (const b of this.buildings) {
@@ -2045,7 +2045,7 @@
             this._syncFog();
             const atmosphere = window.EngineAtmosphere.daylight(
                 this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0),
-                this._daySun, this._daySky);
+                this._daySun, this._daySky, this._theme);
             this._sun = atmosphere.sun;
             this._sky = atmosphere.sky;
             this._renderShadows();
