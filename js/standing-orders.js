@@ -1,6 +1,12 @@
 // Persistent group intent. Combat remains in Game.updateCombat; this layer only
 // chooses nearby visible targets and restores the same formation/march machinery.
 class StandingOrders {
+    static get ACQUIRE_RADIUS() { return 48; }
+    static get CHASE_RADIUS() { return 64; }
+    static get ROUTE_ACQUIRE_RADIUS() { return 36; }
+    static get ROUTE_CHASE_RADIUS() { return 48; }
+    static get BOUNDARY_GRACE_MS() { return 900; }
+    static get STALL_MS() { return 5000; }
     constructor(game, manager) { this.game=game;this.manager=manager;this.groups=new Set();this.time=0;this.scan=0; }
     members(g) {
         const owned=new Set(g.owner.units);
@@ -100,7 +106,8 @@ class StandingOrders {
     releaseTarget(g,u) {
         if(u.attackTarget){
             if(!g.blocked.has(u))g.blocked.set(u,new Map());
-            g.blocked.get(u).set(u.attackTarget,this.time+5000);
+            g.blocked.get(u).set(u.attackTarget,{until:this.time+5000,
+                distance:Math.hypot(u.x-u.attackTarget.x,u.z-u.attackTarget.z)});
         }
         u.attackTarget=null;u.isAttacking=false;this.game.clearRetaliation(u);g.chases.delete(u);
     }
@@ -119,7 +126,13 @@ class StandingOrders {
             const visible=e=>{if(!visibility.has(e))visibility.set(e,this.visible(g,e));return visibility.get(e);};
             if(g.target&&this.visible(g,g.target)&&g.target.health<=0)g.target=null;
             for(const [u,targets]of g.blocked){
-                for(const [e,until]of targets)if(until<=this.time||e.health<=0)targets.delete(e);
+                // Time alone must not restart the same hopeless chase. Re-arm
+                // when the enemy is meaningfully closer (or back in striking range).
+                for(const [e,retry]of targets){
+                    const distance=Math.hypot(u.x-e.x,u.z-e.z);
+                    if(e.health<=0||(retry.until<=this.time&&visible(e)&&
+                        (distance<=this.game.attackRangeAgainst(u,e)+1||distance<=retry.distance-6)))targets.delete(e);
+                }
                 if(!targets.size)g.blocked.delete(u);
             }
             if(g.target&&this.visible(g,g.target)&&g.target.health>0){
@@ -136,12 +149,18 @@ class StandingOrders {
                 const t=Math.max(0,Math.min(1,((e.x-g.from.x)*dx+(e.z-g.from.z)*dz)/(dx*dx+dz*dz||1)));
                 return Math.hypot(e.x-g.from.x-t*dx,e.z-g.from.z-t*dz);
             };
+            const valid=e=>e&&e.health>0&&visible(e)&&
+                (e===g.target||g.targets!=='military'||(e.type!=='worker'&&e.unitType!=='support'&&e.attack>0));
+            const withinLeash=(e,retaining=false)=>{
+                const radius=retaining?StandingOrders.CHASE_RADIUS:StandingOrders.ACQUIRE_RADIUS;
+                const route=retaining?StandingOrders.ROUTE_CHASE_RADIUS:StandingOrders.ROUTE_ACQUIRE_RADIUS;
+                return routeDistance(e)<=route&&Math.hypot(e.x-anchor.x,e.z-anchor.z)<=radius
+                    &&Math.hypot(e.x-center.x,e.z-center.z)<=radius;
+            };
             const eligible=(u,e)=>{
-                if(!e||e.health<=0||!visible(e)||g.blocked.get(u)?.has(e))return false;
+                if(!valid(e))return false;
                 if(e===g.target)return true; // deliberate attacks may pursue their named target
-                if(g.targets==='military'&&(e.type==='worker'||e.unitType==='support'||!e.attack))return false;
-                return routeDistance(e)<=24&&Math.hypot(e.x-anchor.x,e.z-anchor.z)<=32
-                    &&Math.hypot(e.x-center.x,e.z-center.z)<=32;
+                return !g.blocked.get(u)?.has(e)&&withinLeash(e);
             };
             const candidates=(g.attack?enemies.concat(this.game.getAllBuildings()):enemies).filter(e=>eligible(null,e));
             if(g.target&&eligible(null,g.target)&&!candidates.includes(g.target))candidates.unshift(g.target);
@@ -154,14 +173,24 @@ class StandingOrders {
                 if(target){
                     const distance=Math.hypot(u.x-target.x,u.z-target.z);
                     let chase=g.chases.get(u);
-                    if(!chase||chase.target!==target){chase={target,best:distance,at:this.time};g.chases.set(u,chase);}
-                    if(distance<chase.best-.3){chase.best=distance;chase.at=this.time;}
+                    if(!chase||chase.target!==target){chase={target,sample:distance,sampledAt:this.time,at:this.time};g.chases.set(u,chase);}
                     const inRange=distance<=this.game.attackRangeAgainst(u,target)+.5;
-                    const stalled=target!==g.target&&!inRange&&this.time-chase.at>=3000;
-                    if(!eligible(u,target)||stalled){this.releaseTarget(g,u);target=null;}
+                    // Measure recent progress, not the best distance ever reached:
+                    // a short detour must not poison the rest of a productive chase.
+                    if(inRange)chase.at=this.time;
+                    if(this.time-chase.sampledAt>=750){
+                        if(distance<chase.sample-.25)chase.at=this.time;
+                        chase.sample=distance;chase.sampledAt=this.time;
+                    }
+                    if(withinLeash(target,true))chase.outsideAt=null;
+                    else if(chase.outsideAt==null)chase.outsideAt=this.time;
+                    const escaped=chase.outsideAt!=null&&this.time-chase.outsideAt>=StandingOrders.BOUNDARY_GRACE_MS;
+                    const tooFar=Math.hypot(target.x-anchor.x,target.z-anchor.z)>StandingOrders.CHASE_RADIUS*1.5;
+                    const stalled=!inRange&&this.time-chase.at>=StandingOrders.STALL_MS;
+                    if(!valid(target)||(target!==g.target&&(escaped||tooFar||stalled))){this.releaseTarget(g,u);target=null;}
                 }
                 if(!target){
-                    let best=Math.max(24,(u.range||1)+20);
+                    let best=Math.max(36,(u.range||1)+24);
                     for(const e of candidates){
                         const d=Math.hypot(e.x-u.x,e.z-u.z);
                         if(d<best&&eligible(u,e)){best=d;target=e;}

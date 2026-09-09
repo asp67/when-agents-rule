@@ -33,7 +33,7 @@ test('incidental pursuit stops at its leash and restores the original destinatio
 test('an unproductive chase is dropped without suppressing an explicit target attack',()=>{
  for(const explicit of [false,true]){
   const h=setup();const u=h.unit();h.owner.units.push(u);const e=h.rival(12);h.issue('march',{x:80,z:0},explicit?{target:e}:{});
-  for(let i=0;i<25;i++)h.g._standingOrders.update(150);
+  for(let i=0;i<40;i++)h.g._standingOrders.update(150);
   assert.equal(u.attackTarget===e,explicit);
  }
 });
@@ -127,7 +127,7 @@ test('siege attackers keep damaging buildings and wonders without a false stalle
 test('one stalled pursuer does not make squadmates abandon their reachable target',()=>{
  const h=setup(),stuck=h.unit(),fighter=h.unit('warrior',11);h.owner.units.push(stuck,fighter);
  const e=h.rival(12);h.issue();
- for(let i=0;i<25;i++)h.g._standingOrders.update(150);
+ for(let i=0;i<40;i++)h.g._standingOrders.update(150);
  assert.equal(stuck.attackTarget,null);assert.equal(fighter.attackTarget,e);
 });
 
@@ -174,4 +174,31 @@ test('post-battle formation stays intact beside buildings and within map edges',
   for(let i=0;i<slots.length;i++)for(let j=0;j<i;j++)assert.ok(Math.hypot(slots[i].x-slots[j].x,slots[i].z-slots[j].z)>=1.8);
   assert.ok(h.owner.units.every(u=>u.formationGroup===h.owner.units[0].formationGroup));
  }
+});
+
+test('a pursuit continues beyond the acquisition boundary and tolerates brief outer-boundary crossings',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);h.g.aiManager.isVisibleTo=()=>true;
+ const e=h.rival(30);h.issue();h.g._standingOrders.update(150);assert.equal(u.attackTarget,e);
+ for(const x of [49,55,63,65,63,65,63]){e.x=x;h.g._standingOrders.update(150);assert.equal(u.attackTarget,e);}
+ e.x=70;for(let i=0;i<8;i++)h.g._standingOrders.update(150);
+ assert.equal(u.attackTarget,null);
+});
+
+test('a failed chase does not restart on a timer without a better opportunity',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);const e=h.rival(20);h.issue();
+ for(let i=0;i<150;i++)h.g._standingOrders.update(150);
+ assert.equal(u.attackTarget,null);
+ e.x=12;h.g._standingOrders.update(150);assert.equal(u.attackTarget,e);
+});
+
+test('closing after a detour counts as progress without beating the old closest distance',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);h.g.aiManager.isVisibleTo=()=>true;
+ const e=h.rival(8);h.issue();h.g._standingOrders.update(150);
+ e.x=30;
+ for(let i=0;i<50;i++){if(i%5===0)e.x-=1;h.g._standingOrders.update(150);assert.equal(u.attackTarget,e);}
+});
+
+test('boundary grace does not grant attacks or tracking through lost vision',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);const e=h.rival(15);h.issue();h.g._standingOrders.update(150);
+ h.g.aiManager.isVisibleTo=()=>false;h.g._standingOrders.update(150);assert.equal(u.attackTarget,null);
 });
