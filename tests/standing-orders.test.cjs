@@ -253,7 +253,8 @@ test('an uncatchable retaliatory threat is abandoned and the scout assignment re
  for(let i=0;i<50;i++)h.g._standingOrders.update(150);
  assert.equal(u.attackTarget,null);assert.equal(g.threats.length,0);assert.equal(g.fighting,false);
  assert.equal(g.to.x,80);assert.ok(u.isMoving);
- h.g.noteRetaliation(u,raider);assert.equal(u.attackTarget,raider); // new damage is a renewed threat
+ h.g.noteRetaliation(u,raider);assert.equal(u.attackTarget,null); // another hit cannot restart the same stalled chase
+ raider.x=u.x+1;h.g.noteRetaliation(u,raider);assert.equal(u.attackTarget,raider); // immediate defense when reachable
 });
 
 test('formation priest does not alternate between its hold and a distant patient',()=>{
@@ -278,7 +279,7 @@ test('fast riders cannot overshoot a nearby resting slot or melee target',()=>{
  Object.assign(u,{isMoving:true,targetX:.7,targetZ:0});h.g.updateUnitMovement(100);
  assert.equal(u.x,.7);h.g.updateUnitMovement(100);assert.equal(u.isMoving,false);
  const e=h.rival(2.7);Object.assign(u,{isAttacking:true,attackTarget:e});h.g.updateCombat(100);
- assert.ok(Math.abs(u.x-1.2)<1e-8);assert.equal(u.attackTarget,e);
+ assert.ok(u.x>=1.2&&u.x<=1.5);assert.equal(u.attackTarget,e);
 });
 
 test('named building assault continues through nearby buildings and units, then regroups',()=>{
@@ -362,4 +363,68 @@ test('settled block priest completes an out-of-range heal before returning to it
  }
  assert.equal(healed,true);const slot=g.slots.get(p);
  assert.ok(Math.hypot(p.x-slot.x,p.z-slot.z)<.5);assert.equal(g.fighting,false);
+});
+
+test('repeated hits on an ally do not restart a defenders failed chase',()=>{
+ const h=setup(),u=h.unit(),ally=h.unit('priest',20);h.owner.units.push(u,ally);
+ h.g.aiManager.isVisibleTo=()=>true;const attacker=h.rival(22);const group=h.issue('scout');
+ h.g.noteRetaliation(ally,attacker);h.g._standingOrders.update(150);
+ attacker.x=130;h.g._standingOrders.update(150);assert.equal(u.attackTarget,null);
+ for(let i=0;i<40;i++){
+  h.g.noteRetaliation(ally,attacker);assert.equal(u.attackTarget,null,'incoming hits must not rearm the same failed chase');
+  h.g._standingOrders.update(150);
+ }
+ assert.equal(group.fighting,false);
+ attacker.x=u.x+1;h.g.noteRetaliation(ally,attacker);h.g._standingOrders.update(150);
+ assert.equal(u.attackTarget,attacker,'a genuinely reachable threat can be engaged again');
+});
+
+test('reachable retaliation is not recalled by a distant old battle anchor',()=>{
+ const h=setup(),u=h.unit(),ally=h.unit('priest');h.owner.units.push(u,ally);h.g.aiManager.isVisibleTo=()=>true;
+ const attacker=h.rival(1);const group=h.issue();h.g.noteRetaliation(ally,attacker);
+ group.anchor={x:-150,z:0};
+ for(let i=0;i<20;i++){h.g._standingOrders.update(150);assert.equal(u.attackTarget,attacker);}
+ attacker.x=120;h.g._standingOrders.update(150);assert.equal(u.attackTarget,null,'leash applies again when pursuit is necessary');
+});
+
+test('far wing joins the same siege as nearby ranks instead of waiting for the building to fall',()=>{
+ for(const named of [true,false]){
+  const h=setup(),near=h.unit('warrior',20),far=h.unit('warrior',-30);h.owner.units.push(near,far);
+  h.g.aiManager.isVisibleTo=()=>true;
+  const house={owner:'b',type:'town_center',x:25,z:0,health:1000};h.g.getAllBuildings=()=>[house];
+  h.issue('march',{x:25,z:0},named?{target:house}:{attack:true});h.step();
+  assert.equal(near.attackTarget,house);assert.equal(far.attackTarget,house);
+  const before=far.x;h.step(1000,true);assert.ok(far.x>before);assert.ok(house.health>0);
+ }
+});
+
+test('a distant explicit target preserves the approach formation until engagement begins',()=>{
+ const h=setup(),a=h.unit(),b=h.unit('warrior',-10);h.owner.units.push(a,b);
+ h.g.aiManager.isVisibleTo=()=>true;const house={owner:'b',type:'town_center',x:200,z:0,health:1000};
+ h.g.getAllBuildings=()=>[house];h.issue('march',{x:200,z:0},{target:house});h.step();
+ assert.equal(a.attackTarget,null);assert.equal(b.attackTarget,null);assert.ok(a.formationGroup);assert.ok(b.isMoving);
+ a.x=170;h.step();assert.equal(a.attackTarget,house);assert.equal(b.attackTarget,house);
+});
+
+test('attack clocks advance under repeated outward separation nudges for melee and archers',()=>{
+ for(const range of [1,12]){
+  const h=setup(),u=h.unit();u.range=range;h.owner.units.push(u);
+  const reach=range===1?1.5:range;const enemy=h.rival(reach+.01);h.issue('scout');h.g.noteRetaliation(u,enemy);
+  for(let i=0;i<80;i++){
+   h.g._standingOrders.update(50);h.g.updateCombat(50);
+   u.x-=.03; // renderer separates crowded friendlies after each simulation frame
+  }
+  assert.ok(enemy.health<=9970,'must keep landing blows despite crowd nudges');
+  assert.equal(u.attackTarget,enemy);
+ }
+});
+
+test('sub-pixel range errors cannot freeze the attack timer on the spot',()=>{
+ for(const range of [1,12]){
+  const h=setup(),u=h.unit('warrior',100);u.range=range;h.owner.units.push(u);
+  const reach=range===1?1.5:range,e=h.rival(100+reach+1e-12);
+  Object.assign(u,{attackTarget:e,isAttacking:true});
+  for(let i=0;i<40;i++)h.g.updateCombat(50);
+  assert.equal(e.health,9980);assert.equal(u.isMoving,false);
+ }
 });

@@ -34,9 +34,14 @@ class StandingOrders {
             else g.threats.push(attacker);
         }
         const focus=g.threats[0],units=this.members(g);
-        if(!g.fighting){g.anchor=this.center(units);g.fighting=true;}
         for(const u of units){
             if(u.unitType==='support'||u.type==='worker'||!(u.attack>0))continue;
+            // Another hit on an ally is not evidence that THIS soldier can now
+            // catch the attacker. Keep failed-chase protection until the normal
+            // retry scan sees a closer/in-range opportunity. Towers still win.
+            if(focus.type!=='tower'&&g.blocked.get(u)?.has(focus)
+                &&!(focus===attacker&&Math.hypot(u.x-focus.x,u.z-focus.z)<=this.game.attackRangeAgainst(u,focus)))continue;
+            if(!g.fighting){g.anchor=this.center(units);g.fighting=true;}
             if(u.attackTarget!==focus)g.chases.delete(u);
             g.blocked.get(u)?.delete(focus);
             this.game.clearRetaliation(u);
@@ -131,11 +136,11 @@ class StandingOrders {
         }
         if(!preserveCombat)g.chases.clear();
     }
-    releaseTarget(g,u) {
-        if(u.attackTarget){
+    releaseTarget(g,u,target=u.attackTarget) {
+        if(target){
             if(!g.blocked.has(u))g.blocked.set(u,new Map());
-            g.blocked.get(u).set(u.attackTarget,{until:this.time+5000,
-                distance:Math.hypot(u.x-u.attackTarget.x,u.z-u.attackTarget.z)});
+            g.blocked.get(u).set(target,{until:this.time+5000,
+                distance:Math.hypot(u.x-target.x,u.z-target.z)});
         }
         u.attackTarget=null;u.isAttacking=false;this.game.clearRetaliation(u);g.chases.delete(u);
     }
@@ -230,6 +235,13 @@ class StandingOrders {
             };
             const candidates=(g.attack?enemies.concat(this.game.getAllBuildings()):enemies).filter(e=>eligible(null,e));
             if(g.target&&eligible(null,g.target)&&!candidates.includes(g.target))candidates.unshift(g.target);
+            // Engagement belongs to the group. The old per-soldier acquisition
+            // radius stranded the far wing: near ranks started fighting, while
+            // distant ranks were told to hold forever instead of closing in.
+            // Keep the formation on distant approaches, but once a fighter can
+            // engage, let all capable members join the same local battle.
+            const engaging=g.fighting||units.some(u=>u.unitType!=='support'&&u.attack>0
+                &&candidates.some(e=>eligible(u,e)&&Math.hypot(e.x-u.x,e.z-u.z)<Math.max(36,(u.range||1)+24)));
             let fighting=false;
             for(const u of units){
                 if((g.mode==='scout'&&!focus)||u.unitType==='support'||!(u.attack>0)){
@@ -255,10 +267,11 @@ class StandingOrders {
                     const tooFar=Math.hypot(target.x-anchor.x,target.z-anchor.z)>StandingOrders.CHASE_RADIUS*1.5;
                     const stalled=!inRange&&this.time-chase.at>=StandingOrders.STALL_MS;
                     const bounded=target===focus?target.type!=='tower':target!==g.target;
-                    if(!valid(target)||(bounded&&(escaped||tooFar||stalled))){this.releaseTarget(g,u);target=null;}
+                    const defendingInRange=target===focus&&distance<=this.game.attackRangeAgainst(u,target);
+                    if(!valid(target)||(bounded&&!defendingInRange&&(escaped||tooFar||stalled))){this.releaseTarget(g,u,target);target=null;}
                 }
                 if(!target){
-                    let best=Math.max(36,(u.range||1)+24);
+                    let best=engaging?Infinity:Math.max(36,(u.range||1)+24);
                     for(const e of candidates){
                         if(g.mode==='scout'&&e!==focus)continue;
                         const d=Math.hypot(e.x-u.x,e.z-u.z);

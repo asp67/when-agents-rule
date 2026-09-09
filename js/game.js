@@ -1261,7 +1261,7 @@ class Game {
                 // burrowed to 1.5 of the monument's CENTER, deep inside the walls.
                 const attackRange = this.attackRangeAgainst(unit, currentTarget);
                 
-                if (dist > attackRange) {
+                if (dist > attackRange + 1e-6) {
                     // Move towards target — or, while still well short of it, towards
                     // this unit's slot in the marching formation, so an army crosses the
                     // map as a shape instead of as a converging blob. FORM_DROP is where
@@ -1293,11 +1293,17 @@ class Game {
                     unit.targetZ = currentTarget.z;
 
                     const moveSpeed = Math.min(this.moveSpeedOf(unit, deltaTime) * deltaTime / 1000 * 3,
-                        off && dist > attackRange + FORM_DROP ? adist : dist - attackRange);
+                        off && dist > attackRange + FORM_DROP ? adist : dist - Math.max(0, attackRange - .2));
                     unit.x += (adx / adist) * moveSpeed;
                     unit.z += (adz / adist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
-                } else {
+                }
+                // Arrival and striking must share a tick. Stopping exactly at the
+                // boundary and waiting until the next tick let friendly separation
+                // push attackers just outside it forever, starving attackTimer.
+                // The small inward stand-off above resists those nudges; epsilon
+                // only covers coordinate rounding, not extra weapon reach.
+                if (Math.hypot(currentTarget.x-unit.x,currentTarget.z-unit.z) <= attackRange + 1e-6) {
                     // In range - attack!
                     unit.formationOffset = null;   // fighting now; the march shape is over
                     unit.isMoving = false;

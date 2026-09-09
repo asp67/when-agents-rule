@@ -4426,6 +4426,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                         // single-lane baseline -- and show whether the lanes held their
                         // spacing or drifted into phase. Omitted entirely at one lane,
                         // so ordinary transcripts do not grow a field that says 0 of 1.
+                        ...(this.turnBased ? { askedInRound: controller.askedInRound } : {}),
                         ...(controller.lanes && controller.lanes.length > 1
                             ? { lane: controller.laneNo, lanes: controller.lanes.length,
                                 askedInRound: controller.askedInRound }
@@ -4618,6 +4619,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             controller.seat._failStreak = 0; // endpoint reachable (parse problems aside)
             return result;
         } catch (err) {
+            if(this._stopped||controller.defeated){
+                this.recordRequestFailure(controller,'harness_cancelled',
+                    'Request cancelled because the match ended or the seat was retired.',tStart,true);
+                return null;
+            }
             console.error(`[OpenAIAI] Request failed for ${ai.id}:`, err);
             // Context-length overflow (provider 400). The endpoint is FINE — our prompt
             // was just too big for this model. Ratchet the budget down so subsequent
@@ -4634,6 +4640,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 controller.seat._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
                 console.warn(`[OpenAIAI] ${ai.id}: context overflow — shrinking budget to ${Math.round(controller._ctxShrink * 100)}% and retrying next turn.`);
                 controller.seat.lastActionResult = `[ERROR] Your previous request was too large for the model's context and was dropped; the history window has been trimmed. Continue normally.`;
+                this.recordRequestFailure(controller, 'context_overflow', controller.seat.lastActionResult, tStart);
                 // Count it — a lost turn is a lost turn. Tracked separately from
                 // network errors (the endpoint is fine, our prompt was too big) so
                 // the reliability metric stays honest without demoting the model.
@@ -4676,6 +4683,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     controller.stats.rateLimitLost = (controller.stats.rateLimitLost || 0) + 1;
                 }
                 controller.seat.lastActionResult = `[ERROR] The endpoint refused this turn with a rate limit and the retry did not clear it. Nothing was executed; continue normally.`;
+                this.recordRequestFailure(controller, 'rate_limited', controller.seat.lastActionResult, tStart);
                 return null;
             }
             // The move it was TRYING to make, and how long it hung before dying. The
@@ -4817,6 +4825,23 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             }, controller);
             return null;
         }
+    }
+
+    recordRequestFailure(controller, category, message, startedAt, cancelled=false) {
+        const ai=controller.aiPlayer,now=Date.now();
+        controller._moveNo=((this.transcripts&&this.transcripts.turnsFor(ai.id))||0)+1;
+        controller._moveMs=Math.max(0,now-startedAt);
+        try {
+            this.transcripts?.note(ai.id,{type:cancelled?'request_cancelled':'request_failed',
+                at:now,round:this._roundNo,askedInRound:controller.askedInRound,category,
+                matchSeconds:Math.max(0,Math.round((now-(this.game?._timeline?.t0||now))/1000)),
+                elapsedMs:controller._moveMs,message});
+        } catch(e) { /* diagnostics must not interrupt the round */ }
+        if(cancelled)return;
+        const civ=getCivilization(ai.civilization);
+        this.pushDecisionFor(ai,{playerId:ai.id,civName:civ?.name||ai.civilization,
+            color:'#'+(civ?.color??0xffffff).toString(16).padStart(6,'0'),
+            action:'request_failed',reason:message,params:{},failed:true,error:message},controller);
     }
 
     // A reply arrived but carried no JSON action: count it as its own outcome
@@ -5290,6 +5315,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             for (const c of cmds) {
                 if (this._stopped || controller.defeated) break;
                 if (!c || typeof c.action !== 'string' || !c.action.trim()) {
+                    this.logExecutionFailure(controller, 'malformed_action', 'No valid command name in this reply.');
                     // Counted, not skipped in silence. A malformed entry is a real
                     // mistake and the only way the model learns is being told which one.
                     if (controller.stats) controller.stats.invalidActions++;
@@ -5301,6 +5327,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 try { this.executeAction(controller, c); }
                 catch (err) {
                     console.error('[OpenAIAI] Command failed for ' + controller.id + ':', err);
+                    this.logExecutionFailure(controller, 'tool_call_failed', 'That command could not be carried out.');
                     controller._batch.results.push('[ERROR] That command could not be carried out.');
                 }
             }
@@ -5355,6 +5382,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!actionData || !actionData.action) {
             console.warn(`[OpenAIAI] No action data for ${ai.id}`);
             controller.seat.lastActionResult = `[ERROR] No valid action data received.`;
+            this.logExecutionFailure(controller, 'malformed_action', 'No valid action data received.');
             return;
         }
 
@@ -8622,7 +8650,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             c.answerContext = null;
             if (this._stopped || c.defeated) continue;
             try { this.executeTurn(actor, action); }
-            catch (err) { console.error(`[OpenAIAI] Queued action failed for ${c.id}:`, err); }
+            catch (err) {
+                console.error(`[OpenAIAI] Queued action failed for ${c.id}:`, err);
+                this.logExecutionFailure(actor, 'tool_call_failed', 'This reply could not be executed.');
+            }
         }
     }
 
@@ -8911,7 +8942,15 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // Stamped HERE, not where the entry was built: a held entry that kept its arrival
     // time would land in the right block wearing a timestamp eighty seconds older than
     // its neighbours, which is the same false impression in smaller print.
+    logExecutionFailure(controller, action, error) {
+        const ai=controller.aiPlayer,civ=getCivilization(ai.civilization);
+        this.commitDecision({playerId:ai.id,civName:civ?.name||ai.civilization,
+            color:'#'+(civ?.color??0xffffff).toString(16).padStart(6,'0'),
+            move:controller._moveNo,latencyMs:controller._moveMs,
+            action,reason:'',params:{},failed:true,error,lang:controller.model?.language||'en'});
+    }
     commitDecision(entry) {
+        this.decisionLogRevision=(this.decisionLogRevision||0)+1;
         entry.timestamp = Date.now();
         // ...and the round, for the same reason and in the same place. In turn-based
         // play the card's number should be the ROUND, not the seat's reply count.

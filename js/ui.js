@@ -3157,10 +3157,11 @@ class UIManager {
         for (const entry of log) {
             if (entry.isAdvice) continue;
             if (!fallback.has(entry.playerId)) fallback.set(entry.playerId, entry);
-            if (entry.move != null && !latest.has(entry.playerId)) latest.set(entry.playerId, entry.move);
+            const turn=entry.round??entry.move;
+            if (turn != null && (!latest.has(entry.playerId)||turn>latest.get(entry.playerId))) latest.set(entry.playerId, turn);
         }
         return log.filter(entry => !entry.isAdvice && (latest.has(entry.playerId)
-            ? entry.move === latest.get(entry.playerId)
+            ? (entry.round??entry.move) === latest.get(entry.playerId)
             : entry === fallback.get(entry.playerId)));
     }
 
@@ -3188,7 +3189,7 @@ class UIManager {
         // entry animation every second, which looks like flicker). The active
         // filter is part of the signature: without it, typing in the search box
         // would not repaint until the next decision arrived.
-        const sig = [getUiLang(), log.length, (log[0] ? log[0].timestamp : 0),
+        const sig = [getUiLang(), this.game.openAIAIManager.decisionLogRevision, log.length, (log[0] ? log[0].timestamp : 0),
                      [...f.players].sort().join(','), f.text, compact].join(':');
         if (sig === this._lastLogSig) return;
         this._lastLogSig = sig;
