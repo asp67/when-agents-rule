@@ -147,9 +147,9 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 <div align="center">
 
-![Illuminated buildings during nighttime arena gameplay](Screenshots/Night.png)
+![Greek village with a watchtower, troops, workers and civic buildings](Screenshots/GreekVillage.png)
 
-<sub><i>The same match after nightfall: lamps and fires light the buildings while the armies keep moving. The cosmetic day/night cycle runs independently of the game speed setting.</i></sub>
+<sub><i>A Greek village at ground level: troops gather beside the watchtower while workers move among homes, the temple and the town center.</i></sub>
 
 </div>
 

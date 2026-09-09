@@ -3,8 +3,9 @@
 Gameplay imagery comes from the supplied September 9, 2026 four-model arena
 recording, `2026-09-09 15-46-31.mp4`: OBS, 1920 x 1080, 60 fps, 2:11:10.
 Persia wins by last civilization standing. The transcript helped locate Wonder
-attacks; gameplay frames come from the continuous video, not reconstructions or
-showcases. The source video, transcript and results are not included in the repo.
+attacks; video extracts come from the continuous recording, not reconstructions
+or showcases. The supplied Greek village still is credited separately below.
+The source video, transcript and results are not included in the repo.
 
 ## Selected footage
 
@@ -19,13 +20,17 @@ Times are offsets in the source recording, not the simulation clock.
 | Formations.gif | 1:59:33–1:59:43 | Shorter formation movement cut |
 | Formations.png | 1:58:11 | Army formation still |
 | Settlement.png | 0:34:00 | Developed Greek settlement during the match |
-| Night.png | 1:54:00 | Live nighttime settlement lighting |
+| GreekVillage.png | Supplied still | Greek village, watchtower, troops and civic buildings |
+
+`GreekVillage.png` is an unchanged copy of the supplied
+`Screenshot 2026-09-09 182655.png` (2285 x 913). It replaces the nighttime row
+of houses with a more informative view of a developed village.
 
 Clips retain normal recording speed: no synthesized frames, reverse playback or
 artificial day/night acceleration. Gameplay speed changes already in the source
 are retained. Fixed crops remove peripheral HUD panels: 1140 x 740 at (500, 240)
 for Wonder clips/army stills; 1340 x 900 at (300, 100) for the formation clip;
-1340 x 960 at (300, 60) for settlement/night stills.
+1340 x 960 at (300, 60) for the settlement still.
 No gameplay objects were edited.
 
 MP4s: 924 x 600 (Wonder), 924 x 620 (formation), 30 fps, H.264 CRF 18, slow preset, fast-start, no audio.
