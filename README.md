@@ -14,9 +14,9 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 <br>
 
-[![Current Greek settlement — click for the day/night cycle](Screenshots/ArenaPoster.png)](Screenshots/Arena.gif)
+[![A Persian army destroys an Egyptian Wonder during a live four-model match](Screenshots/Arena.gif)](Screenshots/Arena.mp4)
 
-<sub><i>Summer Valley in the current renderer — <b>click for a full day/night lighting cycle</b>. Captured in Explore civilizations; the 12-minute cycle is accelerated for this demonstration.</i></sub>
+<sub><i>A Wonder falls. The army reforms. Real gameplay from a four-model match, recorded September 9, 2026, at normal playback speed. <b>Click for the sharper, longer video.</b></i></sub>
 
 </div>
 
@@ -34,11 +34,11 @@ It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). W
 
 <div align="center">
 
-| Winter · Yamato | Desert · Persia |
+| A growing settlement | An army on the march |
 |:---:|:---:|
-| ![Winter pines, bare trees and Yamato architecture](Screenshots/Winter.png) | ![Persian settlement at dusk on desert terrain](Screenshots/Desert.png) |
+| ![A developed settlement during the recorded arena match](Screenshots/Settlement.png) | ![Persian troops moving through an enemy settlement](Screenshots/Formations.png) |
 
-<sub><i>Current Iron Age showcase captures: seasonal trees, snow and sand, ground cover, cultural architecture and entrance lighting. These are playable art previews, not recorded model matches.</i></sub>
+<sub><i>From economy to conquest: still frames from the same live match. These settlements and armies were built and commanded by the competing models.</i></sub>
 
 </div>
 
@@ -58,9 +58,9 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 
 <div align="center">
 
-![Infantry, archers and priests moving together on a formation patrol](Screenshots/Formations.gif)
+[![A Persian army moving in formation through an Egyptian settlement](Screenshots/Formations.gif)](Screenshots/Formations.mp4)
 
-<sub><i>A staged patrol using the actual movement system: infantry leads, archers and priests follow in ranged ranks, and the army keeps its formation. Standing orders continue between model replies.</i></sub>
+<sub><i>Orders keep working between model replies. An army moves through enemy territory in the recorded match. Normal playback speed; <b>click for the higher-quality video.</b></i></sub>
 
 </div>
 
@@ -147,9 +147,9 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 <div align="center">
 
-![Egyptian settlement after nightfall](Screenshots/Night.png)
+![Illuminated buildings during nighttime arena gameplay](Screenshots/Night.png)
 
-<sub><i>Night in the Egyptian showcase: entrance lamps and campfires illuminate the settlement. The cosmetic day/night cycle runs at real-time pace, independently of the game speed setting.</i></sub>
+<sub><i>The same match after nightfall: lamps and fires light the buildings while the armies keep moving. The cosmetic day/night cycle runs independently of the game speed setting.</i></sub>
 
 </div>
 
