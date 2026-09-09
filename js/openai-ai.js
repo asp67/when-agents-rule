@@ -1,4 +1,4 @@
-﻿// LLM harness for non-human players: builds each model's per-turn game-state JSON,
+// LLM harness for non-human players: builds each model's per-turn game-state JSON,
 // shapes provider-specific requests (OpenAI / Anthropic / Ollama / Google), parses
 // the ONE action per reply, executes it, and feeds the outcome back next turn.
 // Controllers come from the setup screen via initFromSetup (Arena and Campaign).
@@ -102,8 +102,8 @@ class OpenAIAIManager {
              { tile: S('Tile label from map.exploration, e.g. "C5" — column A-G, row 1-7.'),
                unitType: S('Which unit type to send. Optional.'),
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
-            ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat.',
-             Object.assign({mode:{type:'string',enum:['march','scout','guard','patrol'],description:'Default march. Scout: travel without combat. Guard: travel then defend the position. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
+            ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat. Incoming damage overrides all modes: fighters retaliate together, towers first; mobile threats obey chase limits. Regroup and resume afterward.',
+             Object.assign({mode:{type:'string',enum:['march','scout','guard','patrol'],description:'Default march. Scout: travel without initiating combat; retaliate if attacked. Guard: travel then defend the position. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
                 targets:{type:'string',enum:['any','military'],description:'Guard/patrol/march incidental targets: any enemy unit (default), or military only. Pursuit is bounded; explicit attack_target remains a commitment.'}}, XZ, WHO), ['targetX', 'targetZ']],
             ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining.',
              Object.assign({ targetId: S('Copy the exact string id from enemyUnits or enemyBuildings, including the unit_ or building_ prefix and full suffix. Do not shorten it or convert it to a number. Use this OR targetX/targetZ.') }, XZ, WHO), []],
@@ -3615,7 +3615,7 @@ ${OpenAIAIManager.actionsBrief()}
 PARAMETER CONSTRAINTS:
 unitIds: An ARRAY of ids from friendlyUnits, e.g. [183, 12]. Moves or attacks EXACTLY those units and nothing else; "units" is ignored when it is given. Ids are never reused, so one that is gone means that unit died. Use it when WHICH unit matters — "units" picks whichever are nearest the target, which is the wrong end when you are fetching a wounded one.
 units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array. move_units also accepts {"worker":N} when named explicitly — that is how you place a unit on an exact spot; attack_target never takes workers.
-move_units mode: march (default), scout (no combat), guard (hold destination), patrol (repeat current position ↔ destination). Optional targets: any (default) or military. Standing orders persist through incidental combat and regrouping; new orders replace them only for selected units. ordersInProgress lists each assignment once with unitIds; battles/encounters report combat. Formation recovery slows the main body so priests and other stragglers can rejoin.
+move_units mode: march (default), scout (no proactive attacks), guard (hold destination), patrol (repeat current position ↔ destination). Optional targets: any (default) or military. Standing orders persist through incidental combat and regrouping; new orders replace them only for selected units. ordersInProgress lists each assignment once with unitIds; battles/encounters report combat. Formation recovery slows the main body so priests and other stragglers can rejoin. Incoming damage overrides every standing order: formation fighters retaliate together, prioritizing towers until destroyed. Mobile threats obey chase limits. Once the threat is destroyed or driven off, regroup and resume the saved order.
 matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows your units to walk in unison until they reach the fight.`;
     }
 

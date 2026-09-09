@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 function setup(){
- const scope={console:{log(){}},BUILDING_DEFS:{town_center:{}},setTimeout:()=>{},Math};vm.createContext(scope);
+ const scope={console:{log(){}},BUILDING_DEFS:{town_center:{},tower:{}},towerPower:()=>({attack:10,arrows:1}),setTimeout:()=>{},Math};vm.createContext(scope);
  const read=p=>fs.readFileSync(path.join(__dirname,'../js/',p),'utf8');
  vm.runInContext(read('game.js').split('\nconst WAR_PRIVATE_HOST')[0],scope);
  vm.runInContext(read('openai-ai.js'),scope);vm.runInContext(read('standing-orders.js'),scope);
@@ -201,4 +201,57 @@ test('closing after a detour counts as progress without beating the old closest 
 test('boundary grace does not grant attacks or tracking through lost vision',()=>{
  const h=setup(),u=h.unit();h.owner.units.push(u);const e=h.rival(15);h.issue();h.g._standingOrders.update(150);
  h.g.aiManager.isVisibleTo=()=>false;h.g._standingOrders.update(150);assert.equal(u.attackTarget,null);
+});
+
+test('a tower hitting even a priest instantly redirects every formation fighter until destroyed',()=>{
+ const h=setup(),a=h.unit(),b=h.unit('archer',2),priest=h.unit('priest');b.range=12;
+ h.owner.units.push(a,b,priest);const original=h.rival(8),tower=Object.assign(h.rival(15),{type:'tower'});
+ const g=h.issue('march',{x:80,z:0},{target:original});h.step();
+ h.g.noteRetaliation(priest,tower);
+ assert.equal(a.attackTarget,tower);assert.equal(b.attackTarget,tower);assert.equal(priest.attackTarget,null);
+ for(let i=0;i<60;i++)h.g._standingOrders.update(150);
+ assert.equal(a.attackTarget,tower);assert.equal(b.attackTarget,tower);assert.equal(g.target,original);
+ tower.health=0;h.g._standingOrders.update(150);assert.equal(a.attackTarget,original);
+});
+
+test('alternating tower volleys queue focus targets without ping-pong or stealing reassigned units',()=>{
+ const h=setup(),a=h.unit(),b=h.unit('warrior',2);h.owner.units.push(a,b);
+ const first=Object.assign(h.rival(12),{type:'tower'}),second=Object.assign(h.rival(14),{type:'tower'});
+ h.issue('guard',{x:0,z:0});h.g.noteRetaliation(a,first);h.g.noteRetaliation(b,second);
+ assert.equal(a.attackTarget,first);assert.equal(b.attackTarget,first);
+ b._orderToken++;const other=h.g.setStandingOrder(h.m,h.owner,[b],{x:60,z:0},{mode:'scout'});
+ first.health=0;h.g._standingOrders.update(150);assert.equal(a.attackTarget,second);assert.equal(b.attackTarget,null);assert.equal(b._standingOrder,other);
+ second.health=0;h.g._standingOrders.update(150);assert.equal(a._standingOrder.fighting,false);assert.equal(a._standingOrder.mode,'guard');
+});
+
+test('scout orders defend against tower fire, then resume scouting',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);const tower=Object.assign(h.rival(10),{type:'tower'});
+ h.issue('scout');h.g.noteRetaliation(u,tower);h.step();assert.equal(u.attackTarget,tower);tower.health=0;h.step();assert.equal(u.attackTarget,null);assert.equal(u._standingOrder.mode,'scout');
+});
+
+test('an actual tower volley immediately redirects the formation before the next order scan',()=>{
+ const h=setup(),a=h.unit(),b=h.unit('warrior',2),priest=h.unit('priest',4);
+ h.owner.units.push(a,b,priest);
+ const tower={id:'tower',type:'tower',owner:'b',x:8,z:0,health:1000,range:6};h.g.getAllBuildings=()=>[tower];
+ h.issue('march',{x:50,z:0});h.g.updateTowerAttack(1500);
+ assert.equal(priest.health,90);assert.equal(a.attackTarget,tower);assert.equal(b.attackTarget,tower);assert.equal(priest.attackTarget,null);
+});
+
+test('mobile retaliation overrides a siege, gives way to towers, and resumes the saved siege',()=>{
+ const h=setup(),u=h.unit(),other=h.unit('warrior',1);h.owner.units.push(u,other);
+ const original=Object.assign(h.rival(20),{type:'town_center'}),raider=h.rival(10),tower=Object.assign(h.rival(15),{type:'tower'});
+ const g=h.issue('march',{x:20,z:0},{target:original});h.g.noteRetaliation(u,raider);
+ assert.equal(other.attackTarget,raider);h.g.noteRetaliation(u,tower);assert.equal(other.attackTarget,tower);
+ h.g.noteRetaliation(other,raider);assert.equal(u.attackTarget,tower);
+ tower.health=0;h.g._standingOrders.update(150);assert.equal(u.attackTarget,raider);
+ raider.health=0;h.g._standingOrders.update(150);assert.equal(u.attackTarget,original);assert.equal(g.target,original);
+});
+
+test('an uncatchable retaliatory threat is abandoned and the scout assignment resumes',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);const raider=h.rival(20);
+ const g=h.issue('scout',{x:80,z:0});h.g.noteRetaliation(u,raider);
+ for(let i=0;i<50;i++)h.g._standingOrders.update(150);
+ assert.equal(u.attackTarget,null);assert.equal(g.threats.length,0);assert.equal(g.fighting,false);
+ assert.equal(g.to.x,80);assert.ok(u.isMoving);
+ h.g.noteRetaliation(u,raider);assert.equal(u.attackTarget,raider); // new damage is a renewed threat
 });

@@ -72,7 +72,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **⏱ Speed control** — 1× / 1.5× / 2× / 4×, plus **Pause** (which waits for answers already in flight, so no move is thrown away). Held at 1× while a Wonder stands, so the countdown can't be sped past.
 - **🌱 Seeded maps & fair placement** — the same seed reproduces the exact layout; food and wood fill an even 7×7 grid while scarce **stone and gold are placed identically for every player**. The map stops being a confound.
 
-- **🛡️ Persistent army orders** — march, scout without attacking, guard a position, or patrol between two points. Incidental pursuit is bounded; survivors reform and resume their assignment, including priests in ranged slots. A new order replaces the selected units' previous assignment.
+- **🛡️ Persistent army orders** — march, scout without initiating combat, guard a position, or patrol between two points. Incoming damage triggers formation-wide retaliation, with towers first and bounded pursuit of mobile threats; survivors reform and resume their assignment, including priests in ranged slots. A new order replaces the selected units' previous assignment.
 - **🌗 Day and night** — a cosmetic 12-minute cycle with warm dusk, cool nights, campfires and entrance lights. Simulation speed does not accelerate the lighting cycle.
 
 **The models**

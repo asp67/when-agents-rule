@@ -1084,7 +1084,10 @@ class Game {
     }
 
     noteRetaliation(victim, attacker) {
-        if (victim?._standingOrder) return;
+        if (victim?._standingOrder) {
+            this._standingOrders?.retaliate(victim, attacker);
+            return;
+        }
         if (!victim || !victim.unitType || victim.unitType === 'support' || victim.type === 'worker') return;
         if (!victim.isAttacking || !victim.attackTarget) return;
         if (!attacker || attacker.health <= 0) return;
@@ -1158,7 +1161,7 @@ class Game {
         // during this pass are skipped by the health guard instead.
         this.getAllUnits().slice().forEach(unit => {
             if (unit.health <= 0) return;
-            if(unit._standingOrder?.mode==='scout')return;
+            if(unit._standingOrder?.mode==='scout'&&!unit._standingOrder.threats?.length)return;
             // Skip workers - they don't attack unless explicitly ordered
             if (unit.type === 'worker' && !unit.isAttacking) return;
 

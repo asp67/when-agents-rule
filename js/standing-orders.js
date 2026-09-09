@@ -21,6 +21,29 @@ class StandingOrders {
         return g.owner.id==='player'?!!this.game.fogOfWar?.isPositionVisible(e.x,e.z)
             : !!this.game.aiManager?.isVisibleTo(g.owner,e.x,e.z);
     }
+    retaliate(victim,attacker) {
+        const g=victim?._standingOrder;
+        if(!g||!this.groups.has(g)||victim._orderToken!==g.token
+            ||!attacker||attacker.health<=0||!this.visible(g,attacker))return;
+        // Incoming damage overrides movement intent, even scouting. Towers take
+        // priority over mobile attackers; equal-priority threats queue so each
+        // incoming hit does not pull the army onto a different target.
+        g.threats=(g.threats||[]).filter(e=>e.health>0);
+        if(!g.threats.includes(attacker)){
+            if(attacker.type==='tower'&&g.threats[0]?.type!=='tower')g.threats.unshift(attacker);
+            else g.threats.push(attacker);
+        }
+        const focus=g.threats[0],units=this.members(g);
+        if(!g.fighting){g.anchor=this.center(units);g.fighting=true;}
+        for(const u of units){
+            if(u.unitType==='support'||u.type==='worker'||!(u.attack>0))continue;
+            if(u.attackTarget!==focus)g.chases.delete(u);
+            g.blocked.get(u)?.delete(focus);
+            this.game.clearRetaliation(u);
+            u.attackTarget=focus;u.isAttacking=true;
+            u.formationOffset=null;u.formationAxis=null;u.formationGroup=null;u.marchSpeed=null;
+        }
+    }
     issue(owner,units,to,options={}) {
         const g={owner,units:units.slice(),to:{...to},from:this.center(units),mode:options.mode||'march',
             token:units[0]._orderToken,shape:options.formation||null,pace:options.matchSpeed||'',
@@ -120,6 +143,8 @@ class StandingOrders {
         const enemies=this.game.getAllUnits();
         for(const g of this.groups){
             const units=g.units,center=this.center(units);
+            if(g.threats)g.threats=g.threats.filter(e=>e.health>0&&this.visible(g,e));
+            const focus=g.threats?.[0];
             // Visibility depends on the owner, not the attacker. Share its scan
             // across the formation instead of repeating it for every soldier.
             const visibility=new Map();
@@ -150,7 +175,7 @@ class StandingOrders {
                 return Math.hypot(e.x-g.from.x-t*dx,e.z-g.from.z-t*dz);
             };
             const valid=e=>e&&e.health>0&&visible(e)&&
-                (e===g.target||g.targets!=='military'||(e.type!=='worker'&&e.unitType!=='support'&&e.attack>0));
+                (e===focus||e===g.target||g.targets!=='military'||(e.type!=='worker'&&e.unitType!=='support'&&e.attack>0));
             const withinLeash=(e,retaining=false)=>{
                 const radius=retaining?StandingOrders.CHASE_RADIUS:StandingOrders.ACQUIRE_RADIUS;
                 const route=retaining?StandingOrders.ROUTE_CHASE_RADIUS:StandingOrders.ROUTE_ACQUIRE_RADIUS;
@@ -159,17 +184,19 @@ class StandingOrders {
             };
             const eligible=(u,e)=>{
                 if(!valid(e))return false;
-                if(e===g.target)return true; // deliberate attacks may pursue their named target
+                if(e===focus)return e.type==='tower'||!g.blocked.get(u)?.has(e);
+                if(e===g.target)return true;
                 return !g.blocked.get(u)?.has(e)&&withinLeash(e);
             };
             const candidates=(g.attack?enemies.concat(this.game.getAllBuildings()):enemies).filter(e=>eligible(null,e));
             if(g.target&&eligible(null,g.target)&&!candidates.includes(g.target))candidates.unshift(g.target);
             let fighting=false;
             for(const u of units){
-                if(g.mode==='scout'||u.unitType==='support'||!(u.attack>0)){
+                if((g.mode==='scout'&&!focus)||u.unitType==='support'||!(u.attack>0)){
                     if(u.attackTarget)this.releaseTarget(g,u);continue;
                 }
                 let target=u.attackTarget;
+                if(focus&&valid(focus)&&eligible(u,focus))target=focus;
                 if(target){
                     const distance=Math.hypot(u.x-target.x,u.z-target.z);
                     let chase=g.chases.get(u);
@@ -187,11 +214,13 @@ class StandingOrders {
                     const escaped=chase.outsideAt!=null&&this.time-chase.outsideAt>=StandingOrders.BOUNDARY_GRACE_MS;
                     const tooFar=Math.hypot(target.x-anchor.x,target.z-anchor.z)>StandingOrders.CHASE_RADIUS*1.5;
                     const stalled=!inRange&&this.time-chase.at>=StandingOrders.STALL_MS;
-                    if(!valid(target)||(target!==g.target&&(escaped||tooFar||stalled))){this.releaseTarget(g,u);target=null;}
+                    const bounded=target===focus?target.type!=='tower':target!==g.target;
+                    if(!valid(target)||(bounded&&(escaped||tooFar||stalled))){this.releaseTarget(g,u);target=null;}
                 }
                 if(!target){
                     let best=Math.max(36,(u.range||1)+24);
                     for(const e of candidates){
+                        if(g.mode==='scout'&&e!==focus)continue;
                         const d=Math.hypot(e.x-u.x,e.z-u.z);
                         if(d<best&&eligible(u,e)){best=d;target=e;}
                     }
@@ -201,6 +230,10 @@ class StandingOrders {
                     u.formationOffset=null;u.formationAxis=null;u.formationGroup=null;u.marchSpeed=null;
                 } else if(u.isAttacking){u.isAttacking=false;this.game.clearRetaliation(u);}
             }
+            // If no member can productively pursue the mobile threat, it has been
+            // driven off. Keep individual retry protection, but release the shared
+            // emergency so the original assignment can resume.
+            if(focus&&focus.type!=='tower'&&!units.some(u=>u.attackTarget===focus))g.threats.shift();
             if(fighting){
                 if(!g.fighting){g.anchor=center;g.fighting=true;}
                 // Non-engaging members wait nearby; priests still heal in range.
