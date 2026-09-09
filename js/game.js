@@ -1292,7 +1292,8 @@ class Game {
                     unit.targetX = currentTarget.x;
                     unit.targetZ = currentTarget.z;
 
-                    const moveSpeed = this.moveSpeedOf(unit, deltaTime) * deltaTime / 1000 * 3;
+                    const moveSpeed = Math.min(this.moveSpeedOf(unit, deltaTime) * deltaTime / 1000 * 3,
+                        off && dist > attackRange + FORM_DROP ? adist : dist - attackRange);
                     unit.x += (adx / adist) * moveSpeed;
                     unit.z += (adz / adist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);
@@ -1399,7 +1400,9 @@ class Game {
                     u._healFxTimer = 0;
                     this.renderer.spawnDust(patient.x, 1.2, patient.z, 6, 0x8ef0a8);
                 }
-            } else if (!u.isMoving) {
+            } else if (!u.isMoving && !u._standingOrder) {
+                // A formation owns its priests' movement. Heal within reach while
+                // marching/holding; do not alternate patient pursuit with the slot.
                 // Idle with someone hurt nearby: walk over (generic mover drives it).
                 u.isMoving = true;
                 u.targetX = patient.x + (Math.random() - 0.5) * 2;
@@ -5017,7 +5020,7 @@ class Game {
                     const aim = this.formationAim(unit, unit.targetX, unit.targetZ);
                     const adx = aim.x - unit.x, adz = aim.z - unit.z;
                     const adist = Math.sqrt(adx * adx + adz * adz) || 1;
-                    const moveSpeed = this.moveSpeedOf(unit, deltaTime) * deltaTime / 1000 * 3;
+                    const moveSpeed = Math.min(adist, this.moveSpeedOf(unit, deltaTime) * deltaTime / 1000 * 3);
                     unit.x += (adx / adist) * moveSpeed;
                     unit.z += (adz / adist) * moveSpeed;
                     this.renderer.updateUnitPosition(unit);

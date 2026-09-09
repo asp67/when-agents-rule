@@ -725,6 +725,13 @@ class Director {
                 const margin = DIR_INTERRUPT_MARGIN * (this.lapse > 1 ? 2 : 1);
                 const current = this.shot && cands.find(c => c.key === this.shot.key);
                 const priority = top.priority || 0, currentPriority = current?.priority || 0;
+                const lastHit = this.shot?.subject?.combat
+                    ? this.encounters.find(e => e.key === this.shot.key)?.lastHit : null;
+                // Leave time to read the outcome after the final strike. This is
+                // viewer time, independent of simulation speed or timelapse pace.
+                // Keep the aftermath out of the candidate list: it must never
+                // compete with actual fighting elsewhere or attract a fresh cut.
+                const aftermath = lastHit != null && now < lastHit + 2000 && currentPriority < 2;
                 const speed = g.effectiveSimSpeed ? g.effectiveSimSpeed() : 1;
                 const fightHold = Math.max(300, 800 / speed);
                 const urgent = priority > currentPriority
@@ -733,10 +740,10 @@ class Director {
                 const sameCombat = !different && priority > 0;
                 const ended = this.shot?.subject?.combat && !current && age >= 350;
                 // Compare against what is on screen NOW, not its score when it began.
-                const better = !this.shot || urgent || ended
+                const better = (!aftermath || (different && priority >= 2)) && (!this.shot || urgent || ended
                     || (expired && (!sameCombat || top.type === 'brawl'))
                     || (different && age >= (priority >= 2 ? fightHold : DIR_MIN_SHOT_MS * this.lapse)
-                        && priority >= currentPriority && top.adj > (current?.adj || 0) + (priority >= 2 ? 12 : margin));
+                        && priority >= currentPriority && top.adj > (current?.adj || 0) + (priority >= 2 ? 12 : margin)));
                 if (better && (!this.shot || this.shot.type !== 'selected' || !g._camFollow)) {
                     const pose = top.make();
                     if (pose) {

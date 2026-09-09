@@ -136,6 +136,8 @@ test('stale damage stops qualifying as combat even when both units survive', () 
     const { director: d, duel, hit } = setup();
     const f = duel(); hit(f, 100000); d.update(100000);
     f.attacker.isAttacking = false; d.update(101600);
+    assert.equal(d.fights(101600).length, 0, 'aftermath does not count as live combat');
+    d.update(102100);
     assert.notEqual(d.shot.type, 'brawl');
 });
 
@@ -176,4 +178,23 @@ test('sustained damage is aggregated without forcing a full evaluation on every 
     const next = d._nextEval;
     for (let t = 100001; t < 100050; t++) hit(f, t);
     assert.equal(d._nextEval, next);
+});
+
+test('battle aftermath stays for two viewer seconds after the last strike, even after shot expiry',()=>{
+ for(const speed of [1,4])for(const lapse of [1,8]){
+  const {director:d,duel,hit}=setup(speed,lapse);
+  const f=duel();hit(f,100000);d.update(100001);const shot=d.shot;
+  hit(f,100100);f.target.health=0;f.attacker.isAttacking=false;shot.until=100101;
+  d.update(100200);assert.equal(d.shot,shot);
+  d.update(102099);assert.equal(d.shot,shot);
+  d.update(102200);assert.notEqual(d.shot,shot);
+ }
+});
+
+test('an off-scene fight immediately interrupts the aftermath pause',()=>{
+ const {director:d,duel,hit}=setup();const f=duel();hit(f,100000);d.update(100001);
+ const oldKey=d.shot.key;hit(f,100100);f.target.health=0;f.attacker.isAttacking=false;
+ d.update(100200);assert.equal(d.shot.key,oldKey);
+ const other=duel(250,2);hit(other,100201);const pose=d.update(100217);
+ assert.notEqual(d.shot.key,oldKey);assert.equal(d.shot.type,'brawl');assert.equal(pose.cut,true);
 });

@@ -580,14 +580,14 @@
                 }
                 if (snowCap) prop('sphere', [1, 7, 5], 'white', [0.93, 0.96, 1], x, s * 0.78, z, s * 0.72, s * 0.2, s * 0.72);
             };
-            const pebble = (tint) => {
+            const pebble = (tint, texture='worldStone') => {
                 const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                 const s = 0.14 + rng() * 0.14;
-                prop('sphere', [1, 6, 4], 'worldStone', tint, x, s * 0.5, z, s * 1.4, s * 0.6, s, rng() * 6.28);
+                prop('sphere', [1, 6, 4], texture, tint, x, s * 0.5, z, s * 1.4, s * 0.6, s, rng() * 6.28);
             };
             if (theme === 'winter') {
                 for (let i = 0; i < 220; i++) bush(true);
-                for (let i = 0; i < 150; i++) pebble([0.62, 0.68, 0.76]);
+                for (let i = 0; i < 150; i++) pebble(Array(3).fill(.40+.10*i/149),'white');
             } else if (theme === 'desert') {
                 for (let i = 0; i < 180; i++) bush(false);
                 for (let i = 0; i < 150; i++) pebble([0.82, 0.6, 0.42]); // rust rocks
@@ -600,7 +600,7 @@
                     const s = 0.11 + rng() * 0.08;
                     prop('sphere', [1, 5, 4], 'white', petals[(rng() * 3) | 0], x, 0.16, z, s, s, s);
                 }
-                for (let i = 0; i < 150; i++) pebble([0.72, 0.68, 0.62]);
+                for (let i = 0; i < 150; i++) pebble(Array(3).fill(.40+.10*i/149),'white');
             }
             this._props = props;
         }
@@ -2092,6 +2092,7 @@
             gl.bindTexture(gl.TEXTURE_2D,this.tex.groundDetail || this.tex.white);
             gl.uniform1i(this.prog.uniforms.uGroundDetail,3);
             gl.uniform1f(this.prog.uniforms.uPebbleGround,this.graphicsQuality === 'cinematic' && this._theme !== 'winter' ? 1 : 0);
+            gl.uniform1f(this.prog.uniforms.uGrayGravel,this._theme === 'desert' ? 0 : 1);
             gl.uniform4fv(this.prog.uniforms.uGroundCover,this._groundCover || [0,0,0,0]);
             gl.activeTexture(gl.TEXTURE0);
 

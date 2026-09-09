@@ -47,7 +47,7 @@ class StandingOrders {
     issue(owner,units,to,options={}) {
         const g={owner,units:units.slice(),to:{...to},from:this.center(units),mode:options.mode||'march',
             token:units[0]._orderToken,shape:options.formation||null,pace:options.matchSpeed||'',
-            attack:!!options.attack,order:options.attack||options.target?'attack_target':'move_units',
+            attack:!!(options.attack||options.target),order:options.attack||options.target?'attack_target':'move_units',
             targets:options.targets||'any',target:options.target||null,slots:new Map(),blocked:new Map(),chases:new Map(),fighting:false};
         for(const u of units){u._standingOrder=g;u._orderToken=g.token;this.game.clearRetaliation(u);u.attackTarget=null;u.isAttacking=false;u.attackMove=null;}
         this.groups.add(g);this.reform(g,g.to);
@@ -110,8 +110,13 @@ class StandingOrders {
         const form=this.manager.applyFormation(this.game,units,to.x,to.z,g.shape);
         this.manager.applyMatchSpeed(units,g.pace||(form.applied?'slowestUnit':''));
         g.slots=this.placeSlots(units,to,form.offsets);g.leg={...to};
+        g.holdSlots=null;
+        g.supportSlots=null;g.supportAnchor=null;
+        g.settled=false;
         for(const u of units){
             const slot=g.slots.get(u);
+            u._formationPatient=null;u._patientStand=null;
+            u._healingFormation=null;
             // Repack the surviving formation, but do not interrupt valid fights.
             // The new slots become their return positions when combat ends.
             if(preserveCombat&&u.isAttacking&&u.attackTarget?.health>0){
@@ -134,6 +139,35 @@ class StandingOrders {
         }
         u.attackTarget=null;u.isAttacking=false;this.game.clearRetaliation(u);g.chases.delete(u);
     }
+    supportPosition(g,u,units,fallback) {
+        // The standing order owns support movement as well as combat movement.
+        // Keep one patient until healed/lost; nearest-patient scans every slice
+        // otherwise turn a priest around whenever two soldiers pass each other.
+        const fighters=units.filter(p=>p.attackTarget&&p.unitType!=='support');
+        const army=this.center(fighters.length?fighters:units);
+        const valid=p=>p&&p!==u&&units.includes(p)&&p.owner===u.owner&&p.health>0
+            &&p.health<p.maxHealth&&Math.hypot(p.x-army.x,p.z-army.z)<=StandingOrders.CHASE_RADIUS;
+        let patient=u._formationPatient;
+        if(!valid(patient)){
+            patient=units.filter(valid).sort((a,b)=>Math.hypot(a.x-u.x,a.z-u.z)-Math.hypot(b.x-u.x,b.z-u.z))[0];
+            u._formationPatient=patient||null;u._patientStand=null;
+        }
+        if(!patient)return fallback;
+        // Already close enough: stand still and channel, do not march into the
+        // patient's collision radius. Replan only when the patient moves away.
+        if(Math.hypot(patient.x-u.x,patient.z-u.z)<=3.3)return {x:u.x,z:u.z};
+        const old=u._patientStand;
+        if(old&&Math.hypot(old.px-patient.x,old.pz-patient.z)<1)return old;
+        const angle=Math.atan2(u.z-patient.z,u.x-patient.x);
+        for(let i=0;i<16;i++){
+            const a=angle+i*Math.PI/8;
+            const x=patient.x+Math.cos(a)*2.8,z=patient.z+Math.sin(a)*2.8;
+            const p=this.game.clampSlot(x,z);
+            if(Math.hypot(p.x-x,p.z-z)>.01)continue;
+            u._patientStand={x,z,px:patient.x,pz:patient.z};return u._patientStand;
+        }
+        return fallback;
+    }
     update(dt) {
         this.time+=dt;this.scan+=dt;
         // Membership changes invalidate intent on the next simulation slice, even
@@ -149,7 +183,13 @@ class StandingOrders {
             // across the formation instead of repeating it for every soldier.
             const visibility=new Map();
             const visible=e=>{if(!visibility.has(e))visibility.set(e,this.visible(g,e));return visibility.get(e);};
-            if(g.target&&this.visible(g,g.target)&&g.target.health<=0)g.target=null;
+            if(g.target&&this.visible(g,g.target)&&g.target.health<=0){
+                g.target=null;
+                // The named objective may have drawn the army far beyond its
+                // original combat anchor. Continue the assault around arrival,
+                // with normal local chase limits, rather than the departure point.
+                if(g.fighting){g.anchor=center;g.holdSlots=null;}
+            }
             for(const [u,targets]of g.blocked){
                 // Time alone must not restart the same hopeless chase. Re-arm
                 // when the enemy is meaningfully closer (or back in striking range).
@@ -237,21 +277,63 @@ class StandingOrders {
             if(fighting){
                 if(!g.fighting){g.anchor=center;g.fighting=true;}
                 // Non-engaging members wait nearby; priests still heal in range.
+                // Reserve legal, distinct places once per engagement/repack. A
+                // clamped point per member can collapse several ranks onto one
+                // building edge, while old march axes steer away from the hold.
+                if(!g.holdSlots){
+                    const offsets=new Map(units.map(u=>{const s=g.slots.get(u);
+                        return [u,{x:(s?.x??g.leg.x)-g.leg.x,z:(s?.z??g.leg.z)-g.leg.z}];}));
+                    g.holdSlots=this.placeSlots(units,g.anchor,offsets);
+                }
+                // Priests travel with the active ranged ranks, even with no
+                // wounded patient. The old engagement anchor is a chase boundary,
+                // not a place to leave support while an assault advances.
+                const support=units.filter(u=>u.unitType==='support');
+                if(support.length){
+                    const fighters=units.filter(u=>u.attackTarget&&u.unitType!=='support');
+                    const ranged=fighters.filter(u=>u.range>1);
+                    const escorts=ranged.length?ranged:fighters;
+                    const body=this.center(escorts),enemy=this.center(escorts.map(u=>u.attackTarget));
+                    const dx=enemy.x-body.x,dz=enemy.z-body.z,d=Math.hypot(dx,dz)||1;
+                    const rear={x:body.x-dx/d*3,z:body.z-dz/d*3};
+                    if(!g.supportSlots||!g.supportAnchor||Math.hypot(rear.x-g.supportAnchor.x,rear.z-g.supportAnchor.z)>2){
+                        g.supportSlots=this.placeSlots(support,rear,null);g.supportAnchor=rear;
+                    }
+                }
                 for(const u of units)if(!u.attackTarget){
-                    const slot=g.slots.get(u),dx=(slot?.x??g.to.x)-g.leg.x,dz=(slot?.z??g.to.z)-g.leg.z;
-                    const hold=this.game.clampSlot(g.anchor.x+dx,g.anchor.z+dz);
-                    u.targetX=hold.x;u.targetZ=hold.z;u.isMoving=Math.hypot(u.x-hold.x,u.z-hold.z)>1;
+                    const hold=u.unitType==='support'?this.supportPosition(g,u,units,g.supportSlots.get(u)):g.holdSlots.get(u);
+                    u.formationOffset=null;u.formationAxis=null;u.formationGroup=null;u.marchSpeed=null;
+                    u.targetX=hold.x;u.targetZ=hold.z;u.isMoving=Math.hypot(u.x-hold.x,u.z-hold.z)>(u.unitType==='support'?.3:1);
                 }
             }else{
                 if(g.fighting){g.fighting=false;this.reform(g,g.to);}
                 // Arrival does not erase the order. Patrol waits for every survivor,
                 // including the slowest priest, before reversing the route.
                 const arrived=units.every(u=>{const s=g.slots.get(u);return s&&Math.hypot(u.x-s.x,u.z-s.z)<=1.6;});
+                if(arrived&&g.mode!=='patrol')g.settled=true;
                 if(arrived&&g.target&&!this.visible(g,g.target))g.target=null;
                 if(arrived&&g.mode==='patrol'&&Math.hypot(g.to.x-g.from.x,g.to.z-g.from.z)>2){
                     [g.to,g.from]=[g.from,g.to];this.reform(g,g.to);
                 }else for(const u of units){
                     const slot=g.slots.get(u);if(!slot)continue;
+                    if(g.settled&&u.unitType==='support'){
+                        // A settled formation lends its priest to nearby patients.
+                        // This branch owns the whole trip, including the return;
+                        // ordinary slot recovery must not recall it between heals.
+                        const hold=this.supportPosition(g,u,units,slot);
+                        if(!u._formationPatient&&!u._healingFormation)continue;
+                        if(!u._healingFormation)u._healingFormation={
+                            formationOffset:u.formationOffset,formationAxis:u.formationAxis,
+                            formationGroup:u.formationGroup,marchSpeed:u.marchSpeed};
+                        if(!u._formationPatient&&Math.hypot(u.x-slot.x,u.z-slot.z)<=.5){
+                            Object.assign(u,u._healingFormation);u._healingFormation=null;u.isMoving=false;
+                            continue;
+                        }
+                        u.formationOffset=null;u.formationAxis=null;u.formationGroup=null;u.marchSpeed=null;
+                        u.targetX=hold.x;u.targetZ=hold.z;
+                        u.isMoving=Math.hypot(u.x-hold.x,u.z-hold.z)>.3;
+                        continue;
+                    }
                     if(!u.isMoving&&Math.hypot(u.x-slot.x,u.z-slot.z)>1.6){u.targetX=slot.x;u.targetZ=slot.z;u.isMoving=true;}
                 }
             }

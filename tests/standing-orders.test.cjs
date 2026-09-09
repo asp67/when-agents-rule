@@ -255,3 +255,111 @@ test('an uncatchable retaliatory threat is abandoned and the scout assignment re
  assert.equal(g.to.x,80);assert.ok(u.isMoving);
  h.g.noteRetaliation(u,raider);assert.equal(u.attackTarget,raider); // new damage is a renewed threat
 });
+
+test('formation priest does not alternate between its hold and a distant patient',()=>{
+ const h=setup(),p=h.unit('priest'),w=h.unit('warrior',10);w.health=50;
+ h.owner.units.push(p,w);h.g.getOwner=()=>h.owner;h.g.recordBattleHealing=()=>{};
+ h.issue('guard',{x:0,z:0});p.isMoving=false;p.targetX=0;p.targetZ=0;
+ h.g.updateHealing(50);assert.equal(p.isMoving,false);assert.equal(p.targetX,0);
+ w.x=2;h.g.updateHealing(50);assert.ok(w.health>50,'still heals within reach');
+ p._standingOrder=null;w.x=10;h.g.updateHealing(50);assert.equal(p.isMoving,true,'unassigned priests still approach patients');
+});
+
+test('combat hold releases old marching guidance and reserves separate places',()=>{
+ const h=setup(),p=h.unit('priest'),w=h.unit();h.owner.units.push(p,w);
+ const group=h.issue();h.rival(10);h.step();
+ assert.equal(group.fighting,true);assert.equal(p.formationAxis,null);assert.equal(p.formationGroup,null);
+ const hold=group.holdSlots.get(p);h.step();assert.equal(group.holdSlots.get(p),hold);
+ assert.ok(Math.hypot(hold.x-group.holdSlots.get(w).x,hold.z-group.holdSlots.get(w).z)>1.8);
+});
+
+test('fast riders cannot overshoot a nearby resting slot or melee target',()=>{
+ const h=setup(),u=h.unit('cavalry',0,0,20);h.owner.units.push(u);
+ Object.assign(u,{isMoving:true,targetX:.7,targetZ:0});h.g.updateUnitMovement(100);
+ assert.equal(u.x,.7);h.g.updateUnitMovement(100);assert.equal(u.isMoving,false);
+ const e=h.rival(2.7);Object.assign(u,{isAttacking:true,attackTarget:e});h.g.updateCombat(100);
+ assert.ok(Math.abs(u.x-1.2)<1e-8);assert.equal(u.attackTarget,e);
+});
+
+test('named building assault continues through nearby buildings and units, then regroups',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);
+ const building=x=>({owner:'b',type:'town_center',x,z:0,health:100,maxHealth:100});
+ const first=building(5),second=building(12),hidden=building(100);
+ h.g.getAllBuildings=()=>[first,second,hidden];
+ const group=h.issue('march',{x:5,z:0},{target:first});h.step();assert.equal(u.attackTarget,first);
+ first.health=0;h.step();assert.equal(u.attackTarget,second);assert.equal(group.order,'attack_target');
+ const worker=h.rival(15);worker.type='worker';second.health=0;h.step();assert.equal(u.attackTarget,worker);
+ worker.health=0;h.step();assert.equal(u.attackTarget,null);assert.equal(group.fighting,false);
+ assert.ok(u.formationGroup,'rebuilds formation when local targets are exhausted');
+});
+
+test('completing a distant named objective anchors continuation at the arrived army',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);
+ h.g.aiManager.isVisibleTo=()=>true;
+ const first={owner:'b',type:'town_center',x:30,z:0,health:100};
+ const next={...first,x:160},far={...first,x:240};h.g.getAllBuildings=()=>[first,next,far];
+ const group=h.issue('march',{x:150,z:0},{target:first});h.step();assert.equal(u.attackTarget,first);
+ u.x=145;first.x=150;first.health=0;h.step();assert.equal(u.attackTarget,next);assert.equal(group.anchor.x,145);
+ next.health=0;h.step();assert.equal(u.attackTarget,null,'does not turn continuation into a map-wide hunt');
+});
+
+test('ordinary movement does not become an unsolicited building assault',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);
+ h.g.getAllBuildings=()=>[{owner:'b',type:'town_center',x:5,z:0,health:100}];
+ h.issue();h.step();assert.equal(u.attackTarget,null);
+});
+
+test('formation priest reaches wounded comrades thirty units ahead and channels without reversing',()=>{
+ const h=setup(),p=h.unit('priest',0,0,2),w=h.unit('warrior',30);w.health=20;
+ h.owner.units.push(p,w);h.g.getOwner=()=>h.owner;h.g.recordBattleHealing=()=>{};h.g.renderer.spawnDust=()=>{};
+ const group=h.issue();h.rival(31);let previous=0;
+ for(let i=0;i<120;i++){
+  h.step(50);h.g.updateHealing(50);
+  assert.ok(p.x>=previous-.001,'priest must not return toward original hold');previous=p.x;
+ }
+ assert.ok(Math.hypot(p.x-w.x,p.z-w.z)<=3.5);assert.ok(w.health>20);assert.equal(p.attackTarget,null);
+ assert.equal(group.fighting,true);
+});
+
+test('formation support keeps its patient and picks a legal nearby healing position',()=>{
+ const h=setup(),p=h.unit('priest'),a=h.unit('warrior',30),b=h.unit('warrior',32);
+ a.health=b.health=50;h.owner.units.push(p,a,b);const g=h.issue();g.anchor={x:0,z:0};
+ h.g.clampSlot=(x,z)=>x<30?{x:35,z}:({x,z});
+ const position=h.g._standingOrders.supportPosition(g,p,g.units,{x:0,z:0});
+ assert.ok(position.x>=30);assert.ok(Math.hypot(position.x-a.x,position.z-a.z)<3.5);
+ b.x=5;h.g._standingOrders.supportPosition(g,p,g.units,{x:0,z:0});assert.equal(p._formationPatient,a);
+ a.health=100;h.g._standingOrders.supportPosition(g,p,g.units,{x:0,z:0});assert.equal(p._formationPatient,b);
+});
+
+test('healthy priests follow advancing ranged ranks and regroup only with the army',()=>{
+ const h=setup(),p=h.unit('priest'),a=h.unit('archer',10);a.range=12;
+ h.owner.units.push(p,a);const e=h.rival(20);h.g.aiManager.isVisibleTo=()=>true;
+ const group=h.issue('march',{x:100,z:0},{target:e});h.step();
+ const originalHold=group.holdSlots.get(p).x;
+ a.x=60;e.x=70;h.step();assert.ok(p.targetX>50);assert.ok(p.targetX<60);
+ assert.equal(p.formationGroup,null);assert.equal(p.attackTarget,null);
+ a.health=50;h.step();assert.equal(p._formationPatient,a);
+ a.health=100;h.step();assert.ok(p.targetX>50,'finishing healing must not send priest back');
+ assert.notEqual(p.targetX,originalHold);
+ e.health=0;h.step();assert.equal(group.fighting,false);assert.ok(p.formationGroup);
+ assert.equal(p.targetX,group.slots.get(p).x);
+});
+
+test('settled block priest completes an out-of-range heal before returning to its rear slot',()=>{
+ const h=setup(),p=h.unit('priest',0,0,2);
+ const soldiers=Array.from({length:12},()=>h.unit());h.owner.units.push(...soldiers,p);
+ h.g.getOwner=()=>h.owner;h.g.recordBattleHealing=()=>{};h.g.renderer.spawnDust=()=>{};
+ const g=h.issue('guard',{x:40,z:0},{formation:'block'});
+ for(const u of g.units){Object.assign(u,g.slots.get(u));u.isMoving=false;}
+ const patient=soldiers.sort((a,b)=>Math.hypot(b.x-p.x,b.z-p.z)-Math.hypot(a.x-p.x,a.z-p.z))[0];
+ assert.ok(Math.hypot(patient.x-p.x,patient.z-p.z)>3.5);patient.health=80;
+ let distance=Math.hypot(patient.x-p.x,patient.z-p.z),healed=false;
+ for(let i=0;i<600;i++){
+  h.step(50);h.g.updateHealing(50);
+  const next=Math.hypot(patient.x-p.x,patient.z-p.z);
+  if(!healed&&patient.health<100)assert.ok(next<=distance+.001,'must not return to slot before healing finishes');
+  distance=next;if(patient.health===100)healed=true;
+ }
+ assert.equal(healed,true);const slot=g.slots.get(p);
+ assert.ok(Math.hypot(p.x-slot.x,p.z-slot.z)<.5);assert.equal(g.fighting,false);
+});

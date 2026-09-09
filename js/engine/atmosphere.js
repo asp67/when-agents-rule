@@ -93,7 +93,7 @@
         #endif
         uniform sampler2D uTex, uShadowMap, uCoast, uGroundDetail;
         uniform sampler2D uClutterVisibility;
-        uniform float uClutterMapSize, uClutterFog, uPebbleGround;
+        uniform float uClutterMapSize, uClutterFog, uPebbleGround, uGrayGravel;
         uniform mediump float uVegetation;
         varying mediump float vGrassTip, vPebble;
         uniform vec4 uGroundCover;
@@ -166,7 +166,9 @@
             vec4 t = texture2D(uTex, vUv);
             vec3 base = t.rgb * uTint;
             if (uVegetation > 0.5) base *= mix(0.90,1.06,vGrassTip);
-            if (uVegetation > 0.5 && vPebble > 0.5) base = mix(vec3(.19,.175,.15),vec3(.32,.30,.265),vUv.y);
+            if (uVegetation > 0.5 && vPebble > 0.5) base = mix(
+                mix(vec3(.19,.175,.15),vec3(.32,.30,.265),vUv.y),
+                vec3(mix(.40,.50,vUv.y)),uGrayGravel);
             vec3 n = normalize(vNormal);
             vec3 eye = normalize(uEye-vWorld);
             float water = uMaterial > 1.5 && uMaterial < 2.5 ? 1.0
@@ -185,7 +187,8 @@
                 float patch=clamp((.5+.28*sin(vWorld.x*.047+vWorld.z*.023)+.22*sin(vWorld.z*.061-vWorld.x*.019)-.3)/.4,0.0,1.0);
                 float gravel=texture2D(uGroundDetail,vWorld.xz/16.0).b;
                 float dry=1.0-smoothstep(.45,.9,cover);
-                base=mix(base,base*.56,gravel*dry*patch*(1.0-water)*uPebbleGround);
+                vec3 gravelColor=mix(base*.56,vec3(.45),uGrayGravel);
+                base=mix(base,gravelColor,gravel*dry*patch*(1.0-water)*uPebbleGround);
             }
             float sun = max(dot(n,uSunDir),0.0);
             vec3 legacy = base*(uAmbient + uSunColor*sun);
