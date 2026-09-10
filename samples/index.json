@@ -284,6 +284,56 @@
    ],
    "bytes": 7168419,
    "default": false
+  },
+  {
+   "file": "2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl",
+   "matchId": "match-20260909-211941",
+   "date": 1788981581877,
+   "duration": "121:23",
+   "turns": 723,
+   "outcome": "last_standing",
+   "seed": "rmtuhfyojlg3u",
+   "difficulty": "medium",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v98",
+   "build": 834,
+   "winner": "OR1 gemini3.8-flash",
+   "players": [
+    {
+     "seat": 0,
+     "name": "OR1 gemini3.8-flash",
+     "model": "gemini-flash-latest",
+     "civ": "Egyptians",
+     "power": 3776,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "OR2 deepseek-v4-flash-pro",
+     "model": "deepseek/deepseek-v4-flash",
+     "civ": "Greeks",
+     "power": 190,
+     "winner": false
+    },
+    {
+     "seat": 3,
+     "name": "DGX Qwen3.8-flash-next",
+     "model": "Qwen3.8",
+     "civ": "Yamato",
+     "power": 142,
+     "winner": false
+    },
+    {
+     "seat": 2,
+     "name": "OR3 gpt-5.6-luna",
+     "model": "openai/gpt-5.6-luna",
+     "civ": "Persians",
+     "power": 106,
+     "winner": false
+    }
+   ],
+   "bytes": 11797354,
+   "default": false
   }
  ]
 }

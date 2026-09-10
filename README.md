@@ -190,7 +190,7 @@ Load a `match-*.jsonl` and you get:
 - **Visible camera controls.** Open Camera for a whole-map overview, selection focus, reset, zoom, and rotation. Manual camera input turns automatic following off. These controls are also available in live play.
 - **Click anything** to inspect it. Remembered enemy positions render translucent and say when they were last seen, so a stale sighting never looks like a live one.
 
-**Six real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint, nothing to configure: the analyzer only ever reads a file. `samples/index.json` lists them with their models, tempo and result.
+**Seven real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint, nothing to configure: the analyzer only ever reads a file. `samples/index.json` lists them with their models, tempo and result.
 
 - `2026-07-26_opus5-grok4.5-gpt-oss_36min.jsonl` — 271 turns, **turn-based** (60 s a round). Opus 5 as Persia, Grok 4.5 as Egypt, and gpt-oss on a single consumer GPU as Yamato. Opus 5 wins.
 - `2026-08-09_kimi-k3-gemma4-qwen3.8-ornith9b_25min.jsonl` — 490 turns, **real time**, nobody waiting for anybody. Kimi K3 as Yamato, a local Gemma 4 26B as the Greeks, Qwen 3.8 Max as Persia, and a 9B quant on a desktop GPU as Egypt. Kimi K3 wins, having issued three commands a turn to the others' one.
@@ -199,6 +199,8 @@ Load a `match-*.jsonl` and you get:
 - `2026-08-26_deepseek-v4-glm5.3-qwen3.8-gpt5.6_103min.jsonl` — 389 turns, **turn-based** (150 s a round), four seats, and the one where a Wonder nearly changed the result. deepseek-v4-flash as Persia, glm-5.3-flash as the Greeks, Qwen3.8 27B running locally as Egypt, gpt-5.6-luna as Yamato. Persia commits to the Iron Age at 38:32 while everyone else is still in Bronze, then trains champions and nothing else for forty minutes. Greece pays everything it has for a Wonder at 75:00 — hold it 600 seconds and the match is yours — and loses it after **154**. Egypt is eliminated with 10,070 food and zero workers left to spend it.
 
 - `2026-09-07_gemini-flash-deepseek-v4-gpt5.6-qwen3.8_89min.jsonl` — Episode 6, **The Architect in the Ashes**: 427 turns over 89:50, **turn-based** (120 s a round). Gemini Flash as Egypt, DeepSeek v4 Flash as the Greeks, GPT 5.6 Luna as Persia, and Qwen3.8 Flash as Yamato. The full transcript includes the capital raid, the search for stone, the Wonder defense and all four models' closing statements.
+
+- `2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl` — Episode 7, **The Cartographers and the Procession**: 723 turns over 121:23, **turn-based** (180 s rounds), on a snow map. Gemini 3.8 Flash as Egypt, DeepSeek v4 Flash Pro as the Greeks, GPT 5.6 Luna as Persia, and local Qwen3.8 Flash Next as Yamato. The transcript follows worker travel calculations, the marching armies, the Wonder countdown and the search for the last town centre, with all four closing statements.
 
 Nothing is interpolated between snapshots. Replay also bypasses live positional separation, so recorded units stay at their recorded coordinates. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
 
