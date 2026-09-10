@@ -150,11 +150,12 @@ class StandingOrders {
         // otherwise turn a priest around whenever two soldiers pass each other.
         const fighters=units.filter(p=>p.attackTarget&&p.unitType!=='support');
         const army=this.center(fighters.length?fighters:units);
-        const valid=p=>p&&p!==u&&units.includes(p)&&p.owner===u.owner&&p.health>0
-            &&p.health<p.maxHealth&&Math.hypot(p.x-army.x,p.z-army.z)<=StandingOrders.CHASE_RADIUS;
+        const valid=p=>p&&p!==u&&g.owner.units.includes(p)&&p.owner===u.owner&&p.health>0
+            &&p.health<p.maxHealth&&Math.hypot(p.x-army.x,p.z-army.z)<=StandingOrders.CHASE_RADIUS
+            &&(units.includes(p)||Math.hypot(p.x-u.x,p.z-u.z)<24);
         let patient=u._formationPatient;
         if(!valid(patient)){
-            patient=units.filter(valid).sort((a,b)=>Math.hypot(a.x-u.x,a.z-u.z)-Math.hypot(b.x-u.x,b.z-u.z))[0];
+            patient=g.owner.units.filter(valid).sort((a,b)=>Math.hypot(a.x-u.x,a.z-u.z)-Math.hypot(b.x-u.x,b.z-u.z))[0];
             u._formationPatient=patient||null;u._patientStand=null;
         }
         if(!patient)return fallback;
@@ -329,12 +330,13 @@ class StandingOrders {
                     [g.to,g.from]=[g.from,g.to];this.reform(g,g.to);
                 }else for(const u of units){
                     const slot=g.slots.get(u);if(!slot)continue;
-                    if(g.settled&&u.unitType==='support'){
-                        // A settled formation lends its priest to nearby patients.
+                    if(u.unitType==='support'&&(g.settled||!u.isMoving||u._healingFormation)){
+                        // A priest that has stopped can help before the last rank
+                        // arrives. Nearby friendlies need not share its order.
                         // This branch owns the whole trip, including the return;
                         // ordinary slot recovery must not recall it between heals.
                         const hold=this.supportPosition(g,u,units,slot);
-                        if(!u._formationPatient&&!u._healingFormation)continue;
+                        if(u._formationPatient||u._healingFormation){
                         if(!u._healingFormation)u._healingFormation={
                             formationOffset:u.formationOffset,formationAxis:u.formationAxis,
                             formationGroup:u.formationGroup,marchSpeed:u.marchSpeed};
@@ -346,6 +348,7 @@ class StandingOrders {
                         u.targetX=hold.x;u.targetZ=hold.z;
                         u.isMoving=Math.hypot(u.x-hold.x,u.z-hold.z)>.3;
                         continue;
+                        }
                     }
                     if(!u.isMoving&&Math.hypot(u.x-slot.x,u.z-slot.z)>1.6){u.targetX=slot.x;u.targetZ=slot.z;u.isMoving=true;}
                 }

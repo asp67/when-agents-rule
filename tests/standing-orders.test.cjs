@@ -365,6 +365,30 @@ test('settled block priest completes an out-of-range heal before returning to it
  assert.ok(Math.hypot(p.x-slot.x,p.z-slot.z)<.5);assert.equal(g.fighting,false);
 });
 
+test('a stopped formation priest heals nearby friendlies outside its order while another rank is late',()=>{
+ const h=setup(),p=h.unit('priest',0,0,2),late=h.unit('warrior',-30,0,.1);
+ h.owner.units.push(p,late);
+ h.g.getOwner=()=>h.owner;h.g.recordBattleHealing=()=>{};h.g.renderer.spawnDust=()=>{};
+ const group=h.issue('guard',{x:0,z:0});
+ Object.assign(p,group.slots.get(p));p.isMoving=false;
+ const patient=h.unit('warrior',p.x+10,p.z);patient.health=80;h.owner.units.push(patient);
+ const enemy=h.rival(p.x+2,p.z);enemy.health=20;h.g.aiManager.isVisibleTo=()=>false;
+ let healed=false;
+ for(let i=0;i<400;i++){h.step(50);h.g.updateHealing(50);if(patient.health===100)healed=true;}
+ assert.equal(healed,true);assert.equal(enemy.health,20);
+ assert.equal(group.settled,false,'healing must not wait for the distant rank');
+ assert.ok(Math.hypot(p.x-group.slots.get(p).x,p.z-group.slots.get(p).z)<.5);
+ assert.ok(p.formationGroup,'restores formation guidance after the trip');
+});
+
+test('formation healing does not divert a marching priest or chase distant unrelated patients',()=>{
+ const h=setup(),p=h.unit('priest'),w=h.unit('warrior',2);h.owner.units.push(p,w);
+ const group=h.issue('scout',{x:100,z:0});const patient=h.unit('warrior',10);patient.health=50;h.owner.units.push(patient);
+ h.step(500);assert.equal(p._formationPatient,null);assert.equal(p.targetX,group.slots.get(p).x);
+ patient.x=200;const fallback={x:0,z:0};
+ assert.equal(h.g._standingOrders.supportPosition(group,p,group.units,fallback),fallback);
+});
+
 test('repeated hits on an ally do not restart a defenders failed chase',()=>{
  const h=setup(),u=h.unit(),ally=h.unit('priest',20);h.owner.units.push(u,ally);
  h.g.aiManager.isVisibleTo=()=>true;const attacker=h.rival(22);const group=h.issue('scout');
