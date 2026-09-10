@@ -6,7 +6,7 @@
     <title>When Agents Rule</title>
     <link rel="icon" href="favicon.ico?v=793" sizes="16x16 32x32 48x48 64x64 256x256">
     <link rel="icon" href="favicon.svg?v=793" type="image/svg+xml" sizes="any">
-    <link rel="stylesheet" href="css/styles.css?v=817">
+    <link rel="stylesheet" href="css/styles.css?v=836">
     <link rel="stylesheet" href="css/antiquity.css?v=801">
     <!-- ?diag=1 -- the console, on the page.
 
@@ -154,6 +154,14 @@
         </div>
         <div class="start-inscription" aria-hidden="true"><span>Ι</span><span>ΙΙ</span><span>ΙΙΙ</span><span>ΙV</span></div>
         <div class="build-stamp">
+            <details id="updateNotice" class="update-notice" hidden>
+                <summary><span data-i18n="update.available">Update available</span> · <span data-i18n="start.build">Build</span> <b id="updateBuild"></b></summary>
+                <p data-i18n="update.instructions">On the computer hosting WAR, open a terminal in the repository folder (the folder containing index.html and package.json), then run:</p>
+                <input id="updateCommand" aria-label="Git update command" readonly value="git pull --ff-only">
+                <div class="update-actions"><button id="copyUpdateCommand" type="button" data-i18n="update.copy">Copy command</button><a href="https://github.com/asp67/when-agents-rule/commits/main/" target="_blank" rel="noopener noreferrer" data-i18n="update.changes">View changes</a></div>
+                <p data-i18n="update.refresh">After the pull finishes, refresh with Ctrl+F5 (Mac: Cmd+Shift+R). ZIP download? Download the latest ZIP from GitHub instead.</p>
+                <span id="updateCopyStatus" role="status"></span>
+            </details>
             <span data-i18n="start.build">Build</span> <b id="stampBuild">–</b>
             <span class="build-stamp-dot">·</span>
             <span data-i18n="start.prompt">Prompt</span> <b id="stampPrompt">–</b>
@@ -661,8 +669,9 @@
     <script src="js/input.js?v=781"></script>
     <script src="js/director.js?v=827"></script>
     <script src="js/ui.js?v=832"></script>
-    <script src="js/game.js?v=834"></script>
+    <script src="js/game.js?v=836"></script>
     <script src="js/standing-orders.js?v=835"></script>
     <script src="js/showcase.js?v=823"></script>
+    <script src="js/update-notice.js?v=836"></script>
 </body>
 </html>

@@ -2867,6 +2867,16 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
 }
 .build-stamp b { font-weight: 600; color: var(--gold-2); }
 .build-stamp-dot { margin: 0 6px; opacity: 0.6; }
+.build-stamp:has(.update-notice:not([hidden])) { opacity: 1; }
+.update-notice { margin-bottom: 10px; letter-spacing: normal; color: var(--gold-2); }
+.update-notice[hidden] { display: none; }
+.update-notice summary { cursor: pointer; padding: 8px 10px; border: 1px solid #887044; border-radius: 6px; background: #171d25; }
+.update-notice[open] { width: min(380px, calc(100vw - 32px)); padding: 12px; box-sizing: border-box; background: #171d25; border: 1px solid #887044; border-radius: 8px; max-height: 65vh; overflow: auto; }
+.update-notice p { line-height: 1.6; color: #d6d6d6; margin: 12px 0; }
+.update-notice input { width: 100%; box-sizing: border-box; background: #0e131a; color: #fff; padding: 9px; border: 1px solid #62666d; border-radius: 4px; font-family: monospace; }
+.update-actions { display: flex; align-items: center; gap: 14px; margin-top: 10px; }
+.update-actions button { padding: 7px 10px; background: #313c43; color: #fff; border: 1px solid #62666d; border-radius: 4px; cursor: pointer; }
+.update-actions a { color: var(--gold-2); }
 
 /* Template-prompt state row: the same tells a per-slot prompt has always had,
    finally on the template every seat inherits. */
