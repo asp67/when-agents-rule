@@ -1629,7 +1629,7 @@
             for (const u of this.units) {
                 const ue = u._engine;
                 if (!ue || (u.mesh && u.mesh.visible === false) || this._cull(u.x, u.z, 6)) continue;
-                // Smoothed facing from ACTUAL motion — never from intent. Only
+                // Travel facing follows ACTUAL motion, not stale destinations. Only
                 // SOME movers maintain targetX/targetZ: game.js's attack-move march
                 // sets isMoving and advances the unit without ever touching it, and
                 // the separation/clearance passes move units too. Steering by a
@@ -1644,8 +1644,13 @@
                 const prev = this._unitPrev.get(u);
                 // isMoving gates it so the separation nudges can't spin an idle
                 // unit on the spot; the delta then says which way it truly went.
-                if (u.isMoving && prev) {
-                    const mx = u.x - prev.x, mz = u.z - prev.z;
+                const facingTarget=u.isAttacking&&u.attackTarget?.health>0?u.attackTarget:null;
+                if (facingTarget || (u.isMoving && prev)) {
+                    // A live combat target is authoritative. Friendly separation
+                    // can briefly displace a new defender away from the brawl;
+                    // that correction must not turn its body away from the enemy.
+                    const mx = facingTarget ? facingTarget.x-u.x : u.x-prev.x;
+                    const mz = facingTarget ? facingTarget.z-u.z : u.z-prev.z;
                     if (mx * mx + mz * mz > 1e-6) {
                         const want = Math.atan2(mx, mz);
                         let d = want - dir;

@@ -381,12 +381,42 @@ test('a stopped formation priest heals nearby friendlies outside its order while
  assert.ok(p.formationGroup,'restores formation guidance after the trip');
 });
 
-test('formation healing does not divert a marching priest or chase distant unrelated patients',()=>{
+test('formation healing interrupts marching but does not chase distant unrelated patients',()=>{
  const h=setup(),p=h.unit('priest'),w=h.unit('warrior',2);h.owner.units.push(p,w);
  const group=h.issue('scout',{x:100,z:0});const patient=h.unit('warrior',10);patient.health=50;h.owner.units.push(patient);
- h.step(500);assert.equal(p._formationPatient,null);assert.equal(p.targetX,group.slots.get(p).x);
+ h.step(500);assert.equal(p._formationPatient,patient);assert.notEqual(p.targetX,group.slots.get(p).x);
  patient.x=200;const fallback={x:0,z:0};
  assert.equal(h.g._standingOrders.supportPosition(group,p,group.units,fallback),fallback);
+});
+
+test('every nearby formation priest approaches and contributes healing while the body slows',()=>{
+ const h=setup(),p=h.unit('priest',0,0,2),q=h.unit('priest',-8,0,2),w=h.unit('warrior',1,0,3);
+ h.owner.units.push(p,q,w);const group=h.issue('march',{x:100,z:0});
+ const patient=h.unit('warrior',12);patient.health=10;h.owner.units.push(patient);
+ const credit=new Map();h.g.getOwner=()=>h.owner;h.g.renderer.spawnDust=()=>{};
+ h.g.recordBattleHealing=(u,hp)=>credit.set(u,(credit.get(u)||0)+hp);
+ h.step(150);assert.equal(p._formationPatient,patient);assert.equal(q._formationPatient,patient);
+ assert.ok(h.g.moveSpeedOf(w,50)<w.marchSpeed,'body slows for healing priests');
+ for(let i=0;i<800;i++){h.step(50);h.g.updateHealing(50);}
+ assert.ok(credit.get(p)>0);assert.ok(credit.get(q)>0);assert.equal(patient.health,100);
+ assert.equal(p._healingFormation,null);assert.equal(q._healingFormation,null);
+ assert.equal(p._standingOrder,group);assert.ok(p.formationGroup);assert.ok(q.formationGroup);
+});
+
+test('retaliation immediately closes toward the attacker instead of the old formation destination',()=>{
+ const h=setup(),a=h.unit('warrior'),b=h.unit('warrior',-3);h.owner.units.push(a,b);
+ h.issue('scout',{x:-100,z:0});const enemy=h.rival(8);
+ h.g.noteRetaliation(a,enemy);const before=b.x;h.step(50,true);
+ assert.equal(b.attackTarget,enemy);assert.ok(b.x>before);assert.equal(b.formationOffset,null);
+});
+
+test('live combat facing ignores an outward separation nudge but marching follows actual travel',()=>{
+ const source=fs.readFileSync(path.join(__dirname,'../js/engine/gamerenderer.js'),'utf8');
+ const fragment=source.slice(source.indexOf('const facingTarget='),source.indexOf('let d = want - dir;',source.indexOf('const facingTarget=')));
+ const facing=new Function('u','prev',fragment+'return want; }} return null;');
+ const u={x:0,z:0,isMoving:true,isAttacking:true,attackTarget:{x:10,z:0,health:100}};
+ assert.equal(facing(u,{x:1,z:0}),Math.PI/2);
+ u.isAttacking=false;assert.equal(facing(u,{x:1,z:0}),-Math.PI/2);
 });
 
 test('repeated hits on an ally do not restart a defenders failed chase',()=>{

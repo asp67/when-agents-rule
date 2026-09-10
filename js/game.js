@@ -3816,6 +3816,11 @@ class Game {
         const m = unit.marchSpeed;
         if (!(typeof m === 'number' && m > 0)) return own;
         const pace = Math.min(m, own);
+        // A priest temporarily leaves its lane to heal, but remains part of the
+        // marching body. Keep the existing regrouping pace until it returns.
+        const order=unit._standingOrder;
+        if(order&&!order.fighting&&order.units.some(p=>p.health>0&&p._standingOrder===order&&p._healingFormation))
+            return pace * Game.FORMATION_REFORM_PACE;
         // matchSpeed sets the pace of the FORMATION, not a leash on every unit. A unit
         // out of its place runs at its own speed until it FINDS that place, and is held
         // to the pace again the moment it has.
