@@ -377,7 +377,9 @@ test('a stopped formation priest heals nearby friendlies outside its order while
  for(let i=0;i<400;i++){h.step(50);h.g.updateHealing(50);if(patient.health===100)healed=true;}
  assert.equal(healed,true);assert.equal(enemy.health,20);
  assert.equal(group.settled,false,'healing must not wait for the distant rank');
- assert.ok(Math.hypot(p.x-group.slots.get(p).x,p.z-group.slots.get(p).z)<.5);
+ assert.equal(p._healingFormation,null);
+ assert.equal(p.targetX,group.slots.get(p).x);assert.equal(p.targetZ,group.slots.get(p).z);
+ assert.equal(p.marchSpeed,late.marchSpeed,'return respects the slow rank instead of racing to the destination');
  assert.ok(p.formationGroup,'restores formation guidance after the trip');
 });
 
@@ -408,6 +410,21 @@ test('retaliation immediately closes toward the attacker instead of the old form
  h.issue('scout',{x:-100,z:0});const enemy=h.rival(8);
  h.g.noteRetaliation(a,enemy);const before=b.x;h.step(50,true);
  assert.equal(b.attackTarget,enemy);assert.ok(b.x>before);assert.equal(b.formationOffset,null);
+});
+
+test('a priest finishing a heal rejoins marching pace before the distant destination',()=>{
+ const h=setup(),p=h.unit('priest',0,0,3),w=h.unit('warrior',0,0,1);
+ h.owner.units.push(w,p);const group=h.issue('march',{x:300,z:0});
+ const patient=h.unit('warrior',5);patient.health=50;h.owner.units.push(patient);
+ h.step(150);assert.ok(p._healingFormation);assert.equal(p.marchSpeed,null);
+ patient.health=100;h.g._standingOrders.update(150);
+ assert.equal(p._healingFormation,null);assert.ok(p.formationAxis);assert.equal(p.formationGroup,w.formationGroup);
+ assert.equal(p.marchSpeed,w.marchSpeed);assert.ok(p.x<20,'restored well before the destination');
+ // Place both in their moving ranks, still hundreds of units from arrival.
+ for(const u of [p,w]){const slot=group.slots.get(u);u.x=slot.x-250;u.z=slot.z;u.isMoving=true;}
+ h.g.measureFormationLead();assert.equal(h.g.moveSpeedOf(p,50),h.g.moveSpeedOf(w,50));
+ const relative=p.x-w.x;h.step(10000);
+ assert.ok(Math.abs((p.x-w.x)-relative)<.1,'faster priest must not pull ahead again');
 });
 
 test('live combat facing ignores an outward separation nudge but marching follows actual travel',()=>{

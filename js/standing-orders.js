@@ -340,8 +340,13 @@ class StandingOrders {
                             if(!u._healingFormation)u._healingFormation={
                                 formationOffset:u.formationOffset,formationAxis:u.formationAxis,
                                 formationGroup:u.formationGroup,marchSpeed:u.marchSpeed};
-                            if(!u._formationPatient&&Math.hypot(u.x-slot.x,u.z-slot.z)<=.5){
-                                Object.assign(u,u._healingFormation);u._healingFormation=null;u.isMoving=false;
+                            if(!u._formationPatient){
+                                // Rejoin the moving ranks now, not only once at the
+                                // final destination. Normal lane/pace recovery lets
+                                // a returning priest catch up without overtaking.
+                                Object.assign(u,u._healingFormation);u._healingFormation=null;
+                                u.targetX=slot.x;u.targetZ=slot.z;
+                                u.isMoving=Math.hypot(u.x-slot.x,u.z-slot.z)>.5;
                                 continue;
                             }
                             u.formationOffset=null;u.formationAxis=null;u.formationGroup=null;u.marchSpeed=null;
