@@ -5606,23 +5606,24 @@ class Game {
     // unit again. Used consistently for arena win detection AND for stopping a
     // defeated model's LLM pipeline, so the two never disagree:
     //   - still in if it has any military unit;
-    //   - still in if it has a finished military building it can afford to produce from;
+    //   - still in with paid military production, or an affordable trainer that
+    //     is finished or being completed by a living assigned worker;
     //   - otherwise still in only if it can (re)start the chain — it has a Town
     //     Center, OR a worker plus the resources to build a new Town Center.
     isPlayerEliminated(ai) {
-        if (!ai) return true;
-        if (ai.units && ai.units.some(u => u.type !== 'worker')) return false;      // has an army
+        if (!ai || ai._eliminated) return true;
+        if (ai.units && ai.units.some(u => u.health > 0 && u.type !== 'worker')) return false; // has an army
         if (this.canAffordAnyMilitary(ai)) return false;                            // can build military now
-        if (ai.buildings && ai.buildings.some(b => b.type === 'town_center')) return false; // has a TC
+        if (ai.buildings && ai.buildings.some(b => b.health > 0 && b.type === 'town_center')) return false; // has a TC
         const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
         const tcCost = (tcDef && tcDef.cost) || { food: 100, wood: 100, stone: 100, gold: 100 };
-        if (ai.units && ai.units.some(u => u.type === 'worker') &&
+        if (ai.units && ai.units.some(u => u.health > 0 && u.type === 'worker') &&
             ai.resources && ai.resources.hasResources(tcCost)) return false;        // can rebuild a TC
         return true;
     }
 
-    // Can this player afford at least one military unit that one of its FINISHED
-    // military buildings can train at its current age?
+    // A paid unit is already on its way. An actively staffed construction site
+    // also counts if the owner can afford military production when it finishes.
     canAffordAnyMilitary(ai) {
         if (!ai || !ai.buildings || !ai.resources) return false;
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
@@ -5633,7 +5634,11 @@ class Game {
             stable: ['scout_cavalry', 'cavalry', 'heavy_cavalry']
         };
         for (const b of ai.buildings) {
-            if (b.underConstruction || !trains[b.type]) continue;
+            if (!(b.health > 0)) continue;
+            if (!b.underConstruction && b.isProducing && b.productionType && b.productionType !== 'worker') return true;
+            if (!trains[b.type]) continue;
+            if (b.underConstruction && !(ai.units || []).some(u =>
+                u.health > 0 && u.type === 'worker' && u.task === 'building' && u.buildTarget === b)) continue;
             for (const uid of trains[b.type]) {
                 const def = (typeof getUnitDefFor === 'function') ? getUnitDefFor(ai.civilization, uid) : null;
                 if (!def) continue;
@@ -5649,10 +5654,15 @@ class Game {
         const players = this.aiManager.aiPlayers;
         if (!players || players.length === 0) return;
 
+        // Defeat is terminal for the seat. Finishing old work must not resurrect
+        // a player whose controller has already been retired.
+        players.forEach(ai => { if (this.isPlayerEliminated(ai)) ai._eliminated = true; });
+
         const wonderTypes = ['pyramid', 'akropolis', 'firetemple', 'shrine'];
         const required = (this.wonderRequired || 600) * 1000;
         let wonderHolder = null;
         players.forEach(ai => {
+            if (ai._eliminated) { ai._wonderHold = 0; return; }
             const hasWonder = ai.buildings.some(b => (b.isWonder || wonderTypes.includes(b.type)) && !b.underConstruction);
             if (hasWonder) {
                 ai._wonderHold = (ai._wonderHold || 0) + deltaTime;

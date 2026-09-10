@@ -3233,14 +3233,15 @@ class OpenAIAIManager {
 
         // --- Opponents: ALL rivals — rule-based ones and, in campaign, the human
         // too (the old list was built from LLM controllers only, leaving blind
-        // spots for everyone else). Epochs are PUBLIC: heralds announce age-ups.
+        // spots for everyone else). Epochs and defeat are PUBLIC match facts.
         // Army/building counts are scouting rewards — they appear only after
         // FIRST CONTACT (this player has seen any unit or building of that
         // rival; see game.updateRivalContacts).
         const met = ai._metRivals || new Set();
         const aiOpponents = [];
         const pushRival = (o, key) => {
-            const entry = { id: game.seatLabel(o), civilization: o.civilization, age: o.age, discovered: met.has(key) };
+            const entry = { id: game.seatLabel(o), civilization: o.civilization, age: o.age,
+                discovered: met.has(key), defeated: game.isPlayerEliminated(o) };
             if (entry.discovered) {
                 // NOT "units", and not "unitsTotal" either. The tools taught a vocabulary
                 // — "units" are the fighting ones (attack_target refuses workers outright)
@@ -3590,6 +3591,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
 - "nodes" holds COUNTS OF NODES, never amounts of resource. "nodes.discovered" counts the ones you have FOUND and not seen emptied; "nodes.totalOnMap" counts every one still standing in the world, found or not. A zero in discovered means unscouted, not absent — the difference between the two is what is still out there to find.
 - Population: each unit occupies a population slot. "population.capacityNow" is what your standing Houses and Town Centers allow and is the limit that binds you today; Houses raise it by 5 and Town Centers by 10, never past "population.capacityCeiling" (${(typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100}).
+- "gameStats.opponents[].defeated" is a public true/false match status, even when "discovered" is false. Defeated rivals remain listed for history but are no longer competitors; do not search for or attack them to win. This status reveals no locations or terrain.
 - "gameStats.opponents[].population" counts EVERYTHING a discovered rival owns, villagers included — the same measure as your own "population.used", and NOT an army size. Everywhere else in these tools "units" means fighters and "workers" means villagers; this one number does not follow that rule, which is why it is not called units.
 - "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
 
@@ -8759,6 +8761,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const controller = (lane && lane.seat) || lane;   // seat operation; see demoteToRuleBased
         if (!controller) return;
         controller.defeated = true;
+        if (controller.aiPlayer) controller.aiPlayer._eliminated = true;
         // Before the abort below, and deliberately fire-and-forget: this seat is out, so
         // nothing in the match is waiting on its answer.
         try { this.askFinalWord(controller, 'defeated'); } catch (e) { /* never block a retirement */ }
