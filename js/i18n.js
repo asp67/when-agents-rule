@@ -167,7 +167,7 @@ const I18N = {
         'spec.advicePlaceholder': 'Advice to this model …',
         'spec.adviceSend': 'Send advice',
         'spec.advicePending': 'pending advice',
-        'spec.hint': '🏟️ Spectator mode — move the camera with the mouse',
+        'spec.hint': '🏟️ Spectator mode',
         'spec.cardHint': 'Click: focus camera on this base',
         'spec.pause': 'Pause this model (stop it sending requests)',
         'spec.transcript': 'Transcript — what this model was sent and said', 'spec.tvEmpty': 'No turns recorded yet — this model has not answered.', 'spec.tvPlan': 'Plan', 'spec.tvReasoning': 'Reasoning', 'spec.tvReply': 'Reply', 'spec.tvResult': 'Harness', 'spec.tvState': 'State sent',
@@ -562,7 +562,7 @@ const I18N = {
         'spec.advicePlaceholder': 'Rat an dieses Modell …',
         'spec.adviceSend': 'Rat senden',
         'spec.advicePending': 'Ausstehender Rat',
-        'spec.hint': '🏟️ Zuschauermodus — Kamera mit der Maus bewegen',
+        'spec.hint': '🏟️ Zuschauermodus',
         'spec.cardHint': 'Klicken: Kamera auf diese Basis',
         'spec.pause': 'Dieses Modell pausieren (keine Anfragen mehr senden)',
         'spec.transcript': 'Transkript — was dieses Modell erhielt und sagte', 'spec.tvEmpty': 'Noch keine Züge aufgezeichnet — dieses Modell hat nicht geantwortet.', 'spec.tvPlan': 'Plan', 'spec.tvReasoning': 'Argumentation', 'spec.tvReply': 'Antwort', 'spec.tvResult': 'Harness', 'spec.tvState': 'Gesendeter Zustand',
@@ -950,7 +950,7 @@ const I18N = {
         'spec.advicePlaceholder': 'Consejo para este modelo …',
         'spec.adviceSend': 'Enviar consejo',
         'spec.advicePending': 'Consejo pendiente',
-        'spec.hint': '🏟️ Modo espectador — mueve la cámara con el ratón',
+        'spec.hint': '🏟️ Modo espectador',
         'spec.cardHint': 'Clic: enfocar la cámara en esta base',
         'spec.pause': 'Pausar este modelo (que deje de enviar peticiones)',
         'spec.transcript': 'Transcripción — lo que se envió a este modelo y lo que dijo', 'spec.tvEmpty': 'Aún no hay turnos registrados: este modelo no ha respondido.', 'spec.tvPlan': 'Plan', 'spec.tvReasoning': 'Razonamiento', 'spec.tvReply': 'Respuesta', 'spec.tvResult': 'Sistema', 'spec.tvState': 'Estado enviado',
@@ -1330,7 +1330,7 @@ const I18N = {
         'spec.advicePlaceholder': '给该模型的建议 …',
         'spec.adviceSend': '发送建议',
         'spec.advicePending': '待发送的建议',
-        'spec.hint': '🏟️ 观战模式 — 用鼠标移动镜头',
+        'spec.hint': '🏟️ 观战模式',
         'spec.cardHint': '点击：将镜头对准该基地',
         'spec.pause': '暂停该模型（停止发送请求）',
         'spec.transcript': '对话记录——该模型收到了什么、说了什么', 'spec.tvEmpty': '尚无回合记录——该模型还未作答。', 'spec.tvPlan': '计划', 'spec.tvReasoning': '推理', 'spec.tvReply': '回复', 'spec.tvResult': '框架反馈', 'spec.tvState': '发送的状态',
@@ -2452,6 +2452,54 @@ const I18N_HELP = {
     }
 };
 Object.keys(I18N_HELP).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_HELP[l]); });
+const I18N_AUDIO = {
+    en: {'audio.title':'Sound','audio.mute':'Mute','audio.master':'Volume','audio.ambience':'Ambience','audio.effects':'Effects','audio.note':'Live games only. Starts muted on each page load.','audio.unavailable':'Audio could not start. Try enabling it again in a supported browser.'},
+    de: {'audio.title':'Ton','audio.mute':'Stumm','audio.master':'Lautstärke','audio.ambience':'Umgebung','audio.effects':'Effekte','audio.note':'Nur in laufenden Spielen. Nach jedem Neuladen zunächst stumm.','audio.unavailable':'Audio konnte nicht starten. Bitte erneut oder in einem anderen Browser versuchen.'},
+    es: {'audio.title':'Sonido','audio.mute':'Silenciar','audio.master':'Volumen','audio.ambience':'Ambiente','audio.effects':'Efectos','audio.note':'Solo partidas en curso. Cada carga de página empieza en silencio.','audio.unavailable':'No se pudo iniciar el audio. Inténtalo de nuevo en un navegador compatible.'},
+    zh: {'audio.title':'声音','audio.mute':'静音','audio.master':'音量','audio.ambience':'环境音','audio.effects':'音效','audio.note':'仅限正在进行的游戏。每次加载页面时默认静音。','audio.unavailable':'无法启动音频。请重试或使用支持的浏览器。'}
+};
+Object.keys(I18N_AUDIO).forEach(l => Object.assign(I18N[l], I18N_AUDIO[l]));
+const I18N_AUDIO_TEST = {
+    en: {'audio.test':'Sound test','audio.testHint':'Samples respect Mute. Uncheck Mute using the speaker below the minimap to listen.','audio.sample.step':'Footstep','audio.sample.snow':'Snow step','audio.sample.hoof':'Hoofbeat','audio.sample.bow':'Bow','audio.sample.impact':'Melee impact','audio.sample.stone':'Building impact','audio.sample.crackle':'Fire crackle','audio.note':'Live games and showcase. Starts muted on each page load.'},
+    de: {'audio.test':'Klänge testen','audio.testHint':'Hörproben beachten Stumm. Zum Anhören Stumm beim Lautsprecher unter der Minikarte ausschalten.','audio.sample.step':'Schritt','audio.sample.snow':'Schnee','audio.sample.hoof':'Hufschlag','audio.sample.bow':'Bogen','audio.sample.impact':'Nahkampf','audio.sample.stone':'Gebäudetreffer','audio.sample.crackle':'Feuerknistern','audio.note':'Spiele und Vorschau. Nach jedem Neuladen zunächst stumm.'},
+    es: {'audio.test':'Probar sonidos','audio.testHint':'Las muestras respetan Silenciar. Desmárcalo con el altavoz bajo el minimapa para escuchar.','audio.sample.step':'Paso','audio.sample.snow':'Paso en nieve','audio.sample.hoof':'Cascos','audio.sample.bow':'Arco','audio.sample.impact':'Golpe','audio.sample.stone':'Golpe a edificio','audio.sample.crackle':'Fuego','audio.note':'Partidas y exhibición. Cada carga de página empieza en silencio.'},
+    zh: {'audio.test':'测试声音','audio.testHint':'样本遵循静音设置。请使用小地图下方的扬声器取消静音以试听。','audio.sample.step':'脚步','audio.sample.snow':'雪地脚步','audio.sample.hoof':'马蹄','audio.sample.bow':'弓箭','audio.sample.impact':'近战命中','audio.sample.stone':'建筑命中','audio.sample.crackle':'火焰噼啪','audio.note':'支持游戏和展示模式。每次加载页面时默认静音。'}
+};
+Object.keys(I18N_AUDIO_TEST).forEach(l => Object.assign(I18N[l], I18N_AUDIO_TEST[l]));
+for (const [lang,labels] of Object.entries({en:['Chopping','Harvesting','Mining'],de:['Holzhacken','Ernten','Bergbau'],es:['Tala','Cosecha','Minería'],zh:['伐木','采收','采矿']}))
+    ['chop','harvest','mine'].forEach((kind,i)=>I18N[lang]['audio.sample.'+kind]=labels[i]);
+for (const [lang,labels] of Object.entries({
+    en:['Choose formation','Formations match the slowest unit. None: individual speeds.','Line','Wedge','Block','Screen','None'],
+    de:['Formation wählen','Formationen folgen der langsamsten Einheit. Keine: eigenes Tempo.','Linie','Keil','Block','Schirm','Keine'],
+    es:['Elegir formación','Las formaciones siguen al más lento. Ninguna: velocidades individuales.','Línea','Cuña','Bloque','Pantalla','Ninguna'],
+    zh:['选择阵型','阵型跟随最慢单位。无阵型：各自速度。','横队','楔形','方阵','掩护阵','无阵型']
+})) ['choose','pace','line','wedge','block','screen','none'].forEach((key,i)=>I18N[lang]['formation.'+key]=labels[i]);
+for (const [lang,labels] of Object.entries({en:['Construction','Building complete','Research complete','Unit trained'],de:['Bauarbeiten','Gebäude fertig','Forschung fertig','Einheit ausgebildet'],es:['Construcción','Edificio terminado','Investigación terminada','Unidad entrenada'],zh:['施工','建筑完成','研究完成','训练完成']}))
+    ['build','built','research','trained'].forEach((kind,i)=>I18N[lang]['audio.sample.'+kind]=labels[i]);
+for(const [lang,labels] of Object.entries({en:['Building collapse','Wonder destroyed','Healing','Command','Match start','Elimination','Victory','Defeat','Wonder warning'],de:['Gebäudeeinsturz','Wunder zerstört','Heilung','Befehl','Spielbeginn','Ausgeschieden','Sieg','Niederlage','Wunderwarnung'],es:['Derrumbe','Maravilla destruida','Curación','Orden','Inicio','Eliminación','Victoria','Derrota','Aviso de maravilla'],zh:['建筑倒塌','奇观被毁','治疗','指令','比赛开始','淘汰','胜利','失败','奇观警告']}))
+    ['collapse','wonderLost','heal','command','start','elimination','victory','defeat','warning'].forEach((kind,i)=>I18N[lang]['audio.sample.'+kind]=labels[i]);
+for(const [lang,label] of Object.entries({en:'Action confirmed',de:'Aktion bestätigt',es:'Acción confirmada',zh:'行动确认'})) I18N[lang]['audio.sample.commandAction']=label;
+for(const [lang,labels] of Object.entries({en:['Double right-click','Issue order immediately without formation; Guard stays active'],de:['Doppel-Rechtsklick','Befehl sofort ohne Formation; Bewachen bleibt aktiv'],es:['Doble clic derecho','Orden inmediata sin formación; la guardia sigue activa'],zh:['双击右键','立即下令，不使用阵型；保持警戒']})) {
+    I18N[lang]['help.rmbDouble']=labels[0];I18N[lang]['help.act.quickCommand']=labels[1];
+}
+for(const [lang,label] of Object.entries({en:'Sword clash',de:'Schwertklang',es:'Choque de espadas',zh:'刀剑碰撞'})) I18N[lang]['audio.sample.steel']=label;
+for(const [lang,label] of Object.entries({en:'Crossbow click',de:'Armbrustklicken',es:'Clic de ballesta',zh:'弩机声'})) I18N[lang]['audio.sample.crossbow']=label;
+
+for(const [lang,labels] of Object.entries({en:['Grass step','Snow / sand step','Gravel step'],de:['Grasschritt','Schnee- / Sandschritt','Kiesschritt'],es:['Paso en hierba','Paso en nieve / arena','Paso en grava'],zh:['草地脚步','雪地 / 沙地脚步','碎石脚步']})) {
+    ['step','snow','gravel'].forEach((kind,i)=>I18N[lang]['audio.sample.'+kind]=labels[i]);
+}
+
+for(const [lang,labels] of Object.entries({en:['Grass hoofbeat','Snow / sand hoofbeat','Gravel hoofbeat'],de:['Hufe auf Gras','Hufe auf Schnee / Sand','Hufe auf Kies'],es:['Cascos en hierba','Cascos en nieve / arena','Cascos en grava'],zh:['草地马蹄','雪地 / 沙地马蹄','碎石马蹄']})) {
+    ['hoof','hoofSnow','hoofGravel'].forEach((kind,i)=>I18N[lang]['audio.sample.'+kind]=labels[i]);
+}
+
+for(const [lang,labels] of Object.entries({
+    en:{built:'{who} — {name} built',trained:'{who} — {name} trained',research:'{who} — {name} researched',age:'{who} — {age} reached',start:'Match started',elimination:'{who} defeated',warning:'{who} — Wonder victory in {seconds}s',victory:'{who} wins',defeat:'Match ended — no winner'},
+    de:{built:'{who} — {name} errichtet',trained:'{who} — {name} ausgebildet',research:'{who} — {name} erforscht',age:'{who} — {age} erreicht',start:'Spiel gestartet',elimination:'{who} besiegt',warning:'{who} — Wundersieg in {seconds}s',victory:'{who} gewinnt',defeat:'Spiel beendet — kein Sieger'},
+    es:{built:'{who} — {name} construido',trained:'{who} — {name} entrenado',research:'{who} — {name} investigado',age:'{who} — {age} alcanzada',start:'Partida iniciada',elimination:'{who} derrotado',warning:'{who} — Victoria por maravilla en {seconds}s',victory:'{who} gana',defeat:'Partida terminada — sin ganador'},
+    zh:{built:'{who} — {name}建造完成',trained:'{who} — {name}训练完成',research:'{who} — {name}研究完成',age:'{who} — 已到达{age}',start:'比赛开始',elimination:'{who}已被击败',warning:'{who} — 奇观胜利倒计时{seconds}秒',victory:'{who}获胜',defeat:'比赛结束 — 无胜者'}
+}))for(const [kind,label] of Object.entries(labels))I18N[lang]['audio.caption.'+kind]=label;
+
 function getUiLang() { return _uiLang; }
 function setUiLang(lang) {
     if (!I18N[lang]) return;

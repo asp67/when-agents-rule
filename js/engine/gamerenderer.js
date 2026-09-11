@@ -917,7 +917,8 @@
             this.spawnDust(building.x, 1.4, building.z, 24, 0xb0a48e);
         }
 
-        spawnProjectile(from, to, kind) {
+        spawnProjectile(from, to, kind, shooter) {
+            if (this.game?.sound) this.game.sound.projectile(from, kind, shooter);
             let p = this._projectiles.find(q => !q.active);
             if (!p) {
                 if (this._projectiles.length >= 64) return;
@@ -2041,6 +2042,7 @@
             // draw ------------------------------------------------------------
             const gl = this.gl;
             const cam = this._computeCam();
+            if (this.game?.sound) this.game.sound.update();
             if (typeof game !== 'undefined' && game?._actionCam && game.spectatorMode
                 && game.gameStarted && game._director) {
                 game._director.measureCoverage(this, Date.now());

@@ -1,5 +1,84 @@
 // UI Manager for game menus and interfaces
 class UIManager {
+    choosePlayerFormation(event, issue) {
+        const pending=this._pendingFormation;
+        this.closeFormationPicker?.();
+        if (this.game.spectatorMode) return;
+        const units = (this.game.renderer.selectedUnits || this.game.player.units.filter(u => u.selected))
+            .filter(u => u.owner === 'player' && u.health > 0 && this.game.player.units.includes(u));
+        const military = units.filter(u => u.type !== 'worker' && u.unitType !== 'support');
+        if (military.length < 2) { issue(undefined, units); return; }
+        if(event.fromTouch){this.showPlayerFormationPicker(event,issue,units);return;}
+        const sameSelection=pending&&units.length===pending.units.length&&units.every(u=>pending.units.includes(u));
+        if(sameSelection&&Date.now()-pending.time<=350&&event.target===pending.target
+            &&Math.hypot(event.clientX-pending.x,event.clientY-pending.y)<=6){
+            issue('',units); // one order, no formation, normal automatic Guard
+            return;
+        }
+        // Briefly defer the picker so it cannot intercept the second right click.
+        const cancel=()=>{
+            clearTimeout(timer);this._pendingFormation=null;this.closeFormationPicker=null;
+            document.removeEventListener('pointerdown',outside,true);
+            document.removeEventListener('keydown',key,true);
+        };
+        const outside=e=>{if(e.button!==2||e.target!==event.target)cancel();};
+        const key=e=>{if(e.key==='Escape')cancel();};
+        const timer=setTimeout(()=>{
+            cancel();
+            const selected=this.game.renderer.selectedUnits||this.game.player.units.filter(u=>u.selected);
+            if(this.game.gameStarted&&!this.game.spectatorMode&&units.every(u=>u.health>0&&this.game.player.units.includes(u)&&selected.includes(u)))
+                this.showPlayerFormationPicker(event,issue,units);
+        },350);
+        this._pendingFormation={units,time:Date.now(),x:event.clientX,y:event.clientY,target:event.target};
+        this.closeFormationPicker=cancel;
+        document.addEventListener('pointerdown',outside,true);
+        document.addEventListener('keydown',key,true);
+    }
+
+    showPlayerFormationPicker(event, issue, units) {
+        const menu = document.createElement('div');
+        menu.className = 'player-formation-picker';
+        menu.setAttribute('role', 'dialog');
+        menu.setAttribute('aria-label', t('formation.choose'));
+        const title = document.createElement('strong'); title.textContent = t('formation.choose'); menu.append(title);
+        const hint = document.createElement('small'); hint.textContent = t('formation.pace'); menu.append(hint);
+        const previous = document.activeElement;
+        const close = () => {
+            menu.remove(); document.removeEventListener('pointerdown', outside, true);
+            document.removeEventListener('keydown', keyboard, true);
+            this.closeFormationPicker = null;
+            if (previous?.isConnected) previous.focus({preventScroll:true});
+        };
+        const outside = e => { if (!menu.contains(e.target)) close(); };
+        const keyboard = e => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+            if (['ArrowDown','ArrowUp','Tab'].includes(e.key)) {
+                e.preventDefault(); e.stopPropagation();
+                const buttons = [...menu.querySelectorAll('button')], i = buttons.indexOf(document.activeElement);
+                buttons[(i + ((e.key === 'ArrowUp' || e.shiftKey) ? -1 : 1) + buttons.length) % buttons.length].focus();
+            }
+        };
+        for (const shape of [...OpenAIAIManager.FORMATIONS, 'none']) {
+            const button = document.createElement('button'); button.type = 'button';
+            button.textContent = t('formation.' + shape);
+            button.onclick = () => {
+                close();
+                if (!this.game.gameStarted || this.game.spectatorMode) return;
+                const living = units.filter(u => u.health > 0 && this.game.player.units.includes(u));
+                if (living.length) issue(shape === 'none' ? '' : shape, living);
+            };
+            menu.append(button);
+        }
+        document.body.append(menu);
+        menu.style.left = Math.max(8, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+        menu.style.top = Math.max(8, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 8)) + 'px';
+        menu.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('pointerdown', outside, true);
+        document.addEventListener('keydown', keyboard, true);
+        this.closeFormationPicker = close;
+        menu.querySelector('button').focus({preventScroll:true});
+    }
+
     // EINE Literalstelle fuer die Prompt-Version. Die Instanz kopiert sie sich,
     // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
     // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
@@ -23,6 +102,7 @@ class UIManager {
     }
 
     showScreen(screenId) {
+        this.closeFormationPicker?.();
         if(this.game.renderer && this.game.renderer.cancelPointerGesture) this.game.renderer.cancelPointerGesture();
         document.querySelectorAll('.screen').forEach(screen => {
             screen.classList.remove('active');
@@ -213,6 +293,24 @@ class UIManager {
         if(wasOpen) box.querySelector('details').open=true;
         box.querySelector('select').value = this.game.renderer.graphicsQuality || 'balanced';
         box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
+        if (this.game.sound) {
+            const levels = this.game.sound.levels;
+            box.insertAdjacentHTML('beforeend', `<details class="camera-more audio-controls">
+                <summary title="${esc(t('audio.title'))}" aria-label="${esc(t('audio.title'))}">${svg('M3 9h4l5-4v14l-5-4H3z M16 8a6 6 0 0 1 0 8 M19 5a10 10 0 0 1 0 14')}</summary>
+                <div class="camera-popover audio-popover">
+                    <label>${esc(t('audio.mute'))}<input type="checkbox" ${!this.game.sound.enabled?'checked':''} onchange="game.ui.toggleSound(this)"></label>
+                    ${['master','ambience','effects'].map(key=>`<label>${esc(t('audio.'+key))}<input aria-label="${esc(t('audio.'+key))}" type="range" min="0" max="100" value="${Math.round(levels[key]*100)}" oninput="game.sound.setLevel('${key}',Number(this.value)/100)"></label>`).join('')}
+                    <p class="audio-note">${esc(t('audio.note'))}</p><p class="audio-error" role="status"></p>
+                </div></details>`);
+        }
+    }
+
+    async toggleSound(input) {
+        const error = input.closest('.audio-popover').querySelector('.audio-error');
+        input.disabled = true;
+        try { await this.game.sound.setEnabled(!input.checked); error.textContent = ''; }
+        catch (_) { error.textContent = t('audio.unavailable'); }
+        finally { input.checked = !this.game.sound.enabled; input.disabled = false; }
     }
 
     setGraphicsQuality(value) {
@@ -2069,6 +2167,36 @@ class UIManager {
                 ? `<p style="color:#4ecca3;font-weight:bold;">${t('spec.hint')}</p>`
                 : `<p>${t('hud.selectHint')}</p>`;
         }
+        this.renderSpectatorSoundCaption(infoDiv);
+    }
+
+    showSpectatorSoundCaption(event) {
+        if(!this.game.spectatorMode)return;
+        const civ=typeof getCivilization==='function'?getCivilization(event.civilization):null;
+        const message=t('audio.caption.'+event.kind,{
+            who:civ?tg(civ.name):(event.civilization||''),
+            name:event.name?tg(event.name):'',
+            age:event.age?this.getAgeName(event.age):'',seconds:event.seconds??''
+        });
+        this._soundCaption={message,started:Date.now()};
+        clearTimeout(this._soundCaptionTimer);
+        const refresh=()=>this.updateUnitInfo(this._infoSubject?.unit,this._infoSubject?.building);
+        refresh();
+        this._soundCaptionTimer=setTimeout(()=>{
+            this._soundCaption=null;this._soundCaptionTimer=null;
+            if(this.game.spectatorMode)refresh();
+        },4000);
+    }
+
+    renderSpectatorSoundCaption(infoDiv) {
+        if(!this.game.spectatorMode||!this._soundCaption||!infoDiv)return;
+        const elapsed=Date.now()-this._soundCaption.started;
+        if(elapsed>=4000)return;
+        const caption=document.createElement('p');
+        caption.className='spectator-sound-caption';
+        caption.textContent=this._soundCaption.message;
+        caption.style.animationDelay=`-${elapsed}ms`;
+        infoDiv.appendChild(caption);
     }
 
     getUnitTypeDescription(type) {
@@ -2496,6 +2624,7 @@ class UIManager {
     }
 
     showVictory() {
+        this.game.sound?.notify('victory',true);
         document.getElementById('endTitle').textContent = t('end.victory');
         document.getElementById('endTitle').className = 'victory';
         document.getElementById('endMessage').textContent = t('end.victoryMsg');
@@ -2503,6 +2632,7 @@ class UIManager {
     }
 
     showDefeat() {
+        this.game.sound?.notify('defeat',true);
         document.getElementById('endTitle').textContent = t('end.defeat');
         document.getElementById('endTitle').className = 'defeat';
         document.getElementById('endMessage').textContent = t('end.defeatMsg');
@@ -2783,6 +2913,8 @@ class UIManager {
 
     // Stop spectator refresh timers (call when leaving the arena)
     teardownSpectatorUI() {
+        clearTimeout(this._soundCaptionTimer);this._soundCaptionTimer=null;this._soundCaption=null;
+        document.querySelector('.spectator-sound-caption')?.remove();
         document.body.classList.remove('spectator-mode');
         // Leave the arena with the minimap open again, so a campaign started next
         // does not inherit a seat number from a match that is over.
@@ -3060,6 +3192,7 @@ class UIManager {
             [t('help.lmb'),t('help.act.select')],
             [t('help.lmbDrag'),t('help.act.box')],
             [t('help.rmb'),t('help.act.command')],
+            [t('help.rmbDouble'),t('help.act.quickCommand')],
             [t('help.rmbDrag'),t('help.act.pan')],
             [t('help.panTool'),t('help.act.pan')]
         ]);

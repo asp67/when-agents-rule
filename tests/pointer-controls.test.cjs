@@ -9,7 +9,8 @@ function harness(spectator=false) {
     const document={getElementById:()=>null};
     const game={spectatorMode:spectator,disableActionCam:()=>calls.manual++,
         spectatorPick:(x,y)=>calls.inspect.push([x,y]),selectUnit:u=>calls.select.push(u),
-        updateUnitInfo:noop,moveUnits:(x,z)=>calls.orders.push([x,z]),player:{units:[]},ui:{}};
+        updateUnitInfo:noop,moveUnits:(x,z)=>calls.orders.push([x,z]),player:{units:[]},
+        ui:{choosePlayerFormation:(event,issue)=>issue(undefined,game.renderer.selectedUnits)}};
     const s={window,document,console,game,Date,TexGen:{TERRAIN_WORLD:1000,TERRAIN_LAND:417,TERRAIN_SEED:1},setTimeout:fn=>{timers.set(++id,fn);return id;},clearTimeout:i=>timers.delete(i)};
     vm.createContext(s);
     for(const file of ['js/engine/math3d.js','js/engine/gamerenderer.js','js/input.js'])vm.runInContext(fs.readFileSync(path.join(root,file),'utf8')+'\n'+(file==='js/input.js'?'this.InputManager=InputManager;':''),s);
@@ -48,6 +49,31 @@ test('campaign right click orders once; a right drag, even returning to its star
     h.mouse('Down',h.event(100,100,2));h.mouse('Move',h.event(104,104,2));h.mouse('Up',h.event(104,104,2));
     assert.equal(h.calls.orders.length,1);
 });
+test('formation choice waits for confirmation and keeps the enemy clicked before it moved',()=>{
+ const h=harness(),enemy={owner:'enemy',health:100,x:100,z:100};let confirm,attack;
+ h.game.player.units=[{owner:'player'}];h.r.getUnitsAtPosition=()=>[enemy];
+ h.game.ui.choosePlayerFormation=(event,issue)=>{confirm=issue;};
+ h.game.attackTarget=(target,shape,units)=>{attack={target,shape,units};};
+ h.mouse('Down',h.event(100,100,2));h.mouse('Up',h.event(100,100,2));
+ assert.equal(attack,undefined);assert.equal(h.calls.orders.length,0);
+ enemy.x=120;h.r.getUnitsAtPosition=()=>[];
+ confirm('line',h.game.player.units);
+ assert.equal(attack.target,enemy);assert.equal(attack.shape,'line');assert.equal(attack.units,h.game.player.units);
+});
+
+test('expanded right-click hit areas prefer the nearest eligible resource or enemy',()=>{
+ const h=harness(),worker={owner:'player',type:'worker',health:100},enemy={owner:'b',x:103,z:100,health:100},building={owner:'b',x:106,z:100,health:100};
+ h.game.player.units=[worker];let resource={x:100,z:100,amount:100},attacked=null;
+ h.game.findResourceNodeAtPosition=()=>resource;h.game.attackTarget=t=>attacked=t;
+ const hit={units:[enemy],buildings:[building],hidden:false};
+ h.input.issueWorldCommand({x:100,z:100},h.event(),undefined,[worker],hit);
+ assert.equal(attacked,null);assert.equal(h.calls.orders.length,1,'resource directly under click wins over nearby enemy');
+ resource=null;h.input.issueWorldCommand({x:100,z:100},h.event(),undefined,[worker],hit);assert.equal(attacked,enemy);
+ building.x=101;h.input.issueWorldCommand({x:100,z:100},h.event(),undefined,[worker],hit);assert.equal(attacked,building);
+ const radii=[];h.r.getUnitsAtPosition=(x,z,r)=>{radii.push(r);return [];};h.r.getBuildingsAtPosition=(x,z,r)=>{radii.push(r);return [];};
+ h.mouse('Down',h.event(100,100,2));h.mouse('Up',h.event(100,100,2));assert.deepEqual(radii,[4,7]);
+});
+
 test('campaign hand tool turns left drag into navigation without selecting or issuing orders',()=>{
     const h=harness();h.r.panMode=true;h.mouse('Down',h.event());h.mouse('Move',h.event(160,100));h.mouse('Up',h.event(160,100));
     assert.notEqual(h.r.cameraTarget.x,0);assert.equal(h.calls.select.length,0);assert.equal(h.calls.boxes,0);assert.equal(h.calls.orders.length,0);assert.equal(h.canvas.style.cursor,'grab');

@@ -190,6 +190,12 @@ class StandingOrders {
             const visibility=new Map();
             const visible=e=>{if(!visibility.has(e))visibility.set(e,this.visible(g,e));return visibility.get(e);};
             if(g.target&&this.visible(g,g.target)&&g.target.health<=0){
+                // A moving objective may die between scans. Guard its final
+                // observed location rather than returning to the click location.
+                if(g.mode==='guard'){
+                    g.to={x:g.target.x,z:g.target.z};g.atPost=false;
+                    if(!g.fighting)this.reform(g,g.to);
+                }
                 g.target=null;
                 // The named objective may have drawn the army far beyond its
                 // original combat anchor. Continue the assault around arrival,

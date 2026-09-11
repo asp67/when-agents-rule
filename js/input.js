@@ -185,6 +185,7 @@ class InputManager {
             const dy = Math.abs(event.clientY - this.mouseDownPos.y);
             if (Math.hypot(dx,dy) >= this.dragThreshold) {
                 this.hasRightDragged = true;
+                this.game.ui.closeFormationPicker?.();
             }
         }
     }
@@ -267,66 +268,17 @@ class InputManager {
                 }
                 return;
             }
-            
+
             // Right click - move or attack
             const worldPos = this.renderer.getWorldPositionFromScreen(event.clientX, event.clientY);
             if (worldPos) {
-                // Workers selected + right-click on one of YOUR buildings => send them
-                // to finish its construction or repair it if it's damaged.
-                const selWorkers = (this.renderer.selectedUnits || this.game.player.units.filter(u => u.selected))
-                    .filter(u => u && u.owner === 'player' && u.type === 'worker');
-                if (selWorkers.length) {
-                    const ownBuilding = this.renderer.getBuildingsAtPosition(worldPos.x, worldPos.z, 5)
-                        .filter(b => b.owner === 'player')
-                        .find(b => b.underConstruction || b.health < b.maxHealth);
-                    if (ownBuilding) {
-                        const mode = this.game.assignWorkersToBuilding(selWorkers, ownBuilding);
-                        if (mode === 'building') this.game.ui.showInfoMessage(t('msg.assignBuild'));
-                        else if (mode === 'repairing') this.game.ui.showInfoMessage(t('msg.assignRepair'));
-                        return;
-                    }
-                }
-
-                // Check if position is in undiscovered area
-                const isUndiscovered = this.game.fogOfWar && !this.game.fogOfWar.isPositionVisible(worldPos.x, worldPos.z);
-                
-                const units = this.renderer.getUnitsAtPosition(worldPos.x, worldPos.z, 2);
-                
-                // Check if clicking on enemy unit (attack) - only if visible
-                const enemyUnits = units.filter(u => u.owner !== 'player' && u.owner !== undefined);
-                
-                // Check if clicking on enemy building (attack) - only if visible
-                const enemyBuildings = this.renderer.getBuildingsAtPosition(worldPos.x, worldPos.z, 5)
-                    .filter(b => b.owner !== 'player' && b.owner !== undefined);
-                
-                // Block attacking in undiscovered areas
-                if (isUndiscovered && (enemyUnits.length > 0 || enemyBuildings.length > 0)) {
-                    return; // Can't attack in undiscovered areas
-                }
-                
-                if (enemyUnits.length > 0 && this.game.player.units.length > 0) {
-                    // Attack enemy unit
-                    this.game.attackTarget(enemyUnits[0]);
-                } else if (enemyBuildings.length > 0 && this.game.player.units.length > 0) {
-                    // Attack enemy building
-                    this.game.attackTarget(enemyBuildings[0]);
-                } else {
-                    // Move units - allow movement into undiscovered areas
-                    this.game.moveUnits(worldPos.x, worldPos.z);
-                    
-                    // Move camera if clicking on edge of screen
-                    const rect = this.renderer.renderer.domElement.getBoundingClientRect();
-                    if (event.clientX - rect.left < 50) {
-                        this.renderer.moveCameraTo(worldPos.x - 10, worldPos.z);
-                    } else if (event.clientX - rect.left > rect.width - 50) {
-                        this.renderer.moveCameraTo(worldPos.x + 10, worldPos.z);
-                    }
-                    if (event.clientY - rect.top < 50) {
-                        this.renderer.moveCameraTo(worldPos.x, worldPos.z - 10);
-                    } else if (event.clientY - rect.top > rect.height - 50) {
-                        this.renderer.moveCameraTo(worldPos.x, worldPos.z + 10);
-                    }
-                }
+                const hit = {
+                    units: this.renderer.getUnitsAtPosition(worldPos.x, worldPos.z, 4),
+                    buildings: this.renderer.getBuildingsAtPosition(worldPos.x, worldPos.z, 7),
+                    hidden: this.game.fogOfWar && !this.game.fogOfWar.isPositionVisible(worldPos.x, worldPos.z)
+                };
+                this.game.ui.choosePlayerFormation(event, (formation, units) =>
+                    this.issueWorldCommand(worldPos, event, formation, units, hit));
             }
         }
 
@@ -334,4 +286,60 @@ class InputManager {
         this.isRightDragging = false;
         this.renderer.hideSelectionBox();
     }
+    issueWorldCommand(worldPos, event, formation, orderedUnits, hit) {
+        // Workers selected + right-click on one of YOUR buildings => send them
+        // to finish its construction or repair it if it's damaged.
+        const distance = o => Math.hypot(o.x-worldPos.x,o.z-worldPos.z);
+        const selWorkers = orderedUnits
+            .filter(u => u && u.owner === 'player' && u.type === 'worker');
+        const ownBuilding=selWorkers.length?hit.buildings.filter(b=>b.owner==='player'&&b.health>0&&(b.underConstruction||b.health<b.maxHealth)).sort((a,b)=>distance(a)-distance(b))[0]:null;
+        const resource=selWorkers.length?this.game.findResourceNodeAtPosition?.(worldPos.x,worldPos.z):null;
+
+        // Check if position is in undiscovered area
+        const isUndiscovered = hit.hidden;
+
+        const units = hit.units;
+
+        // Check if clicking on enemy unit (attack) - only if visible
+        const visibleNow = u => u.health > 0 && (!this.game.fogOfWar || this.game.fogOfWar.isPositionVisible(u.x, u.z));
+        const enemyUnits = units.filter(u => u.owner !== 'player' && u.owner !== undefined && visibleNow(u)).sort((a,b)=>distance(a)-distance(b));
+
+        // Check if clicking on enemy building (attack) - only if visible
+        const enemyBuildings = hit.buildings
+            .filter(b => b.owner !== 'player' && b.owner !== undefined && visibleNow(b)).sort((a,b)=>distance(a)-distance(b));
+
+        // Block attacking in undiscovered areas
+        if (isUndiscovered && (enemyUnits.length > 0 || enemyBuildings.length > 0)) {
+            return; // Can't attack in undiscovered areas
+        }
+
+        // Larger hit areas must not let a nearby object steal a more direct click.
+        const candidates=[...enemyUnits,...enemyBuildings,ownBuilding,resource].filter(Boolean).sort((a,b)=>distance(a)-distance(b));
+        const chosen=candidates[0];
+        if(chosen&&chosen===ownBuilding) {
+            const mode=this.game.assignWorkersToBuilding(selWorkers,ownBuilding);
+            if(mode)this.game.sound?.notify('commandAction');
+            if(mode==='building')this.game.ui.showInfoMessage(t('msg.assignBuild'));
+            else if(mode==='repairing')this.game.ui.showInfoMessage(t('msg.assignRepair'));
+        } else if(chosen&&chosen!==resource&&this.game.player.units.length>0) {
+            this.game.attackTarget(chosen,formation,orderedUnits);
+        } else {
+            // Move units - allow movement into undiscovered areas
+            this.game.moveUnits(worldPos.x, worldPos.z, formation, orderedUnits);
+
+            // Move camera if clicking on edge of screen
+            const rect = this.renderer.renderer.domElement.getBoundingClientRect();
+            if (event.clientX - rect.left < 50) {
+                this.renderer.moveCameraTo(worldPos.x - 10, worldPos.z);
+            } else if (event.clientX - rect.left > rect.width - 50) {
+                this.renderer.moveCameraTo(worldPos.x + 10, worldPos.z);
+            }
+            if (event.clientY - rect.top < 50) {
+                this.renderer.moveCameraTo(worldPos.x, worldPos.z - 10);
+            } else if (event.clientY - rect.top > rect.height - 50) {
+                this.renderer.moveCameraTo(worldPos.x, worldPos.z + 10);
+            }
+        }
+    }
+
 }

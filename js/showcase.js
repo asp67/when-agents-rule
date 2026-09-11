@@ -74,7 +74,13 @@ Game.prototype.prepareVisualShowcase = function () {
         <select id="showcaseTime">${Object.keys(Game.SHOWCASE_TIMES).map(id=>
             `<option value="${id}" data-i18n="art.time.${id}"></option>`).join('')}</select>
         <div class="showcase-tools"><button type="button" data-showcase-load data-i18n="art.loadCivilization"></button>
-        <button type="button" data-showcase-workers data-i18n="art.workers"></button></div>`;
+        <button type="button" data-showcase-workers data-i18n="art.workers"></button></div>
+        <details class="showcase-sound"><summary data-i18n="audio.test"></summary>
+            <small data-i18n="audio.testHint"></small>
+            <div class="showcase-sound-buttons">${['step','snow','gravel','hoof','hoofSnow','hoofGravel','bow','crossbow','impact','steel','stone','crackle','chop','harvest','mine','build','built','research','trained','collapse','wonderLost','heal','command','commandAction','start','elimination','victory','defeat','warning'].map(kind=>
+                `<button type="button" data-sound-sample="${kind}" data-i18n="audio.sample.${kind}"></button>`).join('')}</div>
+            <small data-sound-status role="status"></small>
+        </details>`;
     label.querySelector('#showcaseCivilization').value=civ;
     label.querySelector('#showcaseTerrain').value=this._showcaseTerrain || 'summer';
     label.querySelector('#showcaseAge').value=age;
@@ -90,6 +96,17 @@ Game.prototype.prepareVisualShowcase = function () {
         this.loadShowcaseCivilization(label.querySelector('#showcaseCivilization').value,
             label.querySelector('#showcaseTerrain').value,label.querySelector('#showcaseAge').value));
     label.querySelector('[data-showcase-workers]').addEventListener('click',()=>this.focusShowcaseWorkers());
+    label.querySelectorAll('[data-sound-sample]').forEach(button=>button.addEventListener('click',async()=>{
+        button.disabled=true;
+        const status=label.querySelector('[data-sound-status]');
+        try { await this.sound.audition(button.dataset.soundSample); status.textContent=''; }
+        catch (_) { status.textContent=t('audio.unavailable'); }
+        finally {
+            button.disabled=false;
+            const toggle=document.querySelector('.audio-popover input[type="checkbox"]');
+            if(toggle)toggle.checked=!this.sound.enabled;
+        }
+    }));
     document.getElementById('gameScreen').appendChild(label);
     if(typeof applyI18n==='function') applyI18n();
 };
@@ -104,12 +121,14 @@ Game.prototype.loadShowcaseCivilization = function (civilization, terrain=this._
     url.searchParams.set('age',Game.showcaseAge(age));
     url.searchParams.set('time',Game.showcaseTime(this._showcaseTime));
     // Replace this demo rather than stacking a history entry for every civ.
+    this.sound?.preserveForNavigation();
     location.replace(url.href);
 };
 
 // A reload is our clean game reset. Remove demo routing first, otherwise every
 // Back/Main menu action immediately starts the showcase again on window.load.
 Game.prototype.reloadToMenu = function () {
+    this.sound?.preserveForNavigation();
     const url=new URL(location.href);
     if(this._showcaseCivilization || url.searchParams.get('showcase')==='1') {
         url.searchParams.delete('showcase');

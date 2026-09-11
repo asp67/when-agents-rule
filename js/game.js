@@ -56,6 +56,7 @@ class Game {
     }
 
     init() {
+        this.sound = new WarAudio(this);
         this.ui = new UIManager(this);
         const container = document.getElementById('gameCanvas');
         this.renderer = new EngineRenderer(container); // the in-house engine (M6: only renderer)
@@ -389,6 +390,7 @@ class Game {
 
         await this.waitForArenaScene();
         this.gameStarted = true;
+        this.sound?.matchStart();
         // Start game loop
         this.lastFrameTime = Date.now();
         this.wonderTimer = 0;
@@ -588,6 +590,7 @@ class Game {
         }
 
         if (visualShowcase) this.prepareVisualShowcase();
+        else this.sound?.matchStart();
 
         // Initialize fog of war
         if (this.fogOfWar) this.fogOfWar.destroy(); // drop the previous game's fog overlay
@@ -656,7 +659,7 @@ class Game {
                 this.renderer.moveCameraTo(worldX, worldZ);
             } else if (e.button === 2) {
                 // Right click: move selected units to clicked position
-                this.moveUnits(worldX, worldZ);
+                this.ui.choosePlayerFormation(e, (shape, units) => this.moveUnits(worldX, worldZ, shape, units));
             }
         });
     }
@@ -829,13 +832,33 @@ class Game {
     // aimed somewhere it may not stand -- that last part is what finally caught it.
     // See git history: game.dumpJitter().
 
-    moveUnits(targetX, targetZ) {
+    preparePlayerUnits(units) {
+        const manager = this.openAIAIManager;
+        for (const unit of units) {
+            manager.releaseUnitForOrders(unit);
+            unit.formationAxis = null;
+            this.clearRetaliation(unit);
+        }
+    }
+
+    formPlayerOrder(units, x, z, formation, target = null) {
+        if (!units.length) return;
+        this.player.id = 'player';
+        return this.setStandingOrder(this.openAIAIManager, this.player, units, {x,z}, {
+            // Guard applies throughout travel and after arrival. A named enemy
+            // remains the attack objective; once gone, the army holds its area.
+            mode:'guard', formation:formation || '', matchSpeed:formation ? 'slowestUnit' : '', target
+        });
+    }
+
+    moveUnits(targetX, targetZ, formation, orderedUnits) {
         // In spectator mode, no unit control
         if (this.spectatorMode) return;
 
         // Only move player-owned selected units
-        const selectedUnits = (this.renderer.selectedUnits || this.player.units.filter(u => u.selected))
-            .filter(u => u.owner === 'player');
+        const selectedUnits = (orderedUnits || this.renderer.selectedUnits || this.player.units.filter(u => u.selected))
+            .filter(u => u.owner === 'player' && u.health > 0 && this.player.units.includes(u));
+        this.preparePlayerUnits(selectedUnits);
         
         selectedUnits.forEach(unit => {
             // Check if clicking DIRECTLY on a resource node (within small radius)
@@ -898,17 +921,19 @@ class Game {
                 unit.isBuilding = false;
             }
         });
+        this.formPlayerOrder(selectedUnits.filter(u => !u.task), targetX, targetZ, formation);
+        if(selectedUnits.length)this.sound?.notify(selectedUnits.some(u=>u.task==='harvesting'||u.task==='farm_work'||u.task==='building')?'commandAction':'command');
     }
     
     // Find a resource node at a specific position (within small radius)
     findResourceNodeAtPosition(x, z) {
         let nearest = null;
-        let minDist = 1.5; // Very small radius - must click almost directly on the resource
+        let minDist = 4; // Forgiving click radius, still choose the closest node.
         
         // Check terrain resources
         if (this.terrain && this.terrain.resources) {
             this.terrain.resources.forEach(resource => {
-                if (resource.amount <= 0) return;
+                if (resource.amount <= 0 || (this.fogOfWar && !this.fogOfWar.isPositionVisible(resource.x, resource.z))) return;
                 const dx = resource.x - x;
                 const dz = resource.z - z;
                 const dist = Math.sqrt(dx*dx + dz*dz);
@@ -986,41 +1011,24 @@ class Game {
         return this.player.pendingBuildings && this.player.pendingBuildings.length > 0;
     }
 
-    attackTarget(target) {
+    attackTarget(target, formation, orderedUnits) {
         // In spectator mode, no attacks
-        if (this.spectatorMode) return;
+        if (this.spectatorMode || !target || target.health <= 0) return;
 
         // Attack a unit or building
-        const selectedUnits = (this.renderer.selectedUnits || this.player.units.filter(u => u.selected))
-            .filter(u => u.owner === 'player');
-        
-        selectedUnits.forEach(unit => {
-            // Priests never take the attack order itself: they tag along to the
-            // fight and keep healing wounded friendlies (see updateHealing).
-            if (unit.unitType === 'support') {
-                unit.isAttacking = false;
-                unit.attackTarget = null;
-                unit.isMoving = true;
-                unit.targetX = target.x + (Math.random() - 0.5) * 4;
-                unit.targetZ = target.z + (Math.random() - 0.5) * 4;
-                return;
-            }
-            this.clearRetaliation(unit); // an explicit order overrides the reflex
-            unit.isAttacking = true;
-            unit.attackTarget = target;
-            unit.attackTimer = 0;
-            unit.isMoving = true;
-            unit.targetX = target.x;
-            unit.targetZ = target.z;
-        });
+        const selectedUnits = (orderedUnits || this.renderer.selectedUnits || this.player.units.filter(u => u.selected))
+            .filter(u => u.owner === 'player' && u.health > 0 && this.player.units.includes(u));
+        this.preparePlayerUnits(selectedUnits);
+        selectedUnits.forEach(u => { u.task = null; });
+        this.formPlayerOrder(selectedUnits, target.x, target.z, formation, target);
+        if(selectedUnits.length)this.sound?.notify('commandAction');
     }
 
     // Priests are pacifist medics. An attack order marches the given support
     // units along as ESCORTS: they move toward the fight (jittered so they
     // don't stack) and heal via updateHealing, but never take a target and
-    // never engage. Shared by every attack path — the human right-click escort
-    // (inline above), the LLM attack_target/attack-move, and the rule-based
-    // army — so priests behave identically no matter who gives the order.
+    // never engage. Used by LLM and rule-based attack paths; human right-click
+    // orders use the standing-order support slots and healing machinery.
     escortSupportUnits(units, x, z) {
         let n = 0;
         (units || []).forEach(u => {
@@ -1328,7 +1336,7 @@ class Game {
                         if (unit.range > 1) {
                             this.renderer.spawnProjectile(
                                 { x: unit.x, y: 1.5, z: unit.z },
-                                { x: currentTarget.x, y: 1.1, z: currentTarget.z }, 'arrow');
+                                { x: currentTarget.x, y: 1.1, z: currentTarget.z }, 'arrow', unit);
                         }
                         this.renderer.flashHit(currentTarget);
                         this.notifyCombat(currentTarget.x, currentTarget.z, unit, currentTarget, dealt);
@@ -1400,6 +1408,7 @@ class Game {
                 // clamp truncates the last tick, and a priest should not be reported
                 // healing more than it really put back.
                 this.recordBattleHealing(u, patient.health - beforeHeal);
+                if(patient.health>beforeHeal)this.sound?.emit('heal',patient,.18);
                 // Soft green sparkle on the patient while the heal channels.
                 u._healFxTimer = (u._healFxTimer || 0) + deltaTime;
                 if (u._healFxTimer >= 900) {
@@ -1464,6 +1473,7 @@ class Game {
                 if (d <= range) inRange.push({ unit, d });
             });
             inRange.sort((a, b) => a.d - b.d);
+            if(inRange.length && power.arrows > 0) this.sound?.projectile(tower, 'arrow');
             inRange.slice(0, power.arrows).forEach(({ unit }) => {
                 unit.health -= dmg;
                 this.recordBattleDamage(tower, unit, dmg);
@@ -1798,6 +1808,7 @@ class Game {
     // battle ring in the world (max one per ~35-unit area / 5s), queues a minimap
     // ping, and records the event for the spectator action camera. No game effect.
     notifyCombat(x, z, attacker, target, damage) {
+        if (this.sound) this.sound.combat(attacker, target);
         const now = Date.now();
         // Camera urgency is independent of the throttled visual pings below.
         if (this._actionCam && this.spectatorMode) {
@@ -2371,6 +2382,7 @@ class Game {
         // stayed in its owner's buildings list forever and blocked them from ever
         // building another Wonder ("already building or holding a Wonder").
         const isBuilding = target.isWonder || (target.type && BUILDING_DEFS[target.type]);
+        if(isBuilding)this.sound?.buildingLost(target);
 
         // Battle report for both sides, before any list surgery. Specific types
         // on BOTH ends ("your warrior was eliminated by X's tower"), so a model
@@ -2679,6 +2691,7 @@ class Game {
         const building = createBuilding(pendingBuilding.type, x, z, 'player', this.player.civilization, { underConstruction: true, age: this.player.age });
         this.addBuilding(building);
         this.applyBuilder(pick, building);
+        this.sound?.notify('command');
         // Borrowed a gatherer (no one was idle): say so — it returns by itself.
         if (pick.restore) this.ui.showInfoMessage(t('msg.builderBorrowed'));
 
@@ -2765,6 +2778,7 @@ class Game {
         trainingBuilding.productionType = unitType;
         trainingBuilding.productionDuration = 5000;
         trainingBuilding.productionProgress = 0;
+        this.sound?.notify('command');
 
         this.ui.closeMenus();
     }
@@ -2832,6 +2846,7 @@ class Game {
             progress: 0,
             duration: tech.researchTime || 15000
         };
+        this.sound?.notify('command');
         
         this.ui.closeMenus();
     }
@@ -2993,6 +3008,7 @@ class Game {
             progress: 0,
             duration: 30000  // 30 seconds for age upgrade
         };
+        this.sound?.notify('command');
 
         this.ui.closeMenus();
     }
@@ -4288,6 +4304,7 @@ class Game {
         if (this.renderer && this.renderer.onBuildingCompleted) {
             this.renderer.onBuildingCompleted(building);
         }
+        this.sound?.completed('built', building);
         // A drop-off exists again: wake the economy that stalled without one.
         if (building.type === 'town_center' && owner) this.onTownCenterBuilt(owner);
     }
@@ -5091,6 +5108,7 @@ class Game {
                             }
                         }
                         this.renderer.addUnit(unit);
+                        this.sound?.completed('trained', building, owner, {name:unit.name});
                     }
                     // Reset production
                     building.isProducing = false;
@@ -5159,6 +5177,7 @@ class Game {
                 const civ = getCivilization(this.player.civilization);
                 const tech = civ.techTree[research.techId];
                 this.completeResearch(research.techId, tech, this.player);
+                this.sound?.completed('research', null, this.player, {name:tech?.name||research.techId});
             }
         }
         
@@ -5173,6 +5192,7 @@ class Game {
                 const civ = getCivilization(ai.civilization);
                 const tech = civ?.techTree?.[research.techId];
                 this.completeResearch(research.techId, tech, ai);
+                this.sound?.completed('research', null, ai, {name:tech?.name||research.techId});
             }
         });
     }
@@ -5185,6 +5205,7 @@ class Game {
             
             if (upgrade.progress >= upgrade.duration) {
                 this.completeAgeUpgrade(upgrade.targetAge, this.player);
+                this.sound?.completed('research', null, this.player, {kind:'age',age:upgrade.targetAge});
             }
         }
         
@@ -5197,6 +5218,7 @@ class Game {
             
             if (upgrade.progress >= upgrade.duration) {
                 this.completeAgeUpgrade(upgrade.targetAge, ai);
+                this.sound?.completed('research', null, ai, {kind:'age',age:upgrade.targetAge});
             }
         });
     }
@@ -5548,6 +5570,7 @@ class Game {
     }
 
     checkWinConditions(deltaTime = 16) {
+        this.sound?.matchEvents();
         // Arena/spectator mode has no human player: decide between the AIs.
         if (this.spectatorMode) {
             this.checkArenaEnd(deltaTime);
@@ -5681,6 +5704,7 @@ class Game {
     // Stop the match and hand off to the benchmark summary screen.
     endArena(winnerAi, reason) {
         if (!this.gameStarted) return; // guard against double-trigger
+        this.sound?.notify(winnerAi?'victory':'defeat',true,{civilization:winnerAi?.civilization});
         this.gameStarted = false;
         // Ask whoever is still standing for a closing statement BEFORE stop(), which
         // aborts every controller's in-flight request. The question carries its own

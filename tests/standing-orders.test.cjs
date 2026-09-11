@@ -1,6 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-function setup(){
- const scope={console:{log(){}},BUILDING_DEFS:{town_center:{},tower:{}},towerPower:()=>({attack:10,arrows:1}),setTimeout:()=>{},Math};vm.createContext(scope);
+function setup(arrows=1){
+ const scope={console:{log(){}},BUILDING_DEFS:{town_center:{},tower:{}},towerPower:()=>({attack:10,arrows}),setTimeout:()=>{},Math};vm.createContext(scope);
  const read=p=>fs.readFileSync(path.join(__dirname,'../js/',p),'utf8');
  vm.runInContext(read('game.js').split('\nconst WAR_PRIVATE_HOST')[0],scope);
  vm.runInContext(read('openai-ai.js'),scope);vm.runInContext(read('standing-orders.js'),scope);
@@ -15,6 +15,78 @@ function setup(){
  const rival=(x,z=0)=>{const e={...unit('warrior',x,z),owner:'b',health:10000};enemy.push(e);return e;};
  return {g,m,owner,unit,enemy,rival,issue,step};
 }
+test('player formations share slowest pace and retain priests; None clears shape and pace',()=>{
+ const h=setup();h.owner.id='player';h.g.player=h.owner;h.g.openAIAIManager=h.m;h.m._orderSeq=0;
+ h.g.findResourceNodeAtPosition=()=>null;h.g.hasPendingBuildings=()=>false;
+ const foot=h.unit('warrior',0,0,1),priest=h.unit('priest',-2,0,2),horse=h.unit('horse',2,0,3);
+ h.owner.units.push(foot,priest,horse);for(const u of h.owner.units)u.owner='player';
+ h.g.renderer.selectedUnits=h.owner.units;
+ for(const shape of ['line','wedge','block','screen']){
+  h.g.moveUnits(100,0,shape);
+  const group=foot._standingOrder;
+  assert.equal(group.owner.id,'player');assert.equal(group.mode,'guard');assert.equal(group.shape,shape);assert.equal(group.units.length,3);
+  for(const u of h.owner.units){assert.equal(u.marchSpeed,1);assert.ok(u.formationGroup);assert.ok(group.slots.has(u));}
+ }
+ h.g.moveUnits(80,20,'');for(const u of h.owner.units){assert.equal(u.marchSpeed,null);assert.equal(u.formationGroup,null);}
+ assert.equal(h.g._standingOrders.groups.size,1);
+});
+
+test('player attack formations retain the target and only command captured living owned units',()=>{
+ const h=setup();h.owner.id='player';h.g.player=h.owner;h.g.openAIAIManager=h.m;h.m._orderSeq=0;
+ const foot=h.unit(),priest=h.unit('priest'),other=h.unit(),dead=h.unit();
+ h.owner.units.push(foot,priest,other,dead);for(const u of h.owner.units)u.owner='player';dead.health=0;
+ const foe=h.rival(15);h.g.renderer.selectedUnits=[other];
+ h.g.attackTarget(foe,'block',[foot,priest,dead,foe]);
+ assert.equal(foot._standingOrder.target,foe);assert.equal(foot._standingOrder.mode,'guard');assert.equal(foot._standingOrder.units.length,2);
+ assert.equal(priest._standingOrder,foot._standingOrder);assert.equal(other._standingOrder,undefined);
+ assert.equal(dead._standingOrder,undefined);assert.equal(foe._standingOrder,undefined);
+ h.g.moveUnits(30,0,undefined,[]);assert.equal(foot._standingOrder.target,foe);
+});
+
+test('player group resource orders still gather instead of joining the marching formation',()=>{
+ const h=setup();h.owner.id='player';h.g.player=h.owner;h.g.openAIAIManager=h.m;h.m._orderSeq=0;
+ const worker=h.unit('worker'),soldier=h.unit();h.owner.units.push(worker,soldier);
+ for(const u of h.owner.units)u.owner='player';h.g.renderer.selectedUnits=h.owner.units;
+ const node={x:10,z:20,type:'wood',amount:100};h.g.findResourceNodeAtPosition=()=>node;
+ h.g.moveUnits(10,20,'line');assert.equal(worker.task,'harvesting');assert.equal(worker.harvestTarget,node);
+ assert.equal(worker._standingOrder,undefined);assert.equal(soldier._standingOrder.units.length,1);assert.equal(soldier._standingOrder.mode,'guard');
+});
+
+test('a single player soldier guards during movement and after arrival without a formation',()=>{
+ const h=setup();h.owner.id='player';h.g.player=h.owner;h.g.openAIAIManager=h.m;h.m._orderSeq=0;
+ h.g.fogOfWar={isPositionVisible:()=>true};h.g.findResourceNodeAtPosition=()=>null;
+ const soldier=h.unit();soldier.owner='player';h.owner.units.push(soldier);h.g.renderer.selectedUnits=[soldier];
+ h.g.moveUnits(80,0);const group=soldier._standingOrder;
+ assert.equal(group.mode,'guard');assert.equal(group.shape,null);assert.equal(soldier.marchSpeed,null);
+ const enemy=h.rival(10);h.step();assert.equal(soldier.attackTarget,enemy);
+ enemy.health=0;h.step();assert.equal(soldier._standingOrder,group);
+ Object.assign(soldier,group.slots.get(soldier));soldier.isMoving=false;h.step();assert.equal(group.atPost,true);
+ const next=h.rival(88);h.step();assert.equal(soldier.attackTarget,next);assert.equal(group.to.x,80);
+});
+
+test('single-player targeted attacks guard the final target site and engage the next nearby enemy',()=>{
+ const h=setup();h.owner.id='player';h.g.player=h.owner;h.g.openAIAIManager=h.m;h.m._orderSeq=0;
+ h.g.fogOfWar={isPositionVisible:()=>true};
+ const soldier=h.unit();soldier.owner='player';h.owner.units.push(soldier);h.g.renderer.selectedUnits=[soldier];
+ const target=h.rival(10);h.g.attackTarget(target);const group=soldier._standingOrder;
+ assert.equal(group.mode,'guard');assert.equal(group.target,target);h.step();assert.equal(soldier.attackTarget,target);
+ target.x=20;target.health=0;h.step();assert.equal(group.target,null);assert.equal(group.to.x,20);
+ assert.equal(group.mode,'guard');assert.equal(soldier._standingOrder,group);
+ const next=h.rival(22);h.step();assert.equal(soldier.attackTarget,next);
+});
+
+test('right-click feedback distinguishes accepted work and attacks from movement, with forgiving resource clicks',()=>{
+ const h=setup();h.owner.id='player';h.g.player=h.owner;h.g.openAIAIManager=h.m;h.m._orderSeq=0;
+ const worker=h.unit('worker');worker.owner='player';h.owner.units.push(worker);h.g.renderer.selectedUnits=[worker];
+ h.g.hasPendingBuildings=()=>false;const heard=[];h.g.sound={notify:k=>heard.push(k)};
+ const node={type:'wood',x:0,z:0,amount:100},hidden={type:'food',x:2,z:0,amount:100};
+ h.g.terrain={resources:[hidden,node]};h.g.fogOfWar={isPositionVisible:(x,z)=>x!==2};
+ h.g.moveUnits(3,0);assert.equal(worker.harvestTarget,node);assert.equal(heard.pop(),'commandAction');
+ h.g.moveUnits(8,0);assert.equal(worker.task,null);assert.equal(heard.pop(),'command');
+ node.amount=0;h.g.moveUnits(1,0);assert.equal(worker.task,null);assert.equal(heard.pop(),'command');
+ h.g.attackTarget(h.rival(10));assert.equal(heard.pop(),'commandAction');
+});
+
 test('scout ignores visible enemies and continues its destination',()=>{
  const h=setup();h.owner.units.push(h.unit());h.rival(5);h.issue('scout');h.step(2000,true);
  assert.ok(h.owner.units[0].x>0);assert.equal(h.owner.units[0].attackTarget,null);
@@ -229,6 +301,19 @@ test('scout orders defend against tower fire, then resume scouting',()=>{
  h.issue('scout');h.g.noteRetaliation(u,tower);h.step();assert.equal(u.attackTarget,tower);tower.health=0;h.step();assert.equal(u.attackTarget,null);assert.equal(u._standingOrder.mode,'scout');
 });
 
+test('a tower plays one bow release per volley, not per projectile or idle timer',()=>{
+ const h=setup(2);h.owner.units.push(h.unit('warrior',1),h.unit('warrior',2));
+ const tower={type:'tower',owner:'b',x:0,z:0,health:1000,range:6};h.g.getAllBuildings=()=>[tower];
+ const sounds=[],shots=[];h.g.sound={projectile:(from,kind)=>sounds.push([from,kind])};
+ h.g.renderer.spawnProjectile=(...args)=>shots.push(args);h.g.noteRetaliation=()=>{};
+ h.g.updateTowerAttack(1499);assert.equal(sounds.length,0);
+ h.g.updateTowerAttack(1);assert.equal(sounds.length,1);assert.equal(shots.length,2);
+ assert.equal(sounds[0][0],tower);assert.equal(sounds[0][1],'arrow');
+ h.g.updateTowerAttack(1500);assert.equal(sounds.length,2);assert.equal(shots.length,4);
+ h.owner.units.forEach(u=>u.x=100);h.g.updateTowerAttack(1500);assert.equal(sounds.length,2);
+ tower.underConstruction=true;h.owner.units.forEach(u=>u.x=1);h.g.updateTowerAttack(1500);assert.equal(sounds.length,2);
+});
+
 test('an actual tower volley immediately redirects the formation before the next order scan',()=>{
  const h=setup(),a=h.unit(),b=h.unit('warrior',2),priest=h.unit('priest',4);
  h.owner.units.push(a,b,priest);
@@ -292,6 +377,29 @@ test('named building assault continues through nearby buildings and units, then 
  const worker=h.rival(15);worker.type='worker';second.health=0;h.step();assert.equal(u.attackTarget,worker);
  worker.health=0;h.step();assert.equal(u.attackTarget,null);assert.equal(group.fighting,false);
  assert.ok(u.formationGroup,'rebuilds formation when local targets are exhausted');
+});
+
+test('player Guard attacks destroy successive buildings without new orders, then hold and regroup',()=>{
+ for(const shape of [undefined,'','line','wedge','block','screen']){
+  const h=setup();h.owner.id='player';h.g.player=h.owner;h.g.openAIAIManager=h.m;h.m._orderSeq=0;
+  h.g.fogOfWar={isPositionVisible:(x,z)=>z!==100};
+  const soldiers=[h.unit('warrior',0,0,3)];
+  if(shape!==undefined)soldiers.push(h.unit('warrior',0,2,3),h.unit('priest',-2,0,4));
+  soldiers.forEach(u=>{u.owner='player';h.owner.units.push(u);});h.g.renderer.selectedUnits=soldiers;
+  const building=(x,z=0)=>({owner:'b',type:'town_center',x,z,health:20,maxHealth:20});
+  const first=building(5),second=building(15),third=building(25),distant=building(160),hidden=building(5,100);
+  h.g.getAllBuildings=()=>[first,second,third,distant,hidden];
+  const destroyed=[];h.g.destroyTarget=e=>{e.health=0;destroyed.push(e);};
+  h.g.attackTarget(first,shape);const group=soldiers[0]._standingOrder;
+  for(let i=0;i<600&&third.health>0;i++)h.step(100,true);
+  assert.deepEqual(destroyed,[first,second,third],String(shape));
+  assert.equal(group.mode,'guard');assert.equal(group.attack,true);assert.equal(group.order,'attack_target');
+  h.step(30000,true);
+  assert.equal(group.fighting,false);assert.equal(group.settled,true);assert.equal(group.atPost,true);
+  assert.equal(distant.health,20);assert.equal(hidden.health,20);
+  for(const u of soldiers){assert.equal(u._standingOrder,group);assert.equal(u.attackTarget,null);}
+  if(shape)assert.ok(soldiers.every(u=>u.formationGroup),'formation returns after clearing the site');
+ }
 });
 
 test('completing a distant named objective anchors continuation at the arrived army',()=>{
