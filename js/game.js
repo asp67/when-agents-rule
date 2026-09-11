@@ -5875,7 +5875,14 @@ window.addEventListener('load', () => {
     }
     if (WAR_DEMO_ONLY) {
         document.body.classList.add('demo-only');
+    }
+    const viewerParams = new URLSearchParams(location.search);
+    if (viewerParams.has('match') || WAR_DEMO_ONLY) {
         game.ui.anOpen();
-        game.ui.anLoadSample();
+        if (viewerParams.has('match')) {
+            game.ui.anLoadLinkedMatch(viewerParams.get('match'));
+        } else {
+            game.ui.anLoadSample();
+        }
     }
 });

@@ -5100,6 +5100,17 @@ class UIManager {
         if (file) this.anLoadSample(file);
     }
 
+    async anLoadLinkedMatch(matchId) {
+        // Resolve public IDs through the catalogue; never treat URL input as a path.
+        const list = await this.anLoadSampleIndex();
+        const match = list.find(m => m.matchId === matchId);
+        if (!match) {
+            this.showErrorMessage(t('an.sampleFail'));
+            return;
+        }
+        return this.anLoadSample(match.file);
+    }
+
     anLoadSample(file0) {
         // A call with no file of its own means "open the default", and the default is a
         // flag in the index -- so this has to WAIT for the index. It did not: anOpen()
@@ -5131,7 +5142,7 @@ class UIManager {
             || (list.find(m => m.default) || list[0] || {}).file
             || this.SAMPLE_MATCH;
         this._sampleFile = file;
-        fetch('samples/' + file)
+        return fetch('samples/' + file)
             .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
             .then(text => {
                 this.anStopPlay();   // a fresh load starts stopped, as a file load does
