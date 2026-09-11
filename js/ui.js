@@ -1860,11 +1860,16 @@ class UIManager {
     async testArenaModel(id) {
         const m = this.getArenaModel(id);
         if (!m) return;
+        m.endpoint = OpenAIAIManager.normalizeLocalEndpoint(m.endpoint);
+        const testedEndpoint = m.endpoint;
         const statusEl = document.getElementById('modelStatus-' + id);
         m._status = { cls: 'pending', text: t('ar.testing') };
         if (statusEl) { statusEl.className = 'test-status pending'; statusEl.textContent = t('ar.testing'); }
         const res = await OpenAIAIManager.testConnection((m.endpoint || '').trim(), this.cleanAuth(m.auth), m.provider || 'auto');
+        // Do not overwrite an address edited while the request was in flight.
+        if (m.endpoint !== testedEndpoint) return;
         if (res.ok) {
+            if (res.endpoint) m.endpoint = res.endpoint;
             m.availableModels = res.models || [];
             if ((!m.model || !m.availableModels.includes(m.model)) && m.availableModels.length) m.model = m.availableModels[0];
             // Remember each model's context window (when the endpoint reports it) for

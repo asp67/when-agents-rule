@@ -1152,6 +1152,31 @@ class OpenAIAIManager {
     // natively so any major inference endpoint works without a proxy.
     // ----------------------------------------------------------------
     static stripSlash(u) { return (u || '').replace(/\/+$/, ''); }
+    static isLocalEndpoint(endpoint) {
+        try {
+            const u = new URL(endpoint);
+            if (!/^https?:$/.test(u.protocol) || u.username || u.password) return false;
+            const h = u.hostname.toLowerCase();
+            return h === 'localhost' || h.endsWith('.localhost') || h === '[::1]'
+                || /^\[(?:f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/.test(h)
+                || /^(?:10\.|127\.|192\.168\.|169\.254\.|172\.(?:1[6-9]|2\d|3[01])\.)/.test(h)
+                    && /^\d+\.\d+\.\d+\.\d+$/.test(h);
+        } catch (_) { return false; }
+    }
+    static normalizeLocalEndpoint(endpoint) {
+        const value = (endpoint || '').trim();
+        // Only supply a missing scheme for an unambiguous private/loopback address.
+        // Explicit schemes, public hosts and custom paths remain the user's choice.
+        if (value.includes('://') || value.startsWith('//')) return value;
+        const candidate = 'http://' + value;
+        return OpenAIAIManager.isLocalEndpoint(candidate) ? candidate : value;
+    }
+    static localV1Fallback(endpoint, provider) {
+        if (provider !== 'openai' || !OpenAIAIManager.isLocalEndpoint(endpoint)) return null;
+        const u = new URL(endpoint);
+        if ((u.pathname && u.pathname !== '/') || u.search || u.hash) return null;
+        return OpenAIAIManager.stripSlash(endpoint) + '/v1';
+    }
     static ollamaRoot(endpoint) {
         return OpenAIAIManager.stripSlash(OpenAIAIManager.stripSlash(endpoint).replace(/\/(v1|api)$/i, ''));
     }
@@ -1985,6 +2010,7 @@ class OpenAIAIManager {
     // (these used to be hardcoded German regardless of language); `error` stays an
     // English fallback for logs/non-UI callers.
     static async testConnection(endpoint, auth, provider = 'auto', timeoutMs = 9000) {
+        endpoint = OpenAIAIManager.normalizeLocalEndpoint(endpoint);
         if (!endpoint) return { ok: false, errorCode: 'noEndpoint', error: 'No endpoint URL set.' };
         const prov = provider === 'auto' ? OpenAIAIManager.detectProvider(endpoint) : provider;
         let headers;
@@ -1995,17 +2021,33 @@ class OpenAIAIManager {
             return { ok: false, errorCode: 'authFailed', errorDetail: detail, error: 'Authentication failed: ' + detail };
         }
         // Each provider lists models from a different path.
-        const url = prov === 'ollama'
+        let url = prov === 'ollama'
             ? OpenAIAIManager.ollamaRoot(endpoint) + '/api/tags'
             : OpenAIAIManager.stripSlash(endpoint) + '/models';
         try {
-            const resp = await OpenAIAIManager.fetchWithTimeout(url, { headers, mode: 'cors' }, timeoutMs);
+            let resp = await OpenAIAIManager.fetchWithTimeout(url, { headers, mode: 'cors' }, timeoutMs);
+            let inferredEndpoint = null;
+            const fallback = OpenAIAIManager.localV1Fallback(endpoint, prov);
+            if (resp.status === 404 && fallback) {
+                url = fallback + '/models';
+                resp = await OpenAIAIManager.fetchWithTimeout(url, { headers, mode: 'cors' }, timeoutMs);
+                inferredEndpoint = fallback;
+            }
             if (!resp.ok) {
                 const detail = `${resp.status} ${resp.statusText || ''}`.trim();
                 const code = (resp.status === 401 || resp.status === 403) ? 'httpAuth' : 'http';
                 return { ok: false, errorCode: code, errorDetail: detail, error: 'HTTP ' + detail, provider: prov };
             }
             const data = await resp.json();
+            if (inferredEndpoint) {
+                const entries = data && (data.data || data.models);
+                if (!Array.isArray(entries) || !entries.every(m =>
+                    typeof m === 'string' ? !!m.trim() : m && typeof (m.id || m.name) === 'string' && !!(m.id || m.name).trim())) {
+                    return { ok: false, errorCode: 'http', errorDetail: 'Invalid model-list response',
+                        error: 'The /v1 endpoint did not return a valid model list.', provider: prov };
+                }
+                endpoint = inferredEndpoint;
+            }
             let models;
             const contextById = {};
             const ownedById = {};
@@ -2056,7 +2098,7 @@ class OpenAIAIManager {
             // Anthropic and Google ARE the service; Ollama speaks its own protocol and is
             // already distinguishable. Only the openai-compatible crowd needs asking.
             const servedBy = (prov === 'openai') ? einig : prov;
-            return { ok: true, models, provider: prov, contextById, ownedById, servedBy };
+            return { ok: true, models, provider: prov, contextById, ownedById, servedBy, endpoint };
         } catch (e) {
             if (e && e.name === 'AbortError') {
                 return { ok: false, errorCode: 'timeout', error: 'Timed out — endpoint unreachable.', provider: prov };
