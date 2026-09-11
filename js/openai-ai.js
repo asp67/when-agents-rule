@@ -345,6 +345,30 @@ class OpenAIAIManager {
         return (game && game.isIdleWorker && game.isIdleWorker(u)) ? 'idle' : 'moving';
     }
 
+    // Private request context: identities and order tokens never enter model JSON.
+    rememberWorkerPools(controller) {
+        controller._shownWorkerPools = new Map(controller.aiPlayer.units
+            .filter(u => u.type === 'worker' && u.health > 0)
+            .map(u => [u, { job: OpenAIAIManager.workerJob(this.game, u), token: u._orderToken }]));
+    }
+
+    workerSourceMatches(ai, worker, from) {
+        const seat = (this.aiControllers || []).find(c => c.aiPlayer === ai);
+        const snapshot = seat && seat._shownWorkerPools;
+        if (!snapshot) return OpenAIAIManager.workerJob(this.game, worker) === from;
+        const seen = snapshot.get(worker);
+        // Natural completion changes the job, but only an explicit order changes its
+        // token. A newer order (including another call in this reply) wins.
+        return !!seen && seen.job === from && seen.token === worker._orderToken;
+    }
+
+    static workerSource(value) {
+        if (!OpenAIAIManager.given(value)) return null;
+        const aliases = { onfood: 'food', onwood: 'wood', onstone: 'stone', ongold: 'gold', onfarms: 'farm', farms: 'farm' };
+        const raw = String(value).toLowerCase().trim(), from = aliases[raw] || raw;
+        return ['food','wood','stone','gold','farm','idle','scouting','moving','building','fighting'].includes(from) ? from : undefined;
+    }
+
     newStats() {
         return {
             requests: 0,          // requests that returned or definitively failed
@@ -3026,13 +3050,13 @@ class OpenAIAIManager {
         // lanes are sent different ones. executeTurn republishes the answering lane's
         // value to the seat, which is where the executor's seat-lookup reads it.
         if (controller) controller._sentIdle = wk.idle;
-        // ...and the whole tally, for the same reason one pool over. The refusal below
-        // assumes "the four resources and the farms do not empty themselves between the
-        // snapshot and the order", which is true of a single-lane seat and false of a
-        // pipelined one: a sibling can move every villager off wood after this board went
-        // out. Keeping what WAS published is the only way to tell that apart from a seat
-        // reading past a zero it was shown.
-        if (controller) controller._shownWorkers = Object.assign({}, wk);
+        // Keep both the published tally and private membership. Tasks may finish
+        // during inference; identities let the executor fulfill that same source
+        // request, while order tokens protect workers explicitly reassigned since.
+        if (controller) {
+            controller._shownWorkers = Object.assign({}, wk);
+            this.rememberWorkerPools(controller);
+        }
         // ...and the tally of how many of them this turn's own calls spend. A reply may
         // carry three commands; if the first builds and the second asks for idle hands,
         // the pool was emptied by the model, not by the clock. That is the one version
@@ -3625,7 +3649,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists. Workers include "carrying": empty, food, wood, stone, gold, or unknown. CONTACT LOST cargo describes the last visible observation, not the worker's current hidden state.
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
-- "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool.
+- "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool. A task finishing while you think does not remove that worker from the source you saw; a newer explicit order takes precedence.
 - "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
 - A "CONTACT" line is a rival unit or building coming into your sight, and "CONTACT LOST" is one leaving it, each with where it was. Both are moments, and both are gone from this list next turn — what they MEAN is yours to carry. A sighting and a loss of the same unit are two positions in order, which is a heading: follow it back and it points at where that unit came from. Something roaming far from anywhere you have looked is a direction worth scouting. A "CONTACT LOST" also means your knowledge of that position is now old — it is where the unit WAS, not where it is.
 - "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
@@ -5321,6 +5345,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         seat._idleTaken = 0;
         seat._pulledThisTurn = {};
         if (controller._shownWorkers) seat._shownWorkers = controller._shownWorkers;
+        seat._shownWorkerPools = controller._shownWorkerPools;
         // What THIS reply has already done, so the duplicate check can tell a board that
         // changed under the seat from a seat that changed it itself. A reply may carry
         // three commands: "build barracks, build barracks" is a deliberate pair, and the
@@ -5376,6 +5401,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 }
             }
         } finally {
+            for (let i = cmds.length; i < envelope.commands.length; i++) {
+                controller._batch.results.push(this.rejectExcessCommand(controller, i));
+            }
             const results = controller._batch.results;
             controller._batch = null;
             // Numbered, so the model can tell WHICH of its commands failed. An
@@ -5394,6 +5422,20 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     controller.aiPlayer && controller.aiPlayer.id, combined, controller.laneNo);
             } catch (e) { /* recording must never break a turn */ }
         }
+    }
+
+    // Share the limit verdict with the platform server; never dispatch excess calls.
+    rejectExcessCommand(controller, index) {
+        const error = 'Command ' + (index + 1) + ' was not executed: maximum '
+            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' game commands per turn. Only the first '
+            + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ' were considered; a plan uses no command slot.';
+        this.logExecutionFailure(controller, 'command_limit', error);
+        if (controller.stats) {
+            const st = controller.stats;
+            st.actionsAttempted = (st.actionsAttempted || 0) + 1;
+            st.actionsRejected = (st.actionsRejected || 0) + 1;
+        }
+        return '[ERROR] ' + error;
     }
 
     // What did this reply actually order? Returns [] when the reply carries no command
@@ -6712,6 +6754,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const building = createBuilding(buildingType, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
         ai.buildings.push(building);
         game.renderer.addBuilding(building);
+        if (pick.worker) pick.worker._orderToken = ++this._orderSeq;
         game.applyBuilder(pick, building);
 
         console.log(`[OpenAIAI] ${ai.id}: Started ${buildingDef.name} at (${Math.round(x)}, ${Math.round(z)})`);
@@ -7529,6 +7572,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // every hand is busy. Same pull triage as the resource path, so a rescue
     // disturbs the economy exactly as predictably as any other reassignment.
     executeAssignFarmers(ai, game, params) {
+        const from = OpenAIAIManager.workerSource(params.from);
+        if (from === undefined) return '[ERROR] assign_workers: invalid "from" worker pool.';
         const noTC = this.noTownCenterAdvice(ai);
         if (noTC) return noTC;
 
@@ -7569,7 +7614,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const isFighting = u => u.isAttacking || u.attackTarget || u.attackMove;
         const candidates = ai.units.filter(u =>
             u.type === 'worker' && u.health > 0 &&
-            u.task !== 'building' && !u.isBuilding && !isFighting(u) && !u.farmRef);
+            u.task !== 'building' && !u.isBuilding && !isFighting(u) && !u.farmRef
+            && (from === null || this.workerSourceMatches(ai, u, from)));
         if (candidates.length === 0) {
             const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
             const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
@@ -7590,6 +7636,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 : (w.harvestTarget ? `from ${w.harvestTarget.type}` : 'spare');
             pulledFrom[label] = (pulledFrom[label] || 0) + 1;
             w._formerTask = null;
+            w._orderToken = ++this._orderSeq;
+            w._queuedAssign = null;
             w.task = 'farm_work';
             w.farmRef = f;
             f.assignedWorker = w;
@@ -7681,18 +7729,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // No table. workerJob names the pool, the state publishes it under that name,
         // and "from" takes it back unchanged -- so a model reading workers.stone: 6
         // writes from: "stone" and is right the first time.
-        const whereFrom = u => OpenAIAIManager.workerJob(game, u);
         // Every pool the state reports is addressable, including the two that are busy
         // now and free later (see the queue below). "total" is a sum, not a pool.
         const FROMS = ['food', 'wood', 'stone', 'gold', 'farm', 'idle',
                        'scouting', 'moving', 'building', 'fighting'];
         // The names the state used to publish still work. Breaking a model that learned
         // them buys nothing, and they were our spelling before they were its mistake.
-        const FROM_ALIAS = { onfood: 'food', onwood: 'wood', onstone: 'stone',
-                             ongold: 'gold', onfarms: 'farm', farms: 'farm' };
-        const rawFrom = OpenAIAIManager.given(params.from)
-            ? String(params.from).toLowerCase().trim() : null;
-        const from = rawFrom === null ? null : (FROM_ALIAS[rawFrom] || rawFrom);
+        const from = OpenAIAIManager.workerSource(params.from);
         if (from !== null && !FROMS.includes(from)) {
             this.outcome('log.out.assignBadFrom', {});
             // The tail here read "omit it to use ingame worker selection, which takes idle
@@ -7724,20 +7767,25 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // dies takes it along, which is the whole of the cleanup.
         if (from === 'building' || from === 'fighting') {
             const pool = ai.units.filter(u => u.type === 'worker' && u.health > 0
-                && OpenAIAIManager.workerJob(game, u) === from);
+                && this.workerSourceMatches(ai, u, from));
             if (!pool.length) {
                 this.outcome('log.out.assignFromEmpty', { from, field: from });
                 return `[ERROR] assign_workers "${from}": empty (workers.${from} is 0).`;
             }
             const take = pool.slice(0, count);
             const token = ++this._orderSeq;
-            take.forEach(w => { w._orderToken = token; w._queuedAssign = { token, node, resourceType }; });
+            take.forEach(w => {
+                w._orderToken = token; w._queuedAssign = { token, node, resourceType };
+                const liveJob = OpenAIAIManager.workerJob(game, w);
+                if (liveJob !== 'building' && liveJob !== 'fighting') game.applyQueuedAssign(w);
+            });
             // A build has a clock and a fight does not. Say which, rather than inventing
             // a number for the one that cannot have one.
             let secs = 0;
             take.forEach(w => { const b = w.buildTarget;
                 if (b) secs = Math.max(secs, this.secsLeft(b.buildProgress, b.buildTime)); });
-            const when = (from === 'building' && secs > 0)
+            const waiting = take.filter(w => w._queuedAssign).length;
+            const when = !waiting ? ' Their previous task has finished, so they go now.' : (from === 'building' && secs > 0)
                 ? ` They finish building in ~${secs}s and go then.`
                 : ` They go when the ${from === 'building' ? 'build' : 'fight'} ends.`;
             this.outcome('log.out.assignQueued',
@@ -7779,9 +7827,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
 
         if (from !== null) {
-            const pool = candidates.filter(u => whereFrom(u) === from);
+            const pool = candidates.filter(u => this.workerSourceMatches(ai, u, from));
             if (!pool.length) {
-                const onIt = ai.units.filter(u => u.type === 'worker' && whereFrom(u) === from).length;
+                const onIt = ai.units.filter(u => u.type === 'worker' && u.health > 0 && this.workerSourceMatches(ai, u, from)).length;
                 // A table used to live here translating the source name into the state
                 // field that reports it -- food into onFood, farm into onFarms -- because
                 // the two had different names. They have one name now, so "workers." and
@@ -7956,6 +8004,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
             w.farmRef = null;
             w._formerTask = null;
+            w._orderToken = deferToken;
+            w._queuedAssign = null;
             w.task = 'harvesting';
             w.harvestTarget = node;
             w.buildTarget = null;
@@ -8058,6 +8108,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
             w.farmRef = null;
         });
+        workers.forEach(w => { w._orderToken = ++this._orderSeq; });
         const mode = game.assignWorkersToBuilding(workers, target);
         if (!mode) { this.outcome('log.out.repairFailed', {}); return `[ERROR] Could not start the repair (the building may have just been destroyed).`; }
         const pct = Math.round(target.health / target.maxHealth * 100);
@@ -9138,6 +9189,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                             _shownResearching: lane._shownResearching,
                             _shownAgeUpgrading: lane._shownAgeUpgrading,
                             _shownWorkers: lane._shownWorkers,
+                            _shownWorkerPools: lane._shownWorkerPools,
                             _sentIdle: lane._sentIdle,
                             _logTurn: lane._logTurn,
                             _askedAt: lane.askedAt

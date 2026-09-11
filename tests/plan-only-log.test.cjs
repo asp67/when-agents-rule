@@ -157,3 +157,26 @@ for(const category of ['rate_limited','context_overflow','harness_cancelled']){
   }
  });
 }
+
+for (const native of [false, true]) {
+ test('excess commands are rejected individually after the first three ('+(native?'native tools':'text envelope')+')',()=>{
+  const {manager,seat,lane,call,parse}=setup();
+  Object.assign(seat.stats,{actionsAttempted:0,actionsRejected:0,actionsSucceeded:0});
+  const commands=Array.from({length:5},(_,i)=>({action:'wait',params:{reason:'Command '+(i+1)}}));
+  const envelope=native?parse([call('plan',{objective:'Hold',plan:['Wait']}),...commands.map(c=>call(c.action,c.params))]):{commands,objective:'Hold',plan:['Wait']};
+  const stamps=[];manager.transcripts={noteResult:(...args)=>stamps.push(args)};
+  manager.executeTurn(lane,envelope);
+  assert.equal(seat.stats.actionCounts.wait,3);
+  assert.equal(seat.stats.turnsExecuted,1);
+  assert.equal(seat.stats.actionsAttempted,5);
+  assert.equal(seat.stats.actionsRejected,2);
+  assert.equal(seat.objective,'Hold');
+  assert.equal(manager.decisionLog.length,5);
+  const errors=manager.decisionLog.filter(e=>e.failed);
+  assert.equal(errors.length,2);assert.ok(errors.every(e=>e.action==='command_limit'));
+  assert.match(seat.lastActionResult,/Command 4 was not executed: maximum 3/);
+  assert.match(seat.lastActionResult,/Command 5 was not executed: maximum 3/);
+  assert.equal(stamps.at(-1)[1],seat.lastActionResult);
+  assert.equal(seat.turnLog[0].outcome,seat.lastActionResult);
+ });
+}

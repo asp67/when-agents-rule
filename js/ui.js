@@ -83,7 +83,7 @@ class UIManager {
     // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
     // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
     // steht. Beim Hochzaehlen also nur hier anfassen.
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v99'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v100'; }
 
     constructor(game) {
         this.game = game;
@@ -3355,6 +3355,7 @@ class UIManager {
             // strings and stayed English in every language.
             no_action_provided: t('log.no_action_provided'),
             plan_only: t('log.plan_only'),
+            command_limit: t('log.command_limit'),
             malformed_action: t('log.malformed_action'),
             reply_truncated: t('log.reply_truncated'),
             tool_call_failed: t('log.tool_call_failed'),
