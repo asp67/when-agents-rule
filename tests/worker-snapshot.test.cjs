@@ -18,6 +18,44 @@ function setup(){
  const assign=(from,to='gold',params={})=>manager.executeAssignWorkers(ai,game,{from,resourceType:to,count:1,...params});
  return {manager,seat,game,ai,nodes,worker,snapshot,finish,assign};
 }
+
+test('coordinate-only assignment uses a rounded known node and the observed worker pool',()=>{
+ const h=setup(),w=h.worker('wood'),idle=h.worker();h.snapshot();h.finish(w);
+ const food=h.nodes.find(n=>n.type==='food');food.x=86.3;food.z=-20.2;
+ const params={count:1,from:'wood',targetX:86,targetZ:-20,whenCarrying:'deliverLoad'};
+ assert.match(h.manager.executeAssignWorkers(h.ai,h.game,params),/^OK/);
+ assert.equal(w.harvestTarget,food);assert.equal(idle.task,null);assert.equal(params.resourceType,undefined);
+ assert.ok(!h.manager.constructor.ACTIONS.find(a=>a.name==='assign_workers').required.includes('resourceType'));
+});
+
+test('coordinate inference rejects unknown, ambiguous, partial and invalid coordinates without guessing from prose',()=>{
+ const h=setup(),w=h.worker();h.snapshot();
+ for(const params of [{targetX:100,targetZ:100,reason:'Gather food'}, {targetX:5}, {targetX:'5',targetZ:0}, {targetX:NaN,targetZ:0}])
+  assert.match(h.manager.executeAssignWorkers(h.ai,h.game,params),/^\[ERROR\]/);
+ h.nodes[1].x=h.nodes[0].x;
+ assert.match(h.manager.executeAssignWorkers(h.ai,h.game,{targetX:5,targetZ:0}),/more than one resource type/);
+ assert.equal(w.task,null);
+});
+
+test('known farm coordinates infer farm staffing; an explicit invalid resource type still fails',()=>{
+ const h=setup(),w=h.worker();h.snapshot();
+ const farm={type:'farm',health:100,x:30,z:20};h.ai.buildings.push(farm);h.game.farmFarmer=f=>f.assignedWorker;
+ assert.match(h.manager.executeAssignWorkers(h.ai,h.game,{targetX:30,targetZ:20,resourceType:'sand'}),/^\[ERROR\]/);
+ assert.match(h.manager.executeAssignWorkers(h.ai,h.game,{targetX:30,targetZ:20,count:1}),/^OK/);
+ assert.equal(farm.assignedWorker,w);
+});
+
+test('a failed coordinate assignment does not reject neighboring native tool calls',()=>{
+ const h=setup(),w=h.worker();h.snapshot();
+ const call=(name,args)=>({type:'function',function:{name,arguments:JSON.stringify(args)}});
+ const answer=h.manager.parseResponse({tool_calls:[call('assign_workers',{count:1,targetX:5,targetZ:0}),call('assign_workers',{targetX:100,targetZ:100}),call('wait',{})],finish_reason:'tool_calls'},h.seat);
+ h.manager.executeTurn(h.seat,answer);
+ assert.equal(w.harvestTarget,h.nodes[0]);
+ assert.deepEqual(Array.from(h.manager.decisionLog,e=>e.failed),[false,true,false]);
+ assert.equal(h.seat.stats.actionsSucceeded,2);assert.equal(h.seat.stats.actionsRejected,1);
+ assert.equal(h.seat.stats.turnsExecuted,1);
+ assert.match(h.seat.lastActionResult,/Command 3\/3: OK/);
+});
 for(const from of ['scouting','wood','food','stone','gold','moving'])test('reassigns the observed '+from+' worker after natural completion',()=>{
  const h=setup(),w=h.worker(from),other=h.worker();h.snapshot();h.finish(w);
  const to=from==='gold'?'wood':'gold';assert.match(h.assign(from,to),/^OK/);

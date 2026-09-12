@@ -119,8 +119,7 @@
             this._shadowTarget = null;
             this._lightMatrix = M().identity();
             this._shadowStrength = 0;
-            let quality = 'balanced';
-            try { quality = localStorage.getItem('warGraphicsQuality') || quality; } catch (e) {}
+            const quality = 'cinematic'; // High on a full page reload; in-page choices remain in effect.
             this.setGraphicsQuality(quality);
 
             this._geo = new Map();          // 'kind:args' → GPU buffers
@@ -1540,7 +1539,7 @@
                     const cloth=this.graphicsQuality==='cinematic'?[flag[12],flag[14],flag[0]/BSCALE,flag[2]/BSCALE]:null;
                     for(const p of eb.flagParts){p.entry.model=m3.multiply(flag,p.local);p.entry.cloth=cloth;}
                 }
-                if(this.graphicsQuality==='cinematic'&&detailFade>0&&!(b._fade<1)) {
+                if(this.graphicsQuality==='cinematic'&&detailFade>0&&!(b._fade!=null&&b._fade<1)) {
                     if(eb.wear)dl.blended.push({...eb.wear,alpha:eb.wear.alpha*detailFade});
                     if(eb.details&&courtyards++<24){
                         const lights=new Float32Array(12);let lightIndex=0;
@@ -1673,6 +1672,23 @@
                 const world = m3.multiply(m3.translation(u.x, pose.bob, u.z), spin);
                 const flat = m3.multiply(m3.translation(u.x, 0, u.z), spin);
                 const flash = u._flashUntil && now < u._flashUntil;
+                let workerLights=null;
+                const lampFade=Math.max(0,Math.min(1,(300-Math.hypot(u.x-this.cameraTarget.x,u.z-this.cameraTarget.z))/90,(300-this._halfH)/105));
+                if(ue.lampLights)ue.lampLights.fill(0);
+                if(u.type==='worker'&&ue.type==='worker'&&this.graphicsQuality==='cinematic'&&lampFade>0&&!(u._fade!=null&&u._fade<1)){
+                    if(!this._workerLampModel)this._workerLampModel=EngineUnits.batches(EngineUnits.workerLantern()).map(p=>({buf:GLCore.createMeshBuffers(this.gl,p.mesh),texName:p.tex,tint:p.tex==='white'?[1,.64,.22]:this.WHITE}));
+                    const [lx,ly,lz]=EngineUnits.WORKER_LANTERN_POSITION;
+                    const x=world[0]*lx+world[8]*lz+world[12],y=world[5]*ly+world[13],z=world[2]*lx+world[10]*lz+world[14];
+                    const visible=!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(x,z);
+                    const strength=visible?1.1*lampNight*lampFade*(1+.04*Math.sin(ambientTime*7+ue.phase)):0;
+                    workerLights=ue.lampLights||=(new Float32Array(12));workerLights.set([x,y,z,strength]);
+                    for(const part of this._workerLampModel){const e={...part,tex:this.tex[part.texName],model:world,localLights:workerLights};(lampFade===1?dl.opaque:dl.blended).push(lampFade===1?e:{...e,alpha:lampFade});}
+                    if(strength>0){
+                        dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.18,additive:true,model:m3.multiply(m3.translation(x,.035,z),m3.scaling(1.6,1,1.6))});
+                        for(const [w,h,tint,alpha]of[[.40,.46,[1,.38,.06],.28],[.09,.14,[1,.80,.38],.9]])
+                            dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,model:m3.multiply(m3.multiply(m3.translation(x,y,z),bb),m3.scaling(w,h,1))});
+                    }
+                }
                 for (const e of ue.entries) {
                     const local = e.bone && pose.mats[e.bone] ? m3.multiply(pose.mats[e.bone], e.base) : e.base;
                     const model = m3.multiply(e.blend ? flat : world, local);
@@ -1684,7 +1700,7 @@
                     if (u._fade != null && u._fade < 1) {
                         dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model, alpha: u._fade });
                     } else if (e.blend) dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model });
-                    else dl.opaque.push({ buf: e.buf, tex: e.tex, tint: flash ? FLASH : e.tint, model });
+                    else dl.opaque.push({ buf: e.buf, tex: e.tex, tint: flash ? FLASH : e.tint, model, localLights:workerLights });
                 }
                 if (u.selected) {
                     // Deliberately the same shape as the building ring above: same texture,
@@ -1890,8 +1906,9 @@
             }
             if (!fow || !fow.fogDisplayCanvas) { this._fogEntry = null; return; }
             const gl = this.gl;
-            if (this._fogCanvas !== fow.fogDisplayCanvas) {
+            if (this._fogCanvas !== fow.fogDisplayCanvas || !this._fogEntry) {
                 this._fogCanvas = fow.fogDisplayCanvas;
+                if (this._fogTex) gl.deleteTexture(this._fogTex);
                 // NPOT canvas (numTiles*4, e.g. 1600) — clamp + no mipmaps
                 this._fogTex = GLCore.createTextureFromCanvas(gl, this._fogCanvas, { clamp: true, nomip: true });
                 // The fog reaches past the map so it can fade out over water rather

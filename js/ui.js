@@ -83,7 +83,7 @@ class UIManager {
     // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
     // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
     // steht. Beim Hochzaehlen also nur hier anfassen.
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v100'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v101'; }
 
     constructor(game) {
         this.game = game;
@@ -2147,14 +2147,13 @@ class UIManager {
         };
         if (unit) {
             let html = ownerLine(unit);
-            html += `<strong>${tg(unit.name)}</strong><br>`;
+            html += `<strong>${tg(unit.name)}</strong> <em>${this.getUnitTypeDescription(unit.unitType)}</em><br>`;
             html += `❤️ ${t('ui.health')}: ${Math.floor(unit.health)}/${unit.maxHealth}<br>`;
             html += `⚔️ ${t('ui.attack')}: ${unit.attack}<br>`;
             html += `💨 ${t('ui.speed')}: ${unit.speed}<br>`;
             if (unit.range > 1) {
                 html += `🎯 ${t('ui.range')}: ${unit.range}<br>`;
             }
-            html += `<em>${this.getUnitTypeDescription(unit.unitType)}</em>`;
             infoDiv.innerHTML = html;
         } else if (building) {
             let html = ownerLine(building);
@@ -3465,6 +3464,7 @@ class UIManager {
             const isError = !!entry.failed;
             // The outcome body in the model's language (null → raw English fallback).
             const locOutcome = this.renderOutcome(entry);
+            const rejection = locOutcome || entry.error || (entry.result && String(entry.result).replace(/^\[ERROR\]\s*/, '')) || t('log.rejected');
 
             const linked = this.logEntryLinkable(entry);
             html += `
@@ -3478,7 +3478,7 @@ class UIManager {
                         <span class="log-action">${actionLabel}${this.escapeHtml(detail)}${entry.failed ? ` <span class="log-x">✗ ${t('log.rejected')}</span>` : ''}</span>
                     </div>
                     ${entry.reason ? `<span class="log-reason">“${this.escapeHtml(entry.reason)}”</span>` : ''}
-                    ${entry.failed && (locOutcome || entry.error) ? `<span class="log-error">⚠ ${this.escapeHtml(locOutcome || entry.error)}</span>` : ''}
+                    ${entry.failed ? `<span class="log-error">⚠ ${this.escapeHtml(rejection)}</span>` : ''}
                     ${!entry.failed && (!entry.reason || f.text) && (locOutcome || entry.result) ? `<span class="log-outcome">${this.escapeHtml(locOutcome || entry.result.replace(/^OK\s*-\s*/, ''))}</span>` : ''}
                 </div>
             `;
@@ -3767,6 +3767,12 @@ class UIManager {
             return { name: def ? tg(def.name) : id, desc: def ? tg(def.description || '') : '' };
         });
 
+        const current=ai.currentResearch;
+        const currentDef=current&&civ?.techTree?.[current.techId];
+        const progress=current?Math.max(0,Math.min(100,Math.round(current.progressPercent??(current.duration?current.progress/current.duration*100:0)))):0;
+        const currentChip=current?`<span class="lb-fly-chip is-researching" title="${esc(currentDef?tg(currentDef.description||''):'')}">⏳ ${esc(currentDef?tg(currentDef.name):current.techId)} · ${progress}%</span>`:'';
+        const researchChips=techs.map(x=>`<span class="lb-fly-chip" title="${esc(x.desc)}">${esc(x.name)}</span>`).join('')+currentChip;
+
         // Units grouped by class; the tip describes the class (utype.* strings,
         // the same short descriptions used on selected-unit cards).
         const unitIcons = { worker: '👷', infantry: '⚔️', ranged: '🏹', cavalry: '🐎', support: '✚' };
@@ -3854,7 +3860,7 @@ class UIManager {
                 <b>${esc(model)}</b><span>${esc(civName)} · ${ageNames[ai.age] || ai.age}</span>
             </div>
             <div class="lb-fly-sec"><div class="lb-fly-h">🔬 ${t('spec.flyResearch')}</div>
-                <div class="lb-fly-body">${techs.length ? techs.map(x => `<span class="lb-fly-chip" title="${esc(x.desc)}">${esc(x.name)}</span>`).join('') : `<i>${t('spec.flyNone')}</i>`}</div></div>
+                <div class="lb-fly-body">${researchChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
             <div class="lb-fly-sec"><div class="lb-fly-h">👥 ${t('spec.flyUnits', { n: ai.units.length })}</div>
                 <div class="lb-fly-body">${unitChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
             <div class="lb-fly-sec"><div class="lb-fly-h">🏛️ ${t('spec.flyBuildings', { n: ai.buildings.length })}</div>

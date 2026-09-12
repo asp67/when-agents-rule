@@ -489,6 +489,19 @@
         });
     };
 
+    // Small belt lantern, authored on +X (the worker's right), behind the axe.
+    // Shared geometry stays separate so lower quality and remembered units omit it.
+    EngineUnits.WORKER_LANTERN_POSITION = [.38,.80,-.13];
+    EngineUnits.workerLantern = () => {
+        const p=[],[x,y,z]=EngineUnits.WORKER_LANTERN_POSITION;
+        part(p,'box',[.11,.15,.11],'white',{x,y,z});
+        for(const dy of[-.10,.10])part(p,'cylinder',[.095,.095,.025,8],'iron',{x,y:y+dy,z});
+        for(const dx of[-.07,.07])for(const dz of[-.07,.07])part(p,'box',[.018,.20,.018],'iron',{x:x+dx,y,z:z+dz});
+        part(p,'box',[.11,.018,.02],'iron',{x:x-.035,y:y+.19,z});
+        for(const dx of[-.08,.02])part(p,'box',[.018,.08,.02],'iron',{x:x+dx,y:y+.155,z});
+        return p;
+    };
+
     // Per-type render metadata: health-bar height above the ground.
     EngineUnits.META = {
         worker: { barY: 2.15 }, infantry: { barY: 2.15 }, ranged: { barY: 2.15 },

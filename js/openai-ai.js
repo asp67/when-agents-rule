@@ -92,10 +92,10 @@ class OpenAIAIManager {
             ['build_structure', 'Place a new building. A worker is pulled to build it.',
              Object.assign({ buildingType: S('Building type from buildings.buildable.') }, XZ), ['buildingType']],
             ['assign_workers', 'Move workers onto a resource.',
-             Object.assign({ resourceType: S('food|wood|stone|gold|farm — what they should gather.'),
+             Object.assign({ resourceType: S('food|wood|stone|gold|farm. May omit only when targetX/targetZ identify a known node or your farm unambiguously.'),
                              count: I('How many. Default 3, max 20.'),
                              from: S('Any key from "workers" — where to TAKE them. "building" and "fighting" are taken when that ends. Omit to take idle first, then your largest stockpile.'),
-                             whenCarrying: S('spillLoad|deliverLoad|skipAssignment — what a chosen worker does if it is carrying. Default spillLoad: move now, the load is lost.') }, XZ), ['resourceType']],
+                             whenCarrying: S('spillLoad|deliverLoad|skipAssignment — what a chosen worker does if it is carrying. Default spillLoad: move now, the load is lost.') }, XZ), []],
             ['repair_building', 'Send workers to repair a damaged building. Omit the coordinates to repair the most damaged one.',
              Object.assign({ count: I('How many workers. Default 1, max 5.') }, XZ), []],
             ['explore', 'Send a unit to scout a map tile.',
@@ -3649,7 +3649,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists. Workers include "carrying": empty, food, wood, stone, gold, or unknown. CONTACT LOST cargo describes the last visible observation, not the worker's current hidden state.
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
-- "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool. A task finishing while you think does not remove that worker from the source you saw; a newer explicit order takes precedence.
+- "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool. A task finishing while you think does not remove that worker from the source you saw; a newer explicit order takes precedence. For assign_workers, resourceType may be omitted only when both coordinates unambiguously match a known resource node or your own farm; reason text never selects the resource.
 - "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
 - A "CONTACT" line is a rival unit or building coming into your sight, and "CONTACT LOST" is one leaving it, each with where it was. Both are moments, and both are gone from this list next turn — what they MEAN is yours to carry. A sighting and a loss of the same unit are two positions in order, which is a heading: follow it back and it points at where that unit came from. Something roaming far from anywhere you have looked is a direction worth scouting. A "CONTACT LOST" also means your knowledge of that position is now old — it is where the unit WAS, not where it is.
 - "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
@@ -5458,7 +5458,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
         return out;
     }
-    executeAction(controller, actionData) {
+    executeAction(controller, actionData, validationError = null) {
         const ai = controller.aiPlayer;
         const game = this.game;
 
@@ -5554,7 +5554,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (params && typeof params.reason === 'string' && params.reason.trim()) st.reasonsGiven++;
         }
 
-        switch (action) {
+        if (validationError) actionResult = `[ERROR] ${action}: ${validationError}`;
+        else switch (action) {
             case 'train_unit':
                 if (params?.unitType) {
                     actionResult = this.executeTrainUnit(ai, game, params.unitType, params || {});
@@ -6081,7 +6082,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 const civTree = civ.techTree || {};
                 if (tech && !civTree[tech]) {
                     this.outcome('log.out.civCannotTrain', { unitType, building: reqB });
-                    return `[ERROR] Your civilization cannot train ${unitType} — it has no ${reqB} (no "${tech}" technology). Train a different unit class (barracks=infantry, archery_range=archers, stable=cavalry; see "buildableStructures").`;
+                    return `[ERROR] Your civilization cannot train ${unitType} — it has no ${reqB} (no "${tech}" technology). Train a different unit class (barracks=infantry, archery_range=archers, stable=cavalry; see "buildings.buildable" and "buildings.blocked").`;
                 }
                 if (tech && !ai.researchedTechs[tech]) {
                     this.outcome('log.out.unitBuildingNotUnlocked', { unitType, building: reqB, tech });
@@ -6198,9 +6199,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     ? (civ?.techTree?.[need]
                         ? `Its unlock tech is "${need}" — research that, then build_structure "${techId}".`
                         : `Your civilization has no tech for it, so it cannot build a ${techId}.`)
-                    : `It needs no tech — build_structure "${techId}" directly (check its age in "buildableStructures").`;
+                    : `It needs no tech — build_structure "${techId}" directly (check its age in "buildings.buildable" and "buildings.blocked").`;
                 this.outcome('log.out.techIsBuilding', { techId, need: need || '-' });
-                return `[ERROR] "${techId}" is a BUILDING, not a technology. ${how} See "buildableStructures" for the age and unlock tech of every structure.`;
+                return `[ERROR] "${techId}" is a BUILDING, not a technology. ${how} See "buildings.buildable" and "buildings.blocked" for the age and unlock tech of every structure.`;
             }
             this.outcome('log.out.unknownTech', { techId });
             return `[ERROR] Unknown tech "${techId}". Use an exact tech ID from "research.available".${ageNote}`;
@@ -6542,7 +6543,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             ? LEGACY_BUILDING_IDS[String(buildingType || '').toLowerCase()] : null;
         if (legacy) {
             this.outcome('log.out.renamedBuilding', { from: buildingType, to: legacy });
-            return `[ERROR] ${buildingType}: unknown type, renamed to "${legacy}". Current names in "buildableStructures".`;
+            return `[ERROR] ${buildingType}: obsolete building ID. Use buildingType "${legacy}"; "${legacy}" is valid, subject to its age and research requirements in "buildings.buildable" and "buildings.blocked".`;
         }
         const buildingDef = this.buildingDefFor(ai, buildingType);
         // Resolve an alias to the real id up front, so every message below — and the
@@ -6556,7 +6557,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // unlocked and is empty on turn 1, so the old message sent the model to
             // an empty array. buildableStructures is the complete list, with each
             // type's required age and unlock tech.
-            return `[ERROR] Unknown building "${buildingType}". Use a "type" from "buildableStructures" — it lists every structure your civilization can build, with the age and unlock tech each needs.`;
+            return `[ERROR] Unknown building "${buildingType}". Use a "type" from "buildings.buildable" and "buildings.blocked" — it lists every structure your civilization can build, with the age and unlock tech each needs.`;
         }
 
         // ADVANCE first: a building gated to a later epoch can't be built yet. (Most
@@ -6583,7 +6584,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // clearly so the model stops retrying and switches strategy.
             if (!civTree[buildingDef.requiresTech]) {
                 this.outcome('log.out.civCannotBuild', { buildingType, tech: buildingDef.requiresTech });
-                return `[ERROR] Your civilization cannot build ${buildingType} — it has no "${buildingDef.requiresTech}" technology. Use a different building. See "buildableStructures" for what you CAN build (e.g. barracks for infantry, archery_range for archers).`;
+                return `[ERROR] Your civilization cannot build ${buildingType} — it has no "${buildingDef.requiresTech}" technology. Use a different building. See "buildings.buildable" and "buildings.blocked" for what you CAN build (e.g. barracks for infantry, archery_range for archers).`;
             }
             this.outcome('log.out.buildNeedsTech', { tech: buildingDef.requiresTech, buildingType });
             return `[ERROR] ${buildingType}: unmet prerequisite: tech "${buildingDef.requiresTech}". Researchable techs in "research.available".`;
@@ -7661,7 +7662,28 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         return `OK - Sent ${manned} worker(s) to man ${manned} farm(s) — pulled: ${src}. Each regrows food only while its worker stays on it.${short}`;
     }
 
+    inferWorkerResource(ai, game, params) {
+        const x=params.targetX,z=params.targetZ;
+        if(typeof x!=='number'||typeof z!=='number'||!Number.isFinite(x)||!Number.isFinite(z))
+            return {error:'Supply resourceType, or both numeric targetX and targetZ identifying a known resource node or your farm.'};
+        // State coordinates are rounded to integers; one world unit covers that
+        // rounding, not a search radius that chooses a resource for the model.
+        const types=new Set();
+        for(const type of ['food','wood','stone','gold'])
+            for(const node of this.discoveredNodesOfType(ai,game,type))
+                if(Math.hypot(node.x-x,node.z-z)<=1)types.add(type);
+        for(const farm of ai.buildings||[])
+            if(farm.type==='farm'&&farm.health>0&&Math.hypot(farm.x-x,farm.z-z)<=1)types.add('farm');
+        if(types.size!==1)return {error:types.size?'Coordinates match more than one resource type; specify resourceType.':'No known resource node or owned farm matches these coordinates; specify resourceType or use known node coordinates.'};
+        return {resourceType:[...types][0]};
+    }
+
     executeAssignWorkers(ai, game, params) {
+        if(params.resourceType===undefined){
+            const inferred=this.inferWorkerResource(ai,game,params);
+            if(inferred.error)return '[ERROR] assign_workers: '+inferred.error;
+            params={...params,resourceType:inferred.resourceType};
+        }
         // "farm" is a JOB, not a node type: it staffs your own farms rather than
         // sending workers to a spot on the map. Routed before normalizeResourceType
         // so the gatherable vocabulary stays
