@@ -46,6 +46,12 @@ class WarAudio {
 
     random() { this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0; return this.seed / 4294967296; }
     ramp(param, value, seconds = .18) {
+        // Web Audio rejects NaN, Infinity and values outside a float32. Audio
+        // must never let a malformed spatial value interrupt the simulation.
+        if (!Number.isFinite(value) || Math.abs(value) > 3.402823466e38) {
+            this.suppressed('invalidParameter'); value = 0;
+        }
+        if (!Number.isFinite(seconds) || seconds <= 0) seconds = .18;
         const now = this.ctx.currentTime;
         param.cancelScheduledValues(now);
         param.setTargetAtTime(value, now, seconds);
@@ -357,12 +363,15 @@ class WarAudio {
         return !!this.game.spectatorMode || !fow || fow.isPositionCurrentlyVisible(entity.x,entity.z);
     }
     spatial(entity) {
-        const r=this.game.renderer, camera=r.cameraTarget;
-        const dx=entity.x-camera.x,dz=entity.z-camera.z,half=r._halfH || 80;
+        const r=this.game.renderer, camera=r?.cameraTarget;
+        const half=r?._halfH ?? 80, yaw=r?._yaw ?? 0;
+        if (![entity?.x,entity?.z,camera?.x,camera?.z,half,yaw].every(Number.isFinite) || half<=0)
+            return {gain:0,pan:0,invalid:true};
+        const dx=entity.x-camera.x,dz=entity.z-camera.z;
         const distance=Math.hypot(dx,dz), radius=Math.min(150,Math.max(45,half*1.7));
         const gain=Math.max(0,1-distance/radius)**2 * Math.min(1,65/half);
         const pan=Math.max(-.85,Math.min(.85,(dx*Math.cos(r._yaw||0)-dz*Math.sin(r._yaw||0))/Math.max(25,half)));
-        return {gain,pan};
+        return Number.isFinite(gain)&&Number.isFinite(pan)?{gain,pan}:{gain:0,pan:0,invalid:true};
     }
     movementCadence() {
         const speed=this.game.effectiveSimSpeed?.() ?? this.game.simSpeed ?? 1;
@@ -382,11 +391,13 @@ class WarAudio {
     emit(kind,entity,volume=.35) {
         if(!this.ctx || !this.active() || this.ctx.state!=='running') return this.suppressed('inactiveOrMuted');
         if(!this.visible(entity))return this.suppressed('visibility');
+        if(!Number.isFinite(volume) || volume<0 || volume>3.402823466e38)return this.suppressed('invalidVolume');
         const spatial=this.spatial(entity), now=this.ctx.currentTime;
+        if(spatial.invalid)return this.suppressed('invalidPosition');
         if(spatial.gain<.015)return this.suppressed('distance');
         if(!this.allow(kind,entity,now))return this.suppressed('cooldownOrBudget');
-        const source=this.ctx.createBufferSource(),gain=this.ctx.createGain(),pan=this.ctx.createStereoPanner();
         const choices=this.buffers[kind];if(!choices)return;
+        const source=this.ctx.createBufferSource(),gain=this.ctx.createGain(),pan=this.ctx.createStereoPanner();
         source.buffer=choices[Math.floor(this.random()*choices.length)];
         source.playbackRate.value=.96+this.random()*.08; // never multiplied by game speed
         gain.gain.value=spatial.gain*volume;pan.pan.value=spatial.pan;
@@ -574,4 +585,22 @@ class WarAudio {
         }
         for(const [key,time] of this.cells)if(now-time>3)this.cells.delete(key);
     }
+}
+
+// Optional sound is a presentation boundary: a device/API failure mutes audio,
+// records one diagnostic and must not stop Game.gameLoop or the renderer.
+for (const method of ['emit','notify','update']) {
+    const operation=WarAudio.prototype[method];
+    WarAudio.prototype[method]=function(...args) {
+        try { return operation.apply(this,args); }
+        catch(error) {
+            this.enabled=false;
+            this.diagnostics.lastError={operation:method,name:error?.name||'Error',message:String(error?.message||error).slice(0,300)};
+            this.suppressed('audioFailure');
+            try { this.silence(); } catch (_) {}
+            try { this.ctx?.suspend().catch(()=>{}); } catch (_) {}
+            console.warn('WAR audio muted after an error; the match continues.',error);
+            return false;
+        }
+    };
 }

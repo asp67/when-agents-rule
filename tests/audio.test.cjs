@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 function harness(storage=new Map()){
-    const param=()=>({value:0,cancelScheduledValues(){},setTargetAtTime(v){this.value=v;},setValueAtTime(v){this.value=v;}});
+    const param=()=>{let value=0;return {get value(){return value;},set value(v){if(!Number.isFinite(v)||Math.abs(v)>3.402823466e38)throw new TypeError('AudioParam requires a finite float');value=v;},cancelScheduledValues(){},setTargetAtTime(v){this.value=v;},setValueAtTime(v){this.value=v;}};};
     const node=()=>({gain:param(),pan:param(),frequency:param(),playbackRate:param(),connect(){},disconnect(){},start(){},stop(){this.onended?.();}});
     let contexts=0,active=true,visible=true;
     const document={hidden:false,addEventListener(){},getElementById:()=>({classList:{contains:()=>active}})};
@@ -286,4 +286,31 @@ test('successful game completion hooks fire once, not while construction, traini
  g.updateProduction(50);g.updateProduction(50);assert.deepEqual(events,['built','trained']);
  g.completeResearch=()=>{owner.currentResearch=null;};g.updateResearchProgress(50);assert.equal(events.length,2);
  g.updateResearchProgress(50);g.updateResearchProgress(50);assert.deepEqual(events,['built','trained','research']);
+});
+
+// Real Web Audio rejects NaN/Infinity; the old permissive fake hid this crash.
+test('non-finite positions cannot abort combat audio or frame updates',async()=>{
+ const {sound:s,game}=harness();await s.setEnabled(true);
+ for(const value of [NaN,Infinity,-Infinity,undefined,'-252-2.5']){
+  assert.doesNotThrow(()=>s.combat({type:'warrior'},{x:value,z:0}));
+  assert.equal(s.voices.size,0);
+ }
+ const point={x:0,z:0};s.emit('impact',point);point.x=NaN;
+ assert.doesNotThrow(()=>s.update());assert.equal([...s.voices][0].gain.gain.value,0);
+ game.renderer.cameraTarget.x=NaN;s.ctx.currentTime+=1;
+ assert.doesNotThrow(()=>s.update());assert.doesNotThrow(()=>s.emit('bow',{x:0,z:0}));
+ assert.equal(s.enabled,true,'bad positions are silenced without disabling healthy audio');
+});
+test('bad volume and ramp values never reach Web Audio parameters',async()=>{
+ const {sound:s}=harness();await s.setEnabled(true);
+ assert.doesNotThrow(()=>s.emit('impact',{x:0,z:0},NaN));assert.equal(s.voices.size,0);
+ assert.doesNotThrow(()=>s.ramp(s.master.gain,Infinity));assert(Number.isFinite(s.master.gain.value));
+});
+
+test('unexpected audio API failures mute sound without escaping to gameplay',async()=>{
+ const {sound:s}=harness();await s.setEnabled(true);
+ s.ctx.createStereoPanner=()=>{throw new TypeError('Simulated device failure');};
+ assert.doesNotThrow(()=>s.combat({type:'warrior'},{x:0,z:0}));
+ assert.equal(s.enabled,false);assert.equal(s.diagnostics.lastError.operation,'emit');
+ assert.doesNotThrow(()=>s.update());
 });

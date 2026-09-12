@@ -6614,9 +6614,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         let x, z;
         const townCenters = ai.buildings.filter(b => b.type === 'town_center');
         const tc = townCenters[0] || null;
-        if (targetX !== undefined && targetZ !== undefined) {
-            x = targetX;
-            z = targetZ;
+        const gaveX = OpenAIAIManager.given(targetX), gaveZ = OpenAIAIManager.given(targetZ);
+        if (gaveX || gaveZ) {
+            // Some providers quote numeric tool arguments. Normalize before any
+            // placement arithmetic: storing "-252" lets later + offsets concatenate
+            // strings and can poison movement, camera and spatial audio with NaN.
+            const numeric = v => (typeof v === 'number' || typeof v === 'string') && Number.isFinite(Number(v));
+            if (!gaveX || !gaveZ || !numeric(targetX) || !numeric(targetZ)) {
+                return '[ERROR] build_structure needs BOTH finite numeric "targetX" and "targetZ", or omit both for placement near your Town Center.';
+            }
+            x = Number(targetX);
+            z = Number(targetZ);
             // The SAME limit keepUnitsAshore holds units to, so a site is buildable
             // exactly where a worker can stand. Nothing checked this: placement only
             // tested gaps to other buildings and clearance around resource nodes, so a
