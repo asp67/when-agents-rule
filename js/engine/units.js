@@ -489,16 +489,18 @@
         });
     };
 
-    // Small belt lantern, authored on +X (the worker's right), behind the axe.
+    // Small belt lantern on the worker's right hip (-X), opposite the axe.
     // Shared geometry stays separate so lower quality and remembered units omit it.
-    EngineUnits.WORKER_LANTERN_POSITION = [.38,.80,-.13];
+    EngineUnits.WORKER_LANTERN_POSITION = [-.38,.80,-.13];
     EngineUnits.workerLantern = () => {
         const p=[],[x,y,z]=EngineUnits.WORKER_LANTERN_POSITION;
-        part(p,'box',[.11,.15,.11],'white',{x,y,z});
+        // Wax ends below the flame; both fit inside the lid at y + .0875.
+        part(p,'cylinder',[.027,.030,.065,8],'white',{x,y:y-.055,z});
+        part(p,'cylinder',[0,.023,.072,7],'white',{x,y:y+.015,z,blend:true});
         for(const dy of[-.10,.10])part(p,'cylinder',[.095,.095,.025,8],'iron',{x,y:y+dy,z});
         for(const dx of[-.07,.07])for(const dz of[-.07,.07])part(p,'box',[.018,.20,.018],'iron',{x:x+dx,y,z:z+dz});
-        part(p,'box',[.11,.018,.02],'iron',{x:x-.035,y:y+.19,z});
-        for(const dx of[-.08,.02])part(p,'box',[.018,.08,.02],'iron',{x:x+dx,y:y+.155,z});
+        part(p,'box',[.11,.018,.02],'iron',{x:x+.035,y:y+.19,z});
+        for(const dx of[-.02,.08])part(p,'box',[.018,.08,.02],'iron',{x:x+dx,y:y+.155,z});
         return p;
     };
 

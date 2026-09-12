@@ -23,7 +23,8 @@ const server=http.createServer((req,res)=>{
   await page.addInitScript(()=>{localStorage.setItem('warGraphicsQuality','low');localStorage.setItem('warUiLang','en');});
   await page.goto(origin+'/?full=1');await page.waitForFunction(()=>typeof game!=='undefined'&&game?.renderer);
   assert.equal(await page.evaluate(()=>game.renderer.graphicsQuality),'cinematic');
-  assert.equal(await page.evaluate(()=>UIManager.buildVersion()),899);
+  const build=Number(fs.readFileSync(path.join(root,'index.html'),'utf8').match(/js\/game\.js\?v=(\d+)/)[1]);
+  assert.equal(await page.evaluate(()=>UIManager.buildVersion()),build);
   await page.evaluate(()=>{setUiLang('en');game.startVisualShowcase('greek','summer','iron','night');});
   await page.waitForFunction(()=>game.gameStarted&&game.player.units.length>5);
   await page.evaluate(()=>{
@@ -40,6 +41,7 @@ const server=http.createServer((req,res)=>{
   });
   await page.waitForFunction(()=>lampCheck?.meshes>0&&lampCheck.lit.length>0);
   assert.ok((await page.evaluate(()=>lampCheck.lit)).every(t=>t==='worker'));
+  await require('./light-range-check.cjs')(page);
   await page.screenshot({path:path.join(out,'worker-lanterns-night.png')});
   for(const quality of ['balanced','low']){
    await page.evaluate(q=>game.ui.setGraphicsQuality(q),quality);

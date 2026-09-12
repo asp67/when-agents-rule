@@ -30,6 +30,10 @@
     // Raising it also lengthens the wheel's zoom-out in play, which is the point: the
     // cap is what a reader hits when they try to see the whole board and cannot.
     const MIN_HALF = 10, MAX_HALF = 520;
+    // Shared by worker lanterns and settlement lights (including their housings).
+    // Twice the former 300-unit cutoff, with the same proportional fade curve.
+    const lightDetailFade = (distance, halfH) =>
+        Math.max(0,Math.min(1,(600-distance)/180,(600-halfH)/210));
     // Scene ambient. Lives here rather than inline at the draw call because the
     // sea colour beyond the map has to be derived from the SAME value — two
     // copies drifting apart is exactly what put a visible seam at the horizon.
@@ -1529,7 +1533,7 @@
                 const eb = b._engine;
                 if (!eb || (b.mesh && b.mesh.visible === false) || this._cull(b.x, b.z, 18)) continue;
                 const distance=Math.hypot(b.x-this.cameraTarget.x,b.z-this.cameraTarget.z);
-                const detailFade=Math.max(0,Math.min(1,(300-distance)/90,(300-this._halfH)/105));
+                const detailFade=lightDetailFade(distance,this._halfH);
                 // Clear the previous frame's light when hidden, zoomed out or disabled.
                 for(const en of eb.opaque)en.localLights=null;
                 for(const en of eb.details||[])en.localLights=null;
@@ -1673,20 +1677,25 @@
                 const flat = m3.multiply(m3.translation(u.x, 0, u.z), spin);
                 const flash = u._flashUntil && now < u._flashUntil;
                 let workerLights=null;
-                const lampFade=Math.max(0,Math.min(1,(300-Math.hypot(u.x-this.cameraTarget.x,u.z-this.cameraTarget.z))/90,(300-this._halfH)/105));
+                const lampFade=lightDetailFade(Math.hypot(u.x-this.cameraTarget.x,u.z-this.cameraTarget.z),this._halfH);
                 if(ue.lampLights)ue.lampLights.fill(0);
                 if(u.type==='worker'&&ue.type==='worker'&&this.graphicsQuality==='cinematic'&&lampFade>0&&!(u._fade!=null&&u._fade<1)){
-                    if(!this._workerLampModel)this._workerLampModel=EngineUnits.batches(EngineUnits.workerLantern()).map(p=>({buf:GLCore.createMeshBuffers(this.gl,p.mesh),texName:p.tex,tint:p.tex==='white'?[1,.64,.22]:this.WHITE}));
+                    if(!this._workerLampModel)this._workerLampModel=EngineUnits.batches(EngineUnits.workerLantern()).map(p=>({buf:GLCore.createMeshBuffers(this.gl,p.mesh),texName:p.tex,flame:p.blend,tint:p.blend?[1,.66,.18]:p.tex==='white'?[1,.91,.70]:this.WHITE}));
                     const [lx,ly,lz]=EngineUnits.WORKER_LANTERN_POSITION;
                     const x=world[0]*lx+world[8]*lz+world[12],y=world[5]*ly+world[13],z=world[2]*lx+world[10]*lz+world[14];
                     const visible=!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(x,z);
                     const strength=visible?1.1*lampNight*lampFade*(1+.04*Math.sin(ambientTime*7+ue.phase)):0;
                     workerLights=ue.lampLights||=(new Float32Array(12));workerLights.set([x,y,z,strength]);
-                    for(const part of this._workerLampModel){const e={...part,tex:this.tex[part.texName],model:world,localLights:workerLights};(lampFade===1?dl.opaque:dl.blended).push(lampFade===1?e:{...e,alpha:lampFade});}
+                    for(const part of this._workerLampModel){
+                        const e={...part,tex:this.tex[part.texName],model:world,localLights:workerLights};
+                        // Flame uses the unlit pass, so it cannot turn blue in night light.
+                        if(part.flame){if(strength>0)dl.blended.push({...e,alpha:Math.min(1,strength)});}
+                        else (lampFade===1?dl.opaque:dl.blended).push(lampFade===1?e:{...e,alpha:lampFade});
+                    }
                     if(strength>0){
                         dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.18,additive:true,model:m3.multiply(m3.translation(x,.035,z),m3.scaling(1.6,1,1.6))});
                         for(const [w,h,tint,alpha]of[[.40,.46,[1,.38,.06],.28],[.09,.14,[1,.80,.38],.9]])
-                            dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,model:m3.multiply(m3.multiply(m3.translation(x,y,z),bb),m3.scaling(w,h,1))});
+                            dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,model:m3.multiply(m3.multiply(m3.translation(x,y+.015,z),bb),m3.scaling(w,h,1))});
                     }
                 }
                 for (const e of ue.entries) {
