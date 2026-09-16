@@ -3503,18 +3503,14 @@ class Game {
         return (unit && unit.unitType === 'cavalry' ? 22.5 : 15) * ((unit && unit.visionBonus) || 1);
     }
 
-    // Sight radius of a building — the twin of unitVision(), and the ONE place
-    // every vision system asks (human fog, spectator fog, the rule-based check,
-    // the models' exploration grid and their spotting check). Towers stay the
-    // long-range sentinels at 60; a Town Center sees HALF a tower (30) — enough
-    // to watch its own working area, and one more reason to plant another —
-    // while every other building keeps a short 12. Scaffolding is blind: a plot
-    // grants nothing until it is finished.
+    // Shared sight radii for fog, model spotting, and exploration. Construction
+    // sites grant no vision; completed wonders are long-range landmarks.
     buildingVision(b) {
         if (!b || b.underConstruction) return 0;
-        if (b.type === 'tower') return 60;
-        if (b.type === 'town_center') return 30; // 50% of the tower's sweep
-        return 12;
+        if (b.type === 'tower') return 80;
+        if (b.isWonder) return 60;
+        if (b.type === 'town_center') return 40;
+        return 20;
     }
 
     // The population cap is DERIVED from what an owner actually has standing —

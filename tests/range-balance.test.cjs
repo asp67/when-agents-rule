@@ -1,4 +1,20 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-function setup(){const c=vm.createContext({console:{log(){}},Math});for(const f of ['civilizations','buildings','units','game'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/'+f+'.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0],c);return vm.runInContext('({Game,createUnit,BUILDING_DEFS,getUnitDefFor})',c);}
+function setup(){const c=vm.createContext({console:{log(){}},Math});for(const f of ['civilizations','buildings','units','game'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/'+f+'.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0],c);return vm.runInContext('({Game,createUnit,createBuilding,CIVILIZATIONS,BUILDING_DEFS,getUnitDefFor})',c);}
 test('ranged units double reach across civilizations and researched bonuses respect tower range',()=>{const h=setup(),g=Object.create(h.Game.prototype);for(const civ of ['greek','persian','egyptian','yamato'])for(const [id,range]of [['archer',civ==='persian'?15:12],['crossbowman',13.5],['elite_archer',15],...(civ==='egyptian'?[['slinger',12]]:[]),...(civ==='yamato'?[['archer_ship',12]]:[])]){const u=h.createUnit(id,0,0,'fixture',civ,'iron');assert.equal(u.range,range,civ+' '+id);g.applyBonusToOneUnit({range:2},'ranged',u);assert.equal(u.range,Math.min(range+2,h.BUILDING_DEFS.tower.range));g.applyBonusToOneUnit({range:20},'ranged',u);assert.equal(u.range,h.BUILDING_DEFS.tower.range);assert.equal(g.attackRangeAgainst(u,{type:'tower'}),h.BUILDING_DEFS.tower.range);}});
 test('all priests display the actual tripled healing reach and heal only friendly patients inside it',()=>{const h=setup(),g=Object.create(h.Game.prototype);for(const civ of ['greek','persian','egyptian','yamato'])assert.equal(h.createUnit('priest',0,0,'fixture',civ,'bronze').range,g.healingRange());const priest=h.createUnit('priest',0,0,'a','egyptian','bronze'),patient={owner:'a',x:10.5,z:0,health:50,maxHealth:100},enemy={owner:'b',x:1,z:0,health:50,maxHealth:100},owner={units:[priest,patient]};Object.assign(g,{getAllUnits:()=>[priest,patient,enemy],getOwner:()=>owner,recordBattleHealing(){},renderer:{spawnDust(){}}});g.updateHealing(1000);assert(patient.health>50);assert.equal(enemy.health,50);patient.x=10.51;const hp=patient.health;g.updateHealing(1000);assert.equal(patient.health,hp);});
+
+
+test('building vision covers ordinary structures, town centers, every civilization wonder and towers only after completion',()=>{
+ const h=setup(),g=Object.create(h.Game.prototype);
+ for(const [civ,def] of Object.entries(h.CIVILIZATIONS)){
+  const types=new Set([...Object.keys(h.BUILDING_DEFS),...def.uniqueBuildings.map(b=>b.id)]);
+  for(const type of types){
+   const b=h.createBuilding(type,0,0,'fixture',civ,{age:'iron'});
+   if(!b)continue;
+   const expected=type==='tower'?80:b.isWonder?60:type==='town_center'?40:20;
+   assert.equal(g.buildingVision(b),expected,civ+' '+type);
+   b.underConstruction=true;assert.equal(g.buildingVision(b),0,civ+' construction '+type);
+  }
+ }
+ assert.equal(g.buildingVision(null),0);
+});
