@@ -314,3 +314,13 @@ test('unexpected audio API failures mute sound without escaping to gameplay',asy
  assert.equal(s.enabled,false);assert.equal(s.diagnostics.lastError.operation,'emit');
  assert.doesNotThrow(()=>s.update());
 });
+
+
+test('walking and mounted footsteps use half gain on every surface without reducing other effects',async()=>{
+ const {sound:s}=harness();await s.setEnabled(true);
+ for(const kind of ['step','snow','gravel','hoof','hoofSnow','hoofGravel','bow','heal']){
+  s.ctx.currentTime+=2;s.emit(kind,{x:0,z:0},.13);
+  const voice=[...s.voices].at(-1);assert.equal(voice.volume,['bow','heal'].includes(kind)?.13:.065,kind);
+  voice.source.stop();
+ }
+});

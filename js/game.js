@@ -1159,7 +1159,10 @@ class Game {
         // Share the mesh stand-off with pursuit checks: attacking a wall from
         // outside the building is productive combat, not a stalled chase.
         const building = target.isWonder || !!(target.type && BUILDING_DEFS[target.type]);
-        return (unit.range > 1 ? unit.range : 1.5) + (building ? (target.isWonder ? 4.6 : 3.5) : 0);
+        const reach = (unit.range > 1 ? unit.range : 1.5) + (building ? (target.isWonder ? 4.6 : 3.5) : 0);
+        // Building footprints must not let archers fire from beyond tower reach.
+        return unit.unitType === 'ranged'
+            ? Math.min(reach, (typeof BUILDING_DEFS !== 'undefined' && BUILDING_DEFS.tower?.range) || 18) : reach;
     }
 
     updateCombat(deltaTime) {
@@ -1378,9 +1381,11 @@ class Game {
     // priest heals whatever it happens to pass without stopping, and resumes
     // seeking once idle. Per the unit description they heal OTHER units only —
     // never themselves, never buildings (that's what repair is for).
+    healingRange() { return 10.5; } // Three times the original 3.5-unit healing reach.
+
     updateHealing(deltaTime) {
         const HEAL_SEARCH = 24;  // how far a priest looks for patients
-        const HEAL_RANGE  = 3.5; // close enough to channel the heal
+        const HEAL_RANGE  = this.healingRange(); // close enough to channel the heal
         const HEAL_RATE   = 6;   // HP per second
         this.getAllUnits().forEach(u => {
             if (u.unitType !== 'support' || u.health <= 0) return;
@@ -2929,7 +2934,9 @@ class Game {
                 unit.health = Math.min(unit.health + bonus.health, unit.maxHealth + bonus.health);
                 unit.maxHealth += bonus.health;
             }
-            if (bonus.range) unit.range += bonus.range;
+            if (bonus.range) unit.range = unit.unitType === 'ranged'
+                ? Math.min((typeof BUILDING_DEFS !== 'undefined' && BUILDING_DEFS.tower?.range) || 18, unit.range + bonus.range)
+                : unit.range + bonus.range;
             if (bonus.speed) unit.speed *= (1 + bonus.speed);
         }
     }

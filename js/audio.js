@@ -392,6 +392,7 @@ class WarAudio {
         if(!this.ctx || !this.active() || this.ctx.state!=='running') return this.suppressed('inactiveOrMuted');
         if(!this.visible(entity))return this.suppressed('visibility');
         if(!Number.isFinite(volume) || volume<0 || volume>3.402823466e38)return this.suppressed('invalidVolume');
+        if(['step','snow','gravel','hoof','hoofSnow','hoofGravel'].includes(kind))volume*=.5;
         const spatial=this.spatial(entity), now=this.ctx.currentTime;
         if(spatial.invalid)return this.suppressed('invalidPosition');
         if(spatial.gain<.015)return this.suppressed('distance');

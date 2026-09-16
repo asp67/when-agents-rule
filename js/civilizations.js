@@ -48,7 +48,7 @@ const CIVILIZATIONS = {
                 health: 60,
                 speed: 1.2,
                 attack: 3,
-                range: 3,
+                range: 10.5,
                 type: 'support',
                 tier: 'bronze',  // mirrors the shared def — getUnitDefFor returns THIS one
                 description: 'Heilt andere Einheiten in der Nähe'
@@ -60,7 +60,7 @@ const CIVILIZATIONS = {
                 health: 45,
                 speed: 1.0,
                 attack: 6,
-                range: 6,
+                range: 12,
                 type: 'ranged',
                 tier: 'neolithic',
                 trainAt: 'archery_range',
@@ -502,7 +502,7 @@ const CIVILIZATIONS = {
                 health: 50,
                 speed: 1.1,
                 attack: 7,
-                range: 7.5,
+                range: 15,
                 type: 'ranged',
                 tier: 'neolithic',
                 description: 'Schneller Bogenschütze'
@@ -721,7 +721,7 @@ const CIVILIZATIONS = {
                 health: 200,
                 speed: 1.5,
                 attack: 8,
-                range: 6,
+                range: 12,
                 type: 'ranged',
                 description: 'Schiff mit Bogenschützen'
             }

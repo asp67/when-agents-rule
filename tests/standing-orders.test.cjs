@@ -348,7 +348,7 @@ test('formation priest does not alternate between its hold and a distant patient
  h.issue('guard',{x:0,z:0});p.isMoving=false;p.targetX=0;p.targetZ=0;
  h.g.updateHealing(50);assert.equal(p.isMoving,false);assert.equal(p.targetX,0);
  w.x=2;h.g.updateHealing(50);assert.ok(w.health>50,'still heals within reach');
- p._standingOrder=null;w.x=10;h.g.updateHealing(50);assert.equal(p.isMoving,true,'unassigned priests still approach patients');
+ p._standingOrder=null;w.x=20;h.g.updateHealing(50);assert.equal(p.isMoving,true,'unassigned priests still approach patients');
 });
 
 test('combat hold releases old marching guidance and reserves separate places',()=>{
@@ -426,7 +426,7 @@ test('formation priest reaches wounded comrades thirty units ahead and channels 
   h.step(50);h.g.updateHealing(50);
   assert.ok(p.x>=previous-.001,'priest must not return toward original hold');previous=p.x;
  }
- assert.ok(Math.hypot(p.x-w.x,p.z-w.z)<=3.5);assert.ok(w.health>20);assert.equal(p.attackTarget,null);
+ assert.ok(Math.hypot(p.x-w.x,p.z-w.z)<=h.g.healingRange());assert.ok(w.health>20);assert.equal(p.attackTarget,null);
  assert.equal(group.fighting,true);
 });
 
@@ -435,7 +435,7 @@ test('formation support keeps its patient and picks a legal nearby healing posit
  a.health=b.health=50;h.owner.units.push(p,a,b);const g=h.issue();g.anchor={x:0,z:0};
  h.g.clampSlot=(x,z)=>x<30?{x:35,z}:({x,z});
  const position=h.g._standingOrders.supportPosition(g,p,g.units,{x:0,z:0});
- assert.ok(position.x>=30);assert.ok(Math.hypot(position.x-a.x,position.z-a.z)<3.5);
+ assert.ok(position.x>=30);assert.ok(Math.hypot(position.x-a.x,position.z-a.z)<h.g.healingRange());
  b.x=5;h.g._standingOrders.supportPosition(g,p,g.units,{x:0,z:0});assert.equal(p._formationPatient,a);
  a.health=100;h.g._standingOrders.supportPosition(g,p,g.units,{x:0,z:0});assert.equal(p._formationPatient,b);
 });
@@ -456,12 +456,12 @@ test('healthy priests follow advancing ranged ranks and regroup only with the ar
 
 test('settled block priest completes an out-of-range heal before returning to its rear slot',()=>{
  const h=setup(),p=h.unit('priest',0,0,2);
- const soldiers=Array.from({length:12},()=>h.unit());h.owner.units.push(...soldiers,p);
+ const soldiers=Array.from({length:40},()=>h.unit());h.owner.units.push(...soldiers,p);
  h.g.getOwner=()=>h.owner;h.g.recordBattleHealing=()=>{};h.g.renderer.spawnDust=()=>{};
  const g=h.issue('guard',{x:40,z:0},{formation:'block'});
  for(const u of g.units){Object.assign(u,g.slots.get(u));u.isMoving=false;}
  const patient=soldiers.sort((a,b)=>Math.hypot(b.x-p.x,b.z-p.z)-Math.hypot(a.x-p.x,a.z-p.z))[0];
- assert.ok(Math.hypot(patient.x-p.x,patient.z-p.z)>3.5);patient.health=80;
+ assert.ok(Math.hypot(patient.x-p.x,patient.z-p.z)>h.g.healingRange());patient.health=80;
  let distance=Math.hypot(patient.x-p.x,patient.z-p.z),healed=false;
  for(let i=0;i<600;i++){
   h.step(50);h.g.updateHealing(50);

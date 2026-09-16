@@ -56,7 +56,7 @@ const UNIT_DEFS = {
         health: 40,
         speed: 1.0,
         attack: 6,
-        range: 6,
+        range: 12,
         type: 'ranged',
         tier: 'neolithic',
         description: 'Fernkampf-Einheit'
@@ -68,7 +68,7 @@ const UNIT_DEFS = {
         health: 60,
         speed: 0.9,
         attack: 12,
-        range: 6.75,
+        range: 13.5,
         type: 'ranged',
         tier: 'iron',
         description: 'Starker Fernkämpfer mit Armbrust'
@@ -80,7 +80,7 @@ const UNIT_DEFS = {
         health: 80,
         speed: 1.1,
         attack: 16,
-        range: 7.5,
+        range: 15,
         type: 'ranged',
         tier: 'iron',
         description: 'Elite Fernkampf-Einheit'
@@ -128,7 +128,7 @@ const UNIT_DEFS = {
         health: 60,
         speed: 1.0,   // a priest walks with the foot, not ahead of it
         attack: 3,
-        range: 3,
+        range: 10.5,
         type: 'support',
         tier: 'bronze',
         description: 'Heilt andere Einheiten in der Nähe'

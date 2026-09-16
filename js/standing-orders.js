@@ -161,13 +161,14 @@ class StandingOrders {
         if(!patient)return fallback;
         // Already close enough: stand still and channel, do not march into the
         // patient's collision radius. Replan only when the patient moves away.
-        if(Math.hypot(patient.x-u.x,patient.z-u.z)<=3.3)return {x:u.x,z:u.z};
+        const healRange=this.game.healingRange();
+        if(Math.hypot(patient.x-u.x,patient.z-u.z)<=healRange-.2)return {x:u.x,z:u.z};
         const old=u._patientStand;
         if(old&&Math.hypot(old.px-patient.x,old.pz-patient.z)<1)return old;
         const angle=Math.atan2(u.z-patient.z,u.x-patient.x);
         for(let i=0;i<16;i++){
             const a=angle+i*Math.PI/8;
-            const x=patient.x+Math.cos(a)*2.8,z=patient.z+Math.sin(a)*2.8;
+            const x=patient.x+Math.cos(a)*(healRange-.7),z=patient.z+Math.sin(a)*(healRange-.7);
             const p=this.game.clampSlot(x,z);
             if(Math.hypot(p.x-x,p.z-z)>.01)continue;
             u._patientStand={x,z,px:patient.x,pz:patient.z};return u._patientStand;
