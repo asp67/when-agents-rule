@@ -2442,6 +2442,9 @@ class Game {
                 if (ai) {
                     const idx = ai.units.indexOf(target);
                     if (idx > -1) ai.units.splice(idx, 1);
+                    // Update at removal, before another command or snapshot can read
+                    // the old count. Headless matches do not run the browser HUD tick.
+                    ai.resources.updatePopulation(ai.units.length);
                 }
                 this.renderer.killUnit(target); // tip over + fade instead of vanishing
             }
