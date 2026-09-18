@@ -392,7 +392,7 @@ class WarAudio {
         if(!this.ctx || !this.active() || this.ctx.state!=='running') return this.suppressed('inactiveOrMuted');
         if(!this.visible(entity))return this.suppressed('visibility');
         if(!Number.isFinite(volume) || volume<0 || volume>3.402823466e38)return this.suppressed('invalidVolume');
-        if(['step','snow','gravel','hoof','hoofSnow','hoofGravel'].includes(kind))volume*=.5;
+        if(['step','snow','gravel','hoof','hoofSnow','hoofGravel'].includes(kind))volume*=.375;
         const spatial=this.spatial(entity), now=this.ctx.currentTime;
         if(spatial.invalid)return this.suppressed('invalidPosition');
         if(spatial.gain<.015)return this.suppressed('distance');
@@ -541,7 +541,7 @@ class WarAudio {
         this.nextUpdate=now+.16/this.movementCadence(); // sample movement often enough for faster steps
         const r=this.game.renderer, theme=r._theme||'summer';
         const zoom=Math.min(1,100/(r._halfH||80));
-        this.ramp(this.wind.gain.gain,(theme==='winter'?.10:theme==='desert'?.08:.06)*zoom,.7);
+        this.ramp(this.wind.gain.gain,(theme==='winter'?.05:theme==='desert'?.04:.03)*zoom,.7);
         this.ramp(this.wind.filter.frequency,theme==='winter'?1250:theme==='desert'?750:950,.8);
         // Reposition active effects when the director cuts; do not drag old battles
         // audibly into a new village. No delayed events or replay queues.

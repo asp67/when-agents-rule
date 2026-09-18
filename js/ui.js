@@ -623,7 +623,7 @@ class UIManager {
             endpoint: opts.endpoint || '',
             model: opts.model || '',
             provider: opts.provider || 'auto', // auto | openai | anthropic | ollama | google
-            maxTokens: opts.maxTokens || '',   // '' = use the default (2000)
+            maxTokens: opts.maxTokens || '',   // '' = use the default (8192)
             // Sampling knobs. '' means "don't send it", so the provider's own default for
             // that model applies — which is NOT the same as sending a number that happens
             // to match it today. All three are left blank by default.
@@ -648,7 +648,7 @@ class UIManager {
             repetitionPenalty: opts.repetitionPenalty != null ? opts.repetitionPenalty : '',
             // Per-model context budget in tokens. Sizes the rolling chat history sent
             // each turn (bigger budget = longer memory for big-context models) and is
-            // also used as Ollama's num_ctx. '' = default (32768). Lower = much faster.
+            // also used as Ollama's num_ctx. '' = default (65536). Lower = much faster.
             contextSize: opts.contextSize || '',
             // false = full multi-turn rolling history (Option C, cacheable, richer).
             // true  = minimize tokens: compact one-line move history (Option A).
@@ -1237,7 +1237,7 @@ class UIManager {
         // card, rather than discovered as a 400 mid-match — or worse, as a temperature
         // that appears to be set and is not.
         const extraBodyErr = this.parseExtraBody(m.extraBody).error;
-        const _cap = parseInt(m.maxTokens, 10) || 2000;
+        const _cap = parseInt(m.maxTokens, 10) || 8192;
         const _budget = parseInt(m.reasoning, 10);
         const _warn = [];
         if (_prov === 'anthropic' && isFinite(_budget) && _budget > 0) {
@@ -1323,10 +1323,10 @@ class UIManager {
                         <div class="mdl-pop" id="mdlPop-${m.id}" hidden></div>
                     </div></div>
                 <div class="arena-field" style="flex:0 0 150px"><label>${t('ar.fMaxTokens')}</label>
-                    <input type="number" min="64" step="64" value="${e(m.maxTokens)}" oninput="game.ui.setModelField(${m.id},'maxTokens',this.value)" placeholder="2000"></div>
+                    <input type="number" min="64" step="64" value="${e(m.maxTokens)}" oninput="game.ui.setModelField(${m.id},'maxTokens',this.value)" placeholder="8192"></div>
                 <div class="arena-field" style="flex:0 0 210px"><label>${t('ar.fContextBudget')}</label>
                     <div class="ctx-budget-row">
-                        <input type="number" min="512" step="512" value="${e(m.contextSize)}" oninput="game.ui.setModelField(${m.id},'contextSize',this.value)" placeholder="32768">
+                        <input type="number" min="512" step="512" value="${e(m.contextSize)}" oninput="game.ui.setModelField(${m.id},'contextSize',this.value)" placeholder="65536">
                         <button class="ctx-max-btn" title="${t('ar.ctxMaxTitle')}" onclick="game.ui.resetModelContextToMax(${m.id})">${t('ar.ctxMax')}</button>
                     </div></div>
                 <div class="arena-field" style="flex:0 0 170px"><label>${t('ar.fModelLang')}</label>
@@ -1971,11 +1971,11 @@ class UIManager {
             m.availableModels = res.models || [];
             if ((!m.model || !m.availableModels.includes(m.model)) && m.availableModels.length) m.model = m.availableModels[0];
             // Remember each model's context window (when the endpoint reports it) for
-            // the ↺ button, and prefill an empty budget with the selected model's max.
+            // the ↺ button. Keep an empty budget at the default, capped to the model's max.
             m.availableModelContext = res.contextById || {};
             const detected = m.availableModelContext[m.model] || OpenAIAIManager.knownContextWindow(m.model, res.provider);
             if (detected) m.maxContext = detected;
-            if ((m.contextSize === '' || m.contextSize == null) && detected) m.contextSize = detected;
+            if ((m.contextSize === '' || m.contextSize == null) && detected) m.contextSize = Math.min(65536, detected);
             const n = m.availableModels.length;
             const provNote = res.provider ? ` [${res.provider}]` : '';
             m._status = { cls: 'ok', text: n ? t('ar.testOk', { prov: provNote, n }) : t('ar.testOkNoList', { prov: provNote }) };
@@ -4029,7 +4029,7 @@ class UIManager {
                 modelConfig: controller ? {
                     provider: controller.model.provider || 'auto',
                     modelId: OpenAIAIManager.publicModelId(controller.model.model) || '',
-                    contextBudget: controller.model.contextSize || 32768,
+                    contextBudget: controller.model.contextSize || 65536,
                     minimizeTokens: !!controller.model.minimizeTokens,
                     language: controller.model.language || 'en'
                 } : null,

@@ -75,3 +75,27 @@ test('library saves the verified endpoint before probing and rendering',async()=
     await ui.testArenaModel(1);
     assert.equal(saved,'http://192.168.8.144:8888/v1');assert.equal(probe,saved);assert.equal(rendered,saved);
 });
+
+
+test('provider requests use the new token defaults and preserve explicit limits',()=>{
+ const {manager:m}=setup();
+ for(const provider of ['openai','anthropic','google','ollama']){
+  for(const custom of [false,true]){
+   const body=m.buildChatRequest(provider,'https://example.test/v1','test-model','system',[{role:'user',content:'test'}],custom?{maxTokens:4096,numCtx:16384}:{}).body;
+   const limit=provider==='google'?body.generationConfig.maxOutputTokens:provider==='ollama'?body.options.num_predict:body.max_tokens;
+   assert.equal(limit,custom?4096:8192,provider);
+   if(provider==='ollama')assert.equal(body.options.num_ctx,custom?16384:65536);
+  }
+ }
+ assert.equal(m.buildChatRequest('openai','https://example.test/v1','test-model','system',[],{useMaxCompletionTokens:true}).body.max_completion_tokens,8192);
+});
+
+test('connection checks cap an empty context budget to the default or model limit without replacing custom values',async()=>{
+ for(const [maximum,configured,expected] of [[131072,'',65536],[16384,'',16384],[131072,98304,98304]]){
+  const {manager:m,scope}=setup(),model={endpoint:'https://example.test/v1',provider:'openai',model:'test-model',contextSize:configured};
+  const ui=Object.create(scope.UI.prototype);ui.getArenaModel=()=>model;ui.cleanAuth=()=>({});
+  ui.saveArenaConfig=()=>{};ui.renderArenaLibrary=()=>{};m.probeCapabilities=async()=>null;
+  m.testConnection=async()=>({ok:true,models:['test-model'],provider:'openai',contextById:{'test-model':maximum}});
+  await ui.testArenaModel(1);assert.equal(model.contextSize,expected);assert.equal(model.maxContext,maximum);
+ }
+});

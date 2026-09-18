@@ -1774,7 +1774,7 @@ class OpenAIAIManager {
         const minP = opts.minP != null ? Number(opts.minP) : undefined;
         const presencePenalty = opts.presencePenalty != null ? Number(opts.presencePenalty) : undefined;
         const repetitionPenalty = opts.repetitionPenalty != null ? Number(opts.repetitionPenalty) : undefined;
-        const maxTokens = opts.maxTokens != null ? opts.maxTokens : 2000;
+        const maxTokens = opts.maxTokens != null ? opts.maxTokens : 8192;
         const model = modelId || 'default';
         // Only ever add a key we actually have a value for.
         const put = (obj, key, val) => { if (val !== undefined && !Number.isNaN(val)) obj[key] = val; return obj; };
@@ -1824,7 +1824,7 @@ class OpenAIAIManager {
                     ...(opts.omitTools ? {} : { tools: OpenAIAIManager.toolsFor('ollama') }),
                     ...(reasoning && reasoning.kind === 'think' ? { think: reasoning.value } : {}),
                     keep_alive: -1, // never auto-unload: the arena drives the model continuously
-                    // Cap the context to a user-configurable size (default 32768).
+                    // Cap the context to a user-configurable size (default 65536).
                     // Ollama otherwise loads the model's FULL context (e.g. 128k for
                     // llama3.2), whose KV cache bloats VRAM and spills the model onto
                     // the CPU — making every turn crawl and time out. Lower this on
@@ -1835,7 +1835,7 @@ class OpenAIAIManager {
                     // already hard to read at three.
                     options: (() => {
                         const o = { num_predict: maxTokens,
-                                    num_ctx: (opts.numCtx && opts.numCtx > 0) ? opts.numCtx : 32768 };
+                                    num_ctx: (opts.numCtx && opts.numCtx > 0) ? opts.numCtx : 65536 };
                         put(o, 'temperature', opts.omitTemperature ? undefined : temperature);
                         put(o, 'top_p', opts.omitTopP ? undefined : topP);
                         put(o, 'top_k', topK);
@@ -2319,8 +2319,8 @@ class OpenAIAIManager {
                 repetitionPenalty: (conn.repetitionPenalty == null) ? null : conn.repetitionPenalty,
                 reasoning: conn.reasoning == null ? '' : conn.reasoning,
                 extraBody: conn.extraBody || null,
-                maxTokens: conn.maxTokens || 2000, // per-model cap on reply length (default 2000)
-                contextSize: conn.contextSize || null, // context budget (tokens); also Ollama num_ctx (null = 32768)
+                maxTokens: conn.maxTokens || 8192, // per-model cap on reply length (default 8192)
+                contextSize: conn.contextSize || null, // context budget (tokens); also Ollama num_ctx (null = 65536)
                 maxContext: conn.maxContext || null, // model's real max context — hard ceiling for the budget
                 minimizeTokens: !!conn.minimizeTokens, // true = compact one-line history (Option A)
                 toolFallback: !!conn.toolFallback, // true = accept inline JSON when no tool call arrives
@@ -4103,8 +4103,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Clamp the configured budget to the model's REAL max context if we discovered
         // it, so a too-high setting can't overflow.
         const hardMax = (model.maxContext && model.maxContext >= 512) ? model.maxContext : Infinity;
-        const budget = Math.min(hardMax, (model.contextSize && model.contextSize >= 512) ? model.contextSize : 32768);
-        const reserve = (model.maxTokens || 2000) + 1500;        // leave room for the reply + margin
+        const budget = Math.min(hardMax, (model.contextSize && model.contextSize >= 512) ? model.contextSize : 65536);
+        const reserve = (model.maxTokens || 8192) + 1500;        // leave room for the reply + margin
         // Only use a conservative SLICE of the window for the prompt. We can't run the
         // model's tokenizer client-side, and dense JSON / non-English text tokenizes well
         // under 3.5 chars/token — overestimating capacity overflows the real limit and the
@@ -4401,7 +4401,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // server-side default), not by us — and if the JSON is cut while the
             // finish reason is NOT the cap, nothing capped it and the transport
             // truncated the body. Those need opposite fixes, so don't guess.
-            const askedMax = model.maxTokens || 2000;
+            const askedMax = model.maxTokens || 8192;
             if (OpenAIAIManager.hitTokenCap(norm && norm.finish_reason)) {
                 // COUNTED HERE, once per reply, and not down in the malformed branch where
                 // it used to live. There it only fired when the reply was a total loss, so

@@ -316,11 +316,23 @@ test('unexpected audio API failures mute sound without escaping to gameplay',asy
 });
 
 
-test('walking and mounted footsteps use half gain on every surface without reducing other effects',async()=>{
+test('walking and mounted footsteps use 37.5 percent gain on every surface without reducing other effects',async()=>{
  const {sound:s}=harness();await s.setEnabled(true);
  for(const kind of ['step','snow','gravel','hoof','hoofSnow','hoofGravel','bow','heal']){
   s.ctx.currentTime+=2;s.emit(kind,{x:0,z:0},.13);
-  const voice=[...s.voices].at(-1);assert.equal(voice.volume,['bow','heal'].includes(kind)?.13:.065,kind);
+  const voice=[...s.voices].at(-1);assert.equal(voice.volume,['bow','heal'].includes(kind)?.13:.13*.375,kind);
   voice.source.stop();
+ }
+});
+
+
+test('wind uses half the prior gain in every biome and keeps zoom attenuation',async()=>{
+ const {sound:s,game}=harness();await s.setEnabled(true);
+ for(const [theme,gain] of [['summer',.03],['winter',.05],['desert',.04]]){
+  game.renderer._theme=theme;
+  for(const [zoom,scale] of [[65,1],[200,.5]]){
+   game.renderer._halfH=zoom;s.ctx.currentTime+=2;s.update();
+   assert.equal(s.wind.gain.gain.value,gain*scale,theme+' '+zoom);
+  }
  }
 });
