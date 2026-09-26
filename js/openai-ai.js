@@ -253,6 +253,64 @@ class OpenAIAIManager {
     // arguments is a JSON STRING the model wrote, so it can break exactly the way an
     // inline object breaks. A broken one costs its own call and nothing else -- which
     // is the whole reason for going this way.
+    // Each tool call answered with its OWN result. A turn resolves into one combined
+    // outcome ("Command i/n: ..." per command), and that used to be replayed as the
+    // result of the FIRST call, with the others told to look above. In 28% of
+    // multi-call turns the first call was the plan, so the plan call "returned" the
+    // game commands' results and the calls that made them got a pointer.
+    //
+    // Calls are matched to results in the order envelopeFromToolCalls built the
+    // commands: game commands in call order, then calls it could not use. A plan call
+    // is answered for what happened to it: saved, not applied because an earlier plan
+    // call in the same reply already set those fields, or not applied because it held
+    // neither field. Returns null when the counts do not line up -- a call too long to
+    // replay was left out of the record -- and the caller keeps the combined answer.
+    static resultsPerCall(toolCalls, outcome) {
+        const text = String(outcome == null ? '' : outcome);
+        const parts = text.split(/\n(?=Command \d+\/\d+: )/).map(x => x.replace(/^Command \d+\/\d+: /, ''));
+        let objTaken = false, planTaken = false;
+        const kinds = (toolCalls || []).map(c => {
+            let args;
+            try { args = JSON.parse((c && c.args) || '{}'); } catch (e) { return 'broken'; }
+            if (!args || typeof args !== 'object') return 'broken';
+            if (c.name === 'plan') {
+                const obj = typeof args.objective === 'string' && !objTaken;
+                const plan = Array.isArray(args.plan) && !planTaken;
+                objTaken = objTaken || typeof args.objective === 'string';
+                planTaken = planTaken || Array.isArray(args.plan);
+                if (obj || plan) return 'plan';
+                return (typeof args.objective === 'string' || Array.isArray(args.plan)) ? 'planRepeat' : 'planEmpty';
+            }
+            if (OpenAIAIManager.ACTION_NAMES.has(c.name) || typeof args.action === 'string') return 'command';
+            return 'broken';
+        });
+        const commands = kinds.filter(k => k === 'command').length;
+        const broken = kinds.filter(k => k === 'broken').length;
+        const PLAN_REPEAT = 'Not applied: an earlier plan call in this reply already set the objective and plan.';
+        const PLAN_EMPTY = 'Not applied: a plan call needs "objective" (text) and/or "plan" (a list of steps).';
+        let ci = 0, bi = commands, planSaid = false;
+        if (!commands && !broken) {
+            // Plan-only: the whole outcome describes the plan save.
+            return kinds.map(k => k === 'plan' && !planSaid ? (planSaid = true, text)
+                : (k === 'planEmpty' ? PLAN_EMPTY : PLAN_REPEAT));
+        }
+        if (commands + broken !== parts.length) return null;
+        return kinds.map(k => k === 'command' ? parts[ci++]
+            : k === 'broken' ? parts[bi++]
+            : k === 'plan' ? 'OK - Plan saved.'
+            : k === 'planEmpty' ? PLAN_EMPTY : PLAN_REPEAT);
+    }
+    // The tool-role answers for one recorded turn. `pending` marks a turn that had not
+    // resolved: every call then gets the same honest "not resolved" line.
+    static answerCalls(toolCalls, outcome, pending) {
+        const per = pending ? null : OpenAIAIManager.resultsPerCall(toolCalls, outcome);
+        return toolCalls.map((c, k) => ({
+            id: c.id, name: c.name,
+            content: per ? String(per[k])
+                : (pending || k === 0 ? String(outcome) : '(covered by the result of ' + toolCalls[0].name + ' above)')
+        }));
+    }
+
     static envelopeFromToolCalls(calls) {
         const cmds = [];
         const head = {};
@@ -4028,15 +4086,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
             if (prevOutcome && prevViaTools) {
                 // Every call must be answered: an OpenAI-compatible server rejects a
-                // conversation with a tool_call left dangling. The harness produces ONE
-                // outcome per turn (up to three actions resolve into a single reply), so
-                // the first call carries it and the rest point at it rather than
-                // repeating several hundred characters per extra call.
-                turns.push({ role: 'tool', results: prev.toolCalls.map((c, k) => ({
-                    id: c.id, name: c.name,
-                    content: k === 0 ? String(prevOutcome)
-                                     : '(covered by the result of ' + prev.toolCalls[0].name + ' above)'
-                })) });
+                // conversation with a tool_call left dangling. Each call gets its OWN
+                // result (resultsPerCall).
+                turns.push({ role: 'tool', results: OpenAIAIManager.answerCalls(prev.toolCalls, prevOutcome) });
             }
             const userContent = ((prevOutcome && !prevViaTools)
                 ? `RESULT of your previous action: ${prevOutcome}
@@ -4066,13 +4118,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // without a call -- rather than by watching requests fail.
         const last = picked[picked.length - 1];
         if (last && last.toolCalls && last.toolCalls.length) {
-            const text = last.outcome
-                || '(this action had not resolved when the next state was built)';
-            turns.push({ role: 'tool', results: last.toolCalls.map((c, k) => ({
-                id: c.id, name: c.name,
-                content: k === 0 ? String(text)
-                                 : '(covered by the result of ' + last.toolCalls[0].name + ' above)'
-            })) });
+            turns.push({ role: 'tool', results: last.outcome
+                ? OpenAIAIManager.answerCalls(last.toolCalls, last.outcome)
+                : OpenAIAIManager.answerCalls(last.toolCalls, '(this action had not resolved when the next state was built)', true) });
         }
         return turns;
     }
