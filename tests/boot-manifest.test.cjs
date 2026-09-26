@@ -7,7 +7,11 @@ const fs = require('node:fs'), vm = require('node:vm'), path = require('node:pat
 const root = path.resolve(__dirname, '..');
 const read = f => fs.readFileSync(path.join(root, f), 'utf8');
 const M = require('../js/manifest.js');
-const html = read('index.html');
+// A server deployment of the Platform carries no index.html (it serves its own pages),
+// so the page tests skip there rather than fail.
+const PAGE = fs.existsSync(path.join(root, 'index.html'));
+const NO_PAGE = PAGE ? {} : { skip: 'no index.html in this checkout (a Platform server deploys without the WAR page)' };
+const html = PAGE ? read('index.html') : '';
 // Any version string: WAR numbers its builds, the Platform names its milestones.
 const scripts = [...html.matchAll(/<script src="([^"?]+)(?:\?v=([^"]+))?"/g)].map(m => ({ file: m[1], v: m[2] }));
 
@@ -20,7 +24,7 @@ test('the rules load in a bare VM: no document, no location, nothing cut', () =>
     assert.doesNotMatch(read('js/game.js'), /WAR_PRIVATE_HOST|addEventListener\('load'/, 'start-up stays in boot.js');
 });
 
-test('the page loads every rule file, in the manifest order, and boot.js right after game.js', () => {
+test('the page loads every rule file, in the manifest order, and boot.js right after game.js', NO_PAGE, () => {
     const order = scripts.map(s => s.file);
     for (const f of M.rules.concat(M.harness, 'js/manifest.js', 'js/boot.js')) assert.ok(order.includes(f), f + ' is loaded by index.html');
     const pos = f => order.indexOf(f);
@@ -29,7 +33,7 @@ test('the page loads every rule file, in the manifest order, and boot.js right a
     assert.equal(pos('js/boot.js'), pos('js/game.js') + 1, 'boot.js directly after game.js, so its load handler comes first');
 });
 
-test('the build number: game.js?v=N, read the same way by the update notice and the stamp', t => {
+test('the build number: game.js?v=N, read the same way by the update notice and the stamp', NO_PAGE, t => {
     const anchor = scripts.find(s => s.file === 'js/game.js');
     if (!/^\d+$/.test(anchor.v || '')) return t.skip('this page versions its assets by milestone (' + anchor.v + '), not by build number');
     const ctx = vm.createContext({ console, window: {}, localStorage: null });
