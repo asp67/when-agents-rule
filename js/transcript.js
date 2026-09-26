@@ -259,7 +259,21 @@ class TranscriptRecorder {
         await this.flushAll();
         const parts = [];
         let header = null, tail = null;
-        try {
+        // No origin-private storage -- a plain-http LAN host, which WAR serves on
+        // purpose. flush() cannot write there, so every line is still in `pending`,
+        // complete and in order. The disk read below used to throw and fall through
+        // to the 300-turn display ring, losing the markers and the results tail.
+        if (!this.available) {
+            const lines = key => (this.pending.get(key) || []).join('');
+            header = lines(TranscriptRecorder.MATCH_KEY()) || null;
+            tail = lines(TranscriptRecorder.SUMMARY_KEY()) || null;
+            for (const key of this.pending.keys()) {
+                if (key === TranscriptRecorder.MATCH_KEY() || key === TranscriptRecorder.SUMMARY_KEY()) continue;
+                const text = lines(key);
+                if (text) parts.push(text);
+            }
+        }
+        if (this.available) try {
             const dir = await (await this._root(true)).getDirectoryHandle(this.matchId, { create: true });
             for await (const [name, h] of dir.entries()) {
                 if (!name.endsWith('.jsonl') || h.kind !== 'file') continue;
