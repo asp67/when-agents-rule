@@ -182,15 +182,25 @@ class StandingOrders {
         for(const g of this.groups)this.prune(g);
         if(this.scan<150)return;this.scan=0;
         const enemies=this.game.getAllUnits();
+        // One visibility grid per owner for this scan (buildVisionTest, ai.js): the same
+        // answers as visible(), shared by every group that owner has. A scan moves no
+        // unit, so the grid cannot go stale while it is used.
+        const sight=new Map();
+        const see=(g,e)=>{
+            if(!e||e.owner===g.owner.id)return false;
+            if(g.owner.id==='player'||typeof buildVisionTest!=='function'||!this.game.aiManager)return this.visible(g,e);
+            let t=sight.get(g.owner);if(!t)sight.set(g.owner,t=buildVisionTest(this.game,g.owner));
+            return t(e.x,e.z);
+        };
         for(const g of this.groups){
             const units=g.units,center=this.center(units);
-            if(g.threats)g.threats=g.threats.filter(e=>e.health>0&&this.visible(g,e));
+            if(g.threats)g.threats=g.threats.filter(e=>e.health>0&&see(g,e));
             const focus=g.threats?.[0];
             // Visibility depends on the owner, not the attacker. Share its scan
             // across the formation instead of repeating it for every soldier.
             const visibility=new Map();
-            const visible=e=>{if(!visibility.has(e))visibility.set(e,this.visible(g,e));return visibility.get(e);};
-            if(g.target&&this.visible(g,g.target)&&g.target.health<=0){
+            const visible=e=>{if(!visibility.has(e))visibility.set(e,see(g,e));return visibility.get(e);};
+            if(g.target&&see(g,g.target)&&g.target.health<=0){
                 // A moving objective may die between scans. Guard its final
                 // observed location rather than returning to the click location.
                 if(g.mode==='guard'){
@@ -213,7 +223,7 @@ class StandingOrders {
                 }
                 if(!targets.size)g.blocked.delete(u);
             }
-            if(g.target&&this.visible(g,g.target)&&g.target.health>0){
+            if(g.target&&see(g,g.target)&&g.target.health>0){
                 const to={x:g.target.x,z:g.target.z};
                 if(!g.fighting&&Math.hypot(to.x-g.leg.x,to.z-g.leg.z)>6)this.reform(g,to);
                 g.to=to;
@@ -332,7 +342,7 @@ class StandingOrders {
                 // including the slowest priest, before reversing the route.
                 const arrived=units.every(u=>{const s=g.slots.get(u);return s&&Math.hypot(u.x-s.x,u.z-s.z)<=1.6;});
                 if(arrived&&g.mode!=='patrol')g.settled=true;
-                if(arrived&&g.target&&!this.visible(g,g.target))g.target=null;
+                if(arrived&&g.target&&!see(g,g.target))g.target=null;
                 if(arrived&&g.mode==='patrol'&&Math.hypot(g.to.x-g.from.x,g.to.z-g.from.z)>2){
                     [g.to,g.from]=[g.from,g.to];this.reform(g,g.to);
                 }else for(const u of units){
