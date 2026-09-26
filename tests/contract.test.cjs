@@ -70,3 +70,41 @@ test('the analyzer reads the contract line and does not count it as a marker', (
     assert.equal(a.contract.type, 'contract');
     assert.equal(a.markers.length, 0);
 });
+
+test('every action in the ACTIONS table has an executor, and every executor an entry', () => {
+    const src = read('js/openai-ai.js');
+    const start = src.indexOf('    executeAction(controller, actionData, validationError = null) {');
+    const body = src.slice(start, src.indexOf('\n    }\n', src.indexOf('switch (action)', start)));
+    const cases = new Set([...body.matchAll(/case '([a-z_]+)':/g)].map(m => m[1]));
+    const { M } = context();
+    const declared = new Set(M.ACTION_NAMES);
+    assert.deepEqual([...declared].filter(a => !cases.has(a)), [], 'declared but never executed');
+    assert.deepEqual([...cases].filter(a => !declared.has(a)), [], 'executed but never offered');
+    for (const t of M.TOOLS) assert.ok(declared.has(t.function.name) || t.function.name === 'plan', t.function.name);
+});
+
+test('recorded states conform to game-state-schema.json, and unknown schema keywords fail', () => {
+    const { validate, undocumented } = require('./lib/schema-check.cjs');
+    const schema = JSON.parse(read('game-state-schema.json'));
+    for (const f of ['samples/2026-09-07_gemini-flash-deepseek-v4-gpt5.6-qwen3.8_89min.jsonl',
+                     'samples/2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl']) {
+        const states = read(f).split('\n').filter(Boolean).map(l => JSON.parse(l)).filter(r => !r.type && r.state).map(r => r.state);
+        assert.ok(states.length > 100);
+        const problems = new Set();
+        for (const s of states) {
+            validate(schema, s).forEach(e => problems.add(e.replace(/\[\d+\]/g, '[]')));
+            undocumented(schema, s).forEach(k => problems.add('undocumented ' + k));
+        }
+        assert.deepEqual([...problems].slice(0, 10), [], f);
+    }
+    assert.throws(() => validate({ type: 'object', patternProperties: {} }, {}), /not implemented/);
+});
+
+test('the fixed per-turn prompt stays under its token tripwires', () => {
+    const { M } = context();
+    const budget = JSON.parse(read('tests/prompt-budget.json'));
+    const system = Math.ceil(M.defaultSystemPrompt().length / 4);
+    const tools = Math.ceil(JSON.stringify(M.TOOLS).length / 4);
+    assert.ok(system <= budget.systemPromptTokens, `system prompt ~${system} tokens > ${budget.systemPromptTokens}`);
+    assert.ok(tools <= budget.toolSchemaTokens, `tool schemas ~${tools} tokens > ${budget.toolSchemaTokens}`);
+});

@@ -3,29 +3,7 @@
   "title": "When Agents Rule — per-turn game state",
   "description": "The JSON object handed to every model each turn (built by buildGameStateJSON in js/openai-ai.js). Everything is fog-limited: the model only sees what its own units/buildings have discovered. Coordinates are world units on a square map centred on (0,0). In multi-turn history mode, PAST turns are replayed as compact 'pastTurnRecap' objects (see $defs.pastTurnRecap) — the CURRENT full state is always the last message.",
   "type": "object",
-  "required": [
-    "player",
-    "clock",
-    "epoch",
-    "resources",
-    "population",
-    "bonuses",
-    "map",
-    "nodes",
-    "nearestNodes",
-    "friendlyBuildings",
-    "buildings",
-    "enemyBuildings",
-    "friendlyUnits",
-    "workers",
-    "enemyUnits",
-    "research",
-    "unlockedContent",
-    "trainableUnits",
-    "buildableStructures",
-    "threats",
-    "gameStats"
-  ],
+  "required": ["player", "clock", "epoch", "resources", "population", "bonuses", "map", "nodes", "nearestNodes", "friendlyBuildings", "buildings", "enemyBuildings", "friendlyUnits", "workers", "enemyUnits", "research", "unlockedContent", "threats", "gameStats", "units"],
   "properties": {
     "player": {
       "type": "object",
@@ -352,42 +330,41 @@
       "description": "Fighting you could not watch, one entry per ENGAGEMENT (clustered by location), CUMULATIVE since it began — a fight outlasts several turns. Absent entirely when nothing is happening. Only engagements you took part in. Numbers only: 'their 2 heavy_cavalry dealt 1800 to my 3 archers' is the counter lesson, drawing it is your job.",
       "items": {
         "type": "object",
-        "required": ["at", "ongoing", "secondsElapsed", "you", "enemy"],
+        "required": [
+          "at",
+          "ongoing",
+          "secondsElapsed",
+          "you",
+          "enemy"
+        ],
         "properties": {
-          "at": { "type": "array", "items": { "type": "integer" }, "description": "[x, z] centre of the fighting." },
-          "ongoing": { "type": "boolean", "description": "true while blows are still landing." },
-          "endedSecondsAgo": { "type": "integer", "description": "Only present once ongoing is false: how long ago the last blow landed. An entry is reported for two minutes after a fight ends, so this is what tells a finished skirmish from a stale one." },
-          "secondsElapsed": { "type": "integer", "description": "How long the fight LASTED (first blow to last), not how long ago it was — see endedSecondsAgo for that." },
-          "you": { "$ref": "#/properties/battles/items/definitions/side" },
+          "at": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "[x, z] centre of the fighting."
+          },
+          "ongoing": {
+            "type": "boolean",
+            "description": "true while blows are still landing."
+          },
+          "endedSecondsAgo": {
+            "type": "integer",
+            "description": "Only present once ongoing is false: how long ago the last blow landed. An entry is reported for two minutes after a fight ends, so this is what tells a finished skirmish from a stale one."
+          },
+          "secondsElapsed": {
+            "type": "integer",
+            "description": "How long the fight LASTED (first blow to last), not how long ago it was — see endedSecondsAgo for that."
+          },
+          "you": {
+            "$ref": "#/$defs/battleSide"
+          },
           "enemy": {
             "type": "array",
             "description": "One entry per rival involved — three-way fights are not merged.",
-            "items": { "$ref": "#/properties/battles/items/definitions/side" }
-          }
-        },
-        "definitions": {
-          "side": {
-            "type": "object",
-            "properties": {
-              "owner": { "type": "string", "description": "Present on enemy entries only." },
-              "involved": {
-                "type": "object",
-                "description": "Keyed by unit/building type — towers, drafted workers and priests all appear as themselves. Zero fields are omitted, so a priest row is just {n, healed}.",
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "n": { "type": "integer", "description": "Distinct units of this type that fought or healed." },
-                    "dmgUnits": { "type": "integer", "description": "Damage dealt to UNITS." },
-                    "dmgBuildings": { "type": "integer", "description": "Damage dealt to BUILDINGS — never summed with dmgUnits, since infantry raze at 1.5x and ranged at 0.5x." },
-                    "healed": { "type": "integer", "description": "HP restored (priests). Replaces damage for support units." }
-                  }
-                }
-              },
-              "lost": {
-                "type": "object",
-                "description": "Units of yours (or theirs) that died here, by type. Absent if none.",
-                "additionalProperties": { "type": "integer" }
-              }
+            "items": {
+              "$ref": "#/$defs/battleSide"
             }
           }
         }
@@ -505,39 +482,103 @@
     },
     "buildings": {
       "type": "object",
-      "description": "Aggregate of friendlyBuildings, for at-a-glance rebalancing.",
+      "description": "What your civilization can EVER build, and the vocabulary for build_structure's \"buildingType\". If a type is absent (e.g. stable for some civs), your civ does not have it — do not keep trying. Your Wonder is listed here too, as type \"wonder\". Split in two: \"buildable\" can be ordered now apart from its cost (blockedBy is [\"cost\"] or omitted when nothing stands in the way), \"blocked\" cannot yet, and each blocked entry's blockedBy says why.",
       "required": [
-        "total",
-        "idle",
-        "busy",
-        "underConstruction",
-        "producing",
-        "researching",
-        "byType"
+        "buildable",
+        "blocked"
       ],
       "properties": {
-        "total": {
-          "type": "integer"
+        "buildable": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "requiredAge",
+              "requiresTech",
+              "cost"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Pass this verbatim as build_structure's \"buildingType\"."
+              },
+              "requiredAge": {
+                "type": "string",
+                "description": "Earliest age at which this civilization can build it — already adjusted for a unlock tech that arrives later than the building's own age."
+              },
+              "requiresTech": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cost": {
+                "$ref": "#/$defs/cost"
+              },
+              "blockedBy": {
+                "$ref": "#/$defs/blockedBy"
+              },
+              "isWonder": {
+                "type": "boolean",
+                "description": "Present and true on the Wonder entry."
+              },
+              "builtAs": {
+                "type": "string",
+                "description": "On the Wonder entry only: the civilization-specific building this type raises."
+              }
+            }
+          }
         },
-        "idle": {
-          "type": "integer"
-        },
-        "busy": {
-          "type": "integer"
-        },
-        "underConstruction": {
-          "type": "integer"
-        },
-        "producing": {
-          "type": "integer"
-        },
-        "researching": {
-          "type": "integer"
-        },
-        "byType": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "integer"
+        "blocked": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "type",
+              "requiredAge",
+              "requiresTech",
+              "cost",
+              "blockedBy"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "description": "Pass this verbatim as build_structure's \"buildingType\"."
+              },
+              "requiredAge": {
+                "type": "string",
+                "description": "Earliest age at which this civilization can build it — already adjusted for a unlock tech that arrives later than the building's own age."
+              },
+              "requiresTech": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "cost": {
+                "$ref": "#/$defs/cost"
+              },
+              "blockedBy": {
+                "$ref": "#/$defs/blockedBy"
+              },
+              "isWonder": {
+                "type": "boolean",
+                "description": "Present and true on the Wonder entry."
+              },
+              "builtAs": {
+                "type": "string",
+                "description": "On the Wonder entry only: the civilization-specific building this type raises."
+              }
+            }
           }
         }
       }
@@ -614,8 +655,7 @@
           "type",
           "x",
           "z",
-          "healthPct",
-          "action"
+          "healthPct"
         ],
         "properties": {
           "type": {
@@ -632,8 +672,10 @@
           },
           "action": {
             "type": "string",
+            "description": "Fighters only; workers carry none (the \"workers\" tally says what they do). \"marching\" is under a combat order but not yet in contact; \"attacking\" is in contact.",
             "enum": [
               "idle",
+              "marching",
               "attacking",
               "harvesting",
               "returning",
@@ -645,32 +687,106 @@
         }
       }
     },
+    "ordersInProgress": {
+      "type": "array",
+      "description": "Orders your units are still carrying out, so a march or standing order you gave earlier stays visible until it completes. One entry per group.",
+      "items": {
+        "type": "object",
+        "required": [
+          "order",
+          "to"
+        ],
+        "properties": {
+          "order": {
+            "type": "string",
+            "description": "The command that started it, spelled as you sent it (e.g. \"move_units\", \"attack_target\")."
+          },
+          "mode": {
+            "type": "string",
+            "description": "Standing orders only: march, scout, guard or patrol."
+          },
+          "unitIds": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "Standing orders only: the handles of the units carrying it."
+          },
+          "units": {
+            "type": "integer",
+            "description": "Timed marches only: how many units are carrying it."
+          },
+          "targets": {
+            "type": "string",
+            "description": "Standing orders only, when set: which targets the group engages."
+          },
+          "to": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "description": "[x, z] destination."
+          },
+          "secondsRemaining": {
+            "type": "number",
+            "description": "Estimated seconds to arrival. Absent when there is no clock to read, e.g. an assignment waiting on a fight."
+          }
+        }
+      }
+    },
     "workers": {
       "type": "object",
-      "description": "Live tally of what your villagers are doing — use it to rebalance the economy at a glance. Gathering is a round trip (walk out, gather, carry home), so a worker on wood is on wood for the whole cycle and onWood counts all of them, wherever they are in it.",
+      "description": "Live tally of what your villagers are doing — use it to rebalance the economy at a glance. Gathering is a round trip (walk out, gather, carry home), so a worker on wood is on wood for the whole cycle and wood counts all of them, wherever they are in it.",
       "required": [
         "total",
         "idle",
         "building",
-        "onFarms",
+        "farm",
         "scouting",
         "moving",
-        "onFood",
-        "onWood",
-        "onStone",
-        "onGold"
+        "fighting",
+        "food",
+        "wood",
+        "stone",
+        "gold"
       ],
       "properties": {
-        "total": { "type": "integer" },
-        "idle": { "type": "integer" },
-        "building": { "type": "integer" },
-        "onFarms": { "type": "integer" },
-        "scouting": { "type": "integer" },
-        "moving": { "type": "integer", "description": "In transit with no resolved job yet." },
-        "onFood": { "type": "integer", "description": "Workers whose job is food, at ANY point of the cycle: walking out, gathering, or carrying home. Reassigning a worker who happens to be carrying a load destroys it — but which ones those are changes every few seconds, far faster than a turn, so it is not something to plan from here. assign_workers' allowSpill decides it at the moment the order runs." },
-        "onWood": { "type": "integer" },
-        "onStone": { "type": "integer" },
-        "onGold": { "type": "integer" }
+        "total": {
+          "type": "integer"
+        },
+        "idle": {
+          "type": "integer"
+        },
+        "building": {
+          "type": "integer"
+        },
+        "farm": {
+          "type": "integer"
+        },
+        "scouting": {
+          "type": "integer"
+        },
+        "moving": {
+          "type": "integer",
+          "description": "In transit with no resolved job yet."
+        },
+        "food": {
+          "type": "integer",
+          "description": "Workers whose job is food, at ANY point of the cycle: walking out, gathering, or carrying home. Reassigning a worker who happens to be carrying a load destroys it — but which ones those are changes every few seconds, far faster than a turn, so it is not something to plan from here. assign_workers' allowSpill decides it at the moment the order runs."
+        },
+        "wood": {
+          "type": "integer"
+        },
+        "stone": {
+          "type": "integer"
+        },
+        "gold": {
+          "type": "integer"
+        },
+        "fighting": {
+          "type": "integer",
+          "description": "Workers currently hitting back at attackers; they rejoin their job when the fight ends."
+        }
       }
     },
     "enemyUnits": {
@@ -789,69 +905,67 @@
         }
       }
     },
-    "trainableUnits": {
+    "units": {
       "type": "object",
-      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, nested building -> age -> entries, where the age is the earliest one at which that unit can be trained. Units you cannot reach yet are listed on purpose, so you can plan toward them — blockedBy says what stands in the way of each, and is empty for the ones you could order right now. Each entry's \"id\" is the bare unit id, ready to pass as \"unitType\" unchanged. The Town Center hosts \"worker\" — villagers are trained with train_unit like everything else. Includes your civ's unique units, and omits both standard units your civ does not field and any host building your civ can never construct. A category (infantry/ranged/cavalry/support) is NOT valid here — those work only in the \"units\" parameter of move_units and attack_target.",
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "array",
-          "items": {
+      "description": "The vocabulary for train_unit's \"unitType\": every unit your civilization can EVER train, nested building -> age -> entries, where the age is the earliest one at which that unit can be trained. Units you cannot reach yet are listed on purpose, so you can plan toward them — blockedBy says what stands in the way of each, and is empty for the ones you could order right now. Each entry's \"id\" is the bare unit id, ready to pass as \"unitType\" unchanged. The Town Center hosts \"worker\" — villagers are trained with train_unit like everything else. Includes your civ's unique units, and omits both standard units your civ does not field and any host building your civ can never construct. A category (infantry/ranged/cavalry/support) is NOT valid here — those work only in the \"units\" parameter of move_units and attack_target. Split in two the same way as \"buildings\": \"trainable\" and \"blocked\", each nested building -> age -> entries; blockedBy is omitted on a trainable entry when nothing stands in the way.",
+      "required": [
+        "trainable",
+        "blocked"
+      ],
+      "properties": {
+        "trainable": {
+          "type": "object",
+          "additionalProperties": {
             "type": "object",
-            "required": ["id", "cost", "blockedBy"],
-            "properties": {
-              "id": { "type": "string" },
-              "cost": { "$ref": "#/$defs/cost" },
-              "blockedBy": { "$ref": "#/$defs/blockedBy" }
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "cost"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "cost": {
+                    "$ref": "#/$defs/cost"
+                  },
+                  "blockedBy": {
+                    "$ref": "#/$defs/blockedBy"
+                  }
+                }
+              }
             }
           }
-        }
-      }
-    },
-    "buildableStructures": {
-      "type": "array",
-      "description": "What your civilization can EVER build, and the vocabulary for build_structure's \"buildingType\". If a type is absent (e.g. stable for some civs), your civ does not have it — do not keep trying. Your Wonder is listed here too, as type \"wonder\".",
-      "items": {
-        "type": "object",
-        "required": [
-          "type",
-          "requiredAge",
-          "requiresTech",
-          "cost",
-          "blockedBy"
-        ],
-        "properties": {
-          "type": {
-            "type": "string",
-            "description": "Pass this verbatim as build_structure's \"buildingType\"."
-          },
-          "requiredAge": {
-            "type": "string",
-            "description": "Earliest age at which this civilization can build it — already adjusted for a unlock tech that arrives later than the building's own age."
-          },
-          "requiresTech": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
+        },
+        "blocked": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "cost",
+                  "blockedBy"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "cost": {
+                    "$ref": "#/$defs/cost"
+                  },
+                  "blockedBy": {
+                    "$ref": "#/$defs/blockedBy"
+                  }
+                }
               }
-            ]
-          },
-          "cost": {
-            "$ref": "#/$defs/cost"
-          },
-          "blockedBy": {
-            "$ref": "#/$defs/blockedBy"
-          },
-          "isWonder": {
-            "type": "boolean",
-            "description": "Present and true on the single Wonder entry. Building it and holding it for gameStats.wonderRequired seconds wins the match."
-          },
-          "builtAs": {
-            "type": "string",
-            "description": "Wonder only: the civilization-specific id the finished Wonder carries in friendlyBuildings (akropolis, pyramid, firetemple, shrine). You still BUILD it by passing type \"wonder\"."
+            }
           }
         }
       }
@@ -999,6 +1113,47 @@
     }
   },
   "$defs": {
+    "battleSide": {
+      "type": "object",
+      "properties": {
+        "owner": {
+          "type": "string",
+          "description": "Present on enemy entries only."
+        },
+        "involved": {
+          "type": "object",
+          "description": "Keyed by unit/building type — towers, drafted workers and priests all appear as themselves. Zero fields are omitted, so a priest row is just {n, healed}.",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "n": {
+                "type": "integer",
+                "description": "Distinct units of this type that fought or healed."
+              },
+              "dmgUnits": {
+                "type": "integer",
+                "description": "Damage dealt to UNITS."
+              },
+              "dmgBuildings": {
+                "type": "integer",
+                "description": "Damage dealt to BUILDINGS — never summed with dmgUnits, since infantry raze at 1.5x and ranged at 0.5x."
+              },
+              "healed": {
+                "type": "integer",
+                "description": "HP restored (priests). Replaces damage for support units."
+              }
+            }
+          }
+        },
+        "lost": {
+          "type": "object",
+          "description": "Units of yours (or theirs) that died here, by type. Absent if none.",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        }
+      }
+    },
     "blockedBy": {
       "type": "array",
       "description": "What stands between you and ordering this RIGHT NOW. Empty means nothing does. Listed structural gates first, price last — the same order the harness reports them if you try anyway. \"pop\" appears on units when you are at the population cap; buildings never consume population and never carry it. Absent on purpose: whether a trainer or research host is busy this instant, which changes several times while you are thinking and so could not be reported honestly here.",

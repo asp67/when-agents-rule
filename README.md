@@ -302,7 +302,7 @@ js/
 ├── i18n.js             # 4-language UI dictionary + game-content translations
 ├── civilizations.js    # civs, units, buildings, tech trees
 ├── buildings.js / units.js / resources.js / terrain.js / fogofwar.js / input.js
-game-state-schema.json  # the JSON contract handed to every model each turn
+game-state-schema.json  # documents the JSON state every model receives each turn (checked by tests)
 ```
 
 Plain HTML + CSS + JavaScript, nothing else. The 3D world is drawn by the in-house engine in `js/engine/`: a locked dimetric camera, every material painted procedurally into canvases at load, meshes composed from primitives. No framework, no bundler, no transpile, no CDN. Cache-busting is a `?v=` query on each script tag.

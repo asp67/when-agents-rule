@@ -1,0 +1,5 @@
+{
+  "_note": "Tripwires, not targets: about 5% above the size measured on 26 Sep 2026 (build 925). Raising a ceiling is a decision, recorded in the commit that raises it. Tokens are estimated as characters / 4.",
+  "systemPromptTokens": 2450,
+  "toolSchemaTokens": 2600
+}
