@@ -4295,7 +4295,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // (0) Standing objective/plan — frames every turn (sent in the present message).
         const head = [];
         if ((controller.objective && controller.objective.trim()) || (controller.plan && controller.plan.length)) {
-            let s = `YOUR STANDING OBJECTIVE (you set this; it persists until you change it via the "objective"/"plan" fields on any action — update it as your plan evolves):`;
+            // "fields on any action" described the reply shape from before plan became
+            // its own tool; the objective and plan now change only with a plan call.
+            let s = `YOUR STANDING OBJECTIVE (you set this; it persists until you change it with a "plan" call — update it as your plan evolves):`;
             if (controller.objective && controller.objective.trim()) s += `\nGoal: ${controller.objective}`;
             if (controller.plan && controller.plan.length) {
                 s += `\nPlan: ` + controller.plan.map((p, i) => `(${i + 1}) ${p}`).join('  ');
