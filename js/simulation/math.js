@@ -19,25 +19,34 @@
 // line marked "// math-exempt: <why>" (a texture painter, say).
 // ---------------------------------------------------------------------------
 var WarMath = (function () {
-    const buf = new DataView(new ArrayBuffer(8));
-    const high = x => { buf.setFloat64(0, x); return buf.getInt32(0); };
-    const low = x => { buf.setFloat64(0, x); return buf.getUint32(4); };
-    const withHigh = (hi, lo) => { buf.setInt32(0, hi); buf.setUint32(4, lo); return buf.getFloat64(0); };
+    // Captured once. Rule code runs these a hundred times a step, and inside a Node vm
+    // context (the Platform's headless server, the test harness) every read of the
+    // global Math goes through a slow lookup: measured, it made WarMath.hypot sixty
+    // times slower there than outside and doubled a whole simulation step.
+    // The same holds for Infinity and NaN, which are globals too.
+    const sqrt = Math.sqrt, INF = Infinity, NAN = NaN;
+    const abs = v => (v < 0 ? -v : v + 0);   // + 0 turns -0 into 0, as Math.abs does
+    // A double's two 32-bit halves, through one shared buffer. Which half is "high"
+    // depends on the machine's byte order, checked once, so every machine reads the
+    // same bits. (A DataView fixes the order itself but made rule steps twice as slow.)
+    const f64 = new Float64Array(1), i32 = new Int32Array(f64.buffer), u32 = new Uint32Array(f64.buffer);
+    const HI = new Uint8Array(new Uint16Array([1]).buffer)[0] === 1 ? 1 : 0, LO = 1 - HI;
+    const high = x => { f64[0] = x; return i32[HI]; };
+    const low = x => { f64[0] = x; return u32[LO]; };
+    const withHigh = (hi, lo) => { i32[HI] = hi; u32[LO] = lo; return f64[0]; };
 
-    // V8's Math.hypot: normalised by the largest term, Kahan-compensated.
+    // V8's Math.hypot: normalised by the largest term, Kahan-compensated. With two
+    // terms the compensation is exactly zero after the first (0 + s is s, and
+    // (s - 0) - s is 0), so this straight line gives the same bits as V8's loop --
+    // and allocates nothing, which matters at a hundred calls a step.
     function hypot(a, b) {
-        const x = Math.abs(a), y = Math.abs(b);
-        if (x !== x || y !== y) return (x === Infinity || y === Infinity) ? Infinity : NaN;
+        const x = abs(a), y = abs(b);
+        if (x !== x || y !== y) return (x === INF || y === INF) ? INF : NAN;
         const max = x > y ? x : y;
-        if (max === Infinity) return Infinity;
+        if (max === INF) return INF;
         if (max === 0) return 0;
-        let sum = 0, compensation = 0;
-        for (const v of [x, y]) {
-            const n = v / max, summand = n * n - compensation, preliminary = sum + summand;
-            compensation = (preliminary - sum) - summand;
-            sum = preliminary;
-        }
-        return Math.sqrt(sum) * max;
+        const n = x / max, m = y / max;
+        return sqrt(n * n + m * m) * max;
     }
 
     // fdlibm kernels on [-pi/4, pi/4]; y is the tail of the reduced argument.
@@ -87,7 +96,7 @@ var WarMath = (function () {
             return -1;
         }
         if (ix > 0x413921fb) { x = x % 6.283185307179586; hx = high(x); ix = hx & 0x7fffffff; if (ix <= 0x3fe921fb) { y[0] = x; y[1] = 0; return 0; } }
-        let t = Math.abs(x);
+        let t = abs(x);
         const n = (t * invpio2 + 0.5) | 0, fn = n;
         let r = t - fn * pio2_1, w = fn * pio2_1t;
         if (n < 32 && ix !== npio2_hw[n - 1]) {
@@ -148,7 +157,7 @@ var WarMath = (function () {
             if (ix < 0x3e200000) return x;
             id = -1;
         } else {
-            x = Math.abs(x);
+            x = abs(x);
             if (ix < 0x3ff30000) {
                 if (ix < 0x3fe60000) { id = 0; x = (2 * x - 1) / (2 + x); }
                 else { id = 1; x = (x - 1) / (x + 1); }
@@ -184,7 +193,7 @@ var WarMath = (function () {
         let z;
         if (k > 60) { z = pi_o_2 + 0.5 * pi_lo; m &= 1; }
         else if (hx < 0 && k < -60) z = 0;
-        else z = atan(Math.abs(yv / x));
+        else z = atan(abs(yv / x));
         switch (m) {
             case 0: return z;
             case 1: return -z;
