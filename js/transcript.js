@@ -144,6 +144,17 @@ class TranscriptRecorder {
         }
     }
 
+    // A second conditions line (the seat contracts), kept beside the header so a reader
+    // meets it before any turn. Flushed at once.
+    addHeaderLine(entry) {
+        if (!this.matchId || !entry) return;
+        const key = TranscriptRecorder.MATCH_KEY();
+        const buf = this.pending.get(key) || [];
+        buf.push(JSON.stringify(entry) + '\n');
+        this.pending.set(key, buf);
+        this.flush(key);
+    }
+
     // A line about the match rather than a seat: global pause and speed. It carries no
     // playerId, so a reader keeps it out of the seat list. Flushed at once.
     noteMatch(entry) {

@@ -23,6 +23,7 @@ class TranscriptAnalyzer {
 
     reset() {
         this.header = null;      // type:"match" — the conditions
+        this.contract = null;    // type:"contract" — what each seat was offered, fingerprinted
         this.results = null;     // type:"results" — absent if the match was interrupted
         this.timeline = null;    // type:"timeline" — ditto
         this.turns = [];         // every turn, chronological across all seats
@@ -67,6 +68,7 @@ class TranscriptAnalyzer {
             let o;
             try { o = JSON.parse(line); } catch (e) { this.parseErrors++; continue; }
             if (o.type === 'match') { this.header = o; continue; }
+            if (o.type === 'contract') { this.contract = o; continue; }
             if (o.type === 'results') { this.results = o; continue; }
             if (o.type === 'timeline') { this.timeline = o; continue; }
             if (o.type) { this.markers.push(o); continue; }   // round_missed and future kinds

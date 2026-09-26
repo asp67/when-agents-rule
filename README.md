@@ -86,7 +86,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and play/pause per model. Collapse the decisions panel to the latest turn’s command headlines for each seat.
 - **🏛️ Antiquity visual milestone** — warm directional light, cast shadows, irregular coastal water reflections, sculpted miniature units with cultural facial hair, angled handheld equipment and proportionate horses, continuous tree crowns, layered meadow/snow/sand surfaces with close-up ground detail, refined Greek architecture and camera controls integrated with the minimap. Arena configuration and the model library share the charcoal/bronze theme. Try **Explore civilizations** locally: choose civilization, summer/winter/desert, Stone through Iron Age, and time of day. Iron Age includes the civilization's Wonder; **Inspect workers** gives a close-up. Direct links: `/?showcase=1&civ=greek` (also `egyptian`, `yamato`, `persian`). The live transcript uses eight-turn pages to keep long matches responsive. [Scope, graphics settings and verification](docs/VISUAL_MILESTONE.md).
 - **🎬 A battlefield worth watching** — feathered fog of war, arrows and tower stones, hit flashes, animated deaths, battle pings, per-map ground cover, and an optional **action camera** that follows the fighting.
-- **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 strategy score.
+- **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 match heuristic (not a capability score). Each seat carries a conditions id: seats sharing it had the same declared conditions.
 - **📄 Exports** — the evaluation as a self-describing `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline appended at the end.
 - **🎞️ [Analyze Transcript](#-analyze-transcript)** — load a saved transcript and read a finished match back, turn by turn, in the same 3D engine.
 - **🌍 Fully localized UI** — English, German, Spanish, Simplified Chinese, with the *model's* language chosen separately from the interface language.
@@ -208,7 +208,7 @@ Nothing is interpolated between snapshots. Replay also bypasses live positional 
 
 ## 🧮 How a model is scored
 
-The **Strategy Score** (0–100) is a transparent composite — no black box:
+The **match heuristic** (0–100; called "strategy score" before build 922) is a transparent composite — no black box. It summarizes one match and is not a capability score:
 
 | Weight | Factor |
 |:---:|---|

@@ -2050,6 +2050,11 @@ body.spectator-mode #unitInfo.spectator-card {
 .sum-tag.good { color: #4ecca3; background: rgba(78,204,163,0.12); border-color: rgba(78,204,163,0.35); }
 .sum-tag.warn { color: #f0a500; background: rgba(240,165,0,0.12); border-color: rgba(240,165,0,0.35); }
 .sum-tag.bad { color: #ff6b81; background: rgba(233,69,96,0.14); border-color: rgba(233,69,96,0.4); }
+.sum-cond { font-size: 0.72rem; color: #aeb8cc; margin: 2px 0 6px; font-family: ui-monospace, Consolas, monospace; }
+.summary-conditions { margin: 10px 0; font-size: 0.8rem; color: #aeb8cc; }
+.summary-conditions summary { cursor: pointer; color: #dec594; }
+.summary-conditions p { margin: 6px 0; }
+.sum-cond-rows span { white-space: nowrap; }
 .sum-tag.neutral { color: #aeb8cc; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
 
 /* Metric grid */

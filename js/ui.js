@@ -4017,6 +4017,17 @@ class UIManager {
         return tags;
     }
 
+    // The conditions this match ran under: the transcript header and the seat
+    // contracts, read through WarConditions -- the one place the comparability rule
+    // lives. null when nothing was recorded (no model seats, or file:// hosting).
+    matchConditions() {
+        const mgr = this.game && this.game.openAIAIManager;
+        const header = mgr && mgr.transcripts && mgr.transcripts.matchMeta;
+        if (!header || typeof WarConditions === 'undefined') return null;
+        const contract = mgr.contract || null;
+        return { header, contract, seat: id => WarConditions.seat(header, contract, id) };
+    }
+
     showArenaSummary(winnerAi, reason, opts = {}) {
         const game = this.game;
         // snapshot: a LIVE look at the standings mid-match (Results button). The
@@ -4230,6 +4241,9 @@ class UIManager {
             const assist = ((m.advisedTurns || 0) ? `<span class="sum-tag warn" title="${t('sum.coachedTip')}">${t('sum.coached', { n: m.advisedTurns })}</span>` : '')
                 + ((m.adaptations || 0) ? `<span class="sum-tag neutral" title="${t('sum.adaptedTip')}">${t('sum.adapted', { n: m.adaptations })}</span>` : '');
             const tagsHtml = assist + r.tags.map(t => `<span class="sum-tag ${t.cls}">${t.t}</span>`).join('');
+            const cond = this.matchConditions();
+            const condId = cond ? WarConditions.id(cond.seat(r.ai.id)) : null;
+            const condHtml = cond ? `<div class="sum-cond" title="${this.escapeHtml(t('sum.condTip'))}">${t('sum.condId', { id: condId || t('sum.condNone') })} · ${t('sum.exploratory')}</div>` : '';
             const topActions = Object.entries(m.actionCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
                 .map(([k, v]) => `<span class="sum-chip">${k.replace(/_/g, ' ')}·${v}</span>`).join('');
             html += `
@@ -4244,6 +4258,7 @@ class UIManager {
                         <div class="sum-sound-val">${r.soundness}<span>${t('sum.strategySuffix')}</span></div>
                     </div>
                     <div class="sum-tags">${tagsHtml}</div>
+                    ${condHtml}
                     <div class="sum-metrics">
                         <div class="sum-metric"><span>⏱ ${t('sum.mResponse')}</span><b>${avgS.toFixed(1)}s</b><i>${(m.minLatency / 1000).toFixed(1)}–${(m.maxLatency / 1000).toFixed(1)}s</i></div>
                         ${(m.latLate && m.latEarly && m.latLate >= m.latEarly * 3)
@@ -4267,6 +4282,7 @@ class UIManager {
         document.getElementById('summaryGrid').innerHTML = html;
 
         document.getElementById('summaryLegend').textContent = t('sum.legend');
+        this.renderSummaryConditions();
 
         // Keep the computed report so the spectator can save it to a file (a
         // snapshot export is correctly labeled by its reason; a real match end
@@ -5594,6 +5610,12 @@ class UIManager {
         if (build) bits.push('build ' + build);
         // A human played in a Campaign match, so it is never a record of models alone.
         if (h.mode === 'campaign') bits.push('<b>' + esc(t('an.campaignMode')) + '</b>');
+        // The seats' conditions ids, as the results screen showed them. A file from before
+        // contracts were recorded says so rather than showing nothing.
+        if (typeof WarConditions !== 'undefined' && h.schema) {
+            const ids = a.contract ? [...new Set((a.contract.seats || []).map(s => WarConditions.id(WarConditions.seat(h, a.contract, s.playerId)) || '—'))] : [];
+            bits.push(esc(t('sum.condId', { id: ids.length ? ids.join(' / ') : t('sum.condNone') })));
+        }
         if (st.interventions) bits.push(esc(t('an.interventions', { n: st.interventions })));
         if (st.adaptations) bits.push(esc(t('an.adaptations', { n: st.adaptations })));
         bits.push(mmss(st.duration));
@@ -6594,6 +6616,22 @@ class UIManager {
         } catch (e) { return null; }
     }
 
+    renderSummaryConditions() {
+        const box = document.getElementById('summaryConditions');
+        if (!box) return;
+        const cond = this.matchConditions();
+        if (!cond) { box.hidden = true; return; }
+        const h = cond.header, c = cond.contract || {}, esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const short = v => v ? esc(String(v).slice(0, 12)) : esc(t('sum.condNone'));
+        const rows = [
+            ['core', short(c.coreHash)], ['harness', short(c.harnessHash)], ['rules', esc(c.rulesId || t('sum.condNone'))],
+            ['protocol', esc(WarConditions.protocolOf(h))], ['build', esc(h.build || '?')], ['mode', esc(h.mode || '?')]];
+        box.innerHTML = '<summary>' + esc(t('sum.condTitle')) + '</summary>'
+            + '<p>' + esc(t('sum.condTip')) + '</p>'
+            + '<p class="sum-cond-rows">' + rows.map(([k, v]) => '<span><b>' + k + '</b> ' + v + '</span>').join(' · ') + '</p>';
+        box.hidden = false;
+    }
+
     buildResultsMarkdown(summary) {
         const { reports, reason, durStr, playerCount } = summary;
         const d = new Date();
@@ -6608,7 +6646,13 @@ class UIManager {
         L.push(`- **Duration:** ${durStr}`);
         L.push(`- **Players:** ${playerCount}`);
         L.push(`- **Difficulty:** ${summary.difficulty || 'easy'}`);
-        L.push(`- **Map seed:** ${summary.mapSeed ? `\`${summary.mapSeed}\` (reproducible)` : 'random'}`);
+        L.push(`- **Map seed:** ${summary.mapSeed ? `\`${summary.mapSeed}\` (map layout reproducible)` : 'random'}`);
+        const cond = this.matchConditions();
+        if (cond) {
+            const c = cond.contract || {};
+            L.push(`- **Conditions:** core \`${(c.coreHash || 'not recorded').slice(0, 12)}\` · harness \`${(c.harnessHash || 'not recorded').slice(0, 12)}\` · rules ${c.rulesId || 'not recorded'} · protocol ${WarConditions.protocolOf(cond.header)} · build ${cond.header.build || '?'} · mode ${cond.header.mode || '?'}`);
+            L.push(`- **Status:** exploratory match. Seats with the same conditions id had the same declared conditions (simulation code, prompt template, tools, harness, rules, protocol); that is not an identical match.`);
+        }
 
         const winner = reports.find(r => r.isWinner);
         L.push(`- **Winner:** ${winner ? `${winner.model} (${winner.civName}, ${winner.isLLM ? 'LLM' : 'rule-based'}) — ${winner.power} pts` : 'none (draw)'}`);
@@ -6629,12 +6673,13 @@ class UIManager {
             if (r.metrics && (r.metrics.advisedTurns || r.metrics.adaptations)) {
                 L.push(`- Assistance: ${r.metrics.advisedTurns || 0} turn(s) carried spectator advice · ${r.metrics.adaptations || 0} harness adaptation(s) of the request`);
             }
+            if (cond && r.isLLM) L.push(`- Conditions id: \`${WarConditions.id(cond.seat(r.ai.id)) || 'not recorded'}\``);
             L.push(`- End power score: ${r.power}`);
             L.push(`- Final state: ${r.ageName} age · ${r.workers} workers · ${r.military} military · ${r.buildings} buildings`);
             L.push(`- Resources: ${r.food} food · ${r.wood} wood · ${r.stone} stone · ${r.gold} gold`);
             const m = r.metrics;
             if (r.isLLM && m) {
-                L.push(`- Strategy score: ${r.soundness}/100`);
+                L.push(`- Match heuristic (not a capability score): ${r.soundness}/100`);
                 L.push(`- Decisions: ${m.decisions} (answered ${m.responded}${(m.roundsMissed || 0) ? ` · ${m.roundsMissed} missed the round deadline` : ''})`);
                 // Only when it says something: a match where every reply carried one
                 // command prints exactly what it always did.

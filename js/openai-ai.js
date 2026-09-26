@@ -2486,6 +2486,56 @@ class OpenAIAIManager {
         // (Colliding names were suffixed #1/#2 before the header was written, above.)
 
         console.log(`[OpenAIAI] Initialized ${this.aiControllers.length} LLM controllers from Arena setup`);
+        // Not awaited: it only reads files this page already loaded, and the match need
+        // not wait for its own fingerprint.
+        this.writeContract().catch(e => console.warn('[OpenAIAI] contract not recorded', e));
+    }
+
+    // What one seat is offered. The system prompt is rendered per seat -- its edit, its
+    // civilization, its language -- which is why this runs after the controllers exist.
+    contractFor(controller) {
+        const model = controller.model || {};
+        const tools = (model._reqOpts && model._reqOpts.omitTools) ? null
+            : OpenAIAIManager.toolsFor(model.provider || 'auto');
+        return {
+            system: this.buildSystemPrompt(controller.aiPlayer),
+            template: model.customSystemPrompt || OpenAIAIManager.defaultSystemPrompt(),
+            tools,
+            shared: {
+                dialect: model.provider || 'auto',
+                limits: { commands: OpenAIAIManager.MAX_COMMANDS_PER_TURN, planSteps: OpenAIAIManager.PLAN_MAX_STEPS },
+                history: model.minimizeTokens ? 'compact' : 'multi-turn',
+                toolFallback: !!model.toolFallback,
+            },
+        };
+    }
+
+    // The contract every seat was offered, fingerprinted, as a line right after the
+    // header. Texts are stored once and named by their hash, so four seats on one
+    // template cost one copy. familyHash leaves out what is seat-specific by design
+    // (civilization, language); see WarConditions for the rule that reads it. Nothing
+    // here comes from connection settings, so no endpoint, key or path can reach it.
+    async writeContract() {
+        if (typeof WarConditions === 'undefined' || !this.transcripts || !this.transcripts.matchId) return null;
+        const { coreHash, harnessHash } = await WarConditions.sourceHashes();
+        const texts = {};
+        const keep = v => { if (v == null) return null; const k = WarConditions.hash(v); texts[k] = v; return k; };
+        const seats = this.aiControllers.map(c => {
+            const p = this.contractFor(c);
+            const family = Object.assign({ template: WarConditions.hash(p.template),
+                                           tools: p.tools ? WarConditions.hash(p.tools) : null, harnessHash }, p.shared);
+            const exact = Object.assign({}, family, { system: WarConditions.hash(p.system),
+                language: (c.model && c.model.language) || 'en', civilization: c.aiPlayer.civilization });
+            return { playerId: c.aiPlayer.id, seat: c.aiPlayer.seat, system: keep(p.system), tools: keep(p.tools),
+                     parts: exact,
+                     familyHash: harnessHash ? WarConditions.hash(family) : null,
+                     hash: harnessHash ? WarConditions.hash(exact) : null };
+        });
+        const record = { type: 'contract', schema: WarConditions.SCHEMA, rulesId: WarConditions.RULES_ID,
+                         coreHash, harnessHash, coreFiles: WarConditions.CORE_FILES, seats, texts };
+        this.contract = record;
+        this.transcripts.addHeaderLine(record);
+        return record;
     }
 
     // ----------------------------------------------------------------
