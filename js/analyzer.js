@@ -339,6 +339,10 @@ class TranscriptAnalyzer {
     // labelled "(malformed)", but most are not: a plan-only reply is a successful plan
     // save, and a reply with no tool call or no text at all is its own failure.
     turnKind(rec) {
+        // Lines where a human or the harness, not the model, changed something.
+        if (rec && rec.type === 'intervention') return 'intervention';
+        if (rec && rec.type === 'adaptation') return 'adaptation';
+        if (rec && rec.type === 'match_event') return 'matchEvent';
         if (rec && rec.type === 'request_cancelled') return 'cancelled';
         if (rec && rec.type === 'request_failed') return 'requestFailed';
         if (this.commandsOf(rec).length) return 'commands';
@@ -743,7 +747,11 @@ class TranscriptAnalyzer {
             return { seat: s, turns: turns.length, missed, rejected,
                      avgLatency: lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0 };
         });
-        return { perSeat, total: this.turns.length, markers: this.markers.length,
+        // `markers` used to count every non-turn line as a missed round; now that the file
+        // also carries interventions and adaptations, count each kind for what it is.
+        const kind = k => this.markers.filter(r => r.type === k).length;
+        return { perSeat, total: this.turns.length, markers: kind('round_missed'),
+                 interventions: kind('intervention'), adaptations: kind('adaptation'),
                  parseErrors: this.parseErrors, duration: this.durationSec() };
     }
 }

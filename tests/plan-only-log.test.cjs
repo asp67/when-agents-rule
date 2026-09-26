@@ -139,12 +139,16 @@ test('compact log retains every seat latest round despite delayed older entries'
 
 for(const category of ['rate_limited','context_overflow','harness_cancelled']){
  test(`request failure path records ${category} without silently losing the round`,async()=>{
-  const h=setup(true),notes=[];h.manager.transcripts={turnsFor:()=>1,note:(id,row)=>notes.push(row)};
+  const h=setup(true),all=[];h.manager.transcripts={turnsFor:()=>1,note:(id,row)=>all.push(row),flush(){}};
   h.manager.buildSystemPrompt=()=>'';h.manager.buildCompactState=()=>'';h.manager.buildRollingTurns=()=>[];
   h.Manager.buildAuthHeaders=async()=>({});
   h.Manager.buildChatRequest=()=>{if(category==='harness_cancelled')h.manager._stopped=true;throw new Error(category==='rate_limited'?'API error (429)':category==='context_overflow'?'context length exceeded':'The user aborted a request.');};
   h.lane.askedInRound=7;h.seat.stats.requests=0;h.seat.stats.networkErrors=0;
   assert.equal(await h.manager.sendToOpenAI(h.lane,{}),null);
+  // Failure markers only; a context overflow also records the harness shrinking the window.
+  const notes=all.filter(n=>n.type!=='adaptation'),adapted=all.filter(n=>n.type==='adaptation');
+  assert.equal(adapted.length,category==='context_overflow'?1:0);
+  if(adapted.length)assert.equal(adapted[0].kind,'contextShrunk');
   assert.equal(notes.length,1);assert.equal(notes[0].category,category);assert.equal(notes[0].askedInRound,7);
   assert.equal(h.seat.stats.networkErrors,0);
   if(category==='harness_cancelled'){

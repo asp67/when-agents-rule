@@ -450,6 +450,36 @@ class OpenAIAIManager {
     // English text. See ui.renderOutcome / I18N_OUTCOMES.
     outcome(code, params) { this._pendingOutcome = { code, params: params || {} }; return true; }
 
+    // Match-clock seconds, the clock the analyzer reads every transcript line against.
+    matchSecondsNow() {
+        const now = Date.now();
+        return Math.max(0, Math.round((now - ((this.game && this.game._timeline && this.game._timeline.t0) || now)) / 1000));
+    }
+    // A transcript line saying that something the model did not choose changed what it
+    // saw or did: a human's advice or pause, or the harness adapting its request. Written
+    // and flushed at once rather than at match end, so a crash cannot lose it -- a result
+    // whose record does not mark an assist reads as unassisted.
+    noteChange(ai, entry) {
+        try {
+            const id = ai && (ai.id || ai);
+            if (!this.transcripts || !id) return;
+            this.transcripts.note(id, Object.assign({ at: Date.now(), matchSeconds: this.matchSecondsNow() }, entry));
+            this.transcripts.flush(id);
+        } catch (e) { /* recording must never break a turn */ }
+    }
+    // The same for the match as a whole -- global pause and speed. It has no seat.
+    noteMatchEvent(entry) {
+        try {
+            if (this.transcripts) this.transcripts.noteMatch(
+                Object.assign({ type: 'match_event', at: Date.now(), matchSeconds: this.matchSecondsNow() }, entry));
+        } catch (e) { /* recording must never break a turn */ }
+    }
+    // Counted on the seat, for the results: how often a human or the harness stepped in.
+    countChange(controller, key) {
+        const st = controller && controller.stats;
+        if (st) st[key] = (st[key] || 0) + 1;
+    }
+
     // Rejections the state cannot honestly forewarn, and which therefore must not count
     // against a model. Every OTHER rejection is now a gate the model was shown before it
     // acted — blockedBy, a published tally, or a rule in the system prompt — so trying
@@ -497,6 +527,30 @@ class OpenAIAIManager {
                         'targetGone', 'orderedUnitsGone', 'assignIdleRaced', 'assignIdleFighting',
                         'laneResearchBusy', 'assignFromRaced']);
     }
+    // ONE verdict per command, read by the results metrics and written to the transcript,
+    // so the two can never disagree:
+    //   ok          executed
+    //   avoidable   refused on a gate the state had shown (actionsRejected)
+    //   contended   refused on something no snapshot could forewarn (UNFOREWARNED)
+    //   invalid     not a callable action: unknown name, wrong shape, unparsable call
+    //   harnessFault the harness failed while carrying out a valid command
+    static verdictFor(actionResult, code) {
+        if (!String(actionResult || '').startsWith('[ERROR]')) return 'ok';
+        // "not a string" is an invented shape rather than an invented name, but both are
+        // the model failing to produce a callable action, and neither is a rejected move.
+        if (/Unknown action/i.test(actionResult) || /must be the action NAME as a string/i.test(actionResult)) return 'invalid';
+        return OpenAIAIManager.UNFOREWARNED.has(code) ? 'contended' : 'avoidable';
+    }
+    // The command's outcome as the transcript records it: position, action, code, verdict.
+    noteOutcome(controller, entry) {
+        (controller._turnOutcomes || (controller._turnOutcomes = [])).push(entry);
+    }
+    takeOutcomes(controller) {
+        const list = (controller._turnOutcomes || []).map((o, i) => Object.assign({ n: i + 1 }, o));
+        controller._turnOutcomes = [];
+        return list;
+    }
+
     // haveString / haveObj lived here: the player's stock as a sentence and as an object,
     // built for the four affordability rejections and used nowhere else. Both are gone
     // with the tail they served. The state hands the model its own resources block and
@@ -2276,7 +2330,18 @@ class OpenAIAIManager {
                 roundTimeoutMs: this.turnBased ? this.roundTimeoutMs() : null,
                 simSpeed: this.game.simSpeed || 1,
                 wonderRequired: this.game.wonderRequired || null,
-                promptVersion: (this.game.ui && this.game.ui.ARENA_PROMPT_VERSION) || null
+                promptVersion: (this.game.ui && this.game.ui.ARENA_PROMPT_VERSION) || null,
+                // What kind of record this is. `schema` lets a reader tell "not recorded"
+                // from "none happened" -- a file without it predates interventions,
+                // adaptations and per-command outcomes, so their absence says nothing.
+                // `build` is stamped here as well as in the results tail, because an
+                // interrupted match has no tail. And a Campaign match, where a human
+                // changed the world, must never pass for an arena run of models.
+                schema: 'war-transcript/2',
+                build: (typeof UIManager !== 'undefined' && UIManager.buildVersion) ? UIManager.buildVersion() : null,
+                mode: this.game.spectatorMode ? 'arena' : 'campaign',
+                humanSeat: this.game.spectatorMode ? null
+                    : ((this.game.player && this.game.player.seat != null) ? this.game.player.seat : 0)
             });
         }
 
@@ -4194,6 +4259,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (controller.pendingAdvice && controller.pendingAdvice.length) {
             const advice = controller.pendingAdvice.join(' ');
             controller.seat.pendingAdvice = [];
+            // Recorded exactly as delivered, at the moment it reaches the prompt.
+            this.countChange(controller, 'advisedTurns');
+            this.noteChange(controller.aiPlayer, { type: 'intervention', kind: 'advice', human: true, text: advice });
             tailNow.push(`SPECTATOR ADVICE (a human observer suggests — weigh it, you still decide): ${advice}`);
         }
 
@@ -4393,6 +4461,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     : `API error (${response.status}): ${errorText}`);
                 adapted = true;
                 Object.assign(model._reqOpts, fix);
+                // From here to the end of the match this seat is sent a different request
+                // than it started with. Said on file, not only in the console.
+                this.countChange(controller, 'adaptations');
+                this.noteChange(ai, { type: 'adaptation', kind: fix.omitTools ? 'toolsOmitted' : 'paramOmitted',
+                                      params: Object.keys(fix) });
                 try { model._onLearn(fix); } catch (e) { /* display only */ }
                 console.warn(`[OpenAIAI] ${ai.id}: endpoint rejected a parameter, retrying with`,
                     Object.keys(fix).join(', '));
@@ -4717,6 +4790,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // and overflow again on identical terms next turn.
             if (/context length|context window|maximum context|context size|exceeds the available context|input is too large|prompt is too long|too many tokens|reduce the length/i.test(err.message || '')) {
                 controller.seat._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
+                this.countChange(controller, 'adaptations');
+                this.noteChange(ai, { type: 'adaptation', kind: 'contextShrunk',
+                                      factor: Math.round(controller._ctxShrink * 1000) / 1000 });
                 console.warn(`[OpenAIAI] ${ai.id}: context overflow — shrinking budget to ${Math.round(controller._ctxShrink * 100)}% and retrying next turn.`);
                 controller.seat.lastActionResult = `[ERROR] Your previous request was too large for the model's context and was dropped; the history window has been trimmed. Continue normally.`;
                 this.recordRequestFailure(controller, 'context_overflow', controller.seat.lastActionResult, tStart);
@@ -4840,6 +4916,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             }
             if (healed) {
                 console.warn(`[OpenAIAI] ${ai.id}: self-heal — ${healed}. Error was: ${errKey}`);
+                this.countChange(controller, 'adaptations');
+                this.noteChange(ai, { type: 'adaptation', kind: controller._healStage === 2 ? 'historyDropped' : 'toolCallsStripped',
+                                      streak: controller._sameErrStreak });
                 // The model is told, because the harness just changed what it remembers.
                 // Stated as what happened, with no instruction attached: the board did not
                 // move, and what to do about a thinner history is the model's business.
@@ -5399,6 +5478,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     // Counted, not skipped in silence. A malformed entry is a real
                     // mistake and the only way the model learns is being told which one.
                     if (controller.stats) controller.stats.invalidActions++;
+                    this.noteOutcome(controller, { action: null, code: c && c._unparsed ? 'unparsedCall' : 'notACommand', verdict: 'invalid' });
                     controller._batch.results.push(c && c._unparsed
                         ? '[ERROR] One of your calls could not be parsed, so that action was skipped — the others ran. Send complete arguments per call.'
                         : '[ERROR] Not a command object: an action needs an "action" name as a string.');
@@ -5408,12 +5488,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 catch (err) {
                     console.error('[OpenAIAI] Command failed for ' + controller.id + ':', err);
                     this.logExecutionFailure(controller, 'tool_call_failed', 'That command could not be carried out.');
+                    // The command threw inside the harness; whatever executeAction noted
+                    // for it before failing is replaced by the fault itself.
+                    if (controller._turnOutcomes && controller._turnOutcomes.length === controller._batch.results.length + 1) controller._turnOutcomes.pop();
+                    this.noteOutcome(controller, { action: c.action, code: 'executionFailed', verdict: 'harnessFault' });
                     controller._batch.results.push('[ERROR] That command could not be carried out.');
                 }
             }
         } finally {
             for (let i = cmds.length; i < envelope.commands.length; i++) {
                 controller._batch.results.push(this.rejectExcessCommand(controller, i));
+                const extra = envelope.commands[i];
+                this.noteOutcome(controller, { action: (extra && typeof extra.action === 'string') ? extra.action : null,
+                                               code: 'commandLimit', verdict: 'avoidable' });
             }
             const results = controller._batch.results;
             controller._batch = null;
@@ -5428,9 +5515,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 const lastTurn = this.logTurnFor(controller);
                 if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = combined;
             }
+            const outcomes = this.takeOutcomes(controller);   // drained every turn, recorder or not
             try {
                 if (this.transcripts) this.transcripts.noteResult(
-                    controller.aiPlayer && controller.aiPlayer.id, combined, controller.laneNo);
+                    controller.aiPlayer && controller.aiPlayer.id, combined, controller.laneNo, outcomes);
             } catch (e) { /* recording must never break a turn */ }
         }
     }
@@ -5688,20 +5776,15 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const rejected = actionResult.startsWith('[ERROR]');
             const code = String((this._pendingOutcome && this._pendingOutcome.code) || '')
                 .replace(/^log\.out\./, '');
+            const verdict = OpenAIAIManager.verdictFor(actionResult, code);
             if (controller.stats) {
                 const st = controller.stats;
-                if (rejected) {
-                    // "not a string" is an invented shape rather than an invented name,
-                    // but both are the model failing to produce a callable action, and
-                    // neither is a rejected game move. Same bucket.
-                    if (/Unknown action/i.test(actionResult)
-                        || /must be the action NAME as a string/i.test(actionResult)) st.invalidActions++;
-                    else if (OpenAIAIManager.UNFOREWARNED.has(code)) st.actionsContended++;
-                    else st.actionsRejected++;
-                } else {
-                    st.actionsSucceeded++;
-                }
+                if (verdict === 'invalid') st.invalidActions++;
+                else if (verdict === 'contended') st.actionsContended++;
+                else if (verdict === 'avoidable') st.actionsRejected++;
+                else st.actionsSucceeded++;
             }
+            this.noteOutcome(controller, { action, code: code || null, verdict });
             if (rejected) {
                 logEntry.failed = true;
                 logEntry.error = actionResult.replace(/^\[ERROR\]\s*/, '');
@@ -5753,9 +5836,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             }
             // Same for the transcript: the harness's answer is the other half of the
             // exchange, and it arrives after the reply was recorded.
+            const outcomes = this.takeOutcomes(controller);   // drained every turn, recorder or not
             try {
                 if (this.transcripts) this.transcripts.noteResult(
-                    controller.aiPlayer && controller.aiPlayer.id, actionResult, controller.laneNo);
+                    controller.aiPlayer && controller.aiPlayer.id, actionResult, controller.laneNo, outcomes);
             } catch (e) { /* recording must never break a turn */ }
         }
     }
@@ -8817,6 +8901,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const busy = this.aiControllers.some(c => this.seatBusy(c) || c.queuedAction);
             if (!busy) {
                 this.game.pauseState = 'paused';
+                this.noteMatchEvent({ kind: 'paused' });
                 if (this.game.ui && this.game.ui.updateSimSpeedButton) this.game.ui.updateSimSpeedButton();
                 return;   // no messages sent, no turns issued, no time passing
             }
@@ -8872,6 +8957,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!controller || controller._demoted) return;
         controller._demoted = true;
         const ai = controller.aiPlayer;
+        this.noteChange(ai, { type: 'adaptation', kind: 'demoted' });
         this.aiControllers = this.aiControllers.filter(c => c !== controller);
         this.abortLanes(controller, 'handed to the rule-based AI');
         if (ai) {
@@ -8981,6 +9067,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     setPaused(aiId, paused) {
         const controller = this.aiControllers.find(c => c.id === aiId);
         if (!controller) return null;
+        if (!!controller.paused !== !!paused) {
+            this.noteChange(controller.aiPlayer, { type: 'intervention', kind: paused ? 'seatPaused' : 'seatResumed', human: true });
+        }
         controller.paused = !!paused;
         const ai = controller.aiPlayer;
         const civ = ai ? getCivilization(ai.civilization) : null;

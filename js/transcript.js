@@ -43,6 +43,7 @@ class TranscriptRecorder {
     // exportBlob: conditions first, outcome last, turns in between.
     static MATCH_KEY() { return '__match__'; }
     static SUMMARY_KEY() { return '__summary__'; }
+    static EVENTS_KEY() { return '__events__'; }
 
     async _root(create = false) {
         if (!this.available) return null;
@@ -143,6 +144,21 @@ class TranscriptRecorder {
         }
     }
 
+    // A line about the match rather than a seat: global pause and speed. It carries no
+    // playerId, so a reader keeps it out of the seat list. Flushed at once.
+    noteMatch(entry) {
+        if (!this.matchId || !entry) return;
+        try {
+            const key = TranscriptRecorder.EVENTS_KEY();
+            const buf = this.pending.get(key) || [];
+            buf.push(JSON.stringify(entry) + '\n');
+            this.pending.set(key, buf);
+            this.flush(key);
+        } catch (e) {
+            console.warn('[transcript] match note failed', e);
+        }
+    }
+
     // The tail: how it ended, and the curve of how it got there. Appended rather than
     // kept in a second file so one artifact answers everything — the conditions, every
     // exchange, the outcome, and the graph. A recipient replaying it needs no second
@@ -230,12 +246,15 @@ class TranscriptRecorder {
     // because the action has to execute first — so it is stamped onto the open turn,
     // which is then sealed. The ring holds the same object, so the in-memory copy
     // gains the result too.
-    noteResult(playerId, harnessResult, lane) {
+    // `outcomes` is one {n, action, code, verdict} per command, in order -- the same
+    // verdicts the results metrics count (OpenAIAIManager.verdictFor).
+    noteResult(playerId, harnessResult, lane, outcomes) {
         if (!this.matchId || !playerId) return;
         const key = this._key(playerId, lane);
         const t = this.open.get(key);
         if (!t) return;                    // already sealed by THIS lane's next turn
         t.harnessResult = harnessResult;
+        if (Array.isArray(outcomes) && outcomes.length) t.outcomes = outcomes;
         this._seal(key);
     }
 

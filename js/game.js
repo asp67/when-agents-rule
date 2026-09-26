@@ -1907,10 +1907,14 @@ class Game {
     // Pause takes effect only once nothing is in flight; the AI manager makes that call
     // (it is the only thing that knows) and flips us to 'paused'.
     requestPause() {
-        if (this.pauseState === 'running') this.pauseState = 'pausing';
+        if (this.pauseState === 'running') {
+            this.pauseState = 'pausing';
+            if (this.openAIAIManager) this.openAIAIManager.noteMatchEvent({ kind: 'pauseRequested' });
+        }
         if (this.ui && this.ui.updateSimSpeedButton) this.ui.updateSimSpeedButton();
     }
     resumeSim() {
+        if (this.pauseState !== 'running' && this.openAIAIManager) this.openAIAIManager.noteMatchEvent({ kind: 'resumed' });
         this.pauseState = 'running';
         // Elapsed time is measured from lastFrameTime, which has been advancing all
         // through the pause. Without this the first tick back would hand the sim the
@@ -1930,7 +1934,11 @@ class Game {
 
     // 1 | 1.5 | 2 | 4. Returns what actually took effect, which is 1 while a Wonder stands.
     setSimSpeed(mult) {
+        const before = this.simSpeed;
         this.simSpeed = [1, 1.5, 2, 4].includes(mult) ? mult : 1;
+        // Requested and effective: a standing Wonder holds the match at 1x.
+        if (this.simSpeed !== before && this.openAIAIManager) this.openAIAIManager.noteMatchEvent(
+            { kind: 'speed', requested: mult, speed: this.simSpeed, effective: this.effectiveSimSpeed() });
         if (this.ui && this.ui.updateSimSpeedButton) this.ui.updateSimSpeedButton();
         return this.effectiveSimSpeed();
     }

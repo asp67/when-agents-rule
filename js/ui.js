@@ -4119,6 +4119,11 @@ class UIManager {
                     truncated: st.truncatedReplies || 0,
                     noAction: st.noActionReturns || 0,
                     planOnly: st.planOnlyUpdates || 0,
+                    // Turns a human's advice reached this seat's prompt, and times the
+                    // harness changed its request mid-match. Beside the result, not in
+                    // it: a coached or adapted run is a different run, and says so.
+                    advisedTurns: st.advisedTurns || 0,
+                    adaptations: st.adaptations || 0,
                     // EXPERIMENTAL, rolling inference. Orders dropped because the thing
                     // had appeared after the board that lane was given. NOT an error and
                     // not in the error total: nothing was refused and nothing was spent.
@@ -4222,7 +4227,9 @@ class UIManager {
             }
             const avgS = m.avgLatency / 1000;
             const errTotal = m.timeouts + m.networkErrors + m.parseFails + (m.noAction || 0) + m.invalidActions + m.rejected + (m.contextOverflows || 0);
-            const tagsHtml = r.tags.map(t => `<span class="sum-tag ${t.cls}">${t.t}</span>`).join('');
+            const assist = ((m.advisedTurns || 0) ? `<span class="sum-tag warn" title="${t('sum.coachedTip')}">${t('sum.coached', { n: m.advisedTurns })}</span>` : '')
+                + ((m.adaptations || 0) ? `<span class="sum-tag neutral" title="${t('sum.adaptedTip')}">${t('sum.adapted', { n: m.adaptations })}</span>` : '');
+            const tagsHtml = assist + r.tags.map(t => `<span class="sum-tag ${t.cls}">${t.t}</span>`).join('');
             const topActions = Object.entries(m.actionCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
                 .map(([k, v]) => `<span class="sum-chip">${k.replace(/_/g, ' ')}·${v}</span>`).join('');
             html += `
@@ -5583,7 +5590,12 @@ class UIManager {
         if (h.turnBased != null) bits.push(h.turnBased ? t('an.turnBased') : t('an.realTime'));
         if (h.simSpeed) bits.push(h.simSpeed + '×');
         if (h.promptVersion) bits.push(esc(h.promptVersion));
-        if (a.results && a.results.build) bits.push('build ' + a.results.build);
+        const build = h.build || (a.results && a.results.build);
+        if (build) bits.push('build ' + build);
+        // A human played in a Campaign match, so it is never a record of models alone.
+        if (h.mode === 'campaign') bits.push('<b>' + esc(t('an.campaignMode')) + '</b>');
+        if (st.interventions) bits.push(esc(t('an.interventions', { n: st.interventions })));
+        if (st.adaptations) bits.push(esc(t('an.adaptations', { n: st.adaptations })));
         bits.push(mmss(st.duration));
         if (st.parseErrors) bits.push(t('an.parseErrors', { n: st.parseErrors }));
         // An interrupted match has turns but no tail. Better to say so than to leave a
@@ -6335,7 +6347,9 @@ class UIManager {
     // The name a command-less turn is shown under; see TranscriptAnalyzer.turnKind.
     anTurnKindLabel(kind) {
         const key = { plan: 'an.kindPlan', noAction: 'an.kindNoAction', empty: 'an.kindEmpty',
-                      cancelled: 'an.kindCancelled', requestFailed: 'an.kindRequestFailed' }[kind];
+                      cancelled: 'an.kindCancelled', requestFailed: 'an.kindRequestFailed',
+                      intervention: 'an.kindIntervention', adaptation: 'an.kindAdaptation',
+                      matchEvent: 'an.kindMatchEvent' }[kind];
         return key ? t(key) : '(malformed)';
     }
 
@@ -6351,6 +6365,17 @@ class UIManager {
 
         if (r.type === 'round_missed') {
             return head + '<div class="an-d-missed">⏱ ' + esc(r.note || t('an.rowMissed')) + '</div>';
+        }
+        // A human or the harness changed something the model did not choose. Shown as
+        // recorded: the kind, and the advice text word for word.
+        if (r.type === 'intervention' || r.type === 'adaptation' || r.type === 'match_event') {
+            const label = this.anTurnKindLabel(a.turnKind(r));
+            const extra = r.params ? r.params.join(', ') : (r.factor != null ? String(r.factor)
+                : (r.speed != null ? r.speed + '× (' + r.effective + '×)' : (r.streak != null ? '×' + r.streak : '')));
+            return head
+                + '<div class="an-d-sec"><span class="an-d-tag">' + esc(label) + '</span>'
+                + '<span class="an-d-cmd">' + esc(r.kind || '') + (extra ? ' · ' + esc(extra) : '') + '</span></div>'
+                + (r.text ? '<pre class="an-d-final">' + esc(r.text) + '</pre>' : '');
         }
         // The last thing a model said. Shown whole and unstyled beyond a label, because
         // this is the one record in the file that is not data about play — it is the
@@ -6600,6 +6625,9 @@ class UIManager {
             if (r.modelConfig) {
                 const mc = r.modelConfig;
                 L.push(`- Model config: provider ${mc.provider} · model \`${mc.modelId || 'auto'}\` · context budget ${mc.contextBudget} · history ${mc.minimizeTokens ? 'compact (minimize tokens)' : 'multi-turn'} · language ${mc.language}`);
+            }
+            if (r.metrics && (r.metrics.advisedTurns || r.metrics.adaptations)) {
+                L.push(`- Assistance: ${r.metrics.advisedTurns || 0} turn(s) carried spectator advice · ${r.metrics.adaptations || 0} harness adaptation(s) of the request`);
             }
             L.push(`- End power score: ${r.power}`);
             L.push(`- Final state: ${r.ageName} age · ${r.workers} workers · ${r.military} military · ${r.buildings} buildings`);
