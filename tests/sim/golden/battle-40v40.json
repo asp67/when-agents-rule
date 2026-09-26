@@ -1,0 +1,547 @@
+[
+ {
+  "hash": "ee6fc640f64142e2",
+  "summary": {
+   "t": 5,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 8,
+      "priest": 6
+     },
+     "hp": 3320,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 8,
+      "priest": 6
+     },
+     "hp": 3440,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "12ff3c5fbf4030ef",
+  "summary": {
+   "t": 10,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 8,
+      "priest": 6
+     },
+     "hp": 3320,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 8,
+      "priest": 6
+     },
+     "hp": 3440,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "d119650372bba5b9",
+  "summary": {
+   "t": 15,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 8,
+      "priest": 6
+     },
+     "hp": 3185,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 8,
+      "priest": 6
+     },
+     "hp": 3440,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "56a87dce37b63dba",
+  "summary": {
+   "t": 20,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 2,
+      "priest": 6
+     },
+     "hp": 2602,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 8,
+      "priest": 6
+     },
+     "hp": 3440,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "7da1530d26c393a4",
+  "summary": {
+   "t": 25,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 11,
+      "priest": 6
+     },
+     "hp": 2395,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 6,
+      "priest": 6
+     },
+     "hp": 3194,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "7fd9b986d58a0361",
+  "summary": {
+   "t": 30,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 13,
+      "archer": 7,
+      "priest": 6
+     },
+     "hp": 1990,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 12,
+      "scout_cavalry": 1,
+      "priest": 6
+     },
+     "hp": 2722,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "c3fa6ca0bbc40bb9",
+  "summary": {
+   "t": 35,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 8,
+      "archer": 2,
+      "priest": 6
+     },
+     "hp": 1084,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 11,
+      "priest": 6
+     },
+     "hp": 2579,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "6584699be5098538",
+  "summary": {
+   "t": 40,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 1,
+      "priest": 4
+     },
+     "hp": 295,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 11,
+      "priest": 6
+     },
+     "hp": 2590,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "fbf21a3e547029ca",
+  "summary": {
+   "t": 45,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {},
+     "hp": 0,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 11,
+      "priest": 6
+     },
+     "hp": 2590,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "e597bac889c9c931",
+  "summary": {
+   "t": 50,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {},
+     "hp": 0,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 11,
+      "priest": 6
+     },
+     "hp": 2590,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "922cc13bfce9ffc8",
+  "summary": {
+   "t": 55,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {},
+     "hp": 0,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 11,
+      "priest": 6
+     },
+     "hp": 2590,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ },
+ {
+  "hash": "364040a3300745cb",
+  "summary": {
+   "t": 60,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {},
+     "hp": 0,
+     "buildings": 1,
+     "research": 0
+    },
+    {
+     "civ": "persian",
+     "age": "bronze",
+     "out": false,
+     "res": [
+      200,
+      200,
+      100,
+      50
+     ],
+     "units": {
+      "warrior": 14,
+      "archer": 11,
+      "priest": 6
+     },
+     "hp": 2590,
+     "buildings": 3,
+     "research": 0
+    }
+   ]
+  }
+ }
+]
