@@ -2015,13 +2015,17 @@ class UIManager {
         return { type: 'none' };
     }
 
-    // Convert one participant slot into the engine's setup entry. A slot pointing
-    // at the rule-based AI — or at a model with no endpoint — becomes type 'ki'.
+    // Convert one participant slot into the engine's setup entry. A slot pointing at
+    // the rule-based AI becomes type 'ki'. A slot pointing at a model with no endpoint
+    // stays an 'llm' seat WITHOUT a connection, so the arena refuses to start and says
+    // which seat -- it used to turn into 'ki' here, which made that check unreachable
+    // and started a match of rule-based seats under model names. The campaign, whose
+    // opponents are allowed a rule-based stand-in, substitutes it visibly instead.
     slotToSetupEntry(slot) {
         const cfg = this._arenaConfig;
         if (slot.control === 'ki') return { civ: slot.civ, type: 'ki' };
         const m = cfg.models.find(mm => mm.id === slot.control);
-        if (!m || !(m.endpoint || '').trim()) return { civ: slot.civ, type: 'ki' };
+        if (!m || !(m.endpoint || '').trim()) return { civ: slot.civ, type: 'llm', connection: null, unconfigured: true };
         return {
             civ: slot.civ,
             type: 'llm',
@@ -2073,10 +2077,15 @@ class UIManager {
         if (ta) this._arenaConfig.prompt = ta.value;
         this.saveSetup();
         const cc = this._campaignConfig;
-        return {
-            playerCiv: cc.playerCiv,
-            opponents: cc.slots.slice(0, cc.count).map(slot => this.slotToSetupEntry(slot))
-        };
+        const opponents = cc.slots.slice(0, cc.count).map(slot => this.slotToSetupEntry(slot));
+        const substituted = [];
+        opponents.forEach((o, i) => {
+            if (!o.unconfigured) return;
+            opponents[i] = { civ: o.civ, type: 'ki', substituted: true };
+            substituted.push(i + 1);
+        });
+        if (substituted.length) this.showInfoMessage(t('ar.slotSubstituted', { n: substituted.join(', ') }));
+        return { playerCiv: cc.playerCiv, opponents };
     }
 
     // Reset the template AND every per-slot prompt to the current default

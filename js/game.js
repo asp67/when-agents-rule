@@ -224,7 +224,7 @@ class Game {
         // Validate: every LLM slot must point at a model with an endpoint.
         for (let i = 0; i < setup.length; i++) {
             if (setup[i].type === 'llm' && !(setup[i].connection && setup[i].connection.endpoint)) {
-                alert(t('ar.slotNeedsModel', { n: i + 1 }));
+                this.ui.showErrorMessage(t('ar.slotNeedsModel', { n: i + 1 }));
                 return;
             }
         }
