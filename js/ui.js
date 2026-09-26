@@ -4646,7 +4646,7 @@ class UIManager {
         const tok = e.tokens ? `${e.tokens.prompt}→${e.tokens.completion} tok` : '';
         const ms = e.latencyMs != null ? `${(e.latencyMs / 1000).toFixed(1)}s` : '';
         const act = e.parsed && e.parsed.action ? e.parsed.action : null;
-        const failed = typeof e.harnessResult === 'string' && e.harnessResult.startsWith('[ERROR]');
+        const failed = TranscriptAnalyzer.failed(e.harnessResult);
         const state = e.state
             ? `<details class="tv-sec tv-state"${pref['tv-state'] ? ' open' : ''}${keep('tv-state')} data-turn="${esc(e.turn)}"><summary>${t('spec.tvState')}</summary><pre></pre></details>`
             : '';
@@ -4782,7 +4782,7 @@ class UIManager {
                         container.firstElementChild.querySelector('pre').textContent = entry.harnessResult;
                         node.insertBefore(container.firstElementChild, node.querySelector('.tv-state'));
                     }
-                    node.classList.toggle('is-error', typeof entry.harnessResult === 'string' && entry.harnessResult.startsWith('[ERROR]'));
+                    node.classList.toggle('is-error', TranscriptAnalyzer.failed(entry.harnessResult));
                 }
                 if (node !== cursor) body.insertBefore(node, cursor);
                 cursor = node.nextElementSibling;
@@ -5686,12 +5686,16 @@ class UIManager {
             const cmds = a.commandsOf ? a.commandsOf(r) : [];
             const act = cmds.length ? cmds[0].action : (r.parsed && r.parsed.action);
             const more = cmds.length > 1 ? cmds.length - 1 : 0;
-            const bad = typeof r.harnessResult === 'string' && r.harnessResult.indexOf('[ERROR]') === 0;
+            const bad = a.hasError(r);
+            // A turn with no game command is named for what it was -- a plan save, a
+            // reply with no tool call, an empty reply -- and only a genuinely broken
+            // one is still called malformed.
+            const label = typeof act === 'string' ? act.replace(/_/g, ' ') : this.anTurnKindLabel(a.turnKind(r));
             const fight = !!(r.state && r.state.battles && r.state.battles.length);
             return '<div class="an-row' + on + (bad ? ' is-bad' : '') + '" onclick="game.ui.anSeek(' + i + ')">'
                 + '<span class="an-t">' + esc(mmss(r._sec)) + '</span>'
                 + this.teamDotHtml(sm.seat, 8)
-                + '<span class="an-act">' + esc(typeof act === 'string' ? act.replace(/_/g, ' ') : '(malformed)') + '</span>'
+                + '<span class="an-act">' + esc(label) + '</span>'
                 + (more ? '<span class="an-more" title="' + esc(t('an.plusMore', { n: more })) + '">+' + more + '</span>' : '')
                 + (fight ? '<span class="an-flag">⚔️</span>' : '')
                 + (r._planNew ? '<span class="an-flag">📋</span>' : '')
@@ -6302,6 +6306,13 @@ class UIManager {
     }
 
 
+    // The name a command-less turn is shown under; see TranscriptAnalyzer.turnKind.
+    anTurnKindLabel(kind) {
+        const key = { plan: 'an.kindPlan', noAction: 'an.kindNoAction', empty: 'an.kindEmpty',
+                      cancelled: 'an.kindCancelled', requestFailed: 'an.kindRequestFailed' }[kind];
+        return key ? t(key) : '(malformed)';
+    }
+
     anDetailHtml(r) {
         if (!r) return '';
         const a = this.analyzer;
@@ -6350,10 +6361,6 @@ class UIManager {
         }
 
         const p = r.parsed || {};
-        const act = typeof p.action === 'string' ? p.action : '(malformed)';
-        const params = Object.assign({}, p.params || {});
-        const reason = params.reason; delete params.reason;
-        const bad = typeof r.harnessResult === 'string' && r.harnessResult.indexOf('[ERROR]') === 0;
 
         const stt = r.state || {};
         const res = stt.resources || {};
@@ -6410,7 +6417,8 @@ class UIManager {
         const cmdList = a.commandsOf ? a.commandsOf(r) : [];
         const cmdResults = a.resultsOf ? a.resultsOf(r) : [];
         const cmdBlocks = (cmdList.length ? cmdList : [p]).map((c, i) => {
-            const nm = (c && typeof c.action === 'string') ? c.action : '(malformed)';
+            const nm = (c && typeof c.action === 'string') ? c.action
+                : (cmdList.length ? '(malformed)' : this.anTurnKindLabel(a.turnKind(r)));
             const ps = Object.assign({}, (c && c.params) || {});
             const why = ps.reason; delete ps.reason;
             const res = cmdResults.length > 1 ? cmdResults[i] : (i === 0 ? cmdResults[0] : null);

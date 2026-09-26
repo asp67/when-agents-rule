@@ -48,6 +48,8 @@ function harness(count=300) {
     const ids=Object.fromEntries(['transcriptViewer','tvBody','tvTitle','tvCount','tvOlder','tvNewer','tvLatest','tvRange','tvTopBtn'].map(k=>[k,new Element()]));
     const document={getElementById:id=>ids[id]||null,createElement:()=>new Element()};
     const context=vm.createContext({document,console,window:{},t:k=>k,getUiLang:()=> 'en'});
+    // index.html loads analyzer.js before ui.js; the viewer shares its error test.
+    vm.runInContext(fs.readFileSync(path.join(root,'js/analyzer.js'),'utf8')+'\nthis.TranscriptAnalyzer=TranscriptAnalyzer;',context);
     vm.runInContext(fs.readFileSync(path.join(root,'js/ui.js'),'utf8')+'\nthis.UIManager=UIManager;',context);
     const make=(turn,seat='one')=>({turn,at:turn*1000,name:seat,assistant:{reasoning:'reason '.repeat(100),content:'reply'},parsed:turn===1?{objective:'Hold the coast'}:{},state:{units:[{id:turn}]},harnessResult:null});
     const rings={one:Array.from({length:count},(_,i)=>make(i+1)),two:[make(1,'two')]};

@@ -326,6 +326,29 @@ class TranscriptAnalyzer {
         if (parts.length < 2 && !/^Command \d+\/\d+: /.test(h)) return [h];
         return parts.map(x => x.replace(/^Command \d+\/\d+: /, ''));
     }
+    // A turn failed if ANY of its commands did. A batch answers with numbered lines, so
+    // its errors sit after "Command 2/3: " -- asking whether the whole answer STARTS
+    // with [ERROR] only ever saw single-command failures: Episode 7 flagged 4 turns out
+    // of 78. Static so the live transcript viewer can ask the same question.
+    static failed(harnessResult) {
+        return typeof harnessResult === 'string'
+            && TranscriptAnalyzer.prototype.resultsOf({ harnessResult }).some(x => x.startsWith('[ERROR]'));
+    }
+    hasError(rec) { return TranscriptAnalyzer.failed(rec && rec.harnessResult); }
+    // What a turn that carried no game command actually was. They all used to be
+    // labelled "(malformed)", but most are not: a plan-only reply is a successful plan
+    // save, and a reply with no tool call or no text at all is its own failure.
+    turnKind(rec) {
+        if (rec && rec.type === 'request_cancelled') return 'cancelled';
+        if (rec && rec.type === 'request_failed') return 'requestFailed';
+        if (this.commandsOf(rec).length) return 'commands';
+        const p = rec && rec.parsed;
+        if (!p) return 'empty';
+        if (p.noAction) return 'noAction';
+        if (p.malformed) return 'malformed';
+        if (Array.isArray(p.commands) && (p.objective != null || p.plan != null)) return 'plan';
+        return 'malformed';
+    }
     // Everything to draw for one moment. `union` decides whose eyes: a single seat is
     // the honest reconstruction of what that model could see, the union is the analyst's
     // overview that no player ever had. Both are useful and they are different claims,
@@ -592,7 +615,7 @@ class TranscriptAnalyzer {
                       r.assistant,
                       // and the markers the row itself displays, so searching what is
                       // on screen works: an error row, a missed round, a fight
-                      (typeof r.harnessResult === 'string' && r.harnessResult.indexOf('[ERROR]') === 0) ? 'error' : '',
+                      this.hasError(r) ? 'error' : '',
                       r.type === 'round_missed' ? 'missed round' : '',
                       (r.state && r.state.battles && r.state.battles.length) ? 'battle combat' : ''];
         r._hay = bits.filter(Boolean).join(' \u0001 ').toLowerCase();
@@ -607,7 +630,7 @@ class TranscriptAnalyzer {
             if (q && this.haystack(r).indexOf(q) === -1) return false;
             switch (this.filter) {
                 case 'battles':  return !!(r.state && r.state.battles && r.state.battles.length);
-                case 'rejected': return typeof r.harnessResult === 'string' && r.harnessResult.startsWith('[ERROR]');
+                case 'rejected': return this.hasError(r);
                 case 'missed':   return r.type === 'round_missed';
                 case 'planned':  return !!r._planNew;
                 default:         return true;
@@ -715,8 +738,7 @@ class TranscriptAnalyzer {
         const perSeat = [...this.seats.values()].map(s => {
             const turns = s.turns.filter(r => !r.type);
             const missed = s.turns.filter(r => r.type === 'round_missed').length;
-            const rejected = turns.filter(r => typeof r.harnessResult === 'string'
-                && r.harnessResult.startsWith('[ERROR]')).length;
+            const rejected = turns.filter(r => this.hasError(r)).length;
             const lat = turns.map(r => r.latencyMs || 0).filter(x => x > 0);
             return { seat: s, turns: turns.length, missed, rejected,
                      avgLatency: lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0 };
