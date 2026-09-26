@@ -4267,9 +4267,11 @@ class Game {
         if (!viewer) return;
         if (!viewer._metRivals) viewer._metRivals = new Set();
         const isHuman = viewer === this.player;
+        // Built only if some rival is still unmet: most calls find everyone met.
+        let see = null;
         const canSee = (x, z) => isHuman
             ? !!(this.fogOfWar && this.fogOfWar.isPositionVisible(x, z))
-            : this.aiManager.isVisibleTo(viewer, x, z);
+            : (see || (see = buildVisionTest(this, viewer)))(x, z);
         const consider = (owner, key) => {
             if (owner === viewer || viewer._metRivals.has(key)) return;
             const spotted = (owner.units || []).some(u => u.health > 0 && canSee(u.x, u.z)) ||

@@ -3099,11 +3099,13 @@ class OpenAIAIManager {
         if (!ai._knownEnemyBuildings) ai._knownEnemyBuildings = new Set();
         const enemyBuildings = [];
         const enemyWonders = [];
+        // One visibility index for this state build; see buildVisionTest (ai.js).
+        const seeNow = this.visionTestFor(ai, game);
         game.getAllBuildings().forEach(bldg => {
             if (ai.buildings.includes(bldg)) return;
             if (bldg.health <= 0) { ai._knownEnemyBuildings.delete(bldg); return; } // destroyed
             const isWonder = bldg.isWonder;
-            const seenNow = isWonder || this.isPositionVisibleToAI(ai, bldg.x, bldg.z, game);
+            const seenNow = isWonder || seeNow(bldg.x, bldg.z);
             if (seenNow) ai._knownEnemyBuildings.add(bldg);          // discover/refresh
             if (!seenNow && !ai._knownEnemyBuildings.has(bldg)) return; // never discovered → hidden
             const entry = {
@@ -3249,7 +3251,7 @@ class OpenAIAIManager {
         const enemyUnits = [];
         game.getAllUnits().forEach(unit => {
             if (ai.units.includes(unit)) return;
-            const vis = this.isPositionVisibleToAI(ai, unit.x, unit.z, game);
+            const vis = seeNow(unit.x, unit.z);
             if (!vis) return;
             enemyUnits.push({
                 id: unit.id, // target handle for attack_target(params.targetId); units move, so prefer this over stale coordinates
@@ -3755,6 +3757,14 @@ class OpenAIAIManager {
     // ----------------------------------------------------------------
     // 5. Helper: Check if position is visible to AI
     // ----------------------------------------------------------------
+    // isPositionVisibleToAI for a batch of questions: the same answers, from an index
+    // built once (buildVisionTest in ai.js). Falls back to the linear check where ai.js
+    // is not loaded.
+    visionTestFor(ai, game) {
+        if (typeof buildVisionTest === 'function') return buildVisionTest(game, ai, true);
+        return (x, z) => !!this.isPositionVisibleToAI(ai, x, z, game);
+    }
+
     isPositionVisibleToAI(ai, x, z, game) {
         const buildingVisionRange = 12;
         const towerVisionRange = 60;
@@ -9143,10 +9153,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const ai = controller.aiPlayer;
             if (!ai) continue;
             if (!ai._knownResIdx) ai._knownResIdx = new Set();
+            const see = this.visionTestFor(ai, this.game);
             for (let idx = 0; idx < resources.length; idx++) {
                 if (ai._knownResIdx.has(idx)) continue;        // already known — skip
                 const r = resources[idx];
-                if (this.isPositionVisibleToAI(ai, r.x, r.z, this.game)) ai._knownResIdx.add(idx);
+                if (see(r.x, r.z)) ai._knownResIdx.add(idx);
             }
         }
     }
@@ -9162,11 +9173,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const ai = controller.aiPlayer;
             if (!ai) continue;
             if (!ai._knownEnemyBuildings) ai._knownEnemyBuildings = new Set();
+            let see = null;   // built only if some enemy building is still unknown
             for (const b of all) {
                 if (ai.buildings.includes(b)) continue;            // own building
                 if (b.health <= 0) { ai._knownEnemyBuildings.delete(b); continue; } // gone
                 if (ai._knownEnemyBuildings.has(b)) continue;      // already known
-                if (b.isWonder || this.isPositionVisibleToAI(ai, b.x, b.z, this.game)) {
+                if (b.isWonder || (see || (see = this.visionTestFor(ai, this.game)))(b.x, b.z)) {
                     ai._knownEnemyBuildings.add(b);
                 }
             }

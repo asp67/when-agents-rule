@@ -11,6 +11,57 @@
 //    Resources are never lost to a failed building placement (position is found
 //    BEFORE spending). Workers never strand: they gather the most-needed known
 //    resource, and a spare scout is sent out when something needed isn't discovered.
+// A visibility test for ONE owner, built once for a BATCH of questions asked against a
+// board that does not move while the batch runs (a single synchronous loop: every node
+// on the map, every rival unit). The linear check scans every unit and building of the
+// owner per question; discovery asks it for every node and every rival entity, several
+// times a second, and it was 58% of the platform's headless CPU.
+//
+// Each eye (a unit or a finished building) is filed under every grid cell its sight
+// disc can reach, padded by one unit so float rounding can never leave a cell out. A
+// question then tests only the eyes filed under its own cell, with EXACTLY the original
+// expression -- Math.hypot for AIManager.isVisibleTo, sqrt(dx*dx + dz*dz) for the
+// harness's isPositionVisibleToAI -- and the same rules about dead units and
+// construction sites, so every answer is bit-identical to the linear scan. Built per
+// batch, never cached across one: nothing can move between build and use.
+//
+// `harness` selects isPositionVisibleToAI's rules: sqrt, dead units still count,
+// construction sites skipped. Otherwise isVisibleTo's: hypot, the living only.
+function buildVisionTest(game, ai, harness) {
+    const CELL = 20, cells = new Map();
+    const key = (cx, cz) => cx * 65536 + cz;
+    const file = (x, z, r, eye) => {
+        const x0 = Math.floor((x - r - 1) / CELL), x1 = Math.floor((x + r + 1) / CELL);
+        const z0 = Math.floor((z - r - 1) / CELL), z1 = Math.floor((z + r + 1) / CELL);
+        for (let cx = x0; cx <= x1; cx++) for (let cz = z0; cz <= z1; cz++) {
+            const k = key(cx, cz);
+            const list = cells.get(k);
+            if (list) list.push(eye); else cells.set(k, [eye]);
+        }
+    };
+    for (const u of (ai && ai.units) || []) {
+        if (!harness && u.health <= 0) continue;
+        const r = game.unitVision(u);
+        if (r > 0) file(u.x, u.z, r, { x: u.x, z: u.z, r });
+    }
+    for (const b of (ai && ai.buildings) || []) {
+        if (harness ? b.underConstruction : b.health <= 0) continue;
+        const r = game.buildingVision(b);
+        if (r > 0) file(b.x, b.z, r, { x: b.x, z: b.z, r });
+    }
+    return (x, z) => {
+        const list = cells.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
+        if (!list) return false;
+        for (const e of list) {
+            if (harness) {
+                const dx = e.x - x, dz = e.z - z;
+                if (Math.sqrt(dx * dx + dz * dz) <= e.r) return true;
+            } else if (Math.hypot(e.x - x, e.z - z) <= e.r) return true;
+        }
+        return false;
+    };
+}
+
 class AIManager {
     constructor(game) {
         this.game = game;
@@ -123,16 +174,17 @@ class AIManager {
         if (!ai._knownResIdx) ai._knownResIdx = new Set();
         if (!ai._knownEnemyBuildings) ai._knownEnemyBuildings = new Set();
         const res = (this.game.terrain && this.game.terrain.resources) || [];
+        const see = buildVisionTest(this.game, ai);   // one batch: nothing moves inside it
         for (let i = 0; i < res.length; i++) {
             if (ai._knownResIdx.has(i)) continue;
             const r = res[i];
-            if (this.isVisibleTo(ai, r.x, r.z)) ai._knownResIdx.add(i);
+            if (see(r.x, r.z)) ai._knownResIdx.add(i);
         }
         // Remember enemy buildings once seen (buildings are static).
         for (const other of this.enemyOwners(ai)) {
             for (const b of other.buildings) {
                 if (b.health <= 0) { ai._knownEnemyBuildings.delete(b); continue; }
-                if (!ai._knownEnemyBuildings.has(b) && this.isVisibleTo(ai, b.x, b.z)) {
+                if (!ai._knownEnemyBuildings.has(b) && see(b.x, b.z)) {
                     ai._knownEnemyBuildings.add(b);
                 }
             }
@@ -504,9 +556,9 @@ class AIManager {
     // Targets the AI is allowed to act on: visible enemy units, remembered enemy
     // buildings (still alive), and any enemy wonder (always visible).
     visibleEnemyTargets(ai) {
-        const out = new Set();
+        const out = new Set(), see = buildVisionTest(this.game, ai);
         for (const other of this.enemyOwners(ai)) {
-            other.units.forEach(u => { if (u.health > 0 && this.isVisibleTo(ai, u.x, u.z)) out.add(u); });
+            other.units.forEach(u => { if (u.health > 0 && see(u.x, u.z)) out.add(u); });
             other.buildings.forEach(b => { if (b.health > 0 && b.isWonder) out.add(b); });
         }
         ai._knownEnemyBuildings.forEach(b => { if (b && b.health > 0) out.add(b); else ai._knownEnemyBuildings.delete(b); });
