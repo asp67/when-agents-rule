@@ -3782,8 +3782,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!gs || typeof gs !== 'object') {
             try { return JSON.stringify({ pastTurnRecap: true, raw: String(gs).slice(0, 160) }); } catch (e) { return '{"pastTurnRecap":true}'; }
         }
-        const r = gs.resources || {}, ep = gs.epoch || {}, wk = gs.workers || {}, b = gs.buildings || {}, th = gs.threats || {};
+        const r = gs.resources || {}, ep = gs.epoch || {}, wk = gs.workers || {}, th = gs.threats || {};
         const fu = Array.isArray(gs.friendlyUnits) ? gs.friendlyUnits : [];
+        // Counted from friendlyBuildings. The live state's buildings tally (byType,
+        // underConstruction) was retired and "buildings" became the buildable list, so
+        // reading b.byType here replayed an empty {} into every past turn since 23 Aug.
+        const fb = Array.isArray(gs.friendlyBuildings) ? gs.friendlyBuildings : [];
+        const byType = {};
+        let constructing = 0;
+        for (const x of fb) {
+            if (!x || typeof x.type !== 'string') continue;
+            byType[x.type] = (byType[x.type] || 0) + 1;
+            if (x.state === 'under_construction') constructing++;
+        }
         // Already counts. This used to tally a 1231-entry array on every recap.
         // Reads gs.nodes.discovered since the node counts moved under "nodes" —
         // the same trap the harvesting* keys sprang after their split.
@@ -3812,8 +3823,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 farm: wk.farm, building: wk.building, idle: wk.idle, scouting: wk.scouting
             },
             militaryUnitCount: fu.filter(u => u.type !== 'worker').length,
-            buildingsByType: b.byType || {},
-            buildingsUnderConstruction: b.underConstruction || 0,
+            buildingsByType: byType,
+            buildingsUnderConstruction: constructing,
             currentResearch: gs.research && gs.research.current ? gs.research.current.techId : null,
             discoveredResourceNodeCounts: nodes,
             enemySeen: {
