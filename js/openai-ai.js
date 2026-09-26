@@ -9091,8 +9091,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             }
         }
 
-        this.updateResourceDiscovery(now);
-        this.updateEnemyBuildingDiscovery();
+        // Discovery runs per simulation step (observeStep, called from Game.tick).
         this.updateAttackReports(now);
 
         if (this.turnBased) { this.updateTurnBased(now, pausing); return; }
@@ -9209,6 +9208,16 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // the node showed on the map (fog reveals per-frame) but never entered the
     // model's known set. The `.has(idx)` skip keeps this cheap: each node is
     // distance-checked only until it is first discovered, then skipped forever.
+    // Discovery, once per simulation sub-step. It ran once per update, which is once
+    // per drawn frame: what a model knew depended on the frame rate and on whether the
+    // spectator's tab was visible. A hidden tab ticks four times a second, and a unit
+    // grazing past a node between two ticks never found it.
+    observeStep() {
+        if (this._stopped || this.aiControllers.length === 0) return;
+        this.updateResourceDiscovery(Date.now());
+        this.updateEnemyBuildingDiscovery();
+    }
+
     updateResourceDiscovery(now) {
         const resources = (this.game.terrain && this.game.terrain.resources) || [];
         if (!resources.length) return;

@@ -201,7 +201,7 @@ Direct match links open the viewer with a specific catalogue entry loaded: [Epis
 
 - `2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl` — Episode 7, **The Cartographers and the Procession**: 723 turns over 121:23, **turn-based** (180 s rounds), on a snow map. Gemini 3.8 Flash as Egypt, DeepSeek v4 Flash Pro as the Greeks, GPT 5.6 Luna as Persia, and local Qwen3.8 Flash Next as Yamato. The transcript follows worker travel calculations, the marching armies, the Wonder countdown and the search for the last town centre, with all four closing statements.
 
-Nothing is interpolated between snapshots. Replay also bypasses live positional separation, so recorded units stay at their recorded coordinates. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
+Nothing is interpolated between snapshots. Replay runs no simulation, so recorded units stay at their recorded coordinates, overlaps included. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
 
 ## 🧮 How a model is scored
 

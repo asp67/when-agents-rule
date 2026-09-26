@@ -748,8 +748,10 @@ class Game {
             if (this.ui && this.ui.refreshUnitInfo) this.ui.refreshUnitInfo();
         }
 
-        // Fine simulation in ≤100ms sub-steps so the FULL elapsed time is advanced.
-        const STEP_MAX = 100;
+        // Fine simulation in ≤50ms sub-steps so the FULL elapsed time is advanced.
+        // 50, not 100: the positional rules' push is dt-scaled but capped at a 50 ms
+        // step, so a longer step would separate less than the same time in short ones.
+        const STEP_MAX = 50;
         const budgeted = this.simBudget(simTime);
         // Ambient motion and daylight follow elapsed time, not the fast-forward
         // multiplier for units/research. They still stop with an actual pause.
@@ -759,6 +761,14 @@ class Game {
         while (remaining > 0) {
             const step = Math.min(STEP_MAX, remaining);
             this.simulateStep(step);
+            // Separation and building clearance: rules, so they run here, on
+            // simulated time, and not in the renderer once per drawn frame -- where
+            // the frame rate set their strength and a hidden tab skipped them.
+            WarPositionRules.apply(this.getAllUnits(), this.getAllBuildings(), step / 1000);
+            // What each model has found, sampled after every step rather than once
+            // per frame: a hidden tab ticks four times a second, and a unit grazing a
+            // node between two ticks used to leave it undiscovered.
+            if (this.openAIAIManager && this.openAIAIManager.observeStep) this.openAIAIManager.observeStep();
             remaining -= step;
         }
         this.keepUnitsAshore();

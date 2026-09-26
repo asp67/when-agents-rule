@@ -131,11 +131,22 @@ test('replay render frames preserve recorded positions, including overlaps', () 
     assert.deepEqual(after, before);
 });
 
-test('live rendering retains friendly separation and building clearance', () => {
+// Separation and clearance are simulation rules now (js/simulation/position-rules.js,
+// run from Game.tick). A drawn frame decides nothing, so it moves nothing either.
+test('live render frames move no entity: separation is a simulation rule', () => {
     const { before, after } = renderFrame(false);
-    assert.ok(after[0].x < before[0].x);
-    assert.ok(after[1].x > before[1].x);
-    assert.equal(after[2].x, 54.5);
+    assert.deepEqual(after, before);
+});
+
+test('the positional rules push friends apart and clear buildings', () => {
+    const context = vm.createContext({ Math });
+    vm.runInContext(source('js/simulation/position-rules.js'), context);
+    const units = [{ x: 10, z: 10, owner: 1 }, { x: 10.5, z: 10, owner: 1 }, { x: 50, z: 50, owner: 2 }];
+    const before = structuredClone(units);
+    vm.runInContext('WarPositionRules', context).apply(units, [{ x: 50, z: 50, type: 'house' }], 1 / 60);
+    assert.ok(units[0].x < before[0].x);
+    assert.ok(units[1].x > before[1].x);
+    assert.equal(units[2].x, 54.5);
 });
 
 test('all workspace controls have translations in every supported UI language', () => {

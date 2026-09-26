@@ -3,23 +3,21 @@
 // with the two inputs a browser cannot hold still -- Math.random and the clock --
 // replaced by a seeded generator and a stepped clock.
 //
-// It drives the real loop, not a re-creation of it. Each frame does what a browser
-// frame does, in the browser's order: the renderer's frame (whose positional pass --
-// same-owner separation and building clearance -- is a rule today, living in
-// gamerenderer.js) and then Game.tick(). The positional pass is cut out of the
-// renderer's source at named anchors and run as written; when the determinism work
-// moves it into the simulation step (review #6 step 2), the anchors fail loudly and
-// this harness must change with it. Nothing here re-implements a rule.
+// It drives the real loop, not a re-creation of it: each frame the clock moves and
+// every animation-frame callback runs, which is the game loop's Game.tick(). The
+// renderer is not loaded -- it decides nothing since separation and building
+// clearance moved into the simulation step (js/simulation/position-rules.js). Nothing
+// here re-implements a rule.
 //
-// What a trace pins is WAR as it runs at a fixed 16 ms frame in a visible tab. The
-// frame rate and tab visibility are rules inputs today; that is the reason for the
-// determinism work, and the reason this harness fixes them rather than hiding them.
+// What a trace pins is WAR as it runs at a fixed 16 ms frame. The frame length still
+// sets the sub-step lengths inside tick(), so it stays a rules input until the fixed
+// step (review #6 step 9); the harness fixes it rather than hiding it.
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { createHash } = require('node:crypto');
 const ROOT = path.resolve(__dirname, '../..');
-// Line endings normalized: a Windows checkout has CRLF, and the anchors below are LF.
+// Line endings normalized: a Windows checkout has CRLF; game.js is sliced at an LF anchor.
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8').split('\r\n').join('\n');
 
 const FRAME_MS = 16;
@@ -52,21 +50,15 @@ function inert(name, calls, own = {}) {
     });
 }
 
-// The positional pass, exactly as the renderer runs it each frame.
-function positionPassSource() {
-    const src = read('js/engine/gamerenderer.js');
-    const start = src.indexOf('            if (!this.replayMode) {\n                const SEPARATION_DIST');
-    const end = src.indexOf('\n            // draw ---', start);
-    if (start < 0 || end < 0) throw new Error('renderer positional-pass anchors moved: update tests/sim/harness.cjs (review #6 step 2)');
-    return '(function (deltaTime) {\n' + src.slice(start, end) + '\n})';
-}
-
 const RULE_FILES = ['js/engine/texgen.js', 'js/civilizations.js', 'js/buildings.js', 'js/units.js', 'js/resources.js',
-    'js/terrain.js', 'js/fogofwar.js', 'js/ai.js', 'js/sha256.js', 'js/conditions.js', 'js/openai-ai.js',
+    'js/terrain.js', 'js/fogofwar.js', 'js/simulation/position-rules.js', 'js/ai.js', 'js/sha256.js', 'js/conditions.js', 'js/openai-ai.js',
     'js/game.js', 'js/standing-orders.js'];
 
 class GoldenMatch {
-    constructor({ seed = 1 } = {}) {
+    // frameMs and hidden describe the tab: 16 ms frames in a visible tab by default. A
+    // hidden tab is driven by the background worker, a tick every 250 ms.
+    constructor({ seed = 1, frameMs = FRAME_MS, hidden = false } = {}) {
+        this.frameMs = frameMs;
         this.runtime = createRuntime(seed);
         this.presentation = {};
         const rt = this.runtime, calls = this.presentation;
@@ -84,7 +76,7 @@ class GoldenMatch {
         const context = vm.createContext({
             Math: rt.Math, Date: rt.Date, performance: { now: () => rt.now() },
             console: { log() {}, info() {}, warn() {}, error() {}, debug() {} },
-            document: inert('document', calls, { hidden: false, getElementById: element, querySelector: element,
+            document: inert('document', calls, { hidden, getElementById: element, querySelector: element,
                 querySelectorAll: () => [], createElement: element, body: element() }),
             localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
             requestAnimationFrame: cb => { this.rafQueue.push(cb); return this.rafQueue.length; },
@@ -101,7 +93,6 @@ class GoldenMatch {
             vm.runInContext(source, context, { filename: file });
         }
         this.context = context;
-        this.positionPass = vm.runInContext(positionPassSource(), context, { filename: 'gamerenderer.js#position-pass' });
 
         // game.js declares the global `game` itself (a lexical binding), so it is
         // assigned inside the context; a property set from outside would be shadowed.
@@ -209,11 +200,10 @@ class GoldenMatch {
         return b;
     }
 
-    // One browser frame: the clock moves, the renderer's frame runs its positional
-    // pass, then every other animation-frame callback (the game loop's tick).
+    // One browser frame: the clock moves, then every animation-frame callback runs
+    // (the game loop's tick).
     frame() {
-        this.runtime.advance(FRAME_MS);
-        this.positionPass.call(this.game.renderer, Math.min(0.1, FRAME_MS / 1000));
+        this.runtime.advance(this.frameMs);
         const queue = this.rafQueue.splice(0);
         queue.forEach(cb => cb());
     }

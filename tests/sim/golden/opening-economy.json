@@ -1,6 +1,6 @@
 [
  {
-  "hash": "2b2ecaf6224fb18a",
+  "hash": "c25eff4ff7e547b2",
   "summary": {
    "t": 30,
    "seats": [
@@ -42,7 +42,7 @@
   }
  },
  {
-  "hash": "93a9cb9f1f950c5c",
+  "hash": "79f1e57fde528da9",
   "summary": {
    "t": 60,
    "seats": [
@@ -84,7 +84,7 @@
   }
  },
  {
-  "hash": "7dc504663111cd56",
+  "hash": "4da6240127daaee7",
   "summary": {
    "t": 90,
    "seats": [
@@ -126,7 +126,7 @@
   }
  },
  {
-  "hash": "b6a76ee86fca2819",
+  "hash": "e7102bdf0cbaab42",
   "summary": {
    "t": 120,
    "seats": [
@@ -168,7 +168,7 @@
   }
  },
  {
-  "hash": "a4fb2fdd98796322",
+  "hash": "db493e2bd3662b76",
   "summary": {
    "t": 150,
    "seats": [
@@ -210,7 +210,7 @@
   }
  },
  {
-  "hash": "ef610290c94af9d8",
+  "hash": "75b24715199913f3",
   "summary": {
    "t": 180,
    "seats": [
@@ -252,7 +252,7 @@
   }
  },
  {
-  "hash": "071a8e86971d5ab6",
+  "hash": "643c82823b0d1a30",
   "summary": {
    "t": 210,
    "seats": [
@@ -294,7 +294,7 @@
   }
  },
  {
-  "hash": "c85f41315bc94dba",
+  "hash": "d4b9588ea819fd1d",
   "summary": {
    "t": 240,
    "seats": [
@@ -304,8 +304,8 @@
      "out": false,
      "res": [
       10,
-      110,
-      50,
+      160,
+      100,
       50
      ],
      "units": {
@@ -336,7 +336,7 @@
   }
  },
  {
-  "hash": "21347cdbb6f0e23c",
+  "hash": "ba6a933c1148c598",
   "summary": {
    "t": 270,
    "seats": [
@@ -346,7 +346,7 @@
      "out": false,
      "res": [
       0,
-      20,
+      30,
       50,
       50
      ],
@@ -379,7 +379,7 @@
   }
  },
  {
-  "hash": "dd012e782215167c",
+  "hash": "662c4622b749aaa5",
   "summary": {
    "t": 300,
    "seats": [
@@ -422,7 +422,7 @@
   }
  },
  {
-  "hash": "d671209b64f88334",
+  "hash": "0e32f76466308a64",
   "summary": {
    "t": 330,
    "seats": [
@@ -450,7 +450,7 @@
      "out": false,
      "res": [
       950,
-      100,
+      112,
       100,
       50
      ],
@@ -465,7 +465,7 @@
   }
  },
  {
-  "hash": "799f513060c2ce04",
+  "hash": "3390ebbd1bf9b874",
   "summary": {
    "t": 360,
    "seats": [
@@ -474,7 +474,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      30,
+      20,
       0,
       50,
       50
@@ -493,7 +493,7 @@
      "out": false,
      "res": [
       1092,
-      22,
+      46,
       100,
       50
      ],

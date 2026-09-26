@@ -21,12 +21,12 @@
 const WarConditions = {
     SCHEMA: 'war-contract/1',
     RULES_ID: 'classic@0',
-    // Files whose code decides what happens in the world. The renderer is included on
-    // purpose: unit separation still runs in it, so it can change outcomes until that
-    // moves into the simulation step.
+    // Files whose code decides what happens in the world. The renderer left this list
+    // when separation moved into the simulation step: it decides nothing now, so a
+    // change to how the game LOOKS no longer splits comparable results.
     CORE_FILES: ['js/game.js', 'js/ai.js', 'js/units.js', 'js/buildings.js', 'js/civilizations.js',
                  'js/resources.js', 'js/standing-orders.js', 'js/terrain.js', 'js/fogofwar.js',
-                 'js/engine/texgen.js', 'js/engine/gamerenderer.js'],
+                 'js/engine/texgen.js', 'js/simulation/position-rules.js'],
     HARNESS_FILE: 'js/openai-ai.js',
 
     lf(text) { return String(text == null ? '' : text).replace(/\r\n/g, '\n'); },

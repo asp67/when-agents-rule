@@ -71,7 +71,9 @@ built behind it, `main` stays on Three.js until the swap milestone.
   scenes flank, never stack, along the view diagonal.
 - **M4 — integration (done)**: EngineRenderer implements GameRenderer's whole
   public surface — entity bookkeeping, embedded sim duties (AI movement lerp,
-  separation, building clearance — copied bit-identical), ortho ground-plane
+  separation, building clearance — copied bit-identical; separation and
+  clearance have since moved into the simulation step, see
+  docs/RULES-CHANGES.md build 933), ortho ground-plane
   picking, screen-space marquee, selection rings, building previews +
   validity, camera intents (position/lookAt map onto dimetric target + ortho
   zoom), health/food bars, projectiles, battle pings, flash-hit tints,

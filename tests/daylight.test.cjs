@@ -19,13 +19,13 @@ test('day cycle preserves noon, stays readable at night and wraps continuously',
 
 test('real ticks keep ambient time at 1x while simulation accelerates, and freeze it on pause',()=>{
  const source=fs.readFileSync(require('node:path').join(__dirname,'../js/game.js'),'utf8');
- const context=vm.createContext({document:{hidden:true},Date:{now:()=>1000}});
+ const context=vm.createContext({document:{hidden:true},Date:{now:()=>1000},WarPositionRules:{apply(){}}});
  vm.runInContext(source.slice(0,source.indexOf('\nconst WAR_PRIVATE_HOST')),context);
  for(const speed of [1,1.5,2,4])for(const pauseState of ['running','paused']){
   const game=vm.runInContext('Object.create(Game.prototype)',context);
   const done=new Error('end of clock check');let simulated=0;
   Object.assign(game,{lastFrameTime:0,simSpeed:speed,pauseState,
-   aiManager:{aiPlayers:[],update(){}},sampleTimeline(){},pruneBattles(){},
+   aiManager:{aiPlayers:[],update(){}},sampleTimeline(){},pruneBattles(){},renderer:{units:[],buildings:[]},
    anyWonderStanding:()=>false,simulateStep:ms=>simulated+=ms,
    keepUnitsAshore(){},checkWinConditions(){throw done;}});
   assert.throws(()=>game.tick(),error=>error===done);
