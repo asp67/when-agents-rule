@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 function setup(){
  const scope=vm.createContext({console,getCivilization:()=>({uniqueBuildings:[],techTree:{},bonuses:{}})});
- for(const file of ['buildings','units','openai-ai'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/'+file+'.js'),'utf8'),scope);
+ for(const file of ['simulation/math','buildings','units','openai-ai'])vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/'+file+'.js'),'utf8'),scope);
  const Manager=vm.runInContext('OpenAIAIManager',scope),m=new Manager({});
  const ai={id:'a',civilization:'greek',age:'iron',researchedTechs:{tower:true},units:[],buildings:[],resources:{hasResources:()=>true,spendResources(){spent++;}}};
  let spent=0;const added=[];

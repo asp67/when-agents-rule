@@ -344,8 +344,8 @@ class Game {
             const angle = (i / numPlayers) * Math.PI * 2 - Math.PI / 2;
             const radius = halfSize * 0.85;
             spawnPositions.push({
-                x: Math.cos(angle) * radius,
-                z: Math.sin(angle) * radius
+                x: WarMath.cos(angle) * radius,
+                z: WarMath.sin(angle) * radius
             });
         }
 
@@ -542,8 +542,8 @@ class Game {
             const angle = (i / totalPlayers) * Math.PI * 2 - Math.PI / 2; // Start from top
             const radius = halfSize * 0.85; // 85% of half-size
             spawnPositions.push({
-                x: Math.cos(angle) * radius,
-                z: Math.sin(angle) * radius
+                x: WarMath.cos(angle) * radius,
+                z: WarMath.sin(angle) * radius
             });
         }
 
@@ -1416,7 +1416,7 @@ class Game {
                 // push attackers just outside it forever, starving attackTimer.
                 // The small inward stand-off above resists those nudges; epsilon
                 // only covers coordinate rounding, not extra weapon reach.
-                if (Math.hypot(currentTarget.x-unit.x,currentTarget.z-unit.z) <= attackRange + 1e-6) {
+                if (WarMath.hypot(currentTarget.x-unit.x,currentTarget.z-unit.z) <= attackRange + 1e-6) {
                     // In range - attack!
                     unit.formationOffset = null;   // fighting now; the march shape is over
                     unit.isMoving = false;
@@ -1499,7 +1499,7 @@ class Game {
             let patient = null, best = HEAL_SEARCH;
             owner.units.forEach(o => {
                 if (o === u || o.health <= 0 || o.health >= o.maxHealth) return;
-                const d = Math.hypot(o.x - u.x, o.z - u.z);
+                const d = WarMath.hypot(o.x - u.x, o.z - u.z);
                 if (d < best) { best = d; patient = o; }
             });
             if (!patient) return;
@@ -1539,13 +1539,13 @@ class Game {
         let minDist = range;
         this.renderer.units.forEach(o => {
             if (o.owner === unit.owner || o.health <= 0) return;
-            const d = Math.hypot(o.x - unit.x, o.z - unit.z);
+            const d = WarMath.hypot(o.x - unit.x, o.z - unit.z);
             if (d < minDist) { minDist = d; nearest = o; }
         });
         if (includeBuildings) {
             this.renderer.buildings.forEach(b => {
                 if (b.owner === unit.owner || b.health <= 0) return;
-                const d = Math.hypot(b.x - unit.x, b.z - unit.z);
+                const d = WarMath.hypot(b.x - unit.x, b.z - unit.z);
                 if (d < minDist) { minDist = d; nearest = b; }
             });
         }
@@ -1700,7 +1700,7 @@ class Game {
                             1: Game.BATTLE_RADIUS * 1.5, 0: Game.BATTLE_RADIUS };
             const reach = REACH[this.threatPriority(primary.ent)];
             let defenders = military.filter(u => !u._standingOrder && !u.isAttacking &&
-                Math.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= reach);
+                WarMath.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= reach);
             // A WONDER under attack is existential — it IS the win condition — so it
             // is ALL HANDS ON DECK: every worker downs tools and fights ALONGSIDE the
             // army, from anywhere on the map. For anything else workers stay a last
@@ -1717,7 +1717,7 @@ class Game {
                 // economy job the worker should return to.)
                 hands = owner.units.filter(u => u.type === 'worker' && u.health > 0 && !u._standingOrder &&
                     !u.isAttacking &&
-                    (wonderRaid || Math.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= 28));
+                    (wonderRaid || WarMath.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= 28));
                 defenders = defenders.concat(hands);
             }
             const usingWorkers = hands.length > 0;
@@ -1737,11 +1737,11 @@ class Game {
             // drafted-worker note above warns about), and a priest tending another live
             // battle is not recalled off an ongoing assault to answer a scratch at home.
             const defenceOnSite = defenders.length > 0 || military.some(u =>
-                u.isAttacking && Math.hypot(u.x - atk.x, u.z - atk.z) <= Game.BATTLE_RADIUS);
+                u.isAttacking && WarMath.hypot(u.x - atk.x, u.z - atk.z) <= Game.BATTLE_RADIUS);
             if (defenceOnSite) {
                 this.escortSupportUnits(owner.units.filter(u =>
                     u.unitType === 'support' && u.health > 0 && !u._standingOrder &&
-                    !(u.isMoving && Math.hypot(u.targetX - atk.x, u.targetZ - atk.z) < 12) &&
+                    !(u.isMoving && WarMath.hypot(u.targetX - atk.x, u.targetZ - atk.z) < 12) &&
                     !this.tendingOtherBattle(u, atk)), atk.x, atk.z);
             }
 
@@ -1812,8 +1812,8 @@ class Game {
         const now = this.simNow();
         return (this._battles || []).some(b =>
             (now - b.lastAt) < Game.BATTLE_QUIET_MS &&
-            Math.hypot(b.x - atk.x, b.z - atk.z) > Game.BATTLE_RADIUS &&
-            Math.hypot(unit.x - b.x, unit.z - b.z) <= Game.BATTLE_RADIUS);
+            WarMath.hypot(b.x - atk.x, b.z - atk.z) > Game.BATTLE_RADIUS &&
+            WarMath.hypot(unit.x - b.x, unit.z - b.z) <= Game.BATTLE_RADIUS);
     }
 
     // A worker's fight is over: send it back to the economy job it was drafted
@@ -2146,7 +2146,7 @@ class Game {
         const cx = live.reduce((a, u) => a + u.x, 0) / live.length;
         const cz = live.reduce((a, u) => a + u.z, 0) / live.length;
         let r = 0;
-        live.forEach(u => { r = Math.max(r, Math.hypot(u.x - cx, u.z - cz)); });
+        live.forEach(u => { r = Math.max(r, WarMath.hypot(u.x - cx, u.z - cz)); });
         return Math.max(22, Math.min(60, r * 1.5 + 14));
     }
 
@@ -2186,7 +2186,7 @@ class Game {
             if (!ent || ent.health <= 0) return;
             const s = rnd.worldToScreen(ent.x, anchorY, ent.z);
             if (!s) return;
-            const d = Math.hypot(s.x - px, s.y - py);
+            const d = WarMath.hypot(s.x - px, s.y - py);
             if (d > radius) return;
             const score = d - (isUnit ? 8 : 0); // a unit standing on a building wins
             if (score < bestScore) { bestScore = score; best = ent; bestIsUnit = isUnit; }
@@ -2301,7 +2301,7 @@ class Game {
         const R = Game.BATTLE_RADIUS;
         this.pruneBattles();
         const near = this._battles.filter(e =>
-            (now - e.lastAt) <= Game.BATTLE_QUIET_MS && Math.hypot(e.x - x, e.z - z) <= R);
+            (now - e.lastAt) <= Game.BATTLE_QUIET_MS && WarMath.hypot(e.x - x, e.z - z) <= R);
         let b = near[0] || null;
         // Two fronts that grow together are ONE battle — models routinely split an
         // army across a village and then regroup on one spot, and separate buckets
@@ -2590,7 +2590,7 @@ class Game {
                 if (u.type !== 'worker' || u.health <= 0) return;
                 if (u.task !== 'carrying' || !u.carryingResource) return;
                 let best = null, bd = Infinity;
-                drops.forEach(tc => { const d = Math.hypot(tc.x - u.x, tc.z - u.z); if (d < bd) { bd = d; best = tc; } });
+                drops.forEach(tc => { const d = WarMath.hypot(tc.x - u.x, tc.z - u.z); if (d < bd) { bd = d; best = tc; } });
                 if (best) { u.targetX = best.x; u.targetZ = best.z; u.isMoving = true; }
             });
             return 0;
@@ -2632,7 +2632,7 @@ class Game {
         const drops = owner.buildings.filter(b => b.type === 'town_center' && !b.underConstruction && b.health > 0);
         if (!drops.length) return 0;
         const nearestTC = (x, z) => drops.reduce((best, tc) =>
-            (!best || Math.hypot(tc.x - x, tc.z - z) < Math.hypot(best.x - x, best.z - z)) ? tc : best, null);
+            (!best || WarMath.hypot(tc.x - x, tc.z - z) < WarMath.hypot(best.x - x, best.z - z)) ? tc : best, null);
         const busy = u => u.isAttacking || u.attackTarget || u.isBuilding || u.task === 'building' || u.task === 'repairing';
         let resumed = 0;
 
@@ -3387,7 +3387,7 @@ class Game {
         for (const u of workers) {
             const rank = this.workerPullRank(owner, u);
             if (rank === Infinity) continue;   // building or fighting: never pulled
-            const walk = Math.hypot(u.x - site.x, u.z - site.z) / (((u.speed || 1) * 3) || 3);
+            const walk = WarMath.hypot(u.x - site.x, u.z - site.z) / (((u.speed || 1) * 3) || 3);
             const cost = walk + (PULL_SECS[rank] || 0);
             if (cost < bestCost) { bestCost = cost; best = u; bestRank = rank; }
         }
@@ -3566,7 +3566,7 @@ class Game {
             if (!b || b.health <= 0 || b.type === 'farm') continue;
             const clr = (b.isWonder ? Game.WONDER_CLEARANCE : Game.UNIT_BUILDING_CLEARANCE) + 0.5;
             const dx = sx - b.x, dz = sz - b.z;
-            const d = Math.hypot(dx, dz);
+            const d = WarMath.hypot(dx, dz);
             if (d >= clr) continue;
             if (d < 0.01) { sx = b.x + clr; continue; }   // dead centre: any direction out
             sx = b.x + (dx / d) * clr;
@@ -3598,7 +3598,7 @@ class Game {
         const clr = this.resourceClearance(buildingType, isWonder);
         for (const r of res) {
             if (r.amount !== undefined && r.amount <= 0) continue; // depleted node won't block
-            if (Math.hypot(r.x - x, r.z - z) < clr) return true;
+            if (WarMath.hypot(r.x - x, r.z - z) < clr) return true;
         }
         return false;
     }
@@ -3787,7 +3787,7 @@ class Game {
         let idx = -1, best = 6;
         res.forEach((r, i) => {
             if (r.amount !== undefined && r.amount <= 0) return;
-            const d = Math.hypot(r.x - x, r.z - z);
+            const d = WarMath.hypot(r.x - x, r.z - z);
             if (d < best) { best = d; idx = i; }
         });
         // Report civ AND seat: two players can field the SAME civilization, so
@@ -3873,7 +3873,7 @@ class Game {
         info.forEach((g, gid) => {
             seen.add(gid);
             if (!g.n || !g.target) return;
-            const d = Math.hypot(g.cx / g.n - g.target.x, g.cz / g.n - g.target.z);
+            const d = WarMath.hypot(g.cx / g.n - g.target.x, g.cz / g.n - g.target.z);
             const now = this.simNow();
             const st = chase.get(gid) || { min: d, minAt: now, charging: false };
             // A real gain, not noise: two units of jitter must not keep resetting the
@@ -4145,7 +4145,7 @@ class Game {
             cx /= myEyes.length; cz /= myEyes.length;
             let reach = 0;
             myEyes.forEach(s => {
-                const d = Math.hypot(s.e.x - cx, s.e.z - cz) + Math.max(s.r, Game.CONTACT_CAMERA_RANGE);
+                const d = WarMath.hypot(s.e.x - cx, s.e.z - cz) + Math.max(s.r, Game.CONTACT_CAMERA_RANGE);
                 if (d > reach) reach = d;
             });
 
@@ -4159,7 +4159,7 @@ class Game {
                 targets.forEach(t => {
                     // Cheap rejection first: outside the circle round everything I own,
                     // no eye of mine can see it and no unit of mine is near it.
-                    if (Math.hypot(t.x - cx, t.z - cz) > reach) return;
+                    if (WarMath.hypot(t.x - cx, t.z - cz) > reach) return;
                     // Both answers in one pass: the CLOSEST of my things to it (the
                     // camera's question, which counts near misses nobody saw) and
                     // whether any of them could actually see it (the event's question).
@@ -4168,7 +4168,7 @@ class Game {
                     // is merely the first one tried.
                     let best = Infinity, sawAt = null, nearMine = null;
                     for (const src of myEyes) {
-                        const d = Math.hypot(src.e.x - t.x, src.e.z - t.z);
+                        const d = WarMath.hypot(src.e.x - t.x, src.e.z - t.z);
                         // Prefer a UNIT over a building at equal distance: the shot is
                         // "from the thing that walked into them", and a barracks did not
                         // walk anywhere.
@@ -4187,10 +4187,10 @@ class Game {
                         // model was already told; saying it again spends a line to
                         // repeat a coordinate. After a few turns it is worth confirming.
                         const back = !was && gone.get(key);
-                        const parked = back && Math.hypot(t.x - back.x, t.z - back.z) < Game.CONTACT_FLAP_DIST
+                        const parked = back && WarMath.hypot(t.x - back.x, t.z - back.z) < Game.CONTACT_FLAP_DIST
                                             && (turnSeq - back.seq) < Game.CONTACT_FLAP_TURNS && back.carrying === carrying;
                         // New, or it has gone somewhere since we last said so.
-                        const moved = was && Math.hypot(t.x - was.rx, t.z - was.rz) >= Game.CONTACT_MOVED_DIST;
+                        const moved = was && WarMath.hypot(t.x - was.rx, t.z - was.rz) >= Game.CONTACT_MOVED_DIST;
                         const report = (!was && !parked) || moved || (was && was.carrying !== carrying);
                         if (back) gone.delete(key);
                         // TWO positions are kept, and the difference between them is the
@@ -4253,7 +4253,7 @@ class Game {
                 gone.set(key, { x: was.x, z: was.z, seq: turnSeq, carrying: was.carrying });
                 // Lost where it was found: the pair draws no line, so it is one fact
                 // reported twice. The sighting already said where it is.
-                if (Math.hypot(was.x - was.sx, was.z - was.sz) < Game.CONTACT_FLAP_DIST) return;
+                if (WarMath.hypot(was.x - was.sx, was.z - was.sz) < Game.CONTACT_FLAP_DIST) return;
                 const k = was.who + '|' + was.type + '|lost|' + (was.carrying || '');
                 const cur = lost.get(k);
                 if (!cur) lost.set(k, { n: 1, x: was.x, z: was.z, who: was.who, type: was.type, carrying: was.carrying });
@@ -4326,7 +4326,7 @@ class Game {
                     if (gx < 0 || gx >= G || gz < 0 || gz >= G) continue;
                     const wx = (gx + 0.5) * cell - half;
                     const wz = (gz + 0.5) * cell - half;
-                    if (Math.hypot(wx - x, wz - z) <= range) grid[gz * G + gx] = 1;
+                    if (WarMath.hypot(wx - x, wz - z) <= range) grid[gz * G + gx] = 1;
                 }
             }
         };
@@ -4441,7 +4441,7 @@ class Game {
                 u.task === 'building' && u.buildTarget === b);
             if (hasBuilder) continue;
             if (!unit) return b;
-            const d = Math.hypot(b.x - unit.x, b.z - unit.z);
+            const d = WarMath.hypot(b.x - unit.x, b.z - unit.z);
             if (d < bestD) { bestD = d; best = b; }
         }
         return best;
@@ -4593,7 +4593,7 @@ class Game {
                 ? (!this.fogOfWar || this.fogOfWar.isPositionVisible(r.x, r.z))
                 : !!(owner._knownResIdx && owner._knownResIdx.has(idx));
             if (!known) return;
-            const d = Math.hypot(r.x - fromX, r.z - fromZ);
+            const d = WarMath.hypot(r.x - fromX, r.z - fromZ);
             if (d < bestDist) { bestDist = d; best = r; }
         });
         if (!best) return; // nothing of this type discovered & left → idle
@@ -4688,11 +4688,11 @@ class Game {
                             const RIM = { stone: 2.1, gold: 1.9, food: 1.45, wood: 0.9 };
                             const rim = RIM[n.type] || 1.2;
                             let rx = unit.x - n.x, rz = unit.z - n.z;
-                            let rd = Math.hypot(rx, rz);
+                            let rd = WarMath.hypot(rx, rz);
                             if (rd < rim) {
                                 if (rd < 0.01) { // dead-center: spread by a stable per-unit angle
                                     const a = ((unit.id || '').length * 2.4 + n.x * 0.13 + n.z * 0.17) % 6.283;
-                                    rx = Math.cos(a); rz = Math.sin(a); rd = 1;
+                                    rx = WarMath.cos(a); rz = WarMath.sin(a); rd = 1;
                                 }
                                 unit.x = n.x + (rx / rd) * rim;
                                 unit.z = n.z + (rz / rd) * rim;
@@ -5206,8 +5206,8 @@ class Game {
                     const spawnAngle = this.rand(building, 'train-exit') * Math.PI * 2;
                     const footRadius = (building.isWonder || building.type === 'town_center') ? 5 : 3.5;
                     const spawnDist = footRadius + 3 + this.rand(building, 'train-exit') * 1.5; // clear of the mesh + a little spread
-                    const spawnX = building.x + Math.cos(spawnAngle) * spawnDist;
-                    const spawnZ = building.z + Math.sin(spawnAngle) * spawnDist;
+                    const spawnX = building.x + WarMath.cos(spawnAngle) * spawnDist;
+                    const spawnZ = building.z + WarMath.sin(spawnAngle) * spawnDist;
                     
                     // Determine the age/tier for the unit
                     const age = (owner && owner.age) || 'stone';
@@ -5663,7 +5663,7 @@ class Game {
         if (this._combatPings && this._combatPings.length) {
             const now = Date.now();
             this._combatPings = this._combatPings.filter(p => p.until > now);
-            const pulse = 2.5 + Math.sin(now / 120) * 1.5;
+            const pulse = 2.5 + WarMath.sin(now / 120) * 1.5;
             ctx.strokeStyle = 'rgba(255, 70, 40, 0.9)';
             ctx.lineWidth = 1.5;
             this._combatPings.forEach(p => {

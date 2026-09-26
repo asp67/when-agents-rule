@@ -50,7 +50,7 @@ function inert(name, calls, own = {}) {
     });
 }
 
-const RULE_FILES = ['js/simulation/rng.js', 'js/engine/texgen.js', 'js/civilizations.js', 'js/buildings.js', 'js/units.js', 'js/resources.js',
+const RULE_FILES = ['js/simulation/rng.js', 'js/simulation/math.js', 'js/engine/texgen.js', 'js/civilizations.js', 'js/buildings.js', 'js/units.js', 'js/resources.js',
     'js/terrain.js', 'js/fogofwar.js', 'js/simulation/position-rules.js', 'js/ai.js', 'js/sha256.js', 'js/conditions.js', 'js/openai-ai.js',
     'js/game.js', 'js/standing-orders.js'];
 

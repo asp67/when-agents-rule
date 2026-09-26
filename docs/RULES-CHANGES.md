@@ -6,6 +6,18 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 937: portable math (27 September 2026)
+
+Rule code measures distances and angles with `Math.hypot`, `Math.sin`, `Math.cos` and `Math.atan2`. The language fixes `+ − × ÷` and `sqrt` to the last bit, but leaves these functions to each engine. Engines differ, and so do builds of the same engine: on 27 September 2026, Chrome 152 differed from Node 24 (both V8) in the last bit for 2–18% of `sin`, `cos` and `atan2` inputs. In a simulation, one last-bit difference in a distance can decide which unit reaches a target first, and from there a fight. So a match in the browser and the same match on a Node server could not stay identical, and neither could a transcript replayed in another browser.
+
+Rule code now uses `js/simulation/math.js`. It is built from the exact operations only and follows the routines Node's V8 uses: fdlibm for `sin`, `cos` and `atan2`, and V8's own `hypot`. The effects:
+
+- **In Node:** results are bit-identical to before. A million sampled inputs per function match, and the golden traces pass unchanged.
+- **In a browser:** the results are now Node's. In Chrome 152 that changes `sin`, `cos` and `atan2` in the last bit for a few percent of inputs.
+- **Maps:** a map seed produces the same map in Chrome and in Node, checked bit for bit on three seeds.
+
+The texture painters keep `Math`; they only paint. A test rejects the other functions in rule files.
+
 ## Build 936: ids are seeded (26 September 2026)
 
 Unit, building and player ids come from the match's keyed draws: a prefix and eleven base-36 characters (`unit_01b9tq47n3o`). They used to be `unit_<milliseconds>_<random>`.

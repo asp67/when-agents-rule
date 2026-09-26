@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '..');
 function load() {
     const scope = { console: { log() {}, warn() {}, error() {} } };
     vm.createContext(scope);
-    for (const f of ['js/ai.js', 'js/openai-ai.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), scope);
+    for (const f of ['js/simulation/math.js', 'js/ai.js', 'js/openai-ai.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), scope);
     return vm.runInContext('({ AIManager, OpenAIAIManager, buildVisionTest })', scope);
 }
 // The real vision rules, read from game.js's methods rather than copied.
@@ -16,6 +16,7 @@ function gameRules() {
     const src = fs.readFileSync(path.join(root, 'js/game.js'), 'utf8');
     const scope = { document: { hidden: true } };
     vm.createContext(scope);
+    vm.runInContext(fs.readFileSync(path.join(root, 'js/simulation/math.js'), 'utf8'), scope);
     vm.runInContext(src.slice(0, src.indexOf('\nconst WAR_PRIVATE_HOST')), scope);
     const G = vm.runInContext('Game', scope);
     return { unitVision: G.prototype.unitVision, buildingVision: G.prototype.buildingVision };

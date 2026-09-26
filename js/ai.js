@@ -56,7 +56,7 @@ function buildVisionTest(game, ai, harness) {
             if (harness) {
                 const dx = e.x - x, dz = e.z - z;
                 if (Math.sqrt(dx * dx + dz * dz) <= e.r) return true;
-            } else if (Math.hypot(e.x - x, e.z - z) <= e.r) return true;
+            } else if (WarMath.hypot(e.x - x, e.z - z) <= e.r) return true;
         }
         return false;
     };
@@ -163,12 +163,12 @@ class AIManager {
         for (const u of ai.units) {
             if (u.health <= 0) continue;
             const range = this.game.unitVision(u); // cavalry sees 50% farther
-            if (Math.hypot(u.x - x, u.z - z) <= range) return true;
+            if (WarMath.hypot(u.x - x, u.z - z) <= range) return true;
         }
         for (const b of ai.buildings) {
             if (b.health <= 0) continue;
             const range = this.game.buildingVision(b); // 0 while under construction
-            if (range > 0 && Math.hypot(b.x - x, b.z - z) <= range) return true;
+            if (range > 0 && WarMath.hypot(b.x - x, b.z - z) <= range) return true;
         }
         return false;
     }
@@ -285,7 +285,7 @@ class AIManager {
             const r = res[idx];
             if (!r || r.amount <= 0) return;
             if (type && r.type !== type) return;
-            const d = Math.hypot(r.x - unit.x, r.z - unit.z);
+            const d = WarMath.hypot(r.x - unit.x, r.z - unit.z);
             if (d < minDist) { minDist = d; nearest = r; }
         });
         return nearest;
@@ -416,8 +416,8 @@ class AIManager {
             ai._scoutAngle = (ai._scoutAngle == null) ? this.game.rand(ai, 'scout') * Math.PI * 2 : ai._scoutAngle + 2.399963;
             ai._scoutRadius = Math.min(half, (ai._scoutRadius || 60) + 40);
             const c = ai.buildings[0] || { x: 0, z: 0 };
-            tx = c.x + Math.cos(ai._scoutAngle) * ai._scoutRadius;
-            tz = c.z + Math.sin(ai._scoutAngle) * ai._scoutRadius;
+            tx = c.x + WarMath.cos(ai._scoutAngle) * ai._scoutRadius;
+            tz = c.z + WarMath.sin(ai._scoutAngle) * ai._scoutRadius;
         }
         scout.task = scout.type === 'worker' ? 'scouting' : null;
         scout.isMoving = true;
@@ -631,8 +631,8 @@ class AIManager {
                 ai._armyScoutAngle = (ai._armyScoutAngle == null) ? this.game.rand(ai, 'army-scout') * Math.PI * 2 : ai._armyScoutAngle + 2.399963;
                 ai._armyScoutRadius = Math.min(half, (ai._armyScoutRadius || 90) + 60);
                 ai._armyScoutTarget = {
-                    x: Math.max(-half, Math.min(half, base.x + Math.cos(ai._armyScoutAngle) * ai._armyScoutRadius)),
-                    z: Math.max(-half, Math.min(half, base.z + Math.sin(ai._armyScoutAngle) * ai._armyScoutRadius))
+                    x: Math.max(-half, Math.min(half, base.x + WarMath.cos(ai._armyScoutAngle) * ai._armyScoutRadius)),
+                    z: Math.max(-half, Math.min(half, base.z + WarMath.sin(ai._armyScoutAngle) * ai._armyScoutRadius))
                 };
                 ai._armyScoutTicks = 0;
                 newLeg = true;
@@ -683,7 +683,7 @@ class AIManager {
         const others = [...ai.buildings];
         if (this.game.player) others.push(...this.game.player.buildings);
         for (const b of others) {
-            if (Math.hypot(b.x - x, b.z - z) < (isWonder ? 12 : 9)) return false;
+            if (WarMath.hypot(b.x - x, b.z - z) < (isWonder ? 12 : 9)) return false;
         }
         if (this.game.isTooCloseToResource && this.game.isTooCloseToResource(x, z, buildingType, isWonder)) return false;
         if (this.game.clampToMap) {
@@ -709,8 +709,8 @@ class AIManager {
                 const a0 = this.game.rand(ai, 'build-site') * Math.PI * 2;
                 for (let s = 0; s < steps; s++) {
                     const ang = a0 + (s / steps) * 2 * Math.PI;
-                    const x = tc.x + Math.cos(ang) * radius;
-                    const z = tc.z + Math.sin(ang) * radius;
+                    const x = tc.x + WarMath.cos(ang) * radius;
+                    const z = tc.z + WarMath.sin(ang) * radius;
                     if (this.isClearBuildSpot(ai, buildingType, isWonder, x, z)) return { x, z };
                 }
             }
@@ -781,6 +781,6 @@ class AIManager {
     }
 
     distance(a, b) {
-        return Math.hypot(a.x - b.x, a.z - b.z);
+        return WarMath.hypot(a.x - b.x, a.z - b.z);
     }
 }

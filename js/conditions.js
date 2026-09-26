@@ -26,7 +26,8 @@ const WarConditions = {
     // change to how the game LOOKS no longer splits comparable results.
     CORE_FILES: ['js/game.js', 'js/ai.js', 'js/units.js', 'js/buildings.js', 'js/civilizations.js',
                  'js/resources.js', 'js/standing-orders.js', 'js/terrain.js', 'js/fogofwar.js',
-                 'js/engine/texgen.js', 'js/simulation/position-rules.js', 'js/simulation/rng.js'],
+                 'js/engine/texgen.js', 'js/simulation/position-rules.js', 'js/simulation/rng.js',
+                 'js/simulation/math.js'],
     HARNESS_FILE: 'js/openai-ai.js',
 
     lf(text) { return String(text == null ? '' : text).replace(/\r\n/g, '\n'); },

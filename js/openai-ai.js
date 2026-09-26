@@ -1131,7 +1131,7 @@ class OpenAIAIManager {
         units.forEach(u => { cx += u.x; cz += u.z; });
         cx /= units.length; cz /= units.length;
         let dx = tx - cx, dz = tz - cz;
-        const d = Math.hypot(dx, dz);
+        const d = WarMath.hypot(dx, dz);
         // Already standing on the destination: no direction to face, so no rotation to
         // apply. Point north rather than dividing by zero.
         if (d < 0.001) { dx = 0; dz = -1; } else { dx /= d; dz /= d; }
@@ -1198,7 +1198,7 @@ class OpenAIAIManager {
         const g = this.game;
         const base = (g && g.moveSpeedOf) ? g.moveSpeedOf(unit) : ((unit && unit.speed) || 1.0);
         const sp = ((base || 1.0) * 3) || 3;
-        const d = Math.hypot(((unit && unit.x) || 0) - tx, ((unit && unit.z) || 0) - tz);
+        const d = WarMath.hypot(((unit && unit.x) || 0) - tx, ((unit && unit.z) || 0) - tz);
         return Math.max(1, this.realSecs((d / sp) * 1000));
     }
 
@@ -2799,7 +2799,7 @@ class OpenAIAIManager {
             if (u.attackMove && !inContact) {
                 to = u.attackMove; order = 'attack_target';
             } else if (u._moveOrderTo && u.isMoving && !u.task && !u.attackMove && !u.isAttacking
-                       && Math.hypot(u.targetX - u._moveOrderTo.x, u.targetZ - u._moveOrderTo.z) < NEAR) {
+                       && WarMath.hypot(u.targetX - u._moveOrderTo.x, u.targetZ - u._moveOrderTo.z) < NEAR) {
                 to = u._moveOrderTo; order = 'move_units';
             }
             if (!to) return;
@@ -2833,7 +2833,7 @@ class OpenAIAIManager {
                 const tc = (ai.buildings || [])
                     .filter(b => b.type === 'town_center' && !b.underConstruction)
                     .reduce((best, b) => {
-                        const d = Math.hypot(b.x - u.x, b.z - u.z);
+                        const d = WarMath.hypot(b.x - u.x, b.z - u.z);
                         return (!best || d < best.d) ? { b, d } : best;
                     }, null);
                 if (tc) { row.timed = true; row.eta = Math.max(row.eta, this.travelEtaSec(u, tc.b.x, tc.b.z)); }
@@ -3053,7 +3053,7 @@ class OpenAIAIManager {
         byType.stone.concat(byType.gold).forEach(n => nearby.set(n.x + ',' + n.z, n));
         anchors.forEach(a => ['food', 'wood'].forEach(ty => {
             byType[ty]
-                .map(n => ({ n, d: Math.hypot(a.x - n.x, a.z - n.z) }))
+                .map(n => ({ n, d: WarMath.hypot(a.x - n.x, a.z - n.z) }))
                 .sort((p, q) => p.d - q.d)
                 .slice(0, OpenAIAIManager.NEAREST_PER_ANCHOR)
                 .forEach(({ n }) => nearby.set(n.x + ',' + n.z, n));
@@ -6285,7 +6285,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const tx = Number(params && params.targetX), tz = Number(params && params.targetZ);
         if (!Number.isFinite(tx) || !Number.isFinite(tz)) return { b: freeList[0], note: '' };
         const nearestIn = (list) => list.reduce((best, b) => {
-            const d = Math.hypot(b.x - tx, b.z - tz);
+            const d = WarMath.hypot(b.x - tx, b.z - tz);
             return (!best || d < best.d) ? { b, d } : best;
         }, null);
         const chosen = nearestIn(freeList);
@@ -6698,7 +6698,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     sameSettlement(ai, x, z, buildingType) {
         const all = (ai.buildings || []).filter(b => b && Number.isFinite(b.x));
         const link = this.LANE_LINK_RADIUS();
-        const near = (a, b) => Math.hypot(a.x - b.x, a.z - b.z) <= link;
+        const near = (a, b) => WarMath.hypot(a.x - b.x, a.z - b.z) <= link;
         const here = { x, z };
         const reached = new Set();
         let frontier = all.filter(b => near(b, here));
@@ -6925,8 +6925,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // Roughly double the old radius so bases occupy a larger footprint.
             const ang = game.rand(ai, 'build-site') * Math.PI * 2;
             const rad = isWonderBuild ? (game.rand(ai, 'build-site') - 0.5) * 20 : 18 + game.rand(ai, 'build-site') * 28;
-            x = tc.x + Math.cos(ang) * rad;
-            z = tc.z + Math.sin(ang) * rad;
+            x = tc.x + WarMath.cos(ang) * rad;
+            z = tc.z + WarMath.sin(ang) * rad;
         } else {
             this.outcome('log.out.noTCPlacement', {});
             return `[ERROR] No Town Center found for placement reference.`;
@@ -6947,8 +6947,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 const a0 = game.rand(ai, 'build-site') * Math.PI * 2;
                 for (let s = 0; s < steps; s++) {
                     const ang = a0 + (s / steps) * 2 * Math.PI;
-                    const cx = tc.x + Math.cos(ang) * radius;
-                    const cz = tc.z + Math.sin(ang) * radius;
+                    const cx = tc.x + WarMath.cos(ang) * radius;
+                    const cz = tc.z + WarMath.sin(ang) * radius;
                     if (this.isSpotClear(ai, game, buildingType, true, cx, cz)) { spot = { x: cx, z: cz }; break outer; }
                 }
             }
@@ -7134,12 +7134,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const reqGap = b => (b.type === 'town_center' || b.isWonder) ? 11 : 9;
         const allBuildings = [...ai.buildings, ...game.player.buildings, ...game.aiManager.aiPlayers.flatMap(a => a.buildings)];
         for (const b of allBuildings) {
-            if (Math.hypot(x - b.x, z - b.z) < reqGap(b)) return false;
+            if (WarMath.hypot(x - b.x, z - b.z) < reqGap(b)) return false;
         }
         const resClr = game.resourceClearance(buildingType, isWonderBuild);
         for (const r of (game.terrain && game.terrain.resources) || []) {
             if (r.amount !== undefined && r.amount <= 0) continue;
-            if (Math.hypot(x - r.x, z - r.z) < resClr) return false;
+            if (WarMath.hypot(x - r.x, z - r.z) < resClr) return false;
         }
         return true;
     }
@@ -7203,7 +7203,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const pool = live.filter(u => !chosen.has(u) &&
                 ((u.type || '').toLowerCase() === type || (u.unitType || '').toLowerCase() === type));
             if (!pool.length) { skipped.push(`${rawType} (own none)`); continue; }
-            pool.sort((a, b) => Math.hypot(a.x - dx, a.z - dz) - Math.hypot(b.x - dx, b.z - dz));
+            pool.sort((a, b) => WarMath.hypot(a.x - dx, a.z - dz) - WarMath.hypot(b.x - dx, b.z - dz));
             const take = Math.min(want, pool.length);
             if (want > pool.length) clamped.push(`${rawType} ${want}->${pool.length}`);
             for (let i = 0; i < take; i++) chosen.add(pool[i]);
@@ -7454,7 +7454,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Same threshold the arrival resolver uses (ENGAGE = 30), so "engaging" here and
         // "engaged" there mean the same thing.
         const nearest = unitsToAttack.reduce((best, u) => {
-            const d = Math.hypot(u.x - target.x, u.z - target.z);
+            const d = WarMath.hypot(u.x - target.x, u.z - target.z);
             return (best === null || d < best.d) ? { u, d } : best;
         }, null);
         const inContact = nearest && nearest.d <= 30;
@@ -7539,7 +7539,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         let nearest = null, minDist = 40;
         for (const entity of [...game.getAllUnits(), ...game.getAllBuildings()]) {
             if (this.isOwnedByAI(entity, ai) || entity.health <= 0) continue;
-            const d = Math.hypot(entity.x - targetX, entity.z - targetZ);
+            const d = WarMath.hypot(entity.x - targetX, entity.z - targetZ);
             if (d < minDist) { minDist = d; nearest = entity; }
         }
         const form = this.applyFormation(game, unitsToAttack, targetX, targetZ, formation);
@@ -7615,10 +7615,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // reports itself. Close the order and write nothing.
                 const eng = onOrder.find(u => u.isAttacking && u.attackTarget && u.attackTarget.health > 0);
                 if (eng) { resolve(null); continue; }
-                const arrived = onOrder.some(u => Math.hypot(u.x - r.tx, u.z - r.tz) <= ARRIVE) || onOrder.every(u => !u.isMoving);
+                const arrived = onOrder.some(u => WarMath.hypot(u.x - r.tx, u.z - r.tz) <= ARRIVE) || onOrder.every(u => !u.isMoving);
                 if (arrived) {
                     const enemyNear = [...this.game.getAllUnits(), ...this.game.getAllBuildings()]
-                        .some(e => e.health > 0 && !this.isOwnedByAI(e, ai) && Math.hypot(e.x - r.tx, e.z - r.tz) <= ENGAGE);
+                        .some(e => e.health > 0 && !this.isOwnedByAI(e, ai) && WarMath.hypot(e.x - r.tx, e.z - r.tz) <= ENGAGE);
                     // The one arrival worth a line. No fight starts, so no battle entry is
                     // ever written, and the order's own units go quiet in the state -- from
                     // the model's side an empty clearing and a march still in progress look
@@ -7847,7 +7847,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
     nearestNodeTo(unit, nodes) {
         let best = null, bd = Infinity;
-        nodes.forEach(n => { const d = Math.hypot(n.x - unit.x, n.z - unit.z); if (d < bd) { bd = d; best = n; } });
+        nodes.forEach(n => { const d = WarMath.hypot(n.x - unit.x, n.z - unit.z); if (d < bd) { bd = d; best = n; } });
         return best || nodes[0];
     }
 
@@ -7890,10 +7890,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 this.outcome('log.out.farmNeedsCoords', {});
                 return `[ERROR] assign_workers to "farm" takes BOTH numeric "targetX" and "targetZ" (one of your farms in "buildings"), or neither — then your unmanned farms are staffed nearest-Town-Center first.`;
             }
-            open.sort((a, b) => Math.hypot(a.x - tx, a.z - tz) - Math.hypot(b.x - tx, b.z - tz));
+            open.sort((a, b) => WarMath.hypot(a.x - tx, a.z - tz) - WarMath.hypot(b.x - tx, b.z - tz));
         } else {
             const tcs = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction);
-            const dTC = f => tcs.reduce((m, tc) => Math.min(m, Math.hypot(f.x - tc.x, f.z - tc.z)), Infinity);
+            const dTC = f => tcs.reduce((m, tc) => Math.min(m, WarMath.hypot(f.x - tc.x, f.z - tc.z)), Infinity);
             open.sort((a, b) => dTC(a) - dTC(b));
         }
         const want = Math.max(1, Math.min(params.count || open.length, open.length));
@@ -7959,9 +7959,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const types=new Set();
         for(const type of ['food','wood','stone','gold'])
             for(const node of this.discoveredNodesOfType(ai,game,type))
-                if(Math.hypot(node.x-x,node.z-z)<=1)types.add(type);
+                if(WarMath.hypot(node.x-x,node.z-z)<=1)types.add(type);
         for(const farm of ai.buildings||[])
-            if(farm.type==='farm'&&farm.health>0&&Math.hypot(farm.x-x,farm.z-z)<=1)types.add('farm');
+            if(farm.type==='farm'&&farm.health>0&&WarMath.hypot(farm.x-x,farm.z-z)<=1)types.add('farm');
         if(types.size!==1)return {error:types.size?'Coordinates match more than one resource type; specify resourceType.':'No known resource node or owned farm matches these coordinates; specify resourceType or use known node coordinates.'};
         return {resourceType:[...types][0]};
     }
@@ -8018,7 +8018,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             node = discovered[0];
             for (const n of discovered) {
                 for (const tc of tcs) {
-                    const d = Math.hypot(n.x - tc.x, n.z - tc.z);
+                    const d = WarMath.hypot(n.x - tc.x, n.z - tc.z);
                     if (d < bd) { bd = d; node = n; }
                 }
             }
@@ -8298,7 +8298,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 w._orderToken = deferToken;
                 w._queuedAssign = { token: deferToken, node, resourceType };
                 const tc = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction)
-                    .reduce((best, b) => { const d = Math.hypot(b.x - w.x, b.z - w.z);
+                    .reduce((best, b) => { const d = WarMath.hypot(b.x - w.x, b.z - w.z);
                                            return (!best || d < best.d) ? { b, d } : best; }, null);
                 if (tc) deferSecs = Math.max(deferSecs, this.travelEtaSec(w, tc.b.x, tc.b.z));
                 deferred++; moved++;
@@ -8363,7 +8363,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // and it lands exactly where the decision happens.
         const tcs = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction);
         const nearTC = tcs.reduce((best, b) => {
-            const d = Math.hypot(b.x - node.x, b.z - node.z);
+            const d = WarMath.hypot(b.x - node.x, b.z - node.z);
             return (!best || d < best.d) ? { b, d } : best;
         }, null);
         const haul = nearTC ? ` Each load is a ~${Math.max(1, Math.round(nearTC.d / (3 * 1.0)))}s walk back to your nearest Town Center.` : '';
@@ -8390,7 +8390,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             }
             let best = null, bd = Infinity;
             damaged.forEach(b => {
-                const d = Math.hypot(b.x - tx, b.z - tz);
+                const d = WarMath.hypot(b.x - tx, b.z - tz);
                 if (d < bd) { bd = d; best = b; }
             });
             if (!best || bd > 12) {
@@ -8405,7 +8405,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const count = Math.max(1, Math.min(params.count || 1, 5));
         const workers = ai.units
             .filter(u => u.type === 'worker' && u.health > 0 && u.task !== 'building' && !u.isBuilding)
-            .sort((a, b) => Math.hypot(a.x - target.x, a.z - target.z) - Math.hypot(b.x - target.x, b.z - target.z))
+            .sort((a, b) => WarMath.hypot(a.x - target.x, a.z - target.z) - WarMath.hypot(b.x - target.x, b.z - target.z))
             .slice(0, count);
         if (workers.length === 0) {
             this.outcome('log.out.noWorkersRepair', {});
@@ -8594,7 +8594,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         let victim = pool[0];
         if (targetX !== undefined && targetZ !== undefined) {
             let bd = Infinity;
-            pool.forEach(b => { const d = Math.hypot(b.x - targetX, b.z - targetZ); if (d < bd) { bd = d; victim = b; } });
+            pool.forEach(b => { const d = WarMath.hypot(b.x - targetX, b.z - targetZ); if (d < bd) { bd = d; victim = b; } });
         }
         const wasTC = victim.type === 'town_center';
         const remainingTC = ai.buildings.filter(b => b.type === 'town_center').length;

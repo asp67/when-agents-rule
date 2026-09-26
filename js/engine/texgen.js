@@ -426,7 +426,7 @@
                     const v = 105 + rand() * 75;
                     ctx.fillStyle = `rgba(${(v * 0.5) | 0},${v | 0},${(v * 0.38) | 0},0.8)`;
                     const a = rand() * Math.PI * 2, rr = rand() * r;
-                    ctx.fillRect(x + Math.cos(a) * rr, y + Math.sin(a) * rr, 1.5, 2.5 + rand() * 2);
+                    ctx.fillRect(x + Math.cos(a) * rr, y + Math.sin(a) * rr, 1.5, 2.5 + rand() * 2); // math-exempt: paints a texture
                 }
             }
             return c;
@@ -730,7 +730,7 @@
         const img=ctx.createImageData(size,size), d=img.data;
         for(let y=0;y<size;y++) for(let x=0;x<size;x++) {
             const u=x/size,v=y/size, grain=(fine(u,v)-.5)*32;
-            const drift=Math.sin((u*12+v*4+(broad(u,v)-.5)*.5)*Math.PI*2);
+            const drift=Math.sin((u*12+v*4+(broad(u,v)-.5)*.5)*Math.PI*2); // math-exempt: paints a texture
             const i=(y*size+x)*4;
             d[i]=clamp255(128+(broad(u,v)-.5)*26+grain*.6
                 +(theme==='summer'?0:drift*(theme==='winter'?5:9)));
@@ -757,7 +757,7 @@
         for(let y=0;y<size;y++)for(let x=0;x<size;x++) {
             const gx=x/size*cells,gz=y/size*cells,ix=Math.floor(gx),iz=Math.floor(gz);
             const [cx,cz,r]=seeds[iz*cells+ix];
-            const distance=Math.hypot(gx-ix-cx,(gz-iz-cz)*1.2);
+            const distance=Math.hypot(gx-ix-cx,(gz-iz-cz)*1.2); // math-exempt: paints a texture
             pixels[(y*size+x)*4+2]=clamp255((r-distance)*cells*80);
         }
         ctx.putImageData(gravel,0,0);
@@ -851,7 +851,7 @@
                 const lush=smooth(.28,.74,p*.6+macro*.4);
                 let variation=(m-.5)*5+(f-.5)*3;
                 if(theme==='desert' || theme==='winter') {
-                    const wind=Math.sin((u*27+v*11+(macro-.5)*3+p*.4)*Math.PI*2);
+                    const wind=Math.sin((u*27+v*11+(macro-.5)*3+p*.4)*Math.PI*2); // math-exempt: paints a texture
                     variation+=wind*(theme==='desert'?3.5:2);
                 }
                 const beach=smooth(-34,-13,h+(p-.5)*6);

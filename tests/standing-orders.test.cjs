@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 function setup(arrows=1){
  const scope={console:{log(){}},BUILDING_DEFS:{town_center:{},tower:{}},towerPower:()=>({attack:10,arrows}),setTimeout:()=>{},Math};vm.createContext(scope);
  const read=p=>fs.readFileSync(path.join(__dirname,'../js/',p),'utf8');
- vm.runInContext(read('simulation/rng.js'),scope);vm.runInContext(read('game.js').split('\nconst WAR_PRIVATE_HOST')[0],scope);
+ vm.runInContext(read('simulation/rng.js'),scope);vm.runInContext(read('simulation/math.js'),scope);vm.runInContext(read('game.js').split('\nconst WAR_PRIVATE_HOST')[0],scope);
  vm.runInContext(read('openai-ai.js'),scope);vm.runInContext(read('standing-orders.js'),scope);
  const Game=vm.runInContext('Game',scope),Manager=vm.runInContext('OpenAIAIManager',scope);
  const g=Object.create(Game.prototype);g.clock=Game.newClock();const m=Object.create(Manager.prototype),owner={id:'a',units:[],buildings:[]},enemy=[];

@@ -185,6 +185,7 @@ function selectionHarness() {
     h.context.window.addEventListener = () => {};
     h.context.location = { hostname: 'localhost', protocol: 'http:', search: '' };
     h.context.t = key => key;
+    vm.runInContext(source('js/simulation/math.js'), h.context);
     vm.runInContext(source('js/game.js') + '\nthis.Game = Game;', h.context);
     const game = Object.create(h.context.Game.prototype);
     Object.assign(game, { renderer: r, ui: h.ui, aiManager: { aiPlayers: [] },

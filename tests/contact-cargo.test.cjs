@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 function setup(){
  const scope={console,BUILDING_DEFS:{}};vm.createContext(scope);
- vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0],scope);
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0],scope);
  const Game=vm.runInContext('Game',scope),g=Object.create(Game.prototype);
  const viewer={id:'a',units:[{id:'eye',type:'warrior',x:0,z:0,health:100}],buildings:[]};
  const rival={id:'b',units:[],buildings:[]};g.aiManager={aiPlayers:[viewer,rival]};

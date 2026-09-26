@@ -44,7 +44,7 @@ test('the consolidated generator reproduces both old copies exactly', () => {
 });
 
 test('maps and textures from existing seeds are unchanged', () => {
-    const ctx = load(['js/simulation/rng.js', 'js/engine/texgen.js', 'js/terrain.js']);
+    const ctx = load(['js/simulation/rng.js', 'js/simulation/math.js', 'js/engine/texgen.js', 'js/terrain.js']);
     const map = (seed, difficulty, n) => {
         const t = new (vm.runInContext('TerrainManager', ctx))(null, 800);
         t.seed = seed; t.difficulty = difficulty;

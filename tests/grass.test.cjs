@@ -3,7 +3,7 @@ function setup(){
     let id=0;const deleted=[];
     const scope={window:{M3D:{scaling:(...args)=>args}},GLCore:{createMeshBuffers:(_gl,m)=>({position:++id,normal:++id,uv:++id,index:++id,count:m.indices.length})}};
     vm.createContext(scope);
-    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
     scope.TexGen=scope.window.TexGen;
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/grass.js'),'utf8'),scope);
     const renderer={gl:{deleteBuffer:b=>deleted.push(b)},graphicsQuality:'cinematic',_halfH:25,
@@ -58,7 +58,7 @@ test('clutter stays on explored terrain after units leave, but never on unexplor
 });
 test('grass shader mask reveals both explored and currently visible cells',()=>{
     const scope={window:{}};vm.createContext(scope);
-    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
     scope.TexGen=scope.window.TexGen;
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/gamerenderer.js'),'utf8'),scope);
     const r=Object.create(scope.window.EngineRenderer.prototype),uploads=[];

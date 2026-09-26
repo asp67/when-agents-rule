@@ -274,7 +274,7 @@ test('elimination and wonder warnings trigger only at transitions, not every tic
 
 test('successful game completion hooks fire once, not while construction, training or research is pending',()=>{
  const scope=vm.createContext({console,Math,getCivilization:()=>({techTree:{test:{}}}),createUnit:()=>({health:100})});
- vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0]+'\nthis.Game=Game;',scope);
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0]+'\nthis.Game=Game;',scope);
  const g=Object.create(scope.Game.prototype),events=[];
  const owner={units:[],buildings:[],resources:{updatePopulation(){}},currentResearch:{techId:'test',duration:100,progress:0}};
  Object.assign(g,{player:owner,aiManager:{aiPlayers:[]},sound:{completed:(kind)=>events.push(kind)},renderer:{addUnit(){}},

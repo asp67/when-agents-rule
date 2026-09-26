@@ -287,7 +287,7 @@ function buildingMaxHealth(buildingDef, civ, age) {
     const healthMultiplier = (civ && civ.bonus && civ.bonus.name === 'Pyramide') ? 1.5 :
                              (civ && civ.bonus && civ.bonus.name === 'Akropolis') ? 1.3 : 1.0;
     const idx = Math.max(0, BUILDING_AGE_ORDER.indexOf(age));
-    return Math.max(50, Math.round(buildingDef.health * Math.pow(1.5, idx) * healthMultiplier / 50) * 50);
+    return Math.max(50, Math.round(buildingDef.health * WarMath.powInt(1.5, idx) * healthMultiplier / 50) * 50);
 }
 
 // Morph an existing building to a newer epoch: bump its age, rescale max HP
@@ -343,7 +343,7 @@ function createBuilding(type, x, z, owner, civilization, options) {
         // Face the map center (doors sit on a mesh's +Z side), snapped to 90°
         // steps so walls stay parallel to the map edges. Purely visual —
         // collision gaps and vision are all radial.
-        rotationY: Math.round(Math.atan2(-x, -z) / (Math.PI / 2)) * (Math.PI / 2),
+        rotationY: Math.round(WarMath.atan2(-x, -z) / (Math.PI / 2)) * (Math.PI / 2),
         // Construction sites start partially built and ramp up as workers build them
         underConstruction: underConstruction,
         buildProgress: 0,

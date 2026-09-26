@@ -175,20 +175,20 @@ class TerrainManager {
         const rMin = 60;                // nothing on the map's navel
         const KEEPOUT = 95;             // no stone/gold this close to ANY Town Center
         const sector = (Math.PI * 2) / N;
-        const a0 = Math.atan2(spawns[0].z, spawns[0].x);
-        const tooClose = (x, z) => spawns.some(s => Math.hypot(x - s.x, z - s.z) < KEEPOUT);
+        const a0 = WarMath.atan2(spawns[0].z, spawns[0].x);
+        const tooClose = (x, z) => spawns.some(s => WarMath.hypot(x - s.x, z - s.z) < KEEPOUT);
         for (let i = 0; i < per; i++) {
             let r = rMin, t = a0;
             for (let tries = 0; tries < 60; tries++) {
                 const u = this.rand();
                 r = Math.sqrt(rMin * rMin + u * (R * R - rMin * rMin));
                 t = a0 + (this.rand() - 0.5) * sector;
-                if (!tooClose(Math.cos(t) * r, Math.sin(t) * r)) break;
+                if (!tooClose(WarMath.cos(t) * r, WarMath.sin(t) * r)) break;
             }
             for (let p = 0; p < N; p++) {   // …and every player gets the same node
                 const ang = t + p * sector;
                 this.resources.push({
-                    type, x: Math.cos(ang) * r, z: Math.sin(ang) * r,
+                    type, x: WarMath.cos(ang) * r, z: WarMath.sin(ang) * r,
                     amount, mesh: this._handle(type), health: amount
                 });
             }
@@ -255,7 +255,7 @@ class TerrainManager {
     clearResourcesNear(x, z, radius) {
         let n = 0;
         for (const r of this.resources.slice()) {
-            if (Math.hypot(r.x - x, r.z - z) < radius) { this.removeResourceNode(r); n++; }
+            if (WarMath.hypot(r.x - x, r.z - z) < radius) { this.removeResourceNode(r); n++; }
         }
         return n;
     }
