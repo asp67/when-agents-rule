@@ -1123,6 +1123,8 @@ class UIManager {
     renderArenaLibrary() {
         const list = document.getElementById('modelLibraryList');
         if (!list) return;
+        const picker = document.getElementById('libPresetPicker');
+        if (picker) { picker.innerHTML = this.presetOptionsHtml(); picker.setAttribute('aria-label', t('ar.addPreset')); }
         const models = this._arenaConfig.models;
         const rows = this.orderedModels();
         const bar = document.getElementById('libSortBar');
@@ -1707,14 +1709,52 @@ class UIManager {
         this._modelAdvanced.set(id, !!open);
     }
 
-    addArenaModel() {
-        const m = this.makeArenaModel({});
+    // Connection presets: the plumbing only -- endpoint, dialect, auth type. The model id
+    // is always the user's choice, from the list Test connection returns. Alphabetical
+    // within each group, so no provider is placed first. Ports are the servers' own
+    // defaults (llama.cpp's is 8080, which is why WAR's serve.cjs is not).
+    static get MODEL_PRESETS() {
+        return {
+            local: [
+                { key: 'llamacpp', name: 'llama.cpp', endpoint: 'http://localhost:8080/v1', provider: 'openai' },
+                { key: 'lmstudio', name: 'LM Studio', endpoint: 'http://localhost:1234/v1', provider: 'openai' },
+                { key: 'ollama', name: 'Ollama', endpoint: 'http://localhost:11434', provider: 'ollama' },
+                { key: 'sglang', name: 'SGLang', endpoint: 'http://localhost:30000/v1', provider: 'openai' },
+                { key: 'vllm', name: 'vLLM', endpoint: 'http://localhost:8000/v1', provider: 'openai' },
+            ],
+            cloud: [
+                { key: 'anthropic', name: 'Anthropic', endpoint: 'https://api.anthropic.com/v1', provider: 'anthropic', auth: 'bearer' },
+                { key: 'google', name: 'Google Gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta', provider: 'google', auth: 'bearer' },
+                { key: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1', provider: 'openai', auth: 'bearer' },
+                { key: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1', provider: 'openai', auth: 'bearer' },
+            ],
+        };
+    }
+
+    presetOptionsHtml() {
+        const P = UIManager.MODEL_PRESETS, e = s => this.escapeHtml(String(s));
+        const group = (label, list) => `<optgroup label="${e(label)}">`
+            + list.map(p => `<option value="${e(p.key)}">${e(p.name)}</option>`).join('') + '</optgroup>';
+        return `<option value="">${e(t('ar.addPreset'))}</option>` + group(t('ar.presetLocal'), P.local) + group(t('ar.presetCloud'), P.cloud);
+    }
+
+    addArenaModel(presetKey) {
+        const P = UIManager.MODEL_PRESETS, preset = presetKey ? P.local.concat(P.cloud).find(p => p.key === presetKey) : null;
+        const m = this.makeArenaModel(preset ? { name: preset.name, endpoint: preset.endpoint, provider: preset.provider } : {});
+        if (preset && preset.auth) m.auth.type = preset.auth;
         m._expanded = true; // open the new one so it can be configured right away
         this._arenaConfig.models.push(m);
         this.saveArenaConfig();
         this.renderArenaLibrary();
         this.renderArenaSlots();
         this.updateLibrarySummary();
+        if (!preset) return;
+        // A local server needs no key, so its connection can be tested at once, which
+        // also lists the models it serves. A cloud entry waits for the user's key.
+        if (P.local.includes(preset)) {
+            this.showInfoMessage(t('ar.presetTesting', { name: preset.name }));
+            this.testArenaModel(m.id);
+        } else this.showInfoMessage(t('ar.presetKey', { name: preset.name }));
     }
 
     // Ask before deleting a model (guards against an accidental ✕ misclick).

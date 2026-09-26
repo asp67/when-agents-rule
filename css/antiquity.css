@@ -86,6 +86,8 @@ button,input,select,textarea { font-family:inherit; }
 .mdl-caret { color:var(--muted); }
 .mdl-row:hover,.mdl-row.on { background:#3b4535; }
 .slot-diff { background:#151a15; border-color:var(--line); border-radius:3px; }
+.lib-preset { background:var(--bg-1); color:var(--text); border:1px solid var(--line); border-radius:3px; padding:10px 12px; font:inherit; cursor:pointer; }
+.lib-preset:hover,.lib-preset:focus { border-color:var(--gold); color:var(--gold-2); }
 .hdr-add-btn,.lib-add-btn,.lib-io-btn,.ctx-max-btn,.lib-sort-btn,.hr-del {
     background:transparent; color:var(--text); border:1px solid var(--line); border-radius:3px; font-weight:500;
 }
