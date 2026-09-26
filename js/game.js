@@ -174,7 +174,7 @@ class Game {
     // origin is not localhost -- both things this box never exercises. Whatever the
     // specific cause turns out to be, a half-started arena that says nothing is its own
     // bug, and it is the reason the report reads "then nothing happens".
-    async startArenaFromSetup() {
+    async startArenaFromSetup(spec = null) {
         if (this._arenaStarting) return;
         this._arenaStarting = true;
         const cover=document.createElement('div');
@@ -185,7 +185,7 @@ class Game {
         try {
             // Let the opaque cover paint before synchronous terrain generation.
             await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-            return await this._startArenaFromSetup();
+            return await this._startArenaFromSetup(spec);
         } catch (e) {
             console.error('[arena] start failed', e);
             this.gameStarted = false;
@@ -218,8 +218,12 @@ class Game {
         }
     }
 
-    async _startArenaFromSetup() {
-        const setup = this.ui.collectArenaSetup();
+    // `spec` (Quick match, Rematch) is a match given whole: seats, seed, difficulty and
+    // tempo. It is played as given and never written over the saved arena setup, so the
+    // next ordinary match is still the one the user configured. Without one, the setup
+    // screen decides, as before.
+    async _startArenaFromSetup(spec = null) {
+        const setup = spec ? JSON.parse(JSON.stringify(spec.setup)) : this.ui.collectArenaSetup();
 
         // Validate: every LLM slot must point at a model with an endpoint.
         for (let i = 0; i < setup.length; i++) {
@@ -291,15 +295,26 @@ class Game {
 
         // Regenerate the map FIRST (with the chosen difficulty) so resource counts
         // reflect it and the per-TC clearResourcesNear below acts on fresh nodes.
-        this.difficulty = (typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy';
+        this.difficulty = (spec && spec.difficulty) || (typeof localStorage !== 'undefined' && localStorage.getItem('difficulty')) || 'easy';
         this.terrain.difficulty = this.difficulty;
         // Blank means "pick one for me", NOT "run unseeded". Terrain falls through to
         // Math.random when seed is null, so a blank field used to produce a layout that
         // could never be played again — and the transcript recorded null, which answered
         // "did you type a seed" rather than "what map was this". Mint one instead: every
         // match is reproducible and every transcript carries the seed that made it.
-        this.terrain.seed = (this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed();
+        this.terrain.seed = (spec && spec.seed) || (this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed();
         this.mapSeed = this.terrain.seed;
+        // What this match IS, kept so Rematch can play it again -- same seats, same map,
+        // same tempo. The harness reads the round mode from here rather than from the
+        // setup screen, which a Quick match does not use.
+        this.arenaSpec = {
+            setup: JSON.parse(JSON.stringify(setup)),
+            seed: this.terrain.seed,
+            difficulty: this.difficulty,
+            turnBased: spec ? !!spec.turnBased : !!(this.ui.turnBasedEnabled && this.ui.turnBasedEnabled()),
+            roundTimeoutMs: (spec && spec.roundTimeoutMs) || (this.ui.roundTimeoutMs ? this.ui.roundTimeoutMs() : null),
+            preset: (spec && spec.preset) || null
+        };
         // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
         // generator needs the spawns before it runs (they are already computed above).
         this.terrain.spawns = spawnPositions;

@@ -454,6 +454,8 @@ class UIManager {
         set('setupStep2H', campaign ? 'cmp.step2.h' : 'ar.step2.h');
         set('setupStep2P', campaign ? 'cmp.step2.p' : 'ar.step2.p');
         set('setupStartBtn', campaign ? 'cmp.start' : 'ar.start');
+        const quick = document.getElementById('quickMatchBtn');
+        if (quick) quick.style.display = campaign ? 'none' : '';
     }
 
     // Render the setup options row: a participant/opponent count picker for both
@@ -2124,6 +2126,56 @@ class UIManager {
                 auth: this.cleanAuth(m.auth)
             }
         };
+    }
+
+    // Quick match: one library model against the rule-based AI, on a fresh map, in real
+    // time at normal speed. The model is the first that can play: one whose tool-call
+    // check passed if any has, else the first with an endpoint and a model id that has
+    // not failed one. Played as a one-off spec, so the saved arena setup is untouched.
+    quickMatchModel() {
+        const ms = ((this._arenaConfig && this._arenaConfig.models) || [])
+            .filter(m => (m.endpoint || '').trim() && (m.model || '').trim());
+        return ms.find(m => m._check && m._check.ok) || ms.find(m => !m._check) || null;
+    }
+
+    quickMatch() {
+        const m = this.quickMatchModel();
+        if (!m) { this.showModelLibrary(); this.showErrorMessage(t('ar.quickNeedsModel')); return null; }
+        const ta = document.getElementById('arenaSharedPrompt');
+        if (ta) { this._arenaConfig.prompt = ta.value; this.saveArenaConfig(); }
+        const setup = [this.slotToSetupEntry({ civ: 'greek', control: m.id }),
+                       this.slotToSetupEntry({ civ: 'persian', control: 'ki' })];
+        return this.game.startArenaFromSetup({ setup, difficulty: 'easy', turnBased: false, preset: 'quick-match' });
+    }
+
+    // Rematch: the match that just ended, again -- same seats and settings, same map
+    // seed, same tempo. Leaving the results screen deletes its transcripts as usual.
+    async rematchArena() {
+        const spec = this.game.arenaSpec;
+        if (!spec) return this.leaveArenaSummary(false);
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        try { if (rec) await rec.purge(); } catch (e) { /* starting anyway */ }
+        return this.game.startArenaFromSetup(spec);
+    }
+
+    // Opens the match that just ended in the transcript analyzer, without a download
+    // and a file picker in between. The analyzer keeps the text in memory; the stored
+    // copy goes as it would on any other exit from the results screen.
+    async watchInAnalyzer() {
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        if (!rec || !rec.hasData()) return;
+        const name = `${rec.matchId || 'match'}-transcripts.jsonl`;
+        let text;
+        try { text = await (await rec.exportBlob()).text(); }
+        catch (e) { console.warn('[analyzer] export failed', e); this.showErrorMessage(t('an.badFile')); return; }
+        try { await rec.purge(); } catch (e) { /* the copy in memory is what matters now */ }
+        this.anOpen();
+        this.anStopPlay();
+        try { this.analyzer.load(text, name); }
+        catch (e) { console.warn('[analyzer] load failed', e); this.showErrorMessage(t('an.badFile')); return; }
+        this._anFramed = false;
+        this.resetChartCache();
+        this.anRender();
     }
 
     // Collect the setup the arena engine expects (first `count` participants, 2–4).
@@ -4383,6 +4435,8 @@ class UIManager {
         const newBtn = document.getElementById('summaryNewArenaBtn');
         const menuBtn = document.getElementById('summaryMenuBtn');
         const saveBtn = document.getElementById('summarySaveBtn');
+        const rematchBtn = document.getElementById('summaryRematchBtn');
+        if (rematchBtn) rematchBtn.style.display = (snapshot || !this.game.arenaSpec) ? 'none' : '';
         if (newBtn) newBtn.style.display = snapshot ? 'none' : '';
         if (menuBtn) menuBtn.style.display = snapshot ? 'none' : '';
         if (saveBtn) saveBtn.style.display = snapshot ? 'none' : '';
@@ -4935,6 +4989,8 @@ class UIManager {
         // so nothing is offered or deleted here.
         const show = !!(rec && rec.hasData() && !snapshot);
         if (btn) btn.style.display = show ? '' : 'none';
+        const watch = document.getElementById('summaryAnalyzeBtn');
+        if (watch) watch.style.display = show ? '' : 'none';
         if (note) {
             note.style.display = show ? '' : 'none';
             if (show) note.textContent = t('sum.transcriptNote', { turns: rec.turnsRecorded() });

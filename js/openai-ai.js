@@ -2374,10 +2374,13 @@ class OpenAIAIManager {
         // Read the round mode from the saved arena config. A manager is built fresh per
         // match, so the flag has to be pulled in here or every new match silently
         // reverts to independent pipelines — which is a different benchmark.
-        this.turnBased = !!(this.game && this.game.ui && this.game.ui.turnBasedEnabled
+        // An arena match carries its own spec (game.arenaSpec), which a Quick match or a
+        // Rematch sets without touching the saved config; a Campaign reads the config.
+        const spec = (this.game && this.game.spectatorMode && this.game.arenaSpec) || null;
+        this.turnBased = spec ? !!spec.turnBased : !!(this.game && this.game.ui && this.game.ui.turnBasedEnabled
             && this.game.ui.turnBasedEnabled());
-        this._roundTimeoutMs = (this.game && this.game.ui && this.game.ui.roundTimeoutMs)
-            ? this.game.ui.roundTimeoutMs() : OpenAIAIManager.ROUND_TIMEOUT_DEFAULT_MS;
+        this._roundTimeoutMs = (spec && spec.roundTimeoutMs) || ((this.game && this.game.ui && this.game.ui.roundTimeoutMs)
+            ? this.game.ui.roundTimeoutMs() : OpenAIAIManager.ROUND_TIMEOUT_DEFAULT_MS);
         this._roundPhase = 'ask';
         this._roundNo = 0;
         this._roundStartedAt = 0;
@@ -2459,7 +2462,10 @@ class OpenAIAIManager {
                 build: (typeof UIManager !== 'undefined' && UIManager.buildVersion) ? UIManager.buildVersion() : null,
                 mode: this.game.spectatorMode ? 'arena' : 'campaign',
                 humanSeat: this.game.spectatorMode ? null
-                    : ((this.game.player && this.game.player.seat != null) ? this.game.player.seat : 0)
+                    : ((this.game.player && this.game.player.seat != null) ? this.game.player.seat : 0),
+                // How the lineup was chosen: 'quick-match' when the one-click match picked
+                // it, null when the user set it up. A Rematch keeps the original's value.
+                preset: (this.game.spectatorMode && this.game.arenaSpec && this.game.arenaSpec.preset) || null
             });
         }
 

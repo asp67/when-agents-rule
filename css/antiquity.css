@@ -52,6 +52,7 @@ button,input,select,textarea { font-family:inherit; }
     letter-spacing:-.025em; color:var(--text); text-align:left; margin:12px 0;
 }
 .arena-setup-subtitle { text-align:left; color:var(--muted); max-width:800px; line-height:1.65; font-size:1rem; }
+.quick-match-btn { display:block; min-width:0; margin:14px 0 4px; padding:10px 20px; font-size:.95rem; }
 .arena-setup-content > .lang-picker { border-bottom:1px solid var(--line); padding-bottom:20px; margin-bottom:28px; flex-wrap:wrap; }
 .arena-section { border-color:var(--line); padding:24px; margin-bottom:24px; }
 .arena-section-head { gap:16px; margin-bottom:22px; }

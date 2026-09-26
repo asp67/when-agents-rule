@@ -35,7 +35,9 @@ test('an arena seat without an endpoint stays a model seat with no connection', 
 
 test('the arena start refuses it, naming the seat, instead of alert() or a silent swap', () => {
     const src = fs.readFileSync(path.join(root, 'js/game.js'), 'utf8');
-    const body = src.slice(src.indexOf('async _startArenaFromSetup()'));
+    const at = src.indexOf('async _startArenaFromSetup(');
+    assert.ok(at >= 0, 'arena start found');
+    const body = src.slice(at);
     const check = body.slice(0, body.indexOf('this.spectatorMode = true;'));
     assert.match(check, /setup\[i\]\.type === 'llm' && !\(setup\[i\]\.connection && setup\[i\]\.connection\.endpoint\)/);
     assert.match(check, /showErrorMessage\(t\('ar\.slotNeedsModel'/);
