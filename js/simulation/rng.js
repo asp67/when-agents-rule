@@ -21,7 +21,7 @@
 // The keyed state is plain data ({seed, n}) so a match checkpoint can store it.
 //
 // Rule code must not call Math.random: tests/rng.test.cjs enforces it, with named
-// exemptions (seed minting, and ids until they are seeded too). Presentation --
+// exemptions (seed minting, and an entity made with no game at all). Presentation --
 // renderer, camera, audio -- keeps Math.random; it decides nothing.
 // ---------------------------------------------------------------------------
 var WarRng = Object.freeze({
@@ -50,6 +50,14 @@ var WarRng = Object.freeze({
     },
 
     keyed(seed) { return { seed: String(seed == null ? '' : seed), n: {} }; },
+
+    // An id from two draws of `next`: 52 bits as eleven base-36 characters. Enough
+    // that a collision in one match is a one-in-a-hundred-million event even at ten
+    // thousand ids, and the caller checks for it anyway.
+    id(prefix, next) {
+        const hi = Math.floor(next() * 0x100000000), lo = Math.floor(next() * 0x100000);
+        return prefix + (hi * 0x100000 + lo).toString(36).padStart(11, '0');
+    },
 
     // The n-th draw for `key` in this match, in [0, 1).
     draw(state, key) {

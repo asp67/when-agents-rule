@@ -82,7 +82,10 @@ class AIManager {
         resources.stone = 100;
         resources.gold = 50;
         const ai = {
-            id: 'ai_' + Math.random().toString(36).substr(2, 9), // rng-exempt: ids are seeded in review #6 step 5
+            // Seeded, like unit ids: the same match gives its players the same ids. Keyed
+            // to no seat, because the seat is assigned after this.
+            id: (this.game && this.game.rand) ? WarRng.id('ai_', () => this.game.rand(null, 'player-id'))
+                : 'ai_' + Math.random().toString(36).substr(2, 9), // rng-exempt: no game at all (fixtures, tools)
             civilization: civilization,
             difficulty: difficulty,
             resources: resources,

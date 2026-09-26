@@ -6,6 +6,18 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 936: ids are seeded (26 September 2026)
+
+Unit, building and player ids come from the match's keyed draws: a prefix and eleven base-36 characters (`unit_01b9tq47n3o`). They used to be `unit_<milliseconds>_<random>`.
+
+- **Repeatable:** the same match now produces the same ids. The same seed gave identical ids in a browser and in Node.
+- **No clock:** the milliseconds in an old id told any model reading an enemy's id exactly when that unit was trained. A counter would have been repeatable too, but it would have told a model how many units a seat had made. So the new id carries neither.
+- **Shorter:** 16–20 characters instead of 26–32 for every enemy unit and building in a model's state.
+
+Ids are labels and decide nothing. The golden traces have identical counts at every checkpoint, and their whole state, ids aside, is identical over six minutes of play. What changes for a model is the text of the ids it reads and copies back.
+
+With this step, a match makes no `Math.random` call from its start to its end. A test counts the calls, and it also compares the full state, ids included, across different leftover randomness.
+
 ## Build 935: every random choice is keyed to the match (26 September 2026)
 
 The game's rules make many small random choices, and each one used to call the browser's shared generator:

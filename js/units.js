@@ -187,6 +187,23 @@ function nextUnitHandle(owner) {
     return n;
 }
 
+// Ids are seeded (review #6 step 5): a prefix and eleven base-36 characters from the
+// match's keyed draws, keyed by the owner's seat, so the same match makes the same ids.
+// They were 'unit_<ms>_<random>': unrepeatable, 28 characters on every turn's state, and
+// the milliseconds told any model reading an enemy's id when that unit was trained. A
+// counter would be repeatable too, but would tell it how many units that seat has made.
+// Checked against the living entities, and drawn again on the (1e-8) chance of a clash.
+function mintEntityId(prefix, ownerObj, purpose) {
+    if (typeof game === 'undefined' || !game || !game.rand) {
+        return prefix + Date.now() + '_' + Math.random().toString(36).substr(2, 9); // rng-exempt: no game at all (fixtures, tools)
+    }
+    const r = game.renderer;
+    const taken = id => !!(r && ((r.units || []).some(e => e.id === id) || (r.buildings || []).some(e => e.id === id)));
+    let id;
+    do { id = WarRng.id(prefix, () => game.rand(ownerObj, purpose)); } while (taken(id));
+    return id;
+}
+
 function createUnit(type, x, z, owner, civilization, age) {
     const civ = getCivilization(civilization);
     const unitDef = getUnitDefFor(civilization, type);
@@ -200,7 +217,7 @@ function createUnit(type, x, z, owner, civilization, age) {
         : null;
 
     const unit = {
-        id: 'unit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9), // rng-exempt: ids are seeded in review #6 step 5
+        id: mintEntityId('unit_', ownerObj, 'unit-id'),
         handle: nextUnitHandle(owner),   // short, published, per-owner, never reused
         type: type,
         name: unitDef.name,
@@ -317,7 +334,7 @@ function createBuilding(type, x, z, owner, civilization, options) {
     const buildTime = buildingDef.buildTime || 10000;
 
     return {
-        id: 'building_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9), // rng-exempt: ids are seeded in review #6 step 5
+        id: mintEntityId('building_', ownerObj, 'building-id'),
         type: type,
         name: buildingDef.name,
         age: age, // epoch this building was constructed in (drives its look + HP)
