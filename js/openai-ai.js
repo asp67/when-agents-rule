@@ -405,7 +405,10 @@ class OpenAIAIManager {
 
     // Private request context: identities and order tokens never enter model JSON.
     rememberWorkerPools(controller) {
-        controller._shownWorkerPools = new Map(controller.aiPlayer.units
+        controller._shownWorkerPools = this.workerPoolsOf(controller);
+    }
+    workerPoolsOf(controller) {
+        return new Map(controller.aiPlayer.units
             .filter(u => u.type === 'worker' && u.health > 0)
             .map(u => [u, { job: OpenAIAIManager.workerJob(this.game, u), token: u._orderToken }]));
     }
@@ -2663,9 +2666,50 @@ class OpenAIAIManager {
     // 3. Build COMPACT game state JSON for a specific AI player
     //    Target: < 25,000 tokens (server limit: 32,000)
     // ----------------------------------------------------------------
+    // The state a seat is sent, built and then committed. Two steps (review #6 step 7):
+    // observe() only LOOKS -- it reads the world and returns the state together with
+    // what the seat must remember for having been shown it, and changes nothing. So the
+    // same moment can be observed twice with the same result, which a replay, a fork or
+    // a spectator's preview all need. commitObservation() then records what was shown:
+    // the turn counter, remembered enemy buildings, node counts and any "node emptied"
+    // event, and the snapshot the executor later checks commands against. A turn does
+    // both; nothing else should commit.
     buildGameStateJSON(controller) {
+        const { state, pending } = this.observe(controller);
+        this.commitObservation(controller, pending);
+        return state;
+    }
+
+    commitObservation(controller, p) {
+        const ai = controller.aiPlayer, game = this.game;
+        // Events first: they carry the turn counter as it stood when they happened.
+        if (game.logPlayerEvent) p.events.forEach(text => game.logPlayerEvent(ai, text));
+        ai._turnSeq = p.turnSeq;
+        if (!ai._knownResIdx) ai._knownResIdx = new Set();
+        if (p.nodes.touched) {
+            if (!ai._knownResAmt) ai._knownResAmt = Object.create(null);
+            for (const [idx, amount] of p.nodes.seen) { ai._knownResIdx.add(idx); ai._knownResAmt[idx] = amount; }
+        }
+        ai._lastNodeCounts = p.lastNodeCounts;
+        ai._knownEnemyBuildings = p.knownEnemyBuildings;
+        controller._sentIdle = p.sentIdle;
+        controller._shownWorkers = p.shownWorkers;
+        controller._shownWorkerPools = p.workerPools;
+        controller.seat._idleTaken = 0;
+        controller.seat._shownTargetIds = p.shownTargetIds;
+        controller._shownBuildings = p.shownBuildings;
+        controller._shownResearched = p.shownResearched;
+        controller._shownResearching = p.shownResearching;
+        controller._shownAgeUpgrading = p.shownAgeUpgrading;
+        if (controller.seat._peak) Object.assign(controller.seat._peak, p.peak);
+        else controller.seat._peak = p.peak;
+    }
+
+    observe(controller) {
         const ai = controller.aiPlayer;
         const game = this.game;
+        // Everything this look would once have written, collected for the commit.
+        const pending = { events: [], nodes: { touched: false, seen: new Map() } };
         const civ = getCivilization(ai.civilization);
         const ages = ['stone', 'neolithic', 'bronze', 'iron'];
         const ageOrder = ages;
@@ -2754,8 +2798,11 @@ class OpenAIAIManager {
         // defaulting to the 2 this has always used. A CONTACT asks for 1, because a
         // sighting repeated next turn reads as a second sighting of the same scout.
         const buildRecentEvents = () => {
-            const seq = ai._turnSeq = (ai._turnSeq || 0) + 1;
-            return (ai.events || []).filter(e => (e.seq || 0) >= seq - (e.ttl || 2)).slice(-8).map(e =>
+            const seq = pending.turnSeq = (ai._turnSeq || 0) + 1;
+            // Events found by this look are shown now and logged on commit; here they
+            // take the shape logPlayerEvent will give them.
+            const found = pending.events.map(text => ({ at: game.simNow(), seq: ai._turnSeq || 0, text, ttl: 2 }));
+            return (ai.events || []).concat(found).filter(e => (e.seq || 0) >= seq - (e.ttl || 2)).slice(-8).map(e =>
                 `${Math.max(0, Math.round(this.game.realSecsSince(e.at)))}s ago: ${e.text}`);
         };
 
@@ -2982,7 +3029,6 @@ class OpenAIAIManager {
         // Nothing is taken away: assign_workers still resolves any discovered node by
         // coordinate (discoveredNodesOfType sees them all), so a remembered far node
         // stays targetable — it just is not recited every turn.
-        if (!ai._knownResIdx) ai._knownResIdx = new Set();
         // Every node of each type still standing in the world, found or not. Shipped
         // beside the discovered counts under "nodes" so the two are read together: the
         // gap between them is what is still out there unscouted. Deliberately NOT
@@ -2993,7 +3039,7 @@ class OpenAIAIManager {
         const byType = { food: [], wood: [], stone: [], gold: [] };
         if (game.terrain && game.terrain.resources) {
             game.terrain.resources.forEach((res, idx) => {
-                const k = this.knownAmount(ai, res, idx, game);
+                const k = this.knownAmount(ai, res, idx, game, pending.nodes);
                 if (!k.known) return;        // undiscovered → hidden, must scout
                 // Depleted as far as THIS player knows. A node it watched run dry
                 // drops out; one a rival emptied out of sight stays listed at its
@@ -3025,7 +3071,7 @@ class OpenAIAIManager {
         //
         // A fact, not a nudge — where to look next stays the model's call.
         const prevCounts = ai._lastNodeCounts;
-        ai._lastNodeCounts = Object.assign({}, discoveredNodesOnMap);
+        pending.lastNodeCounts = Object.assign({}, discoveredNodesOnMap);
         if (prevCounts) {
             ['food', 'wood', 'stone', 'gold'].forEach(k => {
                 if (prevCounts[k] > 0 && discoveredNodesOnMap[k] === 0 && game.logPlayerEvent) {
@@ -3035,7 +3081,7 @@ class OpenAIAIManager {
                     // knows one thing and must not speak for the rest of the economy.
                     // Naming the field ties the event to the number that moved, which is
                     // the whole point of having it.
-                    game.logPlayerEvent(ai, `Your last discovered ${k} node has been emptied — nodes.discovered.${k} is now 0.`);
+                    pending.events.push(`Your last discovered ${k} node has been emptied — nodes.discovered.${k} is now 0.`);
                 }
             });
         }
@@ -3160,18 +3206,18 @@ class OpenAIAIManager {
         // even after your units look away — with "visible:false" marking a remembered
         // (last-seen) one vs a currently-in-sight "visible:true". A WONDER is an
         // existential threat and is ALWAYS revealed to everyone (ignores fog).
-        if (!ai._knownEnemyBuildings) ai._knownEnemyBuildings = new Set();
+        const knownEnemyBuildings = pending.knownEnemyBuildings = new Set(ai._knownEnemyBuildings || []);
         const enemyBuildings = [];
         const enemyWonders = [];
         // One visibility index for this state build; see buildVisionTest (ai.js).
         const seeNow = this.visionTestFor(ai, game);
         game.getAllBuildings().forEach(bldg => {
             if (ai.buildings.includes(bldg)) return;
-            if (bldg.health <= 0) { ai._knownEnemyBuildings.delete(bldg); return; } // destroyed
+            if (bldg.health <= 0) { knownEnemyBuildings.delete(bldg); return; } // destroyed
             const isWonder = bldg.isWonder;
             const seenNow = isWonder || seeNow(bldg.x, bldg.z);
-            if (seenNow) ai._knownEnemyBuildings.add(bldg);          // discover/refresh
-            if (!seenNow && !ai._knownEnemyBuildings.has(bldg)) return; // never discovered → hidden
+            if (seenNow) knownEnemyBuildings.add(bldg);          // discover/refresh
+            if (!seenNow && !knownEnemyBuildings.has(bldg)) return; // never discovered → hidden
             const entry = {
                 id: bldg.id, // stable target handle for attack_target(params.targetId)
                 type: bldg.type,
@@ -3291,14 +3337,12 @@ class OpenAIAIManager {
         // On the LANE, because it describes the snapshot THIS request was sent, and two
         // lanes are sent different ones. executeTurn republishes the answering lane's
         // value to the seat, which is where the executor's seat-lookup reads it.
-        if (controller) controller._sentIdle = wk.idle;
+        pending.sentIdle = wk.idle;
         // Keep both the published tally and private membership. Tasks may finish
         // during inference; identities let the executor fulfill that same source
         // request, while order tokens protect workers explicitly reassigned since.
-        if (controller) {
-            controller._shownWorkers = Object.assign({}, wk);
-            this.rememberWorkerPools(controller);
-        }
+        pending.shownWorkers = Object.assign({}, wk);
+        pending.workerPools = this.workerPoolsOf(controller);
         // ...and the tally of how many of them this turn's own calls spend. A reply may
         // carry three commands; if the first builds and the second asks for idle hands,
         // the pool was emptied by the model, not by the clock. That is the one version
@@ -3309,7 +3353,6 @@ class OpenAIAIManager {
         // with two lanes a sibling's state build would land between this turn's reply
         // and its commands running, resetting the tally the executor is about to fill.
         // Kept here too so a seat that never reaches executeTurn starts from zero.
-        if (controller) controller.seat._idleTaken = 0;
 
         // Enemy units (very compact)
         const enemyUnits = [];
@@ -3655,7 +3698,7 @@ class OpenAIAIManager {
             // undefined and the final word would lose its "Peak:" line entirely.
             // Both are true at ONE lane as well -- the lane, not the seat, has built
             // state ever since the pool landed.
-            controller.seat._shownTargetIds = new Set(
+            pending.shownTargetIds = new Set(
                 [].concat(enemyUnits || [], enemyBuildings || [])
                   .map(e => String(e && e.id)).filter(x => x && x !== 'undefined'));
 
@@ -3672,20 +3715,20 @@ class OpenAIAIManager {
             (friendlyBuildings || []).forEach(b => {
                 const k = b && b.type; if (k) shownB[k] = (shownB[k] || 0) + 1;
             });
-            controller._shownBuildings = shownB;
-            controller._shownResearched = new Set(Object.keys(ai.researchedTechs || {}));
+            pending.shownBuildings = shownB;
+            pending.shownResearched = new Set(Object.keys(ai.researchedTechs || {}));
             // What the board said was RUNNING, which the completed set cannot answer.
             // null means "nothing running" and is the only value that makes a later
             // clash blind; absent (never recorded) is not null, so a caller without a
             // snapshot fails safe into the ordinary path.
-            controller._shownResearching = ai.currentResearch ? ai.currentResearch.techId : null;
-            controller._shownAgeUpgrading = !!ai.currentAgeUpgrade;
+            pending.shownResearching = ai.currentResearch ? ai.currentResearch.techId : null;
+            pending.shownAgeUpgrading = !!ai.currentAgeUpgrade;
             // High-water marks, for the closing question only. Recorded here because
             // this is the one place a seat's whole picture is already assembled, which
             // is cheaper than re-reading the recorder at match end -- and it costs a
             // handful of comparisons on a path that just built several arrays.
-            const pk = controller.seat._peak
-                || (controller.seat._peak = { buildings: 0, units: 0, workers: 0, pop: 0, maxPop: 0, at: 0 });
+            const pk = pending.peak = Object.assign({ buildings: 0, units: 0, workers: 0, pop: 0, maxPop: 0, at: 0 },
+                controller.seat._peak || {});
             const nb = (friendlyBuildings || []).length, nu = (friendlyUnits || []).length;
             if (nb > pk.buildings || nu > pk.units) {
                 pk.at = (clockObj && clockObj.matchSeconds) || pk.at;
@@ -3698,7 +3741,7 @@ class OpenAIAIManager {
                 pk.maxPop = resourcesObj.maxPopulation;
             }
         }
-        return {
+        const state = {
             player: playerObj,
             clock: clockObj,
             epoch: epochObj,
@@ -3756,6 +3799,7 @@ class OpenAIAIManager {
             threats: threatsObj,
             gameStats: gameStatsObj
         };
+        return { state, pending };
     }
 
     // Helper: get center position of AI's buildings
@@ -7672,17 +7716,26 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // remembered node showed up as the number ticking down, and emptying it made the
     // node vanish from the list — enemy activity, in a place the player cannot see,
     // for free. Fog has to mean the contents are stale too, not just the position.
-    knownAmount(ai, res, idx, game) {
-        if (!ai._knownResIdx) ai._knownResIdx = new Set();
-        if (!ai._knownResAmt) ai._knownResAmt = Object.create(null);
-        if (this.isPositionVisibleToAI(ai, res.x, res.z, game)) {
-            ai._knownResIdx.add(idx);
-            ai._knownResAmt[idx] = Math.floor(res.amount);   // refresh what we can see
-            return { amount: Math.floor(res.amount), visible: true, known: true };
+    //
+    // Seeing a node refreshes what is remembered of it. A command acting on the world
+    // writes that straight away; an observation passes a `sink` and the refresh is
+    // recorded when the observation is committed, so a look changes nothing.
+    knownAmount(ai, res, idx, game, sink = null) {
+        if (sink) sink.touched = true;
+        else {
+            if (!ai._knownResIdx) ai._knownResIdx = new Set();
+            if (!ai._knownResAmt) ai._knownResAmt = Object.create(null);
         }
-        const known = ai._knownResIdx.has(idx);
+        if (this.isPositionVisibleToAI(ai, res.x, res.z, game)) {
+            const amount = Math.floor(res.amount);   // refresh what we can see
+            if (sink) sink.seen.set(idx, amount);
+            else { ai._knownResIdx.add(idx); ai._knownResAmt[idx] = amount; }
+            return { amount, visible: true, known: true };
+        }
+        const known = !!(ai._knownResIdx && ai._knownResIdx.has(idx)) || !!(sink && sink.seen.has(idx));
+        const remembered = sink && sink.seen.has(idx) ? sink.seen.get(idx) : (ai._knownResAmt && ai._knownResAmt[idx]);
         return {
-            amount: known ? (ai._knownResAmt[idx] != null ? ai._knownResAmt[idx] : Math.floor(res.amount)) : 0,
+            amount: known ? (remembered != null ? remembered : Math.floor(res.amount)) : 0,
             visible: false, known
         };
     }
