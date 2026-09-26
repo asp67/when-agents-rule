@@ -168,11 +168,22 @@ function getUnitDefFor(civilization, id) {
 // purest form: a model reads the state, unit 7 dies while it thinks, a new unit takes slot
 // 7, and its order lands on someone else — silently, and untraceably. Monotonic means a
 // stale handle names a DEAD unit, which the harness can say out loud.
+//
+// The counters live on the game, not in this file's scope. A restored match rebuilds
+// the scripts from scratch, so a module-level counter started again at 1 while the
+// saved units kept theirs, and the next unit born shared a handle with a living one
+// ([1,2,3,1]). On the game they travel with the rest of the checkpointed world.
+// The module map is only for units created with no game at all (fixtures, tools).
 const _unitSeq = new Map();
-function resetUnitHandles() { _unitSeq.clear(); }
+function unitHandleCounters() {
+    if (typeof game !== 'undefined' && game) return game._unitSeq || (game._unitSeq = new Map());
+    return _unitSeq;
+}
+function resetUnitHandles() { unitHandleCounters().clear(); _unitSeq.clear(); }
 function nextUnitHandle(owner) {
-    const n = (_unitSeq.get(owner) || 0) + 1;
-    _unitSeq.set(owner, n);
+    const seq = unitHandleCounters();
+    const n = (seq.get(owner) || 0) + 1;
+    seq.set(owner, n);
     return n;
 }
 
