@@ -99,19 +99,16 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 
 ## 🚀 Quick start
 
-No install, no bundler. Serve the folder over HTTP (the app uses `fetch`, so `file://` won't work).
+No install, no bundler, nothing downloaded. Serve the folder over HTTP (the app uses `fetch`, so `file://` won't work).
 
 ```bash
 git clone https://github.com/asp67/when-agents-rule.git
 cd when-agents-rule
-
-# pick any static server:
-npx http-server . -p 8080 -o          # Node
-# python3 -m http.server 8080         # Python
-# php -S localhost:8080               # PHP
+node serve.cjs --open                 # Node 18+, built-ins only
+# python3 -m http.server 8088         # or any static server
 ```
 
-Then open **http://localhost:8080** and click **Play → 🏟️ Arena**.
+Then open **http://localhost:8088** and click **Play → 🏟️ Arena**. `serve.cjs` answers only this computer by default; add `--host 0.0.0.0` to reach it from other devices on your network, or `--port` to move it. The default is 8088 rather than 8080 because llama.cpp's server listens on 8080.
 
 > 💡 **Fastest path to a match:** install [Ollama](https://ollama.com), pull something small and quick (`ollama pull qwen2.5:7b`), and point a couple of seats at `http://localhost:11434`. Small + fast beats large + slow in a real-time arena.
 >

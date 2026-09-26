@@ -22,8 +22,8 @@
     "ollama"
   ],
   "scripts": {
-    "start": "npx http-server . -p 8080 -o",
-    "dev": "npx http-server . -p 8080 -c-1 -o",
+    "start": "node serve.cjs --open",
+    "dev": "node serve.cjs",
     "test": "node --test tests/*.test.cjs"
   }
 }
