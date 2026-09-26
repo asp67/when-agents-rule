@@ -2604,7 +2604,7 @@ class Game {
             (civForBuild?.uniqueBuildings || []).find(b => b.id === buildingType);
         if (!buildingDef) return;
 
-        // Wonder: Iron-age, one at a time, hold 180s to win.
+        // Wonder: Iron-age, one at a time, hold 600s (wonderRequired) to win.
         if (buildingDef.type === 'wonder') {
             const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
             const reqAge = buildingDef.requiredAge || 'iron';

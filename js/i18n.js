@@ -1606,7 +1606,7 @@ const I18N_GAME = {
         'Erhöht das Bevölkerungslimit um 5 (benötigt Forschung: Haus)': 'Raises the population limit by 5 (requires research: House)',
         'Falx-Schwerter': 'Falx swords', 'Farm': 'Farm', 'Fernkampf-Einheit': 'Ranged unit', 'Feuertempel': 'Fire Temple',
         'Grundlegende Infanterieeinheit': 'Basic infantry unit',
-        'Handel und Forschung fortgeschrittener Technologien': 'Trade and research of advanced technologies',
+        'Handel und Forschung fortgeschrittener Technologien': 'Trade and research of advanced technologies', 'Forschung fortgeschrittener Technologien': 'Research of advanced technologies', 'Satrapie': 'Satrapy',
         'Haus': 'House', 'Heilt andere Einheiten in der Nähe': 'Heals nearby units', 'Hoplite': 'Hoplite',
         'Infanterie +20 Gesundheit': 'Infantry +20 health', 'Infanterie +3 Angriff': 'Infantry +3 attack',
         'Kaserne': 'Barracks', 'Kavallerie +2 Angriff, +10 Gesundheit': 'Cavalry +2 attack, +10 health',
@@ -1645,7 +1645,7 @@ const I18N_GAME = {
         'Starker Infanterist': 'Strong infantryman', 'Steinabbau +25% effizienter': 'Stone mining +25% more efficient',
         'Tempel': 'Temple', 'Töpferei': 'Pottery', 'Verteidigungsturm': 'Defensive tower',
         'Wachtturm': 'Watchtower',
-        'Weltwunder - im Bau ~60s, danach 180s halten zum Sieg!': 'Wonder — ~60s to build, then hold 180s to win!',
+        'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!': 'Wonder — ~60s to build, then hold 600s to win!',
         'Zentrale Gebäude - baut Dorfbewohner, forscht Altsteinzeit-Technologien': 'Central building — trains villagers, researches Stone Age technologies'
     },
     es: {
@@ -1675,7 +1675,7 @@ const I18N_GAME = {
         'Erhöht das Bevölkerungslimit um 5 (benötigt Forschung: Haus)': 'Aumenta el límite de población en 5 (requiere investigación: Casa)',
         'Falx-Schwerter': 'Espadas falx', 'Farm': 'Granja', 'Fernkampf-Einheit': 'Unidad a distancia', 'Feuertempel': 'Templo del fuego',
         'Grundlegende Infanterieeinheit': 'Unidad de infantería básica',
-        'Handel und Forschung fortgeschrittener Technologien': 'Comercio e investigación de tecnologías avanzadas',
+        'Handel und Forschung fortgeschrittener Technologien': 'Comercio e investigación de tecnologías avanzadas', 'Forschung fortgeschrittener Technologien': 'Investigación de tecnologías avanzadas', 'Satrapie': 'Satrapía',
         'Haus': 'Casa', 'Heilt andere Einheiten in der Nähe': 'Cura a las unidades cercanas', 'Hoplite': 'Hoplita',
         'Infanterie +20 Gesundheit': 'Infantería +20 salud', 'Infanterie +3 Angriff': 'Infantería +3 ataque',
         'Kaserne': 'Cuartel', 'Kavallerie +2 Angriff, +10 Gesundheit': 'Caballería +2 ataque, +10 salud',
@@ -1714,7 +1714,7 @@ const I18N_GAME = {
         'Starker Infanterist': 'Infante fuerte', 'Steinabbau +25% effizienter': 'Extracción de piedra +25% más eficiente',
         'Tempel': 'Templo', 'Töpferei': 'Alfarería', 'Verteidigungsturm': 'Torre defensiva',
         'Wachtturm': 'Torre de vigilancia',
-        'Weltwunder - im Bau ~60s, danach 180s halten zum Sieg!': 'Maravilla — ~60s de construcción, luego mantenla 180s para ganar!',
+        'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!': 'Maravilla — ~60s de construcción, luego mantenla 600s para ganar!',
         'Zentrale Gebäude - baut Dorfbewohner, forscht Altsteinzeit-Technologien': 'Edificio central — entrena aldeanos, investiga tecnologías de la Edad de Piedra'
     },
     zh: {
@@ -1744,7 +1744,7 @@ const I18N_GAME = {
         'Erhöht das Bevölkerungslimit um 5 (benötigt Forschung: Haus)': '人口上限 +5（需要研究：房屋）',
         'Falx-Schwerter': '镰刀剑', 'Farm': '农场', 'Fernkampf-Einheit': '远程单位', 'Feuertempel': '火神庙',
         'Grundlegende Infanterieeinheit': '基础步兵单位',
-        'Handel und Forschung fortgeschrittener Technologien': '贸易与高级科技研究',
+        'Handel und Forschung fortgeschrittener Technologien': '贸易与高级科技研究', 'Forschung fortgeschrittener Technologien': '高级科技研究', 'Satrapie': '总督辖地',
         'Haus': '房屋', 'Heilt andere Einheiten in der Nähe': '治疗附近的其他单位', 'Hoplite': '重装步兵',
         'Infanterie +20 Gesundheit': '步兵 +20 生命', 'Infanterie +3 Angriff': '步兵 +3 攻击',
         'Kaserne': '兵营', 'Kavallerie +2 Angriff, +10 Gesundheit': '骑兵 +2 攻击，+10 生命',
@@ -1783,7 +1783,7 @@ const I18N_GAME = {
         'Starker Infanterist': '强力步兵', 'Steinabbau +25% effizienter': '采石效率 +25%',
         'Tempel': '神庙', 'Töpferei': '制陶', 'Verteidigungsturm': '防御塔',
         'Wachtturm': '瞭望塔',
-        'Weltwunder - im Bau ~60s, danach 180s halten zum Sieg!': '世界奇观——建造约 60 秒，之后坚守 180 秒即可获胜！',
+        'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!': '世界奇观——建造约 60 秒，之后坚守 600 秒即可获胜！',
         'Zentrale Gebäude - baut Dorfbewohner, forscht Altsteinzeit-Technologien': '核心建筑——训练村民，研究石器时代科技'
     }
 };

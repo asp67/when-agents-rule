@@ -112,7 +112,7 @@ const CIVILIZATIONS = {
                 type: 'wonder',
                 requiredAge: 'iron',
                 buildTime: 60000,
-                description: 'Weltwunder - im Bau ~60s, danach 180s halten zum Sieg!'
+                description: 'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!'
             }
         ],
         techTree: {
@@ -326,7 +326,7 @@ const CIVILIZATIONS = {
                 type: 'wonder',
                 requiredAge: 'iron',
                 buildTime: 60000,
-                description: 'Weltwunder - im Bau ~60s, danach 180s halten zum Sieg!'
+                description: 'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!'
             }
         ],
         techTree: {
@@ -548,7 +548,7 @@ const CIVILIZATIONS = {
                 type: 'wonder',
                 requiredAge: 'iron',
                 buildTime: 60000,
-                description: 'Weltwunder - im Bau ~60s, danach 180s halten zum Sieg!'
+                description: 'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!'
             }
         ],
         techTree: {
@@ -736,7 +736,7 @@ const CIVILIZATIONS = {
                 type: 'wonder',
                 requiredAge: 'iron',
                 buildTime: 60000,
-                description: 'Weltwunder - im Bau ~60s, danach 180s halten zum Sieg!'
+                description: 'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!'
             }
         ],
         techTree: {

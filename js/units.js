@@ -241,7 +241,7 @@ const BUILDING_AGE_ORDER = ['stone', 'neolithic', 'bronze', 'iron'];
 // previous one (×1.5 per age), rounded to the nearest 50 for clean numbers.
 //
 // WONDERS ARE EXEMPT FROM BOTH multipliers. A wonder is the win condition — you
-// hold it for 180s under an all-hands assault — so its HP IS the endgame matchup
+// hold it for 600s under an all-hands assault — so its HP IS the endgame matchup
 // and it gets balanced on its own terms, not as a side effect of a bonus meant
 // for barracks. The civ health bonus used to land here and spread final wonder HP
 // across 2.44x: Persia's Fire Temple stood at 800 while Greece's Akropolis stood
