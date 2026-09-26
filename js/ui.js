@@ -2673,15 +2673,17 @@ class UIManager {
     // somewhere nobody could see. Off the HUD they go to a page-level live region.
     // Text only: a message can carry an exception's own words, never markup.
     showNotice(message, kind) {
-        const text = String(message == null ? '' : message);
+        const raw = String(message == null ? '' : message);
         const isError = kind === 'error';
+        // Several translations already open with their own icon; add one only if not.
+        const text = /^(⚠️|✅|❌)/.test(raw) ? raw : (isError ? '⚠️ ' : '✅ ') + raw;
         const infoDiv = document.getElementById('unitInfo');
         if (infoDiv && infoDiv.getClientRects && infoDiv.getClientRects().length) {
             // Borrowed: hold the periodic refresh off until we hand the card back, and
             // re-render on release rather than restoring the markup we captured — by
             // then it is seconds stale.
             this._infoBorrowed = true;
-            infoDiv.innerHTML = `<p style="color: ${isError ? '#e94560' : '#4ecca3'}; font-weight: bold;">${isError ? '⚠️' : '✅'} ${this.escapeHtml(text)}</p>`;
+            infoDiv.innerHTML = `<p style="color: ${isError ? '#e94560' : '#4ecca3'}; font-weight: bold;">${this.escapeHtml(text)}</p>`;
             clearTimeout(this._infoBorrowTimer);
             this._infoBorrowTimer = setTimeout(() => {
                 this._infoBorrowed = false;
@@ -2696,7 +2698,7 @@ class UIManager {
         if (!el) return;
         el.className = 'app-notice ' + (isError ? 'is-error' : 'is-info');
         el.setAttribute('role', isError ? 'alert' : 'status');
-        el.textContent = (isError ? '⚠️ ' : '✅ ') + text;
+        el.textContent = text;
         el.hidden = false;
         clearTimeout(this._noticeTimer);
         // Long enough to read a sentence twice; an error stays a little longer.
