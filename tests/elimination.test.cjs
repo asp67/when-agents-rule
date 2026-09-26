@@ -4,7 +4,7 @@ function setup(){
   getUnitDefFor:(_,id)=>id==='scout_cavalry'?{tier:'neolithic',cost:{food:100,gold:50}}:null,
   getCivilization:()=>({name:'Yamato',color:1})};
  vm.createContext(scope);
- vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0],scope);
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8'),scope);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/openai-ai.js'),'utf8'),scope);
  const game=Object.create(vm.runInContext('Game.prototype',scope));
  const funds={food:200,gold:100,stone:0};

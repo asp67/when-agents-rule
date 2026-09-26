@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 function setup(){
  const scope={location:{search:''}};vm.createContext(scope);
  const source=fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8');
- vm.runInContext(source.slice(0,source.indexOf('\nconst WAR_PRIVATE_HOST')),scope);
+ vm.runInContext(source,scope);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/director.js'),'utf8'),scope);
  const g=vm.runInContext('Object.create(Game.prototype)',scope);let paints=0;
  Object.assign(g,{_actionCam:true,spectatorMode:true,aiManager:{aiPlayers:[{id:'a',seat:0},{id:'b',seat:1}]},updateMinimap(){paints++;}});

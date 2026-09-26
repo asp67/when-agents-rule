@@ -20,7 +20,7 @@ test('day cycle preserves noon, stays readable at night and wraps continuously',
 test('real ticks keep ambient time at 1x while simulation accelerates, and freeze it on pause',()=>{
  const source=fs.readFileSync(require('node:path').join(__dirname,'../js/game.js'),'utf8');
  const context=vm.createContext({document:{hidden:true},Date:{now:()=>1000},WarPositionRules:{apply(){}}});
- vm.runInContext(source.slice(0,source.indexOf('\nconst WAR_PRIVATE_HOST')),context);
+ vm.runInContext(source,context);
  for(const speed of [1,1.5,2,4])for(const pauseState of ['running','paused']){
   const game=vm.runInContext('Object.create(Game.prototype)',context);game.clock=vm.runInContext('Game.newClock()',context);
   const done=new Error('end of clock check');let simulated=0;

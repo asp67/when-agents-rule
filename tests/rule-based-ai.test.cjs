@@ -28,7 +28,7 @@ test('a re-think leaves units already attacking the target mid-swing', () => {
 test('the rule-based brain gets simulated time: none while paused, more at speed', () => {
     const src = source('game.js');
     const context = vm.createContext({ document: { hidden: true }, Date: { now: () => 1000 }, WarPositionRules: { apply() {} } });
-    vm.runInContext(src.slice(0, src.indexOf('\nconst WAR_PRIVATE_HOST')), context);
+    vm.runInContext(src, context);
     for (const [speed, pauseState, expected] of [[1, 'running', 1000], [2, 'running', 2000], [4, 'paused', 0]]) {
         const game = vm.runInContext('Object.create(Game.prototype)', context);
         game.clock = vm.runInContext('Game.newClock()', context);

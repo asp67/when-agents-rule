@@ -9,7 +9,7 @@ function setup(href){
  const root=path.resolve(__dirname,'..');
  // Load the actual class and showcase extension without constructing the engine.
  const source=fs.readFileSync(path.join(root,'js/game.js'),'utf8');
- vm.runInContext(source.slice(0,source.indexOf('\nconst WAR_PRIVATE_HOST')) || source,scope);
+ vm.runInContext(source,scope);
  vm.runInContext(fs.readFileSync(path.join(root,'js/showcase.js'),'utf8'),scope);
  const game=vm.runInContext('Object.create(Game.prototype)',scope);
  game.renderer={};scope.game=game;

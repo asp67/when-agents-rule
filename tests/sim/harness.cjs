@@ -50,9 +50,8 @@ function inert(name, calls, own = {}) {
     });
 }
 
-const RULE_FILES = ['js/simulation/rng.js', 'js/simulation/math.js', 'js/engine/texgen.js', 'js/civilizations.js', 'js/buildings.js', 'js/units.js', 'js/resources.js',
-    'js/terrain.js', 'js/fogofwar.js', 'js/simulation/position-rules.js', 'js/ai.js', 'js/sha256.js', 'js/conditions.js', 'js/openai-ai.js',
-    'js/game.js', 'js/standing-orders.js'];
+// The rule files in load order, from the one list of them.
+const RULE_FILES = ['js/manifest.js'].concat(require('../../js/manifest.js').vm);
 
 class GoldenMatch {
     // frameMs and hidden describe the tab: 16 ms frames in a visible tab by default. A
@@ -84,15 +83,8 @@ class GoldenMatch {
             t: key => key,
         });
         vm.runInContext('globalThis.window = globalThis', context);
-        for (const file of RULE_FILES) {
-            let source = read(file);
-            if (file === 'js/game.js') {
-                const boundary = source.indexOf('\nconst WAR_PRIVATE_HOST');
-                if (boundary < 0) throw new Error('game.js browser-boot boundary moved');
-                source = source.slice(0, boundary);
-            }
-            vm.runInContext(source, context, { filename: file });
-        }
+        // Whole files: browser start-up lives in js/boot.js, so nothing is cut.
+        for (const file of RULE_FILES) vm.runInContext(read(file), context, { filename: file });
         this.context = context;
 
         // game.js declares the global `game` itself (a lexical binding), so it is

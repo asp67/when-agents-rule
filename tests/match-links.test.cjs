@@ -71,8 +71,11 @@ test('catalogue outage reports a failure instead of opening an unrelated game', 
 });
 
 test('startup opens links locally and publicly while preserving normal defaults', () => {
-    const source = fs.readFileSync(path.join(root, 'js/game.js'), 'utf8');
-    const boot = source.slice(source.lastIndexOf("window.addEventListener('load',"));
+    // Browser start-up lives in js/boot.js (review #6 step 8).
+    const source = fs.readFileSync(path.join(root, 'js/boot.js'), 'utf8');
+    const at = source.lastIndexOf("window.addEventListener('load',");
+    assert.ok(at >= 0, 'the load handler is in boot.js');
+    const boot = source.slice(at);
     for (const [demo, query, expected] of [
         [true, '?match=match-20260907-120324', ['open', 'match-20260907-120324']],
         [false, '?match=match-20260909-211941', ['open', 'match-20260909-211941']],

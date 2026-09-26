@@ -17,7 +17,7 @@ function gameRules() {
     const scope = { document: { hidden: true } };
     vm.createContext(scope);
     vm.runInContext(fs.readFileSync(path.join(root, 'js/simulation/math.js'), 'utf8'), scope);
-    vm.runInContext(src.slice(0, src.indexOf('\nconst WAR_PRIVATE_HOST')), scope);
+    vm.runInContext(src, scope);
     const G = vm.runInContext('Game', scope);
     return { unitVision: G.prototype.unitVision, buildingVision: G.prototype.buildingVision };
 }

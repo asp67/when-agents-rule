@@ -11,7 +11,7 @@ const W = require('../js/simulation/math.js');
 
 test('rule code uses no engine-dependent Math function outside its named exemptions', () => {
     const ctx = vm.createContext({});
-    for (const f of ['js/sha256.js', 'js/conditions.js']) vm.runInContext(read(f), ctx);
+    for (const f of ['js/manifest.js', 'js/sha256.js', 'js/conditions.js']) vm.runInContext(read(f), ctx);
     const files = vm.runInContext('WarConditions.CORE_FILES.concat(WarConditions.HARNESS_FILE)', ctx);
     const banned = /(^|[^\w.])Math\.(hypot|sin|cos|tan|atan2|atan|asin|acos|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log1p|log2|log10|pow|cbrt)\(|[\w)\]]\s*\*\*\s*[\w(]/;
     const found = [];

@@ -157,7 +157,7 @@ test('the game sends every hit to the director even when visual pings are thrott
     const source = fs.readFileSync(path.join(__dirname, '../js/game.js'), 'utf8');
     const scope = { console };
     vm.createContext(scope);
-    vm.runInContext(source.slice(0, source.indexOf('\nconst WAR_PRIVATE_HOST')), scope);
+    vm.runInContext(source, scope);
     const Game = vm.runInContext('Game', scope);
     const calls = [];
     const game = Object.create(Game.prototype);

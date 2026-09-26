@@ -13,7 +13,7 @@ const read = f => fs.readFileSync(path.join(root, f), 'utf8');
 function context() {
     const scope = { console, getCivilization: id => ({ name: id, color: 0xffff00, bonus: { description: 'x' } }) };
     vm.createContext(scope);
-    for (const f of ['js/sha256.js', 'js/conditions.js', 'js/openai-ai.js']) vm.runInContext(read(f), scope);
+    for (const f of ['js/manifest.js', 'js/sha256.js', 'js/conditions.js', 'js/openai-ai.js']) vm.runInContext(read(f), scope);
     vm.runInContext('this.W = WarConditions; this.M = OpenAIAIManager;', scope);
     // No fetch in Node: read the same files from disk, as the page would load them.
     scope.W.source = async f => scope.W.lf(read(f));

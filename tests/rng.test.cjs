@@ -17,7 +17,7 @@ function load(files) {
 // Every file whose code decides what happens, as the contract counts them, plus the
 // harness, which chooses build sites and scouting targets for the models.
 test('rule code draws no Math.random outside its named exemptions', () => {
-    const ctx = load(['js/sha256.js', 'js/conditions.js']);
+    const ctx = load(['js/manifest.js', 'js/sha256.js', 'js/conditions.js']);
     const files = vm.runInContext('WarConditions.CORE_FILES.concat(WarConditions.HARNESS_FILE)', ctx);
     const found = [];
     for (const f of files) read(f).split(/\r?\n/).forEach((line, i) => {

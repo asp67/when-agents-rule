@@ -21,14 +21,11 @@
 const WarConditions = {
     SCHEMA: 'war-contract/1',
     RULES_ID: 'classic@0',
-    // Files whose code decides what happens in the world. The renderer left this list
-    // when separation moved into the simulation step: it decides nothing now, so a
-    // change to how the game LOOKS no longer splits comparable results.
-    CORE_FILES: ['js/game.js', 'js/ai.js', 'js/units.js', 'js/buildings.js', 'js/civilizations.js',
-                 'js/resources.js', 'js/standing-orders.js', 'js/terrain.js', 'js/fogofwar.js',
-                 'js/engine/texgen.js', 'js/simulation/position-rules.js', 'js/simulation/rng.js',
-                 'js/simulation/math.js'],
-    HARNESS_FILE: 'js/openai-ai.js',
+    // Files whose code decides what happens in the world, from the one list of them
+    // (js/manifest.js). The renderer is not among them: it decides nothing, so a change
+    // to how the game LOOKS does not split comparable results.
+    get CORE_FILES() { return WarManifest.rules; },
+    get HARNESS_FILE() { return WarManifest.harness; },
 
     lf(text) { return String(text == null ? '' : text).replace(/\r\n/g, '\n'); },
     // JSON with sorted keys, so the same value always hashes the same.

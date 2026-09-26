@@ -3,7 +3,7 @@ function fixture(){
  const scope={console:{log(){},warn(){},error(){}}};vm.createContext(scope);
  for(const name of ['simulation/rng','simulation/math','civilizations','buildings','units','resources','game','ai','openai-ai']){
   let source=fs.readFileSync(path.join(__dirname,'../js/'+name+'.js'),'utf8');
-  if(name==='game')source=source.split('\nconst WAR_PRIVATE_HOST')[0];vm.runInContext(source,scope);
+  if(name==='game')source=source;vm.runInContext(source,scope);
  }
  return vm.runInContext(`(()=>{
   game=new Game();game.spectatorMode=true;game.renderer={killUnit(){},killBuilding(){},addUnit(){}};
