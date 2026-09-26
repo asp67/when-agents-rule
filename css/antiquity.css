@@ -226,6 +226,29 @@ body.spectator-mode .mm-fog { bottom:calc(var(--mm-bottom) + 42px); }
     font:1.2rem Georgia,serif; letter-spacing:.04em;
 }
 .arena-loading img { width:80px; height:80px; margin-bottom:12px; }
+/* Lineup card: on the loading cover, then briefly over the opening of the match. */
+.arena-lineup { margin-top:26px; min-width:min(560px, calc(100vw - 32px)); max-width:calc(100vw - 32px);
+    background:rgba(20,26,23,.94); border:1px solid rgba(222,197,148,.35); border-radius:4px;
+    padding:14px 16px; font:.9rem/1.4 system-ui,sans-serif; letter-spacing:0; color:#e8dcc2; cursor:default; box-sizing:border-box; }
+.arena-lineup .lu-head { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;
+    border-bottom:1px solid rgba(222,197,148,.2); padding-bottom:8px; margin-bottom:6px; }
+.arena-lineup .lu-title { font:1.05rem Georgia,serif; color:#dec594; letter-spacing:.04em; }
+.arena-lineup .lu-meta { color:#a9a38f; font-size:.8rem; overflow-wrap:anywhere; }
+.arena-lineup .lu-seat { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; align-items:center; padding:7px 0; }
+.arena-lineup .lu-seat + .lu-seat { border-top:1px solid rgba(222,197,148,.1); }
+.arena-lineup .lu-badge { grid-row:span 2; display:flex; }
+.arena-lineup .lu-who { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; min-width:0; }
+.arena-lineup .lu-name { font-weight:600; overflow-wrap:anywhere; }
+.arena-lineup .lu-civ, .arena-lineup .lu-model { color:#a9a38f; font-size:.8rem; overflow-wrap:anywhere; }
+.arena-lineup .lu-tags { display:flex; gap:5px; flex-wrap:wrap; }
+.arena-lineup .lu-tag { font-size:.72rem; padding:1px 7px; border-radius:9px; border:1px solid rgba(222,197,148,.3); color:#d8cfb8; }
+.arena-lineup .lu-tag.ok { border-color:#6f9a64; color:#a8d39b; }
+.arena-lineup .lu-tag.warn { border-color:#b58a3c; color:#e6c27a; }
+.arena-lineup .lu-tag.quiet { color:#8d8878; border-style:dashed; }
+.arena-lineup.floating { position:fixed; top:84px; left:50%; transform:translateX(-50%); margin:0; z-index:9000;
+    cursor:pointer; box-shadow:0 8px 30px rgba(0,0,0,.45); transition:opacity .6s ease; }
+.arena-lineup.floating.fading { opacity:0; }
+@media (prefers-reduced-motion: reduce) { .arena-lineup.floating { transition:none; } }
 
 .visual-showcase-label > .showcase-tools { margin-top:12px; }
 .player-formation-picker {

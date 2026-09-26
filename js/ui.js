@@ -2178,6 +2178,90 @@ class UIManager {
         this.anRender();
     }
 
+    // ---- Lineup card -----------------------------------------------------------
+    // Who plays, served by what, checked or not, and on which contract: the facts that
+    // decide how a result may be read, shown before the first turn rather than found
+    // in the header afterwards. Built from the setup first, then again from the
+    // transcript header once each server has named itself, so it shows what the
+    // record will say. `servedBy` undefined means the server has not been asked yet.
+    lineupRows(setup, header) {
+        return (setup || []).map((s, i) => {
+            if (s.type !== 'llm') return { civ: s.civ, seat: i, rule: true };
+            const p = header && header.players && header.players[i];
+            const st = (p && p.settings) || null, c = s.connection || {};
+            const pick = (fromHeader, fromSetup) => (st ? fromHeader : fromSetup);
+            return {
+                civ: s.civ, seat: i,
+                name: (p && p.name) || c.name || '?',
+                // The same public form the header records: a local file path is cut to
+                // its file name, so a user folder never appears on screen.
+                model: (p && p.model) || (c.model && typeof OpenAIAIManager !== 'undefined'
+                    ? OpenAIAIManager.publicModelId(c.model) : c.model) || null,
+                servedBy: st ? (st.servedBy || null) : undefined,
+                preflight: pick(st && st.preflight, c.preflight) || null,
+                context: pick(st && st.contextBudget, c.contextSize) || null,
+                reasoning: pick(st && st.reasoning, c.reasoning) || null,
+                soft: !!pick(st && st.toolFallback, c.toolFallback),
+                lanes: pick(st && st.lanes, c.lanes) || 1
+            };
+        });
+    }
+
+    renderArenaLineup(host, setup, header, spec) {
+        if (!host) return null;
+        const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+        let card = host.querySelector('.arena-lineup');
+        if (!card) { card = el('div', 'arena-lineup'); host.appendChild(card); }
+        card.textContent = '';
+        const head = el('div', 'lu-head');
+        head.append(el('span', 'lu-title', t('lu.title')));
+        const meta = [];
+        if (spec && spec.preset === 'quick-match') meta.push(t('lu.quick'));
+        meta.push(spec && spec.turnBased ? t('lu.turnBased') : t('lu.realTime'));
+        if (spec && spec.seed) meta.push(t('lu.seed', { seed: spec.seed }));
+        head.append(el('span', 'lu-meta', meta.join(' · ')));
+        card.append(head);
+        this.lineupRows(setup, header).forEach(r => {
+            const row = el('div', 'lu-seat');
+            const badge = el('span', 'lu-badge');
+            badge.innerHTML = this.teamDotHtml ? this.teamDotHtml(r.seat, 9) : '';
+            const who = el('div', 'lu-who');
+            who.append(el('span', 'lu-name', r.rule ? t('lu.rule') : r.name),
+                       el('span', 'lu-civ', t('civ.' + r.civ + '.name')));
+            if (!r.rule && r.model && r.model !== r.name) who.append(el('span', 'lu-model', r.model));
+            const tags = el('div', 'lu-tags');
+            const tag = (text, cls, tip) => { const e = el('span', 'lu-tag' + (cls ? ' ' + cls : ''), text); if (tip) e.title = tip; tags.append(e); };
+            if (r.rule) tag(t('lu.ruleTag'), 'quiet');
+            else {
+                if (r.servedBy === undefined) tag(t('lu.asking'), 'quiet');
+                else if (r.servedBy) tag(t('lu.served', { s: r.servedBy }));
+                if (r.preflight && r.preflight.ok) tag(t('lu.checked'), 'ok');
+                else if (r.preflight) tag(t('lu.checkFailed', { code: r.preflight.code }), 'warn');
+                else tag(t('lu.unchecked'), 'quiet', t('lu.uncheckedTip'));
+                if (r.context) tag(t('lu.ctx', { n: r.context >= 1024 ? Math.round(r.context / 1024) + 'k' : r.context }));
+                if (r.reasoning) tag(t('lu.reasoning', { v: r.reasoning }));
+                if (r.soft) tag(t('lu.soft'), 'warn', t('lu.softTip'));
+                if (r.lanes > 1) tag(t('lu.lanes', { n: r.lanes }), 'warn');
+            }
+            row.append(badge, who, tags);
+            card.append(row);
+        });
+        return card;
+    }
+
+    // Once the match runs, the card leaves the cover and stays over the opening
+    // seconds, then fades. It takes no input it needs: a click only dismisses it early.
+    floatArenaLineup(host) {
+        const card = host && host.querySelector('.arena-lineup');
+        if (!card) return;
+        document.querySelectorAll('.arena-lineup.floating').forEach(e => e.remove());
+        card.classList.add('floating');
+        document.body.appendChild(card);
+        const gone = () => { card.classList.add('fading'); setTimeout(() => card.remove(), 700); };
+        card.addEventListener('click', gone, { once: true });
+        setTimeout(gone, 7000);
+    }
+
     // Collect the setup the arena engine expects (first `count` participants, 2–4).
     collectArenaSetup() {
         const cfg = this._arenaConfig;

@@ -182,6 +182,7 @@ class Game {
         const crest=document.createElement('img');crest.src='favicon.svg';crest.alt='';
         const label=document.createElement('p');label.textContent=t('ar.loadingWorld');
         cover.append(crest,label);document.body.appendChild(cover);
+        this._arenaCover=cover;
         try {
             // Let the opaque cover paint before synchronous terrain generation.
             await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
@@ -202,6 +203,7 @@ class Game {
             return null;
         } finally {
             cover.remove();
+            this._arenaCover = null;
             this._arenaStarting = false;
         }
     }
@@ -315,6 +317,12 @@ class Game {
             roundTimeoutMs: (spec && spec.roundTimeoutMs) || (this.ui.roundTimeoutMs ? this.ui.roundTimeoutMs() : null),
             preset: (spec && spec.preset) || null
         };
+        // The lineup card, on the cover while the map is built. One frame is yielded so
+        // it paints before terrain generation blocks the thread.
+        if (this._arenaCover && this.ui.renderArenaLineup) {
+            this.ui.renderArenaLineup(this._arenaCover, setup, null, this.arenaSpec);
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        }
         // Stone and gold are laid out ROTATIONALLY around the Town Centers, so the
         // generator needs the spawns before it runs (they are already computed above).
         this.terrain.spawns = spawnPositions;
@@ -361,6 +369,12 @@ class Game {
         if (this.openAIAIManager) this.openAIAIManager.stop();
         this.openAIAIManager = new OpenAIAIManager(this);
         await this.openAIAIManager.initFromSetup(setup);
+        // Again from the transcript header, now that each server has said what it is:
+        // the card shows what the record says.
+        if (this._arenaCover && this.ui.renderArenaLineup) {
+            const rec = this.openAIAIManager.transcripts;
+            this.ui.renderArenaLineup(this._arenaCover, setup, rec && rec.matchMeta, this.arenaSpec);
+        }
 
         // Mark LLM-controlled AI players
         for (let i = 0; i < setup.length; i++) {
@@ -405,6 +419,7 @@ class Game {
 
         await this.waitForArenaScene();
         this.gameStarted = true;
+        if (this._arenaCover && this.ui.floatArenaLineup) this.ui.floatArenaLineup(this._arenaCover);
         this.sound?.matchStart();
         // Start game loop
         this.lastFrameTime = Date.now();
