@@ -12,7 +12,8 @@ Rule code measures distances and angles with `Math.hypot`, `Math.sin`, `Math.cos
 
 Rule code now uses `js/simulation/math.js`. It is built from the exact operations only and follows the routines Node's V8 uses: fdlibm for `sin`, `cos` and `atan2`, and V8's own `hypot`. The effects:
 
-- **In Node:** results are bit-identical to before. A million sampled inputs per function match, and the golden traces pass unchanged.
+- **In Node on x64:** results are bit-identical to before. A million sampled inputs per function match, and the golden traces pass unchanged.
+- **Across machines:** the same Node 24.14.1 on ARM64 (the Platform server) differs from x64 in the last bit for about 0.5% of `sin`, `cos` and `atan2` inputs. `WarMath` gives the same bits on both, checked with one pinned fingerprint of 480,000 outputs.
 - **In a browser:** the results are now Node's. In Chrome 152 that changes `sin`, `cos` and `atan2` in the last bit for a few percent of inputs.
 - **Maps:** a map seed produces the same map in Chrome and in Node, checked bit for bit on three seeds.
 

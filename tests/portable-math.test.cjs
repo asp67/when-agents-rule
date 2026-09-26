@@ -1,10 +1,8 @@
 // Portable math (js/simulation/math.js, review #6 step 6). Rule code computes
 // distances and angles through WarMath, built from the operations IEEE 754 fixes to the
-// last bit, so every engine agrees. It follows the algorithms Node's V8 uses (fdlibm for
-// sin, cos and atan2; V8's own hypot), so on Node -- which runs these tests -- it must
-// equal Math exactly, and a headless match is unchanged by it. Browsers now compute
-// Node's bits too; Chrome 152's own sin, cos and atan2 already differed from Node's in
-// the last bit for a few percent of inputs.
+// last bit, so every engine agrees. It follows fdlibm (sin, cos, atan2) and V8's hypot.
+// On x64 Node it equals Math exactly; Chrome 152 and ARM64 Node each differ from that
+// in the last bit for some inputs, which is exactly why rule code cannot use Math.
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
 const root = path.resolve(__dirname, '..');
@@ -26,34 +24,38 @@ test('rule code uses no engine-dependent Math function outside its named exempti
     assert.deepEqual(found, [], 'use WarMath.hypot/sin/cos/atan2, or mark the line "// math-exempt: <why>"');
 });
 
-test('on Node every WarMath function equals Math to the last bit', () => {
+// The property that matters: the same inputs give the same bits on every machine. A
+// fingerprint of 480,000 outputs, pinned. It was recorded on x64 and matched on the
+// DGX's ARM64 -- where Node's own Math did NOT match x64's (same Node 24.14.1: 659 sin,
+// 381 cos and 112 atan2 inputs out of 120,000 differed in the last bit). How far the
+// local Math agrees is reported, not asserted: that is a property of this engine build.
+test('WarMath gives the same bits on every machine', t => {
+    const crypto = require('node:crypto');
     let s = 7;
     const rnd = () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
-    const scales = [1e-9, 1, 4, 800, 1e4, 1.5e6];
-    for (const k of scales) for (let i = 0; i < 20000; i++) {
+    const h = crypto.createHash('sha256'), f = new Float64Array(4), off = { sin: 0, cos: 0, atan2: 0, hypot: 0 };
+    for (const k of [1e-9, 1, 4, 800, 1e4, 1.5e6]) for (let i = 0; i < 20000; i++) {
         const a = (rnd() - 0.5) * k, b = (rnd() - 0.5) * k;
-        for (const [name, w, m] of [['sin', W.sin(a), Math.sin(a)], ['cos', W.cos(a), Math.cos(a)],
-                                    ['atan2', W.atan2(a, b), Math.atan2(a, b)], ['hypot', W.hypot(a, b), Math.hypot(a, b)]]) {
-            if (!Object.is(w, m)) assert.fail(`${name}(${a}${name === 'sin' || name === 'cos' ? '' : ', ' + b}) = ${w}, Math gives ${m}`);
-        }
+        f[0] = W.sin(a); f[1] = W.cos(a); f[2] = W.atan2(a, b); f[3] = W.hypot(a, b);
+        h.update(Buffer.from(f.buffer));
+        if (!Object.is(f[0], Math.sin(a))) off.sin++;
+        if (!Object.is(f[1], Math.cos(a))) off.cos++;
+        if (!Object.is(f[2], Math.atan2(a, b))) off.atan2++;
+        if (!Object.is(f[3], Math.hypot(a, b))) off.hypot++;
     }
+    t.diagnostic(`${process.arch}: local Math differs from WarMath on ${JSON.stringify(off)} of 120000 each`);
+    assert.equal(h.digest('hex').slice(0, 16), '1f1f84b0005facd6');
+    // Special values follow the language's rules on every engine.
     const special = [0, -0, 1, -1, 0.5, Math.PI, -Math.PI / 2, Math.PI / 4, 3 * Math.PI / 2, 1e-300, 5e-324, 1e300, Infinity, -Infinity, NaN];
-    // sin and cos match V8 up to fdlibm's medium range, |x| < 2^20 * pi/2 (about 1.6
-    // million radians). Past it V8 switches to an exact multi-precision reduction with a
-    // 66-word table of 2/pi, which this module does not carry: it reduces with % instead,
-    // deterministic but not V8's bits. No rule angle comes near; this pins the boundary.
-    const MEDIUM = 1647099;
     for (const a of special) {
-        if (Math.abs(a) < MEDIUM || !Number.isFinite(a)) {
-            assert.ok(Object.is(W.sin(a), Math.sin(a)), 'sin ' + a);
-            assert.ok(Object.is(W.cos(a), Math.cos(a)), 'cos ' + a);
-        } else {
-            assert.ok(Number.isFinite(W.sin(a)) && Math.abs(W.sin(a)) <= 1, 'sin stays a sine past the medium range');
-            assert.equal(W.sin(a), W.sin(a));
+        for (const [w, m] of [[W.sin(a), Math.sin(a)], [W.cos(a), Math.cos(a)]]) {
+            if (!Number.isFinite(a) || a === 0) assert.ok(Object.is(w, m), 'sin/cos special ' + a);
+            else assert.ok(Number.isFinite(w) && Math.abs(w) <= 1, 'sin/cos stays in range at ' + a);
         }
         for (const b of special) {
-            assert.ok(Object.is(W.atan2(a, b), Math.atan2(a, b)), `atan2 ${a} ${b}`);
             assert.ok(Object.is(W.hypot(a, b), Math.hypot(a, b)), `hypot ${a} ${b}`);
+            if (a !== a || b !== b || a === 0 || b === 0 || !Number.isFinite(a) || !Number.isFinite(b))
+                assert.ok(Object.is(W.atan2(a, b), Math.atan2(a, b)), `atan2 special ${a} ${b}`);
         }
     }
     for (let n = 0; n < 6; n++) assert.equal(W.powInt(1.5, n), Math.pow(1.5, n));

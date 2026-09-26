@@ -8,12 +8,13 @@
 // recorded in one browser would then not replay in another.
 //
 // These are built from the exact operations only, so every engine computes the same
-// bits. They follow V8's hypot and the fdlibm routines Node's V8 uses for sin, cos and
-// atan2, and on Node they equal Math to the last bit (tests/portable-math.test.cjs).
-// Engines do not even agree with themselves across builds: measured on 27 September
-// 2026, Chrome 152 differs from Node 24 in the last bit for 2-18% of sin, cos and atan2
-// inputs, so a match in the browser and the same match on a Node server could not stay
-// identical. Through this module they compute the same fight. Rule code must use them;
+// bits. They follow V8's hypot and fdlibm's sin, cos and atan2; on x64 Node they equal
+// Math to the last bit. Engines do not even agree with themselves: measured on 27
+// September 2026, Chrome 152 differs from x64 Node 24 in the last bit for 2-18% of sin,
+// cos and atan2 inputs, and the SAME Node 24.14.1 on ARM64 differs from x64 for about
+// 0.5% -- so the browser, a Windows machine and the ARM64 server could each compute a
+// different match. Through this module they compute the same bits, fingerprinted in
+// tests/portable-math.test.cjs on both architectures. Rule code must use them;
 // the same test rejects Math.hypot and the trig functions in rule files, except on a
 // line marked "// math-exempt: <why>" (a texture painter, say).
 // ---------------------------------------------------------------------------
