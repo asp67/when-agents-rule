@@ -532,6 +532,12 @@ class AIManager {
 
         if (target) {
             military.forEach(unit => {
+                // Already on it: leave the unit alone. Re-issuing the same order every
+                // 2 s think reset attackTimer mid-swing and re-aimed units already in
+                // melee at the target's centre, which cost the rule-based army about a
+                // fifth of its damage in a measured 10v10 -- a self-handicap for the
+                // baseline every model is compared against, and for Campaign.
+                if (unit.isAttacking && unit.attackTarget === target) return;
                 this.game.clearRetaliation(unit); // explicit order overrides the reflex
                 unit.isAttacking = true;
                 unit.attackTarget = target;

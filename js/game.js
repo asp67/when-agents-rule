@@ -699,7 +699,11 @@ class Game {
         this.aiManager.aiPlayers.forEach(ai => {
             ai.resources.updatePopulation(ai.units.length);
         });
-        this.aiManager.update(simTime);
+        // The rule-based brain runs on SIMULATED time, like the world it commands. On
+        // wall time it kept thinking through a pause and thought at the same wall
+        // cadence at 4x, so its strength depended on the speed setting. The model
+        // harness below stays on wall time on purpose: models answer in real seconds.
+        this.aiManager.update(this.simBudget(simTime));
         if (this.openAIAIManager) {
             this.openAIAIManager.update(simTime);
         }
