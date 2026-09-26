@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, '..');
 
 function analyzer() {
     const context = vm.createContext({ console });
-    const src = fs.readFileSync(path.join(root, 'js/analyzer.js'), 'utf8').replace(/^﻿/, '');
+    const src = fs.readFileSync(path.join(root, 'js/analyzer.js'), 'utf8').replace(new RegExp("^" + String.fromCharCode(0xFEFF)), '');
     vm.runInContext(src + '\nthis.TranscriptAnalyzer = TranscriptAnalyzer;', context);
     return context.TranscriptAnalyzer;
 }

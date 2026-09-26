@@ -6047,7 +6047,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 const first = keys.length ? String(keys[0]) : null;
                 this.outcome('log.out.unknownUnit', { unitType: first || 'object' });
                 return `[ERROR] "unitType" must be ONE unit id as a string, not ${Array.isArray(unitType) ? 'an array' : 'an object'}. `
-                    + (first ? `You sent ${JSON.stringify(unitType)} — send "unitType": "${first}" and put how many in "count" if you need more than one. ` : '')
+                    + (first ? `You sent ${JSON.stringify(unitType)} — send "unitType": "${first}". One train_unit command trains one unit. ` : '')
                     + `The {"type": count} shape belongs to "units" in move_units and attack_target, never here. ${this.trainableListString(ai)}`;
             }
             const cats = ['infantry', 'ranged', 'cavalry', 'support'];

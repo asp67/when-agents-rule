@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 
 function manager() {
     const context = vm.createContext({ console, window: {}, localStorage: { getItem() { return null; }, setItem() {} } });
-    const src = fs.readFileSync(path.join(root, 'js/openai-ai.js'), 'utf8').replace(/^﻿/, '');
+    const src = fs.readFileSync(path.join(root, 'js/openai-ai.js'), 'utf8').replace(new RegExp("^" + String.fromCharCode(0xFEFF)), '');
     vm.runInContext(src + '\nthis.M = OpenAIAIManager;', context);
     return Object.create(context.M.prototype);
 }
