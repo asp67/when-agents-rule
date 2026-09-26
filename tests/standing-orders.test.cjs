@@ -5,7 +5,7 @@ function setup(arrows=1){
  vm.runInContext(read('game.js').split('\nconst WAR_PRIVATE_HOST')[0],scope);
  vm.runInContext(read('openai-ai.js'),scope);vm.runInContext(read('standing-orders.js'),scope);
  const Game=vm.runInContext('Game',scope),Manager=vm.runInContext('OpenAIAIManager',scope);
- const g=Object.create(Game.prototype),m=Object.create(Manager.prototype),owner={id:'a',units:[],buildings:[]},enemy=[];
+ const g=Object.create(Game.prototype);g.clock=Game.newClock();const m=Object.create(Manager.prototype),owner={id:'a',units:[],buildings:[]},enemy=[];
  let id=0;const unit=(type='warrior',x=0,z=0,speed=1)=>({id:'u'+(++id),handle:id,type,unitType:type==='priest'?'support':'infantry',owner:'a',x,z,speed,health:100,maxHealth:100,attack:type==='priest'?0:10,range:type==='priest'?3:1,_orderToken:1});
  Object.assign(g,{getAllUnits:()=>owner.units.concat(enemy),getAllBuildings:()=>[],clampSlot:(x,z)=>({x,z}),clampToMap:(x,z)=>({x,z}),
   renderer:{units:owner.units,updateUnitPosition(){},flashHit(){},spawnProjectile(){}},aiManager:{aiPlayers:[owner],isVisibleTo:(_,x,z)=>owner.units.some(u=>Math.hypot(u.x-x,u.z-z)<=30)},

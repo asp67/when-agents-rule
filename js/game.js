@@ -53,7 +53,42 @@ class Game {
         this.EXPLORE_TILES = 7;
         this.gameSpeed = 1;
         this.lastFrameTime = 0;
+        this.clock = Game.newClock();
     }
+
+    // ---- The match clock ----------------------------------------------------------
+    // Every gameplay timer reads simMs: simulated time, advanced by simulateStep itself,
+    // so it runs faster at 2x, stands still on a pause, and cannot depend on the frame
+    // rate or on anything that is not the simulation. stepNo counts those steps.
+    //
+    // matchMs is real match time with pauses left out -- the clock a model lives on,
+    // since it answers in real seconds. Durations reported TO a model are converted
+    // back to it (realSecsSince). `rates` records how fast simMs ran against matchMs,
+    // one entry per change (a speed change, a Wonder's 1x clamp, a pause), which is
+    // all that conversion needs.
+    static newClock() { return { stepNo: 0, simMs: 0, matchMs: 0, rates: [{ sim: 0, match: 0, rate: 1 }] }; }
+    simNow() { return this.clock.simMs; }
+    // Simulated ms per real ms right now: 0 paused, 1 while a Wonder stands, else speed.
+    simRate() {
+        if (this.pauseState === 'paused') return 0;
+        return this.anyWonderStanding() ? 1 : (this.simSpeed || 1);
+    }
+    // Once per tick, with the real time that tick covers.
+    advanceMatchClock(wallMs) {
+        const rate = this.simRate(), c = this.clock;
+        if (!(rate > 0) || !(wallMs > 0)) return;
+        if (rate !== c.rates[c.rates.length - 1].rate) c.rates.push({ sim: c.simMs, match: c.matchMs, rate });
+        c.matchMs += wallMs;
+    }
+    // The real (match) time at which the simulation stood at `simStamp`.
+    matchMsAt(simStamp) {
+        const r = this.clock.rates;
+        let i = r.length - 1;
+        while (i > 0 && r[i].sim > simStamp) i--;
+        return r[i].match + (simStamp - r[i].sim) / r[i].rate;
+    }
+    // Real seconds since a sim-time stamp, for text a model reads.
+    realSecsSince(simStamp) { return (this.clock.matchMs - this.matchMsAt(simStamp)) / 1000; }
 
     init() {
         this.sound = new WarAudio(this);
@@ -753,6 +788,7 @@ class Game {
         // step, so a longer step would separate less than the same time in short ones.
         const STEP_MAX = 50;
         const budgeted = this.simBudget(simTime);
+        this.advanceMatchClock(simTime);
         // Ambient motion and daylight follow elapsed time, not the fast-forward
         // multiplier for units/research. They still stop with an actual pause.
         this._environmentSeconds = (this._environmentSeconds || 0)
@@ -838,6 +874,9 @@ class Game {
     // One fixed simulation slice (dt ≤ 100ms). Called once for a normal 60fps frame,
     // or several times to replay a long/throttled frame without losing time.
     simulateStep(dt) {
+        // The clock first, so everything this step stamps carries this step's time.
+        this.clock.simMs += dt;
+        this.clock.stepNo++;
         // Unit work + movement (movement is the teleport-sensitive part — keep dt small)
         if(this._standingOrders)this._standingOrders.update(dt);
         this.measureFormationLead();
@@ -1374,7 +1413,7 @@ class Game {
                         this.recordBattleDamage(unit, currentTarget, dealt);
                         // Remember who hit this target & when, for the auto-defense reflex.
                         currentTarget._lastAttacker = unit;
-                        currentTarget._lastDamageTime = Date.now();
+                        currentTarget._lastDamageTime = this.simNow();
                         // A besieging squad answers back: focus-fire the dealer.
                         this.noteRetaliation(currentTarget, unit);
 
@@ -1529,7 +1568,7 @@ class Game {
                 // Credit the shooter: the casualty report names the tower, and
                 // the auto-defense reflex knows what to retaliate against.
                 unit._lastAttacker = tower;
-                unit._lastDamageTime = Date.now();
+                unit._lastDamageTime = this.simNow();
                 // Besieging squads turn on the tower shooting them.
                 this.noteRetaliation(unit, tower);
 
@@ -1571,7 +1610,7 @@ class Game {
         this._autoDefTimer = (this._autoDefTimer || 0) + deltaTime;
         if (this._autoDefTimer < 600) return; // throttle (~0.6s) so we don't re-task every frame
         this._autoDefTimer = 0;
-        const now = Date.now();
+        const now = this.simNow();
 
         this.aiManager.aiPlayers.forEach(owner => {
             if (!owner || !owner.units) return;
@@ -1751,7 +1790,7 @@ class Game {
     // (atk)? Reuses the battle ledger so auto-defense can tell "idle at home" from
     // "healing at the front" without inventing a second piece of bookkeeping.
     tendingOtherBattle(unit, atk) {
-        const now = Date.now();
+        const now = this.simNow();
         return (this._battles || []).some(b =>
             (now - b.lastAt) < Game.BATTLE_QUIET_MS &&
             Math.hypot(b.x - atk.x, b.z - atk.z) > Game.BATTLE_RADIUS &&
@@ -1940,8 +1979,7 @@ class Game {
     }
 
     simBudget(ms) {
-        if (this.pauseState === 'paused') return 0;
-        return ms * (this.anyWonderStanding() ? 1 : (this.simSpeed || 1));
+        return ms * this.simRate();
     }
 
     // Pause takes effect only once nothing is in flight; the AI manager makes that call
@@ -2240,7 +2278,7 @@ class Game {
     static get BATTLE_MAX() { return 8; }
 
     _battleAt(x, z, open) {
-        const now = Date.now();
+        const now = this.simNow();
         const R = Game.BATTLE_RADIUS;
         this.pruneBattles();
         const near = this._battles.filter(e =>
@@ -2280,7 +2318,7 @@ class Game {
     // every state for the rest of the match. The one caller that reads _battles
     // outside combat (the state serializer) never filtered by age either.
     pruneBattles() {
-        const now = Date.now();
+        const now = this.simNow();
         this._battles = (this._battles || []).filter(b => (now - b.lastAt) <= Game.BATTLE_KEEP_MS);
     }
 
@@ -2319,7 +2357,7 @@ class Game {
         // which would make a siege look like a won field battle.
         const isBuilding = target.isWonder || !!(target.type && BUILDING_DEFS[target.type]);
         if (isBuilding) e.dmgBuildings += amount; else e.dmgUnits += amount;
-        b.lastAt = Date.now();
+        b.lastAt = this.simNow();
         // Drift toward where the blows land so a rolling fight stays ONE engagement.
         b.x += (target.x - b.x) * 0.05;
         b.z += (target.z - b.z) * 0.05;
@@ -2360,7 +2398,7 @@ class Game {
         // apart at 1x, a quarter of that at 4x, and a minute apart for a slow model, so
         // any fixed number of seconds means something different for every player in the
         // same match. A turn count means the same thing for all of them.
-        ownerObj.events.push({ at: Date.now(), seq: ownerObj._turnSeq || 0, text,
+        ownerObj.events.push({ at: this.simNow(), seq: ownerObj._turnSeq || 0, text,
                                ttl: (typeof ttl === 'number' && ttl > 0) ? ttl : 2 });
         if (ownerObj.events.length > 14) ownerObj.events.shift();
     }
@@ -2381,7 +2419,7 @@ class Game {
         if (!ownerObj || !building) return;
         const list = ownerObj._lostBuildings || (ownerObj._lostBuildings = []);
         list.push({
-            at: Date.now(),
+            at: this.simNow(),
             type: building.type,
             wonder: !!building.isWonder,
             x: Math.round(building.x),
@@ -3377,7 +3415,7 @@ class Game {
     // Returns the remaining lockout in ms (0 = repairs allowed).
     repairBarrierMsLeft(building) {
         if (!building || !building._lastDamageTime) return 0;
-        return Math.max(0, 10000 - (Date.now() - building._lastDamageTime));
+        return Math.max(0, 10000 - (this.simNow() - building._lastDamageTime));
     }
 
     // Assign specific workers to a friendly building: finish its construction if it
@@ -3611,6 +3649,7 @@ class Game {
 
     resetTimeline() {
         this._environmentSeconds = 0;
+        this.clock = Game.newClock();   // a new match starts at simulated time zero
         this._standingOrders = null;
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
         // Handles are per MATCH: without this they keep climbing across restarts in one
@@ -3815,7 +3854,7 @@ class Game {
             seen.add(gid);
             if (!g.n || !g.target) return;
             const d = Math.hypot(g.cx / g.n - g.target.x, g.cz / g.n - g.target.z);
-            const now = Date.now();
+            const now = this.simNow();
             const st = chase.get(gid) || { min: d, minAt: now, charging: false };
             // A real gain, not noise: two units of jitter must not keep resetting the
             // clock and hold the charge off forever.

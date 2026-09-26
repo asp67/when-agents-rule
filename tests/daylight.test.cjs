@@ -22,7 +22,7 @@ test('real ticks keep ambient time at 1x while simulation accelerates, and freez
  const context=vm.createContext({document:{hidden:true},Date:{now:()=>1000},WarPositionRules:{apply(){}}});
  vm.runInContext(source.slice(0,source.indexOf('\nconst WAR_PRIVATE_HOST')),context);
  for(const speed of [1,1.5,2,4])for(const pauseState of ['running','paused']){
-  const game=vm.runInContext('Object.create(Game.prototype)',context);
+  const game=vm.runInContext('Object.create(Game.prototype)',context);game.clock=vm.runInContext('Game.newClock()',context);
   const done=new Error('end of clock check');let simulated=0;
   Object.assign(game,{lastFrameTime:0,simSpeed:speed,pauseState,
    aiManager:{aiPlayers:[],update(){}},sampleTimeline(){},pruneBattles(){},renderer:{units:[],buildings:[]},

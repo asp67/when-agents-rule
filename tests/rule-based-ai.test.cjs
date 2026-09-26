@@ -31,6 +31,7 @@ test('the rule-based brain gets simulated time: none while paused, more at speed
     vm.runInContext(src.slice(0, src.indexOf('\nconst WAR_PRIVATE_HOST')), context);
     for (const [speed, pauseState, expected] of [[1, 'running', 1000], [2, 'running', 2000], [4, 'paused', 0]]) {
         const game = vm.runInContext('Object.create(Game.prototype)', context);
+        game.clock = vm.runInContext('Game.newClock()', context);
         const done = new Error('end of tick');
         let given = null;
         Object.assign(game, { lastFrameTime: 0, simSpeed: speed, pauseState,

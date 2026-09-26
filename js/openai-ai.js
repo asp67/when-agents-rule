@@ -2756,7 +2756,7 @@ class OpenAIAIManager {
         const buildRecentEvents = () => {
             const seq = ai._turnSeq = (ai._turnSeq || 0) + 1;
             return (ai.events || []).filter(e => (e.seq || 0) >= seq - (e.ttl || 2)).slice(-8).map(e =>
-                `${Math.max(0, Math.round((Date.now() - e.at) / 1000))}s ago: ${e.text}`);
+                `${Math.max(0, Math.round(this.game.realSecsSince(e.at)))}s ago: ${e.text}`);
         };
 
         // --- Orders in progress: accepted, not yet carried out ---
@@ -2864,7 +2864,7 @@ class OpenAIAIManager {
         // engagements this player took part in; the numbers are stated and never
         // interpreted — "their 2 heavy cavalry dealt 1800 to my 3 archers" IS the
         // counter lesson, and drawing it is the model's job, not the harness's.
-        const battleNow = Date.now();
+        const battleNow = game.simNow();
         const sideJson = (side) => {
             const involved = {};
             Object.entries(side.involved).forEach(([type, e]) => {
@@ -2898,8 +2898,9 @@ class OpenAIAIManager {
                     // turn to read them — far too long for "not ongoing" to carry it
                     // alone, since that says the same at 11 seconds and at 110. Only
                     // present once the fight has ended, so a live one pays nothing.
-                    ...(ongoing ? {} : { endedSecondsAgo: Math.round(quiet / 1000) }),
-                    secondsElapsed: Math.max(0, Math.round((b.lastAt - b.startedAt) / 1000)),
+                    // Stamps are simulated time; what a model is told is real seconds.
+                    ...(ongoing ? {} : { endedSecondsAgo: Math.round(game.realSecsSince(b.lastAt)) }),
+                    secondsElapsed: Math.max(0, Math.round((game.matchMsAt(b.lastAt) - game.matchMsAt(b.startedAt)) / 1000)),
                     you: sideJson(b.sides[ai.id]),
                     enemy
                 };
@@ -3534,7 +3535,7 @@ class OpenAIAIManager {
             .map(l => Object.assign(
                 { type: l.type },
                 l.wonder ? { wonder: true } : {},
-                { x: l.x, z: l.z, secondsAgo: Math.round((battleNow - l.at) / 1000) },
+                { x: l.x, z: l.z, secondsAgo: Math.round(game.realSecsSince(l.at)) },
                 l.to ? { to: l.to } : {}
             ));
 
@@ -3569,7 +3570,7 @@ class OpenAIAIManager {
         if (!game.spectatorMode && game.player) pushRival(game.player, 'player');
 
         // --- Threats (what is attacking YOU right now — go defend!) ---
-        const nowMs = Date.now();
+        const nowMs = game.simNow();
         const underAttack = [];
         const scanHit = (ent, kind) => {
             if (!ent || ent.health <= 0) return;
