@@ -1969,7 +1969,12 @@ class UIManager {
         if (res.ok) {
             if (res.endpoint) m.endpoint = res.endpoint;
             m.availableModels = res.models || [];
-            if ((!m.model || !m.availableModels.includes(m.model)) && m.availableModels.length) m.model = m.availableModels[0];
+            // Fill the id only when there is nothing to choose between. A typed id that
+            // the list does not report (an Ollama tag, a routing alias) is deliberate and
+            // already flagged "not in the list"; overwriting it on every test threw it
+            // away. And with an empty field and many models, the first one alphabetically
+            // is a guess -- the picker shows the count and lets the user choose.
+            if (!m.model && m.availableModels.length === 1) m.model = m.availableModels[0];
             // Remember each model's context window (when the endpoint reports it) for
             // the ↺ button. Keep an empty budget at the default, capped to the model's max.
             m.availableModelContext = res.contextById || {};

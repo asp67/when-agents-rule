@@ -99,3 +99,17 @@ test('connection checks cap an empty context budget to the default or model limi
   await ui.testArenaModel(1);assert.equal(model.contextSize,expected);assert.equal(model.maxContext,maximum);
  }
 });
+
+test('connection checks keep a typed model id and fill an empty one only when there is no choice',async()=>{
+ for(const [typed,served,expected] of [
+  ['my-ollama-tag:q4',['a-model','b-model'],'my-ollama-tag:q4'],   // deliberate, unlisted: kept
+  ['',['a-model','b-model'],''],                                  // many: no guess
+  ['',['only-model'],'only-model'],                               // one: nothing to choose
+  ['b-model',['a-model','b-model'],'b-model']]){
+  const {manager:m,scope}=setup(),model={endpoint:'https://example.test/v1',provider:'openai',model:typed,contextSize:''};
+  const ui=Object.create(scope.UI.prototype);ui.getArenaModel=()=>model;ui.cleanAuth=()=>({});
+  ui.saveArenaConfig=()=>{};ui.renderArenaLibrary=()=>{};m.probeCapabilities=async()=>null;
+  m.testConnection=async()=>({ok:true,models:served,provider:'openai',contextById:{}});
+  await ui.testArenaModel(1);assert.equal(model.model,expected);
+ }
+});
