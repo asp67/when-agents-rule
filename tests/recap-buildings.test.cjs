@@ -3,6 +3,10 @@
 // become the buildable list. The counts now come from friendlyBuildings.
 const test = require('node:test'), assert = require('node:assert/strict');
 const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
+// Recorded matches are not deployed everywhere (the platform server has none), so a
+// test that reads them reports as skipped there rather than as a failure.
+const HAS_SAMPLES = require('node:fs').existsSync(require('node:path').join(__dirname, '..', 'samples', 'index.json'));
+const NEEDS_SAMPLES = { skip: !HAS_SAMPLES && 'samples/ not present' };
 const root = path.resolve(__dirname, '..');
 
 function manager() {
@@ -26,7 +30,7 @@ test('recap counts buildings by type from friendlyBuildings', () => {
     assert.equal(recap.buildingsUnderConstruction, 1);
 });
 
-test('recorded states from a real match produce non-empty recaps', () => {
+test('recorded states from a real match produce non-empty recaps', NEEDS_SAMPLES, () => {
     const m = manager();
     const file = path.join(root, 'samples/2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl');
     const rows = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l))

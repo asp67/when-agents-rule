@@ -4,6 +4,10 @@
 // command was labelled "(malformed)", though most were plan saves.
 const test = require('node:test'), assert = require('node:assert/strict');
 const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
+// Recorded matches are not deployed everywhere (the platform server has none), so a
+// test that reads them reports as skipped there rather than as a failure.
+const HAS_SAMPLES = require('node:fs').existsSync(require('node:path').join(__dirname, '..', 'samples', 'index.json'));
+const NEEDS_SAMPLES = { skip: !HAS_SAMPLES && 'samples/ not present' };
 const root = path.resolve(__dirname, '..');
 
 function analyzer() {
@@ -22,7 +26,7 @@ test('a failure on any command of a batch marks the turn', () => {
     assert.equal(TA.failed(null), false);
 });
 
-test('Episode 7: the rejected filter and stats count every failed turn', () => {
+test('Episode 7: the rejected filter and stats count every failed turn', NEEDS_SAMPLES, () => {
     const TA = analyzer();
     const file = path.join(root, 'samples/2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl');
     const text = fs.readFileSync(file, 'utf8');

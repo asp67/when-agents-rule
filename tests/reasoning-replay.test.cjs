@@ -3,6 +3,10 @@
 // sendToOpenAI). Driven through the real sendToOpenAI with a stubbed network.
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+// Recorded matches are not deployed everywhere (the platform server has none), so a
+// test that reads them reports as skipped there rather than as a failure.
+const HAS_SAMPLES = require('node:fs').existsSync(require('node:path').join(__dirname, '..', 'samples', 'index.json'));
+const NEEDS_SAMPLES = { skip: !HAS_SAMPLES && 'samples/ not present' };
 const root = path.resolve(__dirname, '..');
 
 function harness(reply) {
@@ -23,7 +27,7 @@ function harness(reply) {
 const state = () => fs.readFileSync(path.join(root, 'samples/2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl'), 'utf8')
     .split('\n').filter(Boolean).map(l => JSON.parse(l)).find(r => !r.type && r.state).state;
 
-test('a tool-call turn with empty content replays no reasoning', async () => {
+test('a tool-call turn with empty content replays no reasoning', NEEDS_SAMPLES, async () => {
     const { m, c } = harness({ role: 'assistant', content: null, reasoning: 'PRIVATE THOUGHTS about the enemy',
         tool_calls: [{ id: 'a', type: 'function', function: { name: 'wait', arguments: '{}' } }] });
     await m.sendToOpenAI(c, state());
@@ -32,7 +36,7 @@ test('a tool-call turn with empty content replays no reasoning', async () => {
     assert.equal(last.assistant, '');
 });
 
-test('visible text alongside tool calls is still replayed', async () => {
+test('visible text alongside tool calls is still replayed', NEEDS_SAMPLES, async () => {
     const { m, c } = harness({ role: 'assistant', content: 'Hold the line.', reasoning: 'PRIVATE',
         tool_calls: [{ id: 'a', type: 'function', function: { name: 'wait', arguments: '{}' } }] });
     await m.sendToOpenAI(c, state());

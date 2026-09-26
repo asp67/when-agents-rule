@@ -3,6 +3,10 @@
 // multi-call turns in the samples), the plan "returned" the commands' results.
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+// Recorded matches are not deployed everywhere (the platform server has none), so a
+// test that reads them reports as skipped there rather than as a failure.
+const HAS_SAMPLES = require('node:fs').existsSync(require('node:path').join(__dirname, '..', 'samples', 'index.json'));
+const NEEDS_SAMPLES = { skip: !HAS_SAMPLES && 'samples/ not present' };
 const root = path.resolve(__dirname, '..');
 
 function manager() {
@@ -56,7 +60,7 @@ test('counts that do not line up keep the combined answer on the first call', ()
     assert.ok(M.answerCalls(calls, 'not resolved', true).every(a => a.content === 'not resolved'));
 });
 
-test('every multi-call turn in the shipped samples maps, apart from builds before excess results', () => {
+test('every multi-call turn in the shipped samples maps, apart from builds before excess results', NEEDS_SAMPLES, () => {
     const M = manager();
     let multi = 0, mapped = 0;
     for (const f of fs.readdirSync(path.join(root, 'samples')).filter(f => f.endsWith('.jsonl'))) {

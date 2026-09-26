@@ -3,6 +3,10 @@
 // when two results are comparable.
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path'), crypto = require('node:crypto');
+// Recorded matches are not deployed everywhere (the platform server has none), so a
+// test that reads them reports as skipped there rather than as a failure.
+const HAS_SAMPLES = require('node:fs').existsSync(require('node:path').join(__dirname, '..', 'samples', 'index.json'));
+const NEEDS_SAMPLES = { skip: !HAS_SAMPLES && 'samples/ not present' };
 const root = path.resolve(__dirname, '..');
 const read = f => fs.readFileSync(path.join(root, f), 'utf8');
 
@@ -83,7 +87,7 @@ test('every action in the ACTIONS table has an executor, and every executor an e
     for (const t of M.TOOLS) assert.ok(declared.has(t.function.name) || t.function.name === 'plan', t.function.name);
 });
 
-test('recorded states conform to game-state-schema.json, and unknown schema keywords fail', () => {
+test('recorded states conform to game-state-schema.json, and unknown schema keywords fail', NEEDS_SAMPLES, () => {
     const { validate, undocumented } = require('./lib/schema-check.cjs');
     const schema = JSON.parse(read('game-state-schema.json'));
     for (const f of ['samples/2026-09-07_gemini-flash-deepseek-v4-gpt5.6-qwen3.8_89min.jsonl',
