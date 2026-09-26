@@ -8,7 +8,8 @@ const root = path.resolve(__dirname, '..');
 const read = f => fs.readFileSync(path.join(root, f), 'utf8');
 const M = require('../js/manifest.js');
 const html = read('index.html');
-const scripts = [...html.matchAll(/<script src="([^"?]+)(?:\?v=(\d+))?"/g)].map(m => ({ file: m[1], v: m[2] }));
+// Any version string: WAR numbers its builds, the Platform names its milestones.
+const scripts = [...html.matchAll(/<script src="([^"?]+)(?:\?v=([^"]+))?"/g)].map(m => ({ file: m[1], v: m[2] }));
 
 test('the rules load in a bare VM: no document, no location, nothing cut', () => {
     const context = vm.createContext({ console: { log() {}, warn() {}, error() {} } });
@@ -28,7 +29,9 @@ test('the page loads every rule file, in the manifest order, and boot.js right a
     assert.equal(pos('js/boot.js'), pos('js/game.js') + 1, 'boot.js directly after game.js, so its load handler comes first');
 });
 
-test('the build number: game.js?v=N, read the same way by the update notice and the stamp', () => {
+test('the build number: game.js?v=N, read the same way by the update notice and the stamp', t => {
+    const anchor = scripts.find(s => s.file === 'js/game.js');
+    if (!/^\d+$/.test(anchor.v || '')) return t.skip('this page versions its assets by milestone (' + anchor.v + '), not by build number');
     const ctx = vm.createContext({ console, window: {}, localStorage: null });
     vm.runInContext(read('js/update-notice.js') + '\nthis.WarUpdates = WarUpdates;', ctx);
     const fromNotice = ctx.WarUpdates.parseBuild(html);
@@ -38,6 +41,6 @@ test('the build number: game.js?v=N, read the same way by the update notice and 
     vm.runInContext(read('js/ui.js') + '\nthis.UI = UIManager;', scope);
     assert.ok(Number.isSafeInteger(fromNotice) && fromNotice > 0);
     assert.equal(scope.UI.buildVersion(), fromNotice);
-    const highest = Math.max(...scripts.filter(s => s.v).map(s => Number(s.v)));
+    const highest = Math.max(...scripts.filter(s => /^\d+$/.test(s.v || '')).map(s => Number(s.v)));
     assert.equal(fromNotice, highest, 'game.js carries the newest build: every change bumps it');
 });
