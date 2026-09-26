@@ -3875,7 +3875,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const names = { de: 'German (Deutsch)', es: 'Spanish (Español)', zh: 'Simplified Chinese (简体中文)' };
         const name = names[lang];
         if (!name) return '';
-        return `\n\n## Language\nThink and write ALL natural-language text — especially every "reason" field — in ${name}. BUT keep the response a valid JSON object and keep all JSON keys, action names and enum values EXACTLY as specified (in English). Only the free-text values are translated.`;
+        return `\n\n## Language\nThink and write ALL natural-language text — especially every "reason" field — in ${name}. BUT keep all tool names, argument keys and enum values EXACTLY as specified (in English). Only the free-text values are translated.`;
     }
 
     buildSystemPrompt(ai) {
