@@ -92,8 +92,9 @@ built behind it, `main` stays on Three.js until the swap milestone.
   landed: TC name banners (canvas → cached texture per civ), priest halos,
   carried-goods diamonds over workers, pulsing wonder claim rings, and
   early/late material eras for town center, house and tower (timber + thatch
-  → plaster + fired tile, gold finial at iron). A fixed noon is a deliberate
-  part of the one-angle art direction — no day tint cycle.
+  → plaster + fired tile, gold finial at iron). A fixed noon was a deliberate
+  part of the one-angle art direction at the time — superseded later by the
+  cosmetic 12-minute day/night cycle (js/engine/atmosphere.js).
 - **M6 — swap (done)**: EngineRenderer is the only renderer — the Three.js
   CDN tag, the `?engine=1` opt-in and js/renderer.js (~2200 lines) are gone.
   terrain.js is pure data now (resource layout + walkability + minimap;

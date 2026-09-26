@@ -153,9 +153,9 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 </div>
 
-> 💡 **The context budget is a real lever.** Default **32768** tokens; **↺ Max** fills in the model's true maximum. History is sized to it, in one of two modes: **multi-turn** (past turns replayed as compact state recaps plus the model's replies — richest memory) or **minimize tokens** (each past move as one line — cheapest, still coherent). Either way the prompt is rebuilt from scratch every turn, and if an endpoint rejects a request as too large the harness shrinks the window and keeps playing.
+> 💡 **The context budget is a real lever.** Default **65536** tokens; **↺ Max** fills in the model's true maximum. History is sized to it, in one of two modes: **multi-turn** (past turns replayed as compact state recaps plus the model's replies — richest memory) or **minimize tokens** (each past move as one line — cheapest, still coherent). Either way the prompt is rebuilt from scratch every turn, and if an endpoint rejects a request as too large the harness shrinks the window and keeps playing.
 >
-> **Lower budgets are much faster** — on Ollama the budget also sets `num_ctx`, and an oversized window can spill the model onto the CPU. For small local models 32K is a good default. If a model overthinks, raise its **max tokens** (the *output* budget), not its context, so it can finish reasoning *and* still emit the JSON action.
+> **Lower budgets are much faster** — on Ollama the budget also sets `num_ctx`, and an oversized window can spill the model onto the CPU. For small local models, 32K is often enough and noticeably faster. If a model overthinks, raise its **max tokens** (the *output* budget), not its context, so it can finish reasoning *and* still emit the JSON action.
 
 ## 🔧 Tool calls, and which stack served them
 
@@ -196,7 +196,7 @@ Direct match links open the viewer with a specific catalogue entry loaded: [Epis
 
 - `2026-07-26_opus5-grok4.5-gpt-oss_36min.jsonl` — 271 turns, **turn-based** (60 s a round). Opus 5 as Persia, Grok 4.5 as Egypt, and gpt-oss on a single consumer GPU as Yamato. Opus 5 wins.
 - `2026-08-09_kimi-k3-gemma4-qwen3.8-ornith9b_25min.jsonl` — 490 turns, **real time**, nobody waiting for anybody. Kimi K3 as Yamato, a local Gemma 4 26B as the Greeks, Qwen 3.8 Max as Persia, and a 9B quant on a desktop GPU as Egypt. Kimi K3 wins, having issued three commands a turn to the others' one.
-- `2026-08-11_muse-glimmer-qwen3.6-gemma4_88min.jsonl` — 484 turns, **real time**, and the longest of the three-player games. Muse-Glimmer 30B as the Greeks, Gemma 4 31B as Egypt, Qwen 3.6 27B as Persia. Persia wins on 3039 power against 164 and 117.
+- `2026-08-11_muse-glimmer-qwen3.6-gemma4_88min.jsonl` — 471 turns, **turn-based** (60 s a round), and the longest of the three-player games. Muse-Glimmer 30B as the Greeks, Gemma 4 31B as Egypt, Qwen 3.6 27B as Persia. Persia wins on 3039 power against 164 and 117.
 - `2026-08-17_qwen3.8-opus4.6-qwen3.6-muse-glimmer_125min.jsonl` — 544 turns over two hours, **turn-based** (120 s a round), four seats. Qwen 3.8 27B as Yamato, Claude Opus 4.6 as Egypt, Qwen 3.6 27B as Persia, Muse-Glimmer 30B as the Greeks. Yamato finishes last one standing on 4617 power; Egypt finishes fourth on 129, its town centre destroyed and its last recorded thought reading “Need food desperately.” The 27B open model beats the frontier model on this board — one board, one seed, not a verdict.
 - `2026-08-26_deepseek-v4-glm5.3-qwen3.8-gpt5.6_103min.jsonl` — 389 turns, **turn-based** (150 s a round), four seats, and the one where a Wonder nearly changed the result. deepseek-v4-flash as Persia, glm-5.3-flash as the Greeks, Qwen3.8 27B running locally as Egypt, gpt-5.6-luna as Yamato. Persia commits to the Iron Age at 38:32 while everyone else is still in Bronze, then trains champions and nothing else for forty minutes. Greece pays everything it has for a Wonder at 75:00 — hold it 600 seconds and the match is yours — and loses it after **154**. Egypt is eliminated with 10,070 food and zero workers left to spend it.
 
