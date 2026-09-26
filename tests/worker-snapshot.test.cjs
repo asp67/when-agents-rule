@@ -1,11 +1,12 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 function setup(){
  const scope={console,getCivilization:()=>({name:'Greeks',color:0x00ffff})};vm.createContext(scope);
- vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0],scope);
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/game.js'),'utf8').split('\nconst WAR_PRIVATE_HOST')[0],scope);
  vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/openai-ai.js'),'utf8'),scope);
  const Game=vm.runInContext('Game',scope),Manager=vm.runInContext('OpenAIAIManager',scope);
  const game=Object.create(Game.prototype);game.isIdleWorker=u=>!u.task&&!u.isMoving;
  const ai={id:'a',civilization:'greek',units:[],buildings:[{type:'town_center',x:0,z:0}],resources:{food:100,wood:100,stone:100,gold:100}};
+ game.aiManager={aiPlayers:[ai]};   // game.rand keys a draw by the drawing unit's seat
  const manager=new Manager(game),seat={aiPlayer:ai,model:{},stats:manager.newStats(),turnLog:[],conversationHistory:[]};seat.seat=seat;manager.aiControllers=[seat];
  const nodes=['food','wood','stone','gold'].map((type,i)=>({type,x:5+i*5,z:0,amount:100}));
  manager.discoveredNodesOfType=(_,__,type)=>nodes.filter(n=>n.type===type&&n.amount>0);

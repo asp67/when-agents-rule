@@ -6,16 +6,9 @@
 (function () {
     const TexGen = {};
 
-    // Deterministic RNG (mulberry32) so a map seed reproduces its textures.
-    TexGen.rng = (seed) => {
-        let s = (seed >>> 0) || 1;
-        return () => {
-            s |= 0; s = (s + 0x6D2B79F5) | 0;
-            let t = Math.imul(s ^ (s >>> 15), 1 | s);
-            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
-    };
+    // Deterministic RNG so a map seed reproduces its textures: the game's one
+    // generator (js/simulation/rng.js), with the zero-seed fallback this copy had.
+    TexGen.rng = (seed) => WarRng.stream(seed, 1);
 
     const canvas = (size) => {
         const c = document.createElement('canvas');

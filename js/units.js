@@ -200,7 +200,7 @@ function createUnit(type, x, z, owner, civilization, age) {
         : null;
 
     const unit = {
-        id: 'unit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        id: 'unit_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9), // rng-exempt: ids are seeded in review #6 step 5
         handle: nextUnitHandle(owner),   // short, published, per-owner, never reused
         type: type,
         name: unitDef.name,
@@ -317,7 +317,7 @@ function createBuilding(type, x, z, owner, civilization, options) {
     const buildTime = buildingDef.buildTime || 10000;
 
     return {
-        id: 'building_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        id: 'building_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9), // rng-exempt: ids are seeded in review #6 step 5
         type: type,
         name: buildingDef.name,
         age: age, // epoch this building was constructed in (drives its look + HP)

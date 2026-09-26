@@ -9,6 +9,7 @@ function context() {
         TexGen:{TERRAIN_WORLD:1000,TERRAIN_LAND:417,TERRAIN_SEED:12345}};
     scope.document={createElement:()=>({getContext:()=>({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)}),putImageData(img){scope.lastImage=img;}})})};
     vm.createContext(scope);
+    vm.runInContext(fs.readFileSync(path.join(root,'js/simulation/rng.js'),'utf8'),scope);
     for(const name of ['math3d','mesh','texgen','atmosphere','units','buildings','gamerenderer']) {
         vm.runInContext(fs.readFileSync(path.join(root,'js/engine',name+'.js'),'utf8'),scope);
         Object.assign(scope,scope.window);

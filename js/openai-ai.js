@@ -768,16 +768,16 @@ class OpenAIAIManager {
             // bestVal >= 1 means every reachable cell is already seen; fall through to
             // the old behaviour so a re-sweep for enemies still spreads out.
             if (cands.length && bestVal < 1) {
-                const [cx, cz] = cands[Math.floor(Math.random() * cands.length)];
+                const [cx, cz] = cands[Math.floor(game.rand(owner, 'explore') * cands.length)];
                 // Jitter inside the cell so two scouts at one cell do not stack.
-                return game.clampToMap(cx + (Math.random() - 0.5) * cw * 0.6,
-                                       cz + (Math.random() - 0.5) * cw * 0.6);
+                return game.clampToMap(cx + (game.rand(owner, 'explore') - 0.5) * cw * 0.6,
+                                       cz + (game.rand(owner, 'explore') - 0.5) * cw * 0.6);
             }
         }
         const pad = Math.min(inset || 0, cell / 2 - 1);
         const x0 = col * cell - half + pad, x1 = (col + 1) * cell - half - pad;
         const z0 = row * cell - half + pad, z1 = (row + 1) * cell - half - pad;
-        return game.clampToMap(x0 + Math.random() * (x1 - x0), z0 + Math.random() * (z1 - z0));
+        return game.clampToMap(x0 + game.rand(owner, 'explore') * (x1 - x0), z0 + game.rand(owner, 'explore') * (z1 - z0));
     }
 
     // Every unit this civilization can EVER train: the id, the building that makes
@@ -6923,8 +6923,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         } else if (tc) {
             // Default: a ring around the town centre, so buildings spread out.
             // Roughly double the old radius so bases occupy a larger footprint.
-            const ang = Math.random() * Math.PI * 2;
-            const rad = isWonderBuild ? (Math.random() - 0.5) * 20 : 18 + Math.random() * 28;
+            const ang = game.rand(ai, 'build-site') * Math.PI * 2;
+            const rad = isWonderBuild ? (game.rand(ai, 'build-site') - 0.5) * 20 : 18 + game.rand(ai, 'build-site') * 28;
             x = tc.x + Math.cos(ang) * rad;
             z = tc.z + Math.sin(ang) * rad;
         } else {
@@ -6944,7 +6944,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             outer:
             for (let radius = 14; radius <= 90; radius += 8) {
                 const steps = Math.max(8, Math.round((2 * Math.PI * radius) / 12));
-                const a0 = Math.random() * Math.PI * 2;
+                const a0 = game.rand(ai, 'build-site') * Math.PI * 2;
                 for (let s = 0; s < steps; s++) {
                     const ang = a0 + (s / steps) * 2 * Math.PI;
                     const cx = tc.x + Math.cos(ang) * radius;
@@ -7083,8 +7083,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 if (d < need) {
                     valid = false;
                     const dd = d || 1;
-                    x = b.x + (dx / dd) * (need + 1) + (Math.random() - 0.5) * 3;
-                    z = b.z + (dz / dd) * (need + 1) + (Math.random() - 0.5) * 3;
+                    x = b.x + (dx / dd) * (need + 1) + (game.rand(ai, 'build-site') - 0.5) * 3;
+                    z = b.z + (dz / dd) * (need + 1) + (game.rand(ai, 'build-site') - 0.5) * 3;
                     break;
                 }
             }
@@ -7113,8 +7113,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 if (d < resClr) {
                     valid = false;
                     const dd = d || 1;
-                    x = r.x + (dx / dd) * (resClr + 1) + (Math.random() - 0.5) * 3;
-                    z = r.z + (dz / dd) * (resClr + 1) + (Math.random() - 0.5) * 3;
+                    x = r.x + (dx / dd) * (resClr + 1) + (game.rand(ai, 'build-site') - 0.5) * 3;
+                    z = r.z + (dz / dd) * (resClr + 1) + (game.rand(ai, 'build-site') - 0.5) * 3;
                     break;
                 }
             }
@@ -7937,8 +7937,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             w.carryingResource = false;
             w.harvestAmount = 0;
             w.isMoving = true;
-            w.targetX = f.x + (Math.random() - 0.5) * 3;
-            w.targetZ = f.z + (Math.random() - 0.5) * 3;
+            w.targetX = f.x + (game.rand(w, 'farm-spot') - 0.5) * 3;
+            w.targetZ = f.z + (game.rand(w, 'farm-spot') - 0.5) * 3;
             manned++;
         }
         this.noteIdleTaken(ai, pulledFrom['idle'] || 0);
@@ -8321,8 +8321,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             w.buildTarget = null;
             w.repairTarget = null;
             w.isMoving = true;
-            w.targetX = node.x + (Math.random() - 0.5) * 2;
-            w.targetZ = node.z + (Math.random() - 0.5) * 2;
+            w.targetX = node.x + (game.rand(w, 'node-spot') - 0.5) * 2;
+            w.targetZ = node.z + (game.rand(w, 'node-spot') - 0.5) * 2;
             w.isHarvesting = false;
             w.carryingResource = false;
             w.harvestAmount = 0;

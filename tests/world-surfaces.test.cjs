@@ -3,7 +3,7 @@ function textures(){
  const scope={window:{},Math,document:{createElement:()=>{const c={};c.getContext=()=>({
   createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)}),putImageData:img=>c.pixels=img.data
  });return c;}}};vm.createContext(scope);
- vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
  return scope.window.TexGen;
 }
 test('all world themes remain opaque, deterministic and continuous with offshore water',()=>{

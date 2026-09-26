@@ -82,23 +82,14 @@ class TerrainManager {
 
     diffMods() { return DIFFICULTY_MODS[this.difficulty] || DIFFICULTY_MODS.easy; }
 
-    // Deterministic PRNG (mulberry32) so a user-supplied seed reproduces the exact
-    // same map — the fair way to compare two models on identical terrain. With no
-    // seed, rand() falls through to Math.random (fresh map every game).
+    // Deterministic PRNG so a map seed reproduces the exact same map — the fair way
+    // to compare two models on identical terrain. The game's one generator
+    // (js/simulation/rng.js), seeded by this map's own string hash; the outputs are
+    // those of the copy that lived here. Every match mints a seed, so the unseeded
+    // branch is only reached by a caller that sets none.
     _initRand() {
-        if (this.seed == null || this.seed === '') { this.rand = Math.random; return; }
-        let h = 1779033703 ^ String(this.seed).length;
-        for (const ch of String(this.seed)) {
-            h = Math.imul(h ^ ch.charCodeAt(0), 3432918353);
-            h = (h << 13) | (h >>> 19);
-        }
-        let a = (h >>> 0) || 42;
-        this.rand = function () {
-            a |= 0; a = (a + 0x6D2B79F5) | 0;
-            let t = Math.imul(a ^ (a >>> 15), 1 | a);
-            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
+        if (this.seed == null || this.seed === '') { this.rand = Math.random; return; } // rng-exempt: an unseeded map is random by definition
+        this.rand = WarRng.stream(WarRng.hashSeed(this.seed), 42);
     }
 
     // A fresh visibility handle in the shape fog + renderer expect.

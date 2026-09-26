@@ -90,6 +90,25 @@ class Game {
     // Real seconds since a sim-time stamp, for text a model reads.
     realSecsSince(simStamp) { return (this.clock.matchMs - this.matchMsAt(simStamp)) / 1000; }
 
+    // ---- Random draws -------------------------------------------------------------
+    // Every random choice a rule makes, keyed (js/simulation/rng.js): the value depends
+    // on the match seed, WHO drew (the seat), WHAT for (the purpose) and which draw of
+    // that pair it is -- never on how many draws anything else made first. `who` is a
+    // unit, a building or an owner.
+    rand(who, purpose) {
+        if (!this._rng) this._rng = WarRng.keyed(this.mapSeed);
+        return WarRng.draw(this._rng, this.rngOwnerKey(who) + ':' + purpose);
+    }
+    // Seats, not player ids: ids are still random until they are seeded (review #6
+    // step 5), and a key must mean the same seat in every run of the match.
+    rngOwnerKey(who) {
+        if (!who) return 'world';
+        const owner = (who === this.player || who.units) ? who : this.getOwner(who);
+        if (!owner) return 'world';
+        if (owner === this.player) return 'p';
+        return owner.seat != null ? 's' + owner.seat : 'id:' + owner.id;
+    }
+
     init() {
         this.sound = new WarAudio(this);
         this.ui = new UIManager(this);
@@ -385,7 +404,7 @@ class Game {
 
             // Create initial workers
             for (let w = 0; w < 3; w++) {
-                const worker = createUnit('worker', spawn.x + (Math.random() - 0.5) * 10, spawn.z + (Math.random() - 0.5) * 10, ai.id, ai.civilization, 'stone');
+                const worker = createUnit('worker', spawn.x + (this.rand(ai, 'start-workers') - 0.5) * 10, spawn.z + (this.rand(ai, 'start-workers') - 0.5) * 10, ai.id, ai.civilization, 'stone');
                 if (worker) {
                     ai.units.push(worker);
                     this.renderer.addUnit(worker);
@@ -560,8 +579,8 @@ class Game {
             // Create initial workers near player town center
             for (let i = 0; i < 3; i++) {
                 const worker = createUnit('worker', 
-                    playerSpawn.x + (Math.random() - 0.5) * 10, 
-                    playerSpawn.z + (Math.random() - 0.5) * 10, 
+                    playerSpawn.x + (this.rand(this.player, 'start-workers') - 0.5) * 10, 
+                    playerSpawn.z + (this.rand(this.player, 'start-workers') - 0.5) * 10, 
                     'player', this.player.civilization, 'stone');
                 this.player.units.push(worker);
                 this.renderer.addUnit(worker);
@@ -596,8 +615,8 @@ class Game {
             // Create AI workers near their town center
             for (let j = 0; j < 3; j++) {
                 const aiWorker = createUnit('worker', 
-                    aiSpawn.x + (Math.random() - 0.5) * 10, 
-                    aiSpawn.z + (Math.random() - 0.5) * 10, 
+                    aiSpawn.x + (this.rand(ai, 'start-workers') - 0.5) * 10, 
+                    aiSpawn.z + (this.rand(ai, 'start-workers') - 0.5) * 10, 
                     ai.id, aiCiv, 'stone');
                 ai.units.push(aiWorker);
                 this.renderer.addUnit(aiWorker);
@@ -965,8 +984,8 @@ class Game {
                 resourceNode.farmRef.assignedWorker = unit;
                 // Move worker to the farm
                 unit.isMoving = true;
-                unit.targetX = resourceNode.farmRef.x + (Math.random() - 0.5) * 3;
-                unit.targetZ = resourceNode.farmRef.z + (Math.random() - 0.5) * 3;
+                unit.targetX = resourceNode.farmRef.x + (this.rand(unit, 'farm-spot') - 0.5) * 3;
+                unit.targetZ = resourceNode.farmRef.z + (this.rand(unit, 'farm-spot') - 0.5) * 3;
                 unit.harvestTarget = null;
                 unit.carryingResource = false;
             } else if (unit.type === 'worker' && resourceNode) {
@@ -1127,8 +1146,8 @@ class Game {
             // had, and it undid the formation for exactly the units standing closest to
             // the fighting.
             const off = u.formationOffset;
-            u.targetX = x + (off ? off.x : (Math.random() - 0.5) * 4);
-            u.targetZ = z + (off ? off.z : (Math.random() - 0.5) * 4);
+            u.targetX = x + (off ? off.x : (this.rand(u, 'escort') - 0.5) * 4);
+            u.targetZ = z + (off ? off.z : (this.rand(u, 'escort') - 0.5) * 4);
             n++;
         });
         return n;
@@ -1508,8 +1527,8 @@ class Game {
                 // marching/holding; do not alternate patient pursuit with the slot.
                 // Idle with someone hurt nearby: walk over (generic mover drives it).
                 u.isMoving = true;
-                u.targetX = patient.x + (Math.random() - 0.5) * 2;
-                u.targetZ = patient.z + (Math.random() - 0.5) * 2;
+                u.targetX = patient.x + (this.rand(u, 'heal-walk') - 0.5) * 2;
+                u.targetZ = patient.z + (this.rand(u, 'heal-walk') - 0.5) * 2;
             }
         });
     }
@@ -1777,7 +1796,7 @@ class Game {
                 d.attackTarget = atk;
                 // Small spread on the rally point so a worker mob doesn't try to
                 // occupy one exact spot when the fight ends (the old jam).
-                d.attackMove = { x: atk.x + (Math.random() - 0.5) * 5, z: atk.z + (Math.random() - 0.5) * 5 };
+                d.attackMove = { x: atk.x + (this.rand(d, 'defend-rally') - 0.5) * 5, z: atk.z + (this.rand(d, 'defend-rally') - 0.5) * 5 };
                 d.attackTimer = 0;
                 d.isMoving = true;
                 d.targetX = atk.x;
@@ -1831,8 +1850,8 @@ class Game {
         unit.carryingResource = false;
         unit.harvestAmount = 0;
         unit.isMoving = true;
-        unit.targetX = q.node.x + (Math.random() - 0.5) * 2;
-        unit.targetZ = q.node.z + (Math.random() - 0.5) * 2;
+        unit.targetX = q.node.x + (this.rand(unit, 'node-spot') - 0.5) * 2;
+        unit.targetZ = q.node.z + (this.rand(unit, 'node-spot') - 0.5) * 2;
         return true;
     }
 
@@ -1850,8 +1869,8 @@ class Game {
             unit.farmRef = r.farmRef;
             r.farmRef.assignedWorker = unit;
             unit.isMoving = true;
-            unit.targetX = r.farmRef.x + (Math.random() - 0.5) * 3;
-            unit.targetZ = r.farmRef.z + (Math.random() - 0.5) * 3;
+            unit.targetX = r.farmRef.x + (this.rand(unit, 'farm-spot') - 0.5) * 3;
+            unit.targetZ = r.farmRef.z + (this.rand(unit, 'farm-spot') - 0.5) * 3;
             return;
         }
         if (r.harvestTarget && r.harvestTarget.amount > 0) {
@@ -1860,8 +1879,8 @@ class Game {
             unit.isHarvesting = false;
             unit.harvestTimer = 0;
             unit.isMoving = true;
-            unit.targetX = r.harvestTarget.x + (Math.random() - 0.5) * 2;
-            unit.targetZ = r.harvestTarget.z + (Math.random() - 0.5) * 2;
+            unit.targetX = r.harvestTarget.x + (this.rand(unit, 'node-spot') - 0.5) * 2;
+            unit.targetZ = r.harvestTarget.z + (this.rand(unit, 'node-spot') - 0.5) * 2;
             return;
         }
         if (r.harvestTarget) {
@@ -1975,7 +1994,7 @@ class Game {
     // typed it. Any string works — terrain hashes it — so this only has to be unique
     // enough that two matches minutes apart do not collide.
     static mintSeed() {
-        return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); // rng-exempt: mints the seed itself
     }
 
     simBudget(ms) {
@@ -2640,8 +2659,8 @@ class Game {
             hand.farmRef = f;
             hand.task = 'farm_work';
             hand.isMoving = true;
-            hand.targetX = f.x + (Math.random() - 0.5) * 3;
-            hand.targetZ = f.z + (Math.random() - 0.5) * 3;
+            hand.targetX = f.x + (this.rand(hand, 'farm-spot') - 0.5) * 3;
+            hand.targetZ = f.z + (this.rand(hand, 'farm-spot') - 0.5) * 3;
             resumed++;
         });
 
@@ -3650,6 +3669,7 @@ class Game {
     resetTimeline() {
         this._environmentSeconds = 0;
         this.clock = Game.newClock();   // a new match starts at simulated time zero
+        this._rng = WarRng.keyed(this.mapSeed);   // ...and at the first draw of every key
         this._standingOrders = null;
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
         // Handles are per MATCH: without this they keep climbing across restarts in one
@@ -4460,8 +4480,8 @@ class Game {
                 unit.task = 'farm_work';
                 unit.farmRef = f.farmRef;
                 unit.isMoving = true;
-                unit.targetX = f.farmRef.x + (Math.random() - 0.5) * 3;
-                unit.targetZ = f.farmRef.z + (Math.random() - 0.5) * 3;
+                unit.targetX = f.farmRef.x + (this.rand(unit, 'farm-spot') - 0.5) * 3;
+                unit.targetZ = f.farmRef.z + (this.rand(unit, 'farm-spot') - 0.5) * 3;
                 return;
             }
             if ((f.task === 'harvesting' || f.task === 'carrying') && f.harvestTarget) {
@@ -4482,8 +4502,8 @@ class Game {
             unit.task = 'farm_work';
             unit.farmRef = site;
             unit.isMoving = true;
-            unit.targetX = site.x + (Math.random() - 0.5) * 3;
-            unit.targetZ = site.z + (Math.random() - 0.5) * 3;
+            unit.targetX = site.x + (this.rand(unit, 'farm-spot') - 0.5) * 3;
+            unit.targetZ = site.z + (this.rand(unit, 'farm-spot') - 0.5) * 3;
             return;
         }
         // A worker that just finished building looks for ANOTHER unfinished site with
@@ -4581,8 +4601,8 @@ class Game {
         unit.task = 'harvesting';
         unit.harvestTarget = best;
         unit.isMoving = true;
-        unit.targetX = best.x + (Math.random() - 0.5) * 2;
-        unit.targetZ = best.z + (Math.random() - 0.5) * 2;
+        unit.targetX = best.x + (this.rand(unit, 'node-spot') - 0.5) * 2;
+        unit.targetZ = best.z + (this.rand(unit, 'node-spot') - 0.5) * 2;
     }
 
     updateWorkerTasks(deltaTime) {
@@ -4827,8 +4847,8 @@ class Game {
                         : (unit.harvestTarget.amount > 0);
                     
                     if (hasMoreResources) {
-                        unit.targetX = unit.harvestTarget.x + (Math.random() - 0.5) * 2;
-                        unit.targetZ = unit.harvestTarget.z + (Math.random() - 0.5) * 2;
+                        unit.targetX = unit.harvestTarget.x + (this.rand(unit, 'node-spot') - 0.5) * 2;
+                        unit.targetZ = unit.harvestTarget.z + (this.rand(unit, 'node-spot') - 0.5) * 2;
                         unit.isMoving = true;
                         unit.task = 'harvesting';
                     } else if (!unit.harvestTarget.isFarm) {
@@ -4846,8 +4866,8 @@ class Game {
                 if (unit.farmRef && unit.farmRef.assignedWorker === unit && unit.farmRef.health > 0) {
                     unit.task = 'farm_work';
                     unit.isMoving = true;
-                    unit.targetX = unit.farmRef.x + (Math.random() - 0.5) * 3;
-                    unit.targetZ = unit.farmRef.z + (Math.random() - 0.5) * 3;
+                    unit.targetX = unit.farmRef.x + (this.rand(unit, 'farm-spot') - 0.5) * 3;
+                    unit.targetZ = unit.farmRef.z + (this.rand(unit, 'farm-spot') - 0.5) * 3;
                 }
                 // Nothing resumed the job (harvestTarget was cleared mid-carry and there
                 // is no farm): become idle. Without this the worker lingered with
@@ -5067,8 +5087,8 @@ class Game {
                     // Return to farm
                     unit.task = 'farm_work';
                     unit.isMoving = true;
-                    unit.targetX = farm.x + (Math.random() - 0.5) * 3;
-                    unit.targetZ = farm.z + (Math.random() - 0.5) * 3;
+                    unit.targetX = farm.x + (this.rand(unit, 'farm-spot') - 0.5) * 3;
+                    unit.targetZ = farm.z + (this.rand(unit, 'farm-spot') - 0.5) * 3;
                     return;
                 }
                 
@@ -5080,8 +5100,8 @@ class Game {
                     const dist = Math.sqrt(dx*dx + dz*dz);
                     if (dist > 3) {
                         unit.isMoving = true;
-                        unit.targetX = farm.x + (Math.random() - 0.5) * 2;
-                        unit.targetZ = farm.z + (Math.random() - 0.5) * 2;
+                        unit.targetX = farm.x + (this.rand(unit, 'farm-spot') - 0.5) * 2;
+                        unit.targetZ = farm.z + (this.rand(unit, 'farm-spot') - 0.5) * 2;
                     }
                 }
             }
@@ -5121,8 +5141,8 @@ class Game {
                         unit.task = 'farm_work';
                         unit.farmRef = nearestFarm;
                         unit.isMoving = true;
-                        unit.targetX = nearestFarm.x + (Math.random() - 0.5) * 2;
-                        unit.targetZ = nearestFarm.z + (Math.random() - 0.5) * 2;
+                        unit.targetX = nearestFarm.x + (this.rand(unit, 'farm-spot') - 0.5) * 2;
+                        unit.targetZ = nearestFarm.z + (this.rand(unit, 'farm-spot') - 0.5) * 2;
                     }
                 }
             }
@@ -5183,9 +5203,9 @@ class Game {
                     // Create the unit clearly OUTSIDE the building's footprint (bigger
                     // buildings push the unit further out) so it never spawns half-hidden
                     // inside the mesh.
-                    const spawnAngle = Math.random() * Math.PI * 2;
+                    const spawnAngle = this.rand(building, 'train-exit') * Math.PI * 2;
                     const footRadius = (building.isWonder || building.type === 'town_center') ? 5 : 3.5;
-                    const spawnDist = footRadius + 3 + Math.random() * 1.5; // clear of the mesh + a little spread
+                    const spawnDist = footRadius + 3 + this.rand(building, 'train-exit') * 1.5; // clear of the mesh + a little spread
                     const spawnX = building.x + Math.cos(spawnAngle) * spawnDist;
                     const spawnZ = building.z + Math.sin(spawnAngle) * spawnDist;
                     

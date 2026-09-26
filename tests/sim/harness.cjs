@@ -50,7 +50,7 @@ function inert(name, calls, own = {}) {
     });
 }
 
-const RULE_FILES = ['js/engine/texgen.js', 'js/civilizations.js', 'js/buildings.js', 'js/units.js', 'js/resources.js',
+const RULE_FILES = ['js/simulation/rng.js', 'js/engine/texgen.js', 'js/civilizations.js', 'js/buildings.js', 'js/units.js', 'js/resources.js',
     'js/terrain.js', 'js/fogofwar.js', 'js/simulation/position-rules.js', 'js/ai.js', 'js/sha256.js', 'js/conditions.js', 'js/openai-ai.js',
     'js/game.js', 'js/standing-orders.js'];
 
@@ -59,6 +59,7 @@ class GoldenMatch {
     // hidden tab is driven by the background worker, a tick every 250 ms.
     constructor({ seed = 1, frameMs = FRAME_MS, hidden = false } = {}) {
         this.frameMs = frameMs;
+        this.seed = seed;
         this.runtime = createRuntime(seed);
         this.presentation = {};
         const rt = this.runtime, calls = this.presentation;
@@ -137,6 +138,7 @@ class GoldenMatch {
         // As the real start does, before anything is placed or ordered: it resets the
         // standing orders and unit handles, and done lazily by the first tick it would
         // wipe orders already given.
+        g.mapSeed = 'fixture-' + this.seed;   // keys every random draw of the match
         g.resetTimeline();
         g.terrain.resources = [];
         g.terrain.clampToLand = (x, z) => ({ x, z });

@@ -6,6 +6,29 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 935: every random choice is keyed to the match (26 September 2026)
+
+The game's rules make many small random choices, and each one used to call the browser's shared generator:
+
+- where a worker stands at its node or farm;
+- where the rule-based AI and the model harness place a building;
+- where a trained unit steps out of its building;
+- where a scout heads, and where a start worker appears.
+
+With one shared generator, the choices depended on everything drawn before them. One extra command from one model shifted every later choice for every seat, so no two runs of a match could line up.
+
+Each choice is now a keyed draw from `js/simulation/rng.js`: a hash of the match seed, the seat that drew, what the draw is for, and how many draws that seat has made for that purpose. One seat's choices no longer depend on another seat's, and a whole match depends on its map seed and the commands given, nothing else. The spread of every choice is the same as before (uniform, the same ranges). Individual matches take different paths from before, because the values themselves are new.
+
+The map generator and the texture painters each had their own copy of the same generator (mulberry32). Both now use the shared module, and their output is bit-identical: every existing map seed still produces its map.
+
+Seed minting stays random, and so do unit, building and player ids until they are seeded as well (the next determinism step).
+
+Measured on the golden traces:
+
+- **40 v 40 and Wonder siege:** end with the same winner, with one or two units' difference in losses.
+- **Opening economy:** a single six-minute run of two rule-based seats takes a different path. By minute six, Persia has trained 13 militia where the old values gave it none, which is the spread one run of a rule-based economy has.
+- **Seed independence:** three runs with different leftover randomness now produce bit-identical unit positions. Only the map seed matters.
+
 ## Build 934: gameplay timers run on simulated time (26 September 2026)
 
 The match now has one simulation clock, `game.clock`, which counts simulated steps and milliseconds. It runs faster at 2× and stands still on a pause. These timers read it instead of the computer's clock:

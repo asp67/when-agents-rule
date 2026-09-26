@@ -7,7 +7,7 @@ function setup(){
  const ai={id:'a',civilization:'greek',age:'iron',researchedTechs:{tower:true},units:[],buildings:[],resources:{hasResources:()=>true,spendResources(){spent++;}}};
  let spent=0;const added=[];
  const game={player:{buildings:[]},aiManager:{aiPlayers:[]},resourceClearance:()=>5,
-  renderer:{addBuilding:b=>added.push(b)},pickBuilder:()=>({worker:{}}),applyBuilder(){}};
+  renderer:{addBuilding:b=>added.push(b)},pickBuilder:()=>({worker:{}}),applyBuilder(){},rand:()=>0.5};
  m.couldBeBlindDuplicate=()=>false;m.blindDuplicateBuilding=()=>null;m.noteIdleTaken=()=>{};m.travelEtaSec=()=>0;
  return {m,ai,game,added,spent:()=>spent,build:(x,z)=>m.executeBuildStructure(ai,game,'tower',x,z)};
 }

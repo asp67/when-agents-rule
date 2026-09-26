@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 function fixture(){
  const scope={console:{log(){},warn(){},error(){}}};vm.createContext(scope);
- for(const name of ['civilizations','buildings','units','resources','game','ai','openai-ai']){
+ for(const name of ['simulation/rng','civilizations','buildings','units','resources','game','ai','openai-ai']){
   let source=fs.readFileSync(path.join(__dirname,'../js/'+name+'.js'),'utf8');
   if(name==='game')source=source.split('\nconst WAR_PRIVATE_HOST')[0];vm.runInContext(source,scope);
  }
