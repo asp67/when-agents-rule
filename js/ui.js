@@ -1306,6 +1306,7 @@ class UIManager {
             ${this.renderAuthFields(m)}
             <div class="model-test-row">
                 <button class="test-btn" onclick="game.ui.testArenaModel(${m.id})">${t('ar.test')}</button>
+                <button class="test-btn" onclick="game.ui.checkArenaModel(${m.id})" title="${e(t('ar.checkTip'))}">${t('ar.check')}</button>
                 ${status}
             </div>
             ${capLine}
@@ -1995,6 +1996,27 @@ class UIManager {
         this.renderTemplateDiff();
     }
 
+    // One real request with a synthetic tool history (OpenAIAIManager.checkToolCalling),
+    // using exactly the settings a match would send. Reports; changes nothing.
+    async checkArenaModel(id) {
+        const m = this.getArenaModel(id);
+        if (!m) return;
+        const entry = this.slotToSetupEntry({ civ: 'greek', control: id });
+        const statusEl = () => document.getElementById('modelStatus-' + id);
+        if (!entry.connection) { this.showErrorMessage(t('ar.checkNeedsEndpoint')); return; }
+        if (!entry.connection.model) { this.showErrorMessage(t('ar.checkNeedsModel')); return; }
+        m._status = { cls: 'pending', text: t('ar.checking') };
+        if (statusEl()) { statusEl().className = 'test-status pending'; statusEl().textContent = t('ar.checking'); }
+        const r = await OpenAIAIManager.checkToolCalling(entry.connection);
+        m._check = { ok: r.ok, code: r.code, via: r.via || null, latencyMs: r.latencyMs, at: Date.now() };
+        const text = t('ar.check_' + r.code, { s: (r.latencyMs / 1000).toFixed(1), tool: r.tool || '', status: r.status || '', detail: r.detail || '' });
+        m._status = { cls: r.ok ? 'ok' : 'err', text };
+        const el = statusEl();
+        if (el) { el.className = 'test-status ' + (r.ok ? 'ok' : 'err'); el.textContent = text; el.title = r.detail || ''; }
+        if (!r.ok) this.showErrorMessage(text);
+        return r;
+    }
+
     async testArenaModel(id) {
         const m = this.getArenaModel(id);
         if (!m) return;
@@ -2096,6 +2118,9 @@ class UIManager {
                 // So a parameter the endpoint refuses mid-match can be recorded against
                 // the entry it came from rather than being relearned every match.
                 libraryId: m.id,
+                // "Check tool calls" result for this entry, if run this session; recorded
+                // in the transcript header so a reader knows the seat was verified.
+                preflight: m._check ? { ok: m._check.ok, code: m._check.code, via: m._check.via, latencyMs: m._check.latencyMs } : null,
                 auth: this.cleanAuth(m.auth)
             }
         };

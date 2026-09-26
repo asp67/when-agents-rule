@@ -1549,7 +1549,9 @@ class OpenAIAIManager {
             // Recorded because it changes what a number MEANS: a seat allowed to fall
             // back is scored on a softer contract than one that is not.
             toolFallback: !!conn.toolFallback,
-            language: conn.language || 'en'
+            language: conn.language || 'en',
+            // The last "Check tool calls" result for this library entry, if one was run.
+            preflight: conn.preflight || null
         };
         // EXPERIMENTAL — rolling inference. Recorded only when it is not 1, because at
         // 1 it describes ordinary play and belongs in no header. When it IS set it is
@@ -2148,6 +2150,61 @@ class OpenAIAIManager {
     // to an ar.err.* i18n key so the UI shows the message in the active GUI language
     // (these used to be hardcoded German regardless of language); `error` stays an
     // English fallback for logs/non-UI callers.
+    // "Check tool calls": one real request that replays a short synthetic tool history
+    // (a plan call and a wait call, with their results) and asks for one more call.
+    // Test connection only lists models; this says, before a match, whether this
+    // (model x server) can take part -- whether a tool call comes back, whether the chat
+    // template accepts tool history, whether the server failed to parse a call the model
+    // wrote. It uses the seat's own request settings and changes nothing: the result is
+    // shown, and recorded in the transcript header as preflight.
+    static async checkToolCalling(conn, timeoutMs = 90000) {
+        const provider = OpenAIAIManager.resolveProvider(conn);
+        const plan = { id: 'check_plan_1', name: 'plan', args: JSON.stringify({ objective: 'Tool check', plan: ['Wait once'] }) };
+        const wait = { id: 'check_wait_1', name: 'wait', args: JSON.stringify({ reason: 'Tool check' }) };
+        const turns = [
+            { role: 'user', content: 'Tool check, not a game. Save a plan.' },
+            { role: 'assistant', content: null, toolCalls: [plan] },
+            { role: 'tool', results: [{ id: plan.id, name: 'plan', content: 'OK - Plan saved.' }] },
+            { role: 'user', content: 'Call wait once.' },
+            { role: 'assistant', content: null, toolCalls: [wait] },
+            { role: 'tool', results: [{ id: wait.id, name: 'wait', content: 'OK - Waited this turn.' }] },
+            { role: 'user', content: 'Call the wait tool once more, with reason "tool check". Do not answer in text.' }
+        ];
+        const system = 'This is a check of tool calling, not a game. Use the provided tools.';
+        const started = Date.now();
+        let res, text;
+        try {
+            const headers = await OpenAIAIManager.buildAuthHeaders(conn.auth, provider);
+            const req = OpenAIAIManager.buildChatRequest(provider, conn.endpoint, conn.model || 'default', system, turns,
+                { temperature: conn.temperature, topP: conn.topP, topK: conn.topK, minP: conn.minP,
+                  reasoning: conn.reasoning, extraBody: conn.extraBody, maxTokens: conn.maxTokens, numCtx: conn.contextSize });
+            const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                res = await fetch(req.url, { method: 'POST', headers, mode: 'cors', body: JSON.stringify(req.body), signal: ctrl.signal });
+                text = await res.text();
+            } finally { clearTimeout(timer); }
+        } catch (e) {
+            return { ok: false, code: e && e.name === 'AbortError' ? 'timeout' : 'network',
+                     detail: String((e && e.message) || e).slice(0, 200), latencyMs: Date.now() - started };
+        }
+        const latencyMs = Date.now() - started;
+        if (!res.ok) {
+            const code = (res.status === 401 || res.status === 403) ? 'auth' : res.status === 404 ? 'notFound'
+                : /template|role|alternat|jinja|tool/i.test(text) ? 'template' : 'http';
+            return { ok: false, code, status: res.status, detail: String(text).slice(0, 300), latencyMs };
+        }
+        let data;
+        try { data = JSON.parse(text); } catch (e) { return { ok: false, code: 'http', status: res.status, detail: String(text).slice(0, 300), latencyMs }; }
+        const a = OpenAIAIManager.normalizeResponse(provider, data);
+        const calls = a.tool_calls || [];
+        if (calls.length) return { ok: true, code: 'ok', via: 'tool_call', tool: ((calls[0].function || {}).name) || calls[0].name || null, latencyMs };
+        const said = String(a.content || '') + '\n' + String(a.reasoning || '');
+        const syntax = OpenAIAIManager.toolSyntaxInText(said);
+        if (syntax) return { ok: false, code: 'parser', detail: syntax, latencyMs };
+        if (/length|max_tokens|MAX_TOKENS/.test(String(a.finish_reason || ''))) return { ok: false, code: 'truncated', latencyMs };
+        return { ok: false, code: 'noCall', detail: String(a.content || '').slice(0, 200), latencyMs };
+    }
+
     static async testConnection(endpoint, auth, provider = 'auto', timeoutMs = 9000) {
         endpoint = OpenAIAIManager.normalizeLocalEndpoint(endpoint);
         if (!endpoint) return { ok: false, errorCode: 'noEndpoint', error: 'No endpoint URL set.' };
