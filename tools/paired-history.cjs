@@ -96,6 +96,9 @@ async function main() {
     const step = Math.max(1, Math.floor(eligible.length / N));
     const picked = eligible.filter((_, k) => k % step === 0).slice(0, N);
     console.error(`seat ${seat.playerId} (${turns[0].model}): ${turns.length} turns, ${eligible.length} eligible, ${picked.length} sampled`);
+    if (!a['dry-run']) console.error(opts.key
+        ? `key: set (${opts.key.length} characters)`
+        : 'key: NOT set -- WAR_PAIRED_KEY is empty in this shell; a hosted endpoint will answer 401');
 
     let captured = null;
     const realFetch = globalThis.fetch;
@@ -144,6 +147,16 @@ async function main() {
         for (let r = 0; r < (a['dry-run'] ? 1 : R); r++) {
             const A = await run(i, 'reasoning'), B = await run(i, 'content');
             if (!A || !B) { console.error(`turn ${turns[i].turn}: no request built`); continue; }
+            // A failed request is not a data point. Stop at the first one and show what
+            // the server said, rather than spending the whole budget on errors.
+            for (const [arm, cap] of [['reasoning', A], ['content', B]]) {
+                if (!a['dry-run'] && cap.status !== 200) {
+                    const said = cap.response && (cap.response.error ? JSON.stringify(cap.response.error) : cap.response.raw);
+                    console.error(`turn ${turns[i].turn} (${arm}): HTTP ${cap.status} -- ${String(said || '').slice(0, 300)}`);
+                    console.error('Stopped: fix the key, endpoint or model id and run again.');
+                    process.exit(1);
+                }
+            }
             if (!onlyAssistantDiffers(A.request, B.request)) { console.error(`turn ${turns[i].turn}: arms differ beyond the assistant text -- aborting`); process.exit(1); }
             const row = { turn: turns[i].turn, repeat: r, reasoning: metrics(A), content: metrics(B) };
             pairs.push(row);
