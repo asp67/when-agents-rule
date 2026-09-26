@@ -241,3 +241,12 @@ body.spectator-mode .mm-fog { bottom:calc(var(--mm-bottom) + 42px); }
 /* Heard horn announcements: three seconds readable, then one second fading. */
 .spectator-sound-caption { color:#f1d399; font-weight:600; margin:8px 0 0; animation:spectatorSoundCaption 4s linear forwards; }
 @keyframes spectatorSoundCaption { 0%,75% { opacity:1; } 100% { opacity:0; } }
+
+/* Transient messages off the game HUD (UIManager.showNotice). Above the loading
+   cover, because a failed start is reported while that cover is still up. */
+.app-notice { position:fixed; left:50%; bottom:32px; transform:translateX(-50%); z-index:100001;
+    max-width:min(560px, calc(100vw - 32px)); padding:12px 18px; border:1px solid var(--line);
+    border-left:3px solid var(--teal); border-radius:3px; background:var(--bg-1); color:var(--text);
+    box-shadow:var(--shadow); font-size:.92rem; line-height:1.45; cursor:pointer; overflow-wrap:anywhere; }
+.app-notice.is-error { border-left-color:var(--red-2); }
+.app-notice[hidden] { display:none; }

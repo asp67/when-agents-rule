@@ -7,7 +7,7 @@
     <link rel="icon" href="favicon.ico?v=793" sizes="16x16 32x32 48x48 64x64 256x256">
     <link rel="icon" href="favicon.svg?v=793" type="image/svg+xml" sizes="any">
     <link rel="stylesheet" href="css/styles.css?v=836">
-    <link rel="stylesheet" href="css/antiquity.css?v=886">
+    <link rel="stylesheet" href="css/antiquity.css?v=913">
     <!-- ?diag=1 -- the console, on the page.
 
          A tablet has no devtools worth the name, so a report from one can only ever be
@@ -646,6 +646,8 @@
 
     <!-- The in-house engine (js/engine/*) is the only renderer — no external
          libraries, no CDN: everything below ships in this repository. -->
+    <!-- Transient messages off the game HUD (UIManager.showNotice). -->
+    <div id="appNotice" class="app-notice" role="status" aria-live="polite" hidden></div>
     <script src="js/engine/math3d.js?v=781"></script>
     <script src="js/engine/glcore.js?v=781"></script>
     <script src="js/engine/texgen.js?v=804"></script>
@@ -669,8 +671,8 @@
     <script src="js/input.js?v=862"></script>
     <script src="js/director.js?v=827"></script>
     <script src="js/audio.js?v=907"></script>
-    <script src="js/ui.js?v=912"></script>
-    <script src="js/game.js?v=912"></script>
+    <script src="js/ui.js?v=913"></script>
+    <script src="js/game.js?v=913"></script>
     <script src="js/standing-orders.js?v=904"></script>
     <script src="js/showcase.js?v=868"></script>
     <script src="js/update-notice.js?v=836"></script>

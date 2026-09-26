@@ -2655,37 +2655,47 @@ class UIManager {
         infoDiv.innerHTML = `<p>${t('hud.selectHint')}</p>`;
     }
 
-    showErrorMessage(message) {
-        const infoDiv = document.getElementById('unitInfo');
-        if (!infoDiv) return;
-        // Borrowed: hold the periodic refresh off until we hand the card back, and
-        // re-render on release rather than restoring the markup we captured — by
-        // then it is seconds stale.
-        this._infoBorrowed = true;
-        infoDiv.innerHTML = `<p style="color: #e94560; font-weight: bold;">⚠️ ${message}</p>`;
-        clearTimeout(this._infoBorrowTimer);
-        this._infoBorrowTimer = setTimeout(() => {
-            this._infoBorrowed = false;
-            this.refreshUnitInfo();
-            if (!this._infoSubject || (!this._infoSubject.unit && !this._infoSubject.building)) {
-                this.updateUnitInfo(null, null);
-            }
-        }, 3000);
-    }
+    showErrorMessage(message) { this.showNotice(message, 'error'); }
+    showInfoMessage(message) { this.showNotice(message, 'info'); }
 
-    showInfoMessage(message) {
+    // One place for transient messages. On the game screen they borrow the unit card,
+    // where the player is looking. Everywhere else that card lays out at 0x0 -- so a
+    // failed start, an import result or an analyzer load error used to be written
+    // somewhere nobody could see. Off the HUD they go to a page-level live region.
+    // Text only: a message can carry an exception's own words, never markup.
+    showNotice(message, kind) {
+        const text = String(message == null ? '' : message);
+        const isError = kind === 'error';
         const infoDiv = document.getElementById('unitInfo');
-        if (!infoDiv) return;
-        this._infoBorrowed = true;
-        infoDiv.innerHTML = `<p style="color: #4ecca3; font-weight: bold;">✅ ${message}</p>`;
-        clearTimeout(this._infoBorrowTimer);
-        this._infoBorrowTimer = setTimeout(() => {
-            this._infoBorrowed = false;
-            this.refreshUnitInfo();
-            if (!this._infoSubject || (!this._infoSubject.unit && !this._infoSubject.building)) {
-                this.updateUnitInfo(null, null);
-            }
-        }, 2500);
+        if (infoDiv && infoDiv.getClientRects && infoDiv.getClientRects().length) {
+            // Borrowed: hold the periodic refresh off until we hand the card back, and
+            // re-render on release rather than restoring the markup we captured — by
+            // then it is seconds stale.
+            this._infoBorrowed = true;
+            infoDiv.innerHTML = `<p style="color: ${isError ? '#e94560' : '#4ecca3'}; font-weight: bold;">${isError ? '⚠️' : '✅'} ${this.escapeHtml(text)}</p>`;
+            clearTimeout(this._infoBorrowTimer);
+            this._infoBorrowTimer = setTimeout(() => {
+                this._infoBorrowed = false;
+                this.refreshUnitInfo();
+                if (!this._infoSubject || (!this._infoSubject.unit && !this._infoSubject.building)) {
+                    this.updateUnitInfo(null, null);
+                }
+            }, isError ? 3000 : 2500);
+            return;
+        }
+        const el = document.getElementById('appNotice');
+        if (!el) return;
+        el.className = 'app-notice ' + (isError ? 'is-error' : 'is-info');
+        el.setAttribute('role', isError ? 'alert' : 'status');
+        el.textContent = (isError ? '⚠️ ' : '✅ ') + text;
+        el.hidden = false;
+        clearTimeout(this._noticeTimer);
+        // Long enough to read a sentence twice; an error stays a little longer.
+        this._noticeTimer = setTimeout(() => { el.hidden = true; }, isError ? 8000 : 4000);
+        if (!el._wired) {
+            el._wired = true;
+            el.addEventListener('click', () => { clearTimeout(this._noticeTimer); el.hidden = true; });
+        }
     }
 
     // Single-player footer: shows who controls each rival (model name or rule-based),
