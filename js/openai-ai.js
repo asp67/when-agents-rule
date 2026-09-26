@@ -544,6 +544,9 @@ class OpenAIAIManager {
     // The command's outcome as the transcript records it: position, action, code, verdict.
     noteOutcome(controller, entry) {
         (controller._turnOutcomes || (controller._turnOutcomes = [])).push(entry);
+        // The latest one alone, for a caller that runs commands one by one and keeps its
+        // own record (the platform server's submit).
+        controller._lastOutcome = entry;
     }
     takeOutcomes(controller) {
         const list = (controller._turnOutcomes || []).map((o, i) => Object.assign({ n: i + 1 }, o));
