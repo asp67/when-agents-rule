@@ -77,7 +77,9 @@ class Game {
     advanceMatchClock(wallMs) {
         const rate = this.simRate(), c = this.clock;
         if (!(rate > 0) || !(wallMs > 0)) return;
-        if (rate !== c.rates[c.rates.length - 1].rate) c.rates.push({ sim: c.simMs, match: c.matchMs, rate });
+        // Simulated time budgeted so far includes what the accumulator holds but has not
+        // stepped yet; that is the point on the sim timeline this moment corresponds to.
+        if (rate !== c.rates[c.rates.length - 1].rate) c.rates.push({ sim: c.simMs + (this._simAccumulator || 0), match: c.matchMs, rate });
         c.matchMs += wallMs;
     }
     // The real (match) time at which the simulation stood at `simStamp`.
@@ -765,95 +767,50 @@ class Game {
         let elapsed = currentTime - this.lastFrameTime;
         this.lastFrameTime = currentTime;
         if (!(elapsed > 0)) elapsed = 0;
-        // Keep the FULL elapsed time (don't discard like the old 100ms clamp did),
-        // but cap a single catch-up so an extreme gap (machine slept) can't freeze
-        // the tab replaying it. Fed to the sim in safe ≤100ms slices below.
+        // Keep the FULL elapsed time, but cap a single catch-up so an extreme gap (the
+        // machine slept) cannot freeze the tab replaying it.
         const MAX_CATCHUP = 2000; // ms of real time we'll replay in one tick at most
         const simTime = Math.min(elapsed, MAX_CATCHUP);
 
-        // Coarse, once-per-tick work (AI decision cadence and population don't need slicing).
-        //
-        // Population is derived FIRST, because both managers below read it and one of
-        // them ships it to a model. It used to be re-derived at the end of the tick,
-        // which meant every state a model received carried the PREVIOUS tick's headcount
-        // — harmless while the count held still, a straight contradiction whenever it
-        // had just changed, and on the opening turn a population of 0 sitting beside the
-        // three workers it was counting. A field that is computed from another field has
-        // to be computed before the read, not after it.
-        this.aiManager.aiPlayers.forEach(ai => {
-            ai.resources.updatePopulation(ai.units.length);
-        });
-        // The rule-based brain runs on SIMULATED time, like the world it commands. On
-        // wall time it kept thinking through a pause and thought at the same wall
-        // cadence at 4x, so its strength depended on the speed setting. The model
-        // harness below stays on wall time on purpose: models answer in real seconds.
-        this.aiManager.update(this.simBudget(simTime));
-        if (this.openAIAIManager) {
-            this.openAIAIManager.update(simTime);
-        }
-        this.sampleTimeline(currentTime);
-        this.pruneBattles();   // time-driven: a quiet map must still let fights expire
-        // Keep the selection card current. Health, and anything else it shows, moves
-        // while you watch; the card only ever rendered on the click that selected.
-        // Throttled to ~400ms: fast enough to watch a building lose health, far
-        // cheaper than the per-frame rebuild a tick-rate refresh would be.
-        if (currentTime - (this._infoTick || 0) >= 400) {
-            this._infoTick = currentTime;
-            if (this.ui && this.ui.refreshUnitInfo) this.ui.refreshUnitInfo();
-        }
-
-        // Fine simulation in ≤50ms sub-steps so the FULL elapsed time is advanced.
-        // 50, not 100: the positional rules' push is dt-scaled but capped at a 50 ms
-        // step, so a longer step would separate less than the same time in short ones.
-        const STEP_MAX = 50;
-        const budgeted = this.simBudget(simTime);
         this.advanceMatchClock(simTime);
         // Ambient motion and daylight follow elapsed time, not the fast-forward
         // multiplier for units/research. They still stop with an actual pause.
         this._environmentSeconds = (this._environmentSeconds || 0)
             + (this.pauseState === 'paused' ? 0 : simTime / 1000);
-        let remaining = budgeted;
-        while (remaining > 0) {
-            const step = Math.min(STEP_MAX, remaining);
-            this.simulateStep(step);
-            // Separation and building clearance: rules, so they run here, on
-            // simulated time, and not in the renderer once per drawn frame -- where
-            // the frame rate set their strength and a hidden tab skipped them.
-            WarPositionRules.apply(this.getAllUnits(), this.getAllBuildings(), step / 1000);
-            // What each model has found, sampled after every step rather than once
-            // per frame: a hidden tab ticks four times a second, and a unit grazing a
-            // node between two ticks used to leave it undiscovered.
-            if (this.openAIAIManager && this.openAIAIManager.observeStep) this.openAIAIManager.observeStep();
-            remaining -= step;
-        }
-        this.keepUnitsAshore();
 
-        // HUD/minimap work is pointless while the tab is hidden (background ticks)
-        // — skip it. Win conditions ALWAYS run so a match can end unattended.
+        // The model harness runs on wall time on purpose: models answer in real seconds.
+        if (this.openAIAIManager) {
+            this.openAIAIManager.update(simTime);
+        }
+
+        // The simulation: whole fixed steps, the remainder carried to the next tick (it
+        // is also how far the renderer smooths between the last two steps). Everything
+        // that decides the game runs inside stepOnce, so the frame rate cannot reach it.
+        this._simAccumulator = (this._simAccumulator || 0) + this.simBudget(simTime);
+        while (this._simAccumulator >= Game.SIM_STEP_MS && this.gameStarted) {
+            this.stepOnce();
+            this._simAccumulator -= Game.SIM_STEP_MS;
+        }
+
+        // Presentation from here down.
+        this.sampleTimeline(currentTime);
+        // Keep the selection card current. Throttled to ~400ms.
+        if (currentTime - (this._infoTick || 0) >= 400) {
+            this._infoTick = currentTime;
+            if (this.ui && this.ui.refreshUnitInfo) this.ui.refreshUnitInfo();
+        }
+        // HUD/minimap work is pointless while the tab is hidden (background ticks).
         const hidden = (typeof document !== 'undefined') && document.hidden;
         if (!hidden) {
             this.updateProgressBar();
             this.ui.updateResources(this.player.resources);
             this.ui.updateAge(this.player.age);
-            // Rival intel footer (campaign): epochs are public, counts appear on
-            // first contact — refresh every ~2s so both stay current. (No-op in
-            // the arena: updateOpponentsPanel hides itself in spectator mode.)
+            // Rival intel footer (campaign): refreshed every ~2s.
             this._oppPanelTimer = (this._oppPanelTimer || 0) + simTime;
             if (this._oppPanelTimer >= 2000) {
                 this._oppPanelTimer = 0;
                 if (this.ui.updateOpponentsPanel) this.ui.updateOpponentsPanel();
             }
-        }
-        // The BUDGET, not raw elapsed time. A Wonder hold is the one clock that could
-        // run while the world stood still: it accumulates from whatever it is handed,
-        // and handing it real milliseconds meant a paused match could still be won by
-        // a Wonder nobody was defending and nobody could attack. (Outside a pause the
-        // two are identical whenever it matters — a standing Wonder already forces the
-        // sim to 1x — so this changes nothing else.)
-        this.checkWinConditions(budgeted);
-
-        // Update minimap periodically (every ~500ms; skipped while hidden)
-        if (!hidden) {
             if (!this.minimapUpdateTimer) this.minimapUpdateTimer = 0;
             this.minimapUpdateTimer += simTime;
             if (this.minimapUpdateTimer >= 500) {
@@ -861,6 +818,59 @@ class Game {
                 this.updateMinimap();
             }
         }
+    }
+
+    // ---- The simulation step (review #6 step 9) ------------------------------------------
+    // One fixed quantum of simulated time. Every rule runs in here and nowhere else, so a
+    // match is the same sequence of steps whatever drives it: tick() in a browser at any
+    // frame rate, a hidden tab's worker, or advanceSim() with the world frozen between
+    // model turns. 50 ms: the Platform's headless server already steps by it, so the
+    // browser and the server run identical step sequences; and every periodic timer in
+    // the rules (attack 1000, tower 1500, defense 600, acquire 150, discovery 250, think
+    // 2000) is a whole number of steps, so none of them loses a remainder.
+    static get SIM_STEP_MS() { return 50; }
+
+    stepOnce() {
+        const dt = Game.SIM_STEP_MS;
+        // Presentation only: the renderer notes where units stood, to smooth between steps.
+        if (this.renderer && this.renderer.beginSimStep) this.renderer.beginSimStep();
+        // Population first: the brain below and the state a model is sent both read it.
+        this.aiManager.aiPlayers.forEach(ai => {
+            ai.resources.updatePopulation(ai.units.length);
+        });
+        // The rule-based brain thinks on simulated time, like the world it commands.
+        this.aiManager.update(dt);
+        this.simulateStep(dt);
+        // Separation and building clearance, on simulated time (review #6 step 2).
+        WarPositionRules.apply(this.getAllUnits(), this.getAllBuildings(), dt / 1000);
+        // What each model has found, sampled every step.
+        if (this.openAIAIManager && this.openAIAIManager.observeStep) this.openAIAIManager.observeStep();
+        this.keepUnitsAshore();
+        this.pruneBattles();   // time-driven: a quiet map must still let fights expire
+        // With the step's own length: a Wonder hold cannot run while the world stands still.
+        this.checkWinConditions(dt);
+    }
+
+    // The frozen-step driver: advance exactly `simMs` of simulated time -- a whole number
+    // of steps -- with no wall clock involved, and stop if the match ends. What a
+    // lockstep round or a benchmark calls between model turns; the world does not move
+    // while they think. The match clock counts the same time as real match time, at the
+    // current rate, so what models are told in seconds stays consistent.
+    advanceSim(simMs) {
+        const steps = simMs / Game.SIM_STEP_MS;
+        if (!Number.isInteger(steps) || steps < 0) throw new RangeError('advanceSim takes a whole number of ' + Game.SIM_STEP_MS + ' ms steps');
+        const rate = this.simRate() || 1;
+        let done = 0;
+        for (; done < steps && this.gameStarted; done++) {
+            this.advanceMatchClock(Game.SIM_STEP_MS / rate);
+            this.stepOnce();
+        }
+        return done;
+    }
+
+    // How far the next step is along, 0..1 -- for presentation smoothing only.
+    simAlpha() {
+        return Math.max(0, Math.min(1, (this._simAccumulator || 0) / Game.SIM_STEP_MS));
     }
 
     // Background-tab driver: browsers pause requestAnimationFrame in hidden tabs
@@ -1306,7 +1316,7 @@ class Game {
                 // unit keeps marching on its attack-move. First scan is immediate.
                 unit._acquireTimer = (unit._acquireTimer == null) ? 150 : unit._acquireTimer + deltaTime;
                 if (unit._acquireTimer >= 150) {
-                    unit._acquireTimer = 0;
+                    unit._acquireTimer -= 150;   // carry the remainder: cadence-proof
                     const aggro = (unit.range > 1 ? unit.range + 20 : 24);
                     const found = this.findNearestEnemyInRange(unit, aggro, true);
                     if (found) {
@@ -1424,7 +1434,7 @@ class Game {
                     
                     // Attack every 1 second
                     if (unit.attackTimer >= 1000) {
-                        unit.attackTimer = 0;
+                        unit.attackTimer -= 1000;   // carry the remainder: cadence-proof
 
                         // Deal damage (with rock-paper-scissors counter bonus)
                         const dealt = unit.attack * this.combatMultiplier(unit, currentTarget);
@@ -1561,7 +1571,7 @@ class Game {
             if (!tower.attackTimer) tower.attackTimer = 0;
             tower.attackTimer += deltaTime;
             if (tower.attackTimer < 1500) return; // fire every 1.5s
-            tower.attackTimer = 0;
+            tower.attackTimer -= 1500;   // carry the remainder: cadence-proof
 
             const range = tower.range || 6;
             // Volley width and bite both scale with the tower's epoch (TOWER_POWER).
@@ -1628,7 +1638,7 @@ class Game {
     updateAutoDefense(deltaTime) {
         this._autoDefTimer = (this._autoDefTimer || 0) + deltaTime;
         if (this._autoDefTimer < 600) return; // throttle (~0.6s) so we don't re-task every frame
-        this._autoDefTimer = 0;
+        this._autoDefTimer -= 600;   // carry the remainder: cadence-proof
         const now = this.simNow();
 
         this.aiManager.aiPlayers.forEach(owner => {
@@ -3669,6 +3679,7 @@ class Game {
     resetTimeline() {
         this._environmentSeconds = 0;
         this.clock = Game.newClock();   // a new match starts at simulated time zero
+        this._simAccumulator = 0;       // ...and no part-step carried over from the last one
         this._rng = WarRng.keyed(this.mapSeed);   // ...and at the first draw of every key
         this._standingOrders = null;
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };

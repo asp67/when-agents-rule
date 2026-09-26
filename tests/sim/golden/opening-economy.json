@@ -1,6 +1,6 @@
 [
  {
-  "hash": "0ed816b31a40395b",
+  "hash": "8164427fe63ce153",
   "summary": {
    "t": 30,
    "seats": [
@@ -10,7 +10,7 @@
      "out": false,
      "res": [
       10,
-      170,
+      160,
       100,
       50
      ],
@@ -42,7 +42,7 @@
   }
  },
  {
-  "hash": "d95d04ac3abab70f",
+  "hash": "4daa73fe3c44e0ec",
   "summary": {
    "t": 60,
    "seats": [
@@ -52,7 +52,7 @@
      "out": false,
      "res": [
       20,
-      280,
+      270,
       100,
       50
      ],
@@ -84,7 +84,7 @@
   }
  },
  {
-  "hash": "f8fc6bb8be022d3c",
+  "hash": "b4726239fec651e8",
   "summary": {
    "t": 90,
    "seats": [
@@ -116,9 +116,9 @@
       50
      ],
      "units": {
-      "worker": 9
+      "worker": 8
      },
-     "hp": 360,
+     "hp": 320,
      "buildings": 2,
      "research": 1
     }
@@ -126,7 +126,7 @@
   }
  },
  {
-  "hash": "0562f061fbe98c29",
+  "hash": "88911d3eab8dfe1a",
   "summary": {
    "t": 120,
    "seats": [
@@ -152,7 +152,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      18,
+      6,
       318,
       100,
       50
@@ -168,7 +168,7 @@
   }
  },
  {
-  "hash": "c23d1bda9a55492f",
+  "hash": "4133735ab5691f08",
   "summary": {
    "t": 150,
    "seats": [
@@ -177,8 +177,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      40,
-      500,
+      20,
+      490,
       100,
       50
      ],
@@ -195,22 +195,22 @@
      "out": false,
      "res": [
       4,
-      320,
+      258,
       100,
       50
      ],
      "units": {
-      "worker": 14
+      "worker": 13
      },
-     "hp": 560,
-     "buildings": 5,
+     "hp": 520,
+     "buildings": 6,
      "research": 1
     }
    ]
   }
  },
  {
-  "hash": "69e24fb15880c1cb",
+  "hash": "1f276553ee23fda1",
   "summary": {
    "t": 180,
    "seats": [
@@ -220,7 +220,7 @@
      "out": false,
      "res": [
       0,
-      570,
+      550,
       100,
       50
      ],
@@ -236,8 +236,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      80,
-      6,
+      30,
+      94,
       100,
       50
      ],
@@ -245,14 +245,14 @@
       "worker": 14
      },
      "hp": 560,
-     "buildings": 8,
+     "buildings": 7,
      "research": 2
     }
    ]
   }
  },
  {
-  "hash": "725c9e8b483d36e2",
+  "hash": "5a5d16f21761e111",
   "summary": {
    "t": 210,
    "seats": [
@@ -262,7 +262,7 @@
      "out": false,
      "res": [
       40,
-      430,
+      420,
       100,
       50
      ],
@@ -278,24 +278,23 @@
      "age": "stone",
      "out": false,
      "res": [
-      220,
-      2,
+      306,
+      142,
       100,
       50
      ],
      "units": {
-      "worker": 14,
-      "militia": 2
+      "worker": 14
      },
-     "hp": 700,
-     "buildings": 8,
-     "research": 2
+     "hp": 560,
+     "buildings": 7,
+     "research": 3
     }
    ]
   }
  },
  {
-  "hash": "93f93d92ee6595b5",
+  "hash": "b3828d9a7267e9cb",
   "summary": {
    "t": 240,
    "seats": [
@@ -304,7 +303,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      30,
+      10,
       110,
       50,
       50
@@ -321,24 +320,23 @@
      "age": "stone",
      "out": false,
      "res": [
-      294,
-      2,
+      458,
+      52,
       100,
       50
      ],
      "units": {
-      "worker": 14,
-      "militia": 4
+      "worker": 14
      },
-     "hp": 840,
-     "buildings": 9,
-     "research": 2
+     "hp": 560,
+     "buildings": 7,
+     "research": 4
     }
    ]
   }
  },
  {
-  "hash": "5c061f1047d683ec",
+  "hash": "6185f6d597c1ce0c",
   "summary": {
    "t": 270,
    "seats": [
@@ -347,7 +345,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      30,
+      10,
       60,
       50,
       50
@@ -365,24 +363,23 @@
      "age": "stone",
      "out": false,
      "res": [
-      374,
-      34,
+      662,
+      112,
       100,
       50
      ],
      "units": {
-      "worker": 14,
-      "militia": 5
+      "worker": 14
      },
-     "hp": 910,
-     "buildings": 9,
-     "research": 2
+     "hp": 560,
+     "buildings": 7,
+     "research": 4
     }
    ]
   }
  },
  {
-  "hash": "917e003328461aa8",
+  "hash": "923b1ea3f462ca08",
   "summary": {
    "t": 300,
    "seats": [
@@ -391,8 +388,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      0,
-      10,
+      40,
+      30,
       50,
       50
      ],
@@ -409,24 +406,23 @@
      "age": "stone",
      "out": false,
      "res": [
-      398,
-      2,
+      828,
+      22,
       100,
       50
      ],
      "units": {
-      "worker": 14,
-      "militia": 9
+      "worker": 14
      },
-     "hp": 1190,
-     "buildings": 10,
-     "research": 2
+     "hp": 560,
+     "buildings": 8,
+     "research": 4
     }
    ]
   }
  },
  {
-  "hash": "1e820f3a54c1e674",
+  "hash": "cecae75c2e9e24bb",
   "summary": {
    "t": 330,
    "seats": [
@@ -435,8 +431,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      20,
-      0,
+      50,
+      10,
       50,
       50
      ],
@@ -445,7 +441,7 @@
       "militia": 9
      },
      "hp": 1190,
-     "buildings": 11,
+     "buildings": 10,
      "research": 2
     },
     {
@@ -453,24 +449,24 @@
      "age": "stone",
      "out": false,
      "res": [
-      466,
+      882,
       10,
       100,
       50
      ],
      "units": {
       "worker": 14,
-      "militia": 11
+      "militia": 2
      },
-     "hp": 1330,
-     "buildings": 10,
-     "research": 2
+     "hp": 700,
+     "buildings": 8,
+     "research": 4
     }
    ]
   }
  },
  {
-  "hash": "e25278287e8b722c",
+  "hash": "a0bf2841089b57d3",
   "summary": {
    "t": 360,
    "seats": [
@@ -497,18 +493,18 @@
      "age": "stone",
      "out": false,
      "res": [
-      532,
-      22,
+      956,
+      10,
       100,
       50
      ],
      "units": {
       "worker": 14,
-      "militia": 13
+      "militia": 4
      },
-     "hp": 1470,
-     "buildings": 10,
-     "research": 2
+     "hp": 840,
+     "buildings": 9,
+     "research": 4
     }
    ]
   }

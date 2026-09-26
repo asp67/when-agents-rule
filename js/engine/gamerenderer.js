@@ -869,6 +869,40 @@
             building.mesh = null;
         }
 
+        // ---- presentation smoothing -------------------------------------------------
+        // The simulation moves in fixed 50 ms steps (Game.stepOnce), twenty a second, while
+        // frames come at the display's rate. Each step start is noted here, and a frame is
+        // drawn that far between the last two steps (Game.simAlpha). Presentation only:
+        // the world itself is never moved, and the analyzer, which shows recorded
+        // positions, is never smoothed.
+        beginSimStep() {
+            const prev = this._stepFrom || (this._stepFrom = new WeakMap());
+            for (const u of this.units) {
+                let p = prev.get(u);
+                if (!p) prev.set(u, p = { x: 0, z: 0 });
+                p.x = u.x; p.z = u.z;
+            }
+        }
+        _smoothUnits(alpha) {
+            const prev = this._stepFrom;
+            if (!prev) return null;
+            const shown = [];
+            for (const u of this.units) {
+                const p = prev.get(u);
+                if (!p) continue;                                   // born this step
+                const dx = u.x - p.x, dz = u.z - p.z;
+                if (dx === 0 && dz === 0) continue;
+                if (dx * dx + dz * dz > 25) continue;               // a jump, not a walk: no slide
+                shown.push(u, u.x, u.z);
+                u.x = p.x + dx * alpha;
+                u.z = p.z + dz * alpha;
+            }
+            return shown;
+        }
+        _restoreUnits(shown) {
+            for (let i = 0; i < shown.length; i += 3) { shown[i].x = shown[i + 1]; shown[i].z = shown[i + 2]; }
+        }
+
         onBuildingCompleted(building) {
             if (!building) return;
             this._composeBuilding(building);
@@ -1970,7 +2004,15 @@
                 game._director.measureCoverage(this, Date.now());
             }
             const bb = M().billboard(cam.view);
-            this._assembleFrame(now / 1000, deltaTime, bb);
+            // Draw between the last two simulation steps (see beginSimStep). The frame's
+            // geometry is built from unit positions in _assembleFrame and nowhere after,
+            // so the smoothed positions exist only for that call, and the true ones are
+            // back before anything else can read them -- even if building the frame throws.
+            const alpha = (!this.replayMode && this.game && this.game.gameStarted && this.game.simAlpha)
+                ? this.game.simAlpha() : 1;
+            const shown = alpha < 1 ? this._smoothUnits(alpha) : null;
+            try { this._assembleFrame(now / 1000, deltaTime, bb); }
+            finally { if (shown) this._restoreUnits(shown); }
             this._syncFog();
             const atmosphere = window.EngineAtmosphere.daylight(
                 this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0),

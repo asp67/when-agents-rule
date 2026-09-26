@@ -6,6 +6,31 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 941: a fixed simulation step (27 September 2026)
+
+The simulation used to advance by however much time had passed since the last drawn frame, cut into sub-steps of up to 50 ms. So the sequence of steps, and with it every result, depended on the frame rate. It now advances in fixed 50 ms steps (`Game.stepOnce`). Frames only add real time to an accumulator, and the remainder carries to the next frame. Everything that decides the game runs inside a step:
+
+- the rule-based brain;
+- the simulation;
+- unit spacing;
+- model discovery;
+- the shore clamp;
+- the battle ledger;
+- the win check.
+
+What this changes:
+
+- **Frame rate:** a match reaches exactly the same state at any frame rate, and in a hidden tab. Tested at 16, 25, 50, 125 and 250 ms frames.
+- **Frozen-step driver:** `Game.advanceSim(ms)` runs the same steps with no clock at all, while the world waits for model turns. It reaches the same state as a framed run. It is the base for a lockstep arena mode and for the benchmark runner.
+- **Timers:** every periodic timer is a whole number of 50 ms steps, so none of them loses a remainder any more. Those losses cost about 1% of attack and harvest rates at 60 fps. Periodic timers now carry their remainder anyway, so a future period that is not a multiple still keeps time. (The affected timers are attack 1 s, tower 1.5 s, defense 0.6 s, target acquisition 0.15 s, discovery 0.25 s and the AI's think 2 s.)
+- **Browser and server:** the Platform's headless server already steps by 50 ms, so the two now run identical step sequences.
+- **Drawing:** the world updates twenty times a second, and frames are drawn between the last two steps, so movement stays smooth at any display rate. This is presentation only. The analyzer, which shows recorded positions, is never smoothed.
+
+Measured on the golden traces:
+
+- **Fights:** end with the same winners, one or two units apart in losses.
+- **Opening economy:** Greece ends identical, while Persia takes a different path, as a single rule-based run does when its timing shifts.
+
 ## Build 937: portable math (27 September 2026)
 
 Rule code measures distances and angles with `Math.hypot`, `Math.sin`, `Math.cos` and `Math.atan2`. The language fixes `+ − × ÷` and `sqrt` to the last bit, but leaves these functions to each engine. Engines differ, and so do builds of the same engine: on 27 September 2026, Chrome 152 differed from Node 24 (both V8) in the last bit for 2–18% of `sin`, `cos` and `atan2` inputs. In a simulation, one last-bit difference in a distance can decide which unit reaches a target first, and from there a fight. So a match in the browser and the same match on a Node server could not stay identical, and neither could a transcript replayed in another browser.

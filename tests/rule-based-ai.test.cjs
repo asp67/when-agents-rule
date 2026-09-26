@@ -32,12 +32,13 @@ test('the rule-based brain gets simulated time: none while paused, more at speed
     for (const [speed, pauseState, expected] of [[1, 'running', 1000], [2, 'running', 2000], [4, 'paused', 0]]) {
         const game = vm.runInContext('Object.create(Game.prototype)', context);
         game.clock = vm.runInContext('Game.newClock()', context);
+        // Given in fixed 50 ms steps now (review #6 step 9): the total is what counts.
         const done = new Error('end of tick');
-        let given = null;
-        Object.assign(game, { lastFrameTime: 0, simSpeed: speed, pauseState,
-            aiManager: { aiPlayers: [], update(ms) { given = ms; } }, sampleTimeline() {}, pruneBattles() {}, renderer: { units: [], buildings: [] },
+        let given = 0;
+        Object.assign(game, { lastFrameTime: 0, simSpeed: speed, pauseState, gameStarted: true,
+            aiManager: { aiPlayers: [], update(ms) { assert.equal(ms, 50); given += ms; } }, sampleTimeline() { throw done; }, pruneBattles() {}, renderer: { units: [], buildings: [] },
             anyWonderStanding: () => false, simulateStep() {}, keepUnitsAshore() {},
-            checkWinConditions() { throw done; } });
+            checkWinConditions() {} });
         try { game.tick(); } catch (e) { if (e !== done) throw e; }
         assert.equal(given, expected, speed + 'x ' + pauseState);
     }

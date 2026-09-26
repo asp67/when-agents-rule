@@ -18,13 +18,17 @@ function world() {
 test('the clock advances with the simulation: steps, sim time, match time', () => {
     const { m, g } = world();
     m.run(1000);
-    assert.equal(g.clock.simMs, 1008, 'sixty-three 16 ms frames, one step each');
-    assert.equal(g.clock.stepNo, 63);
+    // Sixty-three 16 ms frames are 1008 ms of real time: twenty whole 50 ms steps, and
+    // 8 ms carried to the next frame (review #6 step 9).
     assert.equal(g.clock.matchMs, 1008);
+    assert.equal(g.clock.stepNo, 20);
+    assert.equal(g.clock.simMs, 1000);
+    assert.equal(g._simAccumulator, 8);
     g.simSpeed = 2;
     m.run(1000);
     assert.equal(g.clock.matchMs, 2016, 'real match time ignores the speed');
-    assert.equal(g.clock.simMs, 1008 + 2 * 1008, 'simulated time runs at twice the rate');
+    assert.equal(g.clock.simMs, 3000, 'twice the rate: 2016 more budgeted, 2024 carried in, forty steps');
+    assert.equal(g._simAccumulator, 24);
 });
 
 test('a pause stops the repair lock; 2x runs it twice as fast', () => {
@@ -54,7 +58,9 @@ test('what a model is told stays in real seconds, across speed changes and pause
     g.simSpeed = 1;
     m.run(5008);
     const real = g.realSecsSince(stamp);
-    assert.ok(Math.abs(real - 10.016) < 1e-9, `10 real seconds since the event (5 at 2x, 5 at 1x): ${real}`);
+    // Exact to within one 50 ms step: simulated time lags real time by what the
+    // accumulator holds. Models are told whole seconds.
+    assert.ok(Math.abs(real - 10.016) <= 0.05, `10 real seconds since the event (5 at 2x, 5 at 1x): ${real}`);
     assert.ok(g.simNow() - stamp > 15000, 'while more simulated time than that went by');
 });
 

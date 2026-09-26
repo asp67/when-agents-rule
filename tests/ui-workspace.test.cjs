@@ -126,6 +126,38 @@ function renderFrame(replayMode) {
     return { before, after: units };
 }
 
+// The world moves in 50 ms steps; a frame is drawn between the last two (review #6
+// step 9). The smoothed positions exist only while the frame is built.
+function smoothFrame(alpha, replayMode, assemble) {
+    const h = harness(), r = h.renderer, noop = () => {};
+    const walker = { x: 0, z: 0, owner: 1 }, jumper = { x: 0, z: 0, owner: 1 }, still = { x: 5, z: 5, owner: 2 };
+    const units = [walker, jumper, still];
+    Object.assign(r, { replayMode, units, buildings: [], _lastTime: 83.333, updateCamera: noop,
+        _computeCam: () => ({ view: [], proj: [], haze: [] }), _assembleFrame: assemble, _syncFog: noop,
+        gl: new Proxy({}, { get: () => noop }), prog: { uniforms: {} }, tex: { white: {} },
+        _daySky: [0.42,0.60,0.79], _daySun: [0.96,0.84,0.66], sunDir: [], _dl: { opaque: [], blended: [], bars: [] },
+        game: { gameStarted: true, simAlpha: () => alpha } });
+    r.beginSimStep();                         // a step starts here...
+    walker.x = 2; jumper.x = 40;              // ...and ends here: a walk and a teleport
+    let error = null;
+    try { r.animate(); h.setTime(116.667); h.frames.shift()(); } catch (e) { error = e; }
+    return { units, error };
+}
+
+test('frames are drawn between steps, and the true positions are back afterwards', () => {
+    // What _assembleFrame saw, against what the world holds before and after.
+    let drawn;
+    const run = smoothFrame(0.25, false, function () { drawn = this.units.map(u => [u.x, u.z]); });
+    assert.deepEqual(drawn, [[0.5, 0], [40, 0], [5, 5]], 'a quarter of the way along a walk; a jump drawn where it landed');
+    assert.deepEqual(run.units.map(u => [u.x, u.z]), [[2, 0], [40, 0], [5, 5]], 'the world is untouched');
+    let replayed;
+    smoothFrame(0.25, true, function () { replayed = this.units.map(u => [u.x, u.z]); });
+    assert.deepEqual(replayed, [[2, 0], [40, 0], [5, 5]], 'the analyzer is never smoothed');
+    const failed = smoothFrame(0.25, false, () => { throw new Error('frame failed'); });
+    assert.ok(failed.error, 'the frame error surfaces');
+    assert.deepEqual(failed.units.map(u => [u.x, u.z]), [[2, 0], [40, 0], [5, 5]], 'and positions are restored even so');
+});
+
 test('replay render frames preserve recorded positions, including overlaps', () => {
     const { before, after } = renderFrame(true);
     assert.deepEqual(after, before);

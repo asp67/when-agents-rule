@@ -121,7 +121,7 @@ class AIManager {
         // latency is invisible to every consumer while cutting the cost ~15×.
         this.discoveryTimer = (this.discoveryTimer || 0) + deltaTime;
         if (this.discoveryTimer >= 250) {
-            this.discoveryTimer = 0;
+            this.discoveryTimer -= 250;   // carry the remainder: cadence-proof
             this.aiPlayers.forEach(ai => {
                 // Exploration bitmap for EVERY player (LLM ones too — their own
                 // discovery runs only when they take a turn, which would miss the
@@ -146,7 +146,7 @@ class AIManager {
 
         this.thinkTimer += deltaTime;
         if (this.thinkTimer >= this.thinkInterval) {
-            this.thinkTimer = 0;
+            this.thinkTimer -= this.thinkInterval;   // carry the remainder: cadence-proof
             this.think();
         }
     }
