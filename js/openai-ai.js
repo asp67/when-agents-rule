@@ -4760,9 +4760,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                         `(finish_reason=${norm && norm.finish_reason}). Replaying them would make every later ` +
                         `request unparseable to the endpoint.`);
                 }
+                // A turn answered with tool calls replays only its visible text, never its
+                // reasoning. Replaying hidden reasoning as the model's own past reply was
+                // decided by a paired run (tools/paired-history.cjs, 26 Sep 2026: Gemini 3.5
+                // Flash on Episode 7's Gemini history, 40 turns x 2): same tool calls and no
+                // loss of valid calls, but about 22% more completion tokens with it replayed
+                // (2073 vs 1698 on average; 54 of 80 pairs higher, sign test p = 0.002).
+                // Prose-only turns keep their fallback, which that run did not test.
+                const replayed = toolCalls.length ? String((norm && norm.content) || '') : replyText;
                 const logTurn = {
                     user: controller._pendingTurnUser,
-                    assistant: replyText.replace(/\s+/g, ' ').trim().slice(0, 600),
+                    assistant: replayed.replace(/\s+/g, ' ').trim().slice(0, 600),
                     toolCalls: toolCalls.length ? toolCalls : null,
                     outcome: null // filled by recordAction once this turn's action resolves
                 };
