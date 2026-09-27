@@ -270,3 +270,17 @@ test('an explore ring moves to where the harness really sends the scout, once it
     const a1 = layer.tileCentre('A1');
     assert.deepEqual({ x: refused.to.x, z: refused.to.z }, { x: a1.x, z: a1.z });
 });
+
+test('bubbles pinned to the top edge pile downward instead of leaving the screen', async () => {
+    const { layer } = await setup();
+    const { stack } = layer.constructor;
+    const box = x => ({ x, y: 120, w: 200, h: 50 });   // tops at 70, the highest allowed
+    const ys = Array.from(stack([box(0), box(10), box(20)], 4, 70));
+    assert.equal(ys[0], 120);
+    assert.ok(ys[1] - 50 >= ys[0] + 4 - 1e-9, 'the second goes below the first: ' + ys);
+    assert.ok(ys[2] - 50 >= ys[1] + 4 - 1e-9, 'and the third below that: ' + ys);
+    assert.ok(ys.every(y => y - 50 >= 70), 'none climbs past the edge');
+    // Without an edge they still climb, as before.
+    const free = Array.from(stack([box(0), box(10)], 4));
+    assert.ok(free[1] <= free[0] - 50);
+});

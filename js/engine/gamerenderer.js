@@ -1151,6 +1151,19 @@
             };
         }
 
+        // A point behind the eye has no place on screen, but it has a direction: behind
+        // the viewer is below the view, to the left or right as it lies. Returned far
+        // below the bottom edge on that side, for anything that pins a label to the edge
+        // (the intent bubbles). Drawing still uses worldToScreen, which says null.
+        offscreenDirection(x, y, z) {
+            const c = this._cam || this._computeCam();
+            const v = c.view;
+            const vx = v[0] * x + v[4] * y + v[8] * z + v[12];
+            const vz = v[2] * x + v[6] * y + v[10] * z + v[14];
+            const ndcX = Math.max(-1.5, Math.min(1.5, (vx / Math.max(0.5, Math.abs(vz))) / (c.tanHalf * c.aspect)));
+            return { x: (ndcX + 1) / 2 * this.canvas.clientWidth, y: this.canvas.clientHeight * 3 };
+        }
+
         getWorldPositionFromScreen(screenX, screenY) {
             const c = this._cam || this._computeCam();
             const rect = this.canvas.getBoundingClientRect();

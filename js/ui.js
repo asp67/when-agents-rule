@@ -2520,23 +2520,30 @@ class UIManager {
         if (!layer || !r || !r.worldToScreen || !this.intentOn()) { box.innerHTML = ''; return; }
         // The marks themselves lie on the ground, drawn by the renderer (intentMarks);
         // only the bubbles are screen-space.
-        const f = layer.frame((x, z) => r.worldToScreen(x, 0, z), Date.now(),
+        // A point behind the camera still has a direction to pin its bubble to.
+        const f = layer.frame((x, z) => r.worldToScreen(x, 0, z) || (r.offscreenDirection ? r.offscreenDirection(x, 0, z) : null), Date.now(),
             { focus: r.cameraTarget, w: r.canvas.clientWidth, h: r.canvas.clientHeight });
         box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
             + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span></div>').join('');
-        // Laid out again with the sizes the bubbles were actually drawn at. Kept inside the
-        // view first: a bubble near an edge used to be squeezed into a column of single
-        // words; now it keeps its width and rests against the edge. Then stacked -- the
-        // layer can only estimate sizes, and an estimate too small let one bubble cover
-        // another's reason.
-        const els = box.children, vw = box.clientWidth || r.canvas.clientWidth, pad = 6;
+        // Laid out again with the sizes the bubbles were actually drawn at. Every bubble is
+        // kept inside the view: one whose point is off screen rests on the edge in the
+        // direction it lies, so a seat acting out of shot is still heard from. A bubble
+        // near an edge keeps its width rather than squeezing into a column. Then stacked
+        // -- the layer can only estimate sizes, and an estimate too small let one bubble
+        // cover another's reason.
+        //
+        // A bubble stands 18px above its point (the CSS transform), so its top is
+        // y - 18 - h. The top margin clears the bar and the broadcast board.
+        const els = box.children, pad = 6, TOP = 56, LIFT = 18;
+        const vw = box.clientWidth || r.canvas.clientWidth, vh = box.clientHeight || r.canvas.clientHeight;
         if (els.length) {
             const boxes = f.bubbles.map((b, k) => {
                 const w = els[k].offsetWidth, h = els[k].offsetHeight;
                 const x = vw > w + 2 * pad ? Math.max(pad + w / 2, Math.min(vw - pad - w / 2, b.x)) : b.x;
-                return { x, y: b.ay, w, h };
+                const y = vh > h + TOP + pad + LIFT ? Math.max(TOP + LIFT + h, Math.min(vh - pad + LIFT, b.ay)) : b.ay;
+                return { x, y, w, h };
             });
-            const ys = IntentLayer.stack(boxes);
+            const ys = IntentLayer.stack(boxes, 4, TOP + LIFT);
             boxes.forEach((bx, k) => { els[k].style.left = Math.round(bx.x) + 'px'; els[k].style.top = Math.round(ys[k]) + 'px'; });
         }
     }

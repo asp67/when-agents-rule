@@ -49,11 +49,21 @@ class IntentLayer {
     //
     // Width counts in full. Testing only a fixed 150 px sideways let two 260 px bubbles
     // 150-260 px apart overlap, and the later one covered the earlier one's reason.
-    static stack(boxes, gap = 4) {
+    //
+    // `minTop` is the highest a box's top may go. A box that would climb past it goes
+    // below the one it meets instead -- bubbles resting on the top edge of the view pile
+    // downward. The number of moves per box is capped, so a crowded edge cannot loop.
+    static stack(boxes, gap = 4, minTop = -Infinity) {
         const placed = [];
         return boxes.map(b => {
-            let y = b.y, hit;
-            while ((hit = placed.find(o => Math.abs(o.x - b.x) < (o.w + b.w) / 2 && y - b.h < o.y && o.y - o.h < y))) y = hit.y - hit.h - gap;
+            // Once a box has gone down it keeps going down: turning back up would meet the
+            // box it just left and swing between the two.
+            let y = b.y, hit, moves = 0, down = false;
+            while (moves++ < 60 && (hit = placed.find(o => Math.abs(o.x - b.x) < (o.w + b.w) / 2 && y - b.h < o.y && o.y - o.h < y))) {
+                const up = hit.y - hit.h - gap;
+                if (!down && up - b.h >= minTop) y = up;
+                else { down = true; y = hit.y + b.h + gap; }
+            }
             placed.push({ x: b.x, y, w: b.w, h: b.h });
             return y;
         });

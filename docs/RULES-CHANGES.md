@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 978: every bubble on screen, at the edge it comes from (27 September 2026)
+
+**No rules change.** A bubble whose point is out of view now rests on the edge of the screen in its direction: left and right as before, and now also the top and bottom. A point behind the camera goes to the bottom edge on its side. Bubbles that pile against the top edge stack downward rather than off the screen. A seat acting out of shot is still heard from.
+
 ## Build 977: longer world time per round (27 September 2026)
 
 **No rules change.** The lockstep setting ("world time per round") offers 30, 45 and 60 seconds as well as 1 to 20. The game already accepted slices up to 60 s; only the choices were missing.
