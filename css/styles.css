@@ -3013,3 +3013,18 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .tv-nav button:disabled { opacity:.45; cursor:default; }
 .tv-nav button:focus-visible { outline:2px solid #d5bb81; outline-offset:2px; }
 #tvRange { flex:1; color:#c0bdab; text-align:center; font-size:.75em; white-space:nowrap; }
+
+/* Chronicle captions (review #11): one line under the status bar, one at a time. The
+   global reduced-motion rule above already stills the fade; nothing here flashes. */
+.chronicle-caption {
+    position: fixed; top: 66px; left: 50%; transform: translateX(-50%);
+    z-index: 1000; pointer-events: none; max-width: min(760px, calc(100vw - 32px));
+    padding: 6px 16px; border-radius: 6px; font-size: 0.86em; line-height: 1.35; text-align: center;
+    color: #e8eef7; background: rgba(10, 14, 30, 0.86); border: 1px solid rgba(78, 204, 163, 0.28);
+    backdrop-filter: blur(3px); opacity: 0;
+}
+.chronicle-caption[data-weight="3"] { border-color: rgba(233, 196, 106, 0.7); }
+.chronicle-caption .chr-t { color: #8fa3b8; font-variant-numeric: tabular-nums; margin-right: 4px; }
+.chronicle-caption.chr-in { animation: chr-fade 5s ease forwards; }
+@keyframes chr-fade { 0% { opacity: 0; } 6% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; } }
+#captionsBtn:not(.active) { opacity: 0.55; }

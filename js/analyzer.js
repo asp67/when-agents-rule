@@ -29,6 +29,7 @@ class TranscriptAnalyzer {
         this.turns = [];         // every turn, chronological across all seats
         this.markers = [];       // type:"round_missed" and anything else non-turn
         this.inputs = [];        // type:"input" -- what a re-simulation replays (review #9), never a row
+        this.chronicle = [];     // type:"chronicle" -- the match as a spectator was told it (review #11)
         this.chapters = [];      // derived: what a reader would want to jump to
         this.seats = new Map();  // playerId -> {id, seat, civ, model, name, turns:[]}
         this._deaths = null;     // derived once per file by deathTimes()
@@ -73,6 +74,7 @@ class TranscriptAnalyzer {
             if (o.type === 'results') { this.results = o; continue; }
             if (o.type === 'timeline') { this.timeline = o; continue; }
             if (o.type === 'input') { this.inputs.push(o); continue; }
+            if (o.type === 'chronicle') { this.chronicle.push(o); continue; }
             if (o.type) { this.markers.push(o); continue; }   // round_missed and future kinds
             // A turn always carries the seat that took it — record() refuses to write one
             // without a playerId. So an object that lacks it is not a turn with fields

@@ -173,7 +173,8 @@ class UIManager {
             layout,
             split: Number.isFinite(saved.split) ? Math.max(20, Math.min(80, saved.split)) : 52,
             text: saved.text === 'compact' ? 'compact' : 'comfortable',
-            rate: [0.5, 1, 2, 4].includes(saved.rate) ? saved.rate : 1
+            rate: [0.5, 1, 2, 4].includes(saved.rate) ? saved.rate : 1,
+            captions: saved.captions !== false   // chronicle captions in the arena (review #11)
         };
     }
 
@@ -2441,8 +2442,94 @@ class UIManager {
         this.renderSpectatorSoundCaption(infoDiv);
     }
 
+    // ---- Chronicle captions (review #11) -------------------------------------
+    // A visual setting, not an audio one: sound captions appear only while sound
+    // plays, which is the wrong place for "who just lost their Town Center". Notable
+    // entries (weight 2+) are shown one at a time, five seconds each, in the order they
+    // happened; a backlog is thinned to the decisive ones rather than played late.
+    captionsOn() { return this.viewPreferences().captions !== false; }
+    toggleChronicleCaptions() {
+        const p = this.viewPreferences();
+        p.captions = !this.captionsOn();
+        this.saveViewPreferences();
+        if (!p.captions) { this._chronicleQueue = []; clearTimeout(this._chronicleTimer); this._chronicleTimer = null; document.getElementById('chronicleCaption')?.remove(); }
+        this.refreshCaptionsButton();
+    }
+    refreshCaptionsButton() {
+        const btn = document.getElementById('captionsBtn');
+        if (!btn) return;
+        const on = this.captionsOn();
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    chronicleSeatName(id) {
+        const g = this.game, ai = ((g.aiManager && g.aiManager.aiPlayers) || []).find(a => a.id === id);
+        if (!ai) return String(id || '?');
+        const ctrl = ((g.openAIAIManager && g.openAIAIManager.aiControllers) || []).find(c => c.id === id);
+        return (ctrl && ctrl.model && ctrl.model.name) || this.anCivName(ai.civilization);
+    }
+    chronicleSeatHtml(id) {
+        const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
+        return (ai ? this.teamDotHtml(ai.seat, 9) + ' ' : '') + '<b>' + this.escapeHtml(this.chronicleSeatName(id)) + '</b>';
+    }
+    chronicleText(e) {
+        const who = this.chronicleSeatHtml(e.seats && e.seats[0]);
+        const bname = type => { const d = typeof getBuildingDef === 'function' ? getBuildingDef(type) : null; return this.escapeHtml(d && d.name ? tg(d.name) : String(type || '')); };
+        const by = e.by ? this.chronicleSeatHtml(e.by) : null;
+        switch (e.kind) {
+            case 'contact': return t('chr.contact', { a: who, b: this.chronicleSeatHtml(e.seats[1]) });
+            case 'clash': return t('chr.clash', { who: e.seats.map(id => this.chronicleSeatHtml(id)).join(' · ') });
+            case 'battle': return t('chr.battle', { s: e.seconds, lines: e.seats.map(id => t('chr.battleSide', {
+                who: this.chronicleSeatHtml(id), lost: e.sides[id].lost, of: e.sides[id].involved })).join(' · ') });
+            case 'building-lost': case 'town-center-lost': case 'wonder-lost':
+                return t(by ? 'chr.lostBy' : 'chr.lost', { who, what: bname(e.building), by });
+            case 'age': return t('chr.age', { who, age: this.escapeHtml(this.getAgeName(e.age)) });
+            case 'wonder-raised': return t('chr.wonderRaised', { who, what: bname(e.building), n: e.required });
+            case 'wonder-countdown': return t('chr.wonderCountdown', { who, n: e.seconds });
+            case 'elimination': return t('chr.elimination', { who });
+            case 'speed': return t('chr.speed', { n: String(e.speed).replace('.', getUiLang() === 'en' ? '.' : ',') });
+            case 'pause': return t('chr.pause');
+            case 'resume': return t('chr.resume');
+            default: return this.escapeHtml(e.kind);
+        }
+    }
+    chronicleCaption(e) {
+        if (!this.game.spectatorMode || !this.captionsOn() || e.weight < 2) return;
+        this._chronicleQueue = this._chronicleQueue || [];
+        this._chronicleQueue.push(e);
+        // Never more than a few behind: past that, keep only the decisive ones.
+        if (this._chronicleQueue.length > 3) this._chronicleQueue = this._chronicleQueue.filter(x => x.weight >= 3).slice(-3);
+        if (!this._chronicleTimer) this.nextChronicleCaption();
+    }
+    nextChronicleCaption() {
+        this._chronicleTimer = null;
+        const e = (this._chronicleQueue || []).shift();
+        let el = document.getElementById('chronicleCaption');
+        if (!e) { if (el) el.remove(); return; }
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'chronicleCaption';
+            el.className = 'chronicle-caption';
+            el.setAttribute('role', 'status');
+            el.setAttribute('aria-live', 'polite');
+            document.body.appendChild(el);
+        }
+        const mmss = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+        // Under the status bar, whose height depends on the window's width.
+        const bar = document.querySelector('#spectatorHUD .spectator-statusbar');
+        const below = bar ? bar.getBoundingClientRect().bottom : 0;
+        if (below > 0) el.style.top = Math.round(below + 8) + 'px';
+        el.dataset.weight = String(e.weight);
+        el.innerHTML = '<span class="chr-t">' + mmss(e.t || 0) + '</span> ' + this.chronicleText(e);
+        // Restart the fade for each caption.
+        el.classList.remove('chr-in'); void el.offsetWidth; el.classList.add('chr-in');
+        this._chronicleTimer = setTimeout(() => this.nextChronicleCaption(), document.hidden ? 0 : 5000);
+    }
+
     showSpectatorSoundCaption(event) {
         if(!this.game.spectatorMode)return;
+        // What the chronicle tells, it tells whether or not sound is on; not twice.
+        if(this.captionsOn()&&['elimination','warning','wonderLost'].includes(event.kind))return;
         const civ=typeof getCivilization==='function'?getCivilization(event.civilization):null;
         const message=t('audio.caption.'+event.kind,{
             who:civ?tg(civ.name):(event.civilization||''),
@@ -3089,6 +3176,16 @@ class UIManager {
         if (this._spectatorIntervals) this._spectatorIntervals.forEach(id => clearInterval(id));
         this._spectatorIntervals = [];
 
+        // The chronicle (review #11): it only reads the match, four times a second, and
+        // keeps running in a hidden tab so the transcript misses nothing.
+        this.chronicle = typeof MatchChronicle === 'function' ? new MatchChronicle(this.game) : null;
+        this._chronicleQueue = [];
+        if (this.chronicle) {
+            this.chronicle.subscribe(e => this.chronicleCaption(e));
+            this._spectatorIntervals.push(setInterval(() => { if (this.chronicle) this.chronicle.update(); }, 250));
+        }
+        this.refreshCaptionsButton();
+
         // Initial paint
         this.updateSpectatorPlayerList();
         this.updateDecisionLog();
@@ -3197,6 +3294,8 @@ class UIManager {
     // Stop spectator refresh timers (call when leaving the arena)
     teardownSpectatorUI() {
         clearTimeout(this._soundCaptionTimer);this._soundCaptionTimer=null;this._soundCaption=null;
+        clearTimeout(this._chronicleTimer); this._chronicleTimer = null; this._chronicleQueue = [];
+        document.getElementById('chronicleCaption')?.remove();
         document.querySelector('.spectator-sound-caption')?.remove();
         document.body.classList.remove('spectator-mode');
         // Leave the arena with the minimap open again, so a campaign started next

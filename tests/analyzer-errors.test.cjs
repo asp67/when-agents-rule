@@ -66,10 +66,12 @@ test('input lines are kept for re-simulation, not listed as rows', () => {
         { playerId: 'p1', at: 1000, state: { clock: { matchSeconds: 1 } }, harnessResult: 'OK - done' },
         { type: 'input', kind: 'batch', step: 30, seq: 2, playerId: 'p1', turnCount: 1, envelope: { commands: [] }, stateHash: 'b'.repeat(16) },
         { type: 'round_missed', playerId: 'p1', at: 2000, matchSeconds: 2 },
+        { type: 'chronicle', kind: 'contact', t: 3, seats: ['p1', 'p2'], weight: 2 },
     ];
     const a = new TA({});
     a.load(lines.map(l => JSON.stringify(l)).join('\n'), 'inputs.jsonl');
     assert.equal(a.inputs.length, 2);
+    assert.equal(a.chronicle.length, 1, 'the chronicle (b955) is kept apart too');
     assert.equal(a.markers.length, 1, 'only the real marker');
     assert.equal(a.order.length, 2, 'one turn and one marker');
     assert.equal(a.parseErrors, 0);

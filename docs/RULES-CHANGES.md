@@ -6,6 +6,23 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 955: the match chronicle and captions (27 September 2026)
+
+No change in what happens in a match or what a model is told. The chronicle (`js/chronicle.js`) only reads the match, and a test checks that a match with it and a match without it reach the same world.
+
+It tells the match from the game's own records:
+- two seats meeting;
+- fighting breaking out, and how each fight ended per side;
+- a building, Town Center or Wonder lost, and to whom;
+- a new age;
+- a Wonder raised and its last 120, 60, 30 and 10 seconds;
+- an elimination;
+- speed and pauses.
+
+Every entry goes into the transcript as a `chronicle` line. The analyzer keeps these lines apart from the turns.
+
+In the arena, notable entries appear as captions under the status bar, one at a time. The new **CC** button turns them off, and the choice is remembered. Captions no longer depend on sound. Sound captions stay for what you hear, except eliminations and Wonder warnings, which the chronicle now tells.
+
 ## Build 954: the re-simulated replay in the analyzer (27 September 2026)
 
 No change in what happens in a match or what a model is told.
