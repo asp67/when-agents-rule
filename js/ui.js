@@ -2491,7 +2491,7 @@ class UIManager {
         const btn = document.getElementById('intentBtn');
         if (!btn) return;
         const on = this.intentOn();
-        btn.classList.toggle('active', on);
+        btn.classList.toggle('sb-on', on);   // green while on, like Speed and Auto
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     // One overlay over the canvas, redrawn every frame while anything is showing: the
@@ -3672,19 +3672,22 @@ class UIManager {
     toggleBroadcast(on = !this.broadcastOn()) {
         document.body.classList.toggle('broadcast-mode', !!on);
         const btn = document.getElementById('broadcastBtn');
-        if (btn) { btn.classList.toggle('active', !!on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+        if (btn) { btn.classList.toggle('sb-on', !!on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
         if (on) {
             if (!document.getElementById('broadcastBoard')) {
                 const board = document.createElement('div');
                 board.id = 'broadcastBoard'; board.className = 'broadcast-board';
                 const wonder = document.createElement('div');
                 wonder.id = 'broadcastWonder'; wonder.className = 'broadcast-wonder'; wonder.hidden = true;
+                // The way out: the bar's broadcast button, green because broadcast is on,
+                // at the right end of the scoreboard, across from the clock.
                 const exit = document.createElement('button');
-                exit.id = 'broadcastExit'; exit.className = 'broadcast-exit'; exit.type = 'button';
+                exit.id = 'broadcastExit'; exit.className = 'sb-end sb-on broadcast-exit'; exit.type = 'button';
                 exit.textContent = '\u{1F4FA}'; exit.title = t('spec.broadcastExit');
                 exit.setAttribute('aria-label', t('spec.broadcastExit'));
                 exit.onclick = () => this.toggleBroadcast(false);
-                document.body.append(board, wonder, exit);
+                this._broadcastExit = exit;
+                document.body.append(board, wonder);
             }
             this._broadcastKeys = e => { if (e.key === 'Escape') { e.preventDefault(); this.toggleBroadcast(false); } };
             document.addEventListener('keydown', this._broadcastKeys, true);
@@ -3693,6 +3696,7 @@ class UIManager {
             if (this._broadcastKeys) document.removeEventListener('keydown', this._broadcastKeys, true);
             this._broadcastKeys = null;
             ['broadcastBoard', 'broadcastWonder', 'broadcastExit', 'broadcastSlate'].forEach(id => document.getElementById(id)?.remove());
+            this._broadcastExit = null;
         }
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
     }
@@ -3718,6 +3722,7 @@ class UIManager {
                 + (advised ? ' <span class="bb-advised" title="' + this.escapeHtml(t('sum.coachedTip')) + '">' + this.escapeHtml(t('spec.bbAdvised', { n: advised })) + '</span>' : '')
                 + '</span>';
         }).join('');
+        if (this._broadcastExit) board.appendChild(this._broadcastExit);   // redrawn above, so put back
         const w = document.getElementById('broadcastWonder');
         if (!w) return;
         const { lead, leadHold, reqMs } = this.wonderLead();

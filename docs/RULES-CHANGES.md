@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 971: green when on, and a way out of broadcast mode (27 September 2026)
+
+**No rules change.**
+
+- **Intent and Broadcast buttons:** they turn green while on, like Speed and Auto. Intent is no longer dimmed while off.
+- **Broadcast mode:** the broadcast button sits at the right end of the top scoreboard, green, across from the clock. One click turns broadcast mode off. It replaces the faint button in the corner.
+- **Scoreboard layout:** the broadcast scoreboard now uses the full width. It was capped at half the screen and wrapped early.
+
 ## Build 970: smaller, quieter flags; parchment bubbles (27 September 2026)
 
 **No rules change.**
