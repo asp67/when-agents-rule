@@ -2522,7 +2522,7 @@ class UIManager {
         // only the bubbles are screen-space.
         const f = layer.frame((x, z) => r.worldToScreen(x, 0, z));
         box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
-            + b.opacity.toFixed(2) + ';--seat:' + b.color + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.text) + '</span></div>').join('');
+            + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.text) + '</span></div>').join('');
     }
     // The strategic zoom layer (review #12): bases, armies with their counts, and live
     // battles, fading in as the view widens. Drawn under the intent arrows.
@@ -2535,10 +2535,10 @@ class UIManager {
         g.setAttribute('class', 'strat');
         g.setAttribute('opacity', fade.toFixed(2));
         const at = (x, z) => r.worldToScreen(x, 0, z);
-        const el = (tag, attrs) => {
+        const el = (tag, attrs, parent = g) => {
             const e = document.createElementNS(NS, tag);
             for (const k in attrs) e.setAttribute(k, attrs[k]);
-            g.appendChild(e);
+            parent.appendChild(e);
             return e;
         };
         // The seat's badge exactly as the leaderboard shows it: its fill, its rim.
@@ -2566,10 +2566,11 @@ class UIManager {
             g.appendChild(c);
             text(p.x, p.y + 5, '\u2694', 15);
         }
-        // A marker: a white line rising at 45 degrees from the spot, and at its end the
-        // seat's flag -- the very flag on its flag poles, the same cloth, colour and badge,
-        // folding in the same wind. An army's flag adds crossed swords over the badge and
-        // the number of its units beneath. Every marker is the same size.
+        // A marker: a short white line rising at 45 degrees from the spot, and at its end
+        // the seat's flag -- the very flag on its flag poles, the same cloth, colour and
+        // badge, folding in the same wind, a little darker and a little see-through so it
+        // sits in the lit world. An army's flag adds the military icon in its upper-left
+        // corner and the number of its units beneath. Every marker is the same size.
         const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
         const fold = u => (!reduced && r.flagFold) ? r.flagFold(u) : 0;
         const flag = (m, army) => {
@@ -2581,7 +2582,9 @@ class UIManager {
             el('circle', { cx: p.x, cy: p.y, r: 2.5, class: 'strat-foot' });
             // The building flag is 0.85 x 0.55. Its fold is across the cloth; seen from
             // the camera's height, about half of it shows as a rise and fall.
-            const W = 52, H = 34, N = 12, top = q.y - H;
+            const W = 34, H = 22, N = 10, top = q.y - H;
+            // One group, so the slices fade as one cloth and their seams never show.
+            const cloth = el('g', { class: 'strat-flag' });
             const lift = u => fold(u) * W * 0.45;
             const url = r.flagImageURL ? r.flagImageURL(m.id, m.civ, m.seat, army) : null;
             const edge = [];
@@ -2591,17 +2594,17 @@ class UIManager {
                 const w = x1 - x0 + (i < N - 1 ? 0.6 : 0);   // overlap the seams
                 if (url) {
                     // One slice of the flag image, raised or lowered with its fold.
-                    const slice = el('svg', { x: x0, y: top + dy, width: w, height: H, viewBox: `${i * 256 / N} 0 ${256 / N * w / (W / N)} 128`, preserveAspectRatio: 'none' });
+                    const slice = el('svg', { x: x0, y: top + dy, width: w, height: H, viewBox: `${i * 256 / N} 0 ${256 / N * w / (W / N)} 128`, preserveAspectRatio: 'none' }, cloth);
                     const img = document.createElementNS(NS, 'image');
                     img.setAttribute('href', url); img.setAttribute('width', 256); img.setAttribute('height', 128);
                     img.setAttribute('preserveAspectRatio', 'none');
                     slice.appendChild(img);
-                } else el('rect', { x: x0, y: top + dy, width: w, height: H, fill: this.identityHex(m.id, m.civ, m.seat) });
+                } else el('rect', { x: x0, y: top + dy, width: w, height: H, fill: this.identityHex(m.id, m.civ, m.seat) }, cloth);
             }
             el('path', { class: 'strat-cloth', d: 'M' + edge.map(([x, d]) => x + ' ' + (top + d)).join('L')
-                + 'L' + edge.slice().reverse().map(([x, d]) => x + ' ' + (q.y + d)).join('L') + 'Z' });
-            if (!url) badge(m.seat, m.id, q.x + W / 2, q.y - H / 2 + lift(0.5), 16);
-            if (army) text(q.x + W / 2, q.y + lift(0.5) + 15, String(m.n), 12);
+                + 'L' + edge.slice().reverse().map(([x, d]) => x + ' ' + (q.y + d)).join('L') + 'Z' }, cloth);
+            if (!url) badge(m.seat, m.id, q.x + W / 2, q.y - H / 2 + lift(0.5), 11);
+            if (army) text(q.x + W / 2, q.y + lift(0.5) + 13, String(m.n), 11);
         };
         for (const b of L.bases) flag(b, false);
         for (const a of L.armies) flag(a, true);

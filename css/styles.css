@@ -3035,15 +3035,22 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .intent-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .intent-bubble {
     position: absolute; transform: translate(-50%, calc(-100% - 18px)); max-width: 260px;
-    padding: 5px 9px; border-radius: 6px; font-size: 0.74em; line-height: 1.3;
-    color: #eef3f8; background: rgba(10, 14, 30, 0.84); border: 1px solid var(--seat, #4ecca3);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    padding: 5px 9px 5px 11px; border-radius: 4px; font-size: 0.74em; line-height: 1.3;
+    /* Parched parchment at 80%: sun-bleached in one corner, browned toward another,
+       a darker rim where the edges have dried. The text on it is fully opaque. */
+    color: #1b130a;
+    background:
+        radial-gradient(ellipse at 22% 18%, rgba(255, 244, 210, 0.35), transparent 62%),
+        radial-gradient(ellipse at 88% 92%, rgba(139, 94, 42, 0.28), transparent 58%),
+        linear-gradient(172deg, rgba(233, 214, 166, 0.8), rgba(212, 184, 128, 0.8));
+    border: none; border-left: 5px solid var(--seat, #4ecca3);
+    box-shadow: inset 0 0 7px rgba(105, 70, 28, 0.45), 0 2px 7px rgba(0, 0, 0, 0.35);
 }
 .intent-bubble .intent-reason { display: block; margin-top: 2px; }
 .lb-objective { font-size: 0.72em; color: #cfd8e3; margin: 2px 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-list.collapsed .lb-objective { display: none; }
 #intentBtn:not(.active) { opacity: 0.55; }
-.intent-bubble .intent-refused { color: #f0a080; font-weight: bold; }
+.intent-bubble .intent-refused { color: #9c2412; font-weight: bold; }
 
 /* Broadcast mode (review #11): the operator's furniture goes, a scoreboard and lower
    thirds come. The slate is the only flash, and it is skipped for reduced motion. */
@@ -3106,5 +3113,6 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .intent-svg .strat-pole { stroke: #fff; stroke-width: 2; stroke-linecap: round; }
 .intent-svg .strat-pole-halo { stroke: rgba(0,0,0,0.55); stroke-width: 4; stroke-linecap: round; }
 .intent-svg .strat-foot { fill: #fff; stroke: rgba(0,0,0,0.6); stroke-width: 1.2; }
+.intent-svg .strat-flag { opacity: 0.9; }
 .intent-svg .strat-cloth { fill: none; stroke: rgba(0,0,0,0.5); stroke-width: 1; stroke-linejoin: round; }
-.intent-bubble.summary .intent-reason { font-style: italic; opacity: 0.85; }
+.intent-bubble.summary .intent-reason { font-style: italic; }

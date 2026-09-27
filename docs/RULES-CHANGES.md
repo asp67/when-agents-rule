@@ -6,6 +6,19 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 970: smaller, quieter flags; parchment bubbles (27 September 2026)
+
+**No rules change.**
+
+- **Strategic flags:**
+  - The line is half as long (50 px).
+  - The flag is two-thirds the size.
+  - The cloth is 20 % darker, because it is unlit and outshone the lit world, and drawn at 90 % opacity.
+  - An army's military icon moves to the flag's upper-left corner, so it no longer covers the seat badge.
+- **Decision bubbles:**
+  - Parched parchment at 80 % opacity, with black text at full opacity.
+  - Instead of an outline in the seat colour, a band in the seat's badge colour marks the left edge.
+
 ## Build 969: in turn-based matches, bubbles wait for the round (27 September 2026)
 
 **No rules change.** In a turn-based match, a seat's rings and bubbles used to appear as soon as its model answered, before the round was played. Now they appear only when every seat has answered and the round fires, together with the decisions log and the captions. An answer the round drops is never drawn. Real-time matches are unchanged.

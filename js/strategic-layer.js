@@ -18,7 +18,7 @@ class StrategicLayer {
     }
 
     static get NEAR() { return 90; }
-    static get POLE_PX() { return 100; }   // the marker line, in screen pixels
+    static get POLE_PX() { return 50; }   // the marker line, in screen pixels
     static get FAR() { return 140; }
     static get GROUP_RADIUS() { return 45; }
 

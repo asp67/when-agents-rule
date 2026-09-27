@@ -148,6 +148,10 @@ class IntentLayer {
     add(ai, turn, born) {
         if (!ai) return;
         const color = this.colorOf(ai);
+        // The bubble's band: the badge's own colour, as the leaderboard shows it. The
+        // bubble is light parchment, so no dark colour needs lifting there.
+        const tb = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
+        const band = (tb && tb.fill) || color;
         const marks = [];
         let firstReason = null;
         (turn.toolCalls || []).forEach((call, index) => {
@@ -167,12 +171,12 @@ class IntentLayer {
         this.bubbles = this.bubbles.filter(b => b.seat !== ai.id);
         for (const m of marks) {
             this.intents.push(Object.assign({ seat: ai.id, color, born, life }, m));
-            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, born, life, color, turn, index: m.index, summary: m.summary });
+            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, born, life, color, band, turn, index: m.index, summary: m.summary });
         }
         if (!marks.length) {
             const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
             const anchor = tc ? { x: tc.x, z: tc.z } : this.centroid(ai.units);
-            if (anchor) this.bubbles.push({ seat: ai.id, text: firstReason.text, anchor, born, life, color, turn, index: firstReason.index, summary: false });
+            if (anchor) this.bubbles.push({ seat: ai.id, text: firstReason.text, anchor, born, life, color, band, turn, index: firstReason.index, summary: false });
         }
     }
 
@@ -216,7 +220,7 @@ class IntentLayer {
             const h = 16 + 15 * (1 + Math.ceil(b.text.length / 40));
             let y = at.y, hit;
             while ((hit = bubbles.find(o => Math.abs(o.x - at.x) < IntentLayer.STACK_DX && y - h < o.y && o.y - o.h < y))) y = hit.y - hit.h - 4;
-            bubbles.push({ seat: b.seat, text: b.text, color: b.color, x: at.x, y, h, opacity, summary: !!b.summary,
+            bubbles.push({ seat: b.seat, text: b.text, color: b.color, band: b.band || b.color, x: at.x, y, h, opacity, summary: !!b.summary,
                 refused: IntentLayer.rejected(b.turn, b.index) === true });
         }
         return { shapes, bubbles };
