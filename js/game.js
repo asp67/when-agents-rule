@@ -861,6 +861,30 @@ class Game {
     // 2000) is a whole number of steps, so none of them loses a remainder.
     static get SIM_STEP_MS() { return 50; }
 
+    // A hash of the rule state -- every seat's resources, research, units and buildings,
+    // the nodes and the step -- recorded with every arena input so a re-simulation can be
+    // certified step by step (review #9). The same projection the golden-trace harness
+    // pins; 16 hex characters.
+    stateHash() {
+        const ref = v => (v && (v.id || v.handle)) || null;
+        const fields = ['id', 'type', 'x', 'z', 'health', 'maxHealth', 'task', 'isMoving', 'isAttacking',
+            'targetX', 'targetZ', 'attackTimer', 'carryingResource', 'harvestAmount', 'buildProgress',
+            'underConstruction', 'isProducing', 'productionType', 'productionProgress', 'foodAmount'];
+        const project = e => Object.assign(Object.fromEntries(fields.filter(k => e[k] !== undefined).map(k => [k, e[k]])),
+            { attackTarget: ref(e.attackTarget), harvestTarget: ref(e.harvestTarget), buildTarget: ref(e.buildTarget) });
+        const text = JSON.stringify({
+            step: this.clock ? this.clock.stepNo : 0,
+            seats: this.aiManager.aiPlayers.map(p => ({
+                id: p.id, age: p.age, eliminated: !!p._eliminated,
+                resources: ['food', 'wood', 'stone', 'gold', 'population', 'maxPopulation'].map(k => p.resources[k]),
+                research: Object.keys(p.researchedTechs || {}).sort(),
+                units: p.units.map(project), buildings: p.buildings.map(project),
+            })),
+            nodes: ((this.terrain && this.terrain.resources) || []).map(r => [r.type, r.x, r.z, r.amount]),
+        });
+        return (typeof warSha256 === 'function' ? warSha256(text) : '').slice(0, 16);
+    }
+
     // ---- Lockstep (an option of turn-based play) ------------------------------------
     // The world stands still while a round's seats think. When the round's moves have
     // run, it is granted exactly one slice of simulated time -- a whole number of steps
@@ -2088,6 +2112,7 @@ class Game {
     setSimSpeed(mult) {
         const before = this.simSpeed;
         this.simSpeed = [1, 1.5, 2, 4].includes(mult) ? mult : 1;
+        if (this.simSpeed !== before && this.openAIAIManager && this.openAIAIManager.noteInput) this.openAIAIManager.noteInput('speed', null, { speed: this.simSpeed });
         // Requested and effective: a standing Wonder holds the match at 1x.
         if (this.simSpeed !== before && this.openAIAIManager) this.openAIAIManager.noteMatchEvent(
             { kind: 'speed', requested: mult, speed: this.simSpeed, effective: this.effectiveSimSpeed() });

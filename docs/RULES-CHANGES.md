@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 952: transcripts record their inputs (27 September 2026)
+
+No change in what happens in a match or what a model is told. An arena transcript now also records every input that changes the world, each stamped with the simulation step it happened at and a short hash of the world right after it:
+
+- **observe:** a seat was shown the board. This carries the seat's turn counter, which decides which scout an `explore` sends.
+- **batch:** a seat's answer ran. This carries the whole envelope, the commands, objective and plan as parsed.
+- **speed:** the tempo changed.
+- **demote:** a seat fell back to the rule-based player.
+
+`node tools/bench/transcript-replay.cjs <transcript.jsonl>` rebuilds the match from its header (map seed, difficulty, seats and anchor styles). It applies the inputs in order and checks each recorded hash. A match that reaches them all is certified: the rules produce the recorded world from the recorded inputs alone. Otherwise it names the step where the replay diverged. Transcripts from before this build have no inputs and say so. Multi-lane seats are not yet covered.
+
 ## Build 950: the match clock models read works again (27 September 2026)
 
 From build 934 to build 949, every model was told `clock.matchSeconds: 0` on every turn. Build 934's single simulation clock measured the state's clock from the simulation's start while subtracting the timeline's wall-clock origin. Those are two different clocks, and the difference was always clamped to 0. One recorded match (build 945) shows 314 turns out of 314 at 0 seconds.

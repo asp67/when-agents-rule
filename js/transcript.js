@@ -157,6 +157,22 @@ class TranscriptRecorder {
 
     // A line about the match rather than a seat: global pause and speed. It carries no
     // playerId, so a reader keeps it out of the seat list. Flushed at once.
+    // A step-stamped input (review #9). Match-level, so it never seals a seat's open
+    // turn, and buffered like turns rather than flushed at once: an arena writes several
+    // a round. flushAll() at the match's end takes the rest.
+    noteInput(entry) {
+        if (!this.matchId || !entry) return;
+        try {
+            const key = TranscriptRecorder.EVENTS_KEY();
+            const buf = this.pending.get(key) || [];
+            buf.push(JSON.stringify(entry) + '\n');
+            this.pending.set(key, buf);
+            if (buf.length >= this.FLUSH_EVERY * 5) this.flush(key);
+        } catch (e) {
+            console.warn('[transcript] input note failed', e);
+        }
+    }
+
     noteMatch(entry) {
         if (!this.matchId || !entry) return;
         try {

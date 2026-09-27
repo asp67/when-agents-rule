@@ -528,6 +528,19 @@ class OpenAIAIManager {
             this.transcripts.flush(id);
         } catch (e) { /* recording must never break a turn */ }
     }
+    // Step-stamped inputs (review #9): everything that changed an ARENA match's world --
+    // a committed observation, a batch, a speed, a demotion -- at the step it took effect,
+    // in order (seq), with the state hash it left. Enough to re-simulate the match and
+    // certify it step by step. Not in Campaign, where a human's clicks are not recorded.
+    noteInput(kind, playerId, payload = {}) {
+        try {
+            const g = this.game;
+            if (!this.transcripts || !this.transcripts.matchId || !g || !g.clock || !g.spectatorMode) return;
+            this._inputSeq = (this._inputSeq || 0) + 1;
+            this.transcripts.noteInput(Object.assign({ type: 'input', kind, step: g.clock.stepNo, seq: this._inputSeq },
+                playerId ? { playerId } : {}, payload, { stateHash: g.stateHash ? g.stateHash() : null }));
+        } catch (e) { /* recording must never break a turn */ }
+    }
     // The same for the match as a whole -- global pause and speed. It has no seat.
     noteMatchEvent(entry) {
         try {
@@ -2716,6 +2729,9 @@ class OpenAIAIManager {
         controller._shownAgeUpgrading = p.shownAgeUpgrading;
         if (controller.seat._peak) Object.assign(controller.seat._peak, p.peak);
         else controller.seat._peak = p.peak;
+        // With the seat's turn counter: explore's scout choice reads it, so a replay sets it.
+        this.noteInput('observe', ai.id, Object.assign({ turnCount: (controller.seat || controller).turnCount || 0 },
+            controller.laneNo != null ? { lane: controller.laneNo } : {}));
     }
 
     observe(controller) {
@@ -5718,7 +5734,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // wall it can no longer afford is told so, on that command, and keeps the tower.
     // The alternative — validating all three against the state the model read — would
     // let impossible combinations through and lie about what happened.
+    // A seat's answer, run -- and recorded as an input once it has (review #9).
     executeTurn(controller, envelope) {
+        try { return this.executeTurnBody(controller, envelope); }
+        finally {
+            const ai = controller && controller.aiPlayer;
+            if (ai) this.noteInput('batch', ai.id, Object.assign(controller.laneNo != null ? { lane: controller.laneNo } : {},
+                { turnCount: (controller.seat || controller).turnCount || 0,
+                  envelope: JSON.parse(JSON.stringify(envelope == null ? null : envelope)) }));
+        }
+    }
+    executeTurnBody(controller, envelope) {
         // Publish this LANE's view of the turn onto the seat. Two of the executor's
         // inputs are found by seat lookup (from the aiPlayer, with no controller in
         // scope) and so can only be read off the seat -- but the values belong to the
@@ -9285,6 +9311,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         controller._demoted = true;
         const ai = controller.aiPlayer;
         this.noteChange(ai, { type: 'adaptation', kind: 'demoted' });
+        if (ai) this.noteInput('demote', ai.id);
         this.aiControllers = this.aiControllers.filter(c => c !== controller);
         this.abortLanes(controller, 'handed to the rule-based AI');
         if (ai) {
