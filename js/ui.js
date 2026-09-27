@@ -263,6 +263,18 @@ class UIManager {
     renderCameraControls() {
         const box = document.getElementById('cameraControls');
         if (!box) return;
+        // The two cards (camera options, sound) close on any press outside them, as a
+        // menu does, not only on their own toggle. Capture phase, so the map canvas
+        // swallowing its own pointer events cannot keep a card open; opening one card
+        // closes the other the same way.
+        if (!this._cameraCardsDismiss) {
+            this._cameraCardsDismiss = e => {
+                document.querySelectorAll('#cameraControls details.camera-more[open]').forEach(d => {
+                    if (!d.contains(e.target)) d.open = false;
+                });
+            };
+            document.addEventListener('pointerdown', this._cameraCardsDismiss, true);
+        }
         const analyzer = document.getElementById('analyzeScreen');
         const dock = document.getElementById(analyzer && analyzer.classList.contains('active') ? 'anCameraDock' : 'mapToolsDock');
         if (dock && box.parentElement !== dock) dock.appendChild(box);
