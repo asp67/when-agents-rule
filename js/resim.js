@@ -113,7 +113,7 @@ WarResim.Replay = class {
                 units: ai.units.filter(u => u.health > 0).map(u => ({
                     id: u.id, type: u.type, x: u.x, z: u.z, health: u.health,
                     isMoving: !!u.isMoving, isAttacking: !!u.isAttacking, isHarvesting: !!u.isHarvesting,
-                    isBuilding: !!u.isBuilding, carryingResource: u.carryingResource || 0,
+                    isBuilding: !!u.isBuilding, carryingResource: u.carryingResource || 0, attackTimer: u.attackTimer || 0,
                     carryingResourceType: u.carryingResourceType || null,
                     attackTarget: u.attackTarget ? { x: u.attackTarget.x, z: u.attackTarget.z, health: u.attackTarget.health } : null,
                 })),

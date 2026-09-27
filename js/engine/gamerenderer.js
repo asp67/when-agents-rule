@@ -1735,8 +1735,24 @@
                     }
                 }
                 this._unitPrev.set(u, { x: u.x, z: u.z });
-                const anim = (u.isHarvesting || u.isBuilding) ? 'harvest' : (u.isMoving ? 'walk' : 'idle');
-                const pose = EngineUnits.pose(ue.type, anim, tSec, ue.phase);
+                // Strides follow the ground actually covered (a jump -- a respawn, a seek
+                // in a replay -- is not a stride).
+                const moved = prev ? Math.hypot(u.x - prev.x, u.z - prev.z) : 0;
+                if (moved < 3) ue.stride = (ue.stride || 0) + moved;
+                // A priest channels while its heal ticks (the rules' heal-effect timer moves).
+                if (u._healFxTimer !== ue.healFx) { if (ue.healFx !== undefined) ue.channelUntil = now + 300; ue.healFx = u._healFxTimer; }
+                // Strike-synced (review #12): a fighter in range swings on the rules' own
+                // attack timer, so the blow lands with the damage. The analyzer holds a
+                // single frame: a recorded board is a moment, not a loop.
+                const fighting = u.isAttacking && !u.isMoving && facingTarget;
+                const anim = (u.isHarvesting || u.isBuilding) ? 'harvest'
+                    : fighting ? (ue.type === 'ranged' ? 'shoot' : ue.type === 'priest' ? 'channel' : 'attack')
+                    : (ue.type === 'priest' && now < (ue.channelUntil || 0)) ? 'channel'
+                    : (u.isMoving ? 'walk' : 'idle');
+                const still = !!this.replayMode && !this.resimPlaying;   // the re-simulated replay moves, so it animates
+                const pose = EngineUnits.pose(ue.type, anim, still ? 0 : tSec, ue.phase, {
+                    strike: fighting ? (still ? 0.5 : ((u.attackTimer || 0) / 1000) % 1) : null,
+                    stride: still ? 0 : ue.stride });
                 const spin = m3.rotationY(dir);
                 const world = m3.multiply(m3.translation(u.x, pose.bob, u.z), spin);
                 const flat = m3.multiply(m3.translation(u.x, 0, u.z), spin);

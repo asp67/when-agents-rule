@@ -6195,6 +6195,7 @@ class UIManager {
         worker.onmessage = e => this.anResimMessage(rs, e.data);
         worker.onerror = e => this.anResimMessage(rs, { type: 'error', problem: (e && e.message) || 'worker failed' });
         worker.postMessage({ type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) });
+        if (this.game.renderer) this.game.renderer.resimPlaying = true;   // units move here: let them animate
         this.anResimStage();
         this.anResimHud(true);
     }
@@ -6202,6 +6203,7 @@ class UIManager {
         const rs = this._anResim;
         if (!rs) return;
         this._anResim = null;
+        if (this.game.renderer) this.game.renderer.resimPlaying = false;
         try { rs.worker.terminate(); } catch (e) {}
         if (render) this.anRender();
     }
@@ -6298,7 +6300,7 @@ class UIManager {
                     rs.ents.set(key, ent);
                     r.addUnit(ent);
                 }
-                Object.assign(ent, { x: u.x, z: u.z, health: u.health, isMoving: u.isMoving, isAttacking: u.isAttacking,
+                Object.assign(ent, { x: u.x, z: u.z, health: u.health, isMoving: u.isMoving, isAttacking: u.isAttacking, attackTimer: u.attackTimer || 0,
                     isHarvesting: u.isHarvesting, isBuilding: u.isBuilding, carryingResource: u.carryingResource,
                     carryingResourceType: u.carryingResourceType, attackTarget: u.attackTarget });
             });

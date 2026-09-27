@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 961: strike-synced combat (27 September 2026)
+
+No change in what happens in a match or what a model is told; the rules deal damage exactly as before.
+
+- **The swing is the damage:** a fighter in range now swings on the rules' own attack timer. It winds up slowly and strikes fast, and the blow lands at the moment the damage is dealt, once a second.
+- **Cavalry** draws the spear back and thrusts home on the blow.
+- **Archers and crossbowmen** hold the bow arm on the target, draw through the cycle and release on the shot.
+- **Priests** raise both hands while a heal is actually running.
+- **Walking:** the stride follows the ground a unit really covers, so feet no longer skate.
+- **Analyzer:** the snapshot view holds a single frame; the re-simulated replay animates, with its swings synced to the replayed attack timers.
+
 ## Build 960: a Cinematic lighting style (27 September 2026)
 
 No change in what happens in a match or what a model is told. The lighting menu (camera options) now offers three styles: **Cinematic**, **Atmospheric** (the previous default, still the default) and **Simple**. The choice is remembered.
