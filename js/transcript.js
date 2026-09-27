@@ -155,8 +155,6 @@ class TranscriptRecorder {
         this.flush(key);
     }
 
-    // A line about the match rather than a seat: global pause and speed. It carries no
-    // playerId, so a reader keeps it out of the seat list. Flushed at once.
     // A step-stamped input (review #9). Match-level, so it never seals a seat's open
     // turn, and buffered like turns rather than flushed at once: an arena writes several
     // a round. flushAll() at the match's end takes the rest.
@@ -173,6 +171,8 @@ class TranscriptRecorder {
         }
     }
 
+    // A line about the match rather than a seat: global pause and speed. It carries no
+    // playerId, so a reader keeps it out of the seat list. Flushed at once.
     noteMatch(entry) {
         if (!this.matchId || !entry) return;
         try {

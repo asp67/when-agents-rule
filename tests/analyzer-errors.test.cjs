@@ -54,3 +54,23 @@ test('command-less turns are named for what they were', () => {
     assert.equal(a.turnKind({ type: 'request_cancelled' }), 'cancelled');
     assert.equal(a.turnKind({ type: 'request_failed' }), 'requestFailed');
 });
+
+// Build 952 records every world-changing input as a line of its own, hundreds a match.
+// They are what a re-simulation replays, never rows: a turn list of "match events" for
+// every observation would bury the turns.
+test('input lines are kept for re-simulation, not listed as rows', () => {
+    const TA = analyzer();
+    const lines = [
+        { type: 'match', matchId: 'm', players: [{ id: 'p1', seat: 0, civ: 'greek', model: 'x' }] },
+        { type: 'input', kind: 'observe', step: 10, seq: 1, playerId: 'p1', turnCount: 1, stateHash: 'a'.repeat(16) },
+        { playerId: 'p1', at: 1000, state: { clock: { matchSeconds: 1 } }, harnessResult: 'OK - done' },
+        { type: 'input', kind: 'batch', step: 30, seq: 2, playerId: 'p1', turnCount: 1, envelope: { commands: [] }, stateHash: 'b'.repeat(16) },
+        { type: 'round_missed', playerId: 'p1', at: 2000, matchSeconds: 2 },
+    ];
+    const a = new TA({});
+    a.load(lines.map(l => JSON.stringify(l)).join('\n'), 'inputs.jsonl');
+    assert.equal(a.inputs.length, 2);
+    assert.equal(a.markers.length, 1, 'only the real marker');
+    assert.equal(a.order.length, 2, 'one turn and one marker');
+    assert.equal(a.parseErrors, 0);
+});
