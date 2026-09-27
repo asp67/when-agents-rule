@@ -120,7 +120,18 @@
             this.prog = GLCore.compileProgram(this.gl, EngineAtmosphere.vertex, EngineAtmosphere.fragment);
             this.shadowProg = GLCore.compileProgram(this.gl, EngineAtmosphere.shadowVertex, EngineAtmosphere.shadowFragment);
             this.sunDir = M().normalize([-0.65, 0.72, 0.36]);
-            this.visualStyle = 'cinematic';
+            // Lighting: 'classic' (Simple), 'cinematic' (Atmospheric) or 'film' (Cinematic:
+            // Atmospheric plus bloom, burning buildings and rubble). Remembered per browser.
+            let style = null;
+            try { style = localStorage.getItem('warLightStyle'); } catch (e) {}
+            this.visualStyle = ['classic', 'cinematic', 'film'].includes(style) ? style : 'cinematic';
+            this._rubble = [];
+            // A viewer who asked for less motion gets steady flames and no rising embers.
+            this._reducedMotion = false;
+            try {
+                const mq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+                if (mq) { this._reducedMotion = mq.matches; if (mq.addEventListener) mq.addEventListener('change', e => { this._reducedMotion = e.matches; }); }
+            } catch (e) {}
             this._shadowTarget = null;
             this._lightMatrix = M().identity();
             this._shadowStrength = 0;
@@ -160,6 +171,13 @@
 
             this._buildTextures('summer');
             this.animate();
+        }
+
+        setVisualStyle(value) {
+            if (!['classic', 'cinematic', 'film'].includes(value)) return;
+            this.visualStyle = value;
+            if (value !== 'film') this._rubble.length = 0;
+            try { localStorage.setItem('warLightStyle', value); } catch (e) {}
         }
 
         // ---- materials -------------------------------------------------------
@@ -290,7 +308,7 @@
         // frame.
         _meshFootprint(parts, key) {
             if (this._footprint.has(key)) return this._footprint.get(key);
-            let ex = 0, ez = 0;
+            let ex = 0, ez = 0, ey = 0;
             for (const p of parts) {
                 if (p.blend || p.tex === 'shadow' || p.visualOnly) continue; // the contact shadow isn't structure
                 const gen = EngineMesh[p.kind];
@@ -301,11 +319,13 @@
                     const x = P[i], y = P[i + 1], z = P[i + 2];
                     const wx = Math.abs(m[0] * x + m[4] * y + m[8] * z + m[12]);
                     const wz = Math.abs(m[2] * x + m[6] * y + m[10] * z + m[14]);
+                    const wy = m[1] * x + m[5] * y + m[9] * z + m[13];
                     if (wx > ex) ex = wx;
                     if (wz > ez) ez = wz;
+                    if (wy > ey) ey = wy;
                 }
             }
-            const fp = { ex, ez };
+            const fp = { ex, ez, ey };
             this._footprint.set(key, fp);
             return fp;
         }
@@ -792,6 +812,9 @@
             const ca = Math.abs(Math.cos(building.rotationY || 0)), sa = Math.abs(Math.sin(building.rotationY || 0));
             building._grassFootprint = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*BSCALE + 1,
                 ez: (grassFoot.ex*sa + grassFoot.ez*ca)*BSCALE + 1 };
+            // Where a fire can sit: inside the walls, below the roof line (Cinematic).
+            building._fireBox = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*BSCALE, ez: (grassFoot.ex*sa + grassFoot.ez*ca)*BSCALE,
+                ey: (grassFoot.ey || 4)*BSCALE };
             parts.forEach((p, i) => {
                 const entry = {
                     buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
@@ -931,6 +954,13 @@
         }
 
         killBuilding(building) {
+            // Cinematic: soot and stones stay where it stood, for a few minutes of match time.
+            if (this.visualStyle === 'film' && !building.underConstruction && building._fireBox) {
+                const fb = building._fireBox;
+                this._rubble.push({ x: building.x, z: building.z, r: Math.max(1.5, Math.min(7, Math.max(fb.ex, fb.ez))),
+                    born: this.game?._environmentSeconds || 0, seed: EngineFx.seedOf(building.id || (building.x + ',' + building.z)) });
+                if (this._rubble.length > 40) this._rubble.shift();
+            }
             this._ghostFrom(building, 'building');
             this.removeBuilding(building);
             building.healthBar = null;
@@ -1544,7 +1574,16 @@
             const ambientTime=this.game?._environmentSeconds||0;
             const lightTime=this.game?._showcaseCivilization?(this.game._showcaseLightSeconds||0):ambientTime;
             const lampNight=window.EngineAtmosphere.daylight(lightTime,[1,1,1],[1,1,1],this._theme).night;
-            let hearths=0, courtyards=0;
+            let hearths=0, courtyards=0, burning=0;
+            if (this.visualStyle === 'film' && this._rubble.length) {
+                const boxBuf = this._buf('box', [1, 1, 1]);
+                this._rubble = this._rubble.filter(r => ambientTime - r.born < EngineFx.RUBBLE_SECONDS && ambientTime >= r.born);
+                for (const r of this._rubble) {
+                    if (this._cull(r.x, r.z, r.r + 2)) continue;
+                    if (this.game?.fogOfWar && !this.game.fogOfWar.isPositionVisible(r.x, r.z)) continue;   // explored or in sight
+                    EngineFx.rubble(r, ambientTime, { m3, bb, quad, ringBuf, boxBuf, tex: this.tex, dl });
+                }
+            }
             // buildings
             for (const b of this.buildings) {
                 const eb = b._engine;
@@ -1619,6 +1658,15 @@
                 for (const en of eb.blended) dl.blended.push(en);
                 }
                 const hpct = b.health / b.maxHealth;
+                // Cinematic: a damaged building smokes, then burns, then blazes. Only
+                // where the viewer can see, and never more than twelve at once.
+                if (this.visualStyle === 'film' && !b.underConstruction && hpct < 0.7 && b._fireBox && burning < 12
+                    && !(b._fade != null && b._fade < 1)
+                    && (!this.game?.fogOfWar || this.game.fogOfWar.isPositionVisible(b.x, b.z))) {
+                    burning++;
+                    const lights = EngineFx.burning(b, hpct, ambientTime, this._reducedMotion, { m3, bb, quad, ringBuf, tex: this.tex, dl, eye: this._cam && this._cam.eye });
+                    if (lights) for (const en of eb.opaque) en.localLights = en.localLights ? EngineFx.mergeLights(en.localLights, lights) : lights;
+                }
                 const by = (b.isWonder ? 10 : 6) * BSCALE + 1.2;
                 if (!b.underConstruction && hpct < 0.999) pushBar(b.x, by, b.z, 4.6, hpct, this._barColor(hpct));
                 if (b.type === 'farm' && !b.underConstruction && b.maxFoodAmount > 0) {
@@ -2097,6 +2145,17 @@
             draw(this._dl.blended);
             if (this._fogEntry) draw([this._fogEntry]);
             if (this._ringEntries && this._ringEntries.length) draw(this._ringEntries);
+            // Cinematic: a soft halo on what is brightest, a little more at night. After the
+            // fog, so hidden ground cannot glow; before the bars, so they never do.
+            if (this.visualStyle === 'film' && window.EngineBloom) {
+                if (this._bloom === undefined) this._bloom = EngineBloom.create(gl);
+                if (this._bloom && this._bloom.apply(this.W, this.H, 0.22 + 0.3 * atmosphere.night)) {
+                    gl.useProgram(this.prog);
+                    gl.enable(gl.BLEND);
+                    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                    gl.depthMask(false);
+                }
+            }
             gl.disable(gl.DEPTH_TEST); // bars read over everything, like the old sprites
             draw(this._dl.bars);
             gl.enable(gl.DEPTH_TEST);

@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 960: a Cinematic lighting style (27 September 2026)
+
+No change in what happens in a match or what a model is told. The lighting menu (camera options) now offers three styles: **Cinematic**, **Atmospheric** (the previous default, still the default) and **Simple**. The choice is remembered.
+
+Cinematic is Atmospheric plus:
+- **A minimal bloom:** a soft halo on the brightest parts of the picture, a little stronger at night. The finished frame is copied with its antialiasing intact, its bright parts are blurred at a quarter of the resolution and added back. It comes after the fog, so hidden ground cannot glow, and before the health bars, so they never do.
+- **Burning buildings:** below 70 % health a building smokes, below 45 % it burns, below 20 % it blazes, with embers. Flames sit at fixed places on the roof, on the side facing the camera, and light the walls around them. At most twelve buildings burn at once, and only where the viewer can see.
+- **Rubble:** soot and stones stay where a building fell. It smoulders at first and fades over three minutes of match time.
+
+A viewer whose system asks for reduced motion gets steady flames and no embers.
+
 ## Build 959: tale of the tape and the live seat-health strip (27 September 2026)
 
 No change in what happens in a match or what a model is told.
