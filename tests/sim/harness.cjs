@@ -100,6 +100,10 @@ class GoldenMatch {
             addBuilding: e => { if (!buildings.includes(e)) buildings.push(e); },
             killUnit: e => drop(units, e), removeUnit: e => drop(units, e),
             killBuilding: e => drop(buildings, e), removeBuilding: e => drop(buildings, e),
+            // As the real one does at every match start. Rules read these lists (a new
+            // id is checked against the living entities), so a second match in one
+            // page would otherwise meet the last match's entities in them.
+            clearScene: () => { units.length = 0; buildings.length = 0; },
         });
         g.ui = inert('ui', calls);
         g.terrain = vm.runInContext('new TerrainManager(null, 800)', context);

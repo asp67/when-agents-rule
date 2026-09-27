@@ -2438,6 +2438,8 @@ class OpenAIAIManager {
                     // hundreds of models played, so it must not be guessable-looking
                     // when it is absent. null means none was configured.
                     model: c ? (OpenAIAIManager.publicModelId(c.model) || null) : 'ki',
+                    // A rule-based seat's anchor style (AI_PROFILES); model seats have none.
+                    ...(c ? {} : { profile: (ai && ai.profile) || 'standard' }),
                     // The name the results block will use, so the two agree.
                     name: c ? this._seatNames[i] : null,
                     settings: c ? OpenAIAIManager.publicModelSettings(c, s, sharedPrompt, bedient[i]) : null
@@ -2655,8 +2657,16 @@ class OpenAIAIManager {
                      familyHash: harnessHash ? WarConditions.hash(family) : null,
                      hash: harnessHash ? WarConditions.hash(exact) : null };
         });
+        // The rule-based seats: anchors, not contracts. A tier is a yardstick for the
+        // rules it ran under and nothing more -- a rules change can move it -- so each is
+        // keyed to this core hash and says outright it is not contract-identical.
+        const driven = new Set(this.aiControllers.map(c => c.aiPlayer));
+        const anchors = ((this.game.aiManager && this.game.aiManager.aiPlayers) || [])
+            .filter(ai => !driven.has(ai))
+            .map(ai => ({ playerId: ai.id, seat: ai.seat, profile: ai.profile || 'standard',
+                          coreHash, contractIdentical: false }));
         const record = { type: 'contract', schema: WarConditions.SCHEMA, rulesId: WarConditions.RULES_ID,
-                         coreHash, harnessHash, coreFiles: WarConditions.CORE_FILES, seats, texts };
+                         coreHash, harnessHash, coreFiles: WarConditions.CORE_FILES, seats, anchors, texts };
         this.contract = record;
         this.transcripts.addHeaderLine(record);
         return record;

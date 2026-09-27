@@ -6,6 +6,22 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 943: anchor styles for the rule-based AI (27 September 2026)
+
+The rule-based AI can now play in four named styles, chosen per seat in the arena setup (**Style**, under a rule-based seat's control):
+
+- **Standard:** the classic rule-based AI, exactly as before. Its numbers moved into a table (`AI_PROFILES` in `js/ai.js`) without changing any of them. A 25-minute two-seat match and a four-seat match reproduce the previous build's state at every minute.
+- **Turtle:** a larger economy and up to three towers. It raises an army of 20, then saves for the next age before spending more on soldiers or towers, and attacks with 20 or more.
+- **Legion:** trains the unit class that beats the army it has seen most of (infantry beats cavalry, cavalry beats ranged, ranged beats infantry). It knows only what its own units and buildings have seen, and it attacks with 12.
+- **Raider:** thinks every second instead of every two. It has fewer workers, trains soldiers early, attacks with 4, and goes for enemy workers it can see before anything else.
+
+The styles are anchors: fixed opponents to measure models against. They are not part of the model contract, and a rules change can move any of them. So the contract line in each transcript lists rule-based seats under `anchors`, each keyed to the core hash it ran under and marked `contractIdentical: false`. Their order is decided by calibration (`tools/anchor-calibration.cjs`: seat-swapped pairs on the same maps), not by their names.
+
+Two behaviour changes come with this:
+
+- **Think timing:** each rule-based seat now keeps its own think timer, starting from zero. There used to be one timer for all rule-based seats, and it lived as long as the page.
+- **Rematch:** the rule-based AI's 250 ms discovery timer now resets at every match start. Before this, a Rematch (and any second match in the same page) started both timers where the last match left them, so it was not the match it repeats. It now is: `tests/sim/anchors.test.cjs` plays a match and its Rematch in one page and compares them to a match in a fresh page.
+
 ## Build 941: a fixed simulation step (27 September 2026)
 
 The simulation used to advance by however much time had passed since the last drawn frame, cut into sub-steps of up to 50 ms. So the sequence of steps, and with it every result, depended on the frame rate. It now advances in fixed 50 ms steps (`Game.stepOnce`). Frames only add real time to an accumulator, and the remainder carries to the next frame. Everything that decides the game runs inside a step:

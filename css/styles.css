@@ -2480,6 +2480,8 @@ body.spectator-mode #unitInfo.spectator-card {
 .arena-hint {
     margin: 5px 0 0 23px; color: #8b95ab; font-size: 0.78em; line-height: 1.45;
 }
+/* Under a slot's Style picker: no checkbox to indent past. */
+.arena-hint.slot-style-hint { margin: 5px 0 0; }
 
 /* Age glyph sitting atop its marker; staggered by seat so simultaneous
    advances stay readable. */

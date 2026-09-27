@@ -62,20 +62,55 @@ function buildVisionTest(game, ai, harness) {
     };
 }
 
+// Anchor tiers (review #7): the same brain in a few named styles, so a model can be
+// measured against more than one fixed opponent. Every number the brain decides by is
+// here; `standard` holds exactly the values it always had, so a standard seat plays
+// bit for bit as before. The others differ ONLY in these numbers and in two switches:
+// `pick` (what to train) and `prey` (what to attack). None sees more than any seat does:
+// every choice still reads the same fog-limited knowledge.
+//
+// An anchor is a yardstick for ONE build of the rules. It is not contract-identical:
+// a rules change can move any tier, so a result against one is keyed to the core hash
+// it was played under, and the tiers are ordered by calibration (seat-swapped pairs,
+// tests/anchor-calibration), never by what their names promise.
+//
+//   thinkMs      how often it decides (per seat; the brain's reaction time)
+//   workers      worker target            farms      farm target
+//   houses       house limit              militaryAt workers before soldiers are trained
+//   attackAt     army size it commits     wonderArmy army size before it builds a Wonder
+//   towers       tower count              towerStone stone in hand before a tower
+//   reserve      once its army is attackAt strong, keeps the next age's cost untouched
+//                by more soldiers and towers: an army first, then the age
+//   pick         'ladder': every trainer, best unit of the age
+//                'counter': only the building whose units beat what it has SEEN most of
+//   prey         'nearest': the nearest target it knows of
+//                'workers': the nearest enemy worker it can see, before anything else
+const AI_PROFILES = Object.freeze({
+    standard: Object.freeze({ thinkMs: 2000, workers: 14, farms: 4, houses: 6, militaryAt: 8, attackAt: 8, wonderArmy: 6, towers: 1, towerStone: 120, reserve: false, pick: 'ladder', prey: 'nearest' }),
+    turtle:   Object.freeze({ thinkMs: 2000, workers: 18, farms: 6, houses: 6, militaryAt: 10, attackAt: 20, wonderArmy: 10, towers: 3, towerStone: 120, reserve: true, pick: 'ladder', prey: 'nearest' }),
+    legion:   Object.freeze({ thinkMs: 2000, workers: 14, farms: 4, houses: 6, militaryAt: 8, attackAt: 12, wonderArmy: 8, towers: 1, towerStone: 120, reserve: false, pick: 'counter', prey: 'nearest' }),
+    raider:   Object.freeze({ thinkMs: 1000, workers: 10, farms: 3, houses: 6, militaryAt: 5, attackAt: 4, wonderArmy: 6, towers: 0, towerStone: 120, reserve: false, pick: 'ladder', prey: 'workers' })
+});
+const AI_PROFILE_IDS = Object.keys(AI_PROFILES);
+
+// What beats what: the combat multiplier's hard counters (Game.combatMultiplier).
+const COUNTER_OF = Object.freeze({ infantry: 'ranged', ranged: 'cavalry', cavalry: 'infantry' });
+
 class AIManager {
     constructor(game) {
         this.game = game;
         this.aiPlayers = [];
-        this.thinkTimer = 0;
-        this.thinkInterval = 2000; // Run the decision pass every 2s.
         this.openAIControlled = new Set();
     }
+
+    static profileIds() { return AI_PROFILE_IDS.slice(); }
+    profileOf(ai) { return AI_PROFILES[ai && ai.profile] || AI_PROFILES.standard; }
 
     markAsOpenAIControlled(aiPlayerId) {
         this.openAIControlled.add(aiPlayerId);
     }
 
-    addAIPlayer(civilization, difficulty = 'medium') {
+    addAIPlayer(civilization, difficulty = 'medium', profile = 'standard') {
         const resources = new ResourceManager();
         resources.food = 200;
         resources.wood = 200;
@@ -88,6 +123,12 @@ class AIManager {
                 : 'ai_' + Math.random().toString(36).substr(2, 9), // rng-exempt: no game at all (fixtures, tools)
             civilization: civilization,
             difficulty: difficulty,
+            // The anchor style this seat plays when the brain has it (AI_PROFILES).
+            profile: AI_PROFILES[profile] ? profile : 'standard',
+            // Its own think clock, born at zero with the seat: the brain's beat belongs
+            // to the seat, so it neither leaks from the last match nor ties tiers
+            // with different reaction times together.
+            thinkTimer: 0,
             resources: resources,
             units: [],
             buildings: [],
@@ -144,10 +185,19 @@ class AIManager {
             if (this.game.detectContacts) this.game.detectContacts();
         }
 
-        this.thinkTimer += deltaTime;
-        if (this.thinkTimer >= this.thinkInterval) {
-            this.thinkTimer -= this.thinkInterval;   // carry the remainder: cadence-proof
-            this.think();
+        this.advanceThink(deltaTime);
+    }
+
+    // Each seat's think clock, in seat order. Every clock runs, a model's seat too: one
+    // demoted to the brain mid-match then thinks on its own beat from the moment it is
+    // handed over, as it always has.
+    advanceThink(deltaTime) {
+        for (const ai of this.aiPlayers) {
+            const every = this.profileOf(ai).thinkMs;
+            ai.thinkTimer = (ai.thinkTimer || 0) + deltaTime;
+            if (ai.thinkTimer < every) continue;
+            ai.thinkTimer -= every;   // carry the remainder: cadence-proof
+            if (!this.openAIControlled.has(ai.id)) this.runTurn(ai);
         }
     }
 
@@ -203,6 +253,7 @@ class AIManager {
 
     // ---- Per-turn priority brain ---------------------------------------------
     runTurn(ai) {
+        const P = this.profileOf(ai);
         const r = ai.resources;
         const workers = ai.units.filter(u => u.type === 'worker');
         // Support units (priests) are medics, not fighters — commandArmy must not
@@ -218,19 +269,19 @@ class AIManager {
         // 1) POPULATION: don't choke. Build a house when nearly capped (and below
         //    the hard cap), so workers/military can keep being trained.
         if (popFree <= 2 && r.maxPopulation < MAX_POPULATION_CAP &&
-            ai.buildings.filter(b => b.type === 'house').length < 6) {
+            ai.buildings.filter(b => b.type === 'house').length < P.houses) {
             this.buildStructure(ai, 'house');
         }
 
         // 2) ECONOMY: grow the worker base toward a target while there is pop room.
-        if (workers.length < 14 && popFree > 0) {
+        if (workers.length < P.workers && popFree > 0) {
             const tc = ai.buildings.find(b => b.type === 'town_center' && !b.underConstruction && !b.isProducing);
             if (tc) this.trainUnit(ai, 'worker', tc);
         }
 
         // 3) FOOD SECURITY: a couple of farms once the base is going, so food never
         //    dries up (farms regenerate and their builder becomes the farmer).
-        if (workers.length >= 5 && ai.buildings.filter(b => b.type === 'farm').length < 4) {
+        if (workers.length >= 5 && ai.buildings.filter(b => b.type === 'farm').length < P.farms) {
             this.buildStructure(ai, 'farm');
         }
 
@@ -250,12 +301,12 @@ class AIManager {
 
         // 8) TRAIN MILITARY once the economy is on its feet (or immediately if a
         //    rival Wonder must be answered).
-        if (popFree > 0 && (workers.length >= 8 || enemyWonder)) {
+        if (popFree > 0 && (workers.length >= P.militaryAt || enemyWonder)) {
             this.trainMilitary(ai);
         }
 
         // 8) WONDER: in the Iron age with a real army and the resources, build it.
-        if (ai.age === 'iron' && military.length >= 6) this.maybeBuildWonder(ai);
+        if (ai.age === 'iron' && military.length >= P.wonderArmy) this.maybeBuildWonder(ai);
 
         // 9) COMMAND THE ARMY: rush a rival Wonder, attack visible enemies, or push
         //    scouts/forces into the dark to find them.
@@ -515,17 +566,71 @@ class AIManager {
         if (!has('barracks')) { this.buildStructure(ai, 'barracks'); return; }
         if (ai.researchedTechs['horseback'] && !has('stable')) { this.buildStructure(ai, 'stable'); return; }
         if (ai.researchedTechs['longbow'] && !has('archery_range')) { this.buildStructure(ai, 'archery_range'); return; }
-        // A defensive tower once we have stone to spare.
-        if (!has('tower') && ai.resources.stone >= 120) this.buildStructure(ai, 'tower');
+        // Defensive towers once we have stone to spare (standard: one).
+        const P = this.profileOf(ai);
+        if (ai.buildings.filter(b => b.type === 'tower').length < P.towers && ai.resources.stone >= P.towerStone
+            && (!P.reserve || this.spareFor(ai, getBuildingDef('tower').cost))) this.buildStructure(ai, 'tower');
+    }
+
+    // A profile with `reserve` saves for the next age: soldiers and towers may only
+    // spend what lies above that age's price. Nothing is held back while an upgrade
+    // runs, in the last age, before the worker base an age-up waits for anyway, or
+    // before its army is the size it attacks with -- saving from the first soldier on
+    // left a turtle with no army at all, waiting on stone it never gathered.
+    spareFor(ai, cost) {
+        const next = this.getNextAge(ai.age), age = next && AGE_COSTS[next];
+        if (!age || ai.currentAgeUpgrade) return true;
+        if (ai.units.filter(u => u.type === 'worker').length < 6) return true;
+        if (ai.units.filter(u => u.type !== 'worker' && u.unitType !== 'support').length < this.profileOf(ai).attackAt) return true;
+        const r = ai.resources;
+        return ['food', 'wood', 'stone', 'gold'].every(k => r[k] - (cost[k] || 0) >= (age[k] || 0));
     }
 
     trainMilitary(ai) {
-        const trainers = ai.buildings.filter(b => b.canTrain && b.type !== 'town_center' &&
+        const P = this.profileOf(ai);
+        let trainers = ai.buildings.filter(b => b.canTrain && b.type !== 'town_center' &&
             !b.underConstruction && !b.isProducing);
+        // Counter-pick: the class that beats what this seat has seen most of, from the
+        // buildings that train it. Until it has seen an army, or has no such building,
+        // it trains like everyone else.
+        if (P.pick === 'counter') {
+            const want = this.counterClass(ai);
+            const fit = want && trainers.filter(b => this.classOfTrainer(ai, b) === want);
+            if (fit && fit.length) trainers = fit;
+        }
         trainers.forEach(building => {
             const unitType = this.getUnitToTrain(ai, building);
-            if (unitType) this.trainUnit(ai, unitType, building);
+            if (!unitType) return;
+            if (P.reserve) {
+                const def = getUnitDefFor(ai.civilization, unitType);
+                if (def && def.cost && !this.spareFor(ai, def.cost)) return;
+            }
+            this.trainUnit(ai, unitType, building);
         });
+    }
+
+    // The combat class a building would train now (infantry, ranged, cavalry...).
+    classOfTrainer(ai, building) {
+        const unitType = this.getUnitToTrain(ai, building);
+        const def = unitType && getUnitDefFor(ai.civilization, unitType);
+        return def ? def.type : null;
+    }
+
+    // What beats the enemy army this seat knows of. Read from visibleEnemyTargets only
+    // -- the same fog-limited sight every other choice uses -- and remembered from the
+    // last time it saw an army, the way a player remembers what came at them.
+    counterClass(ai) {
+        const seen = { infantry: 0, ranged: 0, cavalry: 0 };
+        let any = false;
+        for (const e of this.visibleEnemyTargets(ai)) {
+            if (e.unitType in seen) { seen[e.unitType]++; any = true; }
+        }
+        if (any) ai._seenArmy = seen;
+        const mix = ai._seenArmy;
+        if (!mix) return null;
+        let most = null;
+        for (const k of ['infantry', 'ranged', 'cavalry']) if (mix[k] > 0 && (!most || mix[k] > mix[most])) most = k;
+        return most ? COUNTER_OF[most] : null;
     }
 
     getUnitToTrain(ai, building) {
@@ -571,15 +676,19 @@ class AIManager {
     commandArmy(ai, military, enemyWonder) {
         if (!military.length) return;
         // Only commit the army when it's a real force, unless a Wonder must be razed.
-        const ready = military.length >= 8 || (enemyWonder && military.length >= 1);
+        const P = this.profileOf(ai);
+        const ready = military.length >= P.attackAt || (enemyWonder && military.length >= 1);
         if (!ready) return;
 
         const origin = military[0];
         // A rival Wonder outranks everything.
         let target = enemyWonder;
         if (!target) {
+            const known = this.visibleEnemyTargets(ai);
+            // A raider goes for the economy: the nearest worker it can see, if any.
+            const prey = P.prey === 'workers' ? known.filter(e => e.type === 'worker') : [];
             let minD = Infinity;
-            for (const e of this.visibleEnemyTargets(ai)) {
+            for (const e of (prey.length ? prey : known)) {
                 const d = this.distance(origin, e);
                 if (d < minD) { minD = d; target = e; }
             }

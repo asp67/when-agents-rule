@@ -390,7 +390,8 @@ class Game {
         // Create AI players based on setup
         this.aiManager.aiPlayers = [];
         for (let i = 0; i < numPlayers; i++) {
-            const ai = this.aiManager.addAIPlayer(setup[i].civ, 'medium');
+            // A rule-based seat plays the anchor style its slot names (AI_PROFILES).
+            const ai = this.aiManager.addAIPlayer(setup[i].civ, 'medium', setup[i].type === 'ki' ? setup[i].profile : undefined);
             ai.seat = i; // arena slot order → team badge (must be set BEFORE any create*)
             const spawn = spawnPositions[i];
 
@@ -3681,6 +3682,10 @@ class Game {
         this.clock = Game.newClock();   // a new match starts at simulated time zero
         this._simAccumulator = 0;       // ...and no part-step carried over from the last one
         this._rng = WarRng.keyed(this.mapSeed);   // ...and at the first draw of every key
+        // ...and the brain's discovery beat from zero. The manager lives as long as the
+        // page, so this carried over from the last match, and a Rematch scanned the map
+        // on a different beat than the match it repeats. (Think clocks are per seat.)
+        if (this.aiManager) this.aiManager.discoveryTimer = 0;
         this._standingOrders = null;
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
         // Handles are per MATCH: without this they keep climbing across restarts in one

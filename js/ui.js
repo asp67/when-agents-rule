@@ -1487,7 +1487,15 @@ class UIManager {
             // different unconfigured models all read identically — on the one screen
             // whose job is to tell you who is playing what.
             const ctrlRow = isLLM ? modelRows.find(r => r.m.id === slot.control) : null;
-            const ctrlName = ctrlRow ? this.modelDisplayName(ctrlRow.m, ctrlRow.n) : t('ar.controlKi');
+            const ctrlName = ctrlRow ? this.modelDisplayName(ctrlRow.m, ctrlRow.n) : this.ruleBasedName(campaign ? 'standard' : slot.profile);
+            // Arena only: which anchor style the rule-based seat plays. Campaign keeps the
+            // classic opponent until an opponent-strength choice is decided for it.
+            const profile = this.profileId(slot.profile);
+            const styleField = (!isLLM && !campaign) ? `
+                        <div class="arena-field"><label>${t('ar.fStyle')}</label>
+                            <select onchange="game.ui.setSlotProfile(${i}, this.value)" title="${e(t('ar.styleNote'))}">${(typeof AIManager !== 'undefined' ? AIManager.profileIds() : ['standard']).map(id =>
+                                `<option value="${id}" ${profile === id ? 'selected' : ''} title="${e(t('ar.styleHint.' + id))}">${e(t('ar.style.' + id))}</option>`).join('')}</select>
+                            <p class="arena-hint slot-style-hint">${e(t('ar.styleHint.' + profile))}</p></div>` : '';
             const body = `
                 <div class="arena-slot-body">
                     <div class="arena-field-row">
@@ -1497,7 +1505,7 @@ class UIManager {
                             <select onchange="game.ui.setSlotControl(${i}, this.value)">
                                 <option value="ki" ${slot.control === 'ki' ? 'selected' : ''}>${t('ar.controlKi')}</option>
                                 ${modelOpts}
-                            </select></div>
+                            </select></div>${styleField}
                     </div>
                     ${promptBlock}
                 </div>`;
@@ -1801,6 +1809,21 @@ class UIManager {
     }
 
     setSlotCiv(i, value) { const s = this.setupSlots()[i]; if (s) { s.civ = value; this.saveSetup(); this.renderArenaSlots(); } }
+    setSlotProfile(i, value) {
+        const s = this.setupSlots()[i];
+        if (!s) return;
+        s.profile = this.profileId(value);
+        this.saveSetup(); this.renderArenaSlots();
+    }
+    // A known anchor style (AI_PROFILES in ai.js), else the classic one.
+    profileId(value) {
+        return (typeof AI_PROFILES !== 'undefined' && value && AI_PROFILES[value]) ? value : 'standard';
+    }
+    // "Rule-based AI", with its style when it plays anything but the classic one.
+    ruleBasedName(profile, base = t('ar.controlKi')) {
+        const id = this.profileId(profile);
+        return id === 'standard' ? base : base + ' · ' + t('ar.style.' + id);
+    }
     setSlotControl(i, value) {
         const s = this.setupSlots()[i];
         if (!s) return;
@@ -2099,7 +2122,11 @@ class UIManager {
     // opponents are allowed a rule-based stand-in, substitutes it visibly instead.
     slotToSetupEntry(slot) {
         const cfg = this._arenaConfig;
-        if (slot.control === 'ki') return { civ: slot.civ, type: 'ki' };
+        if (slot.control === 'ki') {
+            // The classic style is the entry it always was; any other names its style.
+            const profile = this.profileId(slot.profile);
+            return profile === 'standard' ? { civ: slot.civ, type: 'ki' } : { civ: slot.civ, type: 'ki', profile };
+        }
         const m = cfg.models.find(mm => mm.id === slot.control);
         if (!m || !(m.endpoint || '').trim()) return { civ: slot.civ, type: 'llm', connection: null, unconfigured: true };
         return {
@@ -2198,7 +2225,7 @@ class UIManager {
     // record will say. `servedBy` undefined means the server has not been asked yet.
     lineupRows(setup, header) {
         return (setup || []).map((s, i) => {
-            if (s.type !== 'llm') return { civ: s.civ, seat: i, rule: true };
+            if (s.type !== 'llm') return { civ: s.civ, seat: i, rule: true, profile: s.profile || 'standard' };
             const p = header && header.players && header.players[i];
             const st = (p && p.settings) || null, c = s.connection || {};
             const pick = (fromHeader, fromSetup) => (st ? fromHeader : fromSetup);
@@ -2238,7 +2265,7 @@ class UIManager {
             const badge = el('span', 'lu-badge');
             badge.innerHTML = this.teamDotHtml ? this.teamDotHtml(r.seat, 9) : '';
             const who = el('div', 'lu-who');
-            who.append(el('span', 'lu-name', r.rule ? t('lu.rule') : r.name),
+            who.append(el('span', 'lu-name', r.rule ? this.ruleBasedName(r.profile, t('lu.rule')) : r.name),
                        el('span', 'lu-civ', t('civ.' + r.civ + '.name')));
             if (!r.rule && r.model && r.model !== r.name) who.append(el('span', 'lu-model', r.model));
             const tags = el('div', 'lu-tags');
