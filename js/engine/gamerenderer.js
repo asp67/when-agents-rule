@@ -1048,7 +1048,11 @@
                 r = {};
                 this._rings.push(r);
             }
-            Object.assign(r, { active: true, t: 0, dur: 1.6, x, z });   // as long as a wave needs to run out
+            // A ping on a building (it is placed at the target) starts at the walls and runs
+            // out from there; from the centre, the first half of the wave was inside them.
+            const b = this.buildings.find(q => q.health > 0 && Math.abs(q.x - x) < 0.5 && Math.abs(q.z - z) < 0.5);
+            const fp = b && b._grassFootprint, r0 = fp ? Math.max(fp.ex, fp.ez) : 2;
+            Object.assign(r, { active: true, t: 0, dur: 1.6, x, z, r0 });   // as long as a wave needs to run out
         }
 
         flashHit(entity) {
@@ -2052,11 +2056,12 @@
                 const k = r.t / r.dur;
                 if (k >= 1) { r.active = false; continue; }
                 const fade = Math.sin(Math.PI * Math.min(1, k * 1.4)) * (1 - k);
-                const s = this._reducedMotion ? 8 : 2 + 16 * Math.sqrt(k);
+                const s = this._reducedMotion ? (r.r0 || 2) + 6 : (r.r0 || 2) + 16 * Math.sqrt(k);
+                const si = (r.r0 || 2) + (s - (r.r0 || 2)) * 0.6;   // the inner ring trails it, also from the walls
                 this._ringEntries.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.16, 0.1], alpha: 0.65 * fade, additive: true,
                     model: m3.multiply(m3.translation(r.x, 0.7, r.z), m3.scaling(s, 1, s)) });
                 this._ringEntries.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.32, 0.2], alpha: 0.35 * fade, additive: true,
-                    model: m3.multiply(m3.translation(r.x, 0.72, r.z), m3.scaling(s * 0.6, 1, s * 0.6)) });
+                    model: m3.multiply(m3.translation(r.x, 0.72, r.z), m3.scaling(si, 1, si)) });
             }
 
             // building placement ghost

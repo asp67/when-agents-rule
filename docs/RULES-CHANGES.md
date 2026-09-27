@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 981: a battle wave on a building starts at its walls (27 September 2026)
+
+**No rules change.** A battle ping is placed at the attacked target, so for a building it sat at the centre, and the first half of the wave ran inside the walls. The wave now starts at the building's footprint and runs out from there, with its inner ring trailing it from the walls as well. Pings in the open are unchanged.
+
 ## Build 980: a red battle wave; thinking on the broadcast cards (27 September 2026)
 
 **No rules change.**
