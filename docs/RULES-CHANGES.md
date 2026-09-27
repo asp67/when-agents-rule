@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 947: one request builder (27 September 2026)
+
+No change in what a model is sent. The request for a seat's turn is now built by one function, `buildTurnRequest`, which reads the seat and the state and changes nothing. The arena sends exactly what it builds, and WAR Bench will call the same function, so a bench request is the request the arena would have sent. `tests/bench-request.test.cjs` compares the two, byte for byte, over four turns with a growing history, an objective and a plan, and spectator advice. The harness fingerprint changes only because the file changed.
+
 ## Build 946: lockstep, an option of turn-based play (27 September 2026)
 
 Turn-based play gives every model the same number of moves. The world still ran on while a round waited for the slowest answer, though, so a model that thought for two minutes acted on a board two minutes old. Lockstep closes that gap. It is set per match under the turn-based setting (**World time per round**: off, or 1, 2, 5, 10 or 20 seconds).

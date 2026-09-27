@@ -4395,7 +4395,18 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // ----------------------------------------------------------------
     // 9. Send request to OpenAI endpoint
     // ----------------------------------------------------------------
-    async sendToOpenAI(controller, gameState) {
+    // The request a seat's turn sends, built from the seat and the state alone: the
+    // system prompt, the standing objective and plan, the present state, any spectator
+    // advice and the rolling history sized to the context budget. It changes nothing --
+    // advice is read, not consumed; the caller records what it sent -- so the arena and
+    // the bench (review #8) build the very same request from the same inputs.
+    //
+    // `shrink` is the arena's self-healing context factor (_ctxShrink); the bench passes
+    // 1. `reqOpts` are the request parameters; by default the model's own, with any
+    // shape the endpoint was found to need (model._reqOpts). `withRequest: false` skips
+    // the final wire request: the arena's send loop builds that itself, once per attempt,
+    // inside its own error handling.
+    buildTurnRequest(controller, gameState, { shrink = controller._ctxShrink || 1, reqOpts = null, withRequest = true } = {}) {
         const model = controller.model;
         const ai = controller.aiPlayer;
 
@@ -4421,7 +4432,6 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // provider returns a 400 ("maximum context length …"), losing the turn. So we
         // estimate at a pessimistic ~3 chars/token AND keep a big headroom. `_ctxShrink`
         // ratchets this down further if an overflow ever still happens (self-healing).
-        const shrink = controller._ctxShrink || 1;
         const inputBudget = Math.max(2000, Math.floor((budget - reserve) * 0.8 * shrink));
         const est = (s) => Math.ceil(String(s || '').length / 3); // conservative ~3 chars/token
 
@@ -4492,26 +4502,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // directly underneath that comment for a month. How many things to do is part
         // of what is being measured.
         tailNow.push(`Here is your CURRENT game state. Decide what to do on THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
+        let advice = null;
         if (controller.pendingAdvice && controller.pendingAdvice.length) {
-            const advice = controller.pendingAdvice.join(' ');
-            controller.seat.pendingAdvice = [];
-            // Recorded exactly as delivered, at the moment it reaches the prompt.
-            this.countChange(controller, 'advisedTurns');
-            this.noteChange(controller.aiPlayer, { type: 'intervention', kind: 'advice', human: true, text: advice });
+            advice = controller.pendingAdvice.join(' ');
             tailNow.push(`SPECTATOR ADVICE (a human observer suggests — weigh it, you still decide): ${advice}`);
         }
 
-        // Remember a compact snapshot of THIS turn; after the reply it becomes one
-        // rolling history pair (Option C) so the next turn can replay it cheaply.
-        controller._pendingTurnUser = this.buildCompactState(gameState);
-
-        // ...and the FULL state for the transcript. Stored as the object rather than
-        // the assembled prompt text on purpose: replayed history means the message
-        // sent on turn N contains turns 1..N-1, so recording the whole payload every
-        // turn would be quadratic — by turn 200 you would have written turn 1 two
-        // hundred times. Keeping the per-turn delta lets any turn's full context be
-        // reconstructed on demand instead.
-        controller._transcriptState = gameState;
 
         // The result of the immediately previous action (rejection reason, parse error,
         // or OK + detail). The model MUST see this every turn or it will happily repeat
@@ -4553,8 +4549,48 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             turns = [...pastTurns, { role: 'user', content: currentUser }];
         }
 
-        // Which protocol does this endpoint speak? (auto-detected when set to 'auto')
         const provider = OpenAIAIManager.resolveProvider(model);
+        const request = withRequest ? OpenAIAIManager.buildChatRequest(
+            provider, model.endpoint, model.model || 'default', systemPrompt, turns, reqOpts || this.requestOptions(model)) : null;
+        return { systemPrompt, turns, provider, advice, request };
+    }
+
+    // The parameters a turn is sent with: the model's own, overlaid with any request
+    // shape its endpoint was found to need this match (model._reqOpts).
+    requestOptions(model) {
+        return Object.assign(
+            { temperature: model.temperature, topP: model.topP, topK: model.topK,
+              minP: model.minP, presencePenalty: model.presencePenalty,
+              repetitionPenalty: model.repetitionPenalty,
+              reasoning: model.reasoning, extraBody: model.extraBody,
+              maxTokens: model.maxTokens, numCtx: model.contextSize },
+            model._reqOpts || {});
+    }
+
+    async sendToOpenAI(controller, gameState) {
+        const model = controller.model;
+        const ai = controller.aiPlayer;
+
+        const { systemPrompt, turns, provider, advice } = this.buildTurnRequest(controller, gameState, { withRequest: false });
+        if (advice != null) {
+            // Recorded exactly as delivered, at the moment it reaches the prompt.
+            controller.seat.pendingAdvice = [];
+            this.countChange(controller, 'advisedTurns');
+            this.noteChange(controller.aiPlayer, { type: 'intervention', kind: 'advice', human: true, text: advice });
+        }
+
+        // Remember a compact snapshot of THIS turn; after the reply it becomes one
+        // rolling history pair (Option C) so the next turn can replay it cheaply.
+        controller._pendingTurnUser = this.buildCompactState(gameState);
+
+        // ...and the FULL state for the transcript. Stored as the object rather than
+        // the assembled prompt text on purpose: replayed history means the message
+        // sent on turn N contains turns 1..N-1, so recording the whole payload every
+        // turn would be quadratic — by turn 200 you would have written turn 1 two
+        // hundred times. Keeping the per-turn delta lets any turn's full context be
+        // reconstructed on demand instead.
+        controller._transcriptState = gameState;
+
         console.log(`[OpenAIAI] ${ai.id}: provider=${provider}, turns=${turns.length}`);
 
         // Outside the try on purpose: the catch needs it, and `reqStart` below is
@@ -4584,13 +4620,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // time. They are not persisted to the library: re-learning costs one request
             // per match and cannot go stale when a provider changes its mind.
             model._reqOpts = model._reqOpts || {};
-            const reqOpts = () => Object.assign(
-                { temperature: model.temperature, topP: model.topP, topK: model.topK,
-                  minP: model.minP, presencePenalty: model.presencePenalty,
-                  repetitionPenalty: model.repetitionPenalty,
-                  reasoning: model.reasoning, extraBody: model.extraBody,
-                  maxTokens: model.maxTokens, numCtx: model.contextSize },
-                model._reqOpts);
+            const reqOpts = () => this.requestOptions(model);
             // Learned refusals are worth keeping past the match: the library shows them,
             // so "this endpoint does not take top_k" survives as an observation rather
             // than being rediscovered at the cost of one request every single match.
