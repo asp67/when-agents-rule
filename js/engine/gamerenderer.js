@@ -982,8 +982,9 @@
                 active: true, t: 0, dur: Math.max(0.16, dist / 42),
                 sx: from.x, sy: from.y, sz: from.z, tx: to.x, ty: to.y, tz: to.z,
                 arc: kind === 'stone' ? 2.0 : 3.0,
-                tint: kind === 'stone' ? [0.6, 0.64, 0.68] : [0.48, 0.32, 0.19],
-                scale: kind === 'stone' ? 0.24 : 0.09
+                tint: kind === 'stone' ? [0.6, 0.64, 0.68] : kind === 'fireArrow' ? [0.3, 0.2, 0.12] : [0.48, 0.32, 0.19],
+                scale: kind === 'stone' ? 0.24 : 0.09,
+                fire: kind === 'fireArrow'   // Fire Arrows: a flame rides the tip
             });
         }
 
@@ -1928,6 +1929,14 @@
                     model: m3.multiply(m3.translation(x, y, z),
                         m3.multiply(m3.rotationY(yaw), m3.scaling(p.scale, p.scale, 1.2)))
                 });
+                if (p.fire) {
+                    // A small flame at the tip, and its light: orange body, yellow core.
+                    const tx = x + Math.sin(yaw) * 0.62, tz = z + Math.cos(yaw) * 0.62;
+                    const f = this._reducedMotion ? 1 : 1 + 0.2 * Math.sin(now * 0.04 + p.sx);
+                    for (const [w, tint, alpha] of [[0.42 * f, [1, 0.42, 0.08], 0.85], [0.2 * f, [1, 0.86, 0.42], 0.95]])
+                        dl.blended.push({ buf: quad, tex: this.tex.mote, tint, alpha, additive: true,
+                            model: m3.multiply(m3.multiply(m3.translation(tx, y + 0.04, tz), bb), m3.scaling(w, w * 1.25, 1)) });
+                }
             }
 
             // battle-ring pings (drawn after fog so they show through it)

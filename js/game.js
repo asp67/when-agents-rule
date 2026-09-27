@@ -339,6 +339,8 @@ class Game {
         this.player.trainSpeedBonus = 1.0;
         this.player.miningBonus = 1.0;
         this.player.healthBonus = 1.0;
+        this.player.healPowerBonus = 0;       // tech bonuses held on the owner: a new match starts without them
+        this.player.rangedBuildingBonus = 0;
         this.player.attackBonus = 1.0;
         this.player.workerSpeedBonus = 1.0;
         this.player.workerBuildSpeedBonus = 1.0;
@@ -539,6 +541,8 @@ class Game {
         this.player.trainSpeedBonus = 1.0;
         this.player.miningBonus = 1.0;
         this.player.healthBonus = 1.0;
+        this.player.healPowerBonus = 0;       // tech bonuses held on the owner: a new match starts without them
+        this.player.rangedBuildingBonus = 0;
         this.player.attackBonus = 1.0;
         this.player.workerSpeedBonus = 1.0;
         this.player.workerBuildSpeedBonus = 1.0;
@@ -1243,7 +1247,8 @@ class Game {
         if (targetIsBuilding) {
             if (a === 'infantry') return 1.5;
             if (a === 'cavalry') return 1.0;
-            if (a === 'ranged') return 0.5;
+            // Fire Arrows (academy, iron age): +30% of this against buildings.
+            if (a === 'ranged') return 0.5 * (1 + this.rangedBuildingBonusOf(attacker));
             return 0.5; // workers/support
         }
         const t = target.unitType;
@@ -1518,9 +1523,12 @@ class Game {
                         // Combat visuals: arrows for ranged shots, a hit flash on the
                         // victim, and a (throttled) battle ping for spectators.
                         if (unit.range > 1) {
+                            // A burning arrow at a building once Fire Arrows is researched.
+                            const atBuilding = (currentTarget.type && BUILDING_DEFS[currentTarget.type]) || currentTarget.isWonder;
+                            const fire = atBuilding && unit.unitType === 'ranged' && this.rangedBuildingBonusOf(unit) > 0;
                             this.renderer.spawnProjectile(
                                 { x: unit.x, y: 1.5, z: unit.z },
-                                { x: currentTarget.x, y: 1.1, z: currentTarget.z }, 'arrow', unit);
+                                { x: currentTarget.x, y: 1.1, z: currentTarget.z }, fire ? 'fireArrow' : 'arrow', unit);
                         }
                         this.renderer.flashHit(currentTarget);
                         this.notifyCombat(currentTarget.x, currentTarget.z, unit, currentTarget, dealt);
@@ -3105,6 +3113,10 @@ class Game {
             if (tech.bonus.healPower) {
                 owner.healPowerBonus = (owner.healPowerBonus || 0) + tech.bonus.healPower;
             }
+            // Fire Arrows: ranged units' damage against buildings (combatMultiplier).
+            if (tech.bonus.buildingDamage && tech.appliesTo === 'ranged') {
+                owner.rangedBuildingBonus = (owner.rangedBuildingBonus || 0) + tech.bonus.buildingDamage;
+            }
         }
     }
 
@@ -4616,6 +4628,13 @@ class Game {
     }
 
     // Get the owner data (player or AI) for a unit or building
+    // Fire Arrows: the attacker's owner's bonus against buildings, found by owner id.
+    rangedBuildingBonusOf(unit) {
+        const owner = !unit ? null : unit.owner === 'player' ? this.player
+            : (this.aiManager && this.aiManager.aiPlayers.find(a => a.id === unit.owner));
+        return (owner && owner.rangedBuildingBonus) || 0;
+    }
+
     getOwner(entity) {
         if (entity.owner === 'player') return this.player;
         return this.aiManager.aiPlayers.find(a => a.units.includes(entity) || a.buildings.includes(entity));

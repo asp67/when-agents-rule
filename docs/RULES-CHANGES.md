@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 965: Fire Arrows (27 September 2026)
+
+**A rules change.** Every civilization gets a new academy technology in the Iron Age:
+
+- **The tech:** Fire Arrows (Feuerpfeile), costing 50 food, 100 wood, 80 stone and 100 gold, researched in 30 s.
+- **What it does:** ranged units deal 30 % more damage to buildings. Their building multiplier goes from 0.5 to 0.65; damage against units is unchanged.
+- **How it looks:** once it is researched, arrows shot at buildings fly with a small flame at the tip.
+- **Models:** they see it in `research.available` like any other tech, with its name and effect.
+- **Rule-based players:** they may research it too. It sits last in every tree, so their earlier priorities are unchanged. The golden traces are unchanged, but anchor calibrations that reach the Iron Age with an academy may shift.
+- **A bonus reset:** the human player's owner-held tech bonuses are now reset at every match start. This covers Fire Arrows, and also the temple's heal bonus, which used to carry over from one Campaign match to the next in the same page.
+
 ## Build 964: sound without the freeze, and an age-up wave (27 September 2026)
 
 No change in what happens in a match or what a model is told.

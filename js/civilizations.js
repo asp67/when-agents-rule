@@ -271,6 +271,20 @@ const CIVILIZATIONS = {
                 researchTime: 30000,  // 30 seconds
                 bonus: { attack: 3 },
                 appliesTo: 'all_military'
+            },
+            // === Eisenzeit - an der Akademie: Brandpfeile (every civilization) ===
+            // +30% damage for ranged units against buildings (the 0.5 building multiplier
+            // becomes 0.65). Fire arrows are drawn at buildings once it is researched.
+            fire_arrows: {
+                name: 'Feuerpfeile',
+                cost: { food: 50, wood: 100, stone: 80, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: [],
+                description: 'Fernkampfeinheiten +30% Schaden gegen Gebäude',
+                researchTime: 30000,  // 30 seconds
+                bonus: { buildingDamage: 0.3 },
+                appliesTo: 'ranged'
             }
         }
     },
@@ -474,6 +488,20 @@ const CIVILIZATIONS = {
                 researchTime: 30000,
                 bonus: { attack: 3 },
                 appliesTo: 'all_military'
+            },
+            // === Eisenzeit - an der Akademie: Brandpfeile (every civilization) ===
+            // +30% damage for ranged units against buildings (the 0.5 building multiplier
+            // becomes 0.65). Fire arrows are drawn at buildings once it is researched.
+            fire_arrows: {
+                name: 'Feuerpfeile',
+                cost: { food: 50, wood: 100, stone: 80, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: [],
+                description: 'Fernkampfeinheiten +30% Schaden gegen Gebäude',
+                researchTime: 30000,  // 30 seconds
+                bonus: { buildingDamage: 0.3 },
+                appliesTo: 'ranged'
             }
         }
     },
@@ -687,6 +715,20 @@ const CIVILIZATIONS = {
                 researchTime: 30000,
                 bonus: { range: 2, attack: 3 },
                 appliesTo: 'ranged'
+            },
+            // === Eisenzeit - an der Akademie: Brandpfeile (every civilization) ===
+            // +30% damage for ranged units against buildings (the 0.5 building multiplier
+            // becomes 0.65). Fire arrows are drawn at buildings once it is researched.
+            fire_arrows: {
+                name: 'Feuerpfeile',
+                cost: { food: 50, wood: 100, stone: 80, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: [],
+                description: 'Fernkampfeinheiten +30% Schaden gegen Gebäude',
+                researchTime: 30000,  // 30 seconds
+                bonus: { buildingDamage: 0.3 },
+                appliesTo: 'ranged'
             }
         }
     },
@@ -874,6 +916,20 @@ const CIVILIZATIONS = {
                 description: 'Alle Militäreinheiten +3 Angriff',
                 bonus: { attack: 3 },
                 appliesTo: 'all_military'
+            },
+            // === Eisenzeit - an der Akademie: Brandpfeile (every civilization) ===
+            // +30% damage for ranged units against buildings (the 0.5 building multiplier
+            // becomes 0.65). Fire arrows are drawn at buildings once it is researched.
+            fire_arrows: {
+                name: 'Feuerpfeile',
+                cost: { food: 50, wood: 100, stone: 80, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: [],
+                description: 'Fernkampfeinheiten +30% Schaden gegen Gebäude',
+                researchTime: 30000,  // 30 seconds
+                bonus: { buildingDamage: 0.3 },
+                appliesTo: 'ranged'
             }
         }
     }

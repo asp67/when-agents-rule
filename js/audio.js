@@ -529,7 +529,7 @@ class WarAudio {
         return theme==='winter'||theme==='desert'?(mounted?'hoofSnow':'snow'):(mounted?'hoof':'step');
     }
     projectile(from,kind,shooter) {
-        if(kind==='arrow')this.emit(shooter?.type==='crossbowman'?'crossbow':'bow',from,.21);
+        if(kind==='arrow'||kind==='fireArrow')this.emit(shooter?.type==='crossbowman'?'crossbow':'bow',from,.21);
     }
     async audition(kind) {
         if (!this.game._showcaseCivilization || !['step','snow','gravel','hoof','hoofSnow','hoofGravel','bow','crossbow','impact','steel','stone','crackle','chop','harvest','mine','build','built','research','trained','collapse','wonderLost','heal','command','commandAction','start','elimination','victory','defeat','warning'].includes(kind)) return;
