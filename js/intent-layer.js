@@ -118,13 +118,20 @@ class IntentLayer {
 
     // Read every seat's newest turns. `stagger` spaces the bubbles of turns that landed
     // together (a turn-based round flushing) so each can be read.
+    //
+    // In a turn-based match an answer is held until every seat has answered and the round
+    // is played (flushRound); the decisions log and captions wait for it, and so does this.
+    // A held answer is its seat's answerContext._logTurn until the round takes it. One the
+    // round drops is taken out of the turn log, so it is never drawn at all.
     poll(now = Date.now()) {
-        const g = this.game, ctrls = (g.openAIAIManager && g.openAIAIManager.aiControllers) || [];
+        const g = this.game, mgr = g.openAIAIManager, ctrls = (mgr && mgr.aiControllers) || [];
+        const held = new Set();
+        if (mgr && mgr.turnBased) for (const c of ctrls) if (c.answerContext && c.answerContext._logTurn) held.add(c.answerContext._logTurn);
         const fresh = [];
         for (const c of ctrls) {
             const log = c.turnLog || [];
             if (!this._started) { log.forEach(t => this.seen.add(t)); continue; }
-            for (const t of log) if (!this.seen.has(t)) { this.seen.add(t); fresh.push({ c, t }); }
+            for (const t of log) if (!this.seen.has(t) && !held.has(t)) { this.seen.add(t); fresh.push({ c, t }); }
         }
         this._started = true;
         fresh.forEach(({ c, t }, k) => this.add(c.aiPlayer, t, now + k * 600));

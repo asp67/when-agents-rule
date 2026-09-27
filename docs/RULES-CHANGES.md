@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 969: in turn-based matches, bubbles wait for the round (27 September 2026)
+
+**No rules change.** In a turn-based match, a seat's rings and bubbles used to appear as soon as its model answered, before the round was played. Now they appear only when every seat has answered and the round fires, together with the decisions log and the captions. An answer the round drops is never drawn. Real-time matches are unchanged.
+
 ## Build 968: flags on the strategic map (27 September 2026)
 
 **No rules change.** At wide zoom, Town Centers and armies now carry flags instead of bare badges.
