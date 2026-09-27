@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 982: the damage ping is the age-up wave in red (27 September 2026)
+
+**No rules change.** The ping that marks a hit on a unit or building, the one red ring the map drew, is now exactly the age-up wave in red: the same ring, the same 2.4-second pulse out and fade, the same reach. For a building it starts from the walls. It replaces both the flat ring and build 980's smaller glow.
+
 ## Build 981: a battle wave on a building starts at its walls (27 September 2026)
 
 **No rules change.** A battle ping is placed at the attacked target, so for a building it sat at the centre, and the first half of the wave ran inside the walls. The wave now starts at the building's footprint and runs out from there, with its inner ring trailing it from the walls as well. Pings in the open are unchanged.

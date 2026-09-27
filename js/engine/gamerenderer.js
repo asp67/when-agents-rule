@@ -1051,8 +1051,8 @@
             // A ping on a building (it is placed at the target) starts at the walls and runs
             // out from there; from the centre, the first half of the wave was inside them.
             const b = this.buildings.find(q => q.health > 0 && Math.abs(q.x - x) < 0.5 && Math.abs(q.z - z) < 0.5);
-            const fp = b && b._grassFootprint, r0 = fp ? Math.max(fp.ex, fp.ez) : 2;
-            Object.assign(r, { active: true, t: 0, dur: 1.6, x, z, r0 });   // as long as a wave needs to run out
+            const fp = b && b._grassFootprint, r0 = fp ? Math.max(fp.ex, fp.ez) : 4;
+            Object.assign(r, { active: true, t: 0, dur: 2.4, x, z, r0 });   // the age-up wave's length
         }
 
         flashHit(entity) {
@@ -2044,11 +2044,11 @@
                 }
             }
 
-            // Battle pings, drawn after the fog so they show through it. The age-up wave's
-            // look in red: a glowing ring that runs out and fades, with a warmer one inside
-            // it -- the flat textured ring before it read as a sticker on the ground. Kept in
-            // every lighting style (it marks where fighting starts); a still glow for a
-            // viewer who asked for less motion.
+            // Damage pings (a unit or building hit), drawn after the fog so they show through
+            // it. Exactly the age-up wave, in red: the same ring, the same 2.4 s pulse out
+            // and fade, the same reach -- from the walls, for a building. The flat textured
+            // ring before it read as a sticker on the ground. Kept in every lighting style;
+            // a still ring for a viewer who asked for less motion.
             this._ringEntries = [];
             for (const r of this._rings) {
                 if (!r.active) continue;
@@ -2056,11 +2056,12 @@
                 const k = r.t / r.dur;
                 if (k >= 1) { r.active = false; continue; }
                 const fade = Math.sin(Math.PI * Math.min(1, k * 1.4)) * (1 - k);
-                const s = this._reducedMotion ? (r.r0 || 2) + 6 : (r.r0 || 2) + 16 * Math.sqrt(k);
-                const si = (r.r0 || 2) + (s - (r.r0 || 2)) * 0.6;   // the inner ring trails it, also from the walls
-                this._ringEntries.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.16, 0.1], alpha: 0.65 * fade, additive: true,
+                const r0 = r.r0 || 4;
+                const s = this._reducedMotion ? r0 + 6 : r0 + 38 * Math.sqrt(k);
+                const si = r0 + (s - r0) * 0.6;   // the inner ring trails it, also from the walls
+                this._ringEntries.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.22, 0.16], alpha: 0.55 * fade, additive: true,
                     model: m3.multiply(m3.translation(r.x, 0.7, r.z), m3.scaling(s, 1, s)) });
-                this._ringEntries.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.32, 0.2], alpha: 0.35 * fade, additive: true,
+                this._ringEntries.push({ buf: ringBuf, tex: this.tex.mote, tint: [0.85, 0.1, 0.08], alpha: 0.35 * fade, additive: true,
                     model: m3.multiply(m3.translation(r.x, 0.72, r.z), m3.scaling(si, 1, si)) });
             }
 
