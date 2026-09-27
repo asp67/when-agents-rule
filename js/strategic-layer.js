@@ -3,9 +3,9 @@
 // out to see a soldier.
 //
 // It fades in as the view widens past a half-height of 90 and is fully there by 140:
-//   bases    a pip on each Town Center, in its seat's badge
-//   armies   each seat's fighting units, gathered into groups, drawn as the seat's
-//            badge with the number of units in it
+//   bases    a flag on each Town Center: the seat's waving flag, as on its flag poles
+//   armies   each seat's fighting units, gathered into groups, flagged the same way
+//            with crossed swords in the badge and the number of units beneath
 //   battles  a marker on every fight still going (the battle ledger, not a guess)
 // It reads the match and changes nothing. Groups are rebuilt four times a second.
 // ---------------------------------------------------------------------------
@@ -18,6 +18,7 @@ class StrategicLayer {
     }
 
     static get NEAR() { return 90; }
+    static get POLE_PX() { return 100; }   // the marker line, in screen pixels
     static get FAR() { return 140; }
     static get GROUP_RADIUS() { return 45; }
 
@@ -46,8 +47,8 @@ class StrategicLayer {
         for (const ai of ais) {
             if (ai._eliminated) continue;
             const army = (ai.units || []).filter(u => u.health > 0 && u.type !== 'worker');
-            for (const grp of StrategicLayer.group(army)) armies.push(Object.assign({ id: ai.id, seat: ai.seat }, grp));
-            for (const b of ai.buildings || []) if (b.type === 'town_center' && b.health > 0 && !b.underConstruction) bases.push({ id: ai.id, seat: ai.seat, x: b.x, z: b.z });
+            for (const grp of StrategicLayer.group(army)) armies.push(Object.assign({ id: ai.id, seat: ai.seat, civ: ai.civilization }, grp));
+            for (const b of ai.buildings || []) if (b.type === 'town_center' && b.health > 0 && !b.underConstruction) bases.push({ id: ai.id, seat: ai.seat, civ: ai.civilization, x: b.x, z: b.z });
         }
         const now = g.simNow ? g.simNow() : 0, quiet = (g.constructor && g.constructor.BATTLE_QUIET_MS) || 10000;
         this.battles = (g._battles || []).filter(b => now - b.lastAt <= quiet && Object.keys(b.sides || {}).length >= 2)

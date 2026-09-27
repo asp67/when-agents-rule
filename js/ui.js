@@ -2535,18 +2535,20 @@ class UIManager {
         g.setAttribute('class', 'strat');
         g.setAttribute('opacity', fade.toFixed(2));
         const at = (x, z) => r.worldToScreen(x, 0, z);
-        const badge = (seat, id, x, y, size, ring) => {
+        const el = (tag, attrs) => {
+            const e = document.createElementNS(NS, tag);
+            for (const k in attrs) e.setAttribute(k, attrs[k]);
+            g.appendChild(e);
+            return e;
+        };
+        // The seat's badge exactly as the leaderboard shows it: its fill, its rim.
+        const badge = (seat, id, x, y, size) => {
             const b = typeof getTeamBadge === 'function' ? getTeamBadge(seat) : null;
             const d = (b && typeof TEAM_BADGE_SHAPES !== 'undefined' && TEAM_BADGE_SHAPES[b.shape]) || 'M3.5 12 A8.5 8.5 0 1 1 20.5 12 A8.5 8.5 0 1 1 3.5 12 Z';
-            const p = document.createElementNS(NS, 'path');
-            p.setAttribute('d', d);
-            p.setAttribute('transform', `translate(${x - size / 2},${y - size / 2}) scale(${size / 24})`);
-            // The seat's badge exactly as the leaderboard shows it: its fill, its rim.
-            p.setAttribute('fill', (b && b.fill) || this.identityHex(id, null, seat));
-            p.setAttribute('stroke', (b && b.rim) || '#222');
-            p.setAttribute('stroke-width', '2');   // screen pixels, whatever the glyph's size
-            p.setAttribute('vector-effect', 'non-scaling-stroke');
-            g.appendChild(p);
+            el('path', { d, transform: `translate(${x - size / 2},${y - size / 2}) scale(${size / 24})`,
+                fill: (b && b.fill) || this.identityHex(id, null, seat), stroke: (b && b.rim) || '#222',
+                'stroke-width': '2', 'vector-effect': 'non-scaling-stroke' });   // screen pixels, whatever the size
+            return b;
         };
         const text = (x, y, s, size) => {
             const tx = document.createElementNS(NS, 'text');
@@ -2564,23 +2566,45 @@ class UIManager {
             g.appendChild(c);
             text(p.x, p.y + 5, '\u2694', 15);
         }
-        for (const b of L.bases) {
-            const p = at(b.x, b.z);
-            if (!p) continue;
-            // A base: the badge on a dark disc, so it reads as a place rather than an army.
-            const disc = document.createElementNS(NS, 'circle');
-            disc.setAttribute('cx', p.x); disc.setAttribute('cy', p.y); disc.setAttribute('r', 13);
-            disc.setAttribute('class', 'strat-base');
-            g.appendChild(disc);
-            badge(b.seat, b.id, p.x, p.y, 16);
-        }
-        for (const a of L.armies) {
-            const p = at(a.x, a.z);
-            if (!p) continue;
-            const size = Math.min(40, 14 + 5 * Math.sqrt(a.n));
-            badge(a.seat, a.id, p.x, p.y, size);
-            text(p.x, p.y + size / 2 + 11, String(a.n), 11);
-        }
+        // A marker: a white line rising at 45 degrees from the spot, and at its end the
+        // seat's flag -- the very flag on its flag poles, the same cloth, colour and badge,
+        // folding in the same wind. An army's flag adds crossed swords over the badge and
+        // the number of its units beneath. Every marker is the same size.
+        const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+        const fold = u => (!reduced && r.flagFold) ? r.flagFold(u) : 0;
+        const flag = (m, army) => {
+            const p = at(m.x, m.z);
+            if (!p) return;
+            const len = StrategicLayer.POLE_PX / Math.SQRT2, q = { x: p.x + len, y: p.y - len };
+            el('line', { x1: p.x, y1: p.y, x2: q.x, y2: q.y, class: 'strat-pole-halo' });
+            el('line', { x1: p.x, y1: p.y, x2: q.x, y2: q.y, class: 'strat-pole' });
+            el('circle', { cx: p.x, cy: p.y, r: 2.5, class: 'strat-foot' });
+            // The building flag is 0.85 x 0.55. Its fold is across the cloth; seen from
+            // the camera's height, about half of it shows as a rise and fall.
+            const W = 52, H = 34, N = 12, top = q.y - H;
+            const lift = u => fold(u) * W * 0.45;
+            const url = r.flagImageURL ? r.flagImageURL(m.id, m.civ, m.seat, army) : null;
+            const edge = [];
+            for (let i = 0; i <= N; i++) edge.push([q.x + i / N * W, lift(i / N)]);
+            for (let i = 0; i < N; i++) {
+                const [x0, d0] = edge[i], [x1, d1] = edge[i + 1], dy = (d0 + d1) / 2;
+                const w = x1 - x0 + (i < N - 1 ? 0.6 : 0);   // overlap the seams
+                if (url) {
+                    // One slice of the flag image, raised or lowered with its fold.
+                    const slice = el('svg', { x: x0, y: top + dy, width: w, height: H, viewBox: `${i * 256 / N} 0 ${256 / N * w / (W / N)} 128`, preserveAspectRatio: 'none' });
+                    const img = document.createElementNS(NS, 'image');
+                    img.setAttribute('href', url); img.setAttribute('width', 256); img.setAttribute('height', 128);
+                    img.setAttribute('preserveAspectRatio', 'none');
+                    slice.appendChild(img);
+                } else el('rect', { x: x0, y: top + dy, width: w, height: H, fill: this.identityHex(m.id, m.civ, m.seat) });
+            }
+            el('path', { class: 'strat-cloth', d: 'M' + edge.map(([x, d]) => x + ' ' + (top + d)).join('L')
+                + 'L' + edge.slice().reverse().map(([x, d]) => x + ' ' + (q.y + d)).join('L') + 'Z' });
+            if (!url) badge(m.seat, m.id, q.x + W / 2, q.y - H / 2 + lift(0.5), 16);
+            if (army) text(q.x + W / 2, q.y + lift(0.5) + 15, String(m.n), 12);
+        };
+        for (const b of L.bases) flag(b, false);
+        for (const a of L.armies) flag(a, true);
         svg.appendChild(g);
     }
 

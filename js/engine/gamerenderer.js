@@ -706,6 +706,14 @@
             if(!this._flagTextures)this._flagTextures=new Map();
             const key=JSON.stringify([seat,tint,unit]);
             if(this._flagTextures.has(key))return this._flagTextures.get(key);
+            const tex=GLCore.createTextureFromCanvas(this.gl,this._flagCanvas(seat,tint,unit),{clamp:true});
+            this._flagTextures.set(key,tex);return tex;
+        }
+
+        // The flag's cloth: the cloth texture in the seat's colour with its badge printed on
+        // it. A building's flag is 0.85 x 0.55, so the badge is widened to stay round there.
+        // `swords` adds the military icon over the badge (an army's flag on the strategic map).
+        _flagCanvas(seat,tint,unit=false,swords=false) {
             const c=document.createElement('canvas');c.width=256;c.height=unit?256:128;
             const ctx=c.getContext('2d');ctx.drawImage(TexGen.cloth(155),0,0,256,c.height);
             ctx.globalCompositeOperation='multiply';
@@ -713,10 +721,47 @@
             ctx.globalCompositeOperation='source-over';
             if(typeof drawTeamBadgeOnCanvas==='function'&&seat!=null){
                 ctx.save();ctx.translate(128,c.height/2);if(!unit)ctx.scale((256/.85)/(128/.55),1);
-                drawTeamBadgeOnCanvas(ctx,seat,0,0,unit?128:60,true);ctx.restore();
+                drawTeamBadgeOnCanvas(ctx,seat,0,0,unit?128:60,true);
+                if(swords)this._drawMilitaryIcon(ctx,unit?96:46);
+                ctx.restore();
             }
-            const tex=GLCore.createTextureFromCanvas(this.gl,c,{clamp:true});
-            this._flagTextures.set(key,tex);return tex;
+            return c;
+        }
+
+        // The military icon used everywhere else (the leaderboard, the results, battle
+        // markers), centred on the origin at `size` pixels, with a soft shadow to lift it
+        // off the badge.
+        _drawMilitaryIcon(ctx,size) {
+            ctx.font=`${size}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+            ctx.textAlign='center';ctx.textBaseline='middle';
+            ctx.shadowColor='rgba(0,0,0,.75)';ctx.shadowBlur=size*.12;
+            ctx.fillText('⚔️',0,size*.04);
+            ctx.shadowColor='transparent';
+        }
+
+        // The building flag of a seat as an image URL, for drawing outside the 3-D view
+        // (the strategic map). The same cloth, colour and badge as on its flag poles.
+        flagImageURL(owner,civilization,seat,swords=false) {
+            const def=typeof getCivilization==='function'?getCivilization(civilization):null;
+            const civColor=def&&def.color;
+            const tint=this._tintOf(window.WarIdentity?WarIdentity.color(owner,civilization,seat,civColor):civColor);
+            if(!this._flagURLs)this._flagURLs=new Map();
+            const key=JSON.stringify([seat,tint,!!swords]);
+            if(this._flagURLs.has(key))return this._flagURLs.get(key);
+            // A short blob: URL rather than a data: URL, since it is set on every frame.
+            const bin=atob(this._flagCanvas(seat,tint,false,swords).toDataURL('image/png').split(',')[1]);
+            const bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+            const url=URL.createObjectURL(new Blob([bytes],{type:'image/png'}));
+            this._flagURLs.set(key,url);return url;
+        }
+
+        // The flag's wave, as the cloth shader folds it (atmosphere.js): at `u` of the way
+        // from the pole (0..1), the fold as a fraction of the flag's length. Still unless
+        // the graphics quality is High, like the flags themselves.
+        flagFold(u,phase=0) {
+            if(this.graphicsQuality!=='cinematic')return 0;
+            const len=.85*BSCALE,t=(this.game?._environmentSeconds||0)%Math.PI;
+            return Math.sin(u*len*7-t*2+phase)*u*len*.09/len;
         }
 
         _badgeTints(seat, fallback) {

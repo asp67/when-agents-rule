@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 968: flags on the strategic map (27 September 2026)
+
+**No rules change.** At wide zoom, Town Centers and armies now carry flags instead of bare badges.
+
+- **The marker:** a white line rises at 45° from the Town Center or the army, 100 pixels long. At its end is the seat's flag.
+- **The flag:** it is the flag from the seat's flag poles: the same cloth, colour and badge, baked from the same canvas. It folds with the same wind as the cloth shader, and only when graphics quality is High, like the 3-D flags.
+- **Armies:** their flag adds the military icon used everywhere else (⚔️) over the badge. The unit count sits beneath the flag.
+- **One size:** every flag is the same size. The count already says how big an army is.
+- **Reduced motion:** with reduced motion switched on, the flags hold still.
+
 ## Build 967: a bubble for every ring, and a tidier spectator bar (27 September 2026)
 
 **No rules change.**
