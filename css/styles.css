@@ -3044,3 +3044,37 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .lb-list.collapsed .lb-objective { display: none; }
 #intentBtn:not(.active) { opacity: 0.55; }
 .intent-bubble .intent-refused { color: #f0a080; font-weight: bold; }
+
+/* Broadcast mode (review #11): the operator's furniture goes, a scoreboard and lower
+   thirds come. The slate is the only flash, and it is skipped for reduced motion. */
+body.broadcast-mode #spectatorHUD, body.broadcast-mode #spectatorLeaderboard, body.broadcast-mode #aiDecisionLog,
+body.broadcast-mode #transcriptViewer, body.broadcast-mode #unitInfo, body.broadcast-mode #mmFog,
+body.broadcast-mode #mapToolsDock, body.broadcast-mode .lb-flyout { display: none !important; }
+.broadcast-board {
+    position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1001; pointer-events: none;
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
+    color: #eef3f8; font-size: 0.9em;
+}
+.broadcast-board .bb-clock { padding: 6px 12px; border-radius: 6px; background: rgba(10, 14, 30, 0.88); font-variant-numeric: tabular-nums; font-weight: 700; }
+.broadcast-board .bb-seat { padding: 6px 12px; border-radius: 6px; background: rgba(10, 14, 30, 0.88); border: 1px solid rgba(255, 255, 255, 0.12); white-space: nowrap; }
+.broadcast-board .bb-seat.out { opacity: 0.45; text-decoration: line-through; }
+.broadcast-board .bb-age { color: #9fb3c8; font-size: 0.86em; }
+.broadcast-board .bb-n { font-variant-numeric: tabular-nums; margin-left: 4px; }
+.broadcast-board .bb-advised { margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 0.8em; color: #1a1406; background: #e9c46a; }
+.broadcast-wonder {
+    position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 1001; pointer-events: none;
+    min-width: min(520px, calc(100vw - 32px)); padding: 10px 18px; border-radius: 8px; text-align: center;
+    color: #fff; background: rgba(10, 14, 30, 0.9); border: 2px solid var(--seat, #e9c46a); font-size: 1.15em; font-weight: 700;
+}
+.broadcast-wonder .bw-track { height: 8px; margin-top: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.broadcast-wonder .bw-fill { height: 100%; background: var(--seat, #e9c46a); }
+body.broadcast-mode .chronicle-caption { top: auto; bottom: 40px; left: 32px; transform: none; text-align: left; font-size: 1.1em; padding: 10px 18px; max-width: min(900px, calc(100vw - 64px)); border-left: 4px solid #4ecca3; }
+body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9c46a; }
+.broadcast-exit { position: fixed; top: 12px; right: 12px; z-index: 1002; opacity: 0.25; background: rgba(10, 14, 30, 0.8); color: #fff; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+.broadcast-exit:hover, .broadcast-exit:focus-visible { opacity: 1; }
+.broadcast-slate { position: fixed; left: 0; right: 0; top: 38%; height: 18%; z-index: 999; pointer-events: none; opacity: 0; background: linear-gradient(90deg, transparent, rgba(233, 196, 106, 0.35), transparent); }
+.broadcast-slate.go { animation: slate 0.6s ease-out 1; }
+@keyframes slate { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
+#broadcastBtn.active { color: #e9c46a; }
+.sum-vtt { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; }
+.sum-vtt input { width: 5em; }

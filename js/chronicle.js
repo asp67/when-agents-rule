@@ -54,8 +54,10 @@ class MatchChronicle {
         return Math.round(((g.clock && g.clock.matchMs) || 0) / 1000);
     }
 
+    // `t` is the match clock, which stands still while paused; `at` is the wall clock a
+    // video of the match runs on, which does not.
     emit(kind, fields, weight = 1) {
-        const e = Object.assign({ type: 'chronicle', kind, t: this.seconds(), weight }, fields);
+        const e = Object.assign({ type: 'chronicle', kind, t: this.seconds(), at: Date.now(), weight }, fields);
         this.entries.push(e);
         try {
             const tr = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;

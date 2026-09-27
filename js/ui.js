@@ -2595,9 +2595,11 @@ class UIManager {
         }
         const mmss = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
         // Under the status bar, whose height depends on the window's width.
+        // Under the status bar, whose height depends on the window's width. In broadcast
+        // mode the bar is gone and the caption is a lower third (CSS).
         const bar = document.querySelector('#spectatorHUD .spectator-statusbar');
         const below = bar ? bar.getBoundingClientRect().bottom : 0;
-        if (below > 0) el.style.top = Math.round(below + 8) + 'px';
+        el.style.top = below > 0 && !this.broadcastOn() ? Math.round(below + 8) + 'px' : '';
         el.dataset.weight = String(e.weight);
         el.innerHTML = '<span class="chr-t">' + mmss(e.t || 0) + '</span> ' + this.chronicleText(e);
         // Restart the fade for each caption.
@@ -3260,7 +3262,7 @@ class UIManager {
         this.chronicle = typeof MatchChronicle === 'function' ? new MatchChronicle(this.game) : null;
         this._chronicleQueue = [];
         if (this.chronicle) {
-            this.chronicle.subscribe(e => this.chronicleCaption(e));
+            this.chronicle.subscribe(e => { this.chronicleCaption(e); this.broadcastSlate(e); });
             this._spectatorIntervals.push(setInterval(() => { if (this.chronicle) this.chronicle.update(); }, 250));
         }
         this.refreshCaptionsButton();
@@ -3385,6 +3387,7 @@ class UIManager {
         clearTimeout(this._chronicleTimer); this._chronicleTimer = null; this._chronicleQueue = [];
         document.getElementById('chronicleCaption')?.remove();
         this.stopIntentOverlay();
+        if (this.broadcastOn()) this.toggleBroadcast(false);
         document.querySelector('.spectator-sound-caption')?.remove();
         document.body.classList.remove('spectator-mode');
         // Leave the arena with the minimap open again, so a campaign started next
@@ -3553,13 +3556,9 @@ class UIManager {
 
         // Wonder progress: show the furthest-along held Wonder among the AIs.
         const wEl = document.getElementById('arenaWonder');
+        if (this.broadcastOn()) this.renderBroadcast();
         if (wEl) {
-            const reqMs = (this.game.wonderRequired || 600) * 1000;
-            let lead = null, leadHold = 0;
-            players.forEach(ai => {
-                const holding = ai.buildings.some(b => b.isWonder && !b.underConstruction);
-                if (holding && (ai._wonderHold || 0) > leadHold) { leadHold = ai._wonderHold || 0; lead = ai; }
-            });
+            const { lead, leadHold, reqMs } = this.wonderLead();
             if (lead) {
                 const pct = Math.min(100, Math.round((leadHold / reqMs) * 100));
                 const civ = getCivilization(lead.civilization);
@@ -3570,6 +3569,131 @@ class UIManager {
                 wEl.style.display = 'none';
             }
         }
+    }
+
+    // The furthest-along held Wonder: who holds it, for how long, of how long needed.
+    wonderLead() {
+        const players = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        const reqMs = (this.game.wonderRequired || 600) * 1000;
+        let lead = null, leadHold = 0;
+        players.forEach(ai => {
+            const holding = ai.buildings.some(b => b.isWonder && !b.underConstruction);
+            if (holding && (ai._wonderHold || 0) > leadHold) { leadHold = ai._wonderHold || 0; lead = ai; }
+        });
+        return { lead, leadHold, reqMs };
+    }
+
+    // ---- Broadcast mode (review #11) ---------------------------------------------
+    // For a stream or a recording: the operator's controls go (decision log, advice,
+    // tempo, the inspect card), a scoreboard and lower-third captions come, and a held
+    // Wonder becomes a countdown in its seat's colour. Esc or the button brings the
+    // controls back. Nothing about the match changes.
+    broadcastOn() { return document.body.classList.contains('broadcast-mode'); }
+    toggleBroadcast(on = !this.broadcastOn()) {
+        document.body.classList.toggle('broadcast-mode', !!on);
+        const btn = document.getElementById('broadcastBtn');
+        if (btn) { btn.classList.toggle('active', !!on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+        if (on) {
+            if (!document.getElementById('broadcastBoard')) {
+                const board = document.createElement('div');
+                board.id = 'broadcastBoard'; board.className = 'broadcast-board';
+                const wonder = document.createElement('div');
+                wonder.id = 'broadcastWonder'; wonder.className = 'broadcast-wonder'; wonder.hidden = true;
+                const exit = document.createElement('button');
+                exit.id = 'broadcastExit'; exit.className = 'broadcast-exit'; exit.type = 'button';
+                exit.textContent = '\u{1F4FA}'; exit.title = t('spec.broadcastExit');
+                exit.setAttribute('aria-label', t('spec.broadcastExit'));
+                exit.onclick = () => this.toggleBroadcast(false);
+                document.body.append(board, wonder, exit);
+            }
+            this._broadcastKeys = e => { if (e.key === 'Escape') { e.preventDefault(); this.toggleBroadcast(false); } };
+            document.addEventListener('keydown', this._broadcastKeys, true);
+            this.renderBroadcast();
+        } else {
+            if (this._broadcastKeys) document.removeEventListener('keydown', this._broadcastKeys, true);
+            this._broadcastKeys = null;
+            ['broadcastBoard', 'broadcastWonder', 'broadcastExit', 'broadcastSlate'].forEach(id => document.getElementById(id)?.remove());
+        }
+        if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
+    }
+    // One pill per seat, in seat order: badge, name, age, army, workers, buildings, and
+    // how often a spectator's advice reached that model -- a broadcast must not hide that
+    // a model was coached.
+    renderBroadcast() {
+        const board = document.getElementById('broadcastBoard');
+        if (!board) return;
+        const g = this.game, ais = [...((g.aiManager && g.aiManager.aiPlayers) || [])].sort((a, b) => a.seat - b.seat);
+        const ctrls = (g.openAIAIManager && g.openAIAIManager.aiControllers) || [];
+        const clock = document.getElementById('arenaClock');
+        board.innerHTML = '<span class="bb-clock">' + this.escapeHtml(clock ? clock.textContent : '') + '</span>' + ais.map(ai => {
+            const ctrl = ctrls.find(c => c.id === ai.id);
+            const advised = (ctrl && ctrl.stats && ctrl.stats.advisedTurns) || 0;
+            const out = g.isPlayerEliminated(ai);
+            const mil = ai.units.filter(u => u.type !== 'worker' && u.health > 0).length, wk = ai.units.filter(u => u.type === 'worker' && u.health > 0).length;
+            return '<span class="bb-seat' + (out ? ' out' : '') + '">' + this.chronicleSeatHtml(ai.id)
+                + ' <span class="bb-age">' + this.escapeHtml(this.getAgeName(ai.age)) + '</span>'
+                + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbArmy')) + '">\u2694\uFE0F ' + mil + '</span>'
+                + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbWorkers')) + '">\u{1F477} ' + wk + '</span>'
+                + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbBuildings')) + '">\u{1F3DB}\uFE0F ' + ai.buildings.filter(b => b.health > 0).length + '</span>'
+                + (advised ? ' <span class="bb-advised" title="' + this.escapeHtml(t('sum.coachedTip')) + '">' + this.escapeHtml(t('spec.bbAdvised', { n: advised })) + '</span>' : '')
+                + '</span>';
+        }).join('');
+        const w = document.getElementById('broadcastWonder');
+        if (!w) return;
+        const { lead, leadHold, reqMs } = this.wonderLead();
+        w.hidden = !lead;
+        if (!lead) return;
+        // Under the scoreboard, which wraps to more rows on a narrow screen.
+        const below = board.getBoundingClientRect().bottom;
+        if (below > 0) w.style.top = Math.round(below + 8) + 'px';
+        const left = Math.max(0, Math.ceil((reqMs - leadHold) / 1000));
+        const b = typeof getTeamBadge === 'function' ? getTeamBadge(lead.seat) : null;
+        const color = this.intentLayer ? this.intentLayer.colorOf(lead) : ((b && b.fill) || '#e9c46a');
+        w.style.setProperty('--seat', color);
+        w.innerHTML = '<div class="bw-line">\u{1F3DB}\uFE0F ' + t('spec.bbWonder', { who: this.chronicleSeatHtml(lead.id),
+            t: Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') }) + '</div>'
+            + '<div class="bw-track"><div class="bw-fill" style="width:' + Math.min(100, Math.round(100 * leadHold / reqMs)) + '%"></div></div>';
+    }
+    // A decisive moment gets a brief band of light across the screen: never more than
+    // one every third of a second, and none at all for a viewer who asked for less motion.
+    broadcastSlate(e) {
+        if (!this.broadcastOn() || !e || e.weight < 3) return;
+        if (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+        const now = Date.now();
+        if (now - (this._lastSlate || 0) < 334) return;
+        this._lastSlate = now;
+        let el = document.getElementById('broadcastSlate');
+        if (!el) { el = document.createElement('div'); el.id = 'broadcastSlate'; el.className = 'broadcast-slate'; el.setAttribute('aria-hidden', 'true'); document.body.appendChild(el); }
+        el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+    }
+
+    // WebVTT captions for a recording of the match: the chronicle's notable entries on
+    // the wall clock from the match's start, shifted by the recording's own offset
+    // (seconds of video before the match began). Plain text; no markup reaches a player.
+    chronicleVtt(entries, startAt, offsetSec = 0) {
+        const stamp = s => { s = Math.max(0, s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), sec = s % 60;
+            return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + sec.toFixed(3).padStart(6, '0'); };
+        const plain = html => { const d = document.createElement('div'); d.innerHTML = html; return (d.textContent || '').replace(/\s+/g, ' ').trim(); };
+        const shown = (entries || []).filter(e => e.weight >= 2 && Number.isFinite(e.at));
+        const cues = shown.map((e, i) => {
+            const start = (e.at - startAt) / 1000 + offsetSec;
+            const next = shown[i + 1] ? (shown[i + 1].at - startAt) / 1000 + offsetSec : Infinity;
+            const end = Math.min(start + 5, Math.max(start + 1, next));
+            return stamp(start) + ' --> ' + stamp(end) + '\n' + plain(this.chronicleText(e));
+        });
+        return 'WEBVTT\n\n' + cues.join('\n\n') + (cues.length ? '\n' : '');
+    }
+    downloadChronicleVtt() {
+        const chr = this.chronicle;
+        if (!chr || !chr.entries.length) return;
+        const input = document.getElementById('vttOffset');
+        const offset = input ? Number(String(input.value).replace(',', '.')) || 0 : 0;
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        const blob = new Blob([this.chronicleVtt(chr.entries, this.arenaStartTime || chr.entries[0].at, offset)], { type: 'text/vtt' });
+        const a = document.createElement('a'), url = URL.createObjectURL(blob);
+        a.href = url; a.download = ((rec && rec.matchId) || 'match') + '-captions.vtt';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
     }
 
     // Localized display name for a decision-log id (techId 'stable', unitType
@@ -5323,6 +5447,9 @@ class UIManager {
         if (btn) btn.style.display = show ? '' : 'none';
         const watch = document.getElementById('summaryAnalyzeBtn');
         if (watch) watch.style.display = show ? '' : 'none';
+        // Captions for a recording: whenever the chronicle told something worth a caption.
+        const vtt = document.getElementById('summaryVtt');
+        if (vtt) vtt.style.display = (!snapshot && this.chronicle && this.chronicle.entries.some(e => e.weight >= 2)) ? '' : 'none';
         if (note) {
             note.style.display = show ? '' : 'none';
             if (show) note.textContent = t('sum.transcriptNote', { turns: rec.turnsRecorded() });

@@ -6,6 +6,18 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 957: broadcast mode and captions for recordings (27 September 2026)
+
+No change in what happens in a match or what a model is told.
+
+- **Broadcast mode:** the **📺** button in the arena, left with Esc. It hides the operator's controls: the decision log, leaderboard, advice, tempo and the inspect card. In their place:
+  - a scoreboard with every seat's age, army, workers and buildings;
+  - an **advised ×n** badge on any seat a spectator's advice reached;
+  - the chronicle as lower-third captions;
+  - a held Wonder as a large countdown in its seat's colour.
+- **Decisive moments:** a brief band of light, at most one every third of a second, and none when the viewer's system asks for reduced motion.
+- **Captions for recordings:** the results screen offers the chronicle as WebVTT captions (**🎬 Captions (.vtt)**), timed on the wall clock (which a video runs on) and shifted by the recording's own offset.
+
 ## Build 956: the intent layer (27 September 2026)
 
 No change in what happens in a match or what a model is told. In the arena, the **🎯 Intent** button (on by default, remembered) draws each model's newest orders over the 3-D view. It reads the turn logs only.

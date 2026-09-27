@@ -6,7 +6,7 @@
     <title>When Agents Rule</title>
     <link rel="icon" href="favicon.ico?v=793" sizes="16x16 32x32 48x48 64x64 256x256">
     <link rel="icon" href="favicon.svg?v=793" type="image/svg+xml" sizes="any">
-    <link rel="stylesheet" href="css/styles.css?v=956">
+    <link rel="stylesheet" href="css/styles.css?v=957">
     <link rel="stylesheet" href="css/antiquity.css?v=932">
     <!-- ?diag=1 -- the console, on the page.
 
@@ -392,6 +392,7 @@
                     </div>
                 </span>
                 <button class="sb-end" id="captionsBtn" onclick="game.ui.toggleChronicleCaptions()" aria-pressed="true" data-i18n-title="spec.captionsTitle" title="Captions: what happens in the match">CC</button>
+                <button class="sb-end" id="broadcastBtn" onclick="game.ui.toggleBroadcast()" aria-pressed="false" data-i18n-title="spec.broadcastTitle" title="Broadcast mode: scoreboard and captions, no operator controls">📺</button>
                 <button class="sb-end" id="intentBtn" onclick="game.ui.toggleIntentLayer()" aria-pressed="true" data-i18n="spec.intent" data-i18n-title="spec.intentTitle" title="Show what each model just ordered, and why">🎯 Intent</button>
                 <button class="sb-end" id="actionCamBtn" onclick="game.toggleActionCam()" data-i18n="spec.actionCam" data-i18n-title="spec.actionCamTitle" title="Kamera folgt automatisch den Kämpfen">🎬 Auto</button>
                 <button class="sb-end" id="arenaSnapshotBtn" onclick="game.toggleArenaSnapshot()" data-i18n="spec.evaluate" data-i18n-title="spec.evaluateTitle" title="Live-Zwischenstand ansehen (Spiel läuft weiter)">Auswertung ▸</button>
@@ -655,6 +656,8 @@
                 <button class="menu-btn back-btn" id="summaryAnalyzeBtn" onclick="game.ui.watchInAnalyzer()" data-i18n="sum.analyze" data-i18n-title="sum.analyzeTip" title="" style="display:none">🎞️ Im Analyzer ansehen</button>
                 <button class="menu-btn back-btn" id="summarySaveBtn" onclick="game.ui.downloadArenaResults()" data-i18n="sum.saveResults">💾 Ergebnisse speichern</button>
                 <button class="menu-btn back-btn" id="summaryTranscriptBtn" onclick="game.ui.downloadTranscripts()" data-i18n="sum.saveTranscripts">🗒️ Transkripte speichern</button>
+                <span class="sum-vtt" id="summaryVtt" style="display:none"><label><span data-i18n="sum.vttOffset">Video offset (s)</span> <input type="number" id="vttOffset" value="0" step="0.1"></label>
+                    <button class="menu-btn back-btn" onclick="game.ui.downloadChronicleVtt()" data-i18n="sum.saveVtt" data-i18n-title="sum.saveVttTip" title="">🎬 Captions (.vtt)</button></span>
                 <button class="menu-btn back-btn" id="summaryMenuBtn" onclick="game.ui.leaveArenaSummary(true)" data-i18n="sum.mainMenu">Hauptmenü</button>
             </div>
         </div>
@@ -676,7 +679,7 @@
     <script src="js/engine/atmosphere.js?v=824"></script>
     <script src="js/engine/grass.js?v=797"></script>
     <script src="js/engine/gamerenderer.js?v=941"></script>
-    <script src="js/i18n.js?v=956"></script>
+    <script src="js/i18n.js?v=957"></script>
     <script src="js/civilizations.js?v=911"></script>
     <script src="js/buildings.js?v=811"></script>
     <script src="js/units.js?v=937"></script>
@@ -693,10 +696,10 @@
     <script src="js/input.js?v=862"></script>
     <script src="js/director.js?v=827"></script>
     <script src="js/audio.js?v=907"></script>
-    <script src="js/chronicle.js?v=955"></script>
+    <script src="js/chronicle.js?v=957"></script>
     <script src="js/intent-layer.js?v=956"></script>
-    <script src="js/ui.js?v=956"></script>
-    <script src="js/game.js?v=956"></script>
+    <script src="js/ui.js?v=957"></script>
+    <script src="js/game.js?v=957"></script>
     <script src="js/boot.js?v=940"></script>
     <script src="js/standing-orders.js?v=937"></script>
     <script src="js/showcase.js?v=868"></script>

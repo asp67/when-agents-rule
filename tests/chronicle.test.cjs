@@ -124,3 +124,27 @@ test('the step that ends the match is told too: the elimination that ended it', 
     assert.ok(kinds.includes('elimination'), kinds.join());
     assert.equal(kinds.filter(k => k === 'elimination').length, 1);
 });
+
+test('captions for a recording: WebVTT on the wall clock, shifted by the offset, plain text only', async () => {
+    const { m } = await board();
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8') + '\n;globalThis.__UI = UIManager;', m.context);
+    const ui = Object.create(m.context.__UI.prototype);
+    ui.game = m.game;
+    // Markup in, text out, as a browser's textContent does.
+    m.context.document.createElement = () => { let text = ''; return { set innerHTML(h) { text = String(h).replace(/<[^>]*>/g, ''); }, get textContent() { return text; } }; };
+    const [a, b] = m.seats;
+    const entries = [
+        { kind: 'contact', seats: [a.id, b.id], weight: 2, at: 61000, t: 61 },
+        { kind: 'clash', seats: [a.id, b.id], weight: 1, at: 62000, t: 62 },       // detail: no caption
+        { kind: 'elimination', seats: [b.id], weight: 3, at: 64000, t: 64 },
+    ];
+    const vtt = ui.chronicleVtt(entries, 1000, 7.5);
+    const lines = vtt.split('\n');
+    assert.equal(lines[0], 'WEBVTT');
+    // 60 s after the start, plus 7.5 s of video before it; the first cue ends where the next begins.
+    assert.equal(lines[2], '00:01:07.500 --> 00:01:10.500');
+    assert.equal(lines[5], '00:01:10.500 --> 00:01:15.500');
+    assert.equal(vtt.split('-->').length - 1, 2, 'the clash is a detail, not a caption');
+    assert.ok(!/[<>]/.test(vtt.replace(/-->/g, '')), 'no markup reaches a player');
+    assert.equal(ui.chronicleVtt([], 0), 'WEBVTT\n\n');
+});
