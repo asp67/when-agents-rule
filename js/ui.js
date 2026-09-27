@@ -3808,7 +3808,14 @@ class UIManager {
             const r = ai.resources || {}, bank = k => Math.floor(r[k] || 0);
             const sub = '<span class="bb-sub"><span class="bb-civ">' + this.escapeHtml(this.anCivName(ai.civilization)) + '</span>'
                 + ' <span class="bb-n">\u{1F356} ' + bank('food') + '</span> <span class="bb-n">\u{1F332} ' + bank('wood') + '</span>'
-                + ' <span class="bb-n">\u{1FAA8} ' + bank('stone') + '</span> <span class="bb-n">\u{1F947} ' + bank('gold') + '</span></span>';
+                + ' <span class="bb-n">\u{1FAA8} ' + bank('stone') + '</span> <span class="bb-n">\u{1F947} ' + bank('gold') + '</span>'
+                // Thinking: the leaderboard's pulsing dot, while this seat's model has a
+                // request in flight. Bottom right of the card. The board is rebuilt every
+                // tick, which would restart the pulse each time; a delay set from the clock
+                // puts every new dot at the phase the last one had reached.
+                + (ctrl && ctrl.pending ? '<span class="bb-think" title="' + this.escapeHtml(t('spec.thinking')) + '"><span class="dot" style="animation-delay:-'
+                    + (Date.now() % 1100) + 'ms"></span></span>' : '')
+                + '</span>';
             return '<span class="bb-seat' + (out ? ' out' : '') + '"><span class="bb-main">' + this.chronicleSeatHtml(ai.id)
                 + ' <span class="bb-age">' + this.escapeHtml(this.getAgeName(ai.age)) + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbArmy')) + '">\u2694\uFE0F ' + mil + '</span>'

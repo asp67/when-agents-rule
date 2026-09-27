@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 980: a red battle wave; thinking on the broadcast cards (27 September 2026)
+
+**No rules change.**
+
+- **Battle ping:** where fighting starts, a red wave now runs out and fades, in the style of the age-up wave: a glowing ring with a warmer one inside it. It replaces the flat textured ring. It still shows through the fog, in every lighting style, and is a still glow with reduced motion.
+- **Broadcast cards:** a seat whose model is thinking shows the leaderboard's pulsing green dot at the bottom right of its card. The pulse keeps its phase across the board's once-a-second rebuild.
+
 ## Build 979: Re-Simulate follows the match; one row of results buttons (27 September 2026)
 
 **No rules change.** The Re-Simulate mode of the transcript analyzer, and the results screen:

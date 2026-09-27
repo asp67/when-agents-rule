@@ -1044,11 +1044,11 @@
         spawnBattleRing(x, z) {
             let r = this._rings.find(q => !q.active);
             if (!r) {
-                if (this._rings.length >= 8) return;
+                if (this._rings.length >= 12) return;
                 r = {};
                 this._rings.push(r);
             }
-            Object.assign(r, { active: true, t: 0, dur: 0.9, x, z });
+            Object.assign(r, { active: true, t: 0, dur: 1.6, x, z });   // as long as a wave needs to run out
         }
 
         flashHit(entity) {
@@ -2040,18 +2040,23 @@
                 }
             }
 
-            // battle-ring pings (drawn after fog so they show through it)
+            // Battle pings, drawn after the fog so they show through it. The age-up wave's
+            // look in red: a glowing ring that runs out and fades, with a warmer one inside
+            // it -- the flat textured ring before it read as a sticker on the ground. Kept in
+            // every lighting style (it marks where fighting starts); a still glow for a
+            // viewer who asked for less motion.
             this._ringEntries = [];
             for (const r of this._rings) {
                 if (!r.active) continue;
                 r.t += dt;
                 const k = r.t / r.dur;
                 if (k >= 1) { r.active = false; continue; }
-                const s = (1 + k * 9);
-                this._ringEntries.push({
-                    buf: ringBuf, tex: this.tex.ring, tint: [1, 0.35, 0.24],
-                    model: m3.multiply(m3.translation(r.x, 0.7, r.z), m3.scaling(s, 1, s))
-                });
+                const fade = Math.sin(Math.PI * Math.min(1, k * 1.4)) * (1 - k);
+                const s = this._reducedMotion ? 8 : 2 + 16 * Math.sqrt(k);
+                this._ringEntries.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.16, 0.1], alpha: 0.65 * fade, additive: true,
+                    model: m3.multiply(m3.translation(r.x, 0.7, r.z), m3.scaling(s, 1, s)) });
+                this._ringEntries.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.32, 0.2], alpha: 0.35 * fade, additive: true,
+                    model: m3.multiply(m3.translation(r.x, 0.72, r.z), m3.scaling(s * 0.6, 1, s * 0.6)) });
             }
 
             // building placement ghost
