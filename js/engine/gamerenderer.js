@@ -1592,6 +1592,31 @@
             const lightTime=this.game?._showcaseCivilization?(this.game._showcaseLightSeconds||0):ambientTime;
             const lampNight=window.EngineAtmosphere.daylight(lightTime,[1,1,1],[1,1,1],this._theme).night;
             let hearths=0, courtyards=0, burning=0;
+            // An age-up wave (review #12): the moment the director starts its comparison
+            // sweep, a golden ring runs out from that seat's Town Center. Not in Simple
+            // lighting and not in a recording; a still glow for a viewer who asked for less
+            // motion.
+            if (this.visualStyle !== 'classic' && !this.replayMode && this.game?.aiManager) {
+                const ages = this._ageSeen || (this._ageSeen = new Map());
+                for (const ai of this.game.aiManager.aiPlayers || []) {
+                    const was = ages.get(ai.id);
+                    ages.set(ai.id, ai.age);
+                    if (was === undefined || was === ai.age) continue;
+                    const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
+                    if (tc) (this._ageWaves || (this._ageWaves = [])).push({ x: tc.x, z: tc.z, born: now,
+                        tint: this._tintOf(window.WarIdentity ? WarIdentity.color(ai.id, ai.civilization, ai.seat) : 0xe9c46a) });
+                }
+                this._ageWaves = (this._ageWaves || []).filter(w => now - w.born < 2400);
+                for (const w of this._ageWaves) {
+                    const k = (now - w.born) / 2400, fade = Math.sin(Math.PI * Math.min(1, k * 1.4)) * (1 - k);
+                    if (this._cull(w.x, w.z, 40)) continue;
+                    const r = this._reducedMotion ? 10 : 4 + 38 * Math.sqrt(k);
+                    dl.blended.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.82, 0.4], alpha: 0.55 * fade, additive: true,
+                        model: m3.multiply(m3.translation(w.x, 0.08, w.z), m3.scaling(r, 1, r)) });
+                    dl.blended.push({ buf: ringBuf, tex: this.tex.mote, tint: w.tint, alpha: 0.35 * fade, additive: true,
+                        model: m3.multiply(m3.translation(w.x, 0.1, w.z), m3.scaling(r * 0.6, 1, r * 0.6)) });
+                }
+            }
             if (this.visualStyle === 'film' && this._rubble.length) {
                 const boxBuf = this._buf('box', [1, 1, 1]);
                 this._rubble = this._rubble.filter(r => ambientTime - r.born < EngineFx.RUBBLE_SECONDS && ambientTime >= r.born);

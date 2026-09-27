@@ -13,7 +13,7 @@ function harness(storage=new Map()){
         async resume(){this.state='running';}async suspend(){this.state='suspended';}
     }
     const sessionStorage={getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)};
-    const scope=vm.createContext({window:{AudioContext:Context},document,sessionStorage,localStorage:{getItem(){return null;},setItem(){}},console,Math:Object.create(Math)});
+    const scope=vm.createContext({window:{AudioContext:Context},document,sessionStorage,localStorage:{getItem(){return null;},setItem(){}},console,Math:Object.create(Math),setTimeout,clearTimeout});
     scope.Math.random=()=>{throw Error('Audio must not consume gameplay randomness');};
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/audio.js'),'utf8')+'\nthis.WarAudio=WarAudio;',scope);
     const game={gameStarted:true,pauseState:'running',spectatorMode:false,fogOfWar:{isPositionCurrentlyVisible:()=>visible},renderer:{cameraTarget:{x:0,z:0},_halfH:65,_yaw:0,units:[],buildings:[]}};
@@ -328,6 +328,7 @@ test('walking and mounted footsteps use 37.5 percent gain on every surface witho
 
 test('wind uses half the prior gain in every biome and keeps zoom attenuation',async()=>{
  const {sound:s,game}=harness();await s.setEnabled(true);
+ await new Promise(r=>setTimeout(r,0));   // the ambience loops follow the unmute by a tick
  for(const [theme,gain] of [['summer',.03],['winter',.05],['desert',.04]]){
   game.renderer._theme=theme;
   for(const [zoom,scale] of [[65,1],[200,.5]]){

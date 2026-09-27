@@ -3059,3 +3059,11 @@ if (typeof window !== 'undefined') {
         applyI18n();
     });
 }
+// Review #12: work and movement volumes, the mute key, and two new announcements.
+const I18N_AUDIO_12 = {
+    en: {'audio.work':'Work','audio.movement':'Footsteps','audio.onNotice':'Sound on (M to mute).','audio.offNotice':'Sound off (M to unmute).','audio.caption.ageUp':'{who} reaches the {age}','audio.caption.underAttack':'Your people are under attack'},
+    de: {'audio.work':'Arbeit','audio.movement':'Schritte','audio.onNotice':'Ton an (M schaltet stumm).','audio.offNotice':'Ton aus (M schaltet ein).','audio.caption.ageUp':'{who} erreicht die {age}','audio.caption.underAttack':'Deine Leute werden angegriffen'},
+    es: {'audio.work':'Trabajo','audio.movement':'Pasos','audio.onNotice':'Sonido activado (M para silenciar).','audio.offNotice':'Sonido desactivado (M para activar).','audio.caption.ageUp':'{who} alcanza la {age}','audio.caption.underAttack':'Tu gente está siendo atacada'},
+    zh: {'audio.work':'劳作','audio.movement':'脚步','audio.onNotice':'声音已开启（按 M 静音）。','audio.offNotice':'声音已关闭（按 M 开启）。','audio.caption.ageUp':'{who} 进入{age}','audio.caption.underAttack':'你的人正在遭受攻击'}
+};
+Object.keys(I18N_AUDIO_12).forEach(l => Object.assign(I18N[l], I18N_AUDIO_12[l]));

@@ -6,6 +6,19 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 964: sound without the freeze, and an age-up wave (27 September 2026)
+
+No change in what happens in a match or what a model is told.
+
+- **No freeze on unmute:** turning sound on no longer freezes the page for about 3.4 s. Previously all 116 sounds were synthesized on that click. Each is now made the first time it plays, or in idle time, from the exact random state it used to start from. Every sound is sample-identical to before, and `tests/audio-lazy.test.cjs` checks it. The wind and fire loops start a moment after the click.
+- **Announcements:** they play their four variants in turn instead of always the first.
+- **New sounds:**
+  - an age-up stinger;
+  - in Campaign, a low horn when your own units or buildings are actually hit (at most once in twenty seconds; a sighting is not an attack).
+- **Footsteps habituate:** a long march grows quieter, down to half, and recovers after a few seconds of quiet. Work sounds and everything else are unaffected.
+- **Volume:** work sounds and footsteps have their own sliders (default 100 %, so the mix is unchanged). The speaker shows a cross while muted, and **M** mutes and unmutes anywhere except while typing.
+- **The age-up wave:** when a seat reaches a new age, a golden ring runs out from its Town Center (Atmospheric and Cinematic lighting; a still glow for reduced motion).
+
 ## Build 963: the strategic zoom layer (27 September 2026)
 
 No change in what happens in a match or what a model is told.

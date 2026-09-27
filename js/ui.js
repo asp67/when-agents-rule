@@ -308,12 +308,13 @@ class UIManager {
         box.querySelector('select').value = this.game.renderer.graphicsQuality || 'balanced';
         box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
         if (this.game.sound) {
+            this.wireMuteKey();
             const levels = this.game.sound.levels;
             box.insertAdjacentHTML('beforeend', `<details class="camera-more audio-controls">
-                <summary title="${esc(t('audio.title'))}" aria-label="${esc(t('audio.title'))}">${svg('M3 9h4l5-4v14l-5-4H3z M16 8a6 6 0 0 1 0 8 M19 5a10 10 0 0 1 0 14')}</summary>
+                <summary class="audio-summary" title="${esc(t('audio.title') + ' (M)')}" aria-label="${esc(t('audio.title'))}">${svg(this.soundIconPath())}</summary>
                 <div class="camera-popover audio-popover">
                     <label>${esc(t('audio.mute'))}<input type="checkbox" ${!this.game.sound.enabled?'checked':''} onchange="game.ui.toggleSound(this)"></label>
-                    ${['master','ambience','effects'].map(key=>`<label>${esc(t('audio.'+key))}<input aria-label="${esc(t('audio.'+key))}" type="range" min="0" max="100" value="${Math.round(levels[key]*100)}" oninput="game.sound.setLevel('${key}',Number(this.value)/100)"></label>`).join('')}
+                    ${['master','ambience','effects','work','movement'].map(key=>`<label>${esc(t('audio.'+key))}<input aria-label="${esc(t('audio.'+key))}" type="range" min="0" max="100" value="${Math.round(levels[key]*100)}" oninput="game.sound.setLevel('${key}',Number(this.value)/100)"></label>`).join('')}
                     <p class="audio-note">${esc(t('audio.note'))}</p><p class="audio-error" role="status"></p>
                 </div></details>`);
         }
@@ -324,7 +325,35 @@ class UIManager {
         input.disabled = true;
         try { await this.game.sound.setEnabled(!input.checked); error.textContent = ''; }
         catch (_) { error.textContent = t('audio.unavailable'); }
-        finally { input.checked = !this.game.sound.enabled; input.disabled = false; }
+        finally { input.checked = !this.game.sound.enabled; input.disabled = false; this.refreshSoundIcon(); }
+    }
+
+    // The speaker says whether sound is on: waves when it plays, a cross when muted.
+    soundIconPath() {
+        return this.game.sound && this.game.sound.enabled
+            ? 'M3 9h4l5-4v14l-5-4H3z M16 8a6 6 0 0 1 0 8 M19 5a10 10 0 0 1 0 14'
+            : 'M3 9h4l5-4v14l-5-4H3z M16 9l6 6 M22 9l-6 6';
+    }
+    refreshSoundIcon() {
+        document.querySelectorAll('.audio-summary path').forEach(p => p.setAttribute('d', this.soundIconPath()));
+        document.querySelectorAll('.audio-popover input[type="checkbox"]').forEach(c => { c.checked = !(this.game.sound && this.game.sound.enabled); });
+    }
+    // M mutes and unmutes, wherever the game is, except while typing (review #12).
+    wireMuteKey() {
+        if (this._muteKeyWired) return;
+        this._muteKeyWired = true;
+        document.addEventListener('keydown', e => {
+            if ((e.key !== 'm' && e.key !== 'M') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+            const el = e.target;
+            if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+            const sound = this.game.sound;
+            if (!sound) return;
+            e.preventDefault();
+            sound.setEnabled(!sound.enabled)
+                .then(() => this.showNotice(t(sound.enabled ? 'audio.onNotice' : 'audio.offNotice'), 'info'),
+                      () => this.showNotice(t('audio.unavailable'), 'error'))
+                .finally(() => this.refreshSoundIcon());
+        });
     }
 
     setGraphicsQuality(value) {
@@ -2664,7 +2693,7 @@ class UIManager {
     showSpectatorSoundCaption(event) {
         if(!this.game.spectatorMode)return;
         // What the chronicle tells, it tells whether or not sound is on; not twice.
-        if(this.captionsOn()&&['elimination','warning','wonderLost'].includes(event.kind))return;
+        if(this.captionsOn()&&['elimination','warning','wonderLost','ageUp'].includes(event.kind))return;
         const civ=typeof getCivilization==='function'?getCivilization(event.civilization):null;
         const message=t('audio.caption.'+event.kind,{
             who:civ?tg(civ.name):(event.civilization||''),
