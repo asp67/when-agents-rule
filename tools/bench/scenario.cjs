@@ -29,6 +29,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createMatch } = require('./realm.cjs');
+const { classify } = require('./taxonomy.cjs');
 
 const SCHEMA = 'war-scenario-v1';
 const ROUND_MS = 10000;
@@ -237,6 +238,11 @@ async function play(scenario, variant, policy, options = {}) {
     const ep = await begin(scenario, variant, options);
     const { inst, realm, mgr, subjectController: cs, rivalController: cr, world } = ep;
     const log = [];
+    // Each command's outcome code, as the executor drains it for the transcript. Read
+    // by wrapping the drain on this episode's manager; nothing it does changes.
+    let heard = [];
+    const take = mgr.takeOutcomes.bind(mgr);
+    mgr.takeOutcomes = c => { const list = take(c); if (c === cs) heard.push(...list); return list; };
     let outcome = null, round = 0;
     for (round = 1; round <= inst.rounds && !outcome; round++) {
         const state = mgr.buildGameStateJSON(cs);
@@ -250,8 +256,10 @@ async function play(scenario, variant, policy, options = {}) {
         const subjectActs = () => {
             if (!commands.length && envelope.objective === undefined && envelope.plan === undefined) { entry.results = null; return; }
             cs.lastActionResult = null;
+            heard = [];
             mgr.executeTurn(cs, envelope);
             entry.results = cs.lastActionResult;
+            entry.outcomes = heard.map(o => ({ action: o.action, code: o.code, verdict: o.verdict, class: classify(o) }));
         };
         const rivalActs = () => { for (const o of rivalOrders) { mgr.executeAction(cr, { action: o.action, params: o.params }); entry.rival.push(cr.lastActionResult); } };
         if (round % 2) { rivalActs(); subjectActs(); } else { subjectActs(); rivalActs(); }
