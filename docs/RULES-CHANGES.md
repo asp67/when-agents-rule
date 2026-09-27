@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 977: longer world time per round (27 September 2026)
+
+**No rules change.** The lockstep setting ("world time per round") offers 30, 45 and 60 seconds as well as 1 to 20. The game already accepted slices up to 60 s; only the choices were missing.
+
 ## Build 976: smaller strategic flags, softer lines (27 September 2026)
 
 **No rules change.** The strategic map's flags are 20 % smaller again, and their lines, with their shadows and foot dots, are drawn at 50 % opacity.
