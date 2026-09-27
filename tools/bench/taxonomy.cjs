@@ -24,7 +24,7 @@ const CLASSES = Object.freeze({
         'laneDuplicateAge', 'laneDuplicateBuilding', 'laneDuplicateTech', 'maxAge', 'missingPrereq',
         'noBuildingDestroy', 'noBuildingTrains', 'noDamagedNear', 'noFinishedFarms', 'noMilitaryAttack',
         'noMilitaryMove', 'noTCPlacement', 'noTCTrain', 'noTCWorkers', 'noUnitDelete', 'noUnitExplore',
-        'noWorkersBuild', 'noWorkersForFarms', 'noWorkersReassign', 'noWorkersRepair', 'notDiscovered',
+        'noWorkersBuild', 'noWorkersForFarms', 'noWorkersReassign', 'noWorkersRepair', 'noWorkersScouting', 'notDiscovered',
         'nothingToRepair', 'populationHardCap', 'populationLimit', 'refuseDestroyLastTC', 'repairFailed',
         'researchedElsewhere', 'techNeedsAge', 'unitBuildingNotBuilt', 'unitBuildingNotUnlocked', 'unitNeedsAge'],
     contended: ['assignAllCarrying', 'assignFromRaced', 'assignIdleFighting', 'assignIdleRaced', 'laneResearchBusy',

@@ -6,6 +6,22 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 974: a scout sent this turn stays sent (27 September 2026)
+
+**A rules and harness change.** Take a worker an explore sent earlier in the same turn. A later command of that turn no longer takes it back:
+
+- **Gathering:** `assign_workers` without `from` no longer picks it.
+- **Farms:** manning farms no longer picks it.
+- **Building:** a builder is no longer borrowed from it (`pickBuilder` takes a `skip` test; only the harness passes one).
+
+**Why:** the explore had already answered "OK - Sent your worker #N". Taking that worker back one command later meant the log showed a scout that never left. Replaying the saved matches of 27 September found this once (turn 21, 20:14 match). The default triage took "1 from wood, 1 scouting", and that scout had been sent one command earlier. A second explore already refused a worker sent earlier in the turn; now every command does.
+
+**Unchanged:** a scout sent in an earlier turn is still the last resort it was.
+
+**A new refusal:** when only this turn's scouts are left, the refusal says so, instead of blaming builders and fighters. Its code, `noWorkersScouting`, counts as a constraint in the Bench taxonomy, like `assignIdleTaken`: the seat sent that scout itself and could have counted.
+
+**Unaffected:** the golden traces never hit this case, so they are unchanged.
+
 ## Build 973: arrows to the end, bubbles along the path, flags that glide (27 September 2026)
 
 **No rules change.**

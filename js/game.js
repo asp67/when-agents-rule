@@ -3479,6 +3479,7 @@ class Game {
         for (const u of workers) {
             const rank = this.workerPullRank(owner, u);
             if (rank === Infinity) continue;   // building or fighting: never pulled
+            if (opts.skip && opts.skip(u)) continue;   // the caller's own exclusions
             const walk = WarMath.hypot(u.x - site.x, u.z - site.z) / (((u.speed || 1) * 3) || 3);
             const cost = walk + (PULL_SECS[rank] || 0);
             if (cost < bestCost) { bestCost = cost; best = u; bestRank = rank; }

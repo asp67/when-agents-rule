@@ -7167,10 +7167,16 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // and returns to its old task afterwards. Without it, LLM players whose
         // workers were all gathering had their builds rejected while rule-based
         // rivals borrowed freely — an unfair asymmetry between controller types.
-        const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true });
+        const justSent = this.sentToScoutThisTurn(ai);
+        const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true, skip: justSent });
         if (pick.error === 'no_workers') {
             this.outcome('log.out.noWorkersBuild', { buildingType });
             return `[ERROR] You have no workers to build ${buildingType}.`;
+        }
+        const scoutsKept = ai.units.filter(u => u.type === 'worker' && u.health > 0 && justSent(u)).length;
+        if (pick.error === 'no_idle' && scoutsKept) {
+            this.outcome('log.out.noWorkersScouting', { n: scoutsKept });
+            return `[ERROR] ${buildingType}: no worker available. ${scoutsKept} ${scoutsKept === 1 ? 'was' : 'were'} sent to scout earlier this turn and ${scoutsKept === 1 ? 'is' : 'are'} not pulled back; the rest are constructing or fighting.`;
         }
         if (pick.error === 'no_idle') {
             this.outcome('log.out.noWorkerIdleBuild', { buildingType });
@@ -7889,6 +7895,24 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         return c ? c.turnCount : -1;
     }
 
+    // A unit an explore sent earlier in THIS turn. The explore has already told the model
+    // "OK - Sent your worker #N", so a later command of the same reply must not quietly
+    // take that worker back: not to build (pickBuilder), not to gather or man a farm
+    // (assign_workers). Measured on 27 Sep 2026: explore, explore, then assign_workers
+    // without "from" -- the default triage took "1 from wood, 1 scouting", the scout
+    // sent one command earlier, which never left the base while the log said it had.
+    // The same rule pickScout already applies to a second explore. A scout sent in an
+    // EARLIER turn stays the last resort it always was.
+    //
+    // Scored like assignIdleTaken, not forgiven: the seat sent that scout itself earlier
+    // in the same reply and could have counted (tools/bench/taxonomy.cjs: constraint).
+    sentToScoutThisTurn(ai) {
+        const turn = this._turnOf(ai);
+        // Only a unit an explore actually marked: one never sent has no _exploreTurn,
+        // and must not match a seat whose turn is not a number.
+        return u => u._exploreTurn != null && u._exploreTurn === turn;
+    }
+
     // A reply may carry three explore commands. pickScout used to answer all three with
     // the SAME unit -- best scout, then best scout again -- so command 2 quietly
     // retargeted the unit command 1 had just sent west, and command 3 retargeted it
@@ -8062,11 +8086,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Never cannibalize a farm to feed a farm, and never take a builder or a
         // fighter — the same exclusions the resource path applies.
         const isFighting = u => u.isAttacking || u.attackTarget || u.attackMove;
+        const justSent = this.sentToScoutThisTurn(ai);
         const candidates = ai.units.filter(u =>
             u.type === 'worker' && u.health > 0 &&
-            u.task !== 'building' && !u.isBuilding && !isFighting(u) && !u.farmRef
+            u.task !== 'building' && !u.isBuilding && !isFighting(u) && !u.farmRef && !justSent(u)
             && (from === null || this.workerSourceMatches(ai, u, from)));
         if (candidates.length === 0) {
+            const kept = ai.units.filter(u => u.type === 'worker' && u.health > 0 && justSent(u)).length;
+            if (kept) {
+                this.outcome('log.out.noWorkersScouting', { n: kept });
+                return `[ERROR] No workers can be spared for your ${open.length} unmanned farm(s): ${kept} ${kept === 1 ? 'was' : 'were'} sent to scout earlier this turn and ${kept === 1 ? 'is' : 'are'} not pulled back; the rest are constructing, fighting, or already man farms.`;
+            }
             const building = ai.units.filter(u => u.type === 'worker' && (u.task === 'building' || u.isBuilding)).length;
             const fighting = ai.units.filter(u => u.type === 'worker' && isFighting(u)).length;
             this.outcome('log.out.noWorkersForFarms', { open: open.length });
@@ -8283,11 +8313,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const onSameRes = u => (u.task === 'harvesting' || u.task === 'carrying')
             && u.harvestTarget && u.harvestTarget.type === resourceType;
         const sameNodeMove = relocating && from !== null && from === resourceType;
+        const justSent = this.sentToScoutThisTurn(ai);
         let candidates = ai.units.filter(u =>
             u.type === 'worker' && u.health > 0 &&
-            u.task !== 'building' && !u.isBuilding && !isFighting(u) &&
+            u.task !== 'building' && !u.isBuilding && !isFighting(u) && !justSent(u) &&
             (sameNodeMove || !onSameRes(u)));
         if (candidates.length === 0) {
+            const kept = ai.units.filter(u => u.type === 'worker' && u.health > 0 && justSent(u)).length;
+            if (kept) {
+                this.outcome('log.out.noWorkersScouting', { n: kept });
+                return `[ERROR] No workers could be reassigned: ${kept} ${kept === 1 ? 'was' : 'were'} sent to scout earlier this turn and ${kept === 1 ? 'is' : 'are'} not pulled back; the rest already harvest ${resourceType}, are constructing, or are fighting.`;
+            }
             // Not a blocker when they are the ones being moved — reporting them as
             // one would name a reason that did not apply.
             const already = sameNodeMove ? 0 : ai.units.filter(u => u.type === 'worker' && onSameRes(u)).length;
