@@ -2484,9 +2484,10 @@ class UIManager {
     }
     drawIntentOverlay(svg, box, NS = 'http://www.w3.org/2000/svg') {
         const layer = this.intentLayer, r = this.game.renderer;
-        if (!layer || !r || !r.worldToScreen || !this.intentOn()) { svg.innerHTML = ''; box.innerHTML = ''; return; }
-        const f = layer.frame((x, z) => r.worldToScreen(x, 0, z));
         svg.innerHTML = '';
+        if (r && r.worldToScreen) this.drawStrategic(svg, NS);
+        if (!layer || !r || !r.worldToScreen || !this.intentOn()) { box.innerHTML = ''; return; }
+        const f = layer.frame((x, z) => r.worldToScreen(x, 0, z));
         if (f.shapes.some(s => s.from)) {
             const defs = document.createElementNS(NS, 'defs');
             defs.innerHTML = '<marker id="intentHead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>';
@@ -2522,6 +2523,59 @@ class UIManager {
         box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
             + b.opacity.toFixed(2) + ';--seat:' + b.color + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.text) + '</span></div>').join('');
     }
+    // The strategic zoom layer (review #12): bases, armies with their counts, and live
+    // battles, fading in as the view widens. Drawn under the intent arrows.
+    drawStrategic(svg, NS) {
+        const L = this.strategicLayer, r = this.game.renderer;
+        if (!L || !r) return;
+        const fade = StrategicLayer.fade(r._halfH || 0);
+        if (fade <= 0) return;
+        const g = document.createElementNS(NS, 'g');
+        g.setAttribute('class', 'strat');
+        g.setAttribute('opacity', fade.toFixed(2));
+        const at = (x, z) => r.worldToScreen(x, 0, z);
+        const badge = (seat, id, x, y, size, ring) => {
+            const b = typeof getTeamBadge === 'function' ? getTeamBadge(seat) : null;
+            const d = (b && typeof TEAM_BADGE_SHAPES !== 'undefined' && TEAM_BADGE_SHAPES[b.shape]) || 'M3.5 12 A8.5 8.5 0 1 1 20.5 12 A8.5 8.5 0 1 1 3.5 12 Z';
+            const p = document.createElementNS(NS, 'path');
+            p.setAttribute('d', d);
+            p.setAttribute('transform', `translate(${x - size / 2},${y - size / 2}) scale(${size / 24})`);
+            p.setAttribute('fill', this.identityHex(id, null, seat));
+            p.setAttribute('stroke', ring || (b && b.rim) || '#222');
+            p.setAttribute('stroke-width', '2');   // screen pixels, whatever the glyph's size
+            p.setAttribute('vector-effect', 'non-scaling-stroke');
+            g.appendChild(p);
+        };
+        const text = (x, y, s, size) => {
+            const tx = document.createElementNS(NS, 'text');
+            tx.setAttribute('x', x); tx.setAttribute('y', y); tx.setAttribute('font-size', size);
+            tx.setAttribute('text-anchor', 'middle'); tx.setAttribute('class', 'strat-n');
+            tx.textContent = s;
+            g.appendChild(tx);
+        };
+        for (const b of L.battles) {
+            const p = at(b.x, b.z);
+            if (!p) continue;
+            const c = document.createElementNS(NS, 'circle');
+            c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); c.setAttribute('r', 16 + Math.min(14, Math.sqrt(b.n) * 2));
+            c.setAttribute('class', 'strat-battle');
+            g.appendChild(c);
+            text(p.x, p.y + 5, '\u2694', 15);
+        }
+        for (const b of L.bases) {
+            const p = at(b.x, b.z);
+            if (p) badge(b.seat, b.id, p.x, p.y, 15, '#ffffff');
+        }
+        for (const a of L.armies) {
+            const p = at(a.x, a.z);
+            if (!p) continue;
+            const size = Math.min(40, 14 + 5 * Math.sqrt(a.n));
+            badge(a.seat, a.id, p.x, p.y, size);
+            text(p.x, p.y + size / 2 + 11, String(a.n), 11);
+        }
+        svg.appendChild(g);
+    }
+
     stopIntentOverlay() {
         if (this._intentRaf) cancelAnimationFrame(this._intentRaf);
         this._intentRaf = null;
@@ -3275,6 +3329,9 @@ class UIManager {
             this.startIntentOverlay();
         }
         this.refreshIntentButton();
+        // The strategic zoom layer (review #12), regrouped four times a second.
+        this.strategicLayer = typeof StrategicLayer === 'function' ? new StrategicLayer(this.game) : null;
+        if (this.strategicLayer) this._spectatorIntervals.push(setInterval(() => { if (this.strategicLayer && !document.hidden) this.strategicLayer.poll(); }, 250));
 
         // Initial paint
         this.updateSpectatorPlayerList();

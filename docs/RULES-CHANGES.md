@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 963: the strategic zoom layer (27 September 2026)
+
+No change in what happens in a match or what a model is told.
+
+In the arena, zooming far out brings up a strategic layer. It fades in between half-heights 90 and 140, and is absent up close. It shows:
+- a pip on every Town Center, in its seat's badge;
+- each seat's fighting units gathered into groups, drawn as the seat's badge with the number of units in it (workers are not an army);
+- a marker on every battle still being fought, taken from the battle ledger and gone once the fight has been quiet for ten seconds.
+
+It uses the seat-true colours of build 962. It only reads the match and is regrouped four times a second.
+
 ## Build 962: seat-true colours (27 September 2026)
 
 No change in what happens in a match or what a model is told. The fingerprint's core hash moves anyway, because the minimap is drawn in `js/game.js`. Results before and after are comparable in play, but the re-simulated replay (build 954) offers itself only to recordings made under the same core hash.
