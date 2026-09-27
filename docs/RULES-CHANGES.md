@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 972: bubbles no longer cover each other's reasons, and name what they show (27 September 2026)
+
+**No rules change.** Bubbles over nearby rings were stacked only when they stood within 150 px of each other sideways, but a bubble is up to 260 px wide. Two bubbles 150 to 260 px apart overlapped, and the later one hid the earlier one's reason. Stacking now counts each bubble's full width. The page also re-stacks with the sizes the bubbles were actually drawn at, instead of the estimate.
+
+- **Commands without a reason:** their bubble names the command the way the decisions log does, with its detail. For example "🔁 Workers reassigned (Wood)" instead of "assign workers". The log and the bubble share one function for this, so they match in every language.
+- **Strategic flags:** 80 % of their previous size, at 80 % opacity.
+
 ## Build 971: green when on, and a way out of broadcast mode (27 September 2026)
 
 **No rules change.**

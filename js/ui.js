@@ -2522,8 +2522,69 @@ class UIManager {
         // only the bubbles are screen-space.
         const f = layer.frame((x, z) => r.worldToScreen(x, 0, z));
         box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
-            + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.text) + '</span></div>').join('');
+            + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span></div>').join('');
+        // Stacked again with the sizes the bubbles were actually drawn at: the layer can
+        // only estimate them, and an estimate too small let one bubble cover another's reason.
+        const els = box.children;
+        if (els.length > 1) {
+            const ys = IntentLayer.stack(f.bubbles.map((b, k) => ({ x: b.x, y: b.ay, w: els[k].offsetWidth, h: els[k].offsetHeight })));
+            ys.forEach((y, k) => { els[k].style.top = Math.round(y) + 'px'; });
+        }
     }
+    // The decisions log's names for actions, and the detail it puts after one ("(Wood)",
+    // "(Militia)"). Shared with the intent bubbles, which name a command the same way
+    // when the model gave no reason for it.
+    logActionNames() {
+        return {
+            train_unit: t('log.train_unit'),
+            research_tech: t('log.research_tech'),
+            upgrade_age: t('log.upgrade_age'),
+            build_structure: t('log.build_structure'),
+            move_units: t('log.move_units'),
+            attack_target: t('log.attack_target'),
+            wait: t('log.wait'),
+            self_heal: t('log.self_heal'),
+            paused: t('log.paused'),
+            resumed: t('log.resumed'),
+            defeated: t('log.defeated'),
+            explore: t('log.explore'),
+            round_missed: t('log.round_missed'),
+            lane_answer_dropped: t('log.lane_answer_dropped'),
+            assign_workers: t('log.assign_workers'),
+            delete_unit: t('log.delete_unit'),
+            destroy_building: t('log.destroy_building'),
+            // Failure tags. These render in the log exactly like an action does, so
+            // they belong in the same table — they were emitted as pre-baked English
+            // strings and stayed English in every language.
+            no_action_provided: t('log.no_action_provided'),
+            plan_only: t('log.plan_only'),
+            command_limit: t('log.command_limit'),
+            malformed_action: t('log.malformed_action'),
+            reply_truncated: t('log.reply_truncated'),
+            tool_call_failed: t('log.tool_call_failed'),
+            request_failed: t('log.request_failed'),
+            fallback_rule_based: t('log.fallback_rule_based')
+        };
+    }
+    logDetail(pp, playerId) {
+        pp = pp || {};
+        const hasT = pp.targetX !== undefined && pp.targetZ !== undefined;
+        return pp.unitType ? ` (${this.logDetailName('unit', pp.unitType, playerId)})`
+            : pp.buildingType ? ` (${this.logDetailName('building', pp.buildingType, playerId)})`
+            : pp.techId ? ` (${this.logDetailName('tech', pp.techId, playerId)})`
+            : pp.resourceType ? ` (${this.logDetailName('resource', pp.resourceType, playerId)})`
+            : hasT ? ` (→ ${Math.round(pp.targetX)}, ${Math.round(pp.targetZ)})`
+            : '';
+    }
+    // A bubble for a command given without a reason: named as the log names it.
+    intentSummaryText(b) {
+        if (!b.action) return b.text;
+        const name = this.logActionNames()[b.action];
+        if (!name) return b.text;
+        const detail = this.logDetail(b.params, b.seat);
+        return name + (detail || (b.params && b.params.tile ? ' (' + b.params.tile + ')' : ''));
+    }
+
     // The strategic zoom layer (review #12): bases, armies with their counts, and live
     // battles, fading in as the view widens. Drawn under the intent arrows.
     drawStrategic(svg, NS) {
@@ -2582,7 +2643,7 @@ class UIManager {
             el('circle', { cx: p.x, cy: p.y, r: 2.5, class: 'strat-foot' });
             // The building flag is 0.85 x 0.55. Its fold is across the cloth; seen from
             // the camera's height, about half of it shows as a rise and fall.
-            const W = 34, H = 22, N = 10, top = q.y - H;
+            const W = 27, H = 17.5, N = 10, top = q.y - H;
             // One group, so the slices fade as one cloth and their seams never show.
             const cloth = el('g', { class: 'strat-flag' });
             const lift = u => fold(u) * W * 0.45;
@@ -2603,8 +2664,8 @@ class UIManager {
             }
             el('path', { class: 'strat-cloth', d: 'M' + edge.map(([x, d]) => x + ' ' + (top + d)).join('L')
                 + 'L' + edge.slice().reverse().map(([x, d]) => x + ' ' + (q.y + d)).join('L') + 'Z' }, cloth);
-            if (!url) badge(m.seat, m.id, q.x + W / 2, q.y - H / 2 + lift(0.5), 11);
-            if (army) text(q.x + W / 2, q.y + lift(0.5) + 13, String(m.n), 11);
+            if (!url) badge(m.seat, m.id, q.x + W / 2, q.y - H / 2 + lift(0.5), 9);
+            if (army) text(q.x + W / 2, q.y + lift(0.5) + 12, String(m.n), 11);
         };
         for (const b of L.bases) flag(b, false);
         for (const a of L.armies) flag(a, true);
@@ -4013,36 +4074,7 @@ class UIManager {
         if (sig === this._lastLogSig) return;
         this._lastLogSig = sig;
 
-        const actionNames = {
-            train_unit: t('log.train_unit'),
-            research_tech: t('log.research_tech'),
-            upgrade_age: t('log.upgrade_age'),
-            build_structure: t('log.build_structure'),
-            move_units: t('log.move_units'),
-            attack_target: t('log.attack_target'),
-            wait: t('log.wait'),
-            self_heal: t('log.self_heal'),
-            paused: t('log.paused'),
-            resumed: t('log.resumed'),
-            defeated: t('log.defeated'),
-            explore: t('log.explore'),
-            round_missed: t('log.round_missed'),
-            lane_answer_dropped: t('log.lane_answer_dropped'),
-            assign_workers: t('log.assign_workers'),
-            delete_unit: t('log.delete_unit'),
-            destroy_building: t('log.destroy_building'),
-            // Failure tags. These render in the log exactly like an action does, so
-            // they belong in the same table — they were emitted as pre-baked English
-            // strings and stayed English in every language.
-            no_action_provided: t('log.no_action_provided'),
-            plan_only: t('log.plan_only'),
-            command_limit: t('log.command_limit'),
-            malformed_action: t('log.malformed_action'),
-            reply_truncated: t('log.reply_truncated'),
-            tool_call_failed: t('log.tool_call_failed'),
-            request_failed: t('log.request_failed'),
-            fallback_rule_based: t('log.fallback_rule_based')
-        };
+        const actionNames = this.logActionNames();
 
         // playerId → seat for the team-badge chip on each entry: entries only
         // carry the civ name, which is ambiguous once two seats play the same civ.
@@ -4056,15 +4088,9 @@ class UIManager {
         for (const entry of compact ? this.compactDecisionEntries(log) : log) {
             if (f.players.size && !f.players.has(entry.playerId)) continue;
             const pp = entry.params || {};
-            const hasT = pp.targetX !== undefined && pp.targetZ !== undefined;
             const actionLabel = entry.isAdvice ? t('log.advice')
                 : (actionNames[entry.action] || this.escapeHtml(entry.action));
-            const detail = pp.unitType ? ` (${this.logDetailName('unit', pp.unitType, entry.playerId)})`
-                : pp.buildingType ? ` (${this.logDetailName('building', pp.buildingType, entry.playerId)})`
-                : pp.techId ? ` (${this.logDetailName('tech', pp.techId, entry.playerId)})`
-                : pp.resourceType ? ` (${this.logDetailName('resource', pp.resourceType, entry.playerId)})`
-                : hasT ? ` (→ ${Math.round(pp.targetX)}, ${Math.round(pp.targetZ)})`
-                : '';
+            const detail = this.logDetail(pp, entry.playerId);
             if (f.text && !this.logHaystack(entry, actionLabel, detail).includes(f.text)) continue;
             view.push({ entry, actionLabel, detail });
             if (view.length >= 160) break;

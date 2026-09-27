@@ -211,3 +211,19 @@ test('every ring has its own bubble with its own reason, or its command named; c
     const tc = m.seats[0].buildings.find(b => b.type === 'town_center');
     assert.deepEqual({ x: layer.bubbles[0].anchor.x, z: layer.bubbles[0].anchor.z }, { x: tc.x, z: tc.z });
 });
+
+test('bubbles that would overlap are stacked by their full width, not a fixed sideways reach', async () => {
+    const { layer } = await setup();
+    const { stack } = layer.constructor;
+    const box = x => ({ x, y: 300, w: 260, h: 60 });
+    // 200 px apart: two 260 px bubbles still overlap by 60 px. The old 150 px reach missed
+    // this, and the second covered the first one's reason.
+    const [a, b] = stack([box(0), box(200)]);
+    assert.equal(a, 300);
+    assert.ok(b <= a - 60, 'the second stands above the first: ' + b);
+    // 270 px apart they clear each other and both stay on their points.
+    assert.deepEqual(Array.from(stack([box(0), box(270)])), [300, 300]);
+    // A third that meets both climbs above whichever it meets, until it is clear.
+    const three = stack([box(0), box(100), box(50)]);
+    assert.ok(three[2] <= three[1] - 60 && three[1] <= three[0] - 60, JSON.stringify(three));
+});

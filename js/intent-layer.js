@@ -40,7 +40,24 @@ class IntentLayer {
         return age < life - IntentLayer.FADE_MS ? 1 : (life - age) / IntentLayer.FADE_MS;
     }
     static get REASON_MAX() { return 160; }
-    static get STACK_DX() { return 150; }   // screen px: bubbles closer than this sideways stack
+    static get BUBBLE_W() { return 260; }   // screen px: a bubble's widest (its CSS max-width)
+
+    // Bubbles that would cover each other are stacked upward instead. Each box stands on
+    // its point: `y` is its bottom, `h` its height, `w` its width, `x` its centre. Boxes
+    // are placed in order; a box that meets one already placed moves up above it, as
+    // often as it takes. Returns each box's bottom.
+    //
+    // Width counts in full. Testing only a fixed 150 px sideways let two 260 px bubbles
+    // 150-260 px apart overlap, and the later one covered the earlier one's reason.
+    static stack(boxes, gap = 4) {
+        const placed = [];
+        return boxes.map(b => {
+            let y = b.y, hit;
+            while ((hit = placed.find(o => Math.abs(o.x - b.x) < (o.w + b.w) / 2 && y - b.h < o.y && o.y - o.h < y))) y = hit.y - hit.h - gap;
+            placed.push({ x: b.x, y, w: b.w, h: b.h });
+            return y;
+        });
+    }
     static get GRID() { return 7; }
 
     // The seat's colour, as its badge shows it. Seat 0 wears charcoal, which vanishes on
@@ -163,7 +180,7 @@ class IntentLayer {
             if (!to) return;
             const from = this.origin(ai, call.name, p);
             const name = String(call.name || '').replace(/_/g, ' ') + (p.tile ? ' ' + p.tile : '');
-            marks.push({ from, to, marker: !from, action: call.name, turn, index, text: reason || name, summary: !reason });
+            marks.push({ from, to, marker: !from, action: call.name, params: p, turn, index, text: reason || name, summary: !reason });
         });
         if (!marks.length && !firstReason) return;   // nothing to point at, nothing said
         const life = IntentLayer.lifeFor(marks.reduce((t, m) => m.text.length > t.length ? m.text : t, firstReason ? firstReason.text : ''));
@@ -171,7 +188,7 @@ class IntentLayer {
         this.bubbles = this.bubbles.filter(b => b.seat !== ai.id);
         for (const m of marks) {
             this.intents.push(Object.assign({ seat: ai.id, color, born, life }, m));
-            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, born, life, color, band, turn, index: m.index, summary: m.summary });
+            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, born, life, color, band, turn, index: m.index, summary: m.summary, action: m.action, params: m.params });
         }
         if (!marks.length) {
             const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
@@ -213,16 +230,16 @@ class IntentLayer {
             if (!(opacity > 0)) continue;
             const at = project(b.anchor.x, b.anchor.z);
             if (!at) continue;
-            // Bubbles over rings close together are stacked upward rather than drawn over
-            // each other.
-            // A bubble stands on its point; its height is estimated from its text (a name
-            // line, then the reason wrapped at about 40 characters).
+            // Its size estimated from its text (a name line, then the reason wrapped at
+            // about 40 characters) at the widest a bubble gets. The page re-stacks with the
+            // sizes it actually drew (ui.drawIntentOverlay); this is the estimate for
+            // anything that has no page.
             const h = 16 + 15 * (1 + Math.ceil(b.text.length / 40));
-            let y = at.y, hit;
-            while ((hit = bubbles.find(o => Math.abs(o.x - at.x) < IntentLayer.STACK_DX && y - h < o.y && o.y - o.h < y))) y = hit.y - hit.h - 4;
-            bubbles.push({ seat: b.seat, text: b.text, color: b.color, band: b.band || b.color, x: at.x, y, h, opacity, summary: !!b.summary,
+            bubbles.push({ seat: b.seat, text: b.text, color: b.color, band: b.band || b.color, x: at.x, y: at.y, ay: at.y, w: IntentLayer.BUBBLE_W, h, opacity, summary: !!b.summary,
+                action: b.action || null, params: b.params || null,
                 refused: IntentLayer.rejected(b.turn, b.index) === true });
         }
+        IntentLayer.stack(bubbles.map(b => ({ x: b.x, y: b.ay, w: b.w, h: b.h }))).forEach((y, k) => { bubbles[k].y = y; });
         return { shapes, bubbles };
     }
 }
