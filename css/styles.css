@@ -3103,3 +3103,5 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 /* Strategic zoom layer (review #12). */
 .intent-svg .strat-n { fill: #fff; stroke: rgba(0,0,0,0.75); stroke-width: 3px; paint-order: stroke; font-weight: 700; font-family: inherit; }
 .intent-svg .strat-battle { fill: rgba(255,90,60,0.18); stroke: #ff5a3c; stroke-width: 2; stroke-dasharray: 5 4; }
+.intent-svg .strat-base { fill: rgba(10,14,30,0.72); stroke: rgba(255,255,255,0.55); stroke-width: 1.5; }
+.intent-bubble.summary .intent-reason { font-style: italic; opacity: 0.85; }

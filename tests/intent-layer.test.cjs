@@ -89,7 +89,7 @@ test('reasons stay verbatim to 160 characters; bubbles of turns that land togeth
     const born = [...layer.bubbles.values()].map(b => b.born).sort();
     assert.deepEqual(born, [10000, 10600]);
     assert.equal(layer.frame(() => ({ x: 0, y: 0 }), 10100).bubbles.length, 1, 'the second waits its turn');
-    layer.poll(10000 + IntentLayer.LIFE_MS + 700);
+    layer.poll(10600 + IntentLayer.LIFE_MAX_MS);
     assert.equal(layer.intents.length + layer.bubbles.size, 0);
 });
 
@@ -123,4 +123,58 @@ test('a bubble whose order was refused says so', async () => {
     t.outcome = '[ERROR] You have no military units to move.';
     assert.equal(bubble().refused, true);
     assert.equal(bubble().text, 'Screen the workers.', 'the reason itself is never edited');
+});
+
+test('every bubble holds, then fades over the same last stretch -- none fades faster than another', async () => {
+    const { layer } = await setup();
+    const IntentLayer = layer.constructor;
+    const short = IntentLayer.lifeFor('ok'), long = IntentLayer.lifeFor('z'.repeat(160));
+    assert.equal(short, IntentLayer.LIFE_MS);
+    assert.equal(long, IntentLayer.LIFE_MAX_MS, 'a long reason stays up longer, to be read');
+    for (const life of [short, long]) {
+        assert.equal(IntentLayer.alpha(life - IntentLayer.FADE_MS - 1, 0, life), 1, 'fully visible until the fade');
+        assert.equal(IntentLayer.alpha(life - IntentLayer.FADE_MS / 2, 0, life), 0.5, 'the same fade, whatever the length');
+        assert.equal(IntentLayer.alpha(life, 0, life), 0);
+    }
+});
+
+test('a mark never stands without its bubble: a reasonless order is named, and a new turn replaces the last', async () => {
+    const { m, layer, c, turn } = await setup();
+    layer.poll(0);
+    const seat = m.seats[0].id;
+    c.turnLog.push(turn([['explore', { tile: 'D4', reason: 'Scout the centre.' }]]));
+    layer.poll(1000);
+    c.turnLog.push(turn([['move_units', { tile: 'E4' }]]));
+    layer.poll(2000);
+    assert.deepEqual(Array.from(layer.intents, i => i.action), ['move_units'], 'the explore is replaced, not left behind');
+    const b = layer.bubbles.get(seat);
+    assert.equal(b.summary, true);
+    assert.equal(b.text, 'move units E4', 'named by its command, since it gave no reason');
+    assert.equal(b.life, layer.intents[0].life, 'marks and bubble live and fade together');
+    // Every visible mark has its seat's bubble visible beside it, all through the fade.
+    for (let now = 2000; now < 2000 + b.life + 500; now += 250) {
+        const marks = layer.worldMarks(now), f = layer.frame((x, z) => ({ x, y: z }), now);
+        if (marks.length) assert.ok(f.bubbles.some(x => x.seat === seat && Math.abs(x.opacity - marks[0].alpha) < 1e-9), 'at ' + now);
+    }
+    // A turn that points nowhere and says nothing leaves the last one standing.
+    c.turnLog.push(turn([['train_unit', { unitType: 'worker' }]]));
+    layer.poll(2500);
+    assert.deepEqual(Array.from(layer.intents, i => i.action), ['move_units']);
+});
+
+test('the renderer gets ground marks: a ring at the target, a path from the units, refused ones grey', async () => {
+    const { m, layer, c, turn } = await setup();
+    layer.poll(0);
+    const house = m.tags.house;
+    const t = turn([['attack_target', { targetId: house.id, unitIds: [m.tags.w1.handle], reason: 'Burn it.' }]]);
+    c.turnLog.push(t);
+    layer.poll(1000);
+    const [mk] = layer.worldMarks(1500);
+    assert.deepEqual({ x: mk.to.x, z: mk.to.z }, { x: house.x, z: house.z });
+    assert.deepEqual({ x: mk.from.x, z: mk.from.z }, { x: m.tags.w1.x, z: m.tags.w1.z });
+    assert.equal(mk.alpha, 1);
+    assert.equal(mk.refused, false);
+    t.outcome = '[ERROR] Out of reach.';
+    assert.equal(layer.worldMarks(1500)[0].color, '#9aa4b1');
+    assert.equal(layer.worldMarks(1000 + layer.intents[0].life).length, 0, 'gone when its life ends');
 });

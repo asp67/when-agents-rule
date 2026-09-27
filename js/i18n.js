@@ -2954,10 +2954,10 @@ const I18N_HELP = {
 };
 Object.keys(I18N_HELP).forEach(l => { I18N[l] = Object.assign(I18N[l] || {}, I18N_HELP[l]); });
 const I18N_AUDIO = {
-    en: {'audio.title':'Sound','audio.mute':'Mute','audio.master':'Volume','audio.ambience':'Ambience','audio.effects':'Effects','audio.note':'Live games only. Starts muted on each page load.','audio.unavailable':'Audio could not start. Try enabling it again in a supported browser.'},
-    de: {'audio.title':'Ton','audio.mute':'Stumm','audio.master':'Lautstärke','audio.ambience':'Umgebung','audio.effects':'Effekte','audio.note':'Nur in laufenden Spielen. Nach jedem Neuladen zunächst stumm.','audio.unavailable':'Audio konnte nicht starten. Bitte erneut oder in einem anderen Browser versuchen.'},
-    es: {'audio.title':'Sonido','audio.mute':'Silenciar','audio.master':'Volumen','audio.ambience':'Ambiente','audio.effects':'Efectos','audio.note':'Solo partidas en curso. Cada carga de página empieza en silencio.','audio.unavailable':'No se pudo iniciar el audio. Inténtalo de nuevo en un navegador compatible.'},
-    zh: {'audio.title':'声音','audio.mute':'静音','audio.master':'音量','audio.ambience':'环境音','audio.effects':'音效','audio.note':'仅限正在进行的游戏。每次加载页面时默认静音。','audio.unavailable':'无法启动音频。请重试或使用支持的浏览器。'}
+    en: {'audio.title':'Sound','help.act.mute':'Mute / unmute sound','audio.mute':'Mute','audio.master':'Volume','audio.ambience':'Ambience','audio.effects':'Effects','audio.note':'Live games only. Starts muted on each page load.','audio.unavailable':'Audio could not start. Try enabling it again in a supported browser.'},
+    de: {'audio.title':'Ton','help.act.mute':'Ton stumm / an','audio.mute':'Stumm','audio.master':'Lautstärke','audio.ambience':'Umgebung','audio.effects':'Effekte','audio.note':'Nur in laufenden Spielen. Nach jedem Neuladen zunächst stumm.','audio.unavailable':'Audio konnte nicht starten. Bitte erneut oder in einem anderen Browser versuchen.'},
+    es: {'audio.title':'Sonido','help.act.mute':'Silenciar / activar sonido','audio.mute':'Silenciar','audio.master':'Volumen','audio.ambience':'Ambiente','audio.effects':'Efectos','audio.note':'Solo partidas en curso. Cada carga de página empieza en silencio.','audio.unavailable':'No se pudo iniciar el audio. Inténtalo de nuevo en un navegador compatible.'},
+    zh: {'audio.title':'声音','help.act.mute':'静音 / 取消静音','audio.mute':'静音','audio.master':'音量','audio.ambience':'环境音','audio.effects':'音效','audio.note':'仅限正在进行的游戏。每次加载页面时默认静音。','audio.unavailable':'无法启动音频。请重试或使用支持的浏览器。'}
 };
 Object.keys(I18N_AUDIO).forEach(l => Object.assign(I18N[l], I18N_AUDIO[l]));
 const I18N_AUDIO_TEST = {

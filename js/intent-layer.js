@@ -26,7 +26,18 @@ class IntentLayer {
         this._started = false;
     }
 
+    // How long a turn stays up: long enough to read what it says. Every bubble and its
+    // marks hold fully visible and then fade over the same last FADE_MS, so no bubble
+    // fades faster than another.
     static get LIFE_MS() { return 6000; }
+    static get LIFE_MAX_MS() { return 11000; }
+    static get FADE_MS() { return 1200; }
+    static lifeFor(text) { return Math.min(IntentLayer.LIFE_MAX_MS, Math.max(IntentLayer.LIFE_MS, 4500 + 45 * String(text || '').length)); }
+    static alpha(now, born, life) {
+        const age = now - born;
+        if (age < 0 || age >= life) return 0;
+        return age < life - IntentLayer.FADE_MS ? 1 : (life - age) / IntentLayer.FADE_MS;
+    }
     static get REASON_MAX() { return 160; }
     static get GRID() { return 7; }
 
@@ -115,49 +126,75 @@ class IntentLayer {
         }
         this._started = true;
         fresh.forEach(({ c, t }, k) => this.add(c.aiPlayer, t, now + k * 600));
-        this.intents = this.intents.filter(i => now - i.born < IntentLayer.LIFE_MS);
-        for (const [id, b] of this.bubbles) if (now - b.born >= IntentLayer.LIFE_MS) this.bubbles.delete(id);
+        this.intents = this.intents.filter(i => now - i.born < i.life);
+        for (const [id, b] of this.bubbles) if (now - b.born >= b.life) this.bubbles.delete(id);
         return fresh.length;
     }
 
+    // One turn at a time per seat, and its marks never without its bubble: a new turn
+    // replaces the seat's last one, marks and bubble together, and they share one life.
+    // A turn that points somewhere but gives no reason still gets a bubble -- naming its
+    // commands -- so no mark on the map is ever left without a clue.
     add(ai, turn, born) {
         if (!ai) return;
         const color = this.colorOf(ai);
+        const marks = [], names = [];
         let reason = '', anchor = null, reasonIndex = 0;
         (turn.toolCalls || []).forEach((call, index) => {
             let p = {};
             try { p = JSON.parse(call.args || '{}') || {}; } catch (e) { return; }
             const to = this.target(p), from = to ? this.origin(ai, call.name, p) : null;
-            if (to) this.intents.push({ seat: ai.id, color, from, to, marker: !from, born, action: call.name, turn, index });
+            if (to) marks.push({ from, to, marker: !from, action: call.name, turn, index });
+            names.push(String(call.name || '').replace(/_/g, ' ') + (p.tile ? ' ' + p.tile : ''));
             if (!reason && p.reason) { reason = IntentLayer.reasonText(p.reason); anchor = from || to; reasonIndex = index; }
         });
-        if (!reason) return;
+        if (!reason && !marks.length) return;   // nothing to point at, nothing said
+        const text = reason || names.join(' · ');
+        const life = IntentLayer.lifeFor(text);
+        this.intents = this.intents.filter(i => i.seat !== ai.id);
+        for (const m of marks) this.intents.push(Object.assign({ seat: ai.id, color, born, life }, m));
+        if (!anchor && marks.length) anchor = marks[0].from || marks[0].to;
         if (!anchor) {
             const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
             anchor = tc ? { x: tc.x, z: tc.z } : this.centroid(ai.units);
         }
-        if (anchor) this.bubbles.set(ai.id, { text: reason, anchor, born, color, turn, index: reasonIndex });
+        if (anchor) this.bubbles.set(ai.id, { text, anchor, born, life, color, turn, index: reasonIndex, summary: !reason });
+        else this.intents = this.intents.filter(i => i.seat !== ai.id);   // a mark needs its bubble
     }
 
-    // Screen geometry for this frame: the arrows and markers as SVG, the bubbles as
-    // positioned boxes. `project(x, z)` returns {x, y} or null (behind the camera).
+    // The marks as they sit in the world, for the renderer to lay on the ground: a ring
+    // at each target (grey and crossed when refused), and a path from the units to it.
+    worldMarks(now = Date.now()) {
+        const out = [];
+        for (const i of this.intents) {
+            const alpha = IntentLayer.alpha(now, i.born, i.life);
+            if (!(alpha > 0)) continue;
+            const refused = IntentLayer.rejected(i.turn, i.index) === true;
+            out.push({ from: i.from, to: i.to, marker: i.marker, refused, alpha, color: refused ? '#9aa4b1' : i.color, action: i.action });
+        }
+        return out;
+    }
+
+    // Screen geometry for this frame: the bubbles as positioned boxes (and, for tests and
+    // any screen-space use, the marks). `project(x, z)` returns {x, y} or null.
     frame(project, now = Date.now()) {
         const shapes = [], bubbles = [];
         for (const i of this.intents) {
-            if (now < i.born) continue;
-            const age = (now - i.born) / IntentLayer.LIFE_MS;
+            const opacity = IntentLayer.alpha(now, i.born, i.life);
+            if (!(opacity > 0)) continue;
             const to = project(i.to.x, i.to.z);
             if (!to) continue;
             const from = i.from ? project(i.from.x, i.from.z) : null;
             // A refused order is still what the model asked for, drawn as refused: grey,
             // crossed out, never as a live move.
             const refused = IntentLayer.rejected(i.turn, i.index) === true;
-            shapes.push({ color: refused ? '#9aa4b1' : i.color, opacity: Math.max(0, 1 - age), from, to, marker: i.marker, refused });
+            shapes.push({ color: refused ? '#9aa4b1' : i.color, opacity, from, to, marker: i.marker, refused });
         }
         for (const [seat, b] of this.bubbles) {
-            if (now < b.born) continue;
+            const opacity = IntentLayer.alpha(now, b.born, b.life);
+            if (!(opacity > 0)) continue;
             const at = project(b.anchor.x, b.anchor.z);
-            if (at) bubbles.push({ seat, text: b.text, color: b.color, x: at.x, y: at.y, opacity: Math.max(0, 1 - (now - b.born) / IntentLayer.LIFE_MS),
+            if (at) bubbles.push({ seat, text: b.text, color: b.color, x: at.x, y: at.y, opacity, summary: !!b.summary,
                 refused: IntentLayer.rejected(b.turn, b.index) === true });
         }
         return { shapes, bubbles };

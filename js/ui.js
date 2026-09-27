@@ -302,7 +302,7 @@ class UIManager {
         box.innerHTML = ['overview','selection','zoomIn','zoomOut'].map(button).join('')
             + `<details class="camera-more"><summary title="${esc(t('art.cameraOptions'))}" aria-label="${esc(t('art.cameraOptions'))}">${svg(icons.more)}</summary>
                 <div class="camera-popover"><div class="camera-secondary">${(watching?['reset','turnLeft','turnRight']:['pan','reset','turnLeft','turnRight']).map(button).join('')}</div>
-                <label>${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['low','balanced','cinematic'].map(k=>`<option value="${k}">${esc(t('art.'+k))}</option>`).join('')}</select></label>
+                <label>${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['cinematic','balanced','low'].map(k=>`<option value="${k}">${esc(t('art.'+k))}</option>`).join('')}</select></label>
                 <label title="${esc(t('art.lightTip'))}">${esc(t('art.light'))}<select onchange="game.renderer.setVisualStyle ? game.renderer.setVisualStyle(this.value) : (game.renderer.visualStyle=this.value)"><option value="film">${esc(t('art.film'))}</option><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label></div></details>`;
         if(wasOpen) box.querySelector('details').open=true;
         box.querySelector('select').value = this.game.renderer.graphicsQuality || 'balanced';
@@ -2516,40 +2516,10 @@ class UIManager {
         svg.innerHTML = '';
         if (r && r.worldToScreen) this.drawStrategic(svg, NS);
         if (!layer || !r || !r.worldToScreen || !this.intentOn()) { box.innerHTML = ''; return; }
+        // The marks themselves lie on the ground, drawn by the renderer (intentMarks);
+        // only the bubbles are screen-space.
         const f = layer.frame((x, z) => r.worldToScreen(x, 0, z));
-        if (f.shapes.some(s => s.from)) {
-            const defs = document.createElementNS(NS, 'defs');
-            defs.innerHTML = '<marker id="intentHead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>';
-            svg.appendChild(defs);
-        }
-        for (const s of f.shapes) {
-            const g = document.createElementNS(NS, 'g');
-            g.setAttribute('opacity', s.opacity.toFixed(2));
-            g.setAttribute('stroke', s.color); g.setAttribute('fill', 'none');
-            if (s.from) {
-                const line = document.createElementNS(NS, 'line');
-                line.setAttribute('x1', s.from.x); line.setAttribute('y1', s.from.y);
-                line.setAttribute('x2', s.to.x); line.setAttribute('y2', s.to.y);
-                line.setAttribute('stroke-width', '2.5'); line.setAttribute('stroke-dasharray', '7 5');
-                line.setAttribute('marker-end', 'url(#intentHead)');
-                g.appendChild(line);
-            }
-            const ring = document.createElementNS(NS, 'circle');
-            ring.setAttribute('cx', s.to.x); ring.setAttribute('cy', s.to.y); ring.setAttribute('r', s.marker ? 12 : 7);
-            ring.setAttribute('stroke-width', '2.5');
-            g.appendChild(ring);
-            if (s.refused) {
-                const x = document.createElementNS(NS, 'path'), k = s.marker ? 8 : 5;
-                x.setAttribute('d', `M${s.to.x - k},${s.to.y - k} L${s.to.x + k},${s.to.y + k} M${s.to.x + k},${s.to.y - k} L${s.to.x - k},${s.to.y + k}`);
-                x.setAttribute('stroke-width', '2.5');
-                g.appendChild(x);
-                const title = document.createElementNS(NS, 'title');
-                title.textContent = t('spec.intentRefused');
-                g.appendChild(title);
-            }
-            svg.appendChild(g);
-        }
-        box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
+        box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
             + b.opacity.toFixed(2) + ';--seat:' + b.color + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.text) + '</span></div>').join('');
     }
     // The strategic zoom layer (review #12): bases, armies with their counts, and live
@@ -2569,8 +2539,9 @@ class UIManager {
             const p = document.createElementNS(NS, 'path');
             p.setAttribute('d', d);
             p.setAttribute('transform', `translate(${x - size / 2},${y - size / 2}) scale(${size / 24})`);
-            p.setAttribute('fill', this.identityHex(id, null, seat));
-            p.setAttribute('stroke', ring || (b && b.rim) || '#222');
+            // The seat's badge exactly as the leaderboard shows it: its fill, its rim.
+            p.setAttribute('fill', (b && b.fill) || this.identityHex(id, null, seat));
+            p.setAttribute('stroke', (b && b.rim) || '#222');
             p.setAttribute('stroke-width', '2');   // screen pixels, whatever the glyph's size
             p.setAttribute('vector-effect', 'non-scaling-stroke');
             g.appendChild(p);
@@ -2593,7 +2564,13 @@ class UIManager {
         }
         for (const b of L.bases) {
             const p = at(b.x, b.z);
-            if (p) badge(b.seat, b.id, p.x, p.y, 15, '#ffffff');
+            if (!p) continue;
+            // A base: the badge on a dark disc, so it reads as a place rather than an army.
+            const disc = document.createElementNS(NS, 'circle');
+            disc.setAttribute('cx', p.x); disc.setAttribute('cy', p.y); disc.setAttribute('r', 13);
+            disc.setAttribute('class', 'strat-base');
+            g.appendChild(disc);
+            badge(b.seat, b.id, p.x, p.y, 16);
         }
         for (const a of L.armies) {
             const p = at(a.x, a.z);
@@ -3356,6 +3333,7 @@ class UIManager {
         if (this.intentLayer) {
             this._spectatorIntervals.push(setInterval(() => { if (this.intentLayer && this.intentOn()) this.intentLayer.poll(); }, 250));
             this.startIntentOverlay();
+            if (this.game.renderer) this.game.renderer.intentMarks = () => (this.intentLayer && this.intentOn()) ? this.intentLayer.worldMarks() : null;
         }
         this.refreshIntentButton();
         // The strategic zoom layer (review #12), regrouped four times a second.
@@ -3473,6 +3451,7 @@ class UIManager {
         clearTimeout(this._chronicleTimer); this._chronicleTimer = null; this._chronicleQueue = [];
         document.getElementById('chronicleCaption')?.remove();
         this.stopIntentOverlay();
+        if (this.game.renderer) this.game.renderer.intentMarks = null;
         if (this.broadcastOn()) this.toggleBroadcast(false);
         document.querySelector('.spectator-sound-caption')?.remove();
         document.body.classList.remove('spectator-mode');
@@ -3887,7 +3866,8 @@ class UIManager {
         ];
         const grid = specific.map(([k, v]) => row(k, v)).join('')
             + `<div class="controls-sub">${t('help.camera')}</div>`
-            + camera.map(([k, v]) => row(k, v)).join('');
+            + camera.map(([k, v]) => row(k, v)).join('')
+            + `<div class="controls-sub">${t('audio.title')}</div>` + row('M', t('help.act.mute'));
         const el = document.createElement('dialog');
         el.className = 'controls-overlay';
         el.id = 'controlsOverlay';

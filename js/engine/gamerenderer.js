@@ -1939,6 +1939,36 @@
                 }
             }
 
+            // Intent marks (review #11): what the models just ordered, laid on the ground in
+            // perspective like a selection ring -- a ring at each target, a dashed path from
+            // the units with an arrowhead, a cross over a refused one. The UI supplies them.
+            const marks = this.intentMarks ? this.intentMarks() : null;
+            if (marks && marks.length) {
+                const bar = this._buf('box', [1, 1, 1]);
+                const flat = (x, z, yaw, len, wid, tint, alpha) => dl.blended.push({ buf: bar, tex: this.tex.white, tint, alpha,
+                    model: m3.multiply(m3.translation(x, 0.12, z), m3.multiply(m3.rotationY(yaw), m3.scaling(wid, 0.02, len))) });
+                for (const mk of marks) {
+                    const tint = this._tintOf(parseInt(String(mk.color).slice(1), 16));
+                    const r = mk.marker ? 5 : 2.4, to = mk.to;
+                    dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint, alpha: mk.alpha,
+                        model: m3.multiply(m3.translation(to.x, 0.14, to.z), m3.scaling(r, 1, r)) });
+                    if (mk.refused) for (const yaw of [Math.PI / 4, -Math.PI / 4]) flat(to.x, to.z, yaw, r * 1.3, 0.3, tint, mk.alpha);
+                    if (!mk.from) continue;
+                    const dx = to.x - mk.from.x, dz = to.z - mk.from.z, dist = Math.hypot(dx, dz);
+                    if (dist < r + 2) continue;
+                    const ux = dx / dist, uz = dz / dist, yaw = Math.atan2(ux, uz);
+                    const start = 1.2, end = dist - r - 0.3, step = 2.3, dash = 1.4;
+                    for (let s = start, n = 0; s + dash <= end && n < 90; s += step, n++)
+                        flat(mk.from.x + ux * (s + dash / 2), mk.from.z + uz * (s + dash / 2), yaw, dash, 0.24, tint, mk.alpha);
+                    // The arrowhead, at the ring's edge, pointing in.
+                    const ex = mk.from.x + ux * end, ez = mk.from.z + uz * end;
+                    for (const side of [0.55, -0.55]) {
+                        const bx = -(ux * Math.cos(side) - uz * Math.sin(side)), bz = -(ux * Math.sin(side) + uz * Math.cos(side));
+                        flat(ex + bx * 0.65, ez + bz * 0.65, Math.atan2(bx, bz), 1.3, 0.24, tint, mk.alpha);
+                    }
+                }
+            }
+
             // battle-ring pings (drawn after fog so they show through it)
             this._ringEntries = [];
             for (const r of this._rings) {

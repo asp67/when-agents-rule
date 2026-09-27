@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 966: spectator fixes from the first test round (27 September 2026)
+
+**No rules change.** Nothing a match does or tells a model is different. This build changes only what a spectator sees.
+
+- **Decision marks lie on the ground.** A model's target is now a ring laid on the terrain, in perspective, like a selection ring. A dashed path leads to it from the units that were ordered. A refused order is a grey ring with a cross.
+- **No mark without its bubble.** A seat shows one turn at a time: a new turn replaces the old marks and bubble together. A turn that points somewhere but gives no reason gets a bubble naming its commands (in italics).
+- **One fade for all bubbles.** Every bubble holds for 6 to 11 s, longer for a longer reason. Then each fades over the same last 1.2 s.
+- **Strategic pips.** At wide zoom, Town Centers and armies now show each seat's real badge, the fill and rim from the leaderboard. A base sits on a dark disc.
+- **Settings order.** Graphics quality now lists High first, like the lighting list.
+- **Controls card.** The card now lists M (mute and unmute).
+
 ## Build 965: Fire Arrows (27 September 2026)
 
 **A rules change.** Every civilization gets a new academy technology in the Iron Age:
