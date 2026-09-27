@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 976: smaller strategic flags, softer lines (27 September 2026)
+
+**No rules change.** The strategic map's flags are 20 % smaller again, and their lines, with their shadows and foot dots, are drawn at 50 % opacity.
+
 ## Build 975: edge bubbles, true scout targets, a bank line on the broadcast cards (27 September 2026)
 
 **No rules change.**

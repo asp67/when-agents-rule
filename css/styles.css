@@ -3111,9 +3111,9 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 /* Strategic zoom layer (review #12). */
 .intent-svg .strat-n { fill: #fff; stroke: rgba(0,0,0,0.75); stroke-width: 3px; paint-order: stroke; font-weight: 700; font-family: inherit; }
 .intent-svg .strat-battle { fill: rgba(255,90,60,0.18); stroke: #ff5a3c; stroke-width: 2; stroke-dasharray: 5 4; }
-.intent-svg .strat-pole { stroke: #fff; stroke-width: 2; stroke-linecap: round; }
-.intent-svg .strat-pole-halo { stroke: rgba(0,0,0,0.55); stroke-width: 4; stroke-linecap: round; }
-.intent-svg .strat-foot { fill: #fff; stroke: rgba(0,0,0,0.6); stroke-width: 1.2; }
+.intent-svg .strat-pole { stroke: #fff; stroke-width: 2; stroke-linecap: round; opacity: 0.5; }
+.intent-svg .strat-pole-halo { stroke: rgba(0,0,0,0.55); stroke-width: 4; stroke-linecap: round; opacity: 0.5; }
+.intent-svg .strat-foot { fill: #fff; stroke: rgba(0,0,0,0.6); stroke-width: 1.2; opacity: 0.5; }
 .intent-svg .strat-flag { opacity: 0.8; }
 .intent-svg .strat-cloth { fill: none; stroke: rgba(0,0,0,0.5); stroke-width: 1; stroke-linejoin: round; }
 .intent-bubble.summary .intent-reason { font-style: italic; }

@@ -2652,7 +2652,7 @@ class UIManager {
             el('circle', { cx: p.x, cy: p.y, r: 2.5, class: 'strat-foot' });
             // The building flag is 0.85 x 0.55. Its fold is across the cloth; seen from
             // the camera's height, about half of it shows as a rise and fall.
-            const W = 27, H = 17.5, N = 10, top = q.y - H;
+            const W = 21.6, H = 14, N = 10, top = q.y - H;
             // One group, so the slices fade as one cloth and their seams never show.
             const cloth = el('g', { class: 'strat-flag' });
             const lift = u => fold(u) * W * 0.45;
@@ -2673,8 +2673,8 @@ class UIManager {
             }
             el('path', { class: 'strat-cloth', d: 'M' + edge.map(([x, d]) => x + ' ' + (top + d)).join('L')
                 + 'L' + edge.slice().reverse().map(([x, d]) => x + ' ' + (q.y + d)).join('L') + 'Z' }, cloth);
-            if (!url) badge(m.seat, m.id, q.x + W / 2, q.y - H / 2 + lift(0.5), 9);
-            if (army) text(q.x + W / 2, q.y + lift(0.5) + 12, String(m.n), 11);
+            if (!url) badge(m.seat, m.id, q.x + W / 2, q.y - H / 2 + lift(0.5), 7);
+            if (army) text(q.x + W / 2, q.y + lift(0.5) + 11, String(m.n), 11);
         };
         for (const b of L.bases) flag(b, false);
         // An army's flag follows its units every frame: the groups are rebuilt four times
