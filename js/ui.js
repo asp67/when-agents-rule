@@ -5470,7 +5470,7 @@ class UIManager {
         // In showcase mode there is nowhere to go back TO -- the analyzer is the whole
         // app -- so this is the one exit and it stays shut.
         if (typeof WAR_DEMO_ONLY !== 'undefined' && WAR_DEMO_ONLY) return;
-        this.anStopPlay(); this.anUnmountStage(); this.showScreen('gameModeScreen');
+        this.anStopPlay(); this.anResimStop(false); this.anUnmountStage(); this.showScreen('gameModeScreen');
     }
 
     anLoadFile(input) {
@@ -5656,6 +5656,229 @@ class UIManager {
 
     anStopPlay() {
         if (this._anPlayTimer) { clearInterval(this._anPlayTimer); this._anPlayTimer = null; }
+    }
+
+    // ---- Re-simulated replay (review #9) --------------------------------------
+    // The match again, from its recorded inputs, through the real rules in a worker
+    // (js/resim-worker.js), with every recorded world hash checked on the way. It is a
+    // separate mode beside the snapshots, not a smoother version of them: every frame
+    // comes from the rules, nothing is interpolated, and the hash chain certifies it.
+    // Offered only when the rules and the harness running here are the ones that made
+    // the recording; otherwise the snapshots are all there is, and the chip says so.
+    async anResimCheck() {
+        const a = this.analyzer;
+        if (!a || !a.inputs || !a.inputs.length) return 'noInputs';
+        if (!a.contract || typeof WarConditions === 'undefined') return 'rulesChanged';
+        if (!this._anHashes) this._anHashes = WarConditions.sourceHashes();
+        const h = await this._anHashes;
+        return h.coreHash && h.coreHash === a.contract.coreHash && h.harnessHash === a.contract.harnessHash ? null : 'rulesChanged';
+    }
+    async anResimOffer() {
+        const why = await this.anResimCheck();
+        const btn = document.getElementById('anResimBtn');
+        if (!btn || !why) return;
+        btn.disabled = true;
+        btn.title = t(why === 'noInputs' ? 'an.resimNoInputs' : 'an.resimRulesChanged');
+    }
+    async anResimStart(fromStep = 0) {
+        const a = this.analyzer;
+        if (!a) return;
+        const why = await this.anResimCheck();
+        if (why) { this.showErrorMessage(t(why === 'noInputs' ? 'an.resimNoInputs' : 'an.resimRulesChanged')); return; }
+        const prev = this._anResim;
+        this.anStopPlay();
+        this.anResimStop(false);
+        // The scripts exactly as this page loaded them, ?v= included; the worker runs and
+        // hashes those very texts.
+        const urls = {};
+        document.querySelectorAll('script[src]').forEach(el => {
+            const src = el.getAttribute('src') || '';
+            urls[src.split('?')[0]] = new URL(src, location.href).href;
+        });
+        const v = (urls['js/game.js'] || '').split('?')[1];
+        urls['js/resim.js'] = new URL('js/resim.js' + (v ? '?' + v : ''), location.href).href;
+        let worker;
+        try { worker = new Worker('js/resim-worker.js' + (v ? '?' + v : '')); }
+        catch (e) { this.showErrorMessage(t('an.resimFailed', { e: e.message || String(e) })); return; }
+        const rs = this._anResim = { worker, inputs: a.inputs, step: 0, target: fromStep, total: 0, busy: true,
+            playing: prev ? prev.playing : true, speed: prev ? prev.speed : 4, status: 'loading', checked: 0,
+            ents: new Map(), problem: null };
+        worker.onmessage = e => this.anResimMessage(rs, e.data);
+        worker.onerror = e => this.anResimMessage(rs, { type: 'error', problem: (e && e.message) || 'worker failed' });
+        worker.postMessage({ type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) });
+        this.anResimStage();
+        this.anResimHud(true);
+    }
+    anResimStop(render = true) {
+        const rs = this._anResim;
+        if (!rs) return;
+        this._anResim = null;
+        try { rs.worker.terminate(); } catch (e) {}
+        if (render) this.anRender();
+    }
+    anResimMessage(rs, m) {
+        if (rs !== this._anResim) return;   // a stopped run's late answer
+        rs.busy = false;
+        if (m.type === 'error') {
+            rs.status = 'failed'; rs.playing = false;
+            rs.problem = m.problem === 'rules changed since recording' ? t('an.resimRulesChanged') : m.problem;
+        } else if (m.type === 'ready') {
+            rs.total = m.lastInputStep; rs.inputsTotal = m.inputs; rs.status = 'running';
+            this.anResimLoop(rs);
+        } else if (m.type === 'frame') {
+            rs.step = m.step; rs.checked = m.checked;
+            this.anResimDraw(rs, m.scene);
+            // A hash that differs is a divergence; anything else that stops it (the match
+            // ending before an input, a seat no model played) is a replay that failed.
+            if (!m.ok) { rs.status = m.divergedSeq != null ? 'diverged' : 'failed'; rs.problem = m.problem;
+                         rs.divergedAt = m.divergedAt; rs.divergedSeq = m.divergedSeq; rs.playing = false; }
+            else if (m.complete && m.step >= rs.total) { rs.status = 'certified'; rs.playing = false; }
+        }
+        this.anResimHud();
+    }
+    // Paced by the page's frames. The worker is asked for the next step only once it has
+    // answered the last, so a speed the machine cannot keep plays as fast as it can
+    // rather than queueing work.
+    anResimLoop(rs) {
+        let last = performance.now();
+        const tick = now => {
+            if (rs !== this._anResim) return;
+            const dt = Math.min(250, now - last); last = now;
+            if (rs.playing && rs.status === 'running' && document.visibilityState !== 'hidden')
+                rs.target = Math.min(rs.total, rs.target + dt / 50 * rs.speed);
+            if (!rs.busy && rs.status === 'running' && (Math.floor(rs.target) > rs.step || !rs.ents.size)) {
+                rs.busy = true;
+                rs.worker.postMessage({ type: 'to', step: Math.floor(rs.target) });
+            }
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+    anResimToggle() {
+        const rs = this._anResim;
+        if (!rs) return;
+        if (rs.status === 'certified') { this.anResimStart(0); return; }
+        rs.playing = !rs.playing;
+        this.anResimHud();
+    }
+    anResimSpeed(v) { if (this._anResim) this._anResim.speed = Number(v) || 1; }
+    // Forward is more stepping. Back is a rebuild: the world is not kept at every step,
+    // so it is replayed from the start to the step asked for.
+    anResimSeek(v) {
+        const rs = this._anResim, step = Math.max(0, Math.round(Number(v) || 0));
+        if (!rs) return;
+        if (step < rs.step) { this.anResimStart(step); return; }
+        rs.target = step;
+    }
+    // The stage for a re-simulation: the recorded map, empty, and no fog. It is the
+    // observer's view, as a spectator of the live match had it.
+    anResimStage() {
+        const r = this.game.renderer;
+        if (!r) return;
+        this._anPicked = null;
+        r.clearScene();
+        const terrain = this.anTerrain();
+        this.game.terrain = terrain;
+        r.setTerrain(terrain);
+        this.anApplyFog({ seats: [], nodes: [], enemies: [] }, terrain);
+        const fow = this.game.fogOfWar;
+        if (fow && fow.fogGrid) { fow.fogGrid.fill(2); fow.updateFogTexture(); fow.fogDirty = true; }
+        (terrain.resources || []).forEach(res => {
+            if (!res.mesh) return;
+            if (res.mesh.trunk) { res.mesh.trunk.visible = false; res.mesh.leaves.visible = false; }
+            else res.mesh.visible = false;
+        });
+    }
+    // One frame of the re-simulated world onto the stage. Entities persist by id and
+    // move, rather than being rebuilt per frame; a building is rebuilt once when it
+    // completes, because its scaffold is decided when it is created.
+    anResimDraw(rs, scene) {
+        const r = this.game.renderer;
+        if (!r || !scene) return;
+        const seen = new Set();
+        scene.seats.forEach(s => {
+            s.units.forEach(u => {
+                const key = 'u' + u.id;
+                seen.add(key);
+                let ent = rs.ents.get(key);
+                if (!ent) {
+                    ent = typeof createUnit === 'function' ? createUnit(u.type, u.x, u.z, s.id, s.civilization, s.epoch) : null;
+                    if (!ent) return;
+                    ent.seat = s.seat;
+                    ent._appearanceId = u.id;
+                    rs.ents.set(key, ent);
+                    r.addUnit(ent);
+                }
+                Object.assign(ent, { x: u.x, z: u.z, health: u.health, isMoving: u.isMoving, isAttacking: u.isAttacking,
+                    isHarvesting: u.isHarvesting, isBuilding: u.isBuilding, carryingResource: u.carryingResource,
+                    carryingResourceType: u.carryingResourceType, attackTarget: u.attackTarget });
+            });
+            s.buildings.forEach(b => {
+                const key = 'b' + b.id + (b.underConstruction ? ':site' : '');
+                seen.add(key);
+                let ent = rs.ents.get(key);
+                if (!ent) {
+                    ent = typeof createBuilding === 'function' ? createBuilding(b.type, b.x, b.z, s.id, s.civilization,
+                        { instant: true, age: s.epoch, underConstruction: b.underConstruction }) : null;
+                    if (!ent) return;
+                    ent.seat = s.seat;
+                    rs.ents.set(key, ent);
+                    r.addBuilding(ent);
+                }
+                ent.health = b.health;
+                ent.underConstruction = b.underConstruction;
+                if (b.underConstruction) ent.buildProgress = b.buildProgress;
+            });
+        });
+        rs.ents.forEach((ent, key) => {
+            if (seen.has(key)) return;
+            rs.ents.delete(key);
+            if (key[0] === 'u') r.killUnit(ent);
+            else if (key.endsWith(':site') && seen.has(key.slice(0, -5))) r.removeBuilding(ent);   // finished, not destroyed
+            else r.killBuilding(ent);
+        });
+        const nodes = new Set(scene.nodes.map(n => n.type + '@' + Math.round(n.x) + ',' + Math.round(n.z)));
+        ((this.game.terrain && this.game.terrain.resources) || []).forEach(res => {
+            if (!res.mesh) return;
+            const on = nodes.has(res.type + '@' + Math.round(res.x) + ',' + Math.round(res.z));
+            if (res.mesh.trunk) { res.mesh.trunk.visible = on; res.mesh.leaves.visible = on; }
+            else res.mesh.visible = on;
+        });
+    }
+    // The controls are built once per run and then only updated, so a slider being
+    // dragged is not rebuilt under the pointer.
+    anResimHud(build = false) {
+        const rs = this._anResim, hud = document.getElementById('anStageHud');
+        if (!rs || !hud) return;
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        if (build || !document.getElementById('anResimTxt')) {
+            hud.innerHTML = '<span class="an-chip is-on">' + esc(t('an.resimMode')) + '</span>'
+                + '<button id="anResimPlay" class="an-chip" onclick="game.ui.anResimToggle()"></button>'
+                + '<select id="anResimSpeed" class="an-chip" onchange="game.ui.anResimSpeed(this.value)" aria-label="' + esc(t('an.resimSpeed')) + '">'
+                + [1, 4, 16, 64].map(n => '<option value="' + n + '"' + (n === rs.speed ? ' selected' : '') + '>' + n + '×</option>').join('') + '</select>'
+                + '<input id="anResimRange" type="range" min="0" max="1" value="0" step="1" onchange="game.ui.anResimSeek(this.value)" aria-label="' + esc(t('an.resimSeek')) + '">'
+                + '<span id="anResimTxt" class="an-cap-txt"></span>'
+                + '<button class="an-chip" onclick="game.ui.anResimStop()">' + esc(t('an.resimExit')) + '</button>';
+        }
+        const clock = steps => { const sec = Math.floor(steps / 20); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+        const play = document.getElementById('anResimPlay');
+        if (play) {
+            play.textContent = rs.status === 'certified' ? '↺' : (rs.playing ? '❚❚' : '▶');
+            play.setAttribute('aria-label', t(rs.status === 'certified' ? 'an.resimAgain' : rs.playing ? 'an.resimPause' : 'an.resimPlay'));
+            play.disabled = rs.status === 'loading' || rs.status === 'failed' || rs.status === 'diverged';
+        }
+        const range = document.getElementById('anResimRange');
+        if (range && document.activeElement !== range) { range.max = String(rs.total || 1); range.value = String(rs.step); }
+        const txt = document.getElementById('anResimTxt');
+        if (txt) {
+            const n = rs.inputsTotal || (rs.inputs ? rs.inputs.length : 0);
+            txt.textContent = rs.status === 'loading' ? t('an.resimLoading')
+                : rs.status === 'failed' ? t('an.resimFailed', { e: rs.problem || '?' })
+                : rs.status === 'diverged' ? t('an.resimDiverged', { t: clock(rs.divergedAt), s: rs.divergedAt, n: rs.divergedSeq })
+                : rs.status === 'certified' ? t('an.resimCertified', { n })
+                : t('an.resimStatus', { t: clock(rs.step), total: clock(rs.total), n: rs.checked, m: n });
+            txt.classList.toggle('is-bad', rs.status === 'diverged' || rs.status === 'failed');
+        }
     }
     anSetMode(mode) {
         if (!this.analyzer) return;
@@ -6037,16 +6260,22 @@ class UIManager {
         // different claims and the label says which is on screen.
         // The stage: the engine's own canvas, showing this moment.
         this.anMountStage();
-        this.anBuildStage(cur);
+        // A re-simulation belongs to the file it was started on; a new file ends it.
+        if (this._anResim && this._anResim.inputs !== a.inputs) this.anResimStop(false);
+        if (this._anResim) this.anResimHud();
+        else this.anBuildStage(cur);
         const hud = document.getElementById('anStageHud');
-        if (hud) {
+        if (hud && !this._anResim) {
             const sn = a.seats.get(cur && cur.playerId) || {};
             hud.innerHTML = '<button class="an-chip' + (a.union ? ' is-on' : '')
                 + '" onclick="game.ui.anToggleUnion()">' + esc(t('an.union')) + '</button>'
                 + '<button data-an-auto-camera aria-pressed="' + !!a.autoCam + '" class="an-chip' + (a.autoCam ? ' is-on' : '')
                 + '" onclick="game.ui.anToggleAutoCam()">' + esc(t('an.autoCam')) + '</button>'
                 + '<span class="an-cap-txt">' + esc(a.union ? t('an.viewAll')
-                    : t('an.viewSeat', { s: sn.name || sn.model || sn.civ || '?' })) + '</span>';
+                    : t('an.viewSeat', { s: sn.name || sn.model || sn.civ || '?' })) + '</span>'
+                + (a.inputs && a.inputs.length ? '<button id="anResimBtn" class="an-chip" onclick="game.ui.anResimStart()" title="'
+                    + esc(t('an.resimTip')) + '">' + esc(t('an.resim')) + '</button>' : '');
+            if (a.inputs && a.inputs.length) this.anResimOffer();
         }
 
         const ch = a.chapters.map(c => '<button class="an-chapter" onclick="game.ui.anJumpSec(' + c.t + ')">'
@@ -6303,11 +6532,17 @@ class UIManager {
         const t = new TerrainManager(null, size);
         t.difficulty = h.difficulty || 'easy';
         t.seed = h.mapSeed || null;
-        const n = Math.max(1, (h.players || []).length), half = size / 2;
+        // The spawns exactly as the arena start computes them (Game._startArenaFromSetup):
+        // 40 in from the edge, then 85 % of that, with the simulation's own trig. Stone
+        // and gold are laid out around them, so a radius of 85 % of the half-size put
+        // every rotated stone and gold node somewhere the match never had one -- found
+        // when the re-simulated world's nodes did not all land on this map.
+        const n = Math.max(1, (h.players || []).length), half = size / 2 - 40;
+        const trig = typeof WarMath !== 'undefined' ? WarMath : Math;
         t.spawns = [];
         for (let i = 0; i < n; i++) {
             const ang = (i / n) * Math.PI * 2 - Math.PI / 2, rad = half * 0.85;
-            t.spawns.push({ x: Math.cos(ang) * rad, z: Math.sin(ang) * rad });
+            t.spawns.push({ x: trig.cos(ang) * rad, z: trig.sin(ang) * rad });
         }
         t.generateTerrain();   // spawns must be set first: stone and gold rotate onto them
         this._anTerrain = t; this._anTerrainKey = key;

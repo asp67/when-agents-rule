@@ -2611,6 +2611,9 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
     gap:6px; flex-wrap:wrap; max-width:calc(100% - 20px); z-index:3;
     background:rgba(8,14,20,0.6); border-radius:6px; padding:4px 7px; backdrop-filter:blur(2px); }
 .an-cap-txt { font-size:0.68em; color:#9ab; }
+.an-cap-txt.is-bad { color:#f0a080; }
+#anResimRange { width:clamp(120px, 22vw, 320px); accent-color:#c9a45c; }
+#anResimSpeed { font:inherit; font-size:0.72em; }
 
 
 /* The inspect card. Top-right so it never covers the HUD toggles bottom-left. */

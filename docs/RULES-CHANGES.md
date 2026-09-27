@@ -6,6 +6,19 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 954: the re-simulated replay in the analyzer (27 September 2026)
+
+No change in what happens in a match or what a model is told.
+
+- **Re-simulate:** the analyzer offers a **Re-simulate** chip for a transcript with inputs (build 952 on). It plays the match again from its inputs through the real rules, in a worker, and checks every recorded world hash on the way. The stage shows the observer's view, unfogged, with play, pause, speed and a time slider. Seeking back rebuilds from the start. It ends with "Certified: all N recorded world hashes reached" or names the time and step where the world stopped being the recorded one.
+- **When it is offered:** only when the rules (`coreHash`) and the harness (`harnessHash`) this page runs are the ones in the transcript's contract. The worker hashes the very texts it runs. Otherwise the chip is disabled: "Rules changed since recording: snapshot mode only."
+- **One core:** `js/resim.js` is shared by the worker and by `tools/bench/transcript-replay.cjs`.
+- **The analyzer's map:** the analyzer rebuilds a match's map from its seed, and it placed the spawns at 85 % of the half-size where the arena uses 85 % of (half-size − 40). Stone and gold are laid out around the spawns, so the analyzer drew them where no match had them: in the seven shipped samples, up to 11 of 31 known stone and gold nodes had no place on its map. It now uses the arena's own spawns, and all known nodes of all seven samples land on it. The replay found this, since its world's nodes did not all land on the analyzer's map.
+
+## Build 953: input lines stay out of the analyzer's rows (27 September 2026)
+
+Build 952's input lines have a type, and the analyzer listed every typed line as a marker row: hundreds of them a match. They are now kept apart for the re-simulation.
+
 ## Build 952: transcripts record their inputs (27 September 2026)
 
 No change in what happens in a match or what a model is told. An arena transcript now also records every input that changes the world, each stamped with the simulation step it happened at and a short hash of the world right after it:
