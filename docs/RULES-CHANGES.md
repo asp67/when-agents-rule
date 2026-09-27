@@ -6,6 +6,21 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 956: the intent layer (27 September 2026)
+
+No change in what happens in a match or what a model is told. In the arena, the **🎯 Intent** button (on by default, remembered) draws each model's newest orders over the 3-D view. It reads the turn logs only.
+
+- **Arrows** run from the units an order moves to what it targets. A target is resolved exactly:
+  - an entity id, to that entity;
+  - a map tile, to its centre;
+  - coordinates, to that point.
+
+  The units come from the ids the model named, or, when it named none, from the whole army, as the tool defines it.
+- **Markers:** a target whose units the harness chooses (an explore with no unit named) gets a marker without an arrow. A target that does not resolve gets nothing: no arrow is ever guessed.
+- **Refused orders** are drawn as refused, grey and crossed out, as soon as the harness has answered.
+- **Reasons:** each seat's reason is shown beside its order, verbatim up to 160 characters, one bubble per seat. Turns that land together, as in a turn-based round, are staggered 0.6 s apart.
+- **Leaderboard:** each model's card now shows its current objective.
+
 ## Build 955: the match chronicle and captions (27 September 2026)
 
 No change in what happens in a match or what a model is told. The chronicle (`js/chronicle.js`) only reads the match, and a test checks that a match with it and a match without it reach the same world.

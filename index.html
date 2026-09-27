@@ -6,7 +6,7 @@
     <title>When Agents Rule</title>
     <link rel="icon" href="favicon.ico?v=793" sizes="16x16 32x32 48x48 64x64 256x256">
     <link rel="icon" href="favicon.svg?v=793" type="image/svg+xml" sizes="any">
-    <link rel="stylesheet" href="css/styles.css?v=955">
+    <link rel="stylesheet" href="css/styles.css?v=956">
     <link rel="stylesheet" href="css/antiquity.css?v=932">
     <!-- ?diag=1 -- the console, on the page.
 
@@ -392,6 +392,7 @@
                     </div>
                 </span>
                 <button class="sb-end" id="captionsBtn" onclick="game.ui.toggleChronicleCaptions()" aria-pressed="true" data-i18n-title="spec.captionsTitle" title="Captions: what happens in the match">CC</button>
+                <button class="sb-end" id="intentBtn" onclick="game.ui.toggleIntentLayer()" aria-pressed="true" data-i18n="spec.intent" data-i18n-title="spec.intentTitle" title="Show what each model just ordered, and why">🎯 Intent</button>
                 <button class="sb-end" id="actionCamBtn" onclick="game.toggleActionCam()" data-i18n="spec.actionCam" data-i18n-title="spec.actionCamTitle" title="Kamera folgt automatisch den Kämpfen">🎬 Auto</button>
                 <button class="sb-end" id="arenaSnapshotBtn" onclick="game.toggleArenaSnapshot()" data-i18n="spec.evaluate" data-i18n-title="spec.evaluateTitle" title="Live-Zwischenstand ansehen (Spiel läuft weiter)">Auswertung ▸</button>
                 <button class="sb-end sb-quit" onclick="game.cancelGame()" data-i18n="spec.quit" data-i18n-title="spec.quitTitle" title="Arena beenden und zur Auswertung">✕ Beenden</button>
@@ -675,7 +676,7 @@
     <script src="js/engine/atmosphere.js?v=824"></script>
     <script src="js/engine/grass.js?v=797"></script>
     <script src="js/engine/gamerenderer.js?v=941"></script>
-    <script src="js/i18n.js?v=955"></script>
+    <script src="js/i18n.js?v=956"></script>
     <script src="js/civilizations.js?v=911"></script>
     <script src="js/buildings.js?v=811"></script>
     <script src="js/units.js?v=937"></script>
@@ -693,8 +694,9 @@
     <script src="js/director.js?v=827"></script>
     <script src="js/audio.js?v=907"></script>
     <script src="js/chronicle.js?v=955"></script>
-    <script src="js/ui.js?v=955"></script>
-    <script src="js/game.js?v=955"></script>
+    <script src="js/intent-layer.js?v=956"></script>
+    <script src="js/ui.js?v=956"></script>
+    <script src="js/game.js?v=956"></script>
     <script src="js/boot.js?v=940"></script>
     <script src="js/standing-orders.js?v=937"></script>
     <script src="js/showcase.js?v=868"></script>

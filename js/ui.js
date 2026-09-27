@@ -174,7 +174,8 @@ class UIManager {
             split: Number.isFinite(saved.split) ? Math.max(20, Math.min(80, saved.split)) : 52,
             text: saved.text === 'compact' ? 'compact' : 'comfortable',
             rate: [0.5, 1, 2, 4].includes(saved.rate) ? saved.rate : 1,
-            captions: saved.captions !== false   // chronicle captions in the arena (review #11)
+            captions: saved.captions !== false,  // chronicle captions in the arena (review #11)
+            intent: saved.intent !== false       // the intent layer's arrows and reasons (review #11)
         };
     }
 
@@ -2448,6 +2449,84 @@ class UIManager {
     // entries (weight 2+) are shown one at a time, five seconds each, in the order they
     // happened; a backlog is thinned to the decisive ones rather than played late.
     captionsOn() { return this.viewPreferences().captions !== false; }
+    intentOn() { return this.viewPreferences().intent !== false; }
+    toggleIntentLayer() {
+        const p = this.viewPreferences();
+        p.intent = !this.intentOn();
+        this.saveViewPreferences();
+        this.refreshIntentButton();
+    }
+    refreshIntentButton() {
+        const btn = document.getElementById('intentBtn');
+        if (!btn) return;
+        const on = this.intentOn();
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    // One overlay over the canvas, redrawn every frame while anything is showing: the
+    // camera moves, so positions are projected fresh each time.
+    startIntentOverlay() {
+        this.stopIntentOverlay();
+        const host = this.game.renderer && this.game.renderer.container;
+        if (!host) return;
+        const ov = document.createElement('div');
+        ov.id = 'intentOverlay';
+        ov.className = 'intent-overlay';
+        ov.innerHTML = '<svg class="intent-svg" aria-hidden="true"></svg><div class="intent-bubbles"></div>';
+        host.appendChild(ov);
+        const svg = ov.firstChild, box = ov.lastChild, NS = 'http://www.w3.org/2000/svg';
+        const tick = () => {
+            if (!this._intentRaf) return;
+            this._intentRaf = requestAnimationFrame(tick);
+            this.drawIntentOverlay(svg, box, NS);
+        };
+        this._intentRaf = requestAnimationFrame(tick);
+    }
+    drawIntentOverlay(svg, box, NS = 'http://www.w3.org/2000/svg') {
+        const layer = this.intentLayer, r = this.game.renderer;
+        if (!layer || !r || !r.worldToScreen || !this.intentOn()) { svg.innerHTML = ''; box.innerHTML = ''; return; }
+        const f = layer.frame((x, z) => r.worldToScreen(x, 0, z));
+        svg.innerHTML = '';
+        if (f.shapes.some(s => s.from)) {
+            const defs = document.createElementNS(NS, 'defs');
+            defs.innerHTML = '<marker id="intentHead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker>';
+            svg.appendChild(defs);
+        }
+        for (const s of f.shapes) {
+            const g = document.createElementNS(NS, 'g');
+            g.setAttribute('opacity', s.opacity.toFixed(2));
+            g.setAttribute('stroke', s.color); g.setAttribute('fill', 'none');
+            if (s.from) {
+                const line = document.createElementNS(NS, 'line');
+                line.setAttribute('x1', s.from.x); line.setAttribute('y1', s.from.y);
+                line.setAttribute('x2', s.to.x); line.setAttribute('y2', s.to.y);
+                line.setAttribute('stroke-width', '2.5'); line.setAttribute('stroke-dasharray', '7 5');
+                line.setAttribute('marker-end', 'url(#intentHead)');
+                g.appendChild(line);
+            }
+            const ring = document.createElementNS(NS, 'circle');
+            ring.setAttribute('cx', s.to.x); ring.setAttribute('cy', s.to.y); ring.setAttribute('r', s.marker ? 12 : 7);
+            ring.setAttribute('stroke-width', '2.5');
+            g.appendChild(ring);
+            if (s.refused) {
+                const x = document.createElementNS(NS, 'path'), k = s.marker ? 8 : 5;
+                x.setAttribute('d', `M${s.to.x - k},${s.to.y - k} L${s.to.x + k},${s.to.y + k} M${s.to.x + k},${s.to.y - k} L${s.to.x - k},${s.to.y + k}`);
+                x.setAttribute('stroke-width', '2.5');
+                g.appendChild(x);
+                const title = document.createElementNS(NS, 'title');
+                title.textContent = t('spec.intentRefused');
+                g.appendChild(title);
+            }
+            svg.appendChild(g);
+        }
+        box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
+            + b.opacity.toFixed(2) + ';--seat:' + b.color + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.text) + '</span></div>').join('');
+    }
+    stopIntentOverlay() {
+        if (this._intentRaf) cancelAnimationFrame(this._intentRaf);
+        this._intentRaf = null;
+        document.getElementById('intentOverlay')?.remove();
+    }
     toggleChronicleCaptions() {
         const p = this.viewPreferences();
         p.captions = !this.captionsOn();
@@ -3185,6 +3264,15 @@ class UIManager {
             this._spectatorIntervals.push(setInterval(() => { if (this.chronicle) this.chronicle.update(); }, 250));
         }
         this.refreshCaptionsButton();
+        // The intent layer (review #11): each model's newest orders as arrows and its own
+        // reason beside them, drawn over the 3-D view. Read from the turn logs; the match
+        // does not know it is there.
+        this.intentLayer = typeof IntentLayer === 'function' ? new IntentLayer(this.game) : null;
+        if (this.intentLayer) {
+            this._spectatorIntervals.push(setInterval(() => { if (this.intentLayer && this.intentOn()) this.intentLayer.poll(); }, 250));
+            this.startIntentOverlay();
+        }
+        this.refreshIntentButton();
 
         // Initial paint
         this.updateSpectatorPlayerList();
@@ -3296,6 +3384,7 @@ class UIManager {
         clearTimeout(this._soundCaptionTimer);this._soundCaptionTimer=null;this._soundCaption=null;
         clearTimeout(this._chronicleTimer); this._chronicleTimer = null; this._chronicleQueue = [];
         document.getElementById('chronicleCaption')?.remove();
+        this.stopIntentOverlay();
         document.querySelector('.spectator-sound-caption')?.remove();
         document.body.classList.remove('spectator-mode');
         // Leave the arena with the minimap open again, so a campaign started next
@@ -4011,6 +4100,7 @@ class UIManager {
             let isLLM = false;
             let adviceCount = 0;
             let paused = false;
+            let objective = '';
             if (this.game.openAIAIManager && this.game.openAIAIManager.aiControllers) {
                 const controller = this.game.openAIAIManager.aiControllers.find(c => c.id === ai.id);
                 if (controller && controller.model) {
@@ -4019,10 +4109,11 @@ class UIManager {
                     isLLM = true;
                     adviceCount = (controller.pendingAdvice && controller.pendingAdvice.length) || 0;
                     paused = !!controller.paused;
+                    objective = String(controller.objective || '').trim();
                 }
             }
 
-            return { ai, civ, colorHex, workers, military, alive, modelName, thinking, isLLM, adviceCount, paused, score: this.spectatorPowerScore(ai) };
+            return { ai, civ, colorHex, workers, military, alive, modelName, thinking, isLLM, adviceCount, paused, objective, score: this.spectatorPowerScore(ai) };
         });
 
         // Sort: alive first, then by score desc
@@ -4059,6 +4150,7 @@ class UIManager {
                             : (r.paused ? `<span class="lb-tag-paused">${t('spec.paused')}</span>`
                             : (r.thinking ? `<span class="lb-think"><span class="dot"></span>${t('spec.thinking')}</span>` : ''))}
                     </div>
+                    ${(r.isLLM && r.objective) ? `<div class="lb-objective" title="${this.escapeHtml(r.objective)}"><span aria-hidden="true">\u{1F3AF}</span> ${this.escapeHtml(r.objective.length > 90 ? r.objective.slice(0, 89) + '\u2026' : r.objective)}</div>` : ''}
                     <div class="lb-stats">
                         <span class="lb-stat">\u{1F465} ${ai.resources.population}/${ai.resources.maxPopulation}</span>
                         <span class="lb-stat">\u{1F477} ${r.workers}</span>

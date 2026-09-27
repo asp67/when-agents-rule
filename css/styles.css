@@ -3028,3 +3028,19 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .chronicle-caption.chr-in { animation: chr-fade 5s ease forwards; }
 @keyframes chr-fade { 0% { opacity: 0; } 6% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; } }
 #captionsBtn:not(.active) { opacity: 0.55; }
+
+/* Intent layer (review #11): arrows and reasons over the 3-D view. Nothing here takes
+   input; the fade is the only motion, and the global reduced-motion rule leaves it. */
+.intent-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
+.intent-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.intent-bubble {
+    position: absolute; transform: translate(-50%, calc(-100% - 18px)); max-width: 260px;
+    padding: 5px 9px; border-radius: 6px; font-size: 0.74em; line-height: 1.3;
+    color: #eef3f8; background: rgba(10, 14, 30, 0.84); border: 1px solid var(--seat, #4ecca3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.intent-bubble .intent-reason { display: block; margin-top: 2px; }
+.lb-objective { font-size: 0.72em; color: #cfd8e3; margin: 2px 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lb-list.collapsed .lb-objective { display: none; }
+#intentBtn:not(.active) { opacity: 0.55; }
+.intent-bubble .intent-refused { color: #f0a080; font-weight: bold; }
