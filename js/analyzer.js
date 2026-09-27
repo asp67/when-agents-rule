@@ -84,14 +84,26 @@ class TranscriptAnalyzer {
         // top level; both measure from the timeline's origin, so they interleave without
         // conversion. `at` is the tiebreak so two events in the same second keep the
         // order they happened in.
-        const secOf = (r) => (r.state && r.state.clock && typeof r.state.clock.matchSeconds === 'number')
-            ? r.state.clock.matchSeconds
+        //
+        // Builds 934 to 949 wrote clock.matchSeconds as 0 on EVERY turn (the state mixed a
+        // simulated clock with a wall-clock origin). Such a file is recognised by that
+        // shape -- every turn at 0 while the turns' own wall-clock stamps span more than
+        // a few seconds -- and its turns are placed by those stamps instead, from the
+        // match's start, which is the origin the markers' own seconds are measured from.
+        const stateSec = r => (r.state && r.state.clock && typeof r.state.clock.matchSeconds === 'number') ? r.state.clock.matchSeconds : null;
+        const stamps = this.turns.map(r => r.at).filter(Number.isFinite);
+        this.clockStuck = this.turns.length > 1 && this.turns.every(r => stateSec(r) === 0)
+            && stamps.length > 1 && Math.max(...stamps) - Math.min(...stamps) > 5000;
+        const secOf = (r) => (!this.clockStuck && stateSec(r) != null)
+            ? stateSec(r)
             : (typeof r.matchSeconds === 'number' ? r.matchSeconds : null);
         const all = this.turns.concat(this.markers);
         all.forEach(r => { r._sec = secOf(r); });
         // A transcript written before matchSeconds existed still opens: fall back to the
-        // wall-clock stamp, offset from the first record so the axis starts at zero.
-        const t0 = all.length ? Math.min(...all.map(r => r.at || Infinity)) : 0;
+        // wall-clock stamp, offset from the match's start (the header) or else from the
+        // first record, so the axis starts at zero.
+        const t0 = (this.header && Number.isFinite(this.header.startedAt)) ? this.header.startedAt
+            : (all.length ? Math.min(...all.map(r => r.at || Infinity)) : 0);
         all.forEach(r => { if (r._sec == null) r._sec = Math.max(0, Math.round(((r.at || t0) - t0) / 1000)); });
         all.sort((a, b) => (a._sec - b._sec) || ((a.at || 0) - (b.at || 0)));
         this.order = all;

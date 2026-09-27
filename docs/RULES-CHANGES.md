@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 950: the match clock models read works again (27 September 2026)
+
+From build 934 to build 949, every model was told `clock.matchSeconds: 0` on every turn. Build 934's single simulation clock measured the state's clock from the simulation's start while subtracting the timeline's wall-clock origin. Those are two different clocks, and the difference was always clamped to 0. One recorded match (build 945) shows 314 turns out of 314 at 0 seconds.
+
+- **The fix:** the state now reads the match clock in real seconds. It stops while the game is paused and stands still in lockstep while the seats think.
+- **Results:** matches from builds 934–949 were played with a broken match clock. Models could still see other time fields (`secondsRemaining`, round deadlines, ages of events), but not how long the match had run.
+- **The analyzer:** it placed turns by this clock, so it stacked all the turns of those transcripts at 0 seconds. It now recognises such a file (every turn at 0, while the turns' own time stamps span more than a few seconds) and places the turns by their stamps from the match start instead. Healthy files are unchanged.
+
+Found while building WAR Bench: a baseline's state read `matchSeconds: 0` after 20 simulated seconds.
+
 ## Build 949: strict seats for WAR Bench (27 September 2026)
 
 No change for arena seats. A seat can now be marked strict (`controller._strict`), which WAR Bench's runner does. A strict seat gets no second chances: a refused request parameter is not adapted and retried, a rate limit is not retried, and a context overflow does not shrink the next request. A benchmark scores the request it declared, not one the harness repaired, so each of these is a failed round.

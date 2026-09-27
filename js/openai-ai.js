@@ -3657,9 +3657,13 @@ class OpenAIAIManager {
         // makes a single sample useless to plan on. And no derived "turnsRemaining" —
         // that is the model's arithmetic to do, and it would bake in an assumption
         // that cadence holds when a slowing endpoint is exactly when it does not.
+        // The match clock, in real seconds: stopped while paused, still in lockstep while
+        // the seats think. It subtracted the timeline's wall-clock origin from the
+        // simulation clock after review #6 step 3 moved battleNow onto simulated time --
+        // two different clocks -- and so read 0 on every turn of every match from build
+        // 934 to 949: 314 turns out of 314 in one recorded match.
         const clockObj = {
-            matchSeconds: Math.max(0, Math.round(
-                (battleNow - ((game._timeline && game._timeline.t0) || battleNow)) / 1000))
+            matchSeconds: Math.max(0, Math.round(((game.clock && game.clock.matchMs) || 0) / 1000))
         };
         const gaps = (controller && controller.turnGaps) || [];
         // Omitted on the first turn: no interval has been observed yet, and seeding it
