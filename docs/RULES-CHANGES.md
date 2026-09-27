@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 949: strict seats for WAR Bench (27 September 2026)
+
+No change for arena seats. A seat can now be marked strict (`controller._strict`), which WAR Bench's runner does. A strict seat gets no second chances: a refused request parameter is not adapted and retried, a rate limit is not retried, and a context overflow does not shrink the next request. A benchmark scores the request it declared, not one the harness repaired, so each of these is a failed round.
+
 ## Build 948: scenario prompts (27 September 2026)
 
 No change in what an arena model is told: the default system prompt is byte-identical. Its victory paragraph is now a named constant, so a WAR Bench scenario (`war-scenario-v1`) can replace exactly that paragraph with its objective and leave everything else as it is (`OpenAIAIManager.scenarioSystemPrompt`).

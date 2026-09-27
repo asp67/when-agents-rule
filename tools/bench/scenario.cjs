@@ -32,6 +32,10 @@ const { createMatch } = require('./realm.cjs');
 
 const SCHEMA = 'war-scenario-v1';
 const ROUND_MS = 10000;
+// How long a seat may take to answer one round: the declared ceiling of the protocol.
+// It is told to the seat (clock.secondsToAnswer) and enforced exactly (the request is
+// aborted at it); an answer that misses it is an empty round, never a retry.
+const CEILING_MS = 120000;
 
 // The eight symmetries of the square map. A variant moves every coordinate in the
 // scenario the same way -- entities, points, rival orders, predicates, reference -- so
@@ -202,21 +206,33 @@ function resolve(v, tags) {
 
 // A fresh episode of `scenario` in `variant`: the started realm, both seats and a world
 // view for the predicates. Nothing has been observed or ordered yet.
+//
+// The protocol is turn-based lockstep with ROUND_MS slices, and the seat's state says
+// so exactly as an arena lockstep seat's does (clock.secondsToAnswer from the ceiling,
+// clock.worldSecondsPerRound). The slice budget is unbounded here because the episode
+// itself drives the world, a round at a time, through the frozen stepper.
 async function begin(scenario, variant = 'identity', options = {}) {
     const inst = instantiate(scenario, variant);
-    const realm = await createMatch({ kind: 'board', seed: inst.board.seed || inst.id, seats: inst.board.seats }, options);
+    const { ceilingMs = CEILING_MS, ...realmOptions } = options;
+    const realm = await createMatch({ kind: 'board', seed: inst.board.seed || inst.id, seats: inst.board.seats }, realmOptions);
     const mgr = realm.game.openAIAIManager;
+    mgr.turnBased = true;
+    mgr.roundTimeoutMs = () => ceilingMs;
+    mgr.requestAbortMs = () => ceilingMs;
+    realm.game._lockstep = { sliceMs: ROUND_MS, budget: Infinity };
     const [subject, rival] = realm.seats, [cs, cr] = realm.controllers;
     const world = { game: realm.game, tags: realm.tags, points: inst.points || {},
         seat: who => (who === 'subject' ? subject : rival) };
     return { inst, realm, mgr, subject, rival, subjectController: cs, rivalController: cr, world,
-        objective: objectiveText(inst, realm.tags) };
+        objective: objectiveText(inst, realm.tags), ceilingMs };
 }
 
-// Play one episode. `policy(turn)` returns the subject's commands for a round, where
-// turn = {round, state, episode} and state is exactly what a model would be sent this
-// round (observed and committed, as a model turn does). Returns the outcome and a
-// per-round log: what was ordered, what the executor answered, what held afterwards.
+// Play one episode. `policy(turn)` returns the subject's answer for a round -- a list of
+// commands, or a whole envelope ({commands, objective, plan}) as a model's reply parses
+// to, or null for no answer -- where turn = {round, state, episode} and state is exactly
+// what a model would be sent this round (observed and committed, as a model turn does).
+// Returns the outcome and a per-round log: what was ordered, what the executor
+// answered, what held afterwards.
 async function play(scenario, variant, policy, options = {}) {
     const ep = await begin(scenario, variant, options);
     const { inst, realm, mgr, subjectController: cs, rivalController: cr, world } = ep;
@@ -224,19 +240,27 @@ async function play(scenario, variant, policy, options = {}) {
     let outcome = null, round = 0;
     for (round = 1; round <= inst.rounds && !outcome; round++) {
         const state = mgr.buildGameStateJSON(cs);
-        const commands = resolve((await policy({ round, state, episode: ep })) || [], realm.tags);
+        const answer = await policy({ round, state, episode: ep });
+        const envelope = Array.isArray(answer) ? { commands: resolve(answer, realm.tags) } : (answer || { commands: [] });
+        const commands = Array.isArray(envelope.commands) ? envelope.commands : [];
         const rivalOrders = (inst.rival || []).filter(o => o.round === round).map(o => resolve(o, realm.tags));
         // The two seats act in an order that rotates by round, as turn-based rounds do,
         // so neither side always moves first.
         const entry = { round, commands, results: null, rival: [] };
         const subjectActs = () => {
-            if (!commands.length) { entry.results = null; return; }
+            if (!commands.length && envelope.objective === undefined && envelope.plan === undefined) { entry.results = null; return; }
             cs.lastActionResult = null;
-            mgr.executeTurn(cs, { commands });
+            mgr.executeTurn(cs, envelope);
             entry.results = cs.lastActionResult;
         };
         const rivalActs = () => { for (const o of rivalOrders) { mgr.executeAction(cr, { action: o.action, params: o.params }); entry.rival.push(cr.lastActionResult); } };
         if (round % 2) { rivalActs(); subjectActs(); } else { subjectActs(); rivalActs(); }
+        // The round's decision-log entries, held per seat in lockstep, go in now -- the
+        // first half of flushRound, whose second half (running queued answers) the
+        // episode has just done itself.
+        for (const c of [cs, cr]) for (const k of ['pendingControl', 'pendingLog']) {
+            if (c[k] && c[k].length) { for (const e of c[k]) mgr.commitDecision(e); c[k] = []; }
+        }
         realm.advance(ROUND_MS);
         entry.simMs = realm.game.clock.simMs;
         if (inst.failure && evaluate(inst.failure, world)) outcome = 'failure';
@@ -259,5 +283,5 @@ const referencePolicy = () => ({ round, episode }) => {
 // Doing nothing at all.
 const noopPolicy = () => () => [];
 
-module.exports = { SCHEMA, ROUND_MS, VARIANTS, validate, load, loadAll, instantiate, evaluate, begin, play,
+module.exports = { SCHEMA, ROUND_MS, CEILING_MS, VARIANTS, validate, load, loadAll, instantiate, evaluate, begin, play,
                    referencePolicy, noopPolicy };

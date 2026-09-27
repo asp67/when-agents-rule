@@ -4713,7 +4713,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 //
                 // One retry, because a second would push a seat past a deadline it
                 // cannot see and turn a recoverable blip into a missed round anyway.
-                if (OpenAIAIManager.isRateLimited(response.status, errorText) && !rateRetried) {
+                // Strict seats (WAR Bench, controller._strict) get no second chances of
+                // any kind: a benchmark scores the request it declared, not one the
+                // harness repaired, so a rate limit or a refused parameter is a failed
+                // turn like any other and is recorded as one.
+                if (OpenAIAIManager.isRateLimited(response.status, errorText) && !rateRetried && !controller._strict) {
                     rateRetried = true;
                     if (controller.stats) controller.stats.rateLimited = (controller.stats.rateLimited || 0) + 1;
                     const waitMs = OpenAIAIManager.retryAfterMs(response.headers, 1200);
@@ -4728,7 +4732,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     continue;
                 }
 
-                const fix = (response.status === 400 && !adapted)
+                const fix = (response.status === 400 && !adapted && !controller._strict)
                     ? OpenAIAIManager.adaptToApiError(model._reqOpts, errorText, model) : null;
                 // Hint FIRST: the spectator log truncates at 90 characters, and a
                 // provider's error body will happily eat all of them on its own.
@@ -5073,7 +5077,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // the "input is too large to process". Those two cost a llama.cpp seat the
             // self-heal entirely: it would overflow, get counted against its reliability,
             // and overflow again on identical terms next turn.
-            if (/context length|context window|maximum context|context size|exceeds the available context|input is too large|prompt is too long|too many tokens|reduce the length/i.test(err.message || '')) {
+            if (!controller._strict && /context length|context window|maximum context|context size|exceeds the available context|input is too large|prompt is too long|too many tokens|reduce the length/i.test(err.message || '')) {
                 controller.seat._ctxShrink = Math.max(0.25, (controller._ctxShrink || 1) * 0.7);
                 this.countChange(controller, 'adaptations');
                 this.noteChange(ai, { type: 'adaptation', kind: 'contextShrunk',
