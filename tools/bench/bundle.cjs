@@ -91,15 +91,19 @@ async function recordEpisode(s, variant, policy, options, wire) {
 
 // Record a run as bundle lines. `policy` = {name, kind: 'baseline' | 'model', make(s,
 // v, a, wire) -> policy}; a model's make receives the wire sink to record into.
-async function record({ scenarios, policy, variants = null, attempts = 1, ceilingMs = S.CEILING_MS, sources = ruleSources() }) {
+// `onLine(line)` receives every line as it is made (a long model run streams its bundle
+// to disk, so an interruption still leaves everything recorded so far);
+// `onEpisode(result, index, total)` reports progress.
+async function record({ scenarios, policy, variants = null, attempts = 1, ceilingMs = S.CEILING_MS, sources = ruleSources(),
+                        label = null, onLine = null, onEpisode = null }) {
     const lines = [];
     let prev = null;
-    const push = rec => { const line = JSON.stringify(Object.assign({ prev }, rec)); lines.push(line); prev = sha(line); };
+    const push = rec => { const line = JSON.stringify(Object.assign({ prev }, rec)); lines.push(line); prev = sha(line); if (onLine) onLine(line); };
     const files = {};
     for (const [p, text] of Object.entries(sources)) files[p] = sha(text);
     for (const s of scenarios) files['scenario:' + s.id] = sha(JSON.stringify(s));
     push({ type: 'header', schema: SCHEMA, protocol: { scenario: S.SCHEMA, roundMs: S.ROUND_MS, ceilingMs },
-           policy: { name: policy.name, kind: policy.kind, config: policy.config || null },
+           policy: { name: policy.name, kind: policy.kind, config: policy.config || null }, label,
            coreHash: coreHashOf(sources), harnessHash: sha(sources['js/openai-ai.js']), files,
            scenarios: scenarios.map(s => s.id), variants, attempts });
     const blobs = new Map();
@@ -107,6 +111,7 @@ async function record({ scenarios, policy, variants = null, attempts = 1, ceilin
     for (const s of scenarios) blobs.set(files['scenario:' + s.id], JSON.stringify(s));
     for (const [hash, text] of [...blobs].sort()) push({ type: 'blob', sha256: hash, text });
     const results = [];
+    const total = scenarios.reduce((n, s) => n + (variants || s.variants).length * attempts, 0);
     for (const s of scenarios) for (const v of (variants || s.variants)) for (let a = 1; a <= attempts; a++) {
         const wire = policy.kind === 'model' ? [] : null;
         push({ type: 'episode', id: s.id, variant: v, attempt: a });
@@ -116,6 +121,7 @@ async function record({ scenarios, policy, variants = null, attempts = 1, ceilin
         ep.result.attempt = a;
         push({ type: 'end', id: s.id, variant: v, attempt: a, outcome: ep.result.outcome, rounds: ep.result.rounds, snapshot: ep.snapshot });
         results.push(ep.result);
+        if (onEpisode) onEpisode(ep.result, results.length, total);
     }
     const sc = score(results);
     push({ type: 'close', episodes: results.length, score: sc });

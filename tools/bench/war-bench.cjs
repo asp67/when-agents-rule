@@ -4,6 +4,11 @@
 //
 //   node tools/bench/war-bench.cjs run --policy noop|random-valid|scripted
 //        [--attempts N] [--variants identity,rot90,...] [--out run.warbench.jsonl.gz]
+//   node tools/bench/war-bench.cjs run --model seat.json [--label "methodology preview"] ...
+//        a model seat (v0b): {name, endpoint, model, provider, maxTokens, contextSize,
+//        reqOpts: {temperature, extraBody, ...}} -- the declared config goes in the bundle
+//   node tools/bench/war-bench.cjs calibrate --model seat.json
+//        one real round at production size: status, latency, tokens, tool calls
 //   node tools/bench/war-bench.cjs verify <bundle>        replay it on its own rules
 //   node tools/bench/war-bench.cjs report <bundle> [--out report.html]
 const fs = require('node:fs');
@@ -11,6 +16,7 @@ const path = require('node:path');
 const S = require('./scenario.cjs');
 const B = require('./bundle.cjs');
 const { BASELINES } = require('./baselines.cjs');
+const { modelPolicy } = require('./runner.cjs');
 
 function args(argv) {
     const a = { _: [] };
@@ -70,15 +76,47 @@ async function main() {
     const a = args(process.argv.slice(2));
     const cmd = a._[0];
     if (cmd === 'run') {
-        const name = a.policy;
-        if (!BASELINES[name]) throw new Error('--policy is one of ' + Object.keys(BASELINES).join(', ') + ' (v0a runs baselines only)');
         const variants = a.variants ? String(a.variants).split(',') : null;
-        const lines = await B.record({ scenarios: S.loadAll(), variants, attempts: Number(a.attempts || 1),
-                                       policy: { name, kind: 'baseline', make: BASELINES[name] } });
-        const out = a.out || `${name}.warbench.jsonl.gz`;
+        let policy, name;
+        if (a.model) {
+            const cfg = JSON.parse(fs.readFileSync(a.model, 'utf8'));
+            name = cfg.name;
+            policy = { name, kind: 'model', config: cfg,
+                       make: (s, v, att, wire) => modelPolicy(cfg, { fetchImpl: B.recordingFetch(globalThis.fetch, wire) }) };
+        } else {
+            name = a.policy;
+            if (!BASELINES[name]) throw new Error('--policy is one of ' + Object.keys(BASELINES).join(', ') + ', or give --model');
+            policy = { name, kind: 'baseline', make: BASELINES[name] };
+        }
+        const out = a.out || `${String(name).replace(/[^A-Za-z0-9._-]+/g, '-')}.warbench.jsonl.gz`;
+        // Streamed as it is made (plain JSON lines), then gzipped whole at the end.
+        const partial = out + '.partial.jsonl';
+        fs.writeFileSync(partial, '');
+        const t0 = Date.now();
+        const lines = await B.record({ scenarios: S.loadAll(), variants, attempts: Number(a.attempts || 1), policy,
+            label: a.label || (a.model ? 'methodology preview' : null),
+            onLine: line => fs.appendFileSync(partial, line + '\n'),
+            onEpisode: (r, i, n) => console.log(`[${i}/${n}] ${r.id}/${r.variant}/${r.attempt}: ${r.outcome} in ${r.rounds} rounds (${Math.round((Date.now() - t0) / 1000)} s)`) });
         B.write(lines, out);
+        fs.unlinkSync(partial);
         const sc = JSON.parse(lines[lines.length - 1]).score;
         console.log(`${name}: ${sc.episodes} episodes, success ${pct(sc.success.p)} [${pct(sc.success.lo)}, ${pct(sc.success.hi)}] -> ${out}`);
+    } else if (cmd === 'calibrate') {
+        const cfg = JSON.parse(fs.readFileSync(a.model, 'utf8'));
+        const s = S.loadAll().find(x => x.id === (a.scenario || 'recover-01'));
+        const ep = await S.begin(s, 'identity');
+        const wire = [];
+        const policy = modelPolicy(cfg, { fetchImpl: B.recordingFetch(globalThis.fetch, wire) });
+        const state = ep.mgr.buildGameStateJSON(ep.subjectController);
+        const t = Date.now();
+        const env = await policy({ round: 1, state, episode: ep });
+        const ms = Date.now() - t, x = wire[0] || {};
+        let usage = null, calls = 0, finish = null;
+        try { const j = JSON.parse(x.response); usage = j.usage; finish = j.choices && j.choices[0].finish_reason; calls = ((j.choices && j.choices[0].message.tool_calls) || []).length; } catch (e) {}
+        console.log(JSON.stringify({ seat: cfg.name, scenario: s.id, status: x.status, ms, finish, toolCalls: calls,
+            commands: env && env.commands ? env.commands.map(c => c.action) : null,
+            promptTokens: usage && usage.prompt_tokens, completionTokens: usage && usage.completion_tokens,
+            lastResult: ep.subjectController.lastActionResult ? String(ep.subjectController.lastActionResult).slice(0, 160) : null }));
     } else if (cmd === 'verify') {
         const v = await B.verify(B.readLines(a._[1]));
         console.log(v.ok ? `verified: ${v.episodes} episodes replay identically (core ${v.coreHash.slice(0, 16)})` : 'FAILED:\n  ' + v.problems.join('\n  '));

@@ -26,6 +26,6 @@ test('run, verify and report, end to end', () => {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('v0a runs baselines only', () => {
-    assert.throws(() => execFileSync(process.execPath, [CLI, 'run', '--policy', 'gpt'], { stdio: 'pipe' }), e => /baselines only/.test(String(e.stderr)));
+test('an unknown policy is refused: a baseline by name, or a model by --model config', () => {
+    assert.throws(() => execFileSync(process.execPath, [CLI, 'run', '--policy', 'gpt'], { stdio: 'pipe' }), e => /or give --model/.test(String(e.stderr)));
 });

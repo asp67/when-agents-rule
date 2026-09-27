@@ -24,7 +24,9 @@ function modelPolicy(cfg, { fetchImpl = globalThis.fetch } = {}) {
             const M = mgr.constructor;   // a class declaration is not a property of the VM global
             c.model = {
                 name: cfg.name || cfg.model, endpoint: cfg.endpoint, model: cfg.model || 'default',
-                provider: cfg.provider || 'openai', maxTokens: cfg.maxTokens || 4096,
+                // As the seat declares it: an unset maxTokens stays unset (the request
+                // then carries none, as the arena seat's does).
+                provider: cfg.provider || 'openai', maxTokens: cfg.maxTokens == null ? null : cfg.maxTokens,
                 contextSize: cfg.contextSize || null, language: cfg.language || 'en',
                 auth: cfg.auth || { type: 'none' },
                 // The fixed parameters ride where the arena keeps learned ones, so the
