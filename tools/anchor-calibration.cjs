@@ -8,10 +8,11 @@
 // seat, a spawn or a civilization is worth then falls on both styles alike, and what
 // is left is the style. Each map seed adds one more such pair.
 //
-// A match ends when a seat is eliminated or at --minutes of simulated time. At the
-// limit it is decided the way the arena's results screen ranks seats that are both
-// still standing: by the power score (UIManager.spectatorPowerScore, read from ui.js
-// itself so the two cannot drift apart). Closer than --margin percent is a draw.
+// A match ends when the game ends it (an elimination, a Wonder) or at --minutes of
+// simulated time. At the limit it is decided the way the arena's results screen ranks
+// seats that are both still standing: by the power score (UIManager.
+// spectatorPowerScore, read from ui.js itself so the two cannot drift apart). Closer
+// than --margin percent is a draw.
 //
 // The ranking is a yardstick for ONE build of the rules: it is printed and saved with
 // the core hash it was played under, and says nothing about any other.
@@ -54,17 +55,15 @@ async function playOne({ a, b, seed, minutes, civs }) {
     const m = new GoldenMatch({ seed: 7, hidden: true });
     await m.startArena({ seats: [{ civ: civs[0], type: 'ki', profile: a }, { civ: civs[1], type: 'ki', profile: b }], seed });
     const g = m.game, seats = g.aiManager.aiPlayers;
-    let minute = 0, out = null;
-    while (minute < minutes) {
-        m.run(60000);
-        minute++;
-        out = seats.filter(s => g.isPlayerEliminated(s));
-        if (out.length) break;
-    }
+    // Minute by minute until the game ends itself (an elimination or a Wonder; the
+    // simulation stops there) or the limit is reached.
+    let minute = 0;
+    while (minute < minutes && g.gameStarted) { m.run(60000); minute++; }
+    const out = seats.filter(s => g.isPlayerEliminated(s));
     const profiles = seats.map(s => s.profile);
     if (profiles[0] !== a || profiles[1] !== b) throw new Error('seat profiles not applied: ' + profiles);
     return {
-        a, b, seed, minute,
+        a, b, seed, minute, ended: !g.gameStarted,
         eliminated: out.map(s => s.profile),
         seats: seats.map(s => ({ profile: s.profile, civ: s.civilization, age: s.age, power: power(s),
             workers: s.units.filter(u => u.type === 'worker').length,

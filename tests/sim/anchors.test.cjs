@@ -140,3 +140,22 @@ test('the contract line lists rule-based seats as anchors keyed to the core hash
     assert.deepEqual(plain(rec.anchors), [{ playerId: 'p2', seat: 1, profile: 'turtle', coreHash: rec.coreHash, contractIdentical: false }]);
     assert.deepEqual(rec.seats.map(s => s.playerId), ['p1']);
 });
+
+// Calibration found this: the brain gave up every march leg after 24 s, about 85 units
+// of walking, and capped legs at half the map from its own base. Two rule-based seats
+// then played 45 minutes without meeting. Its army must find a base across the map.
+test('a rule-based army finds a rival base across the map', () => {
+    const m = new GoldenMatch({ seed: 6, hidden: true });
+    const [me, foe] = m.startFixture(['greek', 'persian']);
+    m.scripted(foe);                          // the rival only stands there
+    // The arena's own two-seat spawns. Found at about 10 minutes; never, before.
+    m.addBuilding(me, 'town_center', 0, -306);
+    const tc = m.addBuilding(foe, 'town_center', 0, 306);
+    for (let i = 0; i < 8; i++) m.addUnit(me, 'warrior', 20 + (i % 4) * 2, -286 + Math.floor(i / 4) * 2);
+    let found = null;
+    for (let s = 1; s <= 15 * 60 && found == null; s++) {
+        m.run(1000);
+        if (me._knownEnemyBuildings.has(tc)) found = s;
+    }
+    assert.ok(found != null, 'it never saw the rival town centre in fifteen minutes');
+});

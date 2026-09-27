@@ -72,7 +72,7 @@ function buildVisionTest(game, ai, harness) {
 // An anchor is a yardstick for ONE build of the rules. It is not contract-identical:
 // a rules change can move any tier, so a result against one is keyed to the core hash
 // it was played under, and the tiers are ordered by calibration (seat-swapped pairs,
-// tests/anchor-calibration), never by what their names promise.
+// tools/anchor-calibration.cjs, docs/ANCHORS.md), never by what their names promise.
 //
 //   thinkMs      how often it decides (per seat; the brain's reaction time)
 //   workers      worker target            farms      farm target
@@ -728,22 +728,50 @@ class AIManager {
             military.forEach(u => { cx += u.x; cz += u.z; });
             cx /= military.length; cz /= military.length;
 
-            ai._armyScoutTicks = (ai._armyScoutTicks || 0) + 1;
-            const arrived = ai._armyScoutTarget &&
-                this.distance({ x: cx, z: cz }, ai._armyScoutTarget) < 25;
-            const stuck = ai._armyScoutTicks > 12; // ~24s without arriving → new leg
+            // Stuck means no longer getting closer, not slow. It used to mean 12 thinks
+            // (24 s) on the leg, and an army walks about 85 units in that time, so no
+            // leg longer than that was ever finished: the army turned round short of
+            // every far target, milled within ~120 units of home, and two rule-based
+            // seats played 45 minutes without meeting. Now a leg is given up only
+            // after ~6 thinks in which the army got no closer than it had already been.
+            const left = ai._armyScoutTarget ? this.distance({ x: cx, z: cz }, ai._armyScoutTarget) : Infinity;
+            if (left < (ai._armyScoutBest == null ? Infinity : ai._armyScoutBest) - 5) {
+                ai._armyScoutBest = left;
+                ai._armyScoutTicks = 0;
+            } else {
+                ai._armyScoutTicks = (ai._armyScoutTicks || 0) + 1;
+            }
+            const arrived = ai._armyScoutTarget && left < 25;
+            const stuck = ai._armyScoutTicks > 6;
 
             let newLeg = false;
             if (!ai._armyScoutTarget || arrived || stuck) {
-                // Fan out from the base with the golden angle and a growing radius so
-                // repeated legs sweep the whole map instead of circling one ring.
-                ai._armyScoutAngle = (ai._armyScoutAngle == null) ? this.game.rand(ai, 'army-scout') * Math.PI * 2 : ai._armyScoutAngle + 2.399963;
-                ai._armyScoutRadius = Math.min(half, (ai._armyScoutRadius || 90) + 60);
-                ai._armyScoutTarget = {
-                    x: Math.max(-half, Math.min(half, base.x + WarMath.cos(ai._armyScoutAngle) * ai._armyScoutRadius)),
-                    z: Math.max(-half, Math.min(half, base.z + WarMath.sin(ai._armyScoutAngle) * ai._armyScoutRadius))
-                };
+                // A tile given up on is not chosen again: unexplored because it cannot
+                // be walked to (water, a corner), it would stay the least explored and
+                // hold the army against it for the rest of the match.
+                if (stuck && !arrived && ai._armyScoutTarget && ai._armyScoutTarget.tile) {
+                    (ai._armyLegSkip = ai._armyLegSkip || {})[ai._armyScoutTarget.tile] = true;
+                }
+                // The least-explored map tile it knows of, nearest first: the same 7x7
+                // summary the models are shown, so the army searches with no more than a
+                // model knows. A blind sweep with 15-unit sight could cross the map for
+                // half an hour and never pass a rival's base.
+                const leg = this.armyLeg(ai, { x: cx, z: cz }, half);
+                if (leg) {
+                    ai._armyScoutTarget = leg;
+                } else {
+                    // No exploration data (or the whole map is known): fan out from the
+                    // base with the golden angle and a growing radius, out to the far
+                    // side of the map. The target is clamped onto the map either way.
+                    ai._armyScoutAngle = (ai._armyScoutAngle == null) ? this.game.rand(ai, 'army-scout') * Math.PI * 2 : ai._armyScoutAngle + 2.399963;
+                    ai._armyScoutRadius = Math.min(4 * half, (ai._armyScoutRadius || 90) + 60);
+                    ai._armyScoutTarget = {
+                        x: Math.max(-half, Math.min(half, base.x + WarMath.cos(ai._armyScoutAngle) * ai._armyScoutRadius)),
+                        z: Math.max(-half, Math.min(half, base.z + WarMath.sin(ai._armyScoutAngle) * ai._armyScoutRadius))
+                    };
+                }
                 ai._armyScoutTicks = 0;
+                ai._armyScoutBest = null;
                 newLeg = true;
             }
 
@@ -762,6 +790,28 @@ class AIManager {
                 unit.targetZ = tgt.z;
             });
         }
+    }
+
+    // The army's next search leg: the centre of the least-explored tile of this seat's
+    // exploration summary, the nearest of equals, skipping tiles it gave up on; null
+    // without a summary or when no such tile is left. Row order breaks exact ties, so
+    // it is deterministic.
+    armyLeg(ai, from, half) {
+        const g = this.game;
+        if (!g.explorationSummary || !g.EXPLORE_TILES) return null;
+        const sum = g.explorationSummary(ai), T = g.EXPLORE_TILES;
+        const size = (g.terrain && g.terrain.size) || 800, tile = size / T;
+        const skip = ai._armyLegSkip || {};
+        let best = null;
+        for (let r = 0; r < T; r++) for (let c = 0; c < T; c++) {
+            const pct = sum[r][c];
+            if (!(pct < 100) || skip[r + ',' + c]) continue;
+            const x = Math.max(-half, Math.min(half, (c + 0.5) * tile - size / 2));
+            const z = Math.max(-half, Math.min(half, (r + 0.5) * tile - size / 2));
+            const d = WarMath.hypot(x - from.x, z - from.z);
+            if (!best || pct < best.pct || (pct === best.pct && d < best.d)) best = { x, z, pct, d, tile: r + ',' + c };
+        }
+        return best ? { x: best.x, z: best.z, tile: best.tile } : null;
     }
 
     // ---- Wonder -------------------------------------------------------------

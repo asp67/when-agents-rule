@@ -6,6 +6,22 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 944: the rule-based army finds its rivals (27 September 2026)
+
+When the rule-based AI has no enemy in sight, it sends its army out in search legs. Calibrating the anchor styles showed that these legs never reached anyone. In 48 matches of 45 minutes between rule-based seats, no seat was eliminated, and every army ended with all of its soldiers alive. There were three faults:
+
+- **Legs cut short:** a leg was abandoned after 12 thinks (24 s). An army walks about 85 units in that time, so no longer leg was ever finished. The army turned round short of every far target and stayed within about 120 units of home. A leg is now abandoned only when the army has not got closer for about 12 s.
+- **Legs too short:** leg length was capped at half the map, measured from the army's own base. In a two-seat match the rival base is about 612 units away, so no leg could reach it.
+- **Blind search:** with 15-unit sight, a sweep that ignored where the army had already been could cross the map for half an hour without passing a base. A leg now heads for the least-explored tile of the same 7×7 exploration summary the models are shown (nearest first), so the army searches with no more than a model knows. A tile the army gave up on (unreachable) is not chosen again. The old sweep remains as the fallback when there is no summary.
+
+Measured:
+
+- **Search:** an 8-soldier army on the arena's two-seat spawns now sees the rival town centre after about 10 minutes. With the old rules it never does (`tests/sim/anchors.test.cjs`).
+- **Matches:** between rule-based seats, 83 of 96 matches now end by elimination, at a median of 24 minutes. The styles' calibration is in [ANCHORS.md](ANCHORS.md).
+- **Golden trace:** the opening-economy trace changes from its 5.5-minute checkpoint, when the first army marches.
+
+The rule-based AI now attacks where it used to wander. Campaign opponents and the arena's rule-based seats are much harder than in earlier builds.
+
 ## Build 943: anchor styles for the rule-based AI (27 September 2026)
 
 The rule-based AI can now play in four named styles, chosen per seat in the arena setup (**Style**, under a rule-based seat's control):
