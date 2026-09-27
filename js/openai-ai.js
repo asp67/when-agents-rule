@@ -5796,6 +5796,22 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
         return out;
     }
+    // What a rejected purchase is short of, counted against the stock as it stands NOW:
+    // after this turn's earlier commands have paid. A model spending one budget twice
+    // in one turn (a temple, then a tech, from the same stone and gold) read only
+    // "Cannot afford" and tried the tech again next turn, and the turn after; the
+    // state it had planned from still showed enough.
+    shortfall(ai, cost) {
+        const r = ai && ai.resources;
+        if (!r || !cost) return '';
+        const short = ['food', 'wood', 'stone', 'gold']
+            .filter(k => (cost[k] || 0) > (r[k] || 0))
+            .map(k => `${Math.ceil((cost[k] || 0) - (r[k] || 0))} ${k}`);
+        if (!short.length) return '';
+        const have = ['food', 'wood', 'stone', 'gold'].filter(k => cost[k]).map(k => `${Math.floor(r[k] || 0)} ${k}`);
+        return ` - short of ${short.join(', ')} (you have ${have.join(', ')} after this turn's earlier commands)`;
+    }
+
     executeAction(controller, actionData, validationError = null) {
         const ai = controller.aiPlayer;
         const game = this.game;
@@ -6470,7 +6486,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!ai.resources.hasResources(unitDef.cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${unitType}`);
             this.outcome('log.out.cannotAfford', { whatName: unitDef.name });
-            return `[ERROR] Cannot afford ${unitType}.`;
+            return `[ERROR] Cannot afford ${unitType}${this.shortfall(ai, unitDef.cost)}.`;
         }
 
         // TRAIN — at the structure the model targeted (params.targetX/Z), else the
@@ -6634,7 +6650,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!ai.resources.hasResources(adjustedCost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford tech "${techId}"`);
             this.outcome('log.out.cannotAfford', { whatName: tech.name });
-            return `[ERROR] Cannot afford tech "${techId}".`;
+            return `[ERROR] Cannot afford tech "${techId}"${this.shortfall(ai, adjustedCost)}.`;
         }
 
         ai.resources.spendResources(adjustedCost);
@@ -6680,7 +6696,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (!ai.resources.hasResources(cost)) {
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford upgrade to ${nextAge}`);
             this.outcome('log.out.cannotAfford', { age: nextAge });
-            return `[ERROR] Cannot afford the upgrade to ${nextAge}.`;
+            return `[ERROR] Cannot afford the upgrade to ${nextAge}${this.shortfall(ai, cost)}.`;
         }
 
         ai.resources.spendResources(cost);
@@ -6939,7 +6955,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (ai.resources.hasResources(buildingDef.cost)) return null;
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${buildingType}`);
             this.outcome('log.out.cannotAfford', { whatName: buildingDef.name });
-            return `[ERROR] Cannot afford ${buildingType}.`;
+            return `[ERROR] Cannot afford ${buildingType}${this.shortfall(ai, buildingDef.cost)}.`;
         };
         const maybeDuplicate = this.couldBeBlindDuplicate(controller, ai, buildingType);
         if (!maybeDuplicate) { const poor = cannotAfford(); if (poor) return poor; }

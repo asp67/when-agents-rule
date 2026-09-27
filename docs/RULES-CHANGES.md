@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 945: a rejected purchase says what it is short of (27 September 2026)
+
+A model is now told what it lacks. "Cannot afford" for a unit, a building, a tech or an age-up now names the shortfall and what the seat holds, counted after the earlier commands of the same turn. For example: `Cannot afford tech "armor" - short of 30 stone, 105 gold (you have 75 stone, 0 gold after this turn's earlier commands).` Before, it said only "Cannot afford".
+
+The trigger was a match in which GLM-5.3, playing Yamato, built a temple and researched Sword Armor (`armor`) in the same turn, paying for both from the same stone and gold. The temple was paid for first. The tech was rejected with a bare "Cannot afford", and the model asked for it again over four more turns. This changes what models are told, so the harness fingerprint changes. The rules of the game do not.
+
 ## Build 944: the rule-based army finds its rivals (27 September 2026)
 
 When the rule-based AI has no enemy in sight, it sends its army out in search legs. Calibrating the anchor styles showed that these legs never reached anyone. In 48 matches of 45 minutes between rule-based seats, no seat was eliminated, and every army ended with all of its soldiers alive. There were three faults:
