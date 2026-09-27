@@ -27,3 +27,7 @@ llm-colosseum-models.json
 when-agents-rule-models.json
 arenaConfig*.json
 *.secrets.json
+
+# WAR Bench outputs (tools/bench/war-bench.cjs)
+*.warbench.jsonl.gz
+*.report.html

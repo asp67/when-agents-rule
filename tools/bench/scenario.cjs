@@ -234,8 +234,11 @@ async function begin(scenario, variant = 'identity', options = {}) {
 // what a model would be sent this round (observed and committed, as a model turn does).
 // Returns the outcome and a per-round log: what was ordered, what the executor
 // answered, what held afterwards.
+// `options.onRoundEnd(entry, episode)` is called after each round's step (bundles use
+// it to record the world's hash); everything else in options goes to begin().
 async function play(scenario, variant, policy, options = {}) {
-    const ep = await begin(scenario, variant, options);
+    const { onRoundEnd = null, ...beginOptions } = options;
+    const ep = await begin(scenario, variant, beginOptions);
     const { inst, realm, mgr, subjectController: cs, rivalController: cr, world } = ep;
     const log = [];
     // Each command's outcome code, as the executor drains it for the transcript. Read
@@ -277,6 +280,7 @@ async function play(scenario, variant, policy, options = {}) {
         else if (!realm.game.gameStarted) outcome = evaluate(inst.success.predicate, world) ? 'success' : 'failure';
         entry.after = outcome || 'running';
         log.push(entry);
+        if (onRoundEnd) onRoundEnd(entry, ep);
     }
     if (!outcome) outcome = evaluate(inst.success.predicate, world) ? 'success' : 'failure';
     return { id: inst.id, family: inst.family, variant: inst.variant, outcome, rounds: log.length, log };
