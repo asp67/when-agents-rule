@@ -71,7 +71,15 @@ class Game {
     // Simulated ms per real ms right now: 0 paused, 1 while a Wonder stands, else speed.
     simRate() {
         if (this.pauseState === 'paused') return 0;
+        // Lockstep between rounds: the world waits for the models, and so does the match
+        // clock -- thinking time is no time at all in the world they are thinking about.
+        if (this.lockstepFrozen()) return 0;
         return this.anyWonderStanding() ? 1 : (this.simSpeed || 1);
+    }
+    // A tempo change, noted where the stepped world stands (lockstep: no part-steps).
+    noteSimRate(rate) {
+        const c = this.clock;
+        if (rate !== c.rates[c.rates.length - 1].rate) c.rates.push({ sim: c.simMs, match: c.matchMs, rate });
     }
     // Once per tick, with the real time that tick covers.
     advanceMatchClock(wallMs) {
@@ -370,6 +378,8 @@ class Game {
             seed: this.terrain.seed,
             difficulty: this.difficulty,
             turnBased: spec ? !!spec.turnBased : !!(this.ui.turnBasedEnabled && this.ui.turnBasedEnabled()),
+            // World milliseconds per round, or null: lockstep is an option of turn-based.
+            lockstepSliceMs: Game.lockstepSliceMs(spec ? spec.lockstepSliceMs : (this.ui.lockstepSliceMs && this.ui.lockstepSliceMs())),
             roundTimeoutMs: (spec && spec.roundTimeoutMs) || (this.ui.roundTimeoutMs ? this.ui.roundTimeoutMs() : null),
             preset: (spec && spec.preset) || null
         };
@@ -384,6 +394,11 @@ class Game {
         this.terrain.spawns = spawnPositions;
         this._battles = []; // fresh match, no carried-over engagements
         this.resetTimeline();  // ...and a fresh graph
+        // Lockstep needs a round to freeze the world between, and rounds need a model
+        // seat: an all-rule-based match simply runs.
+        if (this.arenaSpec.turnBased && this.arenaSpec.lockstepSliceMs && setup.some(s => s.type === 'llm')) {
+            this._lockstep = { sliceMs: this.arenaSpec.lockstepSliceMs, budget: 0 };   // frozen until round one has run
+        } else this.arenaSpec.lockstepSliceMs = null;
         this.terrain.generateTerrain();
         this.renderer.setTerrain(this.terrain);
 
@@ -773,7 +788,12 @@ class Game {
         const MAX_CATCHUP = 2000; // ms of real time we'll replay in one tick at most
         const simTime = Math.min(elapsed, MAX_CATCHUP);
 
-        this.advanceMatchClock(simTime);
+        // Lockstep: the match clock follows the steps a slice actually takes (below), not
+        // the frames -- a slice ends mid-frame, and counting that frame whole drifted it
+        // by a few milliseconds a round.
+        const lockRate = this._lockstep ? this.simRate() : 0;
+        if (!this._lockstep) this.advanceMatchClock(simTime);
+        else if (lockRate > 0) this.noteSimRate(lockRate);
         // Ambient motion and daylight follow elapsed time, not the fast-forward
         // multiplier for units/research. They still stop with an actual pause.
         this._environmentSeconds = (this._environmentSeconds || 0)
@@ -788,10 +808,20 @@ class Game {
         // is also how far the renderer smooths between the last two steps). Everything
         // that decides the game runs inside stepOnce, so the frame rate cannot reach it.
         this._simAccumulator = (this._simAccumulator || 0) + this.simBudget(simTime);
+        let steps = 0;
         while (this._simAccumulator >= Game.SIM_STEP_MS && this.gameStarted) {
+            // Lockstep: only the steps the round granted, never one more.
+            if (this._lockstep) {
+                if (this._lockstep.budget < Game.SIM_STEP_MS) break;
+                this._lockstep.budget -= Game.SIM_STEP_MS;
+            }
             this.stepOnce();
             this._simAccumulator -= Game.SIM_STEP_MS;
+            steps++;
         }
+        if (this._lockstep && lockRate > 0) this.clock.matchMs += steps * Game.SIM_STEP_MS / lockRate;
+        // A spent slice leaves no part-step behind: the next slice starts on a clean step.
+        if (this._lockstep && this._lockstep.budget < Game.SIM_STEP_MS) this._simAccumulator = 0;
 
         // Presentation from here down.
         this.sampleTimeline(currentTime);
@@ -830,6 +860,20 @@ class Game {
     // the rules (attack 1000, tower 1500, defense 600, acquire 150, discovery 250, think
     // 2000) is a whole number of steps, so none of them loses a remainder.
     static get SIM_STEP_MS() { return 50; }
+
+    // ---- Lockstep (an option of turn-based play) ------------------------------------
+    // The world stands still while a round's seats think. When the round's moves have
+    // run, it is granted exactly one slice of simulated time -- a whole number of steps
+    // -- plays it at the chosen tempo, and stops again for the next round. So every
+    // round spans the same world time however long the models take: the precise form
+    // of slowing the game down. The tempo buttons only decide how fast a slice plays
+    // on screen. null when off.
+    static lockstepSliceMs(v) {
+        const n = Math.round(Number(v) / Game.SIM_STEP_MS) * Game.SIM_STEP_MS;
+        return n >= Game.SIM_STEP_MS && n <= 60000 ? n : null;
+    }
+    lockstepFrozen() { return !!this._lockstep && this._lockstep.budget < Game.SIM_STEP_MS; }
+    grantLockstep() { if (this._lockstep) this._lockstep.budget += this._lockstep.sliceMs; }
 
     stepOnce() {
         const dt = Game.SIM_STEP_MS;
@@ -3686,6 +3730,7 @@ class Game {
         // page, so this carried over from the last match, and a Rematch scanned the map
         // on a different beat than the match it repeats. (Think clocks are per seat.)
         if (this.aiManager) this.aiManager.discoveryTimer = 0;
+        this._lockstep = null;          // a match that wants lockstep sets it after this
         this._standingOrders = null;
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
         // Handles are per MATCH: without this they keep climbing across restarts in one

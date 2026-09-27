@@ -2454,6 +2454,9 @@ class OpenAIAIManager {
                 mapSize: (this.game.terrain && this.game.terrain.size) || null,
                 turnBased: !!this.turnBased,
                 roundTimeoutMs: this.turnBased ? this.roundTimeoutMs() : null,
+                // Lockstep: world milliseconds per round (the world is frozen while seats
+                // think). null = the world runs on while they do. See WarConditions.protocolOf.
+                lockstepSliceMs: (this.turnBased && this.game && this.game._lockstep) ? this.game._lockstep.sliceMs : null,
                 simSpeed: this.game.simSpeed || 1,
                 wonderRequired: this.game.wonderRequired || null,
                 promptVersion: (this.game.ui && this.game.ui.ARENA_PROMPT_VERSION) || null,
@@ -3672,6 +3675,8 @@ class OpenAIAIManager {
         // deadline there, and a field that answers a question the mode never asks is
         // one more thing to reason past.
         if (this.turnBased) clockObj.secondsToAnswer = Math.round(this.roundTimeoutMs() / 1000);
+        // Lockstep: the world waits for every answer, then moves on by exactly this much.
+        if (this.turnBased && this.game && this.game._lockstep) clockObj.worldSecondsPerRound = this.game._lockstep.sliceMs / 1000;
 
         // --- Game stats ---
         const gameStatsObj = {
@@ -9016,7 +9021,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (this.isControllerDefeated(c)) { if (!c.defeated) this.markDefeated(c); return false; }
             return !c.paused;
         });
-        if (!live.length) return;
+        const game = this.game, lockstep = !!(game && game._lockstep);
+        // Lockstep with no model seat left to wait for (all paused, all rule-based, all
+        // defeated): the world plays slice after slice rather than standing still forever.
+        if (!live.length) { if (lockstep && game.lockstepFrozen()) game.grantLockstep(); return; }
 
         if (this._roundPhase === 'wait') {
             // Keep the pipelines full while the round runs. A seat whose second lane
@@ -9038,8 +9046,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             this.flushRound(live);
             this._roundPhase = 'ask';
             this._roundEndedAt = now;
+            // Lockstep: the round's moves are in; the world now plays its one slice.
+            if (lockstep) game.grantLockstep();
             return;
         }
+        // Lockstep: the next round is asked only once that slice has been played, so
+        // every seat reads the world exactly one slice later than the last time.
+        if (lockstep && !game.lockstepFrozen()) return;
         // A pause asked for mid-round is honoured HERE, at the boundary: the round that
         // was already asked has just flushed above, and the next one is simply not
         // opened. Pausing therefore always lands between rounds, never inside one.

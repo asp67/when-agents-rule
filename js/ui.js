@@ -516,6 +516,8 @@ class UIManager {
         }
         const rt = document.getElementById('setupRoundTimeout');
         if (rt) rt.value = this.roundTimeoutSeconds();
+        const ls = document.getElementById('setupLockstep');
+        if (ls) ls.value = String(this.lockstepSliceMs() || '');
         this.syncRoundTimeoutEnabled();
     }
 
@@ -526,15 +528,30 @@ class UIManager {
 
     turnBasedEnabled() { return !!(this._arenaConfig && this._arenaConfig.turnBased); }
 
+    // Lockstep, an option of turn-based: world milliseconds per round, or null (off).
+    lockstepSliceMs() {
+        const v = this._arenaConfig && this._arenaConfig.lockstepSliceMs;
+        return (typeof Game !== 'undefined' && Game.lockstepSliceMs) ? Game.lockstepSliceMs(v) : (Number(v) > 0 ? Number(v) : null);
+    }
+    setLockstep(v) {
+        if (!this._arenaConfig) return;
+        this._arenaConfig.lockstepSliceMs = Number(v) > 0 ? Number(v) : null;
+        this.saveSetup();
+    }
+
     // The deadline is only meaningful in turn-based mode, so the input follows the
     // checkbox rather than sitting there implying it does something in real time.
     syncRoundTimeoutEnabled() {
-        const rt = document.getElementById('setupRoundTimeout');
-        if (!rt) return;
         const on = this.turnBasedEnabled();
-        rt.disabled = !on;
-        const wrap = rt.closest('.arena-subfield');
-        if (wrap) wrap.classList.toggle('is-off', !on);
+        // Both subfields belong to turn-based: the deadline, and lockstep, which needs
+        // rounds to freeze the world between.
+        for (const id of ['setupRoundTimeout', 'setupLockstep']) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            el.disabled = !on;
+            const wrap = el.closest('.arena-subfield');
+            if (wrap) wrap.classList.toggle('is-off', !on);
+        }
     }
 
     // Seconds a seat gets to answer before the round resolves without it. Stored in
@@ -2257,6 +2274,7 @@ class UIManager {
         const meta = [];
         if (spec && spec.preset === 'quick-match') meta.push(t('lu.quick'));
         meta.push(spec && spec.turnBased ? t('lu.turnBased') : t('lu.realTime'));
+        if (spec && spec.turnBased && spec.lockstepSliceMs) meta.push(t('lu.lockstep', { n: spec.lockstepSliceMs / 1000 }));
         if (spec && spec.seed) meta.push(t('lu.seed', { seed: spec.seed }));
         head.append(el('span', 'lu-meta', meta.join(' · ')));
         card.append(head);
@@ -5520,7 +5538,7 @@ class UIManager {
         sel.innerHTML = `<option value="">${esc(t('an.samplesPick'))} (${list.length})</option>`
             + list.map(m => {
                 const day = m.date ? new Date(m.date).toISOString().slice(0, 10) : '';
-                const tempo = m.turnBased ? t('an.turnBased') : t('an.realTime');
+                const tempo = m.turnBased ? t('an.turnBased') + (m.lockstepSliceMs ? ' · ' + t('lu.lockstep', { n: m.lockstepSliceMs / 1000 }) : '') : t('an.realTime');
                 const bits = [day, m.duration, tempo, m.winner].filter(Boolean);
                 return `<option value="${esc(m.file)}">${esc(bits.join(' \u00b7 '))}</option>`;
               }).join('');
@@ -5848,6 +5866,7 @@ class UIManager {
         if (h.mapSeed) bits.push('seed ' + esc(h.mapSeed));
         if (h.difficulty) bits.push(esc(h.difficulty));
         if (h.turnBased != null) bits.push(h.turnBased ? t('an.turnBased') : t('an.realTime'));
+        if (h.turnBased && h.lockstepSliceMs) bits.push(esc(t('lu.lockstep', { n: h.lockstepSliceMs / 1000 })));
         if (h.simSpeed) bits.push(h.simSpeed + '×');
         if (h.promptVersion) bits.push(esc(h.promptVersion));
         const build = h.build || (a.results && a.results.build);

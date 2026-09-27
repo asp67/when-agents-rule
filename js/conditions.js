@@ -36,7 +36,11 @@ const WarConditions = {
             .map(k => JSON.stringify(k) + ':' + WarConditions.canon(v[k])).join(',') + '}';
     },
     hash(v) { return warSha256(typeof v === 'string' ? v : WarConditions.canon(v)); },
-    protocolOf(header) { return header && header.turnBased ? 'turn-based' : 'real-time'; },
+    // Lockstep rounds with different slices are different games: the slice is part of it.
+    protocolOf(header) {
+        if (!header || !header.turnBased) return 'real-time';
+        return header.lockstepSliceMs ? 'turn-based-lockstep-' + header.lockstepSliceMs + 'ms' : 'turn-based';
+    },
 
     // Source text of a file as this page loaded it: the same ?v= the script tag used, so
     // a cached older copy cannot be hashed in its place. null when it cannot be read

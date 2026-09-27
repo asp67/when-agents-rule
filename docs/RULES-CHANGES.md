@@ -6,6 +6,19 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 946: lockstep, an option of turn-based play (27 September 2026)
+
+Turn-based play gives every model the same number of moves. The world still ran on while a round waited for the slowest answer, though, so a model that thought for two minutes acted on a board two minutes old. Lockstep closes that gap. It is set per match under the turn-based setting (**World time per round**: off, or 1, 2, 5, 10 or 20 seconds).
+
+- **While models think:** the world stands still, and so does the match clock. Thinking time is no time in the game.
+- **When all moves are in:** they run together, as in turn-based play. Then the world plays exactly one slice of simulated time, a whole number of 50 ms steps, and stops for the next round.
+- **Every round spans the same world time,** however long the models take. It is the precise form of slowing a match down. The tempo buttons then only set how fast a slice plays on screen.
+- **What models are told:** the state's clock carries `worldSecondsPerRound` in lockstep matches.
+- **What the record says:** the header records `lockstepSliceMs`, and the contract's protocol becomes `turn-based-lockstep-<ms>ms`. A lockstep match is never compared with plain turn-based play, nor with a different slice.
+- **When it applies:** lockstep needs a model seat to hold a round for, so an all-rule-based match simply runs. When every model seat is paused or defeated, the world plays on, slice after slice.
+
+With lockstep off, nothing changes: the golden traces are untouched. `tests/sim/lockstep.test.cjs` drives the real round machinery with seats that answer after a set delay. It checks that the world never moves while a round waits, and that round *k* is asked and executed at exactly (*k* − 1) × slice of world time. It also checks that a seat answering in half a second and one answering in twenty get the same world time per round.
+
 ## Build 945: a rejected purchase says what it is short of (27 September 2026)
 
 A model is now told what it lacks. "Cannot afford" for a unit, a building, a tech or an age-up now names the shortfall and what the seat holds, counted after the earlier commands of the same turn. For example: `Cannot afford tech "armor" - short of 30 stone, 105 gold (you have 75 stone, 0 gold after this turn's earlier commands).` Before, it said only "Cannot afford".
