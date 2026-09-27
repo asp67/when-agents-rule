@@ -91,7 +91,9 @@ test('a match played through the live turn path re-simulates, and a dropped answ
             choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null,
                 tool_calls: a.map(([name, params], i) => ({ id: `c${n}_${i}`, type: 'function', function: { name, arguments: JSON.stringify(params) } })) } }] });
     };
-    const realm = new Realm({ seed: 'live-path' });
+    // A Math.random seed the replay does not share: a browser's is unseeded, so the world
+    // must not draw from it.
+    const realm = new Realm({ seed: 987654321 });
     Object.assign(realm.context, { AbortController, setTimeout, clearTimeout, fetch: stubFetch, Response });
     const lines = [];
     const recorder = new Proxy({ matchId: 'live', noteInput: e => lines.push(e) }, { get: (t, k) => (k in t ? t[k] : k === 'then' ? undefined : () => {}) });
