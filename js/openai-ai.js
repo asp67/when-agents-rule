@@ -3953,9 +3953,11 @@ class OpenAIAIManager {
     static get VICTORY_PARAGRAPH() {
         return 'You win by either:\nDestroying the Town Centers and military buildings of ALL rivals, or Building your Wonder and holding it for gameStats.wonderRequired seconds.';
     }
-    static scenarioSystemPrompt(objective) {
-        const base = OpenAIAIManager.defaultSystemPrompt();
-        if (base.split(OpenAIAIManager.VICTORY_PARAGRAPH).length !== 2) throw new Error('the victory paragraph is not in the default prompt exactly once');
+    // `template` is the seat's own prompt when it has one (an edited arena prompt), else
+    // the default; either way it must carry the victory paragraph exactly once.
+    static scenarioSystemPrompt(objective, template = null) {
+        const base = template != null ? String(template) : OpenAIAIManager.defaultSystemPrompt();
+        if (base.split(OpenAIAIManager.VICTORY_PARAGRAPH).length !== 2) throw new Error('the victory paragraph is not in the prompt exactly once');
         return base.replace(OpenAIAIManager.VICTORY_PARAGRAPH, 'Your objective in this scenario:\n' + String(objective).trim());
     }
 

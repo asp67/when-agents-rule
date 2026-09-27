@@ -88,3 +88,24 @@ test('runSuite plays every scenario x variant x attempt in a fixed order', async
         [[ALL[0].id, 'identity', 1], [ALL[0].id, 'identity', 2], [ALL[0].id, 'rot90', 1], [ALL[0].id, 'rot90', 2]]);
     assert.ok(res.every(r => r.outcome === 'success'));
 });
+
+test('a seat plays its own prompt: a prefix or a whole template, only the victory paragraph swapped', async () => {
+    const s = ALL.find(x => x.id === 'strike-01');
+    const sent = async (extra) => {
+        const ep = await S.begin(s, 'identity');
+        let body;
+        const pol = modelPolicy(Object.assign({}, CFG, extra), { fetchImpl: async (u, init) => { body = JSON.parse(init.body); return reply([]); } });
+        await pol({ round: 1, state: ep.mgr.buildGameStateJSON(ep.subjectController), episode: ep });
+        return { system: body.messages[0].content, M: ep.mgr.constructor, objective: ep.objective, ep };
+    };
+    const { system, M, objective, ep } = await sent({ promptPrefix: 'Do not overthink.' });
+    // Exactly the arena seat's prompt -- rendered by the same builder -- with the
+    // objective in the victory paragraph's place.
+    ep.subjectController.model.customSystemPrompt = 'Do not overthink.\n\n' + M.defaultSystemPrompt();
+    const arena = ep.mgr.buildSystemPrompt(ep.subject);
+    assert.equal(system, arena.replace(M.VICTORY_PARAGRAPH, 'Your objective in this scenario:\n' + objective));
+    assert.ok(system.startsWith('Do not overthink.\n\nYou ARE'));
+    const custom = await sent({ systemPrompt: 'Be brief.\n' + M.VICTORY_PARAGRAPH + '\nThat is all.' });
+    assert.equal(custom.system, 'Be brief.\nYour objective in this scenario:\n' + custom.objective + '\nThat is all.');
+    await assert.rejects(sent({ systemPrompt: 'No victory paragraph here.' }), /exactly once/);
+});

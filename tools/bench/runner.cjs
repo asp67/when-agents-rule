@@ -14,7 +14,7 @@
 const S = require('./scenario.cjs');
 
 // A model as a policy. `cfg` = {name, endpoint, model, provider, maxTokens, contextSize,
-// language, reqOpts, auth}; reqOpts are the fixed request parameters (temperature,
+// language, reqOpts, auth, promptPrefix | systemPrompt}; reqOpts are the fixed request parameters (temperature,
 // topP, reasoning, extraBody, ...). `fetchImpl` defaults to Node's fetch.
 function modelPolicy(cfg, { fetchImpl = globalThis.fetch } = {}) {
     if (!cfg || !cfg.endpoint) throw new Error('modelPolicy: an endpoint is required');
@@ -32,7 +32,12 @@ function modelPolicy(cfg, { fetchImpl = globalThis.fetch } = {}) {
                 // The fixed parameters ride where the arena keeps learned ones, so the
                 // request carries exactly them and nothing learns on top.
                 _reqOpts: Object.assign({}, cfg.reqOpts || {}),
-                customSystemPrompt: M.scenarioSystemPrompt(episode.objective),
+                // The seat's own prompt, as its arena seat plays it: a whole template
+                // (systemPrompt) or the default with a prefix line (promptPrefix, e.g.
+                // "Do not overthink."). Only the victory paragraph becomes the objective.
+                customSystemPrompt: M.scenarioSystemPrompt(episode.objective,
+                    cfg.systemPrompt != null ? cfg.systemPrompt
+                        : cfg.promptPrefix != null ? String(cfg.promptPrefix) + '\n\n' + M.defaultSystemPrompt() : null),
             };
             c.lanes = [c];
             c._strict = true;
