@@ -81,3 +81,16 @@ test('chapters copy in YouTube\'s format: 0:00 first, 10 s apart, shifted by the
         'a chapter under 10 s in counts as the start; one too close to the last is dropped');
     assert.deepEqual(ui.anChaptersText(30).split('\n'), ['0:00 an.chStart', '0:33 ⚔️ first fight', '1:10 ⏫ Greeks → bronze', '1:02:10 🏛 Wonder raised']);
 });
+
+test('turn numbers count turns, not the markers filed with a seat', () => {
+    const { ui, a } = setup();
+    // A missed round for seat 1 between its turns 2 and 3.
+    const lines = [a.header];
+    for (const r of a.order) lines.push(r);
+    lines.splice(5, 0, { type: 'round_missed', playerId: 'p1', at: 25000, matchSeconds: 25 });
+    a.load(lines.map(l => JSON.stringify(l)).join('\n'), 'x.jsonl');
+    ui._sampleIndex = [{ matchId: 'match-20260927-120000', file: 'x.jsonl' }];
+    ui.anApplyMoment({ seat: '1', turn: '3' });
+    assert.equal(a.current()._sec, 40, 'the third turn, past the missed-round marker');
+    assert.equal(new URL(ui.anMomentLink()).searchParams.get('turn'), '3');
+});

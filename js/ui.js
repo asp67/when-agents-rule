@@ -4225,6 +4225,7 @@ class UIManager {
             let adviceCount = 0;
             let paused = false;
             let objective = '';
+            let health = null;
             if (this.game.openAIAIManager && this.game.openAIAIManager.aiControllers) {
                 const controller = this.game.openAIAIManager.aiControllers.find(c => c.id === ai.id);
                 if (controller && controller.model) {
@@ -4234,10 +4235,11 @@ class UIManager {
                     adviceCount = (controller.pendingAdvice && controller.pendingAdvice.length) || 0;
                     paused = !!controller.paused;
                     objective = String(controller.objective || '').trim();
+                    if (controller.stats) health = this.seatMetrics(controller);
                 }
             }
 
-            return { ai, civ, colorHex, workers, military, alive, modelName, thinking, isLLM, adviceCount, paused, objective, score: this.spectatorPowerScore(ai) };
+            return { ai, civ, colorHex, workers, military, alive, modelName, thinking, isLLM, adviceCount, paused, objective, health, score: this.spectatorPowerScore(ai) };
         });
 
         // Sort: alive first, then by score desc
@@ -4274,6 +4276,7 @@ class UIManager {
                             : (r.paused ? `<span class="lb-tag-paused">${t('spec.paused')}</span>`
                             : (r.thinking ? `<span class="lb-think"><span class="dot"></span>${t('spec.thinking')}</span>` : ''))}
                     </div>
+                    ${(r.isLLM && r.health && r.alive) ? this.seatHealthHtml(r.health, r.paused) : ''}
                     ${(r.isLLM && r.objective) ? `<div class="lb-objective" title="${this.escapeHtml(r.objective)}"><span aria-hidden="true">\u{1F3AF}</span> ${this.escapeHtml(r.objective.length > 90 ? r.objective.slice(0, 89) + '\u2026' : r.objective)}</div>` : ''}
                     <div class="lb-stats">
                         <span class="lb-stat">\u{1F465} ${ai.resources.population}/${ai.resources.maxPopulation}</span>
@@ -4531,6 +4534,129 @@ class UIManager {
         return t(key) !== key ? t(key) : t('sum.reason.gameover');
     }
 
+    // The live seat-health strip (review #11): how the seat's endpoint is doing right now,
+    // from the same metrics the results screen shows. Only what has happened is shown --
+    // nothing before the first answer, no rate before the first command.
+    seatHealthHtml(m, paused = false) {
+        const bits = [];
+        const esc = s => this.escapeHtml(String(s));
+        const lat = m.latLate || m.avgLatency;
+        if (lat) bits.push(`<span class="sh-lat${lat > 60000 ? ' bad' : lat > 20000 ? ' warn' : ''}" title="${esc(t('sh.latencyTip'))}">\u23F1 ${(lat / 1000).toFixed(1)}s</span>`);
+        if (m.attempted) bits.push(`<span class="${m.successRate < 0.5 ? 'warn' : ''}" title="${esc(t('sh.successTip'))}">\u2713 ${Math.round(m.successRate * 100)}%</span>`);
+        if (m.roundsMissed) bits.push(`<span class="warn" title="${esc(t('sh.missedTip'))}">${esc(t('sh.missed', { n: m.roundsMissed }))}</span>`);
+        if (m.timeouts || m.networkErrors) bits.push(`<span class="bad" title="${esc(t('sh.errorsTip'))}">${esc(t('sh.errors', { n: m.timeouts + m.networkErrors }))}</span>`);
+        if (m.contextOverflows) bits.push(`<span class="warn" title="${esc(t('sh.overflowTip'))}">${esc(t('sh.overflow', { n: m.contextOverflows }))}</span>`);
+        if (!paused && m.silentMs > 60000) bits.push(`<span class="bad" title="${esc(t('sh.silentTip'))}">${esc(t('sh.silent', { n: Math.round(m.silentMs / 1000) }))}</span>`);
+        return bits.length ? `<div class="lb-health">${bits.join('')}</div>` : '';
+    }
+
+    // One seat's metrics from its controller's counters: the results screen and the live
+    // seat-health strip (review #11) read the same function, so they cannot disagree.
+    seatMetrics(controller) {
+        const st = controller.stats;
+        const lat = st.latencies;
+        const avg = lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0;
+        const ctxOv = st.contextOverflows || 0;
+        // Rounds the seat was asked but did not answer inside the deadline. The
+        // counter existed and was never read, so the fair number was collected
+        // and thrown away while an unfair one (see the deadline-abort branch in
+        // sendToOpenAI) was displayed in its place.
+        const missed = st.roundsMissed || 0;
+        // Turns lost to a rate limit the retry could not clear. Same standing as
+        // a context overflow or a missed round: really lost, so not "answered" —
+        // but caused by how fast the ACCOUNT is being driven, not by the model,
+        // so it must not read as the endpoint being unreachable.
+        const rlLost = st.rateLimitLost || 0;
+        const responded = Math.max(0, st.requests - st.timeouts - st.networkErrors - ctxOv - missed - rlLost);
+        // Context overflows are lost turns caused by the HARNESS's budgeting,
+        // not the endpoint — count them visibly but keep them out of the
+        // model's reliability score (both numerator and denominator).
+        // Missed rounds leave BOTH sides, exactly like context overflows: the
+        // harness cut the request, so it is neither evidence for nor against the
+        // endpoint. Latency is reported as latency — that is what the mode is for.
+        const reliabilityBase = Math.max(0, st.requests - ctxOv - missed - rlLost);
+        // An outage, described rather than judged. A seat can lead a match on
+        // tech, have its endpoint go from 8s to 58s and stop, be dismantled over
+        // a stretch where it answers four rounds to the others' thirteen -- and
+        // the card will say "defeated" with no hint that it went quiet.
+        //
+        // The numbers only. Whether it would have survived is not the harness's
+        // to say: it may have had thirty workers and nothing to fight with, and
+        // deciding that is picking the winner of an argument the summary cannot
+        // see.
+        const lats = (lat || []).slice();
+        const med = (arr) => arr.length ? arr.slice().sort((a, b) => a - b)[arr.length >> 1] : 0;
+        const silentMs = st.lastAnswerAt ? Math.max(0, Date.now() - st.lastAnswerAt) : 0;
+        return {
+            decisions: st.requests, responded,
+            // Split late from early, so a degrading endpoint reads as a CHANGE
+            // rather than as a wide min-max range that could be a single blip.
+            latEarly: lats.length >= 6 ? med(lats.slice(0, -3)) : 0,
+            latLate: lats.length >= 6 ? med(lats.slice(-3)) : 0,
+            silentMs,
+            avgLatency: avg,
+            minLatency: lat.length ? Math.min(...lat) : 0,
+            maxLatency: lat.length ? Math.max(...lat) : 0,
+            timeouts: st.timeouts, networkErrors: st.networkErrors, parseFails: st.parseFails,
+            networkAtMs: st.networkAtMs || [],
+            // Subset of parseFails: replies cut off mid-JSON by the model's
+            // output-token cap. Broken out because it has a fix the others
+            // don't — raise maxTokens for that model.
+            truncated: st.truncatedReplies || 0,
+            noAction: st.noActionReturns || 0,
+            planOnly: st.planOnlyUpdates || 0,
+            // Turns a human's advice reached this seat's prompt, and times the
+            // harness changed its request mid-match. Beside the result, not in
+            // it: a coached or adapted run is a different run, and says so.
+            advisedTurns: st.advisedTurns || 0,
+            adaptations: st.adaptations || 0,
+            // EXPERIMENTAL, rolling inference. Orders dropped because the thing
+            // had appeared after the board that lane was given. NOT an error and
+            // not in the error total: nothing was refused and nothing was spent.
+            // It belongs beside `lanes` in the header as the other half of one
+            // trade — the decision rate a seat gained, and what that cost it.
+            laneDropped: st.laneDropped || 0,
+            laneDuplicates: st.laneDuplicates || 0,
+            laneDuplicatesBy: st.laneDuplicatesBy || {},
+            // Rounds a single-lane seat would have forfeited. Not an error and not
+            // a credit either -- the seat played the round on its own answer. It
+            // sits with the other two because all three are the SAME trade priced
+            // three ways: what staggering bought, and what it threw away to buy it.
+            laneCount: st.laneCount || 1,
+            laneRescued: st.laneRescued || 0,
+            contextOverflows: ctxOv, roundsMissed: missed,
+            rateLimited: st.rateLimited || 0, rateLimitLost: rlLost,
+            invalidActions: st.invalidActions, rejected: st.actionsRejected,
+            contended: st.actionsContended || 0,
+            // How much each turn carried. Reported BESIDE the success rate and
+            // never inside it: scoring per command already means a seat sending
+            // three and getting two right reads 67% while a seat sending one
+            // safe command reads 100%. Without this figure the second looks
+            // simply better, when what it did was less.
+            commandsPerTurn: (st.turnsExecuted || 0)
+                ? st.actionsAttempted / st.turnsExecuted : 0,
+            maxCommands: OpenAIAIManager.MAX_COMMANDS_PER_TURN,
+            finalWord: controller._finalWord || null,
+            promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
+            attempted: st.actionsAttempted, succeeded: st.actionsSucceeded,
+            // Contended attempts leave the DENOMINATOR, not just the numerator.
+            // A model whose only failures were a busy barracks made no mistake,
+            // so it should read 1.0 — docking it would score tempo as error, and
+            // the models that contend with themselves most are the busy ones.
+            successRate: (() => {
+                const judged = st.actionsAttempted - (st.actionsContended || 0);
+                return judged > 0 ? st.actionsSucceeded / judged : 0;
+            })(),
+            // Format fidelity: prose-only replies (no JSON action) are format
+            // failures too — they just get their own counter.
+            formatOk: responded > 0 ? (responded - st.parseFails - (st.noActionReturns || 0)) / responded : 0,
+            reliability: reliabilityBase ? 1 - (st.timeouts + st.networkErrors) / reliabilityBase : 0,
+            reasonRate: st.actionsAttempted ? st.reasonsGiven / st.actionsAttempted : 0,
+            actionCounts: st.actionCounts,
+            workersTrained: st.workersTrained || 0
+        };
+    }
+
     // Transparent 0-100 strategical-soundness composite (see legend on screen).
     computeSoundness(rep) {
         const m = rep.metrics;
@@ -4651,108 +4777,7 @@ class UIManager {
                 power: this.spectatorPowerScore(ai)
             };
             if (controller && controller.stats) {
-                const st = controller.stats;
-                const lat = st.latencies;
-                const avg = lat.length ? lat.reduce((a, b) => a + b, 0) / lat.length : 0;
-                const ctxOv = st.contextOverflows || 0;
-                // Rounds the seat was asked but did not answer inside the deadline. The
-                // counter existed and was never read, so the fair number was collected
-                // and thrown away while an unfair one (see the deadline-abort branch in
-                // sendToOpenAI) was displayed in its place.
-                const missed = st.roundsMissed || 0;
-                // Turns lost to a rate limit the retry could not clear. Same standing as
-                // a context overflow or a missed round: really lost, so not "answered" —
-                // but caused by how fast the ACCOUNT is being driven, not by the model,
-                // so it must not read as the endpoint being unreachable.
-                const rlLost = st.rateLimitLost || 0;
-                const responded = Math.max(0, st.requests - st.timeouts - st.networkErrors - ctxOv - missed - rlLost);
-                // Context overflows are lost turns caused by the HARNESS's budgeting,
-                // not the endpoint — count them visibly but keep them out of the
-                // model's reliability score (both numerator and denominator).
-                // Missed rounds leave BOTH sides, exactly like context overflows: the
-                // harness cut the request, so it is neither evidence for nor against the
-                // endpoint. Latency is reported as latency — that is what the mode is for.
-                const reliabilityBase = Math.max(0, st.requests - ctxOv - missed - rlLost);
-                // An outage, described rather than judged. A seat can lead a match on
-                // tech, have its endpoint go from 8s to 58s and stop, be dismantled over
-                // a stretch where it answers four rounds to the others' thirteen -- and
-                // the card will say "defeated" with no hint that it went quiet.
-                //
-                // The numbers only. Whether it would have survived is not the harness's
-                // to say: it may have had thirty workers and nothing to fight with, and
-                // deciding that is picking the winner of an argument the summary cannot
-                // see.
-                const lats = (lat || []).slice();
-                const med = (arr) => arr.length ? arr.slice().sort((a, b) => a - b)[arr.length >> 1] : 0;
-                const silentMs = st.lastAnswerAt ? Math.max(0, Date.now() - st.lastAnswerAt) : 0;
-                rep.metrics = {
-                    decisions: st.requests, responded,
-                    // Split late from early, so a degrading endpoint reads as a CHANGE
-                    // rather than as a wide min-max range that could be a single blip.
-                    latEarly: lats.length >= 6 ? med(lats.slice(0, -3)) : 0,
-                    latLate: lats.length >= 6 ? med(lats.slice(-3)) : 0,
-                    silentMs,
-                    avgLatency: avg,
-                    minLatency: lat.length ? Math.min(...lat) : 0,
-                    maxLatency: lat.length ? Math.max(...lat) : 0,
-                    timeouts: st.timeouts, networkErrors: st.networkErrors, parseFails: st.parseFails,
-                    networkAtMs: st.networkAtMs || [],
-                    // Subset of parseFails: replies cut off mid-JSON by the model's
-                    // output-token cap. Broken out because it has a fix the others
-                    // don't — raise maxTokens for that model.
-                    truncated: st.truncatedReplies || 0,
-                    noAction: st.noActionReturns || 0,
-                    planOnly: st.planOnlyUpdates || 0,
-                    // Turns a human's advice reached this seat's prompt, and times the
-                    // harness changed its request mid-match. Beside the result, not in
-                    // it: a coached or adapted run is a different run, and says so.
-                    advisedTurns: st.advisedTurns || 0,
-                    adaptations: st.adaptations || 0,
-                    // EXPERIMENTAL, rolling inference. Orders dropped because the thing
-                    // had appeared after the board that lane was given. NOT an error and
-                    // not in the error total: nothing was refused and nothing was spent.
-                    // It belongs beside `lanes` in the header as the other half of one
-                    // trade — the decision rate a seat gained, and what that cost it.
-                    laneDropped: st.laneDropped || 0,
-                    laneDuplicates: st.laneDuplicates || 0,
-                    laneDuplicatesBy: st.laneDuplicatesBy || {},
-                    // Rounds a single-lane seat would have forfeited. Not an error and not
-                    // a credit either -- the seat played the round on its own answer. It
-                    // sits with the other two because all three are the SAME trade priced
-                    // three ways: what staggering bought, and what it threw away to buy it.
-                    laneCount: st.laneCount || 1,
-                    laneRescued: st.laneRescued || 0,
-                    contextOverflows: ctxOv, roundsMissed: missed,
-                    rateLimited: st.rateLimited || 0, rateLimitLost: rlLost,
-                    invalidActions: st.invalidActions, rejected: st.actionsRejected,
-                    contended: st.actionsContended || 0,
-                    // How much each turn carried. Reported BESIDE the success rate and
-                    // never inside it: scoring per command already means a seat sending
-                    // three and getting two right reads 67% while a seat sending one
-                    // safe command reads 100%. Without this figure the second looks
-                    // simply better, when what it did was less.
-                    commandsPerTurn: (st.turnsExecuted || 0)
-                        ? st.actionsAttempted / st.turnsExecuted : 0,
-                    maxCommands: OpenAIAIManager.MAX_COMMANDS_PER_TURN,
-                    finalWord: controller._finalWord || null,
-                    promptTokens: st.promptTokens || 0, completionTokens: st.completionTokens || 0,
-                    attempted: st.actionsAttempted, succeeded: st.actionsSucceeded,
-                    // Contended attempts leave the DENOMINATOR, not just the numerator.
-                    // A model whose only failures were a busy barracks made no mistake,
-                    // so it should read 1.0 — docking it would score tempo as error, and
-                    // the models that contend with themselves most are the busy ones.
-                    successRate: (() => {
-                        const judged = st.actionsAttempted - (st.actionsContended || 0);
-                        return judged > 0 ? st.actionsSucceeded / judged : 0;
-                    })(),
-                    // Format fidelity: prose-only replies (no JSON action) are format
-                    // failures too — they just get their own counter.
-                    formatOk: responded > 0 ? (responded - st.parseFails - (st.noActionReturns || 0)) / responded : 0,
-                    reliability: reliabilityBase ? 1 - (st.timeouts + st.networkErrors) / reliabilityBase : 0,
-                    reasonRate: st.actionsAttempted ? st.reasonsGiven / st.actionsAttempted : 0,
-                    actionCounts: st.actionCounts,
-                    workersTrained: st.workersTrained || 0
-                };
+                rep.metrics = this.seatMetrics(controller);
                 rep.soundness = this.computeSoundness(rep);
                 rep.tags = this.computeBehaviorTags(rep);
             }
@@ -5886,6 +5911,47 @@ class UIManager {
         if (moment) this.anApplyMoment(moment);
     }
 
+    // ---- Tale of the tape (review #11) -----------------------------------------------
+    // The seats side by side: what each was, how it was set up, how often it was helped,
+    // and how it finished. A row appears only when some seat has something to say in it.
+    anTaleHtml() {
+        const a = this.analyzer;
+        if (!a || !a.taleOfTheTape) return '';
+        const rows = a.taleOfTheTape();
+        if (rows.length < 2) return '';
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const cell = v => (v == null || v === '' || v === false || v === 0) ? '<td class="tt-none">–</td>' : '<td>' + v + '</td>';
+        const line = (key, fn) => {
+            const vals = rows.map(fn);
+            if (vals.every(v => v == null || v === '' || v === false || v === 0)) return '';
+            return '<tr><th scope="row">' + esc(t(key)) + '</th>' + vals.map(cell).join('') + '</tr>';
+        };
+        const k = n => n >= 1024 ? Math.round(n / 1024) + 'k' : n;
+        const head = '<tr><th></th>' + rows.map(r => '<th scope="col">' + this.teamDotHtml(r.seat, 8) + ' '
+            + esc(r.rule ? this.ruleBasedName(r.profile || 'standard', t('lu.rule')) : (r.name || r.model || '?')) + '</th>').join('') + '</tr>';
+        const body = [
+            line('tt.model', r => r.model ? esc(r.model) : null),
+            line('tt.civ', r => esc(t('civ.' + r.civ + '.name'))),
+            line('tt.served', r => r.servedBy || r.provider ? esc([r.provider, r.servedBy].filter(Boolean).join(' · ')) : null),
+            line('tt.context', r => r.context ? esc(k(r.context)) : null),
+            line('tt.maxTokens', r => r.maxTokens ? esc(k(r.maxTokens)) : null),
+            line('tt.temperature', r => r.temperature != null ? esc(r.temperature) : null),
+            line('tt.reasoning', r => r.reasoning ? esc(r.reasoning) : null),
+            line('tt.lanes', r => r.lanes > 1 ? esc(r.lanes) : null),
+            line('tt.toolFallback', r => r.toolFallback ? esc(t('tt.yes')) : null),
+            line('tt.ownPrompt', r => r.ownPrompt ? esc(t('tt.yes')) : null),
+            line('tt.turns', r => r.turns || null),
+            line('tt.missed', r => r.missed || null),
+            line('tt.advised', r => r.advised ? '<span class="tt-warn">' + r.advised + '</span>' : null),
+            line('tt.paused', r => r.paused ? '<span class="tt-warn">' + r.paused + '</span>' : null),
+            line('tt.adaptations', r => Object.keys(r.adaptations).length
+                ? '<span class="tt-warn">' + Object.entries(r.adaptations).map(([kind, n]) => esc(kind) + ' ×' + n).join(', ') + '</span>' : null),
+            line('tt.result', r => r.rank == null ? null : esc(t('tt.rank', { n: r.rank })) + (r.winner ? ' 🏆' : r.alive === false ? ' ✕' : '')),
+        ].join('');
+        return '<details class="an-tale"><summary>' + esc(t('tt.title')) + '</summary><div class="an-tale-scroll"><table class="an-tale-table">'
+            + head + body + '</table></div></details>';
+    }
+
     // ---- Moment links (review #11) ---------------------------------------------------
     // ?match=<id>&t=1:04:30&seat=2&turn=17 opens a published sample at that moment: the
     // seat's view (seats count from 1, as the badges do), that seat's n-th turn, or the
@@ -5912,7 +5978,8 @@ class UIManager {
         const s = Number.isInteger(n) && n >= 1 ? [...a.seats.values()].find(x => x.seat === n - 1) : null;
         a.seatFilter = s ? s.id : null;
         const k = Number(turn), sec = UIManager.parseMomentTime(time);
-        if (s && Number.isInteger(k) && k >= 1 && s.turns[k - 1]) a.seek(a.order.indexOf(s.turns[k - 1]));
+        const own = s ? s.turns.filter(r => !r.type) : [];   // its turns, not the markers filed with them
+        if (s && Number.isInteger(k) && k >= 1 && own[k - 1]) a.seek(a.order.indexOf(own[k - 1]));
         else if (sec != null && s) {
             // In a seat's view, that seat's own last record at or before the time -- not a
             // rival's later one, which would show another seat's board under this seat's name.
@@ -5939,7 +6006,7 @@ class UIManager {
         const s = a.seatFilter ? a.seats.get(a.seatFilter) : null;
         if (s) {
             url.searchParams.set('seat', String(s.seat + 1));
-            const k = rec ? s.turns.indexOf(rec) : -1;
+            const k = rec ? s.turns.filter(r => !r.type).indexOf(rec) : -1;   // a marker has no turn number
             if (k >= 0) url.searchParams.set('turn', String(k + 1));
         }
         if (keep) url.searchParams.set('full', keep);
@@ -6710,8 +6777,8 @@ class UIManager {
                 + esc(this._anChapterOffset || 0) + '" onchange="game.ui._anChapterOffset=this.value"></label>'
                 + '<button type="button" class="an-chip" onclick="game.ui.anCopyChapters()" title="' + esc(t('an.copyChaptersTip')) + '">' + esc(t('an.copyChapters')) + '</button>' : '')
             + '</div>';
-        document.getElementById('anChapters').innerHTML = ch
-            ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + tools + ch : (link ? tools : '');
+        document.getElementById('anChapters').innerHTML = this.anTaleHtml()
+            + (ch ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + tools + ch : (link ? tools : ''));
     }
 
     // ---- the stage: the real engine, showing a finished match -----------------

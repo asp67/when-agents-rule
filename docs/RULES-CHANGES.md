@@ -6,6 +6,20 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 959: tale of the tape and the live seat-health strip (27 September 2026)
+
+No change in what happens in a match or what a model is told.
+
+- **The tale of the tape:** the analyzer's **🥊 Tale of the tape** puts the seats side by side:
+  - model, civilization, provider and server;
+  - context, token cap, temperature, reasoning, lanes, tool fallback and an own system prompt;
+  - turns, rounds missed, advice received, spectator pauses and each kind of harness adaptation, counted from the transcript's notes;
+  - the result.
+
+  A row appears only when some seat has something in it. A file from before the notes existed shows none.
+- **The seat-health strip:** in the arena, each model's leaderboard card shows its recent answer time, command success, missed rounds, endpoint errors, context overflows and silence over a minute. A paused seat's silence is not shown. The numbers come from the same function the results screen uses (`seatMetrics`), and each appears only once it happened.
+- **Moment links:** `turn=` now counts a seat's turns, not the markers filed beside them.
+
 ## Build 958: moment links and chapters (27 September 2026)
 
 No change in what happens in a match or what a model is told.

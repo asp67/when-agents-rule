@@ -136,6 +136,37 @@ class TranscriptAnalyzer {
     }
 
 
+    // The tale of the tape (review #11): each seat side by side, as the header declared
+    // it and as the record says it was helped -- advice, a spectator's pause, the harness
+    // adapting its requests, a demotion -- and how it finished. Counted from the notes
+    // themselves; a file from before the notes existed has none, and says nothing.
+    taleOfTheTape() {
+        const players = (this.header && this.header.players) || [];
+        const ranking = (this.results && this.results.ranking) || [];
+        const count = (id, pred) => this.markers.filter(r => r.playerId === id && pred(r)).length;
+        return players.map(p => {
+            const st = p.settings || {};
+            const seat = this.seats.get(p.id) || {};
+            const rank = ranking.find(r => r.playerId === p.id) || null;
+            const adaptations = {};
+            this.markers.filter(r => r.playerId === p.id && r.type === 'adaptation')
+                .forEach(r => { adaptations[r.kind || '?'] = (adaptations[r.kind || '?'] || 0) + 1; });
+            return {
+                id: p.id, seat: p.seat, civ: p.civ, name: seat.name || p.name || null,
+                rule: p.model === 'ki', profile: p.profile || null, model: p.model === 'ki' ? null : (p.model || null),
+                provider: st.provider || null, servedBy: st.servedBy || null, context: st.contextBudget || null,
+                maxTokens: st.maxTokens || null, temperature: st.temperature != null ? st.temperature : null,
+                reasoning: st.reasoning || null, toolFallback: !!st.toolFallback, ownPrompt: !!st.systemPrompt,
+                lanes: st.lanes || 1, turns: (seat.turns || []).filter(r => !r.type).length,   // its markers ride along in the list
+                missed: count(p.id, r => r.type === 'round_missed'),
+                advised: count(p.id, r => r.type === 'intervention' && r.kind === 'advice'),
+                paused: count(p.id, r => r.type === 'intervention' && r.kind === 'seatPaused'),
+                adaptations, demoted: !!adaptations.demoted,
+                rank: rank ? rank.rank : null, winner: !!(rank && rank.isWinner), alive: rank ? rank.alive !== false : null,
+            };
+        });
+    }
+
     // Every transcript written before this was fixed lists the raw model names in its
     // header while its results block ranks the suffixed ones — so a match between two
     // copies of one model opens with two identical rows in the seat filter and no way

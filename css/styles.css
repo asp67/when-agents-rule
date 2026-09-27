@@ -3083,3 +3083,19 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .an-ch-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 6px; }
 .an-ch-offset { font-size: 0.72em; color: #9ab; display: inline-flex; align-items: center; gap: 4px; }
 .an-ch-offset input { width: 4.5em; }
+
+/* Tale of the tape (review #11). */
+.an-tale { margin: 0 0 8px; font-size: 0.8em; }
+.an-tale summary { cursor: pointer; font-weight: 600; color: #cfd8e3; }
+.an-tale-scroll { overflow-x: auto; }
+.an-tale-table { border-collapse: collapse; margin-top: 6px; }
+.an-tale-table th, .an-tale-table td { padding: 3px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; white-space: nowrap; }
+.an-tale-table th[scope="row"] { color: #9ab; font-weight: normal; }
+.an-tale-table .tt-none { color: #5c6a78; }
+.an-tale-table .tt-warn { color: #e9c46a; }
+
+/* Live seat-health strip (review #11). */
+.lb-health { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.7em; color: #aebccc; margin: 1px 0 3px; font-variant-numeric: tabular-nums; }
+.lb-health .warn { color: #e9c46a; }
+.lb-health .bad { color: #f0a080; }
+.lb-list.collapsed .lb-health { display: none; }
