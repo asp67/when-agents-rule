@@ -110,7 +110,14 @@ async function init({ urls, recs }) {
     return { type: 'ready', coreHash, harnessHash, lastInputStep: replay.lastInputStep, inputs: inputs.length };
 }
 
+// A long jump is walked in slices, with a note after each, so the page can show how far
+// the rebuild has got instead of a frozen picture. The work is the same; only the silence goes.
 function frame(step) {
+    const SLICE = 600;   // 30 s of match between notes
+    while (replay.ok && game.gameStarted && replay.step + SLICE < step) {
+        replay.to(replay.step + SLICE);
+        self.postMessage({ type: 'progress', step: replay.step, target: step });
+    }
     replay.to(step);
     return { type: 'frame', step: replay.step, checked: replay.checked, ok: replay.ok, problem: replay.problem,
              divergedAt: replay.divergedAt, divergedSeq: replay.divergedSeq, complete: replay.complete, ended: !game.gameStarted, scene: replay.scene() };

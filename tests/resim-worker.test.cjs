@@ -78,6 +78,9 @@ test('the worker certifies a recording made under the rules it runs, and draws t
     assert.equal(end.step, step);
     const own = end.scene.seats[0];
     assert.ok(own.units.length >= 3 && own.buildings.some(b => b.type === 'town_center'));
+    // Each building carries its own epoch, so the stage can restyle it at an age-up as the
+    // live game does, instead of freezing it at the age it had when first seen.
+    assert.ok(own.buildings.every(b => typeof b.age === 'string' && b.age.length), JSON.stringify(own.buildings.map(b => b.age)));
     assert.ok(own.units.every(u => typeof u.id === 'string' && typeof u.x === 'number' && u.type));
     assert.ok(end.scene.nodes.length > 10);
 });

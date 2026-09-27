@@ -2081,7 +2081,17 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 
 .summary-legend { text-align: center; color: #8a93a8; font-size: 0.8em; margin: 4px 0 18px; }
-.summary-buttons { display: flex; gap: 14px; justify-content: center; padding-bottom: 30px; }
+.summary-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: stretch;
+    max-width: 1180px; margin: 0 auto; padding-bottom: 30px; }
+/* One size for every action here. The menu styles they borrow were made for a column of
+   big menu entries: a 300px minimum, and a top margin on .back-btn that sat half the row
+   18px lower than the rest. */
+.summary-buttons .menu-btn { min-width: 0; margin: 0; flex: 0 1 220px; min-height: 48px; padding: 10px 16px;
+    font-size: .8em; letter-spacing: 1px; line-height: 1.25; display: inline-flex; align-items: center; justify-content: center; }
+/* The captions export is a field and a button; framed as one control of the same height. */
+.summary-buttons .sum-vtt { flex: 0 1 auto; min-height: 48px; padding: 0 0 0 12px; gap: 8px; border: 1px solid var(--line);
+    border-radius: 11px; background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)); color: var(--muted); }
+.summary-buttons .sum-vtt .menu-btn { flex: 0 0 auto; min-height: 46px; border: none; border-left: 1px solid var(--line); border-radius: 0 10px 10px 0; }
 
 /* ======================================================================
    WONDER VICTORY COUNTDOWN + ANNOUNCEMENT
@@ -2603,7 +2613,9 @@ body.demo-only .an-src { display:inline-block; padding:5px 12px; white-space:now
 body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
 
 /* Rows, not columns: action on top, reading underneath, seam between. */
-.an-body { flex:1 1 auto; min-height:0; display:grid; grid-template-rows:52% 6px 1fr; }
+.an-body { flex:1 1 auto; min-height:0; display:grid; grid-template-rows:52% 6px auto 1fr; }
+.an-timeline-bar { display:flex; align-items:center; gap:10px; padding:6px 12px 0; font-size:.8rem; }
+.an-timeline-bar .an-timeline-label { display:flex; align-items:center; gap:6px; flex:1 1 auto; }
 .an-stage { position:relative; min-height:0; overflow:hidden; background:#0a1218; }
 .an-viewport { position:absolute; inset:0; }
 .an-viewport > * { width:100% !important; height:100% !important; }
@@ -2978,7 +2990,6 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .an-workspace-tools select { min-height:32px; max-width:160px; padding:4px 6px;
     border:1px solid rgba(255,255,255,.22); border-radius:5px;
     background:var(--bg-0); color:var(--text); font:inherit; }
-.an-workspace-tools .an-timeline-label { flex:1 1 220px; }
 .an-timeline-label input { flex:1; min-width:80px; accent-color:var(--gold); }
 #anTimelinePosition { font-variant-numeric:tabular-nums; color:var(--muted); }
 .an-seam:focus-visible { z-index:5; background:var(--gold); }

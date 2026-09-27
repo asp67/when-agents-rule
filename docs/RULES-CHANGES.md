@@ -6,6 +6,22 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 979: Re-Simulate follows the match; one row of results buttons (27 September 2026)
+
+**No rules change.** The Re-Simulate mode of the transcript analyzer, and the results screen:
+
+- **The decision follows the world.** While the replay runs, the list, the detail panel and the timeline show the latest decision played by the current step. Each recorded answer is matched to its turn by seat and turn number. Before, they stayed on the first entry.
+- **One timeline.** The timeline slider moved from the settings row to its own bar above the lists, the detail and the charts it steps through. In Re-Simulate it drives the replay: picking an entry there, in the list, or with the step buttons seeks to the step where that decision was played. The replay's own slider is gone.
+- **Auto camera in Re-Simulate.** The chip is in the replay's bar. It aims at each decision as it is played, as in the snapshot mode.
+- **Seeking.**
+  - A long seek reports how far the rebuild has got.
+  - Seeking backward keeps the current picture on screen until the replay reaches the new step; it used to clear the map.
+  - After a seek, the replay plays on at once. The playback target used to grow while the worker was busy, so it then asked for everything played "meanwhile", which was a second freeze.
+  - Seeking backward still replays from the start, so it takes as long as the replay needs to get there.
+- **Daylight.** The analyzer's light follows the match clock at the moment on screen, in both modes. Its own day clock does not run, so the stage used to keep whatever light the last match had left, often night.
+- **Epochs.** Buildings and units follow the age-ups: the replay's scene carries each building's age, and the stage restyles a building when it changes, as the live game does. A unit upgraded to a new tier is rebuilt as its new type. Before, each kept the look it had when first seen, so stone- and iron-age buildings stood side by side.
+- **Results screen.** Every button in the bottom row has one size and one baseline, and the captions export is framed as one control of the same height. The menu styles the buttons borrowed set a 300 px minimum width and pushed half the row 18 px lower.
+
 ## Build 978: every bubble on screen, at the edge it comes from (27 September 2026)
 
 **No rules change.** A bubble whose point is out of view now rests on the edge of the screen in its direction: left and right as before, and now also the top and bottom. A point behind the camera goes to the bottom edge on its side. Bubbles that pile against the top edge stack downward rather than off the screen. A seat acting out of shot is still heard from.

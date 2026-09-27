@@ -118,7 +118,10 @@ WarResim.Replay = class {
                     attackTarget: u.attackTarget ? { x: u.attackTarget.x, z: u.attackTarget.z, health: u.attackTarget.health } : null,
                 })),
                 buildings: ai.buildings.filter(b => b.health > 0).map(b => ({
-                    id: b.id, type: b.type, x: b.x, z: b.z, health: b.health,
+                    // Its own epoch: an age-up restyles every building of the seat
+                    // (morphBuildingsToAge), and the stage must follow that, not freeze
+                    // each one at the age it had when first seen.
+                    id: b.id, type: b.type, age: b.age || null, x: b.x, z: b.z, health: b.health,
                     underConstruction: !!b.underConstruction, buildProgress: b.buildProgress || 0,
                 })),
             })),

@@ -190,7 +190,7 @@ class UIManager {
         const body = document.getElementById('anBody');
         if (body) {
             body.dataset.layout = p.layout;
-            body.style.gridTemplateRows = p.split + '% 6px minmax(0, 1fr)';
+            body.style.gridTemplateRows = p.split + '% 6px auto minmax(0, 1fr)';
         }
         const seam = document.getElementById('anSeam');
         if (seam) seam.setAttribute('aria-valuenow', Math.round(p.split));
@@ -230,6 +230,7 @@ class UIManager {
         const index = Number(value);
         if (!Number.isInteger(index) || !this.analyzer) return;
         this.anStopPlay();
+        if (this.anResimSeekEntry(index)) return;
         this.analyzer.seek(index);
         this.anRender();
         const slider = document.getElementById('anTimeline');
@@ -248,7 +249,11 @@ class UIManager {
             tools.innerHTML = `<label>${esc(t('view.layout'))}<select id="anLayout" onchange="game.ui.anSetLayout(this.value)">${options(['balanced','watch','read','compare','custom'])}</select></label>
                 <label>${esc(t('view.text'))}<select id="anReadingSize" onchange="game.ui.setReadingSize(this.value)">${options(['comfortable','compact'])}</select></label>
                 <label>${esc(t('view.replayRate'))}<select id="anReplayRate" onchange="game.ui.anSetReplayRate(this.value)">${[0.5,1,2,4].map(n => `<option value="${n}">${n.toLocaleString(getUiLang())}</option>`).join('')}</select></label>
-                <label class="an-timeline-label">${esc(t('view.timelineAll'))}<input id="anTimeline" type="range" min="0" step="1" onchange="game.ui.anScrub(this.value)"></label>
+`;
+            // The timeline sits above the panels it moves through (the decisions, the log,
+            // the charts), not up here among the view settings.
+            const bar = document.getElementById('anTimelineBar');
+            if (bar) bar.innerHTML = `<label class="an-timeline-label">${esc(t('view.timelineAll'))}<input id="anTimeline" type="range" min="0" step="1" onchange="game.ui.anScrub(this.value)"></label>
                 <output id="anTimelinePosition" for="anTimeline"></output>`;
         }
         const p = this.viewPreferences(), a = this.analyzer;
@@ -6338,14 +6343,19 @@ class UIManager {
         let worker;
         try { worker = new Worker('js/resim-worker.js' + (v ? '?' + v : '')); }
         catch (e) { this.showErrorMessage(t('an.resimFailed', { e: e.message || String(e) })); return; }
+        // A restart to seek backward keeps the world on screen until the new run reaches
+        // the step: the ids are seeded, so the same entities are simply moved on. Only a
+        // fresh start clears the stage.
+        const keep = !!(prev && prev.inputs === a.inputs && fromStep > 0);
         const rs = this._anResim = { worker, inputs: a.inputs, step: 0, target: fromStep, total: 0, busy: true,
             playing: prev ? prev.playing : true, speed: prev ? prev.speed : 4, status: 'loading', checked: 0,
-            ents: new Map(), problem: null };
+            ents: keep ? prev.ents : new Map(), problem: null, seekTo: fromStep > 0 ? fromStep : null,
+            marks: this.anResimMarks(a) };
         worker.onmessage = e => this.anResimMessage(rs, e.data);
         worker.onerror = e => this.anResimMessage(rs, { type: 'error', problem: (e && e.message) || 'worker failed' });
         worker.postMessage({ type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) });
         if (this.game.renderer) this.game.renderer.resimPlaying = true;   // units move here: let them animate
-        this.anResimStage();
+        if (!keep) this.anResimStage();
         this.anResimHud(true);
     }
     anResimStop(render = true) {
@@ -6356,8 +6366,47 @@ class UIManager {
         try { rs.worker.terminate(); } catch (e) {}
         if (render) this.anRender();
     }
+    // Where each recorded answer landed: the step of its batch input, and its turn record
+    // in the list (same seat, same turn number). Sorted by step, so the decision on screen
+    // can follow the re-simulated world, and a decision picked in the list can be sought.
+    anResimMarks(a) {
+        const at = new Map(a.order.map((r, i) => [r.playerId + '#' + r.turn, i]));
+        return (a.inputs || []).filter(x => x.kind === 'batch')
+            .map(x => ({ step: x.step, idx: at.get(x.playerId + '#' + x.turnCount) }))
+            .filter(m => m.idx != null).sort((p, q) => (p.step - q.step) || (p.idx - q.idx));
+    }
+    // The step at which the decision at list index `i` was played (or the next one that was).
+    anResimStepOf(i) {
+        const rs = this._anResim;
+        if (!rs || !rs.marks.length) return null;
+        const m = rs.marks.find(x => x.idx === i) || rs.marks.find(x => x.idx > i);
+        return m ? m.step : rs.total;
+    }
+    // Follow the world: the decision on screen is the latest one played by this step, the
+    // camera goes where it points when the auto camera is on, and the daylight is the
+    // live match's -- its clock interpolated between the decisions around this step.
+    // Without that the stage kept whatever light the last match had left.
+    anResimFollow(rs) {
+        const a = this.analyzer;
+        if (!a || !rs.marks.length) return;
+        let lo = 0, hi = rs.marks.length - 1, k = -1;
+        while (lo <= hi) { const mid = (lo + hi) >> 1; if (rs.marks[mid].step <= rs.step) { k = mid; lo = mid + 1; } else hi = mid - 1; }
+        const m0 = rs.marks[k], m1 = rs.marks[k + 1];
+        const sec = m => (a.order[m.idx] && a.order[m.idx]._sec) || 0;
+        this.game._environmentSeconds = !m0 ? (m1 ? sec(m1) * rs.step / Math.max(1, m1.step) : rs.step * 0.05)
+            : (!m1 || m1.step === m0.step) ? sec(m0) + (rs.step - m0.step) * 0.05
+            : sec(m0) + (sec(m1) - sec(m0)) * (rs.step - m0.step) / (m1.step - m0.step);
+        if (m0 && a.cursor !== m0.idx) {
+            a.seek(m0.idx);
+            if (a.autoCam) this.anAimCamera(a.current(), null);
+            this.anRender();
+        }
+    }
     anResimMessage(rs, m) {
         if (rs !== this._anResim) return;   // a stopped run's late answer
+        // A progress note arrives while the worker is still working toward the step asked
+        // for; the run stays busy.
+        if (m.type === 'progress') { rs.progress = m.step; this.anResimHud(); return; }
         rs.busy = false;
         if (m.type === 'error') {
             rs.status = 'failed'; rs.playing = false;
@@ -6367,7 +6416,10 @@ class UIManager {
             this.anResimLoop(rs);
         } else if (m.type === 'frame') {
             rs.step = m.step; rs.checked = m.checked;
+            if (rs.seekTo != null && rs.step >= rs.seekTo) rs.seekTo = null;
+            rs.progress = null;
             this.anResimDraw(rs, m.scene);
+            this.anResimFollow(rs);
             // A hash that differs is a divergence; anything else that stops it (the match
             // ending before an input, a seat no model played) is a replay that failed.
             if (!m.ok) { rs.status = m.divergedSeq != null ? 'diverged' : 'failed'; rs.problem = m.problem;
@@ -6384,8 +6436,14 @@ class UIManager {
         const tick = now => {
             if (rs !== this._anResim) return;
             const dt = Math.min(250, now - last); last = now;
-            if (rs.playing && rs.status === 'running' && document.visibilityState !== 'hidden')
-                rs.target = Math.min(rs.total, rs.target + dt / 50 * rs.speed);
+            // The target may run ahead of the world by about a second of play and no more.
+            // It used to grow for as long as the worker was busy, so after a long seek the
+            // next request was for everything played "meanwhile" -- a second freeze, the
+            // units standing still until that was worked through too.
+            if (rs.playing && rs.status === 'running' && document.visibilityState !== 'hidden') {
+                const lead = Math.max(20, 20 * rs.speed);
+                rs.target = Math.min(rs.total, Math.max(rs.target, Math.min(rs.target + dt / 50 * rs.speed, rs.step + lead)));
+            }
             if (!rs.busy && rs.status === 'running' && (Math.floor(rs.target) > rs.step || !rs.ents.size)) {
                 rs.busy = true;
                 rs.worker.postMessage({ type: 'to', step: Math.floor(rs.target) });
@@ -6409,6 +6467,8 @@ class UIManager {
         if (!rs) return;
         if (step < rs.step) { this.anResimStart(step); return; }
         rs.target = step;
+        if (step - rs.step > 600) rs.seekTo = step;   // long enough to show progress for
+        this.anResimHud();
     }
     // The stage for a re-simulation: the recorded map, empty, and no fog. It is the
     // observer's view, as a spectator of the live match had it.
@@ -6442,6 +6502,9 @@ class UIManager {
                 const key = 'u' + u.id;
                 seen.add(key);
                 let ent = rs.ents.get(key);
+                // An age-up upgrades field units to their next tier (upgradeFieldUnits):
+                // the same unit, a new type. Rebuilt, so it looks what it now is.
+                if (ent && ent.type !== u.type) { if (r.removeUnit) r.removeUnit(ent); else r.killUnit(ent); rs.ents.delete(key); ent = null; }
                 if (!ent) {
                     ent = typeof createUnit === 'function' ? createUnit(u.type, u.x, u.z, s.id, s.civilization, s.epoch) : null;
                     if (!ent) return;
@@ -6460,11 +6523,16 @@ class UIManager {
                 let ent = rs.ents.get(key);
                 if (!ent) {
                     ent = typeof createBuilding === 'function' ? createBuilding(b.type, b.x, b.z, s.id, s.civilization,
-                        { instant: true, age: s.epoch, underConstruction: b.underConstruction }) : null;
+                        { instant: true, age: b.age || s.epoch, underConstruction: b.underConstruction }) : null;
                     if (!ent) return;
                     ent.seat = s.seat;
                     rs.ents.set(key, ent);
                     r.addBuilding(ent);
+                } else if (b.age && ent.age !== b.age) {
+                    // An age-up restyles every building of the seat (morphBuildingsToAge);
+                    // the stage follows, as the live renderer does.
+                    ent.age = b.age;
+                    if (r.rebuildBuildingMesh) r.rebuildBuildingMesh(ent);
                 }
                 ent.health = b.health;
                 ent.underConstruction = b.underConstruction;
@@ -6497,7 +6565,9 @@ class UIManager {
                 + '<button id="anResimPlay" class="an-chip" onclick="game.ui.anResimToggle()"></button>'
                 + '<select id="anResimSpeed" class="an-chip" onchange="game.ui.anResimSpeed(this.value)" aria-label="' + esc(t('an.resimSpeed')) + '">'
                 + [1, 4, 16, 64].map(n => '<option value="' + n + '"' + (n === rs.speed ? ' selected' : '') + '>' + n + '×</option>').join('') + '</select>'
-                + '<input id="anResimRange" type="range" min="0" max="1" value="0" step="1" onchange="game.ui.anResimSeek(this.value)" aria-label="' + esc(t('an.resimSeek')) + '">'
+                // The auto camera works here too: it follows the decision being played.
+                // No slider of its own: the timeline above the lists drives the replay.
+                + '<button id="anResimAuto" data-an-auto-camera class="an-chip" onclick="game.ui.anToggleAutoCam()">' + esc(t('an.autoCam')) + '</button>'
                 + '<span id="anResimTxt" class="an-cap-txt"></span>'
                 + '<button class="an-chip" onclick="game.ui.anResimStop()">' + esc(t('an.resimExit')) + '</button>';
         }
@@ -6508,12 +6578,17 @@ class UIManager {
             play.setAttribute('aria-label', t(rs.status === 'certified' ? 'an.resimAgain' : rs.playing ? 'an.resimPause' : 'an.resimPlay'));
             play.disabled = rs.status === 'loading' || rs.status === 'failed' || rs.status === 'diverged';
         }
-        const range = document.getElementById('anResimRange');
-        if (range && document.activeElement !== range) { range.max = String(rs.total || 1); range.value = String(rs.step); }
+        const auto = document.getElementById('anResimAuto');
+        if (auto && this.analyzer) {
+            auto.classList.toggle('is-on', !!this.analyzer.autoCam);
+            auto.setAttribute('aria-pressed', String(!!this.analyzer.autoCam));
+        }
         const txt = document.getElementById('anResimTxt');
         if (txt) {
             const n = rs.inputsTotal || (rs.inputs ? rs.inputs.length : 0);
-            txt.textContent = rs.status === 'loading' ? t('an.resimLoading')
+            txt.textContent = rs.seekTo != null && rs.status !== 'failed' && rs.status !== 'diverged'
+                    ? t('an.resimSeeking', { t: clock(rs.progress != null ? rs.progress : rs.step), total: clock(rs.seekTo) })
+                : rs.status === 'loading' ? t('an.resimLoading')
                 : rs.status === 'failed' ? t('an.resimFailed', { e: rs.problem || '?' })
                 : rs.status === 'diverged' ? t('an.resimDiverged', { t: clock(rs.divergedAt), s: rs.divergedAt, n: rs.divergedSeq })
                 : rs.status === 'certified' ? t('an.resimCertified', { n })
@@ -6542,13 +6617,35 @@ class UIManager {
     // A deliberate jump takes over from playback rather than fighting it.
     // Focus follows the click, so arrows continue where the reader just was rather than
     // going back to panning the map.
+    // While a re-simulation runs, choosing a decision -- in the list, on the timeline, by
+    // stepping -- seeks the replay to the step it was played at; the panel then follows
+    // the world there. Returns whether it did.
+    anResimSeekEntry(i) {
+        const a = this.analyzer, step = this._anResim ? this.anResimStepOf(i) : null;
+        if (step == null || !a) return false;
+        a.seek(i);
+        this.anResimSeek(step);
+        this.anRender();
+        return true;
+    }
     anSeek(i) {
         this.anStopPlay();
+        if (this.anResimSeekEntry(i)) return;
         if (this.analyzer) { this.analyzer.seek(i); this.anRender(); }
         const list = document.getElementById('anList');
         if (list && list.focus) list.focus({ preventScroll: true });
     }
-    anStep(d) { if (this.analyzer) { this.analyzer.step(d); this.anRender(); } }
+    anStep(d) {
+        if (!this.analyzer) return;
+        if (this._anResim) {
+            const a = this.analyzer, before = a.cursor;
+            a.step(d);
+            const i = a.cursor;
+            a.seek(before);
+            if (this.anResimSeekEntry(i)) return;
+        }
+        this.analyzer.step(d); this.anRender();
+    }
 
     // Free-text search over the turn list. Steps and playback both walk visible(),
     // so narrowing here narrows those too — which is the point: type "wonder", then
@@ -7250,6 +7347,9 @@ class UIManager {
         const a = this.analyzer, r = this.game.renderer;
         if (!a || !r || !rec) return;
         this.anUseIdentity();
+        // The live match's daylight at this moment. The page's own day clock is not
+        // running here, so the stage used to keep whatever light the last match left.
+        this.game._environmentSeconds = rec._sec || 0;
         const sc = a.scene(rec, a.union);
         if (!sc) return;
 
