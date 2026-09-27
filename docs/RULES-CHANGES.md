@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 975: edge bubbles, true scout targets, a bank line on the broadcast cards (27 September 2026)
+
+**No rules change.**
+
+- **Bubbles at the screen edge:** a bubble near an edge used to be squeezed into a column of single words. It now keeps its width, sized to its text up to 260 px, and rests against the edge.
+- **Scout targets:** an explore names a tile, and the harness sends the scout to the least-seen walkable part of it. The ring was drawn at the tile's centre, so it did not match where the scout went. Once the harness has answered, the ring and its bubble move to the scout's real target. The answer names the unit it sent, and that unit carries the target. A path is drawn from the scout when the order named none. A refused explore keeps its tile.
+- **Broadcast cards:** each seat card has a second line: the civilization and the resources in the bank.
+
 ## Build 974: a scout sent this turn stays sent (27 September 2026)
 
 **A rules and harness change.** Take a worker an explore sent earlier in the same turn. A later command of that turn no longer takes it back:

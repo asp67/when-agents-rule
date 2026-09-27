@@ -2524,12 +2524,20 @@ class UIManager {
             { focus: r.cameraTarget, w: r.canvas.clientWidth, h: r.canvas.clientHeight });
         box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
             + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span></div>').join('');
-        // Stacked again with the sizes the bubbles were actually drawn at: the layer can
-        // only estimate them, and an estimate too small let one bubble cover another's reason.
-        const els = box.children;
-        if (els.length > 1) {
-            const ys = IntentLayer.stack(f.bubbles.map((b, k) => ({ x: b.x, y: b.ay, w: els[k].offsetWidth, h: els[k].offsetHeight })));
-            ys.forEach((y, k) => { els[k].style.top = Math.round(y) + 'px'; });
+        // Laid out again with the sizes the bubbles were actually drawn at. Kept inside the
+        // view first: a bubble near an edge used to be squeezed into a column of single
+        // words; now it keeps its width and rests against the edge. Then stacked -- the
+        // layer can only estimate sizes, and an estimate too small let one bubble cover
+        // another's reason.
+        const els = box.children, vw = box.clientWidth || r.canvas.clientWidth, pad = 6;
+        if (els.length) {
+            const boxes = f.bubbles.map((b, k) => {
+                const w = els[k].offsetWidth, h = els[k].offsetHeight;
+                const x = vw > w + 2 * pad ? Math.max(pad + w / 2, Math.min(vw - pad - w / 2, b.x)) : b.x;
+                return { x, y: b.ay, w, h };
+            });
+            const ys = IntentLayer.stack(boxes);
+            boxes.forEach((bx, k) => { els[k].style.left = Math.round(bx.x) + 'px'; els[k].style.top = Math.round(ys[k]) + 'px'; });
         }
     }
     // The decisions log's names for actions, and the detail it puts after one ("(Wood)",
@@ -3783,13 +3791,19 @@ class UIManager {
             const advised = (ctrl && ctrl.stats && ctrl.stats.advisedTurns) || 0;
             const out = g.isPlayerEliminated(ai);
             const mil = ai.units.filter(u => u.type !== 'worker' && u.health > 0).length, wk = ai.units.filter(u => u.type === 'worker' && u.health > 0).length;
-            return '<span class="bb-seat' + (out ? ' out' : '') + '">' + this.chronicleSeatHtml(ai.id)
+            // Second line: the civilization and what is in the bank, with the icons the
+            // results screen uses.
+            const r = ai.resources || {}, bank = k => Math.floor(r[k] || 0);
+            const sub = '<span class="bb-sub"><span class="bb-civ">' + this.escapeHtml(this.anCivName(ai.civilization)) + '</span>'
+                + ' <span class="bb-n">\u{1F356} ' + bank('food') + '</span> <span class="bb-n">\u{1F332} ' + bank('wood') + '</span>'
+                + ' <span class="bb-n">\u{1FAA8} ' + bank('stone') + '</span> <span class="bb-n">\u{1F947} ' + bank('gold') + '</span></span>';
+            return '<span class="bb-seat' + (out ? ' out' : '') + '"><span class="bb-main">' + this.chronicleSeatHtml(ai.id)
                 + ' <span class="bb-age">' + this.escapeHtml(this.getAgeName(ai.age)) + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbArmy')) + '">\u2694\uFE0F ' + mil + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbWorkers')) + '">\u{1F477} ' + wk + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbBuildings')) + '">\u{1F3DB}\uFE0F ' + ai.buildings.filter(b => b.health > 0).length + '</span>'
                 + (advised ? ' <span class="bb-advised" title="' + this.escapeHtml(t('sum.coachedTip')) + '">' + this.escapeHtml(t('spec.bbAdvised', { n: advised })) + '</span>' : '')
-                + '</span>';
+                + '</span>' + sub + '</span>';
         }).join('');
         if (this._broadcastExit) board.appendChild(this._broadcastExit);   // redrawn above, so put back
         const w = document.getElementById('broadcastWonder');

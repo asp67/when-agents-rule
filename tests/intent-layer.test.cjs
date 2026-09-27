@@ -245,3 +245,28 @@ test('a bubble whose ring is out of view slides along its path to where the came
     assert.deepEqual(anchorFor({ anchor: b.anchor }, project, view({ x: 30, z: 50 })), { x: 400, y: 50 });
     assert.deepEqual(anchorFor(b, project, null), { x: 400, y: 50 });
 });
+
+test('an explore ring moves to where the harness really sends the scout, once it has answered', async () => {
+    const { m, layer, c, turn } = await setup();
+    layer.poll(0);
+    const w = m.seats[0].units.find(u => u.type === 'worker');
+    const t = turn([['explore', { tile: 'D4', reason: 'Look at the middle.' }], ['explore', { tile: 'A1' }]]);
+    c.turnLog.push(t);
+    layer.poll(1000);
+    const [e, refused] = layer.intents;
+    assert.deepEqual({ x: e.to.x, z: e.to.z }, { x: 0, z: 0 }, 'the tile centre until the answer is in');
+    assert.equal(e.marker, true);
+    // The harness answers: it sent this worker to the least-seen part of D4.
+    w.targetX = 37; w.targetZ = -21;
+    t.outcome = 'Command 1/2: OK - Sent your worker #' + w.handle + ' to scout tile D4 (~9s to arrive).\nCommand 2/2: [ERROR] No unit available to explore.';
+    layer.poll(1250);
+    assert.deepEqual({ x: e.to.x, z: e.to.z }, { x: 37, z: -21 });
+    assert.deepEqual({ x: e.from.x, z: e.from.z }, { x: w.x, z: w.z }, 'and a path from the scout');
+    assert.equal(e.marker, false);
+    const b = layer.bubbles.find(x => x.index === e.index);
+    assert.deepEqual({ x: b.anchor.x, z: b.anchor.z }, { x: 37, z: -21 }, 'the bubble goes with it');
+    assert.equal(b.from, e.from);
+    // The refused one keeps its tile.
+    const a1 = layer.tileCentre('A1');
+    assert.deepEqual({ x: refused.to.x, z: refused.to.z }, { x: a1.x, z: a1.z });
+});

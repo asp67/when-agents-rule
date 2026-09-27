@@ -75,12 +75,40 @@ class IntentLayer {
     // command ("Command 2/3: [ERROR] ..."), filled in once the commands have run. Until
     // then nothing is known, and nothing is claimed.
     static rejected(turn, i) {
+        const line = IntentLayer.outcomeLine(turn, i);
+        return line == null ? null : line.startsWith('[ERROR]');
+    }
+    // The harness's answer to command `i` of a turn, or null until it has answered.
+    static outcomeLine(turn, i) {
         const h = turn && typeof turn.outcome === 'string' ? turn.outcome : '';
         if (!h) return null;
         const parts = h.split(/\n(?=Command \d+\/\d+: )/);
         const lines = parts.length < 2 && !/^Command \d+\/\d+: /.test(h) ? [h] : parts.map(x => x.replace(/^Command \d+\/\d+: /, ''));
         const line = lines.length === 1 ? lines[0] : lines[i];
-        return line == null ? null : String(line).startsWith('[ERROR]');
+        return line == null ? null : String(line);
+    }
+
+    // Where an explore really goes. The model names a tile; the harness walks the scout
+    // to the least-seen walkable part of it (pointInTile), which the viewer cannot work
+    // out -- it does not know what the seat had seen. The answer names the unit it sent
+    // ("OK - Sent your worker #4 ..."), and that unit carries the exact target, so once
+    // the answer is in, the ring moves there, and a path is drawn from the unit if the
+    // order had none. Tried once per mark: a refused explore keeps its tile.
+    aimExplore(i) {
+        if (i.action !== 'explore' || i._aimed) return;
+        const line = IntentLayer.outcomeLine(i.turn, i.index);
+        if (line == null) return;          // not answered yet: try again next poll
+        i._aimed = true;
+        const m = /^OK - Sent your .*?#(\d+)/.exec(line);
+        const ai = m && ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === i.seat);
+        const u = ai && (ai.units || []).find(x => x.health > 0 && String(x.handle) === m[1]);
+        if (!u || !Number.isFinite(u.targetX) || !Number.isFinite(u.targetZ)) return;
+        i.to.x = u.targetX; i.to.z = u.targetZ;   // the bubble's anchor is this same point
+        if (!i.from) {
+            i.from = { x: u.x, z: u.z }; i.marker = false;
+            const b = this.bubbles.find(x => x.seat === i.seat && x.turn === i.turn && x.index === i.index);
+            if (b) b.from = i.from;
+        }
     }
 
     static reasonText(reason) {
@@ -152,6 +180,7 @@ class IntentLayer {
         }
         this._started = true;
         fresh.forEach(({ c, t }, k) => this.add(c.aiPlayer, t, now + k * 600));
+        for (const i of this.intents) this.aimExplore(i);
         this.intents = this.intents.filter(i => now - i.born < i.life);
         this.bubbles = this.bubbles.filter(b => now - b.born < b.life);
         return fresh.length;

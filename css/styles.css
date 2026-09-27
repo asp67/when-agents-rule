@@ -3033,7 +3033,7 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .intent-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
 .intent-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .intent-bubble {
-    position: absolute; transform: translate(-50%, calc(-100% - 18px)); max-width: 260px;
+    position: absolute; transform: translate(-50%, calc(-100% - 18px)); width: max-content; max-width: 260px;
     padding: 5px 9px 5px 11px; border-radius: 4px; font-size: 0.74em; line-height: 1.3;
     /* Parched parchment at 80%: sun-bleached in one corner, browned toward another,
        a darker rim where the edges have dried. The text on it is fully opaque. */
@@ -3065,6 +3065,9 @@ body.broadcast-mode #mapToolsDock, body.broadcast-mode .lb-flyout { display: non
 .broadcast-board .bb-clock { padding: 6px 12px; border-radius: 6px; background: rgba(10, 14, 30, 0.88); font-variant-numeric: tabular-nums; font-weight: 700; }
 .broadcast-board .bb-seat { padding: 6px 12px; border-radius: 6px; background: rgba(10, 14, 30, 0.88); border: 1px solid rgba(255, 255, 255, 0.12); white-space: nowrap; }
 .broadcast-board .bb-seat.out { opacity: 0.45; text-decoration: line-through; }
+.broadcast-board .bb-seat { display: inline-flex; flex-direction: column; gap: 2px; }
+.broadcast-board .bb-sub { font-size: 0.82em; color: #b8c6d6; }
+.broadcast-board .bb-civ { color: #d9e2ec; margin-right: 4px; }
 .broadcast-board .bb-age { color: #9fb3c8; font-size: 0.86em; }
 .broadcast-board .bb-n { font-variant-numeric: tabular-nums; margin-left: 4px; }
 .broadcast-board .bb-advised { margin-left: 6px; padding: 1px 6px; border-radius: 4px; font-size: 0.8em; color: #1a1406; background: #e9c46a; }
