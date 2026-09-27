@@ -5719,11 +5719,12 @@ class Game {
             });
         }
 
-        // Draw AI players (only in visible areas) — always their civ color,
-        // matching the world view's team tints in campaign AND spectator mode.
+        // Draw AI players (only in visible areas) — in the colour the world view tints
+        // them: their civ's, or their seat's when two seats share a civ (js/identity.js).
         this.aiManager.aiPlayers.forEach(ai => {
             const civ = getCivilization(ai.civilization);
-            const colorHex = '#' + (civ?.color || 0xff0000).toString(16).padStart(6, '0');
+            const colorHex = typeof WarIdentity !== 'undefined' ? WarIdentity.hex(ai.id, ai.civilization, ai.seat)
+                : '#' + (civ?.color || 0xff0000).toString(16).padStart(6, '0');
             const unitColor = colorHex;
             const buildingColor = colorHex;
 

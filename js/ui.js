@@ -2415,7 +2415,7 @@ class UIManager {
             if (!spectator || !ent || typeof getCivilization !== 'function') return '';
             const civ = getCivilization(ent.civilization);
             if (!civ) return '';
-            const col = '#' + ((civ.color != null ? civ.color : 0xffffff)).toString(16).padStart(6, '0');
+            const col = this.identityHex(ent.owner, ent.civilization, ent.seat);
             const badge = (ent.seat != null && this.teamDotHtml) ? this.teamDotHtml(ent.seat, 9) : '●';
             return `<span style="color:${col};font-weight:bold;">${badge} ${tg(civ.name)}</span><br>`;
         };
@@ -3562,7 +3562,7 @@ class UIManager {
             if (lead) {
                 const pct = Math.min(100, Math.round((leadHold / reqMs) * 100));
                 const civ = getCivilization(lead.civilization);
-                const col = this.legibleColor('#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0'));
+                const col = this.legibleColor(this.identityHex(lead.id, lead.civilization, lead.seat));
                 wEl.style.display = 'flex';
                 wEl.innerHTML = `<span class="sb-sep"></span>\u{1F3DB}️ <span style="color:${col};font-weight:700">${civ ? tg(civ.name) : lead.civilization}</span> ${t('wonder.generic')} <span class="sb-wonder-track"><span class="sb-wonder-fill" style="width:${pct}%"></span></span> ${Math.floor(leadHold / 1000)}/${Math.round(reqMs / 1000)}s`;
             } else {
@@ -4214,7 +4214,7 @@ class UIManager {
         // Build a ranked snapshot
         const rows = this.game.aiManager.aiPlayers.map(ai => {
             const civ = getCivilization(ai.civilization);
-            const colorHex = '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0');
+            const colorHex = this.identityHex(ai.id, ai.civilization, ai.seat);
             const workers = ai.units.filter(u => u.type === 'worker').length;
             const military = ai.units.filter(u => u.type !== 'worker').length;
             const alive = !this.game.isPlayerEliminated(ai);
@@ -4456,7 +4456,7 @@ class UIManager {
         const nodeChips = ['food', 'wood', 'stone', 'gold'].map(k =>
             `<span class="lb-fly-chip">${esc(t('res.' + k))} ×${known[k] || 0}</span>`).join('');
 
-        const colorHex = '#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0');
+        const colorHex = ai ? this.identityHex(ai.id, ai.civilization, ai.seat) : '#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0');
         el.innerHTML = `
             <div class="lb-fly-head" style="--civ:${this.legibleColor(colorHex)}">
                 <b>${esc(model)}</b><span>${esc(civName)} · ${ageNames[ai.age] || ai.age}</span>
@@ -4748,7 +4748,7 @@ class UIManager {
 
         const reports = players.map(ai => {
             const civ = getCivilization(ai.civilization);
-            const colorHex = '#' + (civ?.color || 0xffffff).toString(16).padStart(6, '0');
+            const colorHex = this.identityHex(ai.id, ai.civilization, ai.seat);
             const controller = (game.openAIAIManager && game.openAIAIManager.aiControllers)
                 ? game.openAIAIManager.aiControllers.find(c => c.id === ai.id) : null;
             const alive = !game.isPlayerEliminated(ai);
@@ -5582,6 +5582,14 @@ class UIManager {
         return '#' + to2(r + (255 - r) * f) + to2(g + (255 - g) * f) + to2(b + (255 - b) * f);
     }
 
+    // A seat's colour everywhere in the UI: its civilization's, or its seat's when two
+    // seats share a civilization (js/identity.js).
+    identityHex(ownerId, civ, seat) {
+        if (typeof WarIdentity !== 'undefined') return WarIdentity.hex(ownerId, civ, seat);
+        const def = typeof getCivilization === 'function' ? getCivilization(civ) : null;
+        return '#' + ((def && def.color) || 0xffffff).toString(16).padStart(6, '0');
+    }
+
     chartColor(ai) {
         const b = (typeof getTeamBadge === 'function') ? getTeamBadge(ai && ai.seat) : null;
         if (b && b.fill) return this.chartInk(b.fill);
@@ -6266,6 +6274,7 @@ class UIManager {
     anResimStage() {
         const r = this.game.renderer;
         if (!r) return;
+        this.anUseIdentity();
         this._anPicked = null;
         r.clearScene();
         const terrain = this.anTerrain();
@@ -6832,6 +6841,7 @@ class UIManager {
     }
 
     anUnmountStage() {
+        if (typeof WarIdentity !== 'undefined') WarIdentity.use(null);   // back to the live match's seats
         const cv = document.getElementById('gameCanvas');
         const home = this._anCanvasHome;
         if (cv && home && home.parent) {
@@ -7089,9 +7099,16 @@ class UIManager {
     // Rebuilt per seek rather than diffed: a snapshot is a whole world, and matching
     // entities across an 8-to-900-second gap would be inventing continuity the file
     // does not claim.
+    // The recording's seats name the colours while the analyzer shows it (review #12).
+    anUseIdentity() {
+        const h = this.analyzer && this.analyzer.header;
+        if (typeof WarIdentity !== 'undefined') WarIdentity.use(((h && h.players) || []).map(p => ({ id: p.id, seat: p.seat, civ: p.civ })));
+    }
+
     anBuildStage(rec) {
         const a = this.analyzer, r = this.game.renderer;
         if (!a || !r || !rec) return;
+        this.anUseIdentity();
         const sc = a.scene(rec, a.union);
         if (!sc) return;
 

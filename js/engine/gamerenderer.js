@@ -735,7 +735,9 @@
             this.units.push(unit);
             const engineType = unit.unitType === 'support' ? 'priest'
                 : (EngineUnits.META[unit.unitType] ? unit.unitType : 'infantry');
-            const tint = this._tintOf(unit.color);
+            // Seat-true (review #12): the civilization's colour, or the seat's when two
+            // seats share a civilization (js/identity.js).
+            const tint = this._tintOf(window.WarIdentity ? WarIdentity.color(unit.owner, unit.civilization, unit.seat, unit.color) : unit.color);
             const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(unit.seat) : null;
             const badge = this._badgeTints(unit.seat, tint);
             const options={civ:unit.civilization,unit:unit.type,badge:bdef?bdef.shape:null,
@@ -779,7 +781,7 @@
             const civ = (typeof getCivilization === 'function') ? getCivilization(building.civilization) : null;
             const civColor = (civ && civ.color) ? civ.color : building.color;
             building.color = civColor;
-            const tint = this._tintOf(civColor);
+            const tint = this._tintOf(window.WarIdentity ? WarIdentity.color(building.owner, building.civilization, building.seat, civColor) : civColor);
             const world = m3.multiply(
                 m3.multiply(
                     m3.translation(building.x, 0, building.z),
@@ -1507,7 +1509,22 @@
             return pct > 0.6 ? [0.18, 0.85, 0.25] : (pct > 0.3 ? [0.95, 0.82, 0.2] : [0.9, 0.25, 0.2]);
         }
 
+        // When the seats change -- a match starts and its seats arrive one by one, or the
+        // analyzer shows another recording -- a civilization can become shared or stop
+        // being so. Everything is re-tinted once then, never per frame.
+        _refreshIdentity() {
+            if (!window.WarIdentity) return;
+            const sig = WarIdentity.seats().map(s => s.id + ':' + s.civ + ':' + s.seat).join('|');
+            if (sig === this._identitySig) return;
+            const first = this._identitySig === undefined;
+            this._identitySig = sig;
+            if (first) return;
+            for (const u of [...this.units]) if (u._engine) this.addUnit(u);
+            for (const b of this.buildings) if (b._engine) this._composeBuilding(b);
+        }
+
         _assembleFrame(tSec, dt, bb) {
+            this._refreshIdentity();
             const m3 = M();
             const dl = this._dl;
             dl.opaque.length = 0; dl.blended.length = 0; dl.bars.length = 0;

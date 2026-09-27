@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 962: seat-true colours (27 September 2026)
+
+No change in what happens in a match or what a model is told. The fingerprint's core hash moves anyway, because the minimap is drawn in `js/game.js`. Results before and after are comparable in play, but the re-simulated replay (build 954) offers itself only to recordings made under the same core hash.
+
+A seat still wears its civilization's colour when every civilization in the match is different. Once two seats share a civilization, every seat wears its seat badge's colour instead. The badges are the one palette made to be told apart, and a civilization's own colour could otherwise sit beside a badge's, such as Persian tomato next to seat 2's red. Seat 0 wears charcoal, since its white badge reads as undyed cloth.
+
+These places all use the same helper (`js/identity.js`), so they cannot disagree: units, buildings, the minimap, the leaderboard and its flyout, the status bar's Wonder line, the inspect card and the results. The analyzer colours a recording by that recording's own seats.
+
 ## Build 961: strike-synced combat (27 September 2026)
 
 No change in what happens in a match or what a model is told; the rules deal damage exactly as before.
