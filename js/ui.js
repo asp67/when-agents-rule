@@ -174,8 +174,9 @@ class UIManager {
             split: Number.isFinite(saved.split) ? Math.max(20, Math.min(80, saved.split)) : 52,
             text: saved.text === 'compact' ? 'compact' : 'comfortable',
             rate: [0.5, 1, 2, 4].includes(saved.rate) ? saved.rate : 1,
-            captions: saved.captions !== false,  // chronicle captions in the arena (review #11)
-            intent: saved.intent !== false       // the intent layer's arrows and reasons (review #11)
+            // One switch for the story layer (review #11): the intent marks with their
+            // reasons, and the chronicle captions. An older saved "captions off" is ignored.
+            intent: saved.intent !== false
         };
     }
 
@@ -2477,12 +2478,13 @@ class UIManager {
     // plays, which is the wrong place for "who just lost their Town Center". Notable
     // entries (weight 2+) are shown one at a time, five seconds each, in the order they
     // happened; a backlog is thinned to the decisive ones rather than played late.
-    captionsOn() { return this.viewPreferences().captions !== false; }
+    captionsOn() { return this.intentOn(); }   // one button: Intent shows both
     intentOn() { return this.viewPreferences().intent !== false; }
     toggleIntentLayer() {
         const p = this.viewPreferences();
         p.intent = !this.intentOn();
         this.saveViewPreferences();
+        if (!p.intent) { this._chronicleQueue = []; clearTimeout(this._chronicleTimer); this._chronicleTimer = null; document.getElementById('chronicleCaption')?.remove(); }
         this.refreshIntentButton();
     }
     refreshIntentButton() {
@@ -2586,20 +2588,6 @@ class UIManager {
         if (this._intentRaf) cancelAnimationFrame(this._intentRaf);
         this._intentRaf = null;
         document.getElementById('intentOverlay')?.remove();
-    }
-    toggleChronicleCaptions() {
-        const p = this.viewPreferences();
-        p.captions = !this.captionsOn();
-        this.saveViewPreferences();
-        if (!p.captions) { this._chronicleQueue = []; clearTimeout(this._chronicleTimer); this._chronicleTimer = null; document.getElementById('chronicleCaption')?.remove(); }
-        this.refreshCaptionsButton();
-    }
-    refreshCaptionsButton() {
-        const btn = document.getElementById('captionsBtn');
-        if (!btn) return;
-        const on = this.captionsOn();
-        btn.classList.toggle('active', on);
-        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     chronicleSeatName(id) {
         const g = this.game, ai = ((g.aiManager && g.aiManager.aiPlayers) || []).find(a => a.id === id);
@@ -3325,7 +3313,7 @@ class UIManager {
             this.chronicle.subscribe(e => { this.chronicleCaption(e); this.broadcastSlate(e); });
             this._spectatorIntervals.push(setInterval(() => { if (this.chronicle) this.chronicle.update(); }, 250));
         }
-        this.refreshCaptionsButton();
+        this.refreshIntentButton();
         // The intent layer (review #11): each model's newest orders as arrows and its own
         // reason beside them, drawn over the 3-D view. Read from the turn logs; the match
         // does not know it is there.

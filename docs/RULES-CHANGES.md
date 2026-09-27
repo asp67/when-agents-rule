@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 967: a bubble for every ring, and a tidier spectator bar (27 September 2026)
+
+**No rules change.**
+
+- **A bubble for every ring.** Each target ring now has its own bubble, standing on the ring. It shows the reason that command gave, or names the command if it gave none. Before, a turn had one bubble, which carried only the first reason. Bubbles over nearby rings stack instead of covering each other. A turn that gives a reason but points nowhere shows that reason once, over its Town Center.
+- **One button for the story layer.** The Intent button now also switches the match captions; the separate CC button is gone.
+- **Button order.** The spectator bar now reads: Help, Speed, Auto, Intent, Broadcast, Results, Quit.
+
 ## Build 966: spectator fixes from the first test round (27 September 2026)
 
 **No rules change.** Nothing a match does or tells a model is different. This build changes only what a spectator sees.

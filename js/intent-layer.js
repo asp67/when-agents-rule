@@ -15,13 +15,14 @@
 // An arrow is drawn only when both ends resolve; a target with no known origin (an
 // explore with no unit named: the harness picks the scout) gets a marker alone. The
 // reason is shown verbatim up to 160 characters -- the median reason is about 100, so a
-// shorter cap would edit the model's words -- one bubble per seat, newest wins.
+// shorter cap would edit the model's words. Every ring has its own bubble: the reason
+// that command gave, or the command's name when it gave none.
 // ---------------------------------------------------------------------------
 class IntentLayer {
     constructor(game) {
         this.game = game;
         this.intents = [];              // { seat, color, from, to, marker, born, id }
-        this.bubbles = new Map();       // seat id -> { text, anchor, born }
+        this.bubbles = [];              // { seat, text, anchor, born, life, ... }, one per ring
         this.seen = new WeakSet();      // turn log entries already drawn
         this._started = false;
     }
@@ -39,6 +40,7 @@ class IntentLayer {
         return age < life - IntentLayer.FADE_MS ? 1 : (life - age) / IntentLayer.FADE_MS;
     }
     static get REASON_MAX() { return 160; }
+    static get STACK_DX() { return 150; }   // screen px: bubbles closer than this sideways stack
     static get GRID() { return 7; }
 
     // The seat's colour, as its badge shows it. Seat 0 wears charcoal, which vanishes on
@@ -127,39 +129,44 @@ class IntentLayer {
         this._started = true;
         fresh.forEach(({ c, t }, k) => this.add(c.aiPlayer, t, now + k * 600));
         this.intents = this.intents.filter(i => now - i.born < i.life);
-        for (const [id, b] of this.bubbles) if (now - b.born >= b.life) this.bubbles.delete(id);
+        this.bubbles = this.bubbles.filter(b => now - b.born < b.life);
         return fresh.length;
     }
 
-    // One turn at a time per seat, and its marks never without its bubble: a new turn
-    // replaces the seat's last one, marks and bubble together, and they share one life.
-    // A turn that points somewhere but gives no reason still gets a bubble -- naming its
-    // commands -- so no mark on the map is ever left without a clue.
+    // One turn at a time per seat: a new turn replaces the seat's last one. Every ring gets
+    // its own bubble, anchored on the ring, saying the reason that command gave -- or, when
+    // it gave none, naming the command -- so no ring on the map is left without a clue.
+    // A turn that points nowhere but gives a reason shows it once, over its base.
+    // Everything of one turn shares one life, so it all fades together.
     add(ai, turn, born) {
         if (!ai) return;
         const color = this.colorOf(ai);
-        const marks = [], names = [];
-        let reason = '', anchor = null, reasonIndex = 0;
+        const marks = [];
+        let firstReason = null;
         (turn.toolCalls || []).forEach((call, index) => {
             let p = {};
             try { p = JSON.parse(call.args || '{}') || {}; } catch (e) { return; }
-            const to = this.target(p), from = to ? this.origin(ai, call.name, p) : null;
-            if (to) marks.push({ from, to, marker: !from, action: call.name, turn, index });
-            names.push(String(call.name || '').replace(/_/g, ' ') + (p.tile ? ' ' + p.tile : ''));
-            if (!reason && p.reason) { reason = IntentLayer.reasonText(p.reason); anchor = from || to; reasonIndex = index; }
+            const reason = IntentLayer.reasonText(p.reason);
+            if (reason && !firstReason) firstReason = { text: reason, index };
+            const to = this.target(p);
+            if (!to) return;
+            const from = this.origin(ai, call.name, p);
+            const name = String(call.name || '').replace(/_/g, ' ') + (p.tile ? ' ' + p.tile : '');
+            marks.push({ from, to, marker: !from, action: call.name, turn, index, text: reason || name, summary: !reason });
         });
-        if (!reason && !marks.length) return;   // nothing to point at, nothing said
-        const text = reason || names.join(' · ');
-        const life = IntentLayer.lifeFor(text);
+        if (!marks.length && !firstReason) return;   // nothing to point at, nothing said
+        const life = IntentLayer.lifeFor(marks.reduce((t, m) => m.text.length > t.length ? m.text : t, firstReason ? firstReason.text : ''));
         this.intents = this.intents.filter(i => i.seat !== ai.id);
-        for (const m of marks) this.intents.push(Object.assign({ seat: ai.id, color, born, life }, m));
-        if (!anchor && marks.length) anchor = marks[0].from || marks[0].to;
-        if (!anchor) {
-            const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
-            anchor = tc ? { x: tc.x, z: tc.z } : this.centroid(ai.units);
+        this.bubbles = this.bubbles.filter(b => b.seat !== ai.id);
+        for (const m of marks) {
+            this.intents.push(Object.assign({ seat: ai.id, color, born, life }, m));
+            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, born, life, color, turn, index: m.index, summary: m.summary });
         }
-        if (anchor) this.bubbles.set(ai.id, { text, anchor, born, life, color, turn, index: reasonIndex, summary: !reason });
-        else this.intents = this.intents.filter(i => i.seat !== ai.id);   // a mark needs its bubble
+        if (!marks.length) {
+            const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
+            const anchor = tc ? { x: tc.x, z: tc.z } : this.centroid(ai.units);
+            if (anchor) this.bubbles.push({ seat: ai.id, text: firstReason.text, anchor, born, life, color, turn, index: firstReason.index, summary: false });
+        }
     }
 
     // The marks as they sit in the world, for the renderer to lay on the ground: a ring
@@ -190,11 +197,19 @@ class IntentLayer {
             const refused = IntentLayer.rejected(i.turn, i.index) === true;
             shapes.push({ color: refused ? '#9aa4b1' : i.color, opacity, from, to, marker: i.marker, refused });
         }
-        for (const [seat, b] of this.bubbles) {
+        for (const b of this.bubbles) {
             const opacity = IntentLayer.alpha(now, b.born, b.life);
             if (!(opacity > 0)) continue;
             const at = project(b.anchor.x, b.anchor.z);
-            if (at) bubbles.push({ seat, text: b.text, color: b.color, x: at.x, y: at.y, opacity, summary: !!b.summary,
+            if (!at) continue;
+            // Bubbles over rings close together are stacked upward rather than drawn over
+            // each other.
+            // A bubble stands on its point; its height is estimated from its text (a name
+            // line, then the reason wrapped at about 40 characters).
+            const h = 16 + 15 * (1 + Math.ceil(b.text.length / 40));
+            let y = at.y, hit;
+            while ((hit = bubbles.find(o => Math.abs(o.x - at.x) < IntentLayer.STACK_DX && y - h < o.y && o.y - o.h < y))) y = hit.y - hit.h - 4;
+            bubbles.push({ seat: b.seat, text: b.text, color: b.color, x: at.x, y, h, opacity, summary: !!b.summary,
                 refused: IntentLayer.rejected(b.turn, b.index) === true });
         }
         return { shapes, bubbles };

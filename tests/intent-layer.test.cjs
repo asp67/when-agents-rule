@@ -35,7 +35,7 @@ test('an order resolves to its target and its units, and the reason goes beside 
     assert.deepEqual({ x: i.to.x, z: i.to.z }, { x: house.x, z: house.z });
     assert.deepEqual({ x: i.from.x, z: i.from.z }, { x: (w1.x + w2.x) / 2, z: (w1.z + w2.z) / 2 }, 'the two named units, by the handles the model was shown');
     assert.equal(i.marker, false);
-    const b = layer.bubbles.get(m.seats[0].id);
+    const b = layer.bubbles.find(b => b.seat === m.seats[0].id);
     assert.equal(b.text, 'Their house is undefended.');
     // Drawn through whatever projection the view has; behind the camera means not drawn.
     const f = layer.frame((x, z) => ({ x: x + 1000, y: z + 1000 }), 2000);
@@ -60,7 +60,7 @@ test('never guessed: an unknown target draws nothing, an explore with no unit na
     assert.equal(e.from, null);
     assert.deepEqual({ x: e.to.x, z: e.to.z }, { x: 0, z: 0 }, 'D4 is the centre tile of the 7x7 grid');
     // The first reason given, anchored on its target.
-    assert.equal(layer.bubbles.get(m.seats[0].id).text, 'Scout the centre.');
+    assert.equal(layer.bubbles.find(b => b.seat === m.seats[0].id).text, 'Scout the centre.');
     // Omitting "units" means the whole army, as the tool says: workers are not in it.
     c.turnLog.push(turn([['move_units', { targetX: 0, targetZ: 50 }]]));
     layer.poll(2000);
@@ -86,11 +86,11 @@ test('reasons stay verbatim to 160 characters; bubbles of turns that land togeth
     c.turnLog.push(turn([['explore', { tile: 'A1', reason: 'first' }]]));
     other.turnLog.push(turn([['explore', { tile: 'G7', reason: 'second' }]]));
     layer.poll(10000);
-    const born = [...layer.bubbles.values()].map(b => b.born).sort();
+    const born = Array.from(layer.bubbles, b => b.born).sort();
     assert.deepEqual(born, [10000, 10600]);
     assert.equal(layer.frame(() => ({ x: 0, y: 0 }), 10100).bubbles.length, 1, 'the second waits its turn');
     layer.poll(10600 + IntentLayer.LIFE_MAX_MS);
-    assert.equal(layer.intents.length + layer.bubbles.size, 0);
+    assert.equal(layer.intents.length + layer.bubbles.length, 0);
 });
 
 test('a refused order is drawn as refused once the harness has answered, and not before', async () => {
@@ -147,7 +147,7 @@ test('a mark never stands without its bubble: a reasonless order is named, and a
     c.turnLog.push(turn([['move_units', { tile: 'E4' }]]));
     layer.poll(2000);
     assert.deepEqual(Array.from(layer.intents, i => i.action), ['move_units'], 'the explore is replaced, not left behind');
-    const b = layer.bubbles.get(seat);
+    const b = layer.bubbles.find(x => x.seat === seat);
     assert.equal(b.summary, true);
     assert.equal(b.text, 'move units E4', 'named by its command, since it gave no reason');
     assert.equal(b.life, layer.intents[0].life, 'marks and bubble live and fade together');
@@ -177,4 +177,37 @@ test('the renderer gets ground marks: a ring at the target, a path from the unit
     t.outcome = '[ERROR] Out of reach.';
     assert.equal(layer.worldMarks(1500)[0].color, '#9aa4b1');
     assert.equal(layer.worldMarks(1000 + layer.intents[0].life).length, 0, 'gone when its life ends');
+});
+
+test('every ring has its own bubble with its own reason, or its command named; close bubbles stack', async () => {
+    const { m, layer, c, turn } = await setup();
+    layer.poll(0);
+    const seat = m.seats[0].id, house = m.tags.house;
+    c.turnLog.push(turn([
+        ['train_unit', { unitType: 'worker', reason: 'more hands' }],
+        ['attack_target', { targetId: house.id, unitIds: [m.tags.w1.handle], reason: 'Burn their house.' }],
+        ['move_units', { unitIds: [m.tags.w2.handle], targetX: house.x, targetZ: house.z }],
+        ['explore', { tile: 'A1', reason: 'Look north.' }],
+    ]));
+    layer.poll(1000);
+    assert.equal(layer.intents.length, 3);
+    const texts = Array.from(layer.bubbles, b => [b.text, b.summary]);
+    assert.deepEqual(texts, [['Burn their house.', false], ['move units', true], ['Look north.', false]]);
+    for (const [k, i] of layer.intents.entries()) {
+        const b = layer.bubbles[k];
+        assert.deepEqual({ x: b.anchor.x, z: b.anchor.z }, { x: i.to.x, z: i.to.z }, 'on its own ring');
+    }
+    // The two over the house do not cover each other.
+    const f = layer.frame((x, z) => ({ x, y: z }), 1500);
+    const [a, b] = f.bubbles;
+    assert.equal(a.x, b.x);
+    assert.ok(b.y <= a.y - a.h, 'the second stands above the first');
+    assert.equal(f.bubbles[2].y, layer.tileCentre('A1').z, 'a lone bubble stays on its point');
+    // A turn that only says something shows it once, over its base.
+    c.turnLog.push(turn([['train_unit', { unitType: 'worker', reason: 'Boom first.' }]]));
+    layer.poll(2000);
+    assert.equal(layer.intents.length, 0);
+    assert.deepEqual(Array.from(layer.bubbles, b => b.text), ['Boom first.']);
+    const tc = m.seats[0].buildings.find(b => b.type === 'town_center');
+    assert.deepEqual({ x: layer.bubbles[0].anchor.x, z: layer.bubbles[0].anchor.z }, { x: tc.x, z: tc.z });
 });

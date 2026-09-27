@@ -3027,7 +3027,7 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .chronicle-caption .chr-t { color: #8fa3b8; font-variant-numeric: tabular-nums; margin-right: 4px; }
 .chronicle-caption.chr-in { animation: chr-fade 5s ease forwards; }
 @keyframes chr-fade { 0% { opacity: 0; } 6% { opacity: 1; } 88% { opacity: 1; } 100% { opacity: 0; } }
-#captionsBtn:not(.active) { opacity: 0.55; }
+#intentBtn:not(.active) { opacity: 0.55; }
 
 /* Intent layer (review #11): arrows and reasons over the 3-D view. Nothing here takes
    input; the fade is the only motion, and the global reduced-motion rule leaves it. */
