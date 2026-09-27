@@ -227,3 +227,21 @@ test('bubbles that would overlap are stacked by their full width, not a fixed si
     const three = stack([box(0), box(100), box(50)]);
     assert.ok(three[2] <= three[1] - 60 && three[1] <= three[0] - 60, JSON.stringify(three));
 });
+
+test('a bubble whose ring is out of view slides along its path to where the camera looks', async () => {
+    const { layer } = await setup();
+    const { anchorFor } = layer.constructor;
+    // Screen = world, 0..100 square in view.
+    const project = (x, z) => ({ x, y: z });
+    const view = focus => ({ focus, w: 100, h: 100 });
+    const b = { anchor: { x: 400, z: 50 }, from: { x: -300, z: 50 } };
+    // Ring in view: on the ring.
+    assert.deepEqual(anchorFor({ anchor: { x: 60, z: 50 }, from: b.from }, project, view({ x: 50, z: 50 })), { x: 60, y: 50 });
+    // Ring off to the right, camera on the path: on the path at the camera's point.
+    assert.deepEqual(anchorFor(b, project, view({ x: 30, z: 80 })), { x: 30, y: 50 });
+    // The path out of view too: stays on its ring (off screen; nothing to show).
+    assert.deepEqual(anchorFor(b, project, { focus: { x: 30, z: 900 }, w: 100, h: 40 }), { x: 400, y: 50 });
+    // No path (an order with no known origin), or no view: on the ring.
+    assert.deepEqual(anchorFor({ anchor: b.anchor }, project, view({ x: 30, z: 50 })), { x: 400, y: 50 });
+    assert.deepEqual(anchorFor(b, project, null), { x: 400, y: 50 });
+});

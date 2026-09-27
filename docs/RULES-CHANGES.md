@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 973: arrows to the end, bubbles along the path, flags that glide (27 September 2026)
+
+**No rules change.**
+
+- **Arrows:** the dashed path to a target is drawn to its end, however long. It stopped after 90 dashes (about 200 units), so an arrow followed by the camera ended in mid-field. Only the dashes in view are drawn.
+- **Bubbles:** when a target's ring is out of view but its path is not, the bubble slides along the path to the point nearest the centre of the view. A camera following the units, or cutting to part of a long march, now shows what they were told and why. Before, the bubble waited at the destination.
+- **Flags:** an army's flag on the strategic map follows its units every frame. It was placed at the group's centre, recomputed four times a second, so it jumped after a marching army.
+
 ## Build 972: bubbles no longer cover each other's reasons, and name what they show (27 September 2026)
 
 **No rules change.** Bubbles over nearby rings were stacked only when they stood within 150 px of each other sideways, but a bubble is up to 260 px wide. Two bubbles 150 to 260 px apart overlapped, and the later one hid the earlier one's reason. Stacking now counts each bubble's full width. The page also re-stacks with the sizes the bubbles were actually drawn at, instead of the estimate.

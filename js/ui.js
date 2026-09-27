@@ -2520,7 +2520,8 @@ class UIManager {
         if (!layer || !r || !r.worldToScreen || !this.intentOn()) { box.innerHTML = ''; return; }
         // The marks themselves lie on the ground, drawn by the renderer (intentMarks);
         // only the bubbles are screen-space.
-        const f = layer.frame((x, z) => r.worldToScreen(x, 0, z));
+        const f = layer.frame((x, z) => r.worldToScreen(x, 0, z), Date.now(),
+            { focus: r.cameraTarget, w: r.canvas.clientWidth, h: r.canvas.clientHeight });
         box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
             + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span></div>').join('');
         // Stacked again with the sizes the bubbles were actually drawn at: the layer can
@@ -2668,7 +2669,14 @@ class UIManager {
             if (army) text(q.x + W / 2, q.y + lift(0.5) + 12, String(m.n), 11);
         };
         for (const b of L.bases) flag(b, false);
-        for (const a of L.armies) flag(a, true);
+        // An army's flag follows its units every frame: the groups are rebuilt four times
+        // a second, but their centre is taken here from where the units stand now, so the
+        // flag glides with a marching army instead of jumping after it.
+        for (const a of L.armies) {
+            const live = (a.units || []).filter(u => u.health > 0);
+            flag(live.length ? Object.assign({}, a, { x: live.reduce((s, u) => s + u.x, 0) / live.length,
+                z: live.reduce((s, u) => s + u.z, 0) / live.length }) : a, true);
+        }
         svg.appendChild(g);
     }
 

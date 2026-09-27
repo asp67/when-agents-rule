@@ -2010,9 +2010,14 @@
                     const dx = to.x - mk.from.x, dz = to.z - mk.from.z, dist = Math.hypot(dx, dz);
                     if (dist < r + 2) continue;
                     const ux = dx / dist, uz = dz / dist, yaw = Math.atan2(ux, uz);
+                    // The whole path, however long; only the dashes in view are drawn. A cap of
+                    // 90 dashes cut long paths off at ~200 units, which read as an arrow ending
+                    // in mid-field once the camera followed the unit along it.
                     const start = 1.2, end = dist - r - 0.3, step = 2.3, dash = 1.4;
-                    for (let s = start, n = 0; s + dash <= end && n < 90; s += step, n++)
-                        flat(mk.from.x + ux * (s + dash / 2), mk.from.z + uz * (s + dash / 2), yaw, dash, 0.24, tint, mk.alpha);
+                    for (let s = start; s + dash <= end; s += step) {
+                        const px = mk.from.x + ux * (s + dash / 2), pz = mk.from.z + uz * (s + dash / 2);
+                        if (!this._cull(px, pz, 2)) flat(px, pz, yaw, dash, 0.24, tint, mk.alpha);
+                    }
                     // The arrowhead, at the ring's edge, pointing in.
                     const ex = mk.from.x + ux * end, ez = mk.from.z + uz * end;
                     for (const side of [0.55, -0.55]) {

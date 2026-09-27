@@ -34,11 +34,12 @@ class StrategicLayer {
         for (const u of units) {
             let g = null;
             for (const c of groups) if (Math.hypot(c.x - u.x, c.z - u.z) <= radius) { g = c; break; }
-            if (!g) groups.push(g = { x: u.x, z: u.z, n: 0, sx: 0, sz: 0 });
-            g.n++; g.sx += u.x; g.sz += u.z;
+            if (!g) groups.push(g = { x: u.x, z: u.z, n: 0, sx: 0, sz: 0, units: [] });
+            g.n++; g.sx += u.x; g.sz += u.z; g.units.push(u);
             g.x = g.sx / g.n; g.z = g.sz / g.n;
         }
-        return groups.map(({ x, z, n }) => ({ x, z, n }));
+        // The members travel with the group, so a drawing can follow them between rebuilds.
+        return groups.map(({ x, z, n, units }) => ({ x, z, n, units }));
     }
 
     poll() {

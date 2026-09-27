@@ -188,7 +188,7 @@ class IntentLayer {
         this.bubbles = this.bubbles.filter(b => b.seat !== ai.id);
         for (const m of marks) {
             this.intents.push(Object.assign({ seat: ai.id, color, born, life }, m));
-            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, born, life, color, band, turn, index: m.index, summary: m.summary, action: m.action, params: m.params });
+            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, from: m.from, born, life, color, band, turn, index: m.index, summary: m.summary, action: m.action, params: m.params });
         }
         if (!marks.length) {
             const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
@@ -210,9 +210,27 @@ class IntentLayer {
         return out;
     }
 
+    // Where a bubble stands. On its ring when the ring is in view. When it is not, but
+    // the path to it is, the bubble slides along the path to the point nearest the centre
+    // of the view -- so a camera following the units (or cutting to part of a long march)
+    // still shows what they were told and why, instead of an arrow with no clue on it.
+    // `view` is { focus: {x, z} the camera looks at, w, h } in screen pixels; without it
+    // the bubble stays on its ring.
+    static anchorFor(b, project, view) {
+        const at = project(b.anchor.x, b.anchor.z);
+        if (!view || !b.from) return at;
+        const inView = p => p && p.x >= 0 && p.x <= view.w && p.y >= 0 && p.y <= view.h;
+        if (inView(at)) return at;
+        const ax = b.from.x, az = b.from.z, dx = b.anchor.x - ax, dz = b.anchor.z - az, len2 = dx * dx + dz * dz;
+        if (!(len2 > 0)) return at;
+        const t = Math.max(0, Math.min(1, ((view.focus.x - ax) * dx + (view.focus.z - az) * dz) / len2));
+        const onPath = project(ax + dx * t, az + dz * t);
+        return inView(onPath) ? onPath : at;
+    }
+
     // Screen geometry for this frame: the bubbles as positioned boxes (and, for tests and
     // any screen-space use, the marks). `project(x, z)` returns {x, y} or null.
-    frame(project, now = Date.now()) {
+    frame(project, now = Date.now(), view = null) {
         const shapes = [], bubbles = [];
         for (const i of this.intents) {
             const opacity = IntentLayer.alpha(now, i.born, i.life);
@@ -228,7 +246,7 @@ class IntentLayer {
         for (const b of this.bubbles) {
             const opacity = IntentLayer.alpha(now, b.born, b.life);
             if (!(opacity > 0)) continue;
-            const at = project(b.anchor.x, b.anchor.z);
+            const at = IntentLayer.anchorFor(b, project, view);
             if (!at) continue;
             // Its size estimated from its text (a name line, then the reason wrapped at
             // about 40 characters) at the widest a bubble gets. The page re-stacks with the
