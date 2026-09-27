@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 983: the damage wave every second (27 September 2026)
+
+**No rules change.** The red damage wave now fires on hits, at most once per ~35-unit patch of map each second. It used to fire at most every 5 s. Every hit asks for a wave (the renderer's hit flash), and the cooldown lives in the renderer, so `game.js` and the rules hash are unchanged. The old 5-second call from `notifyCombat` passes through the same cooldown, so the two never double up. On Platform the viewer's forwarded hit flashes take the same path.
+
 ## Build 982: the damage ping is the age-up wave in red (27 September 2026)
 
 **No rules change.** The ping that marks a hit on a unit or building, the one red ring the map drew, is now exactly the age-up wave in red: the same ring, the same 2.4-second pulse out and fade, the same reach. For a building it starts from the walls. It replaces both the flat ring and build 980's smaller glow.

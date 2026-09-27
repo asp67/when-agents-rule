@@ -1041,7 +1041,17 @@
             });
         }
 
+        // The damage wave's own cooldown: one per ~35-unit cell per second. Every hit asks
+        // for one (flashHit, below); game.notifyCombat still calls in on its 5 s rules-side
+        // gate, and both pass through here, so the two never double up. Kept in the renderer
+        // because it is presentation only -- in game.js it would move the rules hash.
+        static get DAMAGE_PING_COOLDOWN_MS() { return 1000; }
         spawnBattleRing(x, z) {
+            const cells = this._pingCells || (this._pingCells = new Map());
+            const key = Math.round(x / 35) + ':' + Math.round(z / 35), now = performance.now();
+            if (now - (cells.get(key) ?? -Infinity) < EngineRenderer.DAMAGE_PING_COOLDOWN_MS) return;
+            cells.set(key, now);
+            if (cells.size > 256) for (const [k, t] of cells) if (now - t > 5000) cells.delete(k);
             let r = this._rings.find(q => !q.active);
             if (!r) {
                 if (this._rings.length >= 12) return;
@@ -1056,7 +1066,9 @@
         }
 
         flashHit(entity) {
-            if (entity) entity._flashUntil = performance.now() + 130;
+            if (!entity) return;
+            entity._flashUntil = performance.now() + 130;
+            this.spawnBattleRing(entity.x, entity.z);   // a hit is a damage wave, within its cooldown
         }
 
         // Pooled dust burst: N billboarded motes scattering under gravity.
