@@ -5874,7 +5874,7 @@ class UIManager {
         if (file) this.anLoadSample(file);
     }
 
-    async anLoadLinkedMatch(matchId) {
+    async anLoadLinkedMatch(matchId, moment = null) {
         // Resolve public IDs through the catalogue; never treat URL input as a path.
         const list = await this.anLoadSampleIndex();
         const match = list.find(m => m.matchId === matchId);
@@ -5882,7 +5882,111 @@ class UIManager {
             this.showErrorMessage(t('an.sampleFail'));
             return;
         }
-        return this.anLoadSample(match.file);
+        await this.anLoadSample(match.file);
+        if (moment) this.anApplyMoment(moment);
+    }
+
+    // ---- Moment links (review #11) ---------------------------------------------------
+    // ?match=<id>&t=1:04:30&seat=2&turn=17 opens a published sample at that moment: the
+    // seat's view (seats count from 1, as the badges do), that seat's n-th turn, or the
+    // last record AT OR BEFORE the time -- never a later one, which would show a board
+    // from after the moment the link names. Plain query strings, so a link works on a
+    // plain-http LAN host as well as on the hosted page.
+    static parseMomentTime(v) {
+        const s = String(v == null ? '' : v).trim().replace(/s$/i, '');
+        if (!s) return null;
+        if (/^\d+(\.\d+)?$/.test(s)) return Number(s);
+        const parts = s.split(':');
+        if (parts.length < 2 || parts.length > 3 || parts.some(p => !/^\d+$/.test(p))) return null;
+        return parts.reduce((a, p) => a * 60 + Number(p), 0);
+    }
+    static formatMomentTime(sec) {
+        sec = Math.max(0, Math.floor(sec));
+        const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+        return (h ? h + ':' + String(m).padStart(2, '0') : String(m)) + ':' + String(s).padStart(2, '0');
+    }
+    anApplyMoment({ t: time = null, seat = null, turn = null } = {}) {
+        const a = this.analyzer;
+        if (!a || !a.order || !a.order.length) return false;
+        const n = Number(seat);
+        const s = Number.isInteger(n) && n >= 1 ? [...a.seats.values()].find(x => x.seat === n - 1) : null;
+        a.seatFilter = s ? s.id : null;
+        const k = Number(turn), sec = UIManager.parseMomentTime(time);
+        if (s && Number.isInteger(k) && k >= 1 && s.turns[k - 1]) a.seek(a.order.indexOf(s.turns[k - 1]));
+        else if (sec != null && s) {
+            // In a seat's view, that seat's own last record at or before the time -- not a
+            // rival's later one, which would show another seat's board under this seat's name.
+            let rec = null;
+            for (const r of s.turns) { if (r._sec <= sec) rec = r; else break; }
+            a.seek(a.order.indexOf(rec || s.turns[0]));
+        }
+        else if (sec != null) a.seekSeconds(sec);
+        this.anRender();
+        return true;
+    }
+    // A link to the moment on screen -- offered only for a published sample, because only
+    // a sample's link opens anywhere but on this machine.
+    anMomentLink() {
+        const a = this.analyzer, h = a && a.header;
+        if (!h || !h.matchId || !(this._sampleIndex || []).some(m => m.matchId === h.matchId)) return null;
+        const rec = a.current ? a.current() : a.order[a.cursor];
+        const url = new URL(location.href);
+        const keep = url.searchParams.get('full');
+        url.search = '';
+        url.hash = '';
+        url.searchParams.set('match', h.matchId);
+        if (rec && Number.isFinite(rec._sec)) url.searchParams.set('t', UIManager.formatMomentTime(rec._sec));
+        const s = a.seatFilter ? a.seats.get(a.seatFilter) : null;
+        if (s) {
+            url.searchParams.set('seat', String(s.seat + 1));
+            const k = rec ? s.turns.indexOf(rec) : -1;
+            if (k >= 0) url.searchParams.set('turn', String(k + 1));
+        }
+        if (keep) url.searchParams.set('full', keep);
+        return url.toString();
+    }
+    async copyText(text) {
+        try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* not a secure context, or refused */ }
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        ta.remove();
+        return ok;
+    }
+    async anCopyLink() {
+        const link = this.anMomentLink();
+        if (!link) return;
+        const ok = await this.copyText(link);
+        this.showNotice(ok ? t('an.linkCopied') : t('an.copyManual', { text: link }));
+    }
+    // YouTube chapters from the analyzer's chapters: the first at 0:00, each at least ten
+    // seconds after the one before, every time shifted by the video's own offset (the
+    // seconds of video before the match began). Said, not guessed: the offset is asked.
+    anChaptersText(offsetSec = 0) {
+        const a = this.analyzer;
+        const out = [];
+        let last = -Infinity;
+        for (const c of (a && a.chapters) || []) {
+            const at = Math.max(0, Math.floor(c.t + offsetSec));
+            if (at - last < 10) continue;
+            const line = (c.icon ? c.icon + ' ' : '') + String(c.text || '').replace(/\s+/g, ' ').trim();
+            if (!line.trim()) continue;
+            out.push([at, line]); last = at;
+        }
+        // YouTube wants the first chapter at 0:00: one that begins within the first ten
+        // seconds is moved there; otherwise a "Start" chapter opens the list.
+        if (out.length && out[0][0] > 0 && out[0][0] < 10) out[0][0] = 0;
+        else if (!out.length || out[0][0] > 0) out.unshift([0, t('an.chStart')]);
+        return out.map(([at, line]) => UIManager.formatMomentTime(at) + ' ' + line).join('\n');
+    }
+    async anCopyChapters() {
+        const input = document.getElementById('anChapterOffset');
+        const offset = input ? Number(String(input.value).replace(',', '.')) || 0 : 0;
+        const text = this.anChaptersText(offset);
+        const ok = await this.copyText(text);
+        this.showNotice(ok ? t('an.chaptersCopied', { n: text.split('\n').length }) : t('an.copyManual', { text }));
     }
 
     anLoadSample(file0) {
@@ -6599,8 +6703,15 @@ class UIManager {
         const ch = a.chapters.map(c => '<button class="an-chapter" onclick="game.ui.anJumpSec(' + c.t + ')">'
             + '<span class="an-t">' + esc(mmss(c.t)) + '</span>' + esc(c.icon) + ' ' + esc(c.text)
             + '</button>').join('');
+        const link = this.anMomentLink();
+        const tools = '<div class="an-ch-tools">'
+            + (link ? '<button type="button" class="an-chip" onclick="game.ui.anCopyLink()" title="' + esc(t('an.copyLinkTip')) + '">' + esc(t('an.copyLink')) + '</button>' : '')
+            + (ch ? '<label class="an-ch-offset" title="' + esc(t('an.chOffsetTip')) + '">' + esc(t('an.chOffset')) + ' <input type="number" id="anChapterOffset" step="1" value="'
+                + esc(this._anChapterOffset || 0) + '" onchange="game.ui._anChapterOffset=this.value"></label>'
+                + '<button type="button" class="an-chip" onclick="game.ui.anCopyChapters()" title="' + esc(t('an.copyChaptersTip')) + '">' + esc(t('an.copyChapters')) + '</button>' : '')
+            + '</div>';
         document.getElementById('anChapters').innerHTML = ch
-            ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + ch : '';
+            ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + tools + ch : (link ? tools : '');
     }
 
     // ---- the stage: the real engine, showing a finished match -----------------

@@ -110,7 +110,10 @@ window.addEventListener('load', () => {
     if (viewerParams.has('match') || WAR_DEMO_ONLY) {
         game.ui.anOpen();
         if (viewerParams.has('match')) {
-            game.ui.anLoadLinkedMatch(viewerParams.get('match'));
+            // A moment in it, if the link names one (review #11).
+            const moment = ['t', 'seat', 'turn'].some(k => viewerParams.has(k))
+                ? { t: viewerParams.get('t'), seat: viewerParams.get('seat'), turn: viewerParams.get('turn') } : null;
+            game.ui.anLoadLinkedMatch(viewerParams.get('match'), moment);
         } else {
             game.ui.anLoadSample();
         }

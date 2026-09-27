@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 958: moment links and chapters (27 September 2026)
+
+No change in what happens in a match or what a model is told.
+
+- **Moment links:** `?match=<id>&t=1:04:30&seat=2&turn=17` opens a published sample in the analyzer at that moment. It shows the seat's view (seats count from 1), that seat's n-th turn, or the last record at or before the time. In a seat's view that is the seat's own record, never a rival's later one. The time reads h:mm:ss, m:ss or seconds.
+- **Copy link:** the analyzer's **🔗 Copy link** makes such a link for the moment on screen. It is offered only for a published sample, because only those open anywhere else. The link is a plain query string, so it works on a plain-http LAN host too.
+- **Copy chapters:** **📋 Copy chapters** copies the analyzer's chapters in YouTube's format. The first chapter is at 0:00 and each is at least 10 s after the last, all shifted by the video offset you give.
+
 ## Build 957: broadcast mode and captions for recordings (27 September 2026)
 
 No change in what happens in a match or what a model is told.

@@ -3078,3 +3078,8 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 #broadcastBtn.active { color: #e9c46a; }
 .sum-vtt { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; }
 .sum-vtt input { width: 5em; }
+
+/* Moment links and chapters (review #11). */
+.an-ch-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 6px; }
+.an-ch-offset { font-size: 0.72em; color: #9ab; display: inline-flex; align-items: center; gap: 4px; }
+.an-ch-offset input { width: 4.5em; }
