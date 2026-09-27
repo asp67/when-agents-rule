@@ -3943,12 +3943,23 @@ class OpenAIAIManager {
     // is possible right now; action results correct mistakes. Strategy (build
     // orders, target priority, timing) is deliberately left to the model — that
     // is what the benchmark measures.
+    // How a match is won, as the default prompt states it. Its own constant because a
+    // WAR Bench scenario (review #8, war-scenario-v1) replaces exactly this paragraph
+    // with its objective and changes nothing else the model is told.
+    static get VICTORY_PARAGRAPH() {
+        return 'You win by either:\nDestroying the Town Centers and military buildings of ALL rivals, or Building your Wonder and holding it for gameStats.wonderRequired seconds.';
+    }
+    static scenarioSystemPrompt(objective) {
+        const base = OpenAIAIManager.defaultSystemPrompt();
+        if (base.split(OpenAIAIManager.VICTORY_PARAGRAPH).length !== 2) throw new Error('the victory paragraph is not in the default prompt exactly once');
+        return base.replace(OpenAIAIManager.VICTORY_PARAGRAPH, 'Your objective in this scenario:\n' + String(objective).trim());
+    }
+
     static defaultSystemPrompt() {
         return `You ARE {{civilization}}, one of {{players}} rival commanders in a real-time strategy game on a square 800x800 map. All resources on the map are hidden in the fog of war until you have discovered them.
 Every other player is your enemy. No human plays for you: you command by issuing actions. Your unique bonus: {{bonus}}.
 
-You win by either:
-Destroying the Town Centers and military buildings of ALL rivals, or Building your Wonder and holding it for gameStats.wonderRequired seconds.
+${OpenAIAIManager.VICTORY_PARAGRAPH}
 
 The LAST message carries your CURRENT state as JSON; decide from it and issue one to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} actions. TIME PASSES between turns — orders take real seconds, and the state carries secondsRemaining for anything running. Work already under way continues on its own and does not occupy your turn; re-issuing it wastes the turn.
 

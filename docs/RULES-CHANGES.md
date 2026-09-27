@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 948: scenario prompts (27 September 2026)
+
+No change in what an arena model is told: the default system prompt is byte-identical. Its victory paragraph is now a named constant, so a WAR Bench scenario (`war-scenario-v1`) can replace exactly that paragraph with its objective and leave everything else as it is (`OpenAIAIManager.scenarioSystemPrompt`).
+
 ## Build 947: one request builder (27 September 2026)
 
 No change in what a model is sent. The request for a seat's turn is now built by one function, `buildTurnRequest`, which reads the seat and the state and changes nothing. The arena sends exactly what it builds, and WAR Bench will call the same function, so a bench request is the request the arena would have sent. `tests/bench-request.test.cjs` compares the two, byte for byte, over four turns with a growing history, an objective and a plan, and spectator advice. The harness fingerprint changes only because the file changed.

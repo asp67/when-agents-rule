@@ -1,0 +1,210 @@
+{
+  "schema": "war-scenario-v1",
+  "id": "recover-01",
+  "family": "production-recovery",
+  "title": "Rebuild an army before the raid",
+  "objective": "Your army is gone, and enemy raiders are marching on your Town Center at ({{tc.x}}, {{tc.z}}). When the last round ends, you must have at least 3 soldiers standing and your Town Center must still stand.",
+  "rounds": 10,
+  "board": {
+    "seed": "recover-01",
+    "seats": [
+      {
+        "civ": "greek",
+        "age": "bronze",
+        "resources": {
+          "food": 400,
+          "wood": 200,
+          "stone": 100,
+          "gold": 100
+        },
+        "buildings": [
+          [
+            "town_center",
+            0,
+            -120,
+            {
+              "tag": "tc"
+            }
+          ],
+          [
+            "barracks",
+            30,
+            -110,
+            {
+              "tag": "barracks"
+            }
+          ],
+          [
+            "house",
+            -30,
+            -135
+          ],
+          [
+            "house",
+            -40,
+            -120
+          ],
+          [
+            "house",
+            -30,
+            -105
+          ]
+        ],
+        "units": [
+          [
+            "worker",
+            -10,
+            -100
+          ],
+          [
+            "worker",
+            -5,
+            -100
+          ],
+          [
+            "worker",
+            0,
+            -100
+          ],
+          [
+            "worker",
+            5,
+            -100
+          ]
+        ]
+      },
+      {
+        "civ": "persian",
+        "age": "bronze",
+        "buildings": [
+          [
+            "town_center",
+            300,
+            300
+          ]
+        ],
+        "units": [
+          [
+            "militia",
+            -2,
+            20
+          ],
+          [
+            "militia",
+            0,
+            20
+          ],
+          [
+            "militia",
+            2,
+            20
+          ]
+        ]
+      }
+    ]
+  },
+  "rival": [
+    {
+      "round": 2,
+      "action": "attack_target",
+      "params": {
+        "targetX": 0,
+        "targetZ": -120
+      }
+    }
+  ],
+  "success": {
+    "when": "end",
+    "predicate": {
+      "all": [
+        {
+          "alive": "tc"
+        },
+        {
+          "count": {
+            "owner": "subject",
+            "kind": "unit",
+            "class": "military"
+          },
+          "op": ">=",
+          "value": 3
+        }
+      ]
+    }
+  },
+  "variants": [
+    "identity",
+    "rot90",
+    "rot180",
+    "rot270",
+    "mirrorX",
+    "mirrorZ",
+    "diagonal",
+    "antidiagonal"
+  ],
+  "reference": [
+    {
+      "round": 1,
+      "commands": [
+        {
+          "action": "train_unit",
+          "params": {
+            "unitType": "militia"
+          }
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "commands": [
+        {
+          "action": "train_unit",
+          "params": {
+            "unitType": "militia"
+          }
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "commands": [
+        {
+          "action": "train_unit",
+          "params": {
+            "unitType": "militia"
+          }
+        }
+      ]
+    },
+    {
+      "round": 4,
+      "commands": [
+        {
+          "action": "train_unit",
+          "params": {
+            "unitType": "militia"
+          }
+        }
+      ]
+    },
+    {
+      "round": 5,
+      "commands": [
+        {
+          "action": "train_unit",
+          "params": {
+            "unitType": "militia"
+          }
+        },
+        {
+          "action": "move_units",
+          "params": {
+            "targetX": 0,
+            "targetZ": -105,
+            "mode": "guard"
+          }
+        }
+      ]
+    }
+  ]
+}

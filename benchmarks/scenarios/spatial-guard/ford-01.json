@@ -1,0 +1,29 @@
+{
+  "schema": "war-scenario-v1",
+  "id": "ford-01",
+  "family": "spatial-guard",
+  "title": "Hold the ford",
+  "objective": "Keep enemy units off the ford at ({{point:ford.x}}, {{point:ford.z}}). From the end of round 3 until the last round ends, no enemy unit may stand within 10 of it.",
+  "rounds": 8,
+  "points": { "ford": [0, 0] },
+  "board": {
+    "seed": "ford-01",
+    "seats": [
+      { "civ": "greek", "age": "bronze",
+        "buildings": [["town_center", -300, -300]],
+        "units": [["archer", -40, -44], ["archer", -40, -42], ["archer", -40, -40], ["archer", -42, -44], ["archer", -42, -42], ["archer", -42, -40]] },
+      { "civ": "persian", "age": "bronze",
+        "buildings": [["town_center", 300, 300]],
+        "units": [["militia", 70, 70], ["militia", 72, 70], ["militia", 70, 72], ["militia", 72, 72]] }
+    ]
+  },
+  "rival": [
+    { "round": 2, "action": "attack_target", "params": { "targetX": 0, "targetZ": 0 } }
+  ],
+  "invariant": { "from": 3, "predicate": { "count": { "owner": "rival", "kind": "unit", "near": { "point": "ford", "r": 10 } }, "op": "==", "value": 0 } },
+  "success": { "when": "end", "predicate": { "count": { "owner": "rival", "kind": "unit", "near": { "point": "ford", "r": 10 } }, "op": "==", "value": 0 } },
+  "variants": ["identity", "rot90", "rot180", "rot270", "mirrorX", "mirrorZ", "diagonal", "antidiagonal"],
+  "reference": [
+    { "round": 1, "commands": [{ "action": "move_units", "params": { "targetX": 20, "targetZ": 20, "mode": "guard" } }] }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "schema": "war-scenario-v1",
+  "id": "strike-01",
+  "family": "grounded-target",
+  "title": "Raze the named barracks",
+  "objective": "An enemy barracks stands at ({{target.x}}, {{target.z}}). Destroy it. The other enemy buildings nearby do not count.",
+  "rounds": 6,
+  "board": {
+    "seed": "strike-01",
+    "seats": [
+      { "civ": "greek", "age": "bronze",
+        "buildings": [["town_center", -300, -300]],
+        "units": [["warrior", -60, -4], ["warrior", -60, -2], ["warrior", -60, 0], ["warrior", -60, 2], ["warrior", -60, 4], ["warrior", -62, 0]] },
+      { "civ": "persian", "age": "bronze",
+        "buildings": [["town_center", 300, 300], ["barracks", 40, 20, { "tag": "target" }], ["house", 40, -25, { "tag": "decoyA" }], ["house", 70, 20, { "tag": "decoyB" }]] }
+    ]
+  },
+  "success": { "when": "any", "predicate": { "destroyed": "target" } },
+  "failure": { "count": { "owner": "subject", "kind": "unit", "class": "military" }, "op": "==", "value": 0 },
+  "variants": ["identity", "rot90", "rot180", "rot270", "mirrorX", "mirrorZ", "diagonal", "antidiagonal"],
+  "reference": [
+    { "round": 1, "commands": [{ "action": "attack_target", "params": { "targetX": 40, "targetZ": 20 } }] }
+  ]
+}

@@ -292,7 +292,8 @@ class Realm {
 //       the arena's own start path (Game._startArenaFromSetup) on a generated map;
 //   { kind: 'board', seed, seats: [{civ, age, units: [[type, x, z, fields?]],
 //       buildings: [[type, x, z, fields?]], resources: {food,..}, techs: [..]}] }
-//       a flat, featureless board with exactly the entities given.
+//       a flat, featureless board with exactly the entities given; fields.tag names an
+//       entity in realm.tags.
 // Every seat of a board is a model seat with no model (scripted): it moves only by
 // commands. Resolves to the started Realm; `realm.seats` are its players in seat order.
 async function createMatch(config, options = {}) {
@@ -306,11 +307,28 @@ async function createMatch(config, options = {}) {
     const players = realm.startFixture(config.seats.map(s => s.civ), config.seed);
     realm.seats = Array.from(players);
     realm.controllers = realm.seats.map(p => realm.scripted(p));
+    // A `tag` in an entity's fields names it for whoever set the board up (a scenario's
+    // predicates and commands); it is kept here, never written onto the entity.
+    realm.tags = {};
+    const place = (add, p, [type, x, z, fields]) => {
+        const { tag, ...rest } = fields || {};
+        const e = add(p, type, x, z, rest);
+        // A finished trainer offers what its owner's age allows, as one completed in
+        // play does (Game.completeConstruction); a board otherwise has idle barracks.
+        if (!e.underConstruction && typeof realm.context.getTrainOptionsForBuilding === 'function' && !e.isWonder) {
+            const opts = realm.context.getTrainOptionsForBuilding(type, p.age, p.civilization);
+            if (opts && opts.length) e.trainOptions = Array.from(opts);
+        }
+        if (tag != null) {
+            if (realm.tags[tag]) throw new Error('createMatch: tag used twice: ' + tag);
+            realm.tags[tag] = e;
+        }
+    };
     config.seats.forEach((s, i) => {
         const p = realm.seats[i];
         if (s.age) p.age = s.age;
-        for (const [type, x, z, fields] of s.buildings || []) realm.addBuilding(p, type, x, z, fields || {});
-        for (const [type, x, z, fields] of s.units || []) realm.addUnit(p, type, x, z, fields || {});
+        for (const b of s.buildings || []) place((...a) => realm.addBuilding(...a), p, b);
+        for (const u of s.units || []) place((...a) => realm.addUnit(...a), p, u);
         for (const t of s.techs || []) p.researchedTechs[t] = true;
         if (s.resources) Object.assign(p.resources, s.resources);
         p.resources.updatePopulation(p.units.length);
