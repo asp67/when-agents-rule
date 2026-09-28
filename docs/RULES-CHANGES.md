@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 992: the broadcast flash follows its caption (28 September 2026)
+
+**No rules change.** In broadcast mode, a decisive moment's caption comes with a brief band of light. The band used to cross the middle of the picture while the caption stood at the bottom left. It now runs behind the caption, brightest where the caption starts, and scales with the UI size as the caption does.
+
 ## Build 991: stone and gold follow uneven spawns (28 September 2026)
 
 **A rules change for callers with uneven spawns; WAR's own maps are unchanged, node for node.**

@@ -3099,7 +3099,12 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .broadcast-board .broadcast-ctl { pointer-events: auto; padding: 4px 7px; min-width: 0; border-radius: 6px; font-size: 0.85em; line-height: 1;
     border: 1px solid rgba(255, 255, 255, 0.18); color: #fff; background: rgba(10, 14, 30, 0.88); }
 .broadcast-board .broadcast-ctl.sb-on { background: linear-gradient(145deg, #35b58c, #1f8d6b); }
-.broadcast-slate { position: fixed; left: 0; right: 0; top: 38%; height: 18%; z-index: 999; pointer-events: none; opacity: 0; background: linear-gradient(90deg, transparent, rgba(233, 196, 106, 0.35), transparent); }
+/* The band of light runs behind the broadcast caption it announces (bottom left, see
+   body.broadcast-mode .chronicle-caption), not across the middle of the picture. Scaled with
+   the UI size like the caption, which sits at bottom: 40px under the same zoom. */
+.broadcast-slate { position: fixed; left: 0; right: 0; bottom: calc(22px * var(--ui-scale, 1)); height: calc(88px * var(--ui-scale, 1));
+    z-index: 999; pointer-events: none; opacity: 0;
+    background: linear-gradient(90deg, rgba(233, 196, 106, 0.45), rgba(233, 196, 106, 0.22) 45%, transparent 85%); }
 .broadcast-slate.go { animation: slate 0.6s ease-out 1; }
 @keyframes slate { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
 .sum-vtt { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; }
