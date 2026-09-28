@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 991: stone and gold follow uneven spawns (28 September 2026)
+
+**A rules change for callers with uneven spawns; WAR's own maps are unchanged, node for node.**
+
+- **What changed:** stone and gold are laid out in one player's wedge and rotated onto every other player. That is exact only when the Town Centers sit evenly on a circle around the map's centre. A caller that jitters its spawns on purpose, like WAR Platform, which moves the circle's centre, each seat's radius and angle, and shuffles the seats, now sets `terrain.jitteredSpawns`. Each node is then rotated about the spawns' own centre, and every seat's copy is shifted by that seat's own spawn offset. Each spawn's place on the circle is found by its angle.
+- **Constraints:** every copy must clear the keep-out around every Town Center and stand on land 15 units off the shore. It may reach 25 units past the symmetric disc. A node with no spot that suits every seat would be left out for all seats alike; in 180 measured maps none was.
+- **Measured on 60 Platform maps per seat count:** the nearest three stone nodes differed between seats by a median of 11 / 20 / 18 % (2 / 3 / 4 seats), up to 49 % on the worst tenth; the nearest gold by 10 / 17 / 15 %. Both are now 0. Average distances moved by 3 % at most.
+- **WAR itself:** the switch is off, so the arena, the campaign and the visual showcase keep the plain rotation. The pinned map fingerprints and golden traces are unchanged.
+
 ## Build 990: move_units takes a tile (28 September 2026)
 
 **A harness change.** `move_units` accepts a map `tile` ("C5") as well as coordinates. Coordinates win; the tile is used only when no coordinates are given, and the units go to the centre of that tile. Neither field is required by the tool schema any more; a call with neither is refused with a message naming both. On the Platform, GLM-5.3 twice sent a scout-mode march with a tile instead of coordinates, carrying `explore`'s vocabulary over, and was refused for the shape.
