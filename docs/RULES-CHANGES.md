@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 998: the minimap's row numbers line up in broadcast mode (29 September 2026)
+
+**No rules change.** The 1-7 row labels beside the minimap stopped a fixed 45 px above the panel's bottom edge, to leave room for the camera toolbar under the map. Broadcast mode hides that toolbar and the panel shrinks, so the seven numbers were squeezed into a column 20% shorter than the map: up to 38 px off their rows at every UI size. The column is now exactly the map's height, whether the toolbar is shown or not. The letters were never affected. In normal spectator mode the numbers were 1-2 px off and are now exact.
+
 ## Build 997: broken tool-call markup is refused, not run (28 September 2026)
 
 **A harness change.** GLM-5.3 writes tool calls in its own tag format, which the server turns into JSON. When its tags came out broken, the calls were cut apart in the wrong places. In one case a reason swallowed the whole next command as text, `…flowing<tool_call>train_unit<arg_key>reason</arg_key>…`: the first call ran with that reason, and the second never ran and was never mentioned. In another a key read `archer</arg_value><arg_key>reason`. It is rare: once in 185 GLM turns of a recorded match, and never from the other models.

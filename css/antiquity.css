@@ -156,7 +156,9 @@ button,input,select,textarea { font-family:inherit; }
 /* Camera controls are part of the minimap frame; advanced controls open inward. */
 .minimap { border-radius:4px; background:rgba(24,30,24,.96); overflow:visible; }
 #minimapCanvas { background:#202a22; }
-.mm-rows { bottom:45px; }
+/* Exactly the canvas's height, not "45px above the panel's edge": broadcast mode hides the
+   tools dock, the panel shrinks, and the 1-7 labels were squeezed off their rows. */
+.mm-rows { bottom:auto; height:var(--mm-canvas); }
 .map-tools-dock { margin-left:calc(-1 * var(--mm-gut)); margin-right:-4px; margin-bottom:-4px;
     padding:4px 6px; border-top:1px solid var(--line); }
 .camera-controls { position:relative; inset:auto; transform:none; display:flex; justify-content:space-between;
