@@ -104,7 +104,8 @@ class OpenAIAIManager {
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
             ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat. Incoming damage overrides all modes: fighters retaliate together, towers first; mobile threats obey chase limits. Regroup and resume afterward.',
              Object.assign({mode:{type:'string',enum:['march','scout','guard','patrol'],description:'Default march. Scout: travel without initiating combat; retaliate if attacked. Guard: travel then defend the position. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
-                targets:{type:'string',enum:['any','military'],description:'Guard/patrol/march incidental targets: any enemy unit (default), or military only. Pursuit is bounded; explicit attack_target remains a commitment.'}}, XZ, WHO), ['targetX', 'targetZ']],
+                targets:{type:'string',enum:['any','military'],description:'Guard/patrol/march incidental targets: any enemy unit (default), or military only. Pursuit is bounded; explicit attack_target remains a commitment.'}}, XZ,
+                { tile: S('Tile label from map.exploration, e.g. "C5". Used only when targetX/targetZ are not given: the units go to the centre of that tile.') }, WHO), []],
             ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining.',
              Object.assign({ targetId: S('Copy the exact string id from enemyUnits or enemyBuildings, including the unit_ or building_ prefix and full suffix. Do not shorten it or convert it to a number. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
@@ -723,6 +724,17 @@ class OpenAIAIManager {
         const row = parseInt(m[2], 10) - 1;
         if (!(col >= 0 && col < T && row >= 0 && row < T)) return null;
         return { row, col };
+    }
+
+    // The centre of a tile label ("C5"), or null when it is not one. A move's
+    // destination, so the plain centre -- explore's aim at unseen ground is a scouting
+    // choice that belongs to explore.
+    tileCentre(game, label) {
+        const T = game.EXPLORE_TILES || 7;
+        const t = this.parseTile(label, T);
+        if (!t) return null;
+        const size = (game.terrain && game.terrain.size) || 800, cell = size / T;
+        return { x: -size / 2 + (t.col + 0.5) * cell, z: -size / 2 + (t.row + 0.5) * cell };
     }
 
     // Which tile is this world position in?
@@ -6021,10 +6033,20 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 break;
 
             case 'move_units':
+                // Coordinates win; a tile is the fallback when none are given. Models
+                // reached for "tile" here on their own, carrying explore's vocabulary
+                // over to a scout-mode march, and were refused for the shape.
                 if (params?.targetX !== undefined && params?.targetZ !== undefined) {
                     actionResult = this.executeMoveUnits(ai, game, params.units, params.targetX, params.targetZ, params.unitIds, params.matchSpeed, params.formation, params.mode, params.targets);
+                } else if (OpenAIAIManager.given(params?.tile)) {
+                    const T = game.EXPLORE_TILES || 7, lastCol = String.fromCharCode(64 + T);
+                    const at = this.tileCentre(game, params.tile);
+                    actionResult = at
+                        ? this.executeMoveUnits(ai, game, params.units, at.x, at.z, params.unitIds, params.matchSpeed, params.formation, params.mode, params.targets)
+                        : `[ERROR] "${params.tile}" is not a map tile. Use a COLUMN LETTER then a ROW NUMBER: A-${lastCol} and 1-${T}, e.g. "C5", or give "targetX" and "targetZ".`;
+                    if (at && !/^\[ERROR\]/.test(actionResult)) actionResult += ` (centre of tile ${String(params.tile).trim().toUpperCase()})`;
                 } else {
-                    actionResult = `[ERROR] move_units requires "targetX" and "targetZ" parameters.`;
+                    actionResult = `[ERROR] move_units requires "targetX" and "targetZ" parameters, or a "tile" label from map.exploration.`;
                 }
                 break;
 

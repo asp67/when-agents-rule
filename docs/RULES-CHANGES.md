@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 990: move_units takes a tile (28 September 2026)
+
+**A harness change.** `move_units` accepts a map `tile` ("C5") as well as coordinates. Coordinates win; the tile is used only when no coordinates are given, and the units go to the centre of that tile. Neither field is required by the tool schema any more; a call with neither is refused with a message naming both. On the Platform, GLM-5.3 twice sent a scout-mode march with a tile instead of coordinates, carrying `explore`'s vocabulary over, and was refused for the shape.
+
 ## Build 989: a smaller UI uses the room it frees (28 September 2026)
 
 **No rules change.** With a smaller UI size, the leaderboard still scrolled exactly where the full-size one did. Its height limit is taken from the window and reserves room for the minimap, and under the UI zoom both were shrunk together, so the limit shrank with the panel. The window is now divided back out: the leaderboard runs down to just above the minimap at every size, and scrolls only when its cards really do not fit. The transcript viewer's limits get the same correction. The leaderboard's spectator limit lives in antiquity.css, which loads last, and is corrected there.
