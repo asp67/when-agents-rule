@@ -199,7 +199,8 @@ class UIManager {
     applyViewPreferences() {
         const p = this.viewPreferences();
         document.body.dataset.reading = p.text;
-        document.documentElement.style.setProperty('--ui-scale', String(UIManager.UI_SCALES[p.uiScale] || 1));
+        const root = document.documentElement;
+        if (root && root.style) root.style.setProperty('--ui-scale', String(UIManager.UI_SCALES[p.uiScale] || 1));
         const body = document.getElementById('anBody');
         if (body) {
             body.dataset.layout = p.layout;
