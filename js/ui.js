@@ -3906,11 +3906,19 @@ class UIManager {
     // One pill per seat, in seat order: badge, name, age, army, workers, buildings, and
     // how often a spectator's advice reached that model -- a broadcast must not hide that
     // a model was coached.
+    // Each seat's place as the leaderboard sorts it: the living first, then by power score.
+    seatRanks() {
+        const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        const rows = ais.map(ai => ({ id: ai.id, alive: !this.game.isPlayerEliminated(ai), score: this.spectatorPowerScore(ai) }));
+        rows.sort((a, b) => (b.alive - a.alive) || (b.score - a.score));
+        return new Map(rows.map((r, i) => [r.id, i + 1]));
+    }
     renderBroadcast() {
         const board = document.getElementById('broadcastBoard');
         if (!board) return;
         const g = this.game, ais = [...((g.aiManager && g.aiManager.aiPlayers) || [])].sort((a, b) => a.seat - b.seat);
         const ctrls = (g.openAIAIManager && g.openAIAIManager.aiControllers) || [];
+        const ranks = this.seatRanks();
         const clock = document.getElementById('arenaClock');
         board.innerHTML = '<span class="bb-clock">' + this.escapeHtml(clock ? clock.textContent : '') + '</span>' + ais.map(ai => {
             const ctrl = ctrls.find(c => c.id === ai.id);
@@ -3920,7 +3928,10 @@ class UIManager {
             // Second line: the civilization and what is in the bank, with the icons the
             // results screen uses.
             const r = ai.resources || {}, bank = k => Math.floor(r[k] || 0);
-            const sub = '<span class="bb-sub"><span class="bb-civ">' + this.escapeHtml(this.anCivName(ai.civilization)) + '</span>'
+            // The cards keep seat order; the place shows as the leaderboard's medallion.
+            const rank = ranks.get(ai.id);
+            const sub = '<span class="bb-sub">' + (rank ? '<span class="lb-rank bb-rank rank-' + rank + '" title="' + this.escapeHtml(t('spec.bbRank', { n: rank })) + '">' + rank + '</span>' : '')
+                + '<span class="bb-civ">' + this.escapeHtml(this.anCivName(ai.civilization)) + '</span>'
                 + ' <span class="bb-n">\u{1F356} ' + bank('food') + '</span> <span class="bb-n">\u{1F332} ' + bank('wood') + '</span>'
                 + ' <span class="bb-n">\u{1FAA8} ' + bank('stone') + '</span> <span class="bb-n">\u{1F947} ' + bank('gold') + '</span>'
                 // Thinking: the leaderboard's pulsing dot, while this seat's model has a
@@ -3930,7 +3941,10 @@ class UIManager {
                 + (ctrl && ctrl.pending ? '<span class="bb-think" title="' + this.escapeHtml(t('spec.thinking')) + '"><span class="dot" style="animation-delay:-'
                     + (Date.now() % 1100) + 'ms"></span></span>' : '')
                 + '</span>';
-            return '<span class="bb-seat' + (out ? ' out' : '') + '"><span class="bb-main">' + this.chronicleSeatHtml(ai.id)
+            // The seat's colour as a bar down the left, as the bubbles carry it.
+            const tb = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
+            const band = (tb && tb.fill) || this.identityHex(ai.id, ai.civilization, ai.seat);
+            return '<span class="bb-seat' + (out ? ' out' : '') + '" style="--seat:' + band + '"><span class="bb-main">' + this.chronicleSeatHtml(ai.id)
                 + ' <span class="bb-age">' + this.escapeHtml(this.getAgeName(ai.age)) + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbArmy')) + '">\u2694\uFE0F ' + mil + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbWorkers')) + '">\u{1F477} ' + wk + '</span>'

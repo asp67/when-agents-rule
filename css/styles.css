@@ -3080,6 +3080,12 @@ body.broadcast-mode #mapToolsDock, body.broadcast-mode .lb-flyout { display: non
 .broadcast-board .bb-seat.out { opacity: 0.45; text-decoration: line-through; }
 .broadcast-board .bb-seat { display: inline-flex; flex-direction: column; gap: 2px; }
 .broadcast-board .bb-sub { font-size: 0.82em; color: #b8c6d6; display: flex; align-items: center; gap: 4px; }
+/* The seat's colour down the left, as on the bubbles; its place as the leaderboard's medallion. */
+.broadcast-board .bb-seat { border-left: 5px solid var(--seat, rgba(255, 255, 255, 0.12)); }
+.broadcast-board .bb-rank { width: 18px; height: 18px; font-size: 0.85em; margin-right: 2px; }
+.broadcast-board .bb-rank.rank-1 { background: linear-gradient(145deg, #ffe27a, #f0a500); }
+.broadcast-board .bb-rank.rank-2 { background: linear-gradient(145deg, #eef2f7, #b5c0cf); }
+.broadcast-board .bb-rank.rank-3 { background: linear-gradient(145deg, #e2a26a, #b9702f); color: #fff; }
 .broadcast-board .bb-think { margin-left: auto; padding-left: 8px; display: inline-flex; }
 .broadcast-board .bb-think .dot { width: 7px; height: 7px; border-radius: 50%; background: #4ecca3; animation: thinkPulse 1.1s ease-in-out infinite; }
 .broadcast-board .bb-civ { color: #d9e2ec; margin-right: 4px; }

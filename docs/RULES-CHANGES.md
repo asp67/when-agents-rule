@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 996: place and colour on the broadcast cards (28 September 2026)
+
+**No rules change.** In broadcast mode, each seat card's bottom line now starts with the leaderboard's rank medallion (gold, silver, bronze), sorted as the leaderboard sorts. The cards themselves keep seat order. The seat's colour runs down the card's left side as a bar, as on the intent bubbles.
+
 ## Build 995: the lineup at the bottom, bubbles below the top bar (28 September 2026)
 
 **No rules change.**
