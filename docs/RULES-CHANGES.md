@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 999: an order on a Wonder goes to the Wonder (29 September 2026)
+
+**A rules change.** An army sent at a Wonder with `attack_target` got lost on the way. The march is a standing order, and every 150 ms it gave each soldier the nearest visible enemy within 48 units, unit or building alike. The named target was just one candidate among them, so a villager or a house nearer than the Wonder won, and the army ground its way through everything on the route.
+- **What happens now:** while the named target is a living Wonder, finished or under construction, the only targets the army picks are the Wonder and whatever attacks it. Retaliation still comes first, towers ahead of mobile attackers, and afterwards the army goes back to the Wonder. Anything else it held from before is dropped.
+- **Once the Wonder falls:** the assault carries on around it as with any named building.
+- **The model is told:** the order's answer ends with "A Wonder is their only target: on the way they fight back only against what attacks them."
+- **Unaffected:** orders on any other target, attack-moves to coordinates, and the human player's orders on anything but a Wonder. A human's attack order on a Wonder follows the same rule.
+
 ## Build 998: the minimap's row numbers line up in broadcast mode (29 September 2026)
 
 **No rules change.** The 1-7 row labels beside the minimap stopped a fixed 45 px above the panel's bottom edge, to leave room for the camera toolbar under the map. Broadcast mode hides that toolbar and the panel shrinks, so the seven numbers were squeezed into a column 20% shorter than the map: up to 38 px off their rows at every UI size. The column is now exactly the map's height, whether the toolbar is shown or not. The letters were never affected. In normal spectator mode the numbers were 1-2 px off and are now exact.

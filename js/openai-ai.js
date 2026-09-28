@@ -7659,6 +7659,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // full-army order, only the named priests on a detachment.
         const escorted = game.escortSupportUnits(sel.support, target.x, target.z);
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
+        // standing-orders.js holds a Wonder order to the Wonder: nothing on the way is
+        // picked on, only what attacks the army is answered. Said, so the model knows
+        // why its army walked past a villager.
+        const wonderNote = target.isWonder ? ' A Wonder is their only target: on the way they fight back only against what attacks them.' : '';
         game.setStandingOrder?.(this,ai,marching,{x:target.x,z:target.z},{mode:'march',target,formation,matchSpeed});
 
         console.log(`[OpenAIAI] ${ai.id}: ${unitsToAttack.length} units attacking "${target.name || target.type}"`);
@@ -7678,7 +7682,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const inContact = nearest && nearest.d <= 30;
         if (inContact) {
             this.outcome('log.out.attackEngaging', { count: unitsToAttack.length, target: target.name || target.type });
-            return `OK - ${unitsToAttack.length} unit(s) engaging "${target.name || target.type}" — they are already in contact range.${sel.note}${pace.note}${escortNote}`;
+            return `OK - ${unitsToAttack.length} unit(s) engaging "${target.name || target.type}" — they are already in contact range.${sel.note}${pace.note}${escortNote}${wonderNote}`;
         }
         // The LAST unit to arrive, not the NEAREST one. Quoting the closest unit's eta
         // for a force spread across the map promises the moment the fight STARTS as
@@ -7689,7 +7693,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // "You will be told when they arrive" outlived the thing that told them, and
         // a promise the harness no longer keeps is worse than no promise. The clock is
         // in "ordersInProgress" now, and it counts down every turn instead of once.
-        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet.${sel.note}${form.note}${pace.note}${escortNote}`;
+        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet.${sel.note}${form.note}${pace.note}${escortNote}${wonderNote}`;
     }
 
     executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds, matchSpeed, formation) {

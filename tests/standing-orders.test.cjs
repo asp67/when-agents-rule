@@ -607,3 +607,37 @@ test('sub-pixel range errors cannot freeze the attack timer on the spot',()=>{
   assert.equal(e.health,9980);assert.equal(u.isMoving,false);
  }
 });
+
+// An order on a Wonder outranks everything but retaliation (29 Sep 2026: armies sent at a
+// Wonder ground through every villager and house on the way). The control run with an
+// ordinary building as the target shows the same route DOES draw the army off.
+function wonderRoute(isWonder){
+ const h=setup(),u=h.unit('warrior',0,0,2);h.owner.units.push(u);
+ const house={owner:'b',type:'town_center',x:22,z:4,health:100,maxHealth:100};
+ const villager=Object.assign(h.rival(30,-3),{type:'worker',attack:0});
+ const target={id:'monument',owner:'b',type:isWonder?'monument':'town_center',isWonder,x:70,z:0,health:5000,maxHealth:5000};
+ h.g.getAllBuildings=()=>[house,target];
+ const group=h.issue('march',{x:70,z:0},{target});
+ return {h,u,house,villager,target,group};
+}
+test('an army ordered at a Wonder passes villagers and houses on the way and strikes the Wonder',()=>{
+ const c=wonderRoute(false);
+ for(let i=0;i<300&&c.target.health===5000;i++)c.h.step(100,true);
+ assert.ok(c.house.health<100||c.villager.health<10000,'control: an ordinary assault is drawn off by what it passes');
+ const w=wonderRoute(true);
+ for(let i=0;i<400&&w.target.health===5000;i++){w.h.step(100,true);
+  assert.ok(w.u.attackTarget==null||w.u.attackTarget===w.target,'only the Wonder is a target, at '+i*100+'ms');}
+ assert.ok(w.target.health<5000,'the Wonder was reached and struck');
+ assert.equal(w.house.health,100,'the house was left alone');assert.equal(w.villager.health,10000,'the villager was left alone');
+});
+test('on a Wonder run the army still answers an attacker, then returns to the Wonder; once it falls the assault goes on',()=>{
+ const w=wonderRoute(true);w.h.step(300,true);
+ const raider=w.h.rival(8,2);w.h.g.noteRetaliation(w.u,raider);
+ assert.equal(w.u.attackTarget,raider,'retaliation still comes first');
+ raider.health=0;w.h.step(150);
+ assert.equal(w.u.attackTarget,null,'not the house or the villager after the raider');
+ for(let i=0;i<400&&w.target.health===5000;i++)w.h.step(100,true);
+ assert.ok(w.target.health<5000,'back on the Wonder');assert.equal(w.house.health,100);
+ w.target.health=0;w.house.x=w.u.x+3;w.house.z=w.u.z;w.h.step(150);
+ assert.equal(w.u.attackTarget,w.house,'with the Wonder down, the ordinary assault resumes nearby');
+});

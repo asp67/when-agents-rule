@@ -245,10 +245,16 @@ class StandingOrders {
                 return routeDistance(e)<=route&&WarMath.hypot(e.x-anchor.x,e.z-anchor.z)<=radius
                     &&WarMath.hypot(e.x-center.x,e.z-center.z)<=radius;
             };
+            // An order on a Wonder outranks everything but retaliation: the army marched
+            // for the monument and ground its way there through every villager and
+            // house within the leash, arriving late or not at all. Only the Wonder and
+            // whatever attacks the group (focus) are fair game until it falls.
+            const wonderRun=!!(g.target&&g.target.isWonder&&g.target.health>0);
             const eligible=(u,e)=>{
                 if(!valid(e))return false;
                 if(e===focus)return e.type==='tower'||!g.blocked.get(u)?.has(e);
                 if(e===g.target)return true;
+                if(wonderRun)return false;
                 return !g.blocked.get(u)?.has(e)&&withinLeash(e);
             };
             const candidates=(g.attack?enemies.concat(this.game.getAllBuildings()):enemies).filter(e=>eligible(null,e));
@@ -266,6 +272,11 @@ class StandingOrders {
                     if(u.attackTarget)this.releaseTarget(g,u);continue;
                 }
                 let target=u.attackTarget;
+                // A target held from before is kept on a Wonder run only if it is the
+                // Wonder or one of the group's live threats.
+                if(wonderRun&&target&&target!==g.target&&!g.threats?.includes(target)){
+                    u.attackTarget=null;u.isAttacking=false;this.game.clearRetaliation(u);g.chases.delete(u);target=null;
+                }
                 if(focus&&valid(focus)&&eligible(u,focus))target=focus;
                 if(target){
                     const distance=WarMath.hypot(u.x-target.x,u.z-target.z);
