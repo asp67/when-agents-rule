@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 984: the auto camera holds for reading and cuts calmer (28 September 2026)
+
+**No rules change.** The auto camera (the director):
+
+- **Holds for reading.** While any decision bubble's point is on screen, it does not cut away, and a shot that runs out is held on. A cut moved the bubbles, and three cuts under one bubble made it unreadable. Only a battle cuts through the hold. The hold ends 20 s after the shot's planned end at the latest, so a busy base cannot keep the camera forever. A bubble pinned to the edge for a point off screen does not count.
+- **Cuts calmer.** A merely better calm shot may replace the one on screen only after 5 s (it was 1.5 s), and the calm shots (establishing, economy, following, scouting, overview and the rest) run about a third longer. Battle shots keep their pace.
+
 ## Build 983: the damage wave every second (27 September 2026)
 
 **No rules change.** The red damage wave now fires on hits, at most once per ~35-unit patch of map each second. It used to fire at most every 5 s. Every hit asks for a wave (the renderer's hit flash), and the cooldown lives in the renderer, so `game.js` and the rules hash are unchanged. The old 5-second call from `notifyCombat` passes through the same cooldown, so the two never double up. On Platform the viewer's forwarded hit flashes take the same path.

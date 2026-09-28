@@ -198,3 +198,54 @@ test('an off-scene fight immediately interrupts the aftermath pause',()=>{
  const other=duel(250,2);hit(other,100201);const pose=d.update(100217);
  assert.notEqual(d.shot.key,oldKey);assert.equal(d.shot.type,'brawl');assert.equal(pose.cut,true);
 });
+
+test('while a decision bubble is read the camera holds, and only a battle cuts away', () => {
+    const { director: d, game, duel, hit } = setup();
+    let reading = true;
+    game.ui = { intentBubblesInView: () => reading };
+    d.update(100000);
+    const shot = d.shot;
+    assert.ok(shot && shot.priority < 2, 'a calm shot to start with');
+    // It runs out while a bubble is up: held on, not cut.
+    shot.until = 100001;
+    d.update(100200); d.update(100400);
+    assert.equal(d.shot, shot, 'held while the bubble is read');
+    // The bubble goes: the shot may end.
+    reading = false;
+    d.update(100700);
+    assert.notEqual(d.shot, shot, 'free again once nothing is being read');
+    // A battle cuts through a reading hold at once.
+    reading = true;
+    d.update(101000);
+    const calm = d.shot;
+    const fight = duel(); hit(fight, 101001);
+    const pose = d.update(101017);
+    assert.notEqual(d.shot, calm);
+    assert.equal(d.shot.type, 'brawl'); assert.equal(pose.cut, true);
+});
+
+test('a reading hold is capped, so a busy base cannot keep the camera', () => {
+    const { director: d, game } = setup();
+    game.ui = { intentBubblesInView: () => true };
+    d.update(100000);
+    const shot = d.shot;
+    shot.until = shot.planned = 100001;
+    d.update(100001 + 19000);
+    assert.equal(d.shot, shot, 'still held inside the cap');
+    d.update(100001 + 20500);
+    assert.notEqual(d.shot, shot, 'released past it');
+});
+
+test('a calm shot is not replaced by a better calm one before five seconds', () => {
+    const { director: d } = setup();
+    d.update(100000);
+    const shot = d.shot;
+    // Make whatever is on screen look poor next to the rest, without letting it end.
+    shot.until = 200000;
+    const adj = d.adjust.bind(d);
+    d.adjust = (c, now) => c.key === shot.key ? -1000 : adj(c, now);
+    d.update(103000);
+    assert.equal(d.shot, shot, 'held at three seconds');
+    d.update(105200);
+    assert.notEqual(d.shot, shot, 'replaced after five');
+});

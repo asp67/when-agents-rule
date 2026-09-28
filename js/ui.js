@@ -2485,6 +2485,8 @@ class UIManager {
     // happened; a backlog is thinned to the decisive ones rather than played late.
     captionsOn() { return this.intentOn(); }   // one button: Intent shows both
     intentOn() { return this.viewPreferences().intent !== false; }
+    // A bubble's point was in view within the last frames (see drawIntentOverlay).
+    intentBubblesInView() { return this.intentOn() && Date.now() - (this._intentInViewAt || 0) < 400; }
     toggleIntentLayer() {
         const p = this.viewPreferences();
         p.intent = !this.intentOn();
@@ -2541,6 +2543,9 @@ class UIManager {
         // y - 18 - h. The top margin clears the bar and the broadcast board.
         const els = box.children, pad = 6, TOP = 56, LIFT = 18;
         const vw = box.clientWidth || r.canvas.clientWidth, vh = box.clientHeight || r.canvas.clientHeight;
+        // For the auto camera: a bubble whose own point is in view is being read, and the
+        // director holds its shot for it (Director.readingHold).
+        if (f.bubbles.some(b => b.x >= 0 && b.x <= vw && b.ay >= 0 && b.ay <= vh)) this._intentInViewAt = Date.now();
         if (els.length) {
             const boxes = f.bubbles.map((b, k) => {
                 const w = els[k].offsetWidth, h = els[k].offsetHeight;

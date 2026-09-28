@@ -39,7 +39,14 @@
 
 const DIR_YAW_STEP = Math.PI / 4;          // eight compass angles
 const DIR_SETTLE_MS = 400;                 // held frame after a cut, before tracking
-const DIR_MIN_SHOT_MS = 1500;              // no interrupt before this
+// No interrupt by a merely BETTER calm shot before this. It was 1.5 s, and a slightly
+// better scene elsewhere cut in that fast: three cuts while one bubble was up, each
+// moving it. Battles keep their own, much shorter hold (fightHold in update()).
+const DIR_MIN_SHOT_MS = 5000;
+// While a decision bubble's point is on screen, the camera holds -- a bubble is read,
+// and a cut moves it -- unless a battle starts. Capped past the shot's planned end, so
+// a base whose seat keeps giving orders cannot keep the camera forever.
+const DIR_READING_CAP_MS = 20000;
 const DIR_INTERRUPT_MARGIN = 35;           // how much better a rival shot must be
 const DIR_OVERVIEW_EVERY = 75000;          // the "how is everyone doing" beat
 const DIR_RECENT = 6;                      // shots remembered for anti-repeat
@@ -63,26 +70,28 @@ const DIR_CONTACT_PAIR_COOLDOWN_MS = 45000;
 // fast, and each one arcs a few degrees while it runs, because a static frame of a
 // melee is flat and six degrees of movement is what makes it read as depth. The cut
 // still LANDS on a compass angle; the drift happens after, inside the shot.
+// The calm shots run about a third longer than they did: the economy half was cutting
+// every five or six seconds, which read as hectic next to what it was showing.
 const DIR_SHOTS = {
     selected:  { dur: [9000, 9000],   pitch: 0.42, track: true,  push: 0 },
     brawl:     { dur: [2200, 3400],   pitch: 0.44, track: true,  push: 0.06, pan: 0.11 },
     imminent:  { dur: [1800, 2400],   pitch: 0.44, track: true,  push: 0 },
-    pov:       { dur: [4000, 6000],   pitch: 0.24, track: false, push: 0 },
+    pov:       { dur: [5500, 8000],   pitch: 0.24, track: false, push: 0 },
     // Pitch is SCOUT's, not a lower one of its own. Nearly every contact is cut to
     // from the scout shot -- it is the same unit, one second later, having found
     // somebody -- and arriving at a different elevation made a continuation read as a
     // jump to somewhere else. Short duration still: a near miss IS short, and holding
     // it past the moment turns a discovery into two units standing about.
-    contact:   { dur: [3000, 4200],   pitch: 0.28, track: true,  push: 0.05 },
-    wonder:    { dur: [6000, 8000],   pitch: 0.34, track: false, push: 0.10 },
-    follow:    { dur: [6000, 9000],   pitch: 0.36, track: true,  push: 0 },
-    walk:      { dur: [5000, 7000],   pitch: 0.25, track: true,  push: 0 },
-    scout:     { dur: [6000, 8000],   pitch: 0.28, track: true,  push: 0 },
-    site:      { dur: [5000, 7000],   pitch: 0.40, track: false, push: 0.12 },
-    economy:   { dur: [6000, 8000],   pitch: 0.46, track: false, push: 0.05 },
-    establish: { dur: [7000, 10000],  pitch: 0.58, track: false, push: 0.05 },
-    compare:   { dur: [4000, 5000],   pitch: 0.52, track: false, push: 0 },
-    overview:  { dur: [7000, 9000],   pitch: 0.50, track: false, push: 0 }
+    contact:   { dur: [3500, 5000],   pitch: 0.28, track: true,  push: 0.05 },
+    wonder:    { dur: [8000, 10500],  pitch: 0.34, track: false, push: 0.10 },
+    follow:    { dur: [8000, 12000],  pitch: 0.36, track: true,  push: 0 },
+    walk:      { dur: [6500, 9000],   pitch: 0.25, track: true,  push: 0 },
+    scout:     { dur: [8000, 10500],  pitch: 0.28, track: true,  push: 0 },
+    site:      { dur: [6500, 9000],   pitch: 0.40, track: false, push: 0.12 },
+    economy:   { dur: [8000, 10500],  pitch: 0.46, track: false, push: 0.05 },
+    establish: { dur: [9000, 13000],  pitch: 0.58, track: false, push: 0.05 },
+    compare:   { dur: [5000, 6500],   pitch: 0.52, track: false, push: 0 },
+    overview:  { dur: [9000, 12000],  pitch: 0.50, track: false, push: 0 }
 };
 
 class Director {
@@ -740,10 +749,18 @@ class Director {
                 const sameCombat = !different && priority > 0;
                 const ended = this.shot?.subject?.combat && !current && age >= 350;
                 // Compare against what is on screen NOW, not its score when it began.
-                const better = (!aftermath || (different && priority >= 2)) && (!this.shot || urgent || ended
+                let better = (!aftermath || (different && priority >= 2)) && (!this.shot || urgent || ended
                     || (expired && (!sameCombat || top.type === 'brawl'))
                     || (different && age >= (priority >= 2 ? fightHold : DIR_MIN_SHOT_MS * this.lapse)
                         && priority >= currentPriority && top.adj > (current?.adj || 0) + (priority >= 2 ? 12 : margin)));
+                // Reading: a bubble is on screen. Nothing but a battle cuts away from it,
+                // and a shot that runs out while one is up is held on, up to the cap.
+                const reading = this.shot && this.shot.type !== 'selected' && this.readingHold()
+                    && now < (this.shot.planned || this.shot.until) + DIR_READING_CAP_MS * this.lapse;
+                if (reading && priority < 2) {
+                    better = false;
+                    if (expired) this.shot.until = now + 250;
+                }
                 if (better && (!this.shot || this.shot.type !== 'selected' || !g._camFollow)) {
                     const pose = top.make();
                     if (pose) {
@@ -800,6 +817,13 @@ class Director {
             halfH: this.shot.pose.halfH * k,
             cut
         };
+    }
+
+    // Is a decision bubble being read? The intent overlay says whether any bubble's point
+    // is inside the view (one pinned to the edge for a point off screen does not count).
+    readingHold() {
+        const ui = this.game && this.game.ui;
+        return !!(ui && typeof ui.intentBubblesInView === 'function' && ui.intentBubblesInView());
     }
 
     // Called after the renderer has applied the pose and rebuilt its camera.
@@ -867,7 +891,7 @@ class Director {
         pose.yaw0 = same ? prev.pose.yaw : pose.yaw;   // no snap-back on a continuation
         if (same) pose.yaw = prev.pose.yaw;
         return { type, key, score, pose, subject: pose.subject, seat, born: now,
-                 until: now + dur, cutDone: !!same,
+                 until: now + dur, planned: now + dur, cutDone: !!same,
                  panDir: prev ? (same ? prev.panDir : -prev.panDir) : 1 };
     }
 
