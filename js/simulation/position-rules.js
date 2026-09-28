@@ -63,7 +63,9 @@ var WarPositionRules = Object.freeze({
         // radius for ALL wonders keeps the four civs balanced. Attackability
         // is unaffected: combatants are exempt from the push below, and
         // ranged reach (7.5+) out-ranges the zone anyway.
-        const WONDER_CLEARANCE = 7.0;
+        // x1.5 with the Wonder itself (28 Sep 2026, Game.WONDER_SCALE): the pyramid's
+        // corners now stand at ~10.75, so the ring grows with it.
+        const WONDER_CLEARANCE = 10.5;
         units.forEach(unit => {
             // A marcher that has NOT yet acquired a target still ghosts every
             // building: the radial clearance rings around a packed base overlap

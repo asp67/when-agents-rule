@@ -6,6 +6,24 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 987: a bigger Wonder, and towers kept apart (28 September 2026)
+
+**A rules and harness change.**
+
+- **The Wonder is 1.5x its old size.**
+  - The mesh is drawn 1.5x.
+  - The ring units are kept out of goes from 7 to 10.5 (`Game.WONDER_CLEARANCE`, and the same in `simulation/position-rules.js`).
+  - The reach needed to hit it goes from +4.6 to +6.9, so melee still reaches the bigger walls (the pyramid's faces now stand at about 7.6).
+  - Its resource clearance goes from 5 to 7.5.
+  - Other buildings keep 16.5 from it (was 11). A new Wonder keeps 16.5 from them.
+- **Towers keep 15 from other towers** (was 9, like any building).
+- **One rule for everyone:** `Game.buildingGap` applies these for the models' placement, the rule-based AI's and the human player's. Every other gap is as before.
+- **Why:** Wonders were easy to hold with a ring of towers. With the old numbers, up to 13 towers could reach one attacker at a Wonder; with these, at most 5 can (three on the nearest ring). An army that commits has a chance, and the Wonder reads as the landmark it is.
+- **What the data showed first:** in September's matches, 13 of 14 winning Wonders never took damage. Towers decided it in one clear case (10 towers against squads of 3–4) and one borderline one (5 towers against 32 attack orders). Most attacks never reached their Wonder in force.
+- **A tower that cannot be placed** because of the spacing now says so: "Towers must stand at least 15 apart; the nearest is N away." Before, the refusal only said "occupied".
+- **Golden traces:** `wonder-siege` is re-recorded; units now stand further from the Wonder. The siege plays out the same way, with the same units falling at about the same checkpoints. `opening-economy` and `battle-40v40` are unchanged.
+- **Comparability:** the rules and harness hashes move. Wonder and tower results from before this build are not comparable with results after it.
+
 ## Build 986: bubbles stay clear of the panels (28 September 2026)
 
 **No rules change.** The panels over the map are not free ground for bubbles: the AI decisions on the left, the leaderboard and the minimap on the right, the transcript and the unit card. A bubble that would sit under one is moved out beside it, toward the middle of the view. This applies before stacking and again after, since stacking can raise a bubble into a panel. Before, bubbles pinned to the left or right edge ended up under the decisions panel or the leaderboard, unreadable.

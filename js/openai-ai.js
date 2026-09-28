@@ -7107,8 +7107,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
         if (!spot) {
             console.log(`[OpenAIAI] ${ai.id}: Could not find valid position for ${buildingType}`);
+            // Tower spacing is a rule, not a crowded patch of ground: say it, with the
+            // distance, so the next order can go where a tower is allowed.
+            const spacing = OpenAIAIManager.towerSpacing();
+            const nearest = buildingType !== 'tower' ? Infinity
+                : [...ai.buildings, ...game.player.buildings, ...game.aiManager.aiPlayers.flatMap(a => a.buildings)]
+                    .filter(b => b && b.type === 'tower' && b.health > 0)
+                    .reduce((m, b) => Math.min(m, WarMath.hypot(b.x - x, b.z - z)), Infinity);
             this.outcome('log.out.noClearSpot', { buildingType });
-            return `[ERROR] ${buildingType}: no clear spot near (${Math.round(x)}, ${Math.round(z)}). Occupied by buildings or resource nodes.`;
+            return nearest < spacing
+                ? `[ERROR] tower: no clear spot near (${Math.round(x)}, ${Math.round(z)}). Towers must stand at least ${spacing} apart; the nearest is ${Math.round(nearest)} away.`
+                : `[ERROR] ${buildingType}: no clear spot near (${Math.round(x)}, ${Math.round(z)}). Occupied by buildings or resource nodes.`;
         }
         ({ x, z } = spot);
 
@@ -7225,8 +7234,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // every live resource node's clearance ring. Up to 40 nudge attempts; returns
     // {x, z} or null. The Wonder used to skip validation entirely and could land on
     // top of the base.
+    // The rules' building gap (Game.buildingGap: Wonders and tower spacing) when the
+    // rules are loaded; the plain gap where they are not (a harness loaded on its own).
+    static buildingGap(base, newType, newIsWonder, b) {
+        return (typeof Game !== 'undefined' && Game.buildingGap) ? Game.buildingGap(base, newType, newIsWonder, b) : base;
+    }
+    static towerSpacing() { return (typeof Game !== 'undefined' && Game.TOWER_SPACING) || 15; }
     findClearSpot(ai, game, buildingType, isWonderBuild, x, z) {
-        const reqGap = b => (b.type === 'town_center' || b.isWonder) ? 11 : 9;
+        const reqGap = b => OpenAIAIManager.buildingGap((b.type === 'town_center' || b.isWonder) ? 11 : 9, buildingType, isWonderBuild, b);
         const resClr = game.resourceClearance(buildingType, isWonderBuild);
         let valid = false;
         let attempts = 0;
@@ -7289,7 +7304,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const c = game.clampToMap(x, z);
             if (Math.abs(c.x - x) > 0.5 || Math.abs(c.z - z) > 0.5) return false; // off-map
         }
-        const reqGap = b => (b.type === 'town_center' || b.isWonder) ? 11 : 9;
+        const reqGap = b => OpenAIAIManager.buildingGap((b.type === 'town_center' || b.isWonder) ? 11 : 9, buildingType, isWonderBuild, b);
         const allBuildings = [...ai.buildings, ...game.player.buildings, ...game.aiManager.aiPlayers.flatMap(a => a.buildings)];
         for (const b of allBuildings) {
             if (WarMath.hypot(x - b.x, z - b.z) < reqGap(b)) return false;

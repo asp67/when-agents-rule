@@ -1345,7 +1345,7 @@ class Game {
         // Share the mesh stand-off with pursuit checks: attacking a wall from
         // outside the building is productive combat, not a stalled chase.
         const building = target.isWonder || !!(target.type && BUILDING_DEFS[target.type]);
-        const reach = (unit.range > 1 ? unit.range : 1.5) + (building ? (target.isWonder ? 4.6 : 3.5) : 0);
+        const reach = (unit.range > 1 ? unit.range : 1.5) + (building ? (target.isWonder ? 4.6 * Game.WONDER_SCALE : 3.5) : 0);
         // Building footprints must not let archers fire from beyond tower reach.
         return unit.unitType === 'ranged'
             ? Math.min(reach, (typeof BUILDING_DEFS !== 'undefined' && BUILDING_DEFS.tower?.range) || 18) : reach;
@@ -2228,7 +2228,7 @@ class Game {
     // unit, framed to the bounding radius of a group, medium on a building.
     _subjectZoom(subject) {
         if (!subject) return 34;
-        if (subject.kind === 'ent') return (subject.ent && subject.ent.isWonder) ? 44 : 30;
+        if (subject.kind === 'ent') return (subject.ent && subject.ent.isWonder) ? 60 : 30;
         const live = (subject.units || []).filter(u => u.health > 0);
         if (live.length <= 1) return 17; // a single followed unit → close-up
         const cx = live.reduce((a, u) => a + u.x, 0) / live.length;
@@ -3643,7 +3643,28 @@ class Game {
     //
     // Farms are excluded there, so they are excluded here.
     static get UNIT_BUILDING_CLEARANCE() { return 4.5; }
-    static get WONDER_CLEARANCE() { return 7.0; }
+    // Wonders are 1.5x their old size (28 Sep 2026): the mesh, the ring units are kept
+    // out of, the reach needed to hit one, and the ground it needs to stand on. With
+    // towers 15 apart (TOWER_SPACING), at most five towers can reach one attacker at a
+    // Wonder -- three on the nearest ring -- where thirteen could before, so an army that
+    // commits has a chance, and the Wonder reads as the landmark it is.
+    static get WONDER_SCALE() { return 1.5; }
+    static get WONDER_CLEARANCE() { return 7.0 * Game.WONDER_SCALE; }
+    static get TOWER_SPACING() { return 15; }
+    static get WONDER_BUILD_GAP() { return 11 * Game.WONDER_SCALE; }
+
+    // How far a new building must stand from an existing one. `base` is the caller's own
+    // gap (the placement paths grew up with slightly different ones, and the rule-based
+    // AI's are recorded in the golden traces); on top of it, one rule for everybody: a
+    // Wonder, new or standing, keeps WONDER_BUILD_GAP, and a tower keeps TOWER_SPACING
+    // from every other tower. Shared by the models' placement, the rule-based AI and the
+    // human player's, so the three can never disagree about where a tower may go.
+    static buildingGap(base, newType, newIsWonder, existing) {
+        let gap = base;
+        if (newIsWonder || (existing && existing.isWonder)) gap = Math.max(gap, Game.WONDER_BUILD_GAP);
+        if (newType === 'tower' && existing && existing.type === 'tower') gap = Math.max(gap, Game.TOWER_SPACING);
+        return gap;
+    }
 
     clampSlot(x, z) {
         const p = this.clampToMap(x, z);
@@ -3680,7 +3701,7 @@ class Game {
     // walkable ring is left around the node for harvesters to reach it. Scales with
     // the building's footprint (Town Centers / Wonders are larger).
     resourceClearance(buildingType, isWonder) {
-        const half = (buildingType === 'town_center' || isWonder) ? 5 : 3.5;
+        const half = isWonder ? 5 * Game.WONDER_SCALE : buildingType === 'town_center' ? 5 : 3.5;
         return half + 4.5; // ~2 node radius + ~2.5 worker gap
     }
 
@@ -5310,7 +5331,7 @@ class Game {
                     // buildings push the unit further out) so it never spawns half-hidden
                     // inside the mesh.
                     const spawnAngle = this.rand(building, 'train-exit') * Math.PI * 2;
-                    const footRadius = (building.isWonder || building.type === 'town_center') ? 5 : 3.5;
+                    const footRadius = building.isWonder ? 5 * Game.WONDER_SCALE : building.type === 'town_center' ? 5 : 3.5;
                     const spawnDist = footRadius + 3 + this.rand(building, 'train-exit') * 1.5; // clear of the mesh + a little spread
                     const spawnX = building.x + WarMath.cos(spawnAngle) * spawnDist;
                     const spawnZ = building.z + WarMath.sin(spawnAngle) * spawnDist;

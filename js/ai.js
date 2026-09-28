@@ -842,7 +842,8 @@ class AIManager {
         const others = [...ai.buildings];
         if (this.game.player) others.push(...this.game.player.buildings);
         for (const b of others) {
-            if (WarMath.hypot(b.x - x, b.z - z) < (isWonder ? 12 : 9)) return false;
+            const gap = Game.buildingGap(isWonder ? 12 : 9, buildingType, isWonder, b);
+            if (WarMath.hypot(b.x - x, b.z - z) < gap) return false;
         }
         if (this.game.isTooCloseToResource && this.game.isTooCloseToResource(x, z, buildingType, isWonder)) return false;
         if (this.game.clampToMap) {

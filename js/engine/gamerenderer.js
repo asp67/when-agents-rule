@@ -46,6 +46,9 @@
           TERRAIN_WORLD = TexGen.TERRAIN_WORLD,
           TERRAIN_LAND = TexGen.TERRAIN_LAND;
     const BSCALE = 0.78;         // engine building set → game footprint scale
+    // Wonders are drawn 1.5x (the rules' Game.WONDER_SCALE, which this file cannot read:
+    // the Platform viewer loads the renderer without game.js). Keep the two equal.
+    const WONDER_SCALE = 1.5;
 
 
     class EngineRenderer {
@@ -835,11 +838,12 @@
             const civColor = (civ && civ.color) ? civ.color : building.color;
             building.color = civColor;
             const tint = this._tintOf(window.WarIdentity ? WarIdentity.color(building.owner, building.civilization, building.seat, civColor) : civColor);
+            const bs = BSCALE * (building.isWonder ? WONDER_SCALE : 1);
             const world = m3.multiply(
                 m3.multiply(
                     m3.translation(building.x, 0, building.z),
                     m3.rotationY(building.rotationY || 0)),
-                m3.scaling(BSCALE, BSCALE, BSCALE));
+                m3.scaling(bs, bs, bs));
             let parts, shellIdx = -1;
             if (building.underConstruction) {
                 // The rising shell previews the FINAL height — it used to top out
@@ -862,14 +866,14 @@
                 const type = known ? building.type : (building.isWonder ? 'wonder' : 'house');
                 parts = EngineBuildings.parts(type, { age: building.age, civ: building.civilization });
             }
-            const eb = { opaque: [], blended: [], shell: null, world };
+            const eb = { opaque: [], blended: [], shell: null, world, bs };
             const grassFoot = this._meshFootprint(parts, `${building.type}|${building.age}|${building.civilization}|${!!building.underConstruction}`);
             const ca = Math.abs(Math.cos(building.rotationY || 0)), sa = Math.abs(Math.sin(building.rotationY || 0));
-            building._grassFootprint = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*BSCALE + 1,
-                ez: (grassFoot.ex*sa + grassFoot.ez*ca)*BSCALE + 1 };
+            building._grassFootprint = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*bs + 1,
+                ez: (grassFoot.ex*sa + grassFoot.ez*ca)*bs + 1 };
             // Where a fire can sit: inside the walls, below the roof line (Cinematic).
-            building._fireBox = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*BSCALE, ez: (grassFoot.ex*sa + grassFoot.ez*ca)*BSCALE,
-                ey: (grassFoot.ey || 4)*BSCALE };
+            building._fireBox = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*bs, ez: (grassFoot.ex*sa + grassFoot.ez*ca)*bs,
+                ey: (grassFoot.ey || 4)*bs };
             parts.forEach((p, i) => {
                 const entry = {
                     buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
@@ -1277,12 +1281,15 @@
             if (!def) return false;
             const halfSize = (this.terrain ? this.terrain.size : 800) / 2 - 5;
             if (x < -halfSize || x > halfSize || z < -halfSize || z > halfSize) return false;
+            const isWonder = def.type === 'wonder';
             for (const building of this.buildings) {
                 const dist = Math.hypot(building.x - x, building.z - z);
-                const need = (building.type === 'town_center' || building.isWonder) ? 11 : 9;
+                const base = (building.type === 'town_center' || building.isWonder) ? 11 : 9;
+                // The rules' gap when they are loaded (Game.buildingGap: Wonders and
+                // tower spacing); the plain one where they are not.
+                const need = (typeof Game !== 'undefined' && Game.buildingGap) ? Game.buildingGap(base, buildingType, isWonder, building) : base;
                 if (dist < need) return false;
             }
-            const isWonder = def.type === 'wonder';
             if (this.game && typeof this.game.isTooCloseToResource === 'function') {
                 if (this.game.isTooCloseToResource(x, z, buildingType, isWonder)) return false;
             } else if (this.terrain && this.terrain.resources) {
@@ -1721,7 +1728,7 @@
                 if(eb.flagParts) {
                     const angle=this.graphicsQuality==='cinematic'?.12*Math.sin(ambientTime*1.7+b.x*.1)+.04*Math.sin(ambientTime*3.1+b.z*.1):0;
                     const flag=m3.multiply(eb.flagAnchor,m3.rotationY(angle));
-                    const cloth=this.graphicsQuality==='cinematic'?[flag[12],flag[14],flag[0]/BSCALE,flag[2]/BSCALE]:null;
+                    const cloth=this.graphicsQuality==='cinematic'?[flag[12],flag[14],flag[0]/(eb.bs||BSCALE),flag[2]/(eb.bs||BSCALE)]:null;
                     for(const p of eb.flagParts){p.entry.model=m3.multiply(flag,p.local);p.entry.cloth=cloth;}
                 }
                 if(this.graphicsQuality==='cinematic'&&detailFade>0&&!(b._fade!=null&&b._fade<1)) {
@@ -1792,7 +1799,7 @@
                     const lights = EngineFx.burning(b, hpct, ambientTime, this._reducedMotion, { m3, bb, quad, ringBuf, tex: this.tex, dl, eye: this._cam && this._cam.eye });
                     if (lights) for (const en of eb.opaque) en.localLights = en.localLights ? EngineFx.mergeLights(en.localLights, lights) : lights;
                 }
-                const by = (b.isWonder ? 10 : 6) * BSCALE + 1.2;
+                const by = (b.isWonder ? 10 * WONDER_SCALE : 6) * BSCALE + 1.2;
                 if (!b.underConstruction && hpct < 0.999) pushBar(b.x, by, b.z, 4.6, hpct, this._barColor(hpct));
                 if (b.type === 'farm' && !b.underConstruction && b.maxFoodAmount > 0) {
                     pushBar(b.x, 3.1, b.z, 3.4, b.foodAmount / b.maxFoodAmount, [0.85, 0.66, 0.2]);
@@ -1800,14 +1807,14 @@
                 if (b.selected || (this.game && this.game.selectedBuilding === b)) {
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: [0.35, 0.95, 0.55],
-                        model: m3.multiply(m3.translation(b.x, 0.1, b.z), m3.scaling(6, 1, 6))
+                        model: m3.multiply(m3.translation(b.x, 0.1, b.z), m3.scaling(b.isWonder ? 9 : 6, 1, b.isWonder ? 9 : 6))
                     });
                 }
                 if (b.isWonder && !b.underConstruction) { // pulsing claim ring
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: this._tintOf(b.color),
                         alpha: 0.35 + 0.25 * Math.sin(tSec * 2),
-                        model: m3.multiply(m3.translation(b.x, 0.12, b.z), m3.scaling(8.4, 1, 8.4))
+                        model: m3.multiply(m3.translation(b.x, 0.12, b.z), m3.scaling(8.4 * WONDER_SCALE, 1, 8.4 * WONDER_SCALE))
                     });
                 }
                 if (b.type === 'town_center' && !b.underConstruction) {
