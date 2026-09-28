@@ -2553,7 +2553,28 @@ class UIManager {
                 const y = vh > h + TOP + pad + LIFT ? Math.max(TOP + LIFT + h, Math.min(vh - pad + LIFT, b.ay)) : b.ay;
                 return { x, y, w, h };
             });
+            // The panels over the map -- the decisions on the left, the leaderboard and the
+            // minimap on the right, the transcript and the unit card -- are not free
+            // ground: a bubble under one was unreadable. One that would meet a panel is
+            // moved out beside it, toward the middle of the view; before stacking, and
+            // again after, since stacking can raise a bubble into one.
+            const ov = box.getBoundingClientRect();
+            const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo']
+                .map(id => document.getElementById(id))
+                .filter(el => el && el.offsetParent !== null && el.offsetWidth > 0)
+                .map(el => { const q = el.getBoundingClientRect();
+                    return { left: q.left - ov.left, right: q.right - ov.left, top: q.top - ov.top, bottom: q.bottom - ov.top }; });
+            const avoid = (bx, y) => {
+                const top = y - LIFT - bx.h, bottom = y - LIFT;
+                for (let pass = 0; pass < 2; pass++) for (const q of panels) {
+                    if (!(top < q.bottom && bottom > q.top && bx.x - bx.w / 2 < q.right && bx.x + bx.w / 2 > q.left)) continue;
+                    bx.x = (q.left + q.right) / 2 < vw / 2 ? q.right + pad + bx.w / 2 : q.left - pad - bx.w / 2;
+                }
+                if (vw > bx.w + 2 * pad) bx.x = Math.max(pad + bx.w / 2, Math.min(vw - pad - bx.w / 2, bx.x));
+            };
+            boxes.forEach(bx => avoid(bx, bx.y));
             const ys = IntentLayer.stack(boxes, 4, TOP + LIFT);
+            boxes.forEach((bx, k) => avoid(bx, ys[k]));
             boxes.forEach((bx, k) => { els[k].style.left = Math.round(bx.x) + 'px'; els[k].style.top = Math.round(ys[k]) + 'px'; });
         }
     }

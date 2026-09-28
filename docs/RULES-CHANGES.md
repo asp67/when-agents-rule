@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 986: bubbles stay clear of the panels (28 September 2026)
+
+**No rules change.** The panels over the map are not free ground for bubbles: the AI decisions on the left, the leaderboard and the minimap on the right, the transcript and the unit card. A bubble that would sit under one is moved out beside it, toward the middle of the view. This applies before stacking and again after, since stacking can raise a bubble into a panel. Before, bubbles pinned to the left or right edge ended up under the decisions panel or the leaderboard, unreadable.
+
 ## Build 985: auto camera and intent on the broadcast bar (28 September 2026)
 
 **No rules change.** In broadcast mode, two small icon-only buttons sit left of the broadcast button: 🎬 auto camera and 🎯 intent. They switch the same things as the spectator bar's buttons, and are green while on.
