@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 994: every command gets its bubble (28 September 2026)
+
+**No rules change.** A command only got an intent bubble when it pointed at a place on the map. Otherwise only the first reason of a turn that pointed nowhere was shown, over the base. Training without a rally point, research, age-ups and waits never showed.
+- **How big the gap was:** in a recorded 4-seat match, 132 of 372 turns lost at least one command from the map. By command: 128 of 306 trainings, all 44 researches, all 30 waits and all 11 age-ups.
+- **What changed:** every command now gets its own bubble. One that points at a place gets its ring and its bubble there. One that points nowhere gets its bubble at the building that carries it out, and no ring: the building that trains the unit, the one the tech is researched at, or else the Town Center.
+- **Result:** in that match, every command with a name now has a bubble.
+
 ## Build 993: the intent bubbles name their call (28 September 2026)
 
 **No rules change.** After the model's name, every intent bubble now shows the call it stands for. The decision log's own icon for the action comes first, then just what was called:

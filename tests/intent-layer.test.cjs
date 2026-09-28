@@ -156,10 +156,15 @@ test('a mark never stands without its bubble: a reasonless order is named, and a
         const marks = layer.worldMarks(now), f = layer.frame((x, z) => ({ x, y: z }), now);
         if (marks.length) assert.ok(f.bubbles.some(x => x.seat === seat && Math.abs(x.opacity - marks[0].alpha) < 1e-9), 'at ' + now);
     }
-    // A turn that points nowhere and says nothing leaves the last one standing.
+    // A turn that points nowhere is still the seat's newest: it replaces the last, and its
+    // command is named on a bubble at the building that trains it -- with no ring.
     c.turnLog.push(turn([['train_unit', { unitType: 'worker' }]]));
     layer.poll(2500);
-    assert.deepEqual(Array.from(layer.intents, i => i.action), ['move_units']);
+    assert.deepEqual(Array.from(layer.intents, i => i.action), [], 'no place, no ring');
+    const q = layer.bubbles.filter(x => x.seat === seat);
+    assert.equal(q.length, 1);assert.equal(q[0].action, 'train_unit');assert.equal(q[0].text, 'train unit');
+    const tc = m.seats[0].buildings.find(x => x.type === 'town_center');
+    assert.deepEqual({ x: q[0].anchor.x, z: q[0].anchor.z }, { x: tc.x, z: tc.z }, 'workers are trained at the Town Center');
 });
 
 test('the renderer gets ground marks: a ring at the target, a path from the units, refused ones grey', async () => {
@@ -192,7 +197,8 @@ test('every ring has its own bubble with its own reason, or its command named; c
     layer.poll(1000);
     assert.equal(layer.intents.length, 3);
     const texts = Array.from(layer.bubbles, b => [b.text, b.summary]);
-    assert.deepEqual(texts, [['Burn their house.', false], ['move units', true], ['Look north.', false]]);
+    // The train command points at no place: its bubble comes after the ringed ones.
+    assert.deepEqual(texts, [['Burn their house.', false], ['move units', true], ['Look north.', false], ['more hands', false]]);
     for (const [k, i] of layer.intents.entries()) {
         const b = layer.bubbles[k];
         assert.deepEqual({ x: b.anchor.x, z: b.anchor.z }, { x: i.to.x, z: i.to.z }, 'on its own ring');
@@ -297,4 +303,22 @@ test('a reason-only bubble keeps the call it came with', async () => {
     assert.equal(b.action, 'train_unit');
     assert.equal(b.params.unitType, 'warrior');
     assert.equal(b.summary, false);
+});
+
+// A command that points at no place is shown where it is carried out (28 Sep 2026: 132 of
+// 372 turns of a recorded match had lost such commands from the map).
+test('a placeless command appears at the building that carries it out, with no ring', async () => {
+    const m = await createMatch({ kind: 'board', seed: 'intent-home', seats: [
+        { civ: 'greek', age: 'bronze', buildings: [['town_center', -100, 0], ['barracks', -60, 40, { tag: 'barracks' }]] },
+        { civ: 'persian', age: 'bronze', buildings: [['town_center', 120, 0]] },
+    ] });
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/intent-layer.js'), 'utf8'), m.context, { filename: 'js/intent-layer.js' });
+    const layer = vm.runInContext('new IntentLayer(game)', m.context), ai = m.seats[0];
+    const turn = calls => ({ toolCalls: calls.map(([name, args]) => ({ id: 'x', name, args: JSON.stringify(args) })) });
+    layer.add(ai, turn([['train_unit', { unitType: 'militia', reason: 'Spears for the ford.' }], ['research_tech', { techId: 'bronze_working' }], ['wait', {}]]), 1000);
+    const at = a => layer.bubbles.find(b => b.action === a).anchor, bx = m.tags.barracks, tc = ai.buildings.find(b => b.type === 'town_center');
+    assert.equal(layer.bubbles.length, 3, 'every command has its bubble');
+    assert.deepEqual({ x: at('train_unit').x, z: at('train_unit').z }, { x: bx.x, z: bx.z }, 'militia at the barracks');
+    assert.deepEqual({ x: at('wait').x, z: at('wait').z }, { x: tc.x, z: tc.z }, 'the rest at the Town Center');
+    assert.equal(layer.worldMarks(1000).length, 0, 'none of them draws a ring');
 });

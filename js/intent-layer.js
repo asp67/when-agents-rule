@@ -196,10 +196,13 @@ class IntentLayer {
         return fresh.length;
     }
 
-    // One turn at a time per seat: a new turn replaces the seat's last one. Every ring gets
-    // its own bubble, anchored on the ring, saying the reason that command gave -- or, when
-    // it gave none, naming the command -- so no ring on the map is left without a clue.
-    // A turn that points nowhere but gives a reason shows it once, over its base.
+    // One turn at a time per seat: a new turn replaces the seat's last one. Every command
+    // gets its own bubble, saying the reason it gave -- or, when it gave none, naming the
+    // command -- so the map carries what the decisions log lists. A command that points at a
+    // place gets a ring there and its bubble on it. One that points nowhere (train without a
+    // rally point, research, age up, wait) gets its bubble at the building that carries it
+    // out, and no ring: it names no place. Measured 28 Sep 2026: 132 of 372 turns had lost
+    // such commands, only the first reason of a placeless turn was shown, over its base.
     // Everything of one turn shares one life, so it all fades together.
     add(ai, turn, born) {
         if (!ai) return;
@@ -208,33 +211,57 @@ class IntentLayer {
         // bubble is light parchment, so no dark colour needs lifting there.
         const tb = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
         const band = (tb && tb.fill) || color;
-        const marks = [];
-        let firstReason = null;
+        const marks = [], quiet = [];
         (turn.toolCalls || []).forEach((call, index) => {
             let p = {};
             try { p = JSON.parse(call.args || '{}') || {}; } catch (e) { return; }
+            if (!call.name) return;
             const reason = IntentLayer.reasonText(p.reason);
-            if (reason && !firstReason) firstReason = { text: reason, index, action: call.name, params: p };
+            const name = String(call.name).replace(/_/g, ' ') + (p.tile ? ' ' + p.tile : '');
             const to = this.target(p);
-            if (!to) return;
+            if (!to) {
+                const at = this.home(ai, call.name, p);
+                if (at) quiet.push({ anchor: at, action: call.name, params: p, index, text: reason || name, summary: !reason });
+                return;
+            }
             const from = this.origin(ai, call.name, p);
-            const name = String(call.name || '').replace(/_/g, ' ') + (p.tile ? ' ' + p.tile : '');
             marks.push({ from, to, marker: !from, action: call.name, params: p, turn, index, text: reason || name, summary: !reason });
         });
-        if (!marks.length && !firstReason) return;   // nothing to point at, nothing said
-        const life = IntentLayer.lifeFor(marks.reduce((t, m) => m.text.length > t.length ? m.text : t, firstReason ? firstReason.text : ''));
+        if (!marks.length && !quiet.length) return;   // nothing to show
+        const life = IntentLayer.lifeFor(marks.concat(quiet).reduce((t, m) => m.text.length > t.length ? m.text : t, ''));
         this.intents = this.intents.filter(i => i.seat !== ai.id);
         this.bubbles = this.bubbles.filter(b => b.seat !== ai.id);
         for (const m of marks) {
             this.intents.push(Object.assign({ seat: ai.id, color, born, life }, m));
             this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, from: m.from, born, life, color, band, turn, index: m.index, summary: m.summary, action: m.action, params: m.params });
         }
-        if (!marks.length) {
-            const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
-            const anchor = tc ? { x: tc.x, z: tc.z } : this.centroid(ai.units);
-            if (anchor) this.bubbles.push({ seat: ai.id, text: firstReason.text, anchor, born, life, color, band, turn, index: firstReason.index, summary: false,
-                action: firstReason.action, params: firstReason.params });
+        for (const q of quiet) {
+            this.bubbles.push({ seat: ai.id, text: q.text, anchor: q.anchor, born, life, color, band, turn, index: q.index, summary: q.summary, action: q.action, params: q.params });
         }
+    }
+
+    // Where a command that points at no place is shown: the building that carries it out
+    // (the one that trains the unit, the one the tech is researched at), else the Town
+    // Center, else the seat's units.
+    home(ai, name, p) {
+        const alive = (ai.buildings || []).filter(b => b && b.health > 0);
+        let at = null;
+        if (name === 'train_unit' && p.unitType) {
+            // A live building knows its options; a military one's definition lists none (they
+            // follow the age), so ask the table the build menu asks; the Town Center's workers
+            // are in its definition. An unknown age (a viewer's frame) takes every tier.
+            const nonEmpty = a => (Array.isArray(a) && a.length ? a : null);
+            const trains = b => nonEmpty(b.trainOptions)
+                || (typeof getTrainOptionsForBuilding === 'function' ? nonEmpty(getTrainOptionsForBuilding(b.type, ai.age || 'iron', ai.civilization)) : null)
+                || (typeof getBuildingDef === 'function' ? (getBuildingDef(b.type) || {}).trainOptions || [] : []);
+            at = alive.find(b => trains(b).includes(p.unitType)) || null;
+        }
+        if (name === 'research_tech' && p.techId && typeof getCivilization === 'function') {
+            const tech = ((getCivilization(ai.civilization) || {}).techTree || {})[p.techId];
+            if (tech && tech.researchAt) at = alive.find(b => b.type === tech.researchAt) || null;
+        }
+        const b = at || alive.find(x => x.type === 'town_center');
+        return b ? { x: b.x, z: b.z } : this.centroid((ai.units || []).filter(u => u.health > 0));
     }
 
     // The marks as they sit in the world, for the renderer to lay on the ground: a ring
