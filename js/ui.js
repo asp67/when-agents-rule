@@ -2560,9 +2560,20 @@ class UIManager {
         // cover another's reason.
         //
         // A bubble stands 18px above its point (the CSS transform), so its top is
-        // y - 18 - h. The top margin clears the bar and the broadcast board.
-        const els = box.children, pad = 6, TOP = 56, LIFT = 18;
+        // y - 18 - h. The top margin clears whatever bar runs along the top -- the arena's
+        // status bar, the game's resource bar, the broadcast board -- measured, not assumed:
+        // a fixed 56px let bubbles slip under a status bar that the UI size and its own
+        // wrapping make taller.
+        const els = box.children, pad = 6, LIFT = 18;
         const vw = box.clientWidth || r.canvas.clientWidth, vh = box.clientHeight || r.canvas.clientHeight;
+        const top0 = box.getBoundingClientRect().top;
+        let TOP = 56;
+        for (const sel of ['.spectator-statusbar', '#topHUD', '.broadcast-board']) {
+            const el = document.querySelector(sel);
+            if (!el || el.offsetParent === null && getComputedStyle(el).position !== 'fixed') continue;
+            const q = el.getBoundingClientRect();
+            if (q.height > 0 && q.top - top0 < vh * 0.25) TOP = Math.max(TOP, q.bottom - top0 + pad);
+        }
         // For the auto camera: a bubble whose own point is in view is being read, and the
         // director holds its shot for it (Director.readingHold).
         if (f.bubbles.some(b => b.x >= 0 && b.x <= vw && b.ay >= 0 && b.ay <= vh)) this._intentInViewAt = Date.now();

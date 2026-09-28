@@ -246,9 +246,12 @@ body.spectator-mode .mm-fog { bottom:calc(var(--mm-bottom) + 42px); }
 .arena-lineup .lu-tag.ok { border-color:#6f9a64; color:#a8d39b; }
 .arena-lineup .lu-tag.warn { border-color:#b58a3c; color:#e6c27a; }
 .arena-lineup .lu-tag.quiet { color:#8d8878; border-style:dashed; }
-.arena-lineup.floating { position:fixed; top:84px; left:50%; transform:translateX(-50%); margin:0; z-index:9000;
+/* Over the opening of the match it sits at the bottom, clear of the top bar and the first
+   bubbles; in broadcast mode above the caption row, which runs along the bottom there. */
+.arena-lineup.floating { position:fixed; top:auto; bottom:28px; left:50%; transform:translateX(-50%); margin:0; z-index:9000;
     cursor:pointer; box-shadow:0 8px 30px rgba(0,0,0,.45); transition:opacity .6s ease; }
 .arena-lineup.floating.fading { opacity:0; }
+body.broadcast-mode .arena-lineup.floating { bottom:calc(128px * var(--ui-scale, 1)); }
 @media (prefers-reduced-motion: reduce) { .arena-lineup.floating { transition:none; } }
 
 .visual-showcase-label > .showcase-tools { margin-top:12px; }

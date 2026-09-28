@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 995: the lineup at the bottom, bubbles below the top bar (28 September 2026)
+
+**No rules change.**
+- **The lineup card:** as it floats over the opening of an arena match, it now sits at the bottom centre. In broadcast mode it sits above the caption row.
+- **The bubbles:** they kept a fixed 56px from the top of the view and slipped under a top bar that the UI size and its own wrapping make taller. The top margin is now measured from the bars actually there: the arena's status bar, the game's resource bar and the broadcast board.
+
 ## Build 994: every command gets its bubble (28 September 2026)
 
 **No rules change.** A command only got an intent bubble when it pointed at a place on the map. Otherwise only the first reason of a turn that pointed nowhere was shown, over the base. Training without a rally point, research, age-ups and waits never showed.
