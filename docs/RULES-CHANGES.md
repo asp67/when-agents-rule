@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 985: auto camera and intent on the broadcast bar (28 September 2026)
+
+**No rules change.** In broadcast mode, two small icon-only buttons sit left of the broadcast button: 🎬 auto camera and 🎯 intent. They switch the same things as the spectator bar's buttons, and are green while on.
+
 ## Build 984: the auto camera holds for reading and cuts calmer (28 September 2026)
 
 **No rules change.** The auto camera (the director):

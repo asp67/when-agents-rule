@@ -3781,6 +3781,20 @@ class UIManager {
                 exit.setAttribute('aria-label', t('spec.broadcastExit'));
                 exit.onclick = () => this.toggleBroadcast(false);
                 this._broadcastExit = exit;
+                // Beside it, icon only: the auto camera and the intent layer, the two things
+                // a broadcast may still want to switch. Green while on, as in the bar.
+                const icon = (id, glyph, title, onclick) => {
+                    const b = document.createElement('button');
+                    b.id = id; b.type = 'button'; b.className = 'sb-end broadcast-ctl';
+                    b.textContent = glyph; b.title = title; b.setAttribute('aria-label', title);
+                    b.onclick = () => { onclick(); this.renderBroadcast(); };
+                    return b;
+                };
+                const ctl = document.createElement('span');
+                ctl.className = 'broadcast-ctls';
+                ctl.append(icon('broadcastAuto', '\u{1F3AC}', t('spec.actionCamTitle'), () => this.game.toggleActionCam()),
+                    icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()), exit);
+                this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
             }
             this._broadcastKeys = e => { if (e.key === 'Escape') { e.preventDefault(); this.toggleBroadcast(false); } };
@@ -3791,6 +3805,7 @@ class UIManager {
             this._broadcastKeys = null;
             ['broadcastBoard', 'broadcastWonder', 'broadcastExit', 'broadcastSlate'].forEach(id => document.getElementById(id)?.remove());
             this._broadcastExit = null;
+            this._broadcastCtl = null;
         }
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
     }
@@ -3829,7 +3844,12 @@ class UIManager {
                 + (advised ? ' <span class="bb-advised" title="' + this.escapeHtml(t('sum.coachedTip')) + '">' + this.escapeHtml(t('spec.bbAdvised', { n: advised })) + '</span>' : '')
                 + '</span>' + sub + '</span>';
         }).join('');
-        if (this._broadcastExit) board.appendChild(this._broadcastExit);   // redrawn above, so put back
+        if (this._broadcastCtl) {   // redrawn above, so put back; states follow the bar's
+            board.appendChild(this._broadcastCtl);
+            const on = (id, v) => { const b = document.getElementById(id); if (b) { b.classList.toggle('sb-on', !!v); b.setAttribute('aria-pressed', v ? 'true' : 'false'); } };
+            on('broadcastAuto', this.game._actionCam);
+            on('broadcastIntent', this.intentOn());
+        }
         const w = document.getElementById('broadcastWonder');
         if (!w) return;
         const { lead, leadHold, reqMs } = this.wonderLead();

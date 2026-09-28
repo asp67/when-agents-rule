@@ -3093,7 +3093,12 @@ body.broadcast-mode #mapToolsDock, body.broadcast-mode .lb-flyout { display: non
 .broadcast-wonder .bw-fill { height: 100%; background: var(--seat, #e9c46a); }
 body.broadcast-mode .chronicle-caption { top: auto; bottom: 40px; left: 32px; transform: none; text-align: left; font-size: 1.1em; padding: 10px 18px; max-width: min(900px, calc(100vw - 64px)); border-left: 4px solid #4ecca3; }
 body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9c46a; }
-.broadcast-board .broadcast-exit { pointer-events: auto; margin-left: 8px; padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.18); color: #fff; }
+.broadcast-board .broadcast-ctls { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; pointer-events: auto; }
+.broadcast-board .broadcast-exit { pointer-events: auto; padding: 5px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.18); color: #fff; }
+/* Icon only and small: they sit beside the way out, not competing with it. */
+.broadcast-board .broadcast-ctl { pointer-events: auto; padding: 4px 7px; min-width: 0; border-radius: 6px; font-size: 0.85em; line-height: 1;
+    border: 1px solid rgba(255, 255, 255, 0.18); color: #fff; background: rgba(10, 14, 30, 0.88); }
+.broadcast-board .broadcast-ctl.sb-on { background: linear-gradient(145deg, #35b58c, #1f8d6b); }
 .broadcast-slate { position: fixed; left: 0; right: 0; top: 38%; height: 18%; z-index: 999; pointer-events: none; opacity: 0; background: linear-gradient(90deg, transparent, rgba(233, 196, 106, 0.35), transparent); }
 .broadcast-slate.go { animation: slate 0.6s ease-out 1; }
 @keyframes slate { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
