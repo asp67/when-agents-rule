@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 989: a smaller UI uses the room it frees (28 September 2026)
+
+**No rules change.** With a smaller UI size, the leaderboard still scrolled exactly where the full-size one did. Its height limit is taken from the window and reserves room for the minimap, and under the UI zoom both were shrunk together, so the limit shrank with the panel. The window is now divided back out: the leaderboard runs down to just above the minimap at every size, and scrolls only when its cards really do not fit. The transcript viewer's limits get the same correction. The leaderboard's spectator limit lives in antiquity.css, which loads last, and is corrected there.
+
 ## Build 988: a UI size setting (28 September 2026)
 
 **No rules change.** The graphics card at the minimap has a third setting, UI size: Regular, Medium or Small (100, 85 or 72 %).

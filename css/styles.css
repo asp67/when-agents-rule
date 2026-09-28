@@ -3147,5 +3147,12 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
    own shrunken units, so it is divided back out, or the log would end at 72 %. */
 .ai-decision-log { height: calc(100vh / var(--ui-scale) - 28px); }
 .ai-decision-log.collapsed { max-height: calc(100vh / var(--ui-scale) - 28px); }
+/* The same for every limit taken from the window: the space it reserves (the minimap
+   under the leaderboard, the side panels beside the transcript) is scaled too, so the
+   window is divided back out. Otherwise a smaller leaderboard scrolled exactly where
+   the full-size one did, with room to spare below it. */
+.spectator-leaderboard { max-height: calc(100vh / var(--ui-scale) - 462px); }
+/* (Its spectator-mode limit lives in antiquity.css, which loads last; divided there.) */
+.tv { max-width: calc(100vw / var(--ui-scale) - 700px); max-height: calc(100vh / var(--ui-scale) - 180px); }
 .intent-bubble { transform-origin: 50% 100%; }
 .intent-bubbles .intent-bubble { transform: translate(-50%, calc(-100% - 18px)) scale(var(--ui-scale)); }

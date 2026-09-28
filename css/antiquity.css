@@ -189,7 +189,8 @@ button,input,select,textarea { font-family:inherit; }
 .an-camera-dock { position:absolute; right:10px; bottom:10px; width:200px; padding:4px 6px;
     background:rgba(24,30,24,.96); border:1px solid var(--line); border-radius:4px; z-index:8; }
 .an-stage .camera-controls { top:auto; left:auto; transform:none; }
-body.spectator-mode .spectator-leaderboard { max-height:calc(100vh - 312px); }
+/* Divided by the UI size: the minimap it stops above is scaled too (styles.css, UI size). */
+body.spectator-mode .spectator-leaderboard { max-height:calc(100vh / var(--ui-scale, 1) - 312px); }
 body.spectator-mode .mm-fog { bottom:calc(var(--mm-bottom) + 42px); }
 .visual-showcase-label { position:absolute; left:20px; top:70px; max-width:340px;
     color:var(--gold-2); background:rgba(25,30,25,.92); padding:12px 16px; border-left:2px solid var(--gold);
