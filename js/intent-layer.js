@@ -214,7 +214,7 @@ class IntentLayer {
             let p = {};
             try { p = JSON.parse(call.args || '{}') || {}; } catch (e) { return; }
             const reason = IntentLayer.reasonText(p.reason);
-            if (reason && !firstReason) firstReason = { text: reason, index };
+            if (reason && !firstReason) firstReason = { text: reason, index, action: call.name, params: p };
             const to = this.target(p);
             if (!to) return;
             const from = this.origin(ai, call.name, p);
@@ -232,7 +232,8 @@ class IntentLayer {
         if (!marks.length) {
             const tc = (ai.buildings || []).find(b => b.type === 'town_center' && b.health > 0);
             const anchor = tc ? { x: tc.x, z: tc.z } : this.centroid(ai.units);
-            if (anchor) this.bubbles.push({ seat: ai.id, text: firstReason.text, anchor, born, life, color, band, turn, index: firstReason.index, summary: false });
+            if (anchor) this.bubbles.push({ seat: ai.id, text: firstReason.text, anchor, born, life, color, band, turn, index: firstReason.index, summary: false,
+                action: firstReason.action, params: firstReason.params });
         }
     }
 

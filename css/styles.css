@@ -3057,6 +3057,8 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
     box-shadow: inset 0 0 7px rgba(105, 70, 28, 0.45), 0 2px 7px rgba(0, 0, 0, 0.35);
 }
 .intent-bubble .intent-reason { display: block; margin-top: 2px; }
+/* The call after the model's name: the log's icon for the action and what was called. */
+.intent-bubble .intent-call { font-weight: 600; white-space: nowrap; margin-left: 2px; }
 .lb-objective { font-size: 0.72em; color: #cfd8e3; margin: 2px 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-list.collapsed .lb-objective { display: none; }
 .intent-bubble .intent-refused { color: #9c2412; font-weight: bold; }

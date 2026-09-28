@@ -284,3 +284,17 @@ test('bubbles pinned to the top edge pile downward instead of leaving the screen
     const free = Array.from(stack([box(0), box(10)], 4));
     assert.ok(free[1] <= free[0] - 50);
 });
+
+// The bubble names its call after the model's name (asp67, 28 Sep 2026): a turn that
+// points nowhere (train, research) but gives a reason keeps the call on its one bubble,
+// so the page can show the call's icon and what was called.
+test('a reason-only bubble keeps the call it came with', async () => {
+    const { m, layer, turn } = await setup();
+    const ai = m.seats[0];
+    layer.add(ai, turn([['train_unit', { unitType: 'warrior', reason: 'More spears before the raid.' }]]), 1000);
+    const b = layer.bubbles.find(x => x.seat === ai.id);
+    assert.ok(b, 'one bubble over the base');
+    assert.equal(b.action, 'train_unit');
+    assert.equal(b.params.unitType, 'warrior');
+    assert.equal(b.summary, false);
+});

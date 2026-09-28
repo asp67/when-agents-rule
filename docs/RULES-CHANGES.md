@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 993: the intent bubbles name their call (28 September 2026)
+
+**No rules change.** After the model's name, every intent bubble now shows the call it stands for. The decision log's own icon for the action comes first, then just what was called:
+- the unit, the building or the research;
+- the next age;
+- the workers and their resource ("3 → Wood");
+- the tile or the coordinates;
+- the attacked target's type.
+
+A command given without a reason is named by the call alone, instead of repeating it underneath in italics. A turn that points nowhere, such as a training or a research, keeps its call on the bubble over its base.
+
 ## Build 992: the broadcast flash follows its caption (28 September 2026)
 
 **No rules change.** In broadcast mode, a decisive moment's caption comes with a brief band of light. The band used to cross the middle of the picture while the caption stood at the bottom left. It now runs behind the caption, brightest where the caption starts, and scales with the UI size as the caption does.

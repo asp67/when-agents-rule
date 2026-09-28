@@ -2547,7 +2547,11 @@ class UIManager {
         const f = layer.frame((x, z) => r.worldToScreen(x, 0, z) || (r.offscreenDirection ? r.offscreenDirection(x, 0, z) : null), Date.now(),
             { focus: r.cameraTarget, w: r.canvas.clientWidth, h: r.canvas.clientHeight });
         box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
-            + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '') + ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span></div>').join('');
+            + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + this.intentCallHtml(b)
+            + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '')
+            // A command given without a reason is named by its call alone; the old line
+            // repeated it ("Units moved (→ 120, -40)") under the chip.
+            + (b.summary && this.intentCallHtml(b) ? '' : ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span>') + '</div>').join('');
         // Laid out again with the sizes the bubbles were actually drawn at. Every bubble is
         // kept inside the view: one whose point is off screen rests on the edge in the
         // direction it lies, so a seat acting out of shot is still heard from. A bubble
@@ -2638,6 +2642,48 @@ class UIManager {
             : pp.resourceType ? ` (${this.logDetailName('resource', pp.resourceType, playerId)})`
             : hasT ? ` (→ ${Math.round(pp.targetX)}, ${Math.round(pp.targetZ)})`
             : '';
+    }
+    // The call a bubble stands for, after the model's name: the decision log's own icon for
+    // the action, then just what was called -- the unit, the building, the research, the
+    // age, the resource, the tile or the target. Empty for a bubble with no call.
+    intentCallHtml(b) {
+        if (!b || !b.action) return '';
+        const label = this.logActionNames()[b.action];
+        if (!label) return '';
+        const icon = label.split(' ')[0], what = this.intentCallText(b);
+        return ' <span class="intent-call">' + icon + (what ? ' ' + this.escapeHtml(what) : '') + '</span>';
+    }
+    intentCallText(b) {
+        const p = b.params || {}, seat = b.seat, name = (kind, id) => id ? this.logDetailName(kind, id, seat) : '';
+        const where = p.tile ? String(p.tile).toUpperCase()
+            : (p.targetX !== undefined && p.targetZ !== undefined ? Math.round(p.targetX) + ', ' + Math.round(p.targetZ) : '');
+        const plain = key => { const s = t(key); return s.includes(' ') ? s.slice(s.indexOf(' ') + 1) : s; };   // without its icon
+        switch (b.action) {
+            case 'train_unit': return name('unit', p.unitType);
+            case 'build_structure': return name('building', p.buildingType);
+            case 'research_tech': return name('tech', p.techId);
+            case 'delete_unit': return (p.count > 1 ? p.count + '× ' : '') + name('unit', p.unitType || 'worker');
+            case 'destroy_building': return name('building', p.buildingType);
+            case 'explore': return where;
+            case 'assign_workers': return (p.count ? p.count + ' → ' : '→ ') + (p.resourceType ? name('resource', p.resourceType) : where);
+            case 'upgrade_age': {
+                const order = ['stone', 'neolithic', 'bronze', 'iron'];
+                const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === seat);
+                const next = ai ? order[order.indexOf(ai.age) + 1] : null;
+                return next ? plain('age.' + next) : '';
+            }
+            case 'move_units':
+            case 'attack_target': {
+                // The target by id, alive or not: a target that fell since is still named.
+                const buildings = this.game.getAllBuildings ? this.game.getAllBuildings() : [];
+                const units = this.game.getAllUnits ? this.game.getAllUnits() : [];
+                const hit = list => p.targetId ? list.find(e => e && String(e.id) === String(p.targetId)) : null;
+                const building = hit(buildings), unit = building ? null : hit(units);
+                if (building || unit) return name(building ? 'building' : 'unit', (building || unit).type);
+                return where ? '→ ' + where : '';
+            }
+            default: return '';
+        }
     }
     // A bubble for a command given without a reason: named as the log names it.
     intentSummaryText(b) {
