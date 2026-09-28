@@ -3135,3 +3135,17 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .intent-svg .strat-flag { opacity: 0.8; }
 .intent-svg .strat-cloth { fill: none; stroke: rgba(0,0,0,0.5); stroke-width: 1; stroke-linejoin: round; }
 .intent-bubble.summary .intent-reason { font-style: italic; }
+
+/* UI size (the graphics card at the minimap). The panels over the map scale as whole
+   pieces -- type, spacing, icons -- and the map itself keeps its full resolution. The
+   bubbles scale around the point they stand on, so their anchoring does not move. */
+:root { --ui-scale: 1; }
+#topHUD, #opponentsBar, #bottomHUD, #transcriptViewer, #minimap, #wonderTimer,
+#spectatorHUD, #spectatorLeaderboard, #aiDecisionLog, #unitInfo, #mmFog, .menu-panel,
+.broadcast-board, .broadcast-wonder, .chronicle-caption { zoom: var(--ui-scale); }
+/* The decision log fills the window's height; under zoom that height is counted in its
+   own shrunken units, so it is divided back out, or the log would end at 72 %. */
+.ai-decision-log { height: calc(100vh / var(--ui-scale) - 28px); }
+.ai-decision-log.collapsed { max-height: calc(100vh / var(--ui-scale) - 28px); }
+.intent-bubble { transform-origin: 50% 100%; }
+.intent-bubbles .intent-bubble { transform: translate(-50%, calc(-100% - 18px)) scale(var(--ui-scale)); }

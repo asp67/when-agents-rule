@@ -176,8 +176,20 @@ class UIManager {
             rate: [0.5, 1, 2, 4].includes(saved.rate) ? saved.rate : 1,
             // One switch for the story layer (review #11): the intent marks with their
             // reasons, and the chronicle captions. An older saved "captions off" is ignored.
-            intent: saved.intent !== false
+            intent: saved.intent !== false,
+            // UI size (the graphics card at the minimap): the HUD at 100 / 85 / 72 %, for
+            // small screens where it crowds the map.
+            uiScale: ['regular', 'medium', 'small'].includes(saved.uiScale) ? saved.uiScale : 'regular'
         };
+    }
+    static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
+    setUiScale(value) {
+        if (!UIManager.UI_SCALES[value]) return;
+        this.viewPreferences().uiScale = value;
+        this.saveViewPreferences();
+        this.applyViewPreferences();
+        const sel = document.querySelectorAll('#cameraControls .camera-popover select')[2];
+        if (sel) sel.value = value;
     }
 
     saveViewPreferences() {
@@ -187,6 +199,7 @@ class UIManager {
     applyViewPreferences() {
         const p = this.viewPreferences();
         document.body.dataset.reading = p.text;
+        document.documentElement.style.setProperty('--ui-scale', String(UIManager.UI_SCALES[p.uiScale] || 1));
         const body = document.getElementById('anBody');
         if (body) {
             body.dataset.layout = p.layout;
@@ -309,10 +322,12 @@ class UIManager {
             + `<details class="camera-more"><summary title="${esc(t('art.cameraOptions'))}" aria-label="${esc(t('art.cameraOptions'))}">${svg(icons.more)}</summary>
                 <div class="camera-popover"><div class="camera-secondary">${(watching?['reset','turnLeft','turnRight']:['pan','reset','turnLeft','turnRight']).map(button).join('')}</div>
                 <label>${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['cinematic','balanced','low'].map(k=>`<option value="${k}">${esc(t('art.'+k))}</option>`).join('')}</select></label>
-                <label title="${esc(t('art.lightTip'))}">${esc(t('art.light'))}<select onchange="game.renderer.setVisualStyle ? game.renderer.setVisualStyle(this.value) : (game.renderer.visualStyle=this.value)"><option value="film">${esc(t('art.film'))}</option><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label></div></details>`;
+                <label title="${esc(t('art.lightTip'))}">${esc(t('art.light'))}<select onchange="game.renderer.setVisualStyle ? game.renderer.setVisualStyle(this.value) : (game.renderer.visualStyle=this.value)"><option value="film">${esc(t('art.film'))}</option><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label>
+                <label title="${esc(t('art.uiSizeTip'))}">${esc(t('art.uiSize'))}<select onchange="game.ui.setUiScale(this.value)">${['regular','medium','small'].map(k=>`<option value="${k}">${esc(t('art.ui_'+k))}</option>`).join('')}</select></label></div></details>`;
         if(wasOpen) box.querySelector('details').open=true;
         box.querySelector('select').value = this.game.renderer.graphicsQuality || 'balanced';
         box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
+        box.querySelectorAll('select')[2].value = this.viewPreferences().uiScale;
         if (this.game.sound) {
             this.wireMuteKey();
             const levels = this.game.sound.levels;

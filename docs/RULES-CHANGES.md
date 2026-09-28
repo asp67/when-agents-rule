@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 988: a UI size setting (28 September 2026)
+
+**No rules change.** The graphics card at the minimap has a third setting, UI size: Regular, Medium or Small (100, 85 or 72 %).
+
+- **What scales:** the bars, panels, menus, the minimap with its tools, the broadcast board and the captions, each as a whole piece, with type, spacing and icons together. The map keeps its full resolution.
+- **Bubbles** scale around the point they stand on, so their anchoring does not move.
+- **The decision log** still fills the window's height.
+- **Saved** with the other view settings, so it survives a reload.
+
 ## Build 987: a bigger Wonder, and towers kept apart (28 September 2026)
 
 **A rules and harness change.**
