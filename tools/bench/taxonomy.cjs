@@ -33,7 +33,7 @@ const CLASSES = Object.freeze({
         'assignNeedsResource', 'attackNeedsCoords', 'attackNoMatch', 'civCannotBuild', 'civCannotTrain',
         'exploreBadTile', 'exploreNeedsTile', 'farmNeedsCoords', 'moveNeedsCoords', 'moveNoMatch',
         'notAResearchTech', 'notACommand', 'offMap', 'renamedBuilding', 'repairNeedsCoords', 'targetIsOwn',
-        'targetNotFound', 'techIsBuilding', 'unknownBuilding', 'unknownTech', 'unknownUnit', 'unparsedCall'],
+        'targetNotFound', 'techIsBuilding', 'unknownBuilding', 'unknownTech', 'unknownUnit', 'unparsedCall', 'rawToolMarkup'],
     harness: ['executionFailed'],
     meta: ['healDropped', 'healStripped', 'laneDropped', 'roundMissed'],
 });

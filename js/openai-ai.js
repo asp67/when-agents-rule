@@ -50,6 +50,22 @@ class OpenAIAIManager {
     // through, and then "from" fails an enum it never meant to answer. For
     // coordinates it was worse than an error — Number(" ") is 0 and finite, so a
     // blank targetX was silently accepted as the map centre.
+    // A model's own tool-call markup left inside a call's arguments (GLM's <tool_call>,
+    // <arg_key>, <arg_value>): its tags came out broken and the server's parser cut the
+    // calls apart in the wrong places. Seen 28 Sep 2026 as a reason that swallowed the
+    // whole next command, and as a key reading 'archer</arg_value><arg_key>reason'.
+    static get RAW_TOOL_MARKUP() { return /<\/?(?:tool_call|arg_key|arg_value)>/; }
+    static hasRawToolMarkup(v) {
+        if (typeof v === 'string') return OpenAIAIManager.RAW_TOOL_MARKUP.test(v);
+        if (Array.isArray(v)) return v.some(x => OpenAIAIManager.hasRawToolMarkup(x));
+        if (v && typeof v === 'object') return Object.keys(v).some(k => OpenAIAIManager.RAW_TOOL_MARKUP.test(k) || OpenAIAIManager.hasRawToolMarkup(v[k]));
+        return false;
+    }
+    // For display only (the log, the bubbles): the text before the first stray tag.
+    static clipRawToolMarkup(text) {
+        const s = String(text == null ? '' : text), m = s.search(OpenAIAIManager.RAW_TOOL_MARKUP);
+        return m < 0 ? s : s.slice(0, m).trim() + ' …';
+    }
     static given(v) {
         return !(v === undefined || v === null || (typeof v === 'string' && v.trim() === ''));
     }
@@ -5941,7 +5957,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             move: controller._moveNo,
             latencyMs: controller._moveMs,
             action: action,
-            reason: params?.reason || '',
+            reason: OpenAIAIManager.clipRawToolMarkup(params?.reason || ''),
             params: params || {},
             failed: false,
             error: null
@@ -6002,7 +6018,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             if (params && typeof params.reason === 'string' && params.reason.trim()) st.reasonsGiven++;
         }
 
-        if (validationError) actionResult = `[ERROR] ${action}: ${validationError}`;
+        // Broken tool-call markup in the arguments: not run and not repaired (the harness
+        // does not play for the model) -- told, so it sends the commands again. Checked
+        // before the argument checks, so WAR and the Platform answer it the same way.
+        if (OpenAIAIManager.hasRawToolMarkup(params)) {
+            this.outcome('log.out.rawToolMarkup', {});
+            actionResult = `[ERROR] ${action}: its arguments contain raw tool-call markup (<tool_call>, <arg_key>, <arg_value>), so this call was cut apart: nothing written inside it was run, including any command after the break. Send each command as its own tool call with plain JSON arguments.`;
+        }
+        else if (validationError) actionResult = `[ERROR] ${action}: ${validationError}`;
         else switch (action) {
             case 'train_unit':
                 if (params?.unitType) {

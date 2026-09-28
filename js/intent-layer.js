@@ -122,7 +122,10 @@ class IntentLayer {
     }
 
     static reasonText(reason) {
-        const r = String(reason || '').replace(/\s+/g, ' ').trim();
+        let r = String(reason || '').replace(/\s+/g, ' ').trim();
+        // A reason that swallowed broken tool-call markup is shown up to the first tag.
+        const tag = r.search(/<\/?(?:tool_call|arg_key|arg_value)>/);
+        if (tag >= 0) r = r.slice(0, tag).trim() + ' …';
         if (!r) return '';
         return r.length > IntentLayer.REASON_MAX ? r.slice(0, IntentLayer.REASON_MAX - 1).trimEnd() + '…' : r;
     }

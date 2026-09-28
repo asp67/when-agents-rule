@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 997: broken tool-call markup is refused, not run (28 September 2026)
+
+**A harness change.** GLM-5.3 writes tool calls in its own tag format, which the server turns into JSON. When its tags came out broken, the calls were cut apart in the wrong places. In one case a reason swallowed the whole next command as text, `…flowing<tool_call>train_unit<arg_key>reason</arg_key>…`: the first call ran with that reason, and the second never ran and was never mentioned. In another a key read `archer</arg_value><arg_key>reason`. It is rare: once in 185 GLM turns of a recorded match, and never from the other models.
+- **What happens now:** a call whose arguments (keys or values) contain `<tool_call>`, `<arg_key>` or `<arg_value>` is not run. It is not repaired either, since the harness does not play for the model. It is answered: its arguments contain raw tool-call markup, nothing written inside it was run, including any command after the break, and each command must be its own tool call with plain JSON arguments.
+- **Outcome code:** `rawToolMarkup`, classed as a malformed call (reference).
+- **Display:** the decision log and the intent bubbles show such a reason only up to the first stray tag. The transcript keeps the raw arguments.
+- **Unaffected:** ordinary reasons with angle brackets ("gold <3 per trip") run as before.
+
 ## Build 996: place and colour on the broadcast cards (28 September 2026)
 
 **No rules change.** In broadcast mode, each seat card's bottom line now starts with the leaderboard's rank medallion (gold, silver, bronze), sorted as the leaderboard sorts. The cards themselves keep seat order. The seat's colour runs down the card's left side as a bar, as on the intent bubbles.
