@@ -686,3 +686,17 @@ test('a soldier answering a retreating attacker is still leashed to where it too
  raider.x=120;h.step(1200);   // it ran far beyond the chase radius from where the fight began
  assert.equal(u.attackTarget,null,'not lured across the map');
 });
+
+test('a retaliating soldier charges out of the formation and rejoins it once the threats are gone',()=>{
+ const h=setup(),a=h.unit('warrior',0,0,2),b=h.unit('warrior',0,3,2),slow=h.unit('warrior',-3,0,1);h.owner.units.push(a,b,slow);
+ h.g.aiManager.isVisibleTo=()=>true;
+ h.issue('march',{x:150,z:0},{matchSpeed:'slowestUnit'});h.step(300);
+ assert.ok(a.formationGroup,'marching in formation');assert.equal(a.marchSpeed,1,'at the slowest member\'s pace');
+ const raider=Object.assign(h.rival(a.x+14,a.z+8),{speed:0.01});h.g.noteRetaliation(a,raider);
+ assert.equal(a.attackTarget,raider);assert.equal(a.formationGroup,null,'out of the formation');assert.equal(a.marchSpeed,null,'at its own speed');
+ const x0=a.x,z0=a.z;h.step(300,true);
+ assert.ok(Math.hypot(a.x-x0,a.z-z0)>0.3*3*1.5,'it charges faster than the formation pace allows');
+ raider.health=0;h.step(300,true);
+ assert.equal(a.attackTarget,null);
+ assert.ok(a.formationGroup,'back in the formation');assert.equal(a.marchSpeed,1,'back at the formation\'s pace');
+});
