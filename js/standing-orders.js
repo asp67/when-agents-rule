@@ -7,6 +7,17 @@ class StandingOrders {
     static get ROUTE_CHASE_RADIUS() { return 48; }
     static get BOUNDARY_GRACE_MS() { return 900; }
     static get STALL_MS() { return 5000; }
+    // A shot gives its shooter away. A tower reaches 18 and a soldier sees 15, so towers
+    // (and anything else firing from the edge of sight) hit armies that could not see
+    // them: the hit was ignored and the siege went on under the arrows, and a unit that
+    // did turn on its shooter dropped it again as out of sight and walked back to its
+    // slot, to be hit and turn again (29 Sep 2026, a live Platform match: 9 of 47
+    // retaliations refused as "not visible", towers at 15-20). What hits a member is
+    // seen by its group for this long after each hit -- a tower firing every 1.5 s stays
+    // seen while it fires. A tower cannot move, so where it stands stays known until it
+    // falls: a group sent at it no longer turns back halfway when it stops firing.
+    // Nothing else is seen through the fog.
+    static get REVEAL_MS() { return 3000; }
     constructor(game, manager) { this.game=game;this.manager=manager;this.groups=new Set();this.time=0;this.scan=0; }
     members(g) {
         const owned=new Set(g.owner.units);
@@ -24,7 +35,8 @@ class StandingOrders {
     retaliate(victim,attacker) {
         const g=victim?._standingOrder;
         if(!g||!this.groups.has(g)||victim._orderToken!==g.token
-            ||!attacker||attacker.health<=0||!this.visible(g,attacker))return;
+            ||!attacker||attacker.health<=0)return;
+        (g.revealed||(g.revealed=new Map())).set(attacker,attacker.type==='tower'?Infinity:this.time+StandingOrders.REVEAL_MS);
         // Incoming damage overrides movement intent, even scouting. Towers take
         // priority over mobile attackers; equal-priority threats queue so each
         // incoming hit does not pull the army onto a different target.
@@ -41,6 +53,11 @@ class StandingOrders {
             // retry scan sees a closer/in-range opportunity. Towers still win.
             if(focus.type!=='tower'&&g.blocked.get(u)?.has(focus)
                 &&!(focus===attacker&&WarMath.hypot(u.x-focus.x,u.z-focus.z)<=this.game.attackRangeAgainst(u,focus)))continue;
+            // A member far from the attacker is not pulled across the map to it -- not to
+            // a tower either: a group can be spread wide (fresh troops sent to join a
+            // fight), and one drawn 60 units toward a tower that had shot someone else
+            // lost sight of it on the way and walked back.
+            if(WarMath.hypot(u.x-focus.x,u.z-focus.z)>StandingOrders.CHASE_RADIUS)continue;
             if(!g.fighting){g.anchor=this.center(units);g.fighting=true;}
             if(u.attackTarget!==focus)g.chases.delete(u);
             g.blocked.get(u)?.delete(focus);
@@ -194,12 +211,14 @@ class StandingOrders {
         };
         for(const g of this.groups){
             const units=g.units,center=this.center(units);
-            if(g.threats)g.threats=g.threats.filter(e=>e.health>0&&see(g,e));
+            if(g.revealed)for(const [e,until]of g.revealed)if(until<=this.time||e.health<=0)g.revealed.delete(e);
+            const seen=e=>!!g.revealed?.has(e)||see(g,e);
+            if(g.threats)g.threats=g.threats.filter(e=>e.health>0&&seen(e));
             const focus=g.threats?.[0];
             // Visibility depends on the owner, not the attacker. Share its scan
             // across the formation instead of repeating it for every soldier.
             const visibility=new Map();
-            const visible=e=>{if(!visibility.has(e))visibility.set(e,see(g,e));return visibility.get(e);};
+            const visible=e=>{if(!visibility.has(e))visibility.set(e,seen(e));return visibility.get(e);};
             if(g.target&&see(g,g.target)&&g.target.health<=0){
                 // A moving objective may die between scans. Guard its final
                 // observed location rather than returning to the click location.
@@ -277,11 +296,12 @@ class StandingOrders {
                 if(wonderRun&&target&&target!==g.target&&!g.threats?.includes(target)){
                     u.attackTarget=null;u.isAttacking=false;this.game.clearRetaliation(u);g.chases.delete(u);target=null;
                 }
-                if(focus&&valid(focus)&&eligible(u,focus))target=focus;
+                if(focus&&valid(focus)&&eligible(u,focus)&&(target===focus
+                    ||WarMath.hypot(u.x-focus.x,u.z-focus.z)<=StandingOrders.CHASE_RADIUS))target=focus;
                 if(target){
                     const distance=WarMath.hypot(u.x-target.x,u.z-target.z);
                     let chase=g.chases.get(u);
-                    if(!chase||chase.target!==target){chase={target,sample:distance,sampledAt:this.time,at:this.time};g.chases.set(u,chase);}
+                    if(!chase||chase.target!==target){chase={target,sample:distance,sampledAt:this.time,at:this.time,from:{x:u.x,z:u.z}};g.chases.set(u,chase);}
                     const inRange=distance<=this.game.attackRangeAgainst(u,target)+.5;
                     // Measure recent progress, not the best distance ever reached:
                     // a short detour must not poison the rest of a productive chase.
@@ -290,20 +310,34 @@ class StandingOrders {
                         if(distance<chase.sample-.25)chase.at=this.time;
                         chase.sample=distance;chase.sampledAt=this.time;
                     }
-                    if(withinLeash(target,true))chase.outsideAt=null;
+                    // Answering an attacker, a soldier is leashed to where IT took up the
+                    // fight, not to the group's middle. The middle of a group spread across
+                    // the map (fresh troops sent to join) lay far from the fighting, so a
+                    // soldier 20 from the archer shooting it was told the archer had
+                    // escaped, walked back toward the group, was shot, turned, and was told
+                    // again -- 17 times in 150 s of a live Platform match (29 Sep 2026).
+                    // Still leashed: a retreating attacker cannot lure it across the map.
+                    const own=target===focus,fromDist=WarMath.hypot(target.x-chase.from.x,target.z-chase.from.z);
+                    if(own?fromDist<=StandingOrders.CHASE_RADIUS:withinLeash(target,true))chase.outsideAt=null;
                     else if(chase.outsideAt==null)chase.outsideAt=this.time;
                     const escaped=chase.outsideAt!=null&&this.time-chase.outsideAt>=StandingOrders.BOUNDARY_GRACE_MS;
-                    const tooFar=WarMath.hypot(target.x-anchor.x,target.z-anchor.z)>StandingOrders.CHASE_RADIUS*1.5;
+                    const tooFar=(own?fromDist:WarMath.hypot(target.x-anchor.x,target.z-anchor.z))>StandingOrders.CHASE_RADIUS*1.5;
                     const stalled=!inRange&&this.time-chase.at>=StandingOrders.STALL_MS;
                     const bounded=target===focus?target.type!=='tower':target!==g.target;
                     const defendingInRange=target===focus&&distance<=this.game.attackRangeAgainst(u,target);
                     if(!valid(target)||(bounded&&!defendingInRange&&(escaped||tooFar||stalled))){this.releaseTarget(g,u,target);target=null;}
                 }
                 if(!target){
+                    // Joining the group's fight reaches as far as a chase may run, not across
+                    // the map -- except for the order's own target, which every member is
+                    // marching to anyway. In a group spread wide, a member 300 away picked
+                    // the attacker, was at once too far from it to keep it, dropped it, and
+                    // picked it again. Beyond the reach it marches on and joins on arrival.
                     let best=engaging?Infinity:Math.max(36,(u.range||1)+24);
                     for(const e of candidates){
                         if(g.mode==='scout'&&e!==focus)continue;
                         const d=WarMath.hypot(e.x-u.x,e.z-u.z);
+                        if(engaging&&e!==g.target&&d>StandingOrders.CHASE_RADIUS*1.5)continue;
                         if(d<best&&eligible(u,e)){best=d;target=e;}
                     }
                 }

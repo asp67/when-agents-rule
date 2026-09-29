@@ -641,3 +641,48 @@ test('on a Wonder run the army still answers an attacker, then returns to the Wo
  w.target.health=0;w.house.x=w.u.x+3;w.house.z=w.u.z;w.h.step(150);
  assert.equal(w.u.attackTarget,w.house,'with the Wonder down, the ordinary assault resumes nearby');
 });
+
+// Retaliation on the Platform (29 Sep 2026, a live match replayed): towers reach 18 and a
+// soldier sees 15, and groups can be spread across the map. Four ways an army ignored or
+// yo-yoed with what was shooting it.
+test('a tower firing from beyond sight is answered, and stays the focus after it stops firing',()=>{
+ const h=setup(),a=h.unit(),b=h.unit('warrior',-2);h.owner.units.push(a,b);
+ h.g.aiManager.isVisibleTo=(_,x,z)=>h.owner.units.some(u=>u.health>0&&Math.hypot(u.x-x,u.z-z)<=15);   // WAR's foot sight
+ const target={id:'barracks',type:'town_center',owner:'b',x:0,z:4,health:5000,maxHealth:5000};
+ const tower={id:'tower',type:'tower',owner:'b',x:17,z:0,health:1000,range:18};h.g.getAllBuildings=()=>[target,tower];
+ h.issue('march',{x:0,z:4},{target});h.step();
+ assert.equal(h.g.aiManager.isVisibleTo(h.owner,tower.x,tower.z),false,'the tower is out of sight');
+ h.g.updateTowerAttack(1500);
+ assert.equal(a.attackTarget,tower,'the hit gives the tower away');
+ h.step(4500);   // longer than a moving attacker stays revealed, with no more volleys
+ assert.equal(a.attackTarget,tower,'a tower cannot move: still the focus');assert.equal(b.attackTarget,tower);
+});
+
+test('a moving attacker out of sight is revealed by its hits only for a few seconds',()=>{
+ const h=setup(),u=h.unit();h.owner.units.push(u);
+ h.g.aiManager.isVisibleTo=()=>false;
+ const shooter=h.rival(10);h.issue('march',{x:50,z:0});h.g.noteRetaliation(u,shooter);
+ assert.equal(u.attackTarget,shooter,'the shot gives it away');
+ h.step(3150);
+ assert.equal(u.attackTarget,null,'without more shots it is lost again in the fog');
+});
+
+test('in a group spread wide, a soldier answering its attacker is not recalled by the far middle',()=>{
+ const h=setup(),near=h.unit('warrior',0,0,1),far1=h.unit('warrior',-300,0),far2=h.unit('warrior',-300,3);h.owner.units.push(near,far1,far2);
+ h.g.aiManager.isVisibleTo=()=>true;
+ h.issue('march',{x:40,z:0});const archer=Object.assign(h.rival(18,0),{range:12,speed:0.01});
+ h.g.noteRetaliation(near,archer);
+ assert.equal(near.attackTarget,archer);
+ assert.equal(far1.attackTarget,null,'a member 300 away is not pulled across the map');
+ for(let i=0;i<40;i++){h.step(150,true);assert.equal(near.attackTarget,archer,'held at '+i*150+'ms');}
+ assert.ok(far1.attackTarget!==archer&&far2.attackTarget!==archer,'nor does the far wing join from 300 away');
+});
+
+test('a soldier answering a retreating attacker is still leashed to where it took up the fight',()=>{
+ const h=setup(),u=h.unit('warrior',0,0,1);h.owner.units.push(u);
+ h.g.aiManager.isVisibleTo=()=>true;
+ h.issue('march',{x:0,z:0});const raider=Object.assign(h.rival(10,0),{speed:0.01});h.g.noteRetaliation(u,raider);
+ assert.equal(u.attackTarget,raider);
+ raider.x=120;h.step(1200);   // it ran far beyond the chase radius from where the fight began
+ assert.equal(u.attackTarget,null,'not lured across the map');
+});

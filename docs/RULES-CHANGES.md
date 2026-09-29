@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1002: armies answer towers they cannot see, and stop yo-yoing (29 September 2026)
+
+**A rules change.** A live Platform match (Yamato attacking Egypt's town, 4x tempo, five iron-age towers) was replayed from its checkpoint with the army's orders as they stood. Two failures showed, with four causes.
+- **Towers out of sight:** a tower reaches 18 and a foot soldier sees 15. The standing order answered only attackers its seat could see, so a tower firing from 15 to 18 away was ignored: the army went on with its siege, or its march, under the arrows. A unit that did turn on its shooter dropped it again as out of sight, walked back to its slot, was shot, and turned again. **Now** an attacker that hits a member is seen by the group for 3 s after each hit. A tower stays seen until it falls, because it cannot move. Nothing else is seen through the fog.
+- **Groups spread wide:** a model often adds fresh troops from home to an army at the front, so one group can stretch 300 units. The chase leash was measured from the group's middle, which then lay far from the fighting. A soldier 20 from the archer shooting it was told the archer had escaped, and walked back. **Now** a soldier answering an attacker is leashed to the spot where it took up the fight: it still cannot be lured across the map, but a far-away middle no longer calls it back.
+- **Far members pulled across the map:** every member, however far, was sent at an attacker, and at a tower, only to be too far from it to keep it. **Now** only members within the chase radius (64) take it up.
+- **Joining a fight from anywhere:** once one member was engaging, every member could pick a target at any distance. **Now** that reaches 96 at most, except for the order's own named target, which every member is marching to anyway.
+- **Measured on the replayed live match (150 s at 4x):** tower damage went from 0 to 96. Seconds spent hit with no target went from 4 to 0. Soldiers taking up the same attacker again after dropping it went from 9 (with only the first fix) to 0. The only remaining releases are legitimate: an attacker more than 60 away, taken up again 54 to 69 s later once the march had brought it within reach.
+- **Golden trace:** `battle-40v40` (towers and priests) was re-recorded with this change. The other traces are unchanged.
+
 ## Build 1001: a plan sent first no longer moves the refusal marks (29 September 2026)
 
 **No rules change.** The harness numbers a turn's answers by game command ("Command 2/3: ..."), and a plan call is not one of them. The bubbles counted every call, the plan included, so when a model sent its plan first, which is common, each bubble read the answer of the command before it. The refusal cross (✗) and the explore's aim then went to the wrong command. Commands are now counted without the plan.
