@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1000: whole plans, a quill, clearer bubbles, calmer snow and sand (29 September 2026)
+
+**No rules change.** Everything here is display.
+- **Plans:** a plan call's bubble said only "Plan". The plan is now shown whole, the objective and every step, in a bubble on the edge of the view: the left edge first, then the right, beside any panel standing there. It stays three times as long as a turn's bubble with the same text, and outlives the seat's later turns. At most two are shown. A seat's new plan replaces its own, and a third seat's replaces the oldest, in its place.
+- **The quill:** research and plans are marked with a quill (🪶) instead of the microscope and the clipboard, in the decisions log, the bubbles, the analyzer, the research card and the leaderboard flyout. The analyzer's "Copy chapters" button keeps its clipboard.
+- **Bubbles on buildings and resources:** a bubble that stands on a building or a resource now stands its own height higher, so its bottom is where its top was, and the ring and what it marks stay visible. This covers training and research at their building, a site being built, a resource being gathered, and a building attacked or repaired by id. A bubble slid along a path or resting on an edge is not lifted.
+- **One card for calls out of view:** when two or more of a seat's calls point out of view, they become one card on the edge, one line per call in the turn's order. A call whose point is in view keeps its own bubble there.
+- **Broadcast cards:** each seat's top line ends with its population slots, the cap from houses and Town Centers (🏠). The tooltip gives slots used and the cap.
+- **Snow and sand:** since bloom, lit snow and sand came out of the tone curve at 0.97 and 0.96 in their brightest channel, past the top of the bloom's knee. That meant full bloom on near-white ground and washed-out detail. Dry ground is now a touch darker: ×0.89 on winter maps, ×0.91 on desert maps, bringing noon ground to about 0.88. Water, summer maps and everything else are unchanged. Measured on a zoomed frame around a Town Center, saturated pixels went from 4.3% to 0.75% on winter and from 2.8% to 0.9% on desert.
+
 ## Build 999: an order on a Wonder goes to the Wonder (29 September 2026)
 
 **A rules change.** An army sent at a Wonder with `attack_target` got lost on the way. The march is a standing order, and every 150 ms it gave each soldier the nearest visible enemy within 48 units, unit or building alike. The named target was just one candidate among them, so a villager or a house nearer than the Wonder won, and the army ground its way through everything on the route.

@@ -93,7 +93,7 @@
         #endif
         uniform sampler2D uTex, uShadowMap, uCoast, uGroundDetail;
         uniform sampler2D uClutterVisibility;
-        uniform float uClutterMapSize, uClutterFog, uPebbleGround, uGrayGravel;
+        uniform float uClutterMapSize, uClutterFog, uPebbleGround, uGrayGravel, uGroundGain;
         uniform mediump float uVegetation;
         varying mediump float vGrassTip, vPebble;
         uniform vec4 uGroundCover;
@@ -189,6 +189,10 @@
                 float dry=1.0-smoothstep(.45,.9,cover);
                 vec3 gravelColor=mix(base*.56,vec3(.45),uGrayGravel);
                 base=mix(base,gravelColor,gravel*dry*patch*(1.0-water)*uPebbleGround);
+                // Snow and sand in full sun left the tone curve near white and the bloom
+                // at full strength on top, washing out their detail: dry ground on those
+                // maps is a touch darker (gamerenderer sets the gain per theme).
+                base*=mix(uGroundGain,1.0,water);
             }
             float sun = max(dot(n,uSunDir),0.0);
             vec3 legacy = base*(uAmbient + uSunColor*sun);

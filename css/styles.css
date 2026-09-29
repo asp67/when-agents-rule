@@ -3169,3 +3169,14 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .tv { max-width: calc(100vw / var(--ui-scale) - 700px); max-height: calc(100vh / var(--ui-scale) - 180px); }
 .intent-bubble { transform-origin: 50% 100%; }
 .intent-bubbles .intent-bubble { transform: translate(-50%, calc(-100% - 18px)) scale(var(--ui-scale)); }
+/* A plan (b1000): on the edge of the view, pinned by its top-left corner (the overlay
+   places it), the whole plan -- objective and every step. */
+.intent-bubbles .intent-bubble.intent-plan { transform: scale(var(--ui-scale)); transform-origin: 0 0; max-width: 320px; }
+.intent-plan .intent-objective { display: block; margin-top: 3px; font-weight: 600; }
+.intent-plan .intent-steps { margin: 3px 0 0; padding-left: 1.4em; }
+.intent-plan .intent-steps li { margin: 1px 0; }
+/* A seat's calls that all point out of view: one card, one line per call. */
+.intent-bubble.merged .intent-line { display: block; margin-top: 3px; }
+.intent-bubble.merged .intent-line + .intent-line { padding-top: 3px; border-top: 1px solid rgba(105, 70, 28, 0.3); }
+.intent-bubble.merged .intent-line .intent-call { margin-left: 0; }
+.intent-bubble.merged .intent-line.summary .intent-reason { font-style: italic; }

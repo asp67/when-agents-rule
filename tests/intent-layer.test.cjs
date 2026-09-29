@@ -203,11 +203,15 @@ test('every ring has its own bubble with its own reason, or its command named; c
         const b = layer.bubbles[k];
         assert.deepEqual({ x: b.anchor.x, z: b.anchor.z }, { x: i.to.x, z: i.to.z }, 'on its own ring');
     }
-    // The two over the house do not cover each other.
+    // The two over the house do not cover each other. The attack names the house, so its
+    // bubble stands a bubble higher (b1000); the move only names a point, and fits below.
     const f = layer.frame((x, z) => ({ x, y: z }), 1500);
     const [a, b] = f.bubbles;
     assert.equal(a.x, b.x);
-    assert.ok(b.y <= a.y - a.h, 'the second stands above the first');
+    assert.equal(a.lift, true, 'the attack on the house is lifted');
+    assert.equal(b.lift, false, 'a move to a point is not');
+    assert.equal(a.y, house.z - a.h, 'its bottom where its top would have been');
+    assert.ok(b.y <= a.y - a.h || a.y <= b.y - b.h, 'the two do not overlap');
     assert.equal(f.bubbles[2].y, layer.tileCentre('A1').z, 'a lone bubble stays on its point');
     // A turn that only says something shows it once, over its base.
     c.turnLog.push(turn([['train_unit', { unitType: 'worker', reason: 'Boom first.' }]]));
@@ -321,4 +325,86 @@ test('a placeless command appears at the building that carries it out, with no r
     assert.deepEqual({ x: at('train_unit').x, z: at('train_unit').z }, { x: bx.x, z: bx.z }, 'militia at the barracks');
     assert.deepEqual({ x: at('wait').x, z: at('wait').z }, { x: tc.x, z: tc.z }, 'the rest at the Town Center');
     assert.equal(layer.worldMarks(1000).length, 0, 'none of them draws a ring');
+});
+
+// Plans (29 Sep 2026): the plan call's bubble said only "plan". It is shown whole, on an
+// edge of the view, three times as long as a turn's bubbles; two at most, a seat's new plan
+// replacing its own, a third seat's replacing the oldest in its place.
+test('a plan is shown whole on an edge, lasts three times as long, and two at most', async () => {
+    const { m, layer, turn } = await setup();
+    const [a, b] = m.seats, c3 = { id: 'third', seat: 2, units: [], buildings: [] };
+    const long = 'Hold the ford at C4 with spears and archers until the second barracks is up, then push east along the river and burn every house on the way';
+    const IL = vm.runInContext('IntentLayer', m.context);
+    layer.add(a, turn([['plan', { objective: 'Win by Wonder', plan: ['Boom to 30 workers', long, 'Wall the pass'] }], ['train_unit', { unitType: 'worker', reason: 'more hands' }]]), 1000);
+    assert.deepEqual(Array.from(layer.bubbles, x => x.text), ['more hands'], 'the plan is not a map bubble');
+    assert.equal(layer.plans.length, 1);
+    const p = layer.plans[0];
+    assert.equal(p.objective, 'Win by Wonder');
+    assert.deepEqual(Array.from(p.steps), ['Boom to 30 workers', long, 'Wall the pass'], 'every step, none cut short');
+    assert.equal(p.life, 3 * IL.lifeFor(['Win by Wonder', 'Boom to 30 workers', long, 'Wall the pass'].join(' ')));
+    assert.equal(p.slot, 0);
+    // The seat's next turn replaces its bubbles, not its plan.
+    layer.add(a, turn([['wait', { reason: 'Saving up.' }]]), 12000);
+    assert.equal(layer.plans.length, 1, 'the plan outlives the next turn');
+    assert.equal(layer.frame((x, z) => ({ x, y: z }), 12000 + 20000).plans.length, 1, 'still up at 3x a turn bubble');
+    layer.add(b, turn([['plan', { objective: 'Rush', plan: ['Kill their workers'] }]]), 13000);
+    assert.deepEqual(Array.from(layer.plans, q => [q.seat, q.slot]), [[a.id, 0], [b.id, 1]]);
+    layer.add(a, turn([['plan', { plan: ['Tower the Wonder'] }]]), 14000);
+    assert.deepEqual(Array.from(layer.plans, q => [q.seat, q.slot, q.steps.join()]), [[b.id, 1, 'Kill their workers'], [a.id, 0, 'Tower the Wonder']], 'a seat replaces its own plan, in its place');
+    layer.add(c3, turn([['plan', { objective: 'Turtle' }]]), 15000);
+    assert.deepEqual(Array.from(layer.plans, q => [q.seat, q.slot]), [[a.id, 0], ['third', 1]], 'a third replaces the oldest, in its place');
+    layer.add(b, turn([['plan', {}]]), 16000);
+    assert.equal(layer.plans.length, 2, 'an empty plan call shows nothing');
+    const f = layer.frame((x, z) => ({ x, y: z }), 16000);
+    assert.deepEqual(Array.from(f.plans, q => q.slot), [0, 1]);
+    assert.equal(layer.frame((x, z) => ({ x, y: z }), 1e9).plans.length, 0, 'and they end');
+});
+
+test('a bubble on a building or a resource stands a bubble higher; one on open ground does not', async () => {
+    const { m, layer, turn } = await setup();
+    const ai = m.seats[0];
+    layer.add(ai, turn([
+        ['train_unit', { unitType: 'worker', reason: 'more hands' }],
+        ['build_structure', { buildingType: 'house', targetX: -140, targetZ: 60, reason: 'Room to grow' }],
+        ['assign_workers', { resourceType: 'wood', targetX: -150, targetZ: -80, count: 3, reason: 'Wood for the wall' }],
+        ['explore', { tile: 'A1', reason: 'Look north.' }],
+    ]), 1000);
+    const f = layer.frame((x, z) => ({ x, y: z }), 1500);
+    const by = t => f.bubbles.find(b => b.text === t);
+    for (const t of ['more hands', 'Room to grow', 'Wood for the wall']) {
+        const b = by(t);
+        assert.equal(b.lift, true, t);
+        assert.equal(b.y, b.ay - b.h, t + ': its bottom where its top was');
+    }
+    assert.equal(by('Look north.').lift, false);
+    assert.equal(by('Look north.').y, by('Look north.').ay);
+    // With a view: lifted only while standing on its own point.
+    const away = layer.frame((x, z) => ({ x: x + 5000, y: z }), 1500, { focus: { x: 0, z: 0 }, w: 800, h: 600 });
+    assert.ok(away.bubbles.every(b => !b.lift), 'resting on an edge, it covers nothing');
+});
+
+test('a seat\'s calls that all point out of view are one card; one in view keeps its own', async () => {
+    const { m, layer, turn } = await setup();
+    const ai = m.seats[0], house = m.tags.house;
+    layer.add(ai, turn([
+        ['attack_target', { targetId: house.id, unitIds: [m.tags.w1.handle], reason: 'Burn their house.' }],
+        ['train_unit', { unitType: 'worker' }],
+        ['explore', { tile: 'A1', reason: 'Look north.' }],
+    ]), 1000);
+    const view = { focus: { x: 0, z: 0 }, w: 800, h: 600 };
+    // Everything far off to the right: one card, the calls in the turn's order.
+    const off = layer.frame((x, z) => ({ x: x + 5000, y: z + 300 }), 1500, view);
+    assert.equal(off.bubbles.length, 1, 'one card');
+    const card = off.bubbles[0];
+    assert.deepEqual(Array.from(card.lines, l => [l.action, l.text]),
+        [['attack_target', 'Burn their house.'], ['explore', 'Look north.'], ['train_unit', 'train unit']]);
+    assert.equal(card.lines[2].summary, true, 'a call without a reason stays named by its call');
+    // The explore's tile in view: it keeps its own bubble; the two away still merge.
+    const a1 = layer.tileCentre('A1');
+    const mixed = layer.frame((x, z) => (x === a1.x && z === a1.z ? { x: 400, y: 300 } : { x: x + 5000, y: z + 300 }), 1500, view);
+    assert.equal(mixed.bubbles.length, 2);
+    assert.equal(mixed.bubbles.find(b => !b.lines).text, 'Look north.');
+    assert.equal(mixed.bubbles.find(b => b.lines).lines.length, 2);
+    // Without a view nothing is merged.
+    assert.equal(layer.frame((x, z) => ({ x: x + 5000, y: z }), 1500).bubbles.length, 3);
 });

@@ -17,12 +17,17 @@
 // reason is shown verbatim up to 160 characters -- the median reason is about 100, so a
 // shorter cap would edit the model's words. Every ring has its own bubble: the reason
 // that command gave, or the command's name when it gave none.
+//
+// A plan is not a command and points nowhere: it is shown whole -- objective and every
+// step -- in a bubble on the edge of the view, three times as long as a turn's bubbles,
+// two at most (29 Sep 2026).
 // ---------------------------------------------------------------------------
 class IntentLayer {
     constructor(game) {
         this.game = game;
         this.intents = [];              // { seat, color, from, to, marker, born, id }
         this.bubbles = [];              // { seat, text, anchor, born, life, ... }, one per ring
+        this.plans = [];                // { seat, objective, steps, born, life, slot, ... }, two at most
         this.seen = new WeakSet();      // turn log entries already drawn
         this._started = false;
     }
@@ -38,6 +43,14 @@ class IntentLayer {
         const age = now - born;
         if (age < 0 || age >= life) return 0;
         return age < life - IntentLayer.FADE_MS ? 1 : (life - age) / IntentLayer.FADE_MS;
+    }
+    // A plan stays three times as long as a turn's bubbles would for the same text, and
+    // outlives its seat's later turns: it is what the seat is working to, not one move.
+    static get PLAN_LIFE_FACTOR() { return 3; }
+    static get PLAN_MAX() { return 2; }
+    static planSteps(p) {
+        const raw = Array.isArray(p.plan) ? p.plan : (typeof p.plan === 'string' ? [p.plan] : []);
+        return raw.map(x => String(x == null ? '' : x).replace(/\s+/g, ' ').trim()).filter(Boolean);
     }
     static get REASON_MAX() { return 160; }
     static get BUBBLE_W() { return 260; }   // screen px: a bubble's widest (its CSS max-width)
@@ -196,6 +209,7 @@ class IntentLayer {
         for (const i of this.intents) this.aimExplore(i);
         this.intents = this.intents.filter(i => now - i.born < i.life);
         this.bubbles = this.bubbles.filter(b => now - b.born < b.life);
+        this.plans = this.plans.filter(q => now - q.born < q.life);
         return fresh.length;
     }
 
@@ -215,10 +229,17 @@ class IntentLayer {
         const tb = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
         const band = (tb && tb.fill) || color;
         const marks = [], quiet = [];
+        let plan = null;
         (turn.toolCalls || []).forEach((call, index) => {
             let p = {};
             try { p = JSON.parse(call.args || '{}') || {}; } catch (e) { return; }
             if (!call.name) return;
+            if (call.name === 'plan') {
+                const objective = String(p.objective == null ? '' : p.objective).replace(/\s+/g, ' ').trim();
+                const steps = IntentLayer.planSteps(p);
+                if (objective || steps.length) plan = { objective, steps };
+                return;
+            }
             const reason = IntentLayer.reasonText(p.reason);
             const name = String(call.name).replace(/_/g, ' ') + (p.tile ? ' ' + p.tile : '');
             const to = this.target(p);
@@ -228,19 +249,44 @@ class IntentLayer {
                 return;
             }
             const from = this.origin(ai, call.name, p);
-            marks.push({ from, to, marker: !from, action: call.name, params: p, turn, index, text: reason || name, summary: !reason });
+            marks.push({ from, to, marker: !from, action: call.name, params: p, turn, index, text: reason || name, summary: !reason, tall: this.onStructure(call.name, p) });
         });
+        if (plan) this.addPlan(ai, plan, born, color, band);
         if (!marks.length && !quiet.length) return;   // nothing to show
         const life = IntentLayer.lifeFor(marks.concat(quiet).reduce((t, m) => m.text.length > t.length ? m.text : t, ''));
         this.intents = this.intents.filter(i => i.seat !== ai.id);
         this.bubbles = this.bubbles.filter(b => b.seat !== ai.id);
         for (const m of marks) {
             this.intents.push(Object.assign({ seat: ai.id, color, born, life }, m));
-            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, from: m.from, born, life, color, band, turn, index: m.index, summary: m.summary, action: m.action, params: m.params });
+            this.bubbles.push({ seat: ai.id, text: m.text, anchor: m.to, from: m.from, born, life, color, band, turn, index: m.index, summary: m.summary, action: m.action, params: m.params, tall: m.tall });
         }
         for (const q of quiet) {
-            this.bubbles.push({ seat: ai.id, text: q.text, anchor: q.anchor, born, life, color, band, turn, index: q.index, summary: q.summary, action: q.action, params: q.params });
+            this.bubbles.push({ seat: ai.id, text: q.text, anchor: q.anchor, born, life, color, band, turn, index: q.index, summary: q.summary, action: q.action, params: q.params, tall: !!q.anchor.building });
         }
+    }
+
+    // A seat's new plan replaces its own last one; otherwise a third plan replaces the
+    // oldest on screen, taking its place on the edge so the other stays where it is.
+    addPlan(ai, plan, born, color, band) {
+        this.plans = this.plans.filter(q => born - q.born < q.life);
+        const text = [plan.objective].concat(plan.steps).join(' ');
+        const entry = { seat: ai.id, objective: plan.objective, steps: plan.steps, born, color, band,
+            life: IntentLayer.PLAN_LIFE_FACTOR * IntentLayer.lifeFor(text) };
+        let old = this.plans.find(q => q.seat === ai.id);
+        if (!old && this.plans.length >= IntentLayer.PLAN_MAX) old = this.plans.reduce((a, q) => (q.born < a.born ? q : a));
+        if (old) { entry.slot = old.slot; this.plans.splice(this.plans.indexOf(old), 1); }
+        else entry.slot = [0, 1].find(k => !this.plans.some(q => q.slot === k));
+        this.plans.push(entry);
+    }
+
+    // Does a command's ring lie on a building or a resource? Its bubble then stands a
+    // bubble higher, clear of the ring and of what it marks: a site being built, a
+    // resource being gathered, a building attacked or repaired by id.
+    onStructure(name, p) {
+        if (name === 'build_structure' || name === 'assign_workers') return true;
+        if (p.targetId == null || p.targetId === '') return false;
+        const e = this.entity(p.targetId), g = this.game;
+        return !!(e && (g.getAllBuildings ? g.getAllBuildings() : []).includes(e));
     }
 
     // Where a command that points at no place is shown: the building that carries it out
@@ -264,7 +310,7 @@ class IntentLayer {
             if (tech && tech.researchAt) at = alive.find(b => b.type === tech.researchAt) || null;
         }
         const b = at || alive.find(x => x.type === 'town_center');
-        return b ? { x: b.x, z: b.z } : this.centroid((ai.units || []).filter(u => u.health > 0));
+        return b ? { x: b.x, z: b.z, building: true } : this.centroid((ai.units || []).filter(u => u.health > 0));
     }
 
     // The marks as they sit in the world, for the renderer to lay on the ground: a ring
@@ -299,7 +345,16 @@ class IntentLayer {
     }
 
     // Screen geometry for this frame: the bubbles as positioned boxes (and, for tests and
-    // any screen-space use, the marks). `project(x, z)` returns {x, y} or null.
+    // any screen-space use, the marks), and the plans on the edges. `project(x, z)`
+    // returns {x, y} or null.
+    //
+    // A seat's bubbles whose points are all out of view would each rest on the edge and
+    // crowd it; with a `view` they become one card, the calls listed in the turn's order,
+    // standing where the first of them would. A bubble whose point is in view keeps its
+    // own place: that is where its command goes.
+    //
+    // A bubble on a building or a resource (`lift`) stands its own height higher, so its
+    // bottom is where its top would have been, clear of the ring and of the thing ringed.
     frame(project, now = Date.now(), view = null) {
         const shapes = [], bubbles = [];
         for (const i of this.intents) {
@@ -313,22 +368,41 @@ class IntentLayer {
             const refused = IntentLayer.rejected(i.turn, i.index) === true;
             shapes.push({ color: refused ? '#9aa4b1' : i.color, opacity, from, to, marker: i.marker, refused });
         }
+        const inView = pt => !!(view && pt && pt.x >= 0 && pt.x <= view.w && pt.y >= 0 && pt.y <= view.h);
+        // Its size estimated from its text (a name line, then the reason wrapped at about
+        // 40 characters) at the widest a bubble gets. The page re-stacks with the sizes it
+        // actually drew (ui.drawIntentOverlay); this is the estimate for anything that has
+        // no page.
+        const lines = text => 1 + Math.ceil(String(text).length / 40);
+        const out = [];
         for (const b of this.bubbles) {
             const opacity = IntentLayer.alpha(now, b.born, b.life);
             if (!(opacity > 0)) continue;
             const at = IntentLayer.anchorFor(b, project, view);
             if (!at) continue;
-            // Its size estimated from its text (a name line, then the reason wrapped at
-            // about 40 characters) at the widest a bubble gets. The page re-stacks with the
-            // sizes it actually drew (ui.drawIntentOverlay); this is the estimate for
-            // anything that has no page.
-            const h = 16 + 15 * (1 + Math.ceil(b.text.length / 40));
-            bubbles.push({ seat: b.seat, text: b.text, color: b.color, band: b.band || b.color, x: at.x, y: at.y, ay: at.y, w: IntentLayer.BUBBLE_W, h, opacity, summary: !!b.summary,
-                action: b.action || null, params: b.params || null,
+            const h = 16 + 15 * lines(b.text);
+            // Lifted only while it stands on its own point: slid along a path or resting
+            // on an edge, it covers nothing.
+            const onPoint = !view || inView(project(b.anchor.x, b.anchor.z));
+            out.push({ seat: b.seat, text: b.text, color: b.color, band: b.band || b.color, x: at.x, y: at.y, ay: at.y, w: IntentLayer.BUBBLE_W, h, opacity, summary: !!b.summary,
+                action: b.action || null, params: b.params || null, lift: !!b.tall && onPoint, away: !!view && !inView(at),
                 refused: IntentLayer.rejected(b.turn, b.index) === true });
         }
-        IntentLayer.stack(bubbles.map(b => ({ x: b.x, y: b.ay, w: b.w, h: b.h }))).forEach((y, k) => { bubbles[k].y = y; });
-        return { shapes, bubbles };
+        const merged = new Set();
+        for (const b of out) {
+            if (merged.has(b)) continue;
+            const away = b.away ? out.filter(o => o.away && o.seat === b.seat) : [b];
+            if (away.length < 2) { bubbles.push(b); continue; }
+            away.forEach(o => merged.add(o));
+            bubbles.push({ seat: b.seat, text: away.map(o => o.text).join(' '), color: b.color, band: b.band, x: b.x, y: b.y, ay: b.ay,
+                w: IntentLayer.BUBBLE_W, h: 16 + 15 * away.reduce((n, o) => n + lines(o.text), 0), opacity: Math.max(...away.map(o => o.opacity)),
+                summary: false, action: null, params: null, lift: false, away: true, refused: false,
+                lines: away.map(o => ({ text: o.text, summary: o.summary, action: o.action, params: o.params, refused: o.refused })) });
+        }
+        IntentLayer.stack(bubbles.map(b => ({ x: b.x, y: b.ay - (b.lift ? b.h : 0), w: b.w, h: b.h }))).forEach((y, k) => { bubbles[k].y = y; });
+        const plans = this.plans.map(q => ({ seat: q.seat, objective: q.objective, steps: q.steps, color: q.color, band: q.band || q.color,
+            slot: q.slot, opacity: IntentLayer.alpha(now, q.born, q.life) })).filter(q => q.opacity > 0).sort((a, b) => a.slot - b.slot);
+        return { shapes, bubbles, plans };
     }
 }
 

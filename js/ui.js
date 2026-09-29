@@ -2546,12 +2546,17 @@ class UIManager {
         // A point behind the camera still has a direction to pin its bubble to.
         const f = layer.frame((x, z) => r.worldToScreen(x, 0, z) || (r.offscreenDirection ? r.offscreenDirection(x, 0, z) : null), Date.now(),
             { focus: r.cameraTarget, w: r.canvas.clientWidth, h: r.canvas.clientHeight });
-        box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
-            + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat) + this.intentCallHtml(b)
-            + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '')
-            // A command given without a reason is named by its call alone; the old line
-            // repeated it ("Units moved (→ 120, -40)") under the chip.
-            + (b.summary && this.intentCallHtml(b) ? '' : ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span>') + '</div>').join('');
+        // A seat's calls whose points are all out of view come as one card (b.lines), each
+        // call on its own line; the plans follow the bubbles, on the edges of the view.
+        box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + (b.lines ? ' merged' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
+            + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat)
+            + (b.lines ? b.lines.map(l => '<span class="intent-line' + (l.summary ? ' summary' : '') + '">' + this.intentBodyHtml(Object.assign({ seat: b.seat }, l)) + '</span>').join('') : this.intentBodyHtml(b))
+            + '</div>').join('')
+            + (f.plans || []).map(q => '<div class="intent-bubble intent-plan" data-slot="' + q.slot + '" style="opacity:' + q.opacity.toFixed(2) + ';--seat:' + q.band + '">'
+                + this.chronicleSeatHtml(q.seat) + ' <span class="intent-call">' + this.escapeHtml(t('log.plan')) + '</span>'
+                + (q.objective ? '<span class="intent-objective">\u{1F3AF} ' + this.escapeHtml(q.objective) + '</span>' : '')
+                + (q.steps.length ? '<ol class="intent-steps">' + q.steps.map(x => '<li>' + this.escapeHtml(x) + '</li>').join('') + '</ol>' : '')
+                + '</div>').join('');
         // Laid out again with the sizes the bubbles were actually drawn at. Every bubble is
         // kept inside the view: one whose point is off screen rests on the edge in the
         // direction it lies, so a seat acting out of shot is still heard from. A bubble
@@ -2577,24 +2582,45 @@ class UIManager {
         // For the auto camera: a bubble whose own point is in view is being read, and the
         // director holds its shot for it (Director.readingHold).
         if (f.bubbles.some(b => b.x >= 0 && b.x <= vw && b.ay >= 0 && b.ay <= vh)) this._intentInViewAt = Date.now();
-        if (els.length) {
+        // The panels over the map -- the decisions on the left, the leaderboard and the
+        // minimap on the right, the transcript and the unit card -- are not free ground: a
+        // bubble under one was unreadable. One that would meet a panel is moved out beside
+        // it, toward the middle of the view; before stacking, and again after, since
+        // stacking can raise a bubble into one.
+        const ov = box.getBoundingClientRect();
+        const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo']
+            .map(id => document.getElementById(id))
+            .filter(el => el && el.offsetParent !== null && el.offsetWidth > 0)
+            .map(el => { const q = el.getBoundingClientRect();
+                return { left: q.left - ov.left, right: q.right - ov.left, top: q.top - ov.top, bottom: q.bottom - ov.top }; });
+        // The plans: slot 0 on the left edge, slot 1 on the right, under the top bar -- or
+        // beside a panel standing there. Placed first, and then free ground no more: the
+        // turn's bubbles keep off them as they keep off the panels.
+        // In a narrow view the panels can push both into the same gap: the second then
+        // goes below the first.
+        const plansPlaced = [], fixed = panels.slice();
+        for (const el of box.querySelectorAll('.intent-plan')) {
+            const right = el.dataset.slot === '1';
+            el.style.top = TOP + 'px';
+            el.style.left = pad + 'px';
+            const q = el.getBoundingClientRect(), w = q.width, h = q.height;
+            let x = right ? vw - pad - w : pad, y = TOP;
+            for (const p of fixed) if (y < p.bottom && y + h > p.top && x < p.right && x + w > p.left) x = right ? p.left - pad - w : p.right + pad;
+            for (const p of plansPlaced) if (x < p.right && x + w > p.left && y < p.bottom && y + h > p.top) y = p.bottom + pad;
+            el.style.left = Math.round(x) + 'px';
+            el.style.top = Math.round(y) + 'px';
+            const rect = { left: x, right: x + w, top: y, bottom: y + h };
+            plansPlaced.push(rect); panels.push(rect);
+        }
+        if (f.bubbles.length) {
             const boxes = f.bubbles.map((b, k) => {
                 const w = els[k].offsetWidth, h = els[k].offsetHeight;
                 const x = vw > w + 2 * pad ? Math.max(pad + w / 2, Math.min(vw - pad - w / 2, b.x)) : b.x;
-                const y = vh > h + TOP + pad + LIFT ? Math.max(TOP + LIFT + h, Math.min(vh - pad + LIFT, b.ay)) : b.ay;
+                // On a building or a resource the bubble's bottom goes where its top was.
+                const ay = b.ay - (b.lift ? h : 0);
+                const y = vh > h + TOP + pad + LIFT ? Math.max(TOP + LIFT + h, Math.min(vh - pad + LIFT, ay)) : ay;
                 return { x, y, w, h };
             });
-            // The panels over the map -- the decisions on the left, the leaderboard and the
-            // minimap on the right, the transcript and the unit card -- are not free
-            // ground: a bubble under one was unreadable. One that would meet a panel is
-            // moved out beside it, toward the middle of the view; before stacking, and
-            // again after, since stacking can raise a bubble into one.
-            const ov = box.getBoundingClientRect();
-            const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo']
-                .map(id => document.getElementById(id))
-                .filter(el => el && el.offsetParent !== null && el.offsetWidth > 0)
-                .map(el => { const q = el.getBoundingClientRect();
-                    return { left: q.left - ov.left, right: q.right - ov.left, top: q.top - ov.top, bottom: q.bottom - ov.top }; });
             const avoid = (bx, y) => {
                 const top = y - LIFT - bx.h, bottom = y - LIFT;
                 for (let pass = 0; pass < 2; pass++) for (const q of panels) {
@@ -2657,6 +2683,14 @@ class UIManager {
     // The call a bubble stands for, after the model's name: the decision log's own icon for
     // the action, then just what was called -- the unit, the building, the research, the
     // age, the resource, the tile or the target. Empty for a bubble with no call.
+    // What one call's bubble says after the model's name: the call, a cross if refused,
+    // and the reason. A command given without a reason is named by its call alone; the
+    // old line repeated it ("Units moved (→ 120, -40)") under the chip.
+    intentBodyHtml(b) {
+        return this.intentCallHtml(b)
+            + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '')
+            + (b.summary && this.intentCallHtml(b) ? '' : ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span>');
+    }
     intentCallHtml(b) {
         if (!b || !b.action) return '';
         const label = this.logActionNames()[b.action];
@@ -3062,7 +3096,7 @@ class UIManager {
                 const percentage = Math.min(100, Math.floor((currentResearch.progress / currentResearch.duration) * 100));
                 html += `
                     <div class="menu-item" style="background: rgba(78, 204, 163, 0.2); border: 2px solid #4ecca3;">
-                        <h4>🔬 ${tech ? tg(tech.name) : t('ui.researching')} (${this.getAgeName(tech?.requiredAge || '')})</h4>
+                        <h4>🪶 ${tech ? tg(tech.name) : t('ui.researching')} (${this.getAgeName(tech?.requiredAge || '')})</h4>
                         <p>${tech ? tg(tech.description) : ''}</p>
                         <div class="progress-bar" style="width: 100%; height: 20px; background: #1a1a2e; border: 2px solid #0f3460; border-radius: 10px; overflow: hidden; margin-top: 10px;">
                             <div class="progress-fill" style="height: 100%; width: ${percentage}%; background: linear-gradient(90deg, #4ecca3, #0f3460); border-radius: 8px;"></div>
@@ -3949,6 +3983,8 @@ class UIManager {
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbArmy')) + '">\u2694\uFE0F ' + mil + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbWorkers')) + '">\u{1F477} ' + wk + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbBuildings')) + '">\u{1F3DB}\uFE0F ' + ai.buildings.filter(b => b.health > 0).length + '</span>'
+                // Population slots: the cap the houses and Town Centers provide.
+                + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbHousing', { used: Math.floor(r.population || 0), max: Math.floor(r.maxPopulation || 0) })) + '">\u{1F3E0} ' + Math.floor(r.maxPopulation || 0) + '</span>'
                 + (advised ? ' <span class="bb-advised" title="' + this.escapeHtml(t('sum.coachedTip')) + '">' + this.escapeHtml(t('spec.bbAdvised', { n: advised })) + '</span>' : '')
                 + '</span>' + sub + '</span>';
         }).join('');
@@ -4747,7 +4783,7 @@ class UIManager {
             <div class="lb-fly-head" style="--civ:${this.legibleColor(colorHex)}">
                 <b>${esc(model)}</b><span>${esc(civName)} · ${ageNames[ai.age] || ai.age}</span>
             </div>
-            <div class="lb-fly-sec"><div class="lb-fly-h">🔬 ${t('spec.flyResearch')}</div>
+            <div class="lb-fly-sec"><div class="lb-fly-h">🪶 ${t('spec.flyResearch')}</div>
                 <div class="lb-fly-body">${researchChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
             <div class="lb-fly-sec"><div class="lb-fly-h">👥 ${t('spec.flyUnits', { n: ai.units.length })}</div>
                 <div class="lb-fly-body">${unitChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
@@ -7122,7 +7158,7 @@ class UIManager {
                 + '<span class="an-act">' + esc(label) + '</span>'
                 + (more ? '<span class="an-more" title="' + esc(t('an.plusMore', { n: more })) + '">+' + more + '</span>' : '')
                 + (fight ? '<span class="an-flag">⚔️</span>' : '')
-                + (r._planNew ? '<span class="an-flag">📋</span>' : '')
+                + (r._planNew ? '<span class="an-flag">🪶</span>' : '')
                 + (bad ? '<span class="an-flag">✕</span>' : '') + '</div>';
         }).join('');
         document.getElementById('anList').innerHTML = rows

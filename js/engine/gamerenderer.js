@@ -2310,6 +2310,10 @@
             gl.uniform1i(this.prog.uniforms.uGroundDetail,3);
             gl.uniform1f(this.prog.uniforms.uPebbleGround,this.graphicsQuality === 'cinematic' && this._theme !== 'winter' ? 1 : 0);
             gl.uniform1f(this.prog.uniforms.uGrayGravel,this._theme === 'desert' ? 0 : 1);
+            // Lit snow and sand came out of the tone curve at 0.97 and 0.96 in their
+            // brightest channel -- past the top of the bloom's knee (0.78-0.96), so full
+            // bloom on near-white ground. These gains bring noon ground to about 0.88.
+            gl.uniform1f(this.prog.uniforms.uGroundGain,this._theme === 'winter' ? 0.89 : (this._theme === 'desert' ? 0.91 : 1));
             gl.uniform4fv(this.prog.uniforms.uGroundCover,this._groundCover || [0,0,0,0]);
             gl.activeTexture(gl.TEXTURE0);
 
