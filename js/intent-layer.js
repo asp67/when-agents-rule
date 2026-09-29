@@ -229,11 +229,15 @@ class IntentLayer {
         const tb = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
         const band = (tb && tb.fill) || color;
         const marks = [], quiet = [];
-        let plan = null;
-        (turn.toolCalls || []).forEach((call, index) => {
+        let plan = null, commands = 0;
+        (turn.toolCalls || []).forEach(call => {
+            if (!call || !call.name) return;
+            // The harness answers the game commands only ("Command k/n" leaves the plan
+            // out), so a command's index counts commands, not calls. Counting calls put
+            // every refusal one command late whenever the plan came first.
+            const index = call.name === 'plan' ? -1 : commands++;
             let p = {};
             try { p = JSON.parse(call.args || '{}') || {}; } catch (e) { return; }
-            if (!call.name) return;
             if (call.name === 'plan') {
                 const objective = String(p.objective == null ? '' : p.objective).replace(/\s+/g, ' ').trim();
                 const steps = IntentLayer.planSteps(p);

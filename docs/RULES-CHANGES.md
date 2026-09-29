@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1001: a plan sent first no longer moves the refusal marks (29 September 2026)
+
+**No rules change.** The harness numbers a turn's answers by game command ("Command 2/3: ..."), and a plan call is not one of them. The bubbles counted every call, the plan included, so when a model sent its plan first, which is common, each bubble read the answer of the command before it. The refusal cross (✗) and the explore's aim then went to the wrong command. Commands are now counted without the plan.
+
 ## Build 1000: whole plans, a quill, clearer bubbles, calmer snow and sand (29 September 2026)
 
 **No rules change.** Everything here is display.

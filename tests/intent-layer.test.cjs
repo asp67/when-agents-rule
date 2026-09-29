@@ -408,3 +408,20 @@ test('a seat\'s calls that all point out of view are one card; one in view keeps
     // Without a view nothing is merged.
     assert.equal(layer.frame((x, z) => ({ x: x + 5000, y: z }), 1500).bubbles.length, 3);
 });
+
+// The harness numbers the game commands only; a plan call sent first must not push every
+// refusal mark one command late (found 29 Sep 2026 while showing plans).
+test('a plan sent first does not shift which command is marked refused', async () => {
+    const { m, layer, turn } = await setup();
+    const ai = m.seats[0], house = m.tags.house;
+    const t = turn([
+        ['plan', { objective: 'Raid', plan: ['Burn the house'] }],
+        ['attack_target', { targetId: house.id, unitIds: [m.tags.w1.handle], reason: 'Burn their house.' }],
+        ['explore', { tile: 'A1', reason: 'Look north.' }],
+    ]);
+    t.outcome = 'Command 1/2: [ERROR] Out of reach.\nCommand 2/2: OK - Sent your warrior #2 to explore A1.';
+    layer.add(ai, t, 1000);
+    const f = layer.frame((x, z) => ({ x, y: z }), 1500);
+    assert.equal(f.bubbles.find(b => b.text === 'Burn their house.').refused, true, 'the attack was the refused one');
+    assert.equal(f.bubbles.find(b => b.text === 'Look north.').refused, false);
+});
