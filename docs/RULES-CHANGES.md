@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1012: the broadcast button in the bar gets its label (1 October 2026)
+
+**No rules change.** In analyze mode the bar's button back to broadcast mode was an icon alone. The other buttons show an icon over a label, so it stood half their height. It now reads "📺 Broadcast" (Sendung, Emisión, 直播) at their height.
+
 ## Build 1011: broadcast mode by default, and quieter effects and ambience (1 October 2026)
 
 **No rules change.**
