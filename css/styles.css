@@ -3081,6 +3081,8 @@ body.broadcast-mode .lb-flyout { display: none !important; }
     display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px;
     color: #eef3f8; font-size: 0.9em;
 }
+/* The rebuilt part of the board (b1013); it lays out as if its cards sat on the board. */
+.broadcast-board .bb-cards { display: contents; }
 .broadcast-board .bb-clock { padding: 6px 12px; border-radius: 6px; background: rgba(10, 14, 30, 0.88); font-variant-numeric: tabular-nums; font-weight: 700; }
 .broadcast-board .bb-seat { padding: 6px 12px; border-radius: 6px; background: rgba(10, 14, 30, 0.88); border: 1px solid rgba(255, 255, 255, 0.12); white-space: nowrap; }
 .broadcast-board .bb-seat.out { opacity: 0.45; text-decoration: line-through; }

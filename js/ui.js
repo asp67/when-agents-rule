@@ -3983,7 +3983,19 @@ class UIManager {
         const ctrls = (g.openAIAIManager && g.openAIAIManager.aiControllers) || [];
         const ranks = this.seatRanks();
         const clock = document.getElementById('arenaClock');
-        board.innerHTML = '<span class="bb-clock">' + this.escapeHtml(clock ? clock.textContent : '') + '</span>' + ais.map(ai => {
+        // Only the seat cards are rebuilt each tick (b1013). The board used to be rebuilt
+        // whole, which detached the speed control and the buttons beside the cards every
+        // second: the hover dropped and an open speed menu closed under the pointer. The
+        // clock is a text update; the speed control and the buttons stay attached.
+        let clockEl = board.querySelector(':scope > .bb-clock'), cardsEl = board.querySelector(':scope > .bb-cards');
+        if (!clockEl || !cardsEl) {
+            board.innerHTML = '<span class="bb-clock"></span><span class="bb-cards"></span>';
+            clockEl = board.firstChild; cardsEl = board.lastChild;
+        }
+        clockEl.textContent = clock ? clock.textContent : '';
+        if (this._broadcastSpeed && clockEl.nextSibling !== this._broadcastSpeed.el) clockEl.after(this._broadcastSpeed.el);
+        if (this._broadcastCtl && this._broadcastCtl.parentNode !== board) board.appendChild(this._broadcastCtl);
+        cardsEl.innerHTML = ais.map(ai => {
             const ctrl = ctrls.find(c => c.id === ai.id);
             const advised = (ctrl && ctrl.stats && ctrl.stats.advisedTurns) || 0;
             const out = g.isPlayerEliminated(ai);
@@ -4019,9 +4031,7 @@ class UIManager {
         }).join('');
         // The speed control rides beside the clock (moved there by toggleBroadcast); the
         // redraw above detached it, so it is put back each time, like the controls below.
-        if (this._broadcastSpeed) { const c = board.querySelector('.bb-clock'); if (c) c.after(this._broadcastSpeed.el); }
-        if (this._broadcastCtl) {   // redrawn above, so put back; states follow the bar's
-            board.appendChild(this._broadcastCtl);
+        if (this._broadcastCtl) {   // states follow the bar's
             const on = (id, v) => { const b = document.getElementById(id); if (b) { b.classList.toggle('sb-on', !!v); b.setAttribute('aria-pressed', v ? 'true' : 'false'); } };
             on('broadcastAuto', this.game._actionCam);
             on('broadcastIntent', this.intentOn());

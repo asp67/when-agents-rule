@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1013: the speed control stays open, and close-ups pulled back (1 October 2026)
+
+**No rules change.**
+- **Speed control in broadcast mode.** The board was rebuilt whole every second, which took the speed control and the buttons beside the cards out and put them back. The hover dropped and an open speed menu closed under the pointer. Now only the seat cards are rebuilt; the clock text is updated and the speed control stays attached.
+- **Close-ups are framed wider.** A worker filled about three quarters of the screen height; it now fills about half (rider framing widened by the same 1.5×). The aim stays at the chest.
+
 ## Build 1012: the broadcast button in the bar gets its label (1 October 2026)
 
 **No rules change.** In analyze mode the bar's button back to broadcast mode was an icon alone. The other buttons show an icon over a label, so it stood half their height. It now reads "📺 Broadcast" (Sendung, Emisión, 直播) at their height.
