@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1022: the auto camera is on by default (1 October 2026)
+
+**No rules change.** A watched match opens with the auto camera (🎬) on. Switching it off lasts for that match.
+
 ## Build 1021: the Wonder countdown runs at the 1× pace (1 October 2026)
 
 **Rules change.** asp67 set the Wonder hold for the new speed names:

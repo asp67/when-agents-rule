@@ -3516,6 +3516,8 @@ class UIManager {
     setupSpectatorUI() {
         // Spectator layout tweaks (lower minimap, taller leaderboard) live in CSS.
         document.body.classList.add('spectator-mode');
+        // A watched match opens with the auto camera on (b1022).
+        if (!this.game._actionCam) this.game.toggleActionCam();
         // A watched match opens in broadcast mode unless the viewer last chose analyze
         // mode (b1011). After this setup, so the board finds the seats in place.
         if (this.viewPreferences().broadcast) setTimeout(() => {
