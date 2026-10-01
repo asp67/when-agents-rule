@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1017: smaller shoulder pads (1 October 2026)
+
+**No rules change.** Every unit's shoulder pads, the riders' included, are 0.7 of their old size. They sit where they did.
+
 ## Build 1016: shoulder pads for the militia (1 October 2026)
 
 **No rules change.** The militia, the first infantry tier, was the last unit with a bare sleeve top. It now wears the leather shoulder pads too.

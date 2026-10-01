@@ -201,8 +201,10 @@
         for(const side of [-1,1]) part(p,'cylinder',[.025*s,.045*s,.68*s,6],'cloth',
             {x:side*.19*s,y:y-.35*s,z:z-.09*s,rz:side*-.14,rx:.12,team:true});
     };
+    // Pads sit where they always did; asp67 had them made 0.7 of their old size (b1017).
+    const PAD = .7;
     const shoulders = (p,tex='iron',y=1.23,s=1) => {
-        for(const side of [-1,1]) oval(p,tex,side*.33*s,y,0,.16*s,.115*s,.20*s,
+        for(const side of [-1,1]) oval(p,tex,side*.33*s,y,0,.16*s*PAD,.115*s*PAD,.20*s*PAD,
             {bone:side<0?'armL':'armR'});
     };
     const humanoid = (p,opts={}) => {
@@ -414,7 +416,7 @@
                 oval(p,'leather',...elbow,.085,.085,.085,{bone});
                 riderLimb(p,'forearm'+suffix,tier>=3?'leather':'skin',elbow,hand,.078,.068,bone);
                 oval(p,'skin',...hand,.082,.090,.085,{bone});
-                oval(p,tier>=2?'iron':'leather',...shoulder,.125,.10,.15,{bone});
+                oval(p,tier>=2?'iron':'leather',...shoulder,.125*PAD,.10*PAD,.15*PAD,{bone});
             }
             held(p,tier===1?'javelin':tier===2?'spear':'lance','armR',[.35,1.31,.14],q=>{
                 const length=tier===1?1.1:tier===2?1.3:1.45;
