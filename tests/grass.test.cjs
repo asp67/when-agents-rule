@@ -1,14 +1,19 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+// The clutter builds tiles against a time budget and grows new tiles in over time (b1007).
+// The tests own the clock: every reading advances it 1 ms (a stand-in for the work done
+// between readings), and a test moves it on between frames with `later()`.
 function setup(){
-    let id=0;const deleted=[];
-    const scope={window:{M3D:{scaling:(...args)=>args}},GLCore:{createMeshBuffers:(_gl,m)=>({position:++id,normal:++id,uv:++id,index:++id,count:m.indices.length})}};
+    let id=0;const deleted=[];const clock={t:1000};
+    const scope={window:{M3D:{scaling:(...args)=>args}},GLCore:{createMeshBuffers:(_gl,m)=>({position:++id,normal:++id,uv:++id,index:++id,count:m.indices.length})},
+        performance:{now:()=>(clock.t+=1)}};
     vm.createContext(scope);
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
     scope.TexGen=scope.window.TexGen;
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/grass.js'),'utf8'),scope);
     const renderer={gl:{deleteBuffer:b=>deleted.push(b)},graphicsQuality:'cinematic',_halfH:25,
         cameraTarget:{x:0,z:0},terrain:{size:800,seed:'arena',resources:[]},buildings:[],tex:{white:{}},_theme:'summer',_cull:()=>false};
-    return {G:scope.window.EngineGrass,renderer,deleted};
+    const later=(ms=400)=>{clock.t+=ms;};
+    return {G:scope.window.EngineGrass,renderer,deleted,clock,later};
 }
 test('grass is reproducible, themed, finite and within WebGL 1 mesh limits',()=>{
     const {G}=setup();const m=G.mesh('seed',0,0,'summer',390,[]);
@@ -71,26 +76,44 @@ test('grass shader mask reveals both explored and currently visible cells',()=>{
     assert.deepEqual(uploads[1],[0,255,255,0],'leaving sight does not hide grass fragments');
 });
 test('cinematic batches obey upload, draw and cache budgets and dispose all buffers',()=>{
-    const {G,renderer:r,deleted}=setup();const grass=new G.Grass(r);
-    for(let frame=0;frame<20;frame++){
-        grass.frame();assert.ok(r.grassStats.uploaded<=3);assert.ok(r.grassStats.patches<=G.MAX_VISIBLE);
+    const {G,renderer:r,deleted,later}=setup();const grass=new G.Grass(r);
+    const frame=()=>{later();return grass.frame();};
+    for(let f=0;f<20;f++){
+        const before=r.grassStats?.uploaded;frame();
+        // The frame's time budget (8 ms right after a cut, 4 ms after) bounds the uploads.
+        assert.ok(r.grassStats.uploaded>=1||grass.cache.size>=G.MAX_VISIBLE||f>0);
+        assert.ok(r.grassStats.uploaded<=8,'uploads per frame stay within the budget: '+r.grassStats.uploaded);
+        assert.ok(r.grassStats.patches<=G.MAX_VISIBLE);
         assert.ok(r.grassStats.tufts<=G.MAX_VISIBLE*G.TUFTS*3);
     }
     assert.ok(grass.cache.size>0);
-    const near=r.grassStats.tufts;r._halfH=70;grass.frame();assert.ok(r.grassStats.tufts<near);
-    r._halfH=80;assert.ok(grass.frame().length>0);
-    r._halfH=90;grass.frame();const wide=r.grassStats.tufts;
-    r._halfH=125;assert.ok(grass.frame().length>0);assert.ok(r.grassStats.tufts<wide);
-    r._halfH=160;assert.equal(grass.frame().length,0);
-    r._halfH=25;r.graphicsQuality='balanced';assert.equal(grass.frame().length,0);
+    const near=r.grassStats.tufts;r._halfH=70;frame();assert.ok(r.grassStats.tufts<near);
+    r._halfH=80;assert.ok(frame().length>0);
+    r._halfH=90;frame();const wide=r.grassStats.tufts;
+    r._halfH=125;assert.ok(frame().length>0);assert.ok(r.grassStats.tufts<wide);
+    r._halfH=160;assert.equal(frame().length,0);
+    r._halfH=25;r.graphicsQuality='balanced';assert.equal(frame().length,0);
     r.graphicsQuality='cinematic';
-    for(let frame=0;frame<240;frame++){r.cameraTarget.x=(frame%8)*70-280;r.cameraTarget.z=(Math.floor(frame/8)%8)*70-280;grass.frame();}
+    for(let f=0;f<240;f++){r.cameraTarget.x=(f%8)*70-280;r.cameraTarget.z=(Math.floor(f/8)%8)*70-280;frame();}
     assert.ok(grass.cache.size<=G.MAX_CACHED);assert.ok(deleted.length>0);
-    const count=grass.cache.size,before=deleted.length;grass.dispose();
-    assert.equal(deleted.length-before,count*12);assert.equal(grass.cache.size,0);
+    // Dense layers are built only once drawn, so a tile holds one to three layers.
+    const buffers=[...grass.cache.values()].reduce((n,t)=>n+t.batches.length*4,0),before=deleted.length;grass.dispose();
+    assert.equal(deleted.length-before,buffers);assert.equal(grass.cache.size,0);
+});
+
+test('a cut fills faster than one tile a frame, and new tiles grow in instead of popping',()=>{
+    const {G,renderer:r,later}=setup();const grass=new G.Grass(r);grass.cover=()=>1;r._halfH=110;
+    const first=grass.frame();
+    assert.ok(r.grassStats.uploaded>1,'right after a cut, several tiles a frame: '+r.grassStats.uploaded);
+    assert.ok([...grass.cache.values()].every(t=>t.batches.length===1),'a wide view builds base layers only');
+    assert.equal(first.length,0,'nothing pops up at full height the frame it is built');
+    const fresh=[...grass.cache.values()][0];
+    later(150);grass.frame();const half=fresh.batches[0].buf.count;
+    later(400);grass.frame();const full=fresh.batches[0].buf.count;
+    assert.ok(half>0&&half<full,'it grows in: '+half+' then '+full);
 });
 test('resource clearings are circular, half-width, and refill after depletion or removal',()=>{
-    const {G,renderer:r,deleted}=setup();r.cameraTarget={x:8,z:8};r._cull=(x,z)=>x!==8||z!==8;
+    const {G,renderer:r,deleted,later}=setup();r.cameraTarget={x:8,z:8};r._cull=(x,z)=>x!==8||z!==8;
     const node={x:8,z:8,type:'wood',amount:100};r.terrain.resources=[node];
     const grass=new G.Grass(r);grass.cover=()=>1;grass.frame();
     let tile=grass.cache.get('0:0');
@@ -123,7 +146,7 @@ test('new construction invalidates affected grass and leaves other patches cache
 });
 
 test('three independent lush layers fit 16-bit buffers and extra layers disappear at wider zoom',()=>{
-    const {G,renderer:r}=setup();
+    const {G,renderer:r,later}=setup();const clockLater=()=>later();
     const meshes=[0,1,2].map(layer=>G.mesh('seed',0,0,'summer',390,[],()=>1,1000,layer));
     for(const m of meshes){
         assert.equal(m.indices.length/G.INDICES_PER_TUFT,G.TUFTS);
@@ -134,9 +157,9 @@ test('three independent lush layers fit 16-bit buffers and extra layers disappea
     const heights=meshes[0].positions.filter((_,i)=>i%3===1);
     assert.ok(Math.max(...heights)>.4);
     const grass=new G.Grass(r);
-    for(let i=0;i<12;i++)grass.frame();
+    for(let i=0;i<40;i++){clockLater(r);grass.frame();}
     assert.ok(r.grassStats.batches>r.grassStats.patches);
-    r._halfH=60;grass.frame();
+    r._halfH=60;clockLater(r);grass.frame();
     assert.equal(r.grassStats.batches,r.grassStats.patches);
 });
 
@@ -162,8 +185,9 @@ test('dry-ground pebbles are tiny, static-tagged, deterministic and use the exis
 });
 
 test('clutter beyond the old 100-unit radius fades within the expanded circle',()=>{
- const {G,renderer:r}=setup();r._cull=(x,z)=>x!==120||z!==8;
+ const {G,renderer:r,later}=setup();r._cull=(x,z)=>x!==120||z!==8;
  const grass=new G.Grass(r);grass.cover=()=>1;
+ grass.frame();later();
  const entries=grass.frame();assert.ok(entries.length>0);
  const tile=grass.cache.get('7:0');assert.ok(tile);
  assert.ok(tile.batches[0].buf.count<tile.batches[0].fullCount);
