@@ -3,6 +3,15 @@
 (function () {
     const TILE = 16, TUFTS = 1024, MAX_VISIBLE = 108, MAX_CACHED = 216, INDICES_PER_TUFT = 36;
     const DRAW_RADIUS = 150;
+    // Tile building per frame (b1007): a time budget, not one tile. A cut to a wide view
+    // needs up to MAX_VISIBLE tiles, and building one a frame filled it square by square
+    // over ~110 frames. BUILD_MS is spent per frame (at least one layer always) -- twice
+    // that right after a cut, while more than CUT_MISSING tiles are missing: a frame
+    // that cuts already reads as a change, a field filling for a second does not. A
+    // tile's denser layers are built only when the camera is close enough to draw them,
+    // and a new tile grows in over GROW_MS instead of popping up at full height.
+    const BUILD_MS = 4, CUT_BUILD_MS = 8, CUT_MISSING = 24, GROW_MS = 350;
+    const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
     function visibleRect(fow, x, z, ex, ez, all = false) {
         if (!fow?.fogGrid) return true;
         const half=fow.mapSize/2, step=fow.gridSize, n=fow.numTiles;
@@ -125,6 +134,16 @@
                 }
             }
             candidates.sort((a,b) => a.distance-b.distance);
+            let missing = 0;
+            for (const c of candidates.slice(0, MAX_VISIBLE)) if (!this.cache.has(c.tx + ':' + c.tz)) missing++;
+            const now = clock(), budgetEnd = now + (missing > CUT_MISSING ? CUT_BUILD_MS : BUILD_MS);
+            const canBuild = () => stats.uploaded === 0 || clock() < budgetEnd;
+            const build = (c, blocked, layer) => {
+                const data = mesh(r.terrain.seed || 1, c.tx, c.tz, r._theme, half, blocked, this.cover, TexGen.TERRAIN_WORLD,layer,true);
+                const buf = GLCore.createMeshBuffers(r.gl, data);
+                stats.uploaded++;
+                return { buf, fullCount: buf.count, tex: r.tex.terrain, noShadow: true, vegetation: true, tint: [1,1,1] };
+            };
             // Fade before a budget boundary too, so changing the nearest-tile list
             // never drops a full-height patch during tracking shots.
             const edge = candidates.length > MAX_VISIBLE
@@ -139,24 +158,20 @@
                 let tile = this.cache.get(key);
                 if (tile && tile.signature !== signature) { this.disposeTile(tile); this.cache.delete(key); tile = null; }
                 if (!tile) {
-                    // Bound upload work when the director cuts to a distant scene.
-                    if (stats.uploaded >= 3) continue;
-                    const batches = [];
-                    // Independent layers keep every mesh below the 16-bit index
-                    // ceiling. Additional density is drawn only in close views.
-                    for(let layer=0;layer<3;layer++) {
-                        const data = mesh(r.terrain.seed || 1, c.tx, c.tz, r._theme, half, blocked, this.cover, TexGen.TERRAIN_WORLD,layer,true);
-                        const buf = GLCore.createMeshBuffers(r.gl, data);
-                        batches.push({ buf, fullCount: buf.count, tex: r.tex.terrain, noShadow: true,
-                            vegetation: true, tint: [1,1,1] });
-                    }
-                    tile = { batches, signature };
-                    this.cache.set(key, tile); stats.uploaded+=3;
+                    // Bound upload work when the director cuts to a distant scene: the
+                    // frame's budget, nearest tiles first. Independent layers keep every
+                    // mesh below the 16-bit index ceiling; the base layer comes first.
+                    if (!canBuild()) continue;
+                    tile = { batches: [build(c, blocked, 0)], blocked, signature, born: now };
+                    this.cache.set(key, tile);
                 }
                 // LRU retains nearby patches across cuts but never the whole map.
                 this.cache.delete(key); this.cache.set(key, tile);
-                const fade = Math.min(1, (160-r._halfH)/70, (edge-c.distance)/52.5);
+                const grow = Math.min(1, (now - (tile.born || 0)) / GROW_MS);
+                const fade = Math.min(1, (160-r._halfH)/70, (edge-c.distance)/52.5) * grow;
                 const close = Math.max(0,Math.min(1,(55-r._halfH)/25,(127.5-c.distance)/45));
+                // The denser layers, once a close view would draw them.
+                while (close > 0 && tile.batches.length < 3 && canBuild()) tile.batches.push(build(c, tile.blocked, tile.batches.length));
                 let drawn=false;
                 tile.batches.forEach((batch,layer)=>{
                     const densityFade=fade*(layer ? close : 1);

@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1007: ground clutter grows in after a cut (1 October 2026)
+
+**No rules change.** After a cut to a wide view, the grass and rubble filled in square by square. One 16x16 tile was built per frame, at full density, and appeared at full height. A wide cut needs about 100 tiles: 109 frames, about 1.8 s at 60 fps.
+- **Only what is drawn is built:** a tile starts with its base layer, and its denser layers are built only when the camera is close enough to draw them.
+- **A time budget instead of one tile:** 4 ms per frame, 8 ms while more than 24 tiles are missing, which is right after a cut.
+- **New tiles grow in:** they rise out of the ground over 0.35 s instead of popping up.
+- **Measured** (headless, three wide cuts): from 109 frames to 33 to 40 frames to fill. Close views still build all three layers.
+
 ## Build 1006: fields grow rice and wheat (1 October 2026)
 
 **No rules change.** A bronze-age field now carries scattered clumps of plants on soft furrowed soil. An iron-age field is evenly filled, row on row, inside its fence.
