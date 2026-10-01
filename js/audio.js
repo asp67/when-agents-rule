@@ -3,23 +3,26 @@
 class WarAudio {
     constructor(game) {
         this.game = game;
-        this.enabled = false; // every page starts quiet; AudioContext needs a gesture
-        // One-use handoff only for our own scene/menu navigation. A later browser
-        // reload has no handoff and starts muted, regardless of the last choice.
-        let resumeSound = false;
+        this.enabled = false; // AudioContext needs a gesture before it may sound
+        // Unmuted by default (b1023): sound starts with the first click or key press
+        // unless the viewer muted it first. One-use handoff for our own scene/menu
+        // navigation keeps a mute across it; a reload starts unmuted again.
+        let handoff = null;
         try {
-            resumeSound = sessionStorage.getItem('warAudioNavigation') === 'on';
+            handoff = sessionStorage.getItem('warAudioNavigation');
             sessionStorage.removeItem('warAudioNavigation');
         } catch (_) {}
-        // Effects 30 % below and ambience at half of what they were (b1011: .6 and .45).
-        this.levels = {master: .45, ambience: .225, effects: .42, work: 1, movement: 1};
+        this.chosen = handoff === 'off';   // a mute (or unmute) the viewer chose themselves
+        // Effects at .336 (b1023: 0.8 of b1011's .42, itself 30 % below .6); ambience
+        // at half of b1011's .45.
+        this.levels = {master: .45, ambience: .225, effects: .336, work: 1, movement: 1};
         try {
             const saved = JSON.parse(localStorage.getItem('warAudioLevelsV1'));
             // Moving any one slider saves all five, so an untouched effects or ambience
             // was stored at its old default. That value is read as "default", not as a
             // choice: the new default applies. A level set on purpose is kept.
-            const oldDefault = {ambience: .45, effects: .6};
-            for (const key of Object.keys(this.levels)) if (Number.isFinite(saved?.[key]) && saved[key] !== oldDefault[key])
+            const oldDefault = {ambience: [.45], effects: [.6, .42]};
+            for (const key of Object.keys(this.levels)) if (Number.isFinite(saved?.[key]) && !(oldDefault[key] || []).includes(saved[key]))
                 this.levels[key] = Math.max(0, Math.min(1, saved[key]));
         } catch (_) {}
         this.seed = 0x574152;
@@ -39,14 +42,19 @@ class WarAudio {
         };
         document.addEventListener('visibilitychange', this.onVisibility);
         // Browsers may suspend audio across document navigation until a gesture.
-        document.addEventListener('pointerdown', () => {
+        const gesture = () => {
             if(this.enabled && this.ctx?.state==='suspended') this.ctx.resume().catch(()=>{});
-        });
-        if(resumeSound) this.setEnabled(true).catch(()=>{});
+            else if(!this.enabled && !this.chosen) this.setEnabled(true, false).catch(()=>{});
+        };
+        document.addEventListener('pointerdown', gesture);
+        document.addEventListener('keydown', gesture);
+        if(handoff==='on') this.setEnabled(true, false).catch(()=>{});
     }
 
     preserveForNavigation() {
-        try { sessionStorage.setItem('warAudioNavigation',this.enabled?'on':'off'); } catch (_) {}
+        // 'off' only for a mute the viewer chose: a page still waiting for its first
+        // gesture hands on nothing, and the next page starts unmuted.
+        try { sessionStorage.setItem('warAudioNavigation',this.enabled?'on':this.chosen?'off':''); } catch (_) {}
     }
 
     random() { this.seed = (Math.imul(this.seed, 1664525) + 1013904223) >>> 0; return this.seed / 4294967296; }
@@ -76,7 +84,10 @@ class WarAudio {
         }
     }
 
-    async setEnabled(value) {
+    // `chosen`: the viewer's own switch. The default start on the first gesture is not
+    // one, so it never overrides a mute the viewer set before it.
+    async setEnabled(value, chosen = true) {
+        if (chosen) this.chosen = true;
         this.enabled = !!value;
         if (!this.enabled) { if (this.ctx) { this.silence(); await this.ctx.suspend(); } return; }
         try {

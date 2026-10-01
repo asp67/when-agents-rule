@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1023: sound on by default, effects softer (1 October 2026)
+
+**No rules change.**
+- **Sound is on by default.** The browser allows sound only after a gesture, so it starts with the first click or key press. A mute set before that holds for the page and across our own scene changes. A reload starts unmuted again.
+- **Effects** are at 0.336, 0.8 of b1011's 0.42. An effects level saved at either earlier default (0.6 or 0.42) is read as "default" and gets the new one.
+
 ## Build 1022: the auto camera is on by default (1 October 2026)
 
 **No rules change.** A watched match opens with the auto camera (🎬) on. Switching it off lasts for that match.
