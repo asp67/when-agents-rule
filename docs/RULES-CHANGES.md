@@ -6,6 +6,27 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1004: who is still in the game, and workers who defend themselves (1 October 2026)
+
+**A rules change.**
+- **Who is still in:** asp67's rule. A seat is out once no unit on the field can fight or build something, and no building can actively produce such a unit, because it is unfinished or cannot pay for one. It is still in with any of these:
+  - a unit that can fight: anything but workers and priests;
+  - a unit already paid for and in training;
+  - a finished building that can produce such a unit and pay for one now: a Town Center a worker, a trainer one of its units of this age (civilization uniques included);
+  - a worker that can build something: a producing building's foundation to finish, the resources for a Town Center or a trainer, or a finished Town Center to gather into.
+- **What changed against the old rule:**
+  - An unfinished Town Center with no worker left no longer keeps a seat in.
+  - A Town Center with no worker and no food for one no longer keeps a seat in.
+  - Priests and towers never counted as an army and still do not.
+  - A Wonder alone does not keep a seat in.
+  - A foundation now counts while the seat has any worker, not only while one is assigned to it: a builder pulled away can be sent back.
+  - The defeat message says why.
+- **Workers defend themselves and nothing else:**
+  - A worker hit by a unit fights back against that unit only. It never attacks towers or buildings.
+  - It goes back to its job when the attacker falls or is more than 30 from where the worker was hit. Its job includes gathering, farming, building and its scouting trip; building and scouting were lost before, and the worker stood idle at the fight.
+  - Workers are no longer drafted into fights they are not part of. Before, every worker on the map was drafted for a Wonder raid, and workers within 28 when the seat had no army, which pulled scouts off their trips.
+- **Golden trace:** `wonder-siege` was re-recorded. It had workers drafted to the Wonder.
+
 ## Build 1003: speed and minimap controls in broadcast mode (1 October 2026)
 
 **No rules change.**

@@ -6314,7 +6314,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // holds — the same reason ownerName answers with the seat id.
         const who = ai.civilization;
         const head = (kind === 'defeated')
-            ? `THE MATCH IS OVER FOR YOU. You have been defeated as ${who}: your Town Centers and the means to rebuild them are gone.`
+            ? `THE MATCH IS OVER FOR YOU. You have been defeated as ${who}: nothing you have left can fight, build, or train a unit that could.`
             : `THE MATCH HAS ENDED. ${extra && extra.won ? `You WON as ${who}.` : `You did not win. ${extra && extra.winner ? `${extra.winner} took it.` : ''}`}`;
         const ask = [head,
             'This is the final message you will receive; the game is closing and NOTHING you reply will be executed.',

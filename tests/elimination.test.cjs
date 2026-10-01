@@ -26,10 +26,16 @@ test('last finished trainer can fall while a staffed affordable stable keeps the
  assert.equal(h.game.isPlayerEliminated(h.ai),false);
  assert.equal(h.controller.defeated,undefined);
 });
-test('dead builders, abandoned or destroyed sites, and unaffordable training do not preserve survival',()=>{
- for(const change of [h=>h.worker.health=0,h=>h.worker.task='idle',h=>h.worker.buildTarget={},h=>h.stable.health=0,h=>h.funds.gold=0,h=>h.ai.age='stone']){
-  const h=setup();change(h);assert.equal(h.game.isPlayerEliminated(h.ai),true);
- }
+// The rule since 1 Oct 2026 (asp67): out once nothing on the field can fight or build, and
+// no building can actively produce such a unit (unfinished, or unable to pay for one).
+test('a site counts while any worker could finish it; with no worker, or no site and no means, the seat is out',()=>{
+ for(const [label,change,out] of [
+  ['its builder dead',h=>h.worker.health=0,true],
+  ['the site destroyed and nothing affordable',h=>h.stable.health=0,true],
+  ['its builder idle: it can still finish it',h=>h.worker.task='idle',false],
+  ['its builder on another job',h=>h.worker.buildTarget={},false],
+  ['no gold for a unit yet: the site still stands',h=>h.funds.gold=0,false],
+ ]){const h=setup();change(h);assert.equal(h.game.isPlayerEliminated(h.ai),out,label);}
 });
 test('paid military production keeps a penniless player alive until the unit emerges',()=>{
  const h=setup();h.ai.units=[];h.stable.underConstruction=false;
@@ -40,7 +46,7 @@ test('paid military production keeps a penniless player alive until the unit eme
  h.ai.units[0].health=0;assert.equal(h.game.isPlayerEliminated(h.ai),true);
 });
 test('retired controller cannot become alive again when old construction finishes',()=>{
- const h=setup();h.worker.task='idle';assert.equal(h.manager.isControllerDefeated(h.controller),true);
+ const h=setup();h.worker.health=0;assert.equal(h.manager.isControllerDefeated(h.controller),true);
  h.manager.markDefeated(h.controller);
  h.stable.underConstruction=false;
  assert.equal(h.controller.defeated,true);assert.equal(h.game.isPlayerEliminated(h.ai),true);
@@ -83,4 +89,30 @@ test('opponent snapshots expose defeat independently of discovery, including hum
  assert.equal('population' in rows[2],false);assert.equal('buildings' in rows[2],false);
  viewer._metRivals.add('a');const discovered=opponents(h.game,viewer)[0];
  assert.equal(discovered.defeated,true);assert.equal(discovered.discovered,true);
+});
+
+// 1 Oct 2026: an unfinished Town Center kept a seat in the match with no one building it,
+// and a priest -- which can neither fight nor build -- counted as an army.
+test('an unfinished Town Center keeps a seat in only while it has a worker; a Town Center needs a worker or food',()=>{
+ const h=setup();h.ai.buildings=[];h.funds.food=h.funds.gold=h.funds.stone=0;
+ const tc={owner:'a',type:'town_center',health:300,underConstruction:true};h.ai.buildings.push(tc);
+ h.worker.buildTarget=tc;h.worker.task='harvesting';
+ assert.equal(h.game.isPlayerEliminated(h.ai),false,'a worker who could finish it keeps the seat in');
+ h.worker.health=0;
+ assert.equal(h.game.isPlayerEliminated(h.ai),true,'no one left to finish it: out');
+ tc.underConstruction=false;
+ assert.equal(h.game.isPlayerEliminated(h.ai),true,'a finished Town Center with no worker and no food: out');
+ h.funds.food=50;
+ assert.equal(h.game.isPlayerEliminated(h.ai),false,'it can train a worker: in');
+ h.funds.food=0;h.worker.health=50;
+ assert.equal(h.game.isPlayerEliminated(h.ai),false,'a worker can gather into it: in');
+});
+
+test('priests and towers are no army; a paid unit in training is',()=>{
+ const g=setup();g.ai.buildings=[{type:'tower',health:500}];g.ai.units=[{type:'priest',unitType:'support',health:80}];g.funds.food=g.funds.gold=0;
+ assert.equal(g.game.isPlayerEliminated(g.ai),true,'priests and a tower cannot play on');
+ g.ai.units.push({type:'warrior',unitType:'infantry',health:40});
+ assert.equal(g.game.isPlayerEliminated(g.ai),false,'a soldier can');
+ g.ai.units.pop();g.ai.buildings.push({type:'town_center',health:900,isProducing:true,productionType:'worker'});
+ assert.equal(g.game.isPlayerEliminated(g.ai),false,'a worker already paid for is on its way');
 });

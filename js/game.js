@@ -1282,7 +1282,8 @@ class Game {
             this._standingOrders?.retaliate(victim, attacker);
             return;
         }
-        if (!victim || !victim.unitType || victim.unitType === 'support' || victim.type === 'worker') return;
+        if (victim && victim.type === 'worker') { this.workerSelfDefense(victim, attacker); return; }
+        if (!victim || !victim.unitType || victim.unitType === 'support') return;
         if (!victim.isAttacking || !victim.attackTarget) return;
         if (!attacker || attacker.health <= 0) return;
         if (victim.attackTarget === attacker) return; // already fighting back
@@ -1298,6 +1299,28 @@ class Game {
                 this.spreadRetaliation(victim, first);
             }
         }
+    }
+
+    // A worker hit by a unit fights back against THAT unit -- the retaliation the army
+    // has, without the army's habit of joining a fight nearby. It saves what it was
+    // doing (gathering, farming, building, a scouting trip) and goes back to it when the
+    // attacker falls or is out of reach (SELF_DEFENSE_LEASH from where it was hit).
+    // Buildings and towers are not answered: a worker cannot fight a tower, and walking
+    // up to one only gets it killed. A worker already defending itself keeps its
+    // attacker; one under a standing order is left to it.
+    static get SELF_DEFENSE_LEASH() { return 30; }
+    workerSelfDefense(w, attacker) {
+        if (!w || w.health <= 0 || w._standingOrder || !(w.attack > 0)) return;
+        if (!attacker || attacker.health <= 0 || !attacker.unitType || attacker.owner === w.owner) return;
+        if (w.isAttacking && w.attackTarget && w.attackTarget.health > 0) return;
+        w._draftReturn = { task: w.task, harvestTarget: w.harvestTarget || null, farmRef: w.farmRef || null,
+            buildTarget: w.buildTarget || null, targetX: w.targetX, targetZ: w.targetZ, isMoving: !!w.isMoving };
+        if (w.farmRef && w.farmRef.assignedWorker === w) w.farmRef.assignedWorker = null;
+        w.farmRef = null; w.isHarvesting = false;
+        w.task = null;
+        this.clearRetaliation(w);
+        w._selfDefense = { x: w.x, z: w.z };
+        w.isAttacking = true; w.attackTarget = attacker; w.attackMove = null; w.attackTimer = 0;
     }
 
     // Focus fire: squadmates on the same original target join in. Units may
@@ -1361,6 +1384,16 @@ class Game {
             if(unit._standingOrder?.mode==='scout'&&!unit._standingOrder.threats?.length)return;
             // Skip workers - they don't attack unless explicitly ordered
             if (unit.type === 'worker' && !unit.isAttacking) return;
+            // Self-defense ends with its attacker: dead, gone, or out of reach of where
+            // the worker was hit. It never looks for the next enemy.
+            if (unit._selfDefense) {
+                const t = unit.attackTarget, sd = unit._selfDefense;
+                if (!t || t.health <= 0 || WarMath.hypot(t.x - sd.x, t.z - sd.z) > Game.SELF_DEFENSE_LEASH) {
+                    unit._selfDefense = null;
+                    this.resumeWorkerAfterCombat(unit);
+                    return;
+                }
+            }
 
             // Drop a dead/destroyed target — the retaliation ladder decides what
             // comes next: the next living damage dealer in line, then the
@@ -1788,26 +1821,15 @@ class Game {
             const reach = REACH[this.threatPriority(primary.ent)];
             let defenders = military.filter(u => !u._standingOrder && !u.isAttacking &&
                 WarMath.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= reach);
-            // A WONDER under attack is existential — it IS the win condition — so it
-            // is ALL HANDS ON DECK: every worker downs tools and fights ALONGSIDE the
-            // army, from anywhere on the map. For anything else workers stay a last
-            // resort: only those nearby, and only when there is no army at all.
+            // Workers are never drafted here (1 Oct 2026). They used to be: all of them
+            // for a Wonder raid, from anywhere on the map, and those within 28 when the
+            // seat had no army -- which pulled scouts off their trips and builders off
+            // their sites to answer fights they were not part of. A worker now fights
+            // only for itself, against whoever hits it (Game.workerSelfDefense), and goes
+            // back to its job after.
+            const hands = [];
             const wonderRaid = !!primary.ent.isWonder;
-            let hands = [];
-            if (wonderRaid || military.length === 0) {
-                // Only workers NOT already fighting — this reflex re-runs every ~600ms
-                // while the raid lasts, and re-drafting an engaged worker reset its
-                // attackTimer below the 1000ms swing threshold FOREVER: drafted mobs
-                // surrounded the raider and never landed a single blow until the
-                // building fell and the threat list finally emptied. (It also
-                // overwrote _draftReturn with the already-drafted state, losing the
-                // economy job the worker should return to.)
-                hands = owner.units.filter(u => u.type === 'worker' && u.health > 0 && !u._standingOrder &&
-                    !u.isAttacking &&
-                    (wonderRaid || WarMath.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= 28));
-                defenders = defenders.concat(hands);
-            }
-            const usingWorkers = hands.length > 0;
+            const usingWorkers = false;
 
             // Priests march to a DEFENSE exactly as they march to an attack. This was
             // the one order path that never called escortSupportUnits, so the clergy
@@ -1974,6 +1996,24 @@ class Game {
             // The node ran dry during the fight: nearest discovered same-type node.
             unit.harvestTarget = r.harvestTarget;
             this.retargetDepletedWorker(unit, this.getOwner(unit));
+            return;
+        }
+        // A builder goes back to its site while it still needs building; a scout picks
+        // its trip up where it left it. Both were lost before: the worker stood idle at
+        // the fight.
+        if (r.task === 'building' && r.buildTarget && r.buildTarget.health > 0 && r.buildTarget.underConstruction) {
+            unit.task = 'building';
+            unit.buildTarget = r.buildTarget;
+            unit.isMoving = true;
+            unit.targetX = r.targetX != null ? r.targetX : r.buildTarget.x;
+            unit.targetZ = r.targetZ != null ? r.targetZ : r.buildTarget.z;
+            return;
+        }
+        if (r.task === 'scouting' && Number.isFinite(r.targetX) && Number.isFinite(r.targetZ)) {
+            unit.task = 'scouting';
+            unit.isMoving = true;
+            unit.targetX = r.targetX;
+            unit.targetZ = r.targetZ;
         }
     }
 
@@ -5872,44 +5912,64 @@ class Game {
         }
     }
 
-    // A player is ELIMINATED only when it has no way left to EVER field a military
-    // unit again. Used consistently for arena win detection AND for stopping a
-    // defeated model's LLM pipeline, so the two never disagree:
-    //   - still in if it has any military unit;
-    //   - still in with paid military production, or an affordable trainer that
-    //     is finished or being completed by a living assigned worker;
-    //   - otherwise still in only if it can (re)start the chain — it has a Town
-    //     Center, OR a worker plus the resources to build a new Town Center.
+    // A player is ELIMINATED once it can no longer actively play (asp67, 1 Oct 2026): no
+    // unit on the field that can fight or build something, and no building that can
+    // actively produce such a unit -- because it is unfinished, or cannot pay for one.
+    // One rule for arena win detection AND for retiring a defeated model's pipeline, so
+    // the two never disagree. Still in with any of:
+    //   1. a unit that can fight: anything but workers and priests (a priest can
+    //      neither fight nor build);
+    //   2. a unit already paid for and in training;
+    //   3. a finished building that can produce such a unit and pay for one now: a
+    //      Town Center a worker, a trainer one of its units of this age;
+    //   4. a worker that can build something: a producing building's foundation to
+    //      finish, the resources for a Town Center or a trainer, or a finished Town
+    //      Center to gather into until it has them.
+    // Not: an unfinished site with no worker left, a Town Center with no worker and no
+    // food for one, towers, or a Wonder alone.
     isPlayerEliminated(ai) {
         if (!ai || ai._eliminated) return true;
-        if (ai.units && ai.units.some(u => u.health > 0 && u.type !== 'worker')) return false; // has an army
-        if (this.canAffordAnyMilitary(ai)) return false;                            // can build military now
-        if (ai.buildings && ai.buildings.some(b => b.health > 0 && b.type === 'town_center')) return false; // has a TC
-        const tcDef = (typeof getBuildingDef === 'function') ? getBuildingDef('town_center') : null;
-        const tcCost = (tcDef && tcDef.cost) || { food: 100, wood: 100, stone: 100, gold: 100 };
-        if (ai.units && ai.units.some(u => u.health > 0 && u.type === 'worker') &&
-            ai.resources && ai.resources.hasResources(tcCost)) return false;        // can rebuild a TC
+        const units = (ai.units || []).filter(u => u.health > 0);
+        if (units.some(u => u.type !== 'worker' && u.unitType !== 'support')) return false;   // 1
+        const buildings = (ai.buildings || []).filter(b => b.health > 0);
+        if (buildings.some(b => !b.underConstruction && b.isProducing && b.productionType)) return false;   // 2
+        if (this.canAffordAnyMilitary(ai)) return false;   // 3, trainers
+        const can = cost => !!(ai.resources && cost && ai.resources.hasResources(cost));
+        const def = id => (typeof getUnitDefFor === 'function' ? getUnitDefFor(ai.civilization, id) : null);
+        const workerCost = (def('worker') || {}).cost || { food: 50 };
+        const townCenter = buildings.some(b => b.type === 'town_center' && !b.underConstruction);
+        if (townCenter && can(workerCost)) return false;   // 3, Town Center
+        if (!units.some(u => u.type === 'worker')) return true;   // nobody left to build: out
+        const producer = b => b.type === 'town_center' || this.militaryOptions(ai, b.type).length > 0;
+        if (buildings.some(b => b.underConstruction && producer(b))) return false;   // 4, a site to finish
+        if (townCenter) return false;   // 4, gathers into it
+        const bdef = t => (typeof getBuildingDef === 'function' ? getBuildingDef(t) : null);
+        const tcCost = (bdef('town_center') || {}).cost || { food: 100, wood: 100, stone: 100, gold: 100 };
+        if (can(tcCost)) return false;   // 4, can found a Town Center
+        for (const t of ['barracks', 'archery_range', 'stable']) if (can((bdef(t) || {}).cost)) return false;   // 4, a trainer
         return true;
     }
 
-    // A paid unit is already on its way. An actively staffed construction site
-    // also counts if the owner can afford military production when it finishes.
+    // The military units a building trains for this owner at its age (civ uniques in,
+    // excluded units out). Falls back to the standard table where the rules files that
+    // know it are not loaded.
+    militaryOptions(ai, type) {
+        let ids = null;
+        if (typeof getTrainOptionsForBuilding === 'function') ids = getTrainOptionsForBuilding(type, ai.age || 'stone', ai.civilization);
+        else ids = ({ barracks: ['militia', 'warrior', 'champion'], archery_range: ['archer', 'crossbowman', 'elite_archer'],
+            stable: ['scout_cavalry', 'cavalry', 'heavy_cavalry'] })[type] || [];
+        return (ids || []).filter(id => id !== 'worker');
+    }
+
+    // 3 for trainers: a FINISHED building that can train one of its units of this age
+    // and pay for it now. (Foundations count through the workers who can finish them.)
     canAffordAnyMilitary(ai) {
         if (!ai || !ai.buildings || !ai.resources) return false;
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
         const aIdx = ageOrder.indexOf(ai.age);
-        const trains = {
-            barracks: ['militia', 'warrior', 'champion'],
-            archery_range: ['archer', 'crossbowman', 'elite_archer'],
-            stable: ['scout_cavalry', 'cavalry', 'heavy_cavalry']
-        };
         for (const b of ai.buildings) {
-            if (!(b.health > 0)) continue;
-            if (!b.underConstruction && b.isProducing && b.productionType && b.productionType !== 'worker') return true;
-            if (!trains[b.type]) continue;
-            if (b.underConstruction && !(ai.units || []).some(u =>
-                u.health > 0 && u.type === 'worker' && u.task === 'building' && u.buildTarget === b)) continue;
-            for (const uid of trains[b.type]) {
+            if (!(b.health > 0) || b.underConstruction) continue;
+            for (const uid of this.militaryOptions(ai, b.type)) {
                 const def = (typeof getUnitDefFor === 'function') ? getUnitDefFor(ai.civilization, uid) : null;
                 if (!def) continue;
                 if (ageOrder.indexOf(def.tier || 'stone') > aIdx) continue; // not available at this age
