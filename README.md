@@ -187,7 +187,7 @@ Load a `match-*.jsonl` and you get:
 - **Visible camera controls.** Open Camera for a whole-map overview, selection focus, reset, zoom, and rotation. Manual camera input turns automatic following off. These controls are also available in live play.
 - **Click anything** to inspect it. Remembered enemy positions render translucent and say when they were last seen, so a stale sighting never looks like a live one.
 
-**Seven real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint, nothing to configure: the analyzer only ever reads a file. `samples/index.json` lists them with their models, tempo and result.
+**Eleven real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint, nothing to configure: the analyzer only ever reads a file. `samples/index.json` lists them with their models, tempo and result.
 
 Direct match links open the viewer with a specific catalogue entry loaded: [Episode 6](https://asp67.github.io/when-agents-rule/?match=match-20260907-120324) and [Episode 7](https://asp67.github.io/when-agents-rule/?match=match-20260909-211941). Use `?match=` followed by the entry's `matchId`; unknown IDs show a loading error rather than a different match.
 
@@ -200,6 +200,14 @@ Direct match links open the viewer with a specific catalogue entry loaded: [Epis
 - `2026-09-07_gemini-flash-deepseek-v4-gpt5.6-qwen3.8_89min.jsonl` — Episode 6, **The Architect in the Ashes**: 427 turns over 89:50, **turn-based** (120 s a round). Gemini Flash as Egypt, DeepSeek v4 Flash as the Greeks, GPT 5.6 Luna as Persia, and Qwen3.8 Flash as Yamato. The full transcript includes the capital raid, the search for stone, the Wonder defense and all four models' closing statements.
 
 - `2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl` — Episode 7, **The Cartographers and the Procession**: 723 turns over 121:23, **turn-based** (180 s rounds), on a snow map. Gemini 3.8 Flash as Egypt, DeepSeek v4 Flash Pro as the Greeks, GPT 5.6 Luna as Persia, and local Qwen3.8 Flash Next as Yamato. The transcript follows worker travel calculations, the marching armies, the Wonder countdown and the search for the last town centre, with all four closing statements.
+
+- `2026-09-30_glm5.3-space-bunny-easy_54min.jsonl` — the first of a four-match miniseries between GLM5.3 Flash and space-bunny: 135 turns over 54:05, **real time**, on easy. GLM5.3 Flash, running locally on a DGX Spark, plays Egypt; space-bunny-alpha, an OpenRouter stealth model, plays the Greeks. GLM5.3 raises its Wonder at 43:34 and holds it, winning on 4352 power against 1568.
+
+- `2026-09-30_glm5.3-space-bunny-medium_65min.jsonl` — the same pairing on medium: 210 turns over 65:29, **real time**. GLM5.3 as Yamato, space-bunny as the Persians. GLM5.3 finishes last one standing on 4558 power against 373; the Persians' last town centre falls at 64:58.
+
+- `2026-09-30_glm5.3-space-bunny-hard-minimatch_5min.jsonl` — the minimatch, on hard: 34 turns over 5:51, **real time**, by far the shortest match here. GLM5.3 as the Persians, space-bunny as Yamato. First contact comes at 1:08 and space-bunny destroys the Persian town centre at 5:19, which eliminates GLM5.3 and ends the game; the rest of the 5:51 is the two closing statements. It is the one match of the four that space-bunny wins.
+
+- `2026-09-30_glm5.3-space-bunny-hard-rematch_95min.jsonl` — the rematch on the same map, seats and civilizations, on hard: 340 turns over 95:13, **real time**. GLM5.3 wins last one standing on 4137 power against 339, and space-bunny is eliminated at 94:48.
 
 Nothing is interpolated between snapshots. Replay runs no simulation, so recorded units stay at their recorded coordinates, overlaps included. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
 

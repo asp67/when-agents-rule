@@ -334,6 +334,142 @@
    ],
    "bytes": 11797354,
    "default": false
+  },
+  {
+   "file": "2026-09-30_glm5.3-space-bunny-easy_54min.jsonl",
+   "matchId": "match-20260930-105359",
+   "date": 1790758439372,
+   "duration": "54:05",
+   "turns": 135,
+   "outcome": "wonder",
+   "seed": "rmunvc6s83lff",
+   "difficulty": "easy",
+   "turnBased": false,
+   "promptVersion": "agents-rule-v101",
+   "build": 1002,
+   "winner": "DGX GLM5.3 Flash",
+   "players": [
+    {
+     "seat": 0,
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "civ": "Egyptians",
+     "power": 4352,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "O space-bunny",
+     "model": "stealth/space-bunny-alpha",
+     "civ": "Greeks",
+     "power": 1568,
+     "winner": false
+    }
+   ],
+   "bytes": 2677309,
+   "default": false
+  },
+  {
+   "file": "2026-09-30_glm5.3-space-bunny-medium_65min.jsonl",
+   "matchId": "match-20260930-115123",
+   "date": 1790761883577,
+   "duration": "65:29",
+   "turns": 210,
+   "outcome": "last_standing",
+   "seed": "rmunxe0ib5n6u",
+   "difficulty": "medium",
+   "turnBased": false,
+   "promptVersion": "agents-rule-v101",
+   "build": 1002,
+   "winner": "DGX GLM5.3 Flash",
+   "players": [
+    {
+     "seat": 0,
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "civ": "Yamato",
+     "power": 4558,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "O space-bunny",
+     "model": "stealth/space-bunny-alpha",
+     "civ": "Persians",
+     "power": 373,
+     "winner": false
+    }
+   ],
+   "bytes": 4107634,
+   "default": false
+  },
+  {
+   "file": "2026-09-30_glm5.3-space-bunny-hard-minimatch_5min.jsonl",
+   "matchId": "match-20260930-130045",
+   "date": 1790766045509,
+   "duration": "05:51",
+   "turns": 34,
+   "outcome": "last_standing",
+   "seed": "rmunzv7hsowt9",
+   "difficulty": "hard",
+   "turnBased": false,
+   "promptVersion": "agents-rule-v101",
+   "build": 1002,
+   "winner": "O space-bunny",
+   "players": [
+    {
+     "seat": 1,
+     "name": "O space-bunny",
+     "model": "stealth/space-bunny-alpha",
+     "civ": "Yamato",
+     "power": 1089,
+     "winner": true
+    },
+    {
+     "seat": 0,
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "civ": "Persians",
+     "power": 17,
+     "winner": false
+    }
+   ],
+   "bytes": 567900,
+   "default": false
+  },
+  {
+   "file": "2026-09-30_glm5.3-space-bunny-hard-rematch_95min.jsonl",
+   "matchId": "match-20260930-130722",
+   "date": 1790766442612,
+   "duration": "95:13",
+   "turns": 340,
+   "outcome": "last_standing",
+   "seed": "rmunzv7hsowt9",
+   "difficulty": "hard",
+   "turnBased": false,
+   "promptVersion": "agents-rule-v101",
+   "build": 1002,
+   "winner": "DGX GLM5.3 Flash",
+   "players": [
+    {
+     "seat": 0,
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "civ": "Persians",
+     "power": 4137,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "O space-bunny",
+     "model": "stealth/space-bunny-alpha",
+     "civ": "Yamato",
+     "power": 339,
+     "winner": false
+    }
+   ],
+   "bytes": 7076658,
+   "default": false
   }
  ]
 }
