@@ -186,7 +186,7 @@ class StandingOrders {
         // it looked to be in range (1 Oct 2026).
         const old=u._patientStand;
         if(old&&WarMath.hypot(old.px-patient.x,old.pz-patient.z)<1
-            &&WarMath.hypot(old.x-patient.x,old.z-patient.z)<=healRange-.2)return old;
+            &&(!StandingOrders.STAND_MUST_REACH||WarMath.hypot(old.x-patient.x,old.z-patient.z)<=healRange-.2))return old;
         const angle=WarMath.atan2(u.z-patient.z,u.x-patient.x);
         for(let i=0;i<16;i++){
             const a=angle+i*Math.PI/8;
@@ -438,6 +438,10 @@ class StandingOrders {
         });
     }
 }
+// b1005's rule: a priest keeps its stand only while it reaches its patient. Switchable
+// only so the Platform's build-896 parity test can compare against the old keeping rule,
+// as it does with the old healing range; nothing in play turns it off.
+StandingOrders.STAND_MUST_REACH=true;
 Game.prototype.setStandingOrder=function(manager,owner,units,to,options){
     if(!this._standingOrders)this._standingOrders=new StandingOrders(this,manager);
     return this._standingOrders.issue(owner,units,to,options);
