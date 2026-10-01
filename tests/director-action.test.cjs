@@ -261,7 +261,7 @@ test('a calm close-up frames one worker at chest height from in front, and comes
     const c = d.candidates(now).find(x => x.type === 'closeup');
     assert.ok(c, 'a close-up is offered');
     const pose = c.make();
-    assert.deepEqual([pose.closeup, pose.halfH, pose.lookY, +pose.yaw.toFixed(2)], [true, 1.8, 1.0, 0.6], 'front three-quarter, chest height, half the screen');
+    assert.deepEqual([pose.closeup, pose.halfH, pose.lookY, +pose.yaw.toFixed(2)], [true, 3.6, 1.0, 0.6], 'front three-quarter, chest height, a quarter of the screen');
     assert.equal(pose.subject.units[0], w);
     assert.equal(d.candidates(now + 20000).some(x => x.type === 'closeup'), false, 'not again within 30 s');
     assert.ok(d.candidates(now + 31000).some(x => x.type === 'closeup'), 'again after 30 s');

@@ -721,15 +721,14 @@ class Director {
 
     // ---- close-ups ---------------------------------------------------------
     // One unit, from in front at a three-quarter angle (the camera turned 0.6 rad off
-    // its facing), low, aimed at its chest so the face sits in the upper third. A rider
-    // sits higher: aimed higher, framed a little wider. asp67 chose the framing on a
-    // posed preview (1 Oct 2026), then pulled it back so the unit fills half the screen
-    // rather than three quarters (b1013).
+    // its facing), low, aimed at its chest. A rider sits higher: aimed higher, framed a
+    // little wider. asp67 chose the angle on a posed preview (1 Oct 2026), then pulled
+    // the camera back until the unit fills a quarter of the screen height (b1014).
     closeupPose(u) {
         const r = this.game.renderer;
         const facing = r && r.unitFacing ? r.unitFacing(u) : 0;
         const rider = u.unitType === 'cavalry';
-        const halfH = rider ? 2.55 : 1.8;
+        const halfH = rider ? 5.1 : 3.6;
         const yaw = this.clearCloseupYaw(u, facing, halfH);
         if (yaw == null) return null;
         return { x: u.x, z: u.z, yaw, halfH, lookY: rider ? 1.9 : 1.0,

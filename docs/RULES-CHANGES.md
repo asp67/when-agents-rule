@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1014: close-ups pulled back further (1 October 2026)
+
+**No rules change.** A close-up now frames its unit at about a quarter of the screen height (b1013: half). Both the worker and the rider framing are twice as wide as in b1013, and the aim stays at the chest.
+
 ## Build 1013: the speed control stays open, and close-ups pulled back (1 October 2026)
 
 **No rules change.**
