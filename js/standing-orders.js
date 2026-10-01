@@ -180,8 +180,13 @@ class StandingOrders {
         // patient's collision radius. Replan only when the patient moves away.
         const healRange=this.game.healingRange();
         if(WarMath.hypot(patient.x-u.x,patient.z-u.z)<=healRange-.2)return {x:u.x,z:u.z};
+        // The stand is kept while it still REACHES the patient. Kept only while the patient
+        // had moved less than 1, a soldier shuffling in a fight (0.7 outward) left the
+        // priest on a stand 10.5 away -- a hair outside its reach -- healing no one while
+        // it looked to be in range (1 Oct 2026).
         const old=u._patientStand;
-        if(old&&WarMath.hypot(old.px-patient.x,old.pz-patient.z)<1)return old;
+        if(old&&WarMath.hypot(old.px-patient.x,old.pz-patient.z)<1
+            &&WarMath.hypot(old.x-patient.x,old.z-patient.z)<=healRange-.2)return old;
         const angle=WarMath.atan2(u.z-patient.z,u.x-patient.x);
         for(let i=0;i<16;i++){
             const a=angle+i*Math.PI/8;

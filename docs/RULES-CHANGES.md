@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1005: priests heal in a fight (1 October 2026)
+
+**A rules change.** A priest under an order is placed by that order, on a stand just inside its healing reach (9.8 of 10.5) beside its patient. The stand was kept as long as the patient had moved less than 1. A soldier shuffling in a fight moves about that much, so the priest was left on a stand 10.5 away, a hair outside its reach, healing no one while it looked to be in range. The stand is now kept only while it still reaches the patient.
+- **Measured** on a board where an army fights, with the priest in the army's attack order: heal ticks rose from 50 of 400 to 389 of 400. Ordered next to the army separately: from 54 to 392. A priest with no order, which was never affected, heals 400 of 400.
+- **Golden traces:** `battle-40v40` and `wonder-siege`, both with priests, were re-recorded.
+
 ## Build 1004: who is still in the game, and workers who defend themselves (1 October 2026)
 
 **A rules change.**

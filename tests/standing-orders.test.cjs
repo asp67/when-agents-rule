@@ -700,3 +700,19 @@ test('a retaliating soldier charges out of the formation and rejoins it once the
  assert.equal(a.attackTarget,null);
  assert.ok(a.formationGroup,'back in the formation');assert.equal(a.marchSpeed,1,'back at the formation\'s pace');
 });
+
+// 1 Oct 2026: a priest kept a stand while its patient had moved less than 1 -- a soldier
+// shuffling 0.7 in a fight left it 10.5 away, a hair outside its reach, healing no one.
+test('a priest re-plans its stand when a shuffling patient drifts out of reach',()=>{
+ const h=setup(),w=h.unit('warrior',0,0),p=h.unit('priest',-14,0,2);w.health=40;h.owner.units.push(w,p);
+ h.g.aiManager.isVisibleTo=()=>true;
+ h.issue('march',{x:0,z:0});
+ for(let i=0;i<40;i++)h.step(150);
+ const reach=h.g.healingRange(),standGap=()=>Math.hypot(p.targetX-w.x,p.targetZ-w.z);
+ assert.equal(p._formationPatient,w,'the wounded soldier is its patient');
+ assert.ok(standGap()<=reach-.2,'its stand reaches the patient: '+standGap().toFixed(2));
+ const dx=w.x-p.targetX,dz=w.z-p.targetZ,d=Math.hypot(dx,dz)||1;w.x+=dx/d*.8;w.z+=dz/d*.8;   // shuffles away
+ assert.ok(standGap()>reach-.2,'the old stand no longer reaches it');
+ h.step(300);
+ assert.ok(standGap()<=reach-.2,'re-planned to reach it again: '+standGap().toFixed(2));
+});
