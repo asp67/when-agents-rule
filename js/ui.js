@@ -2772,13 +2772,20 @@ class UIManager {
             tx.textContent = s;
             g.appendChild(tx);
         };
+        // A battle's ring lies on the ground like every other ring (b1008): the same
+        // on-screen size as before (16-30 px across the view's height at any zoom), but a
+        // circle in the world projected through the camera, not a disc facing it.
+        const worldPerPx = (2 * (r._halfH || 30)) / Math.max(1, (r.canvas && r.canvas.clientHeight) || 600);
         for (const b of L.battles) {
             const p = at(b.x, b.z);
             if (!p) continue;
-            const c = document.createElementNS(NS, 'circle');
-            c.setAttribute('cx', p.x); c.setAttribute('cy', p.y); c.setAttribute('r', 16 + Math.min(14, Math.sqrt(b.n) * 2));
-            c.setAttribute('class', 'strat-battle');
-            g.appendChild(c);
+            const R = (16 + Math.min(14, Math.sqrt(b.n) * 2)) * worldPerPx, pts = [];
+            for (let k = 0; k < 32; k++) {
+                const q = at(b.x + Math.cos(k * Math.PI / 16) * R, b.z + Math.sin(k * Math.PI / 16) * R);
+                if (q) pts.push(q.x.toFixed(1) + ' ' + q.y.toFixed(1));
+            }
+            if (pts.length < 32) continue;
+            el('path', { d: 'M' + pts.join('L') + 'Z', class: 'strat-battle' });
             text(p.x, p.y + 5, '\u2694', 15);
         }
         // A marker: a short white line rising at 45 degrees from the spot, and at its end

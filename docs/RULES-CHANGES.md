@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1008: the battle marker lies on the ground (1 October 2026)
+
+**No rules change.** Zoomed out, a battle was marked with a dashed disc facing the camera, unlike every other ring, which lies on the ground. It is now a circle on the ground projected through the camera: the same on-screen size as before (16 to 30 px across at any zoom), foreshortened with the view.
+
 ## Build 1007: ground clutter grows in after a cut (1 October 2026)
 
 **No rules change.** After a cut to a wide view, the grass and rubble filled in square by square. One 16x16 tile was built per frame, at full density, and appeared at full height. A wide cut needs about 100 tiles: 109 frames, about 1.8 s at 60 fps.
