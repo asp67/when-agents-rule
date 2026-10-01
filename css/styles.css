@@ -3065,10 +3065,11 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 
 /* Broadcast mode (review #11): the operator's furniture goes, a scoreboard and lower
    thirds come. The slate is the only flash, and it is skipped for reduced motion. */
-body.broadcast-mode #spectatorHUD, body.broadcast-mode #spectatorLeaderboard, body.broadcast-mode #aiDecisionLog,
-body.broadcast-mode #transcriptViewer, body.broadcast-mode #unitInfo, body.broadcast-mode #mmFog,
-/* The minimap keeps its controls in broadcast mode (b1003): zoom, follow and the rest are
+/* The minimap keeps its controls in broadcast mode: zoom, follow and the rest (b1003) and
+   the seat knobs beside it that choose whose map knowledge it shows (b1009) -- they are
    how a broadcast is steered by hand. */
+body.broadcast-mode #spectatorHUD, body.broadcast-mode #spectatorLeaderboard, body.broadcast-mode #aiDecisionLog,
+body.broadcast-mode #transcriptViewer, body.broadcast-mode #unitInfo,
 body.broadcast-mode .lb-flyout { display: none !important; }
 /* The bar's speed control, moved beside the clock: a small version of it. */
 .broadcast-board .sb-speed-wrap { margin-left: -4px; }

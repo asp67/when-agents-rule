@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1009: the minimap's seat knobs in broadcast mode (1 October 2026)
+
+**No rules change.** The knobs beside the minimap that choose whose map knowledge it shows were still hidden in broadcast mode. They now stay, with the minimap's other controls (build 1003).
+
 ## Build 1008: the battle marker lies on the ground (1 October 2026)
 
 **No rules change.** Zoomed out, a battle was marked with a dashed disc facing the camera, unlike every other ring, which lies on the ground. It is now a circle on the ground projected through the camera: the same on-screen size as before (16 to 30 px across at any zoom), foreshortened with the view.
