@@ -267,6 +267,22 @@ test('a calm close-up frames one worker at chest height from in front, and comes
     assert.ok(d.candidates(now + 31000).some(x => x.type === 'closeup'), 'again after 30 s');
 });
 
+test('a harvester close-up keeps the camera where the shot began; other close-ups carry no eye', () => {
+    const { director: d, game, players } = setup();
+    game.renderer = { _yaw: 0, unitFacing: () => 0 };
+    const w = { owner: 'a', type: 'worker', x: 100, z: 100, health: 40, isHarvesting: true, isMoving: false };
+    players[0].units.push(w);
+    const pose = d.candidates(200000).find(x => x.type === 'closeup').make();
+    const p = 0.17, dist = pose.halfH / Math.tan(10 * Math.PI / 180);
+    const want = [100 + Math.cos(p) * Math.sin(pose.yaw) * dist, pose.lookY + Math.sin(p) * dist, 100 + Math.cos(p) * Math.cos(pose.yaw) * dist];
+    assert.ok(pose.eye.every((v, i) => Math.abs(v - want[i]) < 1e-6), 'the eye of the opening frame: ' + pose.eye + ' vs ' + want);
+    const builder = { owner: 'a', type: 'worker', x: 100, z: 100, health: 40, isBuilding: true, isMoving: false };
+    players[0].units.length = 0; players[0].units.push(builder);
+    const d2 = setup(); d2.game.renderer = game.renderer; d2.players[0].units.push(builder);
+    const other = d2.director.candidates(200000).find(x => x.type === 'closeup').make();
+    assert.equal(other.eye, undefined, 'a builder is followed as before');
+});
+
 test('a close-up looks past what stands in front of its subject, and skips one it cannot see', () => {
     const { director: d, game, players } = setup();
     game.renderer = { _yaw: 0, unitFacing: () => 0 };

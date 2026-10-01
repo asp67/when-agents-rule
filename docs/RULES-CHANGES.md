@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1019: a harvester's close-up is filmed from a standing camera (1 October 2026)
+
+**No rules change.** In a close-up of a harvesting worker, the camera stays where the shot began. It turns to follow the worker instead of travelling beside it. As the worker walks to its drop-off it gets smaller in the frame, as it would for a camera on a tripod. Every other close-up (scouts, the head of a march, builders, fighters) still moves with its subject. The analyzer's autocam does the same.
+
 ## Build 1018: shoulder pads at 0.8 (1 October 2026)
 
 **No rules change.** 0.7 of the old size was too small, so every unit's shoulder pads are now 0.8 of it.

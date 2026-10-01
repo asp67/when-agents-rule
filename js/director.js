@@ -570,6 +570,10 @@ class Director {
                 if (pose) push('closeup', 'close:' + ai.id + ':' + pick.kind, 66, () => {
                     this._lastClose = now;
                     pose.x = pick.u.x; pose.z = pick.u.z;
+                    // A harvester is filmed from where the shot began (asp67, b1019): the
+                    // camera stays put and turns to follow it, as a person standing there
+                    // would, instead of travelling along beside it to the drop-off.
+                    if (pick.kind === 'work' && pick.u.isHarvesting) pose.eye = this.closeupEye(pose);
                     return pose;
                 });
             }
@@ -733,6 +737,14 @@ class Director {
         if (yaw == null) return null;
         return { x: u.x, z: u.z, yaw, halfH, lookY: rider ? 1.9 : 1.0,
                  closeup: true, subject: { kind: 'units', units: [u] } };
+    }
+    // Where the camera of a close-up pose stands: the eye M3D.dimetricView would place
+    // for it, with the renderer's 20-degree field of view.
+    closeupEye(pose) {
+        const pitch = DIR_SHOTS.closeup.pitch, dist = pose.halfH / Math.tan(10 * Math.PI / 180);
+        return [pose.x + Math.cos(pitch) * Math.sin(pose.yaw) * dist,
+                (pose.lookY || 0) + Math.sin(pitch) * dist,
+                pose.z + Math.cos(pitch) * Math.cos(pose.yaw) * dist];
     }
     // A close-up needs a clear line to its subject: a woodcutter faces its tree, so the
     // camera "in front" of it filmed bark. The strip from the unit to the camera is
@@ -929,6 +941,7 @@ class Director {
             yaw: this.shot.pose.yaw, pitch: spec.pitch,
             halfH: this.shot.pose.halfH * k,
             lookY: this.shot.pose.lookY || 0, closeup: !!this.shot.pose.closeup,
+            eye: this.shot.pose.eye || null,
             cut
         };
     }

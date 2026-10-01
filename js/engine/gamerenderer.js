@@ -374,11 +374,13 @@
                 this._yaw = shot.yaw;
                 this._pitch = shot.pitch;
                 this._lookY = lookY;
+                if (shot.eye) this.aimFromEye(shot.eye);
                 return;
             }
             const k = Math.min(1, deltaTime * 1.6), kt = shot.closeup ? Math.min(1, deltaTime * 8) : k;
             this.cameraTarget.x += (shot.x - this.cameraTarget.x) * kt;
             this.cameraTarget.z += (shot.z - this.cameraTarget.z) * kt;
+            if (shot.eye) { this._lookY = lookY; this.aimFromEye(shot.eye); return; }
             this._halfH += (want - this._halfH) * k;
             this._lookY = (this._lookY || 0) + (lookY - (this._lookY || 0)) * k;
             // Shortest way round the circle. Eased raw, a camera at 350
@@ -389,6 +391,20 @@
             while (d < -Math.PI) d += Math.PI * 2;
             this._yaw += d * k;
             this._pitch += (shot.pitch - this._pitch) * k;
+        }
+
+        // A camera standing still (b1019): yaw, pitch and distance that put the eye at
+        // `eye` while looking at the current target. The frame's height follows the
+        // distance (fixed field of view), so a subject walking away gets smaller, as it
+        // would to a camera on a tripod. Nearer than the close-up limit the eye gives way,
+        // and the pitch stops short of straight down, where lookAt degenerates.
+        aimFromEye(eye) {
+            const t = this.cameraTarget, ly = this._lookY || 0;
+            const dx = eye[0] - t.x, dz = eye[2] - t.z, h = Math.hypot(dx, dz);
+            if (h > 1e-6) this._yaw = Math.atan2(dx, dz);
+            this._pitch = Math.min(1.2, Math.atan2(eye[1] - ly, h));
+            const dist = Math.hypot(h, eye[1] - ly);
+            this._halfH = Math.max(CLOSE_MIN_HALF, Math.min(MAX_HALF, dist * Math.tan(10 * Math.PI / 180)));
         }
 
         // Which way a unit is drawn facing (radians about Y; +Z turned by it). The
