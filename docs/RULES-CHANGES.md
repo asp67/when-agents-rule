@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1021: the Wonder countdown runs at the 1× pace (1 October 2026)
+
+**Rules change.** asp67 set the Wonder hold for the new speed names:
+- **The countdown unit.** The countdown still shows 600 seconds, but each is a second at the 1× pace: 2 game seconds. A Wonder must therefore stand 1200 game seconds (it was 600).
+  - At 1× a seat has ten real minutes.
+  - At ½× a countdown second takes two real seconds.
+- **The pace while a Wonder stands.** 2× falls back to 1×, and ½× stays ½× (until build 1020 every speed fell back to the old 1×).
+- **What models are told.** `secondsUntilYouWin` and `secondsUntilEnemyWins` are both real seconds now. The owner's number used to be game seconds.
+- **Transcripts** record `wonderPace` (game seconds per countdown second). A transcript from before this build has none and replays with 1, as it was played.
+- **The Bench and the golden traces** stay at pace 1 (`Realm` `normalSpeed`), so their Wonder is still 600 game seconds.
+
 ## Build 1020: the old 2× is the new 1× (1 October 2026)
 
 **The default pace doubles; the speeds themselves do not change.** asp67 renamed them:

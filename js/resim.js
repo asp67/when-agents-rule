@@ -73,6 +73,7 @@ WarResim.Replay = class {
             return;
         }
         if (header.wonderRequired) game.wonderRequired = header.wonderRequired;
+        game.wonderPace = header.wonderPace || 1;   // not recorded before build 1021, where it was 1
         players.forEach((p, i) => { if (p.model !== 'ki') this.seats.set(p.id, WarResim.seat(game, ais[i])); });
     }
     get step() { return this.game.clock.stepNo; }

@@ -46,6 +46,9 @@ class Game {
         // Seconds a finished Wonder must be HELD to win. Long enough that rivals get a
         // real window to march over and destroy it (a Wonder is an existential threat).
         this.wonderRequired = 600;
+        // Game seconds per countdown second (b1021): the countdown counts seconds at the
+        // 1x pace, so 600 of them are ten real minutes at 1x and twenty at 1/2x.
+        this.wonderPace = Game.NORMAL_SIM_SPEED;
         // Exploration bitmap resolution: 42×42 cells (~19 units each), summarised
         // for the models as a 7×7 tile grid of 6×6 cells per tile (see
         // markExploration / explorationSummary).
@@ -74,7 +77,7 @@ class Game {
         // Lockstep between rounds: the world waits for the models, and so does the match
         // clock -- thinking time is no time at all in the world they are thinking about.
         if (this.lockstepFrozen()) return 0;
-        return this.anyWonderStanding() ? 1 : (this.simSpeed || 1);
+        return this.effectiveSimSpeed();
     }
     // A tempo change, noted where the stepped world stands (lockstep: no part-steps).
     noteSimRate(rate) {
@@ -307,6 +310,7 @@ class Game {
         // was inherited from a match the viewer may not even remember starting is a
         // result they cannot read. Same for a pause: a new match must not begin frozen.
         this.setSimSpeed(Game.NORMAL_SIM_SPEED);
+        this.wonderPace = Game.NORMAL_SIM_SPEED;
         this.pauseState = 'running';
         // And the speed-up confirmation is documented as "once per match" — it was
         // stored on the UI and never cleared, so it was really once per session and
@@ -2168,7 +2172,14 @@ class Game {
         return this.effectiveSimSpeed();
     }
 
-    effectiveSimSpeed() { return this.anyWonderStanding() ? 1 : (this.simSpeed || 1); }
+    // A standing Wonder holds the match at 1x at most (b1021): 2x falls back to it, 1/2x
+    // stays where it is.
+    effectiveSimSpeed() {
+        const set = this.simSpeed || 1;
+        return this.anyWonderStanding() ? Math.min(set, Game.NORMAL_SIM_SPEED) : set;
+    }
+    // How long a Wonder must stand, in game ms.
+    wonderHoldMs() { return (this.wonderRequired || 600) * 1000 * (this.wonderPace || 1); }
 
     toggleActionCam() {
         this._actionCam = !this._actionCam;
@@ -5871,7 +5882,7 @@ class Game {
         );
 
         if (playerWonders.length > 0) {
-            const required = (this.wonderRequired || 600) * 1000;
+            const required = this.wonderHoldMs(), pace = this.wonderPace || 1;
             this.wonderTimer += deltaTime;
             // Spectacular one-time announcement the moment the Wonder is finished.
             if (!this._wonderAnnounced) {
@@ -5879,7 +5890,7 @@ class Game {
                 this.ui.announceWonder(playerWonders[0]);
             }
             // Live victory countdown overlay.
-            this.ui.showWonderTimer(Math.max(0, required - this.wonderTimer), required);
+            this.ui.showWonderTimer(Math.max(0, required - this.wonderTimer) / pace, required / pace);
             if (this.wonderTimer >= required) {
                 this.ui.hideWonderTimer();
                 this.ui.showVictory();
@@ -5989,7 +6000,7 @@ class Game {
         players.forEach(ai => { if (this.isPlayerEliminated(ai)) ai._eliminated = true; });
 
         const wonderTypes = ['pyramid', 'akropolis', 'firetemple', 'shrine'];
-        const required = (this.wonderRequired || 600) * 1000;
+        const required = this.wonderHoldMs();
         let wonderHolder = null;
         players.forEach(ai => {
             if (ai._eliminated) { ai._wonderHold = 0; return; }

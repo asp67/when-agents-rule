@@ -2500,6 +2500,8 @@ class OpenAIAIManager {
                 lockstepSliceMs: (this.turnBased && this.game && this.game._lockstep) ? this.game._lockstep.sliceMs : null,
                 simSpeed: this.game.simSpeed || 1,
                 wonderRequired: this.game.wonderRequired || null,
+                // Game seconds per countdown second; absent before build 1021, where it was 1.
+                wonderPace: this.game.wonderPace || 1,
                 promptVersion: (this.game.ui && this.game.ui.ARENA_PROMPT_VERSION) || null,
                 // What kind of record this is. `schema` lets a reader tell "not recorded"
                 // from "none happened" -- a file without it predates interventions,
@@ -3236,8 +3238,9 @@ class OpenAIAIManager {
                 // rival was handed secondsUntilEnemyWins — the same clock, ticking on
                 // ai._wonderHold, read only for the other side. So the one player whose
                 // victory was running was the only one who could not see it.
-                const held = constructing ? 0 : Math.round((ai._wonderHold || 0) / 1000);
-                obj.secondsUntilYouWin = constructing ? null : Math.max(0, required - held);
+                // Real seconds, as the rival's view of it below (b1021: the hold is no
+                // longer 600 game seconds, so game seconds would disagree with it).
+                obj.secondsUntilYouWin = constructing ? null : this.realSecs(game.wonderHoldMs() - (ai._wonderHold || 0));
                 // And they were not told the rule that makes them a target. Every OTHER
                 // building they own is fog-protected, so a model may reasonably infer
                 // its Wonder is hidden too, tuck it in a corner, and be punished for a
@@ -3287,9 +3290,9 @@ class OpenAIAIManager {
             if (isWonder) {
                 entry.isWonder = true;
                 const ownerAi = game.aiManager.aiPlayers.find(a => a.buildings.includes(bldg));
-                const held = bldg.underConstruction ? 0 : Math.round(((ownerAi && ownerAi._wonderHold) || 0) / 1000);
+                const held = bldg.underConstruction ? 0 : ((ownerAi && ownerAi._wonderHold) || 0);
                 entry.state = bldg.underConstruction ? 'under_construction' : 'complete';
-                entry.secondsUntilEnemyWins = bldg.underConstruction ? null : this.realSecs(Math.max(0, required - held) * 1000);
+                entry.secondsUntilEnemyWins = bldg.underConstruction ? null : this.realSecs(game.wonderHoldMs() - held);
                 enemyWonders.push(entry);
             }
             enemyBuildings.push(entry);

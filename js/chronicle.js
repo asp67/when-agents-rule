@@ -160,7 +160,7 @@ class MatchChronicle {
                     this._wonders.set(b, w = { stage: -1 });
                     this.emit('wonder-raised', { seats: [ai.id], building: b.type, x: Math.round(b.x), z: Math.round(b.z), required }, 3);
                 }
-                const left = required - (ai._wonderHold || 0) / 1000;
+                const left = required - (ai._wonderHold || 0) / 1000 / (g.wonderPace || 1);
                 const stage = MatchChronicle.COUNTDOWN.filter(s => left <= s).length - 1;
                 if (stage > w.stage) {
                     w.stage = stage;

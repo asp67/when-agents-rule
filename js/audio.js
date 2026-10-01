@@ -609,7 +609,7 @@ class WarAudio {
         const owners=this.game.spectatorMode?(this.game.aiManager?.aiPlayers||[]):[this.game.player];
         for(const owner of owners)for(const b of owner?.buildings||[]){
             if(!b.isWonder||b.underConstruction||b.health<=0)continue;
-            const remaining=(this.game.wonderRequired||600)-(this.game.spectatorMode?(owner._wonderHold||0):(this.game.wonderTimer||0))/1000;
+            const remaining=(this.game.wonderRequired||600)-(this.game.spectatorMode?(owner._wonderHold||0):(this.game.wonderTimer||0))/1000/(this.game.wonderPace||1);
             const stage=remaining<=10?3:remaining<=30?2:remaining<=60?1:0;
             if(this.wonderStages.get(b)!==stage){this.wonderStages.set(b,stage);this.notify('warning',false,{civilization:owner.civilization,seconds:Math.max(0,Math.ceil(remaining))});}
         }

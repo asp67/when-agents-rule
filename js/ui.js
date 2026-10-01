@@ -3892,13 +3892,14 @@ class UIManager {
     // The furthest-along held Wonder: who holds it, for how long, of how long needed.
     wonderLead() {
         const players = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
-        const reqMs = (this.game.wonderRequired || 600) * 1000;
+        // In countdown time (b1021): seconds at the 1x pace, as the countdown shows them.
+        const pace = this.game.wonderPace || 1, reqMs = (this.game.wonderRequired || 600) * 1000;
         let lead = null, leadHold = 0;
         players.forEach(ai => {
             const holding = ai.buildings.some(b => b.isWonder && !b.underConstruction);
             if (holding && (ai._wonderHold || 0) > leadHold) { leadHold = ai._wonderHold || 0; lead = ai; }
         });
-        return { lead, leadHold, reqMs };
+        return { lead, leadHold: leadHold / pace, reqMs };
     }
 
     // ---- Broadcast mode (review #11) ---------------------------------------------
@@ -5424,7 +5425,7 @@ class UIManager {
             // least honest: this is the exact moment a spectator opens it to speed
             // through a hold. Still clickable — the pick is remembered for when the
             // Wonder falls — but no longer pretending to be available now.
-            const held = heldByWonder && v > 1;
+            const held = heldByWonder && v > Game.NORMAL_SIM_SPEED;
             o.classList.toggle('is-held', held);
             o.title = held ? t('spec.simSpeedHeldOpt') : '';
         });
