@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1015: shoulder pads for workers, archers and priests (1 October 2026)
+
+**No rules change.** Close up, the top of a bare sleeve read as a flat disc. Workers and archers of every tier now wear the leather shoulder pads the elite archer had. Priests wear them in their robe's cloth.
+
 ## Build 1014: close-ups pulled back further (1 October 2026)
 
 **No rules change.** A close-up now frames its unit at about a quarter of the screen height (b1013: half). Both the worker and the rider framing are twice as wide as in b1013, and the aim stays at the chest.

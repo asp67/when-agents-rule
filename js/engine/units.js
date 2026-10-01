@@ -272,6 +272,7 @@
         worker: (o = {}) => {
             const p = [];
             humanoid(p, o);
+            shoulders(p,'leather');   // caps the sleeve, whose top read as a flat disc
             headgear(p, o.civ, 'civil', 0, 1.49, 0);
             held(p,'axe','armR',[.37,.77,.045],q=>{
                 part(q,'cylinder',[.028,.028,.55,8],'wood',{y:.09});
@@ -314,7 +315,7 @@
             const tier = o.tier || 1;
             const p = [];
             humanoid(p, { ...o, sleeves: 'leather' });
-            if(tier>=2) shoulders(p,'leather');
+            shoulders(p,'leather');
             if (tier >= 2) headgear(p, o.civ, 'military', 0, 1.47, 0);
             else if (o.civ) headgear(p, o.civ, 'civil', 0, 1.49, 0);
             else part(p, 'sphere', [1, 8, 6], 'leather', { y: 1.53, sx: 0.18, sy: 0.11, sz: 0.18 }); // generic cap
@@ -337,6 +338,7 @@
         priest: (o = {}) => {
             const p=[];
             humanoid(p,{...o,sleeves:'cloth'});
+            shoulders(p,'cloth');   // in the robe's cloth, like the sleeves
             part(p,'cylinder',[.235,.37,.83,14],'cloth',{y:.51,sz:.85});
             part(p,'frustum',[.18,.035,.15,.035,.85],'cloth',{y:.12,z:.27,team:true});
             cape(p,1.25,-.23,1.12);
