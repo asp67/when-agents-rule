@@ -6,6 +6,20 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1010: close-ups, and the live autocam in the analyzer (1 October 2026)
+
+**No rules change.**
+- **Close-ups.** The auto camera now and then shows one unit up close: low, from in front at a three-quarter angle, aimed at its chest so the face sits in the upper third. asp67 chose the framing on a posed preview.
+  - **Calm phases:** a seat's lone scout, the front of its marching army, or a worker at work, at most every 30 s.
+  - **Fights:** a fighter, briefly, once the battle has been shown from its usual angle twice, and not again in that fight for 15 s.
+  - **Line of sight:** a close-up is taken only with a clear view. A woodcutter faces its tree, so the strip to the camera is checked against trees, resource nodes and buildings: the front view to either side first, then a profile. A subject seen from nowhere is passed by.
+  - **Timing:** a close-up holds at least 2 s against anything of the same urgency. A running close-up no longer looks "gone" to the director, which had let the fight take the camera straight back.
+  - **Camera:** it can aim above the ground (`lookY`) and come closer than the user's zoom (half-height 0.8). It follows a close-up's subject tightly and returns to the ground and the normal zoom range when the shot ends.
+- **The analyzer's auto camera** over a re-simulated replay is now the live director: fights, marches, scouts and close-ups, cut and composed as in a live match. It used to jump from one turn's hotspot to the next.
+  - **The replay world:** the replay scene carries where units are going and what they do, and a drop in health counts as a hit.
+  - **Following:** a unit picked on stage is followed, as a click follows one live.
+  - **Single turns** (not a replay) keep the hotspot aim.
+
 ## Build 1009: the minimap's seat knobs in broadcast mode (1 October 2026)
 
 **No rules change.** The knobs beside the minimap that choose whose map knowledge it shows were still hidden in broadcast mode. They now stay, with the minimap's other controls (build 1003).

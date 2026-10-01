@@ -57,6 +57,12 @@ const DIR_RECENT = 6;                      // shots remembered for anti-repeat
 // event. Per PAIR of seats as well, so two rivals meeting repeatedly on one border do
 // not crowd out a third pair meeting for the first time.
 const DIR_CONTACT_COOLDOWN_MS = 20000;
+// Close-ups (b1010): one unit, low and in front, its face in the upper third. Rare on
+// purpose -- a face means something when it comes once in a while: a calm one at most
+// every DIR_CLOSE_EVERY, and inside a fight one per fight per DIR_CLOSE_FIGHT_EVERY,
+// and only after the battle has been shown from its usual angle twice.
+const DIR_CLOSE_EVERY = 30000;
+const DIR_CLOSE_FIGHT_EVERY = 15000;
 const DIR_CONTACT_PAIR_COOLDOWN_MS = 45000;
 
 // dur: [min, max] ms. pitch: elevation in radians (0.26 ~ 15deg, 0.6 ~ 34deg).
@@ -91,7 +97,11 @@ const DIR_SHOTS = {
     economy:   { dur: [8000, 10500],  pitch: 0.46, track: false, push: 0.05 },
     establish: { dur: [9000, 13000],  pitch: 0.58, track: false, push: 0.05 },
     compare:   { dur: [5000, 6500],   pitch: 0.52, track: false, push: 0 },
-    overview:  { dur: [9000, 12000],  pitch: 0.50, track: false, push: 0 }
+    overview:  { dur: [9000, 12000],  pitch: 0.50, track: false, push: 0 },
+    // Close-ups track from the first frame (settle 0): at that frame a unit walking
+    // waits for nobody. Aimed at chest height (pose.lookY) with a slow push in.
+    closeup:   { dur: [3500, 4500],   pitch: 0.17, track: true,  push: 0.04, settle: 0 },
+    clash:     { dur: [2200, 2900],   pitch: 0.17, track: true,  push: 0,    settle: 0 }
 };
 
 class Director {
@@ -458,6 +468,23 @@ class Director {
                 };
             });
             Object.assign(out[out.length - 1], { priority: f.priority, encounter: f.encounter });
+            // Inside the fight: a fighter, close (b1010) -- once the battle has had its
+            // usual angle twice, and then not again for a while.
+            this._closeFight = this._closeFight || {};
+            if ((this._shotNo && this._shotNo[key] || 0) >= 2
+                && now - (this._closeFight[key] || -Infinity) > DIR_CLOSE_FIGHT_EVERY * this.lapse) {
+                let fighter = null, best = Infinity;
+                for (const ai of this.livePlayers()) for (const u of ai.units) {
+                    if (u.health <= 0 || u.type === 'worker' || u.unitType === 'support' || !u.isAttacking || !u.attackTarget) continue;
+                    const d = Math.hypot(u.x - f.x, u.z - f.z) + (u.isMoving ? 6 : 0);
+                    if (d < best && d < (f.r || 10) + 8) { best = d; fighter = u; }
+                }
+                const pose = fighter ? this.closeupPose(fighter) : null;
+                if (pose) {
+                    push('clash', key + ':close', f.score - 4, () => { this._closeFight[key] = now; pose.x = fighter.x; pose.z = fighter.z; return pose; });
+                    Object.assign(out[out.length - 1], { priority: f.priority, encounter: f.encounter });
+                }
+            }
         }
 
         for (const ai of this.livePlayers()) {
@@ -533,6 +560,17 @@ class Director {
                         yaw: this.snapYaw(far ? this.yawAlong(dx, dz) : 0),
                         halfH: 26, subject: { kind: 'units', units: [scout] }
                     };
+                });
+            }
+
+            // A face, now and then (b1010).
+            if (now - (this._lastClose == null ? -Infinity : this._lastClose) > DIR_CLOSE_EVERY * this.lapse) {
+                let pick = null, pose = null;
+                for (const c of this.closeupSubject(ai, scout)) { pose = this.closeupPose(c.u); if (pose) { pick = c; break; } }
+                if (pose) push('closeup', 'close:' + ai.id + ':' + pick.kind, 66, () => {
+                    this._lastClose = now;
+                    pose.x = pick.u.x; pose.z = pick.u.z;
+                    return pose;
                 });
             }
 
@@ -681,6 +719,71 @@ class Director {
         return best;
     }
 
+    // ---- close-ups ---------------------------------------------------------
+    // One unit, from in front at a three-quarter angle (the camera turned 0.6 rad off
+    // its facing), low, aimed at its chest so the face sits in the upper third. A rider
+    // sits higher: aimed higher, framed a little wider. asp67 chose the framing on a
+    // posed preview (1 Oct 2026).
+    closeupPose(u) {
+        const r = this.game.renderer;
+        const facing = r && r.unitFacing ? r.unitFacing(u) : 0;
+        const rider = u.unitType === 'cavalry';
+        const halfH = rider ? 1.7 : 1.2;
+        const yaw = this.clearCloseupYaw(u, facing, halfH);
+        if (yaw == null) return null;
+        return { x: u.x, z: u.z, yaw, halfH, lookY: rider ? 1.9 : 1.0,
+                 closeup: true, subject: { kind: 'units', units: [u] } };
+    }
+    // A close-up needs a clear line to its subject: a woodcutter faces its tree, so the
+    // camera "in front" of it filmed bark. The strip from the unit to the camera is
+    // checked against trees, resource nodes and buildings, for the front three-quarter
+    // view to either side first and then a profile; null when every side is blocked.
+    clearCloseupYaw(u, facing, halfH) {
+        const g = this.game;
+        const reach = halfH / Math.tan(10 * Math.PI / 180) + 1;   // where the eye stands, horizontally
+        const near = [];
+        for (const n of ((g.terrain && g.terrain.resources) || [])) {
+            if (!(n.amount > 0)) continue;
+            const r = n.type === 'wood' ? 1.4 : n.type === 'food' ? 1.2 : 2.6;
+            if (Math.hypot(n.x - u.x, n.z - u.z) < reach + r) near.push({ x: n.x, z: n.z, r });
+        }
+        for (const b of (g.getAllBuildings ? g.getAllBuildings() : [])) {
+            if (!(b.health > 0)) continue;
+            const fp = b._grassFootprint, r = fp ? Math.max(fp.ex, fp.ez) : (b.isWonder ? 12 : 4.5);
+            if (Math.hypot(b.x - u.x, b.z - u.z) < reach + r) near.push({ x: b.x, z: b.z, r });
+        }
+        for (const off of [0.6, -0.6, 1.2, -1.2]) {
+            const yaw = facing + off, dx = Math.sin(yaw), dz = Math.cos(yaw);
+            const blocked = near.some(o => {
+                const ox = o.x - u.x, oz = o.z - u.z, t = ox * dx + oz * dz;
+                if (t < 0.4 || t > reach) return false;          // behind the unit, or past the eye
+                return Math.abs(ox * dz - oz * dx) < o.r + 0.6;  // within the strip
+            });
+            if (!blocked) return yaw;
+        }
+        return null;
+    }
+    // Who to show close in a calm phase: the seat's lone scout, the unit at the head of
+    // its marching army, or a worker at work -- in that order of interest.
+    // The first of them with a clear view wins (closeupPose); a blocked one is passed by.
+    closeupSubject(ai, scout) {
+        const out = [];
+        if (scout) out.push({ u: scout, kind: 'scout' });
+        const cluster = this.game._biggestArmyCluster ? this.game._biggestArmyCluster(ai) : null;
+        const head = cluster && cluster.length >= 2 ? this.heading(cluster) : null;
+        if (head && head.marching >= 2) {
+            // The front ranks first: furthest along the march.
+            const along = u => u.x * head.x + u.z * head.z;
+            cluster.slice().sort((a, b) => along(b) - along(a)).slice(0, 3).forEach(u => out.push({ u, kind: 'march' }));
+        }
+        let n = 0;
+        for (const w of ai.units) {
+            if (n >= 6) break;
+            if (w.health > 0 && w.type === 'worker' && (w.isHarvesting || w.isBuilding) && !w.isMoving) { out.push({ u: w, kind: 'work' }); n++; }
+        }
+        return out;
+    }
+
     // ---- scoring -----------------------------------------------------------
     // Novelty and fairness are the difference between a director and a loop. The
     // old tour rotated strictly, which is fair and predictable in the boring way;
@@ -732,7 +835,13 @@ class Director {
             if (top) {
                 const age = this.shot ? now - this.shot.born : Infinity;
                 const margin = DIR_INTERRUPT_MARGIN * (this.lapse > 1 ? 2 : 1);
-                const current = this.shot && cands.find(c => c.key === this.shot.key);
+                // A close-up is offered once (its cool-down starts as it is taken), so while
+                // it runs it is no longer among the candidates. Counted as present, at its own
+                // priority and score, until its time is up: otherwise the fight it was cut
+                // from took the camera straight back and the face was never seen.
+                const closeRunning = this.shot && (this.shot.type === 'closeup' || this.shot.type === 'clash') && !expired;
+                const current = this.shot && (cands.find(c => c.key === this.shot.key)
+                    || (closeRunning ? { key: this.shot.key, priority: this.shot.priority || 0, adj: this.shot.score } : undefined));
                 const priority = top.priority || 0, currentPriority = current?.priority || 0;
                 const lastHit = this.shot?.subject?.combat
                     ? this.encounters.find(e => e.key === this.shot.key)?.lastHit : null;
@@ -753,6 +862,9 @@ class Director {
                     || (expired && (!sameCombat || top.type === 'brawl'))
                     || (different && age >= (priority >= 2 ? fightHold : DIR_MIN_SHOT_MS * this.lapse)
                         && priority >= currentPriority && top.adj > (current?.adj || 0) + (priority >= 2 ? 12 : margin)));
+                // A face needs two seconds to read: nothing of the same urgency or less cuts a
+                // close-up sooner. Something more urgent (a Town Center about to fall) still can.
+                if (closeRunning && age < 2000 * this.lapse && priority <= (this.shot.priority || 0)) better = false;
                 // Reading: a bubble is on screen. Nothing but a battle cuts away from it,
                 // and a shot that runs out while one is up is held on, up to the cap.
                 const reading = this.shot && this.shot.type !== 'selected' && this.readingHold()
@@ -783,7 +895,8 @@ class Director {
 
         // Track the subject — but only after the frame has been held long enough to
         // read. Moving the instant we cut is how a cut turns into a lurch.
-        if (spec.track && held > DIR_SETTLE_MS * this.lapse) {
+        const settle = (spec.settle != null ? spec.settle : DIR_SETTLE_MS) * this.lapse;
+        if (spec.track && held > settle) {
             const p = this.shot.subject ? g._resolveCamSubject(this.shot.subject) : null;
             if (p) { this.shot.pose.x = p.x; this.shot.pose.z = p.z; }
             else if (this.shot.subject && this.shot.subject.combat) {
@@ -800,8 +913,8 @@ class Director {
         // The arc. Only shots that declare a pan get one, so the economy half stays
         // still. Direction alternates per shot, or a run of cuts around one fight would
         // all sweep the same way and read as one long drift instead of several angles.
-        if (spec.pan && held > DIR_SETTLE_MS * this.lapse) {
-            const k2 = Math.min(1, (held - DIR_SETTLE_MS * this.lapse) / (2000 * this.lapse));
+        if (spec.pan && held > settle) {
+            const k2 = Math.min(1, (held - settle) / (2000 * this.lapse));
             this.shot.pose.yaw = this.shot.pose.yaw0 + this.shot.panDir * spec.pan * k2;
         }
         // A slow tighten over the shot. Small on purpose: enough that the frame is
@@ -815,6 +928,7 @@ class Director {
             x: this.shot.pose.x, z: this.shot.pose.z,
             yaw: this.shot.pose.yaw, pitch: spec.pitch,
             halfH: this.shot.pose.halfH * k,
+            lookY: this.shot.pose.lookY || 0, closeup: !!this.shot.pose.closeup,
             cut
         };
     }

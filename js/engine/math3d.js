@@ -108,13 +108,15 @@
     // clamped by the caller; keep it under 90° or lookAt's up vector degenerates).
     // Returns { view, dir } — dir is the normalized eye→target direction
     // (handy for shading and for placing the eye far along the reverse ray).
-    M3D.dimetricView = (targetX, targetZ, dist, yaw = Math.PI / 4, pitch = Math.atan(0.5)) => {
+    // targetY lifts the look-at point off the ground (b1010): a close-up aims at a unit's
+    // chest, so its face sits in the upper third. Eye and target rise together.
+    M3D.dimetricView = (targetX, targetZ, dist, yaw = Math.PI / 4, pitch = Math.atan(0.5), targetY = 0) => {
         const dx = Math.cos(pitch) * Math.sin(yaw);
         const dy = Math.sin(pitch);
         const dz = Math.cos(pitch) * Math.cos(yaw);
-        const eye = [targetX + dx * dist, dy * dist, targetZ + dz * dist];
+        const eye = [targetX + dx * dist, targetY + dy * dist, targetZ + dz * dist];
         return {
-            view: M3D.lookAt(eye, [targetX, 0, targetZ], [0, 1, 0]),
+            view: M3D.lookAt(eye, [targetX, targetY, targetZ], [0, 1, 0]),
             eye,
             dir: [-dx, -dy, -dz]
         };

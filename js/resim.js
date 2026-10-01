@@ -115,7 +115,13 @@ WarResim.Replay = class {
                     isMoving: !!u.isMoving, isAttacking: !!u.isAttacking, isHarvesting: !!u.isHarvesting,
                     isBuilding: !!u.isBuilding, carryingResource: u.carryingResource || 0, attackTimer: u.attackTimer || 0,
                     carryingResourceType: u.carryingResourceType || null,
-                    attackTarget: u.attackTarget ? { x: u.attackTarget.x, z: u.attackTarget.z, health: u.attackTarget.health } : null,
+                    // Where it is going and what it is doing: the analyzer's director
+                    // reads marches, scouts and threats from these (b1010).
+                    targetX: u.isMoving && Number.isFinite(u.targetX) ? u.targetX : null,
+                    targetZ: u.isMoving && Number.isFinite(u.targetZ) ? u.targetZ : null,
+                    task: u.task || null,
+                    attackTarget: u.attackTarget ? { x: u.attackTarget.x, z: u.attackTarget.z, health: u.attackTarget.health,
+                        owner: u.attackTarget.owner, id: u.attackTarget.id } : null,
                 })),
                 buildings: ai.buildings.filter(b => b.health > 0).map(b => ({
                     // Its own epoch: an age-up restyles every building of the seat

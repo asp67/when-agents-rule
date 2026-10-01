@@ -6548,7 +6548,11 @@ class UIManager {
         worker.onmessage = e => this.anResimMessage(rs, e.data);
         worker.onerror = e => this.anResimMessage(rs, { type: 'error', problem: (e && e.message) || 'worker failed' });
         worker.postMessage({ type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) });
-        if (this.game.renderer) this.game.renderer.resimPlaying = true;   // units move here: let them animate
+        if (this.game.renderer) {
+            this.game.renderer.resimPlaying = true;   // units move here: let them animate
+            // The analyzer's auto camera is the live director over this replay (b1010).
+            this.game.renderer.poseSource = () => this.anDirectorPose();
+        }
         if (!keep) this.anResimStage();
         this.anResimHud(true);
     }
@@ -6556,7 +6560,7 @@ class UIManager {
         const rs = this._anResim;
         if (!rs) return;
         this._anResim = null;
-        if (this.game.renderer) this.game.renderer.resimPlaying = false;
+        if (this.game.renderer) { this.game.renderer.resimPlaying = false; this.game.renderer.poseSource = null; }
         try { rs.worker.terminate(); } catch (e) {}
         if (render) this.anRender();
     }
@@ -6592,9 +6596,39 @@ class UIManager {
             : sec(m0) + (sec(m1) - sec(m0)) * (rs.step - m0.step) / (m1.step - m0.step);
         if (m0 && a.cursor !== m0.idx) {
             a.seek(m0.idx);
-            if (a.autoCam) this.anAimCamera(a.current(), null);
+            // The replay's camera is the director's (anDirectorPose); the jump to a
+            // turn's hotspot is for reading single turns.
             this.anRender();
         }
+    }
+
+    // ---- The analyzer's director (b1010) ---------------------------------------
+    // The live auto camera, over the re-simulated replay: fights, marches, scouts,
+    // close-ups, cut and composed as in a live match. It used to jump from one turn's
+    // hotspot to the next with no direction. The director reads a world: here, a view
+    // of the game whose seats are the replay's entities (anResimDraw keeps it current),
+    // whose speed is the replay's, and whose followed unit is the one picked on stage.
+    anDirectorPose() {
+        const rs = this._anResim, a = this.analyzer;
+        if (!rs || !a || !a.autoCam || !rs.world || typeof Director !== 'function') return null;
+        if (!rs.director) rs.director = new Director(rs.world);
+        // A unit or building picked on stage is followed, as a click follows one live.
+        const p = this._anPicked, prev = rs.world._camFollow;
+        const want = p && p.ent ? (p.kind === 'unit' ? { kind: 'units', units: [p.ent] } : { kind: 'ent', ent: p.ent }) : null;
+        const same = prev && want && (prev.ent || (prev.units && prev.units[0])) === p.ent;
+        if (!same) rs.world._camFollow = want;   // the same object each frame: the director keys its shot on it
+        return rs.director.update(Date.now());
+    }
+    anDirectorWorld(rs) {
+        if (!rs.world) {
+            const g = this.game, w = Object.create(g);
+            Object.assign(w, { gameStarted: true, spectatorMode: true, _contactFeed: [], _camFollow: null,
+                aiManager: { aiPlayers: [] },
+                isPlayerEliminated: ai => !!(ai && ai._eliminated),
+                effectiveSimSpeed: () => (this._anResim && this._anResim.speed) || 1 });
+            rs.world = w;
+        }
+        return rs.world;
     }
     anResimMessage(rs, m) {
         if (rs !== this._anResim) return;   // a stopped run's late answer
@@ -6691,7 +6725,12 @@ class UIManager {
         const r = this.game.renderer;
         if (!r || !scene) return;
         const seen = new Set();
+        // The director's view of this world: seats with their entities (anDirectorWorld).
+        const world = this.anDirectorWorld(rs), seats = [];
+        const hurt = [];   // [entity, damage]: the replay has no hit events, so a drop in health is one
         scene.seats.forEach(s => {
+            const seat = { id: s.id, seat: s.seat, civilization: s.civilization, age: s.epoch, _eliminated: !!s.eliminated, units: [], buildings: [] };
+            seats.push(seat);
             s.units.forEach(u => {
                 const key = 'u' + u.id;
                 seen.add(key);
@@ -6707,9 +6746,13 @@ class UIManager {
                     rs.ents.set(key, ent);
                     r.addUnit(ent);
                 }
+                const before = ent.health;
                 Object.assign(ent, { x: u.x, z: u.z, health: u.health, isMoving: u.isMoving, isAttacking: u.isAttacking, attackTimer: u.attackTimer || 0,
                     isHarvesting: u.isHarvesting, isBuilding: u.isBuilding, carryingResource: u.carryingResource,
-                    carryingResourceType: u.carryingResourceType, attackTarget: u.attackTarget });
+                    carryingResourceType: u.carryingResourceType, attackTarget: u.attackTarget,
+                    targetX: u.targetX == null ? undefined : u.targetX, targetZ: u.targetZ == null ? undefined : u.targetZ, task: u.task || null });
+                if (before > u.health) hurt.push([ent, before - u.health]);
+                seat.units.push(ent);
             });
             s.buildings.forEach(b => {
                 const key = 'b' + b.id + (b.underConstruction ? ':site' : '');
@@ -6728,11 +6771,30 @@ class UIManager {
                     ent.age = b.age;
                     if (r.rebuildBuildingMesh) r.rebuildBuildingMesh(ent);
                 }
+                if (ent.health > b.health) hurt.push([ent, ent.health - b.health]);
                 ent.health = b.health;
                 ent.underConstruction = b.underConstruction;
                 if (b.underConstruction) ent.buildProgress = b.buildProgress;
+                seat.buildings.push(ent);
             });
         });
+        world.aiManager.aiPlayers = seats;
+        // A hit, as the live game reports it to its director: who struck (the enemy whose
+        // target stands there, else the nearest enemy fighting nearby) and where.
+        if (rs.director && hurt.length) {
+            const fighters = seats.flatMap(st => st.units.filter(u => u.isAttacking && u.attackTarget));
+            const now = Date.now();
+            for (const [ent, dmg] of hurt) {
+                let by = null, best = 22;
+                for (const f of fighters) {
+                    if (f.owner === ent.owner) continue;
+                    const onIt = Math.hypot(f.attackTarget.x - ent.x, f.attackTarget.z - ent.z) < 1.5;
+                    const d = onIt ? 0 : Math.hypot(f.x - ent.x, f.z - ent.z);
+                    if (d < best) { best = d; by = f; }
+                }
+                if (by) rs.director.observeCombat(by, ent, dmg, now, ent.x, ent.z);
+            }
+        }
         rs.ents.forEach((ent, key) => {
             if (seen.has(key)) return;
             rs.ents.delete(key);

@@ -31,6 +31,8 @@
     // Raising it also lengthens the wheel's zoom-out in play, which is the point: the
     // cap is what a reader hits when they try to see the whole board and cannot.
     const MIN_HALF = 10, MAX_HALF = 520;
+    // A director close-up frames one unit (b1010): closer than the user may zoom.
+    const CLOSE_MIN_HALF = 0.8;
     // Shared by worker lanterns and settlement lights (including their housings).
     // Twice the former 300-unit cutoff, with the same proportional fade curve.
     const lightDetailFade = (distance, halfH) =>
@@ -356,6 +358,43 @@
             t.z = Math.min(half, Math.max(-half, t.z));
         }
 
+        // A director's pose onto the camera: a cut snaps, anything else eases. A close-up
+        // (b1010) may come closer than the user's zoom (CLOSE_MIN_HALF), aims at chest
+        // height (lookY), and follows its subject tightly: at that frame a unit walking
+        // at the usual easing would leave the picture in under a second.
+        applyPose(shot, deltaTime) {
+            const want = Math.max(shot.closeup ? CLOSE_MIN_HALF : MIN_HALF, Math.min(MAX_HALF, shot.halfH));
+            const lookY = shot.lookY || 0;
+            if (shot.cut) {
+                // The cut IS the feature. No travel, no ease, no sailing
+                // across whatever happens to lie between two subjects --
+                // which is what made half of a recorded match dead air.
+                this.cameraTarget.x = shot.x; this.cameraTarget.z = shot.z;
+                this._halfH = want;
+                this._yaw = shot.yaw;
+                this._pitch = shot.pitch;
+                this._lookY = lookY;
+                return;
+            }
+            const k = Math.min(1, deltaTime * 1.6), kt = shot.closeup ? Math.min(1, deltaTime * 8) : k;
+            this.cameraTarget.x += (shot.x - this.cameraTarget.x) * kt;
+            this.cameraTarget.z += (shot.z - this.cameraTarget.z) * kt;
+            this._halfH += (want - this._halfH) * k;
+            this._lookY = (this._lookY || 0) + (lookY - (this._lookY || 0)) * k;
+            // Shortest way round the circle. Eased raw, a camera at 350
+            // degrees easing toward 10 takes the 340-degree route and
+            // spins the whole board to travel twenty.
+            let d = shot.yaw - this._yaw;
+            while (d > Math.PI) d -= Math.PI * 2;
+            while (d < -Math.PI) d += Math.PI * 2;
+            this._yaw += d * k;
+            this._pitch += (shot.pitch - this._pitch) * k;
+        }
+
+        // Which way a unit is drawn facing (radians about Y; +Z turned by it). The
+        // director reads it to stand a close-up in front of the unit.
+        unitFacing(u) { return (this._unitDir && this._unitDir.get(u)) || 0; }
+
         _computeCam() {
             this._clampTarget();
             const m3 = M();
@@ -367,7 +406,7 @@
             const tanHalf = Math.tan(FOVY / 2);
             const dist = this._halfH / tanHalf;
             const FAR = dist + 2200;
-            const cam = m3.dimetricView(this.cameraTarget.x, this.cameraTarget.z, dist, this._yaw, this._pitch);
+            const cam = m3.dimetricView(this.cameraTarget.x, this.cameraTarget.z, dist, this._yaw, this._pitch, this._lookY || 0);
             const v = cam.view;
             this._cam = {
                 view: v, eye: cam.eye, dir: cam.dir,
@@ -2211,33 +2250,16 @@
 
             // spectator action camera: ease toward the director's subject
             // (locked dimetric view — the old cinematic orbit is gone by design)
-            if (typeof game !== 'undefined' && game && game._actionCam && game.spectatorMode && game.gameStarted) {
-                const shot = game.directorPose ? game.directorPose() : null;
-                if (shot) {
-                    const want = Math.max(MIN_HALF, Math.min(MAX_HALF, shot.halfH));
-                    if (shot.cut) {
-                        // The cut IS the feature. No travel, no ease, no sailing
-                        // across whatever happens to lie between two subjects --
-                        // which is what made half of a recorded match dead air.
-                        this.cameraTarget.x = shot.x; this.cameraTarget.z = shot.z;
-                        this._halfH = want;
-                        this._yaw = shot.yaw;
-                        this._pitch = shot.pitch;
-                    } else {
-                        const k = Math.min(1, deltaTime * 1.6);
-                        this.cameraTarget.x += (shot.x - this.cameraTarget.x) * k;
-                        this.cameraTarget.z += (shot.z - this.cameraTarget.z) * k;
-                        this._halfH += (want - this._halfH) * k;
-                        // Shortest way round the circle. Eased raw, a camera at 350
-                        // degrees easing toward 10 takes the 340-degree route and
-                        // spins the whole board to travel twenty.
-                        let d = shot.yaw - this._yaw;
-                        while (d > Math.PI) d -= Math.PI * 2;
-                        while (d < -Math.PI) d += Math.PI * 2;
-                        this._yaw += d * k;
-                        this._pitch += (shot.pitch - this._pitch) * k;
-                    }
-                }
+            // Who sets the camera: the live director, or a pose source someone else
+            // installed (the analyzer's director over a re-simulated replay, b1010).
+            const live = typeof game !== 'undefined' && game && game._actionCam && game.spectatorMode && game.gameStarted && game.directorPose;
+            const shot = this.poseSource ? this.poseSource() : (live ? game.directorPose() : null);
+            if (shot) this.applyPose(shot, deltaTime);
+            else if ((this._lookY || 0) > 0.001 || this._halfH < MIN_HALF) {
+                // Leaving a close-up: back to the ground and the user's zoom range.
+                const k = Math.min(1, deltaTime * 2);
+                this._lookY = (this._lookY || 0) * (1 - k);
+                if (this._halfH < MIN_HALF) this._halfH += (MIN_HALF - this._halfH) * k;
             }
 
             // Unit separation and building clearance used to run here, once per drawn
