@@ -285,6 +285,7 @@
             humanoid(p,o);
             headgear(p,o.civ,tier===1?'civil':'military',0,1.49,0);
             if(tier===1) {
+                shoulders(p,'leather');
                 held(p,'club','armR',[.37,.77,.045],q=>
                     part(q,'cylinder',[.075,.045,.65,9],'wood',{y:.23}),.35);
             } else {

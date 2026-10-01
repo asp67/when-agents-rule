@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1016: shoulder pads for the militia (1 October 2026)
+
+**No rules change.** The militia, the first infantry tier, was the last unit with a bare sleeve top. It now wears the leather shoulder pads too.
+
 ## Build 1015: shoulder pads for workers, archers and priests (1 October 2026)
 
 **No rules change.** Close up, the top of a bare sleeve read as a flat disc. Workers and archers of every tier now wear the leather shoulder pads the elite archer had. Priests wear them in their robe's cloth.
