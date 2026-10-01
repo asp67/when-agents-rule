@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1006: fields grow rice and wheat (1 October 2026)
+
+**No rules change.** A bronze-age field now carries scattered clumps of plants on soft furrowed soil. An iron-age field is evenly filled, row on row, inside its fence.
+- **Yamato fields grow rice:** slender upright blades in fresh green, on darker, wetter soil.
+- **Persian, Greek and Egyptian fields grow wheat:** taller straw-yellow stalks with a golden ear.
+- **How it is drawn:** the plants are one mesh per field look (`EngineMesh.crops`), shared by every field of that look, so a farm costs one extra draw.
+- **Unchanged:** stone-age and neolithic fields, the farm's size and the food it gives.
+
 ## Build 1005: priests heal in a fight (1 October 2026)
 
 **A rules change.** A priest under an order is placed by that order, on a stand just inside its healing reach (9.8 of 10.5) beside its patient. The stand was kept as long as the patient had moved less than 1. A soldier shuffling in a fight moves about that much, so the priest was left on a stand 10.5 away, a hair outside its reach, healing no one while it looked to be in range. The stand is now kept only while it still reaches the patient.

@@ -490,5 +490,59 @@
         return bad;
     };
 
+    // A field's crop in one mesh (b1006): plants of two-sided blades, the way the
+    // ground clutter draws grass, standing on a 7x7 field. `layout` 'scatter' is the
+    // bronze-age field -- clumps with bare soil between them; 'rows' the iron-age one,
+    // evenly filled. `crop` 'rice' grows slender upright blades; 'wheat' taller stalks
+    // with a thicker ear at the tip. V runs 0 at the base to 1 at the tip, so the crop
+    // texture paints the stalk dark and the tip light. Seeded: every field of one look
+    // shares one buffer.
+    EngineMesh.crops = (layout = 'rows', crop = 'wheat', seed = 7) => {
+        let st = (seed * 2654435761) >>> 0;
+        const rnd = () => ((st = (Math.imul(st, 1664525) + 1013904223) >>> 0) / 4294967296);
+        const out = { positions: [], normals: [], uvs: [], indices: [] };
+        const rice = crop === 'rice', H = rice ? 0.62 : 0.85, R = 3.05;
+        const plant = (x, z, scale) => {
+            const blades = rice ? 9 : 7, turn = rnd() * Math.PI * 2;
+            for (let b = 0; b < blades; b++) {
+                const a = turn + b * Math.PI * 2 / blades + (rnd() - 0.5) * 0.5;
+                const dx = Math.cos(a), dz = Math.sin(a);
+                const h = H * scale * (0.75 + rnd() * 0.35), w = rice ? 0.075 : 0.05;
+                const lean = (rice ? 0.22 : 0.1) * h;
+                const tipX = x + dz * lean, tipZ = z - dx * lean;
+                // Rice: one blade, base to tip. Wheat: a stalk and a broader ear on top.
+                const segs = rice ? [[0, 1, w, 0]] : [[0, 0.7, w * 0.6, w * 0.6], [0.7, 1, w * 2, w * 0.4]];
+                for (const [v0, v1, w0, w1] of segs) {
+                    const y0 = 0.02 + h * v0, y1 = 0.02 + h * v1;
+                    const bx = x + (tipX - x) * v0, bz = z + (tipZ - z) * v0, ex = x + (tipX - x) * v1, ez = z + (tipZ - z) * v1;
+                    const pts = [[bx - dx * w0, y0, bz - dz * w0], [bx + dx * w0, y0, bz + dz * w0],
+                                 [ex + dx * w1, y1, ez + dz * w1], [ex - dx * w1, y1, ez - dz * w1]];
+                    const vs = [v0, v0, v1, v1];
+                    for (const sign of [1, -1]) {
+                        const base = out.positions.length / 3;
+                        pts.forEach((p, k) => { out.positions.push(p[0], p[1], p[2]); out.normals.push(-dz * 0.25 * sign, 0.97, dx * 0.25 * sign); out.uvs.push(k === 0 || k === 3 ? 0 : 1, vs[k]); });
+                        if (sign === 1) out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+                        else out.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+                    }
+                }
+            }
+        };
+        if (layout === 'scatter') {
+            // Clumps: a handful of planted patches, a few plants each, soil between.
+            for (let c = 0; c < 14; c++) {
+                const cx = (rnd() * 2 - 1) * (R - 0.7), cz = (rnd() * 2 - 1) * (R - 0.7), n = 5 + Math.floor(rnd() * 5);
+                for (let i = 0; i < n; i++) plant(cx + (rnd() - 0.5) * 1.3, cz + (rnd() - 0.5) * 1.3, 0.7 + rnd() * 0.35);
+            }
+        } else {
+            // Evenly filled: rows across the field, plants close together along them.
+            const rows = 11, per = 15;
+            for (let r = 0; r < rows; r++) for (let i = 0; i < per; i++) {
+                const z = -R + (r + 0.5) * (2 * R / rows), x = -R + (i + 0.5) * (2 * R / per);
+                plant(x + (rnd() - 0.5) * 0.18, z + (rnd() - 0.5) * 0.12, 0.9 + rnd() * 0.2);
+            }
+        }
+        return out;
+    };
+
     window.EngineMesh = EngineMesh;
 })();
