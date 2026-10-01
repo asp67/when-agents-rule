@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1020: the old 2× is the new 1× (1 October 2026)
+
+**The default pace doubles; the speeds themselves do not change.** asp67 renamed them:
+- the old 2× is now **1×** and is where a match starts;
+- the old 1× is **½×**;
+- the old 4× is **2×**;
+- 1.5× left the menu.
+
+Transcripts record the multiplier as before. A match at the new default records `simSpeed: 2`, so it compares with the old 2× matches, not the old default ones. A standing Wonder still holds the match at the old 1×, which is now labelled ½×. The Bench and the golden traces stay at the old default pace (`Realm` option `normalSpeed`, default 1).
+
 ## Build 1019: a harvester's close-up is filmed from a standing camera (1 October 2026)
 
 **No rules change.** In a close-up of a harvesting worker, the camera stays where the shot began. It turns to follow the worker instead of travelling beside it. As the worker walks to its drop-off it gets smaller in the frame, as it would for a camera on a tripod. Every other close-up (scouts, the head of a march, builders, fighters) still moves with its subject. The analyzer's autocam does the same.

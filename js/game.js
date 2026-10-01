@@ -36,7 +36,7 @@ class Game {
         // 1 while a Wonder stands, because speeding the sim shrinks the number of
         // DECISIONS a seat gets inside that countdown even though the countdown itself
         // scales correctly.
-        this.simSpeed = 1;
+        this.simSpeed = Game.NORMAL_SIM_SPEED;   // b1020: the old 2x, now labelled 1x
         // 'running' | 'pausing' | 'paused'. Pause is NOT speed zero: a request already
         // sent cannot be unsent, so pressing pause asks to stop and the world keeps
         // turning until every answer in flight has landed and been applied. Freezing on
@@ -306,7 +306,7 @@ class Game {
         // same countdown, which is the thing that decides races. A result whose tempo
         // was inherited from a match the viewer may not even remember starting is a
         // result they cannot read. Same for a pause: a new match must not begin frozen.
-        this.setSimSpeed(1);
+        this.setSimSpeed(Game.NORMAL_SIM_SPEED);
         this.pauseState = 'running';
         // And the speed-up confirmation is documented as "once per match" — it was
         // stored on the UI and never cleared, so it was really once per session and
@@ -6102,6 +6102,8 @@ class Game {
         this.endArena(winner, reason);
     }
 }
+// The speed a match starts at, labelled 1x (b1020; it was 1 until then).
+Game.NORMAL_SIM_SPEED = 2;
 
 // The one game instance, created by js/boot.js when the page loads. Declared here so
 // every rule file can name it; this file itself touches no browser API at load, so it

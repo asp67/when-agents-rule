@@ -71,7 +71,11 @@ class Realm {
     //
     // `sources` ({path: text}) runs these rule texts instead of the files on disk: a
     // bundle's verify replays on the rules it recorded, whatever WAR has become since.
-    constructor({ seed = 1, frameMs = FRAME_MS, hidden = false, sources = null } = {}) {
+    //
+    // `normalSpeed` is the pace a match starts at and a Wonder holds it to, in game ms
+    // per real ms. The arena's default became 2 in build 1020; the Bench, the golden
+    // traces and every result recorded with them stay at 1 unless asked otherwise.
+    constructor({ seed = 1, frameMs = FRAME_MS, hidden = false, sources = null, normalSpeed = 1 } = {}) {
         this.frameMs = frameMs;
         this.sources = sources;
         this.seed = seed;
@@ -102,6 +106,7 @@ class Realm {
         // Whole files: browser start-up lives in js/boot.js, so nothing is cut.
         for (const file of ruleFiles(sources)) vm.runInContext(sources ? sources[file] : read(file), context, { filename: file });
         this.context = context;
+        vm.runInContext('Game.NORMAL_SIM_SPEED = ' + Number(normalSpeed), context);
 
         // game.js declares the global `game` itself (a lexical binding), so it is
         // assigned inside the context; a property set from outside would be shadowed.

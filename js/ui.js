@@ -2874,7 +2874,7 @@ class UIManager {
             case 'wonder-raised': return t('chr.wonderRaised', { who, what: bname(e.building), n: e.required });
             case 'wonder-countdown': return t('chr.wonderCountdown', { who, n: e.seconds });
             case 'elimination': return t('chr.elimination', { who });
-            case 'speed': return t('chr.speed', { n: String(e.speed).replace('.', getUiLang() === 'en' ? '.' : ',') });
+            case 'speed': return t('chr.speed', { n: this.simSpeedLabel(e.speed) });
             case 'pause': return t('chr.pause');
             case 'resume': return t('chr.resume');
             default: return this.escapeHtml(e.kind);
@@ -5320,7 +5320,12 @@ class UIManager {
     // match actually simulated at a speed nobody asked for on the way past.
     //
     // Hover opens it; a click pins it open, which is the only route on a touch screen.
-    simSpeedLabel(v) { return Number(v).toLocaleString(typeof getUiLang === 'function' ? getUiLang() : 'en'); }
+    // A speed as the viewer reads it: relative to the normal pace (Game.NORMAL_SIM_SPEED
+    // is 1×), so the multipliers 1 | 2 | 4 read ½ | 1 | 2.
+    simSpeedLabel(v) {
+        const d = Number(v) / Game.NORMAL_SIM_SPEED;
+        return d === 0.5 ? '½' : d.toLocaleString(typeof getUiLang === 'function' ? getUiLang() : 'en');
+    }
 
     toggleSimSpeedMenu() {
         const wrap = document.getElementById('simSpeedWrap');
@@ -5390,7 +5395,7 @@ class UIManager {
         else if (locked)               btn.innerHTML = `⏱ ${this.simSpeedLabel(eff)}×`
                                            + `<span class="sb-speed-set">${this.simSpeedLabel(set)}×</span>`;
         else                           btn.textContent = `⏱ ${this.simSpeedLabel(set)}×`;
-        btn.classList.toggle('sb-on', set !== 1 || pstate !== 'running');
+        btn.classList.toggle('sb-on', set !== Game.NORMAL_SIM_SPEED || pstate !== 'running');
         btn.classList.toggle('is-paused', pstate !== 'running');
         // Say WHY it is not running at the chosen speed, rather than silently lying.
         btn.classList.toggle('is-locked', locked && pstate === 'running');
@@ -5398,7 +5403,7 @@ class UIManager {
             : pstate === 'paused' ? t('spec.simPausedTitle')
             // Two different sentences, because "returns to 1x once it falls" is not a
             // thing to tell someone already running at 1x.
-            : locked ? t('spec.simSpeedLocked', { s: String(set) })
+            : locked ? t('spec.simSpeedLocked', { s: this.simSpeedLabel(set) })
             : heldByWonder ? t('spec.simSpeedHeld')
             : t('spec.simSpeedTitle');
         // Repainted on the arena clock's beat, so the decimal separator follows a
@@ -7108,7 +7113,7 @@ class UIManager {
         if (h.difficulty) bits.push(esc(h.difficulty));
         if (h.turnBased != null) bits.push(h.turnBased ? t('an.turnBased') : t('an.realTime'));
         if (h.turnBased && h.lockstepSliceMs) bits.push(esc(t('lu.lockstep', { n: h.lockstepSliceMs / 1000 })));
-        if (h.simSpeed) bits.push(h.simSpeed + '×');
+        if (h.simSpeed) bits.push(this.simSpeedLabel(h.simSpeed) + '×');
         if (h.promptVersion) bits.push(esc(h.promptVersion));
         const build = h.build || (a.results && a.results.build);
         if (build) bits.push('build ' + build);
@@ -7927,7 +7932,7 @@ class UIManager {
         if (r.type === 'intervention' || r.type === 'adaptation' || r.type === 'match_event') {
             const label = this.anTurnKindLabel(a.turnKind(r));
             const extra = r.params ? r.params.join(', ') : (r.factor != null ? String(r.factor)
-                : (r.speed != null ? r.speed + '× (' + r.effective + '×)' : (r.streak != null ? '×' + r.streak : '')));
+                : (r.speed != null ? this.simSpeedLabel(r.speed) + '× (' + this.simSpeedLabel(r.effective) + '×)' : (r.streak != null ? '×' + r.streak : '')));
             return head
                 + '<div class="an-d-sec"><span class="an-d-tag">' + esc(label) + '</span>'
                 + '<span class="an-d-cmd">' + esc(r.kind || '') + (extra ? ' · ' + esc(extra) : '') + '</span></div>'
