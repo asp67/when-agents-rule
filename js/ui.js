@@ -3925,12 +3925,20 @@ class UIManager {
                 this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
             }
+            // The bar's own speed control, moved beside the clock: the same button, menu
+            // and picks (all found by id), so the tempo is set from the broadcast without
+            // a second control to keep in step. It goes back where it was on exit.
+            const speed = document.getElementById('simSpeedWrap');
+            if (speed && !this._broadcastSpeed) this._broadcastSpeed = { el: speed, parent: speed.parentNode, next: speed.nextSibling };
             this._broadcastKeys = e => { if (e.key === 'Escape') { e.preventDefault(); this.toggleBroadcast(false); } };
             document.addEventListener('keydown', this._broadcastKeys, true);
             this.renderBroadcast();
         } else {
             if (this._broadcastKeys) document.removeEventListener('keydown', this._broadcastKeys, true);
             this._broadcastKeys = null;
+            const sp = this._broadcastSpeed;
+            if (sp && sp.parent) { sp.el.classList.remove('is-open'); sp.parent.insertBefore(sp.el, sp.next && sp.next.parentNode === sp.parent ? sp.next : null); }
+            this._broadcastSpeed = null;
             ['broadcastBoard', 'broadcastWonder', 'broadcastExit', 'broadcastSlate'].forEach(id => document.getElementById(id)?.remove());
             this._broadcastExit = null;
             this._broadcastCtl = null;
@@ -3988,6 +3996,9 @@ class UIManager {
                 + (advised ? ' <span class="bb-advised" title="' + this.escapeHtml(t('sum.coachedTip')) + '">' + this.escapeHtml(t('spec.bbAdvised', { n: advised })) + '</span>' : '')
                 + '</span>' + sub + '</span>';
         }).join('');
+        // The speed control rides beside the clock (moved there by toggleBroadcast); the
+        // redraw above detached it, so it is put back each time, like the controls below.
+        if (this._broadcastSpeed) { const c = board.querySelector('.bb-clock'); if (c) c.after(this._broadcastSpeed.el); }
         if (this._broadcastCtl) {   // redrawn above, so put back; states follow the bar's
             board.appendChild(this._broadcastCtl);
             const on = (id, v) => { const b = document.getElementById(id); if (b) { b.classList.toggle('sb-on', !!v); b.setAttribute('aria-pressed', v ? 'true' : 'false'); } };

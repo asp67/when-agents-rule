@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1003: speed and minimap controls in broadcast mode (1 October 2026)
+
+**No rules change.**
+- **Speed control:** broadcast mode now has a small version of the speed control right of the clock. It is the bar's own control, moved there, so it offers the same 1x to 4x and Pause, with the same Wonder lock, and on the Platform the same speed proposal. It goes back to the bar when broadcast mode ends.
+- **Minimap controls:** the minimap keeps its controls (zoom, follow and the rest) in broadcast mode instead of hiding them.
+
 ## Build 1002: armies answer towers they cannot see, and stop yo-yoing (29 September 2026)
 
 **A rules change.** A live Platform match (Yamato attacking Egypt's town, 4x tempo, five iron-age towers) was replayed from its checkpoint with the army's orders as they stood. Two failures showed, with four causes.

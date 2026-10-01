@@ -3067,7 +3067,12 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
    thirds come. The slate is the only flash, and it is skipped for reduced motion. */
 body.broadcast-mode #spectatorHUD, body.broadcast-mode #spectatorLeaderboard, body.broadcast-mode #aiDecisionLog,
 body.broadcast-mode #transcriptViewer, body.broadcast-mode #unitInfo, body.broadcast-mode #mmFog,
-body.broadcast-mode #mapToolsDock, body.broadcast-mode .lb-flyout { display: none !important; }
+/* The minimap keeps its controls in broadcast mode (b1003): zoom, follow and the rest are
+   how a broadcast is steered by hand. */
+body.broadcast-mode .lb-flyout { display: none !important; }
+/* The bar's speed control, moved beside the clock: a small version of it. */
+.broadcast-board .sb-speed-wrap { margin-left: -4px; }
+.broadcast-board .sb-speed-wrap > .sb-end { padding: 6px 10px; border-radius: 6px; font-size: 0.86em; background: rgba(10, 14, 30, 0.88); }
 .broadcast-board {
     /* Full width with the contents centred: a left: 50% box shrinks to half the screen
        and wrapped the row long before it was full. */
