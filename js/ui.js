@@ -179,7 +179,11 @@ class UIManager {
             intent: saved.intent !== false,
             // UI size (the graphics card at the minimap): the HUD at 100 / 85 / 72 %, for
             // small screens where it crowds the map.
-            uiScale: ['regular', 'medium', 'small'].includes(saved.uiScale) ? saved.uiScale : 'regular'
+            uiScale: ['regular', 'medium', 'small'].includes(saved.uiScale) ? saved.uiScale : 'regular',
+            // Broadcast mode is how a watched match opens (b1011); analyze mode -- the
+            // decisions log, the leaderboard, the controls -- is a click away, and the
+            // last choice is kept.
+            broadcast: saved.broadcast !== false
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
@@ -3512,6 +3516,11 @@ class UIManager {
     setupSpectatorUI() {
         // Spectator layout tweaks (lower minimap, taller leaderboard) live in CSS.
         document.body.classList.add('spectator-mode');
+        // A watched match opens in broadcast mode unless the viewer last chose analyze
+        // mode (b1011). After this setup, so the board finds the seats in place.
+        if (this.viewPreferences().broadcast) setTimeout(() => {
+            if (document.body.classList.contains('spectator-mode') && !this.broadcastOn()) this.toggleBroadcast(true, false);
+        }, 0);
 
         // Hide normal HUD elements
         const topHUD = document.getElementById('topHUD');
@@ -3696,7 +3705,7 @@ class UIManager {
         document.getElementById('chronicleCaption')?.remove();
         this.stopIntentOverlay();
         if (this.game.renderer) this.game.renderer.intentMarks = null;
-        if (this.broadcastOn()) this.toggleBroadcast(false);
+        if (this.broadcastOn()) this.toggleBroadcast(false, false);
         document.querySelector('.spectator-sound-caption')?.remove();
         document.body.classList.remove('spectator-mode');
         // Leave the arena with the minimap open again, so a campaign started next
@@ -3898,7 +3907,10 @@ class UIManager {
     // Wonder becomes a countdown in its seat's colour. Esc or the button brings the
     // controls back. Nothing about the match changes.
     broadcastOn() { return document.body.classList.contains('broadcast-mode'); }
-    toggleBroadcast(on = !this.broadcastOn()) {
+    // `remember`: a switch the viewer made is kept as their choice for the next match;
+    // the arena opening or closing it (setupSpectatorUI, teardownSpectatorUI) is not.
+    toggleBroadcast(on = !this.broadcastOn(), remember = true) {
+        if (remember) { this.viewPreferences().broadcast = !!on; this.saveViewPreferences(); }
         document.body.classList.toggle('broadcast-mode', !!on);
         const btn = document.getElementById('broadcastBtn');
         if (btn) { btn.classList.toggle('sb-on', !!on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
@@ -3912,7 +3924,9 @@ class UIManager {
                 // at the right end of the scoreboard, across from the clock.
                 const exit = document.createElement('button');
                 exit.id = 'broadcastExit'; exit.className = 'sb-end sb-on broadcast-exit'; exit.type = 'button';
-                exit.textContent = '\u{1F4FA}'; exit.title = t('spec.broadcastExit');
+                // The way to analyze mode (b1011): the decisions log, the leaderboard and
+                // the controls. The bar's 📺 brings broadcast mode back.
+                exit.textContent = '\u{1F50D}'; exit.title = t('spec.broadcastExit');
                 exit.setAttribute('aria-label', t('spec.broadcastExit'));
                 exit.onclick = () => this.toggleBroadcast(false);
                 this._broadcastExit = exit;

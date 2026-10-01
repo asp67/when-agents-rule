@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1011: broadcast mode by default, and quieter effects and ambience (1 October 2026)
+
+**No rules change.**
+- **Broadcast mode is how a watched match opens.** The button on its board (now 🔍) switches to analyze mode: the decisions log, the leaderboard and the controls. The bar's 📺 switches back. Esc still leaves broadcast mode.
+- **The viewer's last choice is kept** for the next match. Opening or closing the arena does not count as a choice.
+- **Audio defaults:**
+  - Effects are 30 % lower (0.6 to 0.42).
+  - Ambience is half (0.45 to 0.225).
+  - Moving any one sound slider saves all five, so a saved effects or ambience level that still sits at the old default is read as "default" and gets the new one. A level set on purpose is kept.
+
 ## Build 1010: close-ups, and the live autocam in the analyzer (1 October 2026)
 
 **No rules change.**

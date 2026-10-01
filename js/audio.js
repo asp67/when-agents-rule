@@ -11,10 +11,15 @@ class WarAudio {
             resumeSound = sessionStorage.getItem('warAudioNavigation') === 'on';
             sessionStorage.removeItem('warAudioNavigation');
         } catch (_) {}
-        this.levels = {master: .45, ambience: .45, effects: .6, work: 1, movement: 1};
+        // Effects 30 % below and ambience at half of what they were (b1011: .6 and .45).
+        this.levels = {master: .45, ambience: .225, effects: .42, work: 1, movement: 1};
         try {
             const saved = JSON.parse(localStorage.getItem('warAudioLevelsV1'));
-            for (const key of Object.keys(this.levels)) if (Number.isFinite(saved?.[key]))
+            // Moving any one slider saves all five, so an untouched effects or ambience
+            // was stored at its old default. That value is read as "default", not as a
+            // choice: the new default applies. A level set on purpose is kept.
+            const oldDefault = {ambience: .45, effects: .6};
+            for (const key of Object.keys(this.levels)) if (Number.isFinite(saved?.[key]) && saved[key] !== oldDefault[key])
                 this.levels[key] = Math.max(0, Math.min(1, saved[key]));
         } catch (_) {}
         this.seed = 0x574152;
