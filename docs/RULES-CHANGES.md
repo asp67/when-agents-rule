@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1018: shoulder pads at 0.8 (1 October 2026)
+
+**No rules change.** 0.7 of the old size was too small, so every unit's shoulder pads are now 0.8 of it.
+
 ## Build 1017: smaller shoulder pads (1 October 2026)
 
 **No rules change.** Every unit's shoulder pads, the riders' included, are 0.7 of their old size. They sit where they did.

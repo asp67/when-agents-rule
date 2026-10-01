@@ -201,8 +201,8 @@
         for(const side of [-1,1]) part(p,'cylinder',[.025*s,.045*s,.68*s,6],'cloth',
             {x:side*.19*s,y:y-.35*s,z:z-.09*s,rz:side*-.14,rx:.12,team:true});
     };
-    // Pads sit where they always did; asp67 had them made 0.7 of their old size (b1017).
-    const PAD = .7;
+    // Pads sit where they always did; asp67 had them made 0.8 of their old size (b1018; 0.7 was too small).
+    const PAD = .8;
     const shoulders = (p,tex='iron',y=1.23,s=1) => {
         for(const side of [-1,1]) oval(p,tex,side*.33*s,y,0,.16*s*PAD,.115*s*PAD,.20*s*PAD,
             {bone:side<0?'armL':'armR'});
