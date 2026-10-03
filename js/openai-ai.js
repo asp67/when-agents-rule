@@ -4755,11 +4755,15 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // deciding the shape of a turn rather than describing the board -- and it sat
         // directly underneath that comment for a month. How many things to do is part
         // of what is being measured.
+        // One line, no whitespace (b1043, an A/B asked by asp67): indented JSON was 1.9
+        // times the characters for the same state. Transcripts keep the state object, and
+        // both analyzers indent it for people.
+        const stateJson = JSON.stringify(gameState);
         if (closing) {
-            tailNow.push(`Here is your FINAL game state: the moment the match ended for you.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
+            tailNow.push(`Here is your FINAL game state: the moment the match ended for you.\n\nGame State JSON:\n${stateJson}`);
             if (closing.history) tailNow.push(closing.history);
             tailNow.push(closing.ask);
-        } else tailNow.push(`Here is your CURRENT game state. Decide what to do on THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
+        } else tailNow.push(`Here is your CURRENT game state. Decide what to do on THIS turn.\n\nGame State JSON:\n${stateJson}`);
         let advice = null;
         if (!closing && controller.pendingAdvice && controller.pendingAdvice.length) {
             advice = controller.pendingAdvice.join(' ');

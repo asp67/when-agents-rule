@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1043: the game state goes to the model on one line (3 October 2026)
+
+**Harness change: what a model is sent.** An A/B asked by asp67, to decide which format becomes permanent. Build 1042's match (3 Oct, 17:05) was sent the state indented; this build sends the same JSON on one line, without whitespace.
+- **Why:** indented JSON measured 1.9 times the characters of the same state.
+- **Applies to:** the current-state message of every turn, and the final word's state.
+- **Unchanged:**
+  - earlier turns in the history were already one-line recaps;
+  - transcripts store the state as an object;
+  - the live transcript viewer and the transcript analyzer still show it indented.
+
 ## Build 1042: a seat remembers the enemy units it has seen (3 October 2026)
 
 **Harness and prompt change (prompt agents-rule-v103); `game.js` changed.** Build 1041 made a lost contact always said, but a CONTACT line was still a moment, gone next turn, and what it meant was the model's to carry. asp67's design: enemy units are remembered the way nodes and buildings already are.

@@ -39,8 +39,8 @@ test('a model on the wire playing the reference solves every scenario, through t
         assert.doesNotMatch(system, /You win by either/);
         assert.equal(first.temperature, 0.4);
         const stateText = first.messages[first.messages.length - 1].content;
-        assert.match(stateText, /"worldSecondsPerRound": 10/);
-        assert.match(stateText, /"secondsToAnswer": 120/);
+        assert.match(stateText, /"worldSecondsPerRound": ?10/);
+        assert.match(stateText, /"secondsToAnswer": ?120/);
     }
 });
 
