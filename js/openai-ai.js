@@ -2381,9 +2381,11 @@ class OpenAIAIManager {
             // and then the per-model map is the honest answer and the summary stays null.
             const eigner = Object.values(ownedById);
             const einig = eigner.length && eigner.every(x => x === eigner[0]) ? eigner[0] : null;
-            // Anthropic and Google ARE the service; Ollama speaks its own protocol and is
-            // already distinguishable. Only the openai-compatible crowd needs asking.
-            const servedBy = (prov === 'openai') ? einig : prov;
+            // Who serves is what the server says, whatever protocol it speaks: vLLM or
+            // Unsloth speaking Anthropic's protocol are not Anthropic (asp67, b1026 -- the
+            // protocol used to be recorded here as the server). Only Ollama's own protocol
+            // names its server, because nothing else speaks it.
+            const servedBy = (prov === 'ollama') ? 'ollama' : einig;
             return { ok: true, models, provider: prov, contextById, ownedById, servedBy, endpoint };
         } catch (e) {
             if (e && e.name === 'AbortError') {

@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1026: the protocol is not the server (3 October 2026)
+
+**No rules change. The recorded `servedBy` changes meaning for Anthropic- and Google-protocol seats.**
+- **The bug.** A seat speaking Anthropic's or Google's protocol was recorded and shown as "served by anthropic" / "served by google", whoever ran it. asp67's GLM on vLLM, spoken to in Anthropic's protocol, appeared in the lineup as served by Anthropic.
+- **`servedBy` now holds only what the server reports about itself** (`owned_by` in its model list), whatever protocol it speaks. The exception is Ollama, which only Ollama speaks.
+  - The real Anthropic and Google APIs report no owner, so their `servedBy` is null.
+  - The protocol is recorded, as before, in `provider`.
+  - Transcripts from earlier builds keep the old meaning.
+- **The lineup shows the protocol as a tag of its own**, "protocol Anthropic", beside "served by vllm".
+
 ## Build 1025: a known login server fills itself in (3 October 2026)
 
 **No rules change.**

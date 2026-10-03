@@ -30,6 +30,11 @@ test('after the header: what the record says wins, including a missing check', (
         { name: null, model: 'ki', settings: null } ] };
     const [m] = ui().lineupRows(setup, header);
     assert.equal(m.servedBy, 'vllm'); assert.equal(m.name, 'GLM #1');
+    assert.equal(m.protocol, null, 'a header without a protocol says none');
+    // GLM on vLLM, spoken to in Anthropic's protocol (asp67): the protocol is Anthropic,
+    // the server is vLLM, and the card says both apart.
+    const [g] = ui().lineupRows(setup, { players: [{ settings: { provider: 'anthropic', servedBy: 'vllm' } }, {}] });
+    assert.equal(g.protocol, 'anthropic'); assert.equal(g.servedBy, 'vllm');
     assert.equal(m.context, 32768); assert.equal(m.soft, false);
     assert.equal(m.preflight, null, 'the header had no check, so the card shows none');
     assert.equal(m.reasoning, null);

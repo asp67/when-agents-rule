@@ -2387,6 +2387,9 @@ class UIManager {
                 model: (p && p.model) || (c.model && typeof OpenAIAIManager !== 'undefined'
                     ? OpenAIAIManager.publicModelId(c.model) : c.model) || null,
                 servedBy: st ? (st.servedBy || null) : undefined,
+                // The protocol the seat speaks, which is not who serves it (b1026).
+                protocol: pick(st && st.provider, typeof OpenAIAIManager !== 'undefined'
+                    ? OpenAIAIManager.resolveProvider(c) : c.provider) || null,
                 preflight: pick(st && st.preflight, c.preflight) || null,
                 context: pick(st && st.contextBudget, c.contextSize) || null,
                 reasoning: pick(st && st.reasoning, c.reasoning) || null,
@@ -2423,6 +2426,8 @@ class UIManager {
             const tag = (text, cls, tip) => { const e = el('span', 'lu-tag' + (cls ? ' ' + cls : ''), text); if (tip) e.title = tip; tags.append(e); };
             if (r.rule) tag(t('lu.ruleTag'), 'quiet');
             else {
+                const PROTOCOL = { openai: 'OpenAI', anthropic: 'Anthropic', ollama: 'Ollama', google: 'Google' };
+                if (r.protocol) tag(t('lu.protocol', { p: PROTOCOL[r.protocol] || r.protocol }), 'quiet');
                 if (r.servedBy === undefined) tag(t('lu.asking'), 'quiet');
                 else if (r.servedBy) tag(t('lu.served', { s: r.servedBy }));
                 if (r.preflight && r.preflight.ok) tag(t('lu.checked'), 'ok');
