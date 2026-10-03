@@ -4466,12 +4466,16 @@ class Game {
                 if (was.e.health <= 0) return;         // killed, not lost — KILL/LOSS said it
                 // Remembered either way, so that coming straight back is not "new".
                 gone.set(key, { x: was.x, z: was.z, seq: turnSeq, carrying: was.carrying });
-                // Lost where it was found: the pair draws no line, so it is one fact
-                // reported twice. The sighting already said where it is.
-                if (WarMath.hypot(was.x - was.sx, was.z - was.sz) < Game.CONTACT_FLAP_DIST) return;
-                const k = was.who + '|' + was.type + '|lost|' + (was.carrying || '');
+                // Lost where it was found is still a loss (b1041). It used to go unsaid --
+                // "one fact reported twice" -- and in a fight, where the enemy stands still
+                // and the watcher dies, a sighting was followed by silence: the units were
+                // simply gone, which reads as dead. space-bunny wrote "their field army is
+                // dead" ten times over a living army of 9 to 17. Said, with ", where it
+                // was sighted": the view of it ended, not the unit.
+                const still = WarMath.hypot(was.x - was.sx, was.z - was.sz) < Game.CONTACT_FLAP_DIST;
+                const k = was.who + '|' + was.type + '|lost|' + (was.carrying || '') + (still ? '|still' : '');
                 const cur = lost.get(k);
-                if (!cur) lost.set(k, { n: 1, x: was.x, z: was.z, who: was.who, type: was.type, carrying: was.carrying });
+                if (!cur) lost.set(k, { n: 1, x: was.x, z: was.z, who: was.who, type: was.type, carrying: was.carrying, still });
                 else cur.n++;
             });
 
@@ -4495,7 +4499,7 @@ class Game {
             const seenLines = [...fresh.values()].sort((a, b) => a.dist - b.dist)
                 .map(f => `CONTACT: ${many(f)}${f.who}'s ${f.type} sighted at ${at(f)}${load(f)}`);
             const lostLines = [...lost.values()]
-                .map(l => `CONTACT LOST: ${many(l)}${l.who}'s ${l.type}, last seen at ${at(l)}${load(l)}`);
+                .map(l => `CONTACT LOST: ${many(l)}${l.who}'s ${l.type}, last seen at ${at(l)}${l.still ? ', where it was sighted' : ''}${load(l)}`);
             // Losses first when the budget is nearly out: a sighting with no loss is a
             // position, a loss with no sighting still says the thing is no longer where
             // the model last had it, and the pair is worth more than a second position.

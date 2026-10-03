@@ -6,6 +6,28 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1041: what a seat sees and what it only remembers (3 October 2026)
+
+**Harness and prompt change (prompt agents-rule-v102); `game.js` changed.** asp67 asked whether models mixing up what is in sight and what is only remembered was our fault.
+
+**It largely was.** In asp67's 3 October match, space-bunny wrote "their field army is dead" on ten turns while Egypt had 9 to 17 soldiers. The trigger was ours.
+- **The cause.** A "CONTACT LOST" was left out when the unit had not moved while in sight (since build 671, 21 Aug: "one fact reported twice").
+- **What that did in a fight.** Enemies stand still. When the watcher died, the seat got a sighting followed by silence: the units were simply gone, which reads as dead.
+- **The model's part.** The same turn's battle report showed Egypt had lost nothing, and space-bunny did not read it.
+
+**Changes:**
+- **CONTACT LOST is always reported.** A unit that had not moved is reported "…last seen at (x, z), where it was sighted": the view of it ended, not the unit.
+- **Remembered enemy buildings carry what was seen** (`visible: false`): health as last seen, taken on the turn it was in sight or when it was first discovered between turns.
+  - A building destroyed out of sight stays listed until its spot is seen again, as a resource node keeps its last-seen amount.
+  - Before, a remembered building reported its live health and vanished the moment it fell, both things the seat had not seen.
+  - A Wonder stays public: its fall is known as its standing is.
+- **Battle sides always carry `lost`**, `{}` when nothing was lost. An absent key had been the only sign.
+- **The prompt says:**
+  - "enemyBuildings" lists every rival building found, and `visible: false` is remembered as last seen and may have changed;
+  - enemy units out of sight are not remembered;
+  - a CONTACT LOST "where it was sighted" says nothing about whether the unit still lives.
+- **Unchanged (asp67):** after contact, a rival's `population` and building count stay public, but not its unit or building types.
+
 ## Build 1040: a fight's card no longer says "lost 3 of 0" (3 October 2026)
 
 **No rules change; `game.js` changed, so the rules hash moves.** The chronicle's fight card says what each side lost of how many took part (asp67 saw "lost x of 0").

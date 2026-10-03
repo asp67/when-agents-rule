@@ -2911,6 +2911,12 @@ class OpenAIAIManager {
         }
         ai._lastNodeCounts = p.lastNodeCounts;
         ai._knownEnemyBuildings = p.knownEnemyBuildings;
+        // Discovered since this state was built (updateEnemyBuildingDiscovery) is kept;
+        // what the build dropped stays dropped -- it only drops buildings already gone.
+        if (p.enemyBuildingSeen) {
+            for (const [bld, snap] of ai._enemyBuildingSeen || []) if (!p.enemyBuildingSeen.has(bld) && bld.health > 0) p.enemyBuildingSeen.set(bld, snap);
+            ai._enemyBuildingSeen = p.enemyBuildingSeen;
+        }
         controller._sentIdle = p.sentIdle;
         controller._shownWorkers = p.shownWorkers;
         controller._shownWorkerPools = p.workerPools;
@@ -3143,9 +3149,9 @@ class OpenAIAIManager {
                 if (e.healed > 0) o.healed = Math.round(e.healed);
                 involved[type] = o;
             });
-            const out = { involved };
-            if (Object.keys(side.lost).length) out.lost = side.lost;
-            return out;
+            // Always said, {} when nothing (b1041): an absent key was the only sign a side
+            // had lost nothing, and a model reading the report could miss it.
+            return { involved, lost: side.lost || {} };
         };
         const battles = (game._battles || [])
             .filter(b => b.sides[ai.id])
@@ -3430,6 +3436,12 @@ class OpenAIAIManager {
         // (last-seen) one vs a currently-in-sight "visible:true". A WONDER is an
         // existential threat and is ALWAYS revealed to everyone (ignores fog).
         const knownEnemyBuildings = pending.knownEnemyBuildings = new Set(ai._knownEnemyBuildings || []);
+        // What each discovered building looked like when last seen (b1041), as a node
+        // carries its last-seen amount. A remembered building used to report its LIVE
+        // health, and one destroyed out of sight simply vanished: both are things the
+        // seat had not seen. It is listed as last seen until its spot is seen again.
+        const lastSeen = pending.enemyBuildingSeen = new Map(ai._enemyBuildingSeen || []);
+        const listed = new Set();
         const enemyBuildings = [];
         const enemyWonders = [];
         // One visibility index for this state build; see buildVisionTest (ai.js).
@@ -3441,15 +3453,9 @@ class OpenAIAIManager {
             const seenNow = isWonder || seeNow(bldg.x, bldg.z);
             if (seenNow) knownEnemyBuildings.add(bldg);          // discover/refresh
             if (!seenNow && !knownEnemyBuildings.has(bldg)) return; // never discovered → hidden
-            const entry = {
-                id: bldg.id, // stable target handle for attack_target(params.targetId)
-                type: bldg.type,
-                x: Math.round(bldg.x),
-                z: Math.round(bldg.z),
-                owner: game.seatLabel(bldg.owner),
-                healthPct: Math.round((bldg.health / bldg.maxHealth) * 100),
-                visible: !!seenNow
-            };
+            if (seenNow || !lastSeen.has(bldg)) lastSeen.set(bldg, OpenAIAIManager.buildingSighting(bldg, game));
+            listed.add(bldg);
+            const entry = Object.assign({}, lastSeen.get(bldg), { visible: !!seenNow });
             if (isWonder) {
                 entry.isWonder = true;
                 const ownerAi = game.aiManager.aiPlayers.find(a => a.buildings.includes(bldg));
@@ -3459,6 +3465,14 @@ class OpenAIAIManager {
                 enemyWonders.push(entry);
             }
             enemyBuildings.push(entry);
+        });
+        // Remembered and no longer standing: still where it was seen, as it was seen, until
+        // that spot is in sight again and shows it gone. A Wonder's fall is public, as its
+        // standing is.
+        lastSeen.forEach((snap, bldg) => {
+            if (listed.has(bldg)) return;
+            if (bldg.isWonder || seeNow(snap.x, snap.z)) { lastSeen.delete(bldg); return; }
+            enemyBuildings.push(Object.assign({}, snap, { visible: false }));
         });
 
         // --- Units (compact: friendly units with type + position, and for fighters
@@ -4182,12 +4196,13 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - You never SEE a fight; it happens between your turns. "battles" reports each engagement, cumulative: both sides' composition, damage dealt to units and to buildings, priests' healing, and losses. Losing produces no error, so this is the only place you learn what beat you.
 - Priests never fight. They march with an attack and heal wounded units from the back on their own.
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
-- "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists. Workers include "carrying": empty, food, wood, stone, gold, or unknown. CONTACT LOST cargo describes the last visible observation, not the worker's current hidden state.
+- "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists. Enemy units out of sight are not remembered: "battles" and "CONTACT" lines are what you know of them.
+- "enemyBuildings" lists every rival building you have found. "visible": true is in sight now; "visible": false is remembered as you last saw it, and its health, or whether it still stands, may have changed since. Workers include "carrying": empty, food, wood, stone, gold, or unknown. CONTACT LOST cargo describes the last visible observation, not the worker's current hidden state.
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
 - "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool. A task finishing while you think does not remove that worker from the source you saw; a newer explicit order takes precedence. For assign_workers, resourceType may be omitted only when both coordinates unambiguously match a known resource node or your own farm; reason text never selects the resource.
 - "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
-- A "CONTACT" line is a rival unit or building coming into your sight, and "CONTACT LOST" is one leaving it, each with where it was. Both are moments, and both are gone from this list next turn — what they MEAN is yours to carry. A sighting and a loss of the same unit are two positions in order, which is a heading: follow it back and it points at where that unit came from. Something roaming far from anywhere you have looked is a direction worth scouting. A "CONTACT LOST" also means your knowledge of that position is now old — it is where the unit WAS, not where it is.
+- A "CONTACT" line is a rival unit or building coming into your sight, and "CONTACT LOST" is one leaving it, each with where it was. Both are moments, and both are gone from this list next turn — what they MEAN is yours to carry. A sighting and a loss of the same unit are two positions in order, which is a heading: follow it back and it points at where that unit came from. Something roaming far from anywhere you have looked is a direction worth scouting. A "CONTACT LOST" also means your knowledge of that position is now old — it is where the unit WAS, not where it is. One ending "where it was sighted" had not moved: your view of it ended, which says nothing about whether it still lives.
 - "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
@@ -9688,6 +9703,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
     }
 
+    // An enemy building as a seat sees it: what the state lists, taken at the moment of
+    // seeing (b1041). Remembered entries repeat it until the building is seen again.
+    static buildingSighting(b, game) {
+        return { id: b.id, type: b.type, x: Math.round(b.x), z: Math.round(b.z),
+                 owner: game.seatLabel(b.owner), healthPct: Math.round((b.health / b.maxHealth) * 100) };
+    }
+
     // Persistently remember every ENEMY BUILDING a model has seen (buildings are
     // static, so a discovered base should stay known even after your units look
     // away — just like resources). Enemy UNITS are deliberately NOT remembered:
@@ -9706,6 +9728,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 if (ai._knownEnemyBuildings.has(b)) continue;      // already known
                 if (b.isWonder || (see || (see = this.visionTestFor(ai, this.game)))(b.x, b.z)) {
                     ai._knownEnemyBuildings.add(b);
+                    // As it looked at that moment (b1041): seen between turns, it is
+                    // remembered from here, not from whenever the next state is built.
+                    if (!ai._enemyBuildingSeen) ai._enemyBuildingSeen = new Map();
+                    ai._enemyBuildingSeen.set(b, OpenAIAIManager.buildingSighting(b, this.game));
                 }
             }
         }

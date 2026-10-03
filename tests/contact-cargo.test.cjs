@@ -33,5 +33,16 @@ test('stationary pickup is reported and mixed loads are not grouped',()=>{
 test('reappearing with changed cargo bypasses stationary contact suppression',()=>{
  const {rival,logs,scan,worker}=setup();const w=worker('w');rival.units=[w];scan();w.x=30;scan();
  w.x=1;w.carryingResource=true;w.harvestAmount=10;w.carryingResourceType='stone';scan();
- assert.equal(logs.length,2);assert.match(logs[1],/carrying stone/);
+ // b1041: leaving sight without moving is a loss too, said as such.
+ assert.equal(logs.length,3);assert.match(logs[1],/CONTACT LOST:.*last seen at \(1, 0\), where it was sighted/);assert.match(logs[2],/carrying stone/);
+});
+// asp67, 3 Oct 2026: a fight's enemies stand still; when the watcher died they vanished
+// with no CONTACT LOST, and a model read the silence as their death.
+test('an enemy that stood still is reported lost when the view of it ends',()=>{
+ const {viewer,rival,logs,scan}=setup();
+ rival.units=[1,2,3].map(i=>({id:'s'+i,type:'warrior',health:100,x:2,z:i}));scan();
+ assert.match(logs[0],/CONTACT: 3x b's warrior sighted/);
+ viewer.units=[{id:'far',type:'warrior',x:300,z:0,health:100}];scan();   // the watcher fell; a unit far off still looks
+ assert.equal(logs.length,2);
+ assert.match(logs[1],/CONTACT LOST: 3x b's warrior, last seen at \(2, \d\), where it was sighted/);
 });
