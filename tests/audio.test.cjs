@@ -38,9 +38,9 @@ test('footsteps follow grass, snow, sand and dry gravel patches for walkers and 
 });
 test('movement cadence follows effective speed while work sounds keep their timing',()=>{
     for(const [speed,pace] of [[1,1],[1.5,1.25],[2,1.5],[4,2]]) {
-        for(const kind of ['step','snow','gravel','hoof','hoofSnow','hoofGravel','chop']) {
+        for(const kind of ['step','snow','gravel','hoof','hoofSnow','hoofGravel','chop','mine']) {
             const {sound:s,game}=harness();game.simSpeed=speed;
-            const gap=kind==='chop'?1.1:(kind.startsWith('hoof')?.28:.42)/pace;
+            const gap=kind==='chop'?.55:kind==='mine'?.625:(kind.startsWith('hoof')?.28:.42)/pace;
             assert.equal(s.allow(kind,{x:0,z:0},0),true);
             assert.equal(s.allow(kind,{x:0,z:0},gap-.001),false);
             assert.equal(s.allow(kind,{x:0,z:0},gap+.001),true);

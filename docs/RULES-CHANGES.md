@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1038: chopping and mining sound twice as often (3 October 2026)
+
+**No rules change.** A work sound is spaced per kind of sound per 14-unit map cell, so twenty miners on one node shared a single click every 1.25 s, which sounded odd (asp67). Chopping now waits 0.55 s (was 1.1 s) and mining 0.625 s (was 1.25 s). Farm and berry harvesting (1.6 s) and building are unchanged, and the cap of 18 world sounds a second still holds.
+
 ## Build 1037: one selection colour, pale yellow (3 October 2026)
 
 **No rules change.** The ring under a selected unit or building was green, and green is a seat's colour (asp67). It is now the pale yellow of the resource-node ring (b1036). All three use one tint, `EngineRenderer.SELECT_TINT`.
