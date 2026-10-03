@@ -56,6 +56,13 @@ const DIR_FIGHT_MAX_HALF = 90;
 // How much of the way to a fight's new frame size one update moves. Fighters join and
 // break off every second; followed exactly, the zoom would pump with them.
 const DIR_FIGHT_ZOOM_EASE = 0.08;
+// The wide calm beats -- the compare sweep and the overview -- wait this long after the
+// last blow anywhere (b1047). A siege does not count as a fight between blows: militia
+// running after villagers and walking between houses are out of reach most of the time,
+// and in those gaps an age-up's sweep (half-height 90) and the overview (the island) cut
+// in, one after another, until the camera had "zoomed out in waves" to the whole map in
+// the middle of the fight (asp67, 3 Oct 2026). Deferred, never dropped.
+const DIR_WIDE_CALM_MS = 10000;
 // How long before the camera will cut to another first-contact. An army walking past
 // an enemy camp trips the detector once per rival entity it passes -- without this the
 // shot list is a strobe of near-identical two-unit stares. One every twenty seconds is
@@ -180,6 +187,7 @@ class Director {
         if (target) e.participants.add(target);
         e.firstHit ??= now;
         e.lastHit = now;
+        this._lastStrike = now;
         e.hits.push({ t: now, damage: Math.max(0, damage || 0), attacker, target });
         // A wake-up, not a camera cut: the director still arbitrates simultaneous fights.
         const decisive = target && (target.isWonder || target.type === 'town_center')
@@ -713,7 +721,8 @@ class Director {
         // The comparison beats: a sweep of every camp at an IDENTICAL pose, and a
         // periodic pull back to the whole island. Both exist for the same reason —
         // four economies are only legible against each other.
-        if (this.compareQueue.length) {
+        const calm = this._lastStrike == null || now - this._lastStrike >= DIR_WIDE_CALM_MS * this.lapse;
+        if (calm && this.compareQueue.length) {
             const ai = this.compareQueue[0];
             const tc = ai.buildings.find(b => b.type === 'town_center' && b.health > 0);
             if (tc) {
@@ -723,11 +732,16 @@ class Director {
                 });
             } else this.compareQueue.shift();
         }
-        if (now - this.lastOverview > DIR_OVERVIEW_EVERY * this.lapse) {
+        if (calm && now - this.lastOverview > DIR_OVERVIEW_EVERY * this.lapse) {
             push('overview', 'overview', 88, () => {
                 this.lastOverview = now;
                 const size = (g.terrain && g.terrain.size) || 800;
-                return { x: 0, z: 0, yaw: 0, halfH: size * 0.62, subject: { kind: 'point', x: 0, z: 0 } };
+                // The island fitted to the screen, as the analyzer's opening shot is (b1047).
+                // A fixed 62% of the map is near the zoom limit and, on a wide monitor, left
+                // the island in a third of the screen.
+                const r = g.renderer;
+                const halfH = r && typeof r.wholeMapHalf === 'function' ? r.wholeMapHalf(DIR_SHOTS.overview.pitch) : size * 0.62;
+                return { x: 0, z: 0, yaw: 0, halfH, subject: { kind: 'point', x: 0, z: 0 } };
             });
         }
         return out;

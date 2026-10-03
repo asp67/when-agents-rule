@@ -342,3 +342,32 @@ test('a long fight frames who is fighting now, not everyone who ever took part',
     assert.ok(d.fightHalf(f) <= 30, 'a tight frame: ' + d.fightHalf(f));
     assert.equal(d.fightHalf({ r: 1000 }), 90, 'and a fight\'s frame has a ceiling');
 });
+
+// asp67, 3 Oct 2026 (b1047): in a siege the camera "zoomed out in waves" to the whole island.
+// Between blows a siege does not count as a fight, and an age-up's compare sweep (half-height
+// 90) and the overview (the island) cut in, one after the other.
+test('the compare sweep and the overview wait out a fight, then come once it is calm', () => {
+    const { director: d, duel, hit, players } = setup();
+    d.update(100000);
+    const fight = duel();
+    hit(fight, 100001);
+    d.update(100017);
+    assert.equal(d.shot.type, 'brawl');
+    d.lastOverview = 0;                                  // the overview is due
+    d.compareQueue = players.slice();                    // and an age-up queued the sweep
+    fight.attacker.isAttacking = false; fight.attacker.attackTarget = null; fight.target.x += 40;   // a gap between blows
+    const wide = new Set();
+    for (let t = 100100; t < 109000; t += 250) { d.update(t); wide.add(d.shot.type); }
+    assert.ok(!wide.has('overview') && !wide.has('compare'), 'nothing wide within ten seconds of a blow: ' + [...wide]);
+    for (let t = 111100; t < 140000; t += 250) { d.update(t); wide.add(d.shot.type); }
+    assert.ok(wide.has('overview') && wide.has('compare'), 'deferred, not dropped: ' + [...wide]);
+});
+
+test('the overview fits the island to the screen', () => {
+    const { director: d, game } = setup();
+    game.renderer.wholeMapHalf = pitch => { assert.ok(pitch > 0.3 && pitch < 0.7); return 321; };
+    d.lastOverview = 0;
+    let half = null;
+    for (let t = 100000; t < 130000 && half == null; t += 250) { const p = d.update(t); if (d.shot.type === 'overview') half = p.halfH; }
+    assert.equal(half, 321);
+});

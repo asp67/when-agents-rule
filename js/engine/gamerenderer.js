@@ -475,11 +475,17 @@
             // what the wide B-roll, the thumbnails and the showcase's opening shot are
             // all built on. The shore is what the eye reads as the map's edge, so that
             // is what the shot is composed around.
+            this._halfH = this.wholeMapHalf(this._pitch);
+        }
+
+        // The half-height that fits the island's coastline, with a little sea around it, at
+        // this pitch on this screen. Also the auto camera's overview (b1047).
+        wholeMapHalf(pitch) {
             const coast = TERRAIN_LAND + (TexGen.COAST_WOBBLE || 0) / 2;
             const extent = coast * 2 * 1.10;   // outermost shore, plus sea to sit in
             const aspect = (this.W || 1) / (this.H || 1);
-            const need = Math.max(extent * Math.sin(this._pitch), extent / aspect) / 2;
-            this._halfH = Math.max(MIN_HALF, Math.min(MAX_HALF, need * 1.06));
+            const need = Math.max(extent * Math.sin(pitch), extent / aspect) / 2;
+            return Math.max(MIN_HALF, Math.min(MAX_HALF, need * 1.06));
         }
 
         moveCameraTo(x, z) {

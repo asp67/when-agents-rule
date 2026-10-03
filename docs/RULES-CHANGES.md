@@ -6,6 +6,19 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1047: no zooming out to the island in the middle of a siege (3 October 2026)
+
+**No rules change; spectator camera only.** asp67 watched it live, in the siege on Persia's Stone Age town (3 October, 19:53 match): the camera "zoomed out in waves" to the whole island, which then sat in a third of the screen. Build 1046 fixed a real bug of the same look in the analyzer, but not this one.
+
+**The cause:** the wide calm shots cut in during the fight.
+- **A siege counts as a fight only around a blow:** within 1.5 game seconds of one landing, or while an attacker is within reach. Militia running after villagers and walking between houses are out of reach most of the time.
+- **In those gaps the calm shots won:** an age-up (GLM's, as the siege began) queued the compare sweep, every camp from above at half-height 90, and the overview, due every 75 seconds, followed it. Fight 24, compare 90, 90, 90, overview 496: each a cut, each wider.
+- **Measured in a replay of the match.** The match itself stops re-simulating at the siege's first fight, so the siege could not be replayed exactly.
+
+**The fix:**
+- **The compare sweep and the overview wait** until no blow has landed anywhere for 10 seconds (scaled by the timelapse factor). They are deferred, not dropped. The closer calm shots still fill the gaps between blows.
+- **The overview fits the island to the screen,** as the analyzer's opening shot does, instead of a fixed 62% of the map size, which on a wide monitor left the island in a third of the screen.
+
 ## Build 1046: the auto camera no longer zooms out of a long fight (3 October 2026)
 
 **No rules change; spectator camera only.** asp67: in a long fight for a settlement, the auto camera zoomed out in waves, further each time, until the whole island sat in a third of the screen.
