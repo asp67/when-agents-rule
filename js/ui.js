@@ -913,6 +913,7 @@ class UIManager {
         // always start with a clean, untested status.
         m._status = null;
         m._expanded = false; // always start collapsed for a clean overview
+        this.settleReasoning(m);
         return m;
     }
 
@@ -1311,22 +1312,26 @@ class UIManager {
         // What the server reported for THIS model (b1028); a different model or address
         // means it has not been asked yet, and the old control stands until it is.
         const th = this.thinkingFor(m);
-        if (th && (_prov === 'openai' || _prov === 'ollama')) {
-            if (!th.source) {
-                reasoningHintKey = 'ar.thinkNotProvidedHint';
-                // A value chosen before the server was asked keeps working until cleared.
-                reasoningControl = m.reasoning
-                    ? `<select onchange="${_setF}">${_opt(m.reasoning, e(t('ar.thinkKept', { v: m.reasoning })), m.reasoning)}${_opt('', t('ar.thinkClear'), m.reasoning)}</select>`
-                    : `<select disabled><option>${t('ar.thinkNotProvided')}</option></select>`;
-            } else if (th.unsupported) {
-                reasoningHintKey = 'ar.thinkNoneHint'; reasoningHintVars = { src: th.source };
-                reasoningControl = `<select disabled><option>${t('ar.thinkNone')}</option></select>`;
+        // A budget reads as tokens; Google's -1 lets the model decide.
+        const _lvl = v => /^-1$/.test(v) ? t('ar.thinkAuto') : /^\d+$/.test(v) ? t('ar.thinkTokens', { n: v }) : v;
+        if (th) {
+            if (!th.source || th.unsupported) {
+                // Disabled and saying so (asp67, b1030). Nothing is sent from here: a
+                // value set before is moved to the extra request body (settleReasoning).
+                reasoningHintKey = !th.source ? 'ar.thinkNotProvidedHint' : 'ar.thinkNoneHint';
+                reasoningHintVars = { src: th.source };
+                reasoningControl = `<select disabled><option>${t('ar.thinkNotSupported')}</option></select>`;
             } else {
-                reasoningHintKey = 'ar.thinkFromHint'; reasoningHintVars = { src: th.source };
-                const def = th.def ? t('ar.thinkDefault', { v: th.def }) : t('ar.reasoningOff');
+                reasoningHintKey = th.send === 'anthropic' ? 'ar.reasoningHintAnthropic' : th.send === 'google' ? 'ar.reasoningHintGoogle' : 'ar.thinkFromHint';
+                reasoningHintVars = { src: th.source };
+                const def = th.def ? t('ar.thinkDefault', { v: _lvl(th.def) }) : t('ar.reasoningOff');
+                // A budget typed before the dropdown existed stays one of its choices.
+                const offValue = th.canOff ? (th.send === 'google' ? '0' : 'off') : null;
+                const levels = th.levels.concat(m.reasoning && /^-?\d+$/.test(m.reasoning) && !th.levels.includes(String(m.reasoning))
+                    && String(m.reasoning) !== offValue ? [String(m.reasoning)] : []);
                 reasoningControl = `<select onchange="${_setF}">${_opt('', e(def), m.reasoning)}${
-                    th.levels.map(v => _opt(e(v), e(v), m.reasoning)).join('')}${
-                    th.canOn ? _opt('on', t('ar.reasoningOn'), m.reasoning) : ''}${th.canOff ? _opt('off', t('ar.reasoningNo'), m.reasoning) : ''}</select>`;
+                    levels.map(v => _opt(e(v), e(_lvl(v)), m.reasoning)).join('')}${
+                    th.canOn ? _opt('on', t('ar.reasoningOn'), m.reasoning) : ''}${offValue ? _opt(offValue, t('ar.reasoningNo'), m.reasoning) : ''}</select>`;
             }
         } else if (_prov === 'openai') {
             reasoningHintKey = 'ar.reasoningHintOpenai';
@@ -1340,9 +1345,6 @@ class UIManager {
             reasoningHintKey = 'ar.reasoningHintOllama';
             reasoningControl = `<select onchange="${_setF}">${_opt('', t('ar.reasoningOff'), m.reasoning)}${
                 _opt('on', t('ar.reasoningOn'), m.reasoning)}${_opt('off', t('ar.reasoningNo'), m.reasoning)}</select>`;
-        } else {
-            reasoningHintKey = _prov === 'google' ? 'ar.reasoningHintGoogle' : 'ar.reasoningHintAnthropic';
-            reasoningControl = `<input type="number" step="256" min="${_prov === 'google' ? -1 : 1024}" value="${e(m.reasoning)}" oninput="${_setF}" placeholder="${t('ar.reasoningOff')}">`;
         }
         // Two Anthropic rules that a request cannot satisfy silently. Said here, on the
         // card, rather than discovered as a 400 mid-match — or worse, as a temperature
@@ -1887,7 +1889,10 @@ class UIManager {
     // The thinking options the server reported for this entry's current model and
     // address, or null when it has not been asked about them (b1028).
     thinkingFor(m) {
-        const th = m && m.thinking;
+        if (!m || typeof OpenAIAIManager === 'undefined') return null;
+        const prov = OpenAIAIManager.resolveProvider(m);
+        if (prov === 'anthropic' || prov === 'google') return OpenAIAIManager.thinkingByProtocol(m) || { source: null };
+        const th = m.thinking;
         return th && th.model === m.model && th.endpoint === m.endpoint && th.provider === (m.provider || 'auto') ? th : null;
     }
     // Ask the server what the chosen model offers, and fill the thinking dropdown from it.
@@ -1900,14 +1905,46 @@ class UIManager {
         if (m.model !== asked.model || m.endpoint !== asked.endpoint || (m.provider || 'auto') !== asked.provider) return;
         m.thinking = Object.assign({}, th, asked);
         if (th.source && m.reasoning && !this.thinkingAllows(th, m.reasoning)) m.reasoning = '';
+        this.settleReasoning(m);
         this.saveArenaConfig();
         if (document.getElementById('modelLibraryList')) this.renderArenaLibrary();
     }
+    // A value chosen before its server was known not to offer one (b1030). It used to be
+    // sent all the same; it now moves, in the exact form it was sent in, into the extra
+    // request body, where it stays visible and editable. Nothing changes on the wire.
+    settleReasoning(m) {
+        const th = this.thinkingFor(m);
+        if (!th || (th.source && !th.unsupported) || m.reasoning === '' || m.reasoning == null) return false;
+        const prov = OpenAIAIManager.resolveProvider(m);
+        const r = OpenAIAIManager.reasoningFor(prov, m.reasoning);
+        const extra = this.parseExtraBody(m.extraBody);
+        if (extra.error) return false;   // leave it; it is not sent (slotToSetupEntry) and the card says why
+        const into = Object.assign({}, extra.value || {});
+        const put = (k, v) => { if (!(k in into)) into[k] = v; };
+        if (r && r.kind === 'effort') put('reasoning_effort', r.value);
+        // Nested keys merge into what the body already has there, unless it says itself.
+        else if (r && r.kind === 'enableThinking') {
+            const kw = Object.assign({}, into.chat_template_kwargs);
+            if (!('enable_thinking' in kw)) kw.enable_thinking = r.value;
+            into.chat_template_kwargs = kw;
+        }
+        else if (r && r.kind === 'think') put('think', r.value);
+        else if (r && r.kind === 'budget' && prov === 'anthropic') put('thinking', { type: 'enabled', budget_tokens: r.value });
+        else if (r && r.kind === 'budget' && prov === 'google') {
+            const gc = Object.assign({}, into.generationConfig);
+            if (!('thinkingConfig' in gc)) gc.thinkingConfig = { thinkingBudget: r.value };
+            into.generationConfig = gc;
+        }
+        if (r) m.extraBody = JSON.stringify(into);
+        m.reasoning = '';
+        return true;
+    }
     thinkingAllows(th, v) {
         const s = String(v).toLowerCase();
+        if (th.send === 'anthropic' || th.send === 'google') return /^-?\d+$/.test(s);   // a budget
         return th.levels.includes(s) || (th.canOn && (s === 'on' || s === 'true')) || (th.canOff && (s === 'off' || s === 'false'));
     }
-    setModelProvider(id, value) { const m = this.getArenaModel(id); if (m) { m.provider = value; this.saveArenaConfig(); this.renderArenaLibrary(); } }
+    setModelProvider(id, value) { const m = this.getArenaModel(id); if (m) { m.provider = value; this.settleReasoning(m); this.saveArenaConfig(); this.renderArenaLibrary(); this.discoverArenaThinking(id); } }
 
     toggleArenaModel(id) {
         const m = this.getArenaModel(id);
@@ -2342,7 +2379,9 @@ class UIManager {
                 minP: this.numOrNull(m.minP, 0, 1),
                 presencePenalty: this.numOrNull(m.presencePenalty, -2, 2),
                 repetitionPenalty: this.numOrNull(m.repetitionPenalty, 0, 2),
-                reasoning: m.reasoning == null ? '' : String(m.reasoning),
+                // Only what the dropdown offers is sent: a server that does not say gets nothing
+                // from here (b1030), and an entry not yet asked keeps the old mapping.
+                reasoning: (m.reasoning == null || (this.thinkingFor(m) && !this.thinkingFor(m).source)) ? '' : String(m.reasoning),
                 // How the server reads the value, when it said (b1028); null keeps the old mapping.
                 thinkingSend: (this.thinkingFor(m) && this.thinkingFor(m).send) || null,
                 extraBody: this.parseExtraBody(m.extraBody).value,

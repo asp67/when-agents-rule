@@ -6,6 +6,18 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1030: "Reasoning effort", always a dropdown (3 October 2026)
+
+**No rules change. Nothing changes on the wire.** At asp67's request:
+- **The field is named "Reasoning effort"** (Denkaufwand, Esfuerzo de razonamiento, 推理强度).
+- **It is a dropdown in every case.** Where the server offers no choice it is disabled and reads "Not supported", and the note refers to Extra request body (Advanced settings).
+- **Anthropic's and Google's own APIs** list their budgets instead of a number box:
+  - Anthropic: 1024 to 32000 tokens.
+  - Google: model decides, 1024 to 24576 tokens, or off.
+  - A budget typed before stays one of the choices.
+- **The same protocols on another server** (vLLM, Unsloth, a gateway) do not promise to read a budget, so they are "Not supported". asp67's GLM on vLLM via Anthropic's protocol is one of these.
+- **A value set before on a server now "Not supported"** is not dropped and no longer sent unseen: it moves into the extra request body in the exact form it was sent in. For example, a 4096 budget becomes `{"thinking": {"type": "enabled", "budget_tokens": 4096}}`, and "off" becomes `chat_template_kwargs.enable_thinking: false`. What the extra body already says is kept.
+
 ## Build 1029: Extended thinking moves up to Model and budgets (3 October 2026)
 
 **No rules change.** Now that its choices come from the server (b1028), the thinking field sits directly under the model choice instead of in Advanced settings.

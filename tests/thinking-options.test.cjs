@@ -81,7 +81,10 @@ test('Unsloth Studio: /v1/status, sent at the top level where its API reads it',
 test('a server that does not say -- vLLM, SGLang, a gateway -- is "not provided", and the old mapping stays for an unasked entry', async () => {
     const m = manager({ '/version': { version: '0.27' }, '/v1/models': { data: [{ id: 'glm' }] } });
     assert.equal((await m.discoverThinking({ endpoint: 'http://dgx:8024/v1', provider: 'openai', model: 'glm' })).source, null);
-    assert.equal((await m.discoverThinking({ endpoint: 'https://api.anthropic.com/v1', provider: 'anthropic', model: 'c' })).source, null, 'budget field, not a list');
+    // Anthropic's own API takes its documented budgets (b1030); its protocol on vLLM does not promise to.
+    const claude = await m.discoverThinking({ endpoint: 'https://api.anthropic.com/v1', provider: 'anthropic', model: 'c' });
+    assert.deepEqual([claude.source, claude.levels[0], claude.canOff], ['Anthropic', '1024', false]);
+    assert.equal((await m.discoverThinking({ endpoint: 'http://dgx:8024/v1', provider: 'anthropic', model: 'glm' })).source, null);
     const official = await manager({}).discoverThinking({ endpoint: 'https://api.openai.com/v1', provider: 'openai', model: 'gpt-5' });
     assert.deepEqual([official.source, [...official.levels]], ['OpenAI', ['minimal', 'low', 'medium', 'high']]);
     // Without a family the value is mapped as before.
@@ -96,11 +99,62 @@ test('the card: options for the current model only, and a value the model does n
     const entry = { id: 1, model: 'gpt-oss:20b', endpoint: 'http://localhost:11434', provider: 'ollama', reasoning: 'on', auth: { type: 'none' } };
     u._arenaConfig = { models: [entry] };
     u.saveArenaConfig = () => {};
-    scope.OpenAIAIManager = { discoverThinking: async () => ({ source: 'Ollama', send: 'ollama', levels: ['low', 'high'], canOn: false, canOff: false }) };
+    scope.OpenAIAIManager = { discoverThinking: async () => ({ source: 'Ollama', send: 'ollama', levels: ['low', 'high'], canOn: false, canOff: false }),
+        resolveProvider: c => c.provider, thinkingByProtocol: () => null };
     vm.runInContext('globalThis.OpenAIAIManager = this.OpenAIAIManager', scope);
     await u.discoverArenaThinking(1);
     assert.equal(u.thinkingFor(entry).send, 'ollama');
     assert.equal(entry.reasoning, '', '"on" is not an option of this model');
     entry.model = 'other';
     assert.equal(u.thinkingFor(entry), null, 'another model has not been asked');
+});
+
+// The card and the request from it, with the real request builder (b1030).
+function card() {
+    const scope = vm.createContext({ URL, URLSearchParams, console, t: (k, p) => k + (p ? JSON.stringify(p) : ''),
+        document: { getElementById: () => null }, I18N: { en: {} } });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/openai-ai.js'), 'utf8') + '\nthis.Manager=OpenAIAIManager;', scope);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/ui.js'), 'utf8') + '\nthis.UI = UIManager;', scope);
+    const u = Object.create(scope.UI.prototype);
+    u.saveArenaConfig = () => {};
+    return { u, M: scope.Manager };
+}
+
+test('a value set before its server was known to offer none moves, as it was sent, into the extra request body', () => {
+    const { u } = card();
+    // asp67's GLM: vLLM spoken to in Anthropic's protocol, with a budget typed into the old box.
+    const glm = { id: 1, model: 'glm', endpoint: 'http://dgx:8024/v1', provider: 'anthropic', reasoning: '4096', extraBody: '', auth: { type: 'none' } };
+    assert.equal(u.thinkingFor(glm).source, null);
+    assert.equal(u.settleReasoning(glm), true);
+    assert.equal(glm.reasoning, '');
+    assert.deepEqual(JSON.parse(glm.extraBody), { thinking: { type: 'enabled', budget_tokens: 4096 } });
+    // An OpenAI-protocol server that does not say, asked already: "off" was sent as enable_thinking.
+    const vllm = { id: 2, model: 'q', endpoint: 'http://dgx:8000/v1', provider: 'openai', reasoning: 'off',
+        extraBody: '{"chat_template_kwargs": {"foo": 1}}', thinking: { source: null, model: 'q', endpoint: 'http://dgx:8000/v1', provider: 'openai' }, auth: { type: 'none' } };
+    u.settleReasoning(vllm);
+    assert.deepEqual(JSON.parse(vllm.extraBody), { chat_template_kwargs: { foo: 1, enable_thinking: false } }, 'merged, nothing lost');
+    // An extra body that already says it wins; one that does not parse is left alone and not sent from.
+    const own = { id: 3, model: 'q', endpoint: 'http://x/v1', provider: 'anthropic', reasoning: '2048', extraBody: '{"thinking": {"type": "disabled"}}', auth: { type: 'none' } };
+    u.settleReasoning(own);
+    assert.deepEqual(JSON.parse(own.extraBody), { thinking: { type: 'disabled' } });
+    const bad = { id: 4, model: 'q', endpoint: 'http://x/v1', provider: 'anthropic', reasoning: '2048', extraBody: '{oops', auth: { type: 'none' } };
+    assert.equal(u.settleReasoning(bad), false);
+    u._arenaConfig = { models: [bad], slots: [] };
+    u.parseExtraBody = () => ({ value: null });
+    assert.equal(u.slotToSetupEntry({ civ: 'greek', control: 4 }).connection.reasoning, '', 'not supported: nothing sent from the dropdown');
+});
+
+test("Anthropic's and Google's own APIs: budgets in a dropdown, sent as before; Google off is 0", () => {
+    const { u, M } = card();
+    const claude = { id: 1, model: 'claude', endpoint: 'https://api.anthropic.com/v1', provider: 'anthropic', reasoning: '3000', auth: { type: 'none' } };
+    assert.equal(u.settleReasoning(claude), false, 'supported: a typed budget stays');
+    assert.equal(u.thinkingAllows(u.thinkingFor(claude), '3000'), true);
+    const b = M._buildChatRequest('anthropic', claude.endpoint, 'claude', 's', [{ role: 'user', content: 'x' }], { reasoning: '8192', maxTokens: 16000, omitTools: true }).body;
+    assert.deepEqual(JSON.parse(JSON.stringify(b.thinking)), { type: 'enabled', budget_tokens: 8192 });
+    const gem = { id: 2, model: 'gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta', provider: 'google', reasoning: '0', auth: { type: 'none' } };
+    const th = u.thinkingFor(gem);
+    assert.deepEqual([th.source, th.canOff, th.levels[0]], ['Google', true, '-1']);
+    assert.equal(u.thinkingAllows(th, '0'), true);
+    const g = M._buildChatRequest('google', gem.endpoint, 'gemini', 's', [{ role: 'user', content: 'x' }], { reasoning: '0', omitTools: true }).body;
+    assert.equal(g.generationConfig.thinkingConfig.thinkingBudget, 0);
 });

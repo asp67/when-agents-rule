@@ -1411,6 +1411,7 @@ class OpenAIAIManager {
         if (send === 'unsloth' && provider === 'openai')
             return { kind: 'patch', patch: sw === null ? { reasoning_effort: s } : { enable_thinking: sw } };
         if (send === 'ollama' && provider === 'ollama') return { kind: 'think', value: sw === null ? s : sw };
+        if (send === 'google' && provider === 'google' && sw === false) return { kind: 'budget', value: 0 };
         if (provider === 'openai') {
             // Two different things share this branch. OpenAI's own reasoning models take
             // reasoning_effort; a Qwen served through vLLM or SGLang ignores that entirely
@@ -1583,6 +1584,7 @@ class OpenAIAIManager {
             const endpoint = OpenAIAIManager.stripSlash((conn && conn.endpoint) || '');
             if (!endpoint || !conn.model) return none;
             const prov = OpenAIAIManager.resolveProvider(conn);
+            if (prov === 'anthropic' || prov === 'google') return OpenAIAIManager.thinkingByProtocol(conn) || none;
             if (prov !== 'openai' && prov !== 'ollama') return none;
             let headers = { 'Content-Type': 'application/json' };
             try { headers = await OpenAIAIManager.buildAuthHeaders(conn.auth || { type: 'none' }, prov); } catch (e) { /* unauthenticated is still worth asking */ }
@@ -1637,6 +1639,20 @@ class OpenAIAIManager {
                 return found('OpenAI', 'openai', OpenAIAIManager.REASONING_EFFORTS, false, false);
         } catch (e) { /* asking is optional; not knowing is the old behaviour */ }
         return none;
+    }
+    // Anthropic's and Google's own APIs take a token budget, documented and the same for
+    // every model, so they need no asking (b1030). The same protocol spoken by another
+    // server (vLLM, Unsloth, a gateway) does not promise to read it: null there.
+    static thinkingByProtocol(conn) {
+        const prov = OpenAIAIManager.resolveProvider(conn);
+        let host = '';
+        try { host = new URL(OpenAIAIManager.stripSlash((conn && conn.endpoint) || '')).hostname; } catch (e) { return null; }
+        const f = (source, send, levels, canOff) => ({ source, send, levels, canOn: false, canOff, def: null, unsupported: false });
+        if (prov === 'anthropic' && /(^|\.)api\.anthropic\.com$/i.test(host))
+            return f('Anthropic', 'anthropic', ['1024', '2048', '4096', '8192', '16000', '32000'], false);
+        if (prov === 'google' && /(^|\.)generativelanguage\.googleapis\.com$/i.test(host))
+            return f('Google', 'google', ['-1', '1024', '4096', '8192', '16384', '24576'], true);
+        return null;
     }
     // The effort words a Jinja template compares reasoning_effort against, and the one it
     // falls back to -- the template is what consumes the value, so it is the list.
