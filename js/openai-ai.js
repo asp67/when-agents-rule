@@ -1562,7 +1562,10 @@ class OpenAIAIManager {
     static async probeServedBy(conn) {
         try {
             const prov = OpenAIAIManager.resolveProvider(conn);
-            if (prov !== 'openai') return prov;   // the others name themselves
+            // Only Ollama's own protocol names its server. Anthropic's and Google's are
+            // spoken by vLLM, Unsloth and gateways too, so those are asked like the rest
+            // (b1027: this returned the protocol, and the header recorded vLLM as Anthropic).
+            if (prov === 'ollama') return prov;
             const r = await OpenAIAIManager.testConnection(
                 conn.endpoint, conn.auth || (conn.apiKey ? { type: 'bearer', key: conn.apiKey } : { type: 'none' }),
                 prov, 6000);

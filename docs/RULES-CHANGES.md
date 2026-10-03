@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1027: the match header asks the server too (3 October 2026)
+
+**No rules change.** Build 1026 fixed only one of the two places that name a seat's server. The connection test stopped reporting the protocol as the server, but the match header has a probe of its own. That probe still answered "anthropic" for any seat on Anthropic's protocol, so the live lineup and the transcript kept recording asp67's vLLM GLM as Anthropic. It now asks the server like any other seat. Only Ollama's own protocol still names its server.
+
 ## Build 1026: the protocol is not the server (3 October 2026)
 
 **No rules change. The recorded `servedBy` changes meaning for Anthropic- and Google-protocol seats.**

@@ -26,3 +26,10 @@ test('an endpoint that names no owner is served by nobody named, whatever its pr
         assert.equal(r.servedBy, null, prov);
     }
 });
+
+test("the header asks the server too: a vLLM seat on Anthropic's protocol is recorded as vllm", async () => {
+    const m = manager([{ id: 'glm-5.3', owned_by: 'vllm' }]);
+    assert.equal(await m.probeServedBy({ endpoint: 'http://localhost:8024/v1', provider: 'anthropic', model: 'glm-5.3' }), 'vllm');
+    assert.equal(await manager([{ id: 'claude-x' }]).probeServedBy({ endpoint: 'https://api.anthropic.com/v1', provider: 'anthropic', model: 'claude-x' }), null);
+    assert.equal(await m.probeServedBy({ endpoint: 'http://localhost:11434', provider: 'ollama', model: 'x' }), 'ollama');
+});
