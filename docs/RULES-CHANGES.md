@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1037: one selection colour, pale yellow (3 October 2026)
+
+**No rules change.** The ring under a selected unit or building was green, and green is a seat's colour (asp67). It is now the pale yellow of the resource-node ring (b1036). All three use one tint, `EngineRenderer.SELECT_TINT`.
+
 ## Build 1036: a picked resource node is ringed (3 October 2026)
 
 **No rules change.** While a resource node's info card is up (b1034), the node is ringed on the ground. It is the same ring as a command marker, in pale yellow, which is no seat's colour (asp67), and wide enough to take in a stone or gold deposit. It goes with the card, when the node runs dry, or when a new match starts.

@@ -1108,6 +1108,9 @@
         // gate, and both pass through here, so the two never double up. Kept in the renderer
         // because it is presentation only -- in game.js it would move the rules hash.
         static get DAMAGE_PING_COOLDOWN_MS() { return 1000; }
+        // One colour for whatever is picked -- a unit, a building, a resource node (b1037):
+        // pale yellow. The green it used to be is a seat's colour.
+        static get SELECT_TINT() { return [1, 0.93, 0.62]; }
         spawnBattleRing(x, z) {
             const cells = this._pingCells || (this._pingCells = new Map());
             const key = Math.round(x / 35) + ':' + Math.round(z / 35), now = performance.now();
@@ -1870,7 +1873,7 @@
                 }
                 if (b.selected || (this.game && this.game.selectedBuilding === b)) {
                     dl.blended.push({
-                        buf: ringBuf, tex: this.tex.ring, tint: [0.35, 0.95, 0.55],
+                        buf: ringBuf, tex: this.tex.ring, tint: EngineRenderer.SELECT_TINT,
                         model: m3.multiply(m3.translation(b.x, 0.1, b.z), m3.scaling(b.isWonder ? 9 : 6, 1, b.isWonder ? 9 : 6))
                     });
                 }
@@ -1998,7 +2001,7 @@
                     // that behaves differently from the one next to it is its own bug.
                     const r = ue.type === 'cavalry' ? 1.5 : 1.05;
                     dl.blended.push({
-                        buf: ringBuf, tex: this.tex.ring, tint: [0.35, 0.95, 0.55],
+                        buf: ringBuf, tex: this.tex.ring, tint: EngineRenderer.SELECT_TINT,
                         model: m3.multiply(m3.translation(u.x, 0.08, u.z), m3.scaling(r, 1, r))
                     });
                 }
@@ -2134,7 +2137,7 @@
             if (node && !(node.amount > 0)) this.selectedNode = null;
             else if (node) {
                 const rim = { stone: 2.1, gold: 1.9, food: 1.45, wood: 0.9 }[node.type] || 1.2, r = Math.max(2.4, rim + 1.3);
-                dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint: [1, 0.93, 0.62], alpha: 0.95,
+                dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint: EngineRenderer.SELECT_TINT, alpha: 0.95,
                     model: m3.multiply(m3.translation(node.x, 0.15, node.z), m3.scaling(r, 1, r)) });
             }
 
