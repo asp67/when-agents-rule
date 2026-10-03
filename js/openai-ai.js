@@ -1272,11 +1272,7 @@ class OpenAIAIManager {
         // Resolve a single primary credential string from the common auth types.
         const primaryKey = async () => {
             if (a.type === 'bearer') return (a.key || '').trim();
-            if (a.type === 'oauth') {
-                let token = (a.accessToken || '').trim();
-                if (!token && a.tokenUrl && a.clientId) token = await OpenAIAIManager.fetchOAuthToken(a);
-                return token;
-            }
+            if (a.type === 'oauth') return OpenAIAIManager.oauthAccessToken(a);
             return '';
         };
         const applyCustomHeaders = () => {
@@ -2166,26 +2162,76 @@ class OpenAIAIManager {
         return null;
     }
 
-    // OAuth2 client-credentials grant. Token is cached on the auth object.
-    static async fetchOAuthToken(auth) {
-        const now = Date.now();
-        if (auth._token && auth._tokenExp && now < auth._tokenExp) return auth._token;
-        const body = new URLSearchParams();
-        body.set('grant_type', 'client_credentials');
-        body.set('client_id', auth.clientId || '');
-        if (auth.clientSecret) body.set('client_secret', auth.clientSecret);
-        if (auth.scope) body.set('scope', auth.scope);
+    // ---- OAuth login (b1024) ------------------------------------------------
+    // A "Log in" button instead of credentials to fill in: the browser's own login
+    // (authorization code with PKCE, no client secret), in a popup that comes back to
+    // oauth-callback.html. OpenRouter needs nothing configured and hands back a
+    // lasting key; any other OAuth server needs its authorize URL, token URL and client
+    // ID, and its tokens are refreshed here as they run out.
+    static isOpenRouter(endpoint) {
+        try { return /(^|\.)openrouter\.ai$/i.test(new URL(endpoint).hostname); } catch (e) { return false; }
+    }
+    static oauthCallbackUrl() { return new URL('oauth-callback.html', location.href.split(/[?#]/)[0]).href; }
+    static b64url(bytes) {
+        let s = ''; bytes.forEach(b => { s += String.fromCharCode(b); });
+        return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+    static async oauthPkce() {
+        const verifier = OpenAIAIManager.b64url(crypto.getRandomValues(new Uint8Array(32)));
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+        return { verifier, challenge: OpenAIAIManager.b64url(new Uint8Array(digest)), state: OpenAIAIManager.b64url(crypto.getRandomValues(new Uint8Array(16))) };
+    }
+    // Where the popup goes: OpenRouter's login, or the configured server's.
+    static oauthAuthorizeUrl(auth, endpoint, pkce) {
+        const redirect = OpenAIAIManager.oauthCallbackUrl();
+        if (OpenAIAIManager.isOpenRouter(endpoint)) {
+            const u = new URL('https://openrouter.ai/auth');
+            u.search = new URLSearchParams({ callback_url: redirect, code_challenge: pkce.challenge, code_challenge_method: 'S256', state: pkce.state });
+            return u.href;
+        }
+        const u = new URL(auth.authorizeUrl);
+        const q = { response_type: 'code', client_id: auth.clientId || '', redirect_uri: redirect,
+            code_challenge: pkce.challenge, code_challenge_method: 'S256', state: pkce.state };
+        if (auth.scope) q.scope = auth.scope;
+        Object.entries(q).forEach(([k, v]) => u.searchParams.set(k, v));
+        return u.href;
+    }
+    // The code from the callback, traded for what the requests will carry. Returns the
+    // fields to store on the auth object.
+    static async oauthExchange(auth, endpoint, code, pkce) {
+        if (OpenAIAIManager.isOpenRouter(endpoint)) {
+            const resp = await OpenAIAIManager.fetchWithTimeout('https://openrouter.ai/api/v1/auth/keys', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, code_verifier: pkce.verifier, code_challenge_method: 'S256' })
+            }, 15000);
+            if (!resp.ok) throw new Error(`OpenRouter did not hand out a key (HTTP ${resp.status})`);
+            const data = await resp.json();
+            if (!data.key) throw new Error('OpenRouter answered without a key');
+            return { accessToken: data.key, refreshToken: '', tokenExp: 0 };
+        }
+        return OpenAIAIManager.oauthTokenRequest(auth, { grant_type: 'authorization_code', code,
+            redirect_uri: OpenAIAIManager.oauthCallbackUrl(), code_verifier: pkce.verifier });
+    }
+    static async oauthTokenRequest(auth, fields) {
+        const body = new URLSearchParams(Object.assign({ client_id: auth.clientId || '' }, fields));
         const resp = await OpenAIAIManager.fetchWithTimeout(auth.tokenUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body
-        }, 8000);
+            method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
+        }, 15000);
         if (!resp.ok) throw new Error(`OAuth token request failed (HTTP ${resp.status})`);
         const data = await resp.json();
         if (!data.access_token) throw new Error('OAuth response had no access_token');
-        auth._token = data.access_token;
-        auth._tokenExp = now + ((data.expires_in || 3600) - 60) * 1000;
-        return auth._token;
+        return { accessToken: data.access_token, refreshToken: data.refresh_token || fields.refresh_token || '',
+                 tokenExp: data.expires_in ? Date.now() + data.expires_in * 1000 : 0 };
+    }
+    // The token a request carries: refreshed a minute before it runs out, when the
+    // server gave a refresh token. One refresh at a time per auth object.
+    static async oauthAccessToken(a) {
+        const live = !a.tokenExp || Date.now() < a.tokenExp - 60000;
+        if (live || !a.refreshToken || !a.tokenUrl) return (a.accessToken || '').trim();
+        if (!a._refreshing) a._refreshing = OpenAIAIManager.oauthTokenRequest(a, { grant_type: 'refresh_token', refresh_token: a.refreshToken })
+            .then(t => { Object.assign(a, t); }).finally(() => { a._refreshing = null; });
+        await a._refreshing;
+        return (a.accessToken || '').trim();
     }
 
     // Probe an endpoint: returns { ok, models:[], error }. Used by the setup UI's

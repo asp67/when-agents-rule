@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>When Agents Rule — login</title>
+<style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #14161c; color: #e8e2d0; font: 16px/1.5 system-ui, sans-serif; }
+    p { max-width: 28em; padding: 0 16px; text-align: center; }
+</style>
+</head>
+<body>
+<p id="msg">Finishing the login …</p>
+<script>
+// Where an OAuth login popup lands (b1024). It hands the code back to the page that
+// opened it and closes. Both channels, because a login page that sets a strict
+// Cross-Origin-Opener-Policy cuts the popup off from its opener on the way back.
+(function () {
+    const q = new URLSearchParams(location.search);
+    const result = { type: 'war-oauth', code: q.get('code'), state: q.get('state'), error: q.get('error_description') || q.get('error') };
+    try { new BroadcastChannel('war-oauth').postMessage(result); } catch (e) {}
+    try { if (window.opener) window.opener.postMessage(result, location.origin); } catch (e) {}
+    document.getElementById('msg').textContent = result.code
+        ? 'Logged in. You can close this window.'
+        : 'The login did not finish' + (result.error ? ': ' + result.error : '.') + ' You can close this window.';
+    setTimeout(() => window.close(), 300);
+})();
+</script>
+</body>
+</html>

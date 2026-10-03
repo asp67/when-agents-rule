@@ -748,7 +748,7 @@ class UIManager {
             availableModelContext: {},          // model id -> context length, from the last test (runtime only)
             _status: null,
             _expanded: false,
-            auth: { type: 'none', key: '', username: '', password: '', headers: [], accessToken: '', tokenUrl: '', clientId: '', clientSecret: '', scope: '' }
+            auth: { type: 'none', key: '', username: '', password: '', headers: [], accessToken: '', refreshToken: '', tokenExp: 0, authorizeUrl: '', tokenUrl: '', clientId: '', scope: '' }
         };
     }
 
@@ -906,6 +906,7 @@ class UIManager {
         if (m.maxContext == null) m.maxContext = null;
         m.availableModelContext = {}; // runtime-only; never trust stored values
         m.auth = Object.assign({}, def.auth, m.auth || {});
+        delete m.auth.clientSecret;   // the client-credentials form left in b1024
         if (!Array.isArray(m.auth.headers)) m.auth.headers = [];
         // Runtime-only fields must never be restored from storage: a connection's
         // test result (the green ✓ / red ✗ badge) is meaningless across reloads, so
@@ -1038,7 +1039,7 @@ class UIManager {
         const models = (this._arenaConfig && this._arenaConfig.models) || [];
         return models.some(m => {
             const a = m.auth || {};
-            if ((a.key || a.password || a.accessToken || a.clientSecret || '').trim && (a.key || a.password || a.accessToken || a.clientSecret || '').trim()) return true;
+            if ((a.key || a.password || a.accessToken || a.refreshToken || '').trim && (a.key || a.password || a.accessToken || a.refreshToken || '').trim()) return true;
             return Array.isArray(a.headers) && a.headers.some(h => h && (h.value || '').trim());
         });
     }
@@ -1510,19 +1511,27 @@ class UIManager {
             </div>`;
         }
         if (a.type === 'oauth') {
-            return `<div class="auth-grid">
-                <div class="arena-field full"><label>${t('ar.fToken')}</label>
-                    <input type="text" class="secret-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${e(a.accessToken)}" oninput="game.ui.setAuthField(${m.id},'accessToken',this.value)" placeholder="${t('ar.fTokenPh')}"></div>
-                <div class="auth-divider">${t('ar.oauthOr')}</div>
+            // A button, not credentials (b1024). OpenRouter needs nothing else; any other
+            // server needs the three values its admin hands out, and to know our callback.
+            const openRouter = OpenAIAIManager.isOpenRouter(m.endpoint);
+            const session = a.accessToken
+                ? `<span class="test-status ok">${t('ar.oauthLoggedIn')}</span> <button class="test-btn" onclick="game.ui.oauthLogout(${m.id})">${t('ar.oauthLogout')}</button>`
+                : `<button class="test-btn oauth-login" onclick="game.ui.oauthLogin(${m.id})">${t(openRouter ? 'ar.oauthLoginOR' : 'ar.oauthLogin')}</button>`;
+            if (openRouter) return `<p class="auth-hint">${t('ar.oauthHintOR')}</p><div class="model-test-row">${session}</div>`;
+            return `<p class="auth-hint">${t('ar.oauthHint')}</p>
+            <div class="auth-grid">
+                <div class="arena-field full"><label>${t('ar.fAuthorizeUrl')}</label>
+                    <input type="text" value="${e(a.authorizeUrl)}" oninput="game.ui.setAuthField(${m.id},'authorizeUrl',this.value)" placeholder="https://auth.example.com/oauth/authorize"></div>
                 <div class="arena-field full"><label>${t('ar.fTokenUrl')}</label>
                     <input type="text" value="${e(a.tokenUrl)}" oninput="game.ui.setAuthField(${m.id},'tokenUrl',this.value)" placeholder="https://auth.example.com/oauth/token"></div>
                 <div class="arena-field"><label>${t('ar.fClientId')}</label>
                     <input type="text" value="${e(a.clientId)}" oninput="game.ui.setAuthField(${m.id},'clientId',this.value)"></div>
-                <div class="arena-field"><label>${t('ar.fClientSecret')}</label>
-                    <input type="text" class="secret-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" value="${e(a.clientSecret)}" oninput="game.ui.setAuthField(${m.id},'clientSecret',this.value)"></div>
-                <div class="arena-field full"><label>${t('ar.fScope')}</label>
+                <div class="arena-field"><label>${t('ar.fScope')}</label>
                     <input type="text" value="${e(a.scope)}" oninput="game.ui.setAuthField(${m.id},'scope',this.value)"></div>
-            </div>`;
+                <div class="arena-field full"><label>${t('ar.oauthCallback')}</label>
+                    <input type="text" readonly value="${e(OpenAIAIManager.oauthCallbackUrl())}" onclick="this.select()"></div>
+            </div>
+            <div class="model-test-row">${session}</div>`;
         }
         return '';
     }
@@ -1657,6 +1666,50 @@ class UIManager {
         const m = this.getArenaModel(id); if (!m) return;
         if (!m.auth.headers[idx]) m.auth.headers[idx] = { name: '', value: '' };
         m.auth.headers[idx][field] = value; this.saveArenaConfig();
+    }
+    // The login popup (b1024): opened on the click itself, sent to the login page once
+    // the PKCE pair is made, and answered by oauth-callback.html with the code.
+    async oauthLogin(id) {
+        const m = this.getArenaModel(id);
+        if (!m) return;
+        const a = m.auth, openRouter = OpenAIAIManager.isOpenRouter(m.endpoint);
+        const fail = msg => { m._status = { cls: 'err', text: '✗ ' + msg }; this.renderArenaLibrary(); };
+        if (!openRouter && !(a.authorizeUrl && a.tokenUrl && a.clientId)) return fail(t('ar.oauthNeedFields'));
+        // Before anything is awaited: a popup opened later is no longer the click's own,
+        // and the browser blocks it.
+        const win = window.open('', 'warOAuth', 'width=520,height=720');
+        if (!win) return fail(t('ar.oauthBlocked'));
+        let pkce;
+        try {
+            pkce = await OpenAIAIManager.oauthPkce();
+            win.location.href = OpenAIAIManager.oauthAuthorizeUrl(a, m.endpoint, pkce);
+        } catch (err) { try { win.close(); } catch (e) {} return fail(t('ar.oauthFailed', { e: err.message })); }
+        m._status = { cls: 'pending', text: t('ar.oauthWaiting') };
+        this.renderArenaLibrary();
+        const result = await new Promise(resolve => {
+            let bc = null, timer = null;
+            const onMsg = ev => { if (ev.origin === location.origin) take(ev.data); };
+            const done = r => { clearTimeout(timer); window.removeEventListener('message', onMsg); try { if (bc) bc.close(); } catch (e) {} resolve(r); };
+            const take = d => { if (d && d.type === 'war-oauth' && (!d.state || d.state === pkce.state)) done(d); };
+            window.addEventListener('message', onMsg);
+            try { bc = new BroadcastChannel('war-oauth'); bc.onmessage = ev => take(ev.data); } catch (e) {}
+            timer = setTimeout(() => done({ error: t('ar.oauthTimeout') }), 300000);
+        });
+        if (!result.code) return fail(t('ar.oauthFailed', { e: result.error || '—' }));
+        try {
+            Object.assign(a, await OpenAIAIManager.oauthExchange(a, m.endpoint, result.code, pkce));
+            m._status = null;   // the card now says "Logged in" itself
+            this.saveArenaConfig();
+            this.renderArenaLibrary();
+        } catch (err) { fail(t('ar.oauthFailed', { e: err.message })); }
+    }
+    oauthLogout(id) {
+        const m = this.getArenaModel(id);
+        if (!m) return;
+        Object.assign(m.auth, { accessToken: '', refreshToken: '', tokenExp: 0 });
+        m._status = null;
+        this.saveArenaConfig();
+        this.renderArenaLibrary();
     }
     setAuthType(id, type) { const m = this.getArenaModel(id); if (m) { m.auth.type = type; if (type === 'header' && !m.auth.headers.length) m.auth.headers.push({ name: '', value: '' }); this.saveArenaConfig(); this.renderArenaLibrary(); } }
     addAuthHeader(id) { const m = this.getArenaModel(id); if (m) { m.auth.headers.push({ name: '', value: '' }); this.saveArenaConfig(); this.renderArenaLibrary(); } }
@@ -2184,7 +2237,8 @@ class UIManager {
         if (auth.type === 'bearer') return { type: 'bearer', key: (auth.key || '').trim() };
         if (auth.type === 'basic') return { type: 'basic', username: auth.username || '', password: auth.password || '' };
         if (auth.type === 'header') return { type: 'header', headers: (auth.headers || []).filter(h => h && h.name).map(h => ({ name: h.name.trim(), value: (h.value || '').trim() })) };
-        if (auth.type === 'oauth') return { type: 'oauth', accessToken: (auth.accessToken || '').trim(), tokenUrl: (auth.tokenUrl || '').trim(), clientId: (auth.clientId || '').trim(), clientSecret: auth.clientSecret || '', scope: (auth.scope || '').trim() };
+        if (auth.type === 'oauth') return { type: 'oauth', accessToken: (auth.accessToken || '').trim(), refreshToken: auth.refreshToken || '', tokenExp: auth.tokenExp || 0,
+            authorizeUrl: (auth.authorizeUrl || '').trim(), tokenUrl: (auth.tokenUrl || '').trim(), clientId: (auth.clientId || '').trim(), scope: (auth.scope || '').trim() };
         return { type: 'none' };
     }
 

@@ -77,7 +77,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 
 **The models**
 - **🔌 Bring any model** — OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter, …), **Anthropic**, **Ollama**, **Google (Gemini)**, with auto-detection. Mix local and cloud in one match.
-- **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or OAuth2.
+- **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or an OAuth2 login button: one click for OpenRouter, or any login server that issues a client ID.
 - **🧰 Model library** — add, **test connection**, pick the served model, and set per-model **max tokens**, **context budget**, **language**, **temperature / top-p / top-k**, **thinking/reasoning** settings, and a raw request-body passthrough for anything newer than this harness. Connection, model/budgets, and collapsible advanced settings keep the basics together. Saved locally, exportable/importable.
 - **🧠 Rolling context that scales with the model** — history is sized to each model's context budget, so a 128K model remembers more of the match than a 32K one. Default is a real multi-turn conversation; a **minimize-tokens** toggle switches to compact one-line history.
 - **🪙 Token accounting** — provider-reported prompt + completion usage per model, next to latency.

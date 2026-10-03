@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1024: OAuth2 is a login button (3 October 2026)
+
+**No rules change.** The OAuth2 form asked for a pasted token, or a token URL, client ID, client secret and scope. asp67 found it too much for anyone who doesn't know OAuth.
+- **OpenRouter:** with an openrouter.ai endpoint, OAuth2 shows only "🔑 Log in with OpenRouter". A popup opens OpenRouter's login, and WAR receives a key of its own. There is nothing to copy.
+- **Any other login server** (a company gateway, Keycloak and the like): its authorize URL, token URL and client ID, then "🔑 Log in".
+  - The card shows the callback address its admin registers.
+  - The browser login uses PKCE, so there is no client secret.
+  - Tokens are refreshed a minute before they run out.
+- **What went:** the client-credentials fetch and its client secret. A secret saved in the library is deleted when the library loads. A token pasted under the old form keeps working and shows as logged in.
+- **Anthropic and Gemini** keep API keys: neither offers a login third-party apps may use.
+
 ## Build 1023: sound on by default, effects softer (1 October 2026)
 
 **No rules change.**
