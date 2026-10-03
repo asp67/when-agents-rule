@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1029: Extended thinking moves up to Model and budgets (3 October 2026)
+
+**No rules change.** Now that its choices come from the server (b1028), the thinking field sits directly under the model choice instead of in Advanced settings.
+- **Extra request body stays in Advanced settings.** For a server that does not say how its thinking is set, the note under the field refers to it there.
+- **Advanced settings no longer opens by itself** for a thinking conflict; that warning now stands beside the field.
+
 ## Build 1028: the thinking dropdown asks the server (3 October 2026)
 
 **No rules change.** asp67 asked for the thinking choices to be read from the server. Choosing a model, or a successful Test connection, now asks the server what that model offers. The dropdown lists exactly that, and each value is sent in the one form that server reads, because a key a server does not know is ignored without a word.

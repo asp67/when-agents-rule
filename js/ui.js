@@ -1369,7 +1369,7 @@ class UIManager {
         const sub = e(m.model || m.endpoint || t('ar.notConfigured'));
         const advanced = this._modelAdvanced || (this._modelAdvanced = new Map());
         const advancedOpen = advanced.has(m.id) ? advanced.get(m.id)
-            : !!(extraBodyErr || thinkingConflicts || rejectedNames.length);
+            : !!(extraBodyErr || rejectedNames.length);
         return `
         <div class="model-card ${expanded ? 'expanded' : 'collapsed'}">
             <div class="model-card-header">
@@ -1444,6 +1444,12 @@ class UIManager {
                 <div class="arena-field" style="flex:0 0 170px"><label>${t('ar.fModelLang')}</label>
                     <select onchange="game.ui.setModelField(${m.id},'language',this.value)">${langOpts}</select></div>
             </div>
+            <div class="model-select-row sampling-row">
+                <div class="arena-field" style="flex:0 0 230px"><label>${t('ar.fReasoning')}${rejectedTag('omitReasoning')}</label>
+                    ${reasoningControl}</div>
+            </div>
+            <p class="auth-hint">${t(reasoningHintKey, reasoningHintVars)}</p>
+            ${thinkingConflicts}
             <p class="auth-hint">${t('ar.maxTokensHint')}</p>
             <p class="auth-hint">${t('ar.contextBudgetHint')}</p>
             <label class="ctx-mini-toggle"><input type="checkbox" ${m.minimizeTokens ? 'checked' : ''} onchange="game.ui.setModelBool(${m.id},'minimizeTokens',this.checked)"> ${t('ar.minimizeTokens')}</label>
@@ -1473,12 +1479,6 @@ class UIManager {
             <p class="auth-hint">${t('ar.samplingHint')}</p>
             <p class="auth-hint">${t('ar.samplingExtraHint')}</p>
             ${rejectedNote}
-            <div class="model-select-row sampling-row">
-                <div class="arena-field" style="flex:0 0 230px"><label>${t('ar.fReasoning')}${rejectedTag('omitReasoning')}</label>
-                    ${reasoningControl}</div>
-            </div>
-            <p class="auth-hint">${t(reasoningHintKey, reasoningHintVars)}</p>
-            ${thinkingConflicts}
             <div class="model-select-row"><div class="arena-field">
                 <label>${t('ar.fExtraBody')}</label>
                 <textarea class="extra-body${extraBodyErr ? ' is-bad' : ''}" rows="2" spellcheck="false"

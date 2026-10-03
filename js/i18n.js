@@ -451,7 +451,7 @@ const I18N = {
         'ar.reasoningHintGoogle': 'Thinking budget in tokens, sent as thinkingConfig.thinkingBudget. 0 turns thinking off, -1 lets the model decide for itself. Leave blank to send nothing.',
         'ar.reasoningHintOllama': 'Ask the model to think before answering, sent as think. Only thinking-capable models accept it; the rest refuse the request.',
         'ar.thinkNotProvided': 'Not provided by this server',
-        'ar.thinkNotProvidedHint': 'This server does not say how its thinking is set, so there is nothing safe to offer here: a key it does not know is ignored without a word. Set it in Extra request body under Advanced settings, e.g. {"chat_template_kwargs": {"enable_thinking": false}} for many models on vLLM or SGLang.',
+        'ar.thinkNotProvidedHint': 'This server does not say how its thinking is set, so there is nothing safe to offer here: a key it does not know is ignored without a word. Set it in Extra request body (Advanced settings), e.g. {"chat_template_kwargs": {"enable_thinking": false}} for many models on vLLM or SGLang.',
         'ar.thinkKept': '{v} (set earlier)',
         'ar.thinkClear': '— clear',
         'ar.thinkNone': 'This model does not think',
