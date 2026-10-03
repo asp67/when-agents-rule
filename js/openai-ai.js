@@ -1398,9 +1398,19 @@ class OpenAIAIManager {
     //   anthropic  thinking: { type: 'enabled', budget_tokens: N }
     //   google     generationConfig.thinkingConfig: { thinkingBudget: N }  (0 off, -1 auto)
     //   ollama     think: true | false
-    static reasoningFor(provider, raw) {
+    static reasoningFor(provider, raw, send = null) {
         if (raw === '' || raw == null) return null;
         const s = String(raw).trim().toLowerCase();
+        // Options read from the server (b1028) go out in the one form that server reads.
+        // A key it does not know is ignored without a word, so this is never guessed.
+        const sw = s === 'on' || s === 'true' ? true : s === 'off' || s === 'false' ? false : null;
+        if (send === 'openrouter' && provider === 'openai')
+            return { kind: 'patch', patch: { reasoning: sw === false ? { effort: 'none' } : sw === true ? { enabled: true } : { effort: s } } };
+        if (send === 'llamacpp' && provider === 'openai')
+            return sw === null ? { kind: 'kwargs', patch: { reasoning_effort: s } } : { kind: 'enableThinking', value: sw };
+        if (send === 'unsloth' && provider === 'openai')
+            return { kind: 'patch', patch: sw === null ? { reasoning_effort: s } : { enable_thinking: sw } };
+        if (send === 'ollama' && provider === 'ollama') return { kind: 'think', value: sw === null ? s : sw };
         if (provider === 'openai') {
             // Two different things share this branch. OpenAI's own reasoning models take
             // reasoning_effort; a Qwen served through vLLM or SGLang ignores that entirely
@@ -1557,6 +1567,89 @@ class OpenAIAIManager {
             }
         } catch (e) { /* a probe that fails tells us nothing, and that is allowed */ }
         return out;
+    }
+
+    // ---- Thinking options, read from the server (b1028) --------------------------
+    // What the chosen model offers, from the one place each server states it: OpenRouter's
+    // model list (reasoning.supported_efforts), Ollama's /api/show (thinking.values),
+    // llama.cpp's chat template (/props), Unsloth Studio's /v1/status, and OpenAI's own
+    // documented efforts. Everything else (vLLM, SGLang, other gateways) does not say,
+    // and returns source null: the card then says "not provided" rather than offer a key
+    // the server would ignore in silence. Anthropic and Google keep their budget field.
+    // Never throws. { source, send, levels, canOn, canOff, def, unsupported }
+    static async discoverThinking(conn, timeoutMs = 6000) {
+        const none = { source: null };
+        try {
+            const endpoint = OpenAIAIManager.stripSlash((conn && conn.endpoint) || '');
+            if (!endpoint || !conn.model) return none;
+            const prov = OpenAIAIManager.resolveProvider(conn);
+            if (prov !== 'openai' && prov !== 'ollama') return none;
+            let headers = { 'Content-Type': 'application/json' };
+            try { headers = await OpenAIAIManager.buildAuthHeaders(conn.auth || { type: 'none' }, prov); } catch (e) { /* unauthenticated is still worth asking */ }
+            const root = OpenAIAIManager.stripSlash(endpoint.replace(/\/(v1|api)$/i, ''));
+            const getJson = async (url, opts) => {
+                try {
+                    const r = await OpenAIAIManager.fetchWithTimeout(url, Object.assign({ method: 'GET', headers }, opts || {}), timeoutMs);
+                    return r && r.ok ? await r.json() : null;
+                } catch (e) { return null; }
+            };
+            const id = String(conn.model).replace(/^models\//, '');
+            const found = (source, send, levels, canOn, canOff, def) => {
+                levels = (levels || []).map(String).filter(v => v && v !== 'none');
+                return { source, send, levels, canOn: !!canOn, canOff: !!canOff, def: def || null,
+                         unsupported: !levels.length && !canOn && !canOff };
+            };
+            if (prov === 'ollama') {
+                const show = await getJson(root + '/api/show', { method: 'POST', body: JSON.stringify({ model: conn.model }) });
+                if (!show) return none;
+                const th = show.thinking;
+                if (th && Array.isArray(th.values))
+                    return found('Ollama', 'ollama', th.values.filter(v => typeof v === 'string'), th.values.includes(true), th.values.includes(false), th.default);
+                if (!(show.capabilities || []).includes('thinking')) return found('Ollama', 'ollama', [], false, false);
+                // Ollama before thinking.values (0.34 does not send it): gpt-oss takes levels
+                // and ignores true/false, per Ollama's own docs; the rest switch on and off.
+                if (show.details && show.details.family === 'gptoss') return found('Ollama', 'ollama', ['low', 'medium', 'high'], false, false, 'medium');
+                return found('Ollama', 'ollama', [], true, true);
+            }
+            if (OpenAIAIManager.isOpenRouter(endpoint)) {
+                const list = await getJson(endpoint + '/models');
+                const mdl = list && Array.isArray(list.data) ? list.data.find(x => x && x.id === id) : null;
+                if (!mdl) return none;
+                const r = mdl.reasoning;
+                if (!r) return found('OpenRouter', 'openrouter', [], false, false);
+                const efforts = Array.isArray(r.supported_efforts) ? r.supported_efforts : [];
+                // A model without effort levels states only whether it thinks by default.
+                const def = r.default_effort || (efforts.length ? null : r.default_enabled === false ? 'off' : r.default_enabled ? 'on' : null);
+                return found('OpenRouter', 'openrouter', efforts, !efforts.length, !r.mandatory, def);
+            }
+            const props = await getJson(root + '/props');
+            if (props && typeof props.chat_template === 'string') {
+                const tpl = props.chat_template, sw = /enable_thinking/.test(tpl);
+                const lv = OpenAIAIManager.templateEffortLevels(tpl);
+                return found('llama.cpp', 'llamacpp', lv.levels, sw, sw, lv.def);
+            }
+            const st = await getJson(root + '/v1/status');
+            if (st && ('reasoning_effort_levels' in st || 'supports_reasoning' in st)) {
+                const sw = !!st.supports_reasoning && st.reasoning_style === 'enable_thinking';
+                return found('Unsloth Studio', 'unsloth', st.supports_reasoning ? st.reasoning_effort_levels : [], sw, sw && !st.reasoning_always_on);
+            }
+            if (/(^|\.)api\.openai\.com$/i.test(new URL(endpoint).hostname))
+                return found('OpenAI', 'openai', OpenAIAIManager.REASONING_EFFORTS, false, false);
+        } catch (e) { /* asking is optional; not knowing is the old behaviour */ }
+        return none;
+    }
+    // The effort words a Jinja template compares reasoning_effort against, and the one it
+    // falls back to -- the template is what consumes the value, so it is the list.
+    static templateEffortLevels(tpl) {
+        const levels = new Set(); let m, def = null;
+        const cmp = /reasoning_effort\s*(?:==|!=)\s*['"]([A-Za-z_]+)['"]/g;
+        while ((m = cmp.exec(tpl))) levels.add(m[1]);
+        const inList = /reasoning_effort\s+(?:not\s+)?in\s*[\[(]([^\])]*)[\])]/g;
+        while ((m = inList.exec(tpl))) m[1].replace(/['"]([A-Za-z_]+)['"]/g, (_, v) => levels.add(v));
+        const d = /reasoning_effort\s*\|\s*default\(\s*['"]([A-Za-z_]+)['"]/.exec(tpl)
+            || /reasoning_effort\s*=\s*['"]([A-Za-z_]+)['"]/.exec(tpl);
+        if (d) { def = d[1]; levels.add(d[1]); }
+        return { levels: [...levels], def };
     }
 
     static async probeServedBy(conn) {
@@ -1938,7 +2031,7 @@ class OpenAIAIManager {
         const model = modelId || 'default';
         // Only ever add a key we actually have a value for.
         const put = (obj, key, val) => { if (val !== undefined && !Number.isNaN(val)) obj[key] = val; return obj; };
-        const reasoning = opts.omitReasoning ? null : OpenAIAIManager.reasoningFor(provider, opts.reasoning);
+        const reasoning = opts.omitReasoning ? null : OpenAIAIManager.reasoningFor(provider, opts.reasoning, opts.thinkingSend);
         // Anthropic forbids temperature, top_p and top_k while extended thinking is on.
         // Suppressed here rather than left to 400, and the library says so on the card so
         // it does not look like the settings were quietly ignored.
@@ -2068,6 +2161,8 @@ class OpenAIAIManager {
             body.tool_choice = 'auto';
         }
         if (reasoning && reasoning.kind === 'effort') body.reasoning_effort = reasoning.value;
+        if (reasoning && reasoning.kind === 'patch') Object.assign(body, reasoning.patch);
+        if (reasoning && reasoning.kind === 'kwargs') body.chat_template_kwargs = Object.assign({}, body.chat_template_kwargs, reasoning.patch);
         // Qwen and friends. Merged rather than assigned: a raw extra body may also carry
         // chat_template_kwargs, and clobbering it would lose whatever else was in there.
         if (reasoning && reasoning.kind === 'enableThinking') {
@@ -2270,7 +2365,7 @@ class OpenAIAIManager {
             const headers = await OpenAIAIManager.buildAuthHeaders(conn.auth, provider);
             const req = OpenAIAIManager.buildChatRequest(provider, conn.endpoint, conn.model || 'default', system, turns,
                 { temperature: conn.temperature, topP: conn.topP, topK: conn.topK, minP: conn.minP,
-                  reasoning: conn.reasoning, extraBody: conn.extraBody, maxTokens: conn.maxTokens, numCtx: conn.contextSize });
+                  reasoning: conn.reasoning, thinkingSend: conn.thinkingSend, extraBody: conn.extraBody, maxTokens: conn.maxTokens, numCtx: conn.contextSize });
             const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), timeoutMs);
             try {
                 res = await fetch(req.url, { method: 'POST', headers, mode: 'cors', body: JSON.stringify(req.body), signal: ctrl.signal });
@@ -2609,6 +2704,7 @@ class OpenAIAIManager {
                 presencePenalty: (conn.presencePenalty == null) ? null : conn.presencePenalty,
                 repetitionPenalty: (conn.repetitionPenalty == null) ? null : conn.repetitionPenalty,
                 reasoning: conn.reasoning == null ? '' : conn.reasoning,
+                thinkingSend: conn.thinkingSend || null,
                 extraBody: conn.extraBody || null,
                 maxTokens: conn.maxTokens || 8192, // per-model cap on reply length (default 8192)
                 contextSize: conn.contextSize || null, // context budget (tokens); also Ollama num_ctx (null = 65536)
@@ -4677,7 +4773,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             { temperature: model.temperature, topP: model.topP, topK: model.topK,
               minP: model.minP, presencePenalty: model.presencePenalty,
               repetitionPenalty: model.repetitionPenalty,
-              reasoning: model.reasoning, extraBody: model.extraBody,
+              reasoning: model.reasoning, thinkingSend: model.thinkingSend, extraBody: model.extraBody,
               maxTokens: model.maxTokens, numCtx: model.contextSize },
             model._reqOpts || {});
     }
@@ -6386,7 +6482,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         catch (e) { headers = { 'Content-Type': 'application/json' }; }
         const reqOpts = Object.assign({
             temperature: model.temperature, topP: model.topP, topK: model.topK,
-            reasoning: model.reasoning, extraBody: model.extraBody,
+            reasoning: model.reasoning, thinkingSend: model.thinkingSend, extraBody: model.extraBody,
             maxTokens: model.maxTokens, numCtx: model.contextSize
         }, model._reqOpts || {});
         const req = OpenAIAIManager.buildChatRequest(

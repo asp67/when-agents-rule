@@ -1307,8 +1307,28 @@ class UIManager {
         const _prov = (typeof OpenAIAIManager !== 'undefined') ? OpenAIAIManager.resolveProvider(m) : 'openai';
         const _setF = `game.ui.setModelField(${m.id},'reasoning',this.value)`;
         const _opt = (v, label, sel) => `<option value="${v}" ${String(sel) === String(v) ? 'selected' : ''}>${label}</option>`;
-        let reasoningControl, reasoningHintKey;
-        if (_prov === 'openai') {
+        let reasoningControl, reasoningHintKey, reasoningHintVars = {};
+        // What the server reported for THIS model (b1028); a different model or address
+        // means it has not been asked yet, and the old control stands until it is.
+        const th = this.thinkingFor(m);
+        if (th && (_prov === 'openai' || _prov === 'ollama')) {
+            if (!th.source) {
+                reasoningHintKey = 'ar.thinkNotProvidedHint';
+                // A value chosen before the server was asked keeps working until cleared.
+                reasoningControl = m.reasoning
+                    ? `<select onchange="${_setF}">${_opt(m.reasoning, e(t('ar.thinkKept', { v: m.reasoning })), m.reasoning)}${_opt('', t('ar.thinkClear'), m.reasoning)}</select>`
+                    : `<select disabled><option>${t('ar.thinkNotProvided')}</option></select>`;
+            } else if (th.unsupported) {
+                reasoningHintKey = 'ar.thinkNoneHint'; reasoningHintVars = { src: th.source };
+                reasoningControl = `<select disabled><option>${t('ar.thinkNone')}</option></select>`;
+            } else {
+                reasoningHintKey = 'ar.thinkFromHint'; reasoningHintVars = { src: th.source };
+                const def = th.def ? t('ar.thinkDefault', { v: th.def }) : t('ar.reasoningOff');
+                reasoningControl = `<select onchange="${_setF}">${_opt('', e(def), m.reasoning)}${
+                    th.levels.map(v => _opt(e(v), e(v), m.reasoning)).join('')}${
+                    th.canOn ? _opt('on', t('ar.reasoningOn'), m.reasoning) : ''}${th.canOff ? _opt('off', t('ar.reasoningNo'), m.reasoning) : ''}</select>`;
+            }
+        } else if (_prov === 'openai') {
             reasoningHintKey = 'ar.reasoningHintOpenai';
             // Both dialects on one control: the effort words reach OpenAI's own reasoning
             // models, on/off reaches a Qwen behind vLLM or SGLang. Which one is sent
@@ -1457,7 +1477,7 @@ class UIManager {
                 <div class="arena-field" style="flex:0 0 230px"><label>${t('ar.fReasoning')}${rejectedTag('omitReasoning')}</label>
                     ${reasoningControl}</div>
             </div>
-            <p class="auth-hint">${t(reasoningHintKey)}</p>
+            <p class="auth-hint">${t(reasoningHintKey, reasoningHintVars)}</p>
             ${thinkingConflicts}
             <div class="model-select-row"><div class="arena-field">
                 <label>${t('ar.fExtraBody')}</label>
@@ -1862,7 +1882,31 @@ class UIManager {
         this.chooseArenaModel(id, value);   // saves and redraws, which is fine once closed
     }
 
-    chooseArenaModel(id, value) { const m = this.getArenaModel(id); if (m) { m.model = value; this.saveArenaConfig(); this.renderArenaLibrary(); } }
+    chooseArenaModel(id, value) { const m = this.getArenaModel(id); if (m) { m.model = value; this.saveArenaConfig(); this.renderArenaLibrary(); this.discoverArenaThinking(id); } }
+
+    // The thinking options the server reported for this entry's current model and
+    // address, or null when it has not been asked about them (b1028).
+    thinkingFor(m) {
+        const th = m && m.thinking;
+        return th && th.model === m.model && th.endpoint === m.endpoint && th.provider === (m.provider || 'auto') ? th : null;
+    }
+    // Ask the server what the chosen model offers, and fill the thinking dropdown from it.
+    // A value the model no longer offers is cleared rather than sent to be ignored.
+    async discoverArenaThinking(id) {
+        const m = this.getArenaModel(id);
+        if (!m || !m.model || !m.endpoint) return;
+        const asked = { model: m.model, endpoint: m.endpoint, provider: m.provider || 'auto' };
+        const th = await OpenAIAIManager.discoverThinking({ endpoint: m.endpoint.trim(), auth: this.cleanAuth(m.auth), model: m.model, provider: m.provider || 'auto' });
+        if (m.model !== asked.model || m.endpoint !== asked.endpoint || (m.provider || 'auto') !== asked.provider) return;
+        m.thinking = Object.assign({}, th, asked);
+        if (th.source && m.reasoning && !this.thinkingAllows(th, m.reasoning)) m.reasoning = '';
+        this.saveArenaConfig();
+        if (document.getElementById('modelLibraryList')) this.renderArenaLibrary();
+    }
+    thinkingAllows(th, v) {
+        const s = String(v).toLowerCase();
+        return th.levels.includes(s) || (th.canOn && (s === 'on' || s === 'true')) || (th.canOff && (s === 'off' || s === 'false'));
+    }
     setModelProvider(id, value) { const m = this.getArenaModel(id); if (m) { m.provider = value; this.saveArenaConfig(); this.renderArenaLibrary(); } }
 
     toggleArenaModel(id) {
@@ -2243,6 +2287,7 @@ class UIManager {
                     { endpoint: (m.endpoint || '').trim(), auth: this.cleanAuth(m.auth), model: m.model });
                 if (caps && caps.stack) this.noteModelCapabilities(id, caps);
             } catch (e) { /* a probe that fails leaves the card as it was */ }
+            if (m.model) this.discoverArenaThinking(id);
         } else {
             // errorCode maps to a localized ar.err.* message; fall back to the raw
             // (English) error string for anything unmapped.
@@ -2298,6 +2343,8 @@ class UIManager {
                 presencePenalty: this.numOrNull(m.presencePenalty, -2, 2),
                 repetitionPenalty: this.numOrNull(m.repetitionPenalty, 0, 2),
                 reasoning: m.reasoning == null ? '' : String(m.reasoning),
+                // How the server reads the value, when it said (b1028); null keeps the old mapping.
+                thinkingSend: (this.thinkingFor(m) && this.thinkingFor(m).send) || null,
                 extraBody: this.parseExtraBody(m.extraBody).value,
                 contextSize: (() => { const n = parseInt(m.contextSize, 10); return (n && n >= 512) ? n : null; })(),
                 maxContext: (() => { const n = parseInt(m.maxContext, 10); return (n && n >= 512) ? n : null; })(),

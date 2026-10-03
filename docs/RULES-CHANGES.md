@@ -6,6 +6,26 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1028: the thinking dropdown asks the server (3 October 2026)
+
+**No rules change.** asp67 asked for the thinking choices to be read from the server. Choosing a model, or a successful Test connection, now asks the server what that model offers. The dropdown lists exactly that, and each value is sent in the one form that server reads, because a key a server does not know is ignored without a word.
+
+| server | where it says | sent as |
+|---|---|---|
+| OpenRouter | its model list, `reasoning.supported_efforts` / `mandatory` / `default_effort` | `reasoning: {effort}`, off = `effort: "none"` |
+| Ollama | `/api/show`: `thinking.values`, or `capabilities` on versions without it. gpt-oss gets its documented levels by family | `think: level / true / false` |
+| llama.cpp | `/props`: the levels its chat template compares `reasoning_effort` against; on/off if it reads `enable_thinking` | `chat_template_kwargs` |
+| Unsloth Studio | `/v1/status`: `reasoning_effort_levels`, `reasoning_style`, `reasoning_always_on` | top-level `reasoning_effort` / `enable_thinking` |
+| api.openai.com | the documented efforts | `reasoning_effort` |
+
+- **Servers that do not say** (vLLM, SGLang, other gateways) read "Not provided by this server" and point to Extra request body.
+  - A value chosen before is kept, marked "set earlier", still sent as before, and can be cleared.
+- **A value the newly chosen model does not offer is cleared**, so nothing is sent only to be ignored.
+- **Anthropic and Gemini** keep their thinking-budget field.
+- **Until the server has been asked** (an entry not tested since), the dropdown is the old one.
+
+Checked against the real OpenRouter list (332 of 466 models state their options) and a local Ollama 0.34.2.
+
 ## Build 1027: the match header asks the server too (3 October 2026)
 
 **No rules change.** Build 1026 fixed only one of the two places that name a seat's server. The connection test stopped reporting the protocol as the server, but the match header has a probe of its own. That probe still answered "anthropic" for any seat on Anthropic's protocol, so the live lineup and the transcript kept recording asp67's vLLM GLM as Anthropic. It now asks the server like any other seat. Only Ollama's own protocol still names its server.
