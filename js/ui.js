@@ -5492,8 +5492,11 @@ class UIManager {
     // Hover opens it; a click pins it open, which is the only route on a touch screen.
     // A speed as the viewer reads it: relative to the normal pace (Game.NORMAL_SIM_SPEED
     // is 1×), so the multipliers 1 | 2 | 4 read ½ | 1 | 2.
+    // The normal pace, also on a page that does not load game.js (the Platform's viewer
+    // drives this file with a stand-in game; b1031).
+    static normalSimSpeed() { return (typeof Game !== 'undefined' && Game.NORMAL_SIM_SPEED) || 2; }
     simSpeedLabel(v) {
-        const d = Number(v) / Game.NORMAL_SIM_SPEED;
+        const d = Number(v) / UIManager.normalSimSpeed();
         return d === 0.5 ? '½' : d.toLocaleString(typeof getUiLang === 'function' ? getUiLang() : 'en');
     }
 
@@ -5565,7 +5568,7 @@ class UIManager {
         else if (locked)               btn.innerHTML = `⏱ ${this.simSpeedLabel(eff)}×`
                                            + `<span class="sb-speed-set">${this.simSpeedLabel(set)}×</span>`;
         else                           btn.textContent = `⏱ ${this.simSpeedLabel(set)}×`;
-        btn.classList.toggle('sb-on', set !== Game.NORMAL_SIM_SPEED || pstate !== 'running');
+        btn.classList.toggle('sb-on', set !== UIManager.normalSimSpeed() || pstate !== 'running');
         btn.classList.toggle('is-paused', pstate !== 'running');
         // Say WHY it is not running at the chosen speed, rather than silently lying.
         btn.classList.toggle('is-locked', locked && pstate === 'running');
@@ -5594,7 +5597,7 @@ class UIManager {
             // least honest: this is the exact moment a spectator opens it to speed
             // through a hold. Still clickable — the pick is remembered for when the
             // Wonder falls — but no longer pretending to be available now.
-            const held = heldByWonder && v > Game.NORMAL_SIM_SPEED;
+            const held = heldByWonder && v > UIManager.normalSimSpeed();
             o.classList.toggle('is-held', held);
             o.title = held ? t('spec.simSpeedHeldOpt') : '';
         });

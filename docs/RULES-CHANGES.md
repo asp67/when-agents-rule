@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1031: speed labels without game.js (3 October 2026)
+
+**No rules change.** The speed labels (b1020) read the normal pace from `Game`. A page that drives `ui.js` without loading `game.js` would have thrown there; the Platform's viewer is one. They now fall back to the normal pace, 2.
+
 ## Build 1030: "Reasoning effort", always a dropdown (3 October 2026)
 
 **No rules change. Nothing changes on the wire.** At asp67's request:
