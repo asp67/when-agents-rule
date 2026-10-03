@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1040: a fight's card no longer says "lost 3 of 0" (3 October 2026)
+
+**No rules change; `game.js` changed, so the rules hash moves.** The chronicle's fight card says what each side lost of how many took part (asp67 saw "lost x of 0").
+- **The cause.** "How many" counted only what struck or healed in the fight. A side whose buildings or unarmed units were cut down without a blow back was lost from a count of 0.
+- **The fix.** The battle record now also keeps what was struck, per owner (`hit`), beside its sides. The card counts striker and struck together.
+- **Models are told the same as before:** `battles` in their state still reports what each side struck with, and what it lost.
+
 ## Build 1039: chopping and mining share one gap, 0.5 s (3 October 2026)
 
 **No rules change.** For consistency (asp67), chopping and mining now both wait 0.5 s per map cell (b1038 had 0.55 s and 0.625 s).

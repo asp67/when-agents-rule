@@ -125,7 +125,12 @@ class MatchChronicle {
                 let lost = 0;
                 sides.forEach(id => {
                     const s = b.sides[id];
-                    const involved = Object.values(s.involved || {}).reduce((a, t) => a + (t.ids ? t.ids.size : 0), 0);
+                    // Everything of this side that took part: what struck and what was
+                    // struck (b1040). Counting only the strikers told "lost 3 of 0" for
+                    // workers cut down without a blow back.
+                    const took = new Set((b.hit && b.hit[id]) || []);
+                    Object.values(s.involved || {}).forEach(t => (t.ids || []).forEach(x => took.add(x)));
+                    const involved = took.size;
                     const l = Object.values(s.lost || {}).reduce((a, n) => a + n, 0);
                     lost += l;
                     tally[id] = { involved, lost: l };

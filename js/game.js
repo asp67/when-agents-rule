@@ -2526,6 +2526,11 @@ class Game {
             });
             Object.entries(s.lost).forEach(([type, n]) => { d.lost[type] = (d.lost[type] || 0) + n; });
         });
+        Object.entries(src.hit || {}).forEach(([ownerId, ids]) => {
+            const hit = dst.hit || (dst.hit = {});
+            const d = hit[ownerId] || (hit[ownerId] = new Set());
+            ids.forEach(id => d.add(id));
+        });
     }
 
     _battleEntry(battle, ownerId, type) {
@@ -2542,6 +2547,13 @@ class Game {
         if (!b) return;
         const e = this._battleEntry(b, attacker.owner, attacker.type);
         e.ids.add(attacker.id);
+        // Who was struck, per owner (b1040): a side's units that died without striking
+        // back were in no count, so the chronicle told "lost 3 of 0". Kept beside the
+        // sides, not in them: what the models are told of a battle is unchanged.
+        if (target.owner != null && target.id != null) {
+            const hit = b.hit || (b.hit = {});
+            (hit[target.owner] || (hit[target.owner] = new Set())).add(target.id);
+        }
         // Razing a building is not the same achievement as killing an army, so the
         // two are never summed — infantry hit buildings at 1.5x and ranged at 0.5x,
         // which would make a siege look like a won field battle.
