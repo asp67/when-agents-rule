@@ -1744,9 +1744,14 @@
             // sweep, a golden ring runs out from that seat's Town Center. Not in Simple
             // lighting and not in a recording; a still glow for a viewer who asked for less
             // motion.
-            if (this.visualStyle !== 'classic' && !this.replayMode && this.game?.aiManager) {
+            // A re-simulated replay moves as a match does, so it gets its waves too, from
+            // its own seats (ageSource, b1032); null while it jumps, and the ages seen are
+            // forgotten so a landing does not wave for everything skipped.
+            const ageSeats = this.ageSource ? this.ageSource() : (this.game?.aiManager ? this.game.aiManager.aiPlayers : null);
+            if (this.ageSource && !ageSeats) this._ageSeen = null;
+            if (this.visualStyle !== 'classic' && (!this.replayMode || this.resimPlaying) && ageSeats) {
                 const ages = this._ageSeen || (this._ageSeen = new Map());
-                for (const ai of this.game.aiManager.aiPlayers || []) {
+                for (const ai of ageSeats || []) {
                     const was = ages.get(ai.id);
                     ages.set(ai.id, ai.age);
                     if (was === undefined || was === ai.age) continue;

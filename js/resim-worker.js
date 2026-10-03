@@ -14,7 +14,11 @@
 // Messages in:  {type:'init', urls:{file:url}, recs:[header, contract, ...inputs]}
 //               {type:'to', step}            advance, verifying, and send the scene
 // Messages out: {type:'ready', coreHash, harnessHash, lastInputStep, inputs}
-//               {type:'frame', step, checked, ok, problem, divergedAt, complete, ended, scene}
+//               {type:'frame', step, checked, ok, problem, divergedAt, complete, ended, scene, fx}
+//
+// `fx`: what the rules asked the renderer to show since the last frame -- arrows and
+// stones, hit flashes, dust, battle rings -- for the page to show on its stage. They are
+// presentation the rules call, not state, so the scene alone could not bring them back.
 //               {type:'error', problem}
 // ---------------------------------------------------------------------------
 'use strict';
@@ -50,6 +54,7 @@ console.log = () => {};
 console.info = () => {};
 
 let replay = null;
+const fx = [];   // the renderer calls since the last frame (see the header)
 const lf = s => String(s).replace(/\r\n/g, '\n');
 
 async function init({ urls, recs }) {
@@ -80,7 +85,14 @@ async function init({ urls, recs }) {
     const units = [], buildings = [];
     const drop = (list, e) => { const i = list.indexOf(e); if (i >= 0) list.splice(i, 1); };
     let frames = 0;
+    // The calls the stage replays (fx above). An entity goes by id, as a unit or a building.
+    const ref = e => e ? { id: e.id, b: !!(typeof BUILDING_DEFS !== 'undefined' && BUILDING_DEFS[e.type]) || !!e.isWonder, x: e.x, z: e.z, type: e.type } : null;
+    const note = (k, data) => { fx.push(Object.assign({ k, step: game.clock.stepNo }, data)); if (fx.length > 4000) fx.splice(0, 2000); };
     game.renderer = inert({
+        spawnProjectile: (from, to, kind, shooter) => note('proj', { from, to, kind, shooter: ref(shooter) }),
+        flashHit: e => note('hit', { e: ref(e) }),
+        spawnDust: (x, y, z, count, color) => note('dust', { x, y, z, count, color }),
+        spawnBattleRing: (x, z) => note('ring', { x, z }),
         units, buildings, selectedUnits: [], replayMode: false, container: { clientWidth: 0, clientHeight: 0 },
         get _completedFrames() { return ++frames; }, grassStats: null,
         addUnit: e => { if (!units.includes(e)) units.push(e); },
@@ -114,13 +126,19 @@ async function init({ urls, recs }) {
 // the rebuild has got instead of a frozen picture. The work is the same; only the silence goes.
 function frame(step) {
     const SLICE = 600;   // 30 s of match between notes
+    const from = replay.step;
     while (replay.ok && game.gameStarted && replay.step + SLICE < step) {
         replay.to(replay.step + SLICE);
         self.postMessage({ type: 'progress', step: replay.step, target: step });
     }
     replay.to(step);
+    // Only what a viewer could have seen: the last two seconds of a long jump, not every
+    // arrow of the minutes it skipped.
+    const recent = fx.filter(e => e.step > Math.max(from, replay.step - 40)).slice(-300);
+    fx.length = 0;
     return { type: 'frame', step: replay.step, checked: replay.checked, ok: replay.ok, problem: replay.problem,
-             divergedAt: replay.divergedAt, divergedSeq: replay.divergedSeq, complete: replay.complete, ended: !game.gameStarted, scene: replay.scene() };
+             divergedAt: replay.divergedAt, divergedSeq: replay.divergedSeq, complete: replay.complete, ended: !game.gameStarted,
+             scene: replay.scene(), fx: recent };
 }
 
 self.onmessage = async ({ data }) => {

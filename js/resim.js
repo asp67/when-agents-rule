@@ -108,6 +108,13 @@ WarResim.Replay = class {
         const g = this.game;
         return {
             step: g.clock.stepNo,
+            // The match clock (real match time) for the stage's daylight, as the live
+            // game's runs on it; and the rules' clock with the fights it tracks, for the
+            // strategic layer's battle rings.
+            matchMs: g.clock.matchMs, simNow: g.simNow(),
+            battles: (g._battles || []).map(e => ({ x: e.x, z: e.z, lastAt: e.lastAt,
+                sides: Object.fromEntries(Object.entries(e.sides || {}).map(([id, side]) => [id, { involved:
+                    Object.fromEntries(Object.entries((side && side.involved) || {}).map(([k, v]) => [k, { ids: v && v.ids ? [...v.ids] : [] }])) }])) })),
             seats: g.aiManager.aiPlayers.map(ai => ({
                 id: ai.id, seat: ai.seat, civilization: ai.civilization, epoch: ai.age || 'stone',
                 eliminated: !!ai.eliminated,

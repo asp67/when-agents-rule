@@ -244,6 +244,10 @@ class UIManager {
         else this.anRender();
     }
 
+    anScrubPreview(value) {
+        const a = this.analyzer, out = document.getElementById('anTimelinePosition');
+        if (a && out) out.textContent = t('view.position', { n: Number(value) + 1, total: a.order.length });
+    }
     anScrub(value) {
         const index = Number(value);
         if (!Number.isInteger(index) || !this.analyzer) return;
@@ -271,8 +275,16 @@ class UIManager {
             // The timeline sits above the panels it moves through (the decisions, the log,
             // the charts), not up here among the view settings.
             const bar = document.getElementById('anTimelineBar');
-            if (bar) bar.innerHTML = `<label class="an-timeline-label">${esc(t('view.timelineAll'))}<input id="anTimeline" type="range" min="0" step="1" onchange="game.ui.anScrub(this.value)"></label>
+            // Held while dragged (b1032): a replay redraws the panels every frame, and the
+            // thumb was put back under the pointer each time.
+            if (bar) bar.innerHTML = `<label class="an-timeline-label">${esc(t('view.timelineAll'))}<input id="anTimeline" type="range" min="0" step="1"
+                onpointerdown="game.ui._anScrubbing = true" oninput="game.ui.anScrubPreview(this.value)" onchange="game.ui._anScrubbing = false; game.ui.anScrub(this.value)"></label>
                 <output id="anTimelinePosition" for="anTimeline"></output>`;
+            if (!this._anScrubRelease) {
+                this._anScrubRelease = () => { this._anScrubbing = false; };
+                document.addEventListener('pointerup', this._anScrubRelease, true);
+                document.addEventListener('pointercancel', this._anScrubRelease, true);
+            }
         }
         const p = this.viewPreferences(), a = this.analyzer;
         document.getElementById('anLayout').value = p.layout;
@@ -280,6 +292,7 @@ class UIManager {
         document.getElementById('anReplayRate').value = p.rate;
         const slider = document.getElementById('anTimeline');
         slider.max = a.order.length - 1;
+        if (this._anScrubbing) return;
         slider.value = a.cursor;
         const position = t('view.position', { n: a.cursor + 1, total: a.order.length });
         slider.setAttribute('aria-valuetext', position);
@@ -2690,9 +2703,9 @@ class UIManager {
     }
     // One overlay over the canvas, redrawn every frame while anything is showing: the
     // camera moves, so positions are projected fresh each time.
-    startIntentOverlay() {
+    startIntentOverlay(hostEl = null) {
         this.stopIntentOverlay();
-        const host = this.game.renderer && this.game.renderer.container;
+        const host = hostEl || (this.game.renderer && this.game.renderer.container);
         if (!host) return;
         const ov = document.createElement('div');
         ov.id = 'intentOverlay';
@@ -2711,7 +2724,7 @@ class UIManager {
         const layer = this.intentLayer, r = this.game.renderer;
         svg.innerHTML = '';
         if (r && r.worldToScreen) this.drawStrategic(svg, NS);
-        if (!layer || !r || !r.worldToScreen || !this.intentOn()) { box.innerHTML = ''; return; }
+        if (!layer || !r || !r.worldToScreen || !this.intentOn() || this._intentMarksOnly) { box.innerHTML = ''; return; }
         // The marks themselves lie on the ground, drawn by the renderer (intentMarks);
         // only the bubbles are screen-space.
         // A point behind the camera still has a direction to pin its bubble to.
@@ -6747,6 +6760,7 @@ class UIManager {
             playing: prev ? prev.playing : true, speed: prev ? prev.speed : 4, status: 'loading', checked: 0,
             ents: keep ? prev.ents : new Map(), problem: null, seekTo: fromStep > 0 ? fromStep : null,
             marks: this.anResimMarks(a) };
+        rs.markAt = new Map(rs.marks.map(m => [m.idx, m.step]));
         worker.onmessage = e => this.anResimMessage(rs, e.data);
         worker.onerror = e => this.anResimMessage(rs, { type: 'error', problem: (e && e.message) || 'worker failed' });
         worker.postMessage({ type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) });
@@ -6754,15 +6768,20 @@ class UIManager {
             this.game.renderer.resimPlaying = true;   // units move here: let them animate
             // The analyzer's auto camera is the live director over this replay (b1010).
             this.game.renderer.poseSource = () => this.anDirectorPose();
+            // Its age-up waves come from the replayed seats, and not while it jumps (b1032).
+            this.game.renderer._ageSeen = null;
+            this.game.renderer.ageSource = () => { const x = this._anResim; return x && x.seekTo == null && x.world ? x.world.aiManager.aiPlayers : null; };
         }
         if (!keep) this.anResimStage();
+        this.anResimOverlays(rs);
         this.anResimHud(true);
     }
     anResimStop(render = true) {
         const rs = this._anResim;
         if (!rs) return;
         this._anResim = null;
-        if (this.game.renderer) { this.game.renderer.resimPlaying = false; this.game.renderer.poseSource = null; }
+        if (this.game.renderer) { this.game.renderer.resimPlaying = false; this.game.renderer.poseSource = null; this.game.renderer.ageSource = null; }
+        this.anResimOverlaysOff(rs);
         try { rs.worker.terminate(); } catch (e) {}
         if (render) this.anRender();
     }
@@ -6788,14 +6807,27 @@ class UIManager {
     // Without that the stage kept whatever light the last match had left.
     anResimFollow(rs) {
         const a = this.analyzer;
-        if (!a || !rs.marks.length) return;
+        if (!a) return;
+        // The daylight runs on the replayed world's own match clock, as the live game's
+        // does (b1032). It was interpolated between the decisions' recorded times, which
+        // are when each seat was ASKED; ordered by when the answers landed, a slow answer
+        // could follow a later question, and the light ran backwards: night, day, night.
+        if (Number.isFinite(rs.matchMs)) this.game._environmentSeconds = rs.matchMs / 1000;
+        if (!rs.marks.length) return;
         let lo = 0, hi = rs.marks.length - 1, k = -1;
         while (lo <= hi) { const mid = (lo + hi) >> 1; if (rs.marks[mid].step <= rs.step) { k = mid; lo = mid + 1; } else hi = mid - 1; }
         const m0 = rs.marks[k], m1 = rs.marks[k + 1];
-        const sec = m => (a.order[m.idx] && a.order[m.idx]._sec) || 0;
-        this.game._environmentSeconds = !m0 ? (m1 ? sec(m1) * rs.step / Math.max(1, m1.step) : rs.step * 0.05)
-            : (!m1 || m1.step === m0.step) ? sec(m0) + (rs.step - m0.step) * 0.05
-            : sec(m0) + (sec(m1) - sec(m0)) * (rs.step - m0.step) / (m1.step - m0.step);
+        if (!Number.isFinite(rs.matchMs)) {
+            const sec = m => (a.order[m.idx] && a.order[m.idx]._sec) || 0;
+            this.game._environmentSeconds = !m0 ? (m1 ? sec(m1) * rs.step / Math.max(1, m1.step) : rs.step * 0.05)
+                : (!m1 || m1.step === m0.step) ? sec(m0) + (rs.step - m0.step) * 0.05
+                : sec(m0) + (sec(m1) - sec(m0)) * (rs.step - m0.step) / (m1.step - m0.step);
+        }
+        this.anResimIntents(rs, k);
+        // A decision the reader picked stays picked while the world stands at its step:
+        // another seat's decision played at the same step must not take the panel from it.
+        const picked = rs.markAt ? rs.markAt.get(a.cursor) : undefined;
+        if (m0 && picked === m0.step) return;
         if (m0 && a.cursor !== m0.idx) {
             a.seek(m0.idx);
             // The replay's camera is the director's (anDirectorPose); the jump to a
@@ -6825,7 +6857,7 @@ class UIManager {
         if (!rs.world) {
             const g = this.game, w = Object.create(g);
             Object.assign(w, { gameStarted: true, spectatorMode: true, _contactFeed: [], _camFollow: null,
-                aiManager: { aiPlayers: [] },
+                aiManager: { aiPlayers: [] }, openAIAIManager: null, _battles: [], simNow: () => 0,
                 isPlayerEliminated: ai => !!(ai && ai._eliminated),
                 effectiveSimSpeed: () => (this._anResim && this._anResim.speed) || 1 });
             rs.world = w;
@@ -6846,9 +6878,11 @@ class UIManager {
             this.anResimLoop(rs);
         } else if (m.type === 'frame') {
             rs.step = m.step; rs.checked = m.checked;
+            rs.matchMs = m.scene ? m.scene.matchMs : undefined;
+            const landing = rs.seekTo != null;
             if (rs.seekTo != null && rs.step >= rs.seekTo) rs.seekTo = null;
             rs.progress = null;
-            this.anResimDraw(rs, m.scene);
+            this.anResimDraw(rs, m.scene, landing ? null : m.fx);
             this.anResimFollow(rs);
             // A hash that differs is a divergence; anything else that stops it (the match
             // ending before an input, a seat no model played) is a replay that failed.
@@ -6923,12 +6957,17 @@ class UIManager {
     // One frame of the re-simulated world onto the stage. Entities persist by id and
     // move, rather than being rebuilt per frame; a building is rebuilt once when it
     // completes, because its scaffold is decided when it is created.
-    anResimDraw(rs, scene) {
+    anResimDraw(rs, scene, fx) {
         const r = this.game.renderer;
         if (!r || !scene) return;
         const seen = new Set();
         // The director's view of this world: seats with their entities (anDirectorWorld).
         const world = this.anDirectorWorld(rs), seats = [];
+        // Its fights and its clock, for the strategic layer's battle rings (b1032).
+        const simNow = scene.simNow || 0;
+        world.simNow = () => simNow;
+        world._battles = (scene.battles || []).map(b => Object.assign({}, b, { sides: Object.fromEntries(Object.entries(b.sides || {})
+            .map(([id, s]) => [id, { involved: Object.fromEntries(Object.entries(s.involved || {}).map(([k, v]) => [k, { ids: new Set(v.ids || []) }])) }])) }));
         const hurt = [];   // [entity, damage]: the replay has no hit events, so a drop in health is one
         scene.seats.forEach(s => {
             const seat = { id: s.id, seat: s.seat, civilization: s.civilization, age: s.epoch, _eliminated: !!s.eliminated, units: [], buildings: [] };
@@ -7004,12 +7043,74 @@ class UIManager {
             else if (key.endsWith(':site') && seen.has(key.slice(0, -5))) r.removeBuilding(ent);   // finished, not destroyed
             else r.killBuilding(ent);
         });
+        this.anResimFx(rs, fx);
         const nodes = new Set(scene.nodes.map(n => n.type + '@' + Math.round(n.x) + ',' + Math.round(n.z)));
         ((this.game.terrain && this.game.terrain.resources) || []).forEach(res => {
             if (!res.mesh) return;
             const on = nodes.has(res.type + '@' + Math.round(res.x) + ',' + Math.round(res.z));
             if (res.mesh.trunk) { res.mesh.trunk.visible = on; res.mesh.leaves.visible = on; }
             else res.mesh.visible = on;
+        });
+    }
+    // What the rules showed since the last frame (the worker's fx): arrows and stones,
+    // hit flashes, dust, battle rings, on the stage's own entities (b1032). A jump shows
+    // none of what it skipped.
+    anResimFx(rs, fx) {
+        const r = this.game.renderer;
+        if (!r || !fx || !fx.length) return;
+        const ent = e => e ? rs.ents.get((e.b ? 'b' : 'u') + e.id) : null;
+        for (const f of fx) {
+            if (f.k === 'proj') { if (r.spawnProjectile) r.spawnProjectile(f.from, f.to, f.kind, ent(f.shooter) || undefined); }
+            else if (f.k === 'hit') { const e = ent(f.e); if (e && r.flashHit) r.flashHit(e); else if (f.e && r.spawnBattleRing) r.spawnBattleRing(f.e.x, f.e.z); }
+            else if (f.k === 'dust') { if (r.spawnDust) r.spawnDust(f.x, f.y, f.z, f.count, f.color); }
+            else if (f.k === 'ring') { if (r.spawnBattleRing) r.spawnBattleRing(f.x, f.z); }
+        }
+    }
+    // The live overlays over the replay (b1032): the strategic layer -- army and base
+    // flags, battle rings -- and each command's target marker as it is played. The
+    // decision bubbles stay off (asp67): the list beside the stage reads them, and at
+    // replay speed they would only flash past.
+    anResimOverlays(rs) {
+        const world = this.anDirectorWorld(rs), r = this.game.renderer;
+        rs.saved = { strategic: this.strategicLayer, intent: this.intentLayer, marks: r ? r.intentMarks : null };
+        rs.strategic = typeof StrategicLayer === 'function' ? new StrategicLayer(world) : null;
+        rs.intent = typeof IntentLayer === 'function' ? new IntentLayer(world) : null;
+        if (rs.intent) rs.intent._started = true;
+        this.strategicLayer = rs.strategic;
+        this.intentLayer = rs.intent;
+        this._intentMarksOnly = true;
+        if (r) r.intentMarks = () => (rs.intent && this.intentOn()) ? rs.intent.worldMarks() : null;
+        this.startIntentOverlay(document.getElementById('anViewport'));
+        rs.overlayTimer = setInterval(() => { if (rs.strategic) rs.strategic.poll(); if (rs.intent) rs.intent.poll(); }, 250);
+    }
+    anResimOverlaysOff(rs) {
+        if (!rs || !rs.saved) return;
+        clearInterval(rs.overlayTimer);
+        this.stopIntentOverlay();
+        this.strategicLayer = rs.saved.strategic;
+        this.intentLayer = rs.saved.intent;
+        if (this.game.renderer) this.game.renderer.intentMarks = rs.saved.marks;
+        this._intentMarksOnly = false;
+        rs.saved = null;
+    }
+    // The commands of the decisions played since the last frame, onto the intent layer.
+    // A stretch played at once (a fast replay, a landing after a jump) shows each seat's
+    // newest turn only.
+    anResimIntents(rs, k) {
+        const fed = rs.fedK == null ? -1 : rs.fedK;
+        rs.fedK = k;
+        if (!rs.intent || k <= fed || rs.seekTo != null) return;
+        const a = this.analyzer, seats = (rs.world && rs.world.aiManager.aiPlayers) || [], last = new Map();
+        rs.marks.slice(Math.max(fed + 1, k - 30), k + 1).forEach(m => {
+            const rec = a.order[m.idx];
+            if (rec && rec.playerId) last.set(rec.playerId, rec);
+        });
+        const now = Date.now();
+        last.forEach((rec, id) => {
+            const ai = seats.find(s => s.id === id);
+            const calls = ((rec.assistant && rec.assistant.tool_calls) || [])
+                .map(c => ({ name: c.function && c.function.name, args: c.function && c.function.arguments })).filter(c => c.name);
+            if (ai && calls.length) rs.intent.add(ai, { toolCalls: calls, outcome: rec.harnessResult || '' }, now);
         });
     }
     // The controls are built once per run and then only updated, so a slider being
@@ -7199,7 +7300,14 @@ class UIManager {
         this.anRender();
     }
 
-    anJumpSec(sec) { this.anStopPlay(); if (this.analyzer) { this.analyzer.seekSeconds(sec); this.anRender(); } }
+    // A moment picked on the chart or a chapter: in a re-simulation, the replay goes there
+    // too (b1032) -- it used to move only the list, and the next frame took it back.
+    anJumpSec(sec) {
+        this.anStopPlay();
+        if (!this.analyzer) return;
+        this.analyzer.seekSeconds(sec);
+        if (!this.anResimSeekEntry(this.analyzer.cursor)) this.anRender();
+    }
 
     // A click on the plot becomes a moment. The SVG is a fixed 900x300 viewBox stretched
     // to whatever width the pane has, so the pixel is converted back through the same
@@ -7218,7 +7326,7 @@ class UIManager {
         const samples = a.timeline.samples || [];
         const tMax = samples.length ? (samples[samples.length - 1].t || 1) : a.durationSec();
         a.seekSeconds(Math.round(frac * tMax));
-        this.anRender();
+        if (!this.anResimSeekEntry(a.cursor)) this.anRender();
     }
 
 

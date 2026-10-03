@@ -6,6 +6,21 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1032: the re-simulated replay shows what a live match shows (3 October 2026)
+
+**No rules change.** asp67 found the analyzer's re-simulation missing its indicators, its daylight running backwards, and its timeline flaky.
+- **Effects.** The worker runs the rules with a silent renderer, so arrows, stones, hit flashes, dust and battle rings never reached the stage. It now records those calls and sends them with each frame, and the stage replays them on its own units. A long jump shows only its last two seconds, none of what it skipped.
+- **The strategic layer** draws over the replay: base and army flags with their counts, and the battle marker. The battles come from the replayed world.
+- **Command markers.** The intent layer's target markers are fed with each decision's commands as it takes effect. The decision bubbles stay off (asp67): the list beside the stage reads them, and at replay speed they would only flash.
+- **Age-up waves** come from the replayed seats, but not during a jump.
+- **Daylight runs on the replayed world's own match clock**, as live. It used to be interpolated between the decisions' recorded times. Those are when each seat was asked, while the decisions are ordered by when the answers took effect, so a slow answer could follow a later question and the light ran backwards: night, day, night, day.
+- **The timeline:**
+  - A moment picked on the power or resource chart, or a chapter, now moves the replay. Before, only the list moved, and the next frame took it back.
+  - A decision picked in the list stays picked when another seat's decision took effect at the same step.
+  - The slider is no longer reset under the pointer while it is dragged.
+
+Checked on a stand-in-model match re-simulated in the browser (128 world hashes certified): the daylight never ran backwards, and battle rings, the battle marker, the army flag and command markers appeared with the fight.
+
 ## Build 1031: speed labels without game.js (3 October 2026)
 
 **No rules change.** The speed labels (b1020) read the normal pace from `Game`. A page that drives `ui.js` without loading `game.js` would have thrown there; the Platform's viewer is one. They now fall back to the normal pace, 2.
