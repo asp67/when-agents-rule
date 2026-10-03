@@ -1977,6 +1977,32 @@ class Game {
         unit.attackTarget = null;
         if (this.applyQueuedAssign(unit)) return;   // ordered onward while it was fighting
         if (!r) return;
+        // A load still in hand goes home first (b1033). Sent back to its node instead, the
+        // worker arrived full -- and a full worker does not gather (the arrival needs empty
+        // hands), so it stood at the node for good with the stone it was carrying (asp67).
+        // It walks to the nearest finished Town Center, as a full worker does, and the
+        // delivery sends it back to its node or field from there.
+        if (unit.carryingResource && (r.harvestTarget || r.farmRef)) {
+            const owner = this.getOwner(unit);
+            let tc = null, best = Infinity;
+            for (const b of (owner && owner.buildings) || []) {
+                if (b.type !== 'town_center' || b.underConstruction || !(b.health > 0)) continue;
+                const d = WarMath.hypot(b.x - unit.x, b.z - unit.z);
+                if (d < best) { best = d; tc = b; }
+            }
+            if (tc) {
+                if (r.farmRef && r.farmRef.health > 0 && !r.farmRef.assignedWorker) {
+                    unit.farmRef = r.farmRef;
+                    r.farmRef.assignedWorker = unit;
+                } else if (r.harvestTarget) unit.harvestTarget = r.harvestTarget;
+                unit.task = 'carrying';
+                unit.isHarvesting = false;
+                unit.isMoving = true;
+                unit.targetX = tc.x;
+                unit.targetZ = tc.z;
+                return;
+            }
+        }
         if (r.farmRef && r.farmRef.health > 0 && !r.farmRef.assignedWorker) {
             unit.task = 'farm_work';
             unit.farmRef = r.farmRef;

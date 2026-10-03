@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1033: a worker takes its load home after a fight (3 October 2026)
+
+**Rules change.** asp67 saw a worker carrying stone home get attacked. It killed the attacker, went back to its stone node still carrying the stone, and stood there.
+- **The cause:** after the fight the worker resumed as a gatherer at its node. But a worker starts gathering only with empty hands, so it waited at the node for good.
+- **Now:** a worker still carrying a load walks to the nearest finished Town Center first. The delivery then sends it back to its node or field as usual. The load is not banked on the spot.
+- Builders and scouts already went back to their site or trip; that is unchanged.
+
 ## Build 1032: the re-simulated replay shows what a live match shows (3 October 2026)
 
 **No rules change.** asp67 found the analyzer's re-simulation missing its indicators, its daylight running backwards, and its timeline flaky.

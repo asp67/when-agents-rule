@@ -69,3 +69,28 @@ test('self-defense ends when the attacker is out of reach of where the worker wa
     assert.equal(w.task, 'scouting');
     assert.deepEqual([w.targetX, w.targetZ], [-80, -60]);
 });
+
+// asp67, 3 Oct 2026: a worker carrying stone home was attacked, killed its attacker, went
+// back to its node still carrying the stone and stood there. A full worker does not
+// gather, so the load goes home first, and the worker returns to its node from there.
+test('a worker hit on its way home with a load delivers it, then goes back to its node', async () => {
+    const m = await board({ ownBuildings: [['town_center', -60, 0, { tag: 'home' }]] });
+    const g = m.game, w = m.tags.scout, raider = m.tags.raider, owner = m.seats[0];
+    raider.speed = 0;
+    const node = { type: 'stone', x: -38, z: 2, amount: 400, id: 'stone-1' };
+    g.terrain.resources.push(node);
+    w.task = 'carrying'; w.harvestTarget = node; w.carryingResource = true; w.carryingResourceType = 'stone'; w.harvestAmount = 10;
+    w.isMoving = true; w.targetX = -60; w.targetZ = 0;
+    const stone = owner.resources.stone;
+    hit(m, raider, w);
+    for (let i = 0; i < 600 && raider.health > 0; i++) m.advance(50);
+    assert.ok(raider.health <= 0, 'the raider fell');
+    m.advance(100);
+    assert.equal(w.task, 'carrying', 'home with the load first');
+    assert.equal(owner.resources.stone, stone, 'not banked on the spot');
+    for (let i = 0; i < 400 && owner.resources.stone === stone; i++) m.advance(50);
+    assert.equal(owner.resources.stone, stone + 10, 'delivered at the Town Center');
+    for (let i = 0; i < 400 && !w.isHarvesting; i++) m.advance(50);
+    assert.equal(w.harvestTarget, node);
+    assert.equal(w.isHarvesting, true, 'and gathering at its node again');
+});
