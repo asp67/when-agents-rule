@@ -7697,8 +7697,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     }
 
     executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds, matchSpeed, formation, mode='march', targets='any') {
-        if(!['march','scout','guard','hold','patrol'].includes(mode)||!['any','military'].includes(targets))
+        // Coded (b1049): a mode or targets that does not exist is a reference error -- it
+        // was refused with the right text but no code, so the Bench counted it uncoded.
+        if(!['march','scout','guard','hold','patrol'].includes(mode)||!['any','military'].includes(targets)){
+            this.outcome('log.out.moveBadMode', { mode: String(mode), targets: String(targets) });
             return '[ERROR] mode must be march, scout, guard, hold or patrol; targets must be any or military.';
+        }
         // Validate the destination first so bad coords never strand units at NaN.
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {

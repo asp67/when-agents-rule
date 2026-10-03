@@ -139,3 +139,15 @@ test('noDefenders stays off while guards fight the raider, and is on when nobody
  assert.ok(held.hit&&held.guardFighting,'the guard is fighting the raider');
  assert.equal(held.hit.noDefenders,undefined,'someone is: not "no defenders"');
 });
+
+// b1049: a mode that does not exist is refused with a code, not uncoded.
+test('an unknown move mode is refused as moveBadMode', async () => {
+    const m = await createMatch({ kind: 'board', seed: 'bad-mode', seats: [
+        { civ: 'greek', age: 'bronze', buildings: [['town_center', -250, 0]], units: [['warrior', 0, 0]] },
+        { civ: 'persian', age: 'bronze', buildings: [['town_center', 250, 0]] }] });
+    const c = m.controllers[0], mgr = m.game.openAIAIManager;
+    mgr.executeTurn(c, { commands: [{ action: 'move_units', params: { mode: 'attack', targetX: 10, targetZ: 0 } }] });
+    const o = c._lastOutcome;
+    assert.deepEqual([o.code, o.verdict], ['moveBadMode', 'avoidable']);
+    assert.match(String(c.seat.lastActionResult), /mode must be march, scout, guard, hold or patrol/);
+});

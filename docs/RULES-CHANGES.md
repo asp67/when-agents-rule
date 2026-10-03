@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1049: an unknown move mode is refused with a code (3 October 2026)
+
+**Harness change; the rules hash moves.**
+- **The refusal:** `move_units` with a mode or `targets` value that does not exist (space-bunny sent `mode: "attack"` in two matches) was refused with the right text but no outcome code, so the Bench counted it as uncoded.
+- **Now:** it is `moveBadMode`, classed as a reference error: the command named something that is not there.
+
 ## Build 1048: checkpoints that say where a replay leaves its recording (3 October 2026)
 
 **No rules change in play; `game.js` and the harness changed, so the rules hash moves.** Transcripts recorded before this build no longer re-simulate on it, as with any such change.
