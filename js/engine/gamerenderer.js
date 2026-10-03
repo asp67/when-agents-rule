@@ -1164,6 +1164,7 @@
         }
 
         clearScene() {
+            this.selectedNode = null;
             if(this._flagTextures){this._flagTextures.forEach(tex=>this.gl.deleteTexture(tex));this._flagTextures.clear();}
             this.resetEffects();
             this.units.forEach(u => { u._engine = null; u.mesh = null; });
@@ -2124,6 +2125,17 @@
                         flat(ex + bx * 0.65, ez + bz * 0.65, Math.atan2(bx, bz), 1.3, 0.24, tint, mk.alpha);
                     }
                 }
+            }
+
+            // The resource node picked for the info card (b1036): the intent marks' ring, in
+            // pale yellow. No seat wears that colour, so it is never read as anyone's order;
+            // wide enough to take in a stone or gold deposit. Gone with the node.
+            const node = this.selectedNode;
+            if (node && !(node.amount > 0)) this.selectedNode = null;
+            else if (node) {
+                const rim = { stone: 2.1, gold: 1.9, food: 1.45, wood: 0.9 }[node.type] || 1.2, r = Math.max(2.4, rim + 1.3);
+                dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint: [1, 0.93, 0.62], alpha: 0.95,
+                    model: m3.multiply(m3.translation(node.x, 0.15, node.z), m3.scaling(r, 1, r)) });
             }
 
             // Damage pings (a unit or building hit), drawn after the fog so they show through

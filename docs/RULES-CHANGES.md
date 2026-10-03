@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1036: a picked resource node is ringed (3 October 2026)
+
+**No rules change.** While a resource node's info card is up (b1034), the node is ringed on the ground. It is the same ring as a command marker, in pale yellow, which is no seat's colour (asp67), and wide enough to take in a stone or gold deposit. It goes with the card, when the node runs dry, or when a new match starts.
+
 ## Build 1035: final words are asked with the seat's memory (3 October 2026)
 
 **No rules change; a harness change** (the final word is unscored, so no metric moves).

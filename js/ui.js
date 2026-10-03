@@ -2643,6 +2643,8 @@ class UIManager {
         const infoDiv = document.getElementById('unitInfo');
         // Broadcast mode shows the card only while something is picked (b1034).
         if (infoDiv) infoDiv.classList.toggle('has-subject', !!(unit || building || node));
+        // A picked resource node is ringed on the ground while its card is up (b1036).
+        if (this.game && this.game.renderer) this.game.renderer.selectedNode = node || null;
         const spectator = this.game && this.game.spectatorMode;
         // In spectator every entity belongs to a rival civ — lead with the SEAT
         // BADGE (the same mark worn on flags and shown in the leaderboard) plus the
