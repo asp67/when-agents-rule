@@ -42,7 +42,8 @@ function randomCommand(r, st) {
     const near = () => ({ targetX: Math.round(home.x + (r() - 0.5) * 60), targetZ: Math.round(home.z + (r() - 0.5) * 60) });
     const own = st.friendlyUnits || [];
     const military = own.filter(u => u.type !== 'worker' && u.type !== 'priest');
-    const enemies = [...(st.enemyUnits || []), ...(st.enemyBuildings || [])].filter(e => e && e.id != null);
+    // Units in sight only: a remembered one ("visible": false) cannot be named by id.
+    const enemies = [...(st.enemyUnits || []).filter(u => u && u.visible !== false), ...(st.enemyBuildings || [])].filter(e => e && e.id != null);
     const trainable = [];
     for (const byAge of Object.values((st.units && st.units.trainable) || {}))
         for (const list of Object.values(byAge)) for (const t of list) {

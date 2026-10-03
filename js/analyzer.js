@@ -514,11 +514,11 @@ class TranscriptAnalyzer {
         //
         // Two kinds, and the difference is the whole point. CONFIRMED is what the seat can
         // see this instant: a live position. REMEMBERED is where something was the last
-        // time it was seen, which is a claim about the past — the harness already keeps
-        // that for buildings (they arrive carrying visible:false, 84 of 109 in one match)
-        // but not for units, so unit sightings are accumulated here: latest sighting per
-        // id wins, and being seen somewhere new replaces the old place rather than adding
-        // a second ghost of the same unit.
+        // time it was seen, which is a claim about the past. Since b1042 the harness keeps
+        // that for units too ("visible": false with "secondsAgo"); for older transcripts,
+        // whose enemyUnits held only what was in sight, sightings are accumulated here:
+        // latest sighting per id wins, and being seen somewhere new replaces the old place
+        // rather than adding a second ghost of the same unit.
         if (!union) {
             const st = rec.state || {};
             const seat = this.seats.get(rec.playerId);
@@ -528,7 +528,10 @@ class TranscriptAnalyzer {
                     if (!TranscriptAnalyzer.hasBoard(r)) continue;
                     if (r._sec > sec) break;
                     ((r.state && r.state.enemyUnits) || []).forEach(u => {
-                        if (typeof u.x === 'number') remembered.set(String(u.id), { e: u, at: r._sec });
+                        if (typeof u.x !== 'number') return;
+                        const at = u.visible === false ? r._sec - (u.secondsAgo || 0) : r._sec;
+                        const had = remembered.get(String(u.id));
+                        if (!had || at >= had.at) remembered.set(String(u.id), { e: u, at });
                     });
                 }
             }
@@ -548,10 +551,11 @@ class TranscriptAnalyzer {
                     });
                 }
             }
-            const liveIds = new Set((st.enemyUnits || []).map(u => String(u.id)));
+            const inSight = (st.enemyUnits || []).filter(u => u.visible !== false);
+            const liveIds = new Set(inSight.map(u => String(u.id)));
             // Seen right now: the owner's age right now, so a rival that has aged up
             // since the last sighting is redrawn the moment it comes back into view.
-            (st.enemyUnits || []).forEach(u => out.enemies.push(Object.assign({}, u, {
+            inSight.forEach(u => out.enemies.push(Object.assign({}, u, {
                 confirmed: true, epochWhenSeen: this.epochAt(u.owner, sec) })));
             remembered.forEach((v, id) => {
                 if (liveIds.has(id)) return;   // seen right now: already added as confirmed

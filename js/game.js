@@ -1858,35 +1858,13 @@ class Game {
                     !this.tendingOtherBattle(u, atk)), atk.x, atk.z);
             }
 
-            // Battle report (throttled): the defender learns it is being raided. ABOVE
-            // the no-defenders return, and that placement is the whole point.
-            //
-            // "battles" cannot carry this. A player appears in an engagement only via
-            // b.sides[id], and a side is created for the ATTACKER when it deals damage,
-            // or for whoever LOSES a unit or building. Take fire, lose nothing, send
-            // nobody, and you have no side — the raid is absent from your battles list
-            // altogether. So with the radius above, the case this reflex now declines to
-            // answer would have become the case nobody tells you about, which is exactly
-            // backwards: an unanswered raid is MORE worth reporting than an answered one,
-            // because only the model can decide what to do about it.
-            //
-            // Volume is unchanged: the 10s throttle already caps this at one line per
-            // owner, and the 14-slot events buffer is why unit deaths were moved out of
-            // prose into the battle ledger in the first place (see destroyUnit) —
-            // specifically to stop them evicting THESE warnings.
-            if (!owner._lastRaidEventAt || now - owner._lastRaidEventAt > 10000) {
-                owner._lastRaidEventAt = now;
-                const entLabel = primary.ent.isWonder ? 'WONDER' : (primary.ent.type || primary.ent.unitType || 'unit');
-                const draftNote = !usingWorkers ? ''
-                    : (wonderRaid ? ' — ALL HANDS: every worker downed tools to defend it'
-                                  : ' — workers drafted to defend');
-                // Say so when nothing is coming, rather than leaving it to be inferred
-                // from an absence: this is the line that tells a model its army is out
-                // of position while its base is being taken apart.
-                const noneNote = defenders.length ? '' : ' — no defenders in range';
-                this.logPlayerEvent(owner,
-                    `UNDER ATTACK: your ${entLabel} at (${Math.round(primary.ent.x)}, ${Math.round(primary.ent.z)}) is taking damage from ${this.ownerName(this.getOwner(atk))}${draftNote}${noneNote}`);
-            }
+            // Whether anything answered, marked on what is being hit. ABOVE the
+            // no-defenders return, and that placement is the whole point: "no defenders
+            // in range" tells a model its army is out of position while its base is being
+            // taken apart. Read into threats.underAttack, beside the hit itself; it was an
+            // UNDER ATTACK line in recentEvents until b1042, which said again what
+            // threats already lists.
+            primary.ent._defense = { at: now, none: !defenders.length };
 
             if (!defenders.length) return;
 
@@ -2588,7 +2566,7 @@ class Game {
     // "recentEvents" so a model learns about losses, kills and raids it can't
     // otherwise see (the state is a snapshot; deaths between turns were silent).
     // `ttl` is how many state builds the entry survives, defaulting to the 2 that
-    // everything here has always used. A CONTACT passes 1: it is a sighting at a
+    // everything here has always used. A CONTACT passed 1 (until b1042): it is a sighting at a
     // moment, and a moment restated next turn reads as a second sighting -- the model
     // would see one scout twice and count two. What it saw stays in its own history,
     // which is where "where have they been roaming" is actually answered.
@@ -2700,13 +2678,10 @@ class Game {
         this.recordBattleLoss(target);
         if (isBuilding) {
             if (victimOwner) {
-                const by = (killerOwner && killerOwner !== victimOwner)
-                    ? ` by ${this.ownerName(killerOwner)}'s ${killerLabel || 'forces'}` : '';
-                this.logPlayerEvent(victimOwner, `LOSS: your ${label} was destroyed${by} at ${at}`);
+                // No LOSS/KILL prose line since b1042: the loss is in lostBuildings and
+                // the battle; the kill in the battle and in enemyBuildings, where it no
+                // longer stands once its spot is seen.
                 this.noteBuildingLoss(victimOwner, target, killerOwner);
-            }
-            if (killerOwner && killerOwner !== victimOwner) {
-                this.logPlayerEvent(killerOwner, `KILL: your ${killerLabel || 'forces'} destroyed ${this.ownerName(victimOwner)}'s ${label} at ${at}`);
             }
         }
 
@@ -4229,76 +4204,33 @@ class Game {
     }
 
     // ---- Cross-seat contact ---------------------------------------------------
-    // One scan, two consumers: a CONTACT line in the sighting seat's recentEvents, and
-    // a feed the spectator camera can cut to. They ask the same question -- who just
-    // laid eyes on whom -- and asking it twice would be two scans that could disagree
-    // about what happened.
+    // One scan, two consumers: the sighting seat's memory of enemy units, and a feed the
+    // spectator camera can cut to. They ask the same question -- who has eyes on whom --
+    // and asking it twice would be two scans that could disagree.
     //
-    // Three moments, not one. A thing ENTERS sight, it may MOVE while watched, and it
-    // LEAVES sight -- and the pair that matters most is the first and the last, because
-    // two positions in chronological order are a HEADING, and a heading is what says
-    // which way something's home is.
-    //
-    // Enter and lost are what make that readable inside a SINGLE turn: the aggregation
-    // below collapses repeats of one rival's one unit type into a line, so a stream of
-    // "still there, moved a bit" reports would arrive as one position however many were
-    // logged. "Sighted at A" and "lost at B" are different lines and both survive it.
-    //
-    // The move report is kept as well but earns its place differently: it is the only
-    // signal for something that stays in view for a long time, where enter-and-lost says
-    // nothing until it finally goes. Threshold CONTACT_MOVED_DIST of real displacement,
-    // so a besieging army parked in view stays quiet. Buildings never move.
-    //
-    // LOST is also the moment a model's knowledge of a position goes stale, which is a
-    // fact worth having on its own -- "it was there and I cannot see it now" is a
-    // different state from "it is there".
-    //
-    // A kill is NOT a lost contact: the thing did not slip away, it died, and KILL/LOSS
-    // already say so. Dead entities are dropped silently.
-    //
-    // Affordable in the buffer it writes to: recentEvents holds 14 and shows 8, and
-    // this file already carries two scars from features that flooded it and evicted
-    // the UNDER ATTACK warnings. Per-seat, per-turn, CONTACT may take at most
-    // CONTACT_MAX_PER_TURN of those slots -- it is context, and it does not get to
-    // push out the report that something is being destroyed right now.
+    // The memory replaced CONTACT and CONTACT LOST lines in recentEvents (asp67, b1042).
+    // Those were moments, gone next turn, and capped at four a turn; what they MEANT was
+    // left to the model to carry, and models did not. A fight's enemies stand still, the
+    // watcher died, the lines stopped -- and space-bunny wrote "their field army is dead"
+    // ten turns running over a living army of 9 to 17. A unit seen is now remembered as it
+    // was last seen, the way a node and a building are: where, how hurt, what it carried,
+    // how long ago, and where this pass through sight began, which with the last-seen spot
+    // is a heading. See noteUnitSighting and sweepUnitMemory.
     //
     // Reported ONLY where the seat can actually see: the same vision radii its own fog
-    // uses. A contact for something a seat could not have seen would be the harness
+    // uses. A sighting of something a seat could not have seen would be the harness
     // handing it a free scout.
-    // Per TURN, and it has to be counted as such. This is enforced where the lines are
-    // written, which happens about once a second per seat -- so a cap applied per scan
-    // is a cap of itself times the length of a turn, and a 45-second turn against a
-    // 14-slot ring would leave the ring holding nothing but contacts. The budget resets
-    // when the seat's state-build counter moves, which is the same clock the entries
-    // expire on.
     //
-    // Four of the eight lines a model is shown: enough for a sighting, a move and a loss
-    // with one spare, and it still leaves half the window for the report that something
-    // is being destroyed right now.
-    static get CONTACT_MAX_PER_TURN() { return 4; }
-    // Roughly ten seconds of walking for a scout, and further than a unit can drift by
-    // standing still. Below this a contact is the same contact.
-    static get CONTACT_MOVED_DIST() { return 25; }
-    // How far a thing must have gone between being sighted and being lost for the pair
-    // to be worth two lines. A pair that names one coordinate twice is not a heading,
-    // it is the same fact said twice -- something sitting on the edge of vision,
-    // flickering in and out without going anywhere.
+    // How far a thing must have gone between coming into sight and its last sighting for
+    // the first spot to be worth stating. Below this the two are one coordinate said
+    // twice -- something sitting on the edge of vision -- not a heading.
     //
     // The number is measured, not chosen. Across a real match the nineteen
     // sighted-then-lost pairs fall in two clumps and nothing lies between them: TWELVE
-    // at exactly 0.0, then 5.8, 6.4, 10.0, 13.2, 14.0, 15.1, 36.2. So the cut belongs
-    // in the empty space, and anywhere from 2 to 5 drops all twelve and keeps all
-    // seven. Three: clear of the +/-1 that integer coordinates can invent, and clear of
-    // the smallest real movement by nearly a factor of two.
-    //
-    // Deliberately NOT set to the eight I first guessed at, which would have thrown
-    // away the 5.8 and the 6.4 -- two units that genuinely walked somewhere, and whose
-    // bearings are exactly what the pair exists to carry. A stationary thing is the
-    // only thing being filtered here.
+    // at exactly 0.0, then 5.8, 6.4, 10.0, 13.2, 14.0, 15.1, 36.2. Three: clear of the
+    // +/-1 that integer coordinates can invent, and clear of the smallest real movement
+    // by nearly a factor of two.
     static get CONTACT_FLAP_DIST() { return 3; }
-    // ...and how many turns before a thing parked at the edge is worth mentioning again
-    // even though it has not moved.
-    static get CONTACT_FLAP_TURNS() { return 3; }
     static get CONTACT_CAMERA_RANGE() { return 100; }
 
     // ONE seat per call, cycling. The scan is O(my things x their things) and at four
@@ -4309,6 +4241,117 @@ class Game {
     // Nothing is lost to the delay: the fastest unit in the game covers 2.2 units in
     // that second, against vision radii of 12 to 60. A contact cannot slip through a
     // gap that small.
+    // ---- Enemy unit memory (asp67, b1042) -------------------------------------
+    // Per seat, by unit id: the last time each enemy unit was seen, as it was then. Fed by
+    // the contact scan (about once a second per seat, so a scout passing between two turns
+    // is still remembered) and refreshed exactly when a state is built. The state shows
+    // the UNIT_MEMORY_SHOWN most useful of them; the rest stay here and step in when those
+    // leave the list.
+    //
+    // A record is forgotten only for what the seat itself could know:
+    //   - its owner is defeated (public);
+    //   - it was seen to die: in sight at the last look, gone now with its spot in sight;
+    //   - this seat's own units killed it (its battle report counts that).
+    // Anything else that died stays remembered as last seen -- the seat never saw it go,
+    // so its fate is unknown, and dropping it would tell the seat that it died.
+    //
+    // A record is UNLOCATED -- out of the list, still in the opponent's tally -- once its
+    // last-seen spot, having been out of sight, is seen again without it. A unit walking
+    // out of vision that is still being watched keeps its spot: that is where it left, and
+    // with the spot it came into sight at, the way it went.
+    static get UNIT_MEMORY_SHOWN() { return 50; }
+    // A match-long map is a leak; past this the oldest sightings go first.
+    static get UNIT_MEMORY_MAX() { return 400; }
+
+    noteUnitSighting(viewer, t, now) {
+        const mem = viewer._unitMemory || (viewer._unitMemory = new Map());
+        const key = String(t.id);
+        let r = mem.get(key);
+        if (!r) mem.set(key, r = { id: t.id, e: t, owner: t.owner });
+        if (!r.visible) { r.sx = t.x; r.sz = t.z; }     // this pass through sight begins here
+        r.x = t.x; r.z = t.z; r.type = t.type || 'unit';
+        r.hp = Math.round((t.health / (t.maxHealth || t.health || 1)) * 100);
+        r.carrying = this.observedWorkerLoad(t);
+        r.at = r.t = now; r.visible = true; r.located = true; r.spotHidden = false;
+    }
+
+    // Everything remembered and not in `sighted` (ids seen this look). `see` is the
+    // seat's vision now. `t` on a record is when it was last looked at, for the merge.
+    sweepUnitMemory(viewer, sighted, see, now) {
+        const mem = viewer._unitMemory;
+        if (!mem) return;
+        const seats = (this.aiManager && this.aiManager.aiPlayers) || [];
+        mem.forEach((r, key) => {
+            if (sighted.has(key)) return;
+            const o = r.owner === 'player' ? this.player : seats.find(a => a.id === r.owner);
+            if (o && this.isPlayerEliminated && this.isPlayerEliminated(o)) { mem.delete(key); return; }
+            const spotSeen = see(r.x, r.z);
+            if (!(r.e.health > 0)) {
+                const killer = r.e._lastAttacker;
+                if ((r.visible && spotSeen) || (killer && killer.owner === viewer.id)) { mem.delete(key); return; }
+            }
+            r.visible = false; r.t = now;
+            if (!spotSeen) r.spotHidden = true;
+            else if (r.spotHidden) r.located = false;
+        });
+        if (mem.size > Game.UNIT_MEMORY_MAX) {
+            [...mem.entries()].sort((a, b) => a[1].at - b[1].at)
+                .slice(0, mem.size - Game.UNIT_MEMORY_MAX).forEach(([k]) => mem.delete(k));
+        }
+    }
+
+    // A state build looks at a copy -- building a state must not change the world -- and
+    // its commit lays the copy over what the scan has learnt since: a record the scan
+    // touched after the build wins, one the build dropped stays dropped.
+    copyUnitMemory(viewer) {
+        return new Map([...(viewer._unitMemory || [])].map(([k, r]) => [k, Object.assign({}, r)]));
+    }
+
+    mergeUnitMemory(built, live, builtAt) {
+        (live || new Map()).forEach((r, k) => {
+            const b = built.get(k);
+            if (b ? r.t > b.t : r.t > builtAt) built.set(k, r);
+        });
+        return built;
+    }
+
+    // The seat's enemyUnits: in sight first, then the most recently seen, located only.
+    rememberedUnits(viewer) {
+        const mem = viewer._unitMemory;
+        if (!mem) return [];
+        return [...mem.values()].filter(r => r.located)
+            .sort((a, b) => (b.visible - a.visible) || (b.at - a.at))
+            .slice(0, Game.UNIT_MEMORY_SHOWN)
+            .map(r => {
+                const moved = r.sx !== undefined && WarMath.hypot(r.x - r.sx, r.z - r.sz) >= Game.CONTACT_FLAP_DIST;
+                return Object.assign(
+                    { id: r.id, type: r.type, x: Math.round(r.x), z: Math.round(r.z), owner: this.seatLabel(r.owner), healthPct: r.hp },
+                    r.carrying !== undefined ? { carrying: r.carrying } : {},
+                    { visible: !!r.visible },
+                    r.visible ? {} : { secondsAgo: Math.max(0, Math.round(this.realSecsSince(r.at))) },
+                    moved ? { sightedAt: [Math.round(r.sx), Math.round(r.sz)] } : {});
+            });
+    }
+
+    // One rival's remembered units, located or not, by type, with how old the newest and
+    // oldest sighting are -- what keeps a 30-strong army that slipped away from being
+    // forgotten along with its last position.
+    unitMemoryTally(viewer, ownerId) {
+        const mem = viewer._unitMemory;
+        if (!mem) return null;
+        const counts = {};
+        let first = Infinity, last = -Infinity;
+        mem.forEach(r => {
+            if (r.owner !== ownerId) return;
+            counts[r.type] = (counts[r.type] || 0) + 1;
+            if (r.at < first) first = r.at;
+            if (r.at > last) last = r.at;
+        });
+        if (!Object.keys(counts).length) return null;
+        const age = at => Math.max(0, Math.round(this.realSecsSince(at)));
+        return { counts, newest: age(last), oldest: age(first) };
+    }
+
     // Observable cargo only: never consult a task, destination or harvest target.
     observedWorkerLoad(unit) {
         if (unit.type !== 'worker') return undefined;
@@ -4338,17 +4381,13 @@ class Game {
 
         players.forEach(viewer => {
             if (viewer !== only) return;
-            const seen = viewer._contactSeen || (viewer._contactSeen = new Map());
-            const nowSeen = new Map();
-            const fresh = new Map();     // "seat|type" -> {n, x, z, dist}
-            const lost = new Map();      // the same, for things that just left sight
-            const turnSeq = viewer._turnSeq || 0;
-            // Short memory of what went out of sight and where, so a thing bobbing on
-            // the edge of vision is recognised as the same thing coming back.
-            const gone = viewer._contactGone || (viewer._contactGone = new Map());
-            if (gone.size > 400) gone.clear();        // a match-long map is a leak
+            const now = this.simNow();
+            const sighted = new Set();
             const myEyes = eyes.get(viewer) || [];
-            if (!myEyes.length) { viewer._contactSeen = nowSeen; return; }
+            // The seat's vision for the sweep, as the state builder sees it.
+            const see = typeof buildVisionTest === 'function' ? buildVisionTest(this, viewer, true)
+                : (x, z) => myEyes.some(s => WarMath.hypot(s.e.x - x, s.e.z - z) <= s.r);
+            if (!myEyes.length) { this.sweepUnitMemory(viewer, sighted, () => false, now); return; }
 
             // One circle around everything this seat owns, so a rival on the far side of
             // the map is dismissed in a single hypot instead of one per unit I own. At
@@ -4393,57 +4432,9 @@ class Game {
                         }
                         if (sawAt === null && d <= src.r) sawAt = d;
                     }
-                    if (sawAt !== null) {
-                        const key = String(t.id);
-                        const was = seen.get(key);
-                        const carrying = this.observedWorkerLoad(t);
-                        // Coming back into view having not gone anywhere is not news. It
-                        // is the same thing standing where we last saw it, which the
-                        // model was already told; saying it again spends a line to
-                        // repeat a coordinate. After a few turns it is worth confirming.
-                        const back = !was && gone.get(key);
-                        const parked = back && WarMath.hypot(t.x - back.x, t.z - back.z) < Game.CONTACT_FLAP_DIST
-                                            && (turnSeq - back.seq) < Game.CONTACT_FLAP_TURNS && back.carrying === carrying;
-                        // New, or it has gone somewhere since we last said so.
-                        const moved = was && WarMath.hypot(t.x - was.rx, t.z - was.rz) >= Game.CONTACT_MOVED_DIST;
-                        const report = (!was && !parked) || moved || (was && was.carrying !== carrying);
-                        if (back) gone.delete(key);
-                        // TWO positions are kept, and the difference between them is the
-                        // whole point.
-                        //   rx,rz -- where we last SAID it was. The move threshold measures
-                        //     from here, or a unit creeping 24 units a look would never trip
-                        //     it by inches.
-                        //   x,z -- where it is NOW, refreshed every look whether or not
-                        //     anything was said. This is what a loss reports, and it has to
-                        //     be the last place it was SEEN rather than the last place it was
-                        //     mentioned: reporting the latter puts the loss at the same
-                        //     coordinate as the sighting, and two identical points are not a
-                        //     heading, which was the entire reason for reporting the loss.
-                        // The entity and its name ride along so the loss can be reported
-                        // without a second search for something by then out of sight.
-                        nowSeen.set(key, {
-                            x: t.x, z: t.z,
-                            rx: report ? t.x : (was ? was.rx : t.x),
-                            rz: report ? t.z : (was ? was.rz : t.z),
-                            // Where THIS pass through our vision began. The loss is
-                            // measured against it, not against the last thing we said.
-                            sx: was ? was.sx : t.x,
-                            sz: was ? was.sz : t.z,
-                            e: t, who: this.seatLabel(other), type: t.type || 'unit', carrying
-                        });
-                        if (report) {
-                            const k = this.seatLabel(other) + '|' + (t.type || 'unit') + '|' + (carrying || '');
-                            const cur = fresh.get(k);
-                            if (!cur) {
-                                fresh.set(k, { n: 1, x: t.x, z: t.z, dist: sawAt,
-                                               who: this.seatLabel(other), type: t.type || 'unit', carrying });
-                            } else {
-                                cur.n++;
-                                // Report the nearest one of its kind: that is the one
-                                // whose position is worth having.
-                                if (sawAt < cur.dist) { cur.dist = sawAt; cur.x = t.x; cur.z = t.z; }
-                            }
-                        }
+                    if (sawAt !== null && !t.isWonder && !(t.type && BUILDING_DEFS[t.type])) {
+                        this.noteUnitSighting(viewer, t, now);
+                        sighted.add(String(t.id));
                     }
                     // The camera cuts to ONE thing. Keeping every pair inside 100
                     // built 417 throwaway objects a scan in a big fight, to choose one
@@ -4459,56 +4450,7 @@ class Game {
                 }
             });
 
-            // Gone from sight: in the last look, not in this one. Reported at the last
-            // place it WAS, which with the sighting that opened the pass is a heading.
-            seen.forEach((was, key) => {
-                if (nowSeen.has(key) || !was || !was.e) return;
-                if (was.e.health <= 0) return;         // killed, not lost — KILL/LOSS said it
-                // Remembered either way, so that coming straight back is not "new".
-                gone.set(key, { x: was.x, z: was.z, seq: turnSeq, carrying: was.carrying });
-                // Lost where it was found is still a loss (b1041). It used to go unsaid --
-                // "one fact reported twice" -- and in a fight, where the enemy stands still
-                // and the watcher dies, a sighting was followed by silence: the units were
-                // simply gone, which reads as dead. space-bunny wrote "their field army is
-                // dead" ten times over a living army of 9 to 17. Said, with ", where it
-                // was sighted": the view of it ended, not the unit.
-                const still = WarMath.hypot(was.x - was.sx, was.z - was.sz) < Game.CONTACT_FLAP_DIST;
-                const k = was.who + '|' + was.type + '|lost|' + (was.carrying || '') + (still ? '|still' : '');
-                const cur = lost.get(k);
-                if (!cur) lost.set(k, { n: 1, x: was.x, z: was.z, who: was.who, type: was.type, carrying: was.carrying, still });
-                else cur.n++;
-            });
-
-            viewer._contactSeen = nowSeen;
-            if (!fresh.size && !lost.size) return;
-            // Closest first: if only a few lines fit, they should be the ones most about
-            // to matter. Sightings before losses -- something arriving outranks something
-            // leaving -- but a loss still gets a slot, because dropping it is what would
-            // leave a heading half-drawn.
-            // One budget for the whole turn, refilled when the seat next builds a state.
-            const seq = viewer._turnSeq || 0;
-            if (viewer._contactBudgetSeq !== seq) {
-                viewer._contactBudgetSeq = seq;
-                viewer._contactBudget = Game.CONTACT_MAX_PER_TURN;
-            }
-            if (!(viewer._contactBudget > 0)) return;
-
-            const at = (o) => `(${Math.round(o.x)}, ${Math.round(o.z)})`;
-            const many = (o) => o.n > 1 ? `${o.n}x ` : '';
-            const load = o => o.carrying === undefined ? '' : o.carrying === 'empty' ? ', empty-handed' : `, carrying ${o.carrying}`;
-            const seenLines = [...fresh.values()].sort((a, b) => a.dist - b.dist)
-                .map(f => `CONTACT: ${many(f)}${f.who}'s ${f.type} sighted at ${at(f)}${load(f)}`);
-            const lostLines = [...lost.values()]
-                .map(l => `CONTACT LOST: ${many(l)}${l.who}'s ${l.type}, last seen at ${at(l)}${l.still ? ', where it was sighted' : ''}${load(l)}`);
-            // Losses first when the budget is nearly out: a sighting with no loss is a
-            // position, a loss with no sighting still says the thing is no longer where
-            // the model last had it, and the pair is worth more than a second position.
-            const lines = (viewer._contactBudget <= lostLines.length)
-                ? lostLines.concat(seenLines) : seenLines.concat(lostLines);
-            lines.slice(0, viewer._contactBudget).forEach(line => {
-                viewer._contactBudget--;
-                this.logPlayerEvent(viewer, line, 1);
-            });
+            this.sweepUnitMemory(viewer, sighted, see, now);
         });
 
         // Kept PER VIEWER, because only one was scanned: overwriting the whole feed

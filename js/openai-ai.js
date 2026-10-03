@@ -123,7 +123,7 @@ class OpenAIAIManager {
                 targets:{type:'string',enum:['any','military'],description:'Guard/patrol/march incidental targets: any enemy unit (default), or military only. Pursuit is bounded; explicit attack_target remains a commitment.'}}, XZ,
                 { tile: S('Tile label from map.exploration, e.g. "C5". Used only when targetX/targetZ are not given: the units go to the centre of that tile.') }, WHO), []],
             ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining.',
-             Object.assign({ targetId: S('Copy the exact string id from enemyUnits or enemyBuildings, including the unit_ or building_ prefix and full suffix. Do not shorten it or convert it to a number. Use this OR targetX/targetZ.') }, XZ, WHO), []],
+             Object.assign({ targetId: S('Copy the exact string id from enemyBuildings or from an enemyUnits entry with "visible": true, including the unit_ or building_ prefix and full suffix. Do not shorten it or convert it to a number. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
              { unitType: S('Type from friendlyUnits. Default worker.'), count: I('How many. Default 1, max 20.') }, []],
             ['destroy_building', 'Demolish one of your own buildings.',
@@ -2911,6 +2911,7 @@ class OpenAIAIManager {
         }
         ai._lastNodeCounts = p.lastNodeCounts;
         ai._knownEnemyBuildings = p.knownEnemyBuildings;
+        if (p.unitMemory) ai._unitMemory = game.mergeUnitMemory(p.unitMemory, ai._unitMemory, p.unitMemoryAt);
         // Discovered since this state was built (updateEnemyBuildingDiscovery) is kept;
         // what the build dropped stays dropped -- it only drops buildings already gone.
         if (p.enemyBuildingSeen) {
@@ -3023,8 +3024,7 @@ class OpenAIAIManager {
         // after a state was built is still seen. A wall-clock window cannot express
         // this — turn length belongs to the model, not to the game.
         // Expiry is per ENTRY now, not one window for everything: e.ttl state-builds,
-        // defaulting to the 2 this has always used. A CONTACT asks for 1, because a
-        // sighting repeated next turn reads as a second sighting of the same scout.
+        // defaulting to the 2 this has always used.
         const buildRecentEvents = () => {
             const seq = pending.turnSeq = (ai._turnSeq || 0) + 1;
             // Events found by this look are shown now and logged on commit; here they
@@ -3591,21 +3591,21 @@ class OpenAIAIManager {
         // and its commands running, resetting the tally the executor is about to fill.
         // Kept here too so a seat that never reaches executeTurn starts from zero.
 
-        // Enemy units (very compact)
-        const enemyUnits = [];
+        // Enemy units: what is in sight now, and what this seat remembers of the rest as
+        // last seen (asp67, b1042) -- see game.noteUnitSighting. Refreshed here, so the
+        // in-sight entries are exact; the scan between turns keeps the remembered ones.
+        // On a copy, committed with the rest of what this look learnt.
+        const lookedAt = pending.unitMemoryAt = game.simNow();
+        const memory = { id: ai.id, _unitMemory: pending.unitMemory = game.copyUnitMemory(ai) };
+        const sighted = new Set();
         game.getAllUnits().forEach(unit => {
-            if (ai.units.includes(unit)) return;
-            const vis = seeNow(unit.x, unit.z);
-            if (!vis) return;
-            enemyUnits.push({
-                id: unit.id, // target handle for attack_target(params.targetId); units move, so prefer this over stale coordinates
-                type: unit.type,
-                x: Math.round(unit.x),
-                z: Math.round(unit.z),
-                owner: game.seatLabel(unit.owner),
-                ...(unit.type === 'worker' ? { carrying: game.observedWorkerLoad(unit) } : {})
-            });
+            if (ai.units.includes(unit) || !(unit.health > 0)) return;
+            if (!seeNow(unit.x, unit.z)) return;
+            game.noteUnitSighting(memory, unit, lookedAt);
+            sighted.add(String(unit.id));
         });
+        game.sweepUnitMemory(memory, sighted, seeNow, lookedAt);
+        const enemyUnits = game.rememberedUnits(memory);
 
         // --- Research (compact) ---
         const techs = civ?.techTree || {};
@@ -3843,6 +3843,11 @@ class OpenAIAIManager {
                 // comparable, in the vocabulary the model already holds.
                 entry.population = o.units.length;
                 entry.buildings = o.buildings.length;
+                // What this seat has seen of them and not seen die, by type, located or
+                // not, and how old those sightings are (b1042). An army that slipped away
+                // leaves enemyUnits once its spot is seen empty; it is not forgotten here.
+                const t = game.unitMemoryTally(memory, key);
+                if (t) { entry.seenAlive = t.counts; entry.seenSecondsAgo = { newest: t.newest, oldest: t.oldest }; }
             }
             aiOpponents.push(entry);
         };
@@ -3859,7 +3864,9 @@ class OpenAIAIManager {
             underAttack.push({
                 kind, type: ent.type, x: Math.round(ent.x), z: Math.round(ent.z),
                 healthPct: Math.round((ent.health / ent.maxHealth) * 100),
-                attackerAt: atk ? { x: Math.round(atk.x), z: Math.round(atk.z), owner: game.seatLabel(atk.owner) } : null
+                attackerAt: atk ? { x: Math.round(atk.x), z: Math.round(atk.z), owner: game.seatLabel(atk.owner) } : null,
+                // Nothing of yours answered (b1042; was the UNDER ATTACK line's tail).
+                ...(ent._defense && ent._defense.none && nowMs - ent._defense.at <= 6000 ? { noDefenders: true } : {})
             });
         };
         ai.buildings.forEach(b => scanHit(b, 'building'));
@@ -3942,7 +3949,7 @@ class OpenAIAIManager {
             // Both are true at ONE lane as well -- the lane, not the seat, has built
             // state ever since the pool landed.
             pending.shownTargetIds = new Set(
-                [].concat(enemyUnits || [], enemyBuildings || [])
+                [].concat((enemyUnits || []).filter(u => u && u.visible), enemyBuildings || [])
                   .map(e => String(e && e.id)).filter(x => x && x !== 'undefined'));
 
             // What this snapshot PROMISED about the player's own progress, for the
@@ -4196,20 +4203,19 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - You never SEE a fight; it happens between your turns. "battles" reports each engagement, cumulative: both sides' composition, damage dealt to units and to buildings, priests' healing, and losses. Losing produces no error, so this is the only place you learn what beat you.
 - Priests never fight. They march with an attack and heal wounded units from the back on their own.
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
-- "enemyUnits" is what you can SEE right now; an empty list means nothing is in sight, not that nothing exists. Enemy units out of sight are not remembered: "battles" and "CONTACT" lines are what you know of them.
-- "enemyBuildings" lists every rival building you have found. "visible": true is in sight now; "visible": false is remembered as you last saw it, and its health, or whether it still stands, may have changed since. Workers include "carrying": empty, food, wood, stone, gold, or unknown. CONTACT LOST cargo describes the last visible observation, not the worker's current hidden state.
+- "enemyUnits" is your memory of rival units: "visible": true is in sight now; "visible": false is how and where you LAST SAW it, "secondsAgo". It may have moved, been hurt or died since — you were not watching. "sightedAt" is where it came into your sight, so from there to x,z is the way it was going. A remembered unit leaves this list when you look at its spot again and it is not there; it is forgotten only when you see it die or your units kill it. Workers carry "carrying": empty, food, wood, stone, gold, or unknown, as last seen. The list holds the 50 most recent.
+- "enemyBuildings" lists every rival building you have found. "visible": true is in sight now; "visible": false is remembered as you last saw it, and its health, or whether it still stands, may have changed since.
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
 - "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool. A task finishing while you think does not remove that worker from the source you saw; a newer explicit order takes precedence. For assign_workers, resourceType may be omitted only when both coordinates unambiguously match a known resource node or your own farm; reason text never selects the resource.
-- "recentEvents" is the harness telling you what became of your orders since last turn — a node that ran dry under your workers, a building finished, a scout that arrived. Read it before repeating an order.
-- A "CONTACT" line is a rival unit or building coming into your sight, and "CONTACT LOST" is one leaving it, each with where it was. Both are moments, and both are gone from this list next turn — what they MEAN is yours to carry. A sighting and a loss of the same unit are two positions in order, which is a heading: follow it back and it points at where that unit came from. Something roaming far from anywhere you have looked is a direction worth scouting. A "CONTACT LOST" also means your knowledge of that position is now old — it is where the unit WAS, not where it is. One ending "where it was sighted" had not moved: your view of it ended, which says nothing about whether it still lives.
-- "threats" carries "underAttack" (what is being hit right now) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
+- "recentEvents" is the harness telling you what became of your orders since last turn — an attack that found nothing, a node that ran dry under your workers. Read it before repeating an order.
+- "threats" carries "underAttack" (what is being hit right now; "noDefenders": true when nothing of yours is answering) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
 - "recentLosses" is what you lost since last turn, and to whom.
 - "bonuses" is your civilisation's effect as a number: {"harvest": 1.25} means your workers carry 25% more per trip.
 - "nodes" holds COUNTS OF NODES, never amounts of resource. "nodes.discovered" counts the ones you have FOUND and not seen emptied; "nodes.totalOnMap" counts every one still standing in the world, found or not. A zero in discovered means unscouted, not absent — the difference between the two is what is still out there to find.
 - Population: each unit occupies a population slot. "population.capacityNow" is what your standing Houses and Town Centers allow and is the limit that binds you today; Houses raise it by 5 and Town Centers by 10, never past "population.capacityCeiling" (${(typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100}).
 - "gameStats.opponents[].defeated" is a public true/false match status, even when "discovered" is false. Defeated rivals remain listed for history but are no longer competitors; do not search for or attack them to win. This status reveals no locations or terrain.
-- "gameStats.opponents[].population" counts EVERYTHING a discovered rival owns, villagers included — the same measure as your own "population.used", and NOT an army size. Everywhere else in these tools "units" means fighters and "workers" means villagers; this one number does not follow that rule, which is why it is not called units.
+- "gameStats.opponents[].population" counts EVERYTHING a discovered rival owns, villagers included — the same measure as your own "population.used", and NOT an army size. Everywhere else in these tools "units" means fighters and "workers" means villagers; this one number does not follow that rule, which is why it is not called units. "seenAlive" counts by type the units of theirs you have seen and not seen die, including ones whose whereabouts you lost; "seenSecondsAgo" says how old those sightings are.
 - "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
 
 ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
@@ -4382,7 +4388,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 // Deliberately avoids "units" for the same reason: this counts whatever
                 // enemy figures are in view, fighters and villagers alike, and it is a
                 // different number from gameStats.opponents[].population.
-                entitiesVisible: Array.isArray(gs.enemyUnits) ? gs.enemyUnits.length : 0,
+                entitiesVisible: Array.isArray(gs.enemyUnits) ? gs.enemyUnits.filter(u => u && u.visible !== false).length : 0,
                 buildings: Array.isArray(gs.enemyBuildings) ? gs.enemyBuildings.length : 0
             },
             threats: {
@@ -7771,6 +7777,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         return `OK - ${mode}: Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${form.note}${pace.note} — ~${eta}s to arrive.`;
     }
 
+    wasShownTarget(ai, targetId) {
+        const ctrl = this.aiControllers.find(c => c.aiPlayer === ai);
+        return !!(ctrl && ctrl._shownTargetIds && ctrl._shownTargetIds.has(String(targetId)));
+    }
+
+    targetOutOfSight(ai, targetId) {
+        const mem = ai._unitMemory && ai._unitMemory.get(String(targetId));
+        this.outcome('log.out.targetOutOfSight', { targetId });
+        const where = mem ? ` It was last seen at (${Math.round(mem.x)}, ${Math.round(mem.z)}), ${Math.max(0, Math.round(this.game.realSecsSince(mem.at)))}s ago: targetX/targetZ there sends an attack-move that fights whatever is still there.`
+            : ' targetX/targetZ sends an attack-move that fights whatever is there.';
+        return `[ERROR] "${targetId}" is out of your sight. targetId names only an enemy unit you can see now ("visible": true) or a building.${where}`;
+    }
+
     executeAttackTarget(ai, game, targetId, unitsMap, unitIds, matchSpeed, formation) {
         // Find target in all units and buildings
         let target = null;
@@ -7784,8 +7803,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // fair reference. A unit it read, aimed at, and lost while it was thinking
             // is the harness's timing, not the model's error — the old message even
             // told it to go and read the very list it had just read correctly.
-            const ctrl = this.aiControllers.find(c => c.aiPlayer === ai);
-            const wasShown = !!(ctrl && ctrl._shownTargetIds && ctrl._shownTargetIds.has(String(targetId)));
+            const wasShown = this.wasShownTarget(ai, targetId);
+            const mem = ai._unitMemory && ai._unitMemory.get(String(targetId));
+            if (!wasShown && mem) return this.targetOutOfSight(ai, targetId);
             if (wasShown) {
                 console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" died before the order landed`);
                 this.outcome('log.out.targetGone', { targetId });
@@ -7794,6 +7814,16 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" not found`);
             this.outcome('log.out.targetNotFound', { targetId });
             return `[ERROR] Target "${targetId}" not found.`;
+        }
+
+        // A unit out of sight is a last-seen spot, not a lock (b1042). By id the army would
+        // follow it through the fog to wherever it went, which no scout told the seat; and
+        // answering "not found" for a remembered one that died unseen would tell it that.
+        // In sight in the state it answered is honoured as before: the unit walking off
+        // while the model thought is the harness's timing.
+        if (!this.isOwnedByAI(target, ai) && !(BUILDING_DEFS[target.type] || target.isWonder) && !this.wasShownTarget(ai, targetId)
+            && !this.visionTestFor(ai, game)(target.x, target.z)) {
+            return this.targetOutOfSight(ai, targetId);
         }
 
         // Friendly-fire guard: a model must not attack its own units/buildings.

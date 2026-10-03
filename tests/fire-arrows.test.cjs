@@ -60,6 +60,8 @@ test('researched, a ranged hit on a building does 30% more, and the arrow burns;
     owner.buildings.splice(owner.buildings.indexOf(house), 1);
     g.renderer.removeBuilding(house);
     fired.shots.length = 0;
+    // In sight: a unit out of sight cannot be named by id (b1042).
+    warrior.x = archer.x; warrior.z = archer.z + 10;
     fired.m.command(fired.m.controllers[0], 'attack_target', { targetId: warrior.id });
     fired.m.advance(8000);
     assert.ok(fired.shots.length > 0 && fired.shots.every(k => k === 'arrow'), JSON.stringify(fired.shots) + ' ' + String(fired.m.seats[0].lastActionResult || fired.m.controllers[0].lastActionResult));

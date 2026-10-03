@@ -74,11 +74,11 @@ test('opponent snapshots expose defeat independently of discovery, including hum
  const source=fs.readFileSync(path.join(__dirname,'../js/openai-ai.js'),'utf8');
  const start=source.indexOf('const met = ai._metRivals');
  const end=source.indexOf('// --- Threats',start);
- const opponents=new Function('game','ai',source.slice(start,end)+'return aiOpponents;');
+ const opponents=(game,ai)=>new Function('game','ai','memory',source.slice(start,end)+'return aiOpponents;')(game,ai,ai);
  const h=setup(),viewer={id:'viewer',_metRivals:new Set(['known'])};
  const known={id:'known',civilization:'greek',age:'bronze',units:[{type:'warrior',health:100}],buildings:[]};
  h.ai._eliminated=true;
- h.game.seatLabel=o=>o.id;h.game.spectatorMode=false;
+ h.game.seatLabel=o=>o.id;h.game.spectatorMode=false;h.game.unitMemoryTally=()=>null;
  h.game.player={id:'player',civilization:'persian',age:'iron',units:[],buildings:[],_eliminated:true};
  h.game.aiManager={aiPlayers:[viewer,h.ai,known]};
  const rows=opponents(h.game,viewer);

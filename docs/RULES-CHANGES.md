@@ -6,6 +6,53 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1042: a seat remembers the enemy units it has seen (3 October 2026)
+
+**Harness and prompt change (prompt agents-rule-v103); `game.js` changed.** Build 1041 made a lost contact always said, but a CONTACT line was still a moment, gone next turn, and what it meant was the model's to carry. asp67's design: enemy units are remembered the way nodes and buildings already are.
+
+**The state:**
+- **`enemyUnits` is the seat's memory.** `visible: true` is in sight now. `visible: false` is how and where the unit was last seen, with `secondsAgo`. Each entry carries its health, and a worker carries its cargo, as seen.
+- **`sightedAt`** is where this pass through sight began, when the unit moved from there: with the last-seen spot, a heading.
+- **Fifty are listed:** in sight first, then the most recently seen. The rest stay remembered and move up as listed ones leave.
+- **A unit leaves the list** when its last-seen spot, having been out of sight, is seen again without it.
+  - A unit walking out of a view still being watched keeps its spot.
+- **It is forgotten only for what the seat could know:**
+  - it was seen to die;
+  - the seat's own units killed it;
+  - its owner is defeated.
+  - One that died unseen stays remembered: its fate is unknown, and dropping it would say it died.
+- **`gameStats.opponents[]` adds `seenAlive`**, for rivals already met: the rival's units seen and not seen die, by type, including ones whose whereabouts were lost. **`seenSecondsAgo`** says how old those sightings are. A 30-strong army that slipped away is no longer forgotten with its last position.
+- **`recentEvents` keeps only what became of orders.** These lines went:
+  - CONTACT and CONTACT LOST: now the memory;
+  - UNDER ATTACK: already `threats.underAttack`, which gains `noDefenders: true` when nothing answers;
+  - LOSS and KILL of buildings: in `lostBuildings`, the battles and `enemyBuildings`.
+
+**Attack by id:**
+- **`attack_target` by `targetId` names only an enemy unit in sight, or a building.** A remembered unit is refused with its last-seen spot and age, and told that `targetX`/`targetZ` there sends an attack-move.
+  - New outcome code `targetOutOfSight`, classed as reference.
+  - By id, an army had followed a unit through the fog to wherever it went, which no scout had told the seat.
+  - A unit in sight in the state the model answered is honoured as before.
+- **Answering "not found" for a remembered unit that died unseen** would have told the seat it died, so that is refused the same way.
+
+**How it is fed:**
+- **The contact scan feeds it** about once a second per seat, so a scout passing between two turns is remembered.
+- **The state build refreshes it** on a copy, which the commit merges with what the scan learnt meanwhile: building a state still changes nothing.
+
+**Readers:**
+- **The analyzer** draws only `visible` units as confirmed, and dates a remembered one by `secondsAgo`.
+- **The Bench's random baseline** names only units in sight.
+- **The history recap** counts in-sight units only.
+
+**Cost, measured in two 30-minute four-seat realm matches** (rule-based seats observed through the harness, pretty-printed state as sent):
+
+| | Median | p90 | Max |
+|---|---|---|---|
+| Added tokens | +0 | +1.7k / +2.2k | +2.9k |
+
+- The median is +0 because most turns have no enemy known.
+- The maximum is the 50-entry cap.
+- A remembered entry costs about 47 tokens, 58 with `sightedAt`. An in-sight one gains about 11 (`healthPct`, `visible`).
+
 ## Build 1041: what a seat sees and what it only remembers (3 October 2026)
 
 **Harness and prompt change (prompt agents-rule-v102); `game.js` changed.** asp67 asked whether models mixing up what is in sight and what is only remembered was our fault.
