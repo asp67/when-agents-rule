@@ -1864,7 +1864,10 @@ class Game {
             // taken apart. Read into threats.underAttack, beside the hit itself; it was an
             // UNDER ATTACK line in recentEvents until b1042, which said again what
             // threats already lists.
-            primary.ent._defense = { at: now, none: !defenders.length };
+            // "None" is nothing of the owner's fighting here, by whatever order (b1045). It
+            // counted only the idle soldiers this reflex sends, so guards, patrols and
+            // holds fighting the raider in front of it were reported as nobody.
+            primary.ent._defense = { at: now, none: !defenceOnSite };
 
             if (!defenders.length) return;
 

@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1045: holding units defend what they stand under; "noDefenders" counts every fighter (3 October 2026)
+
+**Harness and prompt change (prompt agents-rule-v105); `game.js` changed.**
+- **Hold defends the owner's things, not only itself.** In build 1044 a holding unit answered only attacks on its own group. A swordsman hacking at the tower 5 from a holding militia was left to it: the militia's own reach is about 1.5, and nobody had hit it. Now an enemy attacking anything of the seat's (a unit, a building, a farm) is answered like an attacker: by every holding unit whose slot is within 19 of it, released the same way.
+  - What burns more than 19 from their spots stays the model's call. Holding units are not pulled out to it.
+- **`threats.underAttack[].noDefenders` counts every fighter on site** (asp67's review of build 1044). It counted only the idle soldiers the auto-defense reflex sends, so guards, patrols and holds fighting the raider right there were reported as nobody. The fault is older: build 1042 carried it over from the UNDER ATTACK line's "no defenders in range". It now uses the reflex's own on-site test: anyone of the owner's fighting near the raider.
+
 ## Build 1044: a "hold" mode for defenders (3 October 2026)
 
 **Harness and prompt change (prompt agents-rule-v104).** asp67 saw defenders break formation and wander out of a Town Center's or a tower's reach into the open, after whatever shot them, ruining the defense.

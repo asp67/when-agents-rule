@@ -106,3 +106,36 @@ test('the mode is offered to the model and accepted by the executor', () => {
  assert.match(src,/enum:\['march','scout','guard','hold','patrol'\]/);
  assert.match(src,/hold \(defend the destination from each unit's own spot/);
 });
+
+// b1045: a holding unit defends what it stands under, not only itself.
+test('a swordsman on the tower draws in holding melee within 19; a raid 30 away does not', () => {
+ const h=posted('hold'),u=h.owner.units[0],slot=h.grp.slots.get(u);
+ const tower={id:'t1',type:'tower',owner:'a',x:slot.x+6,z:slot.z,health:500,maxHealth:500};h.owner.buildings.push(tower);
+ const farm={id:'f1',type:'farm',owner:'a',x:slot.x-32,z:slot.z,health:200,maxHealth:200};h.owner.buildings.push(farm);
+ const far=Object.assign(h.rival(slot.x-30,slot.z,'warrior'),{attackTarget:farm,isAttacking:true});
+ h.scan();assert.notEqual(u.attackTarget,far,'the farm raid is 30 from its spot: not its fight');
+ const hacker=Object.assign(h.rival(slot.x+5,slot.z,'warrior'),{attackTarget:tower,isAttacking:true});
+ h.scan();assert.equal(u.attackTarget,hacker,'5 from its spot, hitting its tower: answered');
+});
+
+// b1045: "noDefenders" counted only the idle soldiers the auto-defense sends, so units under
+// any standing order fighting the raider in front of it were reported as nobody.
+test('noDefenders stays off while guards fight the raider, and is on when nobody does', async () => {
+ const look=async guarded=>{
+  const m=await createMatch({kind:'board',seed:'no-defenders',seats:[
+   {civ:'greek',age:'bronze',buildings:[['town_center',-250,0],['house',0,0,{tag:'house'}]],units:guarded?[['warrior',6,6,{tag:'guard'}]]:[]},
+   {civ:'persian',age:'bronze',buildings:[['town_center',250,0]],units:[['warrior',4,0,{tag:'raider'}]]}]});
+  const c=m.controllers[0],house=m.tags.house,raider=m.tags.raider;
+  if(guarded)assert.match(String(m.command(c,'move_units',{mode:'guard',targetX:6,targetZ:6})),/^OK/);
+  raider.attackTarget=house;raider.isAttacking=true;
+  m.advance(3000);
+  const hit=m.game.openAIAIManager.buildGameStateJSON(c).threats.underAttack.find(t=>t.type==='house');
+  return {hit,guardFighting:guarded&&!!m.tags.guard.attackTarget};
+ };
+ const alone=await look(false);
+ assert.ok(alone.hit,'the house is reported hit');
+ assert.equal(alone.hit.noDefenders,true,'nobody there');
+ const held=await look(true);
+ assert.ok(held.hit&&held.guardFighting,'the guard is fighting the raider');
+ assert.equal(held.hit.noDefenders,undefined,'someone is: not "no defenders"');
+});

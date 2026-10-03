@@ -21,7 +21,9 @@ class StandingOrders {
     // Hold (asp67, b1044): guard with a short leash, so defenders stay under their
     // towers instead of running out after whatever shot them. At its post each unit
     // keeps to its own slot: it attacks unprovoked only what is within its own reach of
-    // that slot, and answers an attacker only within HOLD_LEASH of it.
+    // that slot, and answers an attacker only within HOLD_LEASH of it -- one attacking
+    // the group, or (b1045) attacking anything else of its owner's, so that a militia
+    // holding under a tower does not watch a swordsman take the tower down.
     //
     // Fixed, and one past the longest reach in the game. Ranged units are capped at the
     // tower's 18 (Game: a range bonus never takes one past BUILDING_DEFS.tower.range),
@@ -272,9 +274,11 @@ class StandingOrders {
             // On the way to its post a holding group travels as a guard does; at the post
             // each unit answers only from its own slot (HOLD_LEASH).
             const holding=g.mode==='hold'&&g.atPost;
+            // Attacking something of this owner's right now: a unit, a building, a farm.
+            const aggressor=e=>{const t=e.attackTarget;return !!(t&&t.health>0&&t.owner===g.owner.id&&e.isAttacking!==false);};
             const holds=(u,e)=>{
                 const s=g.slots.get(u)||u;
-                const reach=(e===focus||g.threats?.includes(e))?StandingOrders.HOLD_LEASH:this.game.attackRangeAgainst(u,e)+1;
+                const reach=(e===focus||g.threats?.includes(e)||aggressor(e))?StandingOrders.HOLD_LEASH:this.game.attackRangeAgainst(u,e)+1;
                 return WarMath.hypot(e.x-s.x,e.z-s.z)<=reach;
             };
             const routeDistance=e=>{
