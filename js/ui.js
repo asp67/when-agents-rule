@@ -1517,8 +1517,14 @@ class UIManager {
             const session = a.accessToken
                 ? `<span class="test-status ok">${t('ar.oauthLoggedIn')}</span> <button class="test-btn" onclick="game.ui.oauthLogout(${m.id})">${t('ar.oauthLogout')}</button>`
                 : `<button class="test-btn oauth-login" onclick="game.ui.oauthLogin(${m.id})">${t(openRouter ? 'ar.oauthLoginOR' : 'ar.oauthLogin')}</button>`;
-            if (openRouter) return `<p class="auth-hint">${t('ar.oauthHintOR')}</p><div class="model-test-row">${session}</div>`;
-            return `<p class="auth-hint">${t('ar.oauthHint')}</p>
+            // Which login server (b1025): a known one fills in what it needs by itself.
+            const server = `<div class="arena-field"><label>${t('ar.oauthServer')}</label>
+                <select onchange="game.ui.setOAuthServer(${m.id}, this.value)">
+                    <option value="openrouter" ${openRouter ? 'selected' : ''}>OpenRouter</option>
+                    <option value="other" ${openRouter ? '' : 'selected'}>${t('ar.oauthOther')}</option>
+                </select></div>`;
+            if (openRouter) return `${server}<p class="auth-hint">${t('ar.oauthHintOR')}</p><div class="model-test-row">${session}</div>`;
+            return `${server}<p class="auth-hint">${t('ar.oauthHint')}</p>
             <div class="auth-grid">
                 <div class="arena-field full"><label>${t('ar.fAuthorizeUrl')}</label>
                     <input type="text" value="${e(a.authorizeUrl)}" oninput="game.ui.setAuthField(${m.id},'authorizeUrl',this.value)" placeholder="https://auth.example.com/oauth/authorize"></div>
@@ -1703,6 +1709,21 @@ class UIManager {
             this.renderArenaLibrary();
         } catch (err) { fail(t('ar.oauthFailed', { e: err.message })); }
     }
+    // A known login server fills in the endpoint and dialect its preset carries; another
+    // server leaves them to the user. A login belongs to its server, so switching ends it.
+    setOAuthServer(id, key) {
+        const m = this.getArenaModel(id);
+        if (!m) return;
+        const known = UIManager.MODEL_PRESETS.cloud.find(p => p.key === key && p.auth === 'oauth');
+        if (known) {
+            Object.assign(m, { endpoint: known.endpoint, provider: known.provider });
+            if (!(m.name || '').trim()) m.name = known.name;
+        } else if (OpenAIAIManager.isOpenRouter(m.endpoint)) m.endpoint = '';
+        Object.assign(m.auth, { accessToken: '', refreshToken: '', tokenExp: 0 });
+        m._status = null;
+        this.saveArenaConfig();
+        this.renderArenaLibrary();
+    }
     oauthLogout(id) {
         const m = this.getArenaModel(id);
         if (!m) return;
@@ -1876,7 +1897,8 @@ class UIManager {
                 { key: 'anthropic', name: 'Anthropic', endpoint: 'https://api.anthropic.com/v1', provider: 'anthropic', auth: 'bearer' },
                 { key: 'google', name: 'Google Gemini', endpoint: 'https://generativelanguage.googleapis.com/v1beta', provider: 'google', auth: 'bearer' },
                 { key: 'openai', name: 'OpenAI', endpoint: 'https://api.openai.com/v1', provider: 'openai', auth: 'bearer' },
-                { key: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1', provider: 'openai', auth: 'bearer' },
+                // The login button rather than a key to copy (b1025).
+                { key: 'openrouter', name: 'OpenRouter', endpoint: 'https://openrouter.ai/api/v1', provider: 'openai', auth: 'oauth' },
             ],
         };
     }
@@ -1904,7 +1926,7 @@ class UIManager {
         if (P.local.includes(preset)) {
             this.showInfoMessage(t('ar.presetTesting', { name: preset.name }));
             this.testArenaModel(m.id);
-        } else this.showInfoMessage(t('ar.presetKey', { name: preset.name }));
+        } else this.showInfoMessage(t(preset.auth === 'oauth' ? 'ar.presetLogin' : 'ar.presetKey', { name: preset.name }));
     }
 
     // Ask before deleting a model (guards against an accidental ✕ misclick).

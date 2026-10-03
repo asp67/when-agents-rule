@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1025: a known login server fills itself in (3 October 2026)
+
+**No rules change.**
+- **The OpenRouter preset** ("＋ Add from preset…") now starts on the login button instead of an API-key field. Its notice says to log in, then test the connection.
+- **OAuth2 opens with a "Login server" choice:** OpenRouter, or another login server.
+  - Picking OpenRouter fills in the endpoint and the dialect, and only the button remains.
+  - Picking another server clears an OpenRouter endpoint and shows the server's fields.
+  - Switching ends a login, because a login belongs to its server.
+- The other cloud presets (Anthropic, Gemini, OpenAI) already filled in endpoint, dialect and API key, and are unchanged.
+
 ## Build 1024: OAuth2 is a login button (3 October 2026)
 
 **No rules change.** The OAuth2 form asked for a pasted token, or a token URL, client ID, client secret and scope. asp67 found it too much for anyone who doesn't know OAuth.
