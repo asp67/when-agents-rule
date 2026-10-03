@@ -75,3 +75,41 @@ test('the daylight runs on the world clock, and a picked decision stays picked a
     u.anResimFollow(rs);
     assert.deepEqual([a.cursor, u.game._environmentSeconds], [2, 62]);
 });
+
+// asp67, 3 Oct 2026 (b1046): the analyzer's auto camera zoomed out of a long settlement fight
+// in waves, to the whole island. Each frame's scene names a unit's target as a plain copy,
+// and the director added every copy to the fight -- frozen, never dying -- and a unit gone
+// from the scene kept its last health, so the director never let go of it either.
+test('the replay director sees stage entities: one target, not a copy per frame, and the dead are dead', () => {
+    const scope = vm.createContext({ console, t: k => k, document: { getElementById: () => null }, location: { search: '' } });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/director.js'), 'utf8')
+        + fs.readFileSync(path.join(__dirname, '../js/ui.js'), 'utf8') + '\nthis.UI = UIManager; this.D = Director;', scope);
+    scope.createUnit = (type, x, z, owner) => ({ type, x, z, owner, health: 100, attack: 10, range: 1, speed: 1 });
+    const u = Object.create(scope.UI.prototype);
+    const noop = () => {};
+    u.game = { renderer: { _yaw: 0, addUnit: noop, killUnit: noop, removeUnit: noop, addBuilding: noop, killBuilding: noop, removeBuilding: noop },
+        terrain: { size: 800 }, isPlayerEliminated: () => false };
+    const rs = { ents: new Map(), speed: 1 };
+    u._anResim = rs;
+    const world = u.anDirectorWorld(rs);
+    const d = rs.director = new scope.D(world);
+    let now = 1e6;
+    const unit = (id, x, extra = {}) => Object.assign({ id, type: 'warrior', x, z: 0, health: 100, isMoving: false, isAttacking: false,
+        isHarvesting: false, isBuilding: false, carryingResource: 0, attackTimer: 0, carryingResourceType: null,
+        targetX: null, targetZ: null, task: null, attackTarget: null }, extra);
+    const frame = (x, withVictim) => {
+        const prey = unit('prey', x + 1), hunter = unit('hunter', x, { isAttacking: true, attackTarget: { id: 'prey', x: x + 1, z: 0, health: 100, owner: 'b' } });
+        const seats = [{ id: 'a', seat: 0, civilization: 'greek', epoch: 'stone', units: [hunter].concat(withVictim ? [unit('victim', 2, { health: 30 })] : []), buildings: [] },
+                       { id: 'b', seat: 1, civilization: 'persian', epoch: 'stone', units: [prey], buildings: [] }];
+        u.anResimDraw(rs, { seats, nodes: [], battles: [], simNow: now }, null);
+        now += 100; d.scanThreats(now);
+    };
+    for (let i = 0; i <= 50; i++) frame(i, i < 10);          // the fight walks 50 across the ground; the victim dies at frame 10
+    const f = d.liveFights(now).find(x => x.active || x.imminent);
+    assert.ok(f, 'the fight is seen');
+    const stage = new Set(rs.ents.values());
+    const parts = [...f.encounter.participants];
+    assert.ok(parts.every(p => stage.has(p) || p.health <= 0), 'every participant is a stage entity');
+    assert.equal(parts.filter(p => p.health > 0).length, 2, 'the hunter and its prey, once each: ' + parts.length);
+    assert.ok(f.r < 5, 'framed on the fight where it is now: r=' + f.r);
+});

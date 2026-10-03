@@ -6,6 +6,26 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1046: the auto camera no longer zooms out of a long fight (3 October 2026)
+
+**No rules change; spectator camera only.** asp67: in a long fight for a settlement, the auto camera zoomed out in waves, further each time, until the whole island sat in a third of the screen.
+
+**The cause, in the analyzer's re-simulated mode:**
+- **The stage handed its director copies, not entities.** Each frame's scene names a unit's target as a plain copy, and the stage passed it on as the unit's `attackTarget`. The director added each copy to the fight as a new participant: frozen where the target stood then, and never dying.
+- **A unit gone from the scene kept its last health.** Its last look still had it alive, so the director never let go of it either.
+- **The result:** a long fight collected a ghost for every frame, spread over everywhere it had been, and the camera widened to hold them all. When a fight lapsed and a new one started, the frame snapped back, then widened again.
+- **Measured:** in a fight that only walked 50, the old stage left 52 participants instead of 2 and a frame of 56 instead of 24. It keeps growing with the ground a fight covers.
+- **The live arena was not affected:** its director is handed real entities. Replaying asp67's 18:34 match through the live director, no fight framed wider than 59.
+
+**The fix:**
+- **Targets resolve to the stage's own entities,** once the whole scene is placed.
+- **Whatever leaves the scene is marked dead** for the director.
+
+**A backstop in the director, from a first diagnosis that was wrong** (participants walking away):
+- a fight is framed on who is fighting now;
+- its frame has a ceiling (half-height 90), as the other shots have;
+- the zoom eases toward a new size instead of jumping.
+
 ## Build 1045: holding units defend what they stand under; "noDefenders" counts every fighter (3 October 2026)
 
 **Harness and prompt change (prompt agents-rule-v105); `game.js` changed.**

@@ -50,6 +50,12 @@ const DIR_READING_CAP_MS = 20000;
 const DIR_INTERRUPT_MARGIN = 35;           // how much better a rival shot must be
 const DIR_OVERVIEW_EVERY = 75000;          // the "how is everyone doing" beat
 const DIR_RECENT = 6;                      // shots remembered for anti-repeat
+// A fight's frame (halfH), as the other shots have one. Framed from who is fighting now
+// (b1046), it is rarely reached; it is the backstop for a battle that really is that wide.
+const DIR_FIGHT_MAX_HALF = 90;
+// How much of the way to a fight's new frame size one update moves. Fighters join and
+// break off every second; followed exactly, the zoom would pump with them.
+const DIR_FIGHT_ZOOM_EASE = 0.08;
 // How long before the camera will cut to another first-contact. An army walking past
 // an enemy camp trips the detector once per rival entity it passes -- without this the
 // shot list is a strobe of near-identical two-unit stares. One every twenty seconds is
@@ -251,7 +257,22 @@ class Director {
             const active = ongoing || hits.some(h => h.target?.health > 0 && h.attacker?.health > 0);
             const imminent = !active && e.threats.length > 0;
             const live = [...e.participants].filter(p => p.health > 0);
-            const c = this.centroid(live) || e;
+            // Framed: who is fighting NOW -- in a blow just struck, or locked on a target
+            // within reach. Not everyone who ever took part: participants leave the set only
+            // by dying, so in a long fight for a settlement the workers gone back to their
+            // nodes and the soldiers off to the next fight stayed "in" it, and the frame
+            // widened to hold them, wave after wave, out to the furthest zoom (asp67, b1046).
+            const engaged = new Set();
+            for (const h of hits) {
+                if (h.attacker?.health > 0) engaged.add(h.attacker);
+                if (h.target?.health > 0) engaged.add(h.target);
+            }
+            for (const t of e.threats) {
+                if (t.u?.health > 0) engaged.add(t.u);
+                if (t.target?.health > 0) engaged.add(t.target);
+            }
+            const framed = engaged.size ? [...engaged] : live;
+            const c = this.centroid(framed) || e;
             let importance = 0;
             const targets = new Map(e.threats.map(t => [t.target, t.building]));
             for (const h of hits) if (h.target?.health > 0) targets.set(h.target,
@@ -266,9 +287,11 @@ class Director {
                 priority: active ? (importance >= 70 ? 3 : 2) : imminent ? 1 : 0,
                 score: (active ? 110 : imminent ? 95 : 20) + importance
                     + Math.min(30, live.length * 2) + Math.min(20, hits.length * 2),
-                r: this.spread(live, c), n: live.length };
+                r: this.spread(framed, c), n: live.length };
         });
     }
+
+    fightHalf(f) { return Math.min(DIR_FIGHT_MAX_HALF, Math.max(24, f.r * 1.5 + 18)); }
 
     // ---- geometry ----------------------------------------------------------
     // "Stand behind this vector and look up it." The one composition primitive.
@@ -463,7 +486,7 @@ class Director {
                 return {
                     x: f.x, z: f.z,
                     yaw: this.snapYaw(facing + vary),
-                    halfH: Math.max(24, f.r * 1.5 + 18),
+                    halfH: this.fightHalf(f),
                     subject: { kind: 'point', x: f.x, z: f.z, combat: true, key }
                 };
             });
@@ -918,7 +941,7 @@ class Director {
                 const best = this.fights(now).find(f => f.key === this.shot.key);
                 if (best) {
                     this.shot.pose.x = best.x; this.shot.pose.z = best.z;
-                    this.shot.pose.halfH = Math.max(24, best.r * 1.5 + 18);
+                    this.shot.pose.halfH += (this.fightHalf(best) - this.shot.pose.halfH) * DIR_FIGHT_ZOOM_EASE;
                 }
             }
         }

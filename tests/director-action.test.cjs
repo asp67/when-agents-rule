@@ -318,3 +318,27 @@ test('a fight gets a fighter close up once it has been shown twice, and the pose
     assert.equal(d.update(101500).closeup, true, 'and it is held: the fight does not take the camera straight back');
     assert.equal(d.candidates(100400).some(x => x.type === 'clash'), false, 'not again so soon');
 });
+
+// asp67, 3 Oct 2026 (b1046): in a long fight for a settlement the camera zoomed out in waves
+// to the furthest zoom. Everyone who ever struck or was struck stayed in the fight until
+// they died, so the frame grew to hold the workers gone back to their nodes.
+test('a long fight frames who is fighting now, not everyone who ever took part', () => {
+    const { director: d, duel, hit, players } = setup();
+    d.update(100000);
+    const fight = duel();
+    const passer = { id: 'passer', owner: 'c', type: 'warrior', x: 0.5, z: 1, health: 100, attack: 10, range: 1, speed: 1 };
+    players[2].units.push(passer);
+    hit(fight, 100001);
+    d.observeCombat(passer, fight.target, 10, 100001, fight.target.x, fight.target.z);
+    let t = 100001;
+    for (let i = 0; i < 300; i++) {           // fifteen seconds: the duel goes on, the passer walks 300 away
+        t += 50; passer.x += 1;
+        if (i % 10 === 0) hit(fight, t);
+        d.update(t);
+    }
+    const f = d.liveFights(t).find(x => x.active);
+    assert.ok(f, 'the duel is still a fight');
+    assert.ok(f.r < 5, 'framed on the duel, not on the passer 300 away: r=' + f.r);
+    assert.ok(d.fightHalf(f) <= 30, 'a tight frame: ' + d.fightHalf(f));
+    assert.equal(d.fightHalf({ r: 1000 }), 90, 'and a fight\'s frame has a ceiling');
+});

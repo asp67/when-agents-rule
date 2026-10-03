@@ -6977,6 +6977,7 @@ class UIManager {
         world._battles = (scene.battles || []).map(b => Object.assign({}, b, { sides: Object.fromEntries(Object.entries(b.sides || {})
             .map(([id, s]) => [id, { involved: Object.fromEntries(Object.entries(s.involved || {}).map(([k, v]) => [k, { ids: new Set(v.ids || []) }])) }])) }));
         const hurt = [];   // [entity, damage]: the replay has no hit events, so a drop in health is one
+        const aims = [];   // [entity, the scene's target]: resolved once every entity is placed
         scene.seats.forEach(s => {
             const seat = { id: s.id, seat: s.seat, civilization: s.civilization, age: s.epoch, _eliminated: !!s.eliminated, units: [], buildings: [] };
             seats.push(seat);
@@ -6986,7 +6987,7 @@ class UIManager {
                 let ent = rs.ents.get(key);
                 // An age-up upgrades field units to their next tier (upgradeFieldUnits):
                 // the same unit, a new type. Rebuilt, so it looks what it now is.
-                if (ent && ent.type !== u.type) { if (r.removeUnit) r.removeUnit(ent); else r.killUnit(ent); rs.ents.delete(key); ent = null; }
+                if (ent && ent.type !== u.type) { if (r.removeUnit) r.removeUnit(ent); else r.killUnit(ent); ent.health = 0; rs.ents.delete(key); ent = null; }
                 if (!ent) {
                     ent = typeof createUnit === 'function' ? createUnit(u.type, u.x, u.z, s.id, s.civilization, s.epoch) : null;
                     if (!ent) return;
@@ -6998,9 +6999,10 @@ class UIManager {
                 const before = ent.health;
                 Object.assign(ent, { x: u.x, z: u.z, health: u.health, isMoving: u.isMoving, isAttacking: u.isAttacking, attackTimer: u.attackTimer || 0,
                     isHarvesting: u.isHarvesting, isBuilding: u.isBuilding, carryingResource: u.carryingResource,
-                    carryingResourceType: u.carryingResourceType, attackTarget: u.attackTarget,
+                    carryingResourceType: u.carryingResourceType, attackTarget: null,
                     targetX: u.targetX == null ? undefined : u.targetX, targetZ: u.targetZ == null ? undefined : u.targetZ, task: u.task || null });
                 if (before > u.health) hurt.push([ent, before - u.health]);
+                if (u.attackTarget) aims.push([ent, u.attackTarget]);
                 seat.units.push(ent);
             });
             s.buildings.forEach(b => {
@@ -7027,6 +7029,15 @@ class UIManager {
                 seat.buildings.push(ent);
             });
         });
+        // A target is the stage's own entity, as it is live (asp67, b1046). The scene sends
+        // a plain copy each frame, and the director added each copy to the fight as a new
+        // participant: frozen where the target stood then, never dying. A long fight for
+        // a settlement collected hundreds, spread over everywhere it had been, and the
+        // camera widened to hold them -- in waves, as fights lapsed and restarted, out to
+        // the whole island.
+        for (const [ent, at] of aims) {
+            ent.attackTarget = rs.ents.get('u' + at.id) || rs.ents.get('b' + at.id) || rs.ents.get('b' + at.id + ':site') || null;
+        }
         world.aiManager.aiPlayers = seats;
         // A hit, as the live game reports it to its director: who struck (the enemy whose
         // target stands there, else the nearest enemy fighting nearby) and where.
@@ -7050,6 +7061,10 @@ class UIManager {
             if (key[0] === 'u') r.killUnit(ent);
             else if (key.endsWith(':site') && seen.has(key.slice(0, -5))) r.removeBuilding(ent);   // finished, not destroyed
             else r.killBuilding(ent);
+            // Gone from the world: dead to the director too, which lets go of a fight's
+            // participants only when their health says so (b1046). The scene's last look
+            // at a unit that died between two frames still had it alive.
+            ent.health = 0;
         });
         this.anResimFx(rs, fx);
         const nodes = new Set(scene.nodes.map(n => n.type + '@' + Math.round(n.x) + ',' + Math.round(n.z)));
