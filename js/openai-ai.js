@@ -119,7 +119,7 @@ class OpenAIAIManager {
                unitType: S('Which unit type to send. Optional.'),
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
             ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat. Incoming damage overrides all modes: fighters retaliate together, towers first; mobile threats obey chase limits. Regroup and resume afterward.',
-             Object.assign({mode:{type:'string',enum:['march','scout','guard','patrol'],description:'Default march. Scout: travel without initiating combat; retaliate if attacked. Guard: travel then defend the position. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
+             Object.assign({mode:{type:'string',enum:['march','scout','guard','hold','patrol'],description:'Default march. Scout: travel without initiating combat; retaliate if attacked. Guard: travel then defend the position, chasing up to 64. Hold: travel, then each unit keeps its spot: it attacks only what is within its own reach and answers attackers only within 19 of its spot; melee units will not run down archers, so hold under your towers. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
                 targets:{type:'string',enum:['any','military'],description:'Guard/patrol/march incidental targets: any enemy unit (default), or military only. Pursuit is bounded; explicit attack_target remains a commitment.'}}, XZ,
                 { tile: S('Tile label from map.exploration, e.g. "C5". Used only when targetX/targetZ are not given: the units go to the centre of that tile.') }, WHO), []],
             ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining.',
@@ -4240,7 +4240,7 @@ ${OpenAIAIManager.actionsBrief()}
 PARAMETER CONSTRAINTS:
 unitIds: An ARRAY of ids from friendlyUnits, e.g. [183, 12]. Moves or attacks EXACTLY those units and nothing else; "units" is ignored when it is given. Ids are never reused, so one that is gone means that unit died. Use it when WHICH unit matters — "units" picks whichever are nearest the target, which is the wrong end when you are fetching a wounded one.
 units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array. move_units also accepts {"worker":N} when named explicitly — that is how you place a unit on an exact spot; attack_target never takes workers.
-move_units mode: march (default), scout (no proactive attacks), guard (hold destination), patrol (repeat current position ↔ destination). Optional targets: any (default) or military. Standing orders persist through incidental combat and regrouping; new orders replace them only for selected units. ordersInProgress lists each assignment once with unitIds; battles/encounters report combat. Formation recovery slows the main body so priests and other stragglers can rejoin. Incoming damage overrides every standing order: formation fighters retaliate together, prioritizing towers until destroyed. Mobile threats obey chase limits. Once the threat is destroyed or driven off, regroup and resume the saved order.
+move_units mode: march (default), scout (no proactive attacks), guard (defend the destination, chasing up to 64), hold (defend the destination from each unit's own spot: it attacks only what is within its reach and answers attackers only within 19 — melee will not run down archers, so hold under your towers), patrol (repeat current position ↔ destination). Optional targets: any (default) or military. Standing orders persist through incidental combat and regrouping; new orders replace them only for selected units. ordersInProgress lists each assignment once with unitIds; battles/encounters report combat. Formation recovery slows the main body so priests and other stragglers can rejoin. Incoming damage overrides every standing order: formation fighters retaliate together, prioritizing towers until destroyed. Mobile threats obey chase limits. Once the threat is destroyed or driven off, regroup and resume the saved order.
 matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows your units to walk in unison until they reach the fight.`;
     }
 
@@ -7686,8 +7686,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     }
 
     executeMoveUnits(ai, game, unitsMap, targetX, targetZ, unitIds, matchSpeed, formation, mode='march', targets='any') {
-        if(!['march','scout','guard','patrol'].includes(mode)||!['any','military'].includes(targets))
-            return '[ERROR] mode must be march, scout, guard or patrol; targets must be any or military.';
+        if(!['march','scout','guard','hold','patrol'].includes(mode)||!['any','military'].includes(targets))
+            return '[ERROR] mode must be march, scout, guard, hold or patrol; targets must be any or military.';
         // Validate the destination first so bad coords never strand units at NaN.
         const mx = Number(targetX), mz = Number(targetZ);
         if (!Number.isFinite(mx) || !Number.isFinite(mz)) {

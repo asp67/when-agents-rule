@@ -8,7 +8,8 @@ const { CLASSES, CLASS_OF, classify } = require('../tools/bench/taxonomy.cjs');
 
 const SRC = fs.readFileSync(path.join(__dirname, '../js/openai-ai.js'), 'utf8');
 // Codes not in the log.out.* namespace: the parser's and the executor's own.
-const OWN = ['unparsedCall', 'notACommand', 'executionFailed'];
+// commandLimit: a command past the per-turn cap (b1044; it was emitted and unclassified).
+const OWN = ['unparsedCall', 'notACommand', 'executionFailed', 'commandLimit'];
 
 test('every code the harness emits is classified, and every classified code still exists', () => {
     const emitted = new Set([...SRC.matchAll(/log\.out\.([a-zA-Z]+)/g)].map(m => m[1]).concat(OWN));

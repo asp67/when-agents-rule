@@ -18,7 +18,7 @@ const CLASSES = Object.freeze({
     done: ['ageUpStarted', 'assignQueued', 'attackDispatched', 'attackEngaging', 'attackMarching', 'attackMoving',
         'buildStarted', 'deleted', 'destroyed', 'exploreSent', 'moveUnits', 'reassigned', 'repairStarted',
         'researchStarted', 'trainUnit'],
-    constraint: ['alreadyResearched', 'alreadyResearching', 'alreadyUpgrading', 'alreadyWonder', 'assignFromBusy',
+    constraint: ['alreadyResearched', 'alreadyResearching', 'alreadyUpgrading', 'alreadyWonder', 'assignFromBusy', 'commandLimit',
         'assignFromEmpty', 'assignIdleTaken', 'buildNeedsTech', 'buildingCannotTrainTier', 'buildingNeedsAge',
         'buildingUnderConstr', 'cannotAfford', 'exploreAlreadySent', 'farmAllManned', 'farmManned', 'farmUnderConstr',
         'laneDuplicateAge', 'laneDuplicateBuilding', 'laneDuplicateTech', 'maxAge', 'missingPrereq',

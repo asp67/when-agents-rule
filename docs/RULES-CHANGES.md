@@ -6,6 +6,31 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1044: a "hold" mode for defenders (3 October 2026)
+
+**Harness and prompt change (prompt agents-rule-v104).** asp67 saw defenders break formation and wander out of a Town Center's or a tower's reach into the open, after whatever shot them, ruining the defense.
+- **The cause.** Guard picks up any enemy within 48 of its post and chases an attacker up to 64 (hard cap 96). A tower shoots 18.
+
+**What `hold` does:**
+- **A new `move_units` mode.** On the way it travels as guard does. At its post, each unit keeps to its own formation slot:
+  - it attacks unprovoked only what is within its own attack range of that slot (plus 1);
+  - it answers an attacker only within **19** of that slot;
+  - it lets an attacker go the moment it backs off past that;
+  - idle members wait in their own slots while others fight.
+- **The leash is fixed at 19, one past the longest reach in the game.** Ranged units are capped at the tower's 18, so anything that can hit a holding unit from its slot is within its answer, and nothing can shoot it from where it may not go.
+- **`tests/hold-mode.test.cjs` keeps watch on future range changes.** It measures every unit of every civilization with every range bonus its civilization can research, and every building that shoots, the way combat measures reach. If any of them reaches 19, the test fails.
+- **The leash is per slot, not per group:** a unit at the end of a line answers what it can reach without the middle running out.
+- **The trade-off, told to the model:** melee units on hold will not run down archers, so hold belongs under one's own towers.
+
+**Also in this build:**
+- **`commandLimit`** (a command past the per-turn cap) is now in the Bench taxonomy as a constraint. It was emitted as a literal, so the taxonomy test never saw it, and the Bench counted it as unknown.
+- **Build 1043's one-line state is kept.** The A/B with build 1042 (same seed and seats, 3 October) found no difference in how the models read the state:
+  - no parse failures and no commands naming things that are not there;
+  - refusals were timing and cost only;
+  - memory fields were quoted more often.
+
+  Prompts at the same turn were 1.2k to 9.5k tokens smaller.
+
 ## Build 1043: the game state goes to the model on one line (3 October 2026)
 
 **Harness change: what a model is sent.** An A/B asked by asp67, to decide which format becomes permanent. Build 1042's match (3 Oct, 17:05) was sent the state indented; this build sends the same JSON on one line, without whitespace.

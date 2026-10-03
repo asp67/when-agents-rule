@@ -18,6 +18,18 @@ class StandingOrders {
     // falls: a group sent at it no longer turns back halfway when it stops firing.
     // Nothing else is seen through the fog.
     static get REVEAL_MS() { return 3000; }
+    // Hold (asp67, b1044): guard with a short leash, so defenders stay under their
+    // towers instead of running out after whatever shot them. At its post each unit
+    // keeps to its own slot: it attacks unprovoked only what is within its own reach of
+    // that slot, and answers an attacker only within HOLD_LEASH of it.
+    //
+    // Fixed, and one past the longest reach in the game. Ranged units are capped at the
+    // tower's 18 (Game: a range bonus never takes one past BUILDING_DEFS.tower.range),
+    // so anything that can hit a unit standing in its slot stands within 19 of it, and
+    // nothing can shoot a holding unit from outside its answer. Shorter, and an archer
+    // could shoot it from where it may not go. tests/hold-mode.test.cjs pins this
+    // against the unit and building data: a range raised past it fails a test, not a match.
+    static get HOLD_LEASH() { return 19; }
     constructor(game, manager) { this.game=game;this.manager=manager;this.groups=new Set();this.time=0;this.scan=0; }
     members(g) {
         const owned=new Set(g.owner.units);
@@ -58,6 +70,9 @@ class StandingOrders {
             // fight), and one drawn 60 units toward a tower that had shot someone else
             // lost sight of it on the way and walked back.
             if(WarMath.hypot(u.x-focus.x,u.z-focus.z)>StandingOrders.CHASE_RADIUS)continue;
+            // Holding: only a member whose own slot is within the leash of the attacker.
+            if(g.mode==='hold'&&g.atPost){const s=g.slots.get(u)||u;
+                if(WarMath.hypot(s.x-focus.x,s.z-focus.z)>StandingOrders.HOLD_LEASH)continue;}
             if(!g.fighting){g.anchor=this.center(units);g.fighting=true;}
             if(u.attackTarget!==focus)g.chases.delete(u);
             g.blocked.get(u)?.delete(focus);
@@ -227,7 +242,7 @@ class StandingOrders {
             if(g.target&&see(g,g.target)&&g.target.health<=0){
                 // A moving objective may die between scans. Guard its final
                 // observed location rather than returning to the click location.
-                if(g.mode==='guard'){
+                if(g.mode==='guard'||g.mode==='hold'){
                     g.to={x:g.target.x,z:g.target.z};g.atPost=false;
                     if(!g.fighting)this.reform(g,g.to);
                 }
@@ -252,10 +267,18 @@ class StandingOrders {
                 if(!g.fighting&&WarMath.hypot(to.x-g.leg.x,to.z-g.leg.z)>6)this.reform(g,to);
                 g.to=to;
             }
-            if(g.mode==='guard'&&WarMath.hypot(center.x-g.to.x,center.z-g.to.z)<12)g.atPost=true;
+            if((g.mode==='guard'||g.mode==='hold')&&WarMath.hypot(center.x-g.to.x,center.z-g.to.z)<12)g.atPost=true;
             const anchor=g.fighting?g.anchor:center;
+            // On the way to its post a holding group travels as a guard does; at the post
+            // each unit answers only from its own slot (HOLD_LEASH).
+            const holding=g.mode==='hold'&&g.atPost;
+            const holds=(u,e)=>{
+                const s=g.slots.get(u)||u;
+                const reach=(e===focus||g.threats?.includes(e))?StandingOrders.HOLD_LEASH:this.game.attackRangeAgainst(u,e)+1;
+                return WarMath.hypot(e.x-s.x,e.z-s.z)<=reach;
+            };
             const routeDistance=e=>{
-                if(g.mode==='guard'&&g.atPost)return WarMath.hypot(e.x-g.to.x,e.z-g.to.z);
+                if((g.mode==='guard'||g.mode==='hold')&&g.atPost)return WarMath.hypot(e.x-g.to.x,e.z-g.to.z);
                 if(g.mode!=='patrol')return 0;
                 const dx=g.to.x-g.from.x,dz=g.to.z-g.from.z;
                 const t=Math.max(0,Math.min(1,((e.x-g.from.x)*dx+(e.z-g.from.z)*dz)/(dx*dx+dz*dz||1)));
@@ -276,6 +299,7 @@ class StandingOrders {
             const wonderRun=!!(g.target&&g.target.isWonder&&g.target.health>0);
             const eligible=(u,e)=>{
                 if(!valid(e))return false;
+                if(holding&&u&&!holds(u,e))return false;
                 if(e===focus)return e.type==='tower'||!g.blocked.get(u)?.has(e);
                 if(e===g.target)return true;
                 if(wonderRun)return false;
@@ -330,7 +354,8 @@ class StandingOrders {
                     const stalled=!inRange&&this.time-chase.at>=StandingOrders.STALL_MS;
                     const bounded=target===focus?target.type!=='tower':target!==g.target;
                     const defendingInRange=target===focus&&distance<=this.game.attackRangeAgainst(u,target);
-                    if(!valid(target)||(bounded&&!defendingInRange&&(escaped||tooFar||stalled))){this.releaseTarget(g,u,target);target=null;}
+                    const leftHold=holding&&!holds(u,target);
+                    if(!valid(target)||leftHold||(bounded&&!defendingInRange&&(escaped||tooFar||stalled))){this.releaseTarget(g,u,target);target=null;}
                 }
                 if(!target){
                     // Joining the group's fight reaches as far as a chase may run, not across
@@ -361,6 +386,7 @@ class StandingOrders {
                 // Reserve legal, distinct places once per engagement/repack. A
                 // clamped point per member can collapse several ranks onto one
                 // building edge, while old march axes steer away from the hold.
+                if(!g.holdSlots&&holding)g.holdSlots=new Map(units.map(u=>[u,g.slots.get(u)||{x:u.x,z:u.z}]));
                 if(!g.holdSlots){
                     const offsets=new Map(units.map(u=>{const s=g.slots.get(u);
                         return [u,{x:(s?.x??g.leg.x)-g.leg.x,z:(s?.z??g.leg.z)-g.leg.z}];}));
