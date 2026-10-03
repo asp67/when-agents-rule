@@ -40,7 +40,7 @@ test('movement cadence follows effective speed while work sounds keep their timi
     for(const [speed,pace] of [[1,1],[1.5,1.25],[2,1.5],[4,2]]) {
         for(const kind of ['step','snow','gravel','hoof','hoofSnow','hoofGravel','chop','mine']) {
             const {sound:s,game}=harness();game.simSpeed=speed;
-            const gap=kind==='chop'?.55:kind==='mine'?.625:(kind.startsWith('hoof')?.28:.42)/pace;
+            const gap=kind==='chop'||kind==='mine'?.5:(kind.startsWith('hoof')?.28:.42)/pace;
             assert.equal(s.allow(kind,{x:0,z:0},0),true);
             assert.equal(s.allow(kind,{x:0,z:0},gap-.001),false);
             assert.equal(s.allow(kind,{x:0,z:0},gap+.001),true);

@@ -475,10 +475,10 @@ class WarAudio {
     }
     allow(kind,entity,now) {
         const cell=kind+':'+Math.floor(entity.x/14)+':'+Math.floor(entity.z/14);
-        // Chopping and mining at half their old gaps (b1038): the gap is per kind per
-        // 14-unit cell, so twenty miners on one node used to share one click a second.
+        // Chopping and mining every 0.5 s (b1038, one gap for both in b1039): the gap is per
+        // kind per 14-unit cell, so twenty miners on one node used to share one click a second.
         const spacing=['step','snow','gravel'].includes(kind) ? .42/this.movementCadence() : kind.startsWith('hoof') ? .28/this.movementCadence()
-            : kind==='chop' ? .55 : kind==='mine' ? .625 : kind==='harvest' ? 1.6 : kind==='build' ? 1.25 : kind==='heal' ? 1.8 : ['built','research','trained','collapse','wonderLost','heal','command','commandAction','start','elimination','victory','defeat','warning'].includes(kind) ? 1 : .11;
+            : kind==='chop' || kind==='mine' ? .5 : kind==='harvest' ? 1.6 : kind==='build' ? 1.25 : kind==='heal' ? 1.8 : ['built','research','trained','collapse','wonderLost','heal','command','commandAction','start','elimination','victory','defeat','warning'].includes(kind) ? 1 : .11;
         if (now-(this.cells.get(cell) ?? -Infinity)<spacing) return false;
         this.recent=this.recent.filter(t=>now-t<1);
         if(this.recent.length>=18 || [...this.voices].filter(v=>!v.notice).length>=12) return this.suppressed('worldBudget');
