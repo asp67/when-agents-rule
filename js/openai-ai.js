@@ -4633,7 +4633,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // shape the endpoint was found to need (model._reqOpts). `withRequest: false` skips
     // the final wire request: the arena's send loop builds that itself, once per attempt,
     // inside its own error handling.
-    buildTurnRequest(controller, gameState, { shrink = controller._ctxShrink || 1, reqOpts = null, withRequest = true } = {}) {
+    //
+    // `closing` ({ history, ask }) builds the final-word request (askFinalWord) on the
+    // same context as a turn -- objective, plan, the rolling history of the seat's own
+    // turns -- with the final state, the match in numbers and the closing question as
+    // the present message (b1035). It used to be the final state alone, and models wrote
+    // their post-mortems from a summary: "likely", "must not have", "looking at the numbers".
+    buildTurnRequest(controller, gameState, { shrink = controller._ctxShrink || 1, reqOpts = null, withRequest = true, closing = null } = {}) {
         const model = controller.model;
         const ai = controller.aiPlayer;
 
@@ -4705,7 +4711,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // measured. The consequence is stated as the RULE it is, not as a command.
         const enemyWonders = (gameState.threats && gameState.threats.enemyWonders) || [];
         const liveWonders = enemyWonders.filter(w => w.state === 'complete' && w.secondsUntilEnemyWins != null);
-        if (liveWonders.length) {
+        if (liveWonders.length && !closing) {
             const worst = liveWonders.reduce((a, b) => (a.secondsUntilEnemyWins <= b.secondsUntilEnemyWins ? a : b));
             // The seat id, not the civ: a controlled benchmark runs four seats on the
             // SAME civ, so "greek has completed a Wonder" would name three rivals at
@@ -4728,9 +4734,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // deciding the shape of a turn rather than describing the board -- and it sat
         // directly underneath that comment for a month. How many things to do is part
         // of what is being measured.
-        tailNow.push(`Here is your CURRENT game state. Decide what to do on THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
+        if (closing) {
+            tailNow.push(`Here is your FINAL game state: the moment the match ended for you.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
+            if (closing.history) tailNow.push(closing.history);
+            tailNow.push(closing.ask);
+        } else tailNow.push(`Here is your CURRENT game state. Decide what to do on THIS turn.\n\nGame State JSON:\n${JSON.stringify(gameState, null, 2)}`);
         let advice = null;
-        if (controller.pendingAdvice && controller.pendingAdvice.length) {
+        if (!closing && controller.pendingAdvice && controller.pendingAdvice.length) {
             advice = controller.pendingAdvice.join(' ');
             tailNow.push(`SPECTATOR ADVICE (a human observer suggests — weigh it, you still decide): ${advice}`);
         }
@@ -4768,7 +4778,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // here would show the model the same outcome twice, once as a reply and once
             // as narration.
             if (prevResult && !this.lastTurnUsedTools(controller)) {
-                preface.push(`RESULT of your PREVIOUS action — learn from it; do NOT repeat a rejected action, fix the cause first: ${prevResult}`);
+                preface.push(closing ? `RESULT of your last action: ${prevResult}`
+                    : `RESULT of your PREVIOUS action — learn from it; do NOT repeat a rejected action, fix the cause first: ${prevResult}`);
             }
             const currentUser = [...preface, ...tailNow].join('\n\n');
             const pairBudget = inputBudget - est(systemPrompt) - est(currentUser);
@@ -6488,21 +6499,24 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             'If you have anything to say about how this went — what you were trying to do, what beat you, what you would',
             'do differently — say it now, in your own words. Answer however you like.'].join(' ');
         const history = this.matchHistoryText(controller, ai);
-        const turns = [{ role: 'user',
-            content: (stateText ? stateText + '\n\n' : '') + (history ? history + '\n\n' : '') + ask }];
-
-        const provider = OpenAIAIManager.resolveProvider(model);
+        // The same context as a turn (b1035): its objective and plan and the rolling
+        // history of its own turns, sized to its budget, then the final state, the
+        // numbers and the question. Only what this seat saw and did, as every turn.
+        // The single message stays as the fallback, for a state that could not be built.
+        let req, provider, turns;
+        try {
+            if (!stateJson) throw new Error('no final state');
+            const built = this.buildTurnRequest(controller, stateJson, { closing: { history, ask }, reqOpts: this.requestOptions(model) });
+            req = built.request; provider = built.provider; turns = built.turns;
+        } catch (e) {
+            provider = OpenAIAIManager.resolveProvider(model);
+            turns = [{ role: 'user', content: (stateText ? stateText + '\n\n' : '') + (history ? history + '\n\n' : '') + ask }];
+            req = OpenAIAIManager.buildChatRequest(provider, model.endpoint, model.model || 'default', this.buildSystemPrompt(ai), turns, this.requestOptions(model));
+        }
         const auth = model.auth || (model.apiKey ? { type: 'bearer', key: model.apiKey } : { type: 'none' });
         let headers;
         try { headers = await OpenAIAIManager.buildAuthHeaders(auth, provider); }
         catch (e) { headers = { 'Content-Type': 'application/json' }; }
-        const reqOpts = Object.assign({
-            temperature: model.temperature, topP: model.topP, topK: model.topK,
-            reasoning: model.reasoning, thinkingSend: model.thinkingSend, extraBody: model.extraBody,
-            maxTokens: model.maxTokens, numCtx: model.contextSize
-        }, model._reqOpts || {});
-        const req = OpenAIAIManager.buildChatRequest(
-            provider, model.endpoint, model.model || 'default', this.buildSystemPrompt(ai), turns, reqOpts);
 
         // Its OWN abort handle, NOT controller._abort. endArena calls stop() immediately,
         // which aborts whatever handle each controller holds — hanging this on the same
@@ -6550,6 +6564,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     latencyMs: Date.now() - t0,
                     outcome: (kind === 'defeated') ? 'defeated' : ((extra && extra.won) ? 'won' : 'lost'),
                     text: text || null, tokens: tokens || null, error: error || null,
+                    // How much of its match it was shown (b1035): the messages sent and
+                    // their characters, so a thin post-mortem can be told from a thin context.
+                    context: { messages: turns.length, chars: turns.reduce((n, m) => n + String(typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')).length, 0) },
                     // Same shape and same key as every turn's snapshot, so anything that
                     // already reads a state off a record reads this one without knowing
                     // it is the last.

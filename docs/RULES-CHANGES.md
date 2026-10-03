@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1035: final words are asked with the seat's memory (3 October 2026)
+
+**No rules change; a harness change** (the final word is unscored, so no metric moves).
+- **The question.** asp67 asked whether the hallucination in final words came from what the models were given.
+- **The answer was yes.** The closing question went out as one message: the final state, the match in numbers (added in build 564, after three of four models wrote that they never got started) and the question, with no objective, no plan and none of the seat's own turns. The post-mortems read like it: "likely while I was still building up my economy", "must not have scouted", "looking at the numbers".
+- **Now it is built like a turn** (`buildTurnRequest` with `closing`). The standing objective and plan and the rolling history of the seat's own turns come first, sized to its context budget. The present message carries the final state, the match in numbers and the question; it does not ask for a move, and it has no Wonder countdown or advice.
+- **It stays one seat's own view.** Nothing it did not see is added.
+- **The `final_word` record gains `context`**: messages and characters sent, so a thin answer can be told from a thin context.
+- The single-message form remains only for a seat whose final state could not be built.
+
 ## Build 1034: the inspect card in broadcast mode, and for resources (3 October 2026)
 
 **No rules change.** `game.js` changed, so the rules hash moves, but only the spectator's click picker did.
