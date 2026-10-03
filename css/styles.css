@@ -3071,6 +3071,9 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 body.broadcast-mode #spectatorHUD, body.broadcast-mode #spectatorLeaderboard, body.broadcast-mode #aiDecisionLog,
 body.broadcast-mode #transcriptViewer, body.broadcast-mode #unitInfo,
 body.broadcast-mode .lb-flyout { display: none !important; }
+/* The inspect card comes back while something is picked (b1034): a click on a unit, a
+   building or a resource is a question the broadcast answers, then the card goes. */
+body.broadcast-mode #unitInfo.spectator-card.has-subject { display: block !important; }
 /* The bar's speed control, moved beside the clock: a small version of it. */
 .broadcast-board .sb-speed-wrap { margin-left: -4px; }
 .broadcast-board .sb-speed-wrap > .sb-end { padding: 6px 10px; border-radius: 6px; font-size: 0.86em; background: rgba(10, 14, 30, 0.88); }

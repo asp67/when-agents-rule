@@ -2631,15 +2631,18 @@ class UIManager {
     refreshUnitInfo() {
         if (this._infoBorrowed) return;
         const s = this._infoSubject;
-        if (!s || (!s.unit && !s.building)) return;
+        if (!s || (!s.unit && !s.building && !s.node)) return;
+        if (s.node) { this.updateUnitInfo(null, null, s.node.amount > 0 ? s.node : null); return; }
         const ent = s.unit || s.building;
         if (ent.health <= 0) { this.updateUnitInfo(null, null); return; }
         this.updateUnitInfo(s.unit, s.building);
     }
 
-    updateUnitInfo(unit, building) {
-        this._infoSubject = { unit: unit || null, building: building || null };
+    updateUnitInfo(unit, building, node = null) {
+        this._infoSubject = { unit: unit || null, building: building || null, node: node || null };
         const infoDiv = document.getElementById('unitInfo');
+        // Broadcast mode shows the card only while something is picked (b1034).
+        if (infoDiv) infoDiv.classList.toggle('has-subject', !!(unit || building || node));
         const spectator = this.game && this.game.spectatorMode;
         // In spectator every entity belongs to a rival civ — lead with the SEAT
         // BADGE (the same mark worn on flags and shown in the leaderboard) plus the
@@ -2670,6 +2673,9 @@ class UIManager {
             html += `❤️ ${t('ui.health')}: ${Math.floor(building.health)}/${building.maxHealth}<br>`;
             html += `<em>${this.getBuildingTypeDescription(building.type)}</em>`;
             infoDiv.innerHTML = html;
+        } else if (node) {
+            // A resource node: what it is and how much is left (b1034).
+            infoDiv.innerHTML = `<strong>${t('res.' + node.type)}</strong><br>${t('ui.remaining', { n: Math.max(0, Math.floor(node.amount)) })}`;
         } else {
             infoDiv.innerHTML = spectator
                 ? `<p style="color:#4ecca3;font-weight:bold;">${t('spec.hint')}</p>`

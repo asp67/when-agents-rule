@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1034: the inspect card in broadcast mode, and for resources (3 October 2026)
+
+**No rules change.** `game.js` changed, so the rules hash moves, but only the spectator's click picker did.
+- **Broadcast mode** hid the inspect card along with the operator panels (b1011), so a click picked a unit and showed nothing (asp67). The card now shows while something is picked and goes when a click lands on nothing. There is no hint card on the picture.
+- **Resources can be clicked**, in every spectator view: a tree, a stone or gold deposit, berries. The card says what it is and how much is left. A unit or building on top of a node still wins the click.
+
 ## Build 1033: a worker takes its load home after a fight (3 October 2026)
 
 **Rules change.** asp67 saw a worker carrying stone home get attacked. It killed the attacker, went back to its stone node still carrying the stone, and stood there.

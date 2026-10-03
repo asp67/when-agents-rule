@@ -2346,16 +2346,19 @@ class Game {
         if (!rnd || !rnd.worldToScreen || !rnd.canvas) return;
         const rect = rnd.canvas.getBoundingClientRect();
         const px = clientX - rect.left, py = clientY - rect.top;
-        let best = null, bestIsUnit = false, bestScore = Infinity;
-        const consider = (ent, isUnit, anchorY, radius) => {
-            if (!ent || ent.health <= 0) return;
+        let best = null, bestIsUnit = false, bestIsNode = false, bestScore = Infinity;
+        const consider = (ent, isUnit, anchorY, radius, isNode = false) => {
+            if (!ent || (isNode ? !(ent.amount > 0) : ent.health <= 0)) return;
             const s = rnd.worldToScreen(ent.x, anchorY, ent.z);
             if (!s) return;
             const d = WarMath.hypot(s.x - px, s.y - py);
             if (d > radius) return;
-            const score = d - (isUnit ? 8 : 0); // a unit standing on a building wins
-            if (score < bestScore) { bestScore = score; best = ent; bestIsUnit = isUnit; }
+            // A unit standing on a building wins; a resource node yields to both.
+            const score = d - (isUnit ? 8 : 0) + (isNode ? 6 : 0);
+            if (score < bestScore) { bestScore = score; best = ent; bestIsUnit = isUnit; bestIsNode = isNode; }
         };
+        // Resource nodes too (b1034): a tree, a stone or gold deposit, berries.
+        ((this.terrain && this.terrain.resources) || []).forEach(n => consider(n, false, 0.5, 22, true));
         this.aiManager.aiPlayers.forEach(o => {
             // Anchor buildings at the GROUND BASE (y≈0), not the elevated centre:
             // in the isometric view the base is where a human instinctively
@@ -2370,7 +2373,10 @@ class Game {
             this.ui.updateUnitInfo(null, null);
             return;
         }
-        if (bestIsUnit) {
+        if (bestIsNode) {
+            this._camFollow = null;
+            this.ui.updateUnitInfo(null, null, best);
+        } else if (bestIsUnit) {
             best.selected = true;
             this.ui.updateUnitInfo(best, null);
             this._camFollow = { kind: 'units', units: [best] };
