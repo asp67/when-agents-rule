@@ -38,7 +38,10 @@ async function record(seed) {
 test('a recorded arena match re-simulates to every recorded state hash', async () => {
     const { recs, final } = await record('replay-a');
     const inputs = recs.filter(r => r.type === 'input');
-    assert.deepEqual([...new Set(inputs.map(r => r.kind))].sort(), ['batch', 'observe', 'speed']);
+    assert.deepEqual([...new Set(inputs.map(r => r.kind))].sort(), ['batch', 'checkpoint', 'observe', 'speed']);
+    // Every ten game seconds (b1048), at the end of the step.
+    const cps = inputs.filter(r => r.kind === 'checkpoint');
+    assert.ok(cps.length >= 4 && cps.every(r => r.step % 200 === 0 && r.digest && r.digest.seats), 'checkpoints: ' + cps.map(r => r.step));
     assert.ok(inputs.every(r => typeof r.stateHash === 'string' && r.stateHash.length === 16));
     const v = await replayTranscript(recs);
     assert.equal(v.ok, true, v.problem);
@@ -120,4 +123,54 @@ test('a match played through the live turn path re-simulates, and a dropped answ
     const f = await replayTranscript([header, ...forged]);
     assert.equal(f.ok, false);
     assert.equal(f.divergedAt, lines[i].step);
+});
+
+// b1048: a checkpoint names what differs -- seat, entity and kind of field -- where the
+// whole-world hash could only say that something did.
+test('a checkpoint that disagrees names the seat, the unit and the field group', async () => {
+    const { recs } = await record('replay-d');
+    const cp = recs.filter(r => r.kind === 'checkpoint' && Object.values(r.digest.seats)[0].u != null)[0];
+    assert.ok(cp, 'a detailed checkpoint is recorded');
+    const seatId = Object.keys(cp.digest.seats)[0];
+    const units = cp.digest.seats[seatId].u.split(',');
+    const [key, h] = units[0].split(':');
+    const forgedPos = (h.slice(0, 2) === 'ff' ? '00' : 'ff') + h.slice(2);   // the position byte only
+    const forged = recs.map(r => r === cp ? { ...r, digest: { ...r.digest, seats: { ...r.digest.seats,
+        [seatId]: { ...r.digest.seats[seatId], u: [key + ':' + forgedPos].concat(units.slice(1)).join(',') } } } } : r);
+    const v = await replayTranscript(forged);
+    assert.equal(v.ok, false);
+    assert.equal(v.divergedAt, cp.step);
+    assert.match(v.problem, /checkpoint/);
+    const d = v.detail[0];
+    assert.deepEqual([d.seat, d.part, d.key, d.what], [seatId, 'unit', key, 'position']);
+    assert.ok(d.replay && Number.isFinite(d.replay.x), "and the replay's own values for it");
+});
+
+test('the digest changes only where the world does', async () => {
+    const m = await createMatch({ kind: 'arena', seats: ['greek', { civ: 'persian', type: 'ki' }], seed: 'digest' });
+    const g = m.game, WarResim = require('../js/resim.js');
+    const a = g.stateDigest();
+    assert.equal(WarResim.digestDiff(a, g.stateDigest()), null, 'the same world, the same digest');
+    const u = m.seats[1].units[0];
+    u.health -= 1;
+    const d = WarResim.digestDiff(a, g.stateDigest());
+    assert.equal(d.entries.length, 1);
+    assert.deepEqual([d.entries[0].seat, d.entries[0].part, d.entries[0].what], [m.seats[1].id, 'unit', 'health']);
+    m.seats[0].resources.food += 5;
+    assert.ok(WarResim.digestDiff(a, g.stateDigest()).entries.some(e => e.part === 'resources' && e.seat === m.seats[0].id));
+});
+
+test('detail every sixth checkpoint (the first, seventh, ...); between them, a seat-level hash still catches a difference', async () => {
+    const { recs } = await record('replay-e');
+    const cps = recs.filter(r => r.kind === 'checkpoint');
+    const detailed = cps.filter(r => Object.values(r.digest.seats).every(s => s.u != null));
+    assert.ok(detailed.length >= 1 && detailed.every(r => (r.step / 200 - 1) % 6 === 0), 'detail at ' + detailed.map(r => r.step));
+    const plain = cps.find(r => (r.step / 200 - 1) % 6 !== 0);
+    assert.ok(plain && Object.values(plain.digest.seats).every(s => s.u == null && /^[0-9a-f]{8}$/.test(s.uh)));
+    const seatId = Object.keys(plain.digest.seats)[0];
+    const forged = recs.map(r => r === plain ? { ...r, digest: { ...r.digest, seats: { ...r.digest.seats,
+        [seatId]: { ...r.digest.seats[seatId], uh: '00000000' } } } } : r);
+    const v = await replayTranscript(forged);
+    assert.equal(v.divergedAt, plain.step);
+    assert.deepEqual([v.detail[0].seat, v.detail[0].part], [seatId, 'unit']);
 });

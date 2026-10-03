@@ -558,6 +558,17 @@ class OpenAIAIManager {
                 playerId ? { playerId } : {}, payload, { stateHash: g.stateHash ? g.stateHash() : null }));
         } catch (e) { /* recording must never break a turn */ }
     }
+    // A checkpoint every Game.CHECKPOINT_STEPS (b1048): no input, just the world as it
+    // stands -- the whole-world hash noteInput adds, and the per-entity digest that lets a
+    // re-simulation name what differs. Changes nothing; only recorded.
+    noteCheckpoint() {
+        const g = this.game;
+        if (!this.transcripts || !this.transcripts.matchId || !g || !g.stateDigest) return;
+        const digest = g.stateDigest();
+        const n = Math.round(g.clock.stepNo / Game.CHECKPOINT_STEPS);
+        if ((n - 1) % Game.CHECKPOINT_DETAIL_EVERY !== 0) for (const s of Object.values(digest.seats)) { delete s.u; delete s.b; }
+        this.noteInput('checkpoint', null, { digest });
+    }
     // The same for the match as a whole -- global pause and speed. It has no seat.
     noteMatchEvent(entry) {
         try {

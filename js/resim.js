@@ -28,6 +28,40 @@ var WarResim = {
 
     // The arena start spec: every seat rule-based, so nothing asks a model. The seats a
     // model played are then taken over by WarResim.seat, which only ever acts on inputs.
+    // What differs between a recorded checkpoint digest and the world's (Game.stateDigest):
+    // null when nothing, else { summary, entries } naming seat, entity and field group.
+    digestDiff(rec, now) {
+        const names = ['position', 'health', 'orders', 'timers/cargo'];
+        const parse = s => new Map(String(s || '').split(',').filter(Boolean).map(x => { const i = x.lastIndexOf(':'); return [x.slice(0, i), x.slice(i + 1)]; }));
+        const entries = [];
+        if (rec.nodes !== now.nodes) entries.push({ part: 'nodes', what: 'resource node amounts' });
+        for (const id of new Set(Object.keys(rec.seats || {}).concat(Object.keys(now.seats || {})))) {
+            const a = (rec.seats || {})[id], b = (now.seats || {})[id];
+            if (!a || !b) { entries.push({ seat: id, part: 'seat', what: a ? 'missing in the replay' : 'not recorded' }); continue; }
+            if (a.r !== b.r) entries.push({ seat: id, part: 'resources', what: 'resources, age or research' });
+            for (const [part, key] of [['unit', 'u'], ['building', 'b']]) {
+                // A checkpoint without the detail: the seat's list as one hash.
+                if (a[key] == null) {
+                    if (a[key + 'h'] != null && a[key + 'h'] !== b[key + 'h']) entries.push({ seat: id, part, what: part + 's differ (the next detailed checkpoint names them)' });
+                    continue;
+                }
+                const ma = parse(a[key]), mb = parse(b[key]);
+                for (const [k, h] of ma) {
+                    const g = mb.get(k);
+                    if (g == null) entries.push({ seat: id, part, key: k, what: 'recorded, absent in the replay' });
+                    else if (g !== h) entries.push({ seat: id, part, key: k,
+                        what: names.filter((n, i) => h.slice(i * 2, i * 2 + 2) !== g.slice(i * 2, i * 2 + 2)).join(' + ') });
+                }
+                for (const k of mb.keys()) if (!ma.has(k)) entries.push({ seat: id, part, key: k, what: 'in the replay, not recorded' });
+                const order = [...ma.keys()].filter(k => mb.has(k)).join() !== [...mb.keys()].filter(k => ma.has(k)).join();
+                if (order) entries.push({ seat: id, part, what: 'the same ' + part + 's in a different order' });
+            }
+        }
+        if (!entries.length) return null;
+        const head = entries.slice(0, 3).map(e => [e.seat && e.seat.slice(-4), e.part, e.key, e.what].filter(Boolean).join(' ')).join('; ');
+        return { summary: head + (entries.length > 3 ? ` (+${entries.length - 3} more)` : ''), entries };
+    },
+
     spec(header) {
         return {
             setup: (header.players || []).map(p => Object.assign({ civ: p.civ, type: 'ki' },
@@ -94,6 +128,11 @@ WarResim.Replay = class {
             else if (r.kind === 'batch') { if (r.turnCount != null) c.turnCount = r.turnCount; mgr.executeTurn(c, r.envelope); }
             else if (r.kind === 'speed') g.setSimSpeed(r.speed);
             else if (r.kind === 'demote') mgr.demoteToRuleBased(c);
+            else if (r.kind === 'checkpoint') {
+                // Nothing to apply: compare, finely, and say what differs (b1048).
+                const diff = r.digest && g.stateDigest ? WarResim.digestDiff(r.digest, g.stateDigest()) : null;
+                if (diff) { this.divergedSeq = r.seq; this.detail = diff; return fail(`diverged at step ${r.step} (checkpoint ${r.seq}): ${diff.summary}`, r.step); }
+            }
             else return fail('unknown input kind ' + r.kind);
             if (r.stateHash && g.stateHash() !== r.stateHash) { this.divergedSeq = r.seq; return fail(`diverged at step ${r.step} (input ${r.seq}, ${r.kind})`, r.step); }
             this.checked++; this.next++;

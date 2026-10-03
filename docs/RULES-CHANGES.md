@@ -6,6 +6,28 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1048: checkpoints that say where a replay leaves its recording (3 October 2026)
+
+**No rules change in play; `game.js` and the harness changed, so the rules hash moves.** Transcripts recorded before this build no longer re-simulate on it, as with any such change.
+
+**Why.** asp67's 19:53 match is the first of the day that does not re-simulate. Its world hash differs at step 15109, in the first fight of the siege on Persia, after matching at step 14838. Nothing was input between the two, and every seat's view stayed identical. A whole-world hash per input could only say that something differed somewhere in those 270 steps. These were ruled out:
+- wall-clock reads in the rules;
+- the camera, sound or panels writing to units;
+- spectator input reaching unit orders;
+- the renderer's unit-list order and measured footprints;
+- standing orders;
+- the age-up that fell in the window.
+
+The cause is still open.
+
+**What changes:**
+- **Every 200 steps (ten game seconds) a transcript records a `checkpoint`.** It carries no input: just the world hash and a digest (`Game.stateDigest`), taken at the end of the step, where a replay compares. Per seat, the digest holds:
+  - a hash of resources, age and research;
+  - its units and buildings, each as one hash.
+- **Every sixth checkpoint (the first, seventh, …) adds per-entity detail:** every unit (by handle) and building as four one-byte hashes, for position, health, orders and targets, and timers and cargo.
+- **A replay compares each checkpoint and names what differs:** the seat, the part (resources, units, buildings, nodes) and, at a detailed checkpoint, the entity and kind of field. `tools/bench/transcript-replay.cjs` also prints the replay's own values for those entities.
+- **Measured on the 18:34 match:** 469 checkpoints add 305 KB to a 6.1 MB transcript.
+
 ## Build 1047: no zooming out to the island in the middle of a siege (3 October 2026)
 
 **No rules change; spectator camera only.** asp67 watched it live, in the siege on Persia's Stone Age town (3 October, 19:53 match): the camera "zoomed out in waves" to the whole island, which then sat in a third of the screen. Build 1046 fixed a real bug of the same look in the analyzer, but not this one.

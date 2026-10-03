@@ -893,6 +893,50 @@ class Game {
         return (typeof warSha256 === 'function' ? warSha256(text) : '').slice(0, 16);
     }
 
+    // Finer than stateHash, for finding WHERE a re-simulation leaves its recording (b1048).
+    // stateHash says only "the world differs"; a match that diverged on 3 October did so
+    // in 270 steps of plain simulation with every seat's view identical, and nothing
+    // recorded could say what differed. Per seat: its resources, age and research in one
+    // hash, and every unit and building as four one-byte hashes -- where it stands, its
+    // health, its orders and targets, its timers and cargo -- so a replay can name the
+    // entity and the kind of field. FNV-1a: a diagnostic, not a seal (stateHash is that).
+    stateDigest() {
+        const fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
+        const hex = (n, w) => n.toString(16).padStart(8, '0').slice(-w);
+        const ref = v => (v && (v.id || v.handle)) || null;
+        const ent = e => Game.DIGEST_GROUPS.map(g => hex(fnv(JSON.stringify(g(e, ref))), 2)).join('');
+        const seats = {};
+        for (const p of this.aiManager.aiPlayers) {
+            const u = p.units.map(e => (e.handle != null ? e.handle : e.id) + ':' + ent(e)).join(',');
+            const b = p.buildings.map(e => e.id + ':' + ent(e)).join(',');
+            seats[p.id] = {
+                r: hex(fnv(JSON.stringify(['food', 'wood', 'stone', 'gold', 'population', 'maxPopulation'].map(k => p.resources[k])
+                    .concat([p.age, !!p._eliminated, Object.keys(p.researchedTechs || {}).sort()]))), 8),
+                // The lists in one hash each, for the checkpoints that carry no detail.
+                uh: hex(fnv(u), 8), bh: hex(fnv(b), 8), u, b,
+            };
+        }
+        const nodes = hex(fnv(JSON.stringify(((this.terrain && this.terrain.resources) || []).map(r => [r.type, r.x, r.z, r.amount]))), 8);
+        return { seats, nodes };
+    }
+    // The four field groups of a digested entity, in order: position, health, orders and
+    // targets, timers and cargo. Shared with the replay, which names the group that differs.
+    static get DIGEST_GROUPS() {
+        return [
+            e => [e.x, e.z],
+            e => [e.health, e.maxHealth],
+            (e, ref) => [e.task, e.isMoving, e.isAttacking, e.targetX, e.targetZ, ref(e.attackTarget), ref(e.harvestTarget), ref(e.buildTarget)],
+            e => [e.type, e.attackTimer, e.carryingResource, e.harvestAmount, e.buildProgress, e.underConstruction,
+                  e.isProducing, e.productionType, e.productionProgress, e.foodAmount],
+        ];
+    }
+    static get DIGEST_GROUP_NAMES() { return ['position', 'health', 'orders', 'timers/cargo']; }
+    // Steps between checkpoints in a transcript: ten seconds of game time. Every
+    // CHECKPOINT_DETAIL_EVERY-th (the first, seventh, ...) carries the per-entity detail; the rest only each seat's
+    // hashes. Per entity, every ten seconds, was about 3 MB over a 40-minute match.
+    static get CHECKPOINT_STEPS() { return 200; }
+    static get CHECKPOINT_DETAIL_EVERY() { return 6; }
+
     // ---- Lockstep (an option of turn-based play) ------------------------------------
     // The world stands still while a round's seats think. When the round's moves have
     // run, it is granted exactly one slice of simulated time -- a whole number of steps
@@ -926,6 +970,10 @@ class Game {
         this.pruneBattles();   // time-driven: a quiet map must still let fights expire
         // With the step's own length: a Wonder hold cannot run while the world stands still.
         this.checkWinConditions(dt);
+        // A checkpoint for re-simulation, at the step's end where a replay compares (b1048).
+        if (this.clock.stepNo % Game.CHECKPOINT_STEPS === 0 && this.openAIAIManager && this.openAIAIManager.noteCheckpoint) {
+            this.openAIAIManager.noteCheckpoint();
+        }
     }
 
     // The frozen-step driver: advance exactly `simMs` of simulated time -- a whole number
