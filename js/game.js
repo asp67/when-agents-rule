@@ -6065,7 +6065,10 @@ class Game {
 
         // Defeat is terminal for the seat. Finishing old work must not resurrect
         // a player whose controller has already been retired.
-        players.forEach(ai => { if (this.isPlayerEliminated(ai)) ai._eliminated = true; });
+        players.forEach(ai => {
+            if (this.isPlayerEliminated(ai)) ai._eliminated = true;
+            if (ai._eliminated && !ai._cleared) this.clearEliminatedSeat(ai);
+        });
 
         const wonderTypes = ['pyramid', 'akropolis', 'firetemple', 'shrine'];
         const required = this.wonderHoldMs();
@@ -6085,6 +6088,31 @@ class Game {
         const alive = players.filter(ai => !this.isPlayerEliminated(ai));
         if (alive.length === 1 && players.length > 1) { this.endArena(alive[0], 'last_standing'); return; }
         if (alive.length === 0) { this.endArena(null, 'mutual_destruction'); return; }
+    }
+
+    // A defeated seat leaves the board (asp67, b1053), as in Age of Empires: everything it
+    // still has is removed, with the usual death and collapse. Elimination used to set a
+    // flag and nothing else, so a seat out at 85 minutes still stood on the map at 193 --
+    // ten buildings and three units, listed in the other seats' states, attacked, and its
+    // workers, on a "hold" order it gave while it lived, attacking rival workers.
+    // Quiet: no battle losses, no lost-building notes, no Town Center handling -- nothing
+    // here was destroyed by anyone. Once, at the step the seat is found eliminated.
+    clearEliminatedSeat(ai) {
+        if (!ai || ai._cleared) return;
+        ai._cleared = true;
+        for (const u of ai.units.slice()) {
+            if (u.farmRef && u.farmRef.assignedWorker === u) u.farmRef.assignedWorker = null;
+            u.health = 0; u.isAttacking = false; u.attackTarget = null; u.isMoving = false;
+            if (this.renderer && this.renderer.killUnit) this.renderer.killUnit(u);
+        }
+        ai.units.length = 0;
+        if (ai.resources && ai.resources.updatePopulation) ai.resources.updatePopulation(0);
+        for (const b of ai.buildings.slice()) {
+            b.health = 0;
+            if (this.renderer && this.renderer.killBuilding) this.renderer.killBuilding(b);
+        }
+        ai.buildings.length = 0;
+        ai.currentAgeUpgrade = null;
     }
 
     // Stop the match and hand off to the benchmark summary screen.

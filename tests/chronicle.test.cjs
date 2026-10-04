@@ -11,11 +11,14 @@ const { createMatch } = require('../tools/bench/realm.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
 
-async function board() {
+async function board({ farGuard = false } = {}) {
     const m = await createMatch({ kind: 'board', seed: 'chronicle', seats: [
         { civ: 'greek', age: 'bronze', buildings: [['town_center', -250, 0]],
           units: Array.from({ length: 10 }, (_, i) => ['warrior', -30 + (i % 5) * 3, (Math.floor(i / 5) - 0.5) * 4]) },
-        { civ: 'persian', age: 'bronze', buildings: [['house', 30, 0]], units: [['warrior', 26, 4], ['warrior', 26, -4]] },
+        // farGuard: a warrior far off keeps Persia in the match while its house falls (since
+        // b1053 an eliminated seat's buildings leave with it, so the house must fall first).
+        { civ: 'persian', age: 'bronze', buildings: [['house', 30, 0]],
+          units: [['warrior', 26, 4], ['warrior', 26, -4]].concat(farGuard ? [['warrior', 250, -250, { tag: 'far' }]] : []) },
         { civ: 'egyptian', age: 'bronze', buildings: [['town_center', 250, 250]], units: [['worker', 245, 250]] },
     ] });
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/chronicle.js'), 'utf8'), m.context, { filename: 'js/chronicle.js' });
@@ -27,13 +30,16 @@ async function board() {
 }
 
 test('a fight is told from contact to its end, with the building lost, who took it, and the elimination', async () => {
-    const { m, chr, told, run } = await board();
+    const { m, chr, told, run } = await board({ farGuard: true });
     const [a, b] = m.seats;
     run(250);   // the starting position is the baseline, not news
     assert.deepEqual(told, []);
     const before = m.snapshot ? JSON.stringify(m.snapshot()) : null;
     m.command(m.controllers[0], 'attack_target', { targetX: 30, targetZ: 0 });
     run(90000);
+    // Then its last soldier falls, far away: the elimination.
+    m.tags.far.health = 0; m.game.destroyTarget(m.tags.far);
+    run(2000);
     const kinds = told.map(e => e.kind);
     assert.ok(kinds.includes('contact'), kinds.join());
     const contact = told.find(e => e.kind === 'contact');

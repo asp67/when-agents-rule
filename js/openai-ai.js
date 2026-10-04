@@ -3489,6 +3489,9 @@ class OpenAIAIManager {
             // state listed that Town Center as standing, at 100%, for ten minutes.
             const killer = bldg.health <= 0 && bldg._lastAttacker;
             if (killer && killer.owner === ai.id) { lastSeen.delete(bldg); return; }
+            // Its owner is out: a defeated seat leaves the board (b1053), and that is public.
+            const owner = game.aiManager.aiPlayers.find(p => p.id === bldg.owner);
+            if (owner && owner._eliminated) { lastSeen.delete(bldg); return; }
             enemyBuildings.push(Object.assign({}, snap, { visible: false }));
         });
 

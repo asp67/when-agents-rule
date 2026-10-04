@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1053: a defeated seat leaves the board (4 October 2026)
+
+**Rules change; `game.js` changed.** asp67's decision, as in Age of Empires.
+- **Before:** elimination set a flag and nothing else. In the 4 October match, Yamato was out at 85 minutes and still stood on the map at 193 with ten buildings and three units. They were listed in GLM's state and could be attacked, and the defeated seats' workers kept fighting under a standing order.
+- **Now:** at the step a seat is found eliminated, everything it still has is removed, with the usual death and collapse effects, and marked dead so whatever was targeting it lets go.
+- **Quiet:** no battle losses, no lost-building notes and no Town Center handling are written. Nothing here was destroyed by anyone.
+- **Other seats** forget the defeated seat's buildings, as they already forgot its units.
+- **Only matches with three or more seats are affected.** With two, the first elimination ends the match.
+
 ## Build 1052: workers under orders, razed buildings, and a cache-friendly history (4 October 2026)
 
 **Rules and harness change; the rules hash moves.** Three issues asp67 found in a 197-minute, four-seat match (4 October, 02:12).
@@ -27,7 +36,7 @@ Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 - **Now:** the window's start stays put while the history fits. When it overflows, the start jumps forward once, leaving 60% of the budget (`HISTORY_REFILL`): one full recompute per jump. For GLM's match that is about every 85 turns, instead of every turn.
 - **The cost:** the model sees on average about 80% of the budget as history instead of 100%.
 
-**Not changed:** a defeated seat's units and buildings still stand in the world (elimination only sets a flag), and other seats still see them. Whether elimination should remove them is open.
+**Not changed here:** a defeated seat's units and buildings still stood in the world (elimination only set a flag). Build 1053 removes them.
 
 ## Build 1051: two more refusals carry their code (4 October 2026)
 
