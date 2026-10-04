@@ -725,7 +725,18 @@
             "items": {
               "type": "integer"
             },
+            "minItems": 2,
+            "maxItems": 2,
             "description": "[x, z] destination."
+          },
+          "from": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "Standing orders in patrol mode only: [x, z] the group started from, which it walks back to. The same two numbers as \"to\", so a model can read a route as a pair of destinations."
           },
           "secondsRemaining": {
             "type": "number",

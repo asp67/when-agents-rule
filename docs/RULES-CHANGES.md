@@ -6,6 +6,35 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1055: a patrol route is a pair of coordinates, both ends declared (4 October 2026)
+
+**No rules change; a contract fix.** Nothing in a match moves differently, and no model is
+told anything it was not told before. What changed is that the state contract now describes
+the field the rules have been emitting.
+
+- **The question.** `js/standing-orders.js` puts a patrol's origin on the order it reports:
+  `from: [x, z]`, patrol mode only, so a model can read the whole route rather than one end
+  of it. `game-state-schema.json` never named that field, so a harness or a port that builds
+  its reader from the contract, which is what the contract is for, would never learn the
+  origin exists.
+- **The fix.** `ordersInProgress.from` is declared, described as the other end of the patrol
+  route, and given the same shape as `to`: an integer array of exactly two. Both ends now
+  say their length, because `items: { type: 'integer' }` on a coordinate pair states half a
+  contract: an array of one integer conforms perfectly and still answers `undefined` at
+  index 1, which is a missing z rather than a place.
+- **Two keywords, so the checker stays honest.** `minItems` and `maxItems` are new to
+  `tests/lib/schema-check.cjs`, which implements exactly the keywords the schema uses and
+  throws on any it has not met. That is why the schema edit came with the checker edit:
+  without it the schema would either fail loudly on every recorded state or, worse, be
+  checked by nothing if the keyword had been added to the known set as a pass-through.
+  `tests/contract.test.cjs` now also asserts the arity bites: a two-long pair is clean, a
+  one-long destination reports `1 items < minItems 2`, a three-long one reports
+  `3 items > maxItems 2`.
+- **Results.** Every recorded state in the two shipped samples still conforms, and both
+  `ordersInProgress` emitters already agreed with the constraint: `js/openai-ai.js` and
+  `js/standing-orders.js` each write `[Math.round(x), Math.round(z)]`, so nothing that has
+  ever run produced a destination of any other length.
+
 ## Build 1054: producing needs a free population slot (4 October 2026)
 
 **Rules change (elimination); `game.js` changed.**
