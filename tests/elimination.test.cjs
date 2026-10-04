@@ -116,3 +116,36 @@ test('priests and towers are no army; a paid unit in training is',()=>{
  g.ai.units.pop();g.ai.buildings.push({type:'town_center',health:900,isProducing:true,productionType:'worker'});
  assert.equal(g.game.isPlayerEliminated(g.ai),false,'a worker already paid for is on its way');
 });
+
+// asp67, 4 Oct 2026 (b1054): GLM had lost every building but an archery range, with the bank
+// for archers and not one population slot, and was kept in the match. Producing needs room.
+test('a trainer and a full bank do not keep a seat in without a population slot', async () => {
+    const { createMatch } = require('../tools/bench/realm.cjs');
+    const m = await createMatch({ kind: 'board', seed: 'no-room', seats: [
+        { civ: 'egyptian', age: 'bronze', buildings: [['archery_range', 0, 0]], resources: { food: 2000, wood: 2000, stone: 0, gold: 500 } },
+        { civ: 'greek', age: 'bronze', buildings: [['town_center', 200, 0]] }] });
+    const g = m.game, ai = m.seats[0];
+    g.recomputeMaxPopulation(ai);
+    assert.equal(ai.resources.maxPopulation, 0, 'no house, no Town Center: no slot');
+    assert.equal(g.canAffordAnyMilitary(ai), true, 'it can pay for archers');
+    assert.equal(g.isPlayerEliminated(ai), true, 'and still it cannot play');
+    // A house gives room: in again.
+    m.addBuilding(ai, 'house', 20, 0);
+    g.recomputeMaxPopulation(ai);
+    assert.equal(g.isPlayerEliminated(ai), false, 'with a slot, the range can train');
+});
+
+test('without room, a worker who can build a house it may build keeps the seat in', async () => {
+    const { createMatch } = require('../tools/bench/realm.cjs');
+    const m = await createMatch({ kind: 'board', seed: 'no-room-b', seats: [
+        { civ: 'egyptian', age: 'bronze', buildings: [['archery_range', 0, 0]], units: [['worker', 5, 5]],
+          resources: { food: 2000, wood: 2000, stone: 0, gold: 500 } },
+        { civ: 'greek', age: 'bronze', buildings: [['town_center', 200, 0]] }] });
+    const g = m.game, ai = m.seats[0];
+    g.recomputeMaxPopulation(ai);
+    ai.researchedTechs = ai.researchedTechs || {};
+    delete ai.researchedTechs.house;
+    assert.equal(g.isPlayerEliminated(ai), true, 'a worker and no way to raise the cap: out');
+    ai.researchedTechs.house = true;
+    assert.equal(g.isPlayerEliminated(ai), false, 'it may build a house: it can climb back');
+});

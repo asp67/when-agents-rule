@@ -6006,26 +6006,39 @@ class Game {
     //      Center to gather into until it has them.
     // Not: an unfinished site with no worker left, a Town Center with no worker and no
     // food for one, towers, or a Wonder alone.
+    //
+    // Producing needs a free population slot as well as the price (asp67, b1054). GLM had
+    // lost every building but an archery range, with the bank for archers and not one
+    // slot to put one in, and was kept in the match by rule 3. Without room, a seat is in
+    // only if it can climb back: a worker who can found a Town Center or build a house it
+    // may build, or a Town Center site to finish.
     isPlayerEliminated(ai) {
         if (!ai || ai._eliminated) return true;
         const units = (ai.units || []).filter(u => u.health > 0);
         if (units.some(u => u.type !== 'worker' && u.unitType !== 'support')) return false;   // 1
         const buildings = (ai.buildings || []).filter(b => b.health > 0);
         if (buildings.some(b => !b.underConstruction && b.isProducing && b.productionType)) return false;   // 2
-        if (this.canAffordAnyMilitary(ai)) return false;   // 3, trainers
+        const cap = ai.resources && ai.resources.maxPopulation;
+        const room = typeof cap !== 'number' || cap > units.length;   // no cap known: not the gate
+        if (room && this.canAffordAnyMilitary(ai)) return false;   // 3, trainers
         const can = cost => !!(ai.resources && cost && ai.resources.hasResources(cost));
         const def = id => (typeof getUnitDefFor === 'function' ? getUnitDefFor(ai.civilization, id) : null);
         const workerCost = (def('worker') || {}).cost || { food: 50 };
         const townCenter = buildings.some(b => b.type === 'town_center' && !b.underConstruction);
-        if (townCenter && can(workerCost)) return false;   // 3, Town Center
+        if (townCenter && room && can(workerCost)) return false;   // 3, Town Center
         if (!units.some(u => u.type === 'worker')) return true;   // nobody left to build: out
         const producer = b => b.type === 'town_center' || this.militaryOptions(ai, b.type).length > 0;
-        if (buildings.some(b => b.underConstruction && producer(b))) return false;   // 4, a site to finish
+        if (buildings.some(b => b.underConstruction && (b.type === 'town_center' || (room && producer(b))))) return false;   // 4, a site to finish
         if (townCenter) return false;   // 4, gathers into it
         const bdef = t => (typeof getBuildingDef === 'function' ? getBuildingDef(t) : null);
         const tcCost = (bdef('town_center') || {}).cost || { food: 100, wood: 100, stone: 100, gold: 100 };
         if (can(tcCost)) return false;   // 4, can found a Town Center
-        for (const t of ['barracks', 'archery_range', 'stable']) if (can((bdef(t) || {}).cost)) return false;   // 4, a trainer
+        if (room) {
+            for (const t of ['barracks', 'archery_range', 'stable']) if (can((bdef(t) || {}).cost)) return false;   // 4, a trainer
+        } else {
+            const house = bdef('house');   // 4, a house to make room
+            if (house && can(house.cost) && (!house.requiresTech || (ai.researchedTechs && ai.researchedTechs[house.requiresTech]))) return false;
+        }
         return true;
     }
 

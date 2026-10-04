@@ -6,6 +6,18 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1054: producing needs a free population slot (4 October 2026)
+
+**Rules change (elimination); `game.js` changed.**
+- **What happened:** GLM had lost every building but an archery range. It had the bank for archers and not one population slot to train one, and the elimination check kept it in the match: "a finished building that can produce such a unit and pay for one now". The check never looked at the cap.
+- **Now:** a trainer or a Town Center keeps a seat in only if it has room to train.
+- **Without room,** a seat is in only if it can climb back:
+  - a worker who can found a Town Center;
+  - a worker who can build a house the seat may build (its tech researched);
+  - a Town Center site to finish.
+- **A seat with nothing but a trainer and a full bank is out.**
+- **Unchanged:** any fighting unit, or a unit already in training, still keeps a seat in.
+
 ## Build 1053: a defeated seat leaves the board (4 October 2026)
 
 **Rules change; `game.js` changed.** asp67's decision, as in Age of Empires.
