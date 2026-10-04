@@ -32,6 +32,9 @@ class StandingOrders {
     // could shoot it from where it may not go. tests/hold-mode.test.cjs pins this
     // against the unit and building data: a range raised past it fails a test, not a match.
     static get HOLD_LEASH() { return 19; }
+    // How long after being hit a worker under an order still answers its attacker (b1052):
+    // the auto-defense's own window for "being attacked".
+    static get WORKER_ANSWER_MS() { return 4000; }
     constructor(game, manager) { this.game=game;this.manager=manager;this.groups=new Set();this.time=0;this.scan=0; }
     members(g) {
         const owned=new Set(g.owner.units);
@@ -322,6 +325,23 @@ class StandingOrders {
             for(const u of units){
                 if((g.mode==='scout'&&!focus)||u.unitType==='support'||!(u.attack>0)){
                     if(u.attackTarget)this.releaseTarget(g,u);continue;
+                }
+                // A worker fights only for itself, under an order as without one (b1052): it
+                // answers the unit that has just hit it, and nothing else. Held as soldiers
+                // were, workers parked on "hold" walked up to rival workers and attacked
+                // them -- and went on doing it after their seat was eliminated, its last
+                // order still standing (asp67, 4 Oct; nobody had touched them).
+                if(u.type==='worker'){
+                    const atk=u._lastAttacker,now=this.game.simNow?this.game.simNow():0;
+                    const answer=atk&&atk.health>0&&atk.unitType&&atk.owner!==u.owner&&u._lastDamageTime!=null
+                        &&now-u._lastDamageTime<=StandingOrders.WORKER_ANSWER_MS
+                        &&WarMath.hypot(atk.x-u.x,atk.z-u.z)<=Game.SELF_DEFENSE_LEASH;
+                    if(answer){
+                        if(u.attackTarget!==atk){u.attackTarget=atk;u.isAttacking=true;g.chases.delete(u);}
+                        u.formationOffset=null;u.formationAxis=null;u.formationGroup=null;u.marchSpeed=null;
+                        fighting=true;
+                    }else if(u.attackTarget){u.attackTarget=null;u.isAttacking=false;this.game.clearRetaliation(u);g.chases.delete(u);}
+                    continue;
                 }
                 let target=u.attackTarget;
                 // A target held from before is kept on a Wonder run only if it is the

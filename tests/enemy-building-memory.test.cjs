@@ -51,3 +51,29 @@ test('a battle side always says what it lost, {} when nothing', async () => {
     const battle = mgr.buildGameStateJSON(c).battles[0];
     assert.deepEqual(JSON.parse(JSON.stringify(battle.enemy[0].lost)), {}, 'an explicit nothing');
 });
+
+// asp67, 4 Oct 2026 (b1052): GLM razed a Town Center and moved on before its next turn; its
+// state listed that Town Center as standing, at 100%, for ten minutes, and its attack on it
+// by id was told the target "died in the seconds between the state you read and this command".
+test('a building the seat\'s own units destroyed is forgotten, even out of sight', async () => {
+    const { m, look, eye, house } = await board();
+    look();
+    eye.x = -200;
+    house.health = 0; house._lastAttacker = { owner: m.seats[0].id };
+    const p = m.seats[1]; p.buildings.splice(p.buildings.indexOf(house), 1);
+    m.game.renderer.removeBuilding(house);
+    assert.equal(look(), null, 'it fell to its own army: no memory of it standing');
+});
+
+test('attacking a remembered building that has fallen is told so, not "it died while you thought"', async () => {
+    const { m, c, look, eye, house } = await board();
+    look();
+    eye.x = -200;
+    assert.equal(look().visible, false);
+    house.health = 0;
+    const p = m.seats[1]; p.buildings.splice(p.buildings.indexOf(house), 1);
+    m.game.renderer.removeBuilding(house);
+    const res = String(m.command(c, 'attack_target', { targetId: house.id }));
+    assert.match(res, /no longer there: you remembered it, out of sight/);
+    assert.doesNotMatch(res, /in the seconds between/);
+});

@@ -2934,6 +2934,7 @@ class OpenAIAIManager {
         controller._shownWorkerPools = p.workerPools;
         controller.seat._idleTaken = 0;
         controller.seat._shownTargetIds = p.shownTargetIds;
+        controller.seat._rememberedTargetIds = p.rememberedTargetIds;
         controller._shownBuildings = p.shownBuildings;
         controller._shownResearched = p.shownResearched;
         controller._shownResearching = p.shownResearching;
@@ -3483,6 +3484,11 @@ class OpenAIAIManager {
         lastSeen.forEach((snap, bldg) => {
             if (listed.has(bldg)) return;
             if (bldg.isWonder || seeNow(snap.x, snap.z)) { lastSeen.delete(bldg); return; }
+            // Destroyed by this seat's own units: it was there, so it knows (b1052), as for
+            // units. GLM razed a Town Center and moved on before its next turn, and its
+            // state listed that Town Center as standing, at 100%, for ten minutes.
+            const killer = bldg.health <= 0 && bldg._lastAttacker;
+            if (killer && killer.owner === ai.id) { lastSeen.delete(bldg); return; }
             enemyBuildings.push(Object.assign({}, snap, { visible: false }));
         });
 
@@ -3959,6 +3965,9 @@ class OpenAIAIManager {
             // undefined and the final word would lose its "Peak:" line entirely.
             // Both are true at ONE lane as well -- the lane, not the seat, has built
             // state ever since the pool landed.
+            // Shown, but only as remembered (b1052): a target that is gone may have been
+            // gone for a long time, so "it died while you were thinking" is not the reason.
+            pending.rememberedTargetIds = new Set((enemyBuildings || []).filter(b => b && b.visible === false).map(b => String(b.id)));
             pending.shownTargetIds = new Set(
                 [].concat((enemyUnits || []).filter(u => u && u.visible), enemyBuildings || [])
                   .map(e => String(e && e.id)).filter(x => x && x !== 'undefined'));
@@ -4440,15 +4449,23 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     buildRollingTurns(controller, budget, est) {
         const log = controller.turnLog || [];
         if (!log.length || budget < 80) return [];
-        const picked = [];
+        // A window whose START stays put (b1052). Taking the newest turns that fit dropped
+        // the oldest one on every turn once the budget was full, so the conversation's
+        // first message changed every turn and the server's prefix cache could reuse
+        // nothing: measured on 4 Oct, GLM's turns went from ~18 s to ~100 s the turn its
+        // prompt reached the budget (110k tokens, minute 58), for the rest of a 197-minute
+        // match. Now the start is kept while the window fits, and when it does not it moves
+        // forward in one jump, to HISTORY_REFILL of the budget: one full recompute per jump.
+        const cost = p => est(p.user) + est(p.assistant) + est(p.outcome || '') + 16;
+        let start = Math.max(0, log.indexOf(controller._histAnchor));
         let used = 0;
-        for (let i = log.length - 1; i >= 0; i--) {
-            const p = log[i];
-            const cost = est(p.user) + est(p.assistant) + est(p.outcome || '') + 16;
-            if (used + cost > budget && picked.length) break;
-            used += cost; picked.push(p);
+        for (let i = start; i < log.length; i++) used += cost(log[i]);
+        if (used > budget) {
+            const target = budget * OpenAIAIManager.HISTORY_REFILL;
+            while (start < log.length - 1 && used > target) { used -= cost(log[start]); start++; }
         }
-        picked.reverse();
+        controller._histAnchor = log[start];
+        const picked = log.slice(start);
         const turns = [];
         picked.forEach((p, j) => {
             // The OUTCOME of the previous turn's action is observed right before this
@@ -4828,6 +4845,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             provider, model.endpoint, model.model || 'default', systemPrompt, turns, reqOpts || this.requestOptions(model)) : null;
         return { systemPrompt, turns, provider, advice, request };
     }
+
+    // How full the history window is left after a jump (buildRollingTurns): the rest of the
+    // budget is what the following turns append into before the next jump.
+    static get HISTORY_REFILL() { return 0.6; }
 
     // The parameters a turn is sent with: the model's own, overlaid with any request
     // shape its endpoint was found to need this match (model._reqOpts).
@@ -7827,6 +7848,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const wasShown = this.wasShownTarget(ai, targetId);
             const mem = ai._unitMemory && ai._unitMemory.get(String(targetId));
             if (!wasShown && mem) return this.targetOutOfSight(ai, targetId);
+            const ctrlR = this.aiControllers.find(c => c.aiPlayer === ai);
+            const remembered = !!(ctrlR && ctrlR._rememberedTargetIds && ctrlR._rememberedTargetIds.has(String(targetId)));
+            if (wasShown && remembered) {
+                this.outcome('log.out.targetGone', { targetId });
+                return `[ERROR] "${targetId}" is no longer there: you remembered it, out of sight, and it has fallen since you last saw it. Nothing was executed and this does not count against you. targetX/targetZ sends an attack-move that fights whatever stands there now.`;
+            }
             if (wasShown) {
                 console.log(`[OpenAIAI] ${ai.id}: Target "${targetId}" died before the order landed`);
                 this.outcome('log.out.targetGone', { targetId });

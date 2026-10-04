@@ -741,3 +741,24 @@ test('a latecomer joins a formation that has stopped at its own top speed', () =
     h.step(150);
     assert.equal(h.g.moveSpeedOf(rider, 50), 1);
 });
+
+// asp67, 4 Oct 2026 (b1052): workers on "hold" attacked rival workers nobody had touched,
+// and went on doing it after their seat was eliminated. A worker fights only for itself.
+test('a worker under an order never picks a fight, and answers only the one who hit it', () => {
+    for (const mode of ['hold', 'guard']) {
+        const h = setup();
+        const w = h.unit('worker', 0, 0, 1);
+        w.type = 'worker'; w.unitType = undefined; w.attack = 3;
+        h.owner.units.push(w);
+        const grp = h.issue(mode, { x: 0, z: 0 }, {});
+        const s = grp.slots.get(w); w.x = s.x; w.z = s.z; w.isMoving = false;
+        const passer = Object.assign(h.rival(w.x + 1.2, w.z), { type: 'worker', unitType: undefined });
+        h.step(450);
+        assert.equal(w.attackTarget, null, mode + ': an enemy worker beside it is left alone');
+        const raider = h.rival(w.x + 1, w.z + 1);
+        w._lastAttacker = raider; w._lastDamageTime = h.g.simNow();
+        h.step(150);
+        assert.equal(w.attackTarget, raider, mode + ': the one that hit it is answered');
+        assert.notEqual(w.attackTarget, passer);
+    }
+});

@@ -6,6 +6,29 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1052: workers under orders, razed buildings, and a cache-friendly history (4 October 2026)
+
+**Rules and harness change; the rules hash moves.** Three issues asp67 found in a 197-minute, four-seat match (4 October, 02:12).
+
+**Workers under a standing order picked fights:**
+- **What happened:** Greek workers attacked Egyptian and Yamato workers nobody had touched, and went on doing it after Greece was eliminated at 56.7 minutes.
+- **Measured in the replay:** every one of them was under a `hold` order space-bunny had given before its elimination, still standing. Standing orders pick targets for every member with an attack, workers included, and a worker under an order was exempt from the self-defense rule that otherwise governs it.
+- **Now:** a worker under any order never picks a fight. It answers only the unit that has hit it in the last 4 s, within its usual 30, and otherwise keeps its slot. That is the 1 October rule ("a worker fights only for itself"), now under orders too.
+
+**A Town Center remembered standing after the seat's own army razed it:**
+- **What happened:** GLM razed Persia's Town Center at (-170, 310) at 179 minutes and moved on before its next turn. Its state listed that Town Center as standing, at 100%, for ten minutes. At 189 minutes GLM attacked it by id, mistaking it for the new one Persia had built at (150, 330), and was told it "died in the seconds between the state you read and this command".
+- **Now:**
+  - a building destroyed by the seat's own units is forgotten, as units already were;
+  - an attack by id on a building the seat only remembered, that has since fallen, is told so ("you remembered it, out of sight, and it has fallen since you last saw it"), not that it died while the model thought.
+
+**Turns took about 100 s instead of about 18 once the history was full:**
+- **What happened:** GLM's prompt reached the context budget (110k tokens) at minute 58. From that turn on, every turn took about 100 s, for the rest of the match.
+- **The cause:** the rolling history took the newest turns that fit, so once full it dropped the oldest on every turn. The conversation's first message changed every turn, and the server's prefix cache could reuse nothing.
+- **Now:** the window's start stays put while the history fits. When it overflows, the start jumps forward once, leaving 60% of the budget (`HISTORY_REFILL`): one full recompute per jump. For GLM's match that is about every 85 turns, instead of every turn.
+- **The cost:** the model sees on average about 80% of the budget as history instead of 100%.
+
+**Not changed:** a defeated seat's units and buildings still stand in the world (elimination only sets a flag), and other seats still see them. Whether elimination should remove them is open.
+
 ## Build 1051: two more refusals carry their code (4 October 2026)
 
 **Harness change; the rules hash moves.** In the 4 October match four refusals came back without an outcome code, so the Bench counted them as uncoded:
