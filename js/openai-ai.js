@@ -6292,6 +6292,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 } else if (params?.targetX !== undefined && params?.targetZ !== undefined) {
                     actionResult = this.executeAttackPosition(ai, game, params.targetX, params.targetZ, params.units, params.unitIds, params.matchSpeed, params.formation);
                 } else {
+                    // Coded (b1051): it counted as uncoded in the Bench.
+                    this.outcome('log.out.attackNeedsCoords', {});
                     actionResult = `[ERROR] attack_target requires "targetId" or ("targetX" and "targetZ") parameters.`;
                 }
                 break;
@@ -8471,7 +8473,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     executeAssignWorkers(ai, game, params) {
         if(params.resourceType===undefined){
             const inferred=this.inferWorkerResource(ai,game,params);
-            if(inferred.error)return '[ERROR] assign_workers: '+inferred.error;
+            if(inferred.error){this.outcome('log.out.assignNeedsResource',{});return '[ERROR] assign_workers: '+inferred.error;}   // coded (b1051)
             params={...params,resourceType:inferred.resourceType};
         }
         // "farm" is a JOB, not a node type: it staffs your own farms rather than

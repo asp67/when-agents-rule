@@ -40,7 +40,7 @@ test('classify: a code decides; an OK without one is done; a rejection without o
 // A static count of "[ERROR]" returns with no outcome code set in the six lines above.
 // It overcounts (a code set further up the same handler counts as missing), which fails
 // safe. When one gains a code, lower the ceiling; it must never rise.
-const UNCODED_CEILING = 6;
+const UNCODED_CEILING = 4;
 test(`uncoded [ERROR] returns in the harness: at most ${UNCODED_CEILING}`, () => {
     const lines = SRC.split(/\r?\n/);
     const uncoded = [];

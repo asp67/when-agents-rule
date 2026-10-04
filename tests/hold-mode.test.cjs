@@ -151,3 +151,15 @@ test('an unknown move mode is refused as moveBadMode', async () => {
     assert.deepEqual([o.code, o.verdict], ['moveBadMode', 'avoidable']);
     assert.match(String(c.seat.lastActionResult), /mode must be march, scout, guard, hold or patrol/);
 });
+
+// b1051: two refusals that carried no code, seen in the 4 Oct match.
+test('an attack with no target and an assignment with no resource are coded', async () => {
+    const m = await createMatch({ kind: 'board', seed: 'coded-refusals', seats: [
+        { civ: 'greek', age: 'bronze', buildings: [['town_center', -250, 0]], units: [['warrior', 0, 0], ['worker', -240, 0]] },
+        { civ: 'persian', age: 'bronze', buildings: [['town_center', 250, 0]] }] });
+    const c = m.controllers[0], mgr = m.game.openAIAIManager;
+    mgr.executeTurn(c, { commands: [{ action: 'attack_target', params: { units: { warrior: 1 } } }] });
+    assert.equal(c._lastOutcome.code, 'attackNeedsCoords');
+    mgr.executeTurn(c, { commands: [{ action: 'assign_workers', params: { count: 1, from: 'idle' } }] });
+    assert.equal(c._lastOutcome.code, 'assignNeedsResource', String(c.seat.lastActionResult));
+});

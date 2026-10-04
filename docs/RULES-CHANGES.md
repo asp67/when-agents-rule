@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1051: two more refusals carry their code (4 October 2026)
+
+**Harness change; the rules hash moves.** In the 4 October match four refusals came back without an outcome code, so the Bench counted them as uncoded:
+- `attack_target` with neither a target id nor coordinates is now `attackNeedsCoords`;
+- `assign_workers` with neither a resource type nor coordinates is now `assignNeedsResource`.
+
+Both codes already existed for these cases on other paths. The Bench's ratchet on uncoded refusals in the harness drops from 6 to 4.
+
 ## Build 1050: a latecomer joins a standing formation at full speed (4 October 2026)
 
 **Rules change (movement); `game.js` changed.** asp67 watched a whole army stand in formation while one chariot, still on its way, crept toward it as if the formation were marching.
