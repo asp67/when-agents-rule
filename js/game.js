@@ -4184,17 +4184,37 @@ class Game {
     // not, which is the one case the release existed to cover.
     static get FORMATION_REFORM_PACE() { return 0.6; }
 
+    // How near its slot a member counts as standing in it (the standing orders' arrival test).
+    static get FORMATION_AT_SLOT() { return 1.6; }
+
+    // Has any part of this formation stopped in its slots? Once per step per order: every
+    // member asks while moving.
+    formationSettled(order) {
+        const step = this.clock ? this.clock.stepNo : 0;
+        if (order._settledStep === step) return order._settled;
+        order._settledStep = step;
+        order._settled = order.units.some(p => p.health > 0 && p._standingOrder === order && !p.isMoving && (() => {
+            const s = order.slots.get(p);
+            return !!s && WarMath.hypot(p.x - s.x, p.z - s.z) <= Game.FORMATION_AT_SLOT;
+        })());
+        return order._settled;
+    }
+
     moveSpeedOf(unit, deltaTime) {
         if (!unit) return 1.0;
         const own = unit.speed || 1.0;
         const m = unit.marchSpeed;
         if (!(typeof m === 'number' && m > 0)) return own;
         const pace = Math.min(m, own);
-        // A priest temporarily leaves its lane to heal, but remains part of the
-        // marching body. Keep the existing regrouping pace until it returns.
         const order=unit._standingOrder;
-        if(order&&!order.fighting&&order.units.some(p=>p.health>0&&p._standingOrder===order&&p._healingFormation))
-            return pace * Game.FORMATION_REFORM_PACE;
+        // Joining a formation that has stopped: at its own top speed (asp67, b1050). The
+        // shared pace is for marching in unison. Measured on 4 Oct: a chariot (speed 2)
+        // crept 82 units to an army of 68 standing in its slots at 0.54 -- the march's
+        // 0.9, cut again to 60% because a priest was healing -- for over a minute.
+        if (order && !order.fighting && order.slots && this.formationSettled(order)) {
+            const slot = order.slots.get(unit);
+            if (!slot || WarMath.hypot(unit.x - slot.x, unit.z - slot.z) > Game.FORMATION_AT_SLOT) return own;
+        }
         // matchSpeed sets the pace of the FORMATION, not a leash on every unit. A unit
         // out of its place runs at its own speed until it FINDS that place, and is held
         // to the pace again the moment it has.
@@ -4222,11 +4242,18 @@ class Game {
             }
             const along = (unit.x - unit.targetX) * ax.x + (unit.z - unit.targetZ) * ax.z;
             if (along < g.lead - Game.FORMATION_IN_PLACE) return own;   // still finding its place
-            // In place, but the body is not: hold back so the stragglers can close. The
-            // slowest of them is running at exactly this pace, so anything at or above
-            // it leaves that one behind permanently.
-            if (g.trailing > 0) return pace * Game.FORMATION_REFORM_PACE;
         }
+        // The regrouping slowdowns hold back the units IN place, so others can close up;
+        // a unit still finding its place is released above, before them (b1050). The
+        // priest check stood first and slowed the stragglers too, the very units it waits for.
+        // A priest temporarily leaves its lane to heal, but remains part of the
+        // marching body. Keep the existing regrouping pace until it returns.
+        if(order&&!order.fighting&&order.units.some(p=>p.health>0&&p._standingOrder===order&&p._healingFormation))
+            return pace * Game.FORMATION_REFORM_PACE;
+        // In place, but the body is not: hold back so the stragglers can close. The
+        // slowest of them is running at exactly this pace, so anything at or above
+        // it leaves that one behind permanently.
+        if (ax && g && g.trailing > 0) return pace * Game.FORMATION_REFORM_PACE;
         return pace;
     }
 

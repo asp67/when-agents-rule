@@ -716,3 +716,28 @@ test('a priest re-plans its stand when a shuffling patient drifts out of reach',
  h.step(300);
  assert.ok(standGap()<=reach-.2,'re-planned to reach it again: '+standGap().toFixed(2));
 });
+
+// asp67, 4 Oct 2026 (b1050): a whole army stood in formation while one chariot, still on its
+// way, crept toward it at the slowest member's pace. The pace is for marching in unison; a
+// unit joining a formation that has stopped comes at its own speed.
+test('a latecomer joins a formation that has stopped at its own top speed', () => {
+    const h = setup();
+    const a = h.unit('warrior', 98, 0, 1), b = h.unit('warrior', 98, 2, 1), rider = h.unit('warrior', 0, 0, 3);
+    const priest = h.unit('priest', 97, 1, 1);
+    h.owner.units.push(a, b, priest, rider);
+    const grp = h.issue('guard', { x: 100, z: 0 });
+    assert.equal(rider.marchSpeed, 1, 'the formation marches at its slowest');
+    for (const u of [a, b, priest]) { const s = grp.slots.get(u); u.x = s.x; u.z = s.z; u.isMoving = false; u.targetX = s.x; u.targetZ = s.z; }
+    h.step(150);
+    // As in the match: a priest off healing, which slowed the whole group to 60% of its pace.
+    priest._healingFormation = {};
+    assert.equal(h.g.moveSpeedOf(rider, 50), 3, 'the army stands in its slots: the rider comes at full speed');
+    const x0 = rider.x;
+    for (let i = 0; i < 40; i++) { priest._healingFormation = {}; h.step(50); }
+    assert.ok(rider.x - x0 > 4, 'and covers ground like it: ' + (rider.x - x0).toFixed(1));
+    // Once it stands in its slot, the formation's pace is its pace again.
+    const s = grp.slots.get(rider); rider.x = s.x; rider.z = s.z; rider.isMoving = false;
+    priest._healingFormation = null;
+    h.step(150);
+    assert.equal(h.g.moveSpeedOf(rider, 50), 1);
+});

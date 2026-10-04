@@ -6,6 +6,27 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1050: a latecomer joins a standing formation at full speed (4 October 2026)
+
+**Rules change (movement); `game.js` changed.** asp67 watched a whole army stand in formation while one chariot, still on its way, crept toward it as if the formation were marching.
+
+**Measured in a replay of that match (23:44, GLM's turn 252):**
+- Egypt's chariot (speed 2) closed 82 units on 68 units standing in their slots at 0.54. That is 8 units per 5 seconds, against 30 for chariots moving freely.
+- 0.54 is the march's shared pace (0.9, the slowest member's) cut again to 60% because a priest was off healing.
+
+**The cause:** the pace rules ran in the wrong order.
+- The slowdown "a priest is healing: the group regroups at 60%" stood first, before the release "a unit still finding its place runs at its own speed".
+- So it slowed exactly the units the group was waiting for.
+- And once a formation had arrived, nothing released a latecomer from the shared pace at all.
+
+**Now:**
+1. **If part of the formation stands in its slots and it is not fighting,** any member not yet in its slot moves at its own top speed.
+2. **The chase rules** are unchanged.
+3. **A unit still finding its place** runs at its own speed.
+4. **Only then the regrouping slowdowns** (a healing priest, stragglers behind the body), for the units already in place.
+
+While a formation marches, nobody stands in a final slot, so the shared pace holds as before.
+
 ## Build 1049: an unknown move mode is refused with a code (3 October 2026)
 
 **Harness change; the rules hash moves.**
