@@ -384,6 +384,56 @@
    ],
    "bytes": 8461772,
    "default": false
+  },
+  {
+   "file": "2026-10-03_glm5.3-space-bunny-mimo-v2.6-deepseek-v4.1_80min.jsonl",
+   "matchId": "match-20261003-234407",
+   "date": 1791063847444,
+   "duration": "80:16",
+   "turns": 529,
+   "outcome": "wonder",
+   "seed": "rmusx64xgkt4u",
+   "difficulty": "medium",
+   "turnBased": false,
+   "promptVersion": "agents-rule-v105",
+   "build": 1049,
+   "winner": "DGX GLM5.3 Flash",
+   "players": [
+    {
+     "seat": 0,
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "civ": "Egyptians",
+     "power": 5804,
+     "winner": true
+    },
+    {
+     "seat": 3,
+     "name": "O deepseek-v4.1-flash",
+     "model": "deepseek/deepseek-v4.1-flash",
+     "civ": "Yamato",
+     "power": 1917,
+     "winner": false
+    },
+    {
+     "seat": 2,
+     "name": "O mimo-v2.6 flash",
+     "model": "xiaomi/mimo-v2.6-flash",
+     "civ": "Persians",
+     "power": 1565,
+     "winner": false
+    },
+    {
+     "seat": 1,
+     "name": "O space-bunny",
+     "model": "stealth/space-bunny-alpha",
+     "civ": "Greeks",
+     "power": 109,
+     "winner": false
+    }
+   ],
+   "bytes": 11869731,
+   "default": false
   }
  ]
 }
