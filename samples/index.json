@@ -484,6 +484,56 @@
    ],
    "bytes": 10624564,
    "default": false
+  },
+  {
+   "file": "2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl",
+   "matchId": "match-20261005-194200",
+   "date": 1791222121908,
+   "duration": "99:16",
+   "turns": 469,
+   "outcome": "wonder",
+   "seed": "rmuvjehoy37wk",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v105",
+   "build": 1054,
+   "winner": "DGX GLM5.3 Flash",
+   "players": [
+    {
+     "seat": 3,
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "civ": "Yamato",
+     "power": 4502,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "O claude-sonnet-5.5",
+     "model": "anthropic/claude-sonnet-5.5",
+     "civ": "Greeks",
+     "power": 3516,
+     "winner": false
+    },
+    {
+     "seat": 2,
+     "name": "O deepseek-v4.1-flash",
+     "model": "deepseek/deepseek-v4.1-flash",
+     "civ": "Persians",
+     "power": 1978,
+     "winner": false
+    },
+    {
+     "seat": 0,
+     "name": "O gpt-6.1-sol",
+     "model": "openai/gpt-6.1-sol",
+     "civ": "Egyptians",
+     "power": 108,
+     "winner": false
+    }
+   ],
+   "bytes": 10846005,
+   "default": false
   }
  ]
 }
