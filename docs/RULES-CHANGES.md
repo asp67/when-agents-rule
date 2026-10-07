@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1062: the Roman door (7 October 2026)
+
+**Look only; no rules change.** Found by asp67 in the showcase.
+
+The Roman door trim of b1061 set a solid white disc on the lintel. It covered the doorway and reached up into the roof.
+- It is now a real arch: two pilasters carry seven stones, with a keystone, over a round-topped opening.
+- The arch is sized from the door, so it fits the house, the insula and the academy alike.
+- The Roman house door now stands on the ground, under the arch, in both ages.
+
 ## Build 1061: the new civilizations look like themselves (7 October 2026)
 
 **Look only; no rules change.** Found by asp67 in the civilization showcase.

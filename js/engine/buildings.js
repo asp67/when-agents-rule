@@ -53,11 +53,18 @@
         } else if (civ === 'persian') {
             part(p, 'box', [doorW + 1.6, 0.3, 0.24], 'cloth', { x, y: doorH + 0.32, z, team: true });
         } else if (civ === 'roman') {
-            // Pilasters under a round arch (b1061).
-            const px = doorW / 2 + 0.3;
-            part(p, 'box', [0.36, doorH + 0.1, 0.3], 'plaster', { x: x - px, y: (doorH + 0.1) / 2, z });
-            part(p, 'box', [0.36, doorH + 0.1, 0.3], 'plaster', { x: x + px, y: (doorH + 0.1) / 2, z });
-            part(p, 'cylinder', [doorW / 2 + 0.48, doorW / 2 + 0.48, 0.3, 12], 'plaster', { x, y: doorH + 0.1, z, rx: Math.PI / 2 });
+            // Pilasters carrying a round arch over a round-topped doorway (b1061, rebuilt
+            // b1062). The arch is a ring of stones, not a disc: b1061 set a solid white
+            // disc on the lintel, which covered the door and stuck up into the roof.
+            const r = doorW / 2 + 0.12, px = r + 0.06;
+            part(p, 'box', [0.3, doorH, 0.28], 'plaster', { x: x - px, y: doorH / 2, z });
+            part(p, 'box', [0.3, doorH, 0.28], 'plaster', { x: x + px, y: doorH / 2, z });
+            part(p, 'cylinder', [doorW / 2, doorW / 2, 0.1, 12], 'bark', { x, y: doorH, z: z - 0.06, rx: Math.PI / 2 });   // the round top of the opening
+            for (let i = 0; i <= 6; i++) {   // the voussoirs, keystone in the middle
+                const a = (i / 6) * Math.PI;
+                part(p, 'box', [0.24, i === 3 ? 0.3 : 0.24, 0.3], 'plaster',
+                    { x: x + Math.cos(a) * r, y: doorH + Math.sin(a) * r, z, rz: a - Math.PI / 2 });
+            }
         } else if (civ === 'viking') {
             // Carved door posts that cross above the lintel (b1061).
             const px = doorW / 2 + 0.25;
@@ -177,7 +184,7 @@
                 [-1.4, 0, 1.4].forEach(x => part(p, 'box', [0.6, 0.8, 0.12], 'bark', { x, y: 3.3, z: 1.96 }));
                 part(p, 'pyramid', [4.9, 4.5, 1.0], 'rooftile', { y: 4.4 });
             }
-            part(p, 'box', [1.0, 1.5, 0.22], 'bark', { y: 0.95, z: age === 'bronze' ? 1.96 : 1.96 });
+            part(p, 'box', [1.0, 1.5, 0.22], 'bark', { y: 0.75, z: 1.96 });   // ground to 1.5, under the arch
             doorTrim(p, 'roman', tier, 2.05, 1.0, 1.5);
         },
         viking: (p, age, tier) => {

@@ -199,3 +199,14 @@ test('the new civilizations\' Town Centers, houses and academies are their own (
     assert.equal(sand.length, 1);
     assert.ok(sand[0].m[13] < 0.5, 'the floor at y ' + sand[0].m[13]);
 });
+
+test('the Roman door is an arch of stones under the eaves, not a disc over the door (b1062)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const parts = scope.window.EngineBuildings.parts('house', { civ: 'roman', age: 'bronze' });
+    const discs = parts.filter(p => p.kind === 'cylinder' && p.tex === 'plaster');
+    assert.equal(discs.length, 0, 'b1061 laid a white disc over the doorway');
+    const arch = parts.filter(p => p.kind === 'box' && p.tex === 'plaster' && p.args[0] === 0.24);
+    assert.equal(arch.length, 7);
+    for (const s of arch) assert.ok(s.m[13] + s.args[1] / 2 <= 2.3, 'below the eaves (2.3): ' + (s.m[13] + s.args[1] / 2));
+});
