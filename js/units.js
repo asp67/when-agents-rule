@@ -85,10 +85,13 @@ const UNIT_DEFS = {
         tier: 'iron',
         description: 'Elite Fernkampf-Einheit'
     },
+    // The first scout (asp67, b1055): every seat starts with 50 gold, which pays for the
+    // stable; the scout itself costs none, so a seat can ride out to find gold and stone
+    // before it has mined any. At 100 food and 30 gold the opening needed 80 gold.
     scout_cavalry: {
         id: 'scout_cavalry',
         name: 'Aufklärungskavallerie',
-        cost: { food: 100, wood: 0, stone: 0, gold: 30 },
+        cost: { food: 150, wood: 80, stone: 0, gold: 0 },
         health: 100,
         speed: 2.2,
         attack: 8,

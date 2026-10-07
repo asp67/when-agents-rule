@@ -199,8 +199,9 @@ const UNIT_UPGRADE_PATHS = {
     // Infantry (barracks)
     militia: { neolithic: 'militia', bronze: 'warrior', iron: 'warrior' },
     warrior: { bronze: 'warrior', iron: 'champion' },
-    // Cavalry (stable)
-    scout_cavalry: { bronze: 'scout_cavalry', iron: 'cavalry' },
+    // Cavalry (stable). The scout stays a scout all match (asp67, b1055): it is the
+    // early-game scout, not a fighter, and it became cavalry at the Iron age -- for
+    // Egypt and Greece cavalry they cannot even train.
     cavalry: { iron: 'heavy_cavalry' },
     // Ranged (archery_range)
     archer: { bronze: 'archer', iron: 'crossbowman' }

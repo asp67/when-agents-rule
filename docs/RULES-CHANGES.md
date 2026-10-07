@@ -6,6 +6,20 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1055: the scout costs no gold, and stays a scout (7 October 2026)
+
+**Rules change; `units.js` and `buildings.js` changed.** asp67's design: the scout cavalry is every civilization's first scout. It is cheap, weak and far-seeing, and meant to find gold and stone before a seat has mined any. Egypt has it too, beside its chariot, which is the fighter.
+
+**The price was 100 food and 30 gold; it is now 150 food and 80 wood.**
+- Every seat starts with 50 gold, and the stable costs exactly 50 (horseback costs none).
+- With a 30-gold scout, the intended opening needed 80 gold: a seat had to mine gold before it could ride out to find it.
+
+**The scout no longer becomes cavalry at the Iron age.**
+- It stays a scout all match.
+- Egypt and Greece cannot train cavalry, but their scouts became cavalry anyway.
+
+**Its vision is unchanged:** 22.5, as for all cavalry, against 15 for everything else. That is what makes the later horseback units worth their price.
+
 ## Build 1054: producing needs a free population slot (4 October 2026)
 
 **Rules change (elimination); `game.js` changed.**
