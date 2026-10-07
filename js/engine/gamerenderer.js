@@ -871,8 +871,10 @@
             const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(unit.seat) : null;
             const badge = this._badgeTints(unit.seat, tint);
             const options={civ:unit.civilization,unit:unit.type,badge:bdef?bdef.shape:null,
-                variant:EngineUnits.appearanceVariant(unit.civilization,unit._appearanceId ?? unit.handle ?? unit.id ?? '')};
-            const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge,options.variant]);
+                variant:EngineUnits.appearanceVariant(unit.civilization,unit._appearanceId ?? unit.handle ?? unit.id ?? ''),
+                // A rider's horse gets its own coat (b1072), from the same stable identity.
+                coat:engineType==='cavalry'&&EngineUnits.coatVariant?EngineUnits.coatVariant(unit._appearanceId ?? unit.handle ?? unit.id ?? ''):0};
+            const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge,options.variant,options.coat]);
             if(!this._unitModels) this._unitModels=new Map();
             if(!this._unitModels.has(modelKey)) {
                 const batches=EngineUnits.batches(EngineUnits.parts(engineType,options));

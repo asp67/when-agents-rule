@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1072: horses of many coats (7 October 2026)
+
+**Look only.** asp67: every horse wore the same tan.
+
+Horses now wear one of five coats from the beards' palette: the old tan, bay, black, grey-white and chestnut.
+- The coat is picked per rider, like hair, from its stable identity, so a horse keeps its coat through redraws, age-ups and replays.
+- A black horse has a black mane and tail, and a grey one a white mane and tail.
+- Egypt's chariot horse is included.
+
 ## Build 1071: the Persian Town Center's roof (7 October 2026)
 
 **Look only.** Found by asp67: the Bronze-age Persian Town Center's red roof sat low on its box, and the gold finial floated 0.8 above its tip. The roof now stands on a short drum, and its tip meets the finial. The Iron-age Town Center and the temple were already built this way.

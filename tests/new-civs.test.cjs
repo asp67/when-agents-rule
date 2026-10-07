@@ -276,3 +276,16 @@ test('the Persian Bronze-age Town Center\'s finial sits on its roof (b1071)', ()
     const tip = cone.m[13] + cone.args[2] / 2, bottom = ball.m[13] - 0.2;   // centre-anchored; the ball is 0.2 across each way
     assert.ok(Math.abs(bottom - tip) < 0.05, `the ball's foot ${bottom} at the cone's tip ${tip}`);
 });
+
+test('horses wear five coats, each rider keeping its own (b1072)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const { EngineUnits } = scope.window;
+    const body = coat => EngineUnits.parts('cavalry', { civ: 'persian', unit: 'cavalry', coat }).find(p => p.kind === 'sphere').tex;
+    const coats = new Set([0, 1, 2, 3, 4].map(body));
+    assert.deepEqual([...coats].sort(), ['hairBlack', 'hairBlond', 'hairBrown', 'hairWhite', 'leather']);
+    assert.equal(EngineUnits.coatVariant('u7'), EngineUnits.coatVariant('u7'), 'stable per unit');
+    const seen = new Set(); for (let i = 0; i < 40; i++) seen.add(EngineUnits.coatVariant(String(i)));
+    assert.equal(seen.size, 5, 'every coat in a herd');
+    assert.equal(EngineUnits.parts('cavalry', { civ: 'egyptian', unit: 'horse_carriage', coat: 2 }).find(p => p.kind === 'sphere').tex, 'hairBlack', 'the chariot horse too');
+});

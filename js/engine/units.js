@@ -254,36 +254,47 @@
     // Symmetric horse anatomy around +Z. The neck, head, muzzle, ears and
     // bridle all share one pivot; paired legs begin straight beneath the body.
     const HORSE_HIP_Y=.88, HORSE_HALF_STANCE=.18, HORSE_LEG_BOTTOM=.05;
-    const horse = (p,tier) => {
+    // Horse coats (b1072), from the beards' palette: the tan the horses all wore, bay,
+    // black, grey and chestnut. Picked per unit like hair (EngineUnits.coatVariant):
+    // the same handle keeps its horse through redraws, age-ups and replays.
+    const HORSE_COATS = ['leather', 'hairBrown', 'hairBlack', 'hairWhite', 'hairBlond'];
+    EngineUnits.coatVariant = (identity='') => {
+        let hash=7;
+        for(const char of String(identity)) hash=(hash*131+char.charCodeAt(0))>>>0;
+        return hash%HORSE_COATS.length;
+    };
+    const horse = (p,tier,coatIndex=0) => {
+        const coat=HORSE_COATS[coatIndex]||'leather';
         shadow(p,1.05);
-        oval(p,'leather',0,.90,0,.32,.34,.62);
-        oval(p,'leather',0,.94,.44,.29,.32,.31);
-        oval(p,'leather',0,.92,-.44,.30,.32,.31);
+        oval(p,coat,0,.90,0,.32,.34,.62);
+        oval(p,coat,0,.94,.44,.29,.32,.31);
+        oval(p,coat,0,.92,-.44,.30,.32,.31);
         const leg=(x,z,bone)=>{
             // Bury the entire top rim in the chest/rump, including at full
             // stride. Keep the hoof end at its original height on the ground.
-            part(p,'cylinder',[.075,.060,HORSE_HIP_Y-HORSE_LEG_BOTTOM,9],'leather',
+            part(p,'cylinder',[.075,.060,HORSE_HIP_Y-HORSE_LEG_BOTTOM,9],coat,
                 {x,y:(HORSE_HIP_Y+HORSE_LEG_BOTTOM)/2,z,bone});
-            oval(p,'leather',x,.33,z,.078,.095,.082,{bone});
+            oval(p,coat,x,.33,z,.078,.095,.082,{bone});
             oval(p,'bark',x,.085,z+.018,.090,.075,.125,{bone});
         };
         leg(-HORSE_HALF_STANCE,.44,'legFL');leg(HORSE_HALF_STANCE,.44,'legFR');
         leg(-HORSE_HALF_STANCE,-.44,'legBL');leg(HORSE_HALF_STANCE,-.44,'legBR');
-        oval(p,'leather',0,1.19,.55,.18,.35,.23,{rx:.38,bone:'head'});
-        oval(p,'leather',0,1.48,.84,.17,.20,.29,{rx:.38,bone:'head'});
-        oval(p,'leather',0,1.36,1.07,.14,.115,.18,{rx:.12,bone:'head'});
+        oval(p,coat,0,1.19,.55,.18,.35,.23,{rx:.38,bone:'head'});
+        oval(p,coat,0,1.48,.84,.17,.20,.29,{rx:.38,bone:'head'});
+        oval(p,coat,0,1.36,1.07,.14,.115,.18,{rx:.12,bone:'head'});
         for(const side of [-1,1]) {
             oval(p,'hairBlack',side*.152,1.52,.91,.019,.023,.026,{bone:'head'});
             oval(p,'hairBlack',side*.087,1.38,1.214,.022,.015,.017,{bone:'head'});
-            part(p,'cylinder',[0,.052,.19,8],'leather',{x:side*.10,y:1.70,z:.70,rx:-.13,bone:'head'});
+            part(p,'cylinder',[0,.052,.19,8],coat,{x:side*.10,y:1.70,z:.70,rx:-.13,bone:'head'});
             // Bridle cheeks connect skull and muzzle; entirely on the head bone.
             part(p,'box',[.022,.032,.32],'bark',{x:side*.144,y:1.43,z:1.01,rx:.35,bone:'head'});
         }
         oval(p,'mouth',0,1.33,1.238,.082,.009,.008,{bone:'head'});
-        oval(p,'bark',0,1.30,.40,.050,.27,.11,{rx:.38,bone:'head'});
+        const mane=coat==='hairBlack'?'hairBlack':coat==='hairWhite'?'hairWhite':'bark';
+        oval(p,mane,0,1.30,.40,.050,.27,.11,{rx:.38,bone:'head'});
         // A short forelock, rooted between the ears, replaces the detached mane bar.
-        oval(p,'bark',0,1.66,.77,.062,.075,.105,{bone:'head'});
-        part(p,'cylinder',[.065,.030,.47,8],'bark',{y:.77,z:-.79,rx:-2.9});
+        oval(p,mane,0,1.66,.77,.062,.075,.105,{bone:'head'});
+        part(p,'cylinder',[.065,.030,.47,8],mane,{y:.77,z:-.79,rx:-2.9});
         part(p,'box',[.45,.07,.46],'cloth',{y:1.21,z:.02,team:true});
         if(tier>=2) part(p,'box',[.24,.075,.29],'leather',{y:1.25});
         if(tier>=3) {
@@ -399,7 +410,7 @@
                 // a standing, helmeted spearman. Rider and cart are rigid; the
                 // horse keeps its leg/head bones so the trot reads normally.
                 const p = [];
-                horse(p, 1);
+                horse(p, 1, o.coat || 0);
                 part(p, 'disc', [0.7, 12], 'shadow', { y: 0.05, z: -1.15, blend: true });
                 part(p, 'cylinder', [0.035, 0.035, 0.86, 5], 'bark', { y: 0.34, z: -1.15, rz: Math.PI / 2 }); // axle
                 part(p, 'cylinder', [0.34, 0.34, 0.08, 10], 'wood', { x: -0.42, y: 0.34, z: -1.15, rz: Math.PI / 2 });
@@ -429,7 +440,7 @@
             }
             const tier = o.tier || 2;
             const p = [];
-            horse(p, tier);
+            horse(p, tier, o.coat || 0);
             // A seated pelvis meets the saddle. Thighs wrap outward and forward
             // to the knees; calves hang outside the horse, with boots facing +Z.
             part(p, 'cylinder', [0.19, 0.22, 0.46, 12], 'cloth', { y: 1.47, team: true });
