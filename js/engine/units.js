@@ -325,9 +325,24 @@
                 cape(p);
                 // Convex shield: rim, painted face and raised boss follow the left arm.
                 const shieldX=-.43, shieldY=.99;
+                if(o.civ==='roman') {
+                    // The scutum (b1070): a tall curved rectangle in the owner's colour,
+                    // gold-edged, a gold boss, and the gold wings above and below it.
+                    const L={bone:'armL'};
+                    part(p,'box',[.30,.92,.05],'gold',{x:shieldX,y:.93,z:.20,...L});                 // the edge
+                    part(p,'box',[.26,.86,.05],'cloth',{x:shieldX,y:.93,z:.225,team:true,...L});     // the face
+                    for(const side of [-1,1]) {   // the curve: side panels swept back
+                        part(p,'box',[.13,.92,.05],'gold',{x:shieldX+side*.19,y:.93,z:.17,ry:side*.5,...L});
+                        part(p,'box',[.11,.86,.05],'cloth',{x:shieldX+side*.185,y:.93,z:.19,ry:side*.5,team:true,...L});
+                    }
+                    oval(p,'gold',shieldX,.93,.27,.075,.075,.045,L);                                  // the boss
+                    for(const dy of [-1,1]) for(const side of [-1,1])   // the wings
+                        part(p,'box',[.025,.24,.02],'gold',{x:shieldX+side*.05,y:.93+dy*.22,z:.255,rz:side*dy*.55,...L});
+                } else {
                 oval(p,'iron',shieldX,shieldY,.19,.29,.37,.085,{bone:'armL'});
                 oval(p,'cloth',shieldX,shieldY,.23,.247,.319,.072,{bone:'armL',team:true});
                 oval(p,'iron',shieldX,shieldY,.29,.075,.075,.045,{bone:'armL'});
+                }
                 held(p,'sword','armR',[.37,.77,.045],q=>{
                     part(q,'cylinder',[.036,.036,.20,8],'leather',{});
                     part(q,'box',[.26,.055,.075],'iron',{y:.12});

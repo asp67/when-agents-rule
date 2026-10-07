@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1070: Rome in red, behind the scutum (7 October 2026)
+
+**Look only; no rules change.** asp67: make the Romans more obviously Roman.
+
+- **Colour:** the civilization's colour is a deep Roman red (0x8b1e1e) instead of Tyrian purple. It is less than half as bright as Persia's tomato red, so the two stay apart. Tunics, crests, the lineup chips and the buildings' accent follow it.
+- **Shield:** Roman soldiers carry the scutum, a tall curved rectangle in the owner's colour with a gold edge, a gold boss, and gold wings above and below it. Everyone else keeps the round shield.
+
 ## Build 1069: houses of their own for the four originals (7 October 2026)
 
 **Look only; no rules change.** Greece, Egypt, Persia and Yamato built the shared timber hut in the Bronze age and the shared plaster box in the Iron age. Only the palette and the door trim told them apart. Each now has its own pair:

@@ -1241,8 +1241,8 @@
             greek:{wall:[1.08,1.08,1.03],roof:[1.08,.89,.78],accent:[.24,.43,.72],hide:[1.3,1.28,1.17]},
             yamato:{wall:[1.05,.96,.83],roof:[.60,.70,.73],accent:[.78,.28,.18],hide:[1.27,1.18,.99]},
             persian:{wall:[1.14,1.01,.83],roof:[.55,.88,.91],accent:[.18,.62,.68],hide:[1.36,1.1,.86]},
-            // Travertine walls under terracotta, a Tyrian accent (b1058).
-            roman:{wall:[1.12,1.06,.93],roof:[1.16,.78,.60],accent:[.56,.27,.68],hide:[1.3,1.16,.96]},
+            // Travertine walls under terracotta, a deep red accent (b1058, red b1070).
+            roman:{wall:[1.12,1.06,.93],roof:[1.16,.78,.60],accent:[.55,.13,.13],hide:[1.3,1.16,.96]},
             // Tarred timber and grey stone under turf roofs (b1059).
             viking:{wall:[.92,.90,.86],roof:[.70,.86,.60],accent:[.10,.55,.60],hide:[1.18,1.05,.88]},
             // White stucco over limestone, palm thatch, a jade accent (b1060).

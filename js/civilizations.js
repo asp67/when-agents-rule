@@ -943,7 +943,9 @@ const CIVILIZATIONS = {
     roman: {
         excludedUnits: ['cavalry'],   // the equites ride in its place
         name: "Römer",
-        color: 0x8e44ad,
+        // A deep Roman red (b1070; Tyrian purple before), well darker than Persia's
+        // bright tomato red (0xff6347) so the two read apart.
+        color: 0x8b1e1e,
         bonus: {
             name: "Ingenieurskunst",
             description: "Dorfbewohner bauen 30% schneller",

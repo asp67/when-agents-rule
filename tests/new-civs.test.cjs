@@ -253,3 +253,16 @@ test('the four original civilizations\' houses are their own too (b1069)', () =>
             for (const other of all.filter(o => o !== civ)) assert.notEqual(shape(civ, age), shape(other, age), `${civ} ${age}: ${other}'s`);
         }
 });
+
+test('Rome in deep red, under a rectangular scutum (b1070)', () => {
+    const c = data();
+    const rgb = n => [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    const [rr, rg, rb] = rgb(c.CIVS.roman.color), [pr, pg, pb] = rgb(c.CIVS.persian.color);
+    assert.ok(rr > rg * 2 && rr > rb * 2, 'red');
+    assert.ok(rr + rg + rb < (pr + pg + pb) * 0.5, 'well darker than Persia\'s red');
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const shield = civ => scope.window.EngineUnits.parts('infantry', { civ, unit: 'warrior' }).filter(p => p.bone === 'armL' && p.team);
+    assert.ok(shield('roman').every(p => p.kind === 'box') && shield('roman').length === 3, 'a curved rectangle of three panels');
+    assert.ok(shield('greek').every(p => p.kind === 'sphere'), 'everyone else keeps the round shield');
+});
