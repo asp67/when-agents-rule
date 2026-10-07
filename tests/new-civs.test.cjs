@@ -179,7 +179,7 @@ test('the Maya draw as themselves: El Castillo, feathers, the spotter\'s parrot'
         keys(EngineUnits.parts('infantry', { civ: 'nobody', unit: 'jaguar_warrior' })));
     const spotter = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).length;
     const plain = EngineUnits.parts('infantry', { civ: 'maya', unit: 'militia' }).length;
-    assert.equal(spotter - plain, 8, 'the parrot: body, head, beak, tail and two wings of two parts (b1066)');
+    assert.equal(spotter - plain, 8, 'the parrot: body, head, beak, tail and two wings of two triangles (b1067)');
 });
 
 test('the new civilizations\' Town Centers, houses and academies are their own (b1061)', () => {
@@ -211,7 +211,7 @@ test('the Roman door is an arch of stones under the eaves, not a disc over the d
     for (const s of arch) assert.ok(s.m[13] + s.args[1] / 2 <= 2.3, 'below the eaves (2.3): ' + (s.m[13] + s.args[1] / 2));
 });
 
-test('the spotter\'s parrot sits on its shoulder at rest and circles high above it in flight (b1065)', () => {
+test('the spotter\'s parrot sits on its shoulder at rest and flies beside it, high up, while it walks (b1065, b1067)', () => {
     const scope = { window: {} }; vm.createContext(scope);
     for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
     const { EngineUnits } = scope.window;
@@ -226,6 +226,7 @@ test('the spotter\'s parrot sits on its shoulder at rest and circles high above 
         assert.ok(Math.hypot(rest[0] - sx, rest[1] - sy, rest[2] - sz) < 1e-4, 'on the shoulder');
         const fly = at(EngineUnits.parrotPose(1, t, 0.4).parrot);
         assert.ok(fly[1] > 4.2 && fly[1] < 5.0, 'high above: ' + fly[1]);
-        assert.ok(Math.abs(Math.hypot(fly[0], fly[2]) - 1.8) < 1e-4, 'on its circle');   // Float32 matrices
+        const [fx, , fz] = EngineUnits.PARROT_FLIGHT;
+        assert.ok(Math.hypot(fly[0] - fx, fly[2] - fz) < 1e-4, 'beside its spotter, not circling (b1067)');   // Float32 matrices
     }
 });

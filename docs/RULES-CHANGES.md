@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1067: the parrot flies beside its spotter (7 October 2026)
+
+**Look only.** asp67's notes on b1066:
+- **The wings are flat triangles,** smaller than b1066's ovals: a broad one at the shoulder and a narrow, pointed one behind it for the tip.
+- **No more circling.** When the spotter walks, the parrot lifts off and keeps pace beside it: 1.1 out on its left, at the same height as before (about 4.6), facing the way it walks, its wings beating. It lands back on the shoulder when the spotter stands.
+
 ## Build 1066: the parrot's wings (7 October 2026)
 
 **Look only.** asp67's notes on b1065:
