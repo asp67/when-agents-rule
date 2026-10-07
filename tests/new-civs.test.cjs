@@ -266,3 +266,13 @@ test('Rome in deep red, under a rectangular scutum (b1070)', () => {
     assert.ok(shield('roman').every(p => p.kind === 'box') && shield('roman').length === 3, 'a curved rectangle of three panels');
     assert.ok(shield('greek').every(p => p.kind === 'sphere'), 'everyone else keeps the round shield');
 });
+
+test('the Persian Bronze-age Town Center\'s finial sits on its roof (b1071)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const parts = scope.window.EngineBuildings.parts('town_center', { civ: 'persian', age: 'bronze' });
+    const cone = parts.find(p => p.kind === 'cylinder' && p.team && p.args[0] === 0);
+    const ball = parts.find(p => p.kind === 'sphere' && p.tex === 'gold');
+    const tip = cone.m[13] + cone.args[2] / 2, bottom = ball.m[13] - 0.2;   // centre-anchored; the ball is 0.2 across each way
+    assert.ok(Math.abs(bottom - tip) < 0.05, `the ball's foot ${bottom} at the cone's tip ${tip}`);
+});

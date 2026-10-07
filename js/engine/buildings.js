@@ -431,7 +431,10 @@
                     [[-4.7, -3.8], [4.7, -3.8], [-4.7, 3.8], [4.7, 3.8]].forEach(([x, z]) =>
                         part(p, 'cylinder', [0.5, 0.68, 3.8, 7], 'masonry', { x, y: 1.9, z }));
                     part(p, 'box', [6.2, 1.8, 4.4], 'plaster', { y: 4.2 });
-                    part(p, 'cylinder', [0, 1.35, 1.5, 9], 'cloth', { y: 5.85, team: true });
+                    // On a drum, its tip meeting the finial (b1071): the cone sat on the box at
+                    // 5.1-6.6 and the gold ball floated over it at 7.4.
+                    part(p, 'cylinder', [1.35, 1.4, 0.6, 9], 'plaster', { y: 5.4 });
+                    part(p, 'cylinder', [0, 1.35, 1.5, 9], 'cloth', { y: 6.45, team: true });
                     part(p, 'sphere', [1, 8, 6], 'gold', { y: 7.4, sx: 0.2, sy: 0.2, sz: 0.2 });
                     for (let i = 0; i < 5; i++) {
                         part(p, 'box', [0.55, 0.45, 0.4], 'masonry', { x: -4.0 + i * 2.0, y: 3.6, z: 4.05 });

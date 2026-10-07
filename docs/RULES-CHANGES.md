@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1071: the Persian Town Center's roof (7 October 2026)
+
+**Look only.** Found by asp67: the Bronze-age Persian Town Center's red roof sat low on its box, and the gold finial floated 0.8 above its tip. The roof now stands on a short drum, and its tip meets the finial. The Iron-age Town Center and the temple were already built this way.
+
 ## Build 1070: Rome in red, behind the scutum (7 October 2026)
 
 **Look only; no rules change.** asp67: make the Romans more obviously Roman.
