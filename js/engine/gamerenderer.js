@@ -276,6 +276,7 @@
                 hairWhite: T(TexGen.solid(214,209,195)),
                 mouth: T(TexGen.solid(83,37,31)),
                 feather: T(TexGen.solid(206,42,34)),   // the Maya spotter's macaw (b1060)
+                featherGreen: T(TexGen.solid(52,201,72)),   // ...and its wings (b1066)
                 leather: T(TexGen.leather(177)),
                 iron: T(TexGen.iron(188)),
                 white: T(TexGen.solid(), { clamp: true }),

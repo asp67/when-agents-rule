@@ -488,29 +488,41 @@
     // top of that -- it takes off and circles high over the spotter while it walks,
     // and settles back on the shoulder when it stops (EngineUnits.parrotPose).
     EngineUnits.PARROT_SEAT = [-.40, 1.42, -.03];
-    const PARROT_WING_ROOT = [-.45, 1.50, -.04];
+    // A wing on each side (b1066), hinged at the shoulder of the bird. Folded, each lies
+    // flat along the body and tapers down and back; in flight it swings out about the
+    // bird's long axis and beats.
+    const PARROT_WING_ROOT_L = [-.49, 1.50, -.03], PARROT_WING_ROOT_R = [-.31, 1.50, -.03];
     const parrot = p => {
         const bone = 'parrot';
         oval(p,'feather',-.40,1.42,-.03,.09,.13,.09,{bone});                // body
         oval(p,'feather',-.40,1.58,.03,.075,.075,.075,{bone});              // head
         part(p,'cylinder',[0,.03,.08,6],'white',{x:-.40,y:1.57,z:.12,rx:Math.PI/2,bone});   // beak
-        oval(p,'gold',-.49,1.43,-.04,.03,.10,.07,{bone:'parrotWing'});      // wing
+        for (const [side, b] of [[-1, 'parrotWing'], [1, 'parrotWingR']]) {   // the wings, bright green
+            const x = -.40 + side * .095;
+            oval(p,'featherGreen',x,1.37,-.07,.018,.15,.13,{bone:b,rx:.25});      // the broad inner wing
+            oval(p,'featherGreen',x,1.19,-.15,.014,.11,.08,{bone:b,rx:.45});      // the primaries, swept back
+        }
         part(p,'box',[.05,.24,.035],'cloth',{x:-.40,y:1.22,z:-.10,rx:.3,team:true,bone});   // tail
     };
     // Where the parrot is: `lift` 0 on the shoulder, 1 in full flight, eased between by
     // the renderer. In flight it circles the spotter 1.8 out and about 4.6 up, banked
-    // along its path, the wing beating, drawn 1.7x so it reads at a playing zoom. Unit-local, so it turns with its spotter.
+    // along its path, the wings beating, drawn 1.275x so it reads at a playing zoom. Unit-local, so it turns with its spotter.
     EngineUnits.parrotPose = (lift, t, phase = 0) => {
         const m3 = M(), k = lift * lift * (3 - 2 * lift), [sx, sy, sz] = EngineUnits.PARROT_SEAT;
         const th = t * 1.4 + phase, R = 1.8;
         const tx = Math.sin(th) * R, ty = 4.6 + Math.sin(t * 2.3 + phase) * 0.2, tz = Math.cos(th) * R;
         let yaw = th + Math.PI / 2;   // the tangent of the circle: +Z (the beak) onto (cos, -sin)
         yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw)) * k;
+        const grow = 1 + 0.275 * k;   // 1.275x in flight (b1066: was 1.7x)
         const body = m3.multiply(m3.translation(sx + (tx - sx) * k, sy + (ty - sy) * k, sz + (tz - sz) * k),
-            m3.multiply(m3.rotationY(yaw), m3.multiply(m3.rotationZ(-0.35 * k), m3.multiply(m3.scaling(1 + 0.7 * k, 1 + 0.7 * k, 1 + 0.7 * k), m3.translation(-sx, -sy, -sz)))));
-        const flap = Math.sin(t * 16 + phase) * 0.9 * k;
-        const wing = m3.multiply(body, m3.rotateAround(m3.rotationZ(flap), ...PARROT_WING_ROOT));
-        return { parrot: body, parrotWing: wing };
+            m3.multiply(m3.rotationY(yaw), m3.multiply(m3.rotationZ(-0.35 * k), m3.multiply(m3.scaling(grow, grow, grow), m3.translation(-sx, -sy, -sz)))));
+        // Spread out to the side (about 70 degrees from folded), beating around it.
+        const open = (1.25 + Math.sin(t * 16 + phase) * 0.6) * k;
+        return {
+            parrot: body,
+            parrotWing: m3.multiply(body, m3.rotateAround(m3.rotationZ(-open), ...PARROT_WING_ROOT_L)),
+            parrotWingR: m3.multiply(body, m3.rotateAround(m3.rotationZ(open), ...PARROT_WING_ROOT_R))
+        };
     };
     EngineUnits.parts = (type, opts) => {
         const o = { ...opts };

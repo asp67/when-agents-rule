@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1066: the parrot's wings (7 October 2026)
+
+**Look only.** asp67's notes on b1065:
+- **A quarter smaller in flight:** drawn 1.275 times its size instead of 1.7. Perched, it keeps its size.
+- **Two real wings, bright green, one on each side.** Each is a broad inner wing with swept-back primaries. Folded, they lie flat along the body; in flight they swing out about 70 degrees and beat. b1065 had one small gold wing.
+
 ## Build 1065: the spotter's parrot takes flight (7 October 2026)
 
 **Look only; no rules change.** asp67's idea: the parrot marks the spotter from afar.

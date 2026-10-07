@@ -179,7 +179,7 @@ test('the Maya draw as themselves: El Castillo, feathers, the spotter\'s parrot'
         keys(EngineUnits.parts('infantry', { civ: 'nobody', unit: 'jaguar_warrior' })));
     const spotter = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).length;
     const plain = EngineUnits.parts('infantry', { civ: 'maya', unit: 'militia' }).length;
-    assert.equal(spotter - plain, 5, 'the parrot');
+    assert.equal(spotter - plain, 8, 'the parrot: body, head, beak, tail and two wings of two parts (b1066)');
 });
 
 test('the new civilizations\' Town Centers, houses and academies are their own (b1061)', () => {
@@ -217,7 +217,8 @@ test('the spotter\'s parrot sits on its shoulder at rest and circles high above 
     const { EngineUnits } = scope.window;
     const bones = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).map(p => p.bone);
     assert.equal(bones.filter(b => b === 'parrot').length, 4);
-    assert.equal(bones.filter(b => b === 'parrotWing').length, 1);
+    assert.equal(bones.filter(b => b === 'parrotWing').length, 2, 'a wing on each side (b1066)');
+    assert.equal(bones.filter(b => b === 'parrotWingR').length, 2);
     const [sx, sy, sz] = EngineUnits.PARROT_SEAT;
     const at = (m) => [m[0] * sx + m[4] * sy + m[8] * sz + m[12], m[1] * sx + m[5] * sy + m[9] * sz + m[13], m[2] * sx + m[6] * sy + m[10] * sz + m[14]];
     for (const t of [0, 1.7, 9.3]) {
