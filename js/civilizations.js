@@ -1143,7 +1143,7 @@ const CIVILIZATIONS = {
     // one bonus, two own units, four own techs, iron working, the 15,500 Wonder.
     viking: {
         name: "Wikinger",
-        color: 0x00acc1,
+        color: 0x5e5248,   // dark brown-grey (b1075; cyan before): weathered wool and iron
         bonus: {
             name: "Raubzug",
             description: "Militäreinheiten +25% Schaden gegen Gebäude",

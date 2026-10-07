@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1075: the Vikings in brown-grey (7 October 2026)
+
+**Look only.** At asp67's request, the Vikings' colour is a dark brown-grey (0x5e5248), like weathered wool and iron, instead of cyan. Tunics, shields, the Royal hall's shield row, the lineup chips and the buildings' accent all follow it.
+
 ## Build 1074: academy doors (7 October 2026)
 
 **Look only.** Found by asp67: the academies' doors had the same fault as the Maya house's. The door trim measures from the ground, but the academy doors stand on a plinth, so every culture's trim lay across the doorway: pediments, lintels, torii beams, arches, posts.
