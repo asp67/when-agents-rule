@@ -188,7 +188,7 @@ test('the new civilizations\' Town Centers, houses and academies are their own (
     const { EngineBuildings } = scope.window;
     const shape = (type, civ, age) => EngineBuildings.parts(type, { civ, age }).map(p => p.key).join('|');
     for (const civ of ['roman', 'viking', 'maya'])
-        for (const [type, ages] of [['town_center', ['bronze', 'iron']], ['house', ['bronze', 'iron']], ['academy', ['iron']]])
+        for (const [type, ages] of [['town_center', ['bronze', 'iron']], ['house', ['bronze', 'iron']], ['academy', ['iron']], ['temple', ['bronze', 'iron']]])
             for (const age of ages) {
                 assert.notEqual(shape(type, civ, age), shape(type, 'nobody', age), `${civ} ${type} ${age}: the generic one`);
                 for (const other of ['roman', 'viking', 'maya', 'greek', 'egyptian', 'persian', 'yamato'].filter(o => o !== civ))

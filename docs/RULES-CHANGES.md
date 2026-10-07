@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1063: temples of their own (7 October 2026)
+
+**Look only; no rules change.** Found by asp67: the new civilizations' temples fell through to the generic sanctuary. That is a columned portico, which reads as a copy of the Greek temple.
+
+- **Romans:** a round temple of Vesta. A podium with steps carries a ring of twelve columns around the round cella, under a conical tiled roof with a gold finial.
+- **Vikings:** a hof. A stave-built hall with stacked shingle roofs and dragon heads, the sacred ash beside it, and an altar stone before it.
+- **Maya:** a temple pyramid in the Tikal manner. Five narrow, steep terraces, a stair, the shrine and its high roof comb, so it stays distinct from the Maya's wide, low Town Center platform.
+
 ## Build 1062: the Roman door (7 October 2026)
 
 **Look only; no rules change.** Found by asp67 in the showcase.

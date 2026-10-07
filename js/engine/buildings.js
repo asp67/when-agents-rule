@@ -910,6 +910,54 @@
                 part(p, 'sphere', [1, 8, 6], 'gold', { y: 8.0, sx: 0.24, sy: 0.24, sz: 0.24 });
                 part(p, 'cylinder', [0.5, 0.7, 0.9, 8], 'masonry', { y: 1.25 });
                 part(p, 'cylinder', [0, 0.42, 0.9, 7], 'gold', { y: 2.15 }); // the flame
+            } else if (civ === 'roman') {
+                // A round temple of Vesta (b1063): a podium with steps, a ring of
+                // columns around the round cella, a conical tiled roof, the hearth's
+                // gold finial on top.
+                part(p, 'cylinder', [3.9, 4.1, 1.0, 20], 'masonry', { y: 0.5 });
+                part(p, 'box', [2.2, 0.5, 1.6], 'masonry', { y: 0.25, z: 4.2 });                 // the steps
+                part(p, 'cylinder', [2.3, 2.3, 3.0, 16], 'plaster', { y: 2.5 });              // the cella
+                for (let i = 0; i < 12; i++) {
+                    const a = (i + 0.5) / 12 * Math.PI * 2;
+                    part(p, 'cylinder', [0.2, 0.24, 3.0, 8], 'plaster', { x: Math.sin(a) * 3.35, y: 2.5, z: Math.cos(a) * 3.35 });
+                }
+                part(p, 'cylinder', [3.65, 3.65, 0.4, 20], 'plaster', { y: 4.2 });            // the entablature
+                part(p, 'cylinder', [3.65, 3.65, 0.18, 20], 'cloth', { y: 4.0, team: true });
+                part(p, 'cylinder', [0.2, 3.9, 2.2, 20], 'rooftile', { y: 5.5 });              // the cone
+                part(p, 'sphere', [1, 8, 6], 'gold', { y: 6.75, sx: 0.32, sy: 0.32, sz: 0.32 });
+                part(p, 'box', [1.1, 2.0, 0.2], 'bark', { y: 2.0, z: 2.3 });
+            } else if (civ === 'viking') {
+                // The hof (b1063): a stave-built hall under stacked shingle roofs with
+                // dragon heads, the sacred ash beside it, a sacrificial stone before it.
+                part(p, 'frustum', [7.0, 5.6, 6.6, 5.2, 0.4], 'rock', { x: -0.8 });
+                part(p, 'box', [4.6, 2.4, 3.6], 'wood', { x: -0.8, y: 1.6 });
+                [[-3.1, -1.8], [1.5, -1.8], [-3.1, 1.8], [1.5, 1.8]].forEach(([x, z]) =>
+                    part(p, 'cylinder', [0.2, 0.22, 3.0, 6], 'bark', { x, y: 1.9, z }));
+                part(p, 'prism', [5.6, 4.8, 1.4], 'bark', { x: -0.8, y: 2.8 });                // lower roof
+                part(p, 'box', [3.2, 1.0, 2.4], 'wood', { x: -0.8, y: 4.4 });
+                part(p, 'prism', [4.0, 3.2, 1.6], 'bark', { x: -0.8, y: 4.9 });                // upper roof
+                for (const x of [-2.8, 1.2]) {
+                    part(p, 'box', [0.16, 1.4, 0.16], 'wood', { x, y: 6.8, z: 0.35, rx: 0.5 });
+                    part(p, 'box', [0.16, 1.4, 0.16], 'wood', { x, y: 6.8, z: -0.35, rx: -0.5 });
+                }
+                part(p, 'box', [1.1, 1.7, 0.2], 'bark', { x: -0.8, y: 1.25, z: 1.85 });
+                part(p, 'box', [3.4, 0.24, 0.24], 'cloth', { x: -0.8, y: 2.55, z: 1.9, team: true });
+                part(p, 'cylinder', [0.3, 0.45, 3.6, 7], 'bark', { x: 3.4, y: 1.8, z: -0.6 });  // the ash
+                part(p, 'sphere', [1, 10, 8], 'foliage', { x: 3.4, y: 4.4, z: -0.6, sx: 1.9, sy: 1.6, sz: 1.9 });
+                part(p, 'box', [1.2, 0.6, 0.8], 'rock', { x: 2.6, y: 0.3, z: 2.6 });            // the altar stone
+            } else if (civ === 'maya') {
+                // A temple pyramid in the Tikal manner (b1063): steep and tall, where the
+                // Town Center's platform is wide and low -- five narrow terraces, a stair,
+                // the shrine and its high roof comb.
+                [[6.6, 0], [5.6, 1.1], [4.6, 2.2], [3.8, 3.3], [3.0, 4.4]].forEach(([w, y]) =>
+                    part(p, 'frustum', [w, w, w - 0.5, w - 0.5, 1.1], 'masonry', { y }));
+                part(p, 'box', [1.5, 0.3, 4.6], 'plaster', { y: 2.75, z: 2.0, rx: 1.0 });       // the stair
+                part(p, 'box', [2.6, 1.6, 2.2], 'plaster', { y: 6.3 });                          // the shrine
+                part(p, 'box', [0.7, 1.0, 0.2], 'bark', { y: 6.0, z: 1.12 });
+                part(p, 'frustum', [2.4, 1.4, 1.6, 0.6, 2.2], 'masonry', { y: 7.1 });            // the roof comb
+                part(p, 'box', [1.7, 1.1, 0.3], 'cloth', { y: 8.1, z: 0.3, team: true });
+                part(p, 'cylinder', [0.3, 0.22, 0.5, 8], 'masonry', { x: 1.6, y: 0.25, z: 4.3 }); // an incense brazier
+                part(p, 'cylinder', [0, 0.18, 0.4, 6], 'gold', { x: 1.6, y: 0.7, z: 4.3 });
             } else {
                 // Generic sanctuary (no civ — engine-test).
                 part(p, 'frustum', [8, 7, 7.4, 6.4, 0.8], 'masonry');
