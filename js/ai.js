@@ -647,8 +647,26 @@ class AIManager {
         const ladder = ladders[building.type];
         if (!ladder) return null;
         const opts = building.trainOptions || [];
-        for (const id of ladder) if (opts.includes(id)) return id;
-        return opts.length ? opts[opts.length - 1] : null;
+        let pick = ladder.find(id => opts.includes(id)) || (opts.length ? opts[opts.length - 1] : null);
+        // A civilization's own unit wins over the ladder's shared pick when it belongs to
+        // at least the same age (b1056). The ladder names shared units only, so Greece
+        // never trained a hoplite or a phalanx, Yamato never a samurai, and Egypt's stable
+        // chose the scout over its chariot -- the anchors played every civ as if it had
+        // none of its own units. Of several, the most advanced. Units that replace a
+        // shared id (Persia's archer, cavalry, Kataphrakt) are already on the ladder.
+        const civ = typeof getCivilization === 'function' ? getCivilization(ai.civilization) : null;
+        const shared = typeof UNIT_DEFS !== 'undefined' ? UNIT_DEFS : {};
+        const ownIds = new Set(((civ && civ.uniqueUnits) || []).map(u => u.id).filter(id => !shared[id]));
+        const TIER = { stone: 0, neolithic: 1, bronze: 2, iron: 3 };
+        const tierOf = id => { const d = getUnitDefFor(ai.civilization, id); return (d && TIER[d.tier]) || 0; };
+        let own = null;
+        for (const id of opts) if (ownIds.has(id) && (own === null || tierOf(id) > tierOf(own))) own = id;
+        // Only when it can be paid now: the uniques want stone and gold the shared line
+        // does not, and a barracks waiting for a hoplite would train nothing meanwhile.
+        const ownDef = own !== null ? getUnitDefFor(ai.civilization, own) : null;
+        if (ownDef && ownDef.cost && this.canAfford(ai, ownDef.cost) &&
+            (pick === null || tierOf(own) >= tierOf(pick))) pick = own;
+        return pick;
     }
 
     // ---- Combat (fog-limited targeting) --------------------------------------

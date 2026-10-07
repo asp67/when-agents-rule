@@ -1,6 +1,8 @@
 // An explicitly labelled, playable art-direction scenario. It never uses saved
 // model endpoints and does not change the standard arena/campaign starting rules.
-Game.SHOWCASE_CIVILIZATIONS = Object.freeze(['greek','egyptian','yamato','persian']);
+// The first four in their showcase order, then any other civilization (b1056).
+Game.SHOWCASE_CIVILIZATIONS = Object.freeze(['greek','egyptian','yamato','persian'].concat(
+    (typeof CIVILIZATIONS !== 'undefined' ? Object.keys(CIVILIZATIONS) : []).filter(c => !['greek','egyptian','yamato','persian'].includes(c))));
 Game.showcaseCivilization = value => Game.SHOWCASE_CIVILIZATIONS.includes(value) ? value : 'greek';
 
 Game.SHOWCASE_TERRAINS = Object.freeze(['summer','winter','desert']);

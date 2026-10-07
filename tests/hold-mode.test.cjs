@@ -39,7 +39,7 @@ test('the leash is 19, past every reach in the game -- a range raised beyond it 
  let longest=0,who='';
  for(const civ of civs){
   const c=ctx.getCivilization(civ);
-  const ids=new Set(Object.keys(U).concat(Object.keys(c.uniqueUnits||{})));
+  const ids=new Set(Object.keys(U).concat((c.uniqueUnits||[]).map(u=>u.id)));   // b1056: an ARRAY of units, not a map
   const bonuses=Object.values(c.techTree||{}).filter(t=>t.bonus&&t.bonus.range);
   for(const id of ids){
    const u=ctx.createUnit(id,0,0,'x',civ,'iron');if(!u||!(u.attack>0))continue;

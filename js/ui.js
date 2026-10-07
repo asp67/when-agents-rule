@@ -83,6 +83,42 @@ class UIManager {
     // und die Startseite kommt ohne Instanz an sie heran -- der UIManager
     // entsteht erst beim window-load-Ereignis, lange nachdem der Startbildschirm
     // steht. Beim Hochzaehlen also nur hier anfassen.
+    // The civilizations, from their data (b1056). Every list of them in this file was
+    // written out by hand -- five copies of the names, two of the colours, three of the
+    // ids -- so a new civilization would have been missing from half the screens.
+    static civIds() { return typeof CIVILIZATIONS !== 'undefined' ? Object.keys(CIVILIZATIONS) : ['egyptian', 'greek', 'persian', 'yamato']; }
+    civNames() {
+        const out = {};
+        for (const id of UIManager.civIds()) {
+            const key = 'civ.' + id + '.name', label = t(key);
+            out[id] = label && label !== key ? label : ((typeof getCivilization === 'function' && getCivilization(id).name) || id);
+        }
+        return out;
+    }
+    // The colour a civilization's units wear on the map (civ.color), so a chip in the
+    // lineup matches the army: the hand-written map here had Greece green and Yamato
+    // purple, while their units were blue and pink.
+    civColors() {
+        const out = {};
+        for (const id of UIManager.civIds()) {
+            const c = typeof getCivilization === 'function' ? getCivilization(id).color : null;
+            out[id] = typeof c === 'number' ? '#' + c.toString(16).padStart(6, '0') : '#aaaaaa';
+        }
+        return out;
+    }
+    // A building's type, the shared ones and every civilization's Wonder (and the
+    // legacy names an old transcript may carry).
+    static isBuildingType(type) {
+        const t0 = String(type || '');
+        if (!t0) return false;
+        if (typeof BUILDING_DEFS !== 'undefined' && BUILDING_DEFS[t0]) return true;
+        if (/^(market|wonder|range)$/.test(t0)) return true;
+        if (typeof CIVILIZATIONS !== 'undefined')
+            for (const id of Object.keys(CIVILIZATIONS))
+                if ((CIVILIZATIONS[id].uniqueBuildings || []).some(b => b.id === t0)) return true;
+        return /town_center|barracks|temple|academy|house|farm|stable|tower|range/.test(t0);
+    }
+
     static get ARENA_PROMPT_VERSION() { return 'agents-rule-v105'; }
 
     constructor(game) {
@@ -550,7 +586,7 @@ class UIManager {
         const civField = document.getElementById('playerCivField');
         if (civField) civField.style.display = campaign ? '' : 'none';
         if (campaign) {
-            const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
+            const civNames = this.civNames();
             const civSel = document.getElementById('campaignPlayerCiv');
             if (civSel) civSel.innerHTML = Object.keys(civNames).map(c => `<option value="${c}" ${this._campaignConfig.playerCiv === c ? 'selected' : ''}>${civNames[c]}</option>`).join('');
             // The human is seat 0 — show their team badge next to "You play".
@@ -944,7 +980,7 @@ class UIManager {
             const models = [this.makeArenaModel({})];
             cfg = {
                 models,
-                slots: ['egyptian', 'greek', 'persian', 'yamato'].map((civ, i) => ({ civ, control: models[i] ? models[i].id : 'ki' })),
+                slots: UIManager.civIds().slice(0, 4).map((civ, i) => ({ civ, control: models[i] ? models[i].id : 'ki' })),
                 prompt: this.getArenaDefaultPrompt()
             };
         } else {
@@ -961,7 +997,7 @@ class UIManager {
         }
 
         // Always exactly 4 slots; remap controls onto valid model ids.
-        const civs = ['egyptian', 'greek', 'persian', 'yamato'];
+        const civs = UIManager.civIds().slice(0, 4);
         const ids = cfg.models.map(m => m.id);
         if (!Array.isArray(cfg.slots) || cfg.slots.length !== 4) {
             cfg.slots = civs.map((civ, i) => ({ civ, control: cfg.models[i] ? cfg.models[i].id : 'ki', prompt: null }));
@@ -1128,7 +1164,7 @@ class UIManager {
             const cfg = { models: data.models, slots: data.slots, prompt: data.prompt };
             cfg.models.forEach(m => { m.id = this.nextArenaModelId(); this.normalizeArenaModel(m); });
             if (typeof cfg.prompt !== 'string' || !cfg.prompt.trim()) cfg.prompt = this.getArenaDefaultPrompt();
-            const civs = ['egyptian', 'greek', 'persian', 'yamato'];
+            const civs = UIManager.civIds().slice(0, 4);
             const ids = cfg.models.map(m => m.id);
             if (!Array.isArray(cfg.slots) || cfg.slots.length !== 4) {
                 cfg.slots = civs.map((civ, i) => ({ civ, control: cfg.models[i] ? cfg.models[i].id : 'ki', prompt: null }));
@@ -1580,8 +1616,8 @@ class UIManager {
     renderArenaSlots() {
         const list = document.getElementById('arenaSlotsList');
         if (!list) return;
-        const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
-        const civColor = { egyptian: '#ffd700', greek: '#4ecca3', persian: '#e94560', yamato: '#9b8cff' };
+        const civNames = this.civNames();
+        const civColor = this.civColors();
         const e = (s) => this.escapeHtml(s == null ? '' : String(s));
         // Same order as the library, and the same labels: modelDisplayName was the
         // third copy of "name, or 'Unnamed N'" in this file, and three copies of one
@@ -3640,8 +3676,8 @@ class UIManager {
         const ais = this.game.aiManager ? this.game.aiManager.aiPlayers : [];
         if (this.game.spectatorMode || !this.game.gameStarted || !ais.length) { el.style.display = 'none'; return; }
         const mgr = this.game.openAIAIManager;
-        const civNames = { egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'), persian: t('civ.persian.name'), yamato: t('civ.yamato.name') };
-        const civColor = { egyptian: '#ffd700', greek: '#4ecca3', persian: '#e94560', yamato: '#9b8cff' };
+        const civNames = this.civNames();
+        const civColor = this.civColors();
         const ageNames = { stone: t('age.stone'), neolithic: t('age.neolithic'), bronze: t('age.bronze'), iron: t('age.iron') };
         const met = (this.game.player && this.game.player._metRivals) || new Set();
         const rows = ais.map(ai => {
@@ -4759,12 +4795,7 @@ class UIManager {
             bronze: t('age.bronze'),
             iron: t('age.iron')
         };
-        const civNames = {
-            egyptian: t('civ.egyptian.name'),
-            greek: t('civ.greek.name'),
-            persian: t('civ.persian.name'),
-            yamato: t('civ.yamato.name')
-        };
+        const civNames = this.civNames();
 
         // Build a ranked snapshot
         const rows = this.game.aiManager.aiPlayers.map(ai => {
@@ -5295,10 +5326,7 @@ class UIManager {
         const dsec = Math.floor((durationMs % 60000) / 1000);
         const durStr = `${String(dmin).padStart(2, '0')}:${String(dsec).padStart(2, '0')}`;
 
-        const civNames = {
-            egyptian: t('civ.egyptian.name'), greek: t('civ.greek.name'),
-            persian: t('civ.persian.name'), yamato: t('civ.yamato.name')
-        };
+        const civNames = this.civNames();
         const ageNames = { stone: t('ageName.stone'), neolithic: t('ageName.neolithic'), bronze: t('ageName.bronze'), iron: t('ageName.iron') };
 
         const reports = players.map(ai => {
@@ -8014,7 +8042,7 @@ class UIManager {
                 // the age at last contact for something merely remembered.
                 const oage = e.epochWhenSeen || 'stone';
                 const isB = e.isBuilding || (e.healthPct !== undefined &&
-                    /town_center|barracks|temple|academy|market|house|farm|pyramid|akropolis|firetemple|shrine|range|stable|tower|wonder/i.test(e.type || ''));
+                    UIManager.isBuildingType(e.type));
                 // Translucent when the position is only remembered — for units as well as
                 // buildings, which is what was missing: a stale unit stood there at full
                 // strength looking like a live sighting.

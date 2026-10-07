@@ -32,7 +32,8 @@ test('wonder descriptions state the hold time the rules use', () => {
     const held = Number((read('game.js').match(/this\.wonderRequired = (\d+);/) || [])[1]);
     assert.ok(held > 0, 'wonderRequired not found in game.js');
     const wonders = read('civilizations.js').match(/description: '[^']*Weltwunder[^']*'/g) || [];
-    assert.equal(wonders.length, 4);
+    // One per civilization (b1056: it said 4).
+    assert.equal(wonders.length, (read('civilizations.js').match(/type: 'wonder'/g) || []).length);
     for (const d of wonders) assert.match(d, new RegExp(held + 's halten'));
     const G = gameDictionaries();
     for (const lang of ['en', 'es', 'zh']) {

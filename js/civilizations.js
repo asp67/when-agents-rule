@@ -33,6 +33,7 @@ const CIVILIZATIONS = {
         bonus: {
             name: "Pyramide",
             description: "+50% Wandstärke für alle Gebäude außer dem Wunder",
+            buildingHealth: 1.5,   // read by buildingMaxHealth (units.js)
             effect: (game) => {
                 game.buildingHealthMultiplier = 1.5;
             }
@@ -296,6 +297,7 @@ const CIVILIZATIONS = {
         bonus: {
             name: "Akropolis",
             description: "Alle Gebäude außer dem Wunder haben +30% mehr Gesundheit",
+            buildingHealth: 1.3,   // read by buildingMaxHealth (units.js)
             effect: (game) => {
                 game.buildingHealthMultiplier = 1.3;
             }

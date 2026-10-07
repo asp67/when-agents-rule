@@ -6083,12 +6083,13 @@ class Game {
             if (ai._eliminated && !ai._cleared) this.clearEliminatedSeat(ai);
         });
 
-        const wonderTypes = ['pyramid', 'akropolis', 'firetemple', 'shrine'];
         const required = this.wonderHoldMs();
         let wonderHolder = null;
         players.forEach(ai => {
             if (ai._eliminated) { ai._wonderHold = 0; return; }
-            const hasWonder = ai.buildings.some(b => (b.isWonder || wonderTypes.includes(b.type)) && !b.underConstruction);
+            // isWonder, set on every Wonder by createBuilding: the list of the four Wonder
+            // types beside it was redundant, and blind to any new civilization's (b1056).
+            const hasWonder = ai.buildings.some(b => b.isWonder && !b.underConstruction);
             if (hasWonder) {
                 ai._wonderHold = (ai._wonderHold || 0) + deltaTime;
                 if (ai._wonderHold >= required) wonderHolder = ai;

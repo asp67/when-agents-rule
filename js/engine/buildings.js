@@ -526,7 +526,7 @@
                     part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: 0.75, y: 2.3, z: 3.0 });
                     part(p, 'cylinder', [0.16, 0.2, 3.0, 10], 'plaster', { x: 2.2, y: 2.3, z: 3.0 });
                     part(p, 'box', [5.2, 0.3, 0.9], 'cloth', { y: 3.9, z: 3.0, team: true });
-                } else {
+                } else if (civ === 'yamato') {
                     // Yamato: post-and-beam under a deep hipped roof, a torii at the path
                     // and a stone lantern — you arrive through a gate, not a door.
                     part(p, 'pyramid', [7.0, 6.0, 1.7], 'rooftile', { y: 3.4 });
@@ -542,6 +542,14 @@
                     part(p, 'cylinder', [0.2, 0.26, 0.7, 6], 'rock', { x: 3.3, y: 0.35, z: 3.6 });
                     part(p, 'box', [0.6, 0.5, 0.6], 'plaster', { x: 3.3, y: 0.95, z: 3.6 });
                     part(p, 'pyramid', [0.85, 0.85, 0.4], 'rock', { x: 3.3, y: 1.2, z: 3.6 });
+                } else {
+                    // Any other culture, until it has a design of its own (b1056): a plain
+                    // portico under a gable with a band in the player's colour. Yamato's
+                    // academy stood here, so every unknown civilization built a torii.
+                    part(p, 'prism', [6.0, 5.0, 1.4], 'rooftile', { y: 3.4 });
+                    [-2.0, 2.0].forEach(x =>
+                        part(p, 'cylinder', [0.2, 0.22, 2.9, 8], 'plaster', { x, y: 2.25, z: 2.85 }));
+                    part(p, 'box', [5.4, 0.3, 0.5], 'cloth', { y: 3.55, z: 2.85, team: true });
                 }
                 doorTrim(p, civ, 3, 2.2, 1.4, 1.9);
             }

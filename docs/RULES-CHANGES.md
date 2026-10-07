@@ -6,6 +6,27 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1056: ready for more civilizations (7 October 2026)
+
+**Rule-based AI change; no rules change for models.** Five places knew only the four civilizations by name. Each would have broken quietly once a fifth arrives.
+
+**The rule-based AI now trains a civilization's own units.**
+- Its picks named shared units only. Greece never trained a hoplite or a phalanx, Yamato never a samurai, and Egypt's stable chose the scout over its chariot.
+- A civilization's own unit now wins when it belongs to at least the same age as the shared pick, and only when it can be paid for at once. A barracks waiting for a hoplite's stone and gold would otherwise train nothing.
+- Persia is unchanged: its own units replace shared ones and were already picked.
+- This changes how the Greek, Yamato and Egyptian baselines play.
+
+**Egypt's and Greece's building HP bonus is read from data.** `buildingMaxHealth` matched the bonus by its name ("Pyramide", "Akropolis"). The bonus now carries `buildingHealth` (1.5 and 1.3); the values are unchanged.
+
+**An unknown civilization's academy is no longer Yamato's.** The Iron academy's last branch was Yamato's torii and lantern, so any other civilization would have built them. Yamato now has its own branch; the fallback is a plain portico with a band in the player's colour.
+
+**The UI takes its civilizations from the data.**
+- Names, colours, the default arena slots, the showcase list and the analyzer's building test no longer list the four by hand.
+- The Wonder check uses each Wonder's `isWonder` flag instead of a list of four types.
+- **Visible change:** the lineup chips now wear the colour the army wears on the map. Greece's chips were green against blue units, Yamato's purple against pink, Persia's crimson against tomato red.
+
+**Two tests could not see what they checked.** The hold-mode test read the keys of the unique-unit array (`0`, `1`, ...), so it never checked a unique unit. The Wonder text test asserted exactly four.
+
 ## Build 1055: the scout costs no gold, and stays a scout (7 October 2026)
 
 **Rules change; `units.js` and `buildings.js` changed.** asp67's design: the scout cavalry is every civilization's first scout. It is cheap, weak and far-seeing, and meant to find gold and stone before a seat has mined any. Egypt has it too, beside its chariot, which is the fighter.

@@ -287,8 +287,9 @@ function buildingMaxHealth(buildingDef, civ, age) {
     // believed was carrying +30% and wrote so in its closing statement. The
     // descriptions now name the exception.
     if (buildingDef.type === 'wonder') return Math.max(50, buildingDef.health);
-    const healthMultiplier = (civ && civ.bonus && civ.bonus.name === 'Pyramide') ? 1.5 :
-                             (civ && civ.bonus && civ.bonus.name === 'Akropolis') ? 1.3 : 1.0;
+    // Read from the bonus's own data (b1056). It was matched by the bonus's NAME
+    // ('Pyramide', 'Akropolis'), and the multiplier the bonus sets was never read.
+    const healthMultiplier = (civ && civ.bonus && civ.bonus.buildingHealth) || 1.0;
     const idx = Math.max(0, BUILDING_AGE_ORDER.indexOf(age));
     return Math.max(50, Math.round(buildingDef.health * WarMath.powInt(1.5, idx) * healthMultiplier / 50) * 50);
 }
