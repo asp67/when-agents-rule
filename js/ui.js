@@ -7928,7 +7928,11 @@ class UIManager {
         const n = Math.max(1, (h.players || []).length), half = size / 2 - 40;
         const trig = typeof WarMath !== 'undefined' ? WarMath : Math;
         t.spawns = [];
-        for (let i = 0; i < n; i++) {
+        if (h.spawnLayout === 'jittered') {
+            // The arena's layout since b1076, drawn from the same seed.
+            t.spawns = TerrainManager.arenaSpawns(h.mapSeed, n, size);
+            t.jitteredSpawns = true;
+        } else for (let i = 0; i < n; i++) {
             const ang = (i / n) * Math.PI * 2 - Math.PI / 2, rad = half * 0.85;
             t.spawns.push({ x: trig.cos(ang) * rad, z: trig.sin(ang) * rad });
         }

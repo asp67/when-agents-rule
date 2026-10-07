@@ -88,6 +88,79 @@ class TerrainManager {
 
     diffMods() { return DIFFICULTY_MODS[this.difficulty] || DIFFICULTY_MODS.easy; }
 
+    // The arena's starting positions (b1076), WAR Platform's layout (platform/server/
+    // spawns.cjs) ported: on an even circle every seat could work out where every rival
+    // starts from its own Town Center alone. The whole layout turns by a random angle
+    // and its centre moves up to 25 off the map's; each seat's angle moves up to 4
+    // degrees and its distance up to 12; which seat gets which place is shuffled. A
+    // layout where one seat's rivals are more than 12% nearer, rank for rank, than
+    // another's is drawn again. Scaled with the map. Drawn from the map seed on its own
+    // stream, so a replay rebuilds it and the rest of the map does not move.
+    static arenaSpawns(seed, count, size = 800) {
+        const n = Math.max(1, count | 0), unit = size / 800;
+        const rand = WarRng.stream(WarRng.hashSeed(String(seed) + '|spawn'), 7);
+        const spread = points => {
+            const rows = points.map((p, i) => points.filter((_, j) => i !== j).map(q => WarMath.hypot(p.x - q.x, p.z - q.z)).sort((a, b) => a - b));
+            return Math.max(...rows[0].map((_, rank) => Math.max(...rows.map(r => r[rank])) / Math.min(...rows.map(r => r[rank]))));
+        };
+        for (let attempt = 0; attempt < 128; attempt++) {
+            const angle = rand() * 2 * Math.PI, radius = (290 + rand() * 30) * unit;
+            const cx = (rand() - 0.5) * 50 * unit, cz = (rand() - 0.5) * 50 * unit;
+            const points = [];
+            for (let i = 0; i < n; i++) {
+                const a = angle + i * 2 * Math.PI / n + (rand() - 0.5) * 0.14, r = radius + (rand() - 0.5) * 24 * unit;
+                points.push({ x: Math.round((cx + WarMath.cos(a) * r) * 100) / 100, z: Math.round((cz + WarMath.sin(a) * r) * 100) / 100 });
+            }
+            if (points.some(p => Math.max(Math.abs(p.x), Math.abs(p.z)) > size / 2 - 40 * unit) || (n > 1 && spread(points) > 1.12)) continue;
+            for (let i = n - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [points[i], points[j]] = [points[j], points[i]]; }
+            return points;
+        }
+        // Never reached in practice; the even circle the arena used before.
+        const half = size / 2 - 40;
+        return Array.from({ length: n }, (_, i) => {
+            const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+            return { x: WarMath.cos(a) * half * 0.85, z: WarMath.sin(a) * half * 0.85 };
+        });
+    }
+
+    // Each seat's home (b1076): a disc around its Town Center with the area of one map
+    // tile (radius tile/sqrt(pi), ~58), which takes in the Town Center's whole sight
+    // (40). Only for the arena's jittered layout. In it, food and wood are laid out the
+    // same for every seat to the pixel: one tile's count, at one shared set of offsets
+    // turned with each seat's bearing to the map centre. The scatter there is taken out,
+    // so the map keeps its totals (to a few nodes, the disc being one tile's area).
+    homeDiscs() {
+        if (!this.jitteredSpawns || !this.spawns || !this.spawns.length) return [];
+        const usable = this.size - 80, tile = usable / (this.tiles || 7), r = tile / Math.sqrt(Math.PI);
+        return this.spawns.map(s => ({ x: s.x, z: s.z, r, a: WarMath.atan2(s.z, s.x) }));
+    }
+    placeHome(type, per, amount, homes) {
+        if (!homes.length) return;
+        const rand = WarRng.stream(WarRng.hashSeed(String(this.seed) + '|home|' + type), 11);
+        const CLEAR = 16;   // past the Town Center's own clearance (12.5), so none is cleared away
+        const taken = this._homeOffsets || (this._homeOffsets = []);
+        const R = homes[0].r - 3;
+        for (let k = 0; k < per; k++) {
+            for (let tries = 0; tries < 400; tries++) {
+                // Uniform by area over the ring CLEAR..R.
+                const rr = Math.sqrt(CLEAR * CLEAR + rand() * (R * R - CLEAR * CLEAR)), th = rand() * 2 * Math.PI;
+                const ox = WarMath.cos(th) * rr, oz = WarMath.sin(th) * rr;
+                if (taken.some(o => WarMath.hypot(o.x - ox, o.z - oz) < 3.2)) continue;
+                const spots = homes.map(h => ({
+                    x: h.x + ox * WarMath.cos(h.a) - oz * WarMath.sin(h.a),
+                    z: h.z + ox * WarMath.sin(h.a) + oz * WarMath.cos(h.a)
+                }));
+                // Every seat's copy must stand on land and clear of every Town Center, or
+                // none is placed: the same for all, or not at all.
+                if (spots.some(p => !this.isWalkable(p.x, p.z) || Math.max(Math.abs(p.x), Math.abs(p.z)) > this.size / 2 - 12)) continue;
+                if (spots.some(p => this.spawns.some(s => WarMath.hypot(p.x - s.x, p.z - s.z) < CLEAR))) continue;
+                taken.push({ x: ox, z: oz });
+                for (const p of spots) this.resources.push({ type, x: p.x, z: p.z, amount, mesh: this._handle(type), health: amount });
+                break;
+            }
+        }
+    }
+
     // Deterministic PRNG so a map seed reproduces the exact same map — the fair way
     // to compare two models on identical terrain. The game's one generator
     // (js/simulation/rng.js), seeded by this map's own string hash; the outputs are
@@ -110,6 +183,7 @@ class TerrainManager {
         // Idempotent: a rematch simply regenerates the layout (the renderer
         // rebuilds its ground texture + resource entries from it in setTerrain).
         this.resources = [];
+        this._homeOffsets = [];
         this.generateResources();
         this.generateTrees();
         this.generateStones();
@@ -139,6 +213,10 @@ class TerrainManager {
         const G = this.tiles || 7;
         const tile = usable / G;
         const per = Math.max(1, Math.round(totalCount / 49));
+        // The homes are laid out apart (b1076): what the scatter drops into one is left
+        // out, its draws still taken so the rest of the map lands where it always did.
+        const homes = this.homeDiscs();
+        const atHome = (x, z) => homes.some(h => WarMath.hypot(x - h.x, z - h.z) < h.r);
         for (let tx = 0; tx < G; tx++) {
             for (let tz = 0; tz < G; tz++) {
                 const x0 = -usable / 2 + tx * tile;
@@ -147,10 +225,12 @@ class TerrainManager {
                     const inset = 6;       // stay off the tile seams (visual clumping)
                     const x = x0 + inset + this.rand() * (tile - inset * 2);
                     const z = z0 + inset + this.rand() * (tile - inset * 2);
+                    if (atHome(x, z)) continue;
                     this.resources.push({ type, x, z, amount, mesh: this._handle(type), health: amount });
                 }
             }
         }
+        this.placeHome(type, per, amount, homes);
     }
 
     // Fairness placement for the SCARCE types (stone, gold). Two dozen nodes

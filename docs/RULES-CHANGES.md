@@ -6,6 +6,38 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1076: jittered spawns, identical homes (7 October 2026)
+
+**Rules change (the arena's map layout).** asp67's aims, on both map sizes:
+- The WAR Platform's spawn layout, so no model can work out where its rivals start.
+- Every seat starting from the same ground.
+
+**The layout** is ported from the Platform (`platform/server/spawns.cjs` → `TerrainManager.arenaSpawns`):
+- The whole layout turns by a random angle, and its centre moves up to 25 off the map's.
+- Each seat's angle moves up to 4 degrees, and its distance (290-320) up to 12.
+- Which seat gets which place is shuffled.
+- A layout where one seat's rivals are more than 12% nearer, rank for rank, than another's is drawn again.
+- Everything scales with the map, and it is drawn from the map seed on its own stream, so a replay rebuilds it.
+
+**Every seat's home is identical to the pixel.** A disc around each Town Center, with the area of one map tile (radius about 58), takes in the Town Center's whole sight (40).
+- The scatter that falls inside it is left out; its draws are still taken, so the rest of the map lands where it always did.
+- One tile's normal count of food and wood is laid out instead, at one shared set of offsets turned with each seat's bearing to the map centre. Each copy must stand on land, or no seat gets it.
+- Stone and gold already kept 95 away from every Town Center, and now follow each seat's offset (the Platform's shifted rotation), so they too are identical.
+
+**Measured** over 25 seeds × 4 seats, as food bushes within Town Center sight at the start, gap between seats in one match:
+
+| Setting | Before | After |
+|---|---|---|
+| Summer | 2.4 | 0 |
+| Winter | 1.2 | 0 |
+| Desert | 0.9 | 0 |
+
+The amounts are unchanged, as asp67 asked: in the desert about half of all starts still see no food, but then every seat in that match sees none.
+
+**Not changed:** the campaign keeps its even circle. Transcripts record `spawnLayout`, so the analyzer rebuilds older matches on their circle and new ones on their layout.
+
+**Golden trace:** opening-economy was re-recorded (its map moved).
+
 ## Build 1075: the Vikings in brown-grey (7 October 2026)
 
 **Look only.** At asp67's request, the Vikings' colour is a dark brown-grey (0x5e5248), like weathered wool and iron, instead of cyan. Tunics, shields, the Royal hall's shield row, the lineup chips and the buildings' accent all follow it.

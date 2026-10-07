@@ -353,17 +353,9 @@ class Game {
 
         // Calculate spawn positions (one per arena participant, 2–4)
         const mapSize = this.applyMapSize((spec && spec.mapSize) || (this.ui.setupMapSize && this.ui.setupMapSize()));
-        const halfSize = mapSize / 2 - 40;
         const numPlayers = setup.length;
+        // Filled once the map seed is known (b1076): the layout is drawn from it.
         const spawnPositions = [];
-        for (let i = 0; i < numPlayers; i++) {
-            const angle = (i / numPlayers) * Math.PI * 2 - Math.PI / 2;
-            const radius = halfSize * 0.85;
-            spawnPositions.push({
-                x: WarMath.cos(angle) * radius,
-                z: WarMath.sin(angle) * radius
-            });
-        }
 
         // Regenerate the map FIRST (with the chosen difficulty) so resource counts
         // reflect it and the per-TC clearResourcesNear below acts on fresh nodes.
@@ -376,6 +368,11 @@ class Game {
         // match is reproducible and every transcript carries the seed that made it.
         this.terrain.seed = (spec && spec.seed) || (this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed();
         this.mapSeed = this.terrain.seed;
+        // WAR Platform's jittered layout and every seat's identical home (b1076, see
+        // TerrainManager.arenaSpawns / homeDiscs). Stone and gold follow each seat's
+        // offset (scatterShifted), so they stay identical too.
+        spawnPositions.push(...TerrainManager.arenaSpawns(this.terrain.seed, numPlayers, mapSize));
+        this.terrain.jitteredSpawns = true;
         // What this match IS, kept so Rematch can play it again -- same seats, same map,
         // same tempo. The harness reads the round mode from here rather than from the
         // setup screen, which a Quick match does not use.
@@ -584,6 +581,7 @@ class Game {
         // generator needs the spawns before it runs (they are already computed above).
         if (visualShowcase) spawnPositions[0] = { x: 0, z: -348 };
         this.terrain.spawns = spawnPositions;
+        this.terrain.jitteredSpawns = false;   // the campaign keeps its even circle (b1076: the arena's is jittered)
         this._battles = []; // fresh match, no carried-over engagements
         this.resetTimeline();  // ...and a fresh graph
         this.terrain.generateTerrain();

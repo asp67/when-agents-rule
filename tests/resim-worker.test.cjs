@@ -117,7 +117,8 @@ test('the analyzer regenerates the arena\'s own map, spawns and nodes alike', as
         const m = await createMatch({ kind: 'arena', seats, seed: 'analyzer-map-' + seats.length });
         vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/ui.js'), 'utf8') + '\n;globalThis.__UI = UIManager;', m.context);
         const ui = Object.create(m.context.__UI.prototype);
-        ui.analyzer = { header: { mapSeed: m.game.mapSeed, difficulty: m.game.difficulty, players: m.seats.map(p => ({ id: p.id })) } };
+        // spawnLayout as every transcript since b1076 records it (the arena's jittered layout).
+        ui.analyzer = { header: { mapSeed: m.game.mapSeed, difficulty: m.game.difficulty, spawnLayout: 'jittered', players: m.seats.map(p => ({ id: p.id })) } };
         const t = ui.anTerrain();
         assert.deepEqual(Array.from(t.spawns, s => [s.x, s.z]), Array.from(m.game.terrain.spawns, s => [s.x, s.z]));
         const key = n => n.type + '@' + Math.round(n.x) + ',' + Math.round(n.z);

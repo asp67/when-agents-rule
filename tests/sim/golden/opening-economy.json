@@ -1,6 +1,6 @@
 [
  {
-  "hash": "8164427fe63ce153",
+  "hash": "58db65e312c24406",
   "summary": {
    "t": 30,
    "seats": [
@@ -9,8 +9,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      10,
-      160,
+      30,
+      110,
       100,
       50
      ],
@@ -27,7 +27,7 @@
      "out": false,
      "res": [
       24,
-      160,
+      124,
       100,
       50
      ],
@@ -42,7 +42,7 @@
   }
  },
  {
-  "hash": "4daa73fe3c44e0ec",
+  "hash": "9949de927e08f36e",
   "summary": {
    "t": 60,
    "seats": [
@@ -51,16 +51,16 @@
      "age": "stone",
      "out": false,
      "res": [
-      20,
-      270,
+      30,
+      120,
       100,
       50
      ],
      "units": {
-      "worker": 6
+      "worker": 8
      },
-     "hp": 240,
-     "buildings": 1,
+     "hp": 320,
+     "buildings": 2,
      "research": 1
     },
     {
@@ -68,23 +68,23 @@
      "age": "stone",
      "out": false,
      "res": [
-      46,
-      244,
+      2,
+      152,
       100,
       50
      ],
      "units": {
-      "worker": 7
+      "worker": 8
      },
-     "hp": 280,
-     "buildings": 1,
+     "hp": 320,
+     "buildings": 2,
      "research": 1
     }
    ]
   }
  },
  {
-  "hash": "b4726239fec651e8",
+  "hash": "3c1d50c8348da5c4",
   "summary": {
    "t": 90,
    "seats": [
@@ -93,15 +93,15 @@
      "age": "stone",
      "out": false,
      "res": [
-      0,
-      350,
+      20,
+      140,
       100,
       50
      ],
      "units": {
-      "worker": 8
+      "worker": 10
      },
-     "hp": 320,
+     "hp": 400,
      "buildings": 2,
      "research": 1
     },
@@ -110,15 +110,15 @@
      "age": "stone",
      "out": false,
      "res": [
-      24,
-      296,
+      8,
+      188,
       100,
       50
      ],
      "units": {
-      "worker": 8
+      "worker": 10
      },
-     "hp": 320,
+     "hp": 400,
      "buildings": 2,
      "research": 1
     }
@@ -126,7 +126,7 @@
   }
  },
  {
-  "hash": "88911d3eab8dfe1a",
+  "hash": "997e23a6363f7399",
   "summary": {
    "t": 120,
    "seats": [
@@ -135,16 +135,16 @@
      "age": "stone",
      "out": false,
      "res": [
-      30,
-      410,
+      50,
+      100,
       100,
       50
      ],
      "units": {
-      "worker": 9
+      "worker": 12
      },
-     "hp": 360,
-     "buildings": 2,
+     "hp": 480,
+     "buildings": 3,
      "research": 1
     },
     {
@@ -152,15 +152,15 @@
      "age": "stone",
      "out": false,
      "res": [
-      6,
-      318,
+      46,
+      216,
       100,
       50
      ],
      "units": {
-      "worker": 11
+      "worker": 13
      },
-     "hp": 440,
+     "hp": 520,
      "buildings": 3,
      "research": 1
     }
@@ -168,7 +168,7 @@
   }
  },
  {
-  "hash": "4133735ab5691f08",
+  "hash": "b933ed5096782810",
   "summary": {
    "t": 150,
    "seats": [
@@ -177,92 +177,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      20,
-      490,
-      100,
-      50
-     ],
-     "units": {
-      "worker": 11
-     },
-     "hp": 440,
-     "buildings": 2,
-     "research": 1
-    },
-    {
-     "civ": "persian",
-     "age": "stone",
-     "out": false,
-     "res": [
-      4,
-      258,
-      100,
-      50
-     ],
-     "units": {
-      "worker": 13
-     },
-     "hp": 520,
-     "buildings": 6,
-     "research": 1
-    }
-   ]
-  }
- },
- {
-  "hash": "1f276553ee23fda1",
-  "summary": {
-   "t": 180,
-   "seats": [
-    {
-     "civ": "greek",
-     "age": "stone",
-     "out": false,
-     "res": [
-      0,
-      550,
-      100,
-      50
-     ],
-     "units": {
-      "worker": 13
-     },
-     "hp": 520,
-     "buildings": 3,
-     "research": 1
-    },
-    {
-     "civ": "persian",
-     "age": "stone",
-     "out": false,
-     "res": [
-      30,
-      94,
-      100,
-      50
-     ],
-     "units": {
-      "worker": 14
-     },
-     "hp": 560,
-     "buildings": 7,
-     "research": 2
-    }
-   ]
-  }
- },
- {
-  "hash": "5a5d16f21761e111",
-  "summary": {
-   "t": 210,
-   "seats": [
-    {
-     "civ": "greek",
-     "age": "stone",
-     "out": false,
-     "res": [
+      150,
       40,
-      420,
       100,
       50
      ],
@@ -278,8 +194,134 @@
      "age": "stone",
      "out": false,
      "res": [
-      306,
-      142,
+      10,
+      14,
+      100,
+      50
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 5,
+     "research": 2
+    }
+   ]
+  }
+ },
+ {
+  "hash": "665f5069dfff8999",
+  "summary": {
+   "t": 180,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "stone",
+     "out": false,
+     "res": [
+      310,
+      20,
+      100,
+      50
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 6,
+     "research": 1
+    },
+    {
+     "civ": "persian",
+     "age": "stone",
+     "out": false,
+     "res": [
+      212,
+      12,
+      100,
+      50
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 6,
+     "research": 3
+    }
+   ]
+  }
+ },
+ {
+  "hash": "c81d85c2e7caa233",
+  "summary": {
+   "t": 210,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "stone",
+     "out": false,
+     "res": [
+      460,
+      10,
+      100,
+      50
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 7,
+     "research": 1
+    },
+    {
+     "civ": "persian",
+     "age": "stone",
+     "out": false,
+     "res": [
+      452,
+      36,
+      100,
+      50
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 6,
+     "research": 3
+    }
+   ]
+  }
+ },
+ {
+  "hash": "1ed2633553f56514",
+  "summary": {
+   "t": 240,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "stone",
+     "out": false,
+     "res": [
+      670,
+      40,
+      100,
+      50
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 7,
+     "research": 1
+    },
+    {
+     "civ": "persian",
+     "age": "stone",
+     "out": false,
+     "res": [
+      594,
+      34,
       100,
       50
      ],
@@ -294,49 +336,7 @@
   }
  },
  {
-  "hash": "b3828d9a7267e9cb",
-  "summary": {
-   "t": 240,
-   "seats": [
-    {
-     "civ": "greek",
-     "age": "stone",
-     "out": false,
-     "res": [
-      10,
-      110,
-      50,
-      50
-     ],
-     "units": {
-      "worker": 14
-     },
-     "hp": 560,
-     "buildings": 9,
-     "research": 2
-    },
-    {
-     "civ": "persian",
-     "age": "stone",
-     "out": false,
-     "res": [
-      458,
-      52,
-      100,
-      50
-     ],
-     "units": {
-      "worker": 14
-     },
-     "hp": 560,
-     "buildings": 7,
-     "research": 4
-    }
-   ]
-  }
- },
- {
-  "hash": "6185f6d597c1ce0c",
+  "hash": "be2811862bed6b4f",
   "summary": {
    "t": 270,
    "seats": [
@@ -345,26 +345,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      10,
-      60,
-      50,
-      50
-     ],
-     "units": {
-      "worker": 14,
-      "militia": 3
-     },
-     "hp": 770,
-     "buildings": 9,
-     "research": 2
-    },
-    {
-     "civ": "persian",
-     "age": "stone",
-     "out": false,
-     "res": [
-      662,
-      112,
+      770,
+      30,
       100,
       50
      ],
@@ -373,13 +355,30 @@
      },
      "hp": 560,
      "buildings": 7,
-     "research": 4
+     "research": 2
+    },
+    {
+     "civ": "persian",
+     "age": "stone",
+     "out": false,
+     "res": [
+      774,
+      58,
+      100,
+      50
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 7,
+     "research": 3
     }
    ]
   }
  },
  {
-  "hash": "923b1ea3f462ca08",
+  "hash": "28b9958a7faf80dd",
   "summary": {
    "t": 300,
    "seats": [
@@ -388,17 +387,16 @@
      "age": "stone",
      "out": false,
      "res": [
-      40,
-      30,
-      50,
-      50
+      870,
+      10,
+      100,
+      20
      ],
      "units": {
-      "worker": 14,
-      "militia": 6
+      "worker": 14
      },
-     "hp": 980,
-     "buildings": 10,
+     "hp": 560,
+     "buildings": 7,
      "research": 2
     },
     {
@@ -406,8 +404,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      828,
-      22,
+      1002,
+      82,
       100,
       50
      ],
@@ -415,14 +413,14 @@
       "worker": 14
      },
      "hp": 560,
-     "buildings": 8,
-     "research": 4
+     "buildings": 7,
+     "research": 3
     }
    ]
   }
  },
  {
-  "hash": "e9fbdb5f5e8a3e92",
+  "hash": "2a98ccf8897bf03e",
   "summary": {
    "t": 330,
    "seats": [
@@ -431,42 +429,40 @@
      "age": "stone",
      "out": false,
      "res": [
-      50,
-      10,
-      50,
-      50
+      1040,
+      60,
+      100,
+      20
      ],
      "units": {
-      "worker": 14,
-      "militia": 9
+      "worker": 14
      },
-     "hp": 1190,
-     "buildings": 10,
-     "research": 2
+     "hp": 560,
+     "buildings": 7,
+     "research": 3
     },
     {
      "civ": "persian",
      "age": "stone",
      "out": false,
      "res": [
-      882,
-      10,
+      1182,
+      118,
       100,
       50
      ],
      "units": {
-      "worker": 14,
-      "militia": 2
+      "worker": 14
      },
-     "hp": 700,
-     "buildings": 8,
-     "research": 4
+     "hp": 560,
+     "buildings": 7,
+     "research": 3
     }
    ]
   }
  },
  {
-  "hash": "432e1333e462bff6",
+  "hash": "f9efc2386ecaf787",
   "summary": {
    "t": 360,
    "seats": [
@@ -475,36 +471,34 @@
      "age": "stone",
      "out": false,
      "res": [
-      70,
+      1200,
       0,
-      50,
-      50
+      100,
+      20
      ],
      "units": {
-      "worker": 14,
-      "militia": 10
+      "worker": 14
      },
-     "hp": 1260,
-     "buildings": 11,
-     "research": 2
+     "hp": 560,
+     "buildings": 7,
+     "research": 3
     },
     {
      "civ": "persian",
      "age": "stone",
      "out": false,
      "res": [
-      956,
-      10,
+      1362,
+      142,
       100,
       50
      ],
      "units": {
-      "worker": 14,
-      "militia": 4
+      "worker": 14
      },
-     "hp": 840,
-     "buildings": 9,
-     "research": 4
+     "hp": 560,
+     "buildings": 7,
+     "research": 3
     }
    ]
   }

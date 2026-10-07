@@ -16,9 +16,10 @@ test('a large map is 1200 across, in 11x11 tiles of the same size', async () => 
     assert.equal(g.EXPLORE_GRID / g.EXPLORE_TILES, 6, 'six cells a tile, as on the 800 map');
     assert.equal(g.fogOfWar.mapSize, 1200);
     assert.equal(g.arenaSpec.mapSize, 1200, 'a rematch plays the same size');
-    // The spawns' circle grows with the map: 85 % of (half - 40).
+    // The spawn layout grows with the map: 290-320 out on the 800 map, 1.5 times that here,
+    // jittered since b1076 (by up to 18 per seat and 37.5 for the layout's centre).
     const tcs = m.seats.map(ai => ai.buildings.find(b => b.type === 'town_center'));
-    for (const tc of tcs) assert.ok(Math.abs(Math.hypot(tc.x, tc.z) - 476) < 1e-6, `${tc.x},${tc.z}`);
+    for (const tc of tcs) { const r = Math.hypot(tc.x, tc.z); assert.ok(r > 435 - 60 && r < 480 + 60, `${tc.x},${tc.z}: ${r}`); }
 });
 
 test('the whole large square is land, and every node stands on it', async () => {

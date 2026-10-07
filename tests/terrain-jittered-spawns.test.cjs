@@ -44,9 +44,16 @@ for (const n of [2, 3, 4]) test(`${n} seats: every seat gets its stone and gold 
     }
 });
 
-test('the switch changes nothing on symmetric spawns', () => {
-    assert.equal(hash(map('golden-opening', symmetric(2), true)), hash(map('golden-opening', symmetric(2), false)));
-    assert.equal(hash(map('greek-coast-01', symmetric(4), true)), hash(map('greek-coast-01', symmetric(4), false)));
+// Since b1076 the switch also lays out every seat's home (TerrainManager.homeDiscs), so
+// on symmetric spawns it changes exactly that: the map outside the homes is node for node
+// the one the plain rotation gives.
+test('on symmetric spawns the switch changes nothing outside the homes', () => {
+    for (const [seed, spawns] of [['golden-opening', symmetric(2)], ['greek-coast-01', symmetric(4)]]) {
+        const on = map(seed, spawns, true), off = map(seed, spawns, false);
+        const r = on.homeDiscs()[0].r;
+        const away = t => t.resources.filter(n => spawns.every(s => Math.hypot(n.x - s.x, n.z - s.z) >= r));
+        assert.equal(hash({ resources: away(on) }), hash({ resources: away(off) }), seed);
+    }
 });
 
 test('without the switch, uneven spawns keep the plain rotation (WAR\'s showcase moves its Town Center)', () => {

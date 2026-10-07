@@ -2667,6 +2667,9 @@ class OpenAIAIManager {
                 difficulty: this.game.difficulty || null,
                 mapSize: (this.game.terrain && this.game.terrain.size) || null,
                 exploreTiles: this.game.EXPLORE_TILES || null,
+                // b1076: the arena's jittered starting layout with identical homes. Absent
+                // in older transcripts, which were all played on the even circle.
+                spawnLayout: (this.game.terrain && this.game.terrain.jitteredSpawns) ? 'jittered' : 'circle',
                 turnBased: !!this.turnBased,
                 roundTimeoutMs: this.turnBased ? this.roundTimeoutMs() : null,
                 // Lockstep: world milliseconds per round (the world is frozen while seats
