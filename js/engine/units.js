@@ -186,12 +186,15 @@
             // Brim at head centre + .11: just above the .085-high eyebrows.
             else part(p,'cylinder',[S(.025),S(.37),S(.18),16],'thatch',{x,y:y+S(.125),z});
         } else if(civ==='maya') {
-            // Feathers (b1060): a fan of plumes on a gold band for soldiers, one plume on
-            // a cloth band otherwise, a tall headdress for the priest.
+            // Feathers (b1060, coloured b1068 by asp67): a worker wears one bright green
+            // plume, a single-plumed soldier one red, and the many-plumed -- soldiers of
+            // rank and the priest -- a fan of red, green, yellow and blue.
             part(p,'cylinder',[S(.232),S(.236),S(.05),12],military?'gold':'cloth',{x,y:y+S(.05),z,team:!military});
-            const plumes=military?[-.5,-.25,0,.25,.5]:kind==='priest'?[-.3,-.1,.1,.3]:[0];
-            plumes.forEach((a,i)=>part(p,'box',[S(.05),S(military||kind==='priest'?.42:.28),S(.025)],i%2?'foliage':'cloth',
-                {x:x+Math.sin(a)*S(.16),y:y+S(.26),z:z-S(.12),rz:-a,team:!(i%2)}));
+            const fan=military||kind==='priest';
+            const plumes=fan?[-.45,-.15,.15,.45]:[0];
+            const colours=fan?['feather','featherGreen','featherYellow','featherBlue']:[kind==='worker'?'featherGreen':'feather'];
+            plumes.forEach((a,i)=>part(p,'box',[S(.05),S(fan?.42:.28),S(.025)],colours[i],
+                {x:x+Math.sin(a)*S(.16),y:y+S(.26),z:z-S(.12),rz:-a}));
         } else if(civ==='viking') {
             // A plain iron cap with a nose guard -- no horns (b1059); a wool cap otherwise.
             if(military) part(p,'box',[S(.05),S(.17),S(.04)],'iron',{x,y:y-S(.07),z:z+S(.24)});
@@ -298,7 +301,7 @@
             const p = [];
             humanoid(p, o);
             shoulders(p,'leather');   // caps the sleeve, whose top read as a flat disc
-            headgear(p, o.civ, 'civil', 0, 1.49, 0);
+            headgear(p, o.civ, o.civ === 'maya' ? 'worker' : 'civil', 0, 1.49, 0);   // the Maya's workers wear green (b1068)
             held(p,'axe','armR',[.37,.77,.045],q=>{
                 part(q,'cylinder',[.028,.028,.55,8],'wood',{y:.09});
                 part(q,'box',[.065,.18,.25],'iron',{y:.33,z:.08});
@@ -499,13 +502,17 @@
         part(p,'cylinder',[0,.03,.08,6],'white',{x:-.40,y:1.57,z:.12,rx:Math.PI/2,bone});   // beak
         for (const [side, b] of [[-1, 'parrotWing'], [1, 'parrotWingR']]) {   // the wings, bright green
             const x = -.40 + side * .095;
-            // Flat triangles (b1067; b1066's ovals were too much): a broad one hinged
-            // at the shoulder, a narrow pointed one behind it for the wingtip. A prism
-            // [thickness, base, length] turned point-down is a flat triangular plate.
-            part(p,'prism',[.012,.14,.21],'featherGreen',{x,y:1.50,z:-.05,rx:Math.PI-.3,bone:b});
-            part(p,'prism',[.012,.06,.27],'featherGreen',{x,y:1.49,z:-.10,rx:Math.PI-.45,bone:b});
+            // A scarlet macaw's wing in three flat triangles (b1068, after asp67's photo):
+            // red coverts at the shoulder, a yellow band, long blue flight feathers. Each
+            // layer a little further in, so the longer one shows past the shorter. A
+            // prism [thickness, base, length] turned point-down is a flat triangular plate.
+            part(p,'prism',[.012,.13,.11],'feather',{x:x+side*.012,y:1.50,z:-.04,rx:Math.PI-.3,bone:b});
+            part(p,'prism',[.012,.12,.17],'featherYellow',{x,y:1.49,z:-.06,rx:Math.PI-.35,bone:b});
+            part(p,'prism',[.012,.09,.29],'featherBlue',{x:x-side*.012,y:1.48,z:-.09,rx:Math.PI-.45,bone:b});
         }
-        part(p,'box',[.05,.24,.035],'cloth',{x:-.40,y:1.22,z:-.10,rx:.3,team:true,bone});   // tail
+        // The tail: a long red point over broader blue outer feathers.
+        part(p,'prism',[.02,.06,.34],'feather',{x:-.40,y:1.34,z:-.08,rx:Math.PI-.3,bone});
+        part(p,'prism',[.015,.11,.24],'featherBlue',{x:-.40,y:1.34,z:-.09,rx:Math.PI-.3,bone});
     };
     // Where the parrot is: `lift` 0 on the shoulder, 1 in full flight, eased between by
     // the renderer. In flight it keeps pace beside the spotter, 1.1 out on its left and

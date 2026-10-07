@@ -6,6 +6,20 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1068: a scarlet macaw, and Maya plumes in colour (7 October 2026)
+
+**Look only.** asp67's notes, with a photo of a scarlet macaw for the parrot:
+
+**The parrot is a scarlet macaw:**
+- Each wing is three flat triangles: red coverts at the shoulder, a yellow band, then long blue flight feathers.
+- The tail is a long red point over broader blue outer feathers.
+- The team-coloured tail is gone, so the bird is all macaw.
+
+**Maya plumes in colour:**
+- A worker wears one bright green plume.
+- A single-plumed soldier (militia and the other first-rank units, the spotter among them) wears one red plume.
+- The many-plumed (soldiers of rank and the priest) wear a fan of red, green, yellow and blue.
+
 ## Build 1067: the parrot flies beside its spotter (7 October 2026)
 
 **Look only.** asp67's notes on b1066:

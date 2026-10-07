@@ -179,7 +179,7 @@ test('the Maya draw as themselves: El Castillo, feathers, the spotter\'s parrot'
         keys(EngineUnits.parts('infantry', { civ: 'nobody', unit: 'jaguar_warrior' })));
     const spotter = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).length;
     const plain = EngineUnits.parts('infantry', { civ: 'maya', unit: 'militia' }).length;
-    assert.equal(spotter - plain, 8, 'the parrot: body, head, beak, tail and two wings of two triangles (b1067)');
+    assert.equal(spotter - plain, 11, 'the parrot: body, head, beak, a tail of two and two wings of three triangles (b1068)');
 });
 
 test('the new civilizations\' Town Centers, houses and academies are their own (b1061)', () => {
@@ -216,9 +216,9 @@ test('the spotter\'s parrot sits on its shoulder at rest and flies beside it, hi
     for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
     const { EngineUnits } = scope.window;
     const bones = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).map(p => p.bone);
-    assert.equal(bones.filter(b => b === 'parrot').length, 4);
-    assert.equal(bones.filter(b => b === 'parrotWing').length, 2, 'a wing on each side (b1066)');
-    assert.equal(bones.filter(b => b === 'parrotWingR').length, 2);
+    assert.equal(bones.filter(b => b === 'parrot').length, 5);
+    assert.equal(bones.filter(b => b === 'parrotWing').length, 3, 'a wing on each side (b1066): red, yellow, blue (b1068)');
+    assert.equal(bones.filter(b => b === 'parrotWingR').length, 3);
     const [sx, sy, sz] = EngineUnits.PARROT_SEAT;
     const at = (m) => [m[0] * sx + m[4] * sy + m[8] * sz + m[12], m[1] * sx + m[5] * sy + m[9] * sz + m[13], m[2] * sx + m[6] * sy + m[10] * sz + m[14]];
     for (const t of [0, 1.7, 9.3]) {
@@ -229,4 +229,15 @@ test('the spotter\'s parrot sits on its shoulder at rest and flies beside it, hi
         const [fx, , fz] = EngineUnits.PARROT_FLIGHT;
         assert.ok(Math.hypot(fly[0] - fx, fly[2] - fz) < 1e-4, 'beside its spotter, not circling (b1067)');   // Float32 matrices
     }
+});
+
+test('the Maya plumes: green for a worker, red for one plume, red-green-yellow-blue for a fan (b1068)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const { EngineUnits } = scope.window;
+    const plumes = (type, unit) => EngineUnits.parts(type, { civ: 'maya', unit }).filter(p => p.tex.startsWith('feather') && p.kind === 'box' && !p.bone).map(p => p.tex);
+    assert.deepEqual([...plumes('worker', 'worker')], ['featherGreen']);
+    assert.deepEqual([...plumes('infantry', 'militia')], ['feather']);
+    assert.deepEqual([...plumes('infantry', 'jaguar_warrior')], ['feather', 'featherGreen', 'featherYellow', 'featherBlue']);
+    assert.deepEqual([...plumes('priest', 'priest')], ['feather', 'featherGreen', 'featherYellow', 'featherBlue']);
 });
