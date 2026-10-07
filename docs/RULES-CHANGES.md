@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1080: the large map by default (7 October 2026)
+
+**Default change.** asp67: "it works very well".
+- A new arena or campaign is played on the 1200 map unless a size was chosen and saved. The picker lists Large first.
+- A replay still rebuilds the size its transcript names, and one that names none was played on 800.
+- The Bench realm stays on 800, so its baselines and golden traces keep their meaning. The showcase stays on 800 too.
+
+**One more refusal coded.** `move_units` with neither coordinates nor a tile now reports `moveNeedsCoords`, as the same mistake already did elsewhere. Seen on 7 October, a model wrote its coordinates into the reason and sent none. The Bench could not tell that from a harness fault.
+
 ## Build 1079: a formation faces its front at rest (7 October 2026)
 
 **Look only.** Found by asp67: a standing formation and the way its men face fell apart.

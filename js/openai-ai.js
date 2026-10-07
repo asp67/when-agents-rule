@@ -6316,6 +6316,10 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                         : `[ERROR] "${params.tile}" is not a map tile. Use a COLUMN LETTER then a ROW NUMBER: A-${lastCol} and 1-${T}, e.g. "C5", or give "targetX" and "targetZ".`;
                     if (at && !/^\[ERROR\]/.test(actionResult)) actionResult += ` (centre of tile ${String(params.tile).trim().toUpperCase()})`;
                 } else {
+                    // Coded (b1080): it was one of the harness's uncoded refusals, so the Bench
+                    // could not tell it from a harness fault. Seen 7 Oct: a model wrote its
+                    // coordinates into the reason and sent none.
+                    this.outcome('log.out.moveNeedsCoords', {});
                     actionResult = `[ERROR] move_units requires "targetX" and "targetZ" parameters, or a "tile" label from map.exploration.`;
                 }
                 break;

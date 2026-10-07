@@ -905,6 +905,10 @@ class Game {
     // tile, a cell, a food bush per tile mean stays what it was.
     static get MAP_SIZES() { return { 800: { tiles: 7, grid: 42 }, 1200: { tiles: 11, grid: 66 } }; }
     static mapSizeOf(v) { const n = Number(v); return Game.MAP_SIZES[n] ? n : 800; }
+    // What a new arena or campaign is played on when the setup has no choice saved
+    // (b1080, asp67: "it works very well"). mapSizeOf keeps 800 for anything unnamed --
+    // a replay names its size, and older transcripts were all 800.
+    static get DEFAULT_MAP_SIZE() { return 1200; }
     // Size the world for a match, before its map is generated or its fog is made:
     // the island (TexGen), the terrain's size and tile grid, and the exploration grid.
     applyMapSize(value) {

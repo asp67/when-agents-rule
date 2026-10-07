@@ -68,3 +68,19 @@ test('a replay rebuilds the map size its transcript names', () => {
     assert.equal(context.WarResim.spec({ players: [], mapSize: 1200 }).mapSize, 1200);
     assert.equal(context.WarResim.spec({ players: [] }).mapSize, 800, 'older transcripts were all 800');
 });
+
+test('a new arena or campaign is played on the large map unless a size was saved (b1080)', async () => {
+    const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
+    const m = await start(800);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/ui.js'), 'utf8') + '\n;globalThis.__UI = UIManager;', m.context);
+    const ui = Object.create(m.context.__UI.prototype);
+    ui._setupMode = 'arena';
+    ui._arenaConfig = {};
+    assert.equal(ui.setupMapSize(), 1200, 'nothing saved: large');
+    ui._arenaConfig = { mapSize: 800 };
+    assert.equal(ui.setupMapSize(), 800, 'a saved choice stands');
+    ui._setupMode = 'campaign'; ui._campaignConfig = {};
+    assert.equal(ui.setupMapSize(), 1200, 'the campaign too');
+    // A replay names its size; one that does not was played on 800.
+    assert.equal(vm.runInContext('Game.mapSizeOf(undefined)', m.context), 800);
+});

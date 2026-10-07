@@ -699,7 +699,8 @@ class UIManager {
     }
     setupMapSize() {
         const cfg = this._setupMode === 'campaign' ? this._campaignConfig : this._arenaConfig;
-        return Game.mapSizeOf(cfg && cfg.mapSize);
+        // Large unless a size was chosen and saved (b1080).
+        return cfg && cfg.mapSize != null ? Game.mapSizeOf(cfg.mapSize) : Game.DEFAULT_MAP_SIZE;
     }
 
     setSetupSeed(v) {
