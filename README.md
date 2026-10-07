@@ -34,11 +34,11 @@ It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). W
 
 <div align="center">
 
-| A growing settlement | An army on the march |
+| A town in winter | An archer raid |
 |:---:|:---:|
-| ![A developed settlement during the recorded arena match](Screenshots/Settlement.png) | ![Persian troops moving through an enemy settlement](Screenshots/Formations.png) |
+| ![GLM 5.3's Egyptian town in the snow, its own notes on the economy floating over its buildings](Screenshots/WinterTown.jpg) | ![DeepSeek V4.1's Yamato archers razing GLM 5.3's Egyptian base, with DeepSeek's plan and both models' notes on screen](Screenshots/ArcherRaid.jpg) |
 
-<sub><i>From economy to conquest: still frames from the same live match. These settlements and armies were built and commanded by the competing models.</i></sub>
+<sub><i>From economy to conquest, in Episodes 9 and 10: the notes floating over units and buildings are the models' own reasons for what they ordered there. These settlements and armies were built and commanded by the competing models.</i></sub>
 
 </div>
 
@@ -144,9 +144,9 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 <div align="center">
 
-![Greek village with a watchtower, troops, workers and civic buildings](Screenshots/GreekVillage.png)
+![The whole island from above while Claude Sonnet 5.5's Greeks hold a Wonder, 9:50 from victory](Screenshots/WonderHeld.jpg)
 
-<sub><i>A Greek village at ground level: troops gather beside the watchtower while workers move among homes, the temple and the town center.</i></sub>
+<sub><i>Episode 12 from above: Claude Sonnet 5.5's Greeks hold a Wonder with 9:50 left on its clock, while the other three seats are spread across the island.</i></sub>
 
 </div>
 
