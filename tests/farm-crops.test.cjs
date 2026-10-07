@@ -8,8 +8,8 @@ const { EngineBuildings, EngineMesh } = scope.window;
 
 test('the crop follows the age and the civilization', () => {
     const crops = (age, civ) => EngineBuildings.parts('farm', { age, civ }).filter(p => p.kind === 'crops');
-    for (const civ of ['greek', 'egyptian', 'persian', 'yamato']) {
-        const kind = civ === 'yamato' ? 'rice' : 'wheat';
+    for (const civ of ['greek', 'egyptian', 'persian', 'yamato', 'roman', 'viking', 'maya']) {
+        const kind = civ === 'yamato' ? 'rice' : civ === 'maya' ? 'maize' : 'wheat';   // maize: b1064
         for (const [age, layout] of [['bronze', 'scatter'], ['iron', 'rows']]) {
             const c = crops(age, civ);
             assert.equal(c.length, 1, civ + ' ' + age + ' has its crop');
@@ -21,14 +21,14 @@ test('the crop follows the age and the civilization', () => {
 
 test('a crop mesh is valid, stays on its field, and the evenly filled one is denser', () => {
     const n = {};
-    for (const layout of ['scatter', 'rows']) for (const crop of ['rice', 'wheat']) {
+    for (const layout of ['scatter', 'rows']) for (const crop of ['rice', 'wheat', 'maize']) {
         const m = EngineMesh.crops(layout, crop, 7), verts = m.positions.length / 3;
         assert.ok(m.positions.every(Number.isFinite) && m.normals.every(Number.isFinite) && m.uvs.every(Number.isFinite));
         assert.equal(m.uvs.length / 2, verts);
         assert.ok(m.indices.every(i => i >= 0 && i < verts), layout + ' ' + crop + ' indices in range');
         for (let i = 0; i < m.positions.length; i += 3) {
             assert.ok(Math.abs(m.positions[i]) <= 3.5 && Math.abs(m.positions[i + 2]) <= 3.5, 'on the 7x7 field');
-            assert.ok(m.positions[i + 1] >= 0 && m.positions[i + 1] < 1.2, 'above the soil, crop height');
+            assert.ok(m.positions[i + 1] >= 0 && m.positions[i + 1] < (crop === 'maize' ? 2.2 : 1.2), 'above the soil, crop height');
         }
         n[layout + crop] = m.indices.length;
     }

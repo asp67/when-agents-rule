@@ -479,6 +479,20 @@
         const rand = TexGen.rng(seed), w = 16, h = 64;
         const c = canvas(w), ctx = c.getContext('2d');
         c.height = h;
+        // Maize (b1064): green up to V 0.75 -- stalk and leaves -- then gold, which only
+        // the cob and the tassel reach.
+        if (kind === 'maize') {
+            for (let y = 0; y < h; y++) {
+                const v = 1 - y / (h - 1), k = v < 0.75 ? v / 0.75 : (v - 0.75) / 0.25;
+                const col = v < 0.75 ? [40 + 50 * k, 92 + 62 * k, 34 + 26 * k] : [214 + 30 * k, 168 + 38 * k, 40 + 34 * k];
+                for (let x = 0; x < w; x++) {
+                    const n = 0.9 + rand() * 0.2;
+                    ctx.fillStyle = 'rgb(' + (col[0] * n | 0) + ',' + (col[1] * n | 0) + ',' + (col[2] * n | 0) + ')';
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+            return c;
+        }
         const [base, mid, tip] = kind === 'rice'
             ? [[38, 84, 30], [78, 150, 52], [140, 196, 86]]
             : [[118, 104, 52], [196, 168, 84], [232, 196, 104]];

@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1064: the Maya grow maize (7 October 2026)
+
+**Look only; no rules change.** asp67's suggestion: the Maya's fields grew wheat, as everyone's but Yamato's did.
+
+They now grow maize. Each plant is a tall stalk with broad leaves arching out, a cob on its side and a tassel on top. The stalk and leaves are green, and the cob and tassel are the yellow tips.
+- The plants stand taller and further apart than the grains: 7 rows of 8 in the Iron age, small clumps in the Bronze age.
+- Romans and Vikings keep wheat, and Yamato keeps rice.
+
 ## Build 1063: temples of their own (7 October 2026)
 
 **Look only; no rules change.** Found by asp67: the new civilizations' temples fell through to the generic sanctuary. That is a columned portico, which reads as a copy of the Greek temple.

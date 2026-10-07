@@ -502,7 +502,42 @@
         const rnd = () => ((st = (Math.imul(st, 1664525) + 1013904223) >>> 0) / 4294967296);
         const out = { positions: [], normals: [], uvs: [], indices: [] };
         const rice = crop === 'rice', H = rice ? 0.62 : 0.85, R = 3.05;
+        // One two-sided quad, V from v0 at its base edge to v1 at its far edge.
+        const quad = (pts, vs) => {
+            const ux = pts[1][0] - pts[0][0], uz = pts[1][2] - pts[0][2], ul = Math.hypot(ux, uz) || 1;
+            for (const sign of [1, -1]) {
+                const base = out.positions.length / 3;
+                pts.forEach((p, k) => { out.positions.push(p[0], p[1], p[2]); out.normals.push(-uz / ul * 0.25 * sign, 0.97, ux / ul * 0.25 * sign); out.uvs.push(k === 0 || k === 3 ? 0 : 1, vs[k]); });
+                if (sign === 1) out.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+                else out.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
+            }
+        };
+        // Maize (b1064, the Maya): one tall stalk, broad leaves arching out from it, a
+        // cob on its side and a tassel on top. The texture paints V up to 0.75 green
+        // and the rest gold, so the stalk and leaves stay green and the cob and the
+        // tassel are the yellow tips.
+        const maize = (x, z, scale) => {
+            const h = 1.5 * scale * (0.85 + rnd() * 0.25), turn = rnd() * Math.PI;
+            for (const a of [turn, turn + Math.PI / 2]) {   // the stalk, crossed for volume
+                const dx = Math.cos(a) * 0.035, dz = Math.sin(a) * 0.035;
+                quad([[x - dx, 0.02, z - dz], [x + dx, 0.02, z + dz], [x + dx * 0.7, h, z + dz * 0.7], [x - dx * 0.7, h, z - dz * 0.7]], [0, 0, 0.72, 0.72]);
+            }
+            for (let l = 0; l < 4; l++) {   // the leaves, spiralling up
+                const a = turn + l * 2.4, y = h * (0.25 + l * 0.17), len = 0.5 + rnd() * 0.15;
+                const dx = Math.cos(a), dz = Math.sin(a), w = 0.08;
+                const ex = x + dx * len, ez = z + dz * len, ey = y + 0.12 - len * 0.25;
+                quad([[x - dz * w, y, z + dx * w], [x + dz * w, y, z - dx * w], [ex + dz * 0.01, ey, ez - dx * 0.01], [ex - dz * 0.01, ey, ez + dx * 0.01]], [0.15, 0.15, 0.7, 0.7]);
+            }
+            const ca = turn + 1.2, sx = Math.sin(ca), cs = Math.cos(ca);   // the cob
+            const cx = x + cs * 0.09, cz = z + sx * 0.09, cy = h * 0.55;
+            quad([[cx - sx * 0.07, cy, cz + cs * 0.07], [cx + sx * 0.07, cy, cz - cs * 0.07],
+                  [cx + sx * 0.05 + cs * 0.06, cy + 0.26, cz - cs * 0.05 + sx * 0.06],
+                  [cx - sx * 0.05 + cs * 0.06, cy + 0.26, cz + cs * 0.05 + sx * 0.06]], [0.82, 0.82, 1, 1]);
+            const tx = Math.cos(turn) * 0.06, tz = Math.sin(turn) * 0.06;   // the tassel
+            quad([[x - tx, h, z - tz], [x + tx, h, z + tz], [x + tx * 0.3, h + 0.2, z + tz * 0.3], [x - tx * 0.3, h + 0.2, z - tz * 0.3]], [0.85, 0.85, 1, 1]);
+        };
         const plant = (x, z, scale) => {
+            if (crop === 'maize') return maize(x, z, scale);
             const blades = rice ? 9 : 7, turn = rnd() * Math.PI * 2;
             for (let b = 0; b < blades; b++) {
                 const a = turn + b * Math.PI * 2 / blades + (rnd() - 0.5) * 0.5;
@@ -530,12 +565,13 @@
         if (layout === 'scatter') {
             // Clumps: a handful of planted patches, a few plants each, soil between.
             for (let c = 0; c < 14; c++) {
-                const cx = (rnd() * 2 - 1) * (R - 0.7), cz = (rnd() * 2 - 1) * (R - 0.7), n = 5 + Math.floor(rnd() * 5);
+                const cx = (rnd() * 2 - 1) * (R - 0.7), cz = (rnd() * 2 - 1) * (R - 0.7), n = crop === 'maize' ? 2 + Math.floor(rnd() * 3) : 5 + Math.floor(rnd() * 5);
                 for (let i = 0; i < n; i++) plant(cx + (rnd() - 0.5) * 1.3, cz + (rnd() - 0.5) * 1.3, 0.7 + rnd() * 0.35);
             }
         } else {
             // Evenly filled: rows across the field, plants close together along them.
-            const rows = 11, per = 15;
+            // Maize stands taller and wider apart than the grains.
+            const rows = crop === 'maize' ? 7 : 11, per = crop === 'maize' ? 8 : 15;
             for (let r = 0; r < rows; r++) for (let i = 0; i < per; i++) {
                 const z = -R + (r + 0.5) * (2 * R / rows), x = -R + (i + 0.5) * (2 * R / per);
                 plant(x + (rnd() - 0.5) * 0.18, z + (rnd() - 0.5) * 0.12, 0.9 + rnd() * 0.2);

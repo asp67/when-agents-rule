@@ -775,17 +775,18 @@
                 [[-3.3, -3.3], [3.3, -3.3], [3.3, 3.3], [-3.3, 3.3]].forEach(([x, z]) =>
                     part(p, 'cylinder', [0.08, 0.1, 0.9, 5], 'bark', { x, y: 0.45, z }));
             } else if (age === 'bronze') {
-                // Scattered plants on furrowed soil (b1006): rice for Yamato, wheat elsewhere.
-                const crop = o.civ === 'yamato' ? 'rice' : 'wheat';
+                // Scattered plants on furrowed soil (b1006): rice for Yamato, maize for the
+                // Maya (b1064), wheat elsewhere.
+                const crop = o.civ === 'yamato' ? 'rice' : o.civ === 'maya' ? 'maize' : 'wheat';
                 // A rice paddy is wet: darker soil under the green.
                 part(p, 'box', [7, 0.22, 7], 'field_furrows', { y: 0.11, tint: crop === 'rice' ? [0.72, 0.74, 0.76] : null });
                 part(p, 'crops', ['scatter', crop, 7], 'crop_' + crop, { y: 0.22 });
                 [[-3.3, -3.3], [3.3, -3.3], [3.3, 3.3], [-3.3, 3.3]].forEach(([x, z]) =>
                     part(p, 'cylinder', [0.08, 0.1, 0.9, 5], 'bark', { x, y: 0.45, z }));
             } else {
-                // Iron: an evenly filled field (rice for Yamato, wheat elsewhere) with a
-                // full fence, a water barrel and a leaning tool by the gate.
-                const crop = o.civ === 'yamato' ? 'rice' : 'wheat';
+                // Iron: an evenly filled field (rice for Yamato, maize for the Maya, wheat
+                // elsewhere) with a full fence, a water barrel and a leaning tool by the gate.
+                const crop = o.civ === 'yamato' ? 'rice' : o.civ === 'maya' ? 'maize' : 'wheat';
                 part(p, 'box', [7, 0.24, 7], 'field_furrows', { y: 0.12, tint: crop === 'rice' ? [0.72, 0.74, 0.76] : null });
                 part(p, 'crops', ['rows', crop, 11], 'crop_' + crop, { y: 0.24 });
                 const F = 3.5;

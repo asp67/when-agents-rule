@@ -265,6 +265,7 @@
                 field_furrows: T(TexGen.field(144, 128, 'furrows')),
                 crop_rice: T(TexGen.crop('rice', 145), { clamp: true }),
                 crop_wheat: T(TexGen.crop('wheat', 146), { clamp: true }),
+                crop_maize: T(TexGen.crop('maize', 147), { clamp: true }),   // the Maya's (b1064)
                 shadow: T(TexGen.shadowBlob(), { clamp: true }),
                 mote: T(TexGen.softMote(), { clamp: true }),
                 cloth: T(TexGen.cloth(155)),
