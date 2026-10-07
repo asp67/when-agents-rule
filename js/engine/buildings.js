@@ -82,6 +82,20 @@
     // palette alone left their Town Centers, houses and academies plain copies of the
     // generic ones. Bronze and Iron only -- the stone and neolithic huts are shared
     // by every culture, as for the four originals.
+    // A flight of steps up the front of a stepped platform (b1073; ramps before, at the
+    // wrong angle). Each step is a solid block from the ground to its tread, the flight
+    // running from zFront (ground) back to zBack (the top at `top`). Put zFront far
+    // enough out that the line from it to the top clears every terrace corner: a
+    // stepped platform tapers in steps, so a flight laid against its base would have
+    // the terraces poking through it -- the Maya built their stairs out in front.
+    const stairs = (p, { zFront, zBack, top, width, steps, tex = 'plaster', x = 0 }) => {
+        const d = (zFront - zBack) / steps, h = top / steps;
+        for (let i = 0; i < steps; i++) {
+            const tread = (i + 1) * h;
+            part(p, 'box', [width, tread, d + 0.02], tex, { x, y: tread / 2, z: zFront - (i + 0.5) * d });
+        }
+    };
+
     const OWN_TOWN_CENTER = {
         roman: (p, age) => {
             if (age === 'bronze') {
@@ -152,7 +166,7 @@
                 // A stepped platform with the council house on top, a stair up the front.
                 [[10.4, 0], [8.6, 0.9], [6.8, 1.8]].forEach(([w, y]) =>
                     part(p, 'frustum', [w, w, w - 0.6, w - 0.6, 0.9], 'masonry', { y }));
-                part(p, 'box', [2.2, 0.3, 3.8], 'plaster', { y: 1.35, z: 4.2, rx: 0.62 });
+                stairs(p, { zFront: 5.95, zBack: 3.1, top: 2.7, width: 2.2, steps: 9 });
                 part(p, 'box', [5.0, 2.0, 3.6], 'plaster', { y: 3.7 });
                 part(p, 'pyramid', [6.4, 5.0, 2.6], 'thatch', { y: 4.7 });
                 part(p, 'box', [1.2, 1.5, 0.3], 'bark', { y: 3.45, z: 1.82 });
@@ -162,7 +176,7 @@
                 // vault, and a pierced roof comb.
                 [[11.0, 0], [9.6, 1.0], [8.2, 2.0], [6.8, 3.0]].forEach(([w, y]) =>
                     part(p, 'frustum', [w, w * 0.8, w - 0.6, w * 0.8 - 0.6, 1.0], 'masonry', { y }));
-                part(p, 'box', [2.6, 0.3, 5.0], 'plaster', { y: 2.0, z: 3.9, rx: 0.68 });
+                stairs(p, { zFront: 4.85, zBack: 2.42, top: 4.0, width: 2.6, steps: 13 });
                 part(p, 'box', [6.0, 2.2, 3.4], 'plaster', { y: 5.1 });
                 part(p, 'frustum', [6.4, 3.8, 5.0, 1.6, 1.4], 'masonry', { y: 6.2 });    // the corbel vault
                 part(p, 'box', [4.4, 1.8, 0.4], 'cloth', { y: 8.5, team: true });         // the roof comb
@@ -307,7 +321,9 @@
             part(p, 'cylinder', [1, 1, 2.0, 14], 'plaster', { y: y0 + 1.0, sx: 2.1, sz: 1.6 });
             part(p, 'pyramid', [4.8, 3.8, 3.4], 'thatch', { y: y0 + 2.0 });
             part(p, 'box', [0.9, 1.4, 0.2], 'bark', { y: y0 + 0.7, z: 1.62 });
-            doorTrim(p, 'maya', tier, 1.7, 0.9, 1.4);
+            // doorTrim measures from the ground: on the Iron-age platform the door's top
+            // is y0 higher, and the lintel set for 1.4 lay across the doorway (b1073).
+            doorTrim(p, 'maya', tier, 1.7, 0.9, y0 + 1.4);
         }
     };
 
@@ -1057,7 +1073,7 @@
                 // the shrine and its high roof comb.
                 [[6.6, 0], [5.6, 1.1], [4.6, 2.2], [3.8, 3.3], [3.0, 4.4]].forEach(([w, y]) =>
                     part(p, 'frustum', [w, w, w - 0.5, w - 0.5, 1.1], 'masonry', { y }));
-                part(p, 'box', [1.5, 0.3, 4.6], 'plaster', { y: 2.75, z: 2.0, rx: 1.0 });       // the stair
+                stairs(p, { zFront: 3.75, zBack: 1.25, top: 5.5, width: 1.5, steps: 16 });     // the stair
                 part(p, 'box', [2.6, 1.6, 2.2], 'plaster', { y: 6.3 });                          // the shrine
                 part(p, 'box', [0.7, 1.0, 0.2], 'bark', { y: 6.0, z: 1.12 });
                 part(p, 'frustum', [2.4, 1.4, 1.6, 0.6, 2.2], 'masonry', { y: 7.1 });            // the roof comb
@@ -1205,11 +1221,12 @@
                 const w0 = 12.6 - i * 0.84, w1 = w0 - 0.5;
                 part(p, 'frustum', [w0, w0, w1, w1, h], 'masonry', { y: i * h });
             }
-            // The stair: one slab laid at the terraces' slope, with balustrades.
-            const top = steps * h, run = (12.6 - (12.6 - (steps - 1) * 0.84 - 0.5)) / 2;
+            // The stair (steps since b1073, a slab before), out in front of the terraces,
+            // between its balustrades laid along the same line.
+            const top = steps * h, zBack = (12.6 - (steps - 1) * 0.84 - 0.5) / 2, zFront = 6.6, run = zFront - zBack;
+            stairs(p, { zFront, zBack, top, width: 2.4, steps: 18 });
             const slope = Math.atan2(top, run), len = Math.hypot(top, run);
-            part(p, 'box', [2.4, 0.3, len], 'plaster', { y: top / 2, z: 6.3 - run / 2, rx: slope });
-            for (const x of [-1.35, 1.35]) part(p, 'box', [0.3, 0.5, len], 'masonry', { x, y: top / 2 + 0.2, z: 6.3 - run / 2, rx: slope });
+            for (const x of [-1.35, 1.35]) part(p, 'box', [0.3, 0.5, len], 'masonry', { x, y: top / 2 + 0.15, z: zFront - run / 2, rx: slope });
             // The temple: walls, a dark doorway, a roof comb in the owner's colour.
             part(p, 'box', [3.4, 2.0, 3.0], 'plaster', { y: top + 1.0 });
             part(p, 'box', [1.0, 1.4, 0.2], 'bark', { y: top + 0.7, z: 1.52 });

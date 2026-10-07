@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1073: Maya stairs and the Iron-age house door (7 October 2026)
+
+**Look only.** Found by asp67:
+
+**Stairs instead of ramps.** The Maya Town Centers and temple had a ramp up the front, laid at the wrong angle. All of them, El Castillo included, now have a flight of real steps. Each step is a solid block from the ground to its tread.
+- Each flight stands out in front of the terraces, as the Maya built them. A flight laid against the base would have had the stepped terraces poking through it.
+- El Castillo keeps its balustrades along the same line.
+
+**The Iron-age Maya house door.** The house stands on a platform in the Iron age, but its lintel was placed for a door on the ground, so it lay across the doorway. It now sits over the door.
+
 ## Build 1072: horses of many coats (7 October 2026)
 
 **Look only.** asp67: every horse wore the same tan.

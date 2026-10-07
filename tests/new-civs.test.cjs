@@ -289,3 +289,30 @@ test('horses wear five coats, each rider keeping its own (b1072)', () => {
     assert.equal(seen.size, 5, 'every coat in a herd');
     assert.equal(EngineUnits.parts('cavalry', { civ: 'egyptian', unit: 'horse_carriage', coat: 2 }).find(p => p.kind === 'sphere').tex, 'hairBlack', 'the chariot horse too');
 });
+
+test('Maya stairs are steps clear of the terraces, and the Iron house lintel is over its door (b1073)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const B = scope.window.EngineBuildings;
+    for (const [type, age] of [['town_center', 'bronze'], ['town_center', 'iron'], ['temple', 'iron'], ['el_castillo', 'iron']]) {
+        const parts = B.parts(type, { civ: 'maya', age });
+        // No ramp: no plaster slab tilted about X.
+        assert.ok(!parts.some(p => p.kind === 'box' && p.tex === 'plaster' && Math.abs(p.m[6]) > 0.1 && p.args[1] <= 0.3), `${type} ${age}: a ramp`);
+        const steps = parts.filter(p => p.kind === 'box' && p.tex === 'plaster' && Math.abs(p.m[13] - p.args[1] / 2) < 1e-4);
+        assert.ok(steps.length >= 9, `${type} ${age}: ${steps.length} steps standing on the ground`);
+        // Each tread is in front of every terrace corner at its height.
+        const terraces = parts.filter(p => p.kind === 'frustum');
+        for (const s of steps) {
+            const tread = s.args[1], front = s.m[14] + s.args[2] / 2;
+            for (const t of terraces) {
+                const y0 = t.m[13], y1 = y0 + t.args[4], topFront = t.m[14] + t.args[3] / 2;
+                if (y1 <= tread + 1e-6 || y0 >= tread) continue;   // a terrace whose top is below the tread, or above it
+                assert.ok(front >= topFront - 0.6, `${type} ${age}: a terrace at ${y1} pokes through the step at ${tread}`);
+            }
+        }
+    }
+    const house = B.parts('house', { civ: 'maya', age: 'iron' });
+    const door = house.find(p => p.tex === 'bark' && p.kind === 'box');
+    const lintel = house.find(p => p.tex === 'masonry' && p.kind === 'box');
+    assert.ok(lintel.m[13] - lintel.args[1] / 2 >= door.m[13] + door.args[1] / 2 - 1e-6, 'the lintel over the door, not across it');
+});
