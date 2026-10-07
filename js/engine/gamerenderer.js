@@ -1981,6 +1981,19 @@
                         this._unitDir.set(u, dir);
                     }
                 }
+                // A formation faces its front at rest (b1079). It is laid out along its line
+                // of march, but each man kept facing his last step -- often sideways into his
+                // slot -- once it stopped, so the block stood one way and its men looked
+                // another. The front is remembered while the unit marches in formation and
+                // forgotten when a plain move order takes it elsewhere.
+                if (u.formationAxis) ue.restDir = Math.atan2(u.formationAxis.x, u.formationAxis.z);
+                else if (u.isMoving) ue.restDir = null;
+                if (!facingTarget && !u.isMoving && ue.restDir != null) {
+                    let d = ue.restDir - dir;
+                    while (d > Math.PI) d -= Math.PI * 2;
+                    while (d < -Math.PI) d += Math.PI * 2;
+                    if (Math.abs(d) > 1e-3) { dir += d * Math.min(1, dt * 6); this._unitDir.set(u, dir); }
+                }
                 this._unitPrev.set(u, { x: u.x, z: u.z });
                 // Strides follow the ground actually covered (a jump -- a respawn, a seek
                 // in a replay -- is not a stride).

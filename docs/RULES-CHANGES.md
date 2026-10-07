@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1079: a formation faces its front at rest (7 October 2026)
+
+**Look only.** Found by asp67: a standing formation and the way its men face fell apart.
+
+A formation is laid out along its line of march, but a unit kept facing its last step once it stopped. Forming up close by, those last steps are sideways shuffles into the slots. Now a unit remembers its formation's front while it marches in formation, turns to it in place once it stands, and forgets it when a plain move order takes it elsewhere. A fight still turns it to its enemy.
+
+**Measured** in the browser, an arena seat forming a line six units off: the six faced 18-157 degrees off the front before, and 0 after. On a long march they already arrived facing the front.
+
 ## Build 1078: buildings drawn in batches (7 October 2026)
 
 **Performance only; nothing changes on screen.** Found by asp67: some of the new buildings caused lag.
