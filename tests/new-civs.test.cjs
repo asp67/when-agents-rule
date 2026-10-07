@@ -316,3 +316,19 @@ test('Maya stairs are steps clear of the terraces, and the Iron house lintel is 
     const lintel = house.find(p => p.tex === 'masonry' && p.kind === 'box');
     assert.ok(lintel.m[13] - lintel.args[1] / 2 >= door.m[13] + door.args[1] / 2 - 1e-6, 'the lintel over the door, not across it');
 });
+
+test('no culture\'s door trim lies across an academy door (b1074)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const B = scope.window.EngineBuildings;
+    for (const age of ['bronze', 'iron'])
+        for (const civ of ['greek', 'egyptian', 'persian', 'yamato', 'roman', 'viking', 'maya']) {
+            const parts = B.parts('academy', { civ, age });
+            const door = parts.find(p => p.kind === 'box' && p.tex === 'bark' && Math.abs(p.m[12]) < 1e-6 && p.args[0] >= 1.3 && p.args[1] >= 1.7 && p.args[2] < 0.3);
+            assert.ok(door, `${civ} ${age}: the door`);
+            const bottom = door.m[13] - door.args[1] / 2, top = door.m[13] + door.args[1] / 2, half = door.args[0] / 2;
+            const across = parts.filter(p => p !== door && p.tex !== 'bark' && Math.abs(p.m[14] - door.m[14]) < 0.35
+                && Math.abs(p.m[12]) < half - 0.05 && p.m[13] > bottom + 0.05 && p.m[13] < top - 0.05);
+            assert.deepEqual([...across.map(p => p.key + ' ' + p.tex)], [], `${civ} ${age}: trim across the doorway`);
+        }
+});

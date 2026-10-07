@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1074: academy doors (7 October 2026)
+
+**Look only.** Found by asp67: the academies' doors had the same fault as the Maya house's. The door trim measures from the ground, but the academy doors stand on a plinth, so every culture's trim lay across the doorway: pediments, lintels, torii beams, arches, posts.
+
+- **Iron age:** the trim now sits over the door, on top of the 0.8-high stylobate.
+  - On a door this wide the Roman arch springs a little lower, so its crown stays under the eaves.
+  - The Roman houses' arches are unchanged.
+- **Bronze age:** no trim. The columned porch is that academy's entrance, and under the porch roof there is no room for a trim over the door. Set over the door, pediments, arches and posts went through the porch roof.
+
 ## Build 1073: Maya stairs and the Iron-age house door (7 October 2026)
 
 **Look only.** Found by asp67:

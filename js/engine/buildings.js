@@ -57,13 +57,16 @@
             // b1062). The arch is a ring of stones, not a disc: b1061 set a solid white
             // disc on the lintel, which covered the door and stuck up into the roof.
             const r = doorW / 2 + 0.12, px = r + 0.06;
-            part(p, 'box', [0.3, doorH, 0.28], 'plaster', { x: x - px, y: doorH / 2, z });
-            part(p, 'box', [0.3, doorH, 0.28], 'plaster', { x: x + px, y: doorH / 2, z });
-            part(p, 'cylinder', [doorW / 2, doorW / 2, 0.1, 12], 'bark', { x, y: doorH, z: z - 0.06, rx: Math.PI / 2 });   // the round top of the opening
+            // A wider door's arch springs a little below its top (b1074), so the crown
+            // stays under the eaves: the academy's 1.4-wide door put it into the roof.
+            const spring = doorH - Math.max(0, r - 0.62) * 1.5;
+            part(p, 'box', [0.3, spring, 0.28], 'plaster', { x: x - px, y: spring / 2, z });
+            part(p, 'box', [0.3, spring, 0.28], 'plaster', { x: x + px, y: spring / 2, z });
+            part(p, 'cylinder', [doorW / 2, doorW / 2, 0.1, 12], 'bark', { x, y: spring, z: z - 0.06, rx: Math.PI / 2 });   // the round top of the opening
             for (let i = 0; i <= 6; i++) {   // the voussoirs, keystone in the middle
                 const a = (i / 6) * Math.PI;
                 part(p, 'box', [0.24, i === 3 ? 0.3 : 0.24, 0.3], 'plaster',
-                    { x: x + Math.cos(a) * r, y: doorH + Math.sin(a) * r, z, rz: a - Math.PI / 2 });
+                    { x: x + Math.cos(a) * r, y: spring + Math.sin(a) * r, z, rz: a - Math.PI / 2 });
             }
         } else if (civ === 'viking') {
             // Carved door posts that cross above the lintel (b1061).
@@ -780,7 +783,10 @@
                 // Gnomon: a rod on a marked disc, telling the hour by its shadow.
                 part(p, 'cylinder', [0.62, 0.62, 0.12, 12], 'plaster', { x: -3.4, y: 0.06, z: 0.4 });
                 part(p, 'cylinder', [0.045, 0.055, 1.5, 4], 'bark', { x: -3.4, y: 0.87, z: 0.4, rz: 0.22 });
-                doorTrim(p, civ, 2, 2.2, 1.3, 1.7);
+                // No door trim (b1074): the porch is this academy's entrance, and under its
+                // roof there is no room for one over the 2.04-high door. Set from the ground
+                // (1.7) every culture's trim lay across the door; set from the door's top,
+                // pediments, arches and posts went through the porch roof.
             } else {
                 // Iron: a real academy. Stone stylobate and hall are shared; the portico
                 // above them is where the cultures part company.
@@ -880,7 +886,7 @@
                         part(p, 'cylinder', [0.2, 0.22, 2.9, 8], 'plaster', { x, y: 2.25, z: 2.85 }));
                     part(p, 'box', [5.4, 0.3, 0.5], 'cloth', { y: 3.55, z: 2.85, team: true });
                 }
-                doorTrim(p, civ, 3, 2.2, 1.4, 1.9);
+                doorTrim(p, civ, 3, 2.2, 1.4, 0.8 + 1.9);   // the door's top over its stylobate (b1074: was 1.9, across the door)
             }
             return p;
         },
