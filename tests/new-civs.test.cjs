@@ -112,25 +112,25 @@ test('the Maya: no horses, and the spotter waits behind its own research', async
     for (const age of ['neolithic', 'bronze', 'iron'])
         assert.equal(c.getTrainOptionsForBuilding('stable', age, 'maya').length, 0, 'nothing to ride');
     assert.ok(!c.CIVS.maya.techTree.horseback, 'so no stable to build');
-    assert.ok(c.getTrainOptionsForBuilding('barracks', 'neolithic', 'maya').includes('spotter'));
+    assert.ok(c.getTrainOptionsForBuilding('barracks', 'neolithic', 'maya').includes('scout'));
     // The scouting research costs horseback's price plus the stable's 50 gold.
     assert.deepEqual({ ...c.CIVS.maya.techTree.scouting.cost }, { food: 150, wood: 100, stone: 0, gold: 50 });
-    assert.deepEqual({ ...c.getUnitDefFor('maya', 'spotter').cost }, { food: 130, wood: 0, stone: 0, gold: 0 }, 'paid in food');
-    const m = await createMatch({ kind: 'board', seed: 'spotter', seats: [
+    assert.deepEqual({ ...c.getUnitDefFor('maya', 'scout').cost }, { food: 130, wood: 0, stone: 0, gold: 0 }, 'paid in food');
+    const m = await createMatch({ kind: 'board', seed: 'spotter', seats: [   // the seed keeps its name: the layout it draws is the same
         { civ: 'maya', age: 'neolithic', buildings: [['town_center', -200, 0], ['barracks', -170, 20]], resources: { food: 2000, wood: 2000, stone: 0, gold: 200 } },
         { civ: 'greek', age: 'neolithic', buildings: [['town_center', 200, 0]] }] });
     const ai = m.seats[0], ctl = m.controllers[0], g = m.game;
-    const before = m.command(ctl, 'train_unit', { unitType: 'spotter' });
+    const before = m.command(ctl, 'train_unit', { unitType: 'scout' });
     assert.match(String(before), /needs the research "scouting" first/, before);
     const state = g.openAIAIManager.buildGameStateJSON(ctl);
-    const listed = state.units.blocked.barracks.neolithic.find(u => u.id === 'spotter');
+    const listed = state.units.blocked.barracks.neolithic.find(u => u.id === 'scout');
     assert.deepEqual([...listed.blockedBy], ['tech'], 'the model sees why');
     assert.equal(listed.requiresTech, 'scouting');
     ai.researchedTechs.scouting = true;
-    const after = m.command(ctl, 'train_unit', { unitType: 'spotter' });
+    const after = m.command(ctl, 'train_unit', { unitType: 'scout' });
     assert.doesNotMatch(String(after), /ERROR/, after);
     // As far-sighted as a rider; and explore sends it before a slower soldier.
-    const spotter = createUnitIn(m, ai, 'spotter');
+    const spotter = createUnitIn(m, ai, 'scout');
     const militia = createUnitIn(m, ai, 'militia');
     assert.equal(g.unitVision(spotter), 22.5);
     assert.equal(g.unitVision(militia), 15);
@@ -177,7 +177,7 @@ test('the Maya draw as themselves: El Castillo, feathers, the spotter\'s parrot'
     assert.notEqual(keys(EngineBuildings.parts('el_castillo', {})), keys(EngineBuildings.parts('pyramid', {})), 'not Egypt\'s pyramid');
     assert.notEqual(keys(EngineUnits.parts('infantry', { civ: 'maya', unit: 'jaguar_warrior' })),
         keys(EngineUnits.parts('infantry', { civ: 'nobody', unit: 'jaguar_warrior' })));
-    const spotter = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).length;
+    const spotter = EngineUnits.parts('infantry', { civ: 'maya', unit: 'scout' }).length;
     const plain = EngineUnits.parts('infantry', { civ: 'maya', unit: 'militia' }).length;
     assert.equal(spotter - plain, 11, 'the parrot: body, head, beak, a tail of two and two wings of three triangles (b1068)');
 });
@@ -215,7 +215,7 @@ test('the spotter\'s parrot sits on its shoulder at rest and flies beside it, hi
     const scope = { window: {} }; vm.createContext(scope);
     for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
     const { EngineUnits } = scope.window;
-    const bones = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).map(p => p.bone);
+    const bones = EngineUnits.parts('infantry', { civ: 'maya', unit: 'scout' }).map(p => p.bone);
     assert.equal(bones.filter(b => b === 'parrot').length, 5);
     assert.equal(bones.filter(b => b === 'parrotWing').length, 3, 'a wing on each side (b1066): red, yellow, blue (b1068)');
     assert.equal(bones.filter(b => b === 'parrotWingR').length, 3);

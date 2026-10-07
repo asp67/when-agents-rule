@@ -4233,6 +4233,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 
 - You never SEE a fight; it happens between your turns. "battles" reports each engagement, cumulative: both sides' composition, damage dealt to units and to buildings, priests' healing, and losses. Losing produces no error, so this is the only place you learn what beat you.
 - Priests never fight. They march with an attack and heal wounded units from the back on their own.
+- Cavalry and scouts see further than other units (22.5 against 15); scouts and cavalry are also the fastest units.
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
 - "enemyUnits" is your memory of rival units: "visible": true is in sight now; "visible": false is how and where you LAST SAW it, "secondsAgo". It may have moved, been hurt or died since — you were not watching. "sightedAt" is where it came into your sight, so from there to x,z is the way it was going. A remembered unit leaves this list when you look at its spot again and it is not there; it is forgotten only when you see it die or your units kill it. Workers carry "carrying": empty, food, wood, stone, gold, or unknown, as last seen. The list holds the 50 most recent.
 - "enemyBuildings" lists every rival building you have found. "visible": true is in sight now; "visible": false is remembered as you last saw it, and its health, or whether it still stands, may have changed since.

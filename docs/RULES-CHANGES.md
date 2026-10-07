@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1077: the Maya scout, and what scouts are for (7 October 2026)
+
+**Prompt change (agents-rule-v107) and a unit rename.** asp67's question: how does a model know that scouts and cavalry are faster and see farther? It did not. The state lists a unit only by its id and cost, and the prompt said nothing about speed or sight.
+
+- **The prompt now says so**, as asp67 worded it: "Cavalry and scouts see further than other units (22.5 against 15); scouts and cavalry are also the fastest units." It is one fact of the world among the others. The system prompt's tripwire went from 2450 to 2480 tokens for it.
+- **The Maya's walking scout is `scout`**, shown as "Scout" (German "Kundschafter"). It was `spotter`. Its id now names its job, as `scout_cavalry`'s does. Its research is still `scouting`, now described as "Unlocks the scout at the barracks".
+- **Older transcripts** that name a `spotter` still draw it with its parrot.
+
 ## Build 1076: jittered spawns, identical homes (7 October 2026)
 
 **Rules change (the arena's map layout).** asp67's aims, on both map sizes:

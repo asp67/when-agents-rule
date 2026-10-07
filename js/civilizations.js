@@ -1353,8 +1353,10 @@ const CIVILIZATIONS = {
         },
         uniqueUnits: [
             {
-                id: 'spotter',
-                name: 'Späher',
+                // 'scout' (b1077; 'spotter' before): its name says what it is for, as
+                // scout_cavalry's does -- a model knows a unit by its id alone.
+                id: 'scout',
+                name: 'Kundschafter',
                 // The walking scout: as far-sighted as a rider (vision 22.5), nearly as
                 // quick, weak, and paid in food (the scout cavalry: 100 HP, 8 attack,
                 // speed 2.2, 150 food and 80 wood).
@@ -1481,7 +1483,7 @@ const CIVILIZATIONS = {
                 researchAt: 'town_center',
                 requiredAge: 'neolithic',
                 requires: [],
-                description: 'Schaltet den Späher an der Kaserne frei',
+                description: 'Schaltet den Kundschafter an der Kaserne frei',
                 researchTime: 15000
             },
             calendar: {

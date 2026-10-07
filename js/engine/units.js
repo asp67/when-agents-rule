@@ -489,7 +489,7 @@
         scout_cavalry: 1, cavalry: 2, heavy_cavalry: 3,
         slinger: 1, hoplite: 2, phalanx: 3, samurai: 3, archer_ship: 1,
         legionary: 3, equites: 2, berserker: 3, axe_thrower: 1,
-        spotter: 1, jaguar_warrior: 3, plumed_archer: 2
+        scout: 1, spotter: 1, jaguar_warrior: 3, plumed_archer: 2   // spotter: its id until b1077, in older transcripts
     };
 
     // Limb pivots per type (unit-local space, before facing/world transforms).
@@ -566,7 +566,7 @@
         if (o.tier == null) o.tier = TIER[o.unit] || (type === 'ranged' ? 1 : 2);
         const b = builders[type];
         const parts=b ? b(o) : [];
-        if (o.unit === 'spotter') parrot(parts);
+        if (o.unit === 'scout' || o.unit === 'spotter') parrot(parts);   // 'spotter' until b1077
         if(o.badge)for(const p of parts)if(p.capePaint)p.badgePaint=p.capePaint;
         return parts;
     };
