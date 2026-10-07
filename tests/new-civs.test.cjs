@@ -241,3 +241,15 @@ test('the Maya plumes: green for a worker, red for one plume, red-green-yellow-b
     assert.deepEqual([...plumes('infantry', 'jaguar_warrior')], ['feather', 'featherGreen', 'featherYellow', 'featherBlue']);
     assert.deepEqual([...plumes('priest', 'priest')], ['feather', 'featherGreen', 'featherYellow', 'featherBlue']);
 });
+
+test('the four original civilizations\' houses are their own too (b1069)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const shape = (civ, age) => scope.window.EngineBuildings.parts('house', { civ, age }).map(p => p.key).join('|');
+    const all = ['greek', 'egyptian', 'persian', 'yamato', 'roman', 'viking', 'maya'];
+    for (const age of ['bronze', 'iron'])
+        for (const civ of ['greek', 'egyptian', 'persian', 'yamato']) {
+            assert.notEqual(shape(civ, age), shape('nobody', age), `${civ} ${age}: the shared house`);
+            for (const other of all.filter(o => o !== civ)) assert.notEqual(shape(civ, age), shape(other, age), `${civ} ${age}: ${other}'s`);
+        }
+});

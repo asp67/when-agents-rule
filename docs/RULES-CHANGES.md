@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1069: houses of their own for the four originals (7 October 2026)
+
+**Look only; no rules change.** Greece, Egypt, Persia and Yamato built the shared timber hut in the Bronze age and the shared plaster box in the Iron age. Only the palette and the door trim told them apart. Each now has its own pair:
+- **Greeks:** a whitewashed house on a stone footing under a low tiled gable, with a columned porch and an amphora. Then a Cycladic white cube with a flat roof, a smaller cube on top, an outside stair, and door and shutters in the owner's colour.
+- **Egyptians:** battered mudbrick with a reed sun shelter on the flat roof. Then two storeys with a roof-terrace parapet, a gold band, and a date palm by the door.
+- **Persians:** a mudbrick cube under a dome with a glazed band. Then a house with a badgir (a windcatcher tower) and a glazed dome.
+- **Yamato:** a minka on posts with a veranda, a paper door, and a steep thatched hip-and-gable roof with crossed finials. Then a machiya of dark timber with paper screens, two tiled roofs, and the noren in the owner's colour.
+
 ## Build 1068: a scarlet macaw, and Maya plumes in colour (7 October 2026)
 
 **Look only.** asp67's notes, with a photo of a scarlet macaw for the parrot:

@@ -172,6 +172,108 @@
         }
     };
     const OWN_HOUSE = {
+        // The four originals (b1069): their houses were the shared timber hut and plaster
+        // box, told apart only by palette and door trim.
+        greek: (p, age, tier) => {
+            if (age === 'bronze') {
+                // Stone footing, whitewashed walls, a low tiled gable, a columned porch.
+                part(p, 'box', [4.6, 0.4, 4.2], 'masonry', { y: 0.2 });
+                part(p, 'box', [4.2, 2.2, 3.6], 'plaster', { y: 1.5 });
+                part(p, 'prism', [4.8, 4.2, 0.9], 'rooftile', { y: 2.6 });
+                part(p, 'box', [1.0, 1.5, 0.2], 'bark', { y: 1.15, z: 1.85 });
+                doorTrim(p, 'greek', tier, 2.0, 1.0, 1.9);
+                part(p, 'cylinder', [0.12, 0.2, 0.55, 8], 'masonry', { x: 1.6, y: 0.68, z: 2.2 });   // an amphora
+            } else {
+                // A Cycladic house: a white cube with a flat roof, a smaller cube on top
+                // reached by an outside stair, door and shutters in the owner's colour.
+                part(p, 'box', [4.4, 2.6, 4.0], 'plaster', { y: 1.3 });
+                part(p, 'box', [4.55, 0.16, 4.15], 'plaster', { y: 2.66 });
+                part(p, 'box', [2.3, 1.5, 2.1], 'plaster', { x: -0.9, y: 3.4, z: -0.8 });
+                part(p, 'box', [2.45, 0.14, 2.25], 'plaster', { x: -0.9, y: 4.2, z: -0.8 });
+                part(p, 'box', [1.0, 1.7, 0.12], 'cloth', { y: 0.85, z: 2.02, team: true });
+                [-1.5, 1.5].forEach(x => part(p, 'box', [0.6, 0.6, 0.1], 'cloth', { x, y: 1.75, z: 2.02, team: true }));
+                part(p, 'box', [0.5, 0.5, 0.1], 'cloth', { x: -0.9, y: 3.5, z: 0.27, team: true });
+                for (let i = 0; i < 4; i++) part(p, 'box', [0.7, 0.32, 0.5], 'plaster', { x: 2.55, y: 0.3 + i * 0.62, z: -1.2 + i * 0.5 });
+            }
+        },
+        egyptian: (p, age, tier) => {
+            if (age === 'bronze') {
+                // Battered mudbrick under a flat roof, a reed sun shelter on top.
+                part(p, 'frustum', [4.6, 4.2, 4.1, 3.7, 2.4], 'masonry');
+                [[-1.0, -0.8], [1.0, -0.8], [-1.0, 0.8], [1.0, 0.8]].forEach(([x, z]) =>
+                    part(p, 'cylinder', [0.05, 0.05, 1.0, 4], 'bark', { x, y: 2.9, z }));
+                part(p, 'box', [2.4, 0.1, 2.0], 'thatch', { y: 3.4 });
+                [-1.2, 1.2].forEach(x => part(p, 'box', [0.4, 0.25, 0.1], 'bark', { x, y: 1.9, z: 1.95 }));
+                part(p, 'box', [1.0, 1.5, 0.2], 'bark', { y: 0.75, z: 1.98 });
+                doorTrim(p, 'egyptian', tier, 2.05, 1.0, 1.5);
+            } else {
+                // Two storeys of battered mudbrick, a parapet on the roof terrace and a
+                // date palm beside the door.
+                part(p, 'frustum', [4.8, 4.4, 4.3, 3.9, 2.8], 'masonry');
+                part(p, 'frustum', [2.8, 2.4, 2.5, 2.1, 1.4], 'masonry', { x: -0.8, y: 2.8, z: -0.8 });
+                for (const [x, z, w, d] of [[0, 1.9, 4.3, 0.15], [2.1, 0, 0.15, 3.9]]) part(p, 'box', [w, 0.4, d], 'masonry', { x, y: 3.0, z });
+                part(p, 'box', [4.4, 0.2, 0.3], 'gold', { y: 2.7, z: 2.0 });
+                part(p, 'box', [1.0, 1.6, 0.2], 'bark', { y: 0.8, z: 2.08 });
+                doorTrim(p, 'egyptian', tier, 2.15, 1.0, 1.6);
+                part(p, 'cylinder', [0.09, 0.14, 3.8, 6], 'bark', { x: 2.7, y: 1.9, z: 1.9, rz: -0.08 });
+                for (let i = 0; i < 6; i++) {
+                    const a = i / 6 * Math.PI * 2;
+                    part(p, 'box', [1.3, 0.05, 0.3], 'foliage', { x: 2.85 + Math.cos(a) * 0.6, y: 3.75, z: 1.9 + Math.sin(a) * 0.6, ry: -a, rz: -0.35 });
+                }
+            }
+        },
+        persian: (p, age, tier) => {
+            if (age === 'bronze') {
+                // A mudbrick cube under a dome, a glazed band at the roofline.
+                part(p, 'box', [4.2, 2.4, 4.0], 'masonry', { y: 1.2 });
+                part(p, 'box', [4.3, 0.25, 4.1], 'cloth', { y: 2.3, team: true });
+                part(p, 'dome', [1, 12], 'plaster', { y: 2.4, sx: 1.7, sy: 1.25, sz: 1.7 });
+                part(p, 'box', [1.0, 1.5, 0.2], 'bark', { y: 0.75, z: 1.98 });
+                doorTrim(p, 'persian', tier, 2.05, 1.0, 1.5);
+            } else {
+                // A badgir: the windcatcher tower over the house, and a glazed dome.
+                part(p, 'box', [4.4, 2.8, 4.2], 'masonry', { y: 1.4 });
+                part(p, 'box', [1.1, 2.4, 1.1], 'masonry', { x: 1.45, y: 4.0, z: -1.35 });
+                for (const [x, z] of [[1.45, -0.78], [1.45, -1.92], [0.88, -1.35], [2.02, -1.35]])
+                    part(p, 'box', [x === 1.45 ? 0.5 : 0.1, 0.8, x === 1.45 ? 0.1 : 0.5], 'bark', { x, y: 4.6, z });
+                part(p, 'box', [1.3, 0.2, 1.3], 'masonry', { x: 1.45, y: 5.3, z: -1.35 });
+                part(p, 'dome', [1, 12], 'cloth', { x: -0.6, y: 2.8, z: 0.3, sx: 1.5, sy: 1.3, sz: 1.5, team: true });
+                part(p, 'box', [1.0, 1.6, 0.2], 'bark', { y: 0.8, z: 2.08 });
+                doorTrim(p, 'persian', tier, 2.15, 1.0, 1.6);
+            }
+        },
+        yamato: (p, age, tier) => {
+            if (age === 'bronze') {
+                // A minka on posts: a veranda along the front, a paper door, a steep
+                // thatched hip-and-gable roof with the crossed finials.
+                [[-1.9, -1.6], [1.9, -1.6], [-1.9, 1.6], [1.9, 1.6]].forEach(([x, z]) =>
+                    part(p, 'cylinder', [0.1, 0.12, 0.7, 6], 'bark', { x, y: 0.35, z }));
+                part(p, 'box', [4.4, 0.2, 3.8], 'wood', { y: 0.75 });
+                part(p, 'box', [3.8, 1.6, 3.2], 'wood', { y: 1.65 });
+                part(p, 'box', [4.4, 0.12, 0.8], 'wood', { y: 0.8, z: 2.2 });             // the engawa
+                part(p, 'box', [1.3, 1.3, 0.08], 'plaster', { y: 1.55, z: 1.62 });       // the shoji door
+                part(p, 'box', [0.06, 1.3, 0.1], 'bark', { y: 1.55, z: 1.65 });
+                part(p, 'pyramid', [5.2, 4.6, 1.1], 'thatch', { y: 2.4 });
+                part(p, 'prism', [3.4, 3.0, 1.5], 'thatch', { y: 3.2 });
+                [-1.75, 1.75].forEach(x => {
+                    part(p, 'box', [0.1, 0.8, 0.1], 'bark', { x, y: 4.75, rz: 0.45 });
+                    part(p, 'box', [0.1, 0.8, 0.1], 'bark', { x, y: 4.75, rz: -0.45 });
+                });
+            } else {
+                // A machiya: dark timber, a row of paper screens, two tiled roofs, the
+                // noren curtain over the door in the owner's colour.
+                part(p, 'box', [4.4, 0.3, 4.0], 'masonry', { y: 0.15 });
+                part(p, 'box', [4.2, 2.2, 3.8], 'bark', { y: 1.4 });
+                [-1.35, 0, 1.35].forEach(x => {
+                    part(p, 'box', [1.0, 1.4, 0.08], 'plaster', { x, y: 1.2, z: 1.92 });
+                    part(p, 'box', [0.05, 1.4, 0.1], 'wood', { x, y: 1.2, z: 1.95 });
+                });
+                part(p, 'box', [1.1, 0.45, 0.05], 'cloth', { y: 1.75, z: 2.0, team: true });
+                part(p, 'pyramid', [5.0, 4.6, 0.8], 'rooftile', { y: 2.5 });
+                part(p, 'box', [3.0, 1.0, 2.6], 'bark', { y: 3.4 });
+                part(p, 'pyramid', [3.8, 3.4, 1.0], 'rooftile', { y: 3.9 });
+            }
+        },
         roman: (p, age, tier) => {
             if (age === 'bronze') {
                 part(p, 'box', [4.2, 2.3, 3.8], 'plaster', { y: 1.15 });
