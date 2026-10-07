@@ -6,6 +6,23 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1078: buildings drawn in batches (7 October 2026)
+
+**Performance only; nothing changes on screen.** Found by asp67: some of the new buildings caused lag.
+
+**The cause:** every part of a building was its own draw call, and twice a frame with the shadow pass. Most models have 5-59 parts, but the Colosseum has 225, so one of them cost as much as a small town.
+
+**The fix:** a finished building is now drawn the way units already were, as one merged mesh per material (texture, owner colour, authored tint, blending). Each model is built once and cached. Sites under construction keep their parts, because the growing shell needs its own.
+
+**Measured** in a headless browser:
+
+| Scene | Draw entries for buildings | Renderer time per frame |
+|---|---|---|
+| Roman Iron-age showcase | 619 → 137 | |
+| Same, plus 16 Colosseums in view | 4251 → 281 | 6.84 → 2.68 ms |
+
+A GPU pays driver time per draw call on top of that. A pixel diff of the showcase, old against new, shows the same picture.
+
 ## Build 1077: the Maya scout, and what scouts are for (7 October 2026)
 
 **Prompt change (agents-rule-v107) and a unit rename.** asp67's question: how does a model know that scouts and cavalry are faster and see farther? It did not. The state lists a unit only by its id and cost, and the prompt said nothing about speed or sight.

@@ -908,6 +908,25 @@
             this._composeBuilding(building);
         }
 
+        // A building model's parts grouped by material (texture, owner colour, authored
+        // tint, blending) and merged into one mesh per group, once per model (b1078).
+        _buildingBatches(modelKey, parts) {
+            if (!this._buildingModels) this._buildingModels = new Map();
+            if (this._buildingModels.has(modelKey)) return this._buildingModels.get(modelKey);
+            const groups = new Map();
+            for (const p of parts) {
+                const key = JSON.stringify([p.tex, !!p.team, p.tint || null, !!p.blend]);
+                if (!groups.has(key)) groups.set(key, { texName: p.tex, team: !!p.team, tint: p.tint || null, blend: !!p.blend, parts: [] });
+                groups.get(key).parts.push(p);
+            }
+            const batches = [...groups.values()].map(g => ({
+                buf: GLCore.createMeshBuffers(this.gl, EngineMesh.mergeParts(g.parts)),
+                texName: g.texName, team: g.team, tint: g.tint, blend: g.blend, count: g.parts.length
+            }));
+            this._buildingModels.set(modelKey, batches);
+            return batches;
+        }
+
         _composeBuilding(building) {
             const m3 = M();
             const civ = (typeof getCivilization === 'function') ? getCivilization(building.civilization) : null;
@@ -920,7 +939,7 @@
                     m3.translation(building.x, 0, building.z),
                     m3.rotationY(building.rotationY || 0)),
                 m3.scaling(bs, bs, bs));
-            let parts, shellIdx = -1;
+            let parts, shellIdx = -1, modelKey = null;
             if (building.underConstruction) {
                 // The rising shell previews the FINAL height — it used to top out
                 // at waist height while the progress said 100%, which read as the
@@ -941,6 +960,7 @@
                 const known = EngineBuildings.TYPES.indexOf(building.type) >= 0;
                 const type = known ? building.type : (building.isWonder ? 'wonder' : 'house');
                 parts = EngineBuildings.parts(type, { age: building.age, civ: building.civilization });
+                modelKey = `${type}|${building.age}|${building.civilization}`;
             }
             const eb = { opaque: [], blended: [], shell: null, world, bs };
             const grassFoot = this._meshFootprint(parts, `${building.type}|${building.age}|${building.civilization}|${!!building.underConstruction}`);
@@ -950,7 +970,17 @@
             // Where a fire can sit: inside the walls, below the roof line (Cinematic).
             building._fireBox = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*bs, ez: (grassFoot.ex*sa + grassFoot.ez*ca)*bs,
                 ey: (grassFoot.ey || 4)*bs };
-            parts.forEach((p, i) => {
+            if (modelKey) {
+                // A finished building is drawn in BATCHES (b1078): its parts merged into one
+                // mesh per material, as units are, cached per model. Each part used to be its
+                // own draw call, twice a frame with the shadow pass, and the Colosseum alone
+                // has 225 of them.
+                for (const g of this._buildingBatches(modelKey, parts)) {
+                    const entry = { buf: g.buf, tex: this.tex[g.texName], tint: g.team ? tint : (g.tint || this.WHITE),
+                        model: world, base: m3.identity() };
+                    (g.blend ? eb.blended : eb.opaque).push(entry);
+                }
+            } else parts.forEach((p, i) => {
                 const entry = {
                     buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
                     tint: p.team ? tint : (p.tint || this.WHITE), // authored cultural finishes; flags retain player colors
