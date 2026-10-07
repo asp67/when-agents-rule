@@ -1318,10 +1318,12 @@ class Game {
         const a = attacker.unitType;
         const targetIsBuilding = (target.type && BUILDING_DEFS[target.type]) || target.isWonder;
         if (targetIsBuilding) {
-            if (a === 'infantry') return 1.5;
-            if (a === 'cavalry') return 1.0;
+            // A civilization's raid bonus (the Vikings', b1059) on top, soldiers only.
+            const raid = (a === 'infantry' || a === 'cavalry' || a === 'ranged') ? 1 + this.raidBonusOf(attacker) : 1;
+            if (a === 'infantry') return 1.5 * raid;
+            if (a === 'cavalry') return 1.0 * raid;
             // Fire Arrows (academy, iron age): +30% of this against buildings.
-            if (a === 'ranged') return 0.5 * (1 + this.rangedBuildingBonusOf(attacker));
+            if (a === 'ranged') return 0.5 * (1 + this.rangedBuildingBonusOf(attacker)) * raid;
             return 0.5; // workers/support
         }
         const t = target.unitType;
@@ -4795,6 +4797,12 @@ class Game {
         const owner = !unit ? null : unit.owner === 'player' ? this.player
             : (this.aiManager && this.aiManager.aiPlayers.find(a => a.id === unit.owner));
         return (owner && owner.rangedBuildingBonus) || 0;
+    }
+    // A civilization bonus against buildings for every soldier (b1059, the Vikings' Raid).
+    raidBonusOf(unit) {
+        const owner = !unit ? null : unit.owner === 'player' ? this.player
+            : (this.aiManager && this.aiManager.aiPlayers.find(a => a.id === unit.owner));
+        return (owner && owner.raidBonus) || 0;
     }
 
     getOwner(entity) {

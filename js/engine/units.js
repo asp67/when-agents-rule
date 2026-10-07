@@ -97,10 +97,11 @@
     EngineUnits.appearanceVariant = (civ,identity='') => {
         let hash=0;
         for(const char of String(identity)) hash=(hash*31+char.charCodeAt(0))>>>0;
-        return hash%(civ==='greek'?3:civ==='yamato'?2:1);
+        return hash%(civ==='greek'?3:civ==='yamato'||civ==='viking'?2:1);
     };
     const hairMaterial = o => o.civ==='greek' ? ['hairBlack','hairBrown','hairBlond'][(o.variant||0)%3]
-        : o.civ==='yamato' ? ['hairBrown','hairWhite'][(o.variant||0)%2] : 'hairBlack';
+        : o.civ==='yamato' ? ['hairBrown','hairWhite'][(o.variant||0)%2]
+        : o.civ==='viking' ? ['hairBlond','hairBrown'][(o.variant||0)%2] : 'hairBlack';
 
     // Large faces with a visible mouth under the moustache. These are stylized
     // cultural silhouettes, not ceremonial regalia or a historical uniform.
@@ -184,6 +185,11 @@
             } else if(kind==='priest') part(p,'cylinder',[S(.065),S(.15),S(.29),10],'bark',{x,y:y+S(.18),z});
             // Brim at head centre + .11: just above the .085-high eyebrows.
             else part(p,'cylinder',[S(.025),S(.37),S(.18),16],'thatch',{x,y:y+S(.125),z});
+        } else if(civ==='viking') {
+            // A plain iron cap with a nose guard -- no horns (b1059); a wool cap otherwise.
+            if(military) part(p,'box',[S(.05),S(.17),S(.04)],'iron',{x,y:y-S(.07),z:z+S(.24)});
+            else if(kind==='priest') dome('cloth',true);
+            else part(p,'dome',[1,12],'leather',{x,y:y+S(.06),z,sx:S(.24),sy:S(.17),sz:S(.23)});
         } else if(civ==='roman') {
             // The galea's transverse crest for soldiers; a laurel band otherwise (b1058).
             if(military) {
@@ -446,7 +452,7 @@
         archer: 1, crossbowman: 2, elite_archer: 3,
         scout_cavalry: 1, cavalry: 2, heavy_cavalry: 3,
         slinger: 1, hoplite: 2, phalanx: 3, samurai: 3, archer_ship: 1,
-        legionary: 3, equites: 2
+        legionary: 3, equites: 2, berserker: 3, axe_thrower: 1
     };
 
     // Limb pivots per type (unit-local space, before facing/world transforms).

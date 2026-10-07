@@ -72,3 +72,37 @@ test('Rome draws as itself: its Wonder, its palette, its soldiers', () => {
     const soldier = civ => keys(EngineUnits.parts('infantry', { civ, unit: 'legionary' }));
     assert.notEqual(soldier('roman'), soldier('nobody'), 'its own helmet');
 });
+
+test('the Vikings raid: every soldier hits buildings 25% harder, workers do not', async () => {
+    const m = await createMatch({ kind: 'arena', seed: 'raid', seats: ['viking', 'greek'] });
+    const g = m.game, [vik, gre] = m.seats;
+    assert.equal(vik.raidBonus, 0.25);
+    const house = { type: 'house' };
+    const hit = (owner, unitType) => g.combatMultiplier({ owner: owner.id, unitType }, house);
+    assert.equal(hit(vik, 'infantry'), 1.5 * 1.25);
+    assert.equal(hit(vik, 'cavalry'), 1.25);
+    assert.equal(hit(vik, 'ranged'), 0.5 * 1.25);
+    assert.equal(hit(vik, 'worker'), 0.5, 'not a soldier');
+    assert.equal(hit(gre, 'infantry'), 1.5, 'nobody else');
+    assert.equal(g.combatMultiplier({ owner: vik.id, unitType: 'infantry' }, { unitType: 'infantry' }), 1.0, 'units as before');
+});
+
+test('the Vikings train the berserker and the axe thrower, and draw as themselves', () => {
+    const c = data();
+    const opts = (b, age) => c.getTrainOptionsForBuilding(b, age, 'viking');
+    assert.ok(opts('barracks', 'bronze').includes('berserker'));
+    assert.ok(opts('archery_range', 'neolithic').includes('axe_thrower'));
+    const mgr = Object.create(c.AIManager.prototype);
+    const rich = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    const pick = (type, age) => mgr.getUnitToTrain({ civilization: 'viking', age, resources: rich }, { type, trainOptions: opts(type, age) });
+    assert.equal(pick('barracks', 'bronze'), 'berserker');
+    assert.equal(pick('archery_range', 'neolithic'), 'axe_thrower');
+    assert.equal(pick('archery_range', 'iron'), 'elite_archer', 'the Iron-age bow outranks it');
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const { EngineBuildings, EngineUnits } = scope.window;
+    const keys = parts => parts.map(p => p.key).join('|');
+    assert.notEqual(keys(EngineBuildings.parts('longhall', {})), keys(EngineBuildings.parts('wonder', {})));
+    assert.notEqual(keys(EngineUnits.parts('infantry', { civ: 'viking', unit: 'berserker' })),
+        keys(EngineUnits.parts('infantry', { civ: 'nobody', unit: 'berserker' })), 'its own helmet');
+});

@@ -6,6 +6,31 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1059: the Vikings (7 October 2026)
+
+**A sixth civilization, on the same pattern as the others.**
+
+**Bonus, Raid:** every soldier (infantry, cavalry and ranged) does 25% more damage to buildings. It stacks with Fire Arrows. Workers and priests do not get it. The multiplier is new rule code, and every civilization without the bonus multiplies by exactly 1, as before.
+
+**Own units:**
+- **Berserker** (barracks, Bronze age): 90 HP, 15 attack, speed 1.3, for 70 food / 20 wood / 30 gold. The hardest blow of its age for its price, on the thinnest hide.
+- **Axe thrower** (archery range, Neolithic): 60 HP, 9 attack, range 6, for 60 food / 40 wood. Half the archer's reach for half again its blow.
+
+**Own techs:**
+- Mead hall (Stone age, Town Center, needs barracks): infantry +3 attack.
+- Runestones (Neolithic, academy): all units +20% sight.
+- Shield wall (Bronze, academy): infantry +20 HP.
+- Chain mail (Bronze, academy): all military +15 HP. Iron working requires it.
+
+**Wonder:** the Royal hall, a long turf-roofed hall with dragon-head gables and a row of shields in the owner's colour.
+
+**Look:**
+- Soldiers wear an iron cap with a nose guard, and no horns. Everyone else wears a wool cap.
+- Hair is blond or brown.
+- Buildings are tarred timber under turf, and the civilization's colour is cyan.
+
+**The rule-based AI trains** berserkers, and axe throwers until the Iron-age bows outrank them.
+
 ## Build 1058: the Romans (7 October 2026)
 
 **A fifth civilization, playable in every arena seat.** Built on the pattern the four originals share: one bonus, two own units, four own techs (one of them +15 HP for all military), iron working, and the shared 15,500 Wonder.

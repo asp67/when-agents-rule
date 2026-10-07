@@ -804,6 +804,26 @@
             });
             return p;
         },
+        longhall: () => { // Vikings (b1059): the king's hall, a long turf-roofed hall with dragon gables
+            const p = [];
+            shadow(p, 10);
+            part(p, 'frustum', [12.6, 7.4, 12.0, 6.8, 0.6], 'masonry');                 // stone footing
+            part(p, 'box', [10.8, 3.0, 5.2], 'wood', { y: 2.1 });                         // the hall
+            // Bowed long walls: a slimmer box laid along each side reads as the curve.
+            for (const side of [-1, 1]) part(p, 'box', [8.6, 2.6, 0.5], 'bark', { y: 1.9, z: side * 2.75 });
+            part(p, 'prism', [11.6, 6.4, 3.4], 'thatch', { y: 3.6, tint: [.70, .86, .60] }); // turf roof
+            // Crossed gable boards ending in dragon heads at both ends.
+            for (const x of [-5.9, 5.9]) {
+                part(p, 'box', [0.22, 2.6, 0.22], 'wood', { x, y: 6.6, z: 0.55, rx: 0.5 });
+                part(p, 'box', [0.22, 2.6, 0.22], 'wood', { x, y: 6.6, z: -0.55, rx: -0.5 });
+                part(p, 'box', [0.5, 0.42, 0.8], 'wood', { x, y: 7.85, z: 1.25 });
+            }
+            // A row of round shields along each wall, in the owner's colour.
+            for (const side of [-1, 1]) for (let i = -3; i <= 3; i++)
+                part(p, 'cylinder', [0.42, 0.42, 0.12, 12], 'cloth', { x: i * 1.2, y: 2.0, z: side * 3.05, rx: Math.PI / 2, team: true });
+            part(p, 'box', [1.4, 2.0, 0.3], 'bark', { y: 1.6, x: 5.45, ry: Math.PI / 2 });   // the door
+            return p;
+        },
         wonder: () => { // generic fallback (engine-test / unknown wonder ids)
             const p = [];
             shadow(p, 10);
@@ -832,7 +852,9 @@
             yamato:{wall:[1.05,.96,.83],roof:[.60,.70,.73],accent:[.78,.28,.18],hide:[1.27,1.18,.99]},
             persian:{wall:[1.14,1.01,.83],roof:[.55,.88,.91],accent:[.18,.62,.68],hide:[1.36,1.1,.86]},
             // Travertine walls under terracotta, a Tyrian accent (b1058).
-            roman:{wall:[1.12,1.06,.93],roof:[1.16,.78,.60],accent:[.56,.27,.68],hide:[1.3,1.16,.96]}
+            roman:{wall:[1.12,1.06,.93],roof:[1.16,.78,.60],accent:[.56,.27,.68],hide:[1.3,1.16,.96]},
+            // Tarred timber and grey stone under turf roofs (b1059).
+            viking:{wall:[.92,.90,.86],roof:[.70,.86,.60],accent:[.10,.55,.60],hide:[1.18,1.05,.88]}
         }[options.civ];
         const tier=TIER[options.age] || 0,details=[];
         if(palette)for(const p of parts){

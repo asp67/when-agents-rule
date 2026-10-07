@@ -1134,6 +1134,204 @@ const CIVILIZATIONS = {
                 appliesTo: 'ranged'
             }
         }
+    },
+    // The Vikings (b1059): raiders. Their soldiers hit buildings 25% harder, the
+    // berserker trades armour for the hardest blow of its age, and the axe thrower
+    // is a short-reach ranged unit with a heavy hand. The same pattern as the rest:
+    // one bonus, two own units, four own techs, iron working, the 15,500 Wonder.
+    viking: {
+        name: "Wikinger",
+        color: 0x00acc1,
+        bonus: {
+            name: "Raubzug",
+            description: "Militäreinheiten +25% Schaden gegen Gebäude",
+            buildingDamage: 0.25,   // read by combatMultiplier (game.js) through owner.raidBonus
+            effect: (owner) => {
+                owner.raidBonus = 0.25;
+            }
+        },
+        uniqueUnits: [
+            {
+                id: 'berserker',
+                name: 'Berserker',
+                // The hardest blow of the Bronze age for its price, on the thinnest hide:
+                // warrior 120 HP / 12 attack for 130, samurai 130 / 14 for 200.
+                cost: { food: 70, wood: 20, stone: 0, gold: 30 },
+                health: 90,
+                speed: 1.3,
+                attack: 15,
+                range: 1,
+                type: 'infantry',
+                tier: 'bronze',
+                trainAt: 'barracks',
+                description: 'Wilder Krieger: harter Schlag, wenig Rüstung'
+            },
+            {
+                id: 'axe_thrower',
+                name: 'Axtwerfer',
+                // Half the archer's reach for half again its blow (archer: 40 HP, 6
+                // attack, range 12, 90).
+                cost: { food: 60, wood: 40, stone: 0, gold: 0 },
+                health: 60,
+                speed: 1.1,
+                attack: 9,
+                range: 6,
+                type: 'ranged',
+                tier: 'neolithic',
+                trainAt: 'archery_range',
+                description: 'Wirft Äxte auf kurze Distanz'
+            }
+        ],
+        uniqueBuildings: [
+            {
+                id: 'longhall',
+                name: 'Königshalle',
+                cost: { food: 4500, wood: 4500, stone: 4000, gold: 2500 }, // 15500, the shared vector
+                health: 1500,
+                type: 'wonder',
+                requiredAge: 'iron',
+                buildTime: 60000,
+                description: 'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!'
+            }
+        ],
+        techTree: {
+            house: {
+                name: 'Haus',
+                cost: { food: 50, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Haus-Bau frei (+5 Bevölkerung)',
+                researchTime: 15000,
+                unlocks: { buildings: ['house'] }
+            },
+            farm: {
+                name: 'Farm',
+                cost: { food: 100, wood: 50, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Farm-Bau frei (Nahrungsproduktion)',
+                researchTime: 15000,
+                unlocks: { buildings: ['farm'] }
+            },
+            barracks: {
+                name: 'Kaserne',
+                cost: { food: 100, wood: 150, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Kaserne-Bau frei (Infanterie-Ausbildung)',
+                researchTime: 15000,
+                unlocks: { buildings: ['barracks'] }
+            },
+            longbow: {
+                name: 'Langbogen',
+                cost: { food: 50, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Bogenschützenstand frei',
+                researchTime: 15000,
+                unlocks: { buildings: ['archery_range'] }
+            },
+            horseback: {
+                name: 'Pferdezucht',
+                cost: { food: 150, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'neolithic',
+                requires: [],
+                description: 'Schaltet Stall und Kavallerie frei',
+                researchTime: 15000,
+                unlocks: { buildings: ['stable'] }
+            },
+            academy: {
+                name: 'Akademie',
+                cost: { food: 200, wood: 150, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'neolithic',
+                requires: [],
+                description: 'Schaltet die Akademie frei für weitere Forschung',
+                researchTime: 20000,
+                unlocks: { buildings: ['academy'] }
+            },
+            mead_hall: {
+                name: 'Methalle',
+                cost: { food: 100, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: ['barracks'],
+                description: 'Infanterie +3 Angriff',
+                researchTime: 15000,
+                bonus: { attack: 3 },
+                appliesTo: 'infantry'
+            },
+            runestones: {
+                name: 'Runensteine',
+                cost: { food: 100, wood: 50, stone: 0, gold: 30 },
+                researchAt: 'academy',
+                requiredAge: 'neolithic',
+                requires: ['academy'],
+                description: 'Alle Einheiten +20% Sichtweite',
+                researchTime: 20000,
+                bonus: { visionRange: 0.2 },
+                appliesTo: 'all_units'
+            },
+            shield_wall: {
+                name: 'Schildwall',
+                cost: { food: 0, wood: 50, stone: 150, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Infanterie +20 Gesundheit',
+                researchTime: 25000,
+                bonus: { health: 20 },
+                appliesTo: 'infantry'
+            },
+            chainmail: {
+                name: 'Kettenhemd',
+                cost: { food: 0, wood: 0, stone: 150, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Alle Militäreinheiten +15 Gesundheit',
+                researchTime: 25000,
+                bonus: { health: 15 },
+                appliesTo: 'all_military'
+            },
+            healing: {
+                name: 'Heilkunde',
+                cost: { food: 150, wood: 0, stone: 0, gold: 100 },
+                researchAt: 'temple',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Stellt die volle Heilkraft der Priester wieder her',
+                researchTime: 20000,
+                bonus: { healPower: 0.2 }
+            },
+            iron_working: {
+                name: 'Eisenverarbeitung',
+                cost: { food: 0, wood: 0, stone: 200, gold: 200 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: ['chainmail'],
+                description: 'Alle Militäreinheiten +3 Angriff',
+                researchTime: 30000,
+                bonus: { attack: 3 },
+                appliesTo: 'all_military'
+            },
+            fire_arrows: {
+                name: 'Feuerpfeile',
+                cost: { food: 50, wood: 100, stone: 80, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: [],
+                description: 'Fernkampfeinheiten +30% Schaden gegen Gebäude',
+                researchTime: 30000,
+                bonus: { buildingDamage: 0.3 },
+                appliesTo: 'ranged'
+            }
+        }
     }
 };
 
