@@ -779,6 +779,31 @@
                 part(p, 'box', [0.24, 0.24, 1.2], 'bark', { x, y: 7.8, z: -2.0 }));
             return p;
         },
+        colosseum: () => { // Rome (b1058): three arcaded tiers around the arena floor
+            const p = [];
+            shadow(p, 10);
+            const tiers = [[6.3, 2.3, 0], [6.0, 2.1, 2.3], [5.7, 1.9, 4.4]];
+            tiers.forEach(([r, h, y], t) => {
+                part(p, 'cylinder', [r, r + 0.15, h, 16], 'masonry', { y: y + h / 2 });
+                // The arches: dark openings set into each tier, offset per tier.
+                for (let i = 0; i < 16; i++) {
+                    const a = (i + (t % 2) * 0.5) / 16 * Math.PI * 2;
+                    part(p, 'box', [0.7, h * 0.62, 0.2], 'bark',
+                        { x: Math.sin(a) * (r + 0.08), y: y + h * 0.45, z: Math.cos(a) * (r + 0.08), ry: a });
+                }
+                part(p, 'cylinder', [r + 0.2, r + 0.2, 0.18, 16], 'plaster', { y: y + h });   // cornice
+            });
+            // Seen from above it reads as an arena: the seating steps down to the sand.
+            part(p, 'cylinder', [4.9, 5.4, 0.35, 16], 'masonry', { y: 6.45 });
+            part(p, 'cylinder', [3.9, 4.4, 0.35, 16], 'masonry', { y: 6.5 });
+            part(p, 'cylinder', [3.3, 3.3, 0.12, 16], 'plaster', { y: 6.62, tint: [1.18, 1.0, 0.72] });   // the sand
+            part(p, 'cylinder', [5.95, 5.95, 0.4, 16], 'cloth', { y: 5.55, team: true });   // a band of the owner's colour
+            [0, 1, 2, 3, 4, 5].forEach(i => {   // the velarium's masts
+                const a = i / 6 * Math.PI * 2;
+                part(p, 'cylinder', [0.07, 0.08, 2.2, 6], 'wood', { x: Math.sin(a) * 5.8, y: 7.4, z: Math.cos(a) * 5.8 });
+            });
+            return p;
+        },
         wonder: () => { // generic fallback (engine-test / unknown wonder ids)
             const p = [];
             shadow(p, 10);
@@ -805,7 +830,9 @@
             egyptian:{wall:[1.12,1.02,.82],roof:[1.05,.88,.62],accent:[.21,.58,.64],hide:[1.4,1.21,.92]},
             greek:{wall:[1.08,1.08,1.03],roof:[1.08,.89,.78],accent:[.24,.43,.72],hide:[1.3,1.28,1.17]},
             yamato:{wall:[1.05,.96,.83],roof:[.60,.70,.73],accent:[.78,.28,.18],hide:[1.27,1.18,.99]},
-            persian:{wall:[1.14,1.01,.83],roof:[.55,.88,.91],accent:[.18,.62,.68],hide:[1.36,1.1,.86]}
+            persian:{wall:[1.14,1.01,.83],roof:[.55,.88,.91],accent:[.18,.62,.68],hide:[1.36,1.1,.86]},
+            // Travertine walls under terracotta, a Tyrian accent (b1058).
+            roman:{wall:[1.12,1.06,.93],roof:[1.16,.78,.60],accent:[.56,.27,.68],hide:[1.3,1.16,.96]}
         }[options.civ];
         const tier=TIER[options.age] || 0,details=[];
         if(palette)for(const p of parts){

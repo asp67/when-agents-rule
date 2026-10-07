@@ -6,6 +6,30 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1058: the Romans (7 October 2026)
+
+**A fifth civilization, playable in every arena seat.** Built on the pattern the four originals share: one bonus, two own units, four own techs (one of them +15 HP for all military), iron working, and the shared 15,500 Wonder.
+
+**Bonus, Engineering:** villagers build 30% faster.
+
+**Own units:**
+- **Legionary** (barracks, Bronze age): 150 HP, 12 attack, speed 1.0, for 90 food / 30 stone / 40 gold. A warrior with 30 more health for 30 more resources.
+- **Equites** (stable, Bronze age): 130 HP, 12 attack, speed 2.1, for 110 food / 45 gold. They take the shared cavalry's place: a little lighter, quicker and cheaper. The Iron-age heavy cavalry stays shared.
+
+**Own techs:**
+- Aqueduct (Stone age, Town Center, needs farm): villagers gather +15%.
+- Roman roads (Neolithic, academy): all military +10% speed.
+- Testudo (Bronze, academy): infantry +20 HP.
+- Lorica segmentata (Bronze, academy): all military +15 HP. Iron working requires it.
+
+**Wonder:** the Colosseum, three arcaded tiers around an open arena floor.
+
+**Look:** soldiers wear the galea's crest across the helmet, and everyone else a laurel band. Romans are clean-shaven. Buildings are travertine under terracotta, and the civilization's colour is Tyrian purple.
+
+**The rule-based AI trains** legionaries and equites.
+
+**The four originals are unchanged,** and they stay the default arena lineup.
+
 ## Build 1057: a large map, as a match option (7 October 2026)
 
 **New option; the 800 map is unchanged.** The setup screen has a map size beside the difficulty:

@@ -934,6 +934,206 @@ const CIVILIZATIONS = {
                 appliesTo: 'ranged'
             }
         }
+    },
+    // Rome (b1058): the builders. Workers raise every building 30% faster, the
+    // legion is the strongest line infantry of its age, and the equites take the
+    // shared cavalry's place in the Bronze age. Balanced on the existing pattern:
+    // one bonus, two own units, four own techs (one +15 HP for all military), iron
+    // working, the shared 15,500 Wonder.
+    roman: {
+        excludedUnits: ['cavalry'],   // the equites ride in its place
+        name: "Römer",
+        color: 0x8e44ad,
+        bonus: {
+            name: "Ingenieurskunst",
+            description: "Dorfbewohner bauen 30% schneller",
+            workerBuildSpeed: 1.3,
+            effect: (owner) => {
+                owner.workerBuildSpeedBonus = 1.3;
+            }
+        },
+        uniqueUnits: [
+            {
+                id: 'legionary',
+                name: 'Legionär',
+                // A warrior with 30 more health for 30 more resources (warrior: 120 HP,
+                // 12 attack, 130), short of the samurai's reach and pace.
+                cost: { food: 90, wood: 0, stone: 30, gold: 40 },
+                health: 150,
+                speed: 1.0,
+                attack: 12,
+                range: 1,
+                type: 'infantry',
+                tier: 'bronze',
+                trainAt: 'barracks',
+                description: 'Schwerer Infanterist mit Scutum und Pilum'
+            },
+            {
+                id: 'equites',
+                name: 'Equites',
+                // In the shared cavalry's place (140 HP, 12 attack, 2.0, 170): a little
+                // lighter and quicker, and cheaper.
+                cost: { food: 110, wood: 0, stone: 0, gold: 45 },
+                health: 130,
+                speed: 2.1,
+                attack: 12,
+                range: 1,
+                type: 'cavalry',
+                tier: 'bronze',
+                trainAt: 'stable',
+                description: 'Römische Reiter, schnell und wendig'
+            }
+        ],
+        uniqueBuildings: [
+            {
+                id: 'colosseum',
+                name: 'Kolosseum',
+                cost: { food: 4500, wood: 4500, stone: 4000, gold: 2500 }, // 15500, the shared vector
+                health: 1500,
+                type: 'wonder',
+                requiredAge: 'iron',
+                buildTime: 60000,
+                description: 'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!'
+            }
+        ],
+        techTree: {
+            house: {
+                name: 'Haus',
+                cost: { food: 50, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Haus-Bau frei (+5 Bevölkerung)',
+                researchTime: 15000,
+                unlocks: { buildings: ['house'] }
+            },
+            farm: {
+                name: 'Farm',
+                cost: { food: 100, wood: 50, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Farm-Bau frei (Nahrungsproduktion)',
+                researchTime: 15000,
+                unlocks: { buildings: ['farm'] }
+            },
+            barracks: {
+                name: 'Kaserne',
+                cost: { food: 100, wood: 150, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Kaserne-Bau frei (Infanterie-Ausbildung)',
+                researchTime: 15000,
+                unlocks: { buildings: ['barracks'] }
+            },
+            longbow: {
+                name: 'Langbogen',
+                cost: { food: 50, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Bogenschützenstand frei',
+                researchTime: 15000,
+                unlocks: { buildings: ['archery_range'] }
+            },
+            horseback: {
+                name: 'Pferdezucht',
+                cost: { food: 150, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'neolithic',
+                requires: [],
+                description: 'Schaltet Stall und Kavallerie frei',
+                researchTime: 15000,
+                unlocks: { buildings: ['stable'] }
+            },
+            academy: {
+                name: 'Akademie',
+                cost: { food: 200, wood: 150, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'neolithic',
+                requires: [],
+                description: 'Schaltet die Akademie frei für weitere Forschung',
+                researchTime: 20000,
+                unlocks: { buildings: ['academy'] }
+            },
+            aqueduct: {
+                name: 'Aquädukt',
+                cost: { food: 100, wood: 80, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: ['farm'],
+                description: 'Dorfbewohner ernten +15% mehr',
+                researchTime: 15000,
+                bonus: { harvestRate: 0.15 },
+                appliesTo: 'worker'
+            },
+            roads: {
+                name: 'Römerstraßen',
+                cost: { food: 150, wood: 100, stone: 50, gold: 0 },
+                researchAt: 'academy',
+                requiredAge: 'neolithic',
+                requires: ['academy'],
+                description: 'Alle Militäreinheiten +10% Tempo',
+                researchTime: 20000,
+                bonus: { speed: 0.1 },
+                appliesTo: 'all_military'
+            },
+            testudo: {
+                name: 'Testudo',
+                cost: { food: 0, wood: 50, stone: 150, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Infanterie +20 Gesundheit',
+                researchTime: 25000,
+                bonus: { health: 20 },
+                appliesTo: 'infantry'
+            },
+            lorica: {
+                name: 'Lorica Segmentata',
+                cost: { food: 0, wood: 0, stone: 150, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Alle Militäreinheiten +15 Gesundheit',
+                researchTime: 25000,
+                bonus: { health: 15 },
+                appliesTo: 'all_military'
+            },
+            healing: {
+                name: 'Heilkunde',
+                cost: { food: 150, wood: 0, stone: 0, gold: 100 },
+                researchAt: 'temple',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Stellt die volle Heilkraft der Priester wieder her',
+                researchTime: 20000,
+                bonus: { healPower: 0.2 }
+            },
+            iron_working: {
+                name: 'Eisenverarbeitung',
+                cost: { food: 0, wood: 0, stone: 200, gold: 200 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: ['lorica'],
+                description: 'Alle Militäreinheiten +3 Angriff',
+                researchTime: 30000,
+                bonus: { attack: 3 },
+                appliesTo: 'all_military'
+            },
+            fire_arrows: {
+                name: 'Feuerpfeile',
+                cost: { food: 50, wood: 100, stone: 80, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: [],
+                description: 'Fernkampfeinheiten +30% Schaden gegen Gebäude',
+                researchTime: 30000,
+                bonus: { buildingDamage: 0.3 },
+                appliesTo: 'ranged'
+            }
+        }
     }
 };
 

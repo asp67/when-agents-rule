@@ -121,6 +121,9 @@
             for(const side of [-1,1]) oval(p,hair,x+side*.052*s,y-.050*s,z+.203*s,
                 .061*s,.022*s,.030*s,{rz:side*-.22});
             oval(p,hair,x,y-.194*s,z+.13*s,.082*s,.110*s,.074*s);
+        } else if(o.civ==='roman') {
+            // Clean-shaven (b1058): only the jaw's shadow, no beard.
+            oval(p,'skin',x,y-.15*s,z+.11*s,.15*s,.07*s,.09*s);
         } else if(o.civ==='egyptian') {
             // Short, rounded natural chin growth; no long square royal false beard.
             oval(p,hair,x,y-.183*s,z+.115*s,.080*s,.075*s,.078*s);
@@ -181,6 +184,13 @@
             } else if(kind==='priest') part(p,'cylinder',[S(.065),S(.15),S(.29),10],'bark',{x,y:y+S(.18),z});
             // Brim at head centre + .11: just above the .085-high eyebrows.
             else part(p,'cylinder',[S(.025),S(.37),S(.18),16],'thatch',{x,y:y+S(.125),z});
+        } else if(civ==='roman') {
+            // The galea's transverse crest for soldiers; a laurel band otherwise (b1058).
+            if(military) {
+                part(p,'dome',[1,16],'cloth',{x,y:y+S(.24),z,sx:S(.33),sy:S(.18),sz:S(.05),team:true});
+                part(p,'box',[S(.36),S(.035),S(.06)],'gold',{x,y:y+S(.24),z});
+            } else if(kind==='priest') dome('cloth',true);
+            else part(p,'cylinder',[S(.232),S(.236),S(.04),12],'foliage',{x,y:y+S(.06),z});
         } else if(civ==='persian') {
             // Unarmored heads need a lower cap; the military cap rests on its helmet.
             const lift=military?.24:.16;
@@ -435,7 +445,8 @@
         militia: 1, warrior: 2, champion: 3,
         archer: 1, crossbowman: 2, elite_archer: 3,
         scout_cavalry: 1, cavalry: 2, heavy_cavalry: 3,
-        slinger: 1, hoplite: 2, phalanx: 3, samurai: 3, archer_ship: 1
+        slinger: 1, hoplite: 2, phalanx: 3, samurai: 3, archer_ship: 1,
+        legionary: 3, equites: 2
     };
 
     // Limb pivots per type (unit-local space, before facing/world transforms).
