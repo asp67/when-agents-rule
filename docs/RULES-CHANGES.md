@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1065: the spotter's parrot takes flight (7 October 2026)
+
+**Look only; no rules change.** asp67's idea: the parrot marks the spotter from afar.
+
+- **While the spotter walks,** the macaw rises off its shoulder over about a second. It circles 1.8 out and about 4.6 up, banked along its path, wing beating, and is drawn 1.7 times larger so it reads at a playing zoom.
+- **When the spotter stops,** the parrot glides back down to the shoulder.
+- **How it works:** the bird has two bones of its own, the body and the wing. The renderer eases the lift per unit, and the replay's still frames keep it perched.
+
 ## Build 1064: the Maya grow maize (7 October 2026)
 
 **Look only; no rules change.** asp67's suggestion: the Maya's fields grew wheat, as everyone's but Yamato's did.

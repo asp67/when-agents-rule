@@ -484,12 +484,33 @@
     // The Maya's spotter carries a parrot on its left shoulder (asp67's idea, b1060):
     // the far sight, explained. A scarlet macaw with a gold wing and a long tail in
     // the owner's colour, perched on the shoulder (1.23) beside the head (1.49).
+    // Its own bones (b1065): 'parrot' moves the bird, 'parrotWing' flaps the wing on
+    // top of that -- it takes off and circles high over the spotter while it walks,
+    // and settles back on the shoulder when it stops (EngineUnits.parrotPose).
+    EngineUnits.PARROT_SEAT = [-.40, 1.42, -.03];
+    const PARROT_WING_ROOT = [-.45, 1.50, -.04];
     const parrot = p => {
-        oval(p,'feather',-.40,1.42,-.03,.09,.13,.09);                  // body
-        oval(p,'feather',-.40,1.58,.03,.075,.075,.075);                // head
-        part(p,'cylinder',[0,.03,.08,6],'white',{x:-.40,y:1.57,z:.12,rx:Math.PI/2});   // beak
-        oval(p,'gold',-.49,1.43,-.04,.03,.10,.07);                     // wing
-        part(p,'box',[.05,.24,.035],'cloth',{x:-.40,y:1.22,z:-.10,rx:.3,team:true});   // tail
+        const bone = 'parrot';
+        oval(p,'feather',-.40,1.42,-.03,.09,.13,.09,{bone});                // body
+        oval(p,'feather',-.40,1.58,.03,.075,.075,.075,{bone});              // head
+        part(p,'cylinder',[0,.03,.08,6],'white',{x:-.40,y:1.57,z:.12,rx:Math.PI/2,bone});   // beak
+        oval(p,'gold',-.49,1.43,-.04,.03,.10,.07,{bone:'parrotWing'});      // wing
+        part(p,'box',[.05,.24,.035],'cloth',{x:-.40,y:1.22,z:-.10,rx:.3,team:true,bone});   // tail
+    };
+    // Where the parrot is: `lift` 0 on the shoulder, 1 in full flight, eased between by
+    // the renderer. In flight it circles the spotter 1.8 out and about 4.6 up, banked
+    // along its path, the wing beating, drawn 1.7x so it reads at a playing zoom. Unit-local, so it turns with its spotter.
+    EngineUnits.parrotPose = (lift, t, phase = 0) => {
+        const m3 = M(), k = lift * lift * (3 - 2 * lift), [sx, sy, sz] = EngineUnits.PARROT_SEAT;
+        const th = t * 1.4 + phase, R = 1.8;
+        const tx = Math.sin(th) * R, ty = 4.6 + Math.sin(t * 2.3 + phase) * 0.2, tz = Math.cos(th) * R;
+        let yaw = th + Math.PI / 2;   // the tangent of the circle: +Z (the beak) onto (cos, -sin)
+        yaw = Math.atan2(Math.sin(yaw), Math.cos(yaw)) * k;
+        const body = m3.multiply(m3.translation(sx + (tx - sx) * k, sy + (ty - sy) * k, sz + (tz - sz) * k),
+            m3.multiply(m3.rotationY(yaw), m3.multiply(m3.rotationZ(-0.35 * k), m3.multiply(m3.scaling(1 + 0.7 * k, 1 + 0.7 * k, 1 + 0.7 * k), m3.translation(-sx, -sy, -sz)))));
+        const flap = Math.sin(t * 16 + phase) * 0.9 * k;
+        const wing = m3.multiply(body, m3.rotateAround(m3.rotationZ(flap), ...PARROT_WING_ROOT));
+        return { parrot: body, parrotWing: wing };
     };
     EngineUnits.parts = (type, opts) => {
         const o = { ...opts };

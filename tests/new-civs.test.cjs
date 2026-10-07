@@ -210,3 +210,21 @@ test('the Roman door is an arch of stones under the eaves, not a disc over the d
     assert.equal(arch.length, 7);
     for (const s of arch) assert.ok(s.m[13] + s.args[1] / 2 <= 2.3, 'below the eaves (2.3): ' + (s.m[13] + s.args[1] / 2));
 });
+
+test('the spotter\'s parrot sits on its shoulder at rest and circles high above it in flight (b1065)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const { EngineUnits } = scope.window;
+    const bones = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).map(p => p.bone);
+    assert.equal(bones.filter(b => b === 'parrot').length, 4);
+    assert.equal(bones.filter(b => b === 'parrotWing').length, 1);
+    const [sx, sy, sz] = EngineUnits.PARROT_SEAT;
+    const at = (m) => [m[0] * sx + m[4] * sy + m[8] * sz + m[12], m[1] * sx + m[5] * sy + m[9] * sz + m[13], m[2] * sx + m[6] * sy + m[10] * sz + m[14]];
+    for (const t of [0, 1.7, 9.3]) {
+        const rest = at(EngineUnits.parrotPose(0, t, 0.4).parrot);
+        assert.ok(Math.hypot(rest[0] - sx, rest[1] - sy, rest[2] - sz) < 1e-4, 'on the shoulder');
+        const fly = at(EngineUnits.parrotPose(1, t, 0.4).parrot);
+        assert.ok(fly[1] > 4.2 && fly[1] < 5.0, 'high above: ' + fly[1]);
+        assert.ok(Math.abs(Math.hypot(fly[0], fly[2]) - 1.8) < 1e-4, 'on its circle');   // Float32 matrices
+    }
+});

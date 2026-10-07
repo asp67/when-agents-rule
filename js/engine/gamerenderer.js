@@ -1965,6 +1965,14 @@
                 const pose = EngineUnits.pose(ue.type, anim, still ? 0 : tSec, ue.phase, {
                     strike: fighting ? (still ? 0.5 : ((u.attackTimer || 0) / 1000) % 1) : null,
                     stride: still ? 0 : ue.stride });
+                // The Maya spotter's parrot (b1065): up and circling while its spotter
+                // walks, back on the shoulder when it stands -- about a second each way.
+                if (ue.hasParrot === undefined) ue.hasParrot = ue.entries.some(e => e.bone === 'parrot');
+                if (ue.hasParrot) {
+                    const want = !still && u.isMoving ? 1 : 0, lift = ue.parrotLift ?? want;
+                    ue.parrotLift = want > lift ? Math.min(want, lift + dt * 0.9) : Math.max(want, lift - dt * 0.9);
+                    Object.assign(pose.mats, EngineUnits.parrotPose(ue.parrotLift, still ? 0 : tSec, ue.phase));
+                }
                 const spin = m3.rotationY(dir);
                 const world = m3.multiply(m3.translation(u.x, pose.bob, u.z), spin);
                 const flat = m3.multiply(m3.translation(u.x, 0, u.z), spin);
