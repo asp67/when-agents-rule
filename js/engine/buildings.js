@@ -824,6 +824,26 @@
             part(p, 'box', [1.4, 2.0, 0.3], 'bark', { y: 1.6, x: 5.45, ry: Math.PI / 2 });   // the door
             return p;
         },
+        el_castillo: () => { // Maya (b1060): nine terraces, a stair up the front, the temple on top
+            const p = [];
+            shadow(p, 10);
+            const steps = 9, h = 0.72;
+            for (let i = 0; i < steps; i++) {
+                const w0 = 12.6 - i * 0.84, w1 = w0 - 0.5;
+                part(p, 'frustum', [w0, w0, w1, w1, h], 'masonry', { y: i * h });
+            }
+            // The stair: one slab laid at the terraces' slope, with balustrades.
+            const top = steps * h, run = (12.6 - (12.6 - (steps - 1) * 0.84 - 0.5)) / 2;
+            const slope = Math.atan2(top, run), len = Math.hypot(top, run);
+            part(p, 'box', [2.4, 0.3, len], 'plaster', { y: top / 2, z: 6.3 - run / 2, rx: slope });
+            for (const x of [-1.35, 1.35]) part(p, 'box', [0.3, 0.5, len], 'masonry', { x, y: top / 2 + 0.2, z: 6.3 - run / 2, rx: slope });
+            // The temple: walls, a dark doorway, a roof comb in the owner's colour.
+            part(p, 'box', [3.4, 2.0, 3.0], 'plaster', { y: top + 1.0 });
+            part(p, 'box', [1.0, 1.4, 0.2], 'bark', { y: top + 0.7, z: 1.52 });
+            part(p, 'box', [3.8, 0.35, 3.4], 'masonry', { y: top + 2.15 });
+            part(p, 'box', [2.6, 1.2, 0.35], 'cloth', { y: top + 2.9, team: true });
+            return p;
+        },
         wonder: () => { // generic fallback (engine-test / unknown wonder ids)
             const p = [];
             shadow(p, 10);
@@ -854,7 +874,9 @@
             // Travertine walls under terracotta, a Tyrian accent (b1058).
             roman:{wall:[1.12,1.06,.93],roof:[1.16,.78,.60],accent:[.56,.27,.68],hide:[1.3,1.16,.96]},
             // Tarred timber and grey stone under turf roofs (b1059).
-            viking:{wall:[.92,.90,.86],roof:[.70,.86,.60],accent:[.10,.55,.60],hide:[1.18,1.05,.88]}
+            viking:{wall:[.92,.90,.86],roof:[.70,.86,.60],accent:[.10,.55,.60],hide:[1.18,1.05,.88]},
+            // White stucco over limestone, palm thatch, a jade accent (b1060).
+            maya:{wall:[1.14,1.10,.98],roof:[1.02,.92,.70],accent:[.05,.58,.42],hide:[1.25,1.10,.90]}
         }[options.civ];
         const tier=TIER[options.age] || 0,details=[];
         if(palette)for(const p of parts){

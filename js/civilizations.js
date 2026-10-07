@@ -1332,6 +1332,211 @@ const CIVILIZATIONS = {
                 appliesTo: 'ranged'
             }
         }
+    },
+    // The Maya (b1060): no horses, so no stable and no cavalry of any kind. Their first
+    // scout walks: the spotter, trained at the barracks behind its own research, which
+    // costs the 50 gold the others pay for their stable (asp67's design). Maize farms
+    // feed them; the jaguar warrior and the plumed archer fight for them.
+    maya: {
+        excludedUnits: ['scout_cavalry', 'cavalry', 'heavy_cavalry'],
+        name: "Maya",
+        color: 0x2e8b57,
+        bonus: {
+            name: "Maisanbau",
+            description: "Farmen liefern 30% mehr Nahrung",
+            farmYield: 0.3,   // read by the farm harvest (game.js) through owner.farmBonus
+            effect: (owner) => {
+                owner.farmBonus = 0.3;
+            }
+        },
+        uniqueUnits: [
+            {
+                id: 'spotter',
+                name: 'Späher',
+                // The walking scout: as far-sighted as a rider (vision 22.5), nearly as
+                // quick, weak, and paid in food (the scout cavalry: 100 HP, 8 attack,
+                // speed 2.2, 150 food and 80 wood).
+                cost: { food: 130, wood: 0, stone: 0, gold: 0 },
+                health: 60,
+                speed: 1.9,
+                attack: 3,
+                range: 1,
+                type: 'infantry',
+                role: 'scout',
+                visionBonus: 1.5,
+                requiresTech: 'scouting',
+                tier: 'neolithic',
+                trainAt: 'barracks',
+                description: 'Schneller Kundschafter mit Papagei, sieht weit'
+            },
+            {
+                id: 'jaguar_warrior',
+                name: 'Jaguarkrieger',
+                // Between the warrior (120 / 12, 130) and the samurai (130 / 14, 200).
+                cost: { food: 90, wood: 20, stone: 0, gold: 40 },
+                health: 110,
+                speed: 1.2,
+                attack: 14,
+                range: 1,
+                type: 'infantry',
+                tier: 'bronze',
+                trainAt: 'barracks',
+                description: 'Elitekrieger im Jaguarfell'
+            },
+            {
+                id: 'plumed_archer',
+                name: 'Federbogenschütze',
+                // A Bronze-age bow ahead of the Iron crossbow (60 HP, 12 attack, 13.5, 190):
+                // quicker and tougher than the archer, lighter than what comes after.
+                cost: { food: 80, wood: 40, stone: 0, gold: 30 },
+                health: 60,
+                speed: 1.2,
+                attack: 9,
+                range: 13,
+                type: 'ranged',
+                tier: 'bronze',
+                trainAt: 'archery_range',
+                description: 'Schneller, zäher Bogenschütze'
+            }
+        ],
+        uniqueBuildings: [
+            {
+                id: 'el_castillo',
+                name: 'El Castillo',
+                cost: { food: 4500, wood: 4500, stone: 4000, gold: 2500 }, // 15500, the shared vector
+                health: 1500,
+                type: 'wonder',
+                requiredAge: 'iron',
+                buildTime: 60000,
+                description: 'Weltwunder - im Bau ~60s, danach 600s halten zum Sieg!'
+            }
+        ],
+        techTree: {
+            house: {
+                name: 'Haus',
+                cost: { food: 50, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Haus-Bau frei (+5 Bevölkerung)',
+                researchTime: 15000,
+                unlocks: { buildings: ['house'] }
+            },
+            farm: {
+                name: 'Farm',
+                cost: { food: 100, wood: 50, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Farm-Bau frei (Nahrungsproduktion)',
+                researchTime: 15000,
+                unlocks: { buildings: ['farm'] }
+            },
+            barracks: {
+                name: 'Kaserne',
+                cost: { food: 100, wood: 150, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Kaserne-Bau frei (Infanterie-Ausbildung)',
+                researchTime: 15000,
+                unlocks: { buildings: ['barracks'] }
+            },
+            longbow: {
+                name: 'Langbogen',
+                cost: { food: 50, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: [],
+                description: 'Schaltet Bogenschützenstand frei',
+                researchTime: 15000,
+                unlocks: { buildings: ['archery_range'] }
+            },
+            academy: {
+                name: 'Akademie',
+                cost: { food: 200, wood: 150, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'neolithic',
+                requires: [],
+                description: 'Schaltet die Akademie frei für weitere Forschung',
+                researchTime: 20000,
+                unlocks: { buildings: ['academy'] }
+            },
+            obsidian: {
+                name: 'Obsidianklingen',
+                cost: { food: 100, wood: 100, stone: 0, gold: 0 },
+                researchAt: 'town_center',
+                requiredAge: 'stone',
+                requires: ['barracks'],
+                description: 'Infanterie +3 Angriff',
+                researchTime: 15000,
+                bonus: { attack: 3 },
+                appliesTo: 'infantry'
+            },
+            scouting: {
+                name: 'Kundschafterpfade',
+                cost: { food: 150, wood: 100, stone: 0, gold: 50 },
+                researchAt: 'town_center',
+                requiredAge: 'neolithic',
+                requires: [],
+                description: 'Schaltet den Späher an der Kaserne frei',
+                researchTime: 15000
+            },
+            calendar: {
+                name: 'Maya-Kalender',
+                cost: { food: 150, wood: 0, stone: 0, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'neolithic',
+                requires: ['academy'],
+                description: 'Dorfzentrum +25% Ausbildungstempo',
+                researchTime: 20000,
+                bonus: { trainSpeed: 0.25 },
+                appliesTo: 'town_center'
+            },
+            cotton_armor: {
+                name: 'Baumwollrüstung',
+                cost: { food: 0, wood: 0, stone: 150, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Alle Militäreinheiten +15 Gesundheit',
+                researchTime: 25000,
+                bonus: { health: 15 },
+                appliesTo: 'all_military'
+            },
+            healing: {
+                name: 'Heilkunde',
+                cost: { food: 150, wood: 0, stone: 0, gold: 100 },
+                researchAt: 'temple',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Stellt die volle Heilkraft der Priester wieder her',
+                researchTime: 20000,
+                bonus: { healPower: 0.2 }
+            },
+            iron_working: {
+                name: 'Eisenverarbeitung',
+                cost: { food: 0, wood: 0, stone: 200, gold: 200 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: ['cotton_armor'],
+                description: 'Alle Militäreinheiten +3 Angriff',
+                researchTime: 30000,
+                bonus: { attack: 3 },
+                appliesTo: 'all_military'
+            },
+            fire_arrows: {
+                name: 'Feuerpfeile',
+                cost: { food: 50, wood: 100, stone: 80, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'iron',
+                requires: [],
+                description: 'Fernkampfeinheiten +30% Schaden gegen Gebäude',
+                researchTime: 30000,
+                bonus: { buildingDamage: 0.3 },
+                appliesTo: 'ranged'
+            }
+        }
     }
 };
 

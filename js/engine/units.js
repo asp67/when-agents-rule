@@ -122,8 +122,8 @@
             for(const side of [-1,1]) oval(p,hair,x+side*.052*s,y-.050*s,z+.203*s,
                 .061*s,.022*s,.030*s,{rz:side*-.22});
             oval(p,hair,x,y-.194*s,z+.13*s,.082*s,.110*s,.074*s);
-        } else if(o.civ==='roman') {
-            // Clean-shaven (b1058): only the jaw's shadow, no beard.
+        } else if(o.civ==='roman'||o.civ==='maya') {
+            // Clean-shaven (b1058, the Maya b1060): only the jaw's shadow, no beard.
             oval(p,'skin',x,y-.15*s,z+.11*s,.15*s,.07*s,.09*s);
         } else if(o.civ==='egyptian') {
             // Short, rounded natural chin growth; no long square royal false beard.
@@ -158,7 +158,7 @@
         y+=S(.075); // brow clears the eyes; the shell still overlaps the skull
         const dome=(tex,team=false)=>part(p,'dome',[1,16],tex,
             {x,y:y+S(.045),z,sx:S(.253),sy:S(.24),sz:S(.235),team});
-        if(military && civ!=='egyptian') {
+        if(military && civ!=='egyptian' && civ!=='maya') {   // the Maya fight under feathers, not iron (b1060)
             dome('iron');
             oval(p,'iron',x,y-S(.085),z-S(.17),S(.20),S(.16),S(.075));
             part(p,'cylinder',[S(.252),S(.255),S(.055),16],'iron',{x,y:y+S(.044),z});
@@ -185,6 +185,13 @@
             } else if(kind==='priest') part(p,'cylinder',[S(.065),S(.15),S(.29),10],'bark',{x,y:y+S(.18),z});
             // Brim at head centre + .11: just above the .085-high eyebrows.
             else part(p,'cylinder',[S(.025),S(.37),S(.18),16],'thatch',{x,y:y+S(.125),z});
+        } else if(civ==='maya') {
+            // Feathers (b1060): a fan of plumes on a gold band for soldiers, one plume on
+            // a cloth band otherwise, a tall headdress for the priest.
+            part(p,'cylinder',[S(.232),S(.236),S(.05),12],military?'gold':'cloth',{x,y:y+S(.05),z,team:!military});
+            const plumes=military?[-.5,-.25,0,.25,.5]:kind==='priest'?[-.3,-.1,.1,.3]:[0];
+            plumes.forEach((a,i)=>part(p,'box',[S(.05),S(military||kind==='priest'?.42:.28),S(.025)],i%2?'foliage':'cloth',
+                {x:x+Math.sin(a)*S(.16),y:y+S(.26),z:z-S(.12),rz:-a,team:!(i%2)}));
         } else if(civ==='viking') {
             // A plain iron cap with a nose guard -- no horns (b1059); a wool cap otherwise.
             if(military) part(p,'box',[S(.05),S(.17),S(.04)],'iron',{x,y:y-S(.07),z:z+S(.24)});
@@ -452,7 +459,8 @@
         archer: 1, crossbowman: 2, elite_archer: 3,
         scout_cavalry: 1, cavalry: 2, heavy_cavalry: 3,
         slinger: 1, hoplite: 2, phalanx: 3, samurai: 3, archer_ship: 1,
-        legionary: 3, equites: 2, berserker: 3, axe_thrower: 1
+        legionary: 3, equites: 2, berserker: 3, axe_thrower: 1,
+        spotter: 1, jaguar_warrior: 3, plumed_archer: 2
     };
 
     // Limb pivots per type (unit-local space, before facing/world transforms).
@@ -473,11 +481,22 @@
     // opts.civ ('greek' | 'egyptian' | 'yamato' | 'persian') picks the cultural
     // headgear/accents; opts.unit (specific id like 'champion') picks the tier
     // dressing. Omit both for the generic look (engine-test).
+    // The Maya's spotter carries a parrot on its left shoulder (asp67's idea, b1060):
+    // the far sight, explained. A scarlet macaw with a gold wing and a long tail in
+    // the owner's colour, perched on the shoulder (1.23) beside the head (1.49).
+    const parrot = p => {
+        oval(p,'feather',-.40,1.42,-.03,.09,.13,.09);                  // body
+        oval(p,'feather',-.40,1.58,.03,.075,.075,.075);                // head
+        part(p,'cylinder',[0,.03,.08,6],'white',{x:-.40,y:1.57,z:.12,rx:Math.PI/2});   // beak
+        oval(p,'gold',-.49,1.43,-.04,.03,.10,.07);                     // wing
+        part(p,'box',[.05,.24,.035],'cloth',{x:-.40,y:1.22,z:-.10,rx:.3,team:true});   // tail
+    };
     EngineUnits.parts = (type, opts) => {
         const o = { ...opts };
         if (o.tier == null) o.tier = TIER[o.unit] || (type === 'ranged' ? 1 : 2);
         const b = builders[type];
         const parts=b ? b(o) : [];
+        if (o.unit === 'spotter') parrot(parts);
         if(o.badge)for(const p of parts)if(p.capePaint)p.badgePaint=p.capePaint;
         return parts;
     };

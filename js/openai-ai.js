@@ -3761,6 +3761,9 @@ class OpenAIAIManager {
             const def = (typeof getUnitDefFor === 'function') ? getUnitDefFor(ai.civilization, u.id) : null;
             const blockedBy = [];
             // Structural gates first, money last — the order the executor reports them.
+            // A unit's own research first of all (b1060: the Maya's spotter).
+            const gate = def && def.requiresTech;
+            if (gate && !(ai.researchedTechs && ai.researchedTechs[gate])) blockedBy.push('tech');
             if (!ageReached(u.age)) blockedBy.push('age');
             if (!standing(u.at)) blockedBy.push('host');
             // Units are the only thing that consumes population; buildings never do,
@@ -3769,7 +3772,7 @@ class OpenAIAIManager {
             if (atPopCap) blockedBy.push('pop');
             if (tooPoor(def && def.cost)) blockedBy.push('cost');
             (host[u.age] = host[u.age] || []).push({
-                id: u.id, cost: costOf(def && def.cost), blockedBy
+                id: u.id, cost: costOf(def && def.cost), blockedBy, ...(gate ? { requiresTech: gate } : {})
             });
         });
 
@@ -6777,6 +6780,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             return `[ERROR] Unknown unit type "${unitType}".${catNote}${parenNote} ${this.trainableListString(ai)} See "units.trainable" and "units.blocked" for the age each one needs.`;
         }
 
+        // Its own research before anything else (b1060): the first step of the chain.
+        const gate = typeof unitTechMissing === 'function' ? unitTechMissing(ai, unitType) : null;
+        if (gate) {
+            this.outcome('log.out.unitNeedsTech', { unitType, tech: gate });
+            return `[ERROR] ${unitType} needs the research "${gate}" first: research_tech {"techId": "${gate}"}. Then it trains at its building like any other unit.`;
+        }
+
         const ageOrder = ['stone', 'neolithic', 'bronze', 'iron'];
         const reqB = this.requiredBuildingForUnit(unitType, ai.civilization); // 'barracks' | 'stable' | 'archery_range' | 'temple' | null
         const rightType = (b) => reqB ? (b.type === reqB) : false;
@@ -8290,9 +8300,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Priests are excluded from the auto-pick: a healer wandering the dark
         // alone is a wasted (and soon dead) medic. Explicit unitType still wins.
         const idleMilitary = ai.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && !this.isInCombat(u) && notSentYet(u));
-        const cav = idleMilitary.find(u => u.unitType === 'cavalry');
-        if (cav) return cav;
-        if (idleMilitary.length) return idleMilitary[0];
+        // The farthest-seeing idle soldier, the first of equals (b1060). That was "the
+        // first rider, else the first soldier", the same pick while only riders saw
+        // farther; the Maya's spotter walks and sees as far.
+        const sight = u => (this.game && this.game.unitVision) ? this.game.unitVision(u) : (u.unitType === 'cavalry' ? 22.5 : 15);
+        let far = null;
+        for (const u of idleMilitary) if (!far || sight(u) > sight(far)) far = u;
+        if (far) return far;
 
         const idleWorker = ai.units.find(u => u.type === 'worker' && this.game.isIdleWorker(u) && notSentYet(u));
         if (idleWorker) return idleWorker;

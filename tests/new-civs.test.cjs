@@ -106,3 +106,78 @@ test('the Vikings train the berserker and the axe thrower, and draw as themselve
     assert.notEqual(keys(EngineUnits.parts('infantry', { civ: 'viking', unit: 'berserker' })),
         keys(EngineUnits.parts('infantry', { civ: 'nobody', unit: 'berserker' })), 'its own helmet');
 });
+
+test('the Maya: no horses, and the spotter waits behind its own research', async () => {
+    const c = data();
+    for (const age of ['neolithic', 'bronze', 'iron'])
+        assert.equal(c.getTrainOptionsForBuilding('stable', age, 'maya').length, 0, 'nothing to ride');
+    assert.ok(!c.CIVS.maya.techTree.horseback, 'so no stable to build');
+    assert.ok(c.getTrainOptionsForBuilding('barracks', 'neolithic', 'maya').includes('spotter'));
+    // The scouting research costs horseback's price plus the stable's 50 gold.
+    assert.deepEqual({ ...c.CIVS.maya.techTree.scouting.cost }, { food: 150, wood: 100, stone: 0, gold: 50 });
+    assert.deepEqual({ ...c.getUnitDefFor('maya', 'spotter').cost }, { food: 130, wood: 0, stone: 0, gold: 0 }, 'paid in food');
+    const m = await createMatch({ kind: 'board', seed: 'spotter', seats: [
+        { civ: 'maya', age: 'neolithic', buildings: [['town_center', -200, 0], ['barracks', -170, 20]], resources: { food: 2000, wood: 2000, stone: 0, gold: 200 } },
+        { civ: 'greek', age: 'neolithic', buildings: [['town_center', 200, 0]] }] });
+    const ai = m.seats[0], ctl = m.controllers[0], g = m.game;
+    const before = m.command(ctl, 'train_unit', { unitType: 'spotter' });
+    assert.match(String(before), /needs the research "scouting" first/, before);
+    const state = g.openAIAIManager.buildGameStateJSON(ctl);
+    const listed = state.units.blocked.barracks.neolithic.find(u => u.id === 'spotter');
+    assert.deepEqual([...listed.blockedBy], ['tech'], 'the model sees why');
+    assert.equal(listed.requiresTech, 'scouting');
+    ai.researchedTechs.scouting = true;
+    const after = m.command(ctl, 'train_unit', { unitType: 'spotter' });
+    assert.doesNotMatch(String(after), /ERROR/, after);
+    // As far-sighted as a rider; and explore sends it before a slower soldier.
+    const spotter = createUnitIn(m, ai, 'spotter');
+    const militia = createUnitIn(m, ai, 'militia');
+    assert.equal(g.unitVision(spotter), 22.5);
+    assert.equal(g.unitVision(militia), 15);
+    assert.equal(g.openAIAIManager.pickScout(ai), spotter);
+    // The rule-based AI does not fill its barracks with scouts.
+    const mgr = Object.create(c.AIManager.prototype);
+    const opts = c.getTrainOptionsForBuilding('barracks', 'neolithic', 'maya');
+    const rich = { food: 9999, wood: 9999, stone: 9999, gold: 9999 };
+    assert.equal(mgr.getUnitToTrain({ civilization: 'maya', age: 'neolithic', resources: rich, researchedTechs: { scouting: true } }, { type: 'barracks', trainOptions: opts }), 'militia');
+    assert.equal(mgr.getUnitToTrain({ civilization: 'maya', age: 'bronze', resources: rich, researchedTechs: {} },
+        { type: 'barracks', trainOptions: c.getTrainOptionsForBuilding('barracks', 'bronze', 'maya') }), 'jaguar_warrior');
+});
+function createUnitIn(m, ai, type) {
+    const vmc = m.context;
+    const u = vm.runInContext(`createUnit(${JSON.stringify(type)}, ${-190}, ${30}, ${JSON.stringify(ai.id)}, ${JSON.stringify(ai.civilization)}, 'neolithic')`, vmc);
+    ai.units.push(u);
+    return u;
+}
+
+test('the Maya\'s maize: a farm gives 30% more food, and lasts as long', async () => {
+    const run = async civ => {
+        const m = await createMatch({ kind: 'board', seed: 'maize', seats: [
+            { civ, age: 'neolithic', buildings: [['town_center', -200, 0], ['farm', -185, 0, { tag: 'farm' }]], units: [['worker', -186, 1, { tag: 'w' }]] },
+            { civ: 'persian', age: 'neolithic', buildings: [['town_center', 200, 0]] }] });
+        const ai = m.seats[0], farm = m.tags.farm, w = m.tags.w;
+        const bonus = m.context.getCivilization(civ).bonus;   // a board applies no civ bonus; the arena does
+        if (bonus && bonus.effect) bonus.effect(ai);
+        farm.assignedWorker = w; w.task = 'farm_work'; w.farmRef = farm;
+        const food0 = ai.resources.food, farm0 = farm.foodAmount;
+        m.run(60000);
+        return { food: ai.resources.food - food0, farm: farm0 - farm.foodAmount };
+    };
+    const maya = await run('maya'), greek = await run('greek');
+    assert.ok(greek.food > 0, 'the farm was worked');
+    assert.ok(Math.abs(maya.food / greek.food - 1.3) < 0.02, `food ${maya.food} vs ${greek.food}`);
+    assert.equal(maya.farm, greek.farm, 'the field depletes as fast');
+});
+
+test('the Maya draw as themselves: El Castillo, feathers, the spotter\'s parrot', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings', 'units']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const { EngineBuildings, EngineUnits } = scope.window;
+    const keys = parts => parts.map(p => p.key).join('|');
+    assert.notEqual(keys(EngineBuildings.parts('el_castillo', {})), keys(EngineBuildings.parts('pyramid', {})), 'not Egypt\'s pyramid');
+    assert.notEqual(keys(EngineUnits.parts('infantry', { civ: 'maya', unit: 'jaguar_warrior' })),
+        keys(EngineUnits.parts('infantry', { civ: 'nobody', unit: 'jaguar_warrior' })));
+    const spotter = EngineUnits.parts('infantry', { civ: 'maya', unit: 'spotter' }).length;
+    const plain = EngineUnits.parts('infantry', { civ: 'maya', unit: 'militia' }).length;
+    assert.equal(spotter - plain, 5, 'the parrot');
+});

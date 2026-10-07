@@ -646,7 +646,8 @@ class AIManager {
         };
         const ladder = ladders[building.type];
         if (!ladder) return null;
-        const opts = building.trainOptions || [];
+        // Not what still needs its own research (b1060).
+        const opts = (building.trainOptions || []).filter(id => typeof unitTechMissing !== 'function' || !unitTechMissing(ai, id));
         let pick = ladder.find(id => opts.includes(id)) || (opts.length ? opts[opts.length - 1] : null);
         // A civilization's own unit wins over the ladder's shared pick when it belongs to
         // at least the same age (b1056). The ladder names shared units only, so Greece
@@ -656,7 +657,8 @@ class AIManager {
         // shared id (Persia's archer, cavalry, Kataphrakt) are already on the ladder.
         const civ = typeof getCivilization === 'function' ? getCivilization(ai.civilization) : null;
         const shared = typeof UNIT_DEFS !== 'undefined' ? UNIT_DEFS : {};
-        const ownIds = new Set(((civ && civ.uniqueUnits) || []).map(u => u.id).filter(id => !shared[id]));
+        // A scout is not a soldier: the Maya's spotter would otherwise fill the barracks.
+        const ownIds = new Set(((civ && civ.uniqueUnits) || []).filter(u => u.role !== 'scout').map(u => u.id).filter(id => !shared[id]));
         const TIER = { stone: 0, neolithic: 1, bronze: 2, iron: 3 };
         const tierOf = id => { const d = getUnitDefFor(ai.civilization, id); return (d && TIER[d.tier]) || 0; };
         let own = null;

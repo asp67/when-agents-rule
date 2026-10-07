@@ -3071,6 +3071,14 @@ class Game {
             return;
         }
 
+        // A unit behind a research of its own (b1060).
+        const gate = typeof unitTechMissing === 'function' ? unitTechMissing(this.player, unitType) : null;
+        if (gate) {
+            const tech = getCivilization(this.player.civilization).techTree[gate];
+            this.ui.showErrorMessage(t('msg.unitNeedsTech', { tech: tech ? tg(tech.name) : gate }));
+            return;
+        }
+
         // Buildings (finished) that can train this unit.
         const trainers = this.player.buildings.filter(b => {
             if (b.underConstruction) return false;
@@ -5014,11 +5022,14 @@ class Game {
                 if (unit.harvestTimer >= harvestTime) {
                     // Collect resource - store it on the worker, don't add to resources yet
                     const resourceType = unit.harvestTarget.type;
-                    const amount = 10 * (owner.workerHarvestBonus || 1);
+                    const base = 10 * (owner.workerHarvestBonus || 1);
+                    // A farm bonus (the Maya's maize, b1060) is food the farm did not have
+                    // to give: the farm depletes by the base, the worker carries more.
+                    const amount = unit.harvestTarget.isFarm ? base * (1 + (owner.farmBonus || 0)) : base;
                     
                     // If harvesting from a farm, reduce farm's food amount
                     if (unit.harvestTarget.isFarm && unit.harvestTarget.farmRef) {
-                        unit.harvestTarget.farmRef.foodAmount = Math.max(0, unit.harvestTarget.farmRef.foodAmount - amount);
+                        unit.harvestTarget.farmRef.foodAmount = Math.max(0, unit.harvestTarget.farmRef.foodAmount - base);
                     } else if (unit.harvestTarget.amount !== undefined) {
                         // Finite nodes: deplete by what was taken. When empty, drop the
                         // node (mesh removed; node kept in place so fog indices hold).
@@ -5306,8 +5317,9 @@ class Game {
                     const harvestTime = 2000;
 
                     if (unit.harvestTimer >= harvestTime) {
-                        const amount = 10 * (owner.workerHarvestBonus || 1);
-                        farm.foodAmount = Math.max(0, farm.foodAmount - amount);
+                        const base = 10 * (owner.workerHarvestBonus || 1);
+                        const amount = base * (1 + (owner.farmBonus || 0));   // maize (b1060), as above
+                        farm.foodAmount = Math.max(0, farm.foodAmount - base);
                         
                         unit.carryingResource = true;
                         unit.carryingResourceType = 'food';

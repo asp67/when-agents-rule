@@ -6,6 +6,44 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1060: the Maya (7 October 2026)
+
+**A seventh civilization, with no horses at all.** The Maya cannot train scout cavalry, cavalry or heavy cavalry, and have no horseback research, so they cannot build a stable.
+
+**Their first scout walks** (asp67's design):
+- **The spotter** is trained at the barracks from the Neolithic: 60 HP, 3 attack, speed 1.9, for 130 food.
+- It sees 22.5, as far as a rider, and carries a parrot on its shoulder to show it.
+- **It sits behind its own research, Scout trails:** 150 food / 100 wood / 50 gold at the Town Center, in the Neolithic. That is horseback's price plus the 50 gold the others pay for their stable. The Maya build no stable, so the gold is paid here.
+
+**Bonus, Maize farming:** farms give 30% more food. The farm depletes by the base amount; the extra is food it did not have to give, so a field lasts just as long. Every civilization without the bonus multiplies by exactly 1.
+
+**Own units:**
+- **Jaguar warrior** (barracks, Bronze): 110 HP, 14 attack, speed 1.2, for 90 food / 20 wood / 40 gold.
+- **Plumed archer** (archery range, Bronze): 60 HP, 9 attack, range 13, speed 1.2, for 80 food / 40 wood / 30 gold.
+
+**Own techs:**
+- Obsidian blades (Stone age, Town Center, needs barracks): infantry +3 attack.
+- Scout trails: the spotter's gate, above.
+- Maya calendar (Neolithic, academy): Town Center +25% training speed.
+- Cotton armour (Bronze, academy): all military +15 HP. Iron working requires it.
+
+**Wonder:** El Castillo, nine terraces with a stair up the front and the temple on top.
+
+**A unit can now sit behind a research of its own** (`requiresTech` on the unit). Every path that trains reads it:
+- The model's train command answers `[ERROR] spotter needs the research "scouting" first` and names the call. The outcome code is `unitNeedsTech`, classed as a constraint.
+- The model's unit list shows the spotter under `units.blocked` with `blockedBy: ["tech"]` and `requiresTech`. No other unit's entry changes.
+- The player's train menu shows it locked, naming the research.
+- The rule-based AI skips it.
+
+**Explore's automatic pick** is now the farthest-seeing idle soldier, taking the first of equals. It was "the first rider, else the first soldier": the same pick while only riders saw farther. Now the spotter is chosen too.
+
+**Look:**
+- Feathers instead of iron: soldiers wear a fan of plumes on a gold band and no helmet. Everyone else wears one plume on a cloth band, and priests wear a tall headdress.
+- The Maya are clean-shaven.
+- Buildings are white stucco under palm thatch, and the civilization's colour is jade green.
+
+**The rule-based AI trains** jaguar warriors and plumed archers. It never fills a barracks with spotters, because a scout is not a soldier.
+
 ## Build 1059: the Vikings (7 October 2026)
 
 **A sixth civilization, on the same pattern as the others.**

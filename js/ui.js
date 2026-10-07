@@ -3273,7 +3273,10 @@ class UIManager {
             trainOptions.forEach(unitId => {
                 const unitDef = getUnitDefFor(this.game.player.civilization, unitId);
                 if (unitDef) {
-                    const canAfford = this.game.player.resources.hasResources(unitDef.cost);
+                    // A unit behind its own research shows locked, with the research named (b1060).
+                    const gate = typeof unitTechMissing === 'function' ? unitTechMissing(this.game.player, unitId) : null;
+                    const gateTech = gate && civ.techTree[gate];
+                    const canAfford = !gate && this.game.player.resources.hasResources(unitDef.cost);
                     const tierLabel = unitDef.tier ? ` (${this.getAgeName(unitDef.tier)})` : '';
                     // Pass THIS building's instance id: with several Town Centers /
                     // barracks the unit must be produced (and spawn) at the one whose
@@ -3300,6 +3303,7 @@ class UIManager {
                             <p>${tg(unitDef.description)}</p>
                             <p class="unit-stats" title="${statsTitle}">${stats}</p>
                             <p class="cost">🍖${unitDef.cost.food} 🌲${unitDef.cost.wood} 🪨${unitDef.cost.stone} 🥇${unitDef.cost.gold}</p>
+                            ${gate ? `<p class="cost">🔒 ${tg(gateTech ? gateTech.name : gate)}</p>` : ''}
                         </div>
                     `;
                 }

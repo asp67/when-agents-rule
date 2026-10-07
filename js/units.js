@@ -229,6 +229,9 @@ function createUnit(type, x, z, owner, civilization, age) {
         health: unitDef.health,
         maxHealth: unitDef.health,
         speed: unitDef.speed,
+        // A unit that sees farther by nature (b1060: the Maya's spotter, as far as a
+        // rider). Researched sight adds to it as to everyone's.
+        ...(unitDef.visionBonus ? { visionBonus: unitDef.visionBonus } : {}),
         attack: unitDef.attack,
         range: unitDef.range,
         unitType: unitDef.type,

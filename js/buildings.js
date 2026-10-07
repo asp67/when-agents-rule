@@ -207,6 +207,16 @@ const UNIT_UPGRADE_PATHS = {
     archer: { bronze: 'archer', iron: 'crossbowman' }
 };
 
+// A unit that needs a research of its own before it can be trained (b1060: the Maya's
+// spotter, behind "scouting"). Every train path asks: the models' executor and their
+// unit list, the rule-based AI, the player's train menu and command. Null when the
+// unit has no such gate or the owner has researched it.
+function unitTechMissing(owner, unitId) {
+    const def = (typeof getUnitDefFor === 'function' && owner) ? getUnitDefFor(owner.civilization, unitId) : null;
+    const tech = def && def.requiresTech;
+    return tech && !(owner.researchedTechs && owner.researchedTechs[tech]) ? tech : null;
+}
+
 function getTrainOptionsForBuilding(buildingType, age, civilization) {
     const tiers = BUILDING_TRAIN_TIERS[buildingType];
     if (!tiers) return [];
