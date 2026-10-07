@@ -6,6 +6,35 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1061: the new civilizations look like themselves (7 October 2026)
+
+**Look only; no rules change.** Found by asp67 in the civilization showcase.
+
+**The Colosseum had its floor on the roof.** It was built from solid drums with the sand laid on top. It is now a ring of arcaded wall segments, with seating stepping down to an arena floor at ground level.
+
+**The showcase showed the Maya with riders and a stable.**
+- It built a fixed list of buildings and paraded a fixed list of shared units.
+- Now it builds only what the civilization can build: the Maya have no stable.
+- It shows every unit the civilization fields at that age, its own included. That is new for all seven: hoplites, samurai, legionaries, spotters.
+
+**Town Centers, houses and academies were plain copies** with a different palette. In the Bronze and Iron ages, each new civilization now has its own:
+- **Romans:**
+  - Town Center: a domus around an atrium in the Bronze age, a castrum with gate towers and a domed principia in the Iron age.
+  - House: a tiled cottage, then a two-storey insula.
+  - Academy: a basilica library with an apse.
+  - Door: an arch.
+- **Vikings:**
+  - Town Center: a turf longhouse with crossed gables, then a ring fort with a palisade around the hall.
+  - House: a turf house.
+  - Academy: a steep rune-masters' hall inside a ring of runestones.
+  - Door: carved crossing posts.
+- **Maya:**
+  - Town Center: a council house on a stepped platform, then a palace with a corbel vault and a roof comb.
+  - House: a stucco na under a tall thatch.
+  - Academy: an observatory dome.
+  - Door: a corbel lintel.
+- **Stone and Neolithic:** the huts stay shared, as for the originals. Each civilization has a small marker: a standard, a shield or a stela.
+
 ## Build 1060: the Maya (7 October 2026)
 
 **A seventh civilization, with no horses at all.** The Maya cannot train scout cavalry, cavalry or heavy cavalry, and have no horseback research, so they cannot build a stable.

@@ -181,3 +181,21 @@ test('the Maya draw as themselves: El Castillo, feathers, the spotter\'s parrot'
     const plain = EngineUnits.parts('infantry', { civ: 'maya', unit: 'militia' }).length;
     assert.equal(spotter - plain, 5, 'the parrot');
 });
+
+test('the new civilizations\' Town Centers, houses and academies are their own (b1061)', () => {
+    const scope = { window: {} }; vm.createContext(scope);
+    for (const f of ['math3d', 'mesh', 'buildings']) vm.runInContext(source('engine/' + f + '.js'), scope);
+    const { EngineBuildings } = scope.window;
+    const shape = (type, civ, age) => EngineBuildings.parts(type, { civ, age }).map(p => p.key).join('|');
+    for (const civ of ['roman', 'viking', 'maya'])
+        for (const [type, ages] of [['town_center', ['bronze', 'iron']], ['house', ['bronze', 'iron']], ['academy', ['iron']]])
+            for (const age of ages) {
+                assert.notEqual(shape(type, civ, age), shape(type, 'nobody', age), `${civ} ${type} ${age}: the generic one`);
+                for (const other of ['roman', 'viking', 'maya', 'greek', 'egyptian', 'persian', 'yamato'].filter(o => o !== civ))
+                    assert.notEqual(shape(type, civ, age), shape(type, other, age), `${civ} ${type} ${age}: ${other}'s`);
+            }
+    // The Colosseum's arena floor lies on the ground, inside the ring -- not on its roof.
+    const sand = EngineBuildings.parts('colosseum', {}).filter(p => p.tint && p.kind === 'cylinder');
+    assert.equal(sand.length, 1);
+    assert.ok(sand[0].m[13] < 0.5, 'the floor at y ' + sand[0].m[13]);
+});

@@ -52,6 +52,153 @@
             if (tier >= 3) part(p, 'box', [doorW + 1.5, 0.13, 0.16], 'wood', { x, y: th - 0.42, z: tz });
         } else if (civ === 'persian') {
             part(p, 'box', [doorW + 1.6, 0.3, 0.24], 'cloth', { x, y: doorH + 0.32, z, team: true });
+        } else if (civ === 'roman') {
+            // Pilasters under a round arch (b1061).
+            const px = doorW / 2 + 0.3;
+            part(p, 'box', [0.36, doorH + 0.1, 0.3], 'plaster', { x: x - px, y: (doorH + 0.1) / 2, z });
+            part(p, 'box', [0.36, doorH + 0.1, 0.3], 'plaster', { x: x + px, y: (doorH + 0.1) / 2, z });
+            part(p, 'cylinder', [doorW / 2 + 0.48, doorW / 2 + 0.48, 0.3, 12], 'plaster', { x, y: doorH + 0.1, z, rx: Math.PI / 2 });
+        } else if (civ === 'viking') {
+            // Carved door posts that cross above the lintel (b1061).
+            const px = doorW / 2 + 0.25;
+            part(p, 'box', [0.22, doorH + 0.9, 0.22], 'wood', { x: x - px, y: (doorH + 0.9) / 2, z, rz: -0.12 });
+            part(p, 'box', [0.22, doorH + 0.9, 0.22], 'wood', { x: x + px, y: (doorH + 0.9) / 2, z, rz: 0.12 });
+            part(p, 'box', [doorW + 0.8, 0.26, 0.26], 'cloth', { x, y: doorH + 0.15, z, team: true });
+        } else if (civ === 'maya') {
+            // A stepped corbel lintel (b1061).
+            part(p, 'box', [doorW + 1.2, 0.3, 0.32], 'masonry', { x, y: doorH + 0.15, z });
+            part(p, 'box', [doorW + 0.6, 0.3, 0.32], 'cloth', { x, y: doorH + 0.45, z, team: true });
+        }
+    };
+
+    // The three civilizations added in b1058-b1060, in their own shapes (b1061): a
+    // palette alone left their Town Centers, houses and academies plain copies of the
+    // generic ones. Bronze and Iron only -- the stone and neolithic huts are shared
+    // by every culture, as for the four originals.
+    const OWN_TOWN_CENTER = {
+        roman: (p, age) => {
+            if (age === 'bronze') {
+                // Domus with an atrium: a walled square, tiled roofs on all four sides
+                // around an open centre, a columned entrance and the owner's banner.
+                part(p, 'frustum', [10.4, 10.4, 9.8, 9.8, 0.6], 'masonry');
+                for (const [x, z, w, d] of [[0, 3.6, 8.6, 1.6], [0, -3.6, 8.6, 1.6], [3.6, 0, 1.6, 5.6], [-3.6, 0, 1.6, 5.6]]) {
+                    part(p, 'box', [w, 2.8, d], 'plaster', { x, y: 2.0, z });
+                    part(p, 'prism', w < d ? [d + 0.4, w + 0.6, 0.9] : [w + 0.4, d + 0.6, 0.9], 'rooftile', { x, y: 3.4, z, ry: w < d ? Math.PI / 2 : 0 });   // ridge along the wing
+                }
+                part(p, 'box', [2.6, 0.12, 2.6], 'cloth', { y: 0.65, team: true });            // the impluvium's pool
+                [-1.3, 1.3].forEach(x => part(p, 'cylinder', [0.2, 0.24, 3.0, 8], 'plaster', { x, y: 2.1, z: 4.75 }));
+                part(p, 'box', [3.4, 0.4, 0.9], 'plaster', { y: 3.75, z: 4.6 });
+                part(p, 'box', [1.5, 2.2, 0.3], 'bark', { y: 1.7, z: 4.42 });
+            } else {
+                // Castrum: square walls with gate towers, and the dome of the principia.
+                part(p, 'frustum', [11.4, 11.4, 10.8, 10.8, 0.7], 'masonry');
+                for (const [x, z, w, d] of [[0, -4.9, 10.0, 0.8], [-4.9, 0, 0.8, 10.0], [4.9, 0, 0.8, 10.0], [-3.2, 4.9, 3.6, 0.8], [3.2, 4.9, 3.6, 0.8]])
+                    part(p, 'box', [w, 3.0, d], 'plaster', { x, y: 2.2, z });
+                for (const x of [-1.9, 1.9]) {   // the gate towers, crenellated
+                    part(p, 'box', [1.6, 4.6, 1.6], 'masonry', { x, y: 3.0, z: 4.9 });
+                    [-0.5, 0.5].forEach(dx => part(p, 'box', [0.4, 0.5, 1.6], 'masonry', { x: x + dx, y: 5.55, z: 4.9 }));
+                }
+                part(p, 'box', [2.4, 0.5, 0.8], 'plaster', { y: 4.5, z: 4.9 });           // the arch over the gate
+                part(p, 'cylinder', [2.5, 2.6, 3.0, 16], 'plaster', { y: 2.2, z: -0.8 }); // the drum
+                part(p, 'dome', [1, 16], 'rooftile', { y: 3.7, z: -0.8, sx: 2.55, sy: 2.0, sz: 2.55 });
+                part(p, 'cylinder', [0.5, 0.5, 0.3, 10], 'gold', { y: 5.7, z: -0.8 });   // the oculus' ring
+                part(p, 'cylinder', [0.07, 0.07, 3.0, 5], 'wood', { x: -4.9, y: 5.0, z: -4.9 });
+                part(p, 'box', [1.1, 0.8, 0.06], 'cloth', { x: -4.4, y: 5.9, z: -4.9, team: true });   // the vexillum
+                part(p, 'box', [1.5, 2.6, 0.3], 'bark', { y: 1.6, z: 5.32 });
+            }
+        },
+        viking: (p, age) => {
+            if (age === 'bronze') {
+                // The chieftain's longhouse: bowed walls, a turf roof, crossed gables
+                // and a shield by the door.
+                part(p, 'frustum', [11.2, 7.4, 10.6, 6.8, 0.5], 'rock');
+                part(p, 'box', [9.4, 2.6, 5.0], 'wood', { y: 1.8 });
+                for (const side of [-1, 1]) part(p, 'box', [7.6, 2.2, 0.45], 'bark', { y: 1.6, z: side * 2.62 });
+                part(p, 'prism', [10.6, 6.4, 3.0], 'thatch', { y: 3.1, tint: [.70, .86, .60] });
+                for (const x of [-5.3, 5.3]) {
+                    part(p, 'box', [0.2, 2.2, 0.2], 'wood', { x, y: 5.6, z: 0.5, rx: 0.5 });
+                    part(p, 'box', [0.2, 2.2, 0.2], 'wood', { x, y: 5.6, z: -0.5, rx: -0.5 });
+                }
+                part(p, 'box', [1.5, 2.0, 0.3], 'bark', { y: 1.5, z: 2.86 });
+                part(p, 'cylinder', [0.55, 0.55, 0.12, 12], 'cloth', { x: 1.6, y: 1.5, z: 2.95, rx: Math.PI / 2, team: true });
+            } else {
+                // A ring fort: a round rampart and palisade around the great hall.
+                part(p, 'cylinder', [5.4, 5.9, 1.0, 20], 'rock', { y: 0.5 });
+                for (let i = 0; i < 28; i++) {
+                    const a = (i + 0.5) / 28 * Math.PI * 2;
+                    if (Math.abs(Math.sin(a)) < 0.16 && Math.cos(a) > 0) continue;   // the gate gap, facing +Z
+                    part(p, 'cylinder', [0.24, 0.28, 2.6, 6], 'bark', { x: Math.sin(a) * 5.2, y: 2.0, z: Math.cos(a) * 5.2 });
+                }
+                part(p, 'box', [7.0, 2.4, 3.6], 'wood', { y: 2.2 });
+                part(p, 'prism', [8.0, 4.8, 2.6], 'thatch', { y: 3.4, tint: [.70, .86, .60] });
+                for (const x of [-3.9, 3.9]) {
+                    part(p, 'box', [0.2, 2.0, 0.2], 'wood', { x, y: 5.7, z: 0.45, rx: 0.5 });
+                    part(p, 'box', [0.2, 2.0, 0.2], 'wood', { x, y: 5.7, z: -0.45, rx: -0.5 });
+                }
+                for (const x of [-1.0, 1.0]) part(p, 'box', [0.5, 4.2, 0.5], 'wood', { x, y: 2.6, z: 5.3 });   // the gate posts
+                part(p, 'box', [2.6, 0.5, 0.6], 'cloth', { y: 4.5, z: 5.3, team: true });
+                part(p, 'box', [1.3, 1.8, 0.3], 'bark', { y: 1.4, z: 1.85 });
+            }
+        },
+        maya: (p, age) => {
+            if (age === 'bronze') {
+                // A stepped platform with the council house on top, a stair up the front.
+                [[10.4, 0], [8.6, 0.9], [6.8, 1.8]].forEach(([w, y]) =>
+                    part(p, 'frustum', [w, w, w - 0.6, w - 0.6, 0.9], 'masonry', { y }));
+                part(p, 'box', [2.2, 0.3, 3.8], 'plaster', { y: 1.35, z: 4.2, rx: 0.62 });
+                part(p, 'box', [5.0, 2.0, 3.6], 'plaster', { y: 3.7 });
+                part(p, 'pyramid', [6.4, 5.0, 2.6], 'thatch', { y: 4.7 });
+                part(p, 'box', [1.2, 1.5, 0.3], 'bark', { y: 3.45, z: 1.82 });
+                part(p, 'box', [5.2, 0.3, 0.3], 'cloth', { y: 4.55, z: 1.85, team: true });
+            } else {
+                // The palace: a tall platform, a long range of rooms under a corbel
+                // vault, and a pierced roof comb.
+                [[11.0, 0], [9.6, 1.0], [8.2, 2.0], [6.8, 3.0]].forEach(([w, y]) =>
+                    part(p, 'frustum', [w, w * 0.8, w - 0.6, w * 0.8 - 0.6, 1.0], 'masonry', { y }));
+                part(p, 'box', [2.6, 0.3, 5.0], 'plaster', { y: 2.0, z: 3.9, rx: 0.68 });
+                part(p, 'box', [6.0, 2.2, 3.4], 'plaster', { y: 5.1 });
+                part(p, 'frustum', [6.4, 3.8, 5.0, 1.6, 1.4], 'masonry', { y: 6.2 });    // the corbel vault
+                part(p, 'box', [4.4, 1.8, 0.4], 'cloth', { y: 8.5, team: true });         // the roof comb
+                [-1.2, 0, 1.2].forEach(x => part(p, 'box', [0.45, 0.8, 0.5], 'bark', { x, y: 8.5 }));
+                [-1.8, 0, 1.8].forEach(x => part(p, 'box', [0.9, 1.4, 0.3], 'bark', { x, y: 4.7, z: 1.62 }));
+            }
+        }
+    };
+    const OWN_HOUSE = {
+        roman: (p, age, tier) => {
+            if (age === 'bronze') {
+                part(p, 'box', [4.2, 2.3, 3.8], 'plaster', { y: 1.15 });
+                part(p, 'pyramid', [4.9, 4.5, 1.1], 'rooftile', { y: 2.3 });
+            } else {
+                // An insula: two storeys, a balcony, a low hipped tile roof.
+                part(p, 'box', [4.4, 0.4, 4.2], 'masonry', { y: 0.2 });
+                part(p, 'box', [4.2, 4.0, 3.8], 'plaster', { y: 2.4 });
+                part(p, 'box', [3.4, 0.16, 0.8], 'wood', { y: 2.5, z: 2.3 });
+                [-1.4, 0, 1.4].forEach(x => part(p, 'box', [0.6, 0.8, 0.12], 'bark', { x, y: 3.3, z: 1.96 }));
+                part(p, 'pyramid', [4.9, 4.5, 1.0], 'rooftile', { y: 4.4 });
+            }
+            part(p, 'box', [1.0, 1.5, 0.22], 'bark', { y: 0.95, z: age === 'bronze' ? 1.96 : 1.96 });
+            doorTrim(p, 'roman', tier, 2.05, 1.0, 1.5);
+        },
+        viking: (p, age, tier) => {
+            // A turf house: low timber walls, the roof down to the ground at the back.
+            part(p, 'box', [4.6, age === 'bronze' ? 1.6 : 2.0, 3.6], 'wood', { y: age === 'bronze' ? 0.8 : 1.0 });
+            part(p, 'prism', [5.2, 4.6, age === 'bronze' ? 1.9 : 2.3], 'thatch', { y: age === 'bronze' ? 1.6 : 2.0, tint: [.70, .86, .60] });
+            if (age !== 'bronze') for (const x of [-2.6, 2.6]) {
+                part(p, 'box', [0.12, 1.3, 0.12], 'wood', { x, y: 4.4, z: 0.3, rx: 0.5 });
+                part(p, 'box', [0.12, 1.3, 0.12], 'wood', { x, y: 4.4, z: -0.3, rx: -0.5 });
+            }
+            part(p, 'box', [1.0, 1.4, 0.22], 'bark', { y: 0.7, z: 1.86 });
+            doorTrim(p, 'viking', tier, 1.95, 1.0, 1.4);
+        },
+        maya: (p, age, tier) => {
+            // The na: rounded stucco walls under a tall, steep palm-thatch roof.
+            if (age !== 'bronze') part(p, 'frustum', [5.2, 4.4, 4.8, 4.0, 0.5], 'masonry');
+            const y0 = age === 'bronze' ? 0 : 0.5;
+            part(p, 'cylinder', [1, 1, 2.0, 14], 'plaster', { y: y0 + 1.0, sx: 2.1, sz: 1.6 });
+            part(p, 'pyramid', [4.8, 3.8, 3.4], 'thatch', { y: y0 + 2.0 });
+            part(p, 'box', [0.9, 1.4, 0.2], 'bark', { y: y0 + 0.7, z: 1.62 });
+            doorTrim(p, 'maya', tier, 1.7, 0.9, 1.4);
         }
     };
 
@@ -96,6 +243,7 @@
             const civ = civOf(o);
             const tier = TIER[age] || 0;
             shadow(p, 8.2);
+            if ((age === 'bronze' || age === 'iron') && OWN_TOWN_CENTER[civ]) { OWN_TOWN_CENTER[civ](p, age); return p; }
             if (age === 'stone') {
                 // Big Teepee — near-universal; cultures show only a tiny marker.
                 teepee(p, 5.2, 7.6, 5);
@@ -111,6 +259,17 @@
                 if (civ === 'yamato') { // shimenawa-like rope ring around the tent
                     part(p, 'cylinder', [3.72, 3.72, 0.16, 10], 'bark', { y: 2.3 });
                 }
+                if (civ === 'roman') { // a standard planted by the flap (b1061)
+                    part(p, 'cylinder', [0.06, 0.07, 3.0, 5], 'wood', { x: 2.0, y: 1.5, z: 4.6 });
+                    part(p, 'box', [0.7, 0.5, 0.06], 'cloth', { x: 2.0, y: 2.7, z: 4.6, team: true });
+                    part(p, 'sphere', [1, 8, 6], 'gold', { x: 2.0, y: 3.1, z: 4.6, sx: 0.18, sy: 0.18, sz: 0.18 });
+                }
+                if (civ === 'viking') { // a round shield leaning by the door (b1061)
+                    part(p, 'cylinder', [0.55, 0.55, 0.1, 12], 'cloth', { x: 1.9, y: 0.55, z: 4.5, rx: 1.3, team: true });
+                }
+                if (civ === 'maya') { // a carved stela (b1061)
+                    part(p, 'box', [0.7, 1.8, 0.3], 'masonry', { x: -2.0, y: 0.9, z: 4.7 });
+                }
             } else if (age === 'neolithic') {
                 // Community dome hut + the first small trait at the entrance.
                 domeHut(p, 4.9, 2.2, 'thatch');
@@ -125,6 +284,17 @@
                     part(p, 'box', [3.0, 0.15, 0.2], 'cloth', { y: 2.16, z: 5.7, team: true });
                 }
                 if (civ === 'persian') part(p, 'cylinder', [4.66, 4.94, 0.34, 12], 'cloth', { y: 1.95, team: true });
+                if (civ === 'roman') { // two pillars and a lintel at the door (b1061)
+                    [-1.0, 1.0].forEach(x => part(p, 'box', [0.3, 2.0, 0.3], 'plaster', { x, y: 1.0, z: 4.85 }));
+                    part(p, 'box', [2.6, 0.3, 0.4], 'cloth', { y: 2.1, z: 4.85, team: true });
+                }
+                if (civ === 'viking') { // crossed gable boards on the smoke cap (b1061)
+                    part(p, 'box', [0.14, 1.4, 0.14], 'wood', { y: 5.6, rz: 0.5 });
+                    part(p, 'box', [0.14, 1.4, 0.14], 'wood', { y: 5.6, rz: -0.5 });
+                }
+                if (civ === 'maya') { // a low stucco platform under the hut (b1061)
+                    part(p, 'cylinder', [5.4, 5.6, 0.35, 14], 'masonry', { y: 0.17 });
+                }
             } else if (age === 'bronze') {
                 // Bronze: each culture raises its own great hall.
                 if (civ === 'greek') {
@@ -262,6 +432,7 @@
             const civ = civOf(o);
             const tier = TIER[age] || 0;
             shadow(p, 4.4);
+            if ((age === 'bronze' || age === 'iron') && OWN_HOUSE[civ]) { OWN_HOUSE[civ](p, age, tier); return p; }
             if (age === 'stone') {
                 teepee(p, 2.6, 4.3, 4); // universal — culture hasn't reached the hearth yet
             } else if (age === 'neolithic') {
@@ -542,6 +713,36 @@
                     part(p, 'cylinder', [0.2, 0.26, 0.7, 6], 'rock', { x: 3.3, y: 0.35, z: 3.6 });
                     part(p, 'box', [0.6, 0.5, 0.6], 'plaster', { x: 3.3, y: 0.95, z: 3.6 });
                     part(p, 'pyramid', [0.85, 0.85, 0.4], 'rock', { x: 3.3, y: 1.2, z: 3.6 });
+                } else if (civ === 'roman') {
+                    // A basilica library (b1061): the hall lengthened under a tiled gable,
+                    // arched windows along it, an apse at the back.
+                    part(p, 'box', [7.0, 2.6, 4.2], 'plaster', { y: 2.1 });
+                    part(p, 'prism', [7.6, 5.0, 1.5], 'rooftile', { y: 3.4 });
+                    for (const x of [-2.6, -1.3, 1.3, 2.6]) part(p, 'box', [0.5, 1.2, 0.12], 'bark', { x, y: 2.5, z: 2.12 });
+                    part(p, 'cylinder', [1.8, 1.8, 2.6, 12], 'plaster', { y: 2.1, z: -2.1 });
+                    part(p, 'dome', [1, 12], 'rooftile', { y: 3.4, z: -2.1, sx: 1.85, sy: 1.0, sz: 1.85 });
+                    part(p, 'box', [7.2, 0.3, 0.3], 'cloth', { y: 3.3, z: 2.2, team: true });
+                } else if (civ === 'viking') {
+                    // The rune-masters' hall (b1061): a steep shingled hall inside a ring
+                    // of standing runestones.
+                    part(p, 'prism', [5.6, 5.0, 2.8], 'bark', { y: 3.4 });
+                    for (const x of [-2.8, 2.8]) {
+                        part(p, 'box', [0.16, 1.6, 0.16], 'wood', { x, y: 6.4, z: 0.4, rx: 0.5 });
+                        part(p, 'box', [0.16, 1.6, 0.16], 'wood', { x, y: 6.4, z: -0.4, rx: -0.5 });
+                    }
+                    for (let i = 0; i < 7; i++) {
+                        const a = (i / 7) * Math.PI * 2 + 0.2;
+                        part(p, 'box', [0.7, 1.6, 0.3], 'rock', { x: Math.sin(a) * 4.6, y: 0.8, z: Math.cos(a) * 3.9, ry: a });
+                        part(p, 'box', [0.5, 0.12, 0.32], 'cloth', { x: Math.sin(a) * 4.6, y: 1.1, z: Math.cos(a) * 3.9, ry: a, team: true });
+                    }
+                } else if (civ === 'maya') {
+                    // The observatory (b1061): a round tower on the hall, its dome slit
+                    // toward the sky.
+                    part(p, 'frustum', [5.4, 4.6, 5.0, 4.2, 0.4], 'masonry', { y: 3.4 });
+                    part(p, 'cylinder', [1.7, 1.8, 2.4, 14], 'plaster', { y: 5.0 });
+                    part(p, 'dome', [1, 14], 'plaster', { y: 6.2, sx: 1.75, sy: 1.5, sz: 1.75 });
+                    part(p, 'box', [0.35, 0.9, 0.2], 'bark', { y: 6.9, z: 1.3, rx: -0.5 });
+                    part(p, 'cylinder', [1.85, 1.85, 0.3, 14], 'cloth', { y: 6.25, team: true });
                 } else {
                     // Any other culture, until it has a design of its own (b1056): a plain
                     // portico under a gable with a band in the player's colour. Yamato's
@@ -779,28 +980,39 @@
                 part(p, 'box', [0.24, 0.24, 1.2], 'bark', { x, y: 7.8, z: -2.0 }));
             return p;
         },
-        colosseum: () => { // Rome (b1058): three arcaded tiers around the arena floor
+        colosseum: () => { // Rome (b1058, opened b1061): an arcaded ring around a sunken arena
+            // A ring of wall segments, not solid drums: the arena floor is on the GROUND,
+            // with the seating stepping down to it, so from above it reads as a bowl.
+            // (b1058 stacked solid drums and laid the sand on top -- the floor on the roof.)
             const p = [];
             shadow(p, 10);
-            const tiers = [[6.3, 2.3, 0], [6.0, 2.1, 2.3], [5.7, 1.9, 4.4]];
-            tiers.forEach(([r, h, y], t) => {
-                part(p, 'cylinder', [r, r + 0.15, h, 16], 'masonry', { y: y + h / 2 });
-                // The arches: dark openings set into each tier, offset per tier.
-                for (let i = 0; i < 16; i++) {
-                    const a = (i + (t % 2) * 0.5) / 16 * Math.PI * 2;
-                    part(p, 'box', [0.7, h * 0.62, 0.2], 'bark',
-                        { x: Math.sin(a) * (r + 0.08), y: y + h * 0.45, z: Math.cos(a) * (r + 0.08), ry: a });
+            const N = 24, ring = (r, h, thick, tex, y0 = 0, extra = {}) => {
+                for (let i = 0; i < N; i++) {
+                    const a = (i + 0.5) / N * Math.PI * 2;
+                    part(p, 'box', [2 * Math.PI * r / N * 1.04, h, thick], tex,
+                        Object.assign({ x: Math.sin(a) * r, y: y0 + h / 2, z: Math.cos(a) * r, ry: a }, extra));
                 }
-                part(p, 'cylinder', [r + 0.2, r + 0.2, 0.18, 16], 'plaster', { y: y + h });   // cornice
+            };
+            ring(6.2, 6.4, 0.7, 'masonry');                    // the outer wall
+            // Three tiers of arches on its face, and a cornice on top of each.
+            [[0.2, 2.0], [2.3, 1.9], [4.3, 1.7]].forEach(([y0, h], t) => {
+                for (let i = 0; i < N; i++) {
+                    const a = (i + 0.5 + (t % 2) * 0.5) / N * Math.PI * 2;
+                    part(p, 'box', [0.75, h * 0.7, 0.12], 'bark',
+                        { x: Math.sin(a) * 6.58, y: y0 + h * 0.45, z: Math.cos(a) * 6.58, ry: a });
+                }
             });
-            // Seen from above it reads as an arena: the seating steps down to the sand.
-            part(p, 'cylinder', [4.9, 5.4, 0.35, 16], 'masonry', { y: 6.45 });
-            part(p, 'cylinder', [3.9, 4.4, 0.35, 16], 'masonry', { y: 6.5 });
-            part(p, 'cylinder', [3.3, 3.3, 0.12, 16], 'plaster', { y: 6.62, tint: [1.18, 1.0, 0.72] });   // the sand
-            part(p, 'cylinder', [5.95, 5.95, 0.4, 16], 'cloth', { y: 5.55, team: true });   // a band of the owner's colour
+            ring(6.45, 0.22, 1.2, 'plaster', 6.4);              // the top cornice
+            ring(6.45, 0.4, 1.25, 'cloth', 5.1, { team: true });   // a band in the owner's colour
+            // The seating: three steps down from the wall to the arena.
+            ring(5.45, 4.6, 1.0, 'masonry');
+            ring(4.55, 3.0, 1.0, 'plaster');
+            ring(3.65, 1.5, 1.0, 'masonry');
+            part(p, 'cylinder', [3.15, 3.15, 0.25, 20], 'plaster', { y: 0.12, tint: [1.18, 1.0, 0.72] });   // the sand
+            part(p, 'box', [1.4, 0.3, 0.6], 'bark', { y: 0.35, z: 2.2 });   // a gate onto the floor
             [0, 1, 2, 3, 4, 5].forEach(i => {   // the velarium's masts
                 const a = i / 6 * Math.PI * 2;
-                part(p, 'cylinder', [0.07, 0.08, 2.2, 6], 'wood', { x: Math.sin(a) * 5.8, y: 7.4, z: Math.cos(a) * 5.8 });
+                part(p, 'cylinder', [0.07, 0.08, 2.2, 6], 'wood', { x: Math.sin(a) * 6.2, y: 7.6, z: Math.cos(a) * 6.2 });
             });
             return p;
         },

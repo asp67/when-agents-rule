@@ -32,10 +32,13 @@ Game.prototype.prepareVisualShowcase = function () {
     Object.assign(player.resources,{food:1600,wood:1600,stone:900,gold:700,maxPopulation:30});
     const center=player.buildings.find(b=>b.type==='town_center');
     const x=center.x,z=center.z;
+    // Only what this civilization can build (b1061): the Maya have no stable.
+    const tree=getCivilization(civ).techTree||{};
+    const canBuild=type=>{const d=getBuildingDef(type);return !d||!d.requiresTech||!!tree[d.requiresTech];};
     const plan=[['house',-20,12],['house',-32,-7],['house',22,13],['house',33,-5],
         ['barracks',-24,32],['archery_range',24,32],
         ['farm',-44,21],['farm',-44,37],['tower',44,30],
-        ['stable',-25,54],['academy',25,54]];
+        ['stable',-25,54],['academy',25,54]].filter(([type])=>canBuild(type));
     if(['bronze','iron'].includes(age))plan.push(['temple',0,-24]);
     if(age==='iron') {
         const wonder=getCivilization(civ).uniqueBuildings.find(b=>b.type==='wonder');
@@ -48,10 +51,13 @@ Game.prototype.prepareVisualShowcase = function () {
         player.buildings.push(building);r.addBuilding(building);
     }
     player.units.forEach((unit,i)=>{ unit.x=x-7+i*3;unit.z=z+12; });
-    const roster=age==='iron'?['militia','warrior','champion','archer','crossbowman','elite_archer',
-        'scout_cavalry','cavalry','heavy_cavalry','priest','worker','worker']
-        : age==='bronze'?['warrior','archer','cavalry','priest','worker','worker']
-        : ['militia','archer','scout_cavalry','worker','worker'];
+    // Every unit this civilization fields at this age, its own included (b1061): the
+    // fixed shared roster showed the Maya on horseback and nobody's own units at all.
+    const roster=[];
+    for(const host of ['barracks','archery_range','stable'])
+        if(canBuild(host))for(const id of getTrainOptionsForBuilding(host,age,civ))if(!roster.includes(id))roster.push(id);
+    if(['bronze','iron'].includes(age))roster.push('priest');
+    roster.push('worker','worker');
     for(let i=0;i<roster.length;i++) {
         const unit=createUnit(roster[i],x-8+(i%4)*4,z+23+Math.floor(i/4)*4,'player',civ,age);
         if(unit) { player.units.push(unit);r.addUnit(unit); }
