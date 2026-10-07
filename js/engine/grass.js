@@ -109,7 +109,7 @@
             const r = this.renderer;
             const stats = r.grassStats = { patches: 0, batches: 0, tufts: 0, triangles: 0, uploaded: 0 };
             if (r.graphicsQuality !== 'cinematic' || r._halfH >= 160 || !r.terrain) return [];
-            const half = Math.min(390, (r.terrain.size || 800) / 2 - 10);
+            const half = (r.terrain.size || 800) / 2 - 10;   // was capped at 390, the 800 map's value (b1057)
             const x = r.cameraTarget.x, z = r.cameraTarget.z;
             const fow=r.game?.fogOfWar;
             if(this.fow!==fow || this.fogVersion!==fow?.visibilityVersion) {

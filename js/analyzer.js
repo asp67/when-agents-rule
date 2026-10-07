@@ -336,6 +336,13 @@ class TranscriptAnalyzer {
     // Deliberately NOT used by _carryForward: a closing statement has no objective or
     // plan, and letting it through would restate the last live plan as though the model
     // still meant it.
+    // The map's tile grid: recorded since b1057, else read from the map size (7 on the
+    // 800 map every older transcript was played on, 11 on the 1200).
+    static tilesOf(header) {
+        const h = header || {};
+        if (h.exploreTiles > 0) return h.exploreTiles;
+        return h.mapSize === 1200 ? 11 : 7;
+    }
     static hasBoard(r) { return !!r && (!r.type || !!r.state); }
 
     // What age a seat had reached at a given moment, from its OWN snapshot. Enemy
@@ -602,7 +609,7 @@ class TranscriptAnalyzer {
         // than the live game's per-cell grid because the transcript only records a
         // percentage per 7x7 tile — so this says who has been in this AREA.
         const size = (this.header && this.header.mapSize) || 800;
-        const SPAN = 7, half = size / 2, tile = size / SPAN;
+        const SPAN = TranscriptAnalyzer.tilesOf(this.header), half = size / 2, tile = size / SPAN;
         const col = Math.floor((x + half) / tile), row = Math.floor((z + half) / tile);
         const key = String.fromCharCode(65 + col) + (row + 1);
         const knowers = [];

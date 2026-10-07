@@ -81,7 +81,7 @@ class IntentLayer {
             return y;
         });
     }
-    static get GRID() { return 7; }
+    static get GRID() { return 7; }   // the 800 map's; a match's own is game.EXPLORE_TILES (b1057)
 
     // The seat's colour, as its badge shows it. Seat 0 wears charcoal, which vanishes on
     // the map, so a dark fill is drawn in the badge's rim colour for dark backgrounds.
@@ -144,10 +144,12 @@ class IntentLayer {
     }
 
     tileCentre(label) {
-        const m = /^([A-G])([1-7])$/i.exec(String(label || '').trim());
+        const G = this.game.EXPLORE_TILES || IntentLayer.GRID;
+        const m = /^([A-Z])(\d{1,2})$/i.exec(String(label || '').trim());
         if (!m) return null;
-        const size = (this.game.terrain && this.game.terrain.size) || 800, cell = size / IntentLayer.GRID;
+        const size = (this.game.terrain && this.game.terrain.size) || 800, cell = size / G;
         const col = m[1].toUpperCase().charCodeAt(0) - 65, row = Number(m[2]) - 1;
+        if (col >= G || row < 0 || row >= G) return null;
         return { x: -size / 2 + (col + 0.5) * cell, z: -size / 2 + (row + 0.5) * cell };
     }
 

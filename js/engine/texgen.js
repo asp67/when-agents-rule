@@ -693,6 +693,20 @@
     // ever read 100% -- and one match spent 91 scouts on a tile it could not finish.
     // 417 puts the whole square ashore with the wobble's 13 to spare.
     TexGen.TERRAIN_LAND = 417;
+    // The map a match is played on (b1057): 800 (7x7 tiles) or 1200 (11x11). The island
+    // scales with it -- world = 1.25 x map, shore = map/2 + 17 -- and the coast's noise
+    // gets proportionally more cells, so the shoreline keeps its ~42-unit wobble instead
+    // of stretching. At 800 every value is the one above, so the standard map is
+    // unchanged to the pixel. Set by the game before the map is generated, and by the
+    // analyzer from a transcript's header.
+    TexGen.MAP_SIZE = 800;
+    TexGen.setMapSize = (size) => {
+        const s = size > 0 ? size : 800;
+        TexGen.MAP_SIZE = s;
+        TexGen.TERRAIN_WORLD = s * 1.25;
+        TexGen.TERRAIN_LAND = s / 2 + 17;
+        TexGen.COAST_CELLS = Math.round(24 * TexGen.TERRAIN_WORLD / 1000);
+    };
     TexGen.coastNoise = (rand) => TexGen.noiseSampler(TexGen.COAST_CELLS, rand);
     // Standalone version for callers outside the texture bake. Inside TexGen.terrain
     // the coast sampler is the FIRST one drawn from the seeded stream, so drawing it
@@ -857,8 +871,10 @@
     TexGen.terrainFields = seed => {
         const rand=TexGen.rng(seed || 7);
         const nCoast=TexGen.coastNoise(rand); // MUST remain first: foam/walkability share this stream.
-        const broad=TexGen.noiseSampler(7,rand), patch=TexGen.noiseSampler(23,rand);
-        const broken=TexGen.noiseSampler(67,rand), grain=TexGen.noiseSampler(191,rand);
+        // Cell counts per 1000 world units, so a larger island keeps the same patch size.
+        const k=TexGen.TERRAIN_WORLD/1000, cells=n=>Math.round(n*k);
+        const broad=TexGen.noiseSampler(cells(7),rand), patch=TexGen.noiseSampler(cells(23),rand);
+        const broken=TexGen.noiseSampler(cells(67),rand), grain=TexGen.noiseSampler(cells(191),rand);
         return { nCoast, broad, patch, broken, grain };
     };
     TexGen.grassCoverSampler = (theme, seed, worldSize = 1000) => {

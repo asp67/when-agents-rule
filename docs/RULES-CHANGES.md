@@ -6,6 +6,30 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1057: a large map, as a match option (7 October 2026)
+
+**New option; the 800 map is unchanged.** The setup screen has a map size beside the difficulty:
+- **Standard:** 800 × 800 in 7 × 7 tiles, the map every match so far was played on.
+- **Large:** 1200 × 1200 in 11 × 11 tiles.
+
+**The large map has more tiles of the same size.** A tile is still about 114 units across, and an exploration cell about 18. Labels run A–K and 1–11.
+
+**What grows with it:**
+- The island: shore at 617 instead of 417. The coast keeps its wobble, and the ground's patches keep their size.
+- The spawn circle: 476 from the centre instead of 306. Two seats start 952 apart instead of 612, four about 673 instead of 433, so marches take about 1.5 times as long.
+- Food and wood: the same count per tile, so the map has 121/49 times as many.
+- Stone and gold: scaled by the same factor, so they stay as dense (stone 40 → 99, gold 18 → 44 on easy). Each seat's share is still identical.
+- The camera's zoom-out limit (520 → 780), so the whole island still fits.
+
+**What a model is told:**
+- The prompt says "a square {{mapSize}}x{{mapSize}} map", so 800x800 or 1200x1200 (prompt version agents-rule-v106).
+- The explore tool no longer names "A-G, row 1-7"; it says a column letter, then a row number.
+- Errors and the state already took the grid from the match.
+
+**Transcripts** record `exploreTiles` next to `mapSize`. The analyzer and the replay rebuild the size a transcript names; older transcripts are all 800.
+
+**Measured** in the browser with four rule-based seats on the large map: about 72 frames a second. The ground texture is 2048 instead of 1024, because WebGL1 cannot mipmap any size that is not a power of two; at 1536 the whole ground drew black.
+
 ## Build 1056: ready for more civilizations (7 October 2026)
 
 **Rule-based AI change; no rules change for models.** Five places knew only the four civilizations by name. Each would have broken quietly once a fifth arrives.

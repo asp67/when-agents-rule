@@ -33,11 +33,14 @@ const COAST_LIMIT_N = 1024;
 // corners of the play square were water and a model could be handed a tile, or a build
 // site, that no unit could reach. At 413 the minimum clears 400 and every point of the
 // 800x800 map is land -- which is what the state has been claiming all along.
-const COAST_WALK_DIST = 413;
-let COAST_LIMIT = null;
+// Since b1057 it follows the island (TexGen.setMapSize): 4 inside the shore, 413 on
+// the 800 map, and the table is rebuilt when the island changes size.
+const coastWalkDist = () => TexGen.TERRAIN_LAND - 4;
+let COAST_LIMIT = null, COAST_LIMIT_WORLD = null;
 
 function coastLimitTable() {
-    if (COAST_LIMIT) return COAST_LIMIT;
+    if (COAST_LIMIT && COAST_LIMIT_WORLD === TexGen.TERRAIN_WORLD) return COAST_LIMIT;
+    const COAST_WALK_DIST = coastWalkDist();
     const wob = TexGen.coastSampler(TexGen.TERRAIN_SEED);
     const W = TexGen.TERRAIN_WORLD;
     const lim = new Float32Array(COAST_LIMIT_N + 1);
@@ -56,7 +59,7 @@ function coastLimitTable() {
         }
         lim[i] = (lo + hi) / 2;
     }
-    COAST_LIMIT = lim;
+    COAST_LIMIT = lim; COAST_LIMIT_WORLD = W;
     return lim;
 }
 
@@ -72,6 +75,7 @@ class TerrainManager {
         this.grid = [];
         this.gridSize = 2;
         this.numTiles = size / this.gridSize;
+        this.tiles = 7;           // the map's tile grid, 7x7 or 11x11 (Game.applyMapSize, b1057)
         this.resources = [];
         this.difficulty = 'easy'; // set by the game before each regenerate
         this.seed = null;         // optional map seed: same seed => same resource layout
@@ -130,9 +134,11 @@ class TerrainManager {
     scatterEqual(type, totalCount, amount) {
         const margin = 40;                 // keep off the beach ring
         const usable = this.size - margin * 2;
-        const G = 7;
+        // The counts are per 49 tiles, the 800 map's grid. A larger map has more tiles of
+        // the same size and every one gets the same share (b1057): same density.
+        const G = this.tiles || 7;
         const tile = usable / G;
-        const per = Math.max(1, Math.round(totalCount / (G * G)));
+        const per = Math.max(1, Math.round(totalCount / 49));
         for (let tx = 0; tx < G; tx++) {
             for (let tz = 0; tz < G; tz++) {
                 const x0 = -usable / 2 + tx * tile;
@@ -349,7 +355,7 @@ class TerrainManager {
         // same stone at the same distances. Count is unchanged; the 3×3 grid used to
         // round 40/9 → 4 and deliver only 36, so this also repays the 4 nodes that
         // rounding had been quietly eating.
-        this.scatterRotational('stone', 40 * this.diffMods().stone, 1000);
+        this.scatterRotational('stone', 40 * this.diffMods().stone * this.areaScale(), 1000);
     }
 
     generateGold() {
@@ -358,8 +364,13 @@ class TerrainManager {
         // identical without diluting it. On the 49-cell grid the smallest equal
         // share would have been one per cell: 45 nodes, as many as Desert has food
         // bushes. Equal, and worthless.
-        this.scatterRotational('gold', 18, 2000);
+        this.scatterRotational('gold', 18 * this.areaScale(), 2000);
     }
+
+    // How many 800-maps of ground this map has (b1057): 1 on the 800 map, 121/49 on the
+    // 1200. Stone and gold are counted per match, not per tile, so on a larger map the
+    // same count would have spread thinner; this keeps them as dense as food and wood.
+    areaScale() { const G = this.tiles || 7; return (G * G) / 49; }
 
     getTerrainHeight(x, z) {
         return 0; // Flat terrain for simplicity

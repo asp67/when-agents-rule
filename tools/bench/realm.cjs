@@ -132,9 +132,9 @@ class Realm {
     }
 
     // The arena start path itself (Game._startArenaFromSetup), with a match spec.
-    async startArena({ seats, seed, difficulty = 'easy' }) {
+    async startArena({ seats, seed, difficulty = 'easy', mapSize = 800 }) {
         const setup = seats.map(s => (typeof s === 'string' ? { civ: s, type: 'ki' } : s));
-        const started = this.game._startArenaFromSetup({ setup, seed, difficulty, turnBased: false });
+        const started = this.game._startArenaFromSetup({ setup, seed, difficulty, mapSize, turnBased: false });
         let done = false, error = null;
         started.then(() => { done = true; }, e => { error = e; done = true; });
         // Frames pass while the scene is prepared; the clock does not, as in a
@@ -304,7 +304,7 @@ class Realm {
 async function createMatch(config, options = {}) {
     const realm = new Realm(Object.assign({ seed: 1 }, options));
     if (config.kind === 'arena') {
-        await realm.startArena({ seats: config.seats, seed: config.seed, difficulty: config.difficulty });
+        await realm.startArena({ seats: config.seats, seed: config.seed, difficulty: config.difficulty, mapSize: config.mapSize });
         realm.seats = Array.from(realm.game.aiManager.aiPlayers);
         return realm;
     }

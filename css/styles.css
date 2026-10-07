@@ -1728,6 +1728,7 @@ body.spectator-mode #unitInfo.spectator-card {
 .campaign-setup-row .arena-field { flex: 0 1 auto; min-width: 0; }
 .campaign-setup-row .f-count { flex-basis: 140px; }
 .campaign-setup-row .f-map   { flex-basis: 290px; }
+.campaign-setup-row .f-mapsize { flex-basis: 250px; }   /* beside the difficulty (b1057) */
 .campaign-setup-row .f-seed  { flex-basis: 250px; }
 .campaign-setup-row .f-turnbased { flex: 1 1 560px; min-width: 320px; }
 

@@ -53,7 +53,7 @@ class Game {
         // for the models as a 7×7 tile grid of 6×6 cells per tile (see
         // markExploration / explorationSummary).
         this.EXPLORE_GRID = 42;
-        this.EXPLORE_TILES = 7;
+        this.EXPLORE_TILES = 7;   // both set per match by applyMapSize (b1057)
         this.gameSpeed = 1;
         this.lastFrameTime = 0;
         this.clock = Game.newClock();
@@ -352,7 +352,7 @@ class Game {
         this.player.buildingHealthMultiplier = 1;
 
         // Calculate spawn positions (one per arena participant, 2–4)
-        const mapSize = 800;
+        const mapSize = this.applyMapSize((spec && spec.mapSize) || (this.ui.setupMapSize && this.ui.setupMapSize()));
         const halfSize = mapSize / 2 - 40;
         const numPlayers = setup.length;
         const spawnPositions = [];
@@ -383,6 +383,7 @@ class Game {
             setup: JSON.parse(JSON.stringify(setup)),
             seed: this.terrain.seed,
             difficulty: this.difficulty,
+            mapSize,
             turnBased: spec ? !!spec.turnBased : !!(this.ui.turnBasedEnabled && this.ui.turnBasedEnabled()),
             // World milliseconds per round, or null: lockstep is an option of turn-based.
             lockstepSliceMs: Game.lockstepSliceMs(spec ? spec.lockstepSliceMs : (this.ui.lockstepSliceMs && this.ui.lockstepSliceMs())),
@@ -558,7 +559,7 @@ class Game {
 
         // Calculate spawn positions for all players
         // In spectator mode: 4 AI players only. In standard mode: 1 human + numAI
-        const mapSize = 800;
+        const mapSize = this.applyMapSize(visualShowcase ? 800 : (this.ui.setupMapSize && this.ui.setupMapSize()));
         const halfSize = mapSize / 2 - 40; // Offset from edge
         const totalPlayers = this.spectatorMode ? numAI : (1 + numAI);
         const spawnPositions = [];
@@ -900,6 +901,26 @@ class Game {
     // hash, and every unit and building as four one-byte hashes -- where it stands, its
     // health, its orders and targets, its timers and cargo -- so a replay can name the
     // entity and the kind of field. FNV-1a: a diagnostic, not a seal (stateHash is that).
+    // The two map sizes (b1057). 800 is the map every match was played on until now:
+    // 7x7 tiles of ~114 units, each 6x6 exploration cells. 1200 keeps the tile and the
+    // cell the same size and has more of them, 11x11 -- so the island grows, and what a
+    // tile, a cell, a food bush per tile mean stays what it was.
+    static get MAP_SIZES() { return { 800: { tiles: 7, grid: 42 }, 1200: { tiles: 11, grid: 66 } }; }
+    static mapSizeOf(v) { const n = Number(v); return Game.MAP_SIZES[n] ? n : 800; }
+    // Size the world for a match, before its map is generated or its fog is made:
+    // the island (TexGen), the terrain's size and tile grid, and the exploration grid.
+    applyMapSize(value) {
+        const size = Game.mapSizeOf(value), p = Game.MAP_SIZES[size];
+        if (typeof TexGen !== 'undefined' && TexGen.setMapSize) TexGen.setMapSize(size);
+        this.terrain.size = size;
+        this.terrain.numTiles = size / this.terrain.gridSize;
+        this.terrain.tiles = p.tiles;
+        this.EXPLORE_GRID = p.grid;
+        this.EXPLORE_TILES = p.tiles;
+        this.mapSize = size;
+        return size;
+    }
+
     stateDigest() {
         const fnv = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return h >>> 0; };
         const hex = (n, w) => n.toString(16).padStart(8, '0').slice(-w);

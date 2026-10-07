@@ -67,6 +67,7 @@ var WarResim = {
             setup: (header.players || []).map(p => Object.assign({ civ: p.civ, type: 'ki' },
                 p.model === 'ki' && p.profile ? { profile: p.profile } : {})),
             seed: header.mapSeed, difficulty: header.difficulty || 'easy', turnBased: false,
+            mapSize: header.mapSize || 800,
         };
     },
 

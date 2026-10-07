@@ -119,7 +119,7 @@ class UIManager {
         return /town_center|barracks|temple|academy|house|farm|stable|tower|range/.test(t0);
     }
 
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v105'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v106'; }
 
     constructor(game) {
         this.game = game;
@@ -609,6 +609,8 @@ class UIManager {
         // A/B comparisons between models. Empty = a fresh random map every game.
         const seedEl = document.getElementById('setupSeed');
         if (seedEl) seedEl.value = (campaign ? this._campaignConfig.seed : this._arenaConfig.seed) || '';
+        const sizeEl = document.getElementById('setupMapSize');
+        if (sizeEl) sizeEl.value = String(this.setupMapSize());
         // Map/difficulty lives on the setup screens (shared global setting).
         const diffEl = document.getElementById('setupDifficulty');
         if (diffEl && typeof getDifficulty === 'function') diffEl.value = getDifficulty();
@@ -688,6 +690,16 @@ class UIManager {
     commitRoundTimeout(el) {
         this.setRoundTimeout(el && el.value);
         if (el) el.value = this.roundTimeoutSeconds();   // show what was actually stored
+    }
+
+    // The map size (b1057): 800 or 1200, per mode like the seed. Stored as a number.
+    setSetupMapSize(v) {
+        const cfg = this._setupMode === 'campaign' ? this._campaignConfig : this._arenaConfig;
+        if (cfg) { cfg.mapSize = Game.mapSizeOf(v); this.saveSetup(); }
+    }
+    setupMapSize() {
+        const cfg = this._setupMode === 'campaign' ? this._campaignConfig : this._arenaConfig;
+        return Game.mapSizeOf(cfg && cfg.mapSize);
     }
 
     setSetupSeed(v) {
@@ -7887,12 +7899,21 @@ class UIManager {
     // The map, rebuilt exactly. mapSeed + difficulty + player count is enough:
     // TerrainManager is pure data (its scene argument is ignored) and spawn positions
     // are plain trigonometry, so the island and every node land where they did.
+    // The transcript's tile grid (TranscriptAnalyzer.tilesOf, b1057), here too where the
+    // analyzer's script is not loaded.
+    static anTilesOf(h) {
+        if (typeof TranscriptAnalyzer !== 'undefined') return TranscriptAnalyzer.tilesOf(h);
+        return (h && h.exploreTiles) || (h && h.mapSize === 1200 ? 11 : 7);
+    }
     anTerrain() {
         const a = this.analyzer, h = (a && a.header) || {};
         const size = h.mapSize || 800;
         const key = [h.mapSeed, h.difficulty, (h.players || []).length, size].join('|');
+        // The island first: walkability, the coast and the textures all read it (b1057).
+        if (typeof TexGen !== 'undefined' && TexGen.setMapSize) TexGen.setMapSize(size);
         if (this._anTerrain && this._anTerrainKey === key) return this._anTerrain;
         const t = new TerrainManager(null, size);
+        t.tiles = UIManager.anTilesOf(h);
         t.difficulty = h.difficulty || 'easy';
         t.seed = h.mapSeed || null;
         // The spawns exactly as the arena start computes them (Game._startArenaFromSetup):
@@ -8133,7 +8154,7 @@ class UIManager {
                 ? (sc.seats || []).map(x => x.exploration).filter(Boolean)
                 : [(rec && rec.state && rec.state.map && rec.state.map.exploration) || null].filter(Boolean);
             // Keys are A1..G7: letter is the column, digit the row, over a 7x7 grid.
-            const SPAN = 7, tile = terrain.size / SPAN;
+            const SPAN = UIManager.anTilesOf(a.header), tile = terrain.size / SPAN;
             grids.forEach(exp => {
                 Object.keys(exp).forEach(k => {
                     if (!(exp[k] > 0)) return;

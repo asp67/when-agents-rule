@@ -115,7 +115,7 @@ class OpenAIAIManager {
             ['repair_building', 'Send workers to repair a damaged building. Omit the coordinates to repair the most damaged one.',
              Object.assign({ count: I('How many workers. Default 1, max 5.') }, XZ), []],
             ['explore', 'Send a unit to scout a map tile.',
-             { tile: S('Tile label from map.exploration, e.g. "C5" — column A-G, row 1-7.'),
+             { tile: S('Tile label from map.exploration, e.g. "C5" — column letter, then row number.'),
                unitType: S('Which unit type to send. Optional.'),
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
             ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat. Incoming damage overrides all modes: fighters retaliate together, towers first; mobile threats obey chase limits. Regroup and resume afterward.',
@@ -2666,6 +2666,7 @@ class OpenAIAIManager {
                 mapSeed: (this.game.terrain && this.game.terrain.seed) || null,
                 difficulty: this.game.difficulty || null,
                 mapSize: (this.game.terrain && this.game.terrain.size) || null,
+                exploreTiles: this.game.EXPLORE_TILES || null,
                 turnBased: !!this.turnBased,
                 roundTimeoutMs: this.turnBased ? this.roundTimeoutMs() : null,
                 // Lockstep: world milliseconds per round (the world is frozen while seats
@@ -4192,7 +4193,8 @@ class OpenAIAIManager {
     // stores THIS text (ui.getArenaDefaultPrompt delegates here), per-slot edits
     // override it, and buildSystemPrompt() falls back to it — so the prompt the
     // user reads in the textarea is exactly the prompt the harness serves.
-    // Placeholders resolved at match time: {{civilization}}, {{bonus}}, {{players}}.
+    // Placeholders resolved at match time: {{civilization}}, {{bonus}}, {{players}},
+    // {{mapSize}} (b1057: 800 or 1200).
     // {{terrain}} (the preset's summer/winter/desert brief) is still SUBSTITUTED, so a
     // hand-edited prompt may use it, but the default no longer spends tokens on it.
     //
@@ -4216,7 +4218,7 @@ class OpenAIAIManager {
     }
 
     static defaultSystemPrompt() {
-        return `You ARE {{civilization}}, one of {{players}} rival commanders in a real-time strategy game on a square 800x800 map. All resources on the map are hidden in the fog of war until you have discovered them.
+        return `You ARE {{civilization}}, one of {{players}} rival commanders in a real-time strategy game on a square {{mapSize}}x{{mapSize}} map. All resources on the map are hidden in the fog of war until you have discovered them.
 Every other player is your enemy. No human plays for you: you command by issuing actions. Your unique bonus: {{bonus}}.
 
 ${OpenAIAIManager.VICTORY_PARAGRAPH}
@@ -4347,6 +4349,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             .replace(/\{\{civilization\}\}/g, ai.civilization)
             .replace(/\{\{bonus\}\}/g, intoModelLang(civ?.bonus?.description) || 'None')
             .replace(/\{\{players\}\}/g, String(players || 2))
+            .replace(/\{\{mapSize\}\}/g, String((this.game && this.game.terrain && this.game.terrain.size) || 800))
             .replace(/\{\{terrain\}\}/g, terrain)
             + fallbackHint + langDirective;
     }
@@ -9001,7 +9004,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
         const t = this.parseTile(raw, T);
         if (!t) {
-            this.outcome('log.out.exploreBadTile', { tile: String(raw) });
+            this.outcome('log.out.exploreBadTile', { tile: String(raw), lastCol, rows: T });
             return `[ERROR] "${raw}" is not a map tile. Use a COLUMN LETTER then a ROW NUMBER: A-${lastCol} and 1-${T}, e.g. "C5" (not "5C", and not coordinates). The tiles and how much of each you have seen are in "map.exploration".`;
         }
 
