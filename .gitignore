@@ -31,3 +31,6 @@ arenaConfig*.json
 # WAR Bench outputs (tools/bench/war-bench.cjs)
 *.warbench.jsonl.gz
 *.report.html
+
+# Local agent skill mirror (private production procedure — never publish)
+.agents/
