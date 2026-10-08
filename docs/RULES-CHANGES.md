@@ -6,6 +6,27 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1081: the patrol's start declared, and five tests from a contributor (8 October 2026)
+
+**No rules change; a contract fix and tests.** From pull request #3 by baristahaus, written against build 1054 and brought onto this build by hand: the parts that still apply, with two tests adjusted to later decisions.
+
+**The contract.**
+- `ordersInProgress[].from` is declared in `game-state-schema.json`. The rules have put a patrol's origin there all along (`js/standing-orders.js`, patrol mode only), so a model can read the whole route. A reader built from the contract would never have learned it exists.
+- `to` and `from` both say they hold exactly two numbers (`minItems`/`maxItems` 2). `items: integer` alone accepts a one-number array and leaves a missing z.
+- `tests/lib/schema-check.cjs` checks the two length keywords, and `tests/contract.test.cjs` asserts they bite.
+
+**New tests:**
+- `host-classifier.test.cjs`: which hosts count as private, the check in `js/boot.js` that hides the API-key screens on a public copy. It covers the lookalikes, such as `127.0.0.1.attacker.example` and `172.32.x`, and the `?full=1` opt-out.
+- `state-contract.test.cjs`: the newest shipped sample emits every field the schema requires, and nothing it does not declare.
+- `shipped-files.test.cjs`: every script `index.html` loads exists, carries a version tag and is loaded once, and no `js/` file goes unused.
+- `roster-advancement.test.cjs`: the unit upgrade paths and the training tables agree. Two of its tests were adjusted here:
+  - the scout cavalry is excepted, because it stays a scout by design (b1055);
+  - the advancement table covers all seven civilizations.
+
+**Not taken:**
+- `match-determinism.test.cjs` duplicates `tests/rng.test.cjs`.
+- The pull request's changelog entry and build number referred to build 1054.
+
 ## Build 1080: the large map by default (7 October 2026)
 
 **Default change.** asp67: "it works very well".

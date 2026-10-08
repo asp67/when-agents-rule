@@ -102,6 +102,16 @@ test('recorded states conform to game-state-schema.json, and unknown schema keyw
         assert.deepEqual([...problems].slice(0, 10), [], f);
     }
     assert.throws(() => validate({ type: 'object', patternProperties: {} }, {}), /not implemented/);
+    // Two of those keywords are length, and length needs its own case: a one-element `to`
+    // satisfies `items: { type: 'integer' }` perfectly and still leaves a model reading
+    // `undefined` where the contract's own "[x, z]" promised a z. Written against the
+    // ordersInProgress block rather than a whole state, so it fails for the arity and
+    // nothing else.
+    const ends = (to, from) => validate({ type: 'object', properties: { ordersInProgress: schema.properties.ordersInProgress } },
+        { ordersInProgress: [{ order: 'move_units', to, ...(from ? { from } : {}) }] });
+    assert.deepEqual(ends([10, 20], [3, 4]), [], 'a two-long pair is what a route is made of');
+    assert.match(ends([10]).join('\n'), /1 items < minItems 2/, 'a one-long destination passes');
+    assert.match(ends([1, 2, 3]).join('\n'), /3 items > maxItems 2/, 'a three-long destination passes');
 });
 
 test('the fixed per-turn prompt stays under its token tripwires', () => {

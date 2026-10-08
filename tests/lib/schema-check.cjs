@@ -5,7 +5,7 @@
 'use strict';
 const ANNOTATIONS = new Set(['$schema', 'title', 'description', '$defs']);
 const KNOWN = new Set(['type', 'required', 'properties', 'enum', 'const', '$ref', 'oneOf', 'items',
-    'additionalProperties', 'minimum', 'maximum', ...ANNOTATIONS]);
+    'additionalProperties', 'minimum', 'maximum', 'minItems', 'maxItems', ...ANNOTATIONS]);
 
 function typeOf(v) {
     if (v === null) return 'null';
@@ -53,7 +53,16 @@ function check(root, schema, value, at, errors) {
             else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') check(root, schema.additionalProperties, v, at + '.' + k, errors);
         }
     }
-    if (typeOf(value) === 'array' && schema.items) value.forEach((v, i) => check(root, schema.items, v, `${at}[${i}]`, errors));
+    if (typeOf(value) === 'array') {
+        // Length before elements. A schema that says [x, z] has said two things, and the
+        // element type alone is the weaker one: a model that reads a destination by index
+        // is reading `undefined` from a one-element array that satisfies `items` perfectly.
+        if (schema.minItems !== undefined && value.length < schema.minItems)
+            errors.push(`${at}: ${value.length} items < minItems ${schema.minItems}`);
+        if (schema.maxItems !== undefined && value.length > schema.maxItems)
+            errors.push(`${at}: ${value.length} items > maxItems ${schema.maxItems}`);
+        if (schema.items) value.forEach((v, i) => check(root, schema.items, v, `${at}[${i}]`, errors));
+    }
 }
 
 // Returns a list of problems; empty means the value conforms.
