@@ -212,7 +212,8 @@ test('civilization facial hair covers every human class, with visible mouths and
         assert.equal(variants.size,colors.length,civ+' variety');
         for(const variant of variants) for(const type of s.EngineUnits.TYPES) {
             const parts=s.EngineUnits.parts(type,{civ,variant});
-            assert.equal(parts.filter(p=>p.tex==='mouth' && !p.bone).length,1,civ+'/'+type+' human mouth');
+            // One mouth, in three pieces since b1088: a short line and its two upturned corners.
+            assert.equal(parts.filter(p=>p.tex==='mouth' && !p.bone).length,3,civ+'/'+type+' human mouth');
             const beard=parts.filter(p=>p.tex===colors[variant] && p.kind==='sphere' && !p.bone && p.m[13]<(type==='cavalry'?1.78:1.42));
             assert.ok(beard.length,civ+'/'+type+' beard');
         }

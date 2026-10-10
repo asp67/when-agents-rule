@@ -6,6 +6,18 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1088: a chin and a smile (10 October 2026)
+
+**No rules change; the unit faces.** asp67: the clean-shaven faces' chins were as wide as the whole head.
+
+**The chin.** The Romans and the Maya had a jaw two thirds the width of the head, a shelf across the lower face. It is now a small rounded chin under the mouth, inside the head's outline.
+
+**The mouth**, on every civilization:
+- It was a flat dark slit the width of the lips, set in a raised skin lip, and read as a frown or a pout. It is now a short line with its two corners turned up.
+- The lip surround is smaller, and drawn only where there is a beard, where it keeps the mouth legible against dark hair.
+
+Checked in close-up and at play distance, clean-shaven (Maya, Romans) and bearded (Greek, Viking, Persian).
+
 ## Build 1087: the Viking hof's upper storey sits on its roof (10 October 2026)
 
 **No rules change; a model fix.** asp67 saw the upper part of the Viking temple hovering. Its upper storey was a box whose walls ended at height 3.9. The lower roof slopes away from its ridge, and under those walls it stands at only 3.5, which left a gap along both long sides. The box now reaches down to 3.4, into the slope, and keeps its top at 4.9 under the upper roof.

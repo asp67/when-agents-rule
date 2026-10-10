@@ -114,17 +114,23 @@
             part(p,'box',[.067*s,.022*s,.02*s],hair,
                 {x:x+side*.078*s,y:y+.085*s,z:z+.182*s,rz:side*-.13});
         }
-        // Lip surround keeps the dark mouth legible even inside a black beard.
-        oval(p,'skin',x,y-.081*s,z+.203*s,.069*s,.022*s,.018*s);
-        oval(p,'mouth',x,y-.079*s,z+.218*s,.053*s,.008*s,.008*s);
+        // The mouth is a short line with its two corners turned up (b1088): a flat dark
+        // slit the width of the lips read as a frown. The lip surround keeps it legible
+        // inside a beard and is drawn only there; on a bare face it read as a pout.
+        const shaven=o.civ==='roman'||o.civ==='maya';
+        if(!shaven) oval(p,'skin',x,y-.081*s,z+.203*s,.052*s,.018*s,.015*s);
+        oval(p,'mouth',x,y-.083*s,z+.214*s,.022*s,.0065*s,.008*s);
+        for(const side of [-1,1]) oval(p,'mouth',x+side*.027*s,y-.077*s,z+.211*s,.014*s,.0055*s,.007*s,{rz:side*.65});
         if(o.civ==='yamato') {
             // Separated moustache and tapered chin beard, white or dark brown.
             for(const side of [-1,1]) oval(p,hair,x+side*.052*s,y-.050*s,z+.203*s,
                 .061*s,.022*s,.030*s,{rz:side*-.22});
             oval(p,hair,x,y-.194*s,z+.13*s,.082*s,.110*s,.074*s);
-        } else if(o.civ==='roman'||o.civ==='maya') {
-            // Clean-shaven (b1058, the Maya b1060): only the jaw's shadow, no beard.
-            oval(p,'skin',x,y-.15*s,z+.11*s,.15*s,.07*s,.09*s);
+        } else if(shaven) {
+            // Clean-shaven (b1058, the Maya b1060): a small rounded chin under the mouth,
+            // inside the head's outline. It was a jaw two thirds the width of the head, a
+            // shelf across the lower face (b1088, asp67).
+            oval(p,'skin',x,y-.158*s,z+.14*s,.07*s,.05*s,.062*s);
         } else if(o.civ==='egyptian') {
             // Short, rounded natural chin growth; no long square royal false beard.
             oval(p,hair,x,y-.183*s,z+.115*s,.080*s,.075*s,.078*s);
