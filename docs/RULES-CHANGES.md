@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1087: the Viking hof's upper storey sits on its roof (10 October 2026)
+
+**No rules change; a model fix.** asp67 saw the upper part of the Viking temple hovering. Its upper storey was a box whose walls ended at height 3.9. The lower roof slopes away from its ridge, and under those walls it stands at only 3.5, which left a gap along both long sides. The box now reaches down to 3.4, into the slope, and keeps its top at 4.9 under the upper roof.
+
 ## Build 1086: a rally point fills up instead of churning (10 October 2026)
 
 **Rules change: where a standing order's units stand.** asp67 saw troops sent to a rally point one after the other, with no formation, shove each other about in a moving blob.

@@ -1062,7 +1062,9 @@
                 [[-3.1, -1.8], [1.5, -1.8], [-3.1, 1.8], [1.5, 1.8]].forEach(([x, z]) =>
                     part(p, 'cylinder', [0.2, 0.22, 3.0, 6], 'bark', { x, y: 1.9, z }));
                 part(p, 'prism', [5.6, 4.8, 1.4], 'bark', { x: -0.8, y: 2.8 });                // lower roof
-                part(p, 'box', [3.2, 1.0, 2.4], 'wood', { x: -0.8, y: 4.4 });
+                // The upper storey reaches down into the lower roof's slope (b1087): the slope
+                // under its front and back walls is at 3.5, and a box ending at 3.9 floated.
+                part(p, 'box', [3.2, 1.5, 2.4], 'wood', { x: -0.8, y: 4.15 });
                 part(p, 'prism', [4.0, 3.2, 1.6], 'bark', { x: -0.8, y: 4.9 });                // upper roof
                 for (const x of [-2.8, 1.2]) {
                     part(p, 'box', [0.16, 1.4, 0.16], 'wood', { x, y: 6.8, z: 0.35, rx: 0.5 });
