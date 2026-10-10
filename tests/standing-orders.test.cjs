@@ -324,12 +324,30 @@ test('an actual tower volley immediately redirects the formation before the next
 
 test('mobile retaliation overrides a siege, gives way to towers, and resumes the saved siege',()=>{
  const h=setup(),u=h.unit(),other=h.unit('warrior',1);h.owner.units.push(u,other);
- const original=Object.assign(h.rival(20),{type:'town_center'}),raider=h.rival(10),tower=Object.assign(h.rival(15),{type:'tower'});
+ const original=Object.assign(h.rival(20),{type:'town_center'}),raider=h.rival(10),tower=Object.assign(h.rival(15),{type:'tower',range:18});
+ // Both soldiers stand inside the tower's firing range (18), so the tower is theirs (b1085).
  const g=h.issue('march',{x:20,z:0},{target:original});h.g.noteRetaliation(u,raider);
  assert.equal(other.attackTarget,raider);h.g.noteRetaliation(u,tower);assert.equal(other.attackTarget,tower);
  h.g.noteRetaliation(other,raider);assert.equal(u.attackTarget,tower);
  tower.health=0;h.g._standingOrders.update(150);assert.equal(u.attackTarget,raider);
  raider.health=0;h.g._standingOrders.update(150);assert.equal(u.attackTarget,original);assert.equal(g.target,original);
+});
+
+test('a hit makes each member choose: inside the tower range the tower, outside it a mobile attacker, then the tower again (b1085)',()=>{
+ // The head of a column stands in a tower's range; its tail, 45 off, is shot by a raider.
+ // The tail used to be bound to the tower with the head and walked on into it unanswered.
+ const h=setup(),head=h.unit('warrior',0),tail=h.unit('warrior',-30);h.owner.units.push(head,tail);
+ const tower=Object.assign(h.rival(15),{type:'tower',range:18}),raider=h.rival(-36);
+ const g=h.issue('march',{x:15,z:0},{target:tower});
+ h.g.noteRetaliation(head,tower);
+ assert.equal(head.attackTarget,tower);assert.equal(tail.attackTarget,tower,'nobody shoots the tail yet: it joins the group target');
+ h.g.noteRetaliation(tail,raider);
+ assert.equal(head.attackTarget,tower,'inside the firing range it stays on the tower');
+ assert.equal(tail.attackTarget,raider,'outside it, it answers the raider');
+ h.g._standingOrders.update(150);
+ assert.equal(head.attackTarget,tower);assert.equal(tail.attackTarget,raider,'and the scan keeps both answers');
+ raider.health=0;h.g._standingOrders.update(150);
+ assert.equal(tail.attackTarget,tower,'with the raider gone it rejoins the tower');assert.equal(g.target,tower);
 });
 
 test('an uncatchable retaliatory threat is abandoned and the scout assignment resumes',()=>{

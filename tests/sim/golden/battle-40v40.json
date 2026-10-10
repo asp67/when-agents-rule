@@ -96,7 +96,7 @@
   }
  },
  {
-  "hash": "c542995fc44d8156",
+  "hash": "087dde34ea958e24",
   "summary": {
    "t": 15,
    "seats": [
@@ -144,7 +144,7 @@
   }
  },
  {
-  "hash": "433db91dc5962e77",
+  "hash": "81c94a76e339ce05",
   "summary": {
    "t": 20,
    "seats": [
@@ -192,7 +192,7 @@
   }
  },
  {
-  "hash": "2e817aea2724066c",
+  "hash": "411b3810f74dafca",
   "summary": {
    "t": 25,
    "seats": [
@@ -207,11 +207,11 @@
       50
      ],
      "units": {
-      "warrior": 12,
-      "archer": 7,
-      "priest": 6
+      "warrior": 14,
+      "archer": 9,
+      "priest": 5
      },
-     "hp": 2022,
+     "hp": 2145,
      "buildings": 1,
      "research": 0
     },
@@ -239,7 +239,7 @@
   }
  },
  {
-  "hash": "3af16093e3b73547",
+  "hash": "ca4cf3b129e751d8",
   "summary": {
    "t": 30,
    "seats": [
@@ -254,9 +254,11 @@
       50
      ],
      "units": {
-      "priest": 6
+      "warrior": 4,
+      "archer": 4,
+      "priest": 2
      },
-     "hp": 360,
+     "hp": 569,
      "buildings": 1,
      "research": 0
     },
@@ -284,7 +286,7 @@
   }
  },
  {
-  "hash": "c2b61d4b3b27138b",
+  "hash": "4c1f6ca034f9ba35",
   "summary": {
    "t": 35,
    "seats": [
@@ -327,7 +329,7 @@
   }
  },
  {
-  "hash": "256fe5271301a6b3",
+  "hash": "1edb7b0539f90310",
   "summary": {
    "t": 40,
    "seats": [
@@ -370,7 +372,7 @@
   }
  },
  {
-  "hash": "5b92a3a056c7a77b",
+  "hash": "64130abbf2af399c",
   "summary": {
    "t": 45,
    "seats": [
@@ -413,7 +415,7 @@
   }
  },
  {
-  "hash": "45f12508f8e77270",
+  "hash": "05717e86becfafd6",
   "summary": {
    "t": 50,
    "seats": [
@@ -456,7 +458,7 @@
   }
  },
  {
-  "hash": "9a9bb98c122792b0",
+  "hash": "c903a47748321584",
   "summary": {
    "t": 55,
    "seats": [
@@ -499,7 +501,7 @@
   }
  },
  {
-  "hash": "2a5e8a587a22f287",
+  "hash": "49ab36a96423eca2",
   "summary": {
    "t": 60,
    "seats": [

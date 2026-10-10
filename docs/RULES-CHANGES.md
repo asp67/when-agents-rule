@@ -6,6 +6,27 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1085: towers first only for those the tower can hit (10 October 2026)
+
+**Rules change: retaliation under a standing order.** asp67 watched it happen. An army was sent at a tower. The head of the column walked into the tower's range and was shot, and from then on the whole group answered the tower: a tower always took the front of the group's shared threat queue. The rear, still forty units out, was shot by enemy archers. It walked on toward the tower without answering and was picked off before it arrived.
+
+**Now a hit starts the decision for every member of the group, each from where it stands** (`StandingOrders.threatFor`):
+- **Inside a tower's firing range:** the member stays on the tower. That is the same test the tower shoots by: `tower.range`, or 6 when it has none.
+- **Outside it:** the member answers a mobile attacker of the group within chase reach (64). It takes the first one in the queue, so alternating hits still do not pull it to and fro.
+- **Neither:** with no mobile attacker in reach, it joins the group's target list again, which is the tower.
+
+The periodic scan asks the same question, so a member keeps its own answer instead of being pulled back to one shared focus. Every live threat counts as the group's own fight for leash and release purposes, not only the head of the queue. A mobile threat no member still pursues is dropped from the queue, wherever it stands in it.
+
+Reproduced in the real rules (two militia at the tower, three archers 40 out under archer fire):
+- **Before:** the archers died walking on, without a shot; the enemy archers lost nothing.
+- **Now:** the militia stay on the tower and the archers turn on their attackers within one scan.
+
+**Tests.**
+- `tests/standing-orders.test.cjs` gains the head/tail case: the head stays on the tower, the tail answers the raider and then rejoins the tower. It fails on the old rule.
+- The existing siege test now gives its stub tower a real range (18), which its units stand inside.
+
+**Prompt.** Unchanged. "prioritizing towers until destroyed" still holds for the members a tower can hit.
+
 ## Build 1084: a scout takes a route of up to three tiles (10 October 2026)
 
 **Command change: `explore` takes `"then"`.** Besides `"tile"`, a model may name up to two more tiles, visited in order: `{"tile":"C5","then":["D5","E6"]}`.
