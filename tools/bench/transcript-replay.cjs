@@ -4,7 +4,7 @@
 // state hash each one recorded. The logic is js/resim.js, shared with the analyzer's
 // "Re-simulated" mode; this is its Node driver.
 //
-//   node tools/bench/transcript-replay.cjs <transcript.jsonl>
+//   node tools/bench/transcript-replay.cjs <transcript.jsonl> [--force]
 const fs = require('node:fs');
 const path = require('node:path');
 const { createMatch } = require('./realm.cjs');
@@ -36,7 +36,22 @@ async function replayTranscript(recs, { sources = null } = {}) {
 
 if (require.main === module) {
     const file = process.argv[2];
-    replayTranscript(parse(fs.readFileSync(file, 'utf8'))).then(v => {
+    const recs = parse(fs.readFileSync(file, 'utf8'));
+    // The analyzer refuses a recording made under other rules ("rules changed since
+    // recording"); this did not, and replayed it on today's rules. A b1084 match then
+    // "diverged" at step 38000 under b1086's rules, and the hunt for a live-only cause
+    // that followed was a hunt for the two later builds (10 Oct 2026). --force replays
+    // anyway, which is the way to ask what a rules change does to an old match.
+    const contract = recs.find(r => r.type === 'contract');
+    const { coreHashOf, ruleSources } = require('./bundle.cjs');
+    const now = coreHashOf(ruleSources());
+    if (contract && contract.coreHash && contract.coreHash !== now && !process.argv.includes('--force')) {
+        const build = (WarResim.header(recs) || {}).build;
+        console.log(`NOT re-simulated: rules changed since recording (build ${build || '?'}, core ${contract.coreHash.slice(0, 12)}; now ${now.slice(0, 12)}). Check out that build, or pass --force to replay it on the current rules.`);
+        process.exitCode = 1;
+        return;
+    }
+    replayTranscript(recs).then(v => {
         console.log(v.ok ? `re-simulated: ${v.checked} inputs, every state hash matches (step ${v.steps})` : 'NOT re-simulated: ' + v.problem);
         if (v.detail) v.detail.forEach(d => console.log('  ' + JSON.stringify(d)));
         process.exitCode = v.ok ? 0 : 1;
