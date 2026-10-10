@@ -6,6 +6,18 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1086: a rally point fills up instead of churning (10 October 2026)
+
+**Rules change: where a standing order's units stand.** asp67 saw troops sent to a rally point one after the other, with no formation, shove each other about in a moving blob.
+
+**The cause.** Each `move_units` order lays out slots for its own units. One unit's slot is the target point itself. So twelve single-unit orders to one spot all owned the same spot, and friendly separation pushed them off it while their orders walked them back. Measured on a board: twenty single-unit orders to one point still had about twelve units moving at any moment ninety seconds later. A single order for all twenty settled in two seconds.
+
+**Now** a new order's slots avoid the places the same owner's other groups already hold (`StandingOrders.reservedSlots`): the slots of their members still on that order, kept 1.8 apart as slots within one order already were. A whole shape is moved onto open ground when it can be, and otherwise each unit takes the nearest free place. The rally point fills up as a cluster around the point and stands still.
+
+Only the owner's own groups are counted. A unit that has been given a new order no longer holds its old slot.
+
+**Tests.** `tests/rally-point.test.cjs`: twelve single-unit orders to one point. They must move less than 0.05 in ten seconds after arriving, hold distinct places, and stand within 8 of the point. On the old rule they moved 16.8 in those ten seconds.
+
 ## Build 1085: towers first only for those the tower can hit (10 October 2026)
 
 **Rules change: retaliation under a standing order.** asp67 watched it happen. An army was sent at a tower. The head of the column walked into the tower's range and was shot, and from then on the whole group answered the tower: a tower always took the front of the group's shared threat queue. The rear, still forty units out, was shot by enemy archers. It walked on toward the tower without answering and was picked off before it arrived.

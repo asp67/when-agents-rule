@@ -128,7 +128,23 @@ class StandingOrders {
         }
         return true;
     }
-    placeSlots(units,to,offsets) {
+    // Where the owner's OTHER groups already stand (b1086): their slots, for the members
+    // still on them. A unit sent to a rally point on its own got the point itself as its
+    // slot, and so did the next one, and the next: twenty single-unit orders to one spot
+    // owned one spot, and friendly separation and the walk back to it shoved the crowd
+    // about for as long as it stood there.
+    reservedSlots(g) {
+        const taken=[];
+        if(!g)return taken;
+        for(const o of this.groups){
+            if(o===g||o.owner!==g.owner)continue;
+            for(const [u,s] of o.slots)if(u.health>0&&u._standingOrder===o)taken.push(s);
+        }
+        return taken;
+    }
+    placeSlots(units,to,offsets,g=null) {
+        const taken=this.reservedSlots(g);
+        const free=p=>taken.every(s=>WarMath.hypot(p.x-s.x,p.z-s.z)>=1.8);
         // Reserve distinct resting places. Sending an unformed army to one point
         // makes the mover fight friendly separation forever. Keep its free pace,
         // but give it a compact footprint with support in the ranged ranks.
@@ -148,7 +164,7 @@ class StandingOrders {
             for(let k=0;k<count;k++){
                 const angle=k*Math.PI*2/count,dx=WarMath.cos(angle)*ring*3,dz=WarMath.sin(angle)*ring*3;
                 const slots=desired.map(p=>({x:p.x+dx,z:p.z+dz}));
-                if(slots.every(legal))return new Map(units.map((u,i)=>[u,slots[i]]));
+                if(slots.every(p=>legal(p)&&free(p)))return new Map(units.map((u,i)=>[u,slots[i]]));
             }
         }
         // A cramped village may have no room for the whole shape. Allocate nearby
@@ -159,7 +175,7 @@ class StandingOrders {
             for(let i=0;i<1024;i++){
                 const radius=2*Math.sqrt(i),angle=i*2.399963229728653;
                 const q={x:p.x+WarMath.cos(angle)*radius,z:p.z+WarMath.sin(angle)*radius};
-                if(legal(q)&&placed.every(s=>WarMath.hypot(q.x-s.x,q.z-s.z)>=1.8)){chosen=q;break;}
+                if(legal(q)&&free(q)&&placed.every(s=>WarMath.hypot(q.x-s.x,q.z-s.z)>=1.8)){chosen=q;break;}
             }
             placed.push(chosen||this.game.clampSlot(p.x,p.z));
         }
@@ -169,7 +185,7 @@ class StandingOrders {
         const units=this.members(g);if(!units.length)return;
         const form=this.manager.applyFormation(this.game,units,to.x,to.z,g.shape);
         this.manager.applyMatchSpeed(units,g.pace||(form.applied?'slowestUnit':''));
-        g.slots=this.placeSlots(units,to,form.offsets);g.leg={...to};
+        g.slots=this.placeSlots(units,to,form.offsets,g);g.leg={...to};
         g.holdSlots=null;
         g.supportSlots=null;g.supportAnchor=null;
         g.settled=false;
