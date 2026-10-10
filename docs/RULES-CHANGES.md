@@ -6,6 +6,26 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1083: a second match plays like the first, and Playback (10 October 2026)
+
+**No rules change; a determinism fix.** The transcript of the match played at 00:24 on 10 October stopped in the analyzer at step 34,137 (input 409): "diverged". So did the one from 11:35. The match before them, played first after a page load, replayed to the end.
+
+**The cause.** Two game-level clocks were never reset between matches:
+- the auto-defense reflex runs every 600 ms on `game._autoDefTimer`;
+- the contact scan takes the seats in turn by `game._contactTurnIdx`.
+
+A second match in the same page started both part-way through the last match's beat. A re-simulation is always a fresh page and starts them at zero.
+
+In the 00:24 match the defense beat started 300 ms in. A Maya scout picked a fight with a Roman militia at the edge of the Roman base, and the Roman army answered it six steps earlier than the replay's did. Replayed with the beat started at 300 ms, the match passes the point where it stopped; every other phase stops there.
+
+**The fix.** `resetTimeline()` resets both, as it already did the brain's discovery beat for the same reason. Matches recorded before this build that were not the first in their page may still stop at their first fight.
+
+**Tests.** `tests/match-carryover.test.cjs` starts a match, plays an odd number of steps, then starts a second match in the same page. Every number the game, the brain and the harness keep must equal a fresh page's, and the two must play the same match. It names any field that carries over, not just these two.
+
+**Playback.** The analyzer's "Re-simulate" is now **Playback** (Wiedergabe, Reproducción, 回放), in its chip, its mode label and its "unavailable" message.
+
+**Tool.** `tools/bench/transcript-replay.cjs` passes the transcript's map size to the rebuilt match. It rebuilt every large-map transcript at 800 and diverged at step 0.
+
 ## Build 1082: the whole late-game map in a third of the frame (10 October 2026)
 
 **No rules change; drawing only.** A late game on the large map, with most of it explored and the camera pulled back to show all of it, stuttered. Measured on the same scene: 65 % of the map explored along scout trails, 416 units, 76 buildings, four towns. Before, a frame was about 17,600 draw calls and 27 ms. Now it is about 4,200 draw calls and 7 ms. The fog, its texture and the minimap together cost under 4 ms twice a second, so they were not the cause.

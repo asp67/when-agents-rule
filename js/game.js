@@ -3943,6 +3943,13 @@ class Game {
         // page, so this carried over from the last match, and a Rematch scanned the map
         // on a different beat than the match it repeats. (Think clocks are per seat.)
         if (this.aiManager) this.aiManager.discoveryTimer = 0;
+        // ...and the auto-defense beat and the contact scan's rotation, for the same reason
+        // (b1083). The defense reflex runs every 600 ms on a game-level timer; a second
+        // match in the same page started it part-way through the last match's beat, so its
+        // rallies fell on different steps than a fresh page, which a re-simulation is. A
+        // match played after another one stopped replaying at its first fight.
+        this._autoDefTimer = 0;
+        this._contactTurnIdx = 0;
         this._lockstep = null;          // a match that wants lockstep sets it after this
         this._standingOrders = null;
         this._timeline = { t0: Date.now(), samples: [], ages: [], exhausted: [], wonders: [] };
