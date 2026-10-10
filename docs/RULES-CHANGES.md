@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1089: prompt version v108, and the prompt pinned to its version (10 October 2026)
+
+**No rules change; the prompt version.** asp67's arena of 10 October 18:08 ran on the old system prompt, with `agents-rule-v107` recorded.
+
+The system prompt's command list is generated from the tool definitions. Since b1084 its explore line reads `explore: tile, then?, unitType?, unitIds?`. The version was not bumped with that change. A saved arena prompt is replaced by the default only when the version changes, so saved prompts kept the old line, `explore: tile, unitType?, unitIds?`. Those were the only seven characters that differed. The models still had `then` in their tool definitions and used it, but the prompt's own list did not show it.
+
+**Now:**
+- `UIManager.ARENA_PROMPT_VERSION` is **agents-rule-v108**. A saved prompt, and any slot prompt that was a plain copy of it, is replaced by the current default on the next load. Real edits are kept, as before.
+- `tests/prompt-version.test.cjs` pins the default prompt's sha256 to the version (`tests/prompt-version.json`). Any change to the prompt text fails it until the version is bumped and both are recorded, including one that arrives through a tool parameter, as this one did.
+
 ## Build 1088: a chin and a smile (10 October 2026)
 
 **No rules change; the unit faces.** asp67: the clean-shaven faces' chins were as wide as the whole head.
