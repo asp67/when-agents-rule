@@ -114,8 +114,9 @@ class OpenAIAIManager {
                              whenCarrying: S('spillLoad|deliverLoad|skipAssignment — what a chosen worker does if it is carrying. Default spillLoad: move now, the load is lost.') }, XZ), []],
             ['repair_building', 'Send workers to repair a damaged building. Omit the coordinates to repair the most damaged one.',
              Object.assign({ count: I('How many workers. Default 1, max 5.') }, XZ), []],
-            ['explore', 'Send a unit to scout a map tile.',
+            ['explore', 'Send a unit to scout a map tile, or up to three in a row.',
              { tile: S('Tile label from map.exploration, e.g. "C5" — column letter, then row number.'),
+               then: { type: 'array', items: { type: 'string' }, maxItems: 2, description: 'Up to 2 more tiles, visited in order after "tile". Optional.' },
                unitType: S('Which unit type to send. Optional.'),
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
             ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat. Incoming damage overrides all modes: fighters retaliate together, towers first; mobile threats obey chase limits. Regroup and resume afterward.',
@@ -3146,6 +3147,14 @@ class OpenAIAIManager {
             ...(r.timed === false ? {} : { secondsRemaining: r.eta })
         }));
 
+        // A scouting route with tiles still to come (b1084): the leg it is on, and the
+        // tiles after it. The last leg is a plain explore again, shown as one always was.
+        ai.units.forEach(u => {
+            const r = u._route;
+            if (!r || !r.stops.length || u.health <= 0 || !u.isMoving || u.targetX !== r.aimX || u.targetZ !== r.aimZ) return;
+            ordersInProgress.push({ order: 'explore', unitIds: [u.handle], to: [Math.round(r.aimX), Math.round(r.aimZ)],
+                route: r.stops.map(s => s.label), secondsRemaining: this.travelEtaSec(u, r.aimX, r.aimZ) });
+        });
         if(game._standingOrders)ordersInProgress.push(...game._standingOrders.summary(ai));
 
         // --- Battles: what actually happened in the fighting ---
@@ -9029,6 +9038,24 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             this.outcome('log.out.exploreBadTile', { tile: String(raw), lastCol, rows: T });
             return `[ERROR] "${raw}" is not a map tile. Use a COLUMN LETTER then a ROW NUMBER: A-${lastCol} and 1-${T}, e.g. "C5" (not "5C", and not coordinates). The tiles and how much of each you have seen are in "map.exploration".`;
         }
+        // A route (b1084): up to two more tiles, walked in order. Each is aimed when the
+        // unit reaches the one before it (Game.continueRoute), so it heads for what is
+        // still dark THEN. A list written as one string ("D5, E6") is the same list.
+        const thenRaw = OpenAIAIManager.given(params.then)
+            ? (Array.isArray(params.then) ? params.then : String(params.then).split(/[^A-Za-z0-9]+/).filter(Boolean)) : [];
+        if (thenRaw.length > 2) {
+            this.outcome('log.out.exploreRouteTooLong', { n: thenRaw.length + 1 });
+            return `[ERROR] explore visits at most 3 tiles: "tile" and up to 2 in "then". You gave ${thenRaw.length + 1}, so nothing was sent. Send the rest on its next turn, or with another unit.`;
+        }
+        const then = [];
+        for (const r of thenRaw) {
+            const s = this.parseTile(r, T);
+            if (!s) {
+                this.outcome('log.out.exploreBadTile', { tile: String(r), lastCol, rows: T });
+                return `[ERROR] "${r}" in "then" is not a map tile, so nothing was sent. Use a COLUMN LETTER then a ROW NUMBER: A-${lastCol} and 1-${T}, e.g. "C5".`;
+            }
+            then.push({ row: s.row, col: s.col, label: this.tileLabel(s.row, s.col) });
+        }
 
         // Explicit handles win outright, exactly as they do for move_units and
         // attack_target. Models reached for this unprompted -- six times across 394
@@ -9085,6 +9112,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         scout.targetX = tx;
         scout.targetZ = tz;
         scout._exploreTurn = turn;   // a later command this turn must not retarget it
+        // The rest of the route, held against the point this order aims at: the unit goes
+        // on only if it arrives THERE, so any later order that sends it elsewhere ends
+        // the route without having to know about it. Always written, so a new explore
+        // replaces an old route.
+        scout._route = { stops: then, aimX: tx, aimZ: tz };
 
         // Report what the tile is at NOW. A tile is ~114 units across and a scout
         // sees ~15, so one pass moves it a few percent: without this the model sends
@@ -9098,7 +9130,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // tell them apart, and the handle is the name it already uses everywhere else.
         const who = scout.handle != null ? ` #${scout.handle}` : '';
         this.outcome('log.out.exploreSent', { tile: label, pct, eta });
-        return `OK - Sent your ${scout.type}${who}${named || ''} to scout tile ${label} (~${eta}s to arrive). ${label} is ${pct}% explored so far; one pass uncovers only part of a tile, so expect to send scouts there again.${pulled}${choiceNote}`;
+        const route = then.length ? `, then ${then.map(s => s.label).join(', then ')}` : '';
+        return `OK - Sent your ${scout.type}${who}${named || ''} to scout tile ${label} (~${eta}s to arrive)${route}. ${label} is ${pct}% explored so far; one pass uncovers only part of a tile, so expect to send scouts there again.${pulled}${choiceNote}`;
     }
 
     executeDeleteUnit(ai, game, params) {

@@ -1,5 +1,5 @@
 {
-  "_note": "Tripwires, not targets: about 5% above the size measured on 26 Sep 2026 (build 925). Raising a ceiling is a decision, recorded in the commit that raises it. Tokens are estimated as characters / 4. Raised 2450 -> 2480 in b1077 for asp67's sentence on cavalry and scout sight and speed.",
+  "_note": "Tripwires, not targets: about 5% above the size measured on 26 Sep 2026 (build 925). Raising a ceiling is a decision, recorded in the commit that raises it. Tokens are estimated as characters / 4. Raised 2450 -> 2480 in b1077 for asp67's sentence on cavalry and scout sight and speed. Tool schemas raised 2600 -> 2660 in b1084 for explore's \"then\" (a route of up to three tiles, asked for by asp67).",
   "systemPromptTokens": 2480,
-  "toolSchemaTokens": 2600
+  "toolSchemaTokens": 2660
 }

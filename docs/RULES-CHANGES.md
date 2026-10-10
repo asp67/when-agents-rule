@@ -6,6 +6,39 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1084: a scout takes a route of up to three tiles (10 October 2026)
+
+**Command change: `explore` takes `"then"`.** Besides `"tile"`, a model may name up to two more tiles, visited in order: `{"tile":"C5","then":["D5","E6"]}`.
+
+**Why.** On the large map a scout reached its tile and then stood still until its seat's next turn, often 15 to 60 seconds later. Each tile also cost a command slot.
+
+**How a route runs.**
+- Any unit may take a route, a worker too. asp67's ruling: the model decides; a worker sent on a three-tile loop goes.
+- Each next tile is aimed when the unit reaches the one before it, at the darkest part of that tile for its owner. That is the same aim a fresh explore of the tile gets, so it heads for what is still unseen *then*.
+- This runs in the simulation step (`Game.continueRoute`, called where workers and other units arrive), so Playback walks the same route.
+- The last arrival ends exactly as a plain explore does: the unit stops there, and a worker is no longer counted as scouting.
+
+**How a route ends early.** A route is held against the point its order aimed at. If the unit arrives anywhere else (a new order, a build it was pulled to, a node), the route is over. A new explore always replaces an old route.
+
+**What the model is told.**
+- The reply names the route: "…to scout tile C5 (~12s to arrive), then D5, then E6."
+- `ordersInProgress` carries `{"order":"explore","unitIds":[…],"to":[x,z],"route":["D5","E6"],"secondsRemaining":…}` while tiles remain after the leg in progress. The last leg is a plain explore and is not listed.
+- `game-state-schema.json` declares `route` and widens the `unitIds` and `order` wording.
+
+**Refusals.** Nothing is sent when either applies:
+- more than three tiles in all: new outcome code `exploreRouteTooLong`, classed *reference*;
+- a bad label in `"then"`: `exploreBadTile`.
+
+A list written as one string ("D5, E6") is read as the same list.
+
+**Prompt.** The system prompt is unchanged. The tool definitions grow by about 35 tokens to about 2,630, so the tool-schema tripwire in `tests/prompt-budget.json` is raised from 2,600 to 2,660, recorded there.
+
+**Tests.** `tests/explore-route.test.cjs`:
+- a worker walks three tiles in order and ends as a plain explore does;
+- a later order ends the route;
+- too many tiles or a bad tile sends nothing;
+- a soldier walks a route too.
+
 ## Build 1083: a second match plays like the first, and Playback (10 October 2026)
 
 **No rules change; a determinism fix.** The transcript of the match played at 00:24 on 10 October stopped in the analyzer at step 34,137 (input 409): "diverged". So did the one from 11:35. The match before them, played first after a page load, replayed to the end.

@@ -702,7 +702,7 @@
         "properties": {
           "order": {
             "type": "string",
-            "description": "The command that started it, spelled as you sent it (e.g. \"move_units\", \"attack_target\")."
+            "description": "The command that started it, spelled as you sent it (e.g. \"move_units\", \"attack_target\", \"explore\")."
           },
           "mode": {
             "type": "string",
@@ -713,7 +713,7 @@
             "items": {
               "type": "integer"
             },
-            "description": "Standing orders only: the handles of the units carrying it."
+            "description": "Standing orders and scouting routes: the handles of the units carrying it."
           },
           "units": {
             "type": "integer",
@@ -740,6 +740,13 @@
             "minItems": 2,
             "maxItems": 2,
             "description": "Standing orders in patrol mode only: [x, z] the group started from, which it walks back to. The same two numbers as \"to\", so a model can read a route as a pair of destinations."
+          },
+          "route": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "explore with \"then\" only: the tiles still to scout after \"to\", in order. The last leg is a plain explore and is not listed."
           },
           "secondsRemaining": {
             "type": "number",
