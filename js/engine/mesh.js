@@ -233,6 +233,35 @@
         return out;
     };
 
+    // The same bake for meshes already built, each through its own matrix (b1082): the
+    // resource chunks and a unit's far-zoom model hold meshes, not part recipes. Typed
+    // arrays throughout, since a chunk of forest is tens of thousands of vertices.
+    EngineMesh.mergeMeshes = (items) => {
+        let nv=0, ni=0;
+        for(const it of items) { nv+=it.mesh.positions.length/3; ni+=it.mesh.indices.length; }
+        if(nv>65535) throw new Error('Batch exceeds WebGL 1 index range');
+        const positions=new Float32Array(nv*3), normals=new Float32Array(nv*3), uvs=new Float32Array(nv*2), indices=new Uint16Array(ni);
+        let v=0, k=0;
+        for(const {mesh, m} of items) {
+            const P=mesh.positions, N=mesh.normals, U=mesh.uvs, I=mesh.indices, n=P.length/3;
+            const s0=m[0]*m[0]+m[1]*m[1]+m[2]*m[2]||1, s1=m[4]*m[4]+m[5]*m[5]+m[6]*m[6]||1, s2=m[8]*m[8]+m[9]*m[9]+m[10]*m[10]||1;
+            for(let i=0;i<n;i++) {
+                const a=i*3, o=(v+i)*3, px=P[a], py=P[a+1], pz=P[a+2];
+                positions[o]=m[0]*px+m[4]*py+m[8]*pz+m[12];
+                positions[o+1]=m[1]*px+m[5]*py+m[9]*pz+m[13];
+                positions[o+2]=m[2]*px+m[6]*py+m[10]*pz+m[14];
+                const nx=N[a]/s0, ny=N[a+1]/s1, nz=N[a+2]/s2;
+                const x=m[0]*nx+m[4]*ny+m[8]*nz, y=m[1]*nx+m[5]*ny+m[9]*nz, z=m[2]*nx+m[6]*ny+m[10]*nz;
+                const l=Math.hypot(x,y,z)||1;
+                normals[o]=x/l; normals[o+1]=y/l; normals[o+2]=z/l;
+            }
+            for(let i=0;i<n*2;i++) uvs[v*2+i]=U[i];
+            for(let j=0;j<I.length;j++) indices[k+j]=I[j]+v;
+            v+=n; k+=I.length;
+        }
+        return {positions,normals,uvs,indices};
+    };
+
     // Rounded uppers, broad planar sole; the resting sole overlaps ground by 0.02.
     EngineMesh.shoe = (width=.23,height=.20,length=.38) => {
         const out=EngineMesh.sphere(1,10,8);

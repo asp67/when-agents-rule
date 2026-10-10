@@ -236,7 +236,9 @@
             const gl = this.gl;
             const canopyBase = theme === 'winter' ? [58, 92, 66]
                 : (theme === 'desert' ? [110, 116, 62] : [83, 108, 61]);
-            const T = (c, o) => GLCore.createTextureFromCanvas(gl, c, o);
+            // Each small texture remembers its average colour: from far away a unit is
+            // drawn in those (b1082, _unitPalette).
+            const T = (c, o) => { const t = GLCore.createTextureFromCanvas(gl, c, o); t._avg = EngineRenderer._averageColor(c); return t; };
             this.tex = {
                 coast: T(TexGen.coastMask(Math.round(512 * texScale)), { clamp: true }),
                 terrain: T(TexGen.terrain(theme, TERRAIN_SEED, Math.round(1024 * texScale), TexGen.TERRAIN_WORLD, TexGen.TERRAIN_LAND), { clamp: true }),
@@ -723,7 +725,7 @@
             const sink = h => (0.05 + sink01 * 0.15) * h;
             e = { opaque: [], blended: [] };
             const add = (kind, args, tex, model, blend) =>
-                (blend ? e.blended : e.opaque).push({ buf: this._buf(kind, args), tex: this.tex[tex], model });
+                (blend ? e.blended : e.opaque).push({ buf: this._buf(kind, args), tex: this.tex[tex], model, kind, args, texName: tex });
             if (res.type === 'wood') {
                 add('disc', [2.2, 14], 'shadow', TRS(res.x, 0.05, res.z, s, 1, s), true);
                 if (this._theme === 'winter' || this._theme === 'desert') {
@@ -763,6 +765,119 @@
             }
             this._resEntries.set(res, e);
             return e;
+        }
+
+        // Resource nodes are drawn in CHUNKS (b1082): every node in a 64-unit square merged
+        // into one mesh per material. A tree was five draw calls (shadow, trunk, two
+        // branches, crown), so a late game with most of the large map explored and the
+        // whole map in view drew some 8,000 of them for the forests alone.
+        // A node that is depleted or still under fog is not rebuilt out: its vertices are
+        // collapsed to a point in place (and restored when it shows again), so a woodcutter
+        // felling a tree costs one small buffer write.
+        static get RES_CHUNK() { return 64; }
+
+        _resourceChunks() {
+            const rs = this.terrain.resources;
+            const cur = this._resChunks;
+            if (cur && cur.rs === rs && cur.n === rs.length && cur.gen === this._resEntries) return cur;
+            if (cur) this._freeResourceChunks();
+            const CH = EngineRenderer.RES_CHUNK, byKey = new Map(), list = [];
+            for (let i = 0; i < rs.length; i++) {
+                const res = rs[i];
+                if (!res.mesh || res.amount <= 0) continue;   // depleted nodes never return
+                const cx = Math.floor(res.x / CH), cz = Math.floor(res.z / CH), key = cx + ',' + cz;
+                let c = byKey.get(key);
+                if (!c) { c = { x: (cx + 0.5) * CH, z: (cz + 0.5) * CH, members: [], groups: null, shown: 0 }; byKey.set(key, c); list.push(c); }
+                c.members.push({ i, shown: false, ranges: [] });
+            }
+            this._resChunks = { rs, n: rs.length, gen: this._resEntries, list };
+            return this._resChunks;
+        }
+
+        _freeResourceChunks() {
+            const gl = this.gl;
+            for (const c of this._resChunks.list) for (const g of c.groups || [])
+                for (const k of ['position', 'normal', 'uv', 'index']) gl.deleteBuffer(g.buf[k]);
+            this._resChunks = null;
+        }
+
+        // Built the first time the chunk has something to show, so the forests under fog
+        // cost nothing until they are found.
+        _buildResourceChunk(c) {
+            const rs = this.terrain.resources, gl = this.gl;
+            const src = this._resSrc || (this._resSrc = new Map());
+            const mesh = (kind, args) => {
+                const k = kind + ':' + args.join(',');
+                if (!src.has(k)) src.set(k, EngineMesh[kind](...args));
+                return src.get(k);
+            };
+            const open = new Map(), groups = [];
+            for (const mb of c.members) {
+                const e = this._resourceEntries(rs[mb.i], mb.i);
+                for (const [en, blend] of [...e.opaque.map(x => [x, false]), ...e.blended.map(x => [x, true])]) {
+                    const key = en.texName + '|' + (en.tint ? en.tint.join(',') : '') + '|' + blend;
+                    const m = mesh(en.kind, en.args), nv = m.positions.length / 3;
+                    let g = open.get(key);
+                    if (!g || g.nv + nv > 65535) {   // a WebGL 1 index range per batch
+                        g = { tex: en.tex, tint: en.tint || null, blend, items: [], nv: 0 };
+                        open.set(key, g); groups.push(g);
+                    }
+                    mb.ranges.push({ g, start: g.nv, count: nv });
+                    g.items.push({ mesh: m, m: en.model });
+                    g.nv += nv;
+                }
+            }
+            for (const g of groups) {
+                const merged = EngineMesh.mergeMeshes(g.items);
+                g.pos = merged.positions.slice();           // the shown copy, to restore from
+                g.buf = GLCore.createMeshBuffers(gl, merged);
+                g.entry = { buf: g.buf, tex: g.tex, tint: g.tint || undefined, model: this._identity || (this._identity = M().identity()) };
+                g.items = null;
+            }
+            c.groups = groups;
+            // Built shown; anything not to be shown is collapsed by the caller's pass.
+            for (const mb of c.members) mb.shown = true;
+            c.shown = c.members.length;
+        }
+
+        _showResource(mb, show) {
+            const gl = this.gl;
+            for (const r of mb.ranges) {
+                const g = r.g;
+                gl.bindBuffer(gl.ARRAY_BUFFER, g.buf.position);
+                let data;
+                if (show) data = g.pos.subarray(r.start * 3, (r.start + r.count) * 3);
+                else {
+                    if (!this._resZeros || this._resZeros.length < r.count * 3) this._resZeros = new Float32Array(r.count * 3 * 2);
+                    data = this._resZeros.subarray(0, r.count * 3);
+                }
+                gl.bufferSubData(gl.ARRAY_BUFFER, r.start * 12, data);
+            }
+            mb.shown = show;
+        }
+
+        _pushResourceChunks(dl) {
+            const { list } = this._resourceChunks(), rs = this.terrain.resources;
+            const margin = EngineRenderer.RES_CHUNK * 0.71 + 14;
+            for (const c of list) {
+                let want = 0;
+                for (const mb of c.members) {
+                    const res = rs[mb.i];
+                    const vis = !!(res.mesh && res.amount > 0 && (res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible));
+                    mb.want = vis;
+                    if (vis) want++;
+                }
+                if (!want && !c.groups) continue;
+                if (!c.groups) this._buildResourceChunk(c);
+                let shown = 0;
+                for (const mb of c.members) {
+                    if (mb.want !== mb.shown) this._showResource(mb, mb.want);
+                    if (mb.shown) shown++;
+                }
+                c.shown = shown;
+                if (!shown || this._cull(c.x, c.z, margin)) continue;
+                for (const g of c.groups) (g.blend ? dl.blended : dl.opaque).push(g.entry);
+            }
         }
 
         // ---- entities --------------------------------------------------------
@@ -879,21 +994,105 @@
             if(!this._unitModels.has(modelKey)) {
                 const batches=EngineUnits.batches(EngineUnits.parts(engineType,options));
                 this._unitModels.set(modelKey,batches.map(p=>({
-                    buf:GLCore.createMeshBuffers(this.gl,p.mesh), texName:p.tex,
+                    buf:GLCore.createMeshBuffers(this.gl,p.mesh), mesh:p.mesh, texName:p.tex,
                     team:p.team,accent:p.accent,bone:p.bone,blend:p.blend,badgePaint:p.badgePaint
                 })));
             }
-            const entries=this._unitModels.get(modelKey).map(p=>({
-                buf:p.buf,tex:p.badgePaint?this._flagTexture(unit.seat,tint,true):this.tex[p.texName],
+            const makeEntries=model=>model.map(p=>({
+                buf:p.buf,tex:p.palette?this._unitPalette().tex:p.badgePaint?this._flagTexture(unit.seat,tint,true):this.tex[p.texName],
                 tint:p.badgePaint?this.WHITE:(p.accent?badge[p.accent]:(p.team?tint:this.WHITE)),
                 base:M().identity(),bone:p.bone,blend:p.blend,model:M().identity()
             }));
-            unit._engine = { type: engineType, entries, phase: (this.units.length * 1.37) % 6.28 };
+            const entries=makeEntries(this._unitModels.get(modelKey));
+            unit._engine = { type: engineType, entries, phase: (this.units.length * 1.37) % 6.28,
+                far: () => makeEntries(this._unitFarModel(modelKey, engineType)) };
             // inert THREE-shaped handles for game.js/fogofwar.js property pokes
             unit.mesh = { visible: true, position: { set: () => {}, x: 0, y: 0, z: 0 }, rotation: { z: 0 } };
             unit.healthBar = { material: { color: { setHex: () => {} } } };
             unit.body = { material: { emissive: { setHex: () => {} } } };
             unit.baseY = 0;
+        }
+
+        // A unit seen from far away (b1082): its bones merged at rest into one mesh per
+        // material. A unit is some seventeen bone-groups, each its own draw call so it can
+        // swing; from the whole-map view it stands two or three pixels tall, where no
+        // swing can be seen, and an army of 400 was seven thousand draw calls. It still
+        // turns, bobs, flashes and fades -- those are the whole-unit matrix.
+        static get FAR_UNIT_HALF_H() { return 150; }
+
+        _unitFarModel(modelKey, engineType) {
+            if (!this._unitFar) this._unitFar = new Map();
+            if (this._unitFar.has(modelKey)) return this._unitFar.get(modelKey);
+            const model = this._unitModels.get(modelKey);
+            const rest = { ...EngineUnits.pose(engineType, 'idle', 0, 0, { strike: null, stride: 0 }).mats };
+            if (model.some(p => p.bone === 'parrot') && EngineUnits.parrotPose) Object.assign(rest, EngineUnits.parrotPose(0, 0, 0));
+            // The plainly textured parts -- skin, hair, leather, iron, feathers -- share ONE
+            // mesh, each part painted its texture's average colour from the palette. What
+            // the seat colour tints, the badge, and the blended shadow keep their own.
+            const groups = new Map();
+            for (const p of model) {
+                const slot = (!p.team && !p.accent && !p.blend && !p.badgePaint) ? this._paletteSlot(p.texName) : null;
+                const key = slot != null ? 'palette' : JSON.stringify([p.texName, !!p.team, p.accent || null, !!p.blend, !!p.badgePaint]);
+                if (!groups.has(key)) groups.set(key, { texName: p.texName, team: p.team, accent: p.accent, blend: p.blend, badgePaint: p.badgePaint, palette: slot != null, items: [] });
+                let mesh = p.mesh;
+                if (slot != null) {
+                    const uvs = new Float32Array(mesh.positions.length / 3 * 2), u = (slot + 0.5) / EngineRenderer.PALETTE_SLOTS;
+                    for (let i = 0; i < uvs.length; i += 2) { uvs[i] = u; uvs[i + 1] = 0.5; }
+                    mesh = { positions: mesh.positions, normals: mesh.normals, indices: mesh.indices, uvs };
+                }
+                groups.get(key).items.push({ mesh, m: (p.bone && rest[p.bone]) || M().identity() });
+            }
+            this._unitPalette();
+            const far = [...groups.values()].map(g => ({
+                buf: GLCore.createMeshBuffers(this.gl, EngineMesh.mergeMeshes(g.items)),
+                texName: g.texName, team: g.team, accent: g.accent, bone: null, blend: g.blend, badgePaint: g.badgePaint, palette: g.palette
+            }));
+            this._unitFar.set(modelKey, far);
+            return far;
+        }
+
+        // A texture's average colour, alpha-weighted; null for the large maps.
+        static _averageColor(c) {
+            try {
+                if (!c || !c.getContext || c.width * c.height > 512 * 512) return null;
+                const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+                let r = 0, g = 0, b = 0, a = 0;
+                for (let i = 0; i < d.length; i += 4) { const w = d[i + 3]; r += d[i] * w; g += d[i + 1] * w; b += d[i + 2] * w; a += w; }
+                return a ? [r / a, g / a, b / a] : null;
+            } catch (e) { return null; }
+        }
+
+        static get PALETTE_SLOTS() { return 64; }
+
+        // One texel per texture name, in a 64x1 texture; the slot is kept for the session
+        // and the colours are refreshed when the textures are rebuilt (a theme change).
+        _paletteSlot(name) {
+            const P = this._palette || (this._palette = { slots: new Map(), tex: null, painted: null });
+            if (P.slots.has(name)) return P.slots.get(name);
+            const t = this.tex[name];
+            if (!t || !t._avg || P.slots.size >= EngineRenderer.PALETTE_SLOTS) return null;
+            P.slots.set(name, P.slots.size);
+            P.painted = null;
+            return P.slots.get(name);
+        }
+
+        _unitPalette() {
+            const P = this._palette || (this._palette = { slots: new Map(), tex: null, painted: null });
+            if (P.painted === this.tex && P.tex) return P;
+            const gl = this.gl, n = EngineRenderer.PALETTE_SLOTS, px = new Uint8Array(n * 4);
+            for (const [name, slot] of P.slots) {
+                const avg = (this.tex[name] && this.tex[name]._avg) || [255, 255, 255];
+                px.set([avg[0], avg[1], avg[2], 255].map(Math.round), slot * 4);
+            }
+            if (!P.tex) P.tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, P.tex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            P.painted = this.tex;
+            return P;
         }
 
         removeUnit(unit) {
@@ -1105,7 +1304,7 @@
         _ghostFrom(entity, kind) {
             const eb = entity._engine;
             if (!eb) return;
-            const entries = (eb.entries || eb.opaque || []).map(e => ({
+            const entries = (eb.drawn || eb.entries || eb.opaque || []).map(e => ({
                 buf: e.buf, tex: e.tex, tint: e.tint, model: e.model
             }));
             this._ghosts.push({ entries, px: entity.x, pz: entity.z, kind, t: 0, dur: kind === 'unit' ? 0.9 : 1.25 });
@@ -1773,18 +1972,7 @@
             }
 
             // resources (fog toggles handle visibility; depletion nulls res.mesh)
-            if (this.terrain && this.terrain.resources) {
-                const rs = this.terrain.resources;
-                for (let i = 0; i < rs.length; i++) {
-                    const res = rs[i];
-                    if (!res.mesh || res.amount <= 0) continue;
-                    const vis = res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible;
-                    if (!vis || this._cull(res.x, res.z, 14)) continue;
-                    const e = this._resourceEntries(res, i);
-                    for (const en of e.opaque) dl.opaque.push(en);
-                    for (const en of e.blended) dl.blended.push(en);
-                }
-            }
+            if (this.terrain && this.terrain.resources) this._pushResourceChunks(dl);
 
             // Cosmetic motion pauses with the simulation. Keep a hard particle
             // budget: at most eight hearths, five two-triangle sprites each.
@@ -2047,7 +2235,9 @@
                             dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,model:m3.multiply(m3.multiply(m3.translation(x,y+.015,z),bb),m3.scaling(w,h,1))});
                     }
                 }
-                for (const e of ue.entries) {
+                const parts = this._halfH > EngineRenderer.FAR_UNIT_HALF_H ? (ue.farEntries || (ue.farEntries = ue.far())) : ue.entries;
+                ue.drawn = parts;
+                for (const e of parts) {
                     const local = e.bone && pose.mats[e.bone] ? m3.multiply(pose.mats[e.bone], e.base) : e.base;
                     const model = m3.multiply(e.blend ? flat : world, local);
                     e.model = model; // keep the composed matrix — death ghosts snapshot it
@@ -2447,20 +2637,32 @@
             gl.uniform4fv(this.prog.uniforms.uGroundCover,this._groundCover || [0,0,0,0]);
             gl.activeTexture(gl.TEXTURE0);
 
+            // Each draw sets only what differs from the one before it (b1082): most of a
+            // frame is runs of the same texture, tint and flags, and every uniform call
+            // costs the same whether or not it changes anything. Arrays compare by
+            // reference, which is safe -- the frame's lists are not changed while drawing.
+            const U = this.prog.uniforms, NO_CLOTH = this._noCloth || (this._noCloth = [0, 0, 0, 0]);
+            const NO_LIGHTS = this._noLocalLights || (this._noLocalLights = new Float32Array(12));
             const draw = (list) => {
+                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights;
                 for (const obj of list) {
-                    gl.uniform1f(this.prog.uniforms.uVegetation,obj.vegetation?1:0);
-                    gl.bindTexture(gl.TEXTURE_2D, obj.tex);
+                    const v = obj.vegetation ? 1 : 0;
+                    if (v !== veg) { gl.uniform1f(U.uVegetation, v); veg = v; }
+                    if (obj.tex !== tex) { gl.bindTexture(gl.TEXTURE_2D, obj.tex); tex = obj.tex; }
                     const metal = obj.tex === this.tex.gold || obj.tex === this.tex.iron;
-                    gl.uniform1f(this.prog.uniforms.uMaterial,obj.material || (metal ? 3 : 0));
-                    gl.uniform3fv(this.prog.uniforms.uTint, obj.tint || this.WHITE);
-                    gl.uniform1f(this.prog.uniforms.uAlpha, (obj.alpha == null ? 1 : obj.alpha)
-                        * (obj.tex === this.tex.shadow ? 1-this._shadowStrength*.45 : 1));
-                    gl.uniform2f(this.prog.uniforms.uUvOffset,
-                        obj.uvOff ? obj.uvOff[0] : 0, obj.uvOff ? obj.uvOff[1] : 0);
-                    gl.uniform4fv(this.prog.uniforms.uCloth,obj.cloth||[0,0,0,0]);
-                    gl.uniform4fv(this.prog.uniforms.uLocalLights,obj.localLights||(this._noLocalLights ||= new Float32Array(12)));
-                    gl.uniformMatrix4fv(this.prog.uniforms.uModel, false, obj.model);
+                    const m = obj.material || (metal ? 3 : 0);
+                    if (m !== mat) { gl.uniform1f(U.uMaterial, m); mat = m; }
+                    const t = obj.tint || this.WHITE;
+                    if (t !== tint) { gl.uniform3fv(U.uTint, t); tint = t; }
+                    const a = (obj.alpha == null ? 1 : obj.alpha) * (obj.tex === this.tex.shadow ? 1-this._shadowStrength*.45 : 1);
+                    if (a !== alpha) { gl.uniform1f(U.uAlpha, a); alpha = a; }
+                    const ux = obj.uvOff ? obj.uvOff[0] : 0, uy = obj.uvOff ? obj.uvOff[1] : 0;
+                    if (ux !== uvx || uy !== uvy) { gl.uniform2f(U.uUvOffset, ux, uy); uvx = ux; uvy = uy; }
+                    const c = obj.cloth || NO_CLOTH;
+                    if (c !== cloth) { gl.uniform4fv(U.uCloth, c); cloth = c; }
+                    const l = obj.localLights || NO_LIGHTS;
+                    if (l !== lights) { gl.uniform4fv(U.uLocalLights, l); lights = l; }
+                    gl.uniformMatrix4fv(U.uModel, false, obj.model);
                     if(obj.additive)gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
                     GLCore.drawMesh(gl, this.prog, obj.buf);
                     if(obj.additive)gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);

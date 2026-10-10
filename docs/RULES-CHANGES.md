@@ -6,6 +6,31 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1082: the whole late-game map in a third of the frame (10 October 2026)
+
+**No rules change; drawing only.** A late game on the large map, with most of it explored and the camera pulled back to show all of it, stuttered. Measured on the same scene: 65 % of the map explored along scout trails, 416 units, 76 buildings, four towns. Before, a frame was about 17,600 draw calls and 27 ms. Now it is about 4,200 draw calls and 7 ms. The fog, its texture and the minimap together cost under 4 ms twice a second, so they were not the cause.
+
+**Resource nodes are drawn in chunks.**
+- Every node in a 64-unit square is merged into one mesh per material.
+- A tree was five draw calls: shadow, trunk, two branches and crown. The explored forests alone came to about 8,000 draw calls.
+- A chunk is built the first time it has something to show.
+- A node that is depleted, or still under fog, is not rebuilt out. Its vertices are collapsed to a point in place and restored when it shows again, so felling a tree costs one small buffer write.
+
+**A unit seen from far away is one still mesh per material.**
+- Past zoom 150 (the shadows are gone by 160), a unit's bone-groups are merged at their rest pose.
+- Its small plain textures (skin, hair, leather, iron, feathers) are merged too, each painted its texture's average colour from a 64×1 palette.
+- The seat colour, the badge and the shadow keep their own draws.
+- About 4 draw calls a unit instead of 11 to 17. At that zoom a unit is two or three pixels tall.
+- A unit still turns, bobs, flashes and fades. A death ghost snapshots whichever model was drawn.
+
+**The draw loop sets only what changed** from the draw before: texture, tint, alpha, material and the rest.
+
+Covered by `tests/resource-chunks.test.cjs`:
+- the merge matches the existing one;
+- a forest is a few draws;
+- a felled or fogged tree collapses in place and comes back;
+- a far unit keeps every vertex in at most five meshes.
+
 ## Build 1081: the patrol's start declared, and five tests from a contributor (8 October 2026)
 
 **No rules change; a contract fix and tests.** From pull request #3 by baristahaus, written against build 1054 and brought onto this build by hand: the parts that still apply, with two tests adjusted to later decisions.
