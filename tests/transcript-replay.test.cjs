@@ -116,8 +116,10 @@ test('a match played through the live turn path re-simulates, and a dropped answ
     const v = await replayTranscript([header, ...lines]);
     assert.equal(v.ok, true, v.problem);
     assert.equal(v.checked, lines.length);
-    // An answer that changed the world, dropped: caught at its own step.
-    const i = lines.findIndex((l, k) => l.kind === 'batch' && k > 0 && lines[k - 1].stateHash !== l.stateHash);
+    // An answer that changed the world, dropped: caught at its own step. A trained worker
+    // changes it for certain. (Neighbouring hashes no longer tell: since b1090 the world
+    // plays a slice between an observation and its answer whatever the answer did.)
+    const i = lines.findIndex(l => l.kind === 'batch' && l.envelope.commands.some(c => c.action === 'train_unit'));
     assert.ok(i > 0, 'some answer changed the world');
     const forged = lines.map((l, k) => (k === i ? { ...l, envelope: { commands: [] } } : l));
     const f = await replayTranscript([header, ...forged]);

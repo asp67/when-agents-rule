@@ -6,6 +6,27 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1090: lockstep caps how old a state can get (11 October 2026)
+
+**Lockstep changes; nothing else does.** asp67 set up a turn-based match with a 120 s answer time and 30 s lockstep. The world stood still while the models thought. After the moves, it played the 30 s slice, and only then was the next round asked. On screen every round took the thinking time *plus* the slice: impossible to play.
+
+asp67's definition: lockstep exists so that no model ever answers a game state older than the setting.
+
+**Now:**
+- A round is asked on the world as it stands, and the slice starts over from there. The world plays on while the seats think.
+- When every move is in, the round ends at once: the moves run and the next round is asked on the current world, with the slice restarted. That happens even if the slice is not used up.
+- If the seats are still thinking at the slice's end, the world halts and waits for them, or for the answer deadline.
+- So a state a model answers is never more than one slice old, and a round takes as long as its thinking, never longer.
+- Fast rounds span less world time than the slice; slow ones span exactly the slice.
+- In the test, with 7 s answers and a 5 s slice, a round took 8.5 s on screen instead of 13.5 s (the 1.5 s breather included).
+- The setup field is now "Most world time per round (lockstep)", and its hint describes the new order in all four languages.
+
+**Records and comparability:**
+- The transcript header carries `lockstepMode: 'max-age'`.
+- The contract protocol is `turn-based-lockstep-max-age-<slice>ms`, so these matches never compare with the earlier lockstep (`turn-based-lockstep-<slice>ms`).
+- Nothing in the prompt changes. The state's `clock.worldSecondsPerRound` carries the same number, now an upper bound.
+- `tests/sim/lockstep.test.cjs` covers the new order.
+
 ## Build 1089: prompt version v108, and the prompt pinned to its version (10 October 2026)
 
 **No rules change; the prompt version.** asp67's arena of 10 October 18:08 ran on the old system prompt, with `agents-rule-v107` recorded.

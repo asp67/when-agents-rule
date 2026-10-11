@@ -74,8 +74,8 @@ class Game {
     // Simulated ms per real ms right now: 0 paused, 1 while a Wonder stands, else speed.
     simRate() {
         if (this.pauseState === 'paused') return 0;
-        // Lockstep between rounds: the world waits for the models, and so does the match
-        // clock -- thinking time is no time at all in the world they are thinking about.
+        // Lockstep, with the round's slice played: the world waits for the models, and so
+        // does the match clock -- thinking past the slice is no time in the world.
         if (this.lockstepFrozen()) return 0;
         return this.effectiveSimSpeed();
     }
@@ -961,18 +961,23 @@ class Game {
     static get CHECKPOINT_DETAIL_EVERY() { return 6; }
 
     // ---- Lockstep (an option of turn-based play) ------------------------------------
-    // The world stands still while a round's seats think. When the round's moves have
-    // run, it is granted exactly one slice of simulated time -- a whole number of steps
-    // -- plays it at the chosen tempo, and stops again for the next round. So every
-    // round spans the same world time however long the models take: the precise form
-    // of slowing the game down. The tempo buttons only decide how fast a slice plays
-    // on screen. null when off.
+    // The slice is the most simulated time the world plays past the state a round's seats
+    // were sent. When a round is asked the slice starts over -- a whole number of steps --
+    // and the world plays it at the chosen tempo while the seats think. If every move is
+    // in sooner, the round ends there and the next is asked on the current world; if not,
+    // the world stops at the slice's end and waits (b1090; until b1089 it stood still
+    // through the thinking and played the whole slice after the moves). So no model ever
+    // answers a state older than one slice, however long it takes: the precise form of
+    // slowing the game down. The tempo buttons only decide how fast a slice plays on
+    // screen. null when off.
     static lockstepSliceMs(v) {
         const n = Math.round(Number(v) / Game.SIM_STEP_MS) * Game.SIM_STEP_MS;
         return n >= Game.SIM_STEP_MS && n <= 60000 ? n : null;
     }
     lockstepFrozen() { return !!this._lockstep && this._lockstep.budget < Game.SIM_STEP_MS; }
     grantLockstep() { if (this._lockstep) this._lockstep.budget += this._lockstep.sliceMs; }
+    // A round asked: the slice starts over from the world as it stands, whatever was left.
+    restartLockstep() { if (this._lockstep) this._lockstep.budget = this._lockstep.sliceMs; }
 
     stepOnce() {
         const dt = Game.SIM_STEP_MS;

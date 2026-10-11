@@ -37,9 +37,12 @@ const WarConditions = {
     },
     hash(v) { return warSha256(typeof v === 'string' ? v : WarConditions.canon(v)); },
     // Lockstep rounds with different slices are different games: the slice is part of it.
+    // So is what the slice means: since b1090 ('max-age') the most the world plays while
+    // the seats think, before that a fixed slice played after their moves.
     protocolOf(header) {
         if (!header || !header.turnBased) return 'real-time';
-        return header.lockstepSliceMs ? 'turn-based-lockstep-' + header.lockstepSliceMs + 'ms' : 'turn-based';
+        if (!header.lockstepSliceMs) return 'turn-based';
+        return 'turn-based-lockstep-' + (header.lockstepMode === 'max-age' ? 'max-age-' : '') + header.lockstepSliceMs + 'ms';
     },
 
     // Source text of a file as this page loaded it: the same ?v= the script tag used, so

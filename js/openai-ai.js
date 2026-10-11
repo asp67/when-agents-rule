@@ -2673,9 +2673,15 @@ class OpenAIAIManager {
                 spawnLayout: (this.game.terrain && this.game.terrain.jitteredSpawns) ? 'jittered' : 'circle',
                 turnBased: !!this.turnBased,
                 roundTimeoutMs: this.turnBased ? this.roundTimeoutMs() : null,
-                // Lockstep: world milliseconds per round (the world is frozen while seats
-                // think). null = the world runs on while they do. See WarConditions.protocolOf.
+                // Lockstep: world milliseconds per round. null = the world runs on while the
+                // seats think. See WarConditions.protocolOf.
                 lockstepSliceMs: (this.turnBased && this.game && this.game._lockstep) ? this.game._lockstep.sliceMs : null,
+                // b1090: the slice is the most the world plays past the state the seats were
+                // sent ('max-age'): it runs while they think, a round ends as soon as every
+                // move is in, and it halts at the slice's end otherwise. Absent before, when
+                // the world stood still through the thinking and played the whole slice
+                // after the moves: a different game.
+                lockstepMode: (this.turnBased && this.game && this.game._lockstep) ? 'max-age' : undefined,
                 simSpeed: this.game.simSpeed || 1,
                 wonderRequired: this.game.wonderRequired || null,
                 // Game seconds per countdown second; absent before build 1021, where it was 1.
@@ -3946,7 +3952,7 @@ class OpenAIAIManager {
         // deadline there, and a field that answers a question the mode never asks is
         // one more thing to reason past.
         if (this.turnBased) clockObj.secondsToAnswer = Math.round(this.roundTimeoutMs() / 1000);
-        // Lockstep: the world waits for every answer, then moves on by exactly this much.
+        // Lockstep: the most the world plays per round, while the seats think.
         if (this.turnBased && this.game && this.game._lockstep) clockObj.worldSecondsPerRound = this.game._lockstep.sliceMs / 1000;
 
         // --- Game stats ---
@@ -9560,13 +9566,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             this.flushRound(live);
             this._roundPhase = 'ask';
             this._roundEndedAt = now;
-            // Lockstep: the round's moves are in; the world now plays its one slice.
-            if (lockstep) game.grantLockstep();
             return;
         }
-        // Lockstep: the next round is asked only once that slice has been played, so
-        // every seat reads the world exactly one slice later than the last time.
-        if (lockstep && !game.lockstepFrozen()) return;
         // A pause asked for mid-round is honoured HERE, at the boundary: the round that
         // was already asked has just flushed above, and the next one is simply not
         // opened. Pausing therefore always lands between rounds, never inside one.
@@ -9588,6 +9589,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         live.forEach(c => { c._failMark = this.laneFailTotal(c); });
         this.resetKickoffBudget(live);
         this.fillLanes(live, now);
+        // Lockstep (b1090, asp67): the seats have the world as it stands, and the slice
+        // starts over from here. The world plays on while they think and halts at the
+        // slice's end if they are still thinking, so the state a seat answers is never
+        // older than one slice. When every move is in sooner, the round simply ends
+        // there (above) and the next one is asked on the current world. Until b1089 the
+        // world stood still through the thinking and played the slice after the moves,
+        // so a round took the thinking time PLUS the slice on screen.
+        if (lockstep) game.restartLockstep();
     }
 
     // Where a round takes effect. Every move runs here, back to back, with no
