@@ -1,0 +1,38 @@
+{
+  "schema": "war-scenario-v1",
+  "id": "search-01",
+  "family": "fog-search",
+  "title": "Find the hidden camp",
+  "objective": "An enemy war camp is hidden somewhere on the map, in the fog. Find it. Your army stands by your Town Center at ({{tc.x}}, {{tc.z}}).",
+  "rounds": 12,
+  "board": {
+    "seed": "search-01",
+    "seats": [
+      { "civ": "greek", "age": "bronze",
+        "buildings": [["town_center", -300, -300, { "tag": "tc" }]],
+        "units": [
+          ["scout_cavalry", -255, -245], ["scout_cavalry", -250, -245], ["scout_cavalry", -245, -245], ["scout_cavalry", -240, -245],
+          ["archer", -255, -255], ["archer", -250, -255], ["archer", -245, -255], ["archer", -240, -255],
+          ["militia", -255, -265], ["militia", -250, -265], ["militia", -245, -265], ["militia", -240, -265],
+          ["warrior", -255, -275], ["warrior", -250, -275], ["warrior", -245, -275], ["warrior", -240, -275]] },
+      { "civ": "persian", "age": "bronze", "resources": { "food": 400, "wood": 200, "stone": 100, "gold": 100 },
+        "buildings": [["barracks", 160, 250, { "tag": "camp" }], ["house", 182, 262]] }
+    ]
+  },
+  "until": { "seen": "camp" },
+  "notes": { "found": { "seen": "camp" } },
+  "graded": { "parts": {
+    "units": { "travelShare": { "type": "scout_cavalry" } },
+    "spread": { "exploredRate": 0.017 },
+    "routes": { "orderShare": { "action": "explore", "with": "then" } }
+  } },
+  "variants": ["identity", "rot90", "rot180", "rot270", "mirrorX", "mirrorZ", "diagonal", "antidiagonal"],
+  "reference": [
+    { "round": 1, "commands": [
+      { "action": "explore", "params": { "tile": "D1", "then": ["G1", "G4"], "unitType": "scout_cavalry" } },
+      { "action": "explore", "params": { "tile": "D4", "then": ["G7"], "unitType": "scout_cavalry" } },
+      { "action": "explore", "params": { "tile": "A4", "then": ["A7", "D7"], "unitType": "scout_cavalry" } }] },
+    { "round": 2, "commands": [
+      { "action": "explore", "params": { "tile": "C3", "then": ["E3", "E5"], "unitType": "scout_cavalry" } }] }
+  ]
+}

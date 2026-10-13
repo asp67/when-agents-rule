@@ -8,14 +8,14 @@ const S = require('../tools/bench/scenario.cjs');
 
 const ALL = S.loadAll();
 
-test('the scenario set: three smoke families, unique ids, filed under their family', () => {
-    assert.deepEqual([...new Set(ALL.map(s => s.family))].sort(), ['grounded-target', 'production-recovery', 'spatial-guard']);
+test('the scenario set: four families, unique ids, filed under their family', () => {
+    assert.deepEqual([...new Set(ALL.map(s => s.family))].sort(), ['fog-search', 'grounded-target', 'production-recovery', 'spatial-guard']);
     assert.equal(new Set(ALL.map(s => s.id)).size, ALL.length);
     const dir = path.join(__dirname, '../benchmarks/scenarios');
     for (const s of ALL) assert.ok(fs.existsSync(path.join(dir, s.family, s.id + '.json')), s.id);
 });
 
-for (const s of ALL) {
+for (const s of ALL.filter(x => !x.graded)) {
     test(`${s.id}: the reference solves every variant, and doing nothing solves none`, async () => {
         for (const v of s.variants) {
             const ref = await S.play(s, v, S.referencePolicy());
@@ -31,6 +31,53 @@ for (const s of ALL) {
 test('the page\'s scenario index lists exactly the scenario files', () => {
     const index = JSON.parse(fs.readFileSync(path.join(__dirname, '../benchmarks/scenarios/index.json'), 'utf8'));
     assert.deepEqual(index.scenarios.slice().sort(), ALL.map(s => s.family + '/' + s.id + '.json').sort());
+});
+
+// fog-search (b1094, asp67): finding the camp is luck, so it is a note, never the score.
+// The score is how the search was run: the scouts' share of the marching, new ground
+// per round, and explore orders that carry a route. The reference -- four scouts on
+// four separate routes -- earns full marks in every variant; the ways models actually
+// fail rank below it in the order a player would rank them; standing still earns 0.
+test('search-01: the search is graded on how it was run, in the order a player would rank it', async () => {
+    const s = ALL.find(x => x.id === 'search-01');
+    const W = require('../js/bench-core.js');
+    const policies = {
+        reference: S.referencePolicy,
+        noRoutes: () => ({ round }) => round === 1 ? [{ action: 'explore', params: { tile: 'G1' } }, { action: 'explore', params: { tile: 'G7' } },
+            { action: 'explore', params: { tile: 'A7' } }] : round === 2 ? [{ action: 'explore', params: { tile: 'D4' } }] : [],
+        // One explore a turn, the unit left to the harness: riders first, then slower soldiers.
+        onePerTurn: () => ({ round }) => [{ action: 'explore', params: { tile: ['G1', 'D4', 'A7', 'G7', 'D7', 'E3', 'C6', 'F2', 'B5', 'E6', 'G5', 'A2'][round - 1] } }],
+        // Everyone onto one far spot -- the camp's own tile, the best a blob can be aimed.
+        blob: () => ({ round, episode }) => round === 1 ? [{ action: 'move_units', params: { targetX: episode.realm.tags.camp.x, targetZ: episode.realm.tags.camp.z } }] : [],
+        noop: S.noopPolicy,
+    };
+    for (const v of s.variants) {
+        const r = {};
+        for (const [k, mk] of Object.entries(policies)) r[k] = await S.play(s, v, mk());
+        for (const x of Object.values(r)) assert.equal(x.outcome, 'graded', v);
+        assert.ok(r.reference.score >= 0.95, `${v}: reference ${r.reference.score} ${JSON.stringify(r.reference.parts)}`);
+        assert.deepEqual(Object.keys(r.reference.parts), ['units', 'spread', 'routes']);
+        assert.equal(r.reference.parts.routes, 1);
+        assert.equal(r.noRoutes.parts.routes, 0);
+        assert.ok(r.reference.score > r.noRoutes.score && r.noRoutes.score > r.blob.score && r.onePerTurn.score > r.blob.score,
+            `${v}: ${Object.entries(r).map(([k, x]) => k + ' ' + x.score).join(', ')}`);
+        assert.ok(r.blob.parts.units < 0.5 && r.blob.parts.spread < 0.35, `${v}: blob ${JSON.stringify(r.blob.parts)}`);
+        assert.equal(W.episodeScore(r.noop), 0);
+        // Found or not is recorded, and ends the search, but scores nothing by itself.
+        for (const x of Object.values(r)) {
+            assert.ok('found' in x.notes);
+            if (x.notes.found != null) assert.equal(x.rounds, x.notes.found);
+        }
+    }
+});
+
+test('a variant turns explore tiles with the board', () => {
+    const s = ALL.find(x => x.id === 'search-01');
+    const ref = v => S.instantiate(s, v).reference[0].commands[0].params;
+    assert.deepEqual([ref('identity').tile, ref('identity').then], ['D1', ['G1', 'G4']]);
+    assert.deepEqual([ref('rot180').tile, ref('rot180').then], ['D7', ['A7', 'A4']]);
+    assert.deepEqual([ref('diagonal').tile, ref('diagonal').then], ['A4', ['A7', 'D7']]);
+    assert.deepEqual([ref('mirrorX').tile, ref('mirrorX').then], ['D1', ['A1', 'A4']]);
 });
 
 test('an episode is the same every time it is played', async () => {

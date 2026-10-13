@@ -5,8 +5,10 @@
 // browser's Benchmark page; the paired bootstrap, which compares two whole runs, is Node's.
 const { wilson, choose, passHatK, cellsOf, rngFor } = require('../../js/bench-core.js');
 
-// Stratified paired block bootstrap of the difference in success rate between two runs
-// over the SAME cells (A - B). A block is one cell with all its attempts; blocks are
+// Stratified paired block bootstrap of the difference in mean score between two runs
+// over the SAME cells (A - B). The score is the success rate where a scenario is pass or
+// fail, and carries partial and graded credit where it has them (b1094): a graded
+// scenario has no successes at all, so a success rate would read every run as equal. A block is one cell with all its attempts; blocks are
 // resampled with replacement within their family, so every family keeps its weight.
 // Returns the observed difference and a percentile interval from `reps` resamples.
 function pairedBootstrap(resultsA, resultsB, { reps = 2000, level = 0.95, seed = 'bench' } = {}) {
@@ -16,7 +18,7 @@ function pairedBootstrap(resultsA, resultsB, { reps = 2000, level = 0.95, seed =
     const strata = new Map();
     for (const k of keys) {
         const fam = A.get(k).family;
-        const diff = A.get(k).successes / A.get(k).n - B.get(k).successes / B.get(k).n;
+        const diff = A.get(k).scoreSum / A.get(k).n - B.get(k).scoreSum / B.get(k).n;
         (strata.get(fam) || strata.set(fam, []).get(fam)).push(diff);
     }
     const fams = [...strata.keys()].sort();

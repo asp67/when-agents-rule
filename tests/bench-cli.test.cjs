@@ -11,8 +11,9 @@ test('run, verify and report, end to end', () => {
     try {
         const out = path.join(dir, 'scripted.warbench.jsonl.gz');
         const run = execFileSync(process.execPath, [CLI, 'run', '--policy', 'scripted', '--variants', 'identity', '--out', out], { encoding: 'utf8' });
-        assert.match(run, /scripted: 3 episodes, success 100\.0%/);
-        assert.match(execFileSync(process.execPath, [CLI, 'verify', out], { encoding: 'utf8' }), /verified: 3 episodes replay identically/);
+        // Four scenarios; the graded fog search has no success, so the score carries it.
+        assert.match(run, /scripted: 4 episodes, score 1\.00 .*success 75\.0%/);
+        assert.match(execFileSync(process.execPath, [CLI, 'verify', out], { encoding: 'utf8' }), /verified: 4 episodes replay identically/);
         execFileSync(process.execPath, [CLI, 'report', out, '--out', path.join(dir, 'r.html')]);
         const html = fs.readFileSync(path.join(dir, 'r.html'), 'utf8');
         assert.match(html, /Verified: every episode replays identically/);

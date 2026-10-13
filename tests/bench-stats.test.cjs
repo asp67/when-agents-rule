@@ -51,14 +51,19 @@ test('a run scored: scripted above random-valid above noop, with the classes cou
     const runs = {};
     for (const b of ['noop', 'random-valid', 'scripted']) runs[b] = await runSuite(ALL, BASELINES[b], { attempts: b === 'random-valid' ? 2 : 1 });
     const sc = Object.fromEntries(Object.entries(runs).map(([b, r]) => [b, score(r)]));
-    assert.equal(sc.scripted.success.p, 1);
+    // Every pass/fail episode a success; the graded fog search at full marks.
+    assert.equal(sc.scripted.success.k, ALL.filter(s => !s.graded).reduce((n, s) => n + s.variants.length, 0));
+    assert.ok(sc.scripted.meanScore.mean >= 0.99, 'scripted ' + sc.scripted.meanScore.mean);
     assert.equal(sc.noop.success.p, 0);
-    assert.ok(sc['random-valid'].success.p < sc.scripted.success.p);
+    assert.equal(sc.noop.meanScore.mean, 0);
+    assert.ok(sc['random-valid'].meanScore.mean < sc.scripted.meanScore.mean);
     assert.equal(sc.noop.commands, 0);
     assert.equal(sc['random-valid'].passK[2] <= sc['random-valid'].passK[1], true);
     assert.ok(!('reference' in sc['random-valid'].classes) && !('uncoded' in sc['random-valid'].classes));
-    assert.deepEqual(Object.keys(sc.scripted.byFamily), ['grounded-target', 'production-recovery', 'spatial-guard']);
-    // Scripted against noop over the same cells: every cell one success apart.
+    assert.deepEqual(Object.keys(sc.scripted.byFamily), ['fog-search', 'grounded-target', 'production-recovery', 'spatial-guard']);
+    assert.deepEqual(Object.keys(sc.scripted.partsByScenario), ['search-01']);
+    // Scripted against noop over the same cells: every cell a full score apart, the
+    // graded one within its measure's rounding.
     const cmp = pairedBootstrap(runs.scripted, runs.noop);
-    assert.deepEqual([cmp.diff, cmp.lo, cmp.hi], [1, 1, 1]);
+    assert.ok(cmp.diff >= 0.99 && cmp.lo >= 0.99 && cmp.hi <= 1, JSON.stringify(cmp));
 });

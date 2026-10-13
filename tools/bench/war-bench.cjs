@@ -56,6 +56,9 @@ code { font-size:13px; } .grid { overflow-x:auto; }
 <h1>WAR Bench report</h1>
 <p class="n">Policy <b>${esc(head.policy.name)}</b> (${esc(head.policy.kind)}) · protocol ${esc(head.protocol.scenario)}, ${head.protocol.roundMs / 1000} s rounds, ${head.protocol.ceilingMs / 1000} s ceiling · core <code>${esc(head.coreHash.slice(0, 16))}</code> · harness <code>${esc(head.harnessHash.slice(0, 16))}</code></p>
 ${verdict}
+<h2>Score</h2>
+<table><tr><td>All ${sc.episodes} episodes, mean score</td><td>${sc.meanScore && sc.meanScore.mean != null ? `${sc.meanScore.mean.toFixed(2)} <span class="ci">[${sc.meanScore.lo.toFixed(2)}, ${sc.meanScore.hi.toFixed(2)}]</span>` : '–'}</td></tr>
+${Object.entries(sc.partsByScenario || {}).map(([id, p]) => `<tr><td>${esc(id)}, graded parts</td><td>${Object.entries(p).map(([k, v]) => esc(k) + ' ' + v.toFixed(2)).join(' · ')}</td></tr>`).join('')}</table>
 <h2>Success</h2>
 <table><tr><td>All ${sc.episodes} episodes</td><td>${ci(sc.success)}</td></tr>
 ${Object.entries(sc.passK).map(([k, v]) => `<tr><td>pass^${k}</td><td>${pct(v)}</td></tr>`).join('')}</table>
@@ -65,9 +68,9 @@ ${Object.entries(sc.passK).map(([k, v]) => `<tr><td>pass^${k}</td><td>${pct(v)}<
 <table>${Object.entries(sc.classes).sort().map(([k, n]) => `<tr><td>${esc(k)}</td><td>${n}</td></tr>`).join('')}
 <tr><td class="n">commands per round</td><td class="n">${sc.commandsPerRound.toFixed(2)}</td></tr></table>
 <h2>Episodes</h2><div class="grid"><table><tr><th>Scenario</th><th>Variant</th><th>Attempt</th><th>Outcome</th><th>Rounds</th></tr>
-${episodes.map(e => `<tr><td>${esc(e.id)}</td><td>${esc(e.variant)}</td><td>${e.attempt}</td><td class="${e.outcome === 'success' ? 'ok' : 'bad'}">${esc(e.outcome)}</td><td>${e.rounds}</td></tr>`).join('')}
+${episodes.map(e => `<tr><td>${esc(e.id)}</td><td>${esc(e.variant)}</td><td>${e.attempt}</td><td class="${e.outcome === 'success' ? 'ok' : e.outcome === 'failure' ? 'bad' : ''}">${esc(e.outcome)}${e.score != null ? ' ' + e.score : ''}</td><td>${e.rounds}</td></tr>`).join('')}
 </table></div>
-<p class="n">Intervals are 95 % Wilson intervals. pass^k is the chance that k attempts at the same scenario and variant all succeed.</p>
+<p class="n">The score is 1 for a success, the advantage built for an episode out of time (partial), how it was played for a graded scenario, and 0 for a failure. Intervals are 95 %; success intervals are Wilson's. pass^k is the chance that k attempts at the same scenario and variant all succeed.</p>
 </body></html>
 `;
 }
@@ -100,7 +103,7 @@ async function main() {
         B.write(lines, out);
         fs.unlinkSync(partial);
         const sc = JSON.parse(lines[lines.length - 1]).score;
-        console.log(`${name}: ${sc.episodes} episodes, success ${pct(sc.success.p)} [${pct(sc.success.lo)}, ${pct(sc.success.hi)}] -> ${out}`);
+        console.log(`${name}: ${sc.episodes} episodes, score ${sc.meanScore.mean.toFixed(2)} [${sc.meanScore.lo.toFixed(2)}, ${sc.meanScore.hi.toFixed(2)}], success ${pct(sc.success.p)} [${pct(sc.success.lo)}, ${pct(sc.success.hi)}] -> ${out}`);
     } else if (cmd === 'calibrate') {
         const cfg = JSON.parse(fs.readFileSync(a.model, 'utf8'));
         const s = S.loadAll().find(x => x.id === (a.scenario || 'recover-01'));

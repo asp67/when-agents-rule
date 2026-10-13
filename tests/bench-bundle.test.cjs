@@ -91,7 +91,8 @@ test('a model run verifies with no model reachable, and a forged response is cau
     };
     const lines = await B.record({ scenarios: ALL, variants: ['identity'], policy: { name: 'stub', kind: 'model', config: CFG, make } });
     const close = JSON.parse(lines[lines.length - 1]);
-    assert.equal(close.score.success.p, 1, 'the stub plays the reference');
+    assert.equal(close.score.success.k, ALL.filter(s => !s.graded).length, 'the stub plays the reference');
+    assert.ok(close.score.meanScore.mean >= 0.99, 'the graded search too: ' + close.score.meanScore.mean);
     const v = await B.verify(lines);   // the replay's fetch never reaches a network
     assert.deepEqual(v.problems, []);
     // Forge the first response: the replay executes different commands from it.

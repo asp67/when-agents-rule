@@ -122,7 +122,7 @@ class BenchPage {
                 <legend><label><input type="checkbox" data-family="${this.esc(f)}" ${all ? 'checked' : ''} onchange="game.ui.benchPage().toggleFamily(this)"> ${this.esc(t('bench.family.' + f))}</label></legend>
                 ${list.map(s => `<label class="bench-scn"><input type="checkbox" data-scenario="${this.esc(s.id)}" data-of="${this.esc(f)}" ${chosen.has(s.id) ? 'checked' : ''} onchange="game.ui.benchPage().syncFamily('${this.esc(f)}')">
                     <span class="bench-scn-title">${this.esc(s.title)}</span>
-                    <span class="bench-scn-meta">${this.esc(s.id)} · ${this.esc(t('bench.scnRounds', { n: s.rounds, s: s.rounds * WarBench.ROUND_MS / 1000 }))}${s.partial ? ' · ' + this.esc(t('bench.scnPartial')) : ''}</span>
+                    <span class="bench-scn-meta">${this.esc(s.id)} · ${this.esc(t('bench.scnRounds', { n: s.rounds, s: s.rounds * WarBench.ROUND_MS / 1000 }))}${s.partial ? ' · ' + this.esc(t('bench.scnPartial')) : ''}${s.graded ? ' · ' + this.esc(t('bench.scnGraded')) : ''}</span>
                     <span class="bench-scn-obj">${this.esc(s.objective.replace(/\{\{[^}]+\}\}/g, '…'))}</span></label>`).join('')}
             </fieldset>`;
         }).join('');
@@ -353,6 +353,7 @@ class BenchPage {
             const ms = out.ms || [];
             return { id: step.scenario.id, family: step.scenario.family, title: step.scenario.title, variant: step.variant,
                 attempt: step.attempt, outcome: out.result.outcome, score: WarBench.episodeScore(out.result),
+                parts: out.result.parts || null, notes: out.result.notes || null,
                 rounds: out.result.rounds, maxRounds: step.scenario.rounds, stopped: out.result.stopped || null,
                 unanswered: (out.rounds || []).filter(r => r.answer == null).length, seat: out.seat || null,
                 ms: ms.length ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null, maxMs: ms.length ? Math.round(Math.max(...ms)) : null,
@@ -379,11 +380,11 @@ class BenchPage {
         const step = run.plan[Math.min(run.index, total - 1)];
         const frac = total ? (done + (run.rounds ? Math.min(1, run.round / run.rounds) : 0)) / total : 0;
         const pct = Math.round(frac * 100);
-        const mark = o => ({ success: '✓', partial: '◐', failure: '✗' })[o] || '·';
+        const mark = o => ({ success: '✓', partial: '◐', graded: '◆', failure: '✗' })[o] || '·';
         const list = run.done.slice(-12).reverse().map(d => {
             const r = d.out.result;
             return `<li class="bench-ep bench-${r.outcome}"><span class="bench-mark" aria-hidden="true">${mark(r.outcome)}</span>
-                ${this.esc(d.step.scenario.title)} <span class="bench-ep-meta">${this.esc(d.step.variant)} · ${this.esc(t('bench.outcome.' + r.outcome))}${r.outcome === 'partial' ? ' ' + Math.round(r.score * 100) + ' %' : ''} · ${this.esc(t('bench.roundsOf', { n: r.rounds, of: d.step.scenario.rounds }))}${r.stopped ? ' · ' + this.esc(t('bench.timeUp')) : ''}</span></li>`;
+                ${this.esc(d.step.scenario.title)} <span class="bench-ep-meta">${this.esc(d.step.variant)} · ${this.esc(t('bench.outcome.' + r.outcome))}${r.outcome === 'partial' || r.outcome === 'graded' ? ' ' + Math.round(r.score * 100) + ' %' : ''}${r.notes && r.notes.found != null ? ' · ' + this.esc(t('bench.foundIn', { r: r.notes.found })) : ''} · ${this.esc(t('bench.roundsOf', { n: r.rounds, of: d.step.scenario.rounds }))}${r.stopped ? ' · ' + this.esc(t('bench.timeUp')) : ''}</span></li>`;
         }).join('');
         const body = `
             <section class="arena-section bench-progress" aria-live="polite">
@@ -421,7 +422,15 @@ class BenchPage {
             const classes = {};
             for (const e of eps) for (const [k, v] of Object.entries(e.classes || {})) classes[k] = (classes[k] || 0) + v;
             const commands = Object.values(classes).reduce((a, b) => a + b, 0);
-            return { id, title, n, success: count('success'), partial: count('partial'), failure: count('failure'),
+            // A graded scenario's parts, averaged, and how often the notes came true --
+            // "found" among them: recorded, never scored.
+            const graded = eps.filter(e => e.parts);
+            const parts = {};
+            for (const e of graded) for (const [k, v] of Object.entries(e.parts)) parts[k] = (parts[k] || 0) + v / graded.length;
+            const noted = eps.filter(e => e.notes && 'found' in e.notes), found = noted.filter(e => e.notes.found != null);
+            return { id, title, n, success: count('success'), partial: count('partial'), failure: count('failure'), graded: count('graded'),
+                parts: graded.length ? parts : null,
+                found: noted.length ? { n: noted.length, k: found.length, round: found.length ? found.reduce((a, e) => a + e.notes.found, 0) / found.length : null } : null,
                 score: WarBench.meanScore(eps.map(e => e.score || 0)), rate: WarBench.wilson(count('success'), n),
                 ms: timed.length ? timed.reduce((a, e) => a + e.ms, 0) / timed.length : null,
                 tokensPerRound: rounds && tok ? tok / rounds : null,
@@ -434,7 +443,8 @@ class BenchPage {
 
     // One row per scenario: the outcome shares as a stacked bar (success, partial,
     // failure in the status colors, each with its mark in the legend and the table),
-    // and the mean score at the end of the row.
+    // and the mean score at the end of the row. A graded scenario has no outcomes to
+    // share out: its row is the mean score itself, as a bar, with its interval.
     chart(agg) {
         const rows = [agg.all, ...agg.rows];
         const W = 720, labelW = 210, barW = 330, rowH = 34, top = 8, x0 = labelW;
@@ -443,16 +453,20 @@ class BenchPage {
         const seg = (x, w, cls, tip) => w > 0 ? `<rect class="bench-seg ${cls}" x="${x.toFixed(1)}" y="0" width="${Math.max(0, w).toFixed(1)}" height="16" rx="2"><title>${this.esc(tip)}</title></rect>` : '';
         const body = rows.map((r, i) => {
             const y = top + i * rowH;
-            const parts = [['success', r.success], ['partial', r.partial], ['failure', r.failure]].filter(p => p[1] > 0);
+            const parts = [['success', r.success], ['partial', r.partial], ['graded', r.graded], ['failure', r.failure]].filter(p => p[1] > 0);
             const gap = 2, usable = barW - gap * Math.max(0, parts.length - 1);
             let x = x0;
-            const segs = parts.map(([o, k]) => {
-                const w = usable * k / r.n;
-                const s = seg(x, w, 'bench-' + o, `${t('bench.outcome.' + o)}: ${k} / ${r.n} (${pct(k / r.n)} %)`);
-                x += w + gap;
-                return s;
-            }).join('');
             const sc = r.score;
+            const segs = r.graded === r.n && sc.mean != null
+                ? `<rect class="bench-track" x="${x0}" y="0" width="${barW}" height="16" rx="2"></rect>`
+                  + seg(x0, barW * sc.mean, 'bench-graded', `${t('bench.outcome.graded')}: ${sc.mean.toFixed(2)}`)
+                  + `<line class="bench-whisker" x1="${(x0 + barW * sc.lo).toFixed(1)}" x2="${(x0 + barW * sc.hi).toFixed(1)}" y1="22" y2="22"></line>`
+                : parts.map(([o, k]) => {
+                    const w = usable * k / r.n;
+                    const s = seg(x, w, 'bench-' + o, `${t('bench.outcome.' + o)}: ${k} / ${r.n} (${pct(k / r.n)} %)`);
+                    x += w + gap;
+                    return s;
+                }).join('');
             const label = sc.mean == null ? '–' : `${sc.mean.toFixed(2)}  [${sc.lo.toFixed(2)}–${sc.hi.toFixed(2)}]`;
             const name = r.title.length > 30 ? r.title.slice(0, 29) + '…' : r.title;
             return `<g transform="translate(0,${y})" class="${i === 0 ? 'bench-row-all' : ''}">
@@ -462,7 +476,8 @@ class BenchPage {
                 <text x="${x0 + barW + 12}" y="26" class="bench-chart-n">n = ${r.n}</text>
             </g>`;
         }).join('');
-        const legend = ['success', 'partial', 'failure'].map(o => `<span class="bench-key"><i class="bench-swatch bench-${o}"></i>${({ success: '✓', partial: '◐', failure: '✗' })[o]} ${this.esc(t('bench.outcome.' + o))}</span>`).join('');
+        const kinds = ['success', 'partial'].concat(agg.all.graded ? ['graded'] : [], ['failure']);
+        const legend = kinds.map(o => `<span class="bench-key"><i class="bench-swatch bench-${o}"></i>${({ success: '✓', partial: '◐', graded: '◆', failure: '✗' })[o]} ${this.esc(t('bench.outcome.' + o))}</span>`).join('');
         return `<div class="bench-legend">${legend}<span class="bench-key bench-key-score">${this.esc(t('bench.scoreKey'))}</span></div>
             <div class="bench-chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${this.esc(t('bench.chartLabel'))}">${body}</svg></div>`;
     }
@@ -471,16 +486,33 @@ class BenchPage {
         const pct = v => v == null ? '–' : Math.round(v * 100) + ' %';
         const ci = w => w.p == null ? '–' : `${pct(w.p)} <span class="bench-ci">[${pct(w.lo)}–${pct(w.hi)}]</span>`;
         const sc = s => s.mean == null ? '–' : `${s.mean.toFixed(2)} <span class="bench-ci">[${s.lo.toFixed(2)}–${s.hi.toFixed(2)}]</span>`;
+        const graded = !!agg.all.graded;
         const row = (r, all) => `<tr class="${all ? 'bench-row-all' : ''}"><th scope="row">${this.esc(r.title)}</th><td>${r.n}</td>
-            <td>${r.success}</td><td>${r.partial}</td><td>${r.failure}</td><td>${sc(r.score)}</td><td>${ci(r.rate)}</td>
+            <td>${r.success}</td><td>${r.partial}</td>${graded ? `<td>${r.graded}</td>` : ''}<td>${r.failure}</td><td>${sc(r.score)}</td>
+            <td>${r.graded === r.n ? '–' : ci(r.rate)}</td>
             <td>${r.ms == null ? '–' : (r.ms / 1000).toFixed(1) + ' s'}</td><td>${r.tokensPerRound == null ? '–' : Math.round(r.tokensPerRound)}</td>
             <td>${pct(r.refused)}</td><td>${r.rounds ? pct(r.unanswered / r.rounds) : '–'}</td><td>${r.stopped || 0}</td></tr>`;
         return `<div class="bench-table-wrap"><table class="bench-table">
             <thead><tr><th scope="col">${t('bench.col.scenario')}</th><th scope="col">${t('bench.col.runs')}</th>
-                <th scope="col">✓ ${t('bench.outcome.success')}</th><th scope="col">◐ ${t('bench.outcome.partial')}</th><th scope="col">✗ ${t('bench.outcome.failure')}</th>
+                <th scope="col">✓ ${t('bench.outcome.success')}</th><th scope="col">◐ ${t('bench.outcome.partial')}</th>${graded ? `<th scope="col">◆ ${t('bench.outcome.graded')}</th>` : ''}<th scope="col">✗ ${t('bench.outcome.failure')}</th>
                 <th scope="col">${t('bench.col.score')}</th><th scope="col">${t('bench.col.rate')}</th><th scope="col">${t('bench.col.answer')}</th>
                 <th scope="col">${t('bench.col.tokens')}</th><th scope="col">${t('bench.col.refused')}</th><th scope="col">${t('bench.col.noAnswer')}</th><th scope="col">${t('bench.col.timeUp')}</th></tr></thead>
-            <tbody>${row(agg.all, true)}${agg.rows.map(r => row(r, false)).join('')}</tbody></table></div>`;
+            <tbody>${row(agg.all, true)}${agg.rows.map(r => row(r, false)).join('')}</tbody></table></div>${this.gradedTable(agg)}`;
+    }
+
+    // How a graded scenario was played, part by part, and whether the thing was found --
+    // which is luck, so it is shown beside the grade and never in it.
+    gradedTable(agg) {
+        const rows = agg.rows.filter(r => r.parts);
+        if (!rows.length) return '';
+        const names = [...new Set(rows.flatMap(r => Object.keys(r.parts)))];
+        const label = k => { const key = 'bench.part.' + k; const v = t(key); return v === key ? k : v; };
+        return `<h4>${t('bench.gradedTitle')}</h4>
+            <div class="bench-table-wrap"><table class="bench-table">
+            <thead><tr><th scope="col">${t('bench.col.scenario')}</th>${names.map(k => `<th scope="col">${this.esc(label(k))}</th>`).join('')}<th scope="col">${t('bench.col.found')}</th></tr></thead>
+            <tbody>${rows.map(r => `<tr><th scope="row">${this.esc(r.title)}</th>${names.map(k => `<td>${r.parts[k] == null ? '–' : r.parts[k].toFixed(2)}</td>`).join('')}
+                <td>${!r.found ? '–' : this.esc(r.found.k ? t('bench.foundCell', { k: r.found.k, n: r.found.n, r: r.found.round.toFixed(1) }) : t('bench.foundNone', { n: r.found.n }))}</td></tr>`).join('')}</tbody></table></div>
+            <p class="arena-hint">${t('bench.gradedHint')}</p>`;
     }
 
     describeRun(s) {

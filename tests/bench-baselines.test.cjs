@@ -8,12 +8,17 @@ const { runSuite } = require('../tools/bench/runner.cjs');
 
 const ALL = S.loadAll();
 
-test('noop fails every episode and scripted solves every one', async () => {
+// A graded scenario (b1094) has no success: the reference earns full marks there,
+// within the rounding of a measure, and standing still earns nothing.
+const W = require('../js/bench-core.js');
+const fullMarks = r => r.outcome === 'success' || (r.outcome === 'graded' && r.score >= 0.95);
+
+test('noop scores nothing in any episode and scripted earns full marks in every one', async () => {
     const noop = await runSuite(ALL, BASELINES.noop);
     const scripted = await runSuite(ALL, BASELINES.scripted);
     assert.equal(noop.length, ALL.reduce((n, s) => n + s.variants.length, 0));
-    assert.ok(noop.every(r => r.outcome === 'failure'));
-    assert.ok(scripted.every(r => r.outcome === 'success'));
+    assert.ok(noop.every(r => W.episodeScore(r) === 0 && r.outcome !== 'success'));
+    assert.ok(scripted.every(fullMarks), scripted.filter(r => !fullMarks(r)).map(r => `${r.id}/${r.variant} ${r.outcome} ${r.score}`).join(', '));
 });
 
 test('random-valid earns constraint errors at most, never a reference error', async () => {

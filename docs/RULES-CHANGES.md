@@ -6,6 +6,39 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1094: a benchmark scenario graded on how the model searches the fog (13 October 2026)
+
+**No match rules change.** This adds a new WAR Bench scenario family, `fog-search`, with `search-01` "Find the hidden camp". It is asp67's idea: finding something in the fog, the task most models struggle with. Whether the camp is found is luck, so it is never the score. **How the search was run** is.
+
+**The board.** On the 800 map, 4 scouts, 4 archers, 4 militia and 4 warriors stand by the Town Center in one corner. An enemy barracks with a house (the camp) is hidden in the fog on the far side. The run has 12 rounds of 10 s and ends early at the round the camp is first seen.
+
+**The grade** is the mean of three parts, each from 0 to 1, kept per run:
+- **Right units:** the scouts' share of all the ground the army covered.
+- **Spread:** new ground uncovered per round, against 1.7 % of the map per round, the pace of four scouts on four separate routes.
+- **Waypoints:** the share of carried-out `explore` orders that had a route (`then`).
+
+| Played as (mean over 8 orientations) | Grade |
+|---|---|
+| Four scouts on four separate routes (the reference) | 0.98–1.0 |
+| Scouts spread out, no routes | ~0.53 |
+| One `explore` a turn, unit left to the harness | ~0.42 |
+| All four scouts marched to one spot | ~0.39 |
+| Random valid moves | ~0.31 |
+| The whole army marched to one spot (even onto the camp's own tile) | ~0.16 |
+| Doing nothing | 0 |
+
+**What the scenario language gained** (`js/bench-core.js`):
+- `graded`, a measure scored however the run ends, giving outcome "graded".
+- `until`, a predicate that ends the run.
+- `notes`, predicates recorded, never scored ("found" and its round).
+- The predicate `seen`, read from the player's exploration bitmap.
+- The measures `travelShare`, `exploredRate`, `orderShare` and `parts`.
+- Explore tile labels and routes now turn with the board's eight orientations.
+- Each round's outcomes carry their command position `n`.
+- Scores gain `partsByScenario`. The paired bootstrap compares mean scores, not success rates, because a graded scenario has no successes.
+
+**The page** shows a graded scenario as a bar of its mean score with the 95 % interval, adds a Graded column, and adds a "How it searched" table: the three parts, and how often the camp was found and in which round, marked as luck and not scored. `war-bench` prints and reports the mean score too.
+
 ## Build 1093: explore without a named unit takes an idle one (13 October 2026)
 
 **Harness change.** `explore` with no `unitIds` and no `unitType` picks the unit itself: the farthest-seeing soldier. Its comment said "idle", but the code never checked. So a scout already on its way was picked again whenever it saw farthest. A seat that sent `explore` each turn without naming a unit re-aimed the same first rider every time and cut its route short, while the other riders stood at home.

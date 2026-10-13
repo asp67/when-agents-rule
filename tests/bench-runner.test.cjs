@@ -30,7 +30,7 @@ test('a model on the wire playing the reference solves every scenario, through t
         const seen = [];
         const inst = S.instantiate(s, 'identity');
         const r = await S.play(s, 'identity', modelPolicy(CFG, { fetchImpl: referenceModel(inst, seen) }));
-        assert.equal(r.outcome, 'success', `${s.id}: ${r.outcome}; ${r.log.map(e => e.results).join(' | ')}`);
+        assert.ok(r.outcome === 'success' || (r.outcome === 'graded' && r.score >= 0.95), `${s.id}: ${r.outcome} ${r.score || ''}; ${r.log.map(e => e.results).join(' | ')}`);
         assert.equal(seen.length, r.rounds, 'one request per round');
         // What the model was sent: the scenario's objective in place of the victory
         // paragraph, the fixed parameters, and a state that states the protocol.
@@ -86,7 +86,7 @@ test('runSuite plays every scenario x variant x attempt in a fixed order', async
     assert.equal(res.length, ALL.length * 2 * 2);
     assert.deepEqual(res.slice(0, 4).map(r => [r.id, r.variant, r.attempt]),
         [[ALL[0].id, 'identity', 1], [ALL[0].id, 'identity', 2], [ALL[0].id, 'rot90', 1], [ALL[0].id, 'rot90', 2]]);
-    assert.ok(res.every(r => r.outcome === 'success'));
+    assert.ok(res.every(r => r.outcome === 'success' || (r.outcome === 'graded' && r.score >= 0.95)));
 });
 
 test('a seat plays its own prompt: a prefix or a whole template, only the victory paragraph swapped', async () => {

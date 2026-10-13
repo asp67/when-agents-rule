@@ -329,6 +329,10 @@ body.broadcast-mode .arena-lineup.floating { bottom:calc(128px * var(--ui-scale,
 .bench-swatch.bench-success,.bench-seg.bench-success { background:var(--ok); fill:var(--ok); }
 .bench-swatch.bench-partial,.bench-seg.bench-partial { background:var(--part); fill:var(--part); }
 .bench-swatch.bench-failure,.bench-seg.bench-failure { background:var(--fail); fill:var(--fail); }
+.bench-swatch.bench-graded,.bench-seg.bench-graded { background:var(--gold); fill:var(--gold); }
+.bench-ep.bench-graded .bench-mark { color:var(--gold-2); }
+.bench-track { fill:#151a15; stroke:var(--line); stroke-width:1; }
+.bench-whisker { stroke:var(--text); stroke-width:2; stroke-linecap:round; }
 .bench-seg:hover { opacity:.82; }
 .bench-chart { overflow-x:auto; }
 .bench-chart svg { display:block; width:100%; min-width:560px; height:auto; }

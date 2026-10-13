@@ -101,7 +101,8 @@ test('a browser-recorded run verifies in Node: baselines and a model on the wire
         };
     };
     const model = await browserRun(ALL, { kind: 'model', cfg }, makeFetch);
-    assert.deepEqual(model.results.map(r => r.outcome), ALL.map(() => 'success'));
+    assert.deepEqual(model.results.map(r => r.outcome === 'graded' ? (r.score >= 0.95 ? 'full marks' : r.score) : r.outcome),
+        ALL.map(s => s.graded ? 'full marks' : 'success'));
     const v2 = await B.verify(model.lines);
     assert.equal(v2.ok, true, v2.problems.join('\n'));
     // The wire is in the bundle, and the answers were timed.

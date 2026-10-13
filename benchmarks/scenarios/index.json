@@ -1,6 +1,7 @@
 {
   "_note": "Every scenario the Benchmark page offers, as <family>/<id>.json. tests/bench-scenarios.test.cjs keeps this list equal to the files on disk.",
   "scenarios": [
+    "fog-search/search-01.json",
     "grounded-target/strike-01.json",
     "production-recovery/recover-01.json",
     "spatial-guard/ford-01.json"

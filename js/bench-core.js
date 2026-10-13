@@ -277,10 +277,24 @@ function setupBoard(realm, config) {
 //               rounds, or the run's wall-clock limit -- without success and without
 //               failing, it scores this measure of the advantage built, from 0 up to
 //               PARTIAL_CAP: never a win. Without a measure, or at 0, it failed.
+//   graded      (b1093) instead of success: a measure of HOW the subject played, scored
+//               when the episode ends -- for a task whose result is luck, like finding
+//               something in the fog. The outcome is "graded" and the score is the
+//               measure, 0 to 1. Its `parts` are kept per episode, so the report can say
+//               which part of the play was weak. `success` is then optional.
+//   until       optional predicate (b1093): the episode ends after the first round it
+//               holds -- a search ends when the thing is found, and the play that found
+//               it is graded on the rounds it took.
+//   notes       optional {name: predicate} (b1093): recorded, never scored -- the first
+//               round each held, or null. "Did it find the camp" is a note.
 //   variants    names from VARIANTS (the square's eight symmetries).
 //   reference   a proven solution, [{round, commands: [{action, params}]}]. Tests play it
 //               in every variant and require success; they also require that doing
 //               nothing fails, so no scenario is solved by standing still.
+//
+// Explore orders name map tiles, not coordinates: a board is the 800 map, 7 x 7 tiles
+// (BOARD_TILES), and a variant moves a tile label with its centre, so a reference
+// solution's route turns with the board.
 //
 // Everything is data: predicates and measures are a small closed JSON language
 // evaluated here, never code, so a scenario can be read, diffed and checked without
@@ -300,6 +314,7 @@ const VARIANTS = Object.freeze({
     antidiagonal: (x, z) => [-z, -x],
 });
 
+const BOARD_TILES = 7;
 const OPS = ['>=', '>', '==', '<', '<=', '!='];
 const OWNERS = ['subject', 'rival'];
 function tagOf(s, tag) {
@@ -335,6 +350,8 @@ function checkPredicate(p, where, s) {
         if (!tagOf(s, tag)) fail('unknown tag ' + tag);
     } else if ('eliminated' in p) {
         if (!OWNERS.includes(p.eliminated)) fail('eliminated takes subject or rival');
+    } else if ('seen' in p) {
+        if (!tagOf(s, p.seen)) fail('unknown tag ' + p.seen);
     } else if ('count' in p) {
         const extra = keys.filter(k => !['count', 'op', 'value'].includes(k));
         if (extra.length) fail('unknown keys ' + extra.join(', '));
@@ -342,11 +359,20 @@ function checkPredicate(p, where, s) {
         if (!OPS.includes(p.op) || !Number.isFinite(p.value)) fail('count needs op (' + OPS.join(' ') + ') and a numeric value');
     } else fail('unknown operator ' + keys[0]);
 }
-// Measures (the `partial` language), each a number from 0 to 1:
+// Measures (the `partial` and `graded` language), each a number from 0 to 1:
 //   {"damage": tag}                     the share of the tagged entity's health gone
 //   {"share": count, "of": n}           min(1, count / n), count as in a predicate
 //   {"gate": predicate, "then": m}      m while the predicate holds, else 0
 //   {"mean": [m, ...]}                  the mean of several
+//   {"parts": {name: m, ...}}           the mean of several, each kept by name
+// and three that read the episode, not only its last moment (b1093):
+//   {"travelShare": {"type"|"class"}}   that kind's share of all the ground the
+//                                       subject's units covered; 0 if nothing moved
+//   {"exploredRate": n}                 new ground the subject uncovered per round, as a
+//                                       share of the map, against n: min(1, rate / n)
+//   {"orderShare": {"action", "with"}}  of the subject's orders of that action that
+//                                       were carried out, the share whose params carry
+//                                       `with` (e.g. explore with "then": a route)
 function checkMeasure(m, where, s) {
     const fail = msg => { throw new Error(`${s.id}: ${where}: ${msg}`); };
     if (!m || typeof m !== 'object' || Array.isArray(m)) fail('a measure is an object');
@@ -356,6 +382,18 @@ function checkMeasure(m, where, s) {
     else if ('mean' in m) {
         if (!Array.isArray(m.mean) || !m.mean.length) fail('mean takes a non-empty list');
         m.mean.forEach((x, i) => checkMeasure(x, `${where}.mean[${i}]`, s));
+    } else if ('parts' in m) {
+        const names = Object.keys(m.parts || {});
+        if (!names.length) fail('parts takes at least one named measure');
+        names.forEach(k => checkMeasure(m.parts[k], `${where}.parts.${k}`, s));
+    } else if ('travelShare' in m) {
+        const t = m.travelShare || {};
+        if (!t.type === !t.class) fail('travelShare names a type or a class');
+    } else if ('exploredRate' in m) {
+        if (!(m.exploredRate > 0)) fail('exploredRate takes the share of the map per round that scores 1');
+    } else if ('orderShare' in m) {
+        const o = m.orderShare || {};
+        if (typeof o.action !== 'string' || typeof o.with !== 'string') fail('orderShare takes an action and a param name');
     } else fail('unknown measure ' + Object.keys(m)[0]);
 }
 function validate(s) {
@@ -364,8 +402,13 @@ function validate(s) {
     for (const k of ['id', 'family', 'title', 'objective']) if (typeof s[k] !== 'string' || !s[k]) fail('missing ' + k);
     if (!Number.isInteger(s.rounds) || s.rounds < 1 || s.rounds > 60) fail('rounds is 1..60');
     if (!s.board || !Array.isArray(s.board.seats) || s.board.seats.length !== 2) fail('board has two seats: subject, rival');
-    if (!s.success || !['any', 'end'].includes(s.success.when)) fail('success.when is any or end');
-    checkPredicate(s.success.predicate, 'success', s);
+    if (s.graded) checkMeasure(s.graded, 'graded', s);
+    if (s.success || !s.graded) {
+        if (!s.success || !['any', 'end'].includes(s.success.when)) fail('success.when is any or end');
+        checkPredicate(s.success.predicate, 'success', s);
+    }
+    if (s.until) checkPredicate(s.until, 'until', s);
+    if (s.notes) for (const [k, p] of Object.entries(s.notes)) checkPredicate(p, 'notes.' + k, s);
     if (s.failure) checkPredicate(s.failure, 'failure', s);
     if (s.invariant) {
         if (!Number.isInteger(s.invariant.from)) fail('invariant.from is a round');
@@ -390,8 +433,19 @@ function instantiate(s, variant = 'identity') {
     const move = e => { const [x, z] = f(e[1], e[2]); e[1] = x; e[2] = z; };
     for (const seat of c.board.seats) { (seat.units || []).forEach(move); (seat.buildings || []).forEach(move); }
     for (const k of Object.keys(c.points || {})) c.points[k] = f(c.points[k][0], c.points[k][1]);
+    // A tile label moves with its centre: column A.. and row 1.. on the board's grid,
+    // centred on the middle tile, so every symmetry maps a tile onto a tile.
+    const half = (BOARD_TILES - 1) / 2;
+    const moveTile = label => {
+        const m = /^([A-Za-z])(\d+)$/.exec(String(label).trim());
+        if (!m) return label;
+        const [x, z] = f(m[1].toUpperCase().charCodeAt(0) - 65 - half, Number(m[2]) - 1 - half);
+        return String.fromCharCode(65 + Math.round(x + half)) + (Math.round(z + half) + 1);
+    };
     const moveParams = p => {
         if (p && Number.isFinite(p.targetX) && Number.isFinite(p.targetZ)) [p.targetX, p.targetZ] = f(p.targetX, p.targetZ);
+        if (p && typeof p.tile === 'string') p.tile = moveTile(p.tile);
+        if (p && p.then != null) p.then = Array.isArray(p.then) ? p.then.map(moveTile) : String(p.then).split(/[^A-Za-z0-9]+/).filter(Boolean).map(moveTile);
     };
     (c.rival || []).forEach(o => moveParams(o.params));
     (c.reference || []).forEach(r => r.commands.forEach(o => moveParams(o.params)));
@@ -407,9 +461,12 @@ function instantiate(s, variant = 'identity') {
         moveCount(m.share);
         if (m.gate) { movePred(m.gate); moveMeasure(m.then); }
         if (m.mean) m.mean.forEach(moveMeasure);
+        if (m.parts) Object.values(m.parts).forEach(moveMeasure);
     };
-    movePred(c.success.predicate); movePred(c.failure); if (c.invariant) movePred(c.invariant.predicate);
-    moveMeasure(c.partial);
+    if (c.success) movePred(c.success.predicate);
+    movePred(c.failure); if (c.invariant) movePred(c.invariant.predicate);
+    movePred(c.until); for (const p of Object.values(c.notes || {})) movePred(p);
+    moveMeasure(c.partial); moveMeasure(c.graded);
     c.variant = variant;
     return c;
 }
@@ -434,6 +491,28 @@ function gone(e, w) {
     const owners = [w.seat('subject'), w.seat('rival')];
     return !owners.some(o => o.units.includes(e) || o.buildings.includes(e));
 }
+// Has the subject ever had this entity's ground in sight? Read off the exploration
+// bitmap the game keeps for every player (Game.markExploration), the same one the
+// state's map.exploration is made of.
+function seenBy(owner, e, w) {
+    if (!e || !owner || !owner._explored) return false;
+    const g = w.game, G = g.EXPLORE_GRID, size = (g.terrain && g.terrain.size) || 800, cell = size / G;
+    const gx = Math.floor((e.x + size / 2) / cell), gz = Math.floor((e.z + size / 2) / cell);
+    return gx >= 0 && gx < G && gz >= 0 && gz < G && owner._explored[gz * G + gx] === 1;
+}
+// The share of the map a player has ever seen: its exploration bitmap, counted.
+function exploredShare(owner) {
+    const grid = owner && owner._explored;
+    if (!grid || !grid.length) return 0;
+    let n = 0;
+    for (let i = 0; i < grid.length; i++) n += grid[i];
+    return n / grid.length;
+}
+// Where the subject's living units stand: one entry per round edge of the trace.
+function positions(owner) {
+    return Array.from(owner.units).filter(u => u.health > 0).map(u => ({ id: u.id, type: u.type, cls: u.unitType, x: u.x, z: u.z }));
+}
+
 function evaluate(p, w) {
     if (p.all) return p.all.every(q => evaluate(q, w));
     if (p.any) return p.any.some(q => evaluate(q, w));
@@ -441,6 +520,7 @@ function evaluate(p, w) {
     if (p.destroyed != null) return gone(w.tags[p.destroyed], w);
     if (p.alive != null) return !gone(w.tags[p.alive], w);
     if (p.eliminated) return !!w.game.isPlayerEliminated(w.seat(p.eliminated));
+    if (p.seen != null) return seenBy(w.seat('subject'), w.tags[p.seen], w);
     if (p.count) {
         const n = countOf(p.count, w), v = p.value;
         return { '>=': n >= v, '>': n > v, '==': n === v, '<': n < v, '<=': n <= v, '!=': n !== v }[p.op];
@@ -457,7 +537,47 @@ function measure(m, w) {
     if (m.share) return clamp(countOf(m.share, w) / m.of);
     if (m.gate) return evaluate(m.gate, w) ? measure(m.then, w) : 0;
     if (m.mean) return m.mean.reduce((a, x) => a + measure(x, w), 0) / m.mean.length;
+    if (m.parts) { const v = Object.values(measureParts(m, w)); return v.reduce((a, b) => a + b, 0) / v.length; }
+    if (m.travelShare) {
+        const want = m.travelShare;
+        let all = 0, mine = 0;
+        for (let i = 1; i < (w.trace || []).length; i++) {
+            const before = new Map(w.trace[i - 1].map(u => [u.id, u]));
+            for (const u of w.trace[i]) {
+                const b = before.get(u.id);
+                if (!b) continue;
+                const d = Math.hypot(u.x - b.x, u.z - b.z);
+                all += d;
+                if (want.type ? u.type === want.type : u.cls === want.class) mine += d;
+            }
+        }
+        return all > 0 ? clamp(mine / all) : 0;
+    }
+    if (m.exploredRate) {
+        const rounds = w.rounds || 0;
+        if (!rounds) return 0;
+        return clamp((exploredShare(w.seat('subject')) - (w.explored0 || 0)) / rounds / m.exploredRate);
+    }
+    if (m.orderShare) {
+        const { action, with: key } = m.orderShare;
+        let done = 0, carrying = 0;
+        for (const e of w.log || []) for (const o of e.outcomes || []) {
+            if (o.action !== action || o.verdict !== 'ok') continue;
+            const c = (e.commands || [])[o.n - 1];
+            if (!c || c.action !== action) continue;
+            done++;
+            const v = c.params && c.params[key];
+            if (v != null && !(Array.isArray(v) && !v.length) && String(v).trim() !== '') carrying++;
+        }
+        return done ? carrying / done : 0;
+    }
     throw new Error('unknown measure');
+}
+// A parts measure, each part by name, rounded as scores are.
+function measureParts(m, w) {
+    const out = {};
+    for (const [k, x] of Object.entries(m.parts)) out[k] = Math.round(measure(x, w) * 1000) / 1000;
+    return out;
 }
 
 // The objective text with its placeholders filled from the board as it now stands.
@@ -550,14 +670,23 @@ function begin(scenario, variant, { makeRealm, ceilingMs = CEILING_MS } = {}) {
     realm.game._lockstep = { sliceMs: ROUND_MS, budget: Infinity };
     const [subject, rival] = realm.seats, [cs, cr] = realm.controllers;
     const world = { game: realm.game, tags: realm.tags, points: inst.points || {},
-        seat: who => (who === 'subject' ? subject : rival) };
+        seat: who => (who === 'subject' ? subject : rival),
+        // What the episode-reading measures read (b1093): the subject's units at every
+        // round edge, the rounds played with their orders, and the ground it could see
+        // before the first one -- computed on a stand-in, so nothing in the world moves.
+        trace: [positions(subject)], log: [], rounds: 0, explored0: 0 };
+    if (realm.game.markExploration) {
+        const shim = { units: subject.units, buildings: subject.buildings };
+        realm.game.markExploration(shim);
+        world.explored0 = exploredShare(shim);
+    }
     return { inst, realm, mgr, subject, rival, subjectController: cs, rivalController: cr, world,
         objective: objectiveText(inst, realm.tags), ceilingMs };
 }
 
 // An episode's score: 1 for success, the partial measure for one that ran out of time,
 // 0 for failure.
-function episodeScore(r) { return r.outcome === 'success' ? 1 : r.outcome === 'partial' ? r.score : 0; }
+function episodeScore(r) { return r.outcome === 'success' ? 1 : (r.outcome === 'partial' || r.outcome === 'graded') ? r.score : 0; }
 
 // Play one episode. `policy(turn)` returns the subject's answer for a round -- a list of
 // commands, or a whole envelope ({commands, objective, plan}) as a model's reply parses
@@ -580,8 +709,9 @@ async function play(scenario, variant, policy, options = {}) {
     let heard = [];
     const take = mgr.takeOutcomes.bind(mgr);
     mgr.takeOutcomes = c => { const list = take(c); if (c === cs) heard.push(...list); return list; };
-    let outcome = null, round = 0, stopped = null;
-    for (round = 1; round <= inst.rounds && !outcome; round++) {
+    let outcome = null, round = 0, stopped = null, ended = false;
+    const notes = inst.notes ? Object.fromEntries(Object.keys(inst.notes).map(k => [k, null])) : null;
+    for (round = 1; round <= inst.rounds && !outcome && !ended; round++) {
         if (stopAfter != null && round > stopAfter) { stopped = 'time'; break; }
         if (shouldStop && shouldStop(round)) { stopped = 'time'; break; }
         const state = mgr.buildGameStateJSON(cs);
@@ -598,7 +728,7 @@ async function play(scenario, variant, policy, options = {}) {
             heard = [];
             mgr.executeTurn(cs, envelope);
             entry.results = cs.lastActionResult;
-            entry.outcomes = heard.map(o => ({ action: o.action, code: o.code, verdict: o.verdict, class: classify(o) }));
+            entry.outcomes = heard.map(o => ({ n: o.n, action: o.action, code: o.code, verdict: o.verdict, class: classify(o) }));
         };
         const rivalActs = () => { for (const o of rivalOrders) { mgr.executeAction(cr, { action: o.action, params: o.params }); entry.rival.push(cr.lastActionResult); } };
         if (round % 2) { rivalActs(); subjectActs(); } else { subjectActs(); rivalActs(); }
@@ -610,10 +740,19 @@ async function play(scenario, variant, policy, options = {}) {
         }
         advance(realm, ROUND_MS);
         entry.simMs = realm.game.clock.simMs;
+        world.trace.push(positions(ep.subject));
+        world.log.push(entry);
+        world.rounds = round;
+        if (notes) for (const [k, p] of Object.entries(inst.notes)) if (notes[k] == null && evaluate(p, world)) notes[k] = round;
         if (inst.failure && evaluate(inst.failure, world)) outcome = 'failure';
         else if (inst.invariant && round >= inst.invariant.from && !evaluate(inst.invariant.predicate, world)) outcome = 'failure';
-        else if (inst.success.when === 'any' && evaluate(inst.success.predicate, world)) outcome = 'success';
-        else if (!realm.game.gameStarted) outcome = evaluate(inst.success.predicate, world) ? 'success' : 'failure';
+        else if (inst.success && inst.success.when === 'any' && evaluate(inst.success.predicate, world)) outcome = 'success';
+        else if (inst.until && evaluate(inst.until, world)) ended = true;
+        else if (!realm.game.gameStarted) {
+            // The match ended on its own (a seat eliminated): judged now, or graded.
+            if (inst.success) outcome = evaluate(inst.success.predicate, world) ? 'success' : 'failure';
+            ended = true;
+        }
         entry.after = outcome || 'running';
         log.push(entry);
         if (onRoundEnd) onRoundEnd(entry, ep);
@@ -621,8 +760,14 @@ async function play(scenario, variant, policy, options = {}) {
     // Out of time: the rounds are spent, or the run's clock stopped the episode. An
     // "end" scenario is judged now as it always was -- unless the clock cut it short,
     // when its last round never came. Anything not won scores the advantage it built.
-    let partial = 0;
-    if (!outcome) {
+    // A graded scenario is scored on how it was played, however it ended -- out of
+    // rounds, out of time, or `until` -- unless it failed outright.
+    let partial = 0, graded = null, parts = null;
+    if (!outcome && inst.graded) {
+        outcome = 'graded';
+        graded = measure(inst.graded, world);
+        if (inst.graded.parts) parts = measureParts(inst.graded, world);
+    } else if (!outcome) {
         if (!stopped && evaluate(inst.success.predicate, world)) outcome = 'success';
         else {
             partial = inst.partial ? Math.min(PARTIAL_CAP, measure(inst.partial, world)) : 0;
@@ -631,6 +776,9 @@ async function play(scenario, variant, policy, options = {}) {
     }
     const r = { id: inst.id, family: inst.family, variant: inst.variant, outcome, rounds: log.length, log };
     if (outcome === 'partial') r.score = Math.round(partial * 1000) / 1000;
+    if (outcome === 'graded') r.score = Math.round(graded * 1000) / 1000;
+    if (parts) r.parts = parts;
+    if (notes) r.notes = notes;
     if (stopped) r.stopped = stopped;
     return r;
 }
@@ -825,13 +973,15 @@ function passHatK(cells, k) {
     return usable.reduce((s, c) => s + choose(c.successes, k) / choose(c.n, k), 0) / usable.length;
 }
 
-// Group results into cells (one scenario x variant, all its attempts).
+// Group results into cells (one scenario x variant, all its attempts), with the
+// successes and the summed episode scores (partial and graded credit included).
 function cellsOf(results) {
     const map = new Map();
     for (const r of results) {
         const key = r.id + '/' + r.variant;
-        const c = map.get(key) || { key, id: r.id, family: r.family, variant: r.variant, n: 0, successes: 0 };
+        const c = map.get(key) || { key, id: r.id, family: r.family, variant: r.variant, n: 0, successes: 0, scoreSum: 0 };
         c.n++; if (r.outcome === 'success') c.successes++;
+        c.scoreSum += episodeScore(r);
         map.set(key, c);
     }
     return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
@@ -859,6 +1009,15 @@ function score(results) {
     const meanBy = key => Object.fromEntries(group(key).map(([k, rs]) => [k, meanScore(rs.map(episodeScore))]));
     const outcomes = { success: 0, partial: 0, failure: 0 };
     for (const r of results) outcomes[r.outcome] = (outcomes[r.outcome] || 0) + 1;
+    // A graded scenario's parts, averaged per scenario: which part of the play was weak.
+    const partsByScenario = {};
+    for (const [id, rs] of group('id')) {
+        const withParts = rs.filter(r => r.parts);
+        if (!withParts.length) continue;
+        const sum = {};
+        for (const r of withParts) for (const [k, v] of Object.entries(r.parts)) sum[k] = (sum[k] || 0) + v;
+        partsByScenario[id] = Object.fromEntries(Object.entries(sum).map(([k, v]) => [k, Math.round(v / withParts.length * 1000) / 1000]));
+    }
     // Every command's fate. "uncoded" is a refusal the harness gave no code; it is
     // reported, never folded into another class.
     const classes = {};
@@ -872,7 +1031,7 @@ function score(results) {
         success: rate(results), passK,
         byFamily: by('family'), byScenario: by('id'),
         meanScore: meanScore(results.map(episodeScore)), meanByFamily: meanBy('family'), meanByScenario: meanBy('id'),
-        outcomes,
+        outcomes, partsByScenario,
         commands, commandsPerRound: rounds ? commands / rounds : 0, classes,
     };
 }
@@ -912,14 +1071,15 @@ function bundleEpisode(chain, { id, variant, attempt }, rounds, result, snapshot
     for (const x of rounds) chain.push(Object.assign({ type: 'round' }, x, { type: 'round' }));
     chain.push(Object.assign({ type: 'end', id, variant, attempt, outcome: result.outcome, rounds: result.rounds },
         result.score != null ? { score: result.score } : {}, result.stopped ? { stopped: result.stopped } : {},
+        result.parts ? { parts: result.parts } : {}, result.notes ? { notes: result.notes } : {},
         { snapshot }));
 }
 function bundleClose(chain, results) { chain.push({ type: 'close', episodes: results.length, score: score(results) }); }
 
 return {
-    SCHEMA, ROUND_MS, CEILING_MS, PARTIAL_CAP, VARIANTS,
+    SCHEMA, ROUND_MS, CEILING_MS, PARTIAL_CAP, VARIANTS, BOARD_TILES,
     createRuntime, inert, stageGlobals, makeGame, startFixture, scripted, addUnit, addBuilding, advance, snapshot, setupBoard,
-    validate, instantiate, evaluate, measure, objectiveText, resolve,
+    validate, instantiate, evaluate, measure, measureParts, objectiveText, resolve,
     CLASSES, CLASS_OF, classify,
     begin, play, episodeScore,
     referencePolicy, noopPolicy, rngFor, randomCommand, randomValidPolicy, BASELINES, modelPolicy,
