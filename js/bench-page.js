@@ -65,8 +65,27 @@ class BenchPage {
     close() {
         if (this.run) return;   // the Stop button ends a run; leaving does not
         const to = this.returnTo || 'startScreen';
-        if (to === 'modelLibraryScreen') this.ui.showModelLibrary();
+        if (to === 'modelLibraryScreen') this.ui.showModelLibrary({ keepReturn: true });
         else this.ui.showScreen(to);
+    }
+    // To the library and back (b1098): what is filled in here is kept for the return,
+    // and the dropdown then lists the library as it was left.
+    openLibrary() {
+        if (this._view === 'setup' && this.el('benchModel')) this.rememberSetup(this.readForm());
+        this.ui.showModelLibrary();
+    }
+    returnFromLibrary() {
+        this.ui.showScreen('benchScreen');
+        this.renderSetup();
+    }
+    readForm() {
+        return {
+            model: this.el('benchModel').value || null,
+            scenarios: [...document.querySelectorAll('#benchBody input[data-scenario]')].filter(b => b.checked).map(b => b.dataset.scenario),
+            runs: Math.max(1, Math.min(64, parseInt(this.el('benchRuns').value, 10) || 1)),
+            minutes: Math.max(0, Math.min(240, Number(this.el('benchMinutes').value) || 0)),
+            prompt: this.el('benchPrompt').value,
+        };
     }
     onLanguageChanged() {
         if (!this.el('benchScreen') || !this.el('benchScreen').classList.contains('active')) return;
@@ -140,7 +159,8 @@ class BenchPage {
                         <optgroup label="${this.esc(t('bench.references'))}">${baselines}</optgroup>
                     </select>
                     <p class="arena-hint">${t('bench.modelHint')}</p>
-                    <div id="benchModelHistory">${this.historyLink(d.model, total)}</div>
+                    <div class="bench-model-links"><button class="lib-open-btn" onclick="game.ui.benchPage().openLibrary()">${t('ar.libOpen')}</button>
+                        <span id="benchModelHistory">${this.historyLink(d.model, total)}</span></div>
                 </div>
                 <div class="arena-field"><label>${t('bench.scenarios')}</label>
                     <p class="arena-hint">${t('bench.scenariosHint')}</p>
@@ -235,10 +255,8 @@ class BenchPage {
         if (!key) return err(t('bench.pickModel'));
         const ids = [...document.querySelectorAll('#benchBody input[data-scenario]')].filter(b => b.checked).map(b => b.dataset.scenario);
         if (!ids.length) return err(t('bench.pickScenario'));
-        const runs = Math.max(1, Math.min(64, parseInt(this.el('benchRuns').value, 10) || 1));
-        const minutes = Math.max(0, Math.min(240, Number(this.el('benchMinutes').value) || 0));
-        const promptChoice = this.el('benchPrompt').value;
-        this.rememberSetup({ model: key, scenarios: ids, runs, minutes, prompt: promptChoice });
+        const form = this.readForm(), runs = form.runs, minutes = form.minutes, promptChoice = form.prompt;
+        this.rememberSetup(form);
         let policy;
         try {
             if (key.startsWith('baseline:')) policy = { kind: 'baseline', name: key.slice(9) };

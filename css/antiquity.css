@@ -359,3 +359,4 @@ body.broadcast-mode .arena-lineup.floating { bottom:calc(128px * var(--ui-scale,
 .bench-cmp-1 { fill:#3987e5; background:#3987e5; } .bench-cmp-2 { fill:#d95926; background:#d95926; }
 .bench-cmp-3 { fill:#199e70; background:#199e70; } .bench-cmp-4 { fill:#c98500; background:#c98500; }
 .bench-cmp-5 { fill:#d55181; background:#d55181; } .bench-cmp-6 { fill:#9085e9; background:#9085e9; }
+.bench-model-links { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:4px; }

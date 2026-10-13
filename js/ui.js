@@ -741,11 +741,22 @@ class UIManager {
     // The Benchmark page (js/bench-page.js, b1092), made on first use.
     benchPage() { return this._benchPage || (this._benchPage = new BenchPage(this)); }
 
-    // Open the dedicated model-library page.
-    async showModelLibrary() {
+    // Open the dedicated model-library page. It remembers the page it was opened from
+    // and goes back there (b1098): the arena or campaign setup, or the Benchmark page.
+    // `keepReturn` is for coming back INTO the library (the Benchmark page opened from
+    // a library card returns here), which must not make the library return to itself.
+    async showModelLibrary({ keepReturn = false } = {}) {
         if (!this._arenaConfig) this._arenaConfig = await this.loadArenaConfig();
+        if (!keepReturn) {
+            const from = document.querySelector('.screen.active');
+            if (from && from.id !== 'modelLibraryScreen') this._libReturn = from.id;
+        }
         this.showScreen('modelLibraryScreen');
         this.renderArenaLibrary();
+    }
+    leaveModelLibrary() {
+        if (this._libReturn === 'benchScreen') this.benchPage().returnFromLibrary();
+        else this.backToSetup();
     }
 
     // Reflect the model count on the arena setup screen's library summary.
@@ -1285,6 +1296,9 @@ class UIManager {
     renderArenaLibrary() {
         const list = document.getElementById('modelLibraryList');
         if (!list) return;
+        // The way back names where it leads.
+        const back = document.getElementById('libBackBtn');
+        if (back) back.textContent = t(this._libReturn === 'benchScreen' ? 'ar.backToBench' : 'ar.backToArena');
         const picker = document.getElementById('libPresetPicker');
         if (picker) { picker.innerHTML = this.presetOptionsHtml(); picker.setAttribute('aria-label', t('ar.addPreset')); }
         const models = this._arenaConfig.models;

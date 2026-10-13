@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1098: the model library from the Benchmark page, and back to where it was opened (13 October 2026)
+
+**No match rules change.** Agreed with asp67: the library belongs where a model is picked, not on the landing page.
+- The Benchmark page has "Manage library →" under its model dropdown, beside the saved-results link.
+- What is filled in on the page (model, scenarios, runs, time limit, prompt) is kept for the return, and the dropdown then lists the library as it was left.
+- The library's back button returns to the page that opened it, and says where: "← Back to the benchmark" or "← Back to arena configuration" (campaign setup as before).
+- Coming back into the library from the Benchmark page (opened from a card's "📊 Benchmarks") keeps the library's own way back.
+
 ## Build 1097: two WAR Bench bugs found in the first real model runs (13 October 2026)
 
 **No match rules change; benchmark results before this build are biased.** asp67's first real benchmarks (Qwen3.8 FP8 twice, the Q2 Strata once) exposed two bugs in the bench, neither in the arena.
