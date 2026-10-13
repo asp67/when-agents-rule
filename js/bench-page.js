@@ -339,7 +339,8 @@ class BenchPage {
         const summary = this.summarize(run, results);
         let lines = null;
         if (run.done.length) {
-            const sources = Object.fromEntries(Object.entries(run.texts).filter(([f]) => f !== 'js/bench-core.js'));
+            // The rules and the bench core that played them (b1097): verify replays on both.
+            const sources = Object.assign({}, run.texts);
             const chain = WarBench.bundleChain(warSha256);
             const config = run.policy.kind === 'model' ? Object.assign({}, run.policy.cfg, { auth: { type: 'none' } }) : null;
             WarBench.bundleOpen(chain, { sha: warSha256, sources, scenarios: run.scenarios,

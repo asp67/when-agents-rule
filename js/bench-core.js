@@ -743,6 +743,12 @@ async function play(scenario, variant, policy, options = {}) {
     for (round = 1; round <= inst.rounds && !outcome && !ended; round++) {
         if (stopAfter != null && round > stopAfter) { stopped = 'time'; break; }
         if (shouldStop && shouldStop(round)) { stopped = 'time'; break; }
+        // A new turn for both seats, as the arena's startTurn counts one (b1097). The
+        // executor keys "already sent this turn" on it: never advanced, every unit an
+        // explore had ever sent counted as sent THIS turn for the rest of the episode --
+        // a named one was refused, and the auto-pick never chose it again.
+        cs.turnCount = (cs.turnCount || 0) + 1;
+        cr.turnCount = (cr.turnCount || 0) + 1;
         const state = mgr.buildGameStateJSON(cs);
         const answer = await policy({ round, state, episode: ep });
         const envelope = Array.isArray(answer) ? { commands: resolve(answer, realm.tags) } : (answer || { commands: [] });

@@ -20,14 +20,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { createHash } = require('node:crypto');
-const W = require('../../js/bench-core.js');
+const BENCH = require('../../js/bench-core.js');
 const ROOT = path.resolve(__dirname, '../..');
 // Line endings normalized: a Windows checkout has CRLF.
 const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8').split('\r\n').join('\n');
 
 const FRAME_MS = 16;
 
-const { createRuntime, inert } = W;
+const { createRuntime, inert } = BENCH;
 
 // The rule files in load order, from the one list of them: the manifest's own `vm`
 // list, read from the same place the rules come from (disk, or a bundle's sources).
@@ -53,7 +53,11 @@ class Realm {
     // `normalSpeed` is the pace a match starts at and a Wonder holds it to, in game ms
     // per real ms. The arena's default became 2 in build 1020; the Bench, the golden
     // traces and every result recorded with them stay at 1 unless asked otherwise.
-    constructor({ seed = 1, frameMs = FRAME_MS, hidden = false, sources = null, normalSpeed = 1 } = {}) {
+    //
+    // `core` is the bench core the stage is built by: this WAR's (js/bench-core.js) by
+    // default, or the one a bundle recorded, so verify replays on the core that ran.
+    constructor({ seed = 1, frameMs = FRAME_MS, hidden = false, sources = null, normalSpeed = 1, core = null } = {}) {
+        const W = this.W = core || BENCH;
         this.frameMs = frameMs;
         this.sources = sources;
         this.seed = seed;
@@ -92,10 +96,10 @@ class Realm {
 
     // A flat, featureless board for scripted fights: no nodes, no coast.
     // `mapSeed` keys every random draw of the match; by default one per realm seed.
-    startFixture(civs, mapSeed = null) { return W.startFixture(this, civs, mapSeed); }
+    startFixture(civs, mapSeed = null) { return this.W.startFixture(this, civs, mapSeed); }
 
     // A model seat with no model, moved only by scripted commands (WarBench.scripted).
-    scripted(ai) { return W.scripted(this, ai); }
+    scripted(ai) { return this.W.scripted(this, ai); }
 
     // A command through the models' own executor, as a tool call would arrive.
     command(controller, action, params) {
@@ -104,8 +108,8 @@ class Realm {
         return controller.seat.lastActionResult;
     }
 
-    addUnit(ai, type, x, z, fields = {}) { return W.addUnit(this, ai, type, x, z, fields); }
-    addBuilding(ai, type, x, z, fields = {}) { return W.addBuilding(this, ai, type, x, z, fields); }
+    addUnit(ai, type, x, z, fields = {}) { return this.W.addUnit(this, ai, type, x, z, fields); }
+    addBuilding(ai, type, x, z, fields = {}) { return this.W.addBuilding(this, ai, type, x, z, fields); }
 
     // One browser frame: the clock moves, then every animation-frame callback runs
     // (the game loop's tick).
@@ -126,10 +130,10 @@ class Realm {
 
     // The frozen driver (review #6 step 9): exactly `ms` of simulated time in 50 ms
     // steps, no frames at all -- how the bench advances a scenario between turns.
-    advance(ms) { return W.advance(this, ms); }
+    advance(ms) { return this.W.advance(this, ms); }
 
     // Everything the rules decide, projected to plain data (WarBench.snapshot).
-    snapshot() { return W.snapshot(this); }
+    snapshot() { return this.W.snapshot(this); }
 
     hash() { return createHash('sha256').update(JSON.stringify(this.snapshot())).digest('hex').slice(0, 16); }
 
@@ -169,7 +173,7 @@ async function createMatch(config, options = {}) {
         return realm;
     }
     if (config.kind !== 'board') throw new Error('createMatch: unknown kind ' + config.kind);
-    return W.setupBoard(realm, config);
+    return realm.W.setupBoard(realm, config);
 }
 
 module.exports = { Realm, createMatch, createRuntime, inert, ruleFiles, RULE_FILES, FRAME_MS, ROOT };

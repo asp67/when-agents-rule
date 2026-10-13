@@ -7,7 +7,8 @@
 // or reordered without breaking the chain from there on. It holds, in order:
 //
 //   header      schema, protocol (round length, ceiling), policy, core and harness
-//               hashes, the path -> blob map of every rule file and scenario used
+//               hashes, the path -> blob map of every rule file and scenario used, and
+//               since b1097 of js/bench-core.js: the scenario code the run was played by
 //   blob        a file's text, content-addressed by its SHA-256: every rule file (the
 //               manifest's own vm list) and every scenario, so verify replays on the
 //               rules the run had -- a GitHub Pages copy of WAR is only ever the latest
@@ -24,12 +25,19 @@
 // and replays every episode: baselines from their recorded answers, models by serving
 // their recorded response back through the arena's own send path once the request
 // matches byte for byte. Every state, result and world hash must come out the same.
+// A bundle that carries its bench core is replayed by that core, so a later fix to the
+// bench cannot make an honest old run look forged; one recorded before b1097 has none
+// and is replayed by today's, and verify says so beside any difference it finds.
+// Requests that failed (a dropped connection, the ceiling's abort) are recorded too,
+// and fail again at the same point of the replay: without them every later reply was
+// served one round early.
 const zlib = require('node:zlib');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
+const vm = require('node:vm');
 const S = require('./scenario.cjs');
-const { RULE_FILES, ROOT } = require('./realm.cjs');
+const { RULE_FILES, ROOT, Realm } = require('./realm.cjs');
 const { modelPolicy } = require('./runner.cjs');
 const { score } = require('./score.cjs');
 
@@ -38,9 +46,17 @@ const SCHEMA = W.BUNDLE_SCHEMA;
 const sha = s => createHash('sha256').update(s).digest('hex');
 const lf = s => s.split('\r\n').join('\n');
 
-// The rule sources a run is made of, as the page would load them.
+// The rule sources a run is made of, as the page would load them, and the bench core
+// that plays the scenarios (not part of the core hash, which is the game's rules).
 function ruleSources() {
-    return Object.fromEntries(RULE_FILES.map(f => [f, lf(fs.readFileSync(path.join(ROOT, f), 'utf8'))]));
+    return Object.fromEntries(RULE_FILES.concat(CORE_FILE).map(f => [f, lf(fs.readFileSync(path.join(ROOT, f), 'utf8'))]));
+}
+const CORE_FILE = 'js/bench-core.js';
+// A bench core from its text, in a context of its own.
+function loadCore(text) {
+    const ctx = vm.createContext({});
+    vm.runInContext(text + '\n;globalThis.__core = WarBench;', ctx, { filename: CORE_FILE });
+    return ctx.__core;
 }
 // The fingerprint WarConditions computes in the page: its core files, joined.
 function coreHashOf(sources) {
@@ -53,7 +69,9 @@ function coreHashOf(sources) {
 function recordingFetch(inner, sink) {
     return async (url, init) => {
         const request = String(init && init.body);
-        const res = await inner(url, init);
+        let res;
+        try { res = await inner(url, init); }
+        catch (e) { sink.push({ requestHash: sha(request), error: { name: (e && e.name) || 'Error', message: (e && e.message) || String(e) } }); throw e; }
         const text = await res.text();
         sink.push({ requestHash: sha(request), status: res.status, response: text });
         return { ok: res.ok, status: res.status, headers: res.headers || { get: () => null },
@@ -68,6 +86,7 @@ function replayFetch(exchanges) {
         const x = exchanges[i++];
         if (!x) throw new Error('replay: the replay asked for more requests than were recorded');
         if (sha(String(init && init.body)) !== x.requestHash) throw new Error('replay: request ' + i + ' differs from the one recorded');
+        if (x.error) { const err = new Error(x.error.message); err.name = x.error.name; throw err; }
         return { ok: x.status >= 200 && x.status < 300, status: x.status, headers: { get: () => 'application/json' },
                  text: async () => x.response, json: async () => JSON.parse(x.response) };
     };
@@ -154,6 +173,9 @@ async function verify(lines) {
     }
     if (coreHashOf(sources) !== head.coreHash) say('the embedded rules do not hash to the recorded core hash');
     if (problems.length) return { ok: false, problems };
+    // The bench core the run was played by, when the bundle carries it.
+    const Wv = sources[CORE_FILE] ? loadCore(sources[CORE_FILE]) : W;
+    const makeRealm = () => new Realm({ seed: 1, sources, core: Wv });
     // Replay every episode on the embedded rules.
     const results = [];
     for (let i = 0; i < recs.length; i++) {
@@ -169,7 +191,7 @@ async function verify(lines) {
         let policy;
         if (head.policy.kind === 'model') {
             const exchanges = rounds.flatMap(r => r.wire || []);
-            policy = modelPolicy(head.policy.config, { fetchImpl: replayFetch(exchanges) });
+            policy = Wv.modelPolicy(head.policy.config, { fetchImpl: replayFetch(exchanges), timers: { AbortController, setTimeout, clearTimeout } });
         } else policy = ({ round }) => { const r = answers.get(round); return r ? r.answer : null; };
         let k = 0;
         const checkState = async turn => {
@@ -181,7 +203,7 @@ async function verify(lines) {
         try {
             // An episode the run's clock stopped is replayed to the same round.
             const stopAfter = end && end.type === 'end' && end.stopped ? end.rounds : null;
-            r = await S.play(s, e.variant, checkState, { ceilingMs: head.protocol.ceilingMs, sources, stopAfter,
+            r = await Wv.play(s, e.variant, checkState, { ceilingMs: head.protocol.ceilingMs, makeRealm, stopAfter,
                 onRoundEnd: (entry, ep) => {
                     const want = rounds[k++];
                     if (!want) { say(`${label}: more rounds than recorded`); return; }
@@ -197,9 +219,10 @@ async function verify(lines) {
     }
     const close = recs[recs.length - 1];
     if (!close || close.type !== 'close') say('no closing record');
-    else if (JSON.stringify(score(results)) !== JSON.stringify(close.score)) say('the replayed score differs from the recorded one');
+    else if (JSON.stringify(Wv.score(results)) !== JSON.stringify(close.score)) say('the replayed score differs from the recorded one');
+    if (problems.length && Wv === W) problems.push('note: this bundle predates b1097 and carries no bench core, so it was replayed by today\'s; a difference may be a later fix to the bench rather than a change to the run');
     return { ok: !problems.length, problems, episodes: results.length, coreHash: head.coreHash, policy: head.policy.name,
              score: close && close.score };
 }
 
-module.exports = { SCHEMA, record, verify, write, readLines, ruleSources, coreHashOf, recordingFetch, replayFetch, sha };
+module.exports = { SCHEMA, record, verify, write, readLines, ruleSources, coreHashOf, recordingFetch, replayFetch, sha, loadCore, CORE_FILE };

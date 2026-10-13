@@ -39,7 +39,11 @@ function load(name, text) {
 function recordingFetch(sink, sha) {
     return async (url, init) => {
         const request = String(init && init.body);
-        const res = await realFetch(url, init);
+        let res;
+        // A request that fails is recorded as well, so the replay fails it at the same
+        // point instead of serving the next reply a round early (b1097).
+        try { res = await realFetch(url, init); }
+        catch (e) { sink.push({ requestHash: sha(request), error: { name: (e && e.name) || 'Error', message: (e && e.message) || String(e) } }); throw e; }
         const text = await res.text();
         sink.push({ requestHash: sha(request), status: res.status, response: text });
         return { ok: res.ok, status: res.status, headers: res.headers || { get: () => null },

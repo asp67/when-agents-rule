@@ -167,3 +167,17 @@ test('a scenario prompt replaces the victory paragraph and nothing else', () => 
     assert.ok(!sp.includes(M.VICTORY_PARAGRAPH));
     assert.equal(sp.replace('Your objective in this scenario:\n' + obj, M.VICTORY_PARAGRAPH), base);
 });
+
+// b1097: each round is a new turn for the seat, as each request is in the arena. The
+// executor's "already sent this turn" check keys on the turn count, which scenarios
+// never advanced: a unit explored once was refused for the rest of the episode.
+test('a unit explored in one round can be sent again in a later one', async () => {
+    const s = ALL.find(x => x.id === 'search-01');
+    let scout = null;
+    const r = await S.play(s, 'identity', ({ round, episode }) => {
+        if (round === 1) { scout = episode.subject.units.find(u => u.type === 'scout_cavalry'); return [{ action: 'explore', params: { tile: 'G1', unitIds: [scout.handle] } }]; }
+        if (round === 3) return [{ action: 'explore', params: { tile: 'A7', unitIds: [scout.handle] } }];
+        return [];
+    });
+    assert.match(r.log[2].results, new RegExp('OK - Sent your scout_cavalry #' + scout.handle + ' to scout tile A7'), r.log[2].results);
+});

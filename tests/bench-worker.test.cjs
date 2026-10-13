@@ -39,7 +39,7 @@ function worker(fetchImpl = async () => { throw new Error('no network here'); })
 
 // A run as the page records it: the worker plays each episode, the core writes the bundle.
 async function browserRun(scenarios, policy, makeFetch, iterations = 1) {
-    const sources = Object.fromEntries(Object.entries(TEXTS).filter(([f]) => f !== 'js/bench-core.js'));
+    const sources = Object.assign({}, TEXTS);
     const chain = W.bundleChain(B.sha);
     W.bundleOpen(chain, { sha: B.sha, sources, scenarios, policy: { name: policy.name || policy.cfg.name, kind: policy.kind, config: policy.cfg || null },
         coreHash: B.coreHashOf(sources), attempts: iterations });
@@ -112,7 +112,7 @@ test('a browser-recorded run verifies in Node: baselines and a model on the wire
 
 test('the wall-clock limit stops an episode, and the verifier replays it to the same round', async () => {
     const s = ALL.find(x => x.id === 'strike-01');
-    const sources = Object.fromEntries(Object.entries(TEXTS).filter(([f]) => f !== 'js/bench-core.js'));
+    const sources = Object.assign({}, TEXTS);
     // A deadline already behind us: the episode is stopped before its first round.
     const out = await worker()({ type: 'run', texts: TEXTS, scenario: s, variant: 'identity', attempt: 1,
         policy: { kind: 'baseline', name: 'scripted' }, ceilingMs: W.CEILING_MS, deadline: Date.now() - 1 });

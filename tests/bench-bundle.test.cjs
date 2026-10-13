@@ -105,3 +105,45 @@ test('a model run verifies with no model reachable, and a forged response is cau
     assert.equal(w.ok, false);
     assert.ok(w.problems.length > 0);
 });
+
+// b1097: a request that fails -- a dropped connection, the ceiling's abort -- is recorded
+// and fails again at the same point of the replay. Before, it left no trace, so the
+// replay served every later reply one round early (asp67's first FP8 run: round 2 went
+// unanswered, and verify reported round 3 onwards as different).
+test('a failed request is recorded and replayed as a failure, keeping the rounds in step', async () => {
+    const CFG = { name: 'stub', endpoint: 'http://127.0.0.1:9/v1', model: 'stub-model', maxTokens: 512 };
+    const s = ALL.find(x => x.id === 'strike-01');
+    const make = (sc, v, a, wire) => {
+        const inst = S.instantiate(sc, v);
+        let n = 0;
+        const answer = async () => {
+            n++;
+            if (n === 2) throw new TypeError('fetch failed');
+            const r = inst.reference.find(x => x.round === n);
+            const calls = (r ? r.commands : [{ action: 'wait', params: {} }]).map((c, i) =>
+                ({ id: 'c' + i, type: 'function', function: { name: c.action, arguments: JSON.stringify(c.params) } }));
+            const body = JSON.stringify({ choices: [{ message: { role: 'assistant', content: null, tool_calls: calls }, finish_reason: 'tool_calls' }], usage: {} });
+            return { ok: true, status: 200, headers: { get: () => 'application/json' }, text: async () => body };
+        };
+        return modelPolicy(CFG, { fetchImpl: B.recordingFetch(answer, wire) });
+    };
+    const lines = await B.record({ scenarios: [s], variants: ['identity'], policy: { name: 'stub', kind: 'model', config: CFG, make } });
+    const rounds = lines.map(l => JSON.parse(l)).filter(r => r.type === 'round');
+    assert.equal(rounds[1].answer, null, 'round 2 went unanswered');
+    assert.deepEqual(rounds[1].wire.map(w => w.error && w.error.message), ['fetch failed']);
+    const v = await B.verify(lines);
+    assert.deepEqual(v.problems, []);
+});
+
+// b1097: the bundle carries the bench core that played it, and verify replays on that
+// core -- a later change to the bench cannot make an honest old run look forged.
+test('verify replays on the bench core the bundle recorded', async () => {
+    const lines = await B.record({ scenarios: [ALL.find(x => x.id === 'ford-01')], variants: ['identity'], policy: { name: 'scripted', kind: 'baseline', make: () => S.referencePolicy() } });
+    const head = JSON.parse(lines[0]);
+    assert.ok(head.files[B.CORE_FILE], 'the core is embedded');
+    // Today's core on disk could change tomorrow; the replay must not read it. A core
+    // that differs in one comment hashes differently and is still the one replayed.
+    const blob = lines.map(l => JSON.parse(l)).find(r => r.type === 'blob' && r.sha256 === head.files[B.CORE_FILE]);
+    assert.equal(typeof B.loadCore(blob.text).play, 'function');
+    assert.deepEqual((await B.verify(lines)).problems, []);
+});

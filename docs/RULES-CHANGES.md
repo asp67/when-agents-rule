@@ -6,6 +6,20 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1097: two WAR Bench bugs found in the first real model runs (13 October 2026)
+
+**No match rules change; benchmark results before this build are biased.** asp67's first real benchmarks (Qwen3.8 FP8 twice, the Q2 Strata once) exposed two bugs in the bench, neither in the arena.
+
+**1. A unit explored once was refused for the rest of the scenario.** The executor's "already sent this turn" check (`_exploreTurn` against the seat's `turnCount`) relies on the turn count advancing, which the arena does per request (`startTurn`). Scenario episodes never advanced it, so every turn was turn 0:
+- a named unit (`unitIds`) explored in an earlier round was refused with "already scouting this turn";
+- the auto-pick never chose it again.
+
+It cost the FP8 runs 2 and 10 commands and the Q2 run 7. Both models explore in scenarios to find things, and in "Hold the ford" they did it with archers from the hold. Now each round is a new turn for both seats. `tests/bench-scenarios.test.cjs` sends a scout again two rounds later; the test fails on the old code.
+
+**2. A failed request left no trace in the bundle, so the replay fell out of step.** The recording fetch kept only requests that got a reply. A dropped connection or the ceiling's abort (the FP8's first run had two, in "Hold the ford") was missing, and `war-bench verify` then served every later reply one round early and reported the run as different. Failed requests are now recorded with their error (Node's `recordingFetch`, the browser worker's), and the replay fails them again at the same point.
+
+**Bundles now carry the bench core.** Each bundle embeds `js/bench-core.js` (not part of the core hash, which stays the game's rules), and `verify` replays on that core in a context of its own (`Realm` takes a `core`). A later fix to the bench, like this one, can no longer make an honest old run look forged. Bundles from before this build have no core; verify replays them on today's and adds a note saying a difference may be the bench's rather than the run's.
+
 ## Build 1096: benchmark results you can browse, compare and open from a file (13 October 2026)
 
 **No match rules change.** asp67 found no way to look at earlier results except through one model, and no way to load a saved file and look at it.
