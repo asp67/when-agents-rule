@@ -7,8 +7,10 @@
 // the same core (js/bench-core.js). Then a chart and the numbers.
 //
 // Every finished run is kept in this browser (localStorage, a summary per episode, no
-// prompts or replies) so a model's results add up across sessions: the library card's
-// "Benchmarks" button opens them. A run can also be saved as a file: the summary as
+// prompts or replies) so a model's results add up across sessions: the Results view
+// (b1096) lists every model that has any and compares them scenario by scenario, and
+// the library card's "Benchmarks" button opens one model's. "Open a file" shows a saved
+// results file or a replay bundle, and keeps it on request. A run can also be saved as a file: the summary as
 // JSON, which this page imports again, and the full bundle (.warbench.jsonl.gz), which
 // `node tools/bench/war-bench.cjs verify` checks and replays in Node.
 // ---------------------------------------------------------------------------
@@ -57,6 +59,7 @@ class BenchPage {
         try { await this.loadScenarios(); }
         catch (e) { this.el('benchBody').innerHTML = `<p class="bench-error">${this.esc(t('bench.loadFailed', { e: e.message || String(e) }))}</p>`; return; }
         if (history != null) this.renderHistory(String(history));
+        else if (this.loadRuns().length) this.renderOverview();
         else this.renderSetup();
     }
     close() {
@@ -69,7 +72,8 @@ class BenchPage {
         if (!this.el('benchScreen') || !this.el('benchScreen').classList.contains('active')) return;
         if (this.run) this.renderProgress();
         else if (this._view === 'history') this.renderHistory(this._historyKey);
-        else if (this._view === 'results' && this.last) this.renderResults(this.last.summary);
+        else if (this._view === 'overview') this.renderOverview();
+        else if (this._view === 'results' && this.last) this.renderResults(this.last.summary, this.last.opts);
         else this.renderSetup();
     }
 
@@ -127,7 +131,7 @@ class BenchPage {
             </fieldset>`;
         }).join('');
         const total = this.runsFor(d.model || '').length;
-        this.el('benchBody').innerHTML = `
+        this.el('benchBody').innerHTML = this.nav('setup') + `
             <section class="arena-section bench-setup">
                 <div class="arena-field"><label for="benchModel">${t('bench.model')}</label>
                     <select id="benchModel" onchange="game.ui.benchPage().onModelPicked()">
@@ -159,12 +163,28 @@ class BenchPage {
                 <p class="bench-error" id="benchSetupError" role="alert"></p>
             </section>
             <div class="arena-setup-buttons">
-                <button class="menu-btn bench-start" onclick="game.ui.benchPage().start()">${t('bench.start')}</button>
-                <button class="menu-btn back-btn" onclick="game.ui.benchPage().exportAll()">${t('bench.exportAll')}</button>
-                <button class="menu-btn back-btn" onclick="game.ui.benchPage().importFile()">${t('bench.import')}</button>
+                <button class="menu-btn bench-start" id="benchStartBtn" onclick="game.ui.benchPage().start()">${this.esc(this.startLabel(d.model))}</button>
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().close()">${t('common.back')}</button>
             </div>`;
     }
+    // The Start button names the model it will run (b1096): the dropdown opens on the
+    // last one benchmarked, and a run on the wrong model costs an hour.
+    startLabel(key) {
+        const name = key ? this.modelLabel(key) : null;
+        return name ? t('bench.startFor', { model: name }) : t('bench.start');
+    }
+
+    // The three ways into the page, on every view but a running one.
+    nav(active) {
+        const n = new Set(this.loadRuns().map(r => r.modelKey)).size;
+        const b = (view, label, call) => `<button class="lib-sort-btn${active === view ? ' on' : ''}" ${active === view ? 'aria-current="page"' : ''} onclick="game.ui.benchPage().${call}">${this.esc(label)}</button>`;
+        return `<div class="bench-nav">
+            ${b('setup', t('bench.navNew'), 'renderSetup()')}
+            ${b('overview', t('bench.navResults', { n }), 'renderOverview()')}
+            <button class="lib-sort-btn" onclick="game.ui.benchPage().openFile()">${this.esc(t('bench.openFile'))}</button>
+        </div><p class="bench-error" id="benchMsg" role="status"></p>`;
+    }
+    say(msg) { const el = this.el('benchSetupError') || this.el('benchMsg'); if (el) el.textContent = msg; }
     historyLink(key, n) {
         if (!key || !n) return '';
         return `<button class="lib-io-btn" onclick="game.ui.benchPage().renderHistory('${this.esc(key)}')">${this.esc(t('bench.openHistory', { n }))}</button>`;
@@ -172,6 +192,8 @@ class BenchPage {
     onModelPicked() {
         const key = this.el('benchModel').value;
         this.el('benchModelHistory').innerHTML = this.historyLink(key, this.countFor(key));
+        const btn = this.el('benchStartBtn');
+        if (btn) btn.textContent = this.startLabel(key);
     }
     toggleFamily(box) {
         document.querySelectorAll(`#benchBody input[data-of="${box.dataset.family}"]`).forEach(b => { b.checked = box.checked; });
@@ -323,7 +345,8 @@ class BenchPage {
             WarBench.bundleOpen(chain, { sha: warSha256, sources, scenarios: run.scenarios,
                 policy: { name: run.label, kind: run.policy.kind, config },
                 coreHash: warSha256(WarManifest.rules.map(f => sources[f]).join('\n')), attempts: run.runs,
-                label: 'browser', extra: { iterations: run.runs, build: summary.build, wallLimitMinutes: run.minutes || null } });
+                label: 'browser', extra: { iterations: run.runs, build: summary.build, wallLimitMinutes: run.minutes || null,
+                    at: summary.at, promptVersion: summary.promptVersion } });
             for (const d of run.done) WarBench.bundleEpisode(chain, { id: d.step.scenario.id, variant: d.step.variant, attempt: d.step.attempt },
                 d.out.rounds.map(({ type, ...r }) => r), d.out.result, d.out.snapshot);
             WarBench.bundleClose(chain, results);
@@ -337,7 +360,7 @@ class BenchPage {
             // library has it on disk, not only in this page.
             if (run.policy.kind === 'model') this.ui.saveArenaConfig();
         }
-        this.last = { summary, lines };
+        this.last = { summary, lines, opts: {} };
         this.renderResults(summary);
     }
 
@@ -516,9 +539,10 @@ class BenchPage {
     }
 
     describeRun(s) {
-        const bits = [new Date(s.at).toLocaleString(), t('bench.build', { b: s.build || '?' })];
+        const bits = [s.at ? new Date(s.at).toLocaleString() : t('bench.noDate'), t('bench.build', { b: s.build || '?' })];
         if (s.model && s.model.model) bits.push(s.model.model + (s.model.host ? ' @ ' + s.model.host : ''));
-        if (s.prompt) bits.push(s.prompt === 'arena' ? t('bench.promptArenaShort') : s.promptVersion);
+        if (s.prompt === 'arena') bits.push(t('bench.promptArenaShort'));
+        else if (s.prompt && s.promptVersion) bits.push(s.promptVersion);
         const o = s.model && s.model.reqOpts;
         if (o && o.temperature != null) bits.push('T=' + o.temperature);
         if (o && o.reasoning) bits.push(t('bench.reasoning', { r: o.reasoning }));
@@ -530,29 +554,35 @@ class BenchPage {
     // said first, with the reasons the seat counted.
     answerNote(episodes, agg) {
         if (!agg.all.unanswered) return null;
+        // A replay bundle keeps the answers, not the seat's reasons for missing one.
+        if (!episodes.some(e => e.seat)) return t('bench.noAnswerNoteBare', { n: agg.all.unanswered, of: agg.all.rounds });
         const sum = k => episodes.reduce((a, e) => a + ((e.seat && e.seat[k]) || 0), 0);
         return t('bench.noAnswerNote', { n: agg.all.unanswered, of: agg.all.rounds, net: sum('networkErrors'), slow: sum('timeouts'),
             bad: sum('parseFails') + sum('noActionReturns') });
     }
 
-    renderResults(s) {
+    renderResults(s, opts = {}) {
         this._view = 'results';
+        if (!this.last || this.last.summary !== s) this.last = { summary: s, lines: opts.lines || null, opts };
+        const kept = this.loadRuns().some(r => r.id === s.id);
         const agg = this.aggregate(s.episodes);
         const notes = [];
         if (!s.complete) notes.push(t(s.problem ? 'bench.brokeOff' : 'bench.stoppedEarly', { n: s.episodes.length, of: s.planned, e: s.problem || '' }));
         if (s.episodes.length && s.kept === false) notes.push(t('bench.notKept'));
         const silent = this.answerNote(s.episodes, agg);
         if (silent) notes.unshift(silent);
-        this.el('benchBody').innerHTML = `
+        this.el('benchBody').innerHTML = this.nav(opts.file ? 'file' : 'results') + `
             <section class="arena-section bench-results">
                 <h3>${this.esc(t('bench.resultsFor', { model: s.label }))}</h3>
+                ${opts.file ? `<p class="bench-note">${this.esc(t(kept ? 'bench.fileKept' : 'bench.fileShown', { f: opts.file }))}</p>` : ''}
                 <p class="bench-run-meta">${this.describeRun(s)}</p>
                 ${notes.map(n => `<p class="bench-note">${this.esc(n)}</p>`).join('')}
                 ${s.episodes.length ? this.chart(agg) + this.table(agg) + `<p class="arena-hint">${t('bench.readHint', { cap: Math.round(WarBench.PARTIAL_CAP * 100) })}</p>` : ''}
             </section>
             <div class="arena-setup-buttons">
-                ${s.episodes.length ? `<button class="menu-btn" onclick="game.ui.benchPage().saveSummary()">${t('bench.saveResults')}</button>
-                <button class="menu-btn back-btn" onclick="game.ui.benchPage().saveBundle()" title="${this.esc(t('bench.saveBundleTip'))}">${t('bench.saveBundle')}</button>` : ''}
+                ${opts.file && !kept && s.episodes.length ? `<button class="menu-btn bench-start" onclick="game.ui.benchPage().keepShown()">${t('bench.keep')}</button>` : ''}
+                ${s.episodes.length && !opts.file ? `<button class="menu-btn" onclick="game.ui.benchPage().saveSummary()">${t('bench.saveResults')}</button>` : ''}
+                ${this.last && this.last.lines && !opts.file ? `<button class="menu-btn back-btn" onclick="game.ui.benchPage().saveBundle()" title="${this.esc(t('bench.saveBundleTip'))}">${t('bench.saveBundle')}</button>` : ''}
                 ${this.countFor(s.modelKey) ? `<button class="menu-btn back-btn" onclick="game.ui.benchPage().renderHistory('${this.esc(s.modelKey)}')">${this.esc(t('bench.openHistory', { n: this.countFor(s.modelKey) }))}</button>` : ''}
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().renderSetup()">${t('bench.newRun')}</button>
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().close()">${t('common.back')}</button>
@@ -578,7 +608,7 @@ class BenchPage {
                 <td>${a.score.mean == null ? '–' : a.score.mean.toFixed(2)}</td>
                 <td><button class="hr-del" onclick="game.ui.benchPage().deleteRun('${this.esc(r.id)}','${this.esc(key)}')" title="${this.esc(t('bench.deleteRun'))}" aria-label="${this.esc(t('bench.deleteRun'))}">✕</button></td></tr>`;
         }).join('');
-        this.el('benchBody').innerHTML = `
+        this.el('benchBody').innerHTML = this.nav('history') + `
             <section class="arena-section bench-results">
                 <h3>${this.esc(t('bench.historyFor', { model: label }))}</h3>
                 ${runs.length ? `<p class="bench-run-meta">${this.esc(t('bench.historyLine', { runs: runs.length, eps: episodes.length }))}</p>
@@ -617,7 +647,7 @@ class BenchPage {
     exportRuns(key) { const runs = this.runsFor(key); if (runs.length) this.download(`warbench-${this.slug(runs[0].label)}-all-${this.stamp()}.json`, this.resultsFile(runs)); }
     exportAll() {
         const runs = this.loadRuns();
-        if (!runs.length) { this.el('benchSetupError').textContent = t('bench.noRunsAtAll'); return; }
+        if (!runs.length) { this.say(t('bench.noRunsAtAll')); return; }
         this.download(`warbench-results-${this.stamp()}.json`, this.resultsFile(runs));
     }
     // The whole run, replayable: gzipped where the browser can, plain JSON lines where
@@ -631,22 +661,178 @@ class BenchPage {
             this.download(base + '.gz', await new Response(gz).blob());
         } else this.download(base, new Blob([text], { type: 'application/x-ndjson' }));
     }
-    importFile() {
+    // ---- Results across models (b1096) -----------------------------------------
+    // Every model with saved runs, and how they compare, scenario by scenario.
+    renderOverview() {
+        this._view = 'overview';
+        const runs = this.loadRuns();
+        const keys = [...new Set(runs.map(r => r.modelKey))];
+        const models = keys.map(key => {
+            const mine = runs.filter(r => r.modelKey === key), eps = mine.flatMap(r => r.episodes);
+            const lastRun = mine.reduce((a, r) => (a && (a.at || '') > (r.at || '') ? a : r), null);
+            return { key, label: this.modelLabel(key) || (lastRun && lastRun.label) || key, runs: mine, eps, lastRun, agg: this.aggregate(eps) };
+        }).sort((a, b) => (b.agg.all.score.mean || 0) - (a.agg.all.score.mean || 0));
+        const list = models.map(m => `<tr><th scope="row">${this.esc(m.label)}</th>
+            <td>${m.lastRun && m.lastRun.model && m.lastRun.model.model ? this.esc(m.lastRun.model.model + (m.lastRun.model.host ? ' @ ' + m.lastRun.model.host : '')) : '–'}</td>
+            <td>${m.runs.length}</td><td>${m.eps.length}</td>
+            <td>${m.agg.all.score.mean == null ? '–' : `${m.agg.all.score.mean.toFixed(2)} <span class="bench-ci">[${m.agg.all.score.lo.toFixed(2)}–${m.agg.all.score.hi.toFixed(2)}]</span>`}</td>
+            <td>${m.lastRun && m.lastRun.at ? this.esc(new Date(m.lastRun.at).toLocaleString()) : '–'}</td>
+            <td><button class="lib-io-btn" onclick="game.ui.benchPage().renderHistory('${this.esc(m.key)}')">${t('bench.open')}</button></td></tr>`).join('');
+        this.el('benchBody').innerHTML = this.nav('overview') + `
+            <section class="arena-section bench-results">
+                <h3>${t('bench.overviewTitle')}</h3>
+                ${models.length ? `<p class="bench-run-meta">${this.esc(t('bench.overviewLine', { m: models.length, runs: runs.length }))}</p>
+                ${models.length > 1 ? this.compareChart(models) : ''}
+                <div class="bench-table-wrap"><table class="bench-table bench-runs">
+                <thead><tr><th scope="col">${t('bench.model')}</th><th scope="col">${t('bench.col.endpoint')}</th><th scope="col">${t('bench.col.benchmarks')}</th>
+                    <th scope="col">${t('bench.col.runs')}</th><th scope="col">${t('bench.col.score')}</th><th scope="col">${t('bench.col.last')}</th><th scope="col"></th></tr></thead>
+                <tbody>${list}</tbody></table></div>
+                <p class="arena-hint">${t('bench.overviewHint')}</p>`
+                : `<p class="lib-empty">${t('bench.noRunsAtAll')}</p>`}
+            </section>
+            <div class="arena-setup-buttons">
+                ${runs.length ? `<button class="menu-btn back-btn" onclick="game.ui.benchPage().exportAll()">${t('bench.exportAll')}</button>` : ''}
+                <button class="menu-btn back-btn" onclick="game.ui.benchPage().close()">${t('common.back')}</button>
+            </div>`;
+    }
+
+    // Models side by side: per scenario, one bar per model with its mean score and
+    // interval. Colours follow the model, in a fixed order, and every bar carries its
+    // value; the legend names the models.
+    compareChart(models) {
+        const shown = models.slice(0, 6);
+        const ids = [...new Set(shown.flatMap(m => m.agg.rows.map(r => r.id)))];
+        const title = id => { for (const m of shown) { const r = m.agg.rows.find(x => x.id === id); if (r) return r.title; } return id; };
+        const W = 720, labelW = 210, barW = 380, barH = 12, gap = 4, groupGap = 14, x0 = labelW;
+        const rowsOf = ['*', ...ids];
+        let y = 6;
+        const body = rowsOf.map(id => {
+            const name = id === '*' ? t('bench.allScenarios') : title(id);
+            const top = y;
+            const bars = shown.map((m, i) => {
+                const r = id === '*' ? m.agg.all : m.agg.rows.find(x => x.id === id);
+                const yy = top + i * (barH + gap);
+                if (!r || r.score.mean == null) return `<text x="${x0 + 4}" y="${yy + 10}" class="bench-chart-n">${this.esc(t('bench.notRun'))}</text>`;
+                const sc = r.score;
+                return `<rect class="bench-cmp bench-cmp-${i + 1}" x="${x0}" y="${yy}" width="${Math.max(1, barW * sc.mean).toFixed(1)}" height="${barH}" rx="2">
+                        <title>${this.esc(`${m.label} · ${name}: ${sc.mean.toFixed(2)} [${sc.lo.toFixed(2)}–${sc.hi.toFixed(2)}], n = ${r.n}`)}</title></rect>
+                    <text x="${(x0 + barW * sc.mean + 6).toFixed(1)}" y="${yy + 10}" class="bench-chart-value bench-cmp-val">${sc.mean.toFixed(2)}</text>`;
+            }).join('');
+            y += shown.length * (barH + gap) + groupGap;
+            const label = name.length > 30 ? name.slice(0, 29) + '…' : name;
+            return `<text x="${labelW - 12}" y="${top + 10}" text-anchor="end" class="bench-chart-label${id === '*' ? ' bench-strong' : ''}">${this.esc(label)}<title>${this.esc(name)}</title></text>${bars}`;
+        }).join('');
+        const legend = shown.map((m, i) => `<span class="bench-key"><i class="bench-swatch bench-cmp-${i + 1}"></i>${this.esc(m.label)}</span>`).join('');
+        return `<h4>${t('bench.compareTitle')}</h4>
+            <div class="bench-legend">${legend}<span class="bench-key bench-key-score">${this.esc(t('bench.compareKey'))}</span></div>
+            <div class="bench-chart"><svg viewBox="0 0 ${W} ${y}" role="img" aria-label="${this.esc(t('bench.compareTitle'))}">${body}</svg></div>
+            ${models.length > shown.length ? `<p class="arena-hint">${this.esc(t('bench.compareCap', { n: shown.length }))}</p>` : ''}`;
+    }
+
+    // ---- Opening a file (b1096) ---------------------------------------------------
+    // A results file (.json, as "Save results" writes it) or a replay bundle
+    // (.warbench.jsonl.gz or .jsonl): shown first, kept only when asked.
+    openFile() {
         const input = document.createElement('input');
-        input.type = 'file'; input.accept = '.json,application/json';
+        input.type = 'file'; input.accept = '.json,.gz,.jsonl,application/json';
         input.onchange = async () => {
             const f = input.files && input.files[0];
             if (!f) return;
-            try {
-                const data = JSON.parse(await f.text());
-                if (!data || data.schema !== BenchPage.RESULTS_SCHEMA || !Array.isArray(data.runs)) throw new Error(t('bench.importWrong'));
-                const runs = this.loadRuns(), have = new Set(runs.map(r => r.id));
-                const fresh = data.runs.filter(r => r && r.id && Array.isArray(r.episodes) && !have.has(r.id));
-                if (!this.saveRuns(runs.concat(fresh))) throw new Error(t('bench.notKept'));
-                this.renderSetup();
-                this.el('benchSetupError').textContent = t('bench.imported', { n: fresh.length, skipped: data.runs.length - fresh.length });
-            } catch (e) { this.el('benchSetupError').textContent = e.message || String(e); }
+            try { await this.showFile(f.name, f); }
+            catch (e) { this.say(t('bench.fileWrong', { e: e.message || String(e) })); }
         };
         input.click();
+    }
+    async showFile(name, blob) {
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let text;
+        if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+            if (typeof DecompressionStream !== 'function') throw new Error(t('bench.noGzip'));
+            text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+        } else text = new TextDecoder().decode(bytes);
+        const trimmed = text.trim();
+        if (trimmed.startsWith('{') && !trimmed.includes('\n')) {
+            const data = JSON.parse(trimmed);
+            if (data && data.schema === BenchPage.RESULTS_SCHEMA && Array.isArray(data.runs)) return this.showResultsFile(name, data.runs);
+        }
+        if (trimmed.startsWith('{')) {
+            try {
+                const data = JSON.parse(trimmed);
+                if (data && data.schema === BenchPage.RESULTS_SCHEMA && Array.isArray(data.runs)) return this.showResultsFile(name, data.runs);
+            } catch (e) { /* JSON lines, not one document */ }
+        }
+        const lines = trimmed.split('\n').filter(Boolean);
+        const run = this.bundleRun(lines);
+        this.renderResults(run, { file: name, lines });
+    }
+    showResultsFile(name, runs) {
+        const usable = runs.filter(r => r && r.id && Array.isArray(r.episodes));
+        if (!usable.length) throw new Error(t('bench.importWrong'));
+        if (usable.length === 1) { this.renderResults(usable[0], { file: name }); return; }
+        // Several runs: add the ones this browser lacks, then show them all.
+        const have = this.loadRuns(), ids = new Set(have.map(r => r.id));
+        const fresh = usable.filter(r => !ids.has(r.id));
+        if (fresh.length && !this.saveRuns(have.concat(fresh))) throw new Error(t('bench.notKept'));
+        this.renderOverview();
+        this.say(t('bench.imported', { n: fresh.length, skipped: usable.length - fresh.length }));
+    }
+    keepShown() {
+        const s = this.last && this.last.summary;
+        if (!s) return;
+        const runs = this.loadRuns();
+        if (!runs.some(r => r.id === s.id)) { runs.push(s); if (!this.saveRuns(runs)) { this.say(t('bench.notKept')); return; } }
+        this.renderResults(s, this.last.opts);
+    }
+
+    // A replay bundle as a run summary: the episodes, their outcomes, scores, parts and
+    // notes, the answers' time, tokens and gaps -- everything but the seat's reasons for
+    // a missed answer, which a bundle does not hold. Matched to the library entry with
+    // the same name, endpoint and model, if there is one.
+    bundleRun(lines) {
+        const recs = lines.map(l => JSON.parse(l));
+        const head = recs[0];
+        if (!head || head.type !== 'header' || head.schema !== WarBench.BUNDLE_SCHEMA) throw new Error(t('bench.importWrong'));
+        const blobs = new Map(recs.filter(r => r.type === 'blob').map(r => [r.sha256, r.text]));
+        const scenario = id => { const h = head.files && head.files['scenario:' + id]; try { return h && blobs.has(h) ? JSON.parse(blobs.get(h)) : null; } catch (e) { return null; } };
+        const cfg = head.policy && head.policy.config;
+        let host = null;
+        try { host = cfg && cfg.endpoint ? new URL(cfg.endpoint).host : null; } catch (e) { host = null; }
+        const models = (this.ui._arenaConfig && this.ui._arenaConfig.models) || [];
+        const match = cfg ? models.find(m => (m.name || '').trim() === cfg.name && (m.endpoint || '').trim() === cfg.endpoint && (m.model || '').trim() === cfg.model) : null;
+        const key = head.policy.kind === 'baseline' ? 'baseline:' + head.policy.name : match ? match.uid : 'file:' + head.policy.name;
+        const episodes = [];
+        for (let i = 0; i < recs.length; i++) {
+            if (recs[i].type !== 'episode') continue;
+            const e = recs[i], rounds = [];
+            let j = i + 1;
+            for (; recs[j] && recs[j].type === 'round'; j++) rounds.push(recs[j]);
+            const end = recs[j];
+            if (!end || end.type !== 'end') continue;
+            const s = scenario(e.id) || {};
+            const classes = {};
+            for (const r of rounds) for (const o of r.outcomes || []) classes[o.class] = (classes[o.class] || 0) + 1;
+            const ms = rounds.map(r => r.ms).filter(Number.isFinite);
+            let completion = 0, prompt = 0;
+            for (const r of rounds) for (const w of r.wire || []) {
+                try { const u = JSON.parse(w.response).usage || {}; completion += u.completion_tokens || u.output_tokens || 0; prompt += u.prompt_tokens || u.input_tokens || 0; } catch (err) { /* not JSON */ }
+            }
+            episodes.push({ id: e.id, family: s.family || '', title: s.title || e.id, variant: e.variant, attempt: e.attempt,
+                outcome: end.outcome, score: WarBench.episodeScore(end), parts: end.parts || null, notes: end.notes || null,
+                rounds: end.rounds, maxRounds: s.rounds || null, stopped: end.stopped || null,
+                unanswered: rounds.filter(r => r.answer == null).length, seat: null,
+                ms: ms.length ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null, maxMs: ms.length ? Math.round(Math.max(...ms)) : null,
+                tokens: { prompt, completion }, classes });
+        }
+        const close = recs[recs.length - 1];
+        return {
+            id: 'bundle-' + warSha256(lines[0]).slice(0, 16), at: head.at || null, modelKey: key,
+            label: head.policy.name, model: cfg ? { name: cfg.name, model: cfg.model, provider: cfg.provider, host, maxTokens: cfg.maxTokens,
+                contextSize: cfg.contextSize, reqOpts: cfg.reqOpts } : { baseline: head.policy.name },
+            prompt: cfg ? (cfg.systemPrompt != null ? 'arena' : 'standard') : null, promptVersion: head.promptVersion || null,
+            build: head.build || null, coreHash: head.coreHash, harnessHash: head.harnessHash,
+            protocol: { roundMs: head.protocol.roundMs, ceilingMs: head.protocol.ceilingMs, wallLimitMinutes: head.wallLimitMinutes || null },
+            runsPerScenario: head.iterations || head.attempts || null, planned: episodes.length,
+            complete: !!(close && close.type === 'close'), problem: null, episodes, fromBundle: true,
+        };
     }
 }

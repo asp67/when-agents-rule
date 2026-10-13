@@ -6,6 +6,19 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1096: benchmark results you can browse, compare and open from a file (13 October 2026)
+
+**No match rules change.** asp67 found no way to look at earlier results except through one model, and no way to load a saved file and look at it.
+
+**The Benchmark page now has three views:**
+- **New benchmark.** The Start button names the model it will run ("▶ Benchmark *model*"). The dropdown opens on the model benchmarked last, and asp67's second run, meant for the Q2 seat, ran on the FP8: every recorded request went to the FP8 endpoint.
+- **Results.** Every model with saved runs, sorted by mean score, with model and endpoint, number of benchmarks and runs, and the last run. "Open" shows a model's totals per scenario and its runs. With two or more models, **Models compared** draws one bar per model for each scenario and for all scenarios together, up to six models. The bars use the dark categorical order (validated against the panel surface), with a legend and a value on every bar; hovering a bar shows its interval. A scenario a model has not run says so. The page opens on this view when anything is saved.
+- **Open a file.** It takes a results file (`.json`, as "Save results" writes it) or a replay bundle (`.warbench.jsonl.gz`, unpacked in the browser, or `.jsonl`).
+  - A bundle, or a results file with one run, is **shown** without being stored, and "Keep in this browser" stores it.
+  - A results file with several runs adds the ones this browser lacks.
+  - A bundle is read back into the same per-episode summary as a run made here: outcomes, scores, parts, notes, answer times, tokens from the recorded replies, and unanswered rounds. It is matched to the library entry with the same name, endpoint and model.
+- Bundles recorded from now on carry the run's date and prompt version.
+
 ## Build 1095: the fog search grades how far the search went (13 October 2026)
 
 **No match rules change.** asp67: a model that searches a confined area should score less than one that actually goes places. Measured on b1094, it did not. Four scouts on routes that never left the tiles around home scored 0.74–0.87, above scouts sent far without routes (0.51–0.58), because routes counted fully however short they were.
