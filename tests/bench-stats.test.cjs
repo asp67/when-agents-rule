@@ -67,3 +67,26 @@ test('a run scored: scripted above random-valid above noop, with the classes cou
     const cmp = pairedBootstrap(runs.scripted, runs.noop);
     assert.ok(cmp.diff >= 0.99 && cmp.lo >= 0.99 && cmp.hi <= 1, JSON.stringify(cmp));
 });
+
+// b1099: intervals that fit the scores. Win-or-lose scores keep Wilson's; graded and
+// partial ones get Student's t on the scores themselves -- the old rule laid Wilson's
+// bound over every mean, so asp67's ten fog searches between 0.65 and 0.91 read
+// 0.78 [0.47-0.94]. A total counts every scenario the same, however often it ran.
+test('intervals: Wilson for win-or-lose, t for graded scores, totals balanced over scenarios', () => {
+    const W = require('../js/bench-core.js');
+    const fp8 = [0.733, 0.905, 0.763, 0.647, 0.863, 0.908, 0.657, 0.882, 0.77, 0.699];
+    const m = W.meanScore(fp8);
+    assert.equal(m.mean, 0.7827);
+    assert.ok(m.lo > 0.70 && m.hi < 0.86, JSON.stringify(m));
+    assert.deepEqual(W.meanScore([1, 0, 1, 1]), (w => ({ mean: 0.75, lo: Math.round(w.lo * 1e4) / 1e4, hi: Math.round(w.hi * 1e4) / 1e4, n: 4 }))(W.wilson(3, 4)));
+    assert.deepEqual([W.meanScore([0.5]).lo, W.meanScore([0.5]).hi], [0, 1]);
+    // Paired differences are not clamped: they may be negative.
+    const d = W.tInterval([0.1, -0.05, 0.2, 0.0]);
+    assert.ok(d.lo < 0 && d.hi > 0 && d.n === 4);
+    // Ten runs of one scenario and two of another: each counts half.
+    const b = W.balancedScore([fp8, [1, 1]]);
+    assert.equal(b.mean, Math.round((0.7827 + 1) / 2 * 1e4) / 1e4);
+    assert.equal(b.k, 2);
+    // Two wins still carry a Bernoulli spread, not none.
+    assert.ok(W.balancedScore([[1, 1]]).lo < 0.8);
+});

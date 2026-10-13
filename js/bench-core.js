@@ -977,17 +977,64 @@ function wilson(k, n, z = 1.959963984540054) {
     return { p, lo: Math.max(0, mid - half), hi: Math.min(1, mid + half), k, n };
 }
 
-// The mean of scores in [0, 1] with a 95 % interval: the normal approximation, widened
-// to Wilson's at the extremes so that five identical scores do not read as certainty.
-function meanScore(scores, z = 1.959963984540054) {
+// Student's t, two-sided 95 %, for df degrees of freedom: the table, interpolated.
+const T95 = [[1, 12.706], [2, 4.303], [3, 3.182], [4, 2.776], [5, 2.571], [6, 2.447], [7, 2.365], [8, 2.306],
+    [9, 2.262], [10, 2.228], [12, 2.179], [15, 2.131], [20, 2.086], [25, 2.060], [30, 2.042], [40, 2.021],
+    [60, 2.000], [120, 1.980], [Infinity, 1.960]];
+function t95(df) {
+    if (!(df >= 1)) return Infinity;
+    for (let i = 1; i < T95.length; i++) {
+        const [d1, t1] = T95[i - 1], [d2, t2] = T95[i];
+        if (df <= d2) return d2 === Infinity ? t2 : t1 + (t2 - t1) * (df - d1) / (d2 - d1);
+    }
+    return 1.96;
+}
+const round4 = v => Math.round(v * 10000) / 10000;
+// The mean of some values with Student's t interval, unclamped: for differences.
+function tInterval(values) {
+    const n = values.length;
+    if (!n) return { mean: null, lo: null, hi: null, n, sd: null };
+    const mean = values.reduce((a, b) => a + b, 0) / n;
+    const sd = n > 1 ? Math.sqrt(values.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (n - 1)) : null;
+    const half = sd == null ? Infinity : t95(n - 1) * sd / Math.sqrt(n);
+    return { mean: round4(mean), lo: round4(mean - half), hi: round4(mean + half), n, sd: sd == null ? null : round4(sd) };
+}
+// The mean of scores in [0, 1] with a 95 % interval (b1099). Where every score is a
+// plain win or loss it is Wilson's; where scores are graded or partial it is Student's
+// t on the scores, clamped to [0, 1]. Until b1099 Wilson's bound was laid over every
+// mean, treating ten graded scores between 0.65 and 0.91 as if each were all or
+// nothing: 0.78 [0.47-0.94] where the scores themselves said about +-0.06.
+function meanScore(scores) {
     const n = scores.length;
     if (!n) return { mean: null, lo: null, hi: null, n };
     const mean = scores.reduce((a, b) => a + b, 0) / n;
-    const sd = n > 1 ? Math.sqrt(scores.reduce((a, b) => a + (b - mean) * (b - mean), 0) / (n - 1)) : 0;
-    const half = z * sd / Math.sqrt(n);
-    const w = wilson(mean * n, n, z);
-    const round = v => Math.round(v * 10000) / 10000;
-    return { mean: round(mean), lo: round(Math.max(0, Math.min(mean - half, w.lo))), hi: round(Math.min(1, Math.max(mean + half, w.hi))), n };
+    if (scores.every(s => s === 0 || s === 1)) {
+        const w = wilson(mean * n, n);
+        return { mean: round4(mean), lo: round4(w.lo), hi: round4(w.hi), n };
+    }
+    if (n < 2) return { mean: round4(mean), lo: 0, hi: 1, n };
+    const t = tInterval(scores);
+    return { mean: round4(mean), lo: round4(Math.max(0, t.lo)), hi: round4(Math.min(1, t.hi)), n };
+}
+// Several scenarios' scores as one, each scenario counting the same however often it
+// was run (b1099): the mean of the scenario means, its interval from their standard
+// errors. A pooled mean over episodes let whichever scenario ran most decide it.
+function balancedScore(groups) {
+    const parts = groups.filter(g => g.length);
+    if (!parts.length) return { mean: null, lo: null, hi: null, n: 0, k: 0 };
+    const k = parts.length;
+    let mean = 0, varSum = 0, n = 0;
+    for (const g of parts) {
+        const m = g.reduce((a, b) => a + b, 0) / g.length;
+        // Win-or-lose runs carry a Bernoulli spread, from the success rate nudged off 0
+        // and 1 (Agresti), so two wins do not read as no spread at all; graded scores
+        // carry their own; a single graded run the widest a [0, 1] score can have.
+        const binary = g.every(x => x === 0 || x === 1), pt = (g.reduce((a, b) => a + b, 0) + 1) / (g.length + 2);
+        const v = binary ? pt * (1 - pt) : g.length > 1 ? g.reduce((a, b) => a + (b - m) * (b - m), 0) / (g.length - 1) : 0.25;
+        mean += m / k; varSum += v / g.length; n += g.length;
+    }
+    const half = 1.96 * Math.sqrt(varSum) / k;
+    return { mean: round4(mean), lo: round4(Math.max(0, mean - half)), hi: round4(Math.min(1, mean + half)), n, k };
 }
 
 // C(n, k) as a float, exact for the small numbers a bench uses.
@@ -1118,7 +1165,7 @@ return {
     CLASSES, CLASS_OF, classify,
     begin, play, episodeScore,
     referencePolicy, noopPolicy, rngFor, randomCommand, randomValidPolicy, BASELINES, modelPolicy,
-    wilson, meanScore, choose, passHatK, cellsOf, rate, score,
+    wilson, meanScore, tInterval, balancedScore, choose, passHatK, cellsOf, rate, score,
     BUNDLE_SCHEMA, bundleChain, bundleOpen, bundleEpisode, bundleClose,
 };
 })();

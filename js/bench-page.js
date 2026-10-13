@@ -45,6 +45,33 @@ class BenchPage {
         catch (e) { return false; }
     }
     runsFor(key) { return this.loadRuns().filter(r => r.modelKey === String(key)); }
+
+    // ---- The build filter (b1099) -----------------------------------------------
+    // Results from before a fix to the bench or the rules are not comparable with
+    // results after it; the Results views can be limited to runs from a build on.
+    // Remembered in this browser, a convenience only.
+    get buildMin() {
+        if (this._buildMin === undefined) {
+            try { this._buildMin = Number(JSON.parse(localStorage.getItem('war.bench.view') || '{}').buildMin) || null; } catch (e) { this._buildMin = null; }
+        }
+        return this._buildMin;
+    }
+    setBuildMin(v) {
+        this._buildMin = Number(v) || null;
+        try { localStorage.setItem('war.bench.view', JSON.stringify({ buildMin: this._buildMin })); } catch (e) { /* a convenience only */ }
+        if (this._view === 'history') this.renderHistory(this._historyKey); else this.renderOverview();
+    }
+    filtered(runs) { const b = this.buildMin; return b ? runs.filter(r => Number(r.build) >= b) : runs; }
+    buildFilter(runs) {
+        const builds = [...new Set(runs.map(r => Number(r.build)).filter(Boolean))].sort((a, b) => a - b);
+        if (builds.length < 2 && !this.buildMin) return '';
+        const b = this.buildMin;
+        return `<label class="bench-filter">${t('bench.builds')}
+            <select onchange="game.ui.benchPage().setBuildMin(this.value)">
+                <option value="" ${!b ? 'selected' : ''}>${this.esc(t('bench.buildsAll'))}</option>
+                ${builds.map(x => `<option value="${x}" ${b === x ? 'selected' : ''}>${this.esc(t('bench.buildsFrom', { b: x }))}</option>`).join('')}
+            </select></label>`;
+    }
     countFor(key) { return this.runsFor(key).length; }
 
     // ---- Opening ----------------------------------------------------------------
@@ -480,7 +507,10 @@ class BenchPage {
                 rounds, unanswered: eps.reduce((a, e) => a + (e.unanswered || 0), 0) };
         };
         const rows = [...by.values()].sort((a, b) => a.family.localeCompare(b.family) || a.id.localeCompare(b.id)).map(g => stat(g.eps, g.title, g.id));
-        return { all: stat(episodes, t('bench.allScenarios'), '*'), rows };
+        const all = stat(episodes, t('bench.allScenarios'), '*');
+        // Every scenario counts the same in the total, however often it ran (b1099).
+        all.score = WarBench.balancedScore([...by.values()].map(g => g.eps.map(e => e.score || 0)));
+        return { all, rows };
     }
 
     // One row per scenario: the outcome shares as a stacked bar (success, partial,
@@ -596,7 +626,7 @@ class BenchPage {
                 ${opts.file ? `<p class="bench-note">${this.esc(t(kept ? 'bench.fileKept' : 'bench.fileShown', { f: opts.file }))}</p>` : ''}
                 <p class="bench-run-meta">${this.describeRun(s)}</p>
                 ${notes.map(n => `<p class="bench-note">${this.esc(n)}</p>`).join('')}
-                ${s.episodes.length ? this.chart(agg) + this.table(agg) + `<p class="arena-hint">${t('bench.readHint', { cap: Math.round(WarBench.PARTIAL_CAP * 100) })}</p>` : ''}
+                ${s.episodes.length ? this.chart(agg) + this.table(agg) + `<p class="arena-hint">${t('bench.readHint', { cap: Math.round(WarBench.PARTIAL_CAP * 100) })}</p><p class="arena-hint">${t('bench.balancedHint')}</p>` : ''}
             </section>
             <div class="arena-setup-buttons">
                 ${opts.file && !kept && s.episodes.length ? `<button class="menu-btn bench-start" onclick="game.ui.benchPage().keepShown()">${t('bench.keep')}</button>` : ''}
@@ -611,8 +641,8 @@ class BenchPage {
     // Everything a model has run here, added up per scenario, with the runs it is made of.
     renderHistory(key) {
         this._view = 'history'; this._historyKey = key;
-        const runs = this.runsFor(key);
-        const label = this.modelLabel(key) || (runs[0] && runs[0].label) || key;
+        const every = this.runsFor(key), runs = this.filtered(every);
+        const label = this.modelLabel(key) || (every[0] && every[0].label) || key;
         const episodes = runs.flatMap(r => r.episodes);
         const agg = this.aggregate(episodes);
         const builds = new Set(runs.map(r => r.coreHash || r.build)), configs = new Set(runs.map(r => JSON.stringify([r.model, r.prompt, r.promptVersion])));
@@ -630,10 +660,11 @@ class BenchPage {
         this.el('benchBody').innerHTML = this.nav('history') + `
             <section class="arena-section bench-results">
                 <h3>${this.esc(t('bench.historyFor', { model: label }))}</h3>
+                ${this.buildFilter(every)}
                 ${runs.length ? `<p class="bench-run-meta">${this.esc(t('bench.historyLine', { runs: runs.length, eps: episodes.length }))}</p>
                 ${mixed.map(m => `<p class="bench-note">${this.esc(m)}</p>`).join('')}
                 ${this.chart(agg)}${this.table(agg)}
-                <p class="arena-hint">${t('bench.readHint', { cap: Math.round(WarBench.PARTIAL_CAP * 100) })}</p>
+                <p class="arena-hint">${t('bench.readHint', { cap: Math.round(WarBench.PARTIAL_CAP * 100) })}</p><p class="arena-hint">${t('bench.balancedHint')}</p>
                 <h4>${t('bench.runsList')}</h4>
                 <div class="bench-table-wrap"><table class="bench-table bench-runs"><thead><tr><th scope="col">${t('bench.col.run')}</th><th scope="col">${t('bench.col.episodes')}</th><th scope="col">${t('bench.col.score')}</th><th scope="col"></th></tr></thead><tbody>${list}</tbody></table></div>`
                 : `<p class="lib-empty">${t('bench.noRuns')}</p>`}
@@ -684,7 +715,7 @@ class BenchPage {
     // Every model with saved runs, and how they compare, scenario by scenario.
     renderOverview() {
         this._view = 'overview';
-        const runs = this.loadRuns();
+        const every = this.loadRuns(), runs = this.filtered(every);
         const keys = [...new Set(runs.map(r => r.modelKey))];
         const models = keys.map(key => {
             const mine = runs.filter(r => r.modelKey === key), eps = mine.flatMap(r => r.episodes);
@@ -700,8 +731,9 @@ class BenchPage {
         this.el('benchBody').innerHTML = this.nav('overview') + `
             <section class="arena-section bench-results">
                 <h3>${t('bench.overviewTitle')}</h3>
+                ${this.buildFilter(every)}
                 ${models.length ? `<p class="bench-run-meta">${this.esc(t('bench.overviewLine', { m: models.length, runs: runs.length }))}</p>
-                ${models.length > 1 ? this.compareChart(models) : ''}
+                ${models.length > 1 ? this.compareChart(models) + this.headToHead(models) : ''}
                 <div class="bench-table-wrap"><table class="bench-table bench-runs">
                 <thead><tr><th scope="col">${t('bench.model')}</th><th scope="col">${t('bench.col.endpoint')}</th><th scope="col">${t('bench.col.benchmarks')}</th>
                     <th scope="col">${t('bench.col.runs')}</th><th scope="col">${t('bench.col.score')}</th><th scope="col">${t('bench.col.last')}</th><th scope="col"></th></tr></thead>
@@ -715,6 +747,34 @@ class BenchPage {
             </div>`;
     }
 
+    // Head to head (b1099): each model against the best, on runs matched by scenario and
+    // board orientation, in the order they were run -- the same board for both, so the
+    // difference is the models' and not the boards'. Student's t on the differences.
+    headToHead(models) {
+        const lead = models[0];
+        const seq = m => {
+            const out = new Map();
+            for (const r of m.runs.slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))))
+                for (const e of r.episodes) { const k = e.id + '/' + e.variant; (out.get(k) || out.set(k, []).get(k)).push(e.score || 0); }
+            return out;
+        };
+        const A = seq(lead);
+        const rows = models.slice(1, 6).map(m => {
+            const B = seq(m), diffs = [];
+            for (const [k, a] of A) { const b = B.get(k); if (!b) continue; for (let i = 0; i < Math.min(a.length, b.length); i++) diffs.push(a[i] - b[i]); }
+            const d = WarBench.tInterval(diffs);
+            const ahead = diffs.filter(x => x > 0.0005).length, behind = diffs.filter(x => x < -0.0005).length;
+            const sign = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(v).toFixed(2);
+            return `<tr><th scope="row">${this.esc(t('bench.h2hLine', { a: lead.label, b: m.label }))}</th><td>${diffs.length}</td>
+                <td>${!diffs.length ? '–' : sign(d.mean) + (diffs.length > 1 ? ` <span class="bench-ci">[${sign(d.lo)}, ${sign(d.hi)}]</span>` : '')}</td>
+                <td>${diffs.length ? `${ahead} / ${behind} / ${diffs.length - ahead - behind}` : '–'}</td></tr>`;
+        }).join('');
+        return `<h4>${t('bench.h2hTitle')}</h4>
+            <div class="bench-table-wrap"><table class="bench-table bench-runs"><thead><tr><th scope="col"></th><th scope="col">${t('bench.col.matched')}</th>
+                <th scope="col">${t('bench.col.diff')}</th><th scope="col">${t('bench.col.wins')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+            <p class="arena-hint">${t('bench.h2hHint')}</p>`;
+    }
+
     // Models side by side: per scenario, one bar per model with its mean score and
     // interval. Colours follow the model, in a fixed order, and every bar carries its
     // value; the legend names the models.
@@ -723,13 +783,21 @@ class BenchPage {
         const ids = [...new Set(shown.flatMap(m => m.agg.rows.map(r => r.id)))];
         const title = id => { for (const m of shown) { const r = m.agg.rows.find(x => x.id === id); if (r) return r.title; } return id; };
         const W = 720, labelW = 210, barW = 380, barH = 12, gap = 4, groupGap = 14, x0 = labelW;
+        // The total compares like with like: only the scenarios every model shown has
+        // run, each counting the same (b1099).
+        const common = ids.filter(id => shown.every(m => m.agg.rows.some(r => r.id === id)));
+        const totals = shown.map(m => {
+            const eps = m.eps.filter(e => common.includes(e.id));
+            const by = common.map(id => eps.filter(e => e.id === id).map(e => e.score || 0));
+            return { score: WarBench.balancedScore(by), n: eps.length };
+        });
         const rowsOf = ['*', ...ids];
         let y = 6;
         const body = rowsOf.map(id => {
-            const name = id === '*' ? t('bench.allScenarios') : title(id);
+            const name = id === '*' ? t('bench.allCommon', { k: common.length }) : title(id);
             const top = y;
             const bars = shown.map((m, i) => {
-                const r = id === '*' ? m.agg.all : m.agg.rows.find(x => x.id === id);
+                const r = id === '*' ? (common.length ? totals[i] : null) : m.agg.rows.find(x => x.id === id);
                 const yy = top + i * (barH + gap);
                 if (!r || r.score.mean == null) return `<text x="${x0 + 4}" y="${yy + 10}" class="bench-chart-n">${this.esc(t('bench.notRun'))}</text>`;
                 const sc = r.score;

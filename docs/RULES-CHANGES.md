@@ -6,6 +6,26 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1099: benchmark statistics that fit the scores, and a build filter (13 October 2026)
+
+**No match rules change.**
+
+**Intervals.** Until now every mean score got Wilson's bound laid over it, as if every run were win or lose. asp67's ten fog searches by the FP8 (scores 0.65–0.91) read 0.78 [0.47–0.94]. Now:
+- Win-or-lose scores keep Wilson's interval.
+- Graded and partial scores get Student's t on the scores themselves, clamped to [0, 1]: the same run now reads 0.78 [0.71–0.85].
+- A single graded run reads [0, 1].
+
+**Totals.** "All scenarios" was a pooled mean over runs, so whichever scenario ran most decided it. The 0.13 gap asp67 saw between the FP8 and Q2 totals was mostly that: different mixes of scenarios. Now:
+- Every scenario counts the same, and the interval comes from the scenarios' standard errors.
+- Win-or-lose scenarios carry a Bernoulli spread (Agresti), so two wins do not read as certainty.
+- In **Models compared** the total covers only the scenarios every model shown has run ("All shared scenarios (k)").
+
+**Head to head.** Each model is compared against the best, on runs matched by scenario and board orientation in the order they were run, so both faced the same boards. The table shows the mean difference with Student's t interval, plus how many runs each was ahead, behind and even. asp67's fog searches: Q2 against FP8, +0.05 [−0.02, +0.11] over 10 matched runs, ahead 7 / behind 3. Not yet a difference.
+
+**Build filter.** Results and a model's history can be limited to runs from a chosen build on, so runs from before a fix (b1097) stay out of a comparison without being deleted. The choice is remembered in the browser.
+
+`WarBench.meanScore`, `tInterval` and `balancedScore` are covered by `tests/bench-stats.test.cjs`.
+
 ## Build 1098: the model library from the Benchmark page, and back to where it was opened (13 October 2026)
 
 **No match rules change.** Agreed with asp67: the library belongs where a model is picked, not on the landing page.
