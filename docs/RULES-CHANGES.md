@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1093: explore without a named unit takes an idle one (13 October 2026)
+
+**Harness change.** `explore` with no `unitIds` and no `unitType` picks the unit itself: the farthest-seeing soldier. Its comment said "idle", but the code never checked. So a scout already on its way was picked again whenever it saw farthest. A seat that sent `explore` each turn without naming a unit re-aimed the same first rider every time and cut its route short, while the other riders stood at home.
+
+**Now** the farthest-seeing soldier that is standing still goes first. A unit on its way (an earlier explore, its route, a march) is taken only when no soldier stands free.
+- Named units (`unitIds`) and a named type (`unitType`) win outright, as before.
+- The reply still names which unit went.
+- Found while building the fog-search benchmark scenario, which would otherwise have scored this as the model's poor spreading.
+- `tests/scout-idle-first.test.cjs` covers it; it fails on the old pick.
+
 ## Build 1092: the Benchmark page (13 October 2026)
 
 **No match rules change.** A main-menu entry, "Benchmark a model", runs the WAR Bench scenarios against a library model in the browser (asp67's request).

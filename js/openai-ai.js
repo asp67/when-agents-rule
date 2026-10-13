@@ -8326,9 +8326,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // The farthest-seeing idle soldier, the first of equals (b1060). That was "the
         // first rider, else the first soldier", the same pick while only riders saw
         // farther; the Maya's spotter walks and sees as far.
+        // Idle means idle (b1093): a unit still on its way somewhere -- an earlier
+        // explore, its route, a march -- is picked only when no soldier stands free. It
+        // used to be picked first whenever it saw farthest, so a seat sending "explore"
+        // each turn without naming a unit re-aimed the same rider every time and cut
+        // its route short, while the other three riders stood at home.
         const sight = u => (this.game && this.game.unitVision) ? this.game.unitVision(u) : (u.unitType === 'cavalry' ? 22.5 : 15);
-        let far = null;
-        for (const u of idleMilitary) if (!far || sight(u) > sight(far)) far = u;
+        const farthest = list => { let far = null; for (const u of list) if (!far || sight(u) > sight(far)) far = u; return far; };
+        const far = farthest(idleMilitary.filter(u => !u.isMoving)) || farthest(idleMilitary);
         if (far) return far;
 
         const idleWorker = ai.units.find(u => u.type === 'worker' && this.game.isIdleWorker(u) && notSentYet(u));
