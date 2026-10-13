@@ -17,7 +17,9 @@
 //                ceilingMs, deadline (real ms since the epoch, or null)}
 // Messages out: {type:'round', round, rounds, ms, outcomes}     after each round
 //               {type:'done', result, rounds:[...bundle round records], snapshot,
-//                tokens:{prompt, completion}, ms:[real ms per answer]}
+//                tokens:{prompt, completion}, ms:[real ms per answer],
+//                seat:{requests, networkErrors, timeouts, parseFails, ...}} -- why rounds
+//                went unanswered, so a dead endpoint never reads as a weak model
 //               {type:'error', problem}
 // ---------------------------------------------------------------------------
 'use strict';
@@ -93,13 +95,17 @@ async function run({ texts, scenario, variant, attempt, policy, ceilingMs, deadl
             rounds.push({ type: 'round', round: x.round, stateHash: x.stateHash, answer: x.answer, wire: x.wire,
                 results: entry.results, outcomes: entry.outcomes || [], rival: entry.rival,
                 worldHash: sha(JSON.stringify(W.snapshot(realm))).slice(0, 16), after: entry.after, ms: x.ms });
-            self.postMessage({ type: 'round', round: entry.round, rounds: ep.inst.rounds, ms: x.ms, outcomes: entry.outcomes || [] });
+            self.postMessage({ type: 'round', round: entry.round, rounds: ep.inst.rounds, ms: x.ms, answered: x.answer != null,
+                outcomes: entry.outcomes || [] });
         },
     });
     result.attempt = attempt;
     const stats = (realm.controllers && realm.controllers[0] && realm.controllers[0].stats) || {};
+    const seat = {};
+    for (const k of ['requests', 'networkErrors', 'timeouts', 'parseFails', 'truncatedReplies', 'noActionReturns', 'rateLimited', 'contextOverflows'])
+        seat[k] = stats[k] || 0;
     return { type: 'done', result, rounds, snapshot: W.snapshot(realm),
-             tokens: { prompt: stats.promptTokens || 0, completion: stats.completionTokens || 0 }, ms };
+             tokens: { prompt: stats.promptTokens || 0, completion: stats.completionTokens || 0 }, ms, seat };
 }
 
 self.onmessage = async ({ data }) => {

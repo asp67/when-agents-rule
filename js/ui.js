@@ -160,6 +160,7 @@ class UIManager {
 
         const active = (id) => { const el = document.getElementById(id); return el && el.classList.contains('active'); };
         if (this._arenaConfig && active('modelLibraryScreen')) this.renderArenaLibrary();
+        if (this._benchPage) this._benchPage.onLanguageChanged();
         // renderSetupOptions too, not just the slots. It builds the difficulty table and
         // the campaign civ picker by writing t() straight into innerHTML, which no
         // data-i18n attribute can reach — so those two were the only things on the setup
@@ -737,6 +738,9 @@ class UIManager {
 
     saveSetup() { this.saveArenaConfig(); this.saveCampaignConfig(); }
 
+    // The Benchmark page (js/bench-page.js, b1092), made on first use.
+    benchPage() { return this._benchPage || (this._benchPage = new BenchPage(this)); }
+
     // Open the dedicated model-library page.
     async showModelLibrary() {
         if (!this._arenaConfig) this._arenaConfig = await this.loadArenaConfig();
@@ -765,10 +769,15 @@ class UIManager {
     // Arena model-library config
     // ----------------------------------------------------------------
     nextArenaModelId() { this._arenaModelSeq = (this._arenaModelSeq || 0) + 1; return this._arenaModelSeq; }
+    // `id` is a list position, re-keyed on every load; `uid` (b1092) is the entry's own,
+    // kept with it for good, so what is recorded against a model -- its benchmark
+    // results -- still finds it after the list changes or travels in an export.
+    static newModelUid() { return 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
     makeArenaModel(opts = {}) {
         return {
             id: this.nextArenaModelId(),
+            uid: UIManager.newModelUid(),
             name: opts.name || '',
             endpoint: opts.endpoint || '',
             model: opts.model || '',
@@ -947,6 +956,7 @@ class UIManager {
     normalizeArenaModel(m) {
         const def = this.makeArenaModel();
         m.availableModels = Array.isArray(m.availableModels) ? m.availableModels : [];
+        if (typeof m.uid !== 'string' || !/^[a-z0-9]{6,24}$/.test(m.uid)) m.uid = UIManager.newModelUid();
         m.provider = m.provider || 'auto';
         m.language = (m.language && I18N[m.language]) ? m.language : 'en';
         // Older configs baked the auto "Unnamed model N" into the stored name in
@@ -1286,6 +1296,13 @@ class UIManager {
             : `<p class="lib-empty">${t('ar.libEmpty')}</p>`;
     }
 
+    // The card's way to this model's benchmark results: enabled once it has any (b1092).
+    benchButton(m) {
+        const n = typeof BenchPage === 'undefined' ? 0 : this.benchPage().countFor(m.uid);
+        return `<button class="test-btn bench-lib-btn" ${n ? '' : 'disabled'} onclick="game.ui.benchPage().open({ history: '${m.uid}' })"
+            title="${this.escapeHtml(t(n ? 'bench.libTip' : 'bench.libNone'))}">${this.escapeHtml(t('bench.libBtn', { n }))}</button>`;
+    }
+
     renderModelCard(m, n) {
         const e = (s) => this.escapeHtml(s == null ? '' : String(s));
         // Default (unnamed) models show a LIVE translated fallback, never a baked-in
@@ -1480,6 +1497,7 @@ class UIManager {
             <div class="model-test-row">
                 <button class="test-btn" onclick="game.ui.testArenaModel(${m.id})">${t('ar.test')}</button>
                 <button class="test-btn" onclick="game.ui.checkArenaModel(${m.id})" title="${e(t('ar.checkTip'))}">${t('ar.check')}</button>
+                ${this.benchButton(m)}
                 ${status}
             </div>
             ${capLine}

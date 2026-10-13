@@ -118,7 +118,13 @@ async function record({ scenarios, policy, variants = null, attempts = 1, ceilin
 }
 
 function write(lines, file) { fs.writeFileSync(file, zlib.gzipSync(lines.join('\n') + '\n')); return file; }
-function readLines(file) { return zlib.gunzipSync(fs.readFileSync(file)).toString('utf8').split('\n').filter(Boolean); }
+// Gzipped as war-bench writes it, or plain JSON lines as a browser without
+// CompressionStream saves it (js/bench-page.js).
+function readLines(file) {
+    const raw = fs.readFileSync(file);
+    const gz = raw.length > 1 && raw[0] === 0x1f && raw[1] === 0x8b;
+    return (gz ? zlib.gunzipSync(raw) : raw).toString('utf8').split('\n').filter(Boolean);
+}
 
 // Check a bundle: the chain, the blobs, and a full replay on the embedded rules.
 async function verify(lines) {

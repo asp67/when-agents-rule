@@ -6,6 +6,36 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1092: the Benchmark page (13 October 2026)
+
+**No match rules change.** A main-menu entry, "Benchmark a model", runs the WAR Bench scenarios against a library model in the browser (asp67's request).
+
+**Setup:**
+- Pick a model from the library, or one of two reference players: random valid moves, or doing nothing.
+- Tick single scenarios or a whole family.
+- Choose the runs per scenario. Run *i* turns the board to its *i*-th of eight orientations, so repeated runs are not one board replayed.
+- Set a wall-clock limit per run (default 10 minutes, 0 for none). A run still going at the limit scores the advantage it built (b1091).
+- Choose the system prompt: standard (pinned to the prompt version, comparable between models) or the arena prompt as edited. Either way only the victory paragraph becomes the scenario's objective.
+- The seat plays exactly as the library entry is set up, through the arena's own conversion (`slotToSetupEntry`): endpoint, sampling, reasoning, extra body, maximum tokens (8192 when unset, as in the arena). It is strict, with no adaptation and no retry, as in Node.
+
+**Running:**
+- Each run plays in a worker of its own (`js/bench-worker.js`), and the world stands still while the model thinks.
+- A progress bar shows the run, scenario, orientation, round, the last answer time and a ticking wait for the current answer. Stop ends the benchmark and keeps what finished.
+- Rounds the model never answered are counted with their reasons (network errors, timeouts, unusable replies). The results say so first, so a dead endpoint never reads as a weak model.
+
+**Results:**
+- One row per scenario plus an all-scenarios row, as a stacked bar of success, partial and failure in the status colours, each with its mark (✓ ◐ ✗) and label.
+- The mean score with its 95 % interval sits at the end of each bar.
+- The table adds counts, success rate (Wilson interval), answer time, tokens per round, invalid commands (reference errors), unanswered rounds and time-limit stops.
+- Saved automatically in this browser as a per-episode summary, without prompts or replies.
+- "Save results" writes a JSON file that the page imports again.
+- "Save replay bundle" writes the full `.warbench.jsonl.gz` (plain `.jsonl` without CompressionStream). `war-bench verify` checks and replays it in Node; `readLines` now reads both forms.
+
+**Model library:**
+- Every card gets a "📊 Benchmarks (n)" button, enabled once the model has results. It opens everything that model has run, added up per scenario, with the list of runs (deletable).
+- A note appears when those runs span different builds or different settings.
+- Library entries carry a permanent `uid`, because `id` is a list position re-keyed on every load. Results are found by the `uid`, which survives reordering and a catalogue export.
+
 ## Build 1091: WAR Bench runs in the browser too, and a scenario out of time scores its advantage (13 October 2026)
 
 **No match rules change.** This build prepares the Benchmark page.

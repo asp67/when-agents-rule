@@ -27,6 +27,12 @@ for (const s of ALL) {
     });
 }
 
+// The Benchmark page cannot list a directory: it reads benchmarks/scenarios/index.json.
+test('the page\'s scenario index lists exactly the scenario files', () => {
+    const index = JSON.parse(fs.readFileSync(path.join(__dirname, '../benchmarks/scenarios/index.json'), 'utf8'));
+    assert.deepEqual(index.scenarios.slice().sort(), ALL.map(s => s.family + '/' + s.id + '.json').sort());
+});
+
 test('an episode is the same every time it is played', async () => {
     const s = ALL.find(x => x.id === 'ford-01');
     const a = await S.play(s, 'rot90', S.referencePolicy()), b = await S.play(s, 'rot90', S.referencePolicy());
