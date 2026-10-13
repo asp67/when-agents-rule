@@ -132,6 +132,19 @@
       ]
     }
   },
+  "partial": {
+    "gate": {
+      "alive": "tc"
+    },
+    "then": {
+      "share": {
+        "owner": "subject",
+        "kind": "unit",
+        "class": "military"
+      },
+      "of": 3
+    }
+  },
   "variants": [
     "identity",
     "rot90",

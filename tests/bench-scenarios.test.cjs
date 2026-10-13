@@ -59,6 +59,40 @@ test('validation refuses what the format does not allow', () => {
     assert.throws(bad(c => { c.objective = 'Go to ({{point:nowhere.x}}, 0)'; }), /unknown point/);
 });
 
+// b1091 (asp67): an episode that runs out of time is neither a win nor a plain loss. It
+// scores the advantage it built -- the scenario's `partial` measure -- capped below a win;
+// a stopped "end" scenario never reaches its judgement, so it too is scored on its measure.
+test('out of time: the advantage built, never a win, and nothing for standing still', async () => {
+    const strike = ALL.find(x => x.id === 'strike-01'), recover = ALL.find(x => x.id === 'recover-01');
+    // The warriors reach the barracks in round 4: stopped there, the damage done counts.
+    const cut = await S.play(strike, 'identity', S.referencePolicy(), { stopAfter: 4 });
+    assert.equal(cut.outcome, 'partial');
+    assert.equal(cut.stopped, 'time');
+    assert.ok(cut.score > 0 && cut.score < 1, 'score ' + cut.score);
+    // Stopped before they arrive: nothing done, nothing earned.
+    const early = await S.play(strike, 'identity', S.referencePolicy(), { stopAfter: 2 });
+    assert.equal(early.outcome, 'failure');
+    // Every soldier needed, but the last round never came: the cap, not a win.
+    const held = await S.play(recover, 'identity', S.referencePolicy(), { stopAfter: 9 });
+    assert.deepEqual([held.outcome, held.score], ['partial', 0.9]);
+    // Run to the end it is judged as always.
+    assert.equal((await S.play(recover, 'identity', S.referencePolicy())).outcome, 'success');
+    const W = require('../js/bench-core.js');
+    assert.deepEqual([cut, early, held].map(W.episodeScore), [cut.score, 0, 0.9]);
+    const sc = W.score([cut, early, held]);
+    assert.deepEqual(sc.outcomes, { success: 0, partial: 2, failure: 1 });
+    assert.equal(sc.meanScore.mean, Math.round((cut.score + 0.9) / 3 * 10000) / 10000);
+});
+
+test('validation refuses a measure the format does not have', () => {
+    const base = JSON.parse(JSON.stringify(ALL.find(x => x.id === 'strike-01')));
+    const bad = mutate => { const c = JSON.parse(JSON.stringify(base)); mutate(c); return () => S.validate(c); };
+    assert.throws(bad(c => { c.partial = { health: 'target' }; }), /unknown measure/);
+    assert.throws(bad(c => { c.partial = { damage: 'nobody' }; }), /unknown tag/);
+    assert.throws(bad(c => { c.partial = { share: { owner: 'subject', kind: 'unit' }, of: 0 }; }), /of > 0/);
+    assert.throws(bad(c => { c.partial = { gate: { alive: 'target' }, then: { mean: [] } }; }), /non-empty/);
+});
+
 test('a scenario prompt replaces the victory paragraph and nothing else', () => {
     const scope = vm.createContext({ console });
     vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/openai-ai.js'), 'utf8') + ';globalThis.M = OpenAIAIManager;', scope);

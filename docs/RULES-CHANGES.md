@@ -6,6 +6,24 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1091: WAR Bench runs in the browser too, and a scenario out of time scores its advantage (13 October 2026)
+
+**No match rules change.** This build prepares the Benchmark page.
+
+**One bench core.** `js/bench-core.js` now holds everything a benchmark scenario is made of: the scenario language (war-scenario-v1), its variants, predicates and measures; the frozen stage (seeded runtime, inert page, board setup, snapshot); the round loop; the model seat; the baselines; the outcome taxonomy; scoring; statistics; and the bundle format. Node's `tools/bench/*.cjs` and the browser load this same file, so both score a run with the same code.
+
+**A browser worker.** `js/bench-worker.js` plays one episode per worker, in a fresh global, exactly as the Node realm does. `tests/bench-worker.test.cjs` runs it as a page would and checks every round's state hash and world hash against Node. A run the browser records verifies with `war-bench verify`, for baselines and for a model on the wire.
+
+**Out of time** (asp67): a scenario that runs out of rounds, or out of a run's wall-clock limit, without winning and without failing explicitly, no longer counts as a plain loss. It scores the advantage it built: the scenario's new `partial` measure, capped at 0.9, so it is never a win.
+- An explicit failure scores 0: losing the whole army, a broken hold, or the end judgement failing.
+- Doing nothing still scores 0.
+- `strike-01` measures the damage done to the target.
+- `recover-01` measures the soldiers standing against the three required, while the Town Center stands.
+- `ford-01` has no measure: a hold cut short has proven nothing.
+- Measures are data, like predicates: `damage`, `share`, `gate`, `mean`.
+- Scores gain `meanScore` (overall, by family, by scenario, with a 95 % interval) and an outcome tally (success, partial, failure).
+- Bundles record an episode's partial score and `stopped: 'time'`. Verify replays a stopped episode to the same round.
+
 ## Build 1090: lockstep caps how old a state can get (11 October 2026)
 
 **Lockstep changes; nothing else does.** asp67 set up a turn-based match with a 120 s answer time and 30 s lockstep. The world stood still while the models thought. After the moves, it played the 30 s slice, and only then was the next round asked. On screen every round took the thinking time *plus* the slice: impossible to play.

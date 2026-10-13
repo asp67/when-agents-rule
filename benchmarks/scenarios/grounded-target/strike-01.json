@@ -17,6 +17,7 @@
   },
   "success": { "when": "any", "predicate": { "destroyed": "target" } },
   "failure": { "count": { "owner": "subject", "kind": "unit", "class": "military" }, "op": "==", "value": 0 },
+  "partial": { "damage": "target" },
   "variants": ["identity", "rot90", "rot180", "rot270", "mirrorX", "mirrorZ", "diagonal", "antidiagonal"],
   "reference": [
     { "round": 1, "commands": [{ "action": "attack_target", "params": { "targetX": 40, "targetZ": 20 } }] }

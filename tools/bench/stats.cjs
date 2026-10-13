@@ -1,47 +1,9 @@
 'use strict';
 // WAR Bench statistics (review #8 step 6). Small, exact where it can be, and seeded
 // where it cannot: a report must come out the same every time it is computed.
-const { rngFor } = require('./baselines.cjs');
-
-// Wilson score interval for k successes in n trials (95 % by default). Well behaved at
-// 0 and n, where the normal approximation collapses to a zero-width interval.
-function wilson(k, n, z = 1.959963984540054) {
-    if (!n) return { p: null, lo: null, hi: null, k, n };
-    const p = k / n, z2 = z * z, den = 1 + z2 / n;
-    const mid = (p + z2 / (2 * n)) / den;
-    const half = (z * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n))) / den;
-    return { p, lo: Math.max(0, mid - half), hi: Math.min(1, mid + half), k, n };
-}
-
-// C(n, k) as a float, exact for the small numbers a bench uses.
-function choose(n, k) {
-    if (k < 0 || k > n) return 0;
-    let r = 1;
-    for (let i = 1; i <= k; i++) r = r * (n - k + i) / i;
-    return r;
-}
-
-// pass^k: the chance that k independent attempts at the same task ALL succeed, estimated
-// without bias from c successes in n attempts as C(c, k) / C(n, k), then averaged over
-// tasks. pass^1 is the plain success rate; pass^k falls as k grows unless a policy is
-// reliable, which is the point of reporting it. null when no task has k attempts.
-function passHatK(cells, k) {
-    const usable = cells.filter(c => c.n >= k);
-    if (!usable.length) return null;
-    return usable.reduce((s, c) => s + choose(c.successes, k) / choose(c.n, k), 0) / usable.length;
-}
-
-// Group results into cells (one scenario x variant, all its attempts).
-function cellsOf(results) {
-    const map = new Map();
-    for (const r of results) {
-        const key = r.id + '/' + r.variant;
-        const c = map.get(key) || { key, id: r.id, family: r.family, variant: r.variant, n: 0, successes: 0 };
-        c.n++; if (r.outcome === 'success') c.successes++;
-        map.set(key, c);
-    }
-    return [...map.values()].sort((a, b) => a.key.localeCompare(b.key));
-}
+// wilson, choose, passHatK and cellsOf live in js/bench-core.js (b1091), shared with the
+// browser's Benchmark page; the paired bootstrap, which compares two whole runs, is Node's.
+const { wilson, choose, passHatK, cellsOf, rngFor } = require('../../js/bench-core.js');
 
 // Stratified paired block bootstrap of the difference in success rate between two runs
 // over the SAME cells (A - B). A block is one cell with all its attempts; blocks are
@@ -72,4 +34,4 @@ function pairedBootstrap(resultsA, resultsB, { reps = 2000, level = 0.95, seed =
     return { diff: observed, lo: q(tail), hi: q(1 - tail), reps, level, cells: keys.length, families: fams.length };
 }
 
-module.exports = { wilson, choose, passHatK, cellsOf, pairedBootstrap };
+module.exports = { wilson, choose, passHatK, cellsOf, pairedBootstrap, meanScore: require('../../js/bench-core.js').meanScore };

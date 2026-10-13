@@ -15,7 +15,9 @@
 //   round       the state's hash (what the seat was sent), the policy's answer, the
 //               wire exchange for a model (request hash, response body), the
 //               executor's results and outcome codes, and the world's hash after the step
-//   end         outcome, rounds, and the world's full snapshot at the episode's end
+//   end         outcome, rounds, and the world's full snapshot at the episode's end;
+//               since b1091 also the partial score of an episode that ran out of time,
+//               and `stopped: 'time'` when a run's wall-clock limit cut it short
 //   close       the score of the whole run
 //
 // verify(bundle) checks the chain and the blobs, builds a realm from the EMBEDDED rules,
@@ -31,7 +33,8 @@ const { RULE_FILES, ROOT } = require('./realm.cjs');
 const { modelPolicy } = require('./runner.cjs');
 const { score } = require('./score.cjs');
 
-const SCHEMA = 'war-bench-bundle-v1';
+const W = require('../../js/bench-core.js');
+const SCHEMA = W.BUNDLE_SCHEMA;
 const sha = s => createHash('sha256').update(s).digest('hex');
 const lf = s => s.split('\r\n').join('\n');
 
@@ -96,36 +99,22 @@ async function recordEpisode(s, variant, policy, options, wire) {
 // `onEpisode(result, index, total)` reports progress.
 async function record({ scenarios, policy, variants = null, attempts = 1, ceilingMs = S.CEILING_MS, sources = ruleSources(),
                         label = null, onLine = null, onEpisode = null }) {
-    const lines = [];
-    let prev = null;
-    const push = rec => { const line = JSON.stringify(Object.assign({ prev }, rec)); lines.push(line); prev = sha(line); if (onLine) onLine(line); };
-    const files = {};
-    for (const [p, text] of Object.entries(sources)) files[p] = sha(text);
-    for (const s of scenarios) files['scenario:' + s.id] = sha(JSON.stringify(s));
-    push({ type: 'header', schema: SCHEMA, protocol: { scenario: S.SCHEMA, roundMs: S.ROUND_MS, ceilingMs },
-           policy: { name: policy.name, kind: policy.kind, config: policy.config || null }, label,
-           coreHash: coreHashOf(sources), harnessHash: sha(sources['js/openai-ai.js']), files,
-           scenarios: scenarios.map(s => s.id), variants, attempts });
-    const blobs = new Map();
-    for (const [p, text] of Object.entries(sources)) blobs.set(files[p], text);
-    for (const s of scenarios) blobs.set(files['scenario:' + s.id], JSON.stringify(s));
-    for (const [hash, text] of [...blobs].sort()) push({ type: 'blob', sha256: hash, text });
+    const chain = W.bundleChain(sha, onLine);
+    W.bundleOpen(chain, { sha, sources, scenarios, policy, label, ceilingMs, variants, attempts, coreHash: coreHashOf(sources) });
     const results = [];
     const total = scenarios.reduce((n, s) => n + (variants || s.variants).length * attempts, 0);
     for (const s of scenarios) for (const v of (variants || s.variants)) for (let a = 1; a <= attempts; a++) {
         const wire = policy.kind === 'model' ? [] : null;
-        push({ type: 'episode', id: s.id, variant: v, attempt: a });
         const ep = await recordEpisode(s, v, policy.make(s, v, a, wire), { ceilingMs, sources }, wire);
-        for (const x of ep.rounds) push({ type: 'round', round: x.round, stateHash: x.stateHash, answer: x.answer, wire: x.wire,
-            results: x.entry.results, outcomes: x.entry.outcomes || [], rival: x.entry.rival, worldHash: x.worldHash, after: x.entry.after });
         ep.result.attempt = a;
-        push({ type: 'end', id: s.id, variant: v, attempt: a, outcome: ep.result.outcome, rounds: ep.result.rounds, snapshot: ep.snapshot });
+        W.bundleEpisode(chain, { id: s.id, variant: v, attempt: a }, ep.rounds.map(x => ({ round: x.round, stateHash: x.stateHash,
+            answer: x.answer, wire: x.wire, results: x.entry.results, outcomes: x.entry.outcomes || [], rival: x.entry.rival,
+            worldHash: x.worldHash, after: x.entry.after })), ep.result, ep.snapshot);
         results.push(ep.result);
         if (onEpisode) onEpisode(ep.result, results.length, total);
     }
-    const sc = score(results);
-    push({ type: 'close', episodes: results.length, score: sc });
-    return lines;
+    W.bundleClose(chain, results);
+    return chain.lines;
 }
 
 function write(lines, file) { fs.writeFileSync(file, zlib.gzipSync(lines.join('\n') + '\n')); return file; }
@@ -184,7 +173,9 @@ async function verify(lines) {
         };
         let r;
         try {
-            r = await S.play(s, e.variant, checkState, { ceilingMs: head.protocol.ceilingMs, sources,
+            // An episode the run's clock stopped is replayed to the same round.
+            const stopAfter = end && end.type === 'end' && end.stopped ? end.rounds : null;
+            r = await S.play(s, e.variant, checkState, { ceilingMs: head.protocol.ceilingMs, sources, stopAfter,
                 onRoundEnd: (entry, ep) => {
                     const want = rounds[k++];
                     if (!want) { say(`${label}: more rounds than recorded`); return; }
@@ -194,6 +185,7 @@ async function verify(lines) {
         } catch (err) { say(`${label}: replay failed: ${err.message}`); continue; }
         if (k !== rounds.length) say(`${label}: ${rounds.length} rounds recorded, ${k} replayed`);
         if (!end || end.type !== 'end' || r.outcome !== end.outcome) say(`${label}: outcome ${r.outcome}, recorded ${end && end.outcome}`);
+        else if ((r.score == null ? null : r.score) !== (end.score == null ? null : end.score)) say(`${label}: score ${r.score}, recorded ${end.score}`);
         r.attempt = e.attempt;
         results.push(r);
     }

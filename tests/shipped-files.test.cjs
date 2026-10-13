@@ -27,8 +27,9 @@ const PAGES=['index.html','engine-test.html'];
 // plays a match; it is not the graph of every context that can run code. Two files are
 // loaded by a Worker instead (the analyzer's Re-simulated mode) and must NOT appear in
 // index.html or the manifest — tests/resim-worker.test.cjs asserts their absence, because a
-// second copy in the page would give the world two copies of every resim global.
-const OUTSIDE_PAGE = ['js/resim.js', 'js/resim-worker.js'];
+// second copy in the page would give the world two copies of every resim global. The
+// benchmark worker (b1091) is the same kind: a Worker's script, never the page's.
+const OUTSIDE_PAGE = ['js/resim.js', 'js/resim-worker.js', 'js/bench-worker.js'];
 
 for(const page of PAGES){
  const refs=[...html(page).matchAll(SRC)].map(m=>({file:m[1],tag:m[2]}));
