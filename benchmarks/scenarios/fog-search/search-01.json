@@ -23,8 +23,9 @@
   "notes": { "found": { "seen": "camp" } },
   "graded": { "parts": {
     "units": { "travelShare": { "type": "scout_cavalry" } },
-    "spread": { "exploredRate": 0.017 },
-    "routes": { "orderShare": { "action": "explore", "with": "then" } }
+    "ground": { "exploredRate": 0.017 },
+    "reach": { "tilesReached": { "min": 10, "perRound": 2 } },
+    "routes": { "times": [{ "orderShare": { "action": "explore", "with": "then" } }, { "tilesReached": { "min": 10, "perRound": 2 } }] }
   } },
   "variants": ["identity", "rot90", "rot180", "rot270", "mirrorX", "mirrorZ", "diagonal", "antidiagonal"],
   "reference": [

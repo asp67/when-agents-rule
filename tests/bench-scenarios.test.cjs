@@ -35,33 +35,45 @@ test('the page\'s scenario index lists exactly the scenario files', () => {
 
 // fog-search (b1094, asp67): finding the camp is luck, so it is a note, never the score.
 // The score is how the search was run: the scouts' share of the marching, new ground
-// per round, and explore orders that carry a route. The reference -- four scouts on
-// four separate routes -- earns full marks in every variant; the ways models actually
-// fail rank below it in the order a player would rank them; standing still earns 0.
+// per round, how many map tiles it reached per round (b1095: a search that stays near
+// home must score below one that goes places), and explore orders that carry a route --
+// counted only as far as the search reached. The reference, four scouts on four
+// separate routes, earns full marks in every variant; the ways models actually fail
+// rank below it in the order a player would rank them; standing still earns 0.
 test('search-01: the search is graded on how it was run, in the order a player would rank it', async () => {
     const s = ALL.find(x => x.id === 'search-01');
     const W = require('../js/bench-core.js');
+    // Written for the identity board and turned with the variant, as the reference is.
+    const turned = (v, cmds) => cmds.map(c => ({ action: c.action, params: Object.assign({}, c.params,
+        c.params.tile ? { tile: W.tileFor(v, c.params.tile) } : {}, c.params.then ? { then: c.params.then.map(x => W.tileFor(v, x)) } : {}) }));
+    const ex = (tile, then) => ({ action: 'explore', params: Object.assign({ tile, unitType: 'scout_cavalry' }, then ? { then } : {}) });
     const policies = {
-        reference: S.referencePolicy,
-        noRoutes: () => ({ round }) => round === 1 ? [{ action: 'explore', params: { tile: 'G1' } }, { action: 'explore', params: { tile: 'G7' } },
-            { action: 'explore', params: { tile: 'A7' } }] : round === 2 ? [{ action: 'explore', params: { tile: 'D4' } }] : [],
+        reference: () => S.referencePolicy(),
+        // Far, but without routes.
+        noRoutes: v => ({ round }) => turned(v, round === 1 ? [ex('G1'), ex('G7'), ex('A7')] : round === 2 ? [ex('D4')] : []),
+        // Routes, but every stop within two tiles of home.
+        confined: v => ({ round }) => turned(v, round === 1 ? [ex('B1', ['C2', 'B3']), ex('A2', ['C1', 'A3']), ex('C3', ['B2', 'C1'])]
+            : round === 2 ? [ex('A3', ['C3', 'B1'])] : round % 3 === 0 ? [ex(['B3', 'C2', 'A3', 'C3'][round % 4], ['B2', 'C1'])] : []),
         // One explore a turn, the unit left to the harness: riders first, then slower soldiers.
-        onePerTurn: () => ({ round }) => [{ action: 'explore', params: { tile: ['G1', 'D4', 'A7', 'G7', 'D7', 'E3', 'C6', 'F2', 'B5', 'E6', 'G5', 'A2'][round - 1] } }],
+        onePerTurn: v => ({ round }) => turned(v, [{ action: 'explore', params: { tile: ['G1', 'D4', 'A7', 'G7', 'D7', 'E3', 'C6', 'F2', 'B5', 'E6', 'G5', 'A2'][round - 1] } }]),
         // Everyone onto one far spot -- the camp's own tile, the best a blob can be aimed.
         blob: () => ({ round, episode }) => round === 1 ? [{ action: 'move_units', params: { targetX: episode.realm.tags.camp.x, targetZ: episode.realm.tags.camp.z } }] : [],
-        noop: S.noopPolicy,
+        noop: () => S.noopPolicy(),
     };
     for (const v of s.variants) {
         const r = {};
-        for (const [k, mk] of Object.entries(policies)) r[k] = await S.play(s, v, mk());
+        for (const [k, mk] of Object.entries(policies)) r[k] = await S.play(s, v, mk(v));
         for (const x of Object.values(r)) assert.equal(x.outcome, 'graded', v);
+        const line = `${v}: ${Object.entries(r).map(([k, x]) => k + ' ' + x.score).join(', ')}`;
         assert.ok(r.reference.score >= 0.95, `${v}: reference ${r.reference.score} ${JSON.stringify(r.reference.parts)}`);
-        assert.deepEqual(Object.keys(r.reference.parts), ['units', 'spread', 'routes']);
-        assert.equal(r.reference.parts.routes, 1);
+        assert.deepEqual(Object.keys(r.reference.parts), ['units', 'ground', 'reach', 'routes']);
+        assert.ok(r.reference.parts.routes >= 0.95, v + ': reference routes ' + r.reference.parts.routes);
         assert.equal(r.noRoutes.parts.routes, 0);
-        assert.ok(r.reference.score > r.noRoutes.score && r.noRoutes.score > r.blob.score && r.onePerTurn.score > r.blob.score,
-            `${v}: ${Object.entries(r).map(([k, x]) => k + ' ' + x.score).join(', ')}`);
-        assert.ok(r.blob.parts.units < 0.5 && r.blob.parts.spread < 0.35, `${v}: blob ${JSON.stringify(r.blob.parts)}`);
+        assert.ok(r.reference.score > r.noRoutes.score && r.noRoutes.score > r.confined.score && r.onePerTurn.score > r.confined.score, line);
+        assert.ok(r.confined.score > r.blob.score, line);
+        // Staying home is what reach sees, and what discounts its routes.
+        assert.ok(r.confined.parts.reach < 0.4 && r.confined.parts.routes < 0.4, `${v}: confined ${JSON.stringify(r.confined.parts)}`);
+        assert.ok(r.blob.parts.units < 0.5 && r.blob.parts.ground < 0.4, `${v}: blob ${JSON.stringify(r.blob.parts)}`);
         assert.equal(W.episodeScore(r.noop), 0);
         // Found or not is recorded, and ends the search, but scores nothing by itself.
         for (const x of Object.values(r)) {

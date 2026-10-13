@@ -365,11 +365,17 @@ function checkPredicate(p, where, s) {
 //   {"gate": predicate, "then": m}      m while the predicate holds, else 0
 //   {"mean": [m, ...]}                  the mean of several
 //   {"parts": {name: m, ...}}           the mean of several, each kept by name
+//   {"times": [m, ...]}                 the product of several: one counts only as far
+//                                       as the other holds (b1095)
 // and three that read the episode, not only its last moment (b1093):
 //   {"travelShare": {"type"|"class"}}   that kind's share of all the ground the
 //                                       subject's units covered; 0 if nothing moved
 //   {"exploredRate": n}                 new ground the subject uncovered per round, as a
 //                                       share of the map, against n: min(1, rate / n)
+//   {"tilesReached": {"min", "perRound"}} map tiles the subject came to see at least
+//                                       `min` % of, beyond those it saw at the start, per
+//                                       round, against perRound: how far the search went,
+//                                       not only how much it saw (b1095, asp67)
 //   {"orderShare": {"action", "with"}}  of the subject's orders of that action that
 //                                       were carried out, the share whose params carry
 //                                       `with` (e.g. explore with "then": a route)
@@ -389,6 +395,12 @@ function checkMeasure(m, where, s) {
     } else if ('travelShare' in m) {
         const t = m.travelShare || {};
         if (!t.type === !t.class) fail('travelShare names a type or a class');
+    } else if ('times' in m) {
+        if (!Array.isArray(m.times) || m.times.length < 2) fail('times takes two or more measures');
+        m.times.forEach((x, i) => checkMeasure(x, `${where}.times[${i}]`, s));
+    } else if ('tilesReached' in m) {
+        const r = m.tilesReached || {};
+        if (!(r.min > 0 && r.min <= 100) || !(r.perRound > 0)) fail('tilesReached takes min (percent seen) and perRound');
     } else if ('exploredRate' in m) {
         if (!(m.exploredRate > 0)) fail('exploredRate takes the share of the map per round that scores 1');
     } else if ('orderShare' in m) {
@@ -425,6 +437,16 @@ function validate(s) {
     return s;
 }
 
+// A board tile label moved by a variant: column A.. and row 1.. on the board's grid,
+// centred on the middle tile, so every symmetry maps a tile onto a tile.
+function tileFor(variant, label) {
+    const f = VARIANTS[variant], half = (BOARD_TILES - 1) / 2;
+    const m = /^([A-Za-z])(\d+)$/.exec(String(label).trim());
+    if (!m || !f) return label;
+    const [x, z] = f(m[1].toUpperCase().charCodeAt(0) - 65 - half, Number(m[2]) - 1 - half);
+    return String.fromCharCode(65 + Math.round(x + half)) + (Math.round(z + half) + 1);
+}
+
 // The scenario with every coordinate moved by the variant. Pure data in, data out.
 function instantiate(s, variant = 'identity') {
     const f = VARIANTS[variant];
@@ -436,12 +458,7 @@ function instantiate(s, variant = 'identity') {
     // A tile label moves with its centre: column A.. and row 1.. on the board's grid,
     // centred on the middle tile, so every symmetry maps a tile onto a tile.
     const half = (BOARD_TILES - 1) / 2;
-    const moveTile = label => {
-        const m = /^([A-Za-z])(\d+)$/.exec(String(label).trim());
-        if (!m) return label;
-        const [x, z] = f(m[1].toUpperCase().charCodeAt(0) - 65 - half, Number(m[2]) - 1 - half);
-        return String.fromCharCode(65 + Math.round(x + half)) + (Math.round(z + half) + 1);
-    };
+    const moveTile = label => tileFor(variant, label);
     const moveParams = p => {
         if (p && Number.isFinite(p.targetX) && Number.isFinite(p.targetZ)) [p.targetX, p.targetZ] = f(p.targetX, p.targetZ);
         if (p && typeof p.tile === 'string') p.tile = moveTile(p.tile);
@@ -462,6 +479,7 @@ function instantiate(s, variant = 'identity') {
         if (m.gate) { movePred(m.gate); moveMeasure(m.then); }
         if (m.mean) m.mean.forEach(moveMeasure);
         if (m.parts) Object.values(m.parts).forEach(moveMeasure);
+        if (m.times) m.times.forEach(moveMeasure);
     };
     if (c.success) movePred(c.success.predicate);
     movePred(c.failure); if (c.invariant) movePred(c.invariant.predicate);
@@ -552,6 +570,16 @@ function measure(m, w) {
             }
         }
         return all > 0 ? clamp(mine / all) : 0;
+    }
+    if (m.times) return m.times.reduce((a, x) => a * measure(x, w), 1);
+    if (m.tilesReached) {
+        const rounds = w.rounds || 0;
+        if (!rounds) return 0;
+        const { min, perRound } = m.tilesReached;
+        const now = w.game.explorationSummary(w.seat('subject'));
+        let n = 0;
+        now.forEach((row, r) => row.forEach((p, c) => { if (p >= min && !(w.tiles0 && w.tiles0[r][c] >= min)) n++; }));
+        return clamp(n / rounds / perRound);
     }
     if (m.exploredRate) {
         const rounds = w.rounds || 0;
@@ -674,11 +702,12 @@ function begin(scenario, variant, { makeRealm, ceilingMs = CEILING_MS } = {}) {
         // What the episode-reading measures read (b1093): the subject's units at every
         // round edge, the rounds played with their orders, and the ground it could see
         // before the first one -- computed on a stand-in, so nothing in the world moves.
-        trace: [positions(subject)], log: [], rounds: 0, explored0: 0 };
+        trace: [positions(subject)], log: [], rounds: 0, explored0: 0, tiles0: null };
     if (realm.game.markExploration) {
         const shim = { units: subject.units, buildings: subject.buildings };
         realm.game.markExploration(shim);
         world.explored0 = exploredShare(shim);
+        world.tiles0 = realm.game.explorationSummary(shim);
     }
     return { inst, realm, mgr, subject, rival, subjectController: cs, rivalController: cr, world,
         objective: objectiveText(inst, realm.tags), ceilingMs };
@@ -1079,7 +1108,7 @@ function bundleClose(chain, results) { chain.push({ type: 'close', episodes: res
 return {
     SCHEMA, ROUND_MS, CEILING_MS, PARTIAL_CAP, VARIANTS, BOARD_TILES,
     createRuntime, inert, stageGlobals, makeGame, startFixture, scripted, addUnit, addBuilding, advance, snapshot, setupBoard,
-    validate, instantiate, evaluate, measure, measureParts, objectiveText, resolve,
+    validate, instantiate, tileFor, evaluate, measure, measureParts, objectiveText, resolve,
     CLASSES, CLASS_OF, classify,
     begin, play, episodeScore,
     referencePolicy, noopPolicy, rngFor, randomCommand, randomValidPolicy, BASELINES, modelPolicy,

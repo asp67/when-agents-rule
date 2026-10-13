@@ -6,6 +6,32 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1095: the fog search grades how far the search went (13 October 2026)
+
+**No match rules change.** asp67: a model that searches a confined area should score less than one that actually goes places. Measured on b1094, it did not. Four scouts on routes that never left the tiles around home scored 0.74–0.87, above scouts sent far without routes (0.51–0.58), because routes counted fully however short they were.
+
+**Now the grade has four parts:**
+- **Right units:** unchanged.
+- **New ground** (was "spread"): unchanged.
+- **Reach** (new): map tiles the search came to see at least 10 % of, beyond those seen at the start, per round, against 2 per round.
+- **Waypoints:** the share of explore orders with a route, multiplied by Reach, so a route counts only as far as the search went.
+
+| Played as (min–max over 8 orientations) | Grade |
+|---|---|
+| Four scouts on four separate routes (the reference) | 0.96–1.00 |
+| Scouts sent far, no routes | 0.61–0.64 |
+| One `explore` a turn, unit left to the harness | 0.50–0.58 |
+| Scouts on routes, all within two tiles of home | 0.45–0.47 |
+| All four scouts marched to one spot | 0.40–0.41 |
+| Random valid moves | 0.25–0.42 |
+| The whole army marched to one spot | 0.27 |
+
+**Supporting changes:**
+- Measures `tilesReached` and `times` (a product).
+- `WarBench.tileFor(variant, label)` turns a tile with the board.
+- The test policies are turned with each orientation, as the reference is; b1094's comparison policies were written for one orientation only.
+- The page's "How it searched" table shows the four parts.
+
 ## Build 1094: a benchmark scenario graded on how the model searches the fog (13 October 2026)
 
 **No match rules change.** This adds a new WAR Bench scenario family, `fog-search`, with `search-01` "Find the hidden camp". It is asp67's idea: finding something in the fog, the task most models struggle with. Whether the camp is found is luck, so it is never the score. **How the search was run** is.
