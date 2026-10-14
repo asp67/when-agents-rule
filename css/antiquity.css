@@ -362,3 +362,6 @@ body.broadcast-mode .arena-lineup.floating { bottom:calc(128px * var(--ui-scale,
 .bench-model-links { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:4px; }
 .bench-filter { display:inline-flex; align-items:center; gap:8px; color:var(--muted); font-size:.9rem; margin:0 0 10px; }
 .bench-filter select { background:#151a15; color:var(--text); border:1px solid var(--line); border-radius:3px; padding:4px 8px; }
+.bench-served { color:var(--muted); font-size:.88rem; margin:6px 0 0; min-height:1.2em; }
+.bench-served.bench-note { color:var(--text); }
+.bench-set-served { padding:2px 8px; font-size:.8rem; margin-left:6px; }

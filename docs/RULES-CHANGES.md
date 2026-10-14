@@ -6,6 +6,22 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1100: benchmark results go by model name and the checkpoint actually served (14 October 2026)
+
+**No match rules change.** asp67: the Benchmark page is for people running their own endpoints, where one address serving different models over time is normal. Results were grouped by the library entry's internal id. The DGX's FP8 and NVFP4, both served as `Qwen3.8` on port 8024 under one library entry, would have shared one row.
+
+**Now a result belongs to the model name it ran under plus the checkpoint the endpoint served:**
+- At the start of every benchmark the page asks the endpoint which checkpoint it serves, the way "Test connection" asks: the same address handling, authentication and /v1 fallback, waiting at most 6 s.
+  - vLLM names the checkpoint behind its alias (`root`: `nvidia/Qwen3.8-Flash-Next-NVFP4`).
+  - Ollama is identified by name and digest.
+  - Others, Strata included, by their model id.
+- The answer is recorded with the run and in its replay bundle (`served`).
+- Results, comparisons and head-to-heads show "*name* · *checkpoint*" and split by themselves when a different model sits behind the same address and name.
+- Under the model dropdown the page shows what the endpoint serves now. If it differs from the checkpoint the entry was last benchmarked with, it says so: "Serves X now; last benchmarked with Y. Its results get a row of their own."
+- A run recorded before this build, or from a server that would not say, goes by its name alone and is marked "checkpoint unknown". Its model's history offers "Which model?" to set the checkpoint by hand (suggesting the one its entry ran with); the run then moves to that model's row.
+- A library card's "📊 Benchmarks" opens the row of the entry's latest run. A model's history lists the same name's other checkpoints as links.
+- Every key in the page's buttons now travels in a data attribute, so a model name with a quote in it can no longer break one.
+
 ## Build 1099: benchmark statistics that fit the scores, and a build filter (13 October 2026)
 
 **No match rules change.**

@@ -46,6 +46,75 @@ class BenchPage {
     }
     runsFor(key) { return this.loadRuns().filter(r => r.modelKey === String(key)); }
 
+    // ---- What a result belongs to (b1100) ------------------------------------------
+    // The model name it ran under, as the library showed it, plus the checkpoint the
+    // endpoint said it served. Nerds swap models behind one address and one alias (the
+    // DGX's FP8 and NVFP4 are both "Qwen3.8" on :8024), so the name alone would pour
+    // two models into one row; the checkpoint splits them by itself. A run recorded
+    // before b1100, or from a server that does not say, goes by its name alone until
+    // its checkpoint is set by hand in its model's history.
+    static get SEP() { return '\u241F'; }
+    static short(c) { return String(c).split('/').pop(); }
+    servedOf(run) { const s = run && run.model && run.model.served; return (s && (s.checkpoint || s.root || s.id)) || null; }
+    groupKey(run) { return [run.label || run.modelKey || '?', this.servedOf(run) || ''].join(BenchPage.SEP); }
+    groupName(run) { const c = this.servedOf(run); return (run.label || run.modelKey || '?') + (c ? ' · ' + BenchPage.short(c) : ''); }
+    runsOfGroup(key) { return this.loadRuns().filter(r => this.groupKey(r) === key); }
+    // A library entry's uid stands for the group of its latest run (the card's button).
+    resolveKey(key) {
+        key = String(key);
+        if (key.includes(BenchPage.SEP)) return key;
+        const mine = this.runsFor(key);
+        if (!mine.length) return key;
+        return this.groupKey(mine.reduce((a, r) => ((a.at || '') > (r.at || '') ? a : r)));
+    }
+
+    // Which checkpoint a library entry's endpoint serves right now, asked the way "Test
+    // connection" asks (the same address handling, auth and /v1 fallback): vLLM names it
+    // as `root` behind its alias, Ollama by its digest, others by the model id itself.
+    // null when the endpoint cannot be asked; nothing waits on it longer than 6 s.
+    async servedFor(m) {
+        const M = OpenAIAIManager;
+        try {
+            const endpoint = M.normalizeLocalEndpoint(m.endpoint || '');
+            if (!endpoint) return null;
+            const prov = (m.provider || 'auto') === 'auto' ? M.detectProvider(endpoint) : m.provider;
+            const headers = await M.buildAuthHeaders(this.ui.cleanAuth(m.auth), prov);
+            const url = prov === 'ollama' ? M.ollamaRoot(endpoint) + '/api/tags' : M.stripSlash(endpoint) + '/models';
+            let resp = await M.fetchWithTimeout(url, { headers, mode: 'cors' }, 6000);
+            const fallback = M.localV1Fallback(endpoint, prov);
+            if (resp.status === 404 && fallback) resp = await M.fetchWithTimeout(fallback + '/models', { headers, mode: 'cors' }, 6000);
+            if (!resp.ok) return null;
+            const data = await resp.json();
+            const list = prov === 'ollama' ? (data.models || []) : (data.data || data.models || []);
+            const idOf = x => (typeof x === 'string' ? x : String(x.id || x.name || x.model || '')).replace(/^models\//, '');
+            const want = (m.model || '').trim();
+            const e = list.find(x => idOf(x) === want) || ((!want || want === 'default' || list.length === 1) ? list[0] : null);
+            if (!e) return null;
+            const id = idOf(e);
+            let root = (typeof e === 'object' && typeof e.root === 'string' && e.root && e.root !== id) ? e.root : null;
+            if (prov === 'ollama' && typeof e === 'object' && e.digest) root = id + '@' + String(e.digest).slice(0, 12);
+            return { id, root, checkpoint: root || id };
+        } catch (err) { return null; }
+    }
+    // Under the model dropdown: what the endpoint serves now, and whether that differs
+    // from the checkpoint this entry was last benchmarked with.
+    async showServed(key) {
+        const box = this.el('benchServed');
+        if (!box) return;
+        box.textContent = '';
+        const m = key && !String(key).startsWith('baseline:') ? (this.ui._arenaConfig.models || []).find(x => x.uid === key) : null;
+        if (!m) return;
+        const served = await this.servedFor(m);
+        if (this.el('benchModel') && this.el('benchModel').value !== key) return;   // picked another meanwhile
+        const mine = this.runsFor(key).filter(r => this.servedOf(r));
+        const last = mine.length ? mine.reduce((a, r) => ((a.at || '') > (r.at || '') ? a : r)) : null;
+        const prev = last && this.servedOf(last);
+        box.className = 'bench-served' + (served && prev && prev !== served.checkpoint ? ' bench-note' : '');
+        box.textContent = !served ? t('bench.servedUnknown')
+            : prev && prev !== served.checkpoint ? t('bench.servedChanged', { c: BenchPage.short(served.checkpoint), p: BenchPage.short(prev) })
+            : t('bench.servesNow', { c: served.checkpoint });
+    }
+
     // ---- The build filter (b1099) -----------------------------------------------
     // Results from before a fix to the bench or the rules are not comparable with
     // results after it; the Results views can be limited to runs from a build on.
@@ -85,7 +154,7 @@ class BenchPage {
         if (this.run) { this.renderProgress(); return; }
         try { await this.loadScenarios(); }
         catch (e) { this.el('benchBody').innerHTML = `<p class="bench-error">${this.esc(t('bench.loadFailed', { e: e.message || String(e) }))}</p>`; return; }
-        if (history != null) this.renderHistory(String(history));
+        if (history != null) this.renderHistory(this.resolveKey(history));
         else if (this.loadRuns().length) this.renderOverview();
         else this.renderSetup();
     }
@@ -188,6 +257,7 @@ class BenchPage {
                     <p class="arena-hint">${t('bench.modelHint')}</p>
                     <div class="bench-model-links"><button class="lib-open-btn" onclick="game.ui.benchPage().openLibrary()">${t('ar.libOpen')}</button>
                         <span id="benchModelHistory">${this.historyLink(d.model, total)}</span></div>
+                    <p id="benchServed" class="bench-served" role="status"></p>
                 </div>
                 <div class="arena-field"><label>${t('bench.scenarios')}</label>
                     <p class="arena-hint">${t('bench.scenariosHint')}</p>
@@ -213,6 +283,7 @@ class BenchPage {
                 <button class="menu-btn bench-start" id="benchStartBtn" onclick="game.ui.benchPage().start()">${this.esc(this.startLabel(d.model))}</button>
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().close()">${t('common.back')}</button>
             </div>`;
+        this.afterSetup(d.model);
     }
     // The Start button names the model it will run (b1096): the dropdown opens on the
     // last one benchmarked, and a run on the wrong model costs an hour.
@@ -223,7 +294,7 @@ class BenchPage {
 
     // The three ways into the page, on every view but a running one.
     nav(active) {
-        const n = new Set(this.loadRuns().map(r => r.modelKey)).size;
+        const n = new Set(this.loadRuns().map(r => this.groupKey(r))).size;
         const b = (view, label, call) => `<button class="lib-sort-btn${active === view ? ' on' : ''}" ${active === view ? 'aria-current="page"' : ''} onclick="game.ui.benchPage().${call}">${this.esc(label)}</button>`;
         return `<div class="bench-nav">
             ${b('setup', t('bench.navNew'), 'renderSetup()')}
@@ -232,6 +303,8 @@ class BenchPage {
         </div><p class="bench-error" id="benchMsg" role="status"></p>`;
     }
     say(msg) { const el = this.el('benchSetupError') || this.el('benchMsg'); if (el) el.textContent = msg; }
+    // Called at the end of renderSetup's paint: the served checkpoint arrives later.
+    afterSetup(key) { if (key) this.showServed(key); }
     historyLink(key, n) {
         if (!key || !n) return '';
         return `<button class="lib-io-btn" onclick="game.ui.benchPage().renderHistory('${this.esc(key)}')">${this.esc(t('bench.openHistory', { n }))}</button>`;
@@ -241,6 +314,7 @@ class BenchPage {
         this.el('benchModelHistory').innerHTML = this.historyLink(key, this.countFor(key));
         const btn = this.el('benchStartBtn');
         if (btn) btn.textContent = this.startLabel(key);
+        this.showServed(key);
     }
     toggleFamily(box) {
         document.querySelectorAll(`#benchBody input[data-of="${box.dataset.family}"]`).forEach(b => { b.checked = box.checked; });
@@ -303,7 +377,10 @@ class BenchPage {
             plan.push({ scenario: s, iteration: i, variant: s.variants[(i - 1) % n], attempt: Math.floor((i - 1) / n) + 1 });
         }
         const label = this.modelLabel(key) || key;
-        this.run = { key, label, policy, promptChoice, scenarios, runs, minutes, plan, texts, done: [], index: 0,
+        // What the endpoint serves under that name, recorded with the run (b1100).
+        const entry = policy.kind === 'model' ? (this.ui._arenaConfig.models || []).find(x => x.uid === key) : null;
+        const served = entry ? await this.servedFor(entry) : null;
+        this.run = { key, label, served, policy, promptChoice, scenarios, runs, minutes, plan, texts, done: [], index: 0,
             worker: null, round: 0, rounds: 0, lastMs: null, startedAt: Date.now(), stopped: false, problem: null };
         this.renderProgress();
         // A model can think for two minutes: the wait is shown ticking, so a slow answer
@@ -392,7 +469,7 @@ class BenchPage {
                 policy: { name: run.label, kind: run.policy.kind, config },
                 coreHash: warSha256(WarManifest.rules.map(f => sources[f]).join('\n')), attempts: run.runs,
                 label: 'browser', extra: { iterations: run.runs, build: summary.build, wallLimitMinutes: run.minutes || null,
-                    at: summary.at, promptVersion: summary.promptVersion } });
+                    at: summary.at, promptVersion: summary.promptVersion, served: run.served || null } });
             for (const d of run.done) WarBench.bundleEpisode(chain, { id: d.step.scenario.id, variant: d.step.variant, attempt: d.step.attempt },
                 d.out.rounds.map(({ type, ...r }) => r), d.out.result, d.out.snapshot);
             WarBench.bundleClose(chain, results);
@@ -432,7 +509,7 @@ class BenchPage {
             id: 'run-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1e6).toString(36),
             at: new Date().toISOString(), modelKey: run.key, label: run.label,
             model: cfg ? { name: cfg.name, model: cfg.model, provider: cfg.provider, host, maxTokens: cfg.maxTokens,
-                contextSize: cfg.contextSize, reqOpts: cfg.reqOpts } : { baseline: run.policy.name },
+                contextSize: cfg.contextSize, reqOpts: cfg.reqOpts, served: run.served || null } : { baseline: run.policy.name },
             prompt: run.policy.kind === 'model' ? run.promptChoice : null,
             promptVersion: UIManager.ARENA_PROMPT_VERSION, build: UIManager.buildVersion ? UIManager.buildVersion() : null,
             protocol: { roundMs: WarBench.ROUND_MS, ceilingMs: WarBench.CEILING_MS, wallLimitMinutes: run.minutes || null },
@@ -589,7 +666,9 @@ class BenchPage {
 
     describeRun(s) {
         const bits = [s.at ? new Date(s.at).toLocaleString() : t('bench.noDate'), t('bench.build', { b: s.build || '?' })];
-        if (s.model && s.model.model) bits.push(s.model.model + (s.model.host ? ' @ ' + s.model.host : ''));
+        const ckpt = this.servedOf(s);
+        if (s.model && (ckpt || s.model.model)) bits.push((ckpt ? BenchPage.short(ckpt) + (s.model.served && s.model.served.manual ? ' (' + t('bench.servedManual') + ')' : '')
+            : s.model.model + ' (' + t('bench.unknownCkpt') + ')') + (s.model.host ? ' @ ' + s.model.host : ''));
         if (s.prompt === 'arena') bits.push(t('bench.promptArenaShort'));
         else if (s.prompt && s.promptVersion) bits.push(s.promptVersion);
         const o = s.model && s.model.reqOpts;
@@ -632,7 +711,7 @@ class BenchPage {
                 ${opts.file && !kept && s.episodes.length ? `<button class="menu-btn bench-start" onclick="game.ui.benchPage().keepShown()">${t('bench.keep')}</button>` : ''}
                 ${s.episodes.length && !opts.file ? `<button class="menu-btn" onclick="game.ui.benchPage().saveSummary()">${t('bench.saveResults')}</button>` : ''}
                 ${this.last && this.last.lines && !opts.file ? `<button class="menu-btn back-btn" onclick="game.ui.benchPage().saveBundle()" title="${this.esc(t('bench.saveBundleTip'))}">${t('bench.saveBundle')}</button>` : ''}
-                ${this.countFor(s.modelKey) ? `<button class="menu-btn back-btn" onclick="game.ui.benchPage().renderHistory('${this.esc(s.modelKey)}')">${this.esc(t('bench.openHistory', { n: this.countFor(s.modelKey) }))}</button>` : ''}
+                ${this.runsOfGroup(this.groupKey(s)).length ? `<button class="menu-btn back-btn" data-k="${this.esc(this.groupKey(s))}" onclick="game.ui.benchPage().renderHistory(this.dataset.k)">${this.esc(t('bench.openHistory', { n: this.runsOfGroup(this.groupKey(s)).length }))}</button>` : ''}
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().renderSetup()">${t('bench.newRun')}</button>
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().close()">${t('common.back')}</button>
             </div>`;
@@ -640,9 +719,14 @@ class BenchPage {
 
     // Everything a model has run here, added up per scenario, with the runs it is made of.
     renderHistory(key) {
+        key = this.resolveKey(key);
         this._view = 'history'; this._historyKey = key;
-        const every = this.runsFor(key), runs = this.filtered(every);
-        const label = this.modelLabel(key) || (every[0] && every[0].label) || key;
+        const every = this.runsOfGroup(key), runs = this.filtered(every);
+        const label = every.length ? this.groupName(every[0]) : key.split(BenchPage.SEP)[0];
+        // The same library entry or name with another checkpoint: a row of its own.
+        const names = new Set(every.map(r => r.label)), entries = new Set(every.map(r => r.modelKey));
+        const others = [...new Map(this.loadRuns().filter(r => this.groupKey(r) !== key && (names.has(r.label) || entries.has(r.modelKey)))
+            .map(r => [this.groupKey(r), r])).entries()];
         const episodes = runs.flatMap(r => r.episodes);
         const agg = this.aggregate(episodes);
         const builds = new Set(runs.map(r => r.coreHash || r.build)), configs = new Set(runs.map(r => JSON.stringify([r.model, r.prompt, r.promptVersion])));
@@ -653,14 +737,17 @@ class BenchPage {
         if (configs.size > 1) mixed.push(t('bench.mixedSettings', { n: configs.size }));
         const list = runs.slice().reverse().map(r => {
             const a = this.aggregate(r.episodes).all;
-            return `<tr><td>${this.describeRun(r)}</td><td>${r.episodes.length}${r.complete ? '' : ' / ' + r.planned}</td>
+            const setBtn = !this.servedOf(r) && r.model && r.model.model
+                ? ` <button class="lib-io-btn bench-set-served" data-id="${this.esc(r.id)}" onclick="game.ui.benchPage().setServed(this.dataset.id)">${t('bench.setServed')}</button>` : '';
+            return `<tr><td>${this.describeRun(r)}${setBtn}</td><td>${r.episodes.length}${r.complete ? '' : ' / ' + r.planned}</td>
                 <td>${a.score.mean == null ? '–' : a.score.mean.toFixed(2)}</td>
-                <td><button class="hr-del" onclick="game.ui.benchPage().deleteRun('${this.esc(r.id)}','${this.esc(key)}')" title="${this.esc(t('bench.deleteRun'))}" aria-label="${this.esc(t('bench.deleteRun'))}">✕</button></td></tr>`;
+                <td><button class="hr-del" data-id="${this.esc(r.id)}" data-k="${this.esc(key)}" onclick="game.ui.benchPage().deleteRun(this.dataset.id, this.dataset.k)" title="${this.esc(t('bench.deleteRun'))}" aria-label="${this.esc(t('bench.deleteRun'))}">✕</button></td></tr>`;
         }).join('');
         this.el('benchBody').innerHTML = this.nav('history') + `
             <section class="arena-section bench-results">
                 <h3>${this.esc(t('bench.historyFor', { model: label }))}</h3>
                 ${this.buildFilter(every)}
+                ${others.length ? `<p class="bench-run-meta">${this.esc(t('bench.otherModels'))} ${others.map(([k, r]) => `<button class="lib-io-btn" data-k="${this.esc(k)}" onclick="game.ui.benchPage().renderHistory(this.dataset.k)">${this.esc(this.groupName(r))}</button>`).join(' ')}</p>` : ''}
                 ${runs.length ? `<p class="bench-run-meta">${this.esc(t('bench.historyLine', { runs: runs.length, eps: episodes.length }))}</p>
                 ${mixed.map(m => `<p class="bench-note">${this.esc(m)}</p>`).join('')}
                 ${this.chart(agg)}${this.table(agg)}
@@ -670,10 +757,22 @@ class BenchPage {
                 : `<p class="lib-empty">${t('bench.noRuns')}</p>`}
             </section>
             <div class="arena-setup-buttons">
-                ${runs.length ? `<button class="menu-btn" onclick="game.ui.benchPage().exportRuns('${this.esc(key)}')">${t('bench.saveResults')}</button>` : ''}
+                ${runs.length ? `<button class="menu-btn" data-k="${this.esc(key)}" onclick="game.ui.benchPage().exportRuns(this.dataset.k)">${t('bench.saveResults')}</button>` : ''}
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().renderSetup()">${t('bench.newRun')}</button>
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().close()">${t('common.back')}</button>
             </div>`;
+    }
+    // A run from before b1100 (or from a server that would not say) gets its checkpoint
+    // by hand; it then moves to that model's row. Suggests the one its entry ran with.
+    setServed(id) {
+        const runs = this.loadRuns(), r = runs.find(x => x.id === id);
+        if (!r || !r.model) return;
+        const known = [...new Set(runs.filter(x => (x.modelKey === r.modelKey || x.label === r.label) && this.servedOf(x)).map(x => this.servedOf(x)))];
+        const v = prompt(t('bench.setServedPrompt', { m: r.model.model || '' }), known[0] || '');
+        if (v == null || !v.trim()) return;
+        r.model.served = { checkpoint: v.trim(), manual: true };
+        if (!this.saveRuns(runs)) { this.say(t('bench.notKept')); return; }
+        this.renderHistory(this.groupKey(r));
     }
     deleteRun(id, key) {
         if (!confirm(t('bench.deleteConfirm'))) return;
@@ -694,7 +793,7 @@ class BenchPage {
     slug(s) { return String(s || 'model').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'model'; }
     resultsFile(runs) { return new Blob([JSON.stringify({ schema: BenchPage.RESULTS_SCHEMA, exported: new Date().toISOString(), runs }, null, 1)], { type: 'application/json' }); }
     saveSummary() { if (this.last) this.download(`warbench-${this.slug(this.last.summary.label)}-${this.stamp()}.json`, this.resultsFile([this.last.summary])); }
-    exportRuns(key) { const runs = this.runsFor(key); if (runs.length) this.download(`warbench-${this.slug(runs[0].label)}-all-${this.stamp()}.json`, this.resultsFile(runs)); }
+    exportRuns(key) { const runs = this.runsOfGroup(this.resolveKey(key)); if (runs.length) this.download(`warbench-${this.slug(runs[0].label)}-all-${this.stamp()}.json`, this.resultsFile(runs)); }
     exportAll() {
         const runs = this.loadRuns();
         if (!runs.length) { this.say(t('bench.noRunsAtAll')); return; }
@@ -716,18 +815,18 @@ class BenchPage {
     renderOverview() {
         this._view = 'overview';
         const every = this.loadRuns(), runs = this.filtered(every);
-        const keys = [...new Set(runs.map(r => r.modelKey))];
+        const keys = [...new Set(runs.map(r => this.groupKey(r)))];
         const models = keys.map(key => {
-            const mine = runs.filter(r => r.modelKey === key), eps = mine.flatMap(r => r.episodes);
+            const mine = runs.filter(r => this.groupKey(r) === key), eps = mine.flatMap(r => r.episodes);
             const lastRun = mine.reduce((a, r) => (a && (a.at || '') > (r.at || '') ? a : r), null);
-            return { key, label: this.modelLabel(key) || (lastRun && lastRun.label) || key, runs: mine, eps, lastRun, agg: this.aggregate(eps) };
+            return { key, label: this.groupName(lastRun), runs: mine, eps, lastRun, agg: this.aggregate(eps) };
         }).sort((a, b) => (b.agg.all.score.mean || 0) - (a.agg.all.score.mean || 0));
         const list = models.map(m => `<tr><th scope="row">${this.esc(m.label)}</th>
-            <td>${m.lastRun && m.lastRun.model && m.lastRun.model.model ? this.esc(m.lastRun.model.model + (m.lastRun.model.host ? ' @ ' + m.lastRun.model.host : '')) : '–'}</td>
+            <td>${m.lastRun && m.lastRun.model && (this.servedOf(m.lastRun) || m.lastRun.model.model) ? this.esc((this.servedOf(m.lastRun) || m.lastRun.model.model + ' (' + t('bench.unknownCkpt') + ')') + (m.lastRun.model.host ? ' @ ' + m.lastRun.model.host : '')) : '–'}</td>
             <td>${m.runs.length}</td><td>${m.eps.length}</td>
             <td>${m.agg.all.score.mean == null ? '–' : `${m.agg.all.score.mean.toFixed(2)} <span class="bench-ci">[${m.agg.all.score.lo.toFixed(2)}–${m.agg.all.score.hi.toFixed(2)}]</span>`}</td>
             <td>${m.lastRun && m.lastRun.at ? this.esc(new Date(m.lastRun.at).toLocaleString()) : '–'}</td>
-            <td><button class="lib-io-btn" onclick="game.ui.benchPage().renderHistory('${this.esc(m.key)}')">${t('bench.open')}</button></td></tr>`).join('');
+            <td><button class="lib-io-btn" data-k="${this.esc(m.key)}" onclick="game.ui.benchPage().renderHistory(this.dataset.k)">${t('bench.open')}</button></td></tr>`).join('');
         this.el('benchBody').innerHTML = this.nav('overview') + `
             <section class="arena-section bench-results">
                 <h3>${t('bench.overviewTitle')}</h3>
@@ -914,7 +1013,7 @@ class BenchPage {
         return {
             id: 'bundle-' + warSha256(lines[0]).slice(0, 16), at: head.at || null, modelKey: key,
             label: head.policy.name, model: cfg ? { name: cfg.name, model: cfg.model, provider: cfg.provider, host, maxTokens: cfg.maxTokens,
-                contextSize: cfg.contextSize, reqOpts: cfg.reqOpts } : { baseline: head.policy.name },
+                contextSize: cfg.contextSize, reqOpts: cfg.reqOpts, served: head.served || null } : { baseline: head.policy.name },
             prompt: cfg ? (cfg.systemPrompt != null ? 'arena' : 'standard') : null, promptVersion: head.promptVersion || null,
             build: head.build || null, coreHash: head.coreHash, harnessHash: head.harnessHash,
             protocol: { roundMs: head.protocol.roundMs, ceilingMs: head.protocol.ceilingMs, wallLimitMinutes: head.wallLimitMinutes || null },
