@@ -47,7 +47,7 @@
   }
  },
  {
-  "hash": "7feaf7328c5425c3",
+  "hash": "1f0444728fc50acd",
   "summary": {
    "t": 10,
    "seats": [
@@ -94,7 +94,7 @@
   }
  },
  {
-  "hash": "ba43ab7d6e25d784",
+  "hash": "54c3283608bece23",
   "summary": {
    "t": 15,
    "seats": [
@@ -141,7 +141,7 @@
   }
  },
  {
-  "hash": "f51705304c3b6953",
+  "hash": "c580c3d79bb9dda5",
   "summary": {
    "t": 20,
    "seats": [
@@ -160,8 +160,8 @@
       "priest": 4,
       "worker": 10
      },
-     "hp": 2223,
-     "buildings": 3,
+     "hp": 2240,
+     "buildings": 4,
      "research": 0
     },
     {
@@ -180,7 +180,7 @@
       "heavy_cavalry": 8,
       "priest": 4
      },
-     "hp": 4060,
+     "hp": 4113,
      "buildings": 1,
      "research": 0
     }
@@ -188,7 +188,7 @@
   }
  },
  {
-  "hash": "cef128ce47365519",
+  "hash": "4c5f3825fd872d12",
   "summary": {
    "t": 25,
    "seats": [
@@ -204,9 +204,10 @@
      ],
      "units": {
       "champion": 2,
+      "priest": 4,
       "worker": 10
      },
-     "hp": 691,
+     "hp": 952,
      "buildings": 3,
      "research": 0
     },
@@ -226,7 +227,7 @@
       "heavy_cavalry": 7,
       "priest": 4
      },
-     "hp": 3955,
+     "hp": 3791,
      "buildings": 1,
      "research": 0
     }
@@ -234,7 +235,7 @@
   }
  },
  {
-  "hash": "1de9939d2e293926",
+  "hash": "12be5d00cb8e9bba",
   "summary": {
    "t": 30,
    "seats": [
@@ -271,7 +272,7 @@
       "heavy_cavalry": 7,
       "priest": 4
      },
-     "hp": 3791,
+     "hp": 3729,
      "buildings": 1,
      "research": 0
     }
@@ -279,7 +280,7 @@
   }
  },
  {
-  "hash": "b5f115898cc13188",
+  "hash": "985fab07628e69cf",
   "summary": {
    "t": 35,
    "seats": [
@@ -313,10 +314,10 @@
      "units": {
       "champion": 12,
       "crossbowman": 10,
-      "heavy_cavalry": 6,
+      "heavy_cavalry": 5,
       "priest": 4
      },
-     "hp": 3546,
+     "hp": 3525,
      "buildings": 1,
      "research": 0
     }
@@ -324,7 +325,7 @@
   }
  },
  {
-  "hash": "737158fcfbdb3999",
+  "hash": "6650576b41ecd691",
   "summary": {
    "t": 40,
    "seats": [
@@ -342,7 +343,7 @@
       "worker": 10
      },
      "hp": 400,
-     "buildings": 2,
+     "buildings": 3,
      "research": 0
     },
     {
@@ -358,10 +359,10 @@
      "units": {
       "champion": 12,
       "crossbowman": 10,
-      "heavy_cavalry": 5,
+      "heavy_cavalry": 4,
       "priest": 4
      },
-     "hp": 3438,
+     "hp": 3320,
      "buildings": 1,
      "research": 0
     }
@@ -369,7 +370,7 @@
   }
  },
  {
-  "hash": "d21c2be0b8fbda8a",
+  "hash": "f254551dced8c73e",
   "summary": {
    "t": 45,
    "seats": [
@@ -403,10 +404,10 @@
      "units": {
       "champion": 12,
       "crossbowman": 10,
-      "heavy_cavalry": 5,
+      "heavy_cavalry": 4,
       "priest": 4
      },
-     "hp": 3532,
+     "hp": 3379,
      "buildings": 1,
      "research": 0
     }
@@ -414,7 +415,7 @@
   }
  },
  {
-  "hash": "db76a6d749466d91",
+  "hash": "4c64c0823ce0285f",
   "summary": {
    "t": 50,
    "seats": [
@@ -429,9 +430,9 @@
       50
      ],
      "units": {
-      "worker": 5
+      "worker": 8
      },
-     "hp": 164,
+     "hp": 320,
      "buildings": 1,
      "research": 0
     },
@@ -448,10 +449,10 @@
      "units": {
       "champion": 12,
       "crossbowman": 10,
-      "heavy_cavalry": 5,
+      "heavy_cavalry": 4,
       "priest": 4
      },
-     "hp": 3561,
+     "hp": 3416,
      "buildings": 1,
      "research": 0
     }
@@ -459,7 +460,7 @@
   }
  },
  {
-  "hash": "2d1cd66decb8ac07",
+  "hash": "ffac0a4d1e33f516",
   "summary": {
    "t": 55,
    "seats": [
@@ -491,10 +492,10 @@
      "units": {
       "champion": 12,
       "crossbowman": 10,
-      "heavy_cavalry": 5,
+      "heavy_cavalry": 4,
       "priest": 4
      },
-     "hp": 3585,
+     "hp": 3440,
      "buildings": 1,
      "research": 0
     }
@@ -502,7 +503,7 @@
   }
  },
  {
-  "hash": "45313c5a2c24b75d",
+  "hash": "939f1b06b1810ddd",
   "summary": {
    "t": 60,
    "seats": [
@@ -534,10 +535,10 @@
      "units": {
       "champion": 12,
       "crossbowman": 10,
-      "heavy_cavalry": 5,
+      "heavy_cavalry": 4,
       "priest": 4
      },
-     "hp": 3670,
+     "hp": 3510,
      "buildings": 1,
      "research": 0
     }
@@ -545,7 +546,7 @@
   }
  },
  {
-  "hash": "13e289f86e65d6c4",
+  "hash": "e0c7a659260b3ad0",
   "summary": {
    "t": 65,
    "seats": [
@@ -577,10 +578,10 @@
      "units": {
       "champion": 12,
       "crossbowman": 10,
-      "heavy_cavalry": 5,
+      "heavy_cavalry": 4,
       "priest": 4
      },
-     "hp": 3766,
+     "hp": 3606,
      "buildings": 1,
      "research": 0
     }
@@ -588,7 +589,7 @@
   }
  },
  {
-  "hash": "07e0d1773c021dbb",
+  "hash": "b9360fde7c13c7d4",
   "summary": {
    "t": 70,
    "seats": [
@@ -620,10 +621,10 @@
      "units": {
       "champion": 12,
       "crossbowman": 10,
-      "heavy_cavalry": 5,
+      "heavy_cavalry": 4,
       "priest": 4
      },
-     "hp": 3770,
+     "hp": 3651,
      "buildings": 1,
      "research": 0
     }

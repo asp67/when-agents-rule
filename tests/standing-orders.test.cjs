@@ -809,3 +809,24 @@ test('a worker under an order never picks a fight, and answers only the one who 
         assert.notEqual(w.attackTarget, passer);
     }
 });
+
+// b1102 (asp67): an attack order passing a tower that has not shot it goes for the
+// productive buildings, not the tower. A tower is still fought as the order's target.
+test('an attack order passes a quiet tower for the Town Center beside its route (b1102)',()=>{
+ const h=setup(),a=h.unit('warrior',0,0),b=h.unit('warrior',2,0);h.owner.units.push(a,b);
+ h.g.aiManager.isVisibleTo=()=>true;
+ // The tower stands 28 off, outside its range of 18 and nearer than the Town Center (33).
+ const tower={id:'tower',type:'tower',owner:'b',x:20,z:20,health:1000,maxHealth:1000,range:18};
+ const tc={id:'tc',type:'town_center',owner:'b',x:30,z:-15,health:1200,maxHealth:1200};
+ h.g.getAllBuildings=()=>[tower,tc];
+ h.issue('march',{x:80,z:0},{attack:true});h.step(150);
+ assert.equal(a.attackTarget,tc,'the Town Center, not the nearer tower');assert.equal(b.attackTarget,tc);
+ // With nothing else about, a quiet tower beside the route does not draw them either.
+ tc.health=0;h.step(150);
+ assert.notEqual(a.attackTarget,tower);assert.notEqual(b.attackTarget,tower);
+ // Sent at the tower itself, they attack it.
+ const h2=setup(),c=h2.unit('warrior',0,0);h2.owner.units.push(c);h2.g.aiManager.isVisibleTo=()=>true;
+ const t2={id:'t2',type:'tower',owner:'b',x:20,z:20,health:1000,maxHealth:1000,range:18};h2.g.getAllBuildings=()=>[t2];
+ h2.issue('march',{x:20,z:20},{attack:true,target:t2});h2.step(150);
+ assert.equal(c.attackTarget,t2);
+});

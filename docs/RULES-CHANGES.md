@@ -6,6 +6,20 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1102: an attack order leaves towers beside its route alone (16 October 2026)
+
+**Rules change (standing orders).** asp67: "a tower is a purely defensive building not a productive one, a group passing a tower that is out of range and attacking barracks, or a town center is much more productive."
+
+**Before.** An attack order engages enemy buildings within 48 of its route. Towers counted as such buildings, so a passing army turned on a tower that had never shot at it and lost time and men there. In asp67's match of 16 October, 15 of the tower pulls from outside the tower's range came from this rule.
+
+**Now** a tower is no longer one of the buildings an attack order engages on its way. A tower is still fought:
+- as the order's own target: an army sent at a tower attacks it;
+- by the members standing in its range once it shoots them (a threat, b1101). An army that attacks buildings next to a tower still brawls with it.
+
+**The same match replayed on this build** (on the new rules, so it drifts from the original once the first decision changes): 2 tower pulls from outside the range instead of 121 on its own build, b1100. Both are members of an order sent at that very tower, walking up to it.
+
+**Tests:** `tests/standing-orders.test.cjs` adds an attack order passing a tower 28 off (outside its range of 18) with a Town Center 33 off. Before the fix the group went for the nearer tower; now it takes the Town Center. With the Town Center gone it leaves the tower alone, and sent at the tower it attacks it. The combat golden `wonder-siege` is re-recorded. It ends as before: Egypt falls at 70 s, the siege army one cavalryman fewer. Its buildings fall in a different order, as the attackers no longer open on the tower.
+
 ## Build 1101: a tower is fought only from inside its range, and every Wonder countdown is on screen (16 October 2026)
 
 **Rules change (standing orders).** asp67: units still attacked towers they passed outside the towers' range, when members of their formation had been killed at that tower before, even after the fight there was over. It happened most in the Wonder phase.

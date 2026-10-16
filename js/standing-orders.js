@@ -366,6 +366,12 @@ class StandingOrders {
                 if(threat(e)&&e.type==='tower'&&e!==g.target)return !u||WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6);
                 if(threat(e))return e.type==='tower'||!g.blocked.get(u)?.has(e);
                 if(e===g.target)return true;
+                // A tower is not on an attack order's way (b1102, asp67): it guards, it
+                // produces nothing, and a barracks or Town Center beside the route is worth
+                // the time far more. It is fought as the order's target, or by the members in
+                // its range once it shoots them (a threat, above) -- an army near it brawls
+                // with it anyway. Until b1102 any tower within 48 of the route drew the group.
+                if(e.type==='tower')return false;
                 if(wonderRun)return false;
                 return !g.blocked.get(u)?.has(e)&&withinLeash(e);
             };
