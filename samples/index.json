@@ -534,6 +534,166 @@
    ],
    "bytes": 10846005,
    "default": false
+  },
+  {
+   "file": "2026-10-08_claude-haiku5.5-gpt6-luna_20min.jsonl",
+   "matchId": "match-20261008-104823",
+   "date": 1791449303421,
+   "duration": "20:09",
+   "turns": 337,
+   "outcome": "last_standing",
+   "seed": "rmuzans3qvaa5",
+   "difficulty": "easy",
+   "turnBased": false,
+   "promptVersion": "agents-rule-v107",
+   "build": 1080,
+   "winner": "O claude-haiku-5.5",
+   "players": [
+    {
+     "seat": 0,
+     "name": "O claude-haiku-5.5",
+     "model": "anthropic/claude-haiku-5.5",
+     "civ": "Maya",
+     "power": 4617,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "O gpt6-luna",
+     "model": "gpt-luna-latest",
+     "civ": "Romans",
+     "power": 46,
+     "winner": false
+    }
+   ],
+   "bytes": 5891191,
+   "default": false
+  },
+  {
+   "file": "2026-10-08_claude-haiku5.5-gpt6-luna_32min.jsonl",
+   "matchId": "match-20261008-111302",
+   "date": 1791450783773,
+   "duration": "31:53",
+   "turns": 502,
+   "outcome": "last_standing",
+   "seed": "rmuzbjigv3owr",
+   "difficulty": "easy",
+   "turnBased": false,
+   "promptVersion": "agents-rule-v107",
+   "build": 1080,
+   "winner": "O claude-haiku-5.5",
+   "players": [
+    {
+     "seat": 0,
+     "name": "O claude-haiku-5.5",
+     "model": "anthropic/claude-haiku-5.5",
+     "civ": "Romans",
+     "power": 5066,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "O gpt6-luna",
+     "model": "gpt-luna-latest",
+     "civ": "Maya",
+     "power": 52,
+     "winner": false
+    }
+   ],
+   "bytes": 10148378,
+   "default": false
+  },
+  {
+   "file": "2026-10-08_claude-haiku5.5-gpt6-luna-deepseek-v4.1-glm5.3_70min.jsonl",
+   "matchId": "match-20261008-115009",
+   "date": 1791453010326,
+   "duration": "69:40",
+   "turns": 408,
+   "outcome": "last_standing",
+   "seed": "rmuzcv8cgjlz0",
+   "difficulty": "medium",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v107",
+   "build": 1080,
+   "winner": "O deepseek-v4.1-flash",
+   "players": [
+    {
+     "seat": 2,
+     "name": "O deepseek-v4.1-flash",
+     "model": "deepseek/deepseek-v4.1-flash",
+     "civ": "Persians",
+     "power": 4370,
+     "winner": true
+    },
+    {
+     "seat": 0,
+     "name": "O claude-haiku-5.5",
+     "model": "anthropic/claude-haiku-5.5",
+     "civ": "Vikings",
+     "power": 117,
+     "winner": false
+    },
+    {
+     "seat": 3,
+     "name": "DGX GLM5.3 flash",
+     "model": "GLM5.3",
+     "civ": "Maya",
+     "power": 75,
+     "winner": false
+    },
+    {
+     "seat": 1,
+     "name": "O gpt6-luna",
+     "model": "gpt-luna-latest",
+     "civ": "Greeks",
+     "power": 71,
+     "winner": false
+    }
+   ],
+   "bytes": 9200077,
+   "default": false
+  },
+  {
+   "file": "2026-10-15_qwen3.8-flash-next-qwen3.8-27b-gemini4-argon_71min.jsonl",
+   "matchId": "match-20261015-194436",
+   "date": 1792086277193,
+   "duration": "70:44",
+   "turns": 248,
+   "outcome": "wonder",
+   "seed": "rmv9twbwza5kw",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v108",
+   "build": 1100,
+   "winner": "DGX Qwen3.8 flash next",
+   "players": [
+    {
+     "seat": 0,
+     "name": "DGX Qwen3.8 flash next",
+     "model": "Qwen3.8",
+     "civ": "Egyptians",
+     "power": 3553,
+     "winner": true
+    },
+    {
+     "seat": 2,
+     "name": "O gemini-4-argon",
+     "model": "google/gemini-4-argon",
+     "civ": "Romans",
+     "power": 2457,
+     "winner": false
+    },
+    {
+     "seat": 1,
+     "name": "O qwen3.8-27b",
+     "model": "qwen/qwen3.8-27b",
+     "civ": "Greeks",
+     "power": 113,
+     "winner": false
+    }
+   ],
+   "bytes": 5749436,
+   "default": false
   }
  ]
 }
