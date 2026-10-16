@@ -18,6 +18,10 @@ class StandingOrders {
     // falls: a group sent at it no longer turns back halfway when it stops firing.
     // Nothing else is seen through the fog.
     static get REVEAL_MS() { return 3000; }
+    // A tower drops out of a group's threats once it has not shot any member for this
+    // long and no member stands in its range (b1101): three missed volleys at its 1.5 s
+    // cadence. Before, a tower stayed a threat for the life of the order.
+    static get TOWER_FORGET_MS() { return 4500; }
     // Hold (asp67, b1044): guard with a short leash, so defenders stay under their
     // towers instead of running out after whatever shot them. At its post each unit
     // keeps to its own slot: it attacks unprovoked only what is within its own reach of
@@ -51,24 +55,28 @@ class StandingOrders {
     }
     // Which of the group's threats THIS member answers (b1085, asp67). A tower is answered
     // by every member inside its firing range -- the same test the tower shoots by -- and
-    // by nobody else while a mobile attacker of the group is within chase reach: a column
-    // whose head stood in a tower's range used to be bound to the tower whole, so its rear,
-    // forty units off, walked on into the tower while archers shot it down unanswered.
-    // Outside the range a member answers the first mobile threat in the queue (the queue
-    // keeps alternating hits from pulling it to and fro); with none, it joins the group's
-    // target list again, which puts it on the tower.
+    // by nobody outside it: a column whose head stood in a tower's range used to be bound
+    // to the tower whole, so its rear, forty units off, walked on into the tower while
+    // archers shot it down unanswered. Outside the range a member answers the first mobile
+    // threat in the queue (the queue keeps alternating hits from pulling it to and fro);
+    // with none, it goes back to the group's own order (b1101, asp67: "join the target
+    // list of the formation again" is the order's targets, never the tower). Until b1101
+    // it fell back to the tower, so members passing within chase reach of a tower that had
+    // once shot the group turned on it long after the fight there was over.
     threatFor(g,u,ok=()=>true) {
         const threats=(g.threats||[]).filter(e=>e&&e.health>0&&ok(e));
-        const tower=threats.find(e=>e.type==='tower');
-        if(tower&&WarMath.hypot(u.x-tower.x,u.z-tower.z)<=(tower.range||6))return tower;
+        const tower=threats.find(e=>e.type==='tower'&&WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6));
+        if(tower)return tower;
         const mobile=threats.find(e=>e.type!=='tower'&&WarMath.hypot(u.x-e.x,u.z-e.z)<=StandingOrders.CHASE_RADIUS);
-        return mobile||tower||threats[0]||null;
+        return mobile||threats.find(e=>e.type!=='tower')||null;
     }
     retaliate(victim,attacker) {
         const g=victim?._standingOrder;
         if(!g||!this.groups.has(g)||victim._orderToken!==g.token
             ||!attacker||attacker.health<=0)return;
-        (g.revealed||(g.revealed=new Map())).set(attacker,attacker.type==='tower'?Infinity:this.time+StandingOrders.REVEAL_MS);
+        // A tower is seen while it shoots, and a while after (it may stand beyond sight).
+        (g.revealed||(g.revealed=new Map())).set(attacker,this.time+(attacker.type==='tower'?StandingOrders.TOWER_FORGET_MS:StandingOrders.REVEAL_MS));
+        if(attacker.type==='tower')(g.towerShots||(g.towerShots=new Map())).set(attacker,this.time);
         // Incoming damage overrides movement intent, even scouting. Towers take
         // priority over mobile attackers; equal-priority threats queue so each
         // incoming hit does not pull the army onto a different target.
@@ -270,9 +278,18 @@ class StandingOrders {
         };
         for(const g of this.groups){
             const units=g.units,center=this.center(units);
+            // A tower cannot move: while a member stands in its range it stays known, seen
+            // or not (b1101) -- that member is the one it will shoot next.
+            if(g.revealed)for(const e of g.threats||[])if(e.type==='tower'&&e.health>0
+                &&units.some(u=>u.health>0&&WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6)))g.revealed.set(e,this.time+StandingOrders.TOWER_FORGET_MS);
             if(g.revealed)for(const [e,until]of g.revealed)if(until<=this.time||e.health<=0)g.revealed.delete(e);
             const seen=e=>!!g.revealed?.has(e)||see(g,e);
             if(g.threats)g.threats=g.threats.filter(e=>e.health>0&&seen(e));
+            // A tower that has stopped shooting the group, with nobody of it in range, is
+            // no longer this group's fight (b1101).
+            if(g.threats?.some(e=>e.type==='tower'))g.threats=g.threats.filter(e=>e.type!=='tower'
+                ||this.time-(g.towerShots?.get(e)??-Infinity)<StandingOrders.TOWER_FORGET_MS
+                ||units.some(u=>u.health>0&&WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6)));
             const focus=g.threats?.[0];
             // Visibility depends on the owner, not the attacker. Share its scan
             // across the formation instead of repeating it for every soldier.
@@ -342,6 +359,11 @@ class StandingOrders {
             const eligible=(u,e)=>{
                 if(!valid(e))return false;
                 if(holding&&u&&!holds(u,e))return false;
+                // A tower among the threats is a member's fight only inside its firing range,
+                // as threatFor says (b1101). Threats skip the leash, so until b1101 a tower
+                // that had once shot the group drew members up to the chase limit away --
+                // worst on a Wonder run, where threats are the only targets allowed.
+                if(threat(e)&&e.type==='tower'&&e!==g.target)return !u||WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6);
                 if(threat(e))return e.type==='tower'||!g.blocked.get(u)?.has(e);
                 if(e===g.target)return true;
                 if(wonderRun)return false;

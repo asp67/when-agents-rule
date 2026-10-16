@@ -628,32 +628,37 @@ class TranscriptAnalyzer {
     // wherever possible — it carries secondsUntilYouWin, the same countdown a rival
     // sees as secondsUntilEnemyWins — so the header shows one authoritative number
     // rather than whichever seat happened to be selected.
-    wonderStatus(rec) {
-        if (!rec) return null;
+    wonderStatus(rec) { return this.wonderStatuses(rec)[0] || null; }
+    // Every seat's Wonder at this moment, from each seat's own last snapshot, closest to
+    // winning first (b1101). A seat with two Wonders is one entry: its countdown is the
+    // seat's, and a finished Wonder is shown before one still being built.
+    wonderStatuses(rec) {
+        if (!rec) return [];
         const sec = rec._sec;
-        let out = null;
+        const out = [];
         this.seats.forEach(st => {
-            if (out && out.secs != null) return;
             let last = null;
             for (const r of st.turns) { if (!TranscriptAnalyzer.hasBoard(r)) continue; if (r._sec <= sec) last = r; else break; }
-            const w = last && ((last.state && last.state.friendlyBuildings) || [])
-                .find(b => b.wonder === true || b.isWonder === true);
-            if (!w) return;
-            out = { owner: st, seat: st.seat, building: w.state === 'under_construction',
+            const mine = last ? ((last.state && last.state.friendlyBuildings) || []).filter(b => b.wonder === true || b.isWonder === true) : [];
+            if (!mine.length) return;
+            const timed = mine.filter(b => typeof b.secondsUntilYouWin === 'number').sort((a, b) => a.secondsUntilYouWin - b.secondsUntilYouWin);
+            const w = timed[0] || mine.find(b => b.state !== 'under_construction') || mine[0];
+            out.push({ owner: st, seat: st.seat, building: w.state === 'under_construction',
                     secs: (typeof w.secondsUntilYouWin === 'number') ? w.secondsUntilYouWin : null,
                     buildSecs: (typeof w.buildSecondsRemaining === 'number') ? w.buildSecondsRemaining : null,
-                    healthPct: w.healthPct, ageSec: sec - last._sec };
+                    healthPct: w.healthPct, ageSec: sec - last._sec });
         });
-        if (out) return out;
+        const rank = w => w.secs != null ? w.secs : w.building ? 1e9 + (w.buildSecs || 0) : 1e8;
+        if (out.length) return out.sort((a, b) => rank(a) - rank(b));
         // Nobody's own snapshot has one; fall back to what the selected seat can see of
         // somebody else's.
         const st2 = (rec.state && rec.state.enemyBuildings) || [];
         const e = st2.find(b => b.isWonder === true);
-        if (!e) return null;
-        return { owner: this.seats.get(e.owner) || null, seat: (this.seats.get(e.owner) || {}).seat,
+        if (!e) return [];
+        return [{ owner: this.seats.get(e.owner) || null, seat: (this.seats.get(e.owner) || {}).seat,
                  building: e.state === 'under_construction',
                  secs: (typeof e.secondsUntilEnemyWins === 'number') ? e.secondsUntilEnemyWins : null,
-                 buildSecs: null, healthPct: e.healthPct, ageSec: 0, seen: true };
+                 buildSecs: null, healthPct: e.healthPct, ageSec: 0, seen: true }];
     }
     // ---- selection -------------------------------------------------------
 

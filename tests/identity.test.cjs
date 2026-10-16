@@ -51,6 +51,6 @@ test('every place a seat is coloured asks the same function', () => {
     const game = fs.readFileSync(path.join(root, 'js/game.js'), 'utf8');
     assert.ok((renderer.match(/WarIdentity\.color\(/g) || []).length >= 2, 'units and buildings');
     assert.match(game, /WarIdentity\.hex\(ai\.id/, 'the minimap');
-    for (const where of ['const colorHex = this.identityHex(ai.id', 'this.legibleColor(this.identityHex(lead.id', 'this.identityHex(ent.owner'])
+    for (const where of ['const colorHex = this.identityHex(ai.id', 'this.legibleColor(this.identityHex(ai.id', 'this.identityHex(ent.owner'])
         assert.ok(ui.includes(where), where);
 });

@@ -6,6 +6,30 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1101: a tower is fought only from inside its range, and every Wonder countdown is on screen (16 October 2026)
+
+**Rules change (standing orders).** asp67: units still attacked towers they passed outside the towers' range, when members of their formation had been killed at that tower before, even after the fight there was over. It happened most in the Wonder phase.
+
+**What happened.** A tower that shot a member joined the group's threats and never left them: it stayed marked "seen" for good, and the clean-up kept towers on purpose. Two things then pulled members onto it from outside its range:
+- **The fallback.** With no mobile attacker near, b1085's `threatFor` sent a member to the tower ("join the target list again").
+- **The eligibility check.** It took any threat with no distance limit. On a Wonder run, where threats are the only targets allowed, a member up to the chase limit away (~96) took the tower.
+
+In asp67's match of 15 October (b1100), replayed on its own build: **47 times** a member took a tower from outside its range, all on attack orders, none with the tower as the order's target, every one with the tower in the group's threats, at 18–88 units.
+
+**Now** (asp67: "join the target list of the formation again" means the formation's order, never the tower):
+- A tower is a member's fight only inside its firing range (18), the test the tower shoots by. That holds in `threatFor` and in the scan's eligibility check alike. The order's own target is unaffected: an army sent at a tower still attacks it.
+- Outside the range a member answers a mobile attacker, or with none carries on with the order.
+- A tower drops out of the group's threats once it has not shot any member for 4.5 s (three volleys) and no member stands in its range. It stays known, seen or not, while a member stands in its range.
+- The same match replayed on this build: 10 such cases instead of 47.
+  - 6 are members a step outside the range in the very second the tower shot them.
+  - 4 are an attack order engaging enemy buildings within 48 of its route, which attack orders do with any building.
+
+**Tests:** `tests/standing-orders.test.cjs` adds a member marching past a tower that had shot its group, outside its range, after the fight. Before the fix it turned on the tower in 70 of 120 scans; now it never does and marches on. The b1085 test and five older tower tests are updated; their "towers" had a range of 1, so they only ever passed through the old fallback. The combat goldens `battle-40v40` and `wonder-siege` are re-recorded. Both battles end as before: the siege still falls, with one cavalryman fewer and slightly more health left.
+
+**Every Wonder countdown on screen.** In the same match (15 October) Egypt and Rome raised Wonders 17 s apart, and both counted down. The status bar, the broadcast countdown and the analyzer's header each showed only the leader's, so the second was invisible. Now each shows one countdown per seat holding a Wonder, closest to winning first, in the seat's colour.
+- The hold is the seat's own, so a civilization with two Wonders is one countdown, as asp67 asked.
+- `UIManager.wonderHolds()` lists them; `TranscriptAnalyzer.wonderStatuses()` does the same from each seat's snapshots.
+
 ## Build 1100: benchmark results go by model name and the checkpoint actually served (14 October 2026)
 
 **No match rules change.** asp67: the Benchmark page is for people running their own endpoints, where one address serving different models over time is normal. Results were grouped by the library entry's internal id. The DGX's FP8 and NVFP4, both served as `Qwen3.8` on port 8024 under one library entry, would have shared one row.

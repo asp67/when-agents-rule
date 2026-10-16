@@ -4151,13 +4151,16 @@ class UIManager {
         const wEl = document.getElementById('arenaWonder');
         if (this.broadcastOn()) this.renderBroadcast();
         if (wEl) {
-            const { lead, leadHold, reqMs } = this.wonderLead();
-            if (lead) {
-                const pct = Math.min(100, Math.round((leadHold / reqMs) * 100));
-                const civ = getCivilization(lead.civilization);
-                const col = this.legibleColor(this.identityHex(lead.id, lead.civilization, lead.seat));
+            // One countdown per seat holding a Wonder, closest to winning first (b1101).
+            const holds = this.wonderHolds();
+            if (holds.length) {
                 wEl.style.display = 'flex';
-                wEl.innerHTML = `<span class="sb-sep"></span>\u{1F3DB}️ <span style="color:${col};font-weight:700">${civ ? tg(civ.name) : lead.civilization}</span> ${t('wonder.generic')} <span class="sb-wonder-track"><span class="sb-wonder-fill" style="width:${pct}%"></span></span> ${Math.floor(leadHold / 1000)}/${Math.round(reqMs / 1000)}s`;
+                wEl.innerHTML = '<span class="sb-sep"></span>' + holds.map(({ ai, hold, reqMs }, i) => {
+                    const pct = Math.min(100, Math.round((hold / reqMs) * 100));
+                    const civ = getCivilization(ai.civilization);
+                    const col = this.legibleColor(this.identityHex(ai.id, ai.civilization, ai.seat));
+                    return `<span class="sb-wonder-entry">${i ? '' : '\u{1F3DB}️ '}<span style="color:${col};font-weight:700">${civ ? tg(civ.name) : ai.civilization}</span>${i ? '' : ' ' + t('wonder.generic')} <span class="sb-wonder-track"><span class="sb-wonder-fill" style="width:${pct}%"></span></span> ${Math.floor(hold / 1000)}/${Math.round(reqMs / 1000)}s</span>`;
+                }).join('<span class="sb-wonder-sep">·</span>');
             } else {
                 wEl.style.display = 'none';
             }
@@ -4166,15 +4169,20 @@ class UIManager {
 
     // The furthest-along held Wonder: who holds it, for how long, of how long needed.
     wonderLead() {
+        const all = this.wonderHolds(), first = all[0];
+        return { lead: first ? first.ai : null, leadHold: first ? first.hold : 0, reqMs: first ? first.reqMs : (this.game.wonderRequired || 600) * 1000 };
+    }
+    // Every seat holding a finished Wonder, closest to winning first (b1101). Several can
+    // count down at once -- two did, 17 s apart, on 15 Oct -- and the screen showed only
+    // the leader's. The hold is the seat's own (Game.checkArenaEnd: one per player), so a
+    // seat with two Wonders is one countdown, the one its first Wonder started.
+    wonderHolds() {
         const players = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
         // In countdown time (b1021): seconds at the 1x pace, as the countdown shows them.
         const pace = this.game.wonderPace || 1, reqMs = (this.game.wonderRequired || 600) * 1000;
-        let lead = null, leadHold = 0;
-        players.forEach(ai => {
-            const holding = ai.buildings.some(b => b.isWonder && !b.underConstruction);
-            if (holding && (ai._wonderHold || 0) > leadHold) { leadHold = ai._wonderHold || 0; lead = ai; }
-        });
-        return { lead, leadHold: leadHold / pace, reqMs };
+        return players.filter(ai => !ai._eliminated && ai.buildings.some(b => b.isWonder && !b.underConstruction))
+            .map(ai => ({ ai, hold: (ai._wonderHold || 0) / pace, reqMs }))
+            .sort((a, b) => b.hold - a.hold);
     }
 
     // ---- Broadcast mode (review #11) ---------------------------------------------
@@ -4314,19 +4322,22 @@ class UIManager {
         }
         const w = document.getElementById('broadcastWonder');
         if (!w) return;
-        const { lead, leadHold, reqMs } = this.wonderLead();
-        w.hidden = !lead;
-        if (!lead) return;
+        // One countdown per seat holding a Wonder, closest to winning first (b1101).
+        const holds = this.wonderHolds();
+        w.hidden = !holds.length;
+        if (!holds.length) return;
         // Under the scoreboard, which wraps to more rows on a narrow screen.
         const below = board.getBoundingClientRect().bottom;
         if (below > 0) w.style.top = Math.round(below + 8) + 'px';
-        const left = Math.max(0, Math.ceil((reqMs - leadHold) / 1000));
-        const b = typeof getTeamBadge === 'function' ? getTeamBadge(lead.seat) : null;
-        const color = this.intentLayer ? this.intentLayer.colorOf(lead) : ((b && b.fill) || '#e9c46a');
-        w.style.setProperty('--seat', color);
-        w.innerHTML = '<div class="bw-line">\u{1F3DB}\uFE0F ' + t('spec.bbWonder', { who: this.chronicleSeatHtml(lead.id),
-            t: Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') }) + '</div>'
-            + '<div class="bw-track"><div class="bw-fill" style="width:' + Math.min(100, Math.round(100 * leadHold / reqMs)) + '%"></div></div>';
+        const colorOf = ai => { const b = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
+            return this.intentLayer ? this.intentLayer.colorOf(ai) : ((b && b.fill) || '#e9c46a'); };
+        w.style.setProperty('--seat', colorOf(holds[0].ai));
+        w.innerHTML = holds.map(({ ai, hold, reqMs }) => {
+            const left = Math.max(0, Math.ceil((reqMs - hold) / 1000));
+            return '<div class="bw-row" style="--seat:' + colorOf(ai) + '"><div class="bw-line">\u{1F3DB}\uFE0F ' + t('spec.bbWonder', { who: this.chronicleSeatHtml(ai.id),
+                t: Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') }) + '</div>'
+                + '<div class="bw-track"><div class="bw-fill" style="width:' + Math.min(100, Math.round(100 * hold / reqMs)) + '%"></div></div></div>';
+        }).join('');
     }
     // A decisive moment gets a brief band of light across the screen: never more than
     // one every third of a second, and none at all for a viewer who asked for less motion.
@@ -7877,28 +7888,34 @@ class UIManager {
         const box = document.getElementById('anWonder');
         if (!box) return;
         const a = this.analyzer;
-        const w = (a && rec) ? a.wonderStatus(rec) : null;
-        if (!w) { box.style.display = 'none'; box.innerHTML = ''; return; }
+        // Every seat's Wonder, closest to winning first (b1101): two once counted down 17 s
+        // apart and the header named only the first seat it came to.
+        const all = (a && rec) ? a.wonderStatuses(rec) : [];
+        if (!all.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
         const esc = x => this.escapeHtml(String(x == null ? '' : x));
         const mmss = n => Math.floor(n / 60) + ':' + String(Math.round(n % 60)).padStart(2, '0');
-        const who = (w.owner && (w.owner.name || w.owner.model)) || this.anCivName(w.owner && w.owner.civ);
-        let label, cls = '';
-        if (w.building) {
-            label = t('an.wonderBuilding', { s: w.buildSecs != null ? w.buildSecs : '?' });
-        } else if (w.secs != null) {
-            label = t('an.wonderHold', { t: mmss(w.secs) });
-            // Under two minutes is the stretch people reopen a transcript to watch.
-            if (w.secs <= 120) cls = ' is-urgent';
-        } else {
-            label = t('an.wonderStands');
-        }
+        let cls = '';
+        const parts = all.map((w, i) => {
+            const who = (w.owner && (w.owner.name || w.owner.model)) || this.anCivName(w.owner && w.owner.civ);
+            let label;
+            if (w.building) {
+                label = t('an.wonderBuilding', { s: w.buildSecs != null ? w.buildSecs : '?' });
+            } else if (w.secs != null) {
+                label = t('an.wonderHold', { t: mmss(w.secs) });
+                // Under two minutes is the stretch people reopen a transcript to watch.
+                if (w.secs <= 120) cls = ' is-urgent';
+            } else {
+                label = t('an.wonderStands');
+            }
+            return (i ? '' : '\uD83C\uDFDB\uFE0F ') + this.teamDotHtml(w.seat, 9) + ' '
+                + '<b>' + esc(who) + '</b> ' + esc(label)
+                // A stale reading says so: this seat was last heard from N seconds ago, so
+                // its countdown is that old too.
+                + (w.ageSec > 0 ? ' <i>' + esc(t('an.agoS', { n: w.ageSec })) + '</i>' : '');
+        });
         box.style.display = '';
         box.className = 'an-wonder' + cls;
-        box.innerHTML = '\uD83C\uDFDB\uFE0F ' + this.teamDotHtml(w.seat, 9) + ' '
-            + '<b>' + esc(who) + '</b> ' + esc(label)
-            // A stale reading says so: this seat was last heard from N seconds ago, so
-            // its countdown is that old too.
-            + (w.ageSec > 0 ? ' <i>' + esc(t('an.agoS', { n: w.ageSec })) + '</i>' : '');
+        box.innerHTML = parts.join(' <span class="an-wonder-sep">·</span> ');
     }
     anRenderPick() {
         const box = document.getElementById('anPick');

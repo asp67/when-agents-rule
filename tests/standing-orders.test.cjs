@@ -275,9 +275,10 @@ test('boundary grace does not grant attacks or tracking through lost vision',()=
  h.g.aiManager.isVisibleTo=()=>false;h.g._standingOrders.update(150);assert.equal(u.attackTarget,null);
 });
 
-test('a tower hitting even a priest instantly redirects every formation fighter until destroyed',()=>{
+test('a tower hitting even a priest instantly redirects every formation fighter in its range until destroyed',()=>{
  const h=setup(),a=h.unit(),b=h.unit('archer',2),priest=h.unit('priest');b.range=12;
- h.owner.units.push(a,b,priest);const original=h.rival(8),tower=Object.assign(h.rival(15),{type:'tower'});
+ // A tower's real firing range (BUILDING_DEFS.tower.range): both fighters stand inside it.
+ h.owner.units.push(a,b,priest);const original=h.rival(8),tower=Object.assign(h.rival(15),{type:'tower',range:18});
  const g=h.issue('march',{x:80,z:0},{target:original});h.step();
  h.g.noteRetaliation(priest,tower);
  assert.equal(a.attackTarget,tower);assert.equal(b.attackTarget,tower);assert.equal(priest.attackTarget,null);
@@ -288,7 +289,7 @@ test('a tower hitting even a priest instantly redirects every formation fighter 
 
 test('alternating tower volleys queue focus targets without ping-pong or stealing reassigned units',()=>{
  const h=setup(),a=h.unit(),b=h.unit('warrior',2);h.owner.units.push(a,b);
- const first=Object.assign(h.rival(12),{type:'tower'}),second=Object.assign(h.rival(14),{type:'tower'});
+ const first=Object.assign(h.rival(12),{type:'tower',range:18}),second=Object.assign(h.rival(14),{type:'tower',range:18});
  h.issue('guard',{x:0,z:0});h.g.noteRetaliation(a,first);h.g.noteRetaliation(b,second);
  assert.equal(a.attackTarget,first);assert.equal(b.attackTarget,first);
  b._orderToken++;const other=h.g.setStandingOrder(h.m,h.owner,[b],{x:60,z:0},{mode:'scout'});
@@ -297,7 +298,7 @@ test('alternating tower volleys queue focus targets without ping-pong or stealin
 });
 
 test('scout orders defend against tower fire, then resume scouting',()=>{
- const h=setup(),u=h.unit();h.owner.units.push(u);const tower=Object.assign(h.rival(10),{type:'tower'});
+ const h=setup(),u=h.unit();h.owner.units.push(u);const tower=Object.assign(h.rival(10),{type:'tower',range:18});
  h.issue('scout');h.g.noteRetaliation(u,tower);h.step();assert.equal(u.attackTarget,tower);tower.health=0;h.step();assert.equal(u.attackTarget,null);assert.equal(u._standingOrder.mode,'scout');
 });
 
@@ -314,12 +315,14 @@ test('a tower plays one bow release per volley, not per projectile or idle timer
  tower.underConstruction=true;h.owner.units.forEach(u=>u.x=1);h.g.updateTowerAttack(1500);assert.equal(sounds.length,2);
 });
 
-test('an actual tower volley immediately redirects the formation before the next order scan',()=>{
+test('an actual tower volley immediately redirects the formation members in its range before the next order scan',()=>{
  const h=setup(),a=h.unit(),b=h.unit('warrior',2),priest=h.unit('priest',4);
  h.owner.units.push(a,b,priest);
  const tower={id:'tower',type:'tower',owner:'b',x:8,z:0,health:1000,range:6};h.g.getAllBuildings=()=>[tower];
  h.issue('march',{x:50,z:0});h.g.updateTowerAttack(1500);
- assert.equal(priest.health,90);assert.equal(a.attackTarget,tower);assert.equal(b.attackTarget,tower);assert.equal(priest.attackTarget,null);
+ assert.equal(priest.health,90);assert.equal(b.attackTarget,tower,'6 from the tower: inside its range');assert.equal(priest.attackTarget,null);
+ // 8 from it, outside its range of 6: the volley does not turn it (b1101).
+ assert.equal(a.attackTarget,null);
 });
 
 test('mobile retaliation overrides a siege, gives way to towers, and resumes the saved siege',()=>{
@@ -333,21 +336,45 @@ test('mobile retaliation overrides a siege, gives way to towers, and resumes the
  raider.health=0;h.g._standingOrders.update(150);assert.equal(u.attackTarget,original);assert.equal(g.target,original);
 });
 
-test('a hit makes each member choose: inside the tower range the tower, outside it a mobile attacker, then the tower again (b1085)',()=>{
+test('a hit makes each member choose: inside the tower range the tower, outside it a mobile attacker, then its own order (b1085, b1101)',()=>{
  // The head of a column stands in a tower's range; its tail, 45 off, is shot by a raider.
  // The tail used to be bound to the tower with the head and walked on into it unanswered.
  const h=setup(),head=h.unit('warrior',0),tail=h.unit('warrior',-30);h.owner.units.push(head,tail);
- const tower=Object.assign(h.rival(15),{type:'tower',range:18}),raider=h.rival(-36);
- const g=h.issue('march',{x:15,z:0},{target:tower});
+ const tower=Object.assign(h.rival(15),{type:'tower',range:18}),raider=h.rival(-36),camp=h.rival(-60,40);
+ const g=h.issue('march',{x:-60,z:40},{target:camp});
  h.g.noteRetaliation(head,tower);
- assert.equal(head.attackTarget,tower);assert.equal(tail.attackTarget,tower,'nobody shoots the tail yet: it joins the group target');
+ assert.equal(head.attackTarget,tower,'inside the firing range: the tower');
+ assert.notEqual(tail.attackTarget,tower,'45 off, outside it: the tower hit does not turn it');
  h.g.noteRetaliation(tail,raider);
  assert.equal(head.attackTarget,tower,'inside the firing range it stays on the tower');
  assert.equal(tail.attackTarget,raider,'outside it, it answers the raider');
  h.g._standingOrders.update(150);
  assert.equal(head.attackTarget,tower);assert.equal(tail.attackTarget,raider,'and the scan keeps both answers');
  raider.health=0;h.g._standingOrders.update(150);
- assert.equal(tail.attackTarget,tower,'with the raider gone it rejoins the tower');assert.equal(g.target,tower);
+ assert.notEqual(tail.attackTarget,tower,'with the raider gone it goes back to its order, not to the tower');
+ assert.equal(g.target,camp);
+});
+
+// asp67, 16 Oct 2026: units passing a tower OUTSIDE its range attacked it when members of
+// their formation had been killed there before, even with the fight there long over. The
+// tower stayed in the group's threats for the life of the order, and a member out of its
+// range with no mobile attacker near fell back to it.
+test('a tower that shot the group is left alone by members passing outside its range once it stops shooting (b1101)',()=>{
+ const h=setup(),near=h.unit('warrior',45,10),passer=h.unit('warrior',30,0);h.owner.units.push(near,passer);
+ // A real tower is a building, not one of the enemy units a march would answer anyway.
+ const tower={id:'tower',type:'tower',owner:'b',x:50,z:25,health:1000,maxHealth:1000,range:18};h.g.getAllBuildings=()=>[tower];
+ h.issue('march',{x:120,z:0});
+ h.g.noteRetaliation(near,tower);
+ assert.equal(near.attackTarget,tower,'the member in its range answers it');
+ assert.notEqual(passer.attackTarget,tower,'the one 32 off does not');
+ near.health=0;   // killed at the tower; the tower shoots nobody else
+ let turned=0;
+ for(let i=0;i<120;i++){h.step(150);if(passer.attackTarget===tower)turned++;
+  // the passer's march takes it past the tower at 25, outside its firing range
+  assert.ok(Math.hypot(passer.x-tower.x,passer.z-tower.z)>18||turned===0,'never drawn into range');}
+ assert.equal(turned,0,'it never turned on the tower');
+ assert.ok(passer.x>60,'it marched on past: x '+passer.x.toFixed(1));
+ assert.ok(!(passer._standingOrder.threats||[]).includes(tower),'and the tower has left the group\'s threats');
 });
 
 test('an uncatchable retaliatory threat is abandoned and the scout assignment resumes',()=>{
@@ -673,7 +700,9 @@ test('a tower firing from beyond sight is answered, and stays the focus after it
  h.g.updateTowerAttack(1500);
  assert.equal(a.attackTarget,tower,'the hit gives the tower away');
  h.step(4500);   // longer than a moving attacker stays revealed, with no more volleys
- assert.equal(a.attackTarget,tower,'a tower cannot move: still the focus');assert.equal(b.attackTarget,tower);
+ assert.equal(a.attackTarget,tower,'a tower cannot move: still the focus of the member in its range');
+ // b stood 19 off, outside the tower's 18: it was never turned, and keeps to its order (b1101).
+ assert.notEqual(b.attackTarget,tower);
 });
 
 test('a moving attacker out of sight is revealed by its hits only for a few seconds',()=>{
