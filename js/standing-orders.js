@@ -19,8 +19,9 @@ class StandingOrders {
     // Nothing else is seen through the fog.
     static get REVEAL_MS() { return 3000; }
     // A tower drops out of a group's threats once it has not shot any member for this
-    // long and no member stands in its range (b1101): three missed volleys at its 1.5 s
-    // cadence. Before, a tower stayed a threat for the life of the order.
+    // long, no member stands in its range and no member is on its way to fight it (b1101,
+    // b1103): three missed volleys at its 1.5 s cadence. Before b1101 a tower stayed a
+    // threat for the life of the order.
     static get TOWER_FORGET_MS() { return 4500; }
     // Hold (asp67, b1044): guard with a short leash, so defenders stay under their
     // towers instead of running out after whatever shot them. At its post each unit
@@ -53,22 +54,23 @@ class StandingOrders {
         return g.owner.id==='player'?!!this.game.fogOfWar?.isPositionVisible(e.x,e.z)
             : !!this.game.aiManager?.isVisibleTo(g.owner,e.x,e.z);
     }
-    // Which of the group's threats THIS member answers (b1085, asp67). A tower is answered
-    // by every member inside its firing range -- the same test the tower shoots by -- and
-    // by nobody outside it: a column whose head stood in a tower's range used to be bound
-    // to the tower whole, so its rear, forty units off, walked on into the tower while
-    // archers shot it down unanswered. Outside the range a member answers the first mobile
-    // threat in the queue (the queue keeps alternating hits from pulling it to and fro);
-    // with none, it goes back to the group's own order (b1101, asp67: "join the target
-    // list of the formation again" is the order's targets, never the tower). Until b1101
-    // it fell back to the tower, so members passing within chase reach of a tower that had
-    // once shot the group turned on it long after the fight there was over.
+    // Which of the group's threats THIS member answers (b1085, b1103, asp67): "If a group
+    // gets attacked by a tower, the whole group retaliates. Only if units outside the
+    // tower's reach take damage from other units, they retaliate against the damage
+    // dealers first and when they are not taking any more damage ... they join the tower
+    // fight." So: inside a tower's firing range, the tower. Outside it, the first mobile
+    // threat in the queue within chase reach (the queue keeps alternating hits from
+    // pulling a member to and fro). With none, the tower again -- the whole group's fight.
+    // b1101 sent a member outside the range back to its order instead, and the group
+    // stood at the tower's edge, halted by the fight, while the few inside the range fought
+    // it alone and the rest were drawn in one volley at a time (16 Oct 2026). A tower is
+    // left once it has stopped being a fight: see TOWER_FORGET_MS.
     threatFor(g,u,ok=()=>true) {
         const threats=(g.threats||[]).filter(e=>e&&e.health>0&&ok(e));
         const tower=threats.find(e=>e.type==='tower'&&WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6));
         if(tower)return tower;
         const mobile=threats.find(e=>e.type!=='tower'&&WarMath.hypot(u.x-e.x,u.z-e.z)<=StandingOrders.CHASE_RADIUS);
-        return mobile||threats.find(e=>e.type!=='tower')||null;
+        return mobile||threats.find(e=>e.type==='tower')||threats[0]||null;
     }
     retaliate(victim,attacker) {
         const g=victim?._standingOrder;
@@ -229,9 +231,13 @@ class StandingOrders {
         // otherwise turn a priest around whenever two soldiers pass each other.
         const fighters=units.filter(p=>p.attackTarget&&p.unitType!=='support');
         const army=this.center(fighters.length?fighters:units);
+        // A patient under an enemy tower is not walked to unless the group is fighting that
+        // tower (b1103, asp67): a priest whose patient died went on to the next wounded --
+        // the next soldier under the tower -- and was shot there in turn.
+        const covered=p=>{const t=this.game.enemyTowerCovering?.(u.owner,p.x,p.z);return !!t&&t!==g.target&&!g.threats?.includes(t);};
         const valid=p=>p&&p!==u&&g.owner.units.includes(p)&&p.owner===u.owner&&p.health>0
             &&p.health<p.maxHealth&&(WarMath.hypot(p.x-u.x,p.z-u.z)<24
-                ||(units.includes(p)&&WarMath.hypot(p.x-army.x,p.z-army.z)<=StandingOrders.CHASE_RADIUS));
+                ||(units.includes(p)&&WarMath.hypot(p.x-army.x,p.z-army.z)<=StandingOrders.CHASE_RADIUS))&&!covered(p);
         let patient=u._formationPatient;
         if(!valid(patient)){
             patient=g.owner.units.filter(valid).sort((a,b)=>WarMath.hypot(a.x-u.x,a.z-u.z)-WarMath.hypot(b.x-u.x,b.z-u.z))[0];
@@ -278,18 +284,18 @@ class StandingOrders {
         };
         for(const g of this.groups){
             const units=g.units,center=this.center(units);
-            // A tower cannot move: while a member stands in its range it stays known, seen
-            // or not (b1101) -- that member is the one it will shoot next.
-            if(g.revealed)for(const e of g.threats||[])if(e.type==='tower'&&e.health>0
-                &&units.some(u=>u.health>0&&WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6)))g.revealed.set(e,this.time+StandingOrders.TOWER_FORGET_MS);
+            // A tower cannot move: while a member stands in its range, or is on its way to
+            // fight it, it stays known, seen or not (b1101, b1103).
+            const towerFight=e=>units.some(u=>u.health>0&&(u.attackTarget===e||WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6)));
+            if(g.revealed)for(const e of g.threats||[])if(e.type==='tower'&&e.health>0&&towerFight(e))
+                g.revealed.set(e,this.time+StandingOrders.TOWER_FORGET_MS);
             if(g.revealed)for(const [e,until]of g.revealed)if(until<=this.time||e.health<=0)g.revealed.delete(e);
             const seen=e=>!!g.revealed?.has(e)||see(g,e);
             if(g.threats)g.threats=g.threats.filter(e=>e.health>0&&seen(e));
-            // A tower that has stopped shooting the group, with nobody of it in range, is
-            // no longer this group's fight (b1101).
+            // A tower that has stopped shooting the group, with nobody of it in range and
+            // nobody on its way to fight it, is no longer this group's fight (b1101, b1103).
             if(g.threats?.some(e=>e.type==='tower'))g.threats=g.threats.filter(e=>e.type!=='tower'
-                ||this.time-(g.towerShots?.get(e)??-Infinity)<StandingOrders.TOWER_FORGET_MS
-                ||units.some(u=>u.health>0&&WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6)));
+                ||this.time-(g.towerShots?.get(e)??-Infinity)<StandingOrders.TOWER_FORGET_MS||towerFight(e));
             const focus=g.threats?.[0];
             // Visibility depends on the owner, not the attacker. Share its scan
             // across the formation instead of repeating it for every soldier.
@@ -359,11 +365,8 @@ class StandingOrders {
             const eligible=(u,e)=>{
                 if(!valid(e))return false;
                 if(holding&&u&&!holds(u,e))return false;
-                // A tower among the threats is a member's fight only inside its firing range,
-                // as threatFor says (b1101). Threats skip the leash, so until b1101 a tower
-                // that had once shot the group drew members up to the chase limit away --
-                // worst on a Wonder run, where threats are the only targets allowed.
-                if(threat(e)&&e.type==='tower'&&e!==g.target)return !u||WarMath.hypot(u.x-e.x,u.z-e.z)<=(e.range||6);
+                // A tower among the threats is the whole group's fight (b1103, threatFor);
+                // b1101 had kept it to the members inside its firing range.
                 if(threat(e))return e.type==='tower'||!g.blocked.get(u)?.has(e);
                 if(e===g.target)return true;
                 // A tower is not on an attack order's way (b1102, asp67): it guards, it

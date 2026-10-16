@@ -6,6 +6,45 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1103: a tower that attacks a group is fought by the whole group; priests stop when their patient dies (17 October 2026)
+
+**Rules change (standing orders).** asp67: "There is still some jojoing when a large group of units passes a tower and some get dragged into the fight." And: "Priests do not stop when their healing target died thus charging into towers all the time."
+
+**What happened with the towers.** Since b1101 only the members inside a tower's firing range answered it; the rest kept to their order. But one member fighting is enough to halt the whole group. So a big army stood at the tower's edge, waiting. The few inside the range fought the tower alone, and the rest were drawn in one volley at a time.
+
+A test case on the real engine: 34 units on an attack-move to a Town Center pass an enemy tower 12 off their route. The tower shot the three lead riders. The army stood at the tower for over 80 s and lost 18 of 34; the tower survived at 452 of 3050.
+
+**Now** (asp67: "If a group gets attacked by a tower, the whole group retaliates. Only if units outside the tower's reach take damage from other units, they retaliate against the damage dealers first and when they are not taking any more damage, the first part of the rule takes hold again and they join the tower fight."):
+- A member inside the tower's range fights the tower.
+- A member outside it fights a mobile attacker of the group within chase reach first. With none, it joins the tower fight. Members farther than chase reach (64) are not pulled across the map.
+- A tower stays the group's fight while it shoots, while a member stands in its range, or while a member is on its way to it. Once none of that holds for 4.5 s, it is let go (b1101).
+- An attack order still does not seek out a tower that has not shot at it (b1102).
+- The same test case: all 30 fighters take the tower, it falls in about 12 s with no losses, and the army marches on and razes the Town Center.
+
+**Priests.**
+- A priest without an order walks to the nearest wounded within 24. It used to walk on to where the patient had stood, even after the patient died, often under the tower that had killed it. In asp67's match of 16 October (b1100), four priests did this at 12408 s. Now the walk ends when the patient dies, is whole again or is within reach.
+- A priest no longer walks to a patient who stands in an enemy tower's range. With an order, it does once its group is fighting that tower. It still heals anyone it reaches from where it stands. In asp67's match of 15 October, priests went from a dead patient to the next wounded under the tower.
+
+**asp67's match of 16 October (b1102): Rome's Wonder run on the Egyptian pyramid.** Replayed exactly on its own build:
+- Rome's 23-unit group, sent at the pyramid, passed a tower.
+- The tower took them one to three at a time. Never more than three were on it at once, and the group's fighting flag flipped 16 times.
+- All four priests followed a patient under the tower and died there.
+- 26 Romans died in about 55 s, and the tower stood.
+
+The same scene on this build, from the same match (on the new rules, so it drifts; Rome arrives with 13 units, not 23):
+- All 11 fighters take the tower at once, and it falls in 10 s.
+- 5 die to it.
+- The rest march on to the pyramid, where Egypt's archers and champions stop them.
+
+**Tests:** `tests/standing-orders.test.cjs`:
+- The volley test, the beyond-sight test and the b1085 test get back their whole-group expectations from before b1101.
+- The b1101 test now checks that a member 32 off, outside the range, joins the tower fight and stays in it while on its way.
+- A new test checks that a tower nobody fights any more leaves the group's threats.
+- Two new priest tests: an idle priest stops when its patient dies and does not walk under a tower; a formation priest does not follow a patient under a tower its group is not fighting.
+- Each of these fails on b1102.
+
+The combat goldens `battle-40v40` and `wonder-siege` are re-recorded. Both end as before. The siege army keeps one more heavy cavalryman; the 40-v-40 assault is wiped out sooner.
+
 ## Build 1102: an attack order leaves towers beside its route alone (16 October 2026)
 
 **Rules change (standing orders).** asp67: "a tower is a purely defensive building not a productive one, a group passing a tower that is out of range and attacking barracks, or a town center is much more productive."

@@ -96,7 +96,7 @@
   }
  },
  {
-  "hash": "511fd5f4439ad3be",
+  "hash": "087dde34ea958e24",
   "summary": {
    "t": 15,
    "seats": [
@@ -116,7 +116,7 @@
       "scout_cavalry": 8,
       "priest": 6
      },
-     "hp": 3255,
+     "hp": 3120,
      "buildings": 1,
      "research": 0
     },
@@ -144,7 +144,7 @@
   }
  },
  {
-  "hash": "413ce661053731be",
+  "hash": "81c94a76e339ce05",
   "summary": {
    "t": 20,
    "seats": [
@@ -161,10 +161,10 @@
      "units": {
       "warrior": 14,
       "archer": 12,
-      "scout_cavalry": 7,
+      "scout_cavalry": 1,
       "priest": 6
      },
-     "hp": 3118,
+     "hp": 2577,
      "buildings": 1,
      "research": 0
     },
@@ -192,7 +192,7 @@
   }
  },
  {
-  "hash": "3d9d979da694767f",
+  "hash": "411b3810f74dafca",
   "summary": {
    "t": 25,
    "seats": [
@@ -208,10 +208,10 @@
      ],
      "units": {
       "warrior": 14,
-      "archer": 12,
-      "priest": 6
+      "archer": 9,
+      "priest": 5
      },
-     "hp": 2482,
+     "hp": 2145,
      "buildings": 1,
      "research": 0
     },
@@ -239,7 +239,7 @@
   }
  },
  {
-  "hash": "24bd6c00490c4a28",
+  "hash": "ca4cf3b129e751d8",
   "summary": {
    "t": 30,
    "seats": [
@@ -254,11 +254,11 @@
       50
      ],
      "units": {
-      "warrior": 7,
-      "archer": 5,
-      "priest": 6
+      "warrior": 4,
+      "archer": 4,
+      "priest": 2
      },
-     "hp": 1229,
+     "hp": 569,
      "buildings": 1,
      "research": 0
     },
@@ -286,7 +286,7 @@
   }
  },
  {
-  "hash": "2eebb7d2d669cf11",
+  "hash": "4c1f6ca034f9ba35",
   "summary": {
    "t": 35,
    "seats": [
@@ -300,10 +300,8 @@
       100,
       50
      ],
-     "units": {
-      "priest": 5
-     },
-     "hp": 295,
+     "units": {},
+     "hp": 0,
      "buildings": 1,
      "research": 0
     },
@@ -331,7 +329,7 @@
   }
  },
  {
-  "hash": "b2c50d82bff0d512",
+  "hash": "1edb7b0539f90310",
   "summary": {
    "t": 40,
    "seats": [
@@ -374,7 +372,7 @@
   }
  },
  {
-  "hash": "3b32ccbe692c7bd0",
+  "hash": "64130abbf2af399c",
   "summary": {
    "t": 45,
    "seats": [
@@ -417,7 +415,7 @@
   }
  },
  {
-  "hash": "1b81efe3398bfd7d",
+  "hash": "05717e86becfafd6",
   "summary": {
    "t": 50,
    "seats": [
@@ -460,7 +458,7 @@
   }
  },
  {
-  "hash": "3521e6070a014560",
+  "hash": "c903a47748321584",
   "summary": {
    "t": 55,
    "seats": [
@@ -503,7 +501,7 @@
   }
  },
  {
-  "hash": "afe4f658994e0d3d",
+  "hash": "49ab36a96423eca2",
   "summary": {
    "t": 60,
    "seats": [

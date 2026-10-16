@@ -1687,6 +1687,14 @@ class Game {
     // never themselves, never buildings (that's what repair is for).
     healingRange() { return 10.5; } // Three times the original 3.5-unit healing reach.
 
+    // The finished enemy tower whose firing range covers (x, z), if any. A priest does not
+    // walk into one for a patient (b1103, asp67: "charging into towers all the time").
+    enemyTowerCovering(ownerId, x, z) {
+        for (const b of this.getAllBuildings()) if (b.type === 'tower' && b.owner !== ownerId && b.health > 0
+            && !b.underConstruction && WarMath.hypot(b.x - x, b.z - z) <= (b.range || 6)) return b;
+        return null;
+    }
+
     updateHealing(deltaTime) {
         const HEAL_SEARCH = 24;  // how far a priest looks for patients
         const HEAL_RANGE  = this.healingRange(); // close enough to channel the heal
@@ -1697,6 +1705,18 @@ class Game {
 
             const owner = this.getOwner(u);
             if (!owner || !owner.units) return;
+
+            // A walk to a patient (below) is for that patient (b1103, asp67): it ends when
+            // the patient dies, is whole again or is within reach. It used to run on to
+            // the spot where the patient had stood -- under the tower that had just killed
+            // it, where the priest was shot in turn.
+            const walk = u._healWalk;
+            if (walk) {
+                const p = walk.patient;
+                if (!u.isMoving || u._standingOrder || u.targetX !== walk.x || u.targetZ !== walk.z) u._healWalk = null;
+                else if (p.health <= 0 || p.health >= p.maxHealth || !owner.units.includes(p)
+                    || WarMath.hypot(p.x - u.x, p.z - u.z) <= HEAL_RANGE) { u.isMoving = false; u._healWalk = null; }
+            }
 
             let patient = null, best = HEAL_SEARCH;
             owner.units.forEach(o => {
@@ -1724,13 +1744,14 @@ class Game {
                     u._healFxTimer = 0;
                     this.renderer.spawnDust(patient.x, 1.2, patient.z, 6, 0x8ef0a8);
                 }
-            } else if (!u.isMoving && !u._standingOrder) {
+            } else if (!u.isMoving && !u._standingOrder && !this.enemyTowerCovering(u.owner, patient.x, patient.z)) {
                 // A formation owns its priests' movement. Heal within reach while
                 // marching/holding; do not alternate patient pursuit with the slot.
                 // Idle with someone hurt nearby: walk over (generic mover drives it).
                 u.isMoving = true;
                 u.targetX = patient.x + (this.rand(u, 'heal-walk') - 0.5) * 2;
                 u.targetZ = patient.z + (this.rand(u, 'heal-walk') - 0.5) * 2;
+                u._healWalk = { patient, x: u.targetX, z: u.targetZ };
             }
         });
     }

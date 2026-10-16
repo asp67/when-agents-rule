@@ -315,14 +315,12 @@ test('a tower plays one bow release per volley, not per projectile or idle timer
  tower.underConstruction=true;h.owner.units.forEach(u=>u.x=1);h.g.updateTowerAttack(1500);assert.equal(sounds.length,2);
 });
 
-test('an actual tower volley immediately redirects the formation members in its range before the next order scan',()=>{
+test('an actual tower volley immediately redirects the formation before the next order scan (b1103: the whole group)',()=>{
  const h=setup(),a=h.unit(),b=h.unit('warrior',2),priest=h.unit('priest',4);
  h.owner.units.push(a,b,priest);
  const tower={id:'tower',type:'tower',owner:'b',x:8,z:0,health:1000,range:6};h.g.getAllBuildings=()=>[tower];
  h.issue('march',{x:50,z:0});h.g.updateTowerAttack(1500);
- assert.equal(priest.health,90);assert.equal(b.attackTarget,tower,'6 from the tower: inside its range');assert.equal(priest.attackTarget,null);
- // 8 from it, outside its range of 6: the volley does not turn it (b1101).
- assert.equal(a.attackTarget,null);
+ assert.equal(priest.health,90);assert.equal(a.attackTarget,tower);assert.equal(b.attackTarget,tower);assert.equal(priest.attackTarget,null);
 });
 
 test('mobile retaliation overrides a siege, gives way to towers, and resumes the saved siege',()=>{
@@ -336,45 +334,53 @@ test('mobile retaliation overrides a siege, gives way to towers, and resumes the
  raider.health=0;h.g._standingOrders.update(150);assert.equal(u.attackTarget,original);assert.equal(g.target,original);
 });
 
-test('a hit makes each member choose: inside the tower range the tower, outside it a mobile attacker, then its own order (b1085, b1101)',()=>{
+test('a hit makes each member choose: inside the tower range the tower, outside it a mobile attacker, then the tower again (b1085)',()=>{
  // The head of a column stands in a tower's range; its tail, 45 off, is shot by a raider.
  // The tail used to be bound to the tower with the head and walked on into it unanswered.
  const h=setup(),head=h.unit('warrior',0),tail=h.unit('warrior',-30);h.owner.units.push(head,tail);
- const tower=Object.assign(h.rival(15),{type:'tower',range:18}),raider=h.rival(-36),camp=h.rival(-60,40);
- const g=h.issue('march',{x:-60,z:40},{target:camp});
+ const tower=Object.assign(h.rival(15),{type:'tower',range:18}),raider=h.rival(-36);
+ const g=h.issue('march',{x:15,z:0},{target:tower});
  h.g.noteRetaliation(head,tower);
- assert.equal(head.attackTarget,tower,'inside the firing range: the tower');
- assert.notEqual(tail.attackTarget,tower,'45 off, outside it: the tower hit does not turn it');
+ assert.equal(head.attackTarget,tower);assert.equal(tail.attackTarget,tower,'nobody shoots the tail yet: it joins the group target');
  h.g.noteRetaliation(tail,raider);
  assert.equal(head.attackTarget,tower,'inside the firing range it stays on the tower');
  assert.equal(tail.attackTarget,raider,'outside it, it answers the raider');
  h.g._standingOrders.update(150);
  assert.equal(head.attackTarget,tower);assert.equal(tail.attackTarget,raider,'and the scan keeps both answers');
  raider.health=0;h.g._standingOrders.update(150);
- assert.notEqual(tail.attackTarget,tower,'with the raider gone it goes back to its order, not to the tower');
- assert.equal(g.target,camp);
+ assert.equal(tail.attackTarget,tower,'with the raider gone it rejoins the tower');assert.equal(g.target,tower);
 });
 
-// asp67, 16 Oct 2026: units passing a tower OUTSIDE its range attacked it when members of
-// their formation had been killed there before, even with the fight there long over. The
-// tower stayed in the group's threats for the life of the order, and a member out of its
-// range with no mobile attacker near fell back to it.
-test('a tower that shot the group is left alone by members passing outside its range once it stops shooting (b1101)',()=>{
+// asp67, 17 Oct 2026 (b1103): "If a group gets attacked by a tower, the whole group
+// retaliates." b1101 left the members outside the tower's range to their order, and a big
+// army stood at the tower's edge, halted by the fight, while the few in range fought it
+// alone and the rest were drawn in one volley at a time.
+test('a tower that shot the group is fought by the whole group, also by members outside its range (b1103)',()=>{
  const h=setup(),near=h.unit('warrior',45,10),passer=h.unit('warrior',30,0);h.owner.units.push(near,passer);
  // A real tower is a building, not one of the enemy units a march would answer anyway.
  const tower={id:'tower',type:'tower',owner:'b',x:50,z:25,health:1000,maxHealth:1000,range:18};h.g.getAllBuildings=()=>[tower];
  h.issue('march',{x:120,z:0});
  h.g.noteRetaliation(near,tower);
  assert.equal(near.attackTarget,tower,'the member in its range answers it');
- assert.notEqual(passer.attackTarget,tower,'the one 32 off does not');
- near.health=0;   // killed at the tower; the tower shoots nobody else
- let turned=0;
- for(let i=0;i<120;i++){h.step(150);if(passer.attackTarget===tower)turned++;
-  // the passer's march takes it past the tower at 25, outside its firing range
-  assert.ok(Math.hypot(passer.x-tower.x,passer.z-tower.z)>18||turned===0,'never drawn into range');}
- assert.equal(turned,0,'it never turned on the tower');
- assert.ok(passer.x>60,'it marched on past: x '+passer.x.toFixed(1));
- assert.ok(!(passer._standingOrder.threats||[]).includes(tower),'and the tower has left the group\'s threats');
+ assert.equal(passer.attackTarget,tower,'and the one 32 off joins it');
+ near.health=0;   // killed at the tower
+ h.step(6000);    // longer than a tower is remembered without volleys
+ assert.equal(passer.attackTarget,tower,'the fight goes on while a member is on its way to it');
+});
+
+// The fight is over once nobody fights the tower any more: no volleys, nobody in its range
+// and nobody on the way to it. Then it is no longer the group's threat (b1101, b1103).
+test('a tower nobody fights any more leaves the group\'s threats (b1101, b1103)',()=>{
+ const h=setup(),near=h.unit('warrior',45,10),far=h.unit('warrior',-60,0);h.owner.units.push(near,far);
+ // A real tower is a building, not one of the enemy units a march would answer anyway.
+ const tower={id:'tower',type:'tower',owner:'b',x:50,z:25,health:1000,maxHealth:1000,range:18};h.g.getAllBuildings=()=>[tower];
+ const g=h.issue('march',{x:-200,z:0});
+ h.g.noteRetaliation(near,tower);
+ assert.notEqual(far.attackTarget,tower,'beyond chase reach (114 off) it is not pulled across the map');
+ near.health=0;
+ h.step(6000);
+ assert.ok(!(g.threats||[]).includes(tower),'the tower has left the threats');
+ assert.notEqual(far.attackTarget,tower);
 });
 
 test('an uncatchable retaliatory threat is abandoned and the scout assignment resumes',()=>{
@@ -700,9 +706,7 @@ test('a tower firing from beyond sight is answered, and stays the focus after it
  h.g.updateTowerAttack(1500);
  assert.equal(a.attackTarget,tower,'the hit gives the tower away');
  h.step(4500);   // longer than a moving attacker stays revealed, with no more volleys
- assert.equal(a.attackTarget,tower,'a tower cannot move: still the focus of the member in its range');
- // b stood 19 off, outside the tower's 18: it was never turned, and keeps to its order (b1101).
- assert.notEqual(b.attackTarget,tower);
+ assert.equal(a.attackTarget,tower,'a tower cannot move: still the focus');assert.equal(b.attackTarget,tower);
 });
 
 test('a moving attacker out of sight is revealed by its hits only for a few seconds',()=>{
@@ -829,4 +833,26 @@ test('an attack order passes a quiet tower for the Town Center beside its route 
  const t2={id:'t2',type:'tower',owner:'b',x:20,z:20,health:1000,maxHealth:1000,range:18};h2.g.getAllBuildings=()=>[t2];
  h2.issue('march',{x:20,z:20},{attack:true,target:t2});h2.step(150);
  assert.equal(c.attackTarget,t2);
+});
+
+// asp67, 17 Oct 2026: "Priests do not stop when their healing target died thus charging
+// into towers all the time." (b1103)
+test('an idle priest stops when the patient it walks to dies, and does not walk under an enemy tower (b1103)',()=>{
+ const h=setup(),p=h.unit('priest'),w=h.unit('warrior',20);w.health=50;
+ h.owner.units.push(p,w);h.g.getOwner=()=>h.owner;h.g.recordBattleHealing=()=>{};
+ h.g.updateHealing(50);assert.equal(p.isMoving,true,'walks to the wounded');
+ w.health=0;h.g.updateHealing(50);assert.equal(p.isMoving,false,'and stops when it dies');
+ const v=h.unit('warrior',22);v.health=50;h.owner.units.push(v);
+ h.g.getAllBuildings=()=>[{type:'tower',owner:'b',x:32,z:0,health:1000,range:18}];
+ h.g.updateHealing(50);assert.equal(p.isMoving,false,'the next wounded stands in the tower range: not walked to');
+ v.x=12;h.g.updateHealing(50);assert.equal(p.isMoving,true,'out of the range again: walked to');
+});
+
+test('a formation priest does not follow a patient under a tower its group is not fighting (b1103)',()=>{
+ const h=setup(),p=h.unit('priest',0,0),w=h.unit('warrior',15,0);w.health=50;h.owner.units.push(p,w);
+ const tower={id:'tower',type:'tower',owner:'b',x:25,z:0,health:1000,maxHealth:1000,range:18};h.g.getAllBuildings=()=>[tower];
+ const g=h.issue('march',{x:-100,z:0}),so=h.g._standingOrders,fallback={x:-1,z:-1};
+ assert.equal(so.supportPosition(g,p,g.units,fallback),fallback,'its slot, not the patient under the tower');
+ g.threats=[tower];
+ assert.notEqual(so.supportPosition(g,p,g.units,fallback),fallback,'with the group fighting that tower it heals there');
 });
