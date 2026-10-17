@@ -694,6 +694,48 @@
    ],
    "bytes": 5749436,
    "default": false
+  },
+  {
+   "file": "2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl",
+   "matchId": "match-20261017-105426",
+   "date": 1792227266921,
+   "duration": "67:53",
+   "turns": 218,
+   "outcome": "last_standing",
+   "seed": "rmvc5u89neavy",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v108",
+   "build": 1103,
+   "winner": "O gemini-4-argon",
+   "players": [
+    {
+     "seat": 2,
+     "name": "O gemini-4-argon",
+     "model": "O gemini-4-argon",
+     "civ": "Romans",
+     "power": 2805,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "RTX qwen3.8 flash next Q2_0",
+     "model": "RTX qwen3.8 flash next Q2_0",
+     "civ": "Greeks",
+     "power": 114,
+     "winner": false
+    },
+    {
+     "seat": 0,
+     "name": "DGX Qwen3.8 flash next nvfp4",
+     "model": "DGX Qwen3.8 flash next nvfp4",
+     "civ": "Egyptians",
+     "power": 109,
+     "winner": false
+    }
+   ],
+   "bytes": 5134577,
+   "default": false
   }
  ]
 }
