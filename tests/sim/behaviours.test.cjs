@@ -68,3 +68,26 @@ test('positional pass: friends are pushed apart, enemies are not', () => {
     assert.ok(Math.abs(gap(e1, e2) - 0.4) < 1e-9, 'different owners: left where they stand');
     assert.equal(e1.health, e1.maxHealth, 'and, standing idle, neither strikes');
 });
+
+// A defence's priests come from where the fight is, and stand behind what they defend
+// (b1104, asp67). The escort had no reach: a tower that shot a lone scout deep in enemy
+// land drew every idle priest of the seat across the map onto the tower's coordinates.
+test('auto-defense escort: only priests within reach, rallying behind the defended unit, not at the attacker', () => {
+    const { m, a, b } = board();
+    const tower = m.addBuilding(b, 'tower', 60, 40);
+    const scout = m.addUnit(a, 'warrior', 45, 40);           // 15 off: inside the tower's 18
+    const near = m.addUnit(a, 'priest', -10, 40);            // 55 from the scout
+    const home = m.addUnit(a, 'priest', -110, -60);          // ~180 from it: at home
+    const homeAt = { x: home.x, z: home.z };
+    let rally = null;
+    for (let t = 0; t < 8000 && !rally; t += 250) {
+        m.run(250);
+        if (near.isMoving) rally = { x: near.targetX, z: near.targetZ };
+    }
+    assert.ok(scout.isAttacking || scout.health <= 0, 'the scout fought back');
+    assert.ok(rally, 'the priest near the fight is sent');
+    assert.ok(Math.hypot(rally.x - tower.x, rally.z - tower.z) > (tower.range || 18),
+        'to a point behind the scout, outside the tower range, not to the tower: ' + JSON.stringify(rally));
+    assert.ok(rally.x < 45, 'on the far side of the scout from the tower');
+    assert.ok(!home.isMoving && Math.hypot(home.x - homeAt.x, home.z - homeAt.z) < 0.5, 'the priest at home stays at home');
+});

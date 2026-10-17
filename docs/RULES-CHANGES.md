@@ -6,6 +6,36 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1104: a defence's priests come only from near the fight, and stand behind what they defend (17 October 2026)
+
+**Rules change (auto-defense).** asp67: "At one point, two priests still walk over the entire map into a tower even though the healing target is long dead. Was that an order which would be legitimate or did they pick a healing target half a map away and started walking into doom?"
+
+**Neither.** In asp67's match of 17 October (b1103), replayed exactly, with every change of the two priests' destination recorded:
+- Rome's priests #26 and #29 stood idle at their temple, with no order.
+- A Greek tower shot a Roman scout deep in Greek land, and the scout fought back.
+- Auto-defense counted that as a defence on site. It sent every idle priest Rome had to the attacker's position, which was the tower's own coordinates. The two walked about 750 units across the map and died under the tower.
+- Gemini saw them go and ordered them home "so they do not wander into enemy territory alone". The order landed after they had died.
+- They never had a patient. Patient picks in that match were short: 102 of 111 within 24. The longest were 97, by a formation's priests during an assault on a tower their group was fighting.
+
+**Before.** Auto-defense limits which soldiers answer a hit, by what was hit:
+- a unit: the battle radius (90);
+- a building: 1.5 times that;
+- a Town Center: 2 times;
+- a Wonder: the whole map.
+
+The priest escort beside it had no limit, and it sent the priests to the attacker.
+
+**Now:**
+- Only priests within that same reach of what was hit are sent.
+- They rally 6 behind what is defended, on the side away from the attacker, moved onto legal ground (clear of building rings). That is within healing reach of it, not at the attacker.
+- A Wonder raid still calls every priest, as it calls every soldier.
+
+**Tests:** `tests/sim/behaviours.test.cjs` adds a scout shot by a tower 15 off, with one priest 55 away and one at home about 180 away. The near priest is sent to a point behind the scout and outside the tower's range; the one at home stays.
+- On b1103 the near priest's rally point is the tower itself.
+- On b1103 the home priest walks out too.
+
+The combat goldens `battle-40v40` and `wonder-siege` are re-recorded and end as before. The 40-v-40 changes only in positions. In the siege Egypt still falls at 70 s, and the attackers keep two more heavy cavalry.
+
 ## Build 1103: a tower that attacks a group is fought by the whole group; priests stop when their patient dies (17 October 2026)
 
 **Rules change (standing orders).** asp67: "There is still some jojoing when a large group of units passes a tower and some get dragged into the fight." And: "Priests do not stop when their healing target died thus charging into towers all the time."

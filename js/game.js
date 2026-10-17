@@ -1948,13 +1948,25 @@ class Game {
             // rally point instead of being handed a new one every tick (the twitch the
             // drafted-worker note above warns about), and a priest tending another live
             // battle is not recalled off an ongoing assault to answer a scratch at home.
+            //
+            // Only priests within the same REACH as the soldiers (b1104, asp67), and to
+            // the side of what is hit away from the attacker, not onto the attacker. The
+            // escort had no reach: in asp67's match of 17 October a Greek tower shot a
+            // Roman scout deep in Greek land, the scout fought back, and both Roman
+            // priests idle at their temple ~750 away walked across the map to the
+            // tower's own coordinates and died under it. Nobody had ordered them; the
+            // model saw them go and ordered them home too late.
             const defenceOnSite = defenders.length > 0 || military.some(u =>
                 u.isAttacking && WarMath.hypot(u.x - atk.x, u.z - atk.z) <= Game.BATTLE_RADIUS);
             if (defenceOnSite) {
+                const ent = primary.ent, away = WarMath.hypot(ent.x - atk.x, ent.z - atk.z) || 1;
+                const rally = this.clampSlot(ent.x + (ent.x - atk.x) / away * Game.ESCORT_BEHIND,
+                    ent.z + (ent.z - atk.z) / away * Game.ESCORT_BEHIND);
                 this.escortSupportUnits(owner.units.filter(u =>
                     u.unitType === 'support' && u.health > 0 && !u._standingOrder &&
-                    !(u.isMoving && WarMath.hypot(u.targetX - atk.x, u.targetZ - atk.z) < 12) &&
-                    !this.tendingOtherBattle(u, atk)), atk.x, atk.z);
+                    WarMath.hypot(u.x - ent.x, u.z - ent.z) <= reach &&
+                    !(u.isMoving && WarMath.hypot(u.targetX - rally.x, u.targetZ - rally.z) < 12) &&
+                    !this.tendingOtherBattle(u, atk)), rally.x, rally.z);
             }
 
             // Whether anything answered, marked on what is being hit. ABOVE the
@@ -2537,6 +2549,9 @@ class Game {
     // razing different buildings — into several unreadable "battles". Rival bases
     // spawn 400+ apart, so 90 unifies one siege while never merging two of them.
     static get BATTLE_RADIUS() { return 90; }
+    // How far behind what it defends, away from the attacker, a defence's priests rally
+    // (b1104): out of the fight's front, within healing reach (10.5) of it.
+    static get ESCORT_BEHIND() { return 6; }
     static get BATTLE_QUIET_MS() { return 10000; }   // no blows for this long → the fight is over
     // ...but keep reporting it long after. A slow model can spend 20-30s on a turn,
     // so a short window meant the only record of a fight could expire between the
