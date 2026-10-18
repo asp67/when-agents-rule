@@ -712,7 +712,7 @@
     {
      "seat": 2,
      "name": "O gemini-4-argon",
-     "model": "O gemini-4-argon",
+     "model": "google/gemini-4-argon",
      "civ": "Romans",
      "power": 2805,
      "winner": true
@@ -720,7 +720,7 @@
     {
      "seat": 1,
      "name": "RTX qwen3.8 flash next Q2_0",
-     "model": "RTX qwen3.8 flash next Q2_0",
+     "model": "qwen3.8-flash-next-q2_0",
      "civ": "Greeks",
      "power": 114,
      "winner": false
@@ -728,7 +728,7 @@
     {
      "seat": 0,
      "name": "DGX Qwen3.8 flash next nvfp4",
-     "model": "DGX Qwen3.8 flash next nvfp4",
+     "model": "Qwen3.8",
      "civ": "Egyptians",
      "power": 109,
      "winner": false
