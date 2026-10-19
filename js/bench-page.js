@@ -44,7 +44,17 @@ class BenchPage {
         try { localStorage.setItem(BenchPage.STORE, JSON.stringify({ schema: BenchPage.RESULTS_SCHEMA, runs })); return true; }
         catch (e) { return false; }
     }
-    runsFor(key) { return this.loadRuns().filter(r => r.modelKey === String(key)); }
+    // A library entry's runs are the ones it ran as the model it names NOW (b1105). An
+    // entry pointed at another model keeps its uid, and the old model's runs used to
+    // stay on its card and in its dropdown line; they are still in Results, under the
+    // name and checkpoint they ran with.
+    runsFor(key) {
+        key = String(key);
+        const m = this.ui._arenaConfig && (this.ui._arenaConfig.models || []).find(x => x.uid === key);
+        const now = m ? ((m.model || '').trim() || 'default') : null;
+        return this.loadRuns().filter(r => r.modelKey === key
+            && (now == null || !r.model || r.model.baseline || ((r.model.model || '').trim() || 'default') === now));
+    }
 
     // ---- What a result belongs to (b1100) ------------------------------------------
     // The model name it ran under, as the library showed it, plus the checkpoint the
@@ -167,7 +177,7 @@ class BenchPage {
     // To the library and back (b1098): what is filled in here is kept for the return,
     // and the dropdown then lists the library as it was left.
     openLibrary() {
-        if (this._view === 'setup' && this.el('benchModel')) this.rememberSetup(this.readForm());
+        this.keepSetup();
         this.ui.showModelLibrary();
     }
     returnFromLibrary() {
@@ -223,7 +233,12 @@ class BenchPage {
         return row ? this.ui.modelDisplayName(row.m, row.n) : null;
     }
 
+    // Leaving the form for another view keeps what was filled in (b1105): Results and
+    // back used to rebuild it from the last Start, dropping the scenarios just ticked.
+    keepSetup() { if (this._view === 'setup' && this.el('benchModel')) this.rememberSetup(this.readForm()); }
+
     renderSetup() {
+        this.keepSetup();
         this._view = 'setup';
         const d = this.setupDefaults();
         const rows = this.ui._arenaConfig ? this.ui.orderedModels() : [];
@@ -719,6 +734,7 @@ class BenchPage {
 
     // Everything a model has run here, added up per scenario, with the runs it is made of.
     renderHistory(key) {
+        this.keepSetup();
         key = this.resolveKey(key);
         this._view = 'history'; this._historyKey = key;
         const every = this.runsOfGroup(key), runs = this.filtered(every);
@@ -813,6 +829,7 @@ class BenchPage {
     // ---- Results across models (b1096) -----------------------------------------
     // Every model with saved runs, and how they compare, scenario by scenario.
     renderOverview() {
+        this.keepSetup();
         this._view = 'overview';
         const every = this.loadRuns(), runs = this.filtered(every);
         const keys = [...new Set(runs.map(r => this.groupKey(r)))];
@@ -919,6 +936,7 @@ class BenchPage {
     // A results file (.json, as "Save results" writes it) or a replay bundle
     // (.warbench.jsonl.gz or .jsonl): shown first, kept only when asked.
     openFile() {
+        this.keepSetup();
         const input = document.createElement('input');
         input.type = 'file'; input.accept = '.json,.gz,.jsonl,application/json';
         input.onchange = async () => {
