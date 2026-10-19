@@ -430,10 +430,11 @@ class BenchPage {
             try { worker = new Worker('js/bench-worker.js' + (v ? '?v=' + v : '')); }
             catch (e) { resolve({ type: 'error', problem: e.message || String(e) }); return; }
             run.worker = worker;
-            run.round = 0; run.rounds = step.scenario.rounds; run.askedAt = Date.now();
+            run.round = 0; run.rounds = step.scenario.rounds; run.askedAt = run.epStartedAt = Date.now();
             worker.onmessage = ({ data }) => {
                 if (data.type === 'round') {
                     run.round = data.round; run.lastMs = data.ms; run.lastAnswered = data.answered;
+                    if (data.ms != null) (run.roundMs = run.roundMs || []).push(data.ms);
                     if (!data.answered) run.unanswered = (run.unanswered || 0) + 1;
                     run.askedAt = Date.now();
                     this.renderProgress();
@@ -454,7 +455,7 @@ class BenchPage {
             const out = await this.episode(run, step);
             if (out.type === 'stopped') break;
             if (out.type === 'error') { run.problem = out.problem; break; }
-            run.done.push({ step, out });
+            run.done.push({ step, out, wallMs: Date.now() - run.epStartedAt });
             run.index++;
             this.renderProgress();
         }
@@ -541,29 +542,67 @@ class BenchPage {
         const step = run.plan[Math.min(run.index, total - 1)];
         const frac = total ? (done + (run.rounds ? Math.min(1, run.round / run.rounds) : 0)) / total : 0;
         const pct = Math.round(frac * 100);
+        // One line per scenario (b1106), one mark per run: what each run came to, the one
+        // playing now, and the ones still to come. The details of a finished run are in
+        // its mark's tooltip; the board orientation is left out, it tells a reader nothing.
         const mark = o => ({ success: '✓', partial: '◐', graded: '◆', failure: '✗' })[o] || '·';
-        const list = run.done.slice(-12).reverse().map(d => {
-            const r = d.out.result;
-            return `<li class="bench-ep bench-${r.outcome}"><span class="bench-mark" aria-hidden="true">${mark(r.outcome)}</span>
-                ${this.esc(d.step.scenario.title)} <span class="bench-ep-meta">${this.esc(d.step.variant)} · ${this.esc(t('bench.outcome.' + r.outcome))}${r.outcome === 'partial' || r.outcome === 'graded' ? ' ' + Math.round(r.score * 100) + ' %' : ''}${r.notes && r.notes.found != null ? ' · ' + this.esc(t('bench.foundIn', { r: r.notes.found })) : ''} · ${this.esc(t('bench.roundsOf', { n: r.rounds, of: d.step.scenario.rounds }))}${r.stopped ? ' · ' + this.esc(t('bench.timeUp')) : ''}</span></li>`;
+        const rows = run.scenarios.map(s => {
+            const marks = run.plan.map((p, i) => ({ p, i })).filter(x => x.p.scenario === s).map(({ p, i }) => {
+                if (i < done) {
+                    const r = run.done[i].out.result;
+                    const tip = t('bench.outcome.' + r.outcome)
+                        + (r.outcome === 'partial' || r.outcome === 'graded' ? ' ' + Math.round(r.score * 100) + ' %' : '')
+                        + (r.notes && r.notes.found != null ? ' · ' + t('bench.foundIn', { r: r.notes.found }) : '')
+                        + ' · ' + t('bench.roundsOf', { n: r.rounds, of: s.rounds }) + (r.stopped ? ' · ' + t('bench.timeUp') : '');
+                    return `<span class="bench-mark bench-${r.outcome}" title="${this.esc(tip)}" aria-label="${this.esc(tip)}">${mark(r.outcome)}</span>`;
+                }
+                if (i === run.index) return `<span class="bench-mark bench-now-mark" title="${this.esc(t('bench.markNow'))}" aria-label="${this.esc(t('bench.markNow'))}">●</span>`;
+                return `<span class="bench-mark bench-todo" title="${this.esc(t('bench.markTodo'))}" aria-label="${this.esc(t('bench.markTodo'))}">○</span>`;
+            }).join('');
+            return `<li class="bench-row"><span class="bench-marks">${marks}</span><span class="bench-row-title">${this.esc(s.title)}</span></li>`;
         }).join('');
+        const eta = this.estimateLeft(run);
+        const etaText = eta == null ? '' : ' · ' + (eta < 60000 ? t('bench.etaSoon')
+            : t('bench.eta', { m: Math.round(eta / 60000), at: new Date(Date.now() + eta).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }));
         const body = `
             <section class="arena-section bench-progress" aria-live="polite">
                 <h3>${this.esc(t('bench.running', { model: run.label }))}</h3>
                 <div class="bench-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div style="width:${pct}%"></div></div>
-                <p class="bench-now">${this.esc(t('bench.progressLine', { done, total, pct }))}</p>
-                ${run.index < total ? `<p class="bench-now"><b>${this.esc(step.scenario.title)}</b> · ${this.esc(step.variant)} ·
+                <p class="bench-now">${this.esc(t('bench.progressLine', { done, total, pct }) + etaText)}</p>
+                <ul class="bench-rows">${rows}</ul>
+                <p class="bench-legend-line">${this.esc(t('bench.markLegend'))}</p>
+                ${run.index < total ? `<p class="bench-now"><b>${this.esc(step.scenario.title)}</b> ·
                     ${this.esc(t('bench.runOf', { i: step.iteration, n: run.runs }))} ·
                     ${this.esc(t('bench.roundOf', { r: Math.min(run.round + 1, run.rounds || step.scenario.rounds), n: run.rounds || step.scenario.rounds }))}
                     ${run.lastMs != null ? ' · ' + this.esc(t(run.lastAnswered === false ? 'bench.lastNoAnswer' : 'bench.lastAnswer', { s: (run.lastMs / 1000).toFixed(1) })) : ''}</p>
                 <p class="bench-now bench-wait">${this.esc(t('bench.waiting', { s: Math.max(0, Math.round((Date.now() - (run.askedAt || Date.now())) / 1000)) }))}</p>` : ''}
                 ${run.unanswered ? `<p class="bench-note">${this.esc(t('bench.noAnswerLive', { n: run.unanswered }))}</p>` : ''}
-                <ul class="bench-eps">${list}</ul>
             </section>
             <div class="arena-setup-buttons">
                 <button class="menu-btn back-btn" onclick="game.ui.benchPage().stop()">${t('bench.stop')}</button>
             </div>`;
         this.el('benchBody').innerHTML = body;
+    }
+
+    // Time still to go, in ms, or null before the first answer. A scenario's runs take
+    // about as long as the ones already played (they often end before the last round);
+    // one not played yet is its rounds at the answer time measured so far, held to the
+    // run's time limit. The run playing now counts what is left of its estimate.
+    estimateLeft(run) {
+        const ms = run.roundMs || [];
+        if (!ms.length) return null;
+        const perRound = ms.reduce((a, b) => a + b, 0) / ms.length;
+        const limit = run.minutes > 0 ? run.minutes * 60000 : Infinity;
+        const est = s => {
+            const seen = run.done.filter(d => d.step.scenario === s && d.wallMs != null);
+            return seen.length ? seen.reduce((a, d) => a + d.wallMs, 0) / seen.length : Math.min(limit, s.rounds * perRound);
+        };
+        let left = 0;
+        for (let i = run.index; i < run.plan.length; i++) {
+            const e = est(run.plan[i].scenario);
+            left += i === run.index ? Math.max(perRound, e - (Date.now() - (run.epStartedAt || Date.now()))) : e;
+        }
+        return left;
     }
 
     // ---- Results ----------------------------------------------------------------

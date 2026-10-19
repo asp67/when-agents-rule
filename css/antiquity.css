@@ -331,6 +331,20 @@ body.broadcast-mode .arena-lineup.floating { bottom:calc(128px * var(--ui-scale,
 .bench-swatch.bench-failure,.bench-seg.bench-failure { background:var(--fail); fill:var(--fail); }
 .bench-swatch.bench-graded,.bench-seg.bench-graded { background:var(--gold); fill:var(--gold); }
 .bench-ep.bench-graded .bench-mark { color:var(--gold-2); }
+.bench-rows { list-style:none; padding:0; margin:16px 0 0; }
+.bench-row { display:flex; align-items:baseline; gap:12px; padding:5px 0; border-top:1px solid var(--line); }
+.bench-marks { flex:0 1 auto; max-width:60%; }
+.bench-marks .bench-mark { width:1.2em; cursor:default; }
+.bench-row-title { overflow-wrap:anywhere; }
+.bench-mark.bench-success { color:var(--ok); }
+.bench-mark.bench-partial { color:var(--part); }
+.bench-mark.bench-failure { color:var(--fail); }
+.bench-mark.bench-graded { color:var(--gold-2); }
+.bench-mark.bench-now-mark { color:var(--gold); animation:benchPulse 1.4s ease-in-out infinite; }
+.bench-mark.bench-todo { color:var(--muted); font-weight:400; }
+.bench-legend-line { color:var(--muted); font-size:.85rem; margin:8px 0 0; }
+@keyframes benchPulse { 50% { opacity:.35; } }
+@media (prefers-reduced-motion: reduce) { .bench-mark.bench-now-mark { animation:none; } }
 .bench-track { fill:#151a15; stroke:var(--line); stroke-width:1; }
 .bench-whisker { stroke:var(--text); stroke-width:2; stroke-linecap:round; }
 .bench-seg:hover { opacity:.82; }
