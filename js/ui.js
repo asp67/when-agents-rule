@@ -4223,10 +4223,17 @@ class UIManager {
                     b.onclick = () => { onclick(); this.renderBroadcast(); };
                     return b;
                 };
+                // Last, the way out of the arena (b1107): the bar's Quit, icon only. Without it
+                // the only exit was through analyze mode, which a broadcast then remembered, so
+                // the next match opened in analyze mode -- wrong for a recording.
+                const quit = document.createElement('button');
+                quit.id = 'broadcastQuit'; quit.type = 'button'; quit.className = 'sb-end sb-quit broadcast-ctl';
+                quit.textContent = '✕'; quit.title = t('spec.quitTitle'); quit.setAttribute('aria-label', t('spec.quitTitle'));
+                quit.onclick = () => this.game.cancelGame();
                 const ctl = document.createElement('span');
                 ctl.className = 'broadcast-ctls';
                 ctl.append(icon('broadcastAuto', '\u{1F3AC}', t('spec.actionCamTitle'), () => this.game.toggleActionCam()),
-                    icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()), exit);
+                    icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()), exit, quit);
                 this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
             }
@@ -4235,7 +4242,9 @@ class UIManager {
             // a second control to keep in step. It goes back where it was on exit.
             const speed = document.getElementById('simSpeedWrap');
             if (speed && !this._broadcastSpeed) this._broadcastSpeed = { el: speed, parent: speed.parentNode, next: speed.nextSibling };
-            this._broadcastKeys = e => { if (e.key === 'Escape') { e.preventDefault(); this.toggleBroadcast(false); } };
+            // Esc in an open dialog (the quit confirmation) closes the dialog; it must not
+            // also leave broadcast mode, which would be remembered for the next match.
+            this._broadcastKeys = e => { if (e.key === 'Escape' && !document.querySelector('dialog[open]')) { e.preventDefault(); this.toggleBroadcast(false); } };
             document.addEventListener('keydown', this._broadcastKeys, true);
             this.renderBroadcast();
         } else {
