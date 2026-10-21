@@ -4223,16 +4223,18 @@ class UIManager {
                     b.onclick = () => { onclick(); this.renderBroadcast(); };
                     return b;
                 };
-                // First, the way out of the arena (b1107, moved to the front in b1108): the bar's Quit, icon only. Without it
+                // The way out of the arena (b1107): the bar's Quit, icon only, at the far left of
+                // the board before the clock (b1109; renderBroadcast keeps it there). Without it
                 // the only exit was through analyze mode, which a broadcast then remembered, so
                 // the next match opened in analyze mode -- wrong for a recording.
                 const quit = document.createElement('button');
                 quit.id = 'broadcastQuit'; quit.type = 'button'; quit.className = 'sb-end sb-quit broadcast-ctl';
                 quit.textContent = '✕'; quit.title = t('spec.quitTitle'); quit.setAttribute('aria-label', t('spec.quitTitle'));
                 quit.onclick = () => this.game.cancelGame();
+                this._broadcastQuit = quit;
                 const ctl = document.createElement('span');
                 ctl.className = 'broadcast-ctls';
-                ctl.append(quit, icon('broadcastAuto', '\u{1F3AC}', t('spec.actionCamTitle'), () => this.game.toggleActionCam()),
+                ctl.append(icon('broadcastAuto', '\u{1F3AC}', t('spec.actionCamTitle'), () => this.game.toggleActionCam()),
                     icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()), exit);
                 this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
@@ -4256,6 +4258,7 @@ class UIManager {
             ['broadcastBoard', 'broadcastWonder', 'broadcastExit', 'broadcastSlate'].forEach(id => document.getElementById(id)?.remove());
             this._broadcastExit = null;
             this._broadcastCtl = null;
+            this._broadcastQuit = null;
         }
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
     }
@@ -4288,6 +4291,7 @@ class UIManager {
         clockEl.textContent = clock ? clock.textContent : '';
         if (this._broadcastSpeed && clockEl.nextSibling !== this._broadcastSpeed.el) clockEl.after(this._broadcastSpeed.el);
         if (this._broadcastCtl && this._broadcastCtl.parentNode !== board) board.appendChild(this._broadcastCtl);
+        if (this._broadcastQuit && board.firstChild !== this._broadcastQuit) board.prepend(this._broadcastQuit);
         cardsEl.innerHTML = ais.map(ai => {
             const ctrl = ctrls.find(c => c.id === ai.id);
             const advised = (ctrl && ctrl.stats && ctrl.stats.advisedTurns) || 0;
