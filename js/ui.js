@@ -4223,7 +4223,7 @@ class UIManager {
                     b.onclick = () => { onclick(); this.renderBroadcast(); };
                     return b;
                 };
-                // Last, the way out of the arena (b1107): the bar's Quit, icon only. Without it
+                // First, the way out of the arena (b1107, moved to the front in b1108): the bar's Quit, icon only. Without it
                 // the only exit was through analyze mode, which a broadcast then remembered, so
                 // the next match opened in analyze mode -- wrong for a recording.
                 const quit = document.createElement('button');
@@ -4232,8 +4232,8 @@ class UIManager {
                 quit.onclick = () => this.game.cancelGame();
                 const ctl = document.createElement('span');
                 ctl.className = 'broadcast-ctls';
-                ctl.append(icon('broadcastAuto', '\u{1F3AC}', t('spec.actionCamTitle'), () => this.game.toggleActionCam()),
-                    icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()), exit, quit);
+                ctl.append(quit, icon('broadcastAuto', '\u{1F3AC}', t('spec.actionCamTitle'), () => this.game.toggleActionCam()),
+                    icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()), exit);
                 this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
             }
