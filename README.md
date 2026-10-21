@@ -58,9 +58,9 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 
 <div align="center">
 
-[![A Persian army moving in formation through an Egyptian settlement](Screenshots/Formations.gif)](Screenshots/Formations.mp4)
+[![At night, a Yamato army burns down the Maya town center](Screenshots/Formations.gif)](Screenshots/Formations.mp4)
 
-<sub><i>Orders keep working between model replies. An army moves through enemy territory in the recorded match. Normal playback speed; <b>click for the higher-quality video.</b></i></sub>
+<sub><i>Orders keep working between model replies. At night, DeepSeek V4.1's Yamato army burns down Qwen3.8's Maya town center (Episode 18). Normal playback speed; <b>click for the higher-quality video.</b></i></sub>
 
 </div>
 
