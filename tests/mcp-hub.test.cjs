@@ -205,3 +205,29 @@ test('a wait the harness gave up on does not swallow the next turn', LIMIT, asyn
     assert.ok(Date.now() - t0 < 1000, 'at once, not after a wait: ' + (Date.now() - t0) + ' ms');
     pg.ws.close();
 });
+
+// asp67, 26 Oct, the first full game with an MCP seat: "The end of the game needs the final
+// message with the request for the retrospective; currently the connection just closes."
+// And the harness, busy when the match ended, got "Call join first" for its end_turn.
+test('the end of a match: the closing message reaches the harness, its final word reaches the page, late calls hear the match is over', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-jjjj0000';
+    const pg = await fakePage(port);
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+    pg.send({ type: 'turn', token: T, turn: 4, state: '{}' });
+    await call(port, T, 'wait_for_turn');                       // mid-turn when the match ends
+    pg.send({ type: 'final', token: T, text: 'THE MATCH HAS ENDED. You did not win. Say what you would do differently.' });
+    await new Promise(r => setTimeout(r, 50));
+    const late = JSON.parse(said(await call(port, T, 'end_turn')));
+    assert.equal(late.matchOver, true, 'not "Call join first"');
+    assert.match(late.finalMessage, /THE MATCH HAS ENDED/);
+    assert.match(late.next, /call(ing)? final_word/i);
+    const [answer, got] = await Promise.all([call(port, T, 'final_word', { text: 'I scouted too late.' }), pg.next(m => m.type === 'final_word')]);
+    assert.match(said(answer), /recorded/);
+    assert.equal(got.text, 'I scouted too late.');
+    const after = JSON.parse(said(await call(port, T, 'wait_for_turn')));
+    assert.equal(after.matchOver, true); assert.equal(after.finalMessage, undefined, 'answered once');
+    pg.ws.close();
+});

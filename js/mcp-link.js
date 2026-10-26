@@ -17,6 +17,7 @@ class WarMcpLink {
         this.seats = [];               // [{ token, seat, name }]
         this.state = new Map();        // token -> { harness, joined }
         this.turns = new Map();        // token -> { turn, calls, resolve, reject, counted }
+        this.finals = new Map();       // token -> resolve(text|null): a closing message out
         this.rulesSent = new Set();    // tokens whose harness has had the rules
         this.listeners = new Set();
         this.maxCommands = 3;
@@ -108,6 +109,11 @@ class WarMcpLink {
                 : `Queued (${t.counted}/${this.maxCommands}): ${m.name}. It runs when the round closes, together with every other player's commands; its result comes with your next turn. ${next}` });
             return;
         }
+        if (m.type === 'final_word') {
+            const f = this.finals.get(m.token);
+            if (f) { this.finals.delete(m.token); f(String(m.text || '')); }
+            return;
+        }
         if (m.type === 'end_turn') {
             const t = this.turns.get(m.token);
             if (t && t.turn === m.turn) { this.turns.delete(m.token); t.resolve(t.calls); }
@@ -142,6 +148,23 @@ class WarMcpLink {
     }
 
     over(token, result) { this._send({ type: 'over', token, result: result || {} }); }
+
+    // The closing message at the end of a match -- the one a library seat is asked -- and
+    // the harness's answer, given with its final_word tool. null if it gives none before
+    // the signal (askFinalWord's own time limit) aborts.
+    finalWord(token, text, signal) {
+        return new Promise(resolve => {
+            const prev = this.finals.get(token);
+            if (prev) prev(null);
+            this.finals.set(token, resolve);
+            this.turns.delete(token);
+            this._send({ type: 'final', token, text: String(text || '') });
+            if (signal) {
+                const stop = () => { if (this.finals.get(token) === resolve) { this.finals.delete(token); resolve(null); } };
+                if (signal.aborted) stop(); else signal.addEventListener('abort', stop, { once: true });
+            }
+        });
+    }
 }
 if (typeof window !== 'undefined') window.WarMcpLink = WarMcpLink;
 if (typeof module !== 'undefined' && module.exports) module.exports = WarMcpLink;

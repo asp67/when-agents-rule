@@ -6802,6 +6802,14 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         const t0 = Date.now();
         let text = '', tokens = null, error = null;
         try {
+            // An MCP seat (docs/MCP-ARENA.md): the same closing message goes to its harness,
+            // which answers with its final_word tool, within the same time limit.
+            if (OpenAIAIManager.resolveProvider(model) === 'mcp') {
+                const last = turns && turns.length ? turns[turns.length - 1] : null;
+                const msg = last && typeof last.content === 'string' ? last.content : JSON.stringify(last ? last.content : '');
+                text = String(await this.mcpLink(model.endpoint).finalWord(model.mcpToken, msg, abort.signal) || '').trim();
+                if (!text) error = abort.signal.aborted ? 'no answer within ' + Math.round(this.finalWordTimeoutMs() / 1000) + 's' : 'no final word';
+            } else {
             const res = await fetch(req.url, {
                 method: 'POST', headers,
                 body: JSON.stringify(req.body), signal: abort.signal
@@ -6816,6 +6824,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 // static is where the mapping already lives (input_tokens, promptTokenCount,
                 // prompt_tokens...). Reading norm.usage recorded null for every provider.
                 tokens = OpenAIAIManager.extractUsage(provider, data) || null;
+            }
             }
         } catch (e) {
             error = (e && e.name === 'AbortError') ? 'no answer within '
@@ -10193,7 +10202,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             // its wait_for_turn ends the loop instead of waiting on (docs/MCP-ARENA.md).
             // The shared link, not only one this match has used: a match quit before the
             // seat's first turn never registered one, and its harness heard nothing.
-            if (c.model && c.model.provider === 'mcp' && c.model.mcpToken) {
+            // A seat asked for its final word has had the closing message, which ends the
+            // match for it; a bare "over" after it would only cut that short.
+            if (c.model && c.model.provider === 'mcp' && c.model.mcpToken && !c._finalWordAsked) {
                 const base = String(c.model.endpoint || 'http://127.0.0.1:8765');
                 const link = (this._mcpLinks && this._mcpLinks.get(base))
                     || (typeof WarMcpLink === 'function' ? WarMcpLink.shared(base) : null);

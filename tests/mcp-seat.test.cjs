@@ -101,3 +101,20 @@ test('stopping a match tells each MCP seat\'s harness it is over', async () => {
     assert.equal(told[0].token, 'seat-token-test0001');
     assert.equal(told[0].result.defeated, false);
 });
+
+test('an MCP seat is asked the closing question through its harness, and its final word is recorded like a library seat\'s', async () => {
+    const { mgr, c } = await mcpSeat([]);
+    const asked = [], notes = [];
+    const link = mgr._mcpLinks.get('http://127.0.0.1:8765');
+    link.finalWord = async (token, text) => { asked.push({ token, text }); return 'I scouted too late.'; };
+    let overs = 0; link.over = () => { overs++; };
+    mgr.transcripts = { note: (id, o) => notes.push(o), turnsFor: () => 0, record() {}, noteResult() {} };
+    await mgr.askFinalWord(c, 'ended', { won: false, winner: 'persian' });
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].text, /THE MATCH HAS ENDED[\s\S]*persian took it/, 'the same closing message a library seat gets');
+    const fw = notes.find(n => n.type === 'final_word');
+    assert.ok(fw && fw.text === 'I scouted too late.' && !fw.error, JSON.stringify(fw));
+    mgr.aiControllers = [c];
+    mgr.stop();
+    assert.equal(overs, 0, 'no bare "over" after the closing message');
+});

@@ -70,7 +70,10 @@ const META_TOOLS = [
     { name: 'end_turn', description: `End your turn. Up to ${GAME.maxCommandsPerTurn} game commands per turn; plan does not count.`,
       inputSchema: { type: 'object', properties: {}, required: [] } },
     { name: 'get_rules', description: 'The rules of the game for your seat again (after you joined).',
-      inputSchema: { type: 'object', properties: {}, required: [] } }
+      inputSchema: { type: 'object', properties: {}, required: [] } },
+    { name: 'final_word', description: 'Only when the match has ended and wait_for_turn handed you its final message: '
+        + 'your answer to it, in your own words. Nothing is executed; it is recorded with the match.',
+      inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'Your final word on the match.' } }, required: ['text'] } }
 ];
 
 // What the harnesses do, one line each, in the hub's window (--quiet turns it off): the
@@ -145,10 +148,21 @@ function fromPage(msg, pg) {
             if (p) { clearTimeout(p.timer); pendingActions.delete(msg.id); p.resolve(String(msg.text == null ? '' : msg.text)); }
             break;
         }
+        case 'final': {             // the match has ended for this seat: its closing message
+            const s = seats.get(msg.token);
+            if (!s) return;
+            s.over = s.over || { final: true };
+            s.final = String(msg.text || '');
+            s.turn = s.pendingTurn = null;
+            for (const w of s.waiters.splice(0)) if (w.alive()) w(textResult(JSON.stringify(overResult(s))));
+            s.joined = false;
+            log(s.token, 'match over: final message sent');
+            break;
+        }
         case 'over': {
             const s = seats.get(msg.token);
             if (!s) return;
-            s.over = msg.result || {};
+            s.over = Object.assign(msg.result || {}, s.final != null ? { final: true } : {});
             s.turn = s.pendingTurn = null;
             for (const w of s.waiters.splice(0)) if (w.alive()) w(textResult(JSON.stringify(overResult(s))));
             // The harness is told to stop, so it is no longer playing: the next arena waits
@@ -163,7 +177,12 @@ function fromPage(msg, pg) {
     }
 }
 
-const overResult = s => ({ matchOver: true, result: s.over, next: 'The match is over. Stop playing: there is nothing more to do.' });
+// The end of the match. With a closing message (the same one a library seat gets: the final
+// state, the match in numbers, the question), the harness answers it with final_word.
+const overResult = s => s.final
+    ? { matchOver: true, result: s.over, finalMessage: s.final,
+        next: 'This is your final message. Answer it by calling final_word with your thoughts; nothing will be executed. Then stop playing.' }
+    : { matchOver: true, result: s.over, next: 'The match is over. Stop playing: there is nothing more to do.' };
 // A page let go of the seat (closed, reloaded, or a new arena without it). Its harness stays
 // joined, still in its wait_for_turn loop: when a page lists the seat again it is ready at once.
 function release(s) { s.listed = false; s.page = null; s.turn = s.pendingTurn = null; }
@@ -189,8 +208,16 @@ async function callTool(token, name, args, signal) {
             + `You have joined as seat ${s.seat != null ? s.seat : '?'}. This is how you play, until the match is over:\n`
             + LOOP + '\nDo not stop to explain or to ask: keep calling the tools. ' + NEXT_WAIT);
     }
-    // A match that ended while the harness was busy: its next wait hears so, joined or not.
-    if (name === 'wait_for_turn' && s.over) return textResult(JSON.stringify(overResult(s)));
+    // After the end every call hears it, joined or not: a harness busy when the match
+    // ended got "Call join first" for its end_turn and rejoined to find out (asp67, 26 Oct).
+    if (name === 'final_word') {
+        if (s.final == null) return textResult('There is no final message to answer.' + (s.over ? ' The match is over: stop playing.' : ''));
+        toPage({ type: 'final_word', token, text: String((args && args.text) || '') });
+        s.final = null;
+        log(token, 'final word given');
+        return textResult('Thank you: your final word is recorded with the match. The match is over: stop playing.');
+    }
+    if (s.over && name !== 'join' && name !== 'get_rules') return textResult(JSON.stringify(overResult(s)));
     if (!s.joined) return textResult('Call join first.', true);
     if (name === 'wait_for_turn') {
         if (s.over) return textResult(JSON.stringify(overResult(s)));
