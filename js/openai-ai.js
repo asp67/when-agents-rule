@@ -245,7 +245,8 @@ class OpenAIAIManager {
 
     static toolsSupported(provider) {
         return provider === 'openai' || provider === 'ollama'
-            || provider === 'anthropic' || provider === 'google';
+            || provider === 'anthropic' || provider === 'google'
+            || provider === 'mcp';   // an MCP seat's harness calls the hub's tools (docs/MCP-ARENA.md)
     }
 
     // The same two tools in each provider's dialect, all derived from TOOLS so the
@@ -5018,6 +5019,45 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             model._reqOpts || {});
     }
 
+    // The page's link to the WAR MCP hub, one per hub address (docs/MCP-ARENA.md). Created
+    // on first use; a test may set this._mcpLinks to stand in for the hub.
+    mcpLink(base) {
+        const key = String(base || 'http://127.0.0.1:8765');
+        this._mcpLinks = this._mcpLinks || new Map();
+        let link = this._mcpLinks.get(key);
+        if (!link) {
+            if (typeof WarMcpLink !== 'function') throw new Error('the MCP link (js/mcp-link.js) is not loaded');
+            link = new WarMcpLink(key);
+            this._mcpLinks.set(key, link);
+            link.connect();
+        }
+        return link;
+    }
+
+    // One turn of an MCP seat, answered in the shape of an OpenAI chat completion so the
+    // reply runs through the same parser, recording and executor as a library seat's.
+    // The harness is sent what a library seat's request ends with -- the current turn's
+    // message: header, state and advice -- plus, every turn, the result of its previous
+    // commands: a library seat reads those as the answers to its tool calls, a harness
+    // was only told "queued". A turn ended with no command is a wait, as a decision.
+    async mcpExchange(controller, systemPrompt, turns, signal) {
+        const model = controller.model || {};
+        const link = this.mcpLink(model.endpoint);
+        const last = turns && turns.length ? turns[turns.length - 1] : null;
+        let text = last && typeof last.content === 'string' ? last.content : JSON.stringify(last ? last.content : '');
+        const prev = controller.lastActionResult;
+        if (prev && this.lastTurnUsedTools(controller) && !/RESULT of your PREVIOUS action/.test(text))
+            text = `RESULT of your PREVIOUS turn's commands: ${prev}\n\n` + text;
+        const turnNo = controller.turnCount || 0;
+        let calls = await link.playTurn(model.mcpToken, turnNo, text, systemPrompt, signal);
+        if (!calls.some(c => c.name !== 'plan')) calls = calls.concat([{ name: 'wait', args: { reason: 'Ended the turn without a command.' } }]);
+        const data = { choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null,
+            tool_calls: calls.map((c, i) => ({ id: `mcp_${turnNo}_${i}`, type: 'function',
+                function: { name: c.name, arguments: JSON.stringify(c.args || {}) } })) } }] };
+        const raw = JSON.stringify(data);
+        return { ok: true, status: 200, headers: { get: () => null }, json: async () => JSON.parse(raw), text: async () => raw };
+    }
+
     async sendToOpenAI(controller, gameState) {
         const model = controller.model;
         const ai = controller.aiPlayer;
@@ -5107,7 +5147,12 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 const hardAbortMs = this.requestAbortMs();
                 const timeoutId = setTimeout(() => controllerAbort.abort(), hardAbortMs);
                 try {
-                    response = await fetch(apiUrl, {
+                    // An MCP seat (docs/MCP-ARENA.md): its harness plays it through the
+                    // local hub, and its reply comes back in the shape an endpoint's
+                    // would, so everything from here on is the library seats' code.
+                    response = provider === 'mcp'
+                        ? await this.mcpExchange(controller, systemPrompt, turns, controllerAbort.signal)
+                        : await fetch(apiUrl, {
                         method: 'POST',
                         headers: headers,
                         mode: 'cors',

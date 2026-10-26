@@ -100,6 +100,7 @@ function fromPage(msg) {
         case 'turn': {
             const s = seats.get(msg.token);
             if (!s || !s.listed) return;
+            if (msg.rules) s.rules = msg.rules;   // the seat's system prompt, for get_rules
             s.pendingTurn = { turn: msg.turn, state: typeof msg.state === 'string' ? msg.state : JSON.stringify(msg.state) };
             const w = s.waiters.shift();
             if (w) w(deliverTurn(s));
@@ -146,7 +147,9 @@ async function callTool(token, name, args) {
         if (!s.listed) return textResult('The open arena does not use this seat. Pick it in the WAR arena setup, then call join again.', true);
         s.joined = true;
         toPage({ type: 'join', token });
-        return textResult((s.rules ? s.rules + '\n\n' : '') + 'You have joined. Now call wait_for_turn.');
+        return textResult((s.rules ? s.rules + '\n\n' : '')
+            + `You have joined as seat ${s.seat != null ? s.seat : '?'}. Now call wait_for_turn`
+            + (s.rules ? '.' : ': the rules of the game come with your first turn.'));
     }
     if (!s.joined) return textResult('Call join first.', true);
     if (name === 'wait_for_turn') {
