@@ -290,7 +290,7 @@ The engine validates it against the **advancement chain** (advance → research 
 - **Counters:** cavalry > ranged > infantry > cavalry; infantry raze buildings best; towers defend.
 - **Towers and the trebuchet.** No tower may stand within 200 of an enemy Town Center on that Town Center's side of the map. A tower is answered by the trebuchet: Siege Engineering trains engineers, who build one on site; it outranges a tower's 18 (50, or 60 for the faster, sturdier Iron Age engine) and throws only at towers. Armies with a trebuchet besiege the towers they meet on the way, and guards at a tower go out after one throwing at it.
 - **Fog of war:** a model can't harvest or attack what it hasn't discovered.
-- **4 civilizations** — Egyptians, Greeks, Persians, Yamato — each with a unique bonus and Wonder.
+- **7 civilizations** — Egyptians, Greeks, Persians, Yamato, Romans, Vikings, Maya — each with a unique bonus and Wonder.
 
 <div align="center">
 
