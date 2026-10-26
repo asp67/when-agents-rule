@@ -57,35 +57,14 @@ WAR arena page (browser) ──WebSocket─────┘     /page            
 - **Node.** The hub needs Node. For beginners it ships as a zip with a portable node.exe
   and a start script, built the way the Platform connector already is
   (`platform/connector/build-portable.ps1`).
-- **Localhost only.** The hub binds 127.0.0.1. The page is served over https (GitHub Pages)
-  or http (local); browsers treat loopback as a secure context, but Chrome's
-  private-network rules want the hub to answer preflights with
-  `Access-Control-Allow-Private-Network: true`. To verify in Chrome and Firefox first.
-
-## The library entry (type "MCP")
-
-Fields: name ("Claude Code · Sonnet 5.5", "OpenCode · Qwen3.8 local"), harness (from the
-list below, or Other), the model the harness runs (as stated by the user, recorded, not
-verifiable), and the seat token (generated once, kept; "new token" invalidates the old).
-
-The entry shows three steps, each with copy buttons and a PowerShell/bash switch:
-
-| Step | What | How often |
-|---|---|---|
-| 1. Start the hub | `node war-mcp-hub.cjs` (or the portable zip's start script) | once per session; serves every seat |
-| 2. Connect your harness | the harness's own line or snippet, with our tools pre-allowed, **or** the self-setup prompt | once per harness |
-| 3. Play | pick the seat in the arena; the setup shows the start line | every match |
-
-## Arena setup: one line per seat, a readiness dot
-
-Each seat is one line, not a table row: seat number, civilization, the library entry, and
-on the right a dot with a short word.
-
-| Seat type | Grey | Yellow | Green | Red |
-|---|---|---|---|---|
-| Library model | not checked yet | "checking": a tool check is in flight (`checkToolCalling`, the library's "Check tool calls") | "ready": a tool call came back | "no tool call" / the error, one click retries |
-| MCP seat | - | "harness connected, joining" | "ready": the harness called `join` | "waiting for harness" (until it connects), "hub not running" |
-
+- **Localhost only, and Chrome asks once.** The hub binds 127.0.0.1. Tested 26 October in asp67's
+  Chrome: from https://asp67.github.io the status fetch and the WebSocket both work once the user
+  allows Chrome's "wants to use local services / devices on your local network" prompt (Local
+  Network Access); from a local page (http://localhost) there is no prompt. The hub answers
+  preflights with `Access-Control-Allow-Private-Network: true`. The arena setup must say before
+  the first contact that Chrome will ask, and to click Allow; a refused prompt shows the MCP
+  seat's dot red with "hub not reachable: allow local network access for this site".
+  (Claude's embedded browser blocks the request outright, ERR_BLOCKED_BY_CLIENT: not a user path.)
 - The library checks run when the arena setup opens and again when a seat's entry changes.
 - An MCP seat's line also shows its start line for this match (step 3), with a copy button.
 - **Start arena** is enabled only when every dot is green.
@@ -145,7 +124,7 @@ tools, then tell me to restart you." After the restart the play prompt starts th
 
 ## Risks and checks before building
 
-- Browser to localhost (private-network preflight) in Chrome and Firefox.
+- Browser to localhost: Chrome works after its local-network prompt (tested 26 Oct); Firefox to test.
 - Harness tool timeouts against the ~25 s `wait_for_turn`.
 - Harnesses that stop: permission prompts (pre-allow our tools), step limits (set high),
   "end of reply" (the kickoff says to keep playing).
