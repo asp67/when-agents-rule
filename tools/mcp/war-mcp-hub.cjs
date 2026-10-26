@@ -43,15 +43,22 @@ const TOOLS_FILE = path.join(__dirname, 'war-tools.json');
 const GAME = JSON.parse(fs.readFileSync(TOOLS_FILE, 'utf8'));
 const GAME_NAMES = new Set(GAME.tools.map(t => t.name));
 
-const KICKOFF = [
-    'You are playing a seat in WAR ("When Agents Rule"), a real-time strategy game, against other players.',
-    'Call join first: it returns the rules of the game and your civilization.',
-    'Then repeat until wait_for_turn reports that the match is over:',
-    '1. Call wait_for_turn. It returns the game state when it is your turn. If it answers "waiting", call it again.',
-    `2. Give up to ${GAME.maxCommandsPerTurn} game commands with the game tools (plan does not count toward them).`,
-    '3. Call end_turn.',
-    'Keep playing until the match is over. Do not stop to ask the user anything: you decide every move yourself.'
+// How to play, the same three steps everywhere they are told (the play prompt, join's
+// answer): a harness that joined and then sat "analysing the tools" (asp67, Hermes,
+// 26 Oct) had been told what happened, never what to do next. Every answer below ends
+// with the next call.
+const LOOP = [
+    '1. Call wait_for_turn. When it is your turn it returns the game state (your first turn also brings the rules of the game). While it answers "waiting", call it again at once.',
+    `2. Give up to ${GAME.maxCommandsPerTurn} game commands with the game tools (train_unit, build_structure, assign_workers, move_units, attack_target, ...). The plan tool is free and does not count.`,
+    '3. Call end_turn. Then go back to step 1.'
 ].join('\n');
+const KICKOFF = [
+    'You are playing a seat in WAR ("When Agents Rule"), a real-time strategy game, against other players. You decide every move yourself.',
+    'First call join. Then play this loop until wait_for_turn reports that the match is over:',
+    LOOP,
+    'Do not stop to explain or to ask the user anything: keep calling the tools until the match is over.'
+].join('\n');
+const NEXT_WAIT = 'Your next action: call wait_for_turn now.';
 
 const META_TOOLS = [
     { name: 'join', description: 'Claim your seat in the waiting arena. Call this first. Returns the rules of the game for your seat.',
@@ -66,9 +73,24 @@ const META_TOOLS = [
       inputSchema: { type: 'object', properties: {}, required: [] } }
 ];
 
+// What the harnesses do, one line each, in the hub's window (--quiet turns it off): the
+// first harness to sit idle after join could only be guessed at.
+const QUIET = process.argv.includes('--quiet') || process.argv.includes('--stdio');
+function log(token, text) {
+    if (QUIET) return;
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const s = seats.get(token);
+    console.log(`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}  ${s && s.seat != null ? 'seat ' + s.seat : String(token).slice(0, 10)}  ${text}`);
+}
+
 // ---- state -------------------------------------------------------------------------
 // One page at a time (the newest wins). Seats are keyed by token.
-let page = null;                 // { send(obj), close() }
+// Any number of WAR pages (two tabs, a spectator window): each seat belongs to the page
+// that listed it last, and only that page hears about it. With one page allowed, the newest
+// replacing the older, two open pages knocked each other off every two seconds as each
+// reconnected, and the setup's dot flipped between "ready" and "hub not running" (asp67,
+// 26 Oct: the second page was a preview left open in the developer's browser).
+const pages = new Set();          // { send(obj), close() }
 const seats = new Map();         // token -> seat
 function seat(token) {
     let s = seats.get(token);
@@ -79,22 +101,28 @@ function seat(token) {
 const pendingActions = new Map();  // id -> { resolve, timer }
 let nextId = 1;
 
-function toPage(obj) { if (page) page.send(obj); }
+// A message about a seat goes to the page that listed it.
+function toPage(obj) {
+    const s = obj && obj.token ? seats.get(obj.token) : null;
+    if (s && s.page && pages.has(s.page)) s.page.send(obj);
+}
 
-function fromPage(msg) {
+function fromPage(msg, pg) {
     switch (msg && msg.type) {
         case 'arena': {
-            // The seats this arena waits for. Seats it no longer lists are released.
+            // The seats this page's arena waits for. Seats it listed before and no longer
+            // does are released; other pages' seats are not touched. The rules a seat was
+            // sent with its turns stay: a page reconnecting mid-match lists no rules.
             const listed = new Set();
             for (const p of msg.seats || []) {
                 if (!TOKEN_RE.test(p.token || '')) continue;
                 const s = seat(p.token);
-                Object.assign(s, { listed: true, seat: p.seat, name: p.name || '', rules: p.rules || '', over: null });
+                Object.assign(s, { listed: true, page: pg, seat: p.seat, name: p.name || '', rules: p.rules || s.rules || '', over: null });
                 listed.add(p.token);
                 if (s.seen) toPage({ type: 'harness', token: s.token, connected: true });
                 if (s.joined) toPage({ type: 'join', token: s.token });
             }
-            for (const s of seats.values()) if (!listed.has(s.token)) { s.listed = false; s.joined = false; s.pendingTurn = s.turn = null; }
+            for (const s of seats.values()) if (s.page === pg && !listed.has(s.token)) release(s);
             break;
         }
         case 'turn': {
@@ -121,19 +149,24 @@ function fromPage(msg) {
             if (!s) return;
             s.over = msg.result || {};
             s.turn = s.pendingTurn = null;
-            for (const w of s.waiters.splice(0)) w(textResult(JSON.stringify({ matchOver: true, result: s.over })));
+            for (const w of s.waiters.splice(0)) w(textResult(JSON.stringify(overResult(s))));
             break;
         }
         case 'close':
-            for (const s of seats.values()) { s.listed = false; s.joined = false; s.turn = s.pendingTurn = null; }
+            for (const s of seats.values()) if (s.page === pg) release(s);
             break;
     }
 }
 
+const overResult = s => ({ matchOver: true, result: s.over, next: 'The match is over. Stop playing: there is nothing more to do.' });
+// A page let go of the seat (closed, reloaded, or a new arena without it). Its harness stays
+// joined, still in its wait_for_turn loop: when a page lists the seat again it is ready at once.
+function release(s) { s.listed = false; s.page = null; s.turn = s.pendingTurn = null; }
 function deliverTurn(s) {
     const t = s.pendingTurn; s.pendingTurn = null;
     s.turn = { turn: t.turn }; s.commands = 0;
-    return textResult(t.state);
+    log(s.token, `turn ${t.turn} delivered`);
+    return textResult(`IT IS YOUR TURN. Read the state below, give up to ${GAME.maxCommandsPerTurn} game commands with the game tools, then call end_turn.\n\n` + t.state);
 }
 
 // ---- MCP ---------------------------------------------------------------------------
@@ -143,36 +176,37 @@ async function callTool(token, name, args) {
     const s = seat(token);
     if (name === 'get_rules') return s.joined ? textResult(s.rules || '(no rules sent)') : textResult('Call join first.', true);
     if (name === 'join') {
-        if (!page) return textResult('No WAR arena is open. Open the arena setup in WAR, pick this seat, and call join again.', true);
-        if (!s.listed) return textResult('The open arena does not use this seat. Pick it in the WAR arena setup, then call join again.', true);
+        if (!pages.size) return textResult('No WAR arena is open. Open the arena setup in WAR, pick this seat, and call join again.', true);
+        if (!s.listed || !pages.has(s.page)) return textResult('The open arena does not use this seat. Pick it in the WAR arena setup, then call join again.', true);
         s.joined = true;
         toPage({ type: 'join', token });
         return textResult((s.rules ? s.rules + '\n\n' : '')
-            + `You have joined as seat ${s.seat != null ? s.seat : '?'}. Now call wait_for_turn`
-            + (s.rules ? '.' : ': the rules of the game come with your first turn.'));
+            + `You have joined as seat ${s.seat != null ? s.seat : '?'}. This is how you play, until the match is over:\n`
+            + LOOP + '\nDo not stop to explain or to ask: keep calling the tools. ' + NEXT_WAIT);
     }
     if (!s.joined) return textResult('Call join first.', true);
     if (name === 'wait_for_turn') {
-        if (s.over) return textResult(JSON.stringify({ matchOver: true, result: s.over }));
+        if (s.over) return textResult(JSON.stringify(overResult(s)));
         if (s.turn) { toPage({ type: 'end_turn', token, turn: s.turn.turn }); s.turn = null; }
         if (s.pendingTurn) return deliverTurn(s);
         return new Promise(resolve => {
             const w = r => { clearTimeout(timer); resolve(r); };
-            const timer = setTimeout(() => { s.waiters = s.waiters.filter(x => x !== w); resolve(textResult(JSON.stringify({ waiting: true }))); }, WAIT_MS);
+            const timer = setTimeout(() => { s.waiters = s.waiters.filter(x => x !== w);
+                resolve(textResult(JSON.stringify({ waiting: true, next: 'Not your turn yet. Call wait_for_turn again now.' }))); }, WAIT_MS);
             s.waiters.push(w);
         });
     }
     if (name === 'end_turn') {
-        if (!s.turn) return textResult('It is not your turn: call wait_for_turn.', true);
+        if (!s.turn) return textResult('It is not your turn. ' + NEXT_WAIT, true);
         toPage({ type: 'end_turn', token, turn: s.turn.turn });
         s.turn = null;
-        return textResult('Turn ended. Call wait_for_turn.');
+        return textResult('Turn ended. ' + NEXT_WAIT);
     }
     if (!GAME_NAMES.has(name)) return textResult(`Unknown tool "${name}".`, true);
-    if (!s.turn) return textResult('It is not your turn: call wait_for_turn.', true);
+    if (!s.turn) return textResult('It is not your turn. ' + NEXT_WAIT, true);
     const counts = !GAME.free.includes(name);
     if (counts && s.commands >= GAME.maxCommandsPerTurn)
-        return textResult(`[ERROR] You have given ${GAME.maxCommandsPerTurn} commands this turn: call end_turn.`, true);
+        return textResult(`[ERROR] You have given ${GAME.maxCommandsPerTurn} commands this turn. Your next action: call end_turn.`, true);
     if (counts) s.commands++;
     const id = nextId++;
     const text = await new Promise(resolve => {
@@ -185,6 +219,8 @@ async function callTool(token, name, args) {
 
 async function rpc(token, msg) {
     const { id, method, params } = msg || {};
+    if (msg && method === 'tools/call') log(token, 'calls ' + (params && params.name) + (params && params.arguments && Object.keys(params.arguments).length ? ' ' + JSON.stringify(params.arguments).slice(0, 120) : ''));
+    else if (msg && method && method !== 'ping') log(token, method + (method === 'initialize' && params && params.clientInfo ? ' from ' + params.clientInfo.name : ''));
     const reply = result => ({ jsonrpc: '2.0', id, result });
     const fail = (code, message) => ({ jsonrpc: '2.0', id: id === undefined ? null : id, error: { code, message } });
     if (!msg || msg.jsonrpc !== '2.0' || typeof method !== 'string') return fail(-32600, 'Invalid Request');
@@ -232,7 +268,7 @@ const server = http.createServer((req, res) => {
     if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
     const url = new URL(req.url, 'http://127.0.0.1');
     if (url.pathname === '/status' && req.method === 'GET')
-        return json(res, 200, { hub: 'war-mcp-hub', version: VERSION, page: !!page,
+        return json(res, 200, { hub: 'war-mcp-hub', version: VERSION, page: pages.size > 0, pages: pages.size,
             seats: [...seats.values()].filter(s => s.listed).map(s => ({ seat: s.seat, harness: s.seen, joined: s.joined })) });
     const m = /^\/mcp\/([^/]+)\/?$/.exec(url.pathname);
     if (!m) return json(res, 404, { error: 'not found' });
@@ -275,8 +311,8 @@ server.on('upgrade', (req, socket) => {
         if (!socket.destroyed) socket.write(Buffer.concat([head, data]));
     };
     const me = { send, close: () => socket.destroy() };
-    if (page) page.close();
-    page = me;
+    if (!QUIET) console.log('WAR page connected');
+    pages.add(me);
     send({ type: 'hello', hub: 'war-mcp-hub', version: VERSION, maxCommandsPerTurn: GAME.maxCommandsPerTurn });
     let buf = Buffer.alloc(0), parts = [];
     socket.on('data', chunk => {
@@ -296,11 +332,11 @@ server.on('upgrade', (req, socket) => {
             if (op === 0x9) { socket.write(Buffer.concat([Buffer.from([0x8a, payload.length]), payload])); continue; }
             if (op === 0x1 || op === 0x0) {
                 parts.push(payload);
-                if (fin) { const text = Buffer.concat(parts).toString('utf8'); parts = []; try { fromPage(JSON.parse(text)); } catch (e) { /* ignore a bad frame */ } }
+                if (fin) { const text = Buffer.concat(parts).toString('utf8'); parts = []; try { fromPage(JSON.parse(text), me); } catch (e) { /* ignore a bad frame */ } }
             }
         }
     });
-    socket.on('close', () => { if (page === me) { page = null; fromPage({ type: 'close' }); } });
+    socket.on('close', () => { if (pages.delete(me)) { fromPage({ type: 'close' }, me); if (!QUIET) console.log('WAR page disconnected'); } });
     socket.on('error', () => {});
 });
 

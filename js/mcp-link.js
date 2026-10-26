@@ -100,9 +100,12 @@ class WarMcpLink {
             t.calls.push({ name: m.name, args: m.args || {} });
             const free = WarMcpLink.FREE.includes(m.name);
             if (!free) t.counted++;
+            // Each answer ends with the next step (asp67: a harness that joined then sat idle).
+            const left = this.maxCommands - t.counted;
+            const next = left > 0 ? `You can give ${left} more, or call end_turn.` : 'Your next action: call end_turn.';
             this._send({ type: 'result', id: m.id, text: free
-                ? `OK - ${m.name} noted.`
-                : `Queued (${t.counted}/${this.maxCommands}): ${m.name}. It runs when the round closes, together with every other player's commands; its result comes with your next turn.` });
+                ? `OK - ${m.name} noted. Give your commands, or call end_turn.`
+                : `Queued (${t.counted}/${this.maxCommands}): ${m.name}. It runs when the round closes, together with every other player's commands; its result comes with your next turn. ${next}` });
             return;
         }
         if (m.type === 'end_turn') {

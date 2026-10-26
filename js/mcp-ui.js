@@ -117,10 +117,17 @@
         // Step 3: what starts the harness playing.
         mcpKickoff(m) {
             const n = this.mcpServerName(m);
-            return `Play a WAR seat with the MCP server ${n}. Call its join tool first, then repeat until `
-                + `wait_for_turn reports the match is over: call wait_for_turn (call it again while it answers "waiting"), `
-                + `give up to 3 game commands with its tools (plan does not count), then call end_turn. `
-                + `Keep playing until the match is over and do not stop to ask me anything: you decide every move.`;
+            return `You are playing a seat in the strategy game WAR through the MCP server ${n}. You decide every move yourself.
+`
+                + `First call its join tool. Then play this loop until wait_for_turn reports that the match is over:
+`
+                + `1. Call wait_for_turn. When it is your turn it returns the game state (the first time also the rules). While it answers "waiting", call it again at once.
+`
+                + `2. Give up to 3 game commands with its game tools (train_unit, build_structure, assign_workers, move_units, attack_target, ...). The plan tool is free.
+`
+                + `3. Call end_turn. Then go back to step 1.
+`
+                + `Do not stop to explain or to ask me anything: keep calling the tools until the match is over.`;
         },
         mcpStartLine(m) {
             const h = HARNESSES.find(x => x.id === m.harness);

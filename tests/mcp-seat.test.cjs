@@ -82,8 +82,8 @@ test('end to end: a harness over MCP plays a game seat through the hub', { timeo
     // The seat's turn starts on the page; the harness, waiting, receives it.
     const answer = mgr.sendToOpenAI(c, mgr.buildGameStateJSON(c));
     const state = await tool('wait_for_turn');
-    assert.match(state, /^RULES OF THE GAME[\s\S]*Game State JSON:/, 'the first turn carries the rules, then the state');
-    assert.match(await tool('train_unit', { unitType: 'worker', reason: 'e2e' }), /^Queued \(1\/3\): train_unit/);
+    assert.match(state, /^IT IS YOUR TURN[\s\S]*RULES OF THE GAME[\s\S]*Game State JSON:/, 'the first turn says what to do, carries the rules, then the state');
+    assert.match(await tool('train_unit', { unitType: 'worker', reason: 'e2e' }), /^Queued \(1\/3\): train_unit[\s\S]*You can give 2 more, or call end_turn\./);
     assert.match(await tool('end_turn'), /Turn ended/);
     const env = await answer;
     assert.equal(JSON.stringify(env.commands), JSON.stringify([{ action: 'train_unit', params: { unitType: 'worker', reason: 'e2e' } }]));
