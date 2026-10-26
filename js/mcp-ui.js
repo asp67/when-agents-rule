@@ -131,12 +131,12 @@
         mcpCopyBtn(text) {
             const k = (this._mcpCopyN = (this._mcpCopyN || 0) + 1);
             (this._mcpCopy || (this._mcpCopy = new Map())).set(k, text);
-            return `<button type="button" class="hdr-add-btn mcp-copy" onclick="game.ui.mcpCopy(${k}, this)">${t('mcp.copy')}</button>`;
+            return `<button type="button" class="mcp-copy" onclick="game.ui.mcpCopy(${k}, this)">⧉ ${t('mcp.copy')}</button>`;
         },
         mcpCopy(k, btn) {
             const text = this._mcpCopy && this._mcpCopy.get(k);
             if (text == null) return;
-            const done = () => { if (btn) { btn.textContent = t('mcp.copied'); setTimeout(() => { btn.textContent = t('mcp.copy'); }, 1500); } };
+            const done = () => { if (btn) { btn.textContent = '✓ ' + t('mcp.copied'); btn.classList.add('done'); setTimeout(() => { btn.textContent = '⧉ ' + t('mcp.copy'); btn.classList.remove('done'); }, 1500); } };
             if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => this.mcpCopyFallback(text, done));
             else this.mcpCopyFallback(text, done);
         },
