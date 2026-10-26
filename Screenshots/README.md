@@ -59,7 +59,7 @@ Two Windows screenshots of the game window during live arena matches, saved as J
 | Asset | Source | Content |
 | --- | --- | --- |
 | TowerCreep.jpg | Screenshot, 23 October 2026, 16:53 (1833 x 744) | Qwen3.8's Greek tower chain reaching DeepSeek V4.1's Egyptian town (build 1109) |
-| Trebuchet.jpg | Screenshot, 25 October 2026, 23:12 (1854 x 603) | DeepSeek V4.1's Roman advanced trebuchets among Qwen3.8's Greek towers (build 1110 test match) |
+| Trebuchet.jpg | Screenshot, 25 October 2026, 21:43 (1096 x 647) | Qwen3.8's Vikings escort their trebuchet across the map (build 1110 test match) |
 
 ## Interface illustrations
 

@@ -296,9 +296,9 @@ The engine validates it against the **advancement chain** (advance → research 
 
 | Tower creep | The answer: the trebuchet |
 |:---:|:---:|
-| ![The Greeks' chain of towers reaching across the map to the Egyptian town](Screenshots/TowerCreep.jpg) | ![A Roman advanced trebuchet beside a Greek tower, a second trebuchet rolling up behind](Screenshots/Trebuchet.jpg) |
+| ![The Greeks' chain of towers reaching across the map to the Egyptian town](Screenshots/TowerCreep.jpg) | ![A small Viking group escorting a trebuchet across the map](Screenshots/Trebuchet.jpg) |
 
-<sub><i>Left, 23 October 2026: Qwen3.8's Greeks walked a chain of 19 towers across the map, each raised under the cover of the last, and put the last two 12 from DeepSeek V4.1's Egyptian Town Center. Its workers and new soldiers died at the door. Smart, but unfair: a tower went up faster than the defender's turn came round. Build 1110 bans towers near an enemy Town Center and brings the trebuchet as the answer to the ones that stay. Right, 25 October: DeepSeek V4.1's Roman advanced trebuchets in among Qwen3.8's Greek towers.</i></sub>
+<sub><i>Left, 23 October 2026: Qwen3.8's Greeks walked a chain of 19 towers across the map, each raised under the cover of the last, and put the last two 12 from DeepSeek V4.1's Egyptian Town Center. Its workers and new soldiers died at the door. Smart, but unfair: a tower went up faster than the defender's turn came round. Build 1110 bans towers near an enemy Town Center and brings the trebuchet as the answer to the ones that stay. Right, 25 October: Qwen3.8's Vikings escort their trebuchet across the map.</i></sub>
 
 </div>
 
