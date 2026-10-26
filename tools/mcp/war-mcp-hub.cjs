@@ -130,8 +130,9 @@ function fromPage(msg, pg) {
             if (!s || !s.listed) return;
             if (msg.rules) s.rules = msg.rules;   // the seat's system prompt, for get_rules
             s.pendingTurn = { turn: msg.turn, state: typeof msg.state === 'string' ? msg.state : JSON.stringify(msg.state) };
-            const w = s.waiters.shift();
-            if (w) w(deliverTurn(s));
+            // Only to a wait still listening: one its harness gave up on is gone already.
+            let w;
+            while ((w = s.waiters.shift())) if (w.alive()) { w(deliverTurn(s)); break; }
             break;
         }
         case 'turn_over': {           // the page closed the turn (round timeout)
@@ -149,7 +150,7 @@ function fromPage(msg, pg) {
             if (!s) return;
             s.over = msg.result || {};
             s.turn = s.pendingTurn = null;
-            for (const w of s.waiters.splice(0)) w(textResult(JSON.stringify(overResult(s))));
+            for (const w of s.waiters.splice(0)) if (w.alive()) w(textResult(JSON.stringify(overResult(s))));
             // The harness is told to stop, so it is no longer playing: the next arena waits
             // for it to join again rather than showing the seat ready (asp67, 26 Oct).
             s.joined = false;
@@ -176,7 +177,7 @@ function deliverTurn(s) {
 // ---- MCP ---------------------------------------------------------------------------
 const textResult = (text, isError) => ({ content: [{ type: 'text', text: String(text) }], ...(isError ? { isError: true } : {}) });
 
-async function callTool(token, name, args) {
+async function callTool(token, name, args, signal) {
     const s = seat(token);
     if (name === 'get_rules') return s.joined ? textResult(s.rules || '(no rules sent)') : textResult('Call join first.', true);
     if (name === 'join') {
@@ -195,8 +196,13 @@ async function callTool(token, name, args) {
         if (s.over) return textResult(JSON.stringify(overResult(s)));
         if (s.turn) { toPage({ type: 'end_turn', token, turn: s.turn.turn }); s.turn = null; }
         if (s.pendingTurn) return deliverTurn(s);
+        // A harness may give up on the call before the hub answers (its own timeout
+        // shorter than WAIT_MS): the wait is dropped then, so no turn is handed to a
+        // request nobody reads -- that turn would be lost, and the harness wait forever.
         return new Promise(resolve => {
             const w = r => { clearTimeout(timer); resolve(r); };
+            w.alive = () => !(signal && signal.aborted);
+            if (signal) signal.addEventListener('abort', () => { clearTimeout(timer); s.waiters = s.waiters.filter(x => x !== w); resolve(null); log(token, 'gave up waiting'); }, { once: true });
             const timer = setTimeout(() => { s.waiters = s.waiters.filter(x => x !== w);
                 resolve(textResult(JSON.stringify({ waiting: true, next: s.listed ? 'Not your turn yet. Call wait_for_turn again now.'
                     : 'No WAR arena has this seat open right now (the page was closed or reloaded). Call wait_for_turn again to wait for it.' }))); }, WAIT_MS);
@@ -224,7 +230,7 @@ async function callTool(token, name, args) {
     return textResult(text, /^\[ERROR\]/.test(text));
 }
 
-async function rpc(token, msg) {
+async function rpc(token, msg, signal) {
     const { id, method, params } = msg || {};
     if (msg && method === 'tools/call') log(token, 'calls ' + (params && params.name) + (params && params.arguments && Object.keys(params.arguments).length ? ' ' + JSON.stringify(params.arguments).slice(0, 120) : ''));
     else if (msg && method && method !== 'ping') log(token, method + (method === 'initialize' && params && params.clientInfo ? ' from ' + params.clientInfo.name : ''));
@@ -246,7 +252,7 @@ async function rpc(token, msg) {
         case 'tools/list': return reply({ tools: META_TOOLS.concat(GAME.tools) });
         case 'tools/call': {
             if (!params || typeof params.name !== 'string') return fail(-32602, 'Invalid params: name');
-            return reply(await callTool(token, params.name, params.arguments));
+            return reply(await callTool(token, params.name, params.arguments, signal));
         }
         case 'prompts/list': return reply({ prompts: [{ name: 'play', description: 'Join this WAR seat and play the match to its end.' }] });
         case 'prompts/get':
@@ -283,17 +289,19 @@ const server = http.createServer((req, res) => {
     if (!TOKEN_RE.test(token)) return json(res, 404, { error: 'unknown seat address' });
     if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); return res.end(); }
     let body = '';
+    const gone = new AbortController();
+    res.on('close', () => { if (!res.writableFinished) gone.abort(); });
     req.on('data', c => { body += c; if (body.length > 1e6) req.destroy(); });
     req.on('end', async () => {
         let msg;
         try { msg = JSON.parse(body); } catch (e) { return json(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }
         try {
             if (Array.isArray(msg)) {
-                const out = (await Promise.all(msg.map(x => rpc(token, x)))).filter(Boolean);
+                const out = (await Promise.all(msg.map(x => rpc(token, x, gone.signal)))).filter(Boolean);
                 if (!out.length) { res.writeHead(202); return res.end(); }
                 return json(res, 200, out);
             }
-            const out = await rpc(token, msg);
+            const out = await rpc(token, msg, gone.signal);
             if (!out) { res.writeHead(202); return res.end(); }
             json(res, 200, out);
         } catch (e) {

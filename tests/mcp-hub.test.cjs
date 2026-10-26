@@ -179,3 +179,29 @@ test('a match quit while the harness is busy: its next wait hears it is over, an
     assert.deepEqual(st.seats, [{ seat: 1, harness: true, joined: false }], 'red until the harness joins again');
     pg.ws.close();
 });
+
+// A harness whose own timeout is shorter than the hub's wait gives up on wait_for_turn and
+// moves on. The turn that arrives next must reach its next call, not the abandoned one.
+test('a wait the harness gave up on does not swallow the next turn', LIMIT, async t => {
+    const { p, port } = await startHub(['--wait-ms', '5000']); t.after(() => p.kill());
+    const T = 'seat-token-iiii9999';
+    const pg = await fakePage(port);
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+    const ac = new AbortController();
+    const abandoned = fetch(`http://127.0.0.1:${port}/mcp/${T}`, { method: 'POST', signal: ac.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 99, method: 'tools/call', params: { name: 'wait_for_turn', arguments: {} } }) }).catch(e => e.name);
+    await new Promise(r => setTimeout(r, 150));
+    ac.abort();
+    assert.equal(await abandoned, 'AbortError');
+    await new Promise(r => setTimeout(r, 100));
+    pg.send({ type: 'turn', token: T, turn: 3, state: '{"turn":3}' });
+    await new Promise(r => setTimeout(r, 100));
+    const t0 = Date.now();
+    const turn = said(await call(port, T, 'wait_for_turn'));
+    assert.match(turn, /^IT IS YOUR TURN/, 'the next call gets the turn');
+    assert.ok(Date.now() - t0 < 1000, 'at once, not after a wait: ' + (Date.now() - t0) + ' ms');
+    pg.ws.close();
+});
