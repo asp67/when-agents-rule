@@ -42,7 +42,7 @@
   }
  },
  {
-  "hash": "2b52cae0f37f7315",
+  "hash": "5ee6d087919f8582",
   "summary": {
    "t": 60,
    "seats": [
@@ -84,7 +84,7 @@
   }
  },
  {
-  "hash": "3c1d50c8348da5c4",
+  "hash": "a8051d720d2a27f4",
   "summary": {
    "t": 90,
    "seats": [
@@ -126,7 +126,7 @@
   }
  },
  {
-  "hash": "4fb51b92ee7f0b6e",
+  "hash": "820c0f29e7fe7857",
   "summary": {
    "t": 120,
    "seats": [
@@ -168,7 +168,7 @@
   }
  },
  {
-  "hash": "c52f0ebaf72462da",
+  "hash": "4ae69bc7571640e4",
   "summary": {
    "t": 150,
    "seats": [
@@ -210,7 +210,7 @@
   }
  },
  {
-  "hash": "db42801ad71eeaa4",
+  "hash": "c9edf14867b11b3d",
   "summary": {
    "t": 180,
    "seats": [
@@ -252,7 +252,7 @@
   }
  },
  {
-  "hash": "01ade86514a8641f",
+  "hash": "bed9f76eb34ef4d2",
   "summary": {
    "t": 210,
    "seats": [
@@ -278,8 +278,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      476,
-      48,
+      426,
+      10,
       100,
       50
      ],
@@ -287,14 +287,14 @@
       "worker": 14
      },
      "hp": 560,
-     "buildings": 6,
+     "buildings": 7,
      "research": 3
     }
    ]
   }
  },
  {
-  "hash": "29b05b9dabd120b0",
+  "hash": "4fe1336fffe2dc15",
   "summary": {
    "t": 240,
    "seats": [
@@ -336,7 +336,7 @@
   }
  },
  {
-  "hash": "e61e05614647de44",
+  "hash": "1f85b63b79fc3761",
   "summary": {
    "t": 270,
    "seats": [
@@ -378,7 +378,7 @@
   }
  },
  {
-  "hash": "26dccecfd43c8574",
+  "hash": "0b55c2444747b78e",
   "summary": {
    "t": 300,
    "seats": [
@@ -404,7 +404,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      1050,
+      1038,
       106,
       100,
       50
@@ -420,7 +420,7 @@
   }
  },
  {
-  "hash": "0ef93e31e09e23bd",
+  "hash": "edcb0090aef2606c",
   "summary": {
    "t": 330,
    "seats": [
@@ -446,7 +446,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      1142,
+      1130,
       4,
       100,
       50
@@ -462,7 +462,7 @@
   }
  },
  {
-  "hash": "f5ffb6b5dd6c4be9",
+  "hash": "a457b05647664a82",
   "summary": {
    "t": 360,
    "seats": [
@@ -488,7 +488,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      1298,
+      1286,
       28,
       100,
       50

@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1111: a builder goes round a house between it and its site (26 October 2026)
+
+**Rules change.** asp67, during the match of 26 October (11:37), with screenshots: two, then four workers "stuck at the edge of a building", "twitching front and back".
+
+**What happened.** Replayed to the end of the saved match: four workers (two Roman, one Greek, one Egyptian), each sent to build, stood 3.66 to 3.69 from one of their own houses, inside its 4.5 clearance ring, walking 6 to 12 units in 10 s and getting nowhere. A builder walks straight at its site (State 4 in `updateWorkerTasks`), but b1110's push round a building read the unit's `targetX` to know where it was going, and a builder's `targetX` still held an old job's destination. Pointed elsewhere, the push did not fire, and the walk at a site behind the house and the push out of the ring cancelled, as before b1110.
+
+**Now** the push reads where a unit really walks: an attacker its target, a builder its site, a repairer the building it mends, any other unit its move target.
+
+- Headless, a worker sent to build a site behind a house, its old `targetX` pointing elsewhere: 2 of 60 stuck at 3.73 before, none now. Walks through the gap between two houses: none of 252 stuck, as with b1110 (25 before b1110).
+- **Tests:** `tests/position-rules.test.cjs` adds the builder (fails on b1110). The economy golden `opening-economy` is re-recorded: the Persians have their seventh building up by 3:30, and a little less in stock after; the combat goldens are unchanged.
+
 ## Build 1110: no towers at an enemy Town Center, the trebuchet, and construction you can see and stop (23 October 2026)
 
 **Rules change.** asp67, on the match of 23 October (Qwen3.8 Q2 against DeepSeek V4.1, build 1109): "While this is a smart approach, it is inherently unfair."

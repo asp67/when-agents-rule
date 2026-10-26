@@ -42,3 +42,23 @@ test('a body behind a tower, sent past it, gets every unit round', () => {
         assert.equal(left.length, 0, 'seed ' + seed + ' ' + shape + ': left at the tower: ' + left.map(u => u.type + ' (' + u.x.toFixed(1) + ', ' + u.z.toFixed(1) + ')').join(', '));
     }
 });
+
+// asp67's match of 26 October (11:37): four workers sent to build twitched for good 3.7 from
+// one of their own houses, between them and the site. A builder walks straight at its site
+// (game.updateWorkerTasks, State 4), not at its targetX, which still held an old job's
+// destination; the push round the house read that and never fired.
+test('a builder walking to a site behind a house goes round it, whatever its old targetX', () => {
+    for (const seed of [1, 2]) {
+        const m = new Realm({ seed });
+        const [a, b] = m.startFixture(['roman', 'egyptian']);
+        m.addBuilding(a, 'town_center', -300, 0); m.addBuilding(b, 'town_center', 300, 0);
+        m.scripted(a); m.scripted(b);
+        m.addBuilding(a, 'house', 0, 0);
+        const site = m.addBuilding(a, 'house', -10, 0, { underConstruction: true, health: 10, buildProgress: 0 });
+        const w = m.addUnit(a, 'worker', 12, (seed - 2.5) * 0.05);
+        Object.assign(w, { targetX: 30, targetZ: 40, task: 'building', buildTarget: site, isMoving: false });
+        m.run(20000);
+        assert.ok(Math.hypot(w.x - site.x, w.z - site.z) <= 3.6 || !site.underConstruction,
+            'seed ' + seed + ': reached the site, not left at (' + w.x.toFixed(2) + ', ' + w.z.toFixed(2) + ')');
+    }
+});

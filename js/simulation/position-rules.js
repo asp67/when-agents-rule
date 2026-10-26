@@ -118,7 +118,14 @@ var WarPositionRules = Object.freeze({
                     // other side of that line takes, so none cross. Exactly on the line, one
                     // fixed side. Only on the way PAST it: one headed for the building itself
                     // (a worker bringing its load to the Town Center) still stops at its edge.
+                    // Where it really walks: a builder or repairer goes straight for its
+                    // site, whatever its targetX says (game.updateWorkerTasks, States 4
+                    // and 4b) -- read from the stale targetX, four workers in asp67's match
+                    // of 26 October (11:37) twitched for good at a house between them
+                    // and the site they were sent to build.
                     const head = unit.isAttacking && unit.attackTarget ? unit.attackTarget
+                        : unit.task === 'building' && unit.buildTarget ? unit.buildTarget
+                        : unit.task === 'repairing' && unit.repairTarget ? unit.repairTarget
                         : unit.isMoving && unit.targetX !== undefined ? { x: unit.targetX, z: unit.targetZ } : null;
                     const bx = head && head.x - building.x, bz = head && head.z - building.z;
                     if (head && head !== building && bx * bx + bz * bz > clr * clr) {
