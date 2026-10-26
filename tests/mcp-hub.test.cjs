@@ -100,7 +100,8 @@ test('a turn: join, wait, three commands and a plan, a fourth refused, end_turn;
     const over = JSON.parse(said(await call(port, T, 'wait_for_turn')));
     assert.equal(over.matchOver, true); assert.deepEqual(over.result, { winner: 'greek' }); assert.match(over.next, /Stop playing/);
     const status = await (await fetch(`http://127.0.0.1:${port}/status`)).json();
-    assert.equal(status.page, true); assert.deepEqual(status.seats, [{ seat: 1, harness: true, joined: true }]);
+    assert.equal(status.page, true);
+    assert.deepEqual(status.seats, [{ seat: 1, harness: true, joined: false }], 'told to stop, the harness is no longer joined');
     pg.ws.close();
 });
 
@@ -154,4 +155,27 @@ test('two WAR pages share the hub without knocking each other off; a page that c
     pa2.send({ type: 'arena', seats: [{ token: A, seat: 1 }] });
     assert.equal((await pa2.next(m => m.type === 'join')).token, A, 'the returning page sees the seat ready at once');
     pa2.ws.close(); pb.ws.close();
+});
+
+// asp67, 26 Oct: "do we have a mechanic that tells the harness when I quit the arena?" The
+// page sends "over"; a harness busy at that moment hears it on its next wait, and the next
+// arena waits for it to join again instead of showing the seat ready.
+test('a match quit while the harness is busy: its next wait hears it is over, and the next arena waits for a new join', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-hhhh8888';
+    const pg = await fakePage(port);
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+    pg.send({ type: 'turn', token: T, turn: 1, state: '{}' });
+    await call(port, T, 'wait_for_turn');                       // mid-turn now
+    pg.send({ type: 'over', token: T, result: { defeated: false } });
+    await new Promise(r => setTimeout(r, 50));
+    const over = JSON.parse(said(await call(port, T, 'wait_for_turn')));
+    assert.equal(over.matchOver, true, 'told, although no longer joined');
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });   // the next arena
+    await new Promise(r => setTimeout(r, 50));
+    const st = await (await fetch(`http://127.0.0.1:${port}/status`)).json();
+    assert.deepEqual(st.seats, [{ seat: 1, harness: true, joined: false }], 'red until the harness joins again');
+    pg.ws.close();
 });

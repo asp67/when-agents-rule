@@ -150,6 +150,10 @@ function fromPage(msg, pg) {
             s.over = msg.result || {};
             s.turn = s.pendingTurn = null;
             for (const w of s.waiters.splice(0)) w(textResult(JSON.stringify(overResult(s))));
+            // The harness is told to stop, so it is no longer playing: the next arena waits
+            // for it to join again rather than showing the seat ready (asp67, 26 Oct).
+            s.joined = false;
+            log(s.token, 'match over');
             break;
         }
         case 'close':
@@ -184,6 +188,8 @@ async function callTool(token, name, args) {
             + `You have joined as seat ${s.seat != null ? s.seat : '?'}. This is how you play, until the match is over:\n`
             + LOOP + '\nDo not stop to explain or to ask: keep calling the tools. ' + NEXT_WAIT);
     }
+    // A match that ended while the harness was busy: its next wait hears so, joined or not.
+    if (name === 'wait_for_turn' && s.over) return textResult(JSON.stringify(overResult(s)));
     if (!s.joined) return textResult('Call join first.', true);
     if (name === 'wait_for_turn') {
         if (s.over) return textResult(JSON.stringify(overResult(s)));
@@ -192,7 +198,8 @@ async function callTool(token, name, args) {
         return new Promise(resolve => {
             const w = r => { clearTimeout(timer); resolve(r); };
             const timer = setTimeout(() => { s.waiters = s.waiters.filter(x => x !== w);
-                resolve(textResult(JSON.stringify({ waiting: true, next: 'Not your turn yet. Call wait_for_turn again now.' }))); }, WAIT_MS);
+                resolve(textResult(JSON.stringify({ waiting: true, next: s.listed ? 'Not your turn yet. Call wait_for_turn again now.'
+                    : 'No WAR arena has this seat open right now (the page was closed or reloaded). Call wait_for_turn again to wait for it.' }))); }, WAIT_MS);
             s.waiters.push(w);
         });
     }

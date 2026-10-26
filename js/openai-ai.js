@@ -10191,8 +10191,12 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             this.abortLanes(c, 'match stopped');
             // An MCP seat's harness is waiting on the hub: tell it the match is over, so
             // its wait_for_turn ends the loop instead of waiting on (docs/MCP-ARENA.md).
-            if (c.model && c.model.provider === 'mcp' && c.model.mcpToken && this._mcpLinks) {
-                const link = this._mcpLinks.get(String(c.model.endpoint || 'http://127.0.0.1:8765'));
+            // The shared link, not only one this match has used: a match quit before the
+            // seat's first turn never registered one, and its harness heard nothing.
+            if (c.model && c.model.provider === 'mcp' && c.model.mcpToken) {
+                const base = String(c.model.endpoint || 'http://127.0.0.1:8765');
+                const link = (this._mcpLinks && this._mcpLinks.get(base))
+                    || (typeof WarMcpLink === 'function' ? WarMcpLink.shared(base) : null);
                 if (link) {
                     try { link.over(c.model.mcpToken, { defeated: !!c.defeated }); }
                     catch (e) { /* the hub is gone: nothing waits on it */ }

@@ -90,3 +90,14 @@ test('end to end: a harness over MCP plays a game seat through the hub', { timeo
     assert.ok(seen.includes('joined'));
     assert.match(await tool('get_rules'), /greek|Greek/i, 'get_rules has the seat\'s system prompt');
 });
+
+test('stopping a match tells each MCP seat\'s harness it is over', async () => {
+    const { mgr, c } = await mcpSeat([]);
+    const told = [];
+    mgr._mcpLinks.get('http://127.0.0.1:8765').over = (token, result) => told.push({ token, result });
+    mgr.aiControllers = [c];
+    mgr.stop();
+    assert.equal(told.length, 1);
+    assert.equal(told[0].token, 'seat-token-test0001');
+    assert.equal(told[0].result.defeated, false);
+});
