@@ -1,5 +1,5 @@
 {
   "_note": "The default system prompt's sha256 and the ARENA_PROMPT_VERSION it ships under (tests/prompt-version.test.cjs). Change one, change both.",
-  "version": "agents-rule-v109",
-  "sha256": "ccb39d8b6a40bb604a337074eac00a6a8142aa8c0a27af374109655301be79d4"
+  "version": "agents-rule-v110",
+  "sha256": "75eac5bc62293f6ad30a19f474dcff2f237cb97b22fbc0ae743bd52f64e59a79"
 }

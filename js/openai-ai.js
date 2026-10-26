@@ -1016,7 +1016,7 @@ class OpenAIAIManager {
     // Gates that mean "not yet", as against "not right now". A unit whose only
     // problem is money is still a trainable unit; one with no building to train it in
     // is not, however rich you are.
-    static get STRUCTURAL_BLOCKS() { return ['age', 'tech', 'host', 'alreadyBuilt']; }
+    static get STRUCTURAL_BLOCKS() { return ['age', 'tech', 'host', 'alreadyBuilt', 'builder']; }
 
     // Partition a state list (array, or the units' host->age->entries object) into the
     // things that can be ordered and the things that cannot, keyed { <openName>, blocked }.
@@ -3794,9 +3794,12 @@ class OpenAIAIManager {
         // a unit the seat could not train because it sat at the population cap.
         //
         // Emitted anywhere in trainableUnits / buildableStructures / research.available:
-        //   age  tech  host  pop  cost  alreadyBuilt
+        //   age  tech  host  pop  cost  alreadyBuilt  builder
         // "host" (no finished building that trains/researches it), "alreadyBuilt" (the
-        // Wonder, one per player), "pop" (at the population cap), "cost" (cannot pay).
+        // Wonder, one per player), "pop" (at the population cap), "cost" (cannot pay),
+        // "builder" (b1111: no unit left that could build it -- no worker, or for a
+        // trebuchet no engineer; asp67: seats with no Town Center and no villager went on
+        // ordering buildings, told each time "You have no workers to build ...").
         //
         // "pop" was left out of the first version on the grounds that population is
         // already in resources and the model can compare two numbers itself. That proved
@@ -3862,6 +3865,10 @@ class OpenAIAIManager {
         // Only lists what your civilization can EVER build; if a type is missing,
         // your civ does not have it (don't waste turns trying).
         const stdBuildings = ['town_center', 'house', 'farm', 'barracks', 'archery_range', 'stable', 'academy', 'tower', 'temple', 'trebuchet', 'trebuchet_advanced'];
+        // Who could build at all: any living worker builds everything but a trebuchet,
+        // which only an engineer builds (b1111, "builder" below).
+        const hasWorker = ai.units.some(u => u.type === 'worker' && u.health > 0);
+        const hasEngineer = ai.units.some(u => u.type === 'engineer' && u.health > 0);
         const buildableStructures = stdBuildings.map(t => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(t) : null;
             if (!def) return null;
@@ -3877,6 +3884,7 @@ class OpenAIAIManager {
             if (!techDone) blockedBy.push('tech');
             // The price in THIS age (a trebuchet built in the iron age costs 20% more).
             const price = (typeof buildingCost === 'function') ? buildingCost(def, ai.age) : def.cost;
+            if (!(isTrebuchetBuilding(t) ? hasEngineer : hasWorker)) blockedBy.push('builder');
             if (tooPoor(price)) blockedBy.push('cost');
             // What a trebuchet becomes, and how fast it rolls (b1110): seats took the
             // standing engine for a unit and waited for it to move.
@@ -3902,6 +3910,7 @@ class OpenAIAIManager {
             const wBlocked = [];
             if (!ageReached(wAge)) wBlocked.push('age');
             if (ai.buildings.some(b => b.isWonder)) wBlocked.push('alreadyBuilt');
+            if (!hasWorker) wBlocked.push('builder');
             if (tooPoor(wDef.cost)) wBlocked.push('cost');
             buildableStructures.push({
                 type: 'wonder', builtAs: wDef.id, requiredAge: wAge, requiresTech: null,
@@ -4150,7 +4159,7 @@ class OpenAIAIManager {
             unlockedContent: unlockedContent,
             // A list called "trainable" that holds things you cannot train is a lie the
             // model plans from, and the state is the worst place to keep one. Split on
-            // the STRUCTURAL gates -- age, tech, host, alreadyBuilt -- which is what
+            // the STRUCTURAL gates -- age, tech, host, alreadyBuilt, builder -- which is what
             // separates "not yet possible" from "possible, not right now".
             //
             // cost and pop stay on the available side, wearing their blockedBy. They
@@ -4358,7 +4367,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
 
 "plan" saves your objective (one line) and plan (up to ${OpenAIAIManager.PLAN_MAX_STEPS} short steps). Call it only when something changed. Both persist across turns, so omit it to keep them and still issue up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} game commands.
 
-"units" and "buildings" each split in two: "units.trainable" / "buildings.buildable" are what you can order now, and "units.blocked" / "buildings.blocked" are what you cannot, each entry carrying "blockedBy" ("age", "tech", "host", "alreadyBuilt") and, for buildings, "requiresTech" and "requiredAge". Entries on the open side carry "cost", and a "blockedBy" of "cost" or "pop" when that is all that stands in the way.{{actions}}`;
+"units" and "buildings" each split in two: "units.trainable" / "buildings.buildable" are what you can order now, and "units.blocked" / "buildings.blocked" are what you cannot, each entry carrying "blockedBy" ("age", "tech", "host", "alreadyBuilt", or "builder": no worker left, or no engineer for a trebuchet) and, for buildings, "requiresTech" and "requiredAge". Entries on the open side carry "cost", and a "blockedBy" of "cost" or "pop" when that is all that stands in the way.{{actions}}`;
     }
 
     // ----------------------------------------------------------------

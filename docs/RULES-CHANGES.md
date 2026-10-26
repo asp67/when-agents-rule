@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1112: a building nobody is left to build is blocked by "builder" (26 October 2026)
+
+**Rules change** (what a model is told). asp67: "seats that do no longer have a towncenter or villagers keep trying to build structures. I am assuming that the block condition does only include the necessary material but not the worker that is needed to build one?" It did: a building was listed as buildable by age, tech and cost, never by whether anyone could build it, and the seat learned otherwise only from "You have no workers to build ..." on every try.
+
+**Now:**
+- With no living worker, every building a worker builds, the Wonder included, carries `"builder"` in its `blockedBy`. A trebuchet carries it while the seat has no living engineer (only an engineer builds one).
+- `"builder"` is a structural gate, like age, tech, host and alreadyBuilt: the entry moves to `buildings.blocked`. Workers or an engineer that are only busy do not block it; the executor's reply still says when none is free.
+- The system prompt names the code (`agents-rule-v110`), and `game-state-schema.json` lists and explains it.
+- **Tests:** `tests/builder-block.test.cjs`: with workers a tower is buildable and the trebuchet blocked by builder (no engineer); with none left the house, Town Center, tower, temple and Wonder are blocked by builder. Fails on b1111.
+
 ## Build 1111: a builder goes round a house between it and its site (26 October 2026)
 
 **Rules change.** asp67, during the match of 26 October (11:37), with screenshots: two, then four workers "stuck at the edge of a building", "twitching front and back".

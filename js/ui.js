@@ -121,7 +121,7 @@ class UIManager {
         return /town_center|barracks|temple|academy|house|farm|stable|tower|range|trebuchet/.test(t0);
     }
 
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v109'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v110'; }
 
     constructor(game) {
         this.game = game;
