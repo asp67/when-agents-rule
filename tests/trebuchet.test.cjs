@@ -1146,3 +1146,27 @@ test('a move with a trebuchet, on guard, besieges a tower on its way, then goes 
     m.run(60000);
     assert.ok(cx() - x0 > 20, 'and the group marches there: ' + (cx() - x0).toFixed(1));
 });
+
+// asp67's video of 26 October: a wedge standing for its simple trebuchet "twitching" -- in the
+// replayed match (13:11, 48:50) ten of twelve soldiers flipped between the standing and the
+// walking pose 73 times in one second. Members walking in stopped at one line, one rank
+// behind the lead, and their neighbours' separation nudged them back over it; they stop now
+// within half a rank and walk again only from two back (b1113).
+test('a formation standing for its trebuchet forms up once, without flickering between poses', () => {
+    for (const shape of ['wedge', 'block', 'line']) {
+        const b = board(5), { m, a, g, ca } = b;
+        g.completeConstruction(m.addBuilding(a, 'trebuchet', -112, 0, { underConstruction: true, health: 200, buildProgress: 20000 }));
+        const treb = a.units.find(u => u.type === 'simple_trebuchet');
+        const army = [];
+        for (let i = 0; i < 12; i++) army.push(m.addUnit(a, i < 2 ? 'warrior' : 'archer', -100 + (i % 4) * 2, -6 + Math.floor(i / 4) * 3));
+        m.command(ca, 'move_units', { unitIds: army.concat(treb).map(u => u.handle), targetX: 100, targetZ: 0, formation: shape, matchSpeed: 'slowestUnit', reason: 'with the trebuchet' });
+        const flips = new Map(army.map(u => [u, 0])), pose = new Map();
+        for (let t = 0; t < 160; t++) {   // 8 s: forming up and standing for the trebuchet
+            m.run(50);
+            for (const u of army) { if (pose.has(u) && pose.get(u) !== !!u._formWait) flips.set(u, flips.get(u) + 1); pose.set(u, !!u._formWait); }
+        }
+        const most = Math.max(...flips.values());
+        assert.ok(most <= 2, shape + ': a member changed pose ' + most + ' times while the body formed up and waited');
+        assert.ok(army.every(u => u._formWait), shape + ': and all stand for the trebuchet');
+    }
+});

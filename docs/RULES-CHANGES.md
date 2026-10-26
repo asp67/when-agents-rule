@@ -6,6 +6,17 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1113: a formation standing for its trebuchet forms up without twitching (26 October 2026)
+
+**Rules change.** asp67, with a screen recording of a running match: "Simple trebuchet catching up to the formation leads to this" -- a wedge whose soldiers twitch on the spot.
+
+**What happened.** Replayed in asp67's match of 26 October (13:11), 48:50: a Greek wedge standing for its simple trebuchet, 18 behind. In one second ten of its twelve soldiers flipped between the standing and the walking pose 73 times. While a body stands for a trebuchet, a member within one rank of the lead stands and one further back walks in on b1110's ramp; a member walking in stopped as it crossed that one line, and its neighbours' separation nudged it back over, so it walked again: every step or two.
+
+**Now** the line has slack: a member walking in stands once within half a rank of the lead, and one standing walks again only from two ranks back (`FORMATION_CATCH_UP`), more than a separation nudge moves it.
+
+- Headless, a wedge forming up with its trebuchet 12 behind: 33 pose changes by 6 soldiers in one second before; now each soldier changes once, from walking in to standing.
+- **Tests:** `tests/trebuchet.test.cjs` forms a wedge, a block and a line with the trebuchet behind; no member may change pose more than twice in 8 s, and all stand at the end. Fails on b1112.
+
 ## Build 1112: a building nobody is left to build is blocked by "builder" (26 October 2026)
 
 **Rules change** (what a model is told). asp67: "seats that do no longer have a towncenter or villagers keep trying to build structures. I am assuming that the block condition does only include the necessary material but not the worker that is needed to build one?" It did: a building was listed as buildable by age, tech and cost, never by whether anyone could build it, and the seat learned otherwise only from "You have no workers to build ..." on every try.

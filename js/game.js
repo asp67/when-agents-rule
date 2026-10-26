@@ -4707,6 +4707,7 @@ class Game {
 
     moveSpeedOf(unit, deltaTime) {
         if (!unit) return 1.0;
+        const wasStanding = !!unit._formWait;   // last step's answer (see the siege wait below)
         unit._formWait = false;
         const own = unit.speed || 1.0;
         const m = unit.marchSpeed;
@@ -4762,9 +4763,16 @@ class Game {
             const behind = g.lead - along;
             if (behind >= Game.FORMATION_CATCH_UP) return own;   // still finding its place
             if (behind > 0) ramp = behind / Game.FORMATION_CATCH_UP;
-            // Standing for a trebuchet, one within FORMATION_IN_PLACE stands with the rest:
+            // Standing for a trebuchet, one close behind the lead stands with the rest:
             // closing on a lead that does not move, the ramp would inch it on for ever.
-            if (g.trailing > 0 && g.waitForSiege && behind <= Game.FORMATION_IN_PLACE) ramp = 0;
+            // With slack (b1113): one walking in stands once within half a rank, one
+            // standing walks again only from FORMATION_CATCH_UP back. A single line at
+            // FORMATION_IN_PLACE was crossed both ways by the neighbours' separation nudges:
+            // in asp67's match of 26 October (13:11) a Greek wedge standing for its
+            // trebuchet flipped its soldiers between the standing and the walking pose 73
+            // times in one second, ten of twelve twitching on the spot (asp67's video).
+            if (g.trailing > 0 && g.waitForSiege
+                && behind <= (wasStanding ? Game.FORMATION_CATCH_UP : Game.FORMATION_IN_PLACE / 2)) ramp = 0;
         }
         const held = s => ramp > 0 ? s + (own - s) * ramp : s;
         // The regrouping slowdowns hold back the units IN place, so others can close up;
