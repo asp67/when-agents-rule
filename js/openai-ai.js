@@ -1738,6 +1738,7 @@ class OpenAIAIManager {
     static async probeServedBy(conn) {
         try {
             const prov = OpenAIAIManager.resolveProvider(conn);
+            if (prov === 'mcp') return 'war-mcp-hub';   // the harness is recorded beside it
             // Only Ollama's own protocol names its server. Anthropic's and Google's are
             // spoken by vLLM, Unsloth and gateways too, so those are asked like the rest
             // (b1027: this returned the protocol, and the header recorded vLLM as Anthropic).
@@ -1757,6 +1758,10 @@ class OpenAIAIManager {
     static publicModelSettings(conn, slot, sharedPrompt, servedBy) {
         const out = {
             provider: OpenAIAIManager.resolveProvider(conn),
+            // An MCP seat (docs/MCP-ARENA.md): the agent harness that played it, outside
+            // WAR's own loop, so its results are their own category. Its model is as the
+            // user stated it; WAR cannot see it.
+            ...(OpenAIAIManager.resolveProvider(conn) === 'mcp' ? { harness: conn.harness || 'other', harnessExternal: true } : {}),
             // The protocol above is not the service: vLLM, llama.cpp, LM Studio,
             // OpenRouter and Groq all speak "openai". This is what the server calls
             // itself, so a result can be read as (model x stack) rather than as a
@@ -2811,12 +2816,15 @@ class OpenAIAIManager {
                 // air. 1 is today's behaviour exactly. See the lane pool below.
                 lanes: Math.max(1, Math.min(4, Number(conn.lanes) || 1)),
                 libraryId: conn.libraryId != null ? conn.libraryId : null,
-                customSystemPrompt: playerSetup.systemPrompt || null
+                customSystemPrompt: playerSetup.systemPrompt || null,
+                // An MCP seat's address on the hub, and the harness that plays it.
+                mcpToken: conn.mcpToken || null,
+                harness: conn.harness || null
             };
 
             // If no explicit model was chosen, discover one from the endpoint
             // (provider-aware: OpenAI /models, Anthropic /models, Ollama /api/tags).
-            if (!conn.model || conn.model === 'default') {
+            if ((!conn.model || conn.model === 'default') && modelInfo.provider !== 'mcp') {
                 try {
                     const probe = await OpenAIAIManager.testConnection(conn.endpoint, modelInfo.auth, modelInfo.provider, 6000);
                     if (probe.ok && probe.models && probe.models.length) {
@@ -5027,9 +5035,8 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         let link = this._mcpLinks.get(key);
         if (!link) {
             if (typeof WarMcpLink !== 'function') throw new Error('the MCP link (js/mcp-link.js) is not loaded');
-            link = new WarMcpLink(key);
+            link = WarMcpLink.shared(key);   // the one the arena setup's dots already use
             this._mcpLinks.set(key, link);
-            link.connect();
         }
         return link;
     }
@@ -10182,6 +10189,15 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         this._stopped = true;
         for (const c of this.aiControllers) {
             this.abortLanes(c, 'match stopped');
+            // An MCP seat's harness is waiting on the hub: tell it the match is over, so
+            // its wait_for_turn ends the loop instead of waiting on (docs/MCP-ARENA.md).
+            if (c.model && c.model.provider === 'mcp' && c.model.mcpToken && this._mcpLinks) {
+                const link = this._mcpLinks.get(String(c.model.endpoint || 'http://127.0.0.1:8765'));
+                if (link) {
+                    try { link.over(c.model.mcpToken, { defeated: !!c.defeated }); }
+                    catch (e) { /* the hub is gone: nothing waits on it */ }
+                }
+            }
             c.pendingAttackReports = [];     // drop unresolved arrival reports
             c.pendingControl = [];           // ...and any card held for a round that will not come
             c.answerContext = null;

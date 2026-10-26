@@ -24,6 +24,17 @@ class WarMcpLink {
     }
     static get FREE() { return ['plan']; }
 
+    // One link per hub address for the whole page, shared by the arena setup (its dots)
+    // and the running match (its turns): the harness that joined in the setup is the
+    // one the match plays with.
+    static shared(base = 'http://127.0.0.1:8765') {
+        const key = String(base).replace(/\/+$/, '');
+        const all = WarMcpLink._all || (WarMcpLink._all = new Map());
+        let link = all.get(key);
+        if (!link) { link = new WarMcpLink(key); all.set(key, link); link.connect(); }
+        return link;
+    }
+
     // Status for the arena setup's dots: listeners get (token, {hub, harness, joined}).
     onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
     status(token) {

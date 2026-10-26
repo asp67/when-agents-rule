@@ -1326,7 +1326,22 @@ class UIManager {
             title="${this.escapeHtml(t(n ? 'bench.libTip' : 'bench.libNone'))}">${this.escapeHtml(t('bench.libBtn', { n }))}</button>`;
     }
 
+    // The provider choices, shared by every card. "MCP seat": an agent harness plays the
+    // seat over the local WAR MCP hub (js/mcp-ui.js, docs/MCP-ARENA.md).
+    providerOptionsHtml(m) {
+        const provSel = (v) => (m.provider || 'auto') === v ? 'selected' : '';
+        return `
+                    <option value="auto" ${provSel('auto')}>${t('ar.provAuto')}</option>
+                    <option value="openai" ${provSel('openai')}>OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter …)</option>
+                    <option value="anthropic" ${provSel('anthropic')}>Anthropic (Claude)</option>
+                    <option value="ollama" ${provSel('ollama')}>Ollama</option>
+                    <option value="google" ${provSel('google')}>Google (Gemini)</option>
+                    ${typeof this.renderMcpCard === 'function' ? `<option value="mcp" ${provSel('mcp')}>${t('ar.provMcp')}</option>` : ''}`;
+    }
+
     renderModelCard(m, n) {
+        // An MCP seat has its own card: no endpoint, sampling or thinking to set.
+        if (m.provider === 'mcp' && typeof this.renderMcpCard === 'function') return this.renderMcpCard(m, n);
         const e = (s) => this.escapeHtml(s == null ? '' : String(s));
         // Default (unnamed) models show a LIVE translated fallback, never a baked-in
         // name, so the label follows the current GUI language.
@@ -1499,13 +1514,7 @@ class UIManager {
                     <input type="text" value="${e(m.endpoint)}" oninput="game.ui.setModelField(${m.id},'endpoint',this.value)" placeholder="${epPlaceholder}"></div>
             </div>
             <div class="arena-field"><label>${t('ar.fProvider')}</label>
-                <select onchange="game.ui.setModelProvider(${m.id}, this.value)">
-                    <option value="auto" ${provSel('auto')}>${t('ar.provAuto')}</option>
-                    <option value="openai" ${provSel('openai')}>OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter …)</option>
-                    <option value="anthropic" ${provSel('anthropic')}>Anthropic (Claude)</option>
-                    <option value="ollama" ${provSel('ollama')}>Ollama</option>
-                    <option value="google" ${provSel('google')}>Google (Gemini)</option>
-                </select>
+                <select onchange="game.ui.setModelProvider(${m.id}, this.value)">${this.providerOptionsHtml(m)}</select>
             </div>
             <div class="arena-field"><label>${t('ar.fAuth')}</label>
                 <select onchange="game.ui.setAuthType(${m.id}, this.value)">
@@ -1734,6 +1743,7 @@ class UIManager {
                     <span class="arena-slot-title">${slotTitle(i)}</span>
                     <span class="arena-slot-summary">${civNames[slot.civ] || slot.civ} · ${e(ctrlName)}</span>
                     <span class="slot-prompt-badge" id="slotPromptBadge${i}" title="${t('ar.promptEditedTitle')}" style="${isLLM && slot.prompt != null ? '' : 'display:none'}">✎ ${t('ar.promptEdited')}</span>
+                    ${(!campaign && typeof this.seatReadyHtml === 'function') ? this.seatReadyHtml(slot, i) : ''}
                 </div>
                 ${collapsed ? '' : body}
             </div>`;
@@ -1743,7 +1753,11 @@ class UIManager {
 
     // Slot markup is built with the slot's OWN state; the derived case depends on the
     // template as well, so it is stamped on afterwards by the one function that knows.
-    _afterSlotsRendered() { this.refreshDerivedSlotBadges(); }
+    _afterSlotsRendered() {
+        this.refreshDerivedSlotBadges();
+        // The readiness dots (js/mcp-ui.js): checks still missing start now.
+        if (typeof this.refreshSeatReadiness === 'function') this.refreshSeatReadiness();
+    }
 
     toggleArenaSlot(i) {
         const s = this.setupSlots()[i];
@@ -2047,7 +2061,14 @@ class UIManager {
         if (th.send === 'anthropic' || th.send === 'google') return /^-?\d+$/.test(s);   // a budget
         return th.levels.includes(s) || (th.canOn && (s === 'on' || s === 'true')) || (th.canOff && (s === 'off' || s === 'false'));
     }
-    setModelProvider(id, value) { const m = this.getArenaModel(id); if (m) { m.provider = value; this.settleReasoning(m); this.saveArenaConfig(); this.renderArenaLibrary(); this.discoverArenaThinking(id); } }
+    setModelProvider(id, value) {
+        const m = this.getArenaModel(id);
+        if (!m) return;
+        if (typeof this.mcpProviderSwitched === 'function') this.mcpProviderSwitched(m, value);
+        m.provider = value;
+        this.settleReasoning(m); this.saveArenaConfig(); this.renderArenaLibrary();
+        if (value !== 'mcp') this.discoverArenaThinking(id);
+    }
 
     toggleArenaModel(id) {
         const m = this.getArenaModel(id);
@@ -2166,6 +2187,7 @@ class UIManager {
         // old behavior seeded a full template COPY here, which lit the ✎ edited
         // badge although nothing was edited. A real edit survives model changes.
         this.saveSetup();
+        if (typeof this.mcpEnsureTurnBased === 'function') this.mcpEnsureTurnBased();
         this.renderArenaSlots(); // show/hide the per-slot prompt editor
     }
     // Line-based LCS diff (zero-dependency). Returns ops over the two texts:
@@ -2464,6 +2486,14 @@ class UIManager {
         }
         const m = cfg.models.find(mm => mm.id === slot.control);
         if (!m || !(m.endpoint || '').trim()) return { civ: slot.civ, type: 'llm', connection: null, unconfigured: true };
+        // An MCP seat: its harness plays over the hub. The model is as the user stated it.
+        if (m.provider === 'mcp') return {
+            civ: slot.civ, type: 'llm',
+            systemPrompt: ((slot.prompt && slot.prompt.trim()) ? slot.prompt : (cfg.prompt || '')).trim(),
+            connection: { name: (m.name || '').trim() || (this.mcpHarnessName ? this.mcpHarnessName(m.harness) : 'MCP'),
+                endpoint: m.endpoint.trim(), provider: 'mcp', model: (m.model || '').trim() || 'harness',
+                mcpToken: m.mcpToken, harness: m.harness || 'other', language: m.language || 'en', libraryId: m.id, lanes: 1 }
+        };
         return {
             civ: slot.civ,
             type: 'llm',

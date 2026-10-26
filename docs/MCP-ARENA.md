@@ -25,6 +25,10 @@ fixed harness. The comparison is that fixed loop against agent loops.
   a seat that does not turn green means the user fixes it, or sets up the arena without it.
 - One hub on HTTP (localhost); stdio only as a fallback for harnesses that cannot reach an
   HTTP MCP server.
+- An arena with an MCP seat plays turn-based, with a round of **180 s** by default (asp67,
+  26 Oct: "the longest turn that still makes sense; let's test it and see where we end").
+  It stays a visible setting. Local models are often slower than harnesses, so the matches
+  will tell which seats the limit actually binds.
 - Supported harnesses: the most popular ones, listed below. Setup should be as simple
   as the harness allows; where a harness can configure itself, the library also offers a
   prompt that asks the model in the harness to do it.

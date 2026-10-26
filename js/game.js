@@ -243,6 +243,14 @@ class Game {
     // bug, and it is the reason the report reads "then nothing happens".
     async startArenaFromSetup(spec = null) {
         if (this._arenaStarting) return;
+        // From the arena setup (no spec: not a replay, Quick Match or preset), every seat
+        // must show a green dot first (js/mcp-ui.js, docs/MCP-ARENA.md): a library seat
+        // whose tool check passed, a rule-based seat, an MCP seat whose harness joined.
+        if (!spec && this.ui && typeof this.ui.arenaStartBlocked === 'function') {
+            const blocked = this.ui.arenaStartBlocked();
+            if (blocked.length) { this.ui.showErrorMessage(t('ar.startBlocked', { seats: blocked.join(', ') })); return; }
+            if (typeof this.ui.mcpEnsureTurnBased === 'function') this.ui.mcpEnsureTurnBased();
+        }
         this._arenaStarting = true;
         const cover=document.createElement('div');
         cover.className='arena-loading';cover.setAttribute('role','status');
