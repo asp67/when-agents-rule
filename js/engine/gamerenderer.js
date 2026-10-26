@@ -419,6 +419,27 @@
             this._halfH = Math.max(CLOSE_MIN_HALF, Math.min(maxHalf(), dist * Math.tan(10 * Math.PI / 180)));
         }
 
+        // A standing trebuchet turns to what it aims at (b1110, asp67: "the same mechanic
+        // as with units"): the unit steering rule -- error-proportional, an about-face
+        // pivots -- and the building re-composed at its new heading. It keeps its
+        // heading when it has nothing to aim at.
+        _turnTrebuchet(b, dt) {
+            const aim = b._aim && b._aim.health > 0 ? b._aim : null;
+            if (!aim) return;
+            const mx = aim.x - b.x, mz = aim.z - b.z;
+            if (mx * mx + mz * mz < 1e-6) return;
+            const want = Math.atan2(mx, mz);
+            let dir = b._drawRY != null ? b._drawRY : (b.rotationY || 0);
+            let d = want - dir;
+            while (d > Math.PI) d -= Math.PI * 2;
+            while (d < -Math.PI) d += Math.PI * 2;
+            if (Math.abs(d) < 1e-3) return;
+            if (Math.abs(d) > 1.8) dir = want;
+            else dir += d * Math.min(1, dt * (10 + 12 * Math.abs(d)));
+            b._drawRY = dir;
+            this._composeBuilding(b);
+        }
+
         // Which way a unit is drawn facing (radians about Y; +Z turned by it). The
         // director reads it to stand a close-up in front of the unit.
         unitFacing(u) { return (this._unitDir && this._unitDir.get(u)) || 0; }
@@ -978,6 +999,7 @@
             const prev = this.units.indexOf(unit);
             if (prev > -1) this.units.splice(prev, 1);
             this.units.push(unit);
+            if (unit.unitType === 'siege' && window.EngineBuildings) { this._addSiegeUnit(unit); return; }
             const engineType = unit.unitType === 'support' ? 'priest'
                 : (EngineUnits.META[unit.unitType] ? unit.unitType : 'infantry');
             // Seat-true (review #12): the civilization's colour, or the seat's when two
@@ -1011,6 +1033,58 @@
             unit.healthBar = { material: { color: { setHex: () => {} } } };
             unit.body = { material: { emissive: { setHex: () => {} } } };
             unit.baseY = 0;
+        }
+
+        // A trebuchet on wheels (b1110): its engine's building model, with its flag on the
+        // frame's front-left, drawn as one rigid unit that turns and travels.
+        _addSiegeUnit(unit) {
+            const m3 = M();
+            const tint = this._tintOf(window.WarIdentity ? WarIdentity.color(unit.owner, unit.civilization, unit.seat, unit.color) : unit.color);
+            const adv = unit.type === 'advanced_trebuchet';
+            const key = 'siege|' + unit.type + '|' + unit.civilization;
+            if (!this._unitModels) this._unitModels = new Map();
+            if (!this._unitModels.has(key)) {
+                const s = m3.scaling(BSCALE, BSCALE, BSCALE), k = adv ? 1.25 : 1;
+                const parts = EngineBuildings.parts(adv ? 'trebuchet_advanced' : 'trebuchet', { age: adv ? 'iron' : 'bronze', civ: unit.civilization })
+                    .map(p => ({ ...p, m: m3.multiply(s, p.m) }));
+                const at = (x, y, z) => m3.multiply(s, m3.translation(x, y, z));
+                const lift = 0.35 * k;
+                parts.push({ kind: 'cylinder', args: [0.07, 0.09, 2.6, 5], tex: 'bark', m: at(-1.0 * k, 1.3 + lift, 2.6 * k * 0.85) });
+                parts.push({ kind: 'box', args: [0.04, 0.5, 0.8], tex: 'cloth', team: true, m: at(-1.0 * k, 2.25 + lift, 2.6 * k * 0.85 + 0.42) });
+                this._unitModels.set(key, EngineUnits.batches(parts).map(p => ({
+                    buf: GLCore.createMeshBuffers(this.gl, p.mesh), mesh: p.mesh, texName: p.tex, team: p.team, blend: p.blend, bone: p.bone || null })));
+            }
+            const entries = this._unitModels.get(key).map(p => ({
+                buf: p.buf, tex: this.tex[p.texName], tint: p.team ? tint : this.WHITE,
+                base: M().identity(), bone: p.bone, blend: p.blend, model: M().identity() }));
+            // The arm turns about the axle: 3.95 model units up (axle 3.6 + 0.35 on wheels),
+            // scaled like the rest of the engine.
+            unit._engine = { type: 'siege', static: true, entries, phase: 0, far: () => entries,
+                pivotY: 3.95 * (adv ? 1.25 : 1) * BSCALE };
+            unit.mesh = { visible: true, position: { set: () => {}, x: 0, y: 0, z: 0 }, rotation: { z: 0 } };
+            unit.healthBar = { material: { color: { setHex: () => {} } } };
+            unit.body = { material: { emissive: { setHex: () => {} } } };
+            unit.baseY = 0;
+        }
+
+        // A trebuchet's throw (b1110, asp67: "the arm of the trebuchet is not moving"):
+        // from the moment the rules throw (u._throwAt, simulation ms), the arm swings up
+        // and over the axle, holds, and sinks back to reload; the stone leaves the sling
+        // near the top and is back once the arm is down. Cocked and loaded at rest.
+        static get TREB_SWING_S() { return 0.45; }
+        _siegePose(u, ue) {
+            const m3 = M(), now = this.game && this.game.simNow ? this.game.simNow() : 0;
+            const since = u._throwAt != null ? (now - u._throwAt) / 1000 : Infinity;
+            const SWING = EngineRenderer.TREB_SWING_S, HOLD = 0.35, BACK = 2.6, OVER = 2.7;
+            let beta = 0, loaded = true;
+            if (since < SWING) { const e = since / SWING; beta = OVER * e * e; loaded = e < 0.85; }
+            else if (since < SWING + HOLD) { beta = OVER; loaded = false; }
+            else if (since < SWING + HOLD + BACK) {
+                const e = (since - SWING - HOLD) / BACK;
+                beta = OVER * (1 - e * e * (3 - 2 * e)); loaded = false;
+            }
+            const armM = beta ? m3.rotateAround(m3.rotationX(beta), 0, ue.pivotY, 0) : m3.identity();
+            return { arm: armM, stone: loaded ? armM : m3.scaling(0, 0, 0) };
         }
 
         // A unit seen from far away (b1082): its bones merged at rest into one mesh per
@@ -1136,7 +1210,9 @@
             const world = m3.multiply(
                 m3.multiply(
                     m3.translation(building.x, 0, building.z),
-                    m3.rotationY(building.rotationY || 0)),
+                    // A trebuchet turns to its target (b1110): the drawn heading, kept
+                    // here, not in the rules' rotationY.
+                    m3.rotationY(building._drawRY != null ? building._drawRY : (building.rotationY || 0))),
                 m3.scaling(bs, bs, bs));
             let parts, shellIdx = -1, modelKey = null;
             if (building.underConstruction) {
@@ -1198,7 +1274,11 @@
                 // own flag, and ownership stopped reading at a glance exactly where it
                 // mattered most.
                 const fp = this._meshFootprint(parts, `${building.type}|${building.age}|${building.civilization}`);
-                const offX = fp.ex + 0.55, offZ = fp.ez + 0.55;
+                // A trebuchet carries its flag on the front-left of its frame (b1110), so
+                // it turns and travels with the engine.
+                const trebK = building.type === 'trebuchet_advanced' ? 1.25 : building.type === 'trebuchet' ? 1 : 0;
+                const offX = trebK ? -1.0 * trebK : fp.ex + 0.55, offZ = trebK ? 2.6 * trebK * 0.85 : fp.ez + 0.55;
+                const offY = trebK ? 0.35 * trebK : 0;   // a trebuchet stands raised on its wheels
                 const dressing=EngineBuildings.settlement(building.type,building.civilization,fp);
                 eb.lamps=[];
                 for(const side of (building.type==='town_center'||building.isWonder?[-1,1]:[-1])){
@@ -1221,20 +1301,20 @@
                     model:m3.multiply(world,m3.multiply(m3.translation(0,.025,fp.ez+.5),m3.scaling(1.45,1,2.3)))};
                 eb.opaque.push({
                     buf: this._buf('cylinder', [0.07, 0.09, 2.6, 5]), tex: this.tex.bark, tint: this.WHITE,
-                    model: m3.multiply(world, m3.translation(offX, 1.3, offZ))
+                    model: m3.multiply(world, m3.translation(offX, 1.3 + offY, offZ))
                 });
                 eb.opaque.push({
                     buf: this._buf('flag', [0.85, 0.55, 12]), tex: this._flagTexture(building.seat,tint), tint:this.WHITE,
-                    model: m3.multiply(world, m3.translation(offX + 0.45, 2.25, offZ))
+                    model: m3.multiply(world, m3.translation(offX + 0.45, 2.25 + offY, offZ))
                 });
-                eb.flagAnchor=m3.multiply(world,m3.translation(offX+.025,2.25,offZ));
+                eb.flagAnchor=m3.multiply(world,m3.translation(offX+.025,2.25+offY,offZ));
                 eb.flagParts=[{entry:eb.opaque[eb.opaque.length-1],local:m3.translation(.425,0,0)}];
                 // The badge is printed into this same fabric, on both faces.
                 // …and a team-color runner out the FRONT door: the walls are
                 // near-symmetric in the early ages, so this ground strip is the
                 // orientation cue that reads at any zoom. Long enough (z 3.2→7)
                 // to emerge past every civ's front wall; plinths hide the rest.
-                if (building.type !== 'farm') {
+                if (building.type !== 'farm' && !trebK) {
                     const rz = building.isWonder ? 6.8 : 5.1;
                     const rw = building.isWonder ? 2.2 : 1.7;
                     eb.opaque.push({
@@ -1331,7 +1411,7 @@
             this.spawnDust(building.x, 1.4, building.z, 24, 0xb0a48e);
         }
 
-        spawnProjectile(from, to, kind, shooter) {
+        spawnProjectile(from, to, kind, shooter, timing) {
             if (this.game?.sound) this.game.sound.projectile(from, kind, shooter);
             let p = this._projectiles.find(q => !q.active);
             if (!p) {
@@ -1340,8 +1420,18 @@
                 this._projectiles.push(p);
             }
             const dist = Math.hypot(to.x - from.x, to.z - from.z);
+            if (kind === 'boulder') {
+                // A trebuchet's stone (b1110): a round boulder on a high arc, let go near the
+                // top of the arm's swing (_siegePose), flown on the rules' clock -- it lands
+                // on the tick its damage does (game.landBoulders), and stops when paused.
+                Object.assign(p, { active: true, t: 0, dur: 1, wait: 0,
+                    simRelease: timing ? timing.releaseAt : null, simLand: timing ? timing.landAt : null,
+                    sx: from.x, sy: from.y, sz: from.z, tx: to.x, ty: to.y, tz: to.z, arc: 5 + dist * 0.12,
+                    tint: [0.55, 0.53, 0.5], scale: 0.55, fire: false, round: true });
+                return;
+            }
             Object.assign(p, {
-                active: true, t: 0, dur: Math.max(0.16, dist / 42),
+                active: true, wait: 0, round: false, t: 0, dur: Math.max(0.16, dist / 42),
                 sx: from.x, sy: from.y, sz: from.z, tx: to.x, ty: to.y, tz: to.z,
                 arc: kind === 'stone' ? 2.0 : 3.0,
                 tint: kind === 'stone' ? [0.6, 0.64, 0.68] : kind === 'fireArrow' ? [0.3, 0.2, 0.12] : [0.48, 0.32, 0.19],
@@ -2023,6 +2113,7 @@
             for (const b of this.buildings) {
                 const eb = b._engine;
                 if (!eb || (b.mesh && b.mesh.visible === false) || this._cull(b.x, b.z, 18)) continue;
+                if ((b.type === 'trebuchet' || b.type === 'trebuchet_advanced') && !b.underConstruction) this._turnTrebuchet(b, dt);
                 const distance=Math.hypot(b.x-this.cameraTarget.x,b.z-this.cameraTarget.z);
                 const detailFade=lightDetailFade(distance,this._halfH);
                 // Clear the previous frame's light when hidden, zoomed out or disabled.
@@ -2144,11 +2235,13 @@
                 // MOVER was deleted for this same stale-target reason; its facing
                 // was left reading the same rotten value.)
                 let dir = this._unitDir.get(u);
-                if (dir === undefined) { dir = 0; this._unitDir.set(u, dir); }
+                if (dir === undefined) { dir = u._spawnDir || 0; this._unitDir.set(u, dir); }
                 const prev = this._unitPrev.get(u);
                 // isMoving gates it so the separation nudges can't spin an idle
                 // unit on the spot; the delta then says which way it truly went.
-                const facingTarget=u.isAttacking&&u.attackTarget?.health>0?u.attackTarget:null;
+                // A standing trebuchet on wheels turns to the tower it aims at (b1110).
+                const facingTarget=u.isAttacking&&u.attackTarget?.health>0?u.attackTarget
+                    :(u.unitType==='siege'&&!u.isMoving&&u._aim?.health>0?u._aim:null);
                 if (facingTarget || (u.isMoving && prev)) {
                     // A live combat target is authoritative. Friendly separation
                     // can briefly displace a new defender away from the brawl;
@@ -2196,9 +2289,9 @@
                 const anim = (u.isHarvesting || u.isBuilding) ? 'harvest'
                     : fighting ? (ue.type === 'ranged' ? 'shoot' : ue.type === 'priest' ? 'channel' : 'attack')
                     : (ue.type === 'priest' && now < (ue.channelUntil || 0)) ? 'channel'
-                    : (u.isMoving ? 'walk' : 'idle');
+                    : (u.isMoving && !u._formWait ? 'walk' : 'idle');   // waiting for a trebuchet: standing (b1110)
                 const still = !!this.replayMode && !this.resimPlaying;   // the re-simulated replay moves, so it animates
-                const pose = EngineUnits.pose(ue.type, anim, still ? 0 : tSec, ue.phase, {
+                const pose = ue.static ? { mats: this._siegePose(u, ue), bob: 0 } : EngineUnits.pose(ue.type, anim, still ? 0 : tSec, ue.phase, {
                     strike: fighting ? (still ? 0.5 : ((u.attackTimer || 0) / 1000) % 1) : null,
                     stride: still ? 0 : ue.stride });
                 // The Maya spotter's parrot (b1065): up and circling while its spotter
@@ -2258,7 +2351,7 @@
                     // selection on the same click that made it (see game.spectatorPick).
                     // With that fixed there is nothing left to compensate for, and a marker
                     // that behaves differently from the one next to it is its own bug.
-                    const r = ue.type === 'cavalry' ? 1.5 : 1.05;
+                    const r = ue.type === 'siege' ? 3.2 : ue.type === 'cavalry' ? 1.5 : 1.05;
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: EngineRenderer.SELECT_TINT,
                         model: m3.multiply(m3.translation(u.x, 0.08, u.z), m3.scaling(r, 1, r))
@@ -2284,7 +2377,7 @@
                 }
                 const hpct = u.health / u.maxHealth;
                 if (hpct < 0.999) {
-                    pushBar(u.x, EngineUnits.META[ue.type].barY, u.z, 1.5, hpct, this._barColor(hpct));
+                    pushBar(u.x, ue.static ? 6.2 : EngineUnits.META[ue.type].barY, u.z, ue.static ? 3 : 1.5, hpct, this._barColor(hpct));
                 }
             }
 
@@ -2332,13 +2425,27 @@
             // projectiles
             for (const p of this._projectiles) {
                 if (!p.active) continue;
-                p.t += dt / p.dur;
+                if (p.round && p.simLand != null && this.game && this.game.simNow) {
+                    // On the rules' clock: hidden until released, landed on the damage's tick.
+                    const nowSim = this.game.simNow();
+                    if (nowSim < p.simRelease) continue;
+                    p.t = (nowSim - p.simRelease) / Math.max(1, p.simLand - p.simRelease);
+                } else {
+                    if (p.wait > 0) { p.wait -= dt; continue; }
+                    p.t += dt / p.dur;
+                }
                 if (p.t >= 1) { p.active = false; continue; }
                 const k = p.t;
                 const x = p.sx + (p.tx - p.sx) * k;
                 const z = p.sz + (p.tz - p.sz) * k;
                 const y = p.sy + (p.ty - p.sy) * k + Math.sin(Math.PI * k) * p.arc;
                 const yaw = Math.atan2(p.tx - p.sx, p.tz - p.sz);
+                if (p.round) {
+                    // The boulder tumbles as it flies.
+                    dl.opaque.push({ buf: this._buf('sphere', [1, 10, 8]), tex: this.tex.rock || this.tex.white, tint: p.tint,
+                        model: m3.multiply(m3.translation(x, y, z), m3.multiply(m3.rotationX(k * 9), m3.scaling(p.scale, p.scale * 0.9, p.scale))) });
+                    continue;
+                }
                 dl.opaque.push({
                     buf: this._buf('box', [1, 1, 1]), tex: this.tex.white, tint: p.tint,
                     model: m3.multiply(m3.translation(x, y, z),

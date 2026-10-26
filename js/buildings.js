@@ -104,6 +104,8 @@ const BUILDING_DEFS = {
         type: 'economic',
         canResearch: true,
         researchOptions: [], // Filled dynamically from civ techTree (researchAt: 'academy')
+        canTrain: true,      // the engineer, after Siege Engineering (b1110)
+        trainOptions: [],    // filled from BUILDING_TRAIN_TIERS by age
         requiredAge: 'neolithic',
         requiresTech: 'academy',  // Requires academy tech from town_center
         description: 'Forschung fortgeschrittener Technologien',
@@ -130,9 +132,81 @@ const BUILDING_DEFS = {
         range: 18,   // tripled: a real deterrent zone, matching the long vision
         requiredAge: 'stone',
         description: 'Verteidigungsturm',
-        buildTime: BASE_BUILD_TIME * 1.2  // 12 seconds to build
+        // 20 seconds (b1110, asp67): 12 put a tower up inside one model turn, so a
+        // forward tower could never be contested while it was a site.
+        buildTime: BASE_BUILD_TIME * 2
+    },
+    // A siege engine that answers towers and nothing else (b1110, asp67). Built by a
+    // worker like any building, after Siege Engineering at the academy. It throws stone
+    // at enemy towers and tower sites in reach, outranging them, and sees only enemy
+    // towers (and 20 around each) within its watch radius -- plus the 20 around itself
+    // every building sees. Weak (flat health, no age or civilization multiplier): it
+    // must be guarded and repaired, and units are its counter. Built in the iron age it
+    // is the advanced engine, never upgraded on age-up. Numbers in TREBUCHET_TIERS.
+    trebuchet: {
+        id: 'trebuchet',
+        name: 'Tribok',
+        cost: { food: 100, wood: 200, stone: 100, gold: 50 },
+        health: 200,
+        type: 'siege',
+        attack: 150,
+        range: 50,
+        requiredAge: 'bronze',
+        requiresTech: 'siege_engineering',
+        description: 'Belagerungsmaschine: fertig ein Tribok auf Rädern (Geschwindigkeit 0,16), der im Stand Steine auf feindliche Türme wirft',
+        buildTime: BASE_BUILD_TIME * 2  // 20 seconds to build
+    },
+    // The advanced engine's site (b1110, asp67: "allow both models per selection in iron
+    // age, since a basic trebuchet is cheaper and might be the better choice"). Its own id:
+    // 'advanced_trebuchet' is the unit it becomes, and a unit's type must never name a
+    // building. 20% dearer than the simple one.
+    trebuchet_advanced: {
+        id: 'trebuchet_advanced',
+        name: 'Schwerer Tribok',
+        cost: { food: 120, wood: 240, stone: 120, gold: 60 },
+        health: 400,
+        type: 'siege',
+        attack: 200,
+        range: 60,
+        requiredAge: 'iron',
+        requiresTech: 'siege_engineering',
+        description: 'Schwere Belagerungsmaschine (ab der Eisenzeit): fertig ein schwerer Tribok auf Rädern (Geschwindigkeit 0,32), der im Stand Steine auf feindliche Türme wirft',
+        buildTime: BASE_BUILD_TIME * 2  // 20 seconds to build
     }
 };
+
+// The trebuchet's two engines (b1110, asp67). The simple one reaches 50 and the advanced
+// one, built in the iron age, 60 (asp67; they reached 1.5x a tower's 18 and +20%, and a
+// formation had no room to stand between the tower's reach and its engines'); they watch
+// 1.5x a tower's sight (80) and +20%. The advanced one has double the health and speed and
+// costs 20% more. Its reach was 70 for a while; at 60 it stands at 58, inside the 60 a
+// guard defends round its post (StandingOrders.GUARD_RADIUS), as the simple one at 48 is:
+// the iron age buys a faster, sturdier engine and more time throwing before the defenders
+// arrive, not one no guard can answer (asp67). Health is flat.
+const TREBUCHET_TIERS = {
+    simple:   { health: 200, attack: 150, range: 50,   watch: 120, reloadMs: 6000, speed: 0.16, unit: 'simple_trebuchet' },
+    advanced: { health: 400, attack: 200, range: 60,   watch: 144, reloadMs: 6000, speed: 0.32, unit: 'advanced_trebuchet' }
+};
+// How far around each enemy tower a trebuchet's watch reveals.
+const TREBUCHET_TOWER_REVEAL = 20;
+
+function trebuchetTier(age) {
+    return age === 'iron' ? TREBUCHET_TIERS.advanced : TREBUCHET_TIERS.simple;
+}
+// The two trebuchet sites, and the engine each becomes: by the site's type, never the
+// age it was built in -- in the iron age both can be chosen (b1110).
+function isTrebuchetBuilding(type) {
+    return type === 'trebuchet' || type === 'trebuchet_advanced';
+}
+function trebuchetTierOf(type) {
+    return type === 'trebuchet_advanced' ? TREBUCHET_TIERS.advanced : TREBUCHET_TIERS.simple;
+}
+
+// What a building costs to place. Each trebuchet site carries its own price (b1110);
+// kept as the one place every cost path asks, should a price ever depend on the age.
+function buildingCost(def, age) {
+    return def ? def.cost : null;
+}
 
 // Ids this game used to use, and what they are now. The alias exists so RECORDED data
 // still resolves — a transcript from before v512 calls the academy a "market", and the
@@ -191,6 +265,11 @@ const BUILDING_TRAIN_TIERS = {
         neolithic: ['archer'],
         bronze: ['archer'],
         iron: ['archer', 'crossbowman', 'elite_archer']
+    },
+    // The engineer, behind Siege Engineering (b1110; its own requiresTech gate).
+    academy: {
+        bronze: ['engineer'],
+        iron: ['engineer']
     }
 };
 

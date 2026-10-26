@@ -633,7 +633,13 @@
               "under_construction",
               "complete"
             ],
-            "description": "Wonders only."
+            "description": "Wonders, and any building still under construction (b1110)."
+          },
+          "buildPct": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "description": "How far a building under construction is, as last seen."
           },
           "secondsUntilEnemyWins": {
             "oneOf": [

@@ -40,10 +40,23 @@ class StandingOrders {
     // How long after being hit a worker under an order still answers its attacker (b1052):
     // the auto-defense's own window for "being attacked".
     static get WORKER_ANSWER_MS() { return 4000; }
+    // Guard defends what is its owner's round its post (b1110, asp67: "units on hold to
+    // stay on hold, but units on guard to guard units and buildings"). At its post a
+    // guarding group goes after any enemy unit that has damaged one of its owner's units
+    // or buildings within GUARD_RADIUS of the post, from within GUARD_RADIUS of what it hit
+    // (a post is seldom on the tower's spot: measured from the post, an advanced trebuchet
+    // at 58 from the tower stood beyond the guard 4 off it) -- a trebuchet included, which has no attack and so was never "military", and which
+    // a guard at a tower watched throw its stones until the tower fell (both engines,
+    // at 48 and, at its old reach of 70, 68). Then the group goes back to its post. A hit counts for
+    // GUARD_ANSWER_MS: longer than a trebuchet's 6 s reload, so one is still answered
+    // between its throws, and seen for as long. Hold is unchanged: HOLD_LEASH.
+    static get GUARD_RADIUS() { return 60; }
+    static get GUARD_ANSWER_MS() { return 7000; }
     constructor(game, manager) { this.game=game;this.manager=manager;this.groups=new Set();this.time=0;this.scan=0; }
     members(g) {
         const owned=new Set(g.owner.units);
-        return g.units.filter(u=>u.health>0&&u._standingOrder===g&&u._orderToken===g.token&&!u.task&&owned.has(u));
+        // An engineer on a trebuchet job stays a member (b1110): it returns to its slot.
+        return g.units.filter(u=>u.health>0&&u._standingOrder===g&&u._orderToken===g.token&&(!u.task||Game.engineerBusy(u))&&owned.has(u));
     }
     center(units) {
         const median=key=>{const a=units.map(u=>u[key]).sort((a,b)=>a-b);return a[Math.floor(a.length/2)]||0;};
@@ -72,6 +85,157 @@ class StandingOrders {
         const mobile=threats.find(e=>e.type!=='tower'&&WarMath.hypot(u.x-e.x,u.z-e.z)<=StandingOrders.CHASE_RADIUS);
         return mobile||threats.find(e=>e.type==='tower')||threats[0]||null;
     }
+    // Siege stand-off (b1110, asp67: "when a formation is ordered to attack a tower with
+    // a trebuchet in the formation, make sure that until the trebuchet is destroyed, the
+    // formation does not charge into the tower to be annihilated"). While the order's
+    // target is a standing tower and a trebuchet of the group lives, the group forms up
+    // around its trebuchets ("the soldiers need to stand at the trebuchet to defend it"),
+    // never closer than SIEGE_STANDOFF beyond the tower's reach, on its line of approach;
+    // each trebuchet takes a slot just inside its own reach; no member takes a tower as its target
+    // or answers one -- mobile attackers are fought as ever. With the trebuchets gone,
+    // the order is the tower again.
+    static get SIEGE_STANDOFF() { return 6; }
+    // Any group with a living trebuchet leaves towers to it (b1110, asp67: "formations
+    // charging the tower when the treb is ordered to attack"). The stand-off above only
+    // held an order aimed at a tower by its id; in asp67's match of 24 October (23:14) an
+    // attack-move to a point 25 from a tower, three advanced trebuchets in the group, was
+    // shot at, and the whole group charged the tower and died at its foot. Now no member
+    // takes a tower as a target or answers one while a trebuchet of the group lives;
+    // members in a tower's reach take its arrows. With the trebuchets gone, towers are
+    // fought as ever.
+    withSiege(g) {
+        return !!(g&&g.units.some(u=>u.unitType==='siege'&&u.health>0&&u._standingOrder===g));
+    }
+    // The enemy tower guarding an attack-move's destination (b1110, asp67): one the
+    // owner knows -- discovered or in sight -- within a trebuchet's reach of the point.
+    // An attack-move with trebuchets had no tower target, so its soldiers fought the
+    // buildings round the point under the tower's arrows (and, since b1110, without
+    // answering it while a trebuchet lived) until the trebuchet fell: "the trebuchet
+    // following them even driving through the firing range of the tower. All units kept
+    // attacking buildings while being decimated by the tower."
+    // And on the way (asp67: "that should also be true when on march, the trebuchet picks
+    // up a tower in reach on route. Just like units attack villagers or soldiers on route
+    // to an attack order"): a known tower within SIEGE_NOTICE beyond a trebuchet's reach
+    // of where it rolls now -- known by discovery or in sight, the trebuchet's own tower
+    // watch included, and asked again every scan, so one first seen on the way counts.
+    // On every move but a scout's (asp67: "the attack order mechanic works for move unit
+    // orders as well, since a trebuchet cannot really retaliate against a tower"): a
+    // march, or a guard, hold or patrol on its way; at its post a guard or hold keeps it.
+    // And on the way to besiege another (b1110, asp67's match of 25 October, 22:00, at
+    // 72:10): two Roman advanced trebuchets marching to the stand-off of a tower they
+    // had taken up on the way rolled past a second one at 4.7 -- a tower already the
+    // target ended the search. A tower nearer the engines than the one they make for is
+    // besieged first, and the order goes back to that one after (siegeResume, a stack).
+    static get SIEGE_NOTICE() { return 6; }
+    guardTower(g,see){
+        if(!g||!this.withSiege(g))return null;
+        const travelling=g.mode==='march'||((g.mode==='guard'||g.mode==='hold'||g.mode==='patrol')&&!g.atPost);
+        if(!travelling)return null;
+        const engines=g.units.filter(u=>u.unitType==='siege'&&u.health>0&&u._standingOrder===g);
+        const reach=Math.max(...engines.map(u=>u.range||50));
+        const toEngines=t=>Math.min(...engines.map(u=>WarMath.hypot(t.x-u.x,t.z-u.z)-(u.range||50)));
+        const current=g.target&&g.target.type==='tower'&&g.target.health>0?g.target:null;
+        // Already throwing at its tower: nothing draws the engines off it.
+        if(current&&toEngines(current)<=0)return null;
+        const queued=new Set((g.siegeResume||[]).map(b=>b.target).filter(Boolean));
+        const dest=g.target?{x:g.target.x,z:g.target.z}:g.to;
+        const known=t=>!!(g.owner._knownEnemyBuildings&&g.owner._knownEnemyBuildings.has(t))||(see?see(g,t):this.visible(g,t));
+        let best=null,bd=Infinity;
+        for(const t of this.game.getAllBuildings()){
+            if(t.type!=='tower'||!(t.health>0)||t.underConstruction||t.owner===g.owner.id||t===current||queued.has(t))continue;
+            const near=toEngines(t);
+            const onRoute=near<=StandingOrders.SIEGE_NOTICE&&(!current||near<toEngines(current));
+            const atPoint=!current&&g.attack&&WarMath.hypot(t.x-dest.x,t.z-dest.z)<=reach;
+            if(!atPoint&&!onRoute)continue;
+            // On the way, the nearest to the engines; else the one covering the point.
+            const d=onRoute?near:1e6+WarMath.hypot(t.x-dest.x,t.z-dest.z);
+            if(d<bd&&known(t)){bd=d;best=t;}
+        }
+        return best;
+    }
+    nextTower(g,see){
+        const engines=g.units.filter(u=>u.unitType==='siege'&&u.health>0&&u._standingOrder===g);
+        let best=null,bd=Infinity;
+        for(const t of this.game.getAllBuildings()){
+            if(t.type!=='tower'||!(t.health>0)||t.underConstruction||t.owner===g.owner.id)continue;
+            const d=Math.min(...engines.map(u=>WarMath.hypot(t.x-u.x,t.z-u.z)-(u.watch||120)));
+            if(d>0)continue;
+            const from=WarMath.hypot(t.x-(g.target?g.target.x:g.to.x),t.z-(g.target?g.target.z:g.to.z));
+            if(from<bd&&(see?see(g,t):this.visible(g,t))){bd=from;best=t;}
+        }
+        return best;
+    }
+    // ...which the order then besieges first, from where the group stands now, before
+    // going on to its point: as an attack_target on the tower would (asp67: "The attack
+    // order then needs to be translated into an attack tower order for the entire
+    // formation"). Returns the tower, or null.
+    besiegeGuard(g,see){
+        const t=this.guardTower(g,see);if(!t)return null;
+        (g.siegeResume||(g.siegeResume=[])).push({x:g.to.x,z:g.to.z,target:g.target||null});
+        g.target=t;g.from=this.center(this.members(g));g.atPost=false;
+        const so=this.siegeStandoff(g);
+        if(so){const to=this.standoffTo(g,so);g.to=to;this.reform(g,to);}
+        return t;
+    }
+    siegeStandoff(g) {
+        const t=g&&g.target;
+        if(!t||t.type!=='tower'||!(t.health>0))return null;
+        const siege=g.units.filter(u=>u.unitType==='siege'&&u.health>0);
+        return siege.length?{tower:t,siege}:null;
+    }
+    // Where the soldiers stand: BESIDE their trebuchets, level with them, to defend them
+    // (asp67: "the soldiers need to stand at the trebuchet"), never within the tower's
+    // reach plus SIEGE_STANDOFF. In the first draft they stood ON the trebuchets' line:
+    // the engine's slot was the middle of the soldiers' formation, two engines shared one
+    // slot, and the lot shoved each other about -- "a flock of hooligans, not a
+    // formation" (asp67). Beside rather than behind or in front, so the infantry and the
+    // engines march abreast and neither has to pass through the other: in front there
+    // was no room when a trebuchet reached 27 (the tower 18), and behind, the army stood while
+    // the engines rolled through it to the front.
+    static get SIEGE_SPACING() { return 7; }
+    static get SIEGE_FLANK() { return 9; }
+    siegeLine(so) {
+        return Math.min(...so.siege.map(u=>(u.range||50)-2));
+    }
+    standoffDist(so) {
+        return Math.max((so.tower.range||18)+StandingOrders.SIEGE_STANDOFF,this.siegeLine(so));
+    }
+    // The soldiers' point: at standoffDist, beside the engines' row on the side the
+    // soldiers already are, SIEGE_FLANK beyond its end.
+    standoffTo(g,so){
+        const t=so.tower,from=g.from||this.center(g.units),dist=this.standoffDist(so);
+        const a0=WarMath.atan2(from.z-t.z,from.x-t.x);
+        const men=g.units.filter(u=>u.health>0&&u.unitType!=='siege');
+        const c=men.length?this.center(men):from;
+        let d=WarMath.atan2(c.z-t.z,c.x-t.x)-a0;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;
+        const side=d<0?-1:1;
+        const half=(so.siege.length-1)/2*StandingOrders.SIEGE_SPACING;
+        const th=a0+side*(half+StandingOrders.SIEGE_FLANK)/dist;
+        const p={x:t.x+WarMath.cos(th)*dist,z:t.z+WarMath.sin(th)*dist};
+        return this.game.clampSlot?this.game.clampSlot(p.x,p.z):p;
+    }
+    // The trebuchets side by side on an arc round the tower at siegeLine, SIEGE_SPACING
+    // apart, centred on the line of approach; in the order they already stand along it,
+    // so none has to cross another.
+    siegeSlots(g,so,units){
+        const t=so.tower,from=g.from||this.center(g.units),line=this.siegeLine(so);
+        const a0=WarMath.atan2(from.z-t.z,from.x-t.x);
+        const ang=u=>{let d=WarMath.atan2(u.z-t.z,u.x-t.x)-a0;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;return d;};
+        const engines=so.siege.filter(u=>units.includes(u)).sort((p,q)=>ang(p)-ang(q)||p.id-q.id);
+        const slots=new Map();
+        engines.forEach((u,i)=>{
+            const th=a0+(i-(engines.length-1)/2)*StandingOrders.SIEGE_SPACING/line;
+            const p={x:t.x+WarMath.cos(th)*line,z:t.z+WarMath.sin(th)*line};
+            slots.set(u,this.game.clampSlot?this.game.clampSlot(p.x,p.z):p);
+        });
+        return slots;
+    }
+    // The point at `dist` from the tower toward where the order started.
+    standoffPoint(g,tower,dist) {
+        const from=g.from||this.center(g.units);
+        const dx=from.x-tower.x,dz=from.z-tower.z,d=WarMath.hypot(dx,dz)||1;
+        return {x:tower.x+dx/d*dist,z:tower.z+dz/d*dist};
+    }
     retaliate(victim,attacker) {
         const g=victim?._standingOrder;
         if(!g||!this.groups.has(g)||victim._orderToken!==g.token
@@ -87,10 +251,14 @@ class StandingOrders {
             if(attacker.type==='tower'&&g.threats[0]?.type!=='tower')g.threats.unshift(attacker);
             else g.threats.push(attacker);
         }
+        // Besieging with a trebuchet: a tower's arrows send nobody at it (b1110).
+        if(attacker.type==='tower'&&this.withSiege(g))return;
         // A hit starts the decision for EVERY member, each from where it stands.
         const units=this.members(g);
+        const now=this.game.simNow?this.game.simNow():0;
         for(const u of units){
             if(u.unitType==='support'||u.type==='worker'||!(u.attack>0))continue;
+            if(Game.engineerKeepsBuilding(u,now))continue;   // builds on unless hit itself (b1110)
             const focus=this.threatFor(g,u);
             if(!focus)continue;
             // Another hit on an ally is not evidence that THIS soldier can now
@@ -106,7 +274,7 @@ class StandingOrders {
             // Holding: only a member whose own slot is within the leash of the attacker.
             if(g.mode==='hold'&&g.atPost){const s=g.slots.get(u)||u;
                 if(WarMath.hypot(s.x-focus.x,s.z-focus.z)>StandingOrders.HOLD_LEASH)continue;}
-            if(!g.fighting){g.anchor=this.center(units);g.fighting=true;}
+            if(!g.fighting){g.anchor=this.fightAnchor(units,focus);g.fighting=true;}
             if(u.attackTarget!==focus)g.chases.delete(u);
             g.blocked.get(u)?.delete(focus);
             this.game.clearRetaliation(u);
@@ -124,6 +292,31 @@ class StandingOrders {
         // Reassigned members leave the old formation immediately.
         for(const old of this.groups)if(old!==g)this.prune(old);
         return g;
+    }
+    // Where a fight is anchored (b1110): the middle of the members near it, within a
+    // chase of the first enemy fought. It was the middle of the whole group, which for a
+    // group spread over the map -- one member at its post, the rest still walking from
+    // home -- lay far from the fight: the leash, measured from there, released the enemy
+    // the moment the fight began, and the member at the post stood idle while the
+    // trebuchet beside it was destroyed (asp67's match of 24 October, 23:14). For a group
+    // standing together it is the same point as before.
+    fightAnchor(units,at){
+        const near=units.filter(m=>m.health>0&&WarMath.hypot(m.x-at.x,m.z-at.z)<=StandingOrders.CHASE_RADIUS);
+        return near.length?this.center(near):{x:at.x,z:at.z};
+    }
+    // A unit taken into a group that already marches (b1110: a trebuchet rolling off its
+    // site into its engineer's formation). It takes a slot like any member, and a group
+    // held to its slowest is held to the newcomer if it is slower.
+    join(g,u) {
+        if(!g||!u||!this.groups.has(g))return false;
+        if(!g.units.includes(u))g.units.push(u);
+        u._standingOrder=g;u._orderToken=g.token;
+        if(g.pace==='slowestUnit'){
+            const units=this.members(g),pace=Math.min(...units.map(m=>m.marchSpeed||m.speed||1));
+            for(const m of units)m.marchSpeed=pace;
+        }
+        this.reform(g,g.to,g.fighting);
+        return true;
     }
     prune(g) {
         const live=this.members(g);
@@ -196,11 +389,16 @@ class StandingOrders {
         const form=this.manager.applyFormation(this.game,units,to.x,to.z,g.shape);
         this.manager.applyMatchSpeed(units,g.pace||(form.applied?'slowestUnit':''));
         g.slots=this.placeSlots(units,to,form.offsets,g);g.leg={...to};
+        // Besieging: the trebuchets side by side just inside their reach of the tower,
+        // the soldiers behind them (b1110).
+        const so=this.siegeStandoff(g);
+        if(so)for(const [u,p] of this.siegeSlots(g,so,units))g.slots.set(u,p);
         g.holdSlots=null;
         g.supportSlots=null;g.supportAnchor=null;
         g.settled=false;
         for(const u of units){
             const slot=g.slots.get(u);
+            if(Game.engineerBusy(u))continue;   // on a trebuchet job: back to its slot when done (b1110)
             u._formationPatient=null;u._patientStand=null;
             u._healingFormation=null;
             // Repack the surviving formation, but do not interrupt valid fights.
@@ -216,6 +414,23 @@ class StandingOrders {
             this.game.clearRetaliation(u);
         }
         if(!preserveCombat)g.chases.clear();
+    }
+    // Guard (b1110): who has just damaged something of the owner's round the post is a
+    // threat, and seen while it keeps at it. See GUARD_RADIUS.
+    guardOwn(g) {
+        const now=this.game.simNow?this.game.simNow():0,post=g.to,r=StandingOrders.GUARD_RADIUS;
+        const mine=new Set(g.units);
+        g.guarding=new Set();
+        for(const v of g.owner.units.concat(g.owner.buildings||[])){
+            const a=v._lastAttacker;
+            if(!a||!(a.health>0)||!a.unitType||a.owner===g.owner.id||mine.has(v)||!(v.health>0)
+                ||v._lastDamageTime==null||now-v._lastDamageTime>StandingOrders.GUARD_ANSWER_MS)continue;
+            if(WarMath.hypot(v.x-post.x,v.z-post.z)>r||WarMath.hypot(a.x-v.x,a.z-v.z)>r)continue;
+            g.guarding.add(a);
+            (g.revealed||(g.revealed=new Map())).set(a,this.time+StandingOrders.REVEAL_MS);
+            g.threats=(g.threats||[]).filter(e=>e.health>0);
+            if(!g.threats.includes(a))g.threats.push(a);
+        }
     }
     releaseTarget(g,u,target=u.attackTarget) {
         if(target){
@@ -235,7 +450,7 @@ class StandingOrders {
         // tower (b1103, asp67): a priest whose patient died went on to the next wounded --
         // the next soldier under the tower -- and was shot there in turn.
         const covered=p=>{const t=this.game.enemyTowerCovering?.(u.owner,p.x,p.z);return !!t&&t!==g.target&&!g.threats?.includes(t);};
-        const valid=p=>p&&p!==u&&g.owner.units.includes(p)&&p.owner===u.owner&&p.health>0
+        const valid=p=>p&&p!==u&&g.owner.units.includes(p)&&p.owner===u.owner&&p.health>0&&p.unitType!=='siege'
             &&p.health<p.maxHealth&&(WarMath.hypot(p.x-u.x,p.z-u.z)<24
                 ||(units.includes(p)&&WarMath.hypot(p.x-army.x,p.z-army.z)<=StandingOrders.CHASE_RADIUS))&&!covered(p);
         let patient=u._formationPatient;
@@ -290,6 +505,7 @@ class StandingOrders {
             if(g.revealed)for(const e of g.threats||[])if(e.type==='tower'&&e.health>0&&towerFight(e))
                 g.revealed.set(e,this.time+StandingOrders.TOWER_FORGET_MS);
             if(g.revealed)for(const [e,until]of g.revealed)if(until<=this.time||e.health<=0)g.revealed.delete(e);
+            if(g.mode==='guard'&&g.atPost)this.guardOwn(g);else g.guarding=null;
             const seen=e=>!!g.revealed?.has(e)||see(g,e);
             if(g.threats)g.threats=g.threats.filter(e=>e.health>0&&seen(e));
             // A tower that has stopped shooting the group, with nobody of it in range and
@@ -301,6 +517,16 @@ class StandingOrders {
             // across the formation instead of repeating it for every soldier.
             const visibility=new Map();
             const visible=e=>{if(!visibility.has(e))visibility.set(e,seen(e));return visibility.get(e);};
+            // An attack on a tower moves on to the next (b1110, asp67: "a trebuchet with an
+            // attack order and more than one tower in sight stops after destroying the first
+            // target ... if a tower is destroyed and another is within viewing distance,
+            // switch to that tower next"), as soldiers go on to the next building: the
+            // nearest enemy tower in sight within a trebuchet's watch.
+            if(!g.siegeResume?.length&&g.target&&g.target.type==='tower'&&!(g.target.health>0)&&this.withSiege(g)){
+                const next=this.nextTower(g,see);
+                if(next){g.target=next;g.from=this.center(this.members(g));
+                    const so=this.siegeStandoff(g);if(so&&!g.fighting){const to=this.standoffTo(g,so);g.to=to;this.reform(g,to);}}
+            }
             if(g.target&&see(g,g.target)&&g.target.health<=0){
                 // A moving objective may die between scans. Guard its final
                 // observed location rather than returning to the click location.
@@ -324,12 +550,29 @@ class StandingOrders {
                 }
                 if(!targets.size)g.blocked.delete(u);
             }
-            if(g.target&&see(g,g.target)&&g.target.health>0){
-                const to={x:g.target.x,z:g.target.z};
+            // A tower besieged on the way (b1110): fallen, the order goes back to what it
+            // made for -- the tower it was going to besiege, or its point -- and besieges
+            // the next one in its way, if any.
+            if(g.siegeResume?.length&&!(g.target&&g.target.type==='tower'&&g.target.health>0)){
+                let back=null;
+                while(g.siegeResume.length){back=g.siegeResume.pop();if(!(back.target&&back.target.type==='tower')||back.target.health>0)break;}
+                if(!g.siegeResume.length)g.siegeResume=null;
+                g.target=back.target&&back.target.health>0?back.target:null;g.to={x:back.x,z:back.z};g.atPost=false;
+                if(!g.fighting)this.reform(g,g.to);
+            }
+            this.besiegeGuard(g,see);
+            const standoff=this.siegeStandoff(g),siegeIn=this.withSiege(g);
+            // A tower target is followed seen or not (b1110): it stands still, and it shoots
+            // farther (18) than a soldier sees (15). Besieging, the group stands off it; with
+            // its trebuchets gone, it goes in from the stand-off, the tower out of its sight.
+            if(g.target&&(g.target.type==='tower'||see(g,g.target))&&g.target.health>0){
+                // The group stands off, or goes to the target.
+                const to=standoff?this.standoffTo(g,standoff)
+                    :{x:g.target.x,z:g.target.z};
                 if(!g.fighting&&WarMath.hypot(to.x-g.leg.x,to.z-g.leg.z)>6)this.reform(g,to);
                 g.to=to;
             }
-            if((g.mode==='guard'||g.mode==='hold')&&WarMath.hypot(center.x-g.to.x,center.z-g.to.z)<12)g.atPost=true;
+            if((g.mode==='guard'||g.mode==='hold')&&!g.siegeResume?.length&&WarMath.hypot(center.x-g.to.x,center.z-g.to.z)<12)g.atPost=true;
             const anchor=g.fighting?g.anchor:center;
             // On the way to its post a holding group travels as a guard does; at the post
             // each unit answers only from its own slot (HOLD_LEASH).
@@ -349,13 +592,21 @@ class StandingOrders {
                 return WarMath.hypot(e.x-g.from.x-t*dx,e.z-g.from.z-t*dz);
             };
             const threat=e=>!!(e&&g.threats?.includes(e));
-            const valid=e=>e&&e.health>0&&visible(e)&&
+            const valid=e=>e&&e.health>0&&!Game.hiddenSite(e)&&visible(e)&&
                 (threat(e)||e===g.target||g.targets!=='military'||(e.type!=='worker'&&e.unitType!=='support'&&e.attack>0));
+            // Near the group is near one of its members (b1110), not near the middle of
+            // it. A group spread over the map -- one member at its post, the rest still
+            // walking from home -- has its middle nowhere near anyone: in asp67's match of
+            // 24 October (23:14) a champion holding at its post watched a phalanx 13.5
+            // away destroy the trebuchet beside it, its three group-mates ~700 away
+            // putting the group's centre out of reach of the fight.
+            const live=units.filter(m=>m.health>0);
+            const nearest=e=>{let d=Infinity;for(const m of live){const x=WarMath.hypot(e.x-m.x,e.z-m.z);if(x<d)d=x;}return d;};
             const withinLeash=(e,retaining=false)=>{
                 const radius=retaining?StandingOrders.CHASE_RADIUS:StandingOrders.ACQUIRE_RADIUS;
                 const route=retaining?StandingOrders.ROUTE_CHASE_RADIUS:StandingOrders.ROUTE_ACQUIRE_RADIUS;
-                return routeDistance(e)<=route&&WarMath.hypot(e.x-anchor.x,e.z-anchor.z)<=radius
-                    &&WarMath.hypot(e.x-center.x,e.z-center.z)<=radius;
+                return routeDistance(e)<=route&&(!g.fighting||WarMath.hypot(e.x-anchor.x,e.z-anchor.z)<=radius)
+                    &&nearest(e)<=radius;
             };
             // An order on a Wonder outranks everything but retaliation: the army marched
             // for the monument and ground its way there through every villager and
@@ -364,6 +615,10 @@ class StandingOrders {
             const wonderRun=!!(g.target&&g.target.isWonder&&g.target.health>0);
             const eligible=(u,e)=>{
                 if(!valid(e))return false;
+                if(siegeIn&&e.type==='tower')return false;   // the trebuchets' work (b1110)
+                // Besieging, nothing inside the tower's reach draws a soldier in, but what
+                // attacks it (b1110): the houses round a besieged tower had.
+                if(standoff&&!threat(e)&&WarMath.hypot(e.x-standoff.tower.x,e.z-standoff.tower.z)<=(standoff.tower.range||18)+2)return false;
                 if(holding&&u&&!holds(u,e))return false;
                 // A tower among the threats is the whole group's fight (b1103, threatFor);
                 // b1101 had kept it to the members inside its firing range.
@@ -389,6 +644,7 @@ class StandingOrders {
                 &&candidates.some(e=>eligible(u,e)&&WarMath.hypot(e.x-u.x,e.z-u.z)<Math.max(36,(u.range||1)+24)));
             let fighting=false;
             for(const u of units){
+                if(Game.engineerBusy(u))continue;   // building or mending a trebuchet (b1110)
                 if((g.mode==='scout'&&!focus)||u.unitType==='support'||!(u.attack>0)){
                     if(u.attackTarget)this.releaseTarget(g,u);continue;
                 }
@@ -410,6 +666,10 @@ class StandingOrders {
                     continue;
                 }
                 let target=u.attackTarget;
+                // Besieging: a member on a tower leaves it to the trebuchets (b1110).
+                if(siegeIn&&target&&target.type==='tower'){
+                    u.attackTarget=null;u.isAttacking=false;this.game.clearRetaliation(u);g.chases.delete(u);target=null;
+                }
                 // A target held from before is kept on a Wonder run only if it is the
                 // Wonder or one of the group's live threats.
                 if(wonderRun&&target&&target!==g.target&&!g.threats?.includes(target)){
@@ -417,7 +677,8 @@ class StandingOrders {
                 }
                 // Each member's own answer (threatFor), not one focus for the whole group.
                 const mine=focus?this.threatFor(g,u,e=>valid(e)&&eligible(u,e)):null;
-                if(mine&&(target===mine
+                // Guarding, one damaging the guarded ground is answered from any slot (b1110).
+                if(mine&&(target===mine||g.guarding?.has(mine)
                     ||WarMath.hypot(u.x-mine.x,u.z-mine.z)<=StandingOrders.CHASE_RADIUS))target=mine;
                 if(target){
                     const distance=WarMath.hypot(u.x-target.x,u.z-target.z);
@@ -439,10 +700,12 @@ class StandingOrders {
                     // again -- 17 times in 150 s of a live Platform match (29 Sep 2026).
                     // Still leashed: a retreating attacker cannot lure it across the map.
                     const own=threat(target),fromDist=WarMath.hypot(target.x-chase.from.x,target.z-chase.from.z);
-                    if(own?fromDist<=StandingOrders.CHASE_RADIUS:withinLeash(target,true))chase.outsideAt=null;
+                    // Guarding, one still damaging what is guarded is in reach from any slot.
+                    const guarded=own&&!!g.guarding?.has(target);
+                    if(guarded||(own?fromDist<=StandingOrders.CHASE_RADIUS:withinLeash(target,true)))chase.outsideAt=null;
                     else if(chase.outsideAt==null)chase.outsideAt=this.time;
                     const escaped=chase.outsideAt!=null&&this.time-chase.outsideAt>=StandingOrders.BOUNDARY_GRACE_MS;
-                    const tooFar=(own?fromDist:WarMath.hypot(target.x-anchor.x,target.z-anchor.z))>StandingOrders.CHASE_RADIUS*1.5;
+                    const tooFar=!guarded&&(own?fromDist:WarMath.hypot(target.x-anchor.x,target.z-anchor.z))>StandingOrders.CHASE_RADIUS*1.5;
                     const stalled=!inRange&&this.time-chase.at>=StandingOrders.STALL_MS;
                     const bounded=own?target.type!=='tower':target!==g.target;
                     const defendingInRange=own&&distance<=this.game.attackRangeAgainst(u,target);
@@ -475,7 +738,7 @@ class StandingOrders {
             // different ones -- that no member still pursues.
             if(g.threats)g.threats=g.threats.filter(e=>e.type==='tower'||units.some(u=>u.attackTarget===e));
             if(fighting){
-                if(!g.fighting){g.anchor=center;g.fighting=true;}
+                if(!g.fighting){const f=units.find(u=>u.attackTarget&&u.attackTarget.health>0);g.anchor=this.fightAnchor(units,f?f.attackTarget:center);g.fighting=true;}
                 // Non-engaging members wait nearby; priests still heal in range.
                 // Reserve legal, distinct places once per engagement/repack. A
                 // clamped point per member can collapse several ranks onto one
@@ -501,7 +764,7 @@ class StandingOrders {
                         g.supportSlots=this.placeSlots(support,rear,null);g.supportAnchor=rear;
                     }
                 }
-                for(const u of units)if(!u.attackTarget){
+                for(const u of units)if(!u.attackTarget&&!Game.engineerBusy(u)){
                     const hold=u.unitType==='support'?this.supportPosition(g,u,units,g.supportSlots.get(u)):g.holdSlots.get(u);
                     u.formationOffset=null;u.formationAxis=null;u.formationGroup=null;u.marchSpeed=null;
                     u.targetX=hold.x;u.targetZ=hold.z;u.isMoving=WarMath.hypot(u.x-hold.x,u.z-hold.z)>(u.unitType==='support'?.3:1);
@@ -516,7 +779,7 @@ class StandingOrders {
                 if(arrived&&g.mode==='patrol'&&WarMath.hypot(g.to.x-g.from.x,g.to.z-g.from.z)>2){
                     [g.to,g.from]=[g.from,g.to];this.reform(g,g.to);
                 }else for(const u of units){
-                    const slot=g.slots.get(u);if(!slot)continue;
+                    const slot=g.slots.get(u);if(!slot||Game.engineerBusy(u))continue;
                     if(u.unitType==='support'){
                         // Healing may interrupt slot travel too. Otherwise a priest
                         // endlessly recovering its slot never gets to help anyone.
@@ -554,6 +817,9 @@ class StandingOrders {
                 unitIds:units.map(u=>u.handle),to:[Math.round(g.to.x),Math.round(g.to.z)],
                 ...(g.mode==='patrol'?{from:[Math.round(g.from.x),Math.round(g.from.z)]}:{}),
                 ...(g.targets==='military'?{targets:'military'}:{}),
+                // A siege taken up on the way (b1110): which tower, and where the order goes after.
+                ...(g.siegeResume?.length&&g.target&&g.target.health>0?{besieging:[Math.round(g.target.x),Math.round(g.target.z)],
+                    then:[Math.round(g.siegeResume[0].x),Math.round(g.siegeResume[0].z)]}:{}),
                 ...(g.mode==='march'&&!g.fighting&&units.some(u=>u.isMoving)?{secondsRemaining:Math.max(...units.map(u=>this.manager.travelEtaSec(u,g.to.x,g.to.z)))}:{})}];
         });
     }

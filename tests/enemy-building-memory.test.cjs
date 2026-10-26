@@ -77,3 +77,24 @@ test('attacking a remembered building that has fallen is told so, not "it died w
     assert.match(res, /no longer there: you remembered it, out of sight/);
     assert.doesNotMatch(res, /in the seconds between/);
 });
+
+// asp67's match of 24 October (b1110): at 2x speed a fight was dropped from the state 33 s
+// after its last blow -- the two minutes were counted on the simulation's clock, which
+// ran 3.7x ahead of the match's -- and two trebuchets lost between turns 50 s apart were
+// never reported to their owners. The window is match time now, at every speed.
+test('a battle is reported for two minutes of match time, whatever the speed', async () => {
+    const { m, mgr, c } = await board();
+    const g = m.game;
+    g.setSimSpeed(4);
+    const mine = m.seats[0], foe = m.seats[1];
+    const victim = mine.units[0], tower = foe.buildings[0];
+    g.recordBattleDamage(tower, victim, 10);
+    g.recordBattleLoss(victim);
+    const t0 = g.clock.matchMs, s0 = g.simNow();
+    const shown = () => (mgr.buildGameStateJSON(c).battles || []).some(b => b.you.lost && b.you.lost[victim.type]);
+    m.run(60000);
+    assert.ok(g.simNow() - s0 > 120000, 'more than two minutes of simulation have passed: ' + (g.simNow() - s0));
+    assert.ok(shown(), 'still reported a minute of match time on: ' + Math.round((g.clock.matchMs - t0) / 1000) + ' s');
+    m.run(70000);
+    assert.ok(!shown(), 'gone after two minutes of match time');
+});

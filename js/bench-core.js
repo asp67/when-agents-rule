@@ -168,7 +168,7 @@ function addUnit(realm, ai, type, x, z, fields = {}) {
     if (!u) throw new Error('unknown unit ' + type);
     Object.assign(u, fields);
     ai.units.push(u);
-    ai.resources.updatePopulation(ai.units.length);
+    ai.resources.updatePopulation(ai.units.filter(u => u.unitType !== 'siege').length);
     realm.game.renderer.addUnit(u);
     return u;
 }
@@ -247,7 +247,7 @@ function setupBoard(realm, config) {
         for (const u of s.units || []) place((...a) => addUnit(realm, ...a), p, u);
         for (const t of s.techs || []) p.researchedTechs[t] = true;
         if (s.resources) Object.assign(p.resources, s.resources);
-        p.resources.updatePopulation(p.units.length);
+        p.resources.updatePopulation(p.units.filter(u => u.unitType !== 'siege').length);
     });
     return realm;
 }
@@ -652,7 +652,7 @@ const CLASSES = Object.freeze({
         'assignFromEmpty', 'assignIdleTaken', 'buildNeedsTech', 'buildingCannotTrainTier', 'buildingNeedsAge',
         'buildingUnderConstr', 'cannotAfford', 'exploreAlreadySent', 'farmAllManned', 'farmManned', 'farmUnderConstr',
         'laneDuplicateAge', 'laneDuplicateBuilding', 'laneDuplicateTech', 'maxAge', 'missingPrereq',
-        'noBuildingDestroy', 'noBuildingTrains', 'noDamagedNear', 'noFinishedFarms', 'noMilitaryAttack',
+        'noBuildingDestroy', 'noBuildingTrains', 'noEngineer', 'noDamagedNear', 'noFinishedFarms', 'noMilitaryAttack',
         'noMilitaryMove', 'noTCPlacement', 'noTCTrain', 'noTCWorkers', 'noUnitDelete', 'noUnitExplore',
         'noWorkersBuild', 'noWorkersForFarms', 'noWorkersReassign', 'noWorkersRepair', 'noWorkersScouting', 'notDiscovered',
         'nothingToRepair', 'populationHardCap', 'populationLimit', 'refuseDestroyLastTC', 'repairFailed',
@@ -662,7 +662,7 @@ const CLASSES = Object.freeze({
     reference: ['assignBadCarry', 'assignBadFrom', 'assignBadSpill', 'assignFromSame', 'assignNeedsCoords',
         'assignNeedsResource', 'attackNeedsCoords', 'attackNoMatch', 'civCannotBuild', 'civCannotTrain',
         'exploreBadTile', 'exploreNeedsTile', 'exploreRouteTooLong', 'farmNeedsCoords', 'moveBadMode', 'moveNeedsCoords', 'moveNoMatch',
-        'notAResearchTech', 'notACommand', 'offMap', 'renamedBuilding', 'repairNeedsCoords', 'targetIsOwn',
+        'notAResearchTech', 'notACommand', 'offMap', 'towerNearEnemyTC', 'siegeCannotAttack', 'renamedBuilding', 'repairNeedsCoords', 'targetIsOwn',
         'targetNotFound', 'targetOutOfSight', 'techIsBuilding', 'unknownBuilding', 'unknownTech', 'unknownUnit', 'unparsedCall', 'rawToolMarkup'],
     harness: ['executionFailed'],
     meta: ['healDropped', 'healStripped', 'laneDropped', 'roundMissed'],

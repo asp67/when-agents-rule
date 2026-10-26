@@ -43,11 +43,11 @@ function buildVisionTest(game, ai, harness) {
         if (!harness && u.health <= 0) continue;
         const r = game.unitVision(u);
         if (r > 0) file(u.x, u.z, r, { x: u.x, z: u.z, r });
+        if (u.watch) for (const c of game.towerWatchCircles(u)) file(c.x, c.z, c.r, c);
     }
     for (const b of (ai && ai.buildings) || []) {
         if (harness ? b.underConstruction : b.health <= 0) continue;
-        const r = game.buildingVision(b);
-        if (r > 0) file(b.x, b.z, r, { x: b.x, z: b.z, r });
+        for (const c of game.buildingSightCircles(b)) file(c.x, c.z, c.r, c);
     }
     return (x, z) => {
         const list = cells.get(key(Math.floor(x / CELL), Math.floor(z / CELL)));
@@ -214,11 +214,13 @@ class AIManager {
             if (u.health <= 0) continue;
             const range = this.game.unitVision(u); // cavalry sees 50% farther
             if (WarMath.hypot(u.x - x, u.z - z) <= range) return true;
+            if (u.watch) for (const c of this.game.towerWatchCircles(u)) if (WarMath.hypot(c.x - x, c.z - z) <= c.r) return true;
         }
         for (const b of ai.buildings) {
             if (b.health <= 0) continue;
-            const range = this.game.buildingVision(b); // 0 while under construction
-            if (range > 0 && WarMath.hypot(b.x - x, b.z - z) <= range) return true;
+            // None while under construction; a trebuchet's tower watch included (b1110).
+            for (const c of this.game.buildingSightCircles(b))
+                if (WarMath.hypot(c.x - x, c.z - z) <= c.r) return true;
         }
         return false;
     }
@@ -237,6 +239,7 @@ class AIManager {
         for (const other of this.enemyOwners(ai)) {
             for (const b of other.buildings) {
                 if (b.health <= 0) { ai._knownEnemyBuildings.delete(b); continue; }
+                if ((typeof Game !== 'undefined' && Game.hiddenSite && Game.hiddenSite(b))) continue;   // an unstarted trebuchet site (b1110)
                 if (!ai._knownEnemyBuildings.has(b) && see(b.x, b.z)) {
                     ai._knownEnemyBuildings.add(b);
                 }
@@ -487,6 +490,9 @@ class AIManager {
         const available = Object.keys(techs).filter(id => {
             const tech = techs[id];
             if (ai.researchedTechs[id]) return false;
+            // The rule-based seat builds no trebuchets, so it does not pay for the
+            // tech that unlocks them (b1110); unlock techs are otherwise bought first.
+            if (id === 'siege_engineering') return false;
             if (tech.requiredAge && ageOrder.indexOf(tech.requiredAge) > curAge) return false;
             if (tech.requires && tech.requires.some(req => !ai.researchedTechs[req])) return false;
             // Generic host check: the tech's researchAt building must stand
@@ -909,6 +915,8 @@ class AIManager {
         if (!tc) return;
         const pos = this.findBuildPosition(ai, tc, buildingType, false);
         if (!pos) return; // no spot — DON'T spend (was a resource leak before)
+        // The same tower rule every seat meets (b1110): none near an enemy Town Center.
+        if (buildingType === 'tower' && this.game.towerSiteBlockedBy && this.game.towerSiteBlockedBy(ai.id, pos.x, pos.z)) return;
 
         this.spend(ai, def.cost);
         const building = createBuilding(buildingType, pos.x, pos.z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });

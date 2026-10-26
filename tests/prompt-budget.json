@@ -1,5 +1,5 @@
 {
-  "_note": "Tripwires, not targets: about 5% above the size measured on 26 Sep 2026 (build 925). Raising a ceiling is a decision, recorded in the commit that raises it. Tokens are estimated as characters / 4. Raised 2450 -> 2480 in b1077 for asp67's sentence on cavalry and scout sight and speed. Tool schemas raised 2600 -> 2660 in b1084 for explore's \"then\" (a route of up to three tiles, asked for by asp67).",
+  "_note": "Tripwires, not targets: about 5% above the size measured on 26 Sep 2026 (build 925). Raising a ceiling is a decision, recorded in the commit that raises it. Tokens are estimated as characters / 4. Raised 2450 -> 2480 in b1077 for asp67's sentence on cavalry and scout sight and speed. Tool schemas raised 2600 -> 2660 in b1084 for explore's \"then\" (a route of up to three tiles, asked for by asp67). Tool schemas raised 2660 -> 3390 in b1110 (measured ~3230) for the trebuchet and engineer (build_structure, repair_building, train_unit), the siege on the way in move_units and attack_target, guard defending its ground, and the army including its trebuchets.",
   "systemPromptTokens": 2480,
-  "toolSchemaTokens": 2660
+  "toolSchemaTokens": 3390
 }

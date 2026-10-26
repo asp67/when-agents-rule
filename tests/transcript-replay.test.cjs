@@ -176,3 +176,14 @@ test('detail every sixth checkpoint (the first, seventh, ...); between them, a s
     assert.equal(v.divergedAt, plain.step);
     assert.deepEqual([v.detail[0].seat, v.detail[0].part], [seatId, 'unit']);
 });
+
+// b1110: the live game runs at a normal pace of 2 since build 1020, the bench realm at 1. A rule
+// reading the constant (a trebuchet stone's flight) then lands at half its live time in the
+// replay, and both b1110 matches of 24 October drifted (steps 117000 and 138400); replayed at
+// 2, every input of both re-simulates. The replay now takes the pace from the header.
+test('a replay runs at the normal pace the match was played at', () => {
+    const W = require('../js/resim.js');
+    assert.equal(W.spec({ build: 1110, normalSimSpeed: 2, wonderPace: 2 }).normalSpeed, 2, 'recorded');
+    assert.equal(W.spec({ build: 1105, wonderPace: 2 }).normalSpeed, 2, 'from the Wonder pace, which starts equal to it');
+    assert.equal(W.spec({ build: 1010 }).normalSpeed, 1, 'before build 1020 it was 1');
+});

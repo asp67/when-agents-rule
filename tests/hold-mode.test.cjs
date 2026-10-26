@@ -49,7 +49,8 @@ test('the leash is 19, past every reach in the game -- a range raised beyond it 
   }
  }
  assert.ok(longest>=15,'the scan found the archers: '+longest+' '+who);
- for(const [id,b] of Object.entries(B))if(b&&b.range>longest){longest=b.range;who=id;}
+ // The trebuchet (b1110) outranges a tower but never shoots a unit: not a reach here.
+ for(const [id,b] of Object.entries(B))if(b&&id!=='trebuchet'&&id!=='trebuchet_advanced'&&b.range>longest){longest=b.range;who=id;}
  assert.equal(longest,18,'today: the tower ('+who+')');
  assert.ok(longest<SO.HOLD_LEASH,`the longest reach (${longest}, ${who}) must stay under the hold leash -- raise HOLD_LEASH with it`);
 });
@@ -104,7 +105,8 @@ test('the leash is measured from each unit\'s own slot, not the middle of the gr
 test('the mode is offered to the model and accepted by the executor', () => {
  const src=fs.readFileSync(path.join(__dirname,'../js/openai-ai.js'),'utf8');
  assert.match(src,/enum:\['march','scout','guard','hold','patrol'\]/);
- assert.match(src,/hold \(defend the destination from each unit's own spot/);
+ // The mode's meaning lives in the move_units schema (b1110: no longer copied into the prompt).
+ assert.match(src,/Hold: travel, then each unit keeps its spot/);
 });
 
 // b1045: a holding unit defends what it stands under, not only itself.

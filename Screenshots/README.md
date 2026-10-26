@@ -51,6 +51,16 @@ the episode's OBS recording; the matches themselves are in `samples/`.
 | ArcherRaid.jpg | Episode 10, OBS 0:25:42 | DeepSeek V4.1's Yamato archers raze GLM 5.3's Egyptian base |
 | WonderHeld.jpg | Episode 12, OBS 0:34:34 | The whole island while Claude Sonnet 5.5's Greeks hold a Wonder |
 
+## Rules illustrations
+
+Two Windows screenshots of the game window during live arena matches, saved as JPEG
+(quality 86) from the original PNGs, otherwise unchanged.
+
+| Asset | Source | Content |
+| --- | --- | --- |
+| TowerCreep.jpg | Screenshot, 23 October 2026, 16:53 (1833 x 744) | Qwen3.8's Greek tower chain reaching DeepSeek V4.1's Egyptian town (build 1109) |
+| Trebuchet.jpg | Screenshot, 25 October 2026, 23:12 (1854 x 603) | DeepSeek V4.1's Roman advanced trebuchets among Qwen3.8's Greek towers (build 1110 test match) |
+
 ## Interface illustrations
 
 AnalyzeTranscript.png shows the existing Episode 6 sample in the analyzer;

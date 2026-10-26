@@ -175,6 +175,7 @@ class FogOfWarManager {
         // Reveal fog around player units (game.unitVision: cavalry sees 50% farther)
         this.game.player.units.forEach(unit => {
             this.reveal(unit.x, unit.z, this.game.unitVision(unit));
+            if (unit.watch) for (const c of this.game.towerWatchCircles(unit)) this.reveal(c.x, c.z, c.r);
         });
         
         // Reveal fog around player buildings. Construction plots grant NOTHING —
@@ -183,7 +184,7 @@ class FogOfWarManager {
         // site while they work).
         this.game.player.buildings.forEach(building => {
             if (building.underConstruction) return;
-            this.reveal(building.x, building.z, this.game.buildingVision(building));
+            for (const c of this.game.buildingSightCircles(building)) this.reveal(c.x, c.z, c.r);
         });
 
         // In spectator mode, also reveal fog around ALL AI units and buildings
@@ -200,12 +201,17 @@ class FogOfWarManager {
                     const range = this.game.unitVision(unit);
                     this.reveal(unit.x, unit.z, range);
                     this.revealInto(own, unit.x, unit.z, range, 1);
+                    if (unit.watch) for (const c of this.game.towerWatchCircles(unit)) {
+                        this.reveal(c.x, c.z, c.r);
+                        this.revealInto(own, c.x, c.z, c.r, 1);
+                    }
                 });
                 ai.buildings.forEach(building => {
                     if (building.underConstruction) return; // plots don't see (same rule as the player's)
-                    const range = this.game.buildingVision(building);
-                    this.reveal(building.x, building.z, range);
-                    this.revealInto(own, building.x, building.z, range, 1);
+                    for (const c of this.game.buildingSightCircles(building)) {
+                        this.reveal(c.x, c.z, c.r);
+                        this.revealInto(own, c.x, c.z, c.r, 1);
+                    }
                 });
             });
         }
@@ -366,7 +372,8 @@ class FogOfWarManager {
         this.game.renderer.buildings.forEach(building => {
             if (building.owner === 'player') return; // Player buildings always visible
             
-            const isVisible = this.isPositionVisible(building.x, building.z);
+            // An unstarted enemy trebuchet site is unseen (b1110).
+            const isVisible = this.isPositionVisible(building.x, building.z) && !Game.hiddenSite(building);
             if (building.mesh) {
                 building.mesh.visible = isVisible;
             }

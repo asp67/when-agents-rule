@@ -856,3 +856,34 @@ test('a formation priest does not follow a patient under a tower its group is no
  g.threats=[tower];
  assert.notEqual(so.supportPosition(g,p,g.units,fallback),fallback,'with the group fighting that tower it heals there');
 });
+
+// asp67, 23 Oct 2026 (b1110): "unit approaching formation --->  <--- Formation: neither
+// the approaching unit nor the formation should slow down. Only when <--- moving formation
+// <--- unit approaching formation: the formation needs to be slower than the approaching
+// unit, to let the unit catch up."
+test('a member coming to meet the formation slows nobody, and is not slowed (b1110)',()=>{
+ const h=setup(),a=h.unit('warrior',0,0,1),fast=h.unit('warrior',0,2,1.5),joiner=h.unit('warrior',-130,0,1);
+ h.owner.units.push(a,fast,joiner);
+ h.issue('march',{x:-100,z:0});               // the body marches west; the joiner stands past its slot
+ h.g.measureFormationLead();
+ const along=u=>(u.x-u.targetX)*u.formationAxis.x+(u.z-u.targetZ)*u.formationAxis.z;
+ assert.ok(along(joiner)>1,'the joiner is past its own slot: '+along(joiner).toFixed(1));
+ assert.equal(h.g.moveSpeedOf(joiner,50),1,'it walks back at its own speed');
+ // 0.02 behind the lead by its slot, it closes on the ramp (FORMATION_CATCH_UP): a hair over the pace.
+ const fs_=h.g.moveSpeedOf(fast,50);
+ assert.ok(fs_>=1&&fs_<1.02,'the body keeps the march pace (1), the fast one not released to 1.5: '+fs_);
+ assert.equal(h.g.moveSpeedOf(a,50),1,'and is not slowed for it');
+});
+
+test('a member catching up from behind finds the body slower than itself, even one slower than the pace (b1110)',()=>{
+ const h=setup(),a=h.unit('warrior',-40,0,1.8),b=h.unit('warrior',-40,2,1.8),late=h.unit('warrior',0,0,1);
+ h.owner.units.push(a,b,late);
+ h.issue('march',{x:-100,z:0});
+ // It joined after the pace was set: the march runs at 1.8.
+ for(const u of [a,b,late])u.marchSpeed=1.8;
+ h.g.measureFormationLead();
+ assert.equal(h.g.moveSpeedOf(late,50),1,'the one behind runs at its own speed');
+ const body=h.g.moveSpeedOf(a,50);
+ assert.ok(body<1,'the body is slower than the one catching up: '+body);
+ assert.ok(Math.abs(body-0.6)<1e-9,'60% of the slower of pace and straggler: '+body);
+});

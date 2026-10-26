@@ -42,7 +42,7 @@
   }
  },
  {
-  "hash": "9949de927e08f36e",
+  "hash": "2b52cae0f37f7315",
   "summary": {
    "t": 60,
    "seats": [
@@ -126,7 +126,7 @@
   }
  },
  {
-  "hash": "997e23a6363f7399",
+  "hash": "4fb51b92ee7f0b6e",
   "summary": {
    "t": 120,
    "seats": [
@@ -168,7 +168,7 @@
   }
  },
  {
-  "hash": "b933ed5096782810",
+  "hash": "c52f0ebaf72462da",
   "summary": {
    "t": 150,
    "seats": [
@@ -177,7 +177,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      150,
+      160,
       40,
       100,
       50
@@ -210,7 +210,7 @@
   }
  },
  {
-  "hash": "665f5069dfff8999",
+  "hash": "db42801ad71eeaa4",
   "summary": {
    "t": 180,
    "seats": [
@@ -219,7 +219,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      310,
+      330,
       20,
       100,
       50
@@ -252,7 +252,7 @@
   }
  },
  {
-  "hash": "c81d85c2e7caa233",
+  "hash": "01ade86514a8641f",
   "summary": {
    "t": 210,
    "seats": [
@@ -261,7 +261,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      460,
+      490,
       10,
       100,
       50
@@ -278,8 +278,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      452,
-      36,
+      476,
+      48,
       100,
       50
      ],
@@ -294,7 +294,7 @@
   }
  },
  {
-  "hash": "1ed2633553f56514",
+  "hash": "29b05b9dabd120b0",
   "summary": {
    "t": 240,
    "seats": [
@@ -303,7 +303,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      670,
+      680,
       40,
       100,
       50
@@ -336,7 +336,7 @@
   }
  },
  {
-  "hash": "be2811862bed6b4f",
+  "hash": "e61e05614647de44",
   "summary": {
    "t": 270,
    "seats": [
@@ -345,7 +345,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      770,
+      800,
       30,
       100,
       50
@@ -362,49 +362,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      774,
-      58,
-      100,
-      50
-     ],
-     "units": {
-      "worker": 14
-     },
-     "hp": 560,
-     "buildings": 7,
-     "research": 3
-    }
-   ]
-  }
- },
- {
-  "hash": "28b9958a7faf80dd",
-  "summary": {
-   "t": 300,
-   "seats": [
-    {
-     "civ": "greek",
-     "age": "stone",
-     "out": false,
-     "res": [
-      870,
-      10,
-      100,
-      20
-     ],
-     "units": {
-      "worker": 14
-     },
-     "hp": 560,
-     "buildings": 7,
-     "research": 2
-    },
-    {
-     "civ": "persian",
-     "age": "stone",
-     "out": false,
-     "res": [
-      1002,
+      834,
       82,
       100,
       50
@@ -420,7 +378,49 @@
   }
  },
  {
-  "hash": "2a98ccf8897bf03e",
+  "hash": "26dccecfd43c8574",
+  "summary": {
+   "t": 300,
+   "seats": [
+    {
+     "civ": "greek",
+     "age": "stone",
+     "out": false,
+     "res": [
+      870,
+      20,
+      100,
+      20
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 7,
+     "research": 2
+    },
+    {
+     "civ": "persian",
+     "age": "stone",
+     "out": false,
+     "res": [
+      1050,
+      106,
+      100,
+      50
+     ],
+     "units": {
+      "worker": 14
+     },
+     "hp": 560,
+     "buildings": 7,
+     "research": 3
+    }
+   ]
+  }
+ },
+ {
+  "hash": "0ef93e31e09e23bd",
   "summary": {
    "t": 330,
    "seats": [
@@ -429,7 +429,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      1040,
+      1070,
       60,
       100,
       20
@@ -446,8 +446,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      1182,
-      118,
+      1142,
+      4,
       100,
       50
      ],
@@ -462,7 +462,7 @@
   }
  },
  {
-  "hash": "f9efc2386ecaf787",
+  "hash": "f5ffb6b5dd6c4be9",
   "summary": {
    "t": 360,
    "seats": [
@@ -471,7 +471,7 @@
      "age": "stone",
      "out": false,
      "res": [
-      1200,
+      1210,
       0,
       100,
       20
@@ -488,8 +488,8 @@
      "age": "stone",
      "out": false,
      "res": [
-      1362,
-      142,
+      1298,
+      28,
       100,
       50
      ],
@@ -498,7 +498,7 @@
      },
      "hp": 560,
      "buildings": 7,
-     "research": 3
+     "research": 4
     }
    ]
   }

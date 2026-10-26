@@ -68,6 +68,12 @@ var WarResim = {
                 p.model === 'ki' && p.profile ? { profile: p.profile } : {})),
             seed: header.mapSeed, difficulty: header.difficulty || 'easy', turnBased: false,
             mapSize: header.mapSize || 800,
+            // The live game's normal pace (Game.NORMAL_SIM_SPEED, 2 since build 1020): the
+            // bench realm defaults to 1, and a rule that reads the constant -- the flight of
+            // a trebuchet's stone (b1110) -- then plays out at half its live time, and the
+            // replay drifts (24 October: both b1110 matches, at steps 117000 and 138400).
+            // Recorded in the header since b1110; before it, the Wonder pace starts equal.
+            normalSpeed: header.normalSimSpeed || header.wonderPace || (header.build >= 1020 ? 2 : 1),
         };
     },
 

@@ -17,7 +17,8 @@ async function replayTranscript(recs, { sources = null } = {}) {
     const refusal = WarResim.refusal(header, inputs);
     if (refusal) return { ok: false, problem: refusal };
     const spec = WarResim.spec(header);
-    const realm = await createMatch({ kind: 'arena', seats: spec.setup, seed: spec.seed, difficulty: spec.difficulty, mapSize: spec.mapSize }, sources ? { sources } : {});
+    const realm = await createMatch({ kind: 'arena', seats: spec.setup, seed: spec.seed, difficulty: spec.difficulty, mapSize: spec.mapSize },
+        Object.assign({ normalSpeed: spec.normalSpeed }, sources ? { sources } : {}));
     const replay = new WarResim.Replay(realm.game, header, inputs, ms => realm.advance(ms));
     if (replay.ok) replay.to(replay.lastInputStep);
     if (replay.ok) return { ok: true, inputs: inputs.length, checked: replay.checked, steps: replay.step };

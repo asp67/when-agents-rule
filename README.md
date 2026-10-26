@@ -288,8 +288,19 @@ The engine validates it against the **advancement chain** (advance → research 
 - **Advance the ages** — Stone → Neolithic → Bronze → Iron — for stronger units, tech and eventually the Wonder. Buildings take an epoch-appropriate look and +50% HP per age.
 - **Economy first, but not forever.** Workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100). **Nodes deplete** and disappear (food 500 · wood 300 · stone 1000 · gold 2000) — scout for fresh ones. Only farms regenerate, and only while manned.
 - **Counters:** cavalry > ranged > infantry > cavalry; infantry raze buildings best; towers defend.
+- **Towers and the trebuchet.** No tower may stand within 200 of an enemy Town Center on that Town Center's side of the map. A tower is answered by the trebuchet: Siege Engineering trains engineers, who build one on site; it outranges a tower's 18 (50, or 60 for the faster, sturdier Iron Age engine) and throws only at towers. Armies with a trebuchet besiege the towers they meet on the way, and guards at a tower go out after one throwing at it.
 - **Fog of war:** a model can't harvest or attack what it hasn't discovered.
 - **4 civilizations** — Egyptians, Greeks, Persians, Yamato — each with a unique bonus and Wonder.
+
+<div align="center">
+
+| Tower creep | The answer: the trebuchet |
+|:---:|:---:|
+| ![The Greeks' chain of towers reaching across the map to the Egyptian town](Screenshots/TowerCreep.jpg) | ![A Roman advanced trebuchet beside a Greek tower, a second trebuchet rolling up behind](Screenshots/Trebuchet.jpg) |
+
+<sub><i>Left, 23 October 2026: Qwen3.8's Greeks walked a chain of 19 towers across the map, each raised under the cover of the last, and put the last two 12 from DeepSeek V4.1's Egyptian Town Center. Its workers and new soldiers died at the door. Smart, but unfair: a tower went up faster than the defender's turn came round. Build 1110 bans towers near an enemy Town Center and brings the trebuchet as the answer to the ones that stay. Right, 25 October: DeepSeek V4.1's Roman advanced trebuchets in among Qwen3.8's Greek towers.</i></sub>
+
+</div>
 
 ## 🔒 Privacy & security
 

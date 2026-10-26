@@ -611,7 +611,7 @@ class Game {
                 this.renderer.addUnit(worker);
             }
             // Update population counter after creating workers
-            this.player.resources.updatePopulation(this.player.units.length);
+            this.player.resources.updatePopulation(Game.populationOf(this.player.units));
         }
 
         // Add AI opponents at their spawn positions
@@ -652,7 +652,7 @@ class Game {
             // refresh ever did, which left a window in which three workers were standing
             // on the map under a population of 0 — and every model's opening snapshot
             // fell inside it.
-            ai.resources.updatePopulation(ai.units.length);
+            ai.resources.updatePopulation(Game.populationOf(ai.units));
         }
 
         // Initialize OpenAI-powered AI controllers for all AI players (async).
@@ -985,7 +985,7 @@ class Game {
         if (this.renderer && this.renderer.beginSimStep) this.renderer.beginSimStep();
         // Population first: the brain below and the state a model is sent both read it.
         this.aiManager.aiPlayers.forEach(ai => {
-            ai.resources.updatePopulation(ai.units.length);
+            ai.resources.updatePopulation(Game.populationOf(ai.units));
         });
         // The rule-based brain thinks on simulated time, like the world it commands.
         this.aiManager.update(dt);
@@ -1063,6 +1063,7 @@ class Game {
         if(this._standingOrders)this._standingOrders.update(dt);
         this.measureFormationLead();
         this.updateWorkerTasks(dt);
+        this.updateEngineerTasks(dt);
         this.updateUnitMovement(dt);
         // Timed production / economy
         this.updateProduction(dt);
@@ -1071,6 +1072,7 @@ class Game {
         this.updateCombat(dt);
         this.updateHealing(dt);
         this.updateTowerAttack(dt);
+        this.updateTrebuchetAttack(dt);
         this.updateAutoDefense(dt);
         // Vision
         if (this.fogOfWar) this.fogOfWar.update(dt);
@@ -1360,6 +1362,7 @@ class Game {
     }
 
     noteRetaliation(victim, attacker) {
+        if (Game.engineerIgnoresHit(victim, attacker)) return;   // nor its formation (b1110)
         if (victim?._standingOrder) {
             this._standingOrders?.retaliate(victim, attacker);
             return;
@@ -1466,6 +1469,12 @@ class Game {
             if(unit._standingOrder?.mode==='scout'&&!unit._standingOrder.threats?.length)return;
             // Skip workers - they don't attack unless explicitly ordered
             if (unit.type === 'worker' && !unit.isAttacking) return;
+            // A siege engine has no attack of its own and never engages (b1110); its
+            // throw is updateTrebuchetAttack's.
+            if (unit.unitType === 'siege') {
+                if (unit.isAttacking || unit.attackTarget) { unit.isAttacking = false; unit.attackTarget = null; }
+                return;
+            }
             // Self-defense ends with its attacker: dead, gone, or out of reach of where
             // the worker was hit. It never looks for the next enemy.
             if (unit._selfDefense) {
@@ -1516,6 +1525,9 @@ class Game {
                         unit.isAttacking = false;
                         this.resumeWorkerAfterCombat(unit);
                         return;
+                    } else if (this.returnFromDefense(unit)) {
+                        // A drafted soldier, the threats gone: back to where it was (b1110).
+                        return;
                     } else if (!unit.attackMove) {
                         // Plain attack and nothing nearby (verified by a real scan):
                         // stop instead of chasing far off.
@@ -1538,7 +1550,9 @@ class Game {
                             this.renderer.updateUnitPosition(unit);
                         } else {
                             // Reached the objective with nothing left to fight: hold —
-                            // except drafted workers, who return to their economy job.
+                            // except drafted workers, who return to their economy job,
+                            // and drafted soldiers, who go back to where they were (b1110).
+                            if (this.returnFromDefense(unit)) return;
                             unit.isMoving = false;
                             unit.attackMove = null;
                             unit.isAttacking = false;
@@ -1720,7 +1734,7 @@ class Game {
 
             let patient = null, best = HEAL_SEARCH;
             owner.units.forEach(o => {
-                if (o === u || o.health <= 0 || o.health >= o.maxHealth) return;
+                if (o === u || o.health <= 0 || o.health >= o.maxHealth || o.unitType === 'siege') return;
                 const d = WarMath.hypot(o.x - u.x, o.z - u.z);
                 if (d < best) { best = d; patient = o; }
             });
@@ -1767,7 +1781,7 @@ class Game {
         });
         if (includeBuildings) {
             this.renderer.buildings.forEach(b => {
-                if (b.owner === unit.owner || b.health <= 0) return;
+                if (b.owner === unit.owner || b.health <= 0 || Game.hiddenSite(b)) return;
                 const d = WarMath.hypot(b.x - unit.x, b.z - unit.z);
                 if (d < minDist) { minDist = d; nearest = b; }
             });
@@ -1775,11 +1789,88 @@ class Game {
         return nearest;
     }
     
+    // Trebuchets (b1110, asp67): each throws one stone every reloadMs at the nearest
+    // enemy tower or tower site within its range, and hits nothing else -- not the
+    // worker building the site, nor any unit. A loaded engine waits loaded, so a tower
+    // site begun in its reach is hit at once. The hit is the tower owner's alarm like
+    // any other (_lastAttacker), so local soldiers answer the engine (updateAutoDefense).
+    // A trebuchet's stone lands, and does its damage, when it arrives (b1110, asp67: "a
+    // tower registers the damage at the moment the boulder leaves the trebuchet not at
+    // the moment it hits the tower"). It leaves the sling TREB_RELEASE_MS into the swing
+    // and flies a time set by the distance -- in simulation ms, so the renderer's boulder
+    // touches down on the same tick. A stone in the air lands even if its engine is
+    // destroyed meanwhile, credited to that engine; on a tower already fallen it lands
+    // on nothing.
+    static get TREB_RELEASE_MS() { return 380; }
+    static boulderFlightMs(dist) {
+        // 1.5x the first boulder's pace (asp67): dist/24 s at the normal speed, at least 0.6 s.
+        return Math.max(0.6, dist / 24) * 1000 * Game.NORMAL_SIM_SPEED;
+    }
+    landBoulders() {
+        if (!this._boulders || !this._boulders.length) return;
+        const now = this.simNow();
+        const still = [];
+        for (const s of this._boulders) {
+            if (s.landAt > now) { still.push(s); continue; }
+            const target = s.target;
+            if (!target || !(target.health > 0)) continue;
+            target.health -= s.dmg;
+            this.recordBattleDamage(s.from, target, s.dmg);
+            target._lastAttacker = s.from;
+            target._lastDamageTime = now;
+            this.renderer.flashHit(target);
+            this.notifyCombat(target.x, target.z, s.from, target, s.dmg);
+            if (target.health <= 0) this.destroyTarget(target);
+        }
+        this._boulders = still;
+    }
+
+    updateTrebuchetAttack(deltaTime) {
+        this.landBoulders();
+        const all = this.getAllBuildings();
+        // The engines: standing trebuchets, and advanced ones on wheels -- which throw
+        // only while they stand (b1110, asp67).
+        const engines = all.filter(t => Game.isTrebuchetBuilding(t.type) && !t.underConstruction && t.health > 0)
+            .concat(this.getAllUnits().filter(u => u.unitType === 'siege' && u.health > 0));
+        for (const t of engines) {
+            const reload = t.reloadMs || 6000;
+            if (t.isMoving) {
+                t._aim = null;
+                t.attackTimer = Math.min(reload, (t.attackTimer || 0) + deltaTime);
+                continue;
+            }
+            let target = null, best = Infinity;
+            for (const b of all) {
+                if (!b || b.type !== 'tower' || b.owner === t.owner || !(b.health > 0)) continue;
+                const d = WarMath.hypot(b.x - t.x, b.z - t.z);
+                if (d <= (t.range || 27) && d < best) { best = d; target = b; }
+            }
+            // What it aims at, for the renderer to turn it toward (units turn the same
+            // way to their attack target). Read by nothing in the rules.
+            t._aim = target;
+            t.attackTimer = (t.attackTimer || 0) + deltaTime;
+            if (t.attackTimer < reload) continue;
+            if (!target) { t.attackTimer = reload; continue; }
+            t.attackTimer -= reload;
+            const dmg = t.siegeAttack || t.attack || 150;
+            // The throw: the stone is in the air now, and does its damage where it lands
+            // (landBoulders). _throwAt drives the renderer's swing.
+            const now = this.simNow(), releaseAt = now + Game.TREB_RELEASE_MS;
+            const landAt = releaseAt + Game.boulderFlightMs(best);
+            (this._boulders || (this._boulders = [])).push({ from: t, target, dmg, landAt });
+            t._throwAt = now;
+            const away = best || 1;
+            this.renderer.spawnProjectile({ x: t.x + (target.x - t.x) / away * 2, y: 7, z: t.z + (target.z - t.z) / away * 2 },
+                { x: target.x, y: 3, z: target.z }, 'boulder', t, { releaseAt, landAt });
+        }
+    }
+
     // Tower auto-attack: a finished tower looses a volley at the closest enemies
     // in range, so a tower line is a real deterrent without erasing an army.
     updateTowerAttack(deltaTime) {
         const towers = this.getAllBuildings().filter(b => b.type === 'tower' && !b.underConstruction && b.health > 0);
         const units = this.getAllUnits().slice(); // snapshot: volleys kill mid-loop
+        const sites = this.getAllBuildings().filter(b => Game.isTrebuchetBuilding(b.type) && b.underConstruction);
         towers.forEach(tower => {
             if (!tower.attackTimer) tower.attackTimer = 0;
             tower.attackTimer += deltaTime;
@@ -1802,6 +1893,16 @@ class Game {
                 const d = Math.sqrt(dx * dx + dz * dz);
                 if (d <= range) inRange.push({ unit, d });
             });
+            // And trebuchet sites, begun or not -- a tower sees an unstarted one that is
+            // hidden from everyone else (b1110, asp67: "Towers can see and attack
+            // trebuchet building sites"). A site set beside an enemy tower, or a tower
+            // raised beside a site, no longer deadlocks the pair: the tower ends it, and
+            // one not yet begun was not paid for.
+            for (const site of sites) {
+                if (site.owner === tower.owner || !(site.health > 0) || !site.underConstruction) continue;
+                const d = WarMath.hypot(site.x - tower.x, site.z - tower.z);
+                if (d <= range) inRange.push({ unit: site, d });
+            }
             inRange.sort((a, b) => a.d - b.d);
             if(inRange.length && power.arrows > 0) this.sound?.projectile(tower, 'arrow');
             inRange.slice(0, power.arrows).forEach(({ unit }) => {
@@ -1811,8 +1912,8 @@ class Game {
                 // the auto-defense reflex knows what to retaliate against.
                 unit._lastAttacker = tower;
                 unit._lastDamageTime = this.simNow();
-                // Besieging squads turn on the tower shooting them.
-                this.noteRetaliation(unit, tower);
+                // Besieging squads turn on the tower shooting them (a site has none).
+                if (!unit.underConstruction) this.noteRetaliation(unit, tower);
 
                 // Combat visuals: a stone from the tower top + flash + battle ping.
                 this.renderer.spawnProjectile(
@@ -1865,6 +1966,7 @@ class Game {
                 const atk = ent._lastAttacker;
                 if (!atk || atk.health <= 0) return;
                 if (this.getOwner(atk) === owner) return; // ignore friendly/self
+                if (Game.engineerIgnoresHit(ent, atk)) return;   // a tower on an engineer or its site (b1110)
                 threats.push({ ent, atk });
             };
             owner.buildings.forEach(scan);
@@ -1896,7 +1998,7 @@ class Game {
             const primary = threats[0];
             const atk = primary.atk;
 
-            const military = owner.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
+            const military = owner.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && u.unitType !== 'siege' && u.health > 0);
             // Idle/free military engage; units already attacking keep their orders.
             //
             // ...and only military within reach of the trouble. This used to be every
@@ -1923,6 +2025,7 @@ class Game {
                             1: Game.BATTLE_RADIUS * 1.5, 0: Game.BATTLE_RADIUS };
             const reach = REACH[this.threatPriority(primary.ent)];
             let defenders = military.filter(u => !u._standingOrder && !u.isAttacking &&
+                !Game.engineerKeepsBuilding(u, now) &&
                 WarMath.hypot(u.x - primary.ent.x, u.z - primary.ent.z) <= reach);
             // Workers are never drafted here (1 Oct 2026). They used to be: all of them
             // for a Wonder raid, from anywhere on the map, and those within 28 when the
@@ -1995,7 +2098,19 @@ class Game {
                     d.isHarvesting = false;
                     d.carryingResource = false;
                 }
+                // An engineer on a trebuchet job keeps it, to take up again after the fight
+                // (b1110, asp67: "after retaliation, the engineer needs to return to
+                // building the trebuchet").
+                if (Game.engineerBusy(d) && !d._engineerJob)
+                    d._engineerJob = { task: d.task, target: d.task === 'building' ? d.buildTarget : d.repairTarget };
                 d.task = null;
+                d.isBuilding = false;   // off the site: no building pose in the fight (b1110)
+                // A soldier remembers where it was -- standing, or walking to -- and goes
+                // back there when the fight is over (b1110, asp67). Kept from its first
+                // draft through any later ones, until an order sends it elsewhere.
+                if (d.type !== 'worker' && !d._defendReturn)
+                    d._defendReturn = d.isMoving && Number.isFinite(d.targetX) ? { x: d.targetX, z: d.targetZ, token: d._orderToken }
+                        : { x: d.x, z: d.z, token: d._orderToken };
                 this.clearRetaliation(d); // fresh draft, fresh focus
                 d.isAttacking = true;
                 d.attackTarget = atk;
@@ -2008,6 +2123,33 @@ class Game {
                 d.targetZ = atk.z;
             });
         });
+    }
+
+    // A soldier drafted by auto-defense goes back to where it was when the draft took it
+    // (b1110, asp67: "retaliating units need to return to their origin from where they
+    // started the retaliation after eliminating the threats, except if an order has
+    // changed their target location"). It used to march on to the rally point at the
+    // attacker's position and stand there. A new order -- a standing order, or any order
+    // that re-tokened it -- cancels the return. True when it was sent back.
+    returnFromDefense(unit) {
+        const ret = unit._defendReturn, job = unit._engineerJob;
+        if (!ret) return false;
+        unit._defendReturn = null;
+        unit._engineerJob = null;
+        if (unit._standingOrder || unit._orderToken !== ret.token) return false;
+        unit.isAttacking = false;
+        unit.attackTarget = null;
+        unit.attackMove = null;
+        this.clearRetaliation(unit);
+        // An engineer goes back to its trebuchet, if there is still work on it.
+        const t = job && job.target;
+        if (t && t.health > 0 && (job.task === 'building' ? t.underConstruction : t.health < t.maxHealth)) {
+            this.sendEngineer(unit, t, job.task);
+            return true;
+        }
+        unit.targetX = ret.x; unit.targetZ = ret.z;
+        unit.isMoving = WarMath.hypot(unit.x - ret.x, unit.z - ret.z) > 0.5;
+        return true;
     }
 
     // Is this unit already tending a live engagement somewhere OTHER than the one at
@@ -2555,12 +2697,16 @@ class Game {
     static get BATTLE_QUIET_MS() { return 10000; }   // no blows for this long → the fight is over
     // ...but keep reporting it long after. A slow model can spend 20-30s on a turn,
     // so a short window meant the only record of a fight could expire between the
-    // last blow and that player's next look at the board.
+    // last blow and that player's next look at the board. MATCH time (b1110): it was
+    // counted on the simulation's clock, which runs ahead of the match's -- about 3.7x
+    // at 2x speed in asp67's match of 24 October, where a fight was gone 33 s after its
+    // last blow, and two trebuchets lost between turns 50 s apart were never reported.
     static get BATTLE_KEEP_MS() { return 120000; }
     // Engagements held at once, across every player. Sized against KEEP_MS: entries
     // now linger nearly 5x longer, so the old cap of 4 would have run out of room in
-    // any busy match and started dropping live fights to make space.
-    static get BATTLE_MAX() { return 8; }
+    // any busy match and started dropping live fights to make space. 16 since b1110,
+    // when KEEP_MS became match time and entries lived as much again longer at speed.
+    static get BATTLE_MAX() { return 16; }
 
     _battleAt(x, z, open) {
         const now = this.simNow();
@@ -2603,8 +2749,9 @@ class Game {
     // every state for the rest of the match. The one caller that reads _battles
     // outside combat (the state serializer) never filtered by age either.
     pruneBattles() {
-        const now = this.simNow();
-        this._battles = (this._battles || []).filter(b => (now - b.lastAt) <= Game.BATTLE_KEEP_MS);
+        // Match time, not the simulation's (b1110): see BATTLE_KEEP_MS.
+        const nowMatch = this.clock.matchMs;
+        this._battles = (this._battles || []).filter(b => (nowMatch - this.matchMsAt(b.lastAt)) <= Game.BATTLE_KEEP_MS);
     }
 
     _mergeBattleInto(dst, src) {
@@ -2775,6 +2922,7 @@ class Game {
         // building another Wonder ("already building or holding a Wonder").
         const isBuilding = target.isWonder || (target.type && BUILDING_DEFS[target.type]);
         if(isBuilding)this.sound?.buildingLost(target);
+        if (isBuilding) this.refundUnstartedSite(target);   // a trebuchet site never begun (b1110)
 
         // Battle report for both sides, before any list surgery. Specific types
         // on BOTH ends ("your warrior was eliminated by X's tower"), so a model
@@ -2828,7 +2976,7 @@ class Game {
                     if (idx > -1) ai.units.splice(idx, 1);
                     // Update at removal, before another command or snapshot can read
                     // the old count. Headless matches do not run the browser HUD tick.
-                    ai.resources.updatePopulation(ai.units.length);
+                    ai.resources.updatePopulation(Game.populationOf(ai.units));
                 }
                 this.renderer.killUnit(target); // tip over + fade instead of vanishing
             }
@@ -3029,7 +3177,7 @@ class Game {
             }
         }
 
-        if (!this.player.resources.hasResources(buildingDef.cost)) {
+        if (!this.player.resources.hasResources(buildingCost(buildingDef, this.player.age))) {
             this.ui.showErrorMessage(t('msg.notEnough'));
             return;
         }
@@ -3061,7 +3209,30 @@ class Game {
             this.cancelBuildingPlacement();
             return;
         }
+        if (pendingBuilding.type === 'tower' && this.towerSiteBlockedBy(this.player.id || 'player', x, z)) {
+            this.ui.showErrorMessage(t('msg.towerNearEnemyTC', { n: Game.TOWER_TC_EXCLUSION }));
+            this.cancelBuildingPlacement();
+            return;
+        }
 
+        // A trebuchet is built by an engineer (b1110).
+        if (Game.isTrebuchetBuilding(pendingBuilding.type)) {
+            const engineer = this.pickEngineer(this.player, { x, z });
+            if (!engineer) {
+                this.ui.showErrorMessage(t('msg.needsEngineer'));
+                this.cancelBuildingPlacement();
+                return;
+            }
+            // Paid now, returned if destroyed before work begins (b1110): refundUnstartedSite.
+            const cost = buildingCost(pendingBuilding.def, this.player.age);
+            this.player.resources.spendResources(cost);
+            const site = createBuilding(pendingBuilding.type, x, z, 'player', this.player.civilization, { underConstruction: true, age: this.player.age });
+            site._prepaid = { ...cost };
+            this.addBuilding(site);
+            this.sendEngineer(engineer, site, 'building');
+            this.cancelBuildingPlacement();
+            return;
+        }
         // Pick a builder before spending (only idle workers build; a busy worker is
         // borrowed only at the population cap and resumes its task afterwards).
         const pick = this.pickBuilder(this.player, { x, z });
@@ -3077,7 +3248,7 @@ class Game {
         }
 
         // Spend resources
-        this.player.resources.spendResources(pendingBuilding.def.cost);
+        this.player.resources.spendResources(buildingCost(pendingBuilding.def, this.player.age));
 
         // Create a construction site and send the chosen worker to build it
         const building = createBuilding(pendingBuilding.type, x, z, 'player', this.player.civilization, { underConstruction: true, age: this.player.age });
@@ -3318,6 +3489,9 @@ class Game {
     // One unit, one tech bonus — shared by the research-time retrofit
     // (applyBonusToUnits) and the spawn-time catch-up (applyResearchedBonusesToUnit).
     applyBonusToOneUnit(bonus, appliesTo, unit) {
+        // A siege engine takes no soldier's or worker's tech (b1110): an attack bonus
+        // would give it a weapon, a health bonus would break its flat engine health.
+        if (unit && unit.unitType === 'siege') return;
         // 'all_units' bonuses hit workers AND military alike (Greek Farsight).
         if (appliesTo === 'all_units') {
             if (bonus.visionRange) unit.visionBonus = (unit.visionBonus || 1) + bonus.visionRange;
@@ -3580,7 +3754,7 @@ class Game {
     addUnit(unit) {
         this.player.units.push(unit);
         this.renderer.addUnit(unit);
-        this.player.resources.updatePopulation(this.player.units.length);
+        this.player.resources.updatePopulation(Game.populationOf(this.player.units));
     }
 
     removeUnit(unit) {
@@ -3588,7 +3762,7 @@ class Game {
         if (idx > -1) {
             this.player.units.splice(idx, 1);
             this.renderer.killUnit(unit); // animated death (tip over + fade)
-            this.player.resources.updatePopulation(this.player.units.length);
+            this.player.resources.updatePopulation(Game.populationOf(this.player.units));
         }
     }
 
@@ -3729,8 +3903,20 @@ class Game {
     // is a site, otherwise repair it if damaged. Returns 'building' | 'repairing' | null.
     assignWorkersToBuilding(workers, building) {
         if (!building || !workers || !workers.length) return null;
+        // Engineers take trebuchet work (b1110): building one is theirs alone.
+        const engineers = workers.filter(u => u && u.type === 'engineer' && u.health > 0);
+        let engineerTask = null;
+        if (engineers.length && Game.trebuchetWork(building)) {
+            const task = building.underConstruction ? 'building' : 'repairing';
+            if (task === 'building' || building.health < building.maxHealth) {
+                engineers.forEach(e => this.sendEngineer(e, building, task));
+                engineerTask = task;
+            }
+        }
+        // A villager does not build a trebuchet (b1110), though it may mend one.
+        if (Game.isTrebuchetBuilding(building.type) && building.underConstruction) return engineerTask;
         const usable = workers.filter(u => u && u.type === 'worker' && u.health > 0);
-        if (!usable.length) return null;
+        if (!usable.length) return engineerTask;
 
         if (building.underConstruction) {
             usable.forEach(w => {
@@ -3762,6 +3948,153 @@ class Game {
             return 'repairing';
         }
         return null;
+    }
+
+    // ---- Engineers (b1110, asp67) ------------------------------------------------
+    // Only an engineer builds a trebuchet; engineers and villagers mend one. The job is
+    // the engineer's own small state machine -- walk to it, build or mend at a
+    // villager's rate, return -- not the villager economy's. While on a job it is out
+    // of its formation: the formation neither fights with it nor waits for it, and its
+    // slot recovery walks it back when the job is done.
+    static trebuchetWork(b) {
+        return !!(b && (Game.isTrebuchetBuilding(b.type) || b.unitType === 'siege'));
+    }
+    static engineerBusy(u) {
+        return !!(u && u.type === 'engineer' && (u.task === 'building' || u.task === 'repairing'));
+    }
+    // An engineer building a trebuchet that has not itself been hit in the last 4 s
+    // (auto-defense's own window) stays on the site when a fight breaks out near it --
+    // drafts and a group's retaliation pass it by (b1110, asp67: "An engineer actively
+    // building a trebuchet while not taking direct damage should finish the build first,
+    // before joining the tower retaliation event"). Hit itself, it fights back, then
+    // goes back to the site.
+    static engineerKeepsBuilding(u, now) {
+        return !!(u && u.type === 'engineer' && u.task === 'building' &&
+            !(u._lastDamageTime != null && now - u._lastDamageTime <= 4000 && !Game.engineerIgnoresHit(u, u._lastAttacker)));
+    }
+    // An engineer ignores a tower's arrows, as a villager does (b1110, asp67: "engineers
+    // ignoring the towers sounds reasonable"): it neither turns on the tower nor drops its
+    // site, no draft answers the hit, and a formation it belongs to is not set on the
+    // tower by it ("Else the entire formation leaves the build site and charges the tower
+    // to get wiped"). Replayed, asp67's match of 24 October (17:24): an engineer with its
+    // trebuchet 52% built was hit by a tower, dropped the site, attacked the tower and
+    // died; another, its trebuchet done, did the same. The same for the site it builds,
+    // which towers shoot since b1110: its arrows there drafted the idle soldiers nearby.
+    static engineerIgnoresHit(victim, attacker) {
+        if (!victim || !attacker || !attacker.type || !BUILDING_DEFS[attacker.type]) return false;
+        return victim.type === 'engineer' || (Game.isTrebuchetBuilding(victim.type) && !!victim.underConstruction);
+    }
+    // The nearest engineer free for a trebuchet job at (x, z): not fighting, not on a
+    // job already.
+    pickEngineer(owner, at) {
+        let best = null, bestD = Infinity;
+        for (const u of (owner && owner.units) || []) {
+            if (u.type !== 'engineer' || !(u.health > 0) || u.isAttacking || Game.engineerBusy(u)) continue;
+            const d = WarMath.hypot(u.x - at.x, u.z - at.z);
+            if (d < bestD) { bestD = d; best = u; }
+        }
+        return best;
+    }
+    sendEngineer(e, target, task) {
+        e.formationAxis = null; e.formationGroup = null; e.marchSpeed = null; e.formationOffset = null;
+        e.attackTarget = null; e.isAttacking = false; this.clearRetaliation(e);
+        e.task = task;
+        e.buildTarget = task === 'building' ? target : null;
+        e.repairTarget = task === 'repairing' ? target : null;
+        e.isBuilding = false;
+        e.isMoving = false;
+    }
+    endEngineerJob(e) {
+        e.task = null; e.buildTarget = null; e.repairTarget = null;
+        e.isBuilding = false; e.isMoving = false;
+    }
+    // A trebuchet site destroyed before its engineer added the first hit point is paid
+    // back in full (b1110, asp67: "A trebuchet building site only gets its cost applied
+    // after the first hitpoint has been added by the builder"). Paid on placing, so the
+    // seat's resources show it spent and cannot be spent twice -- the first draft took
+    // the cost only when work began, the seat spent the money meanwhile, and the site was
+    // given up at the engineer's first stroke ("the first stroke with his hammer did not
+    // build but destroy his civilization's trebuchet building site").
+    refundUnstartedSite(site) {
+        if (!site || !site._prepaid || !Game.hiddenSite(site)) return;
+        const owner = this.getOwner(site), cost = site._prepaid;
+        site._prepaid = null;
+        if (!owner || !owner.resources) return;
+        // Straight back to the stockpile: addResource would count it as gathered.
+        for (const k of ['food', 'wood', 'stone', 'gold']) if (cost[k]) owner.resources[k] += cost[k];
+        if (owner.resources.onResourcesChanged) owner.resources.onResourcesChanged();
+        this.logPlayerEvent(owner, `Your ${site.type} site at (${Math.round(site.x)}, ${Math.round(site.z)}) was destroyed before your engineer began it; its cost was returned.`);
+    }
+    // Every trebuchet site gets an engineer without an order (b1110, asp67: "Engineers
+    // should always finish build sites in their vicinity first before anything else,
+    // except retaliation" ... "not build sites already being built ... The closest
+    // engineer not already building starts to build. No extra order needed."). A site
+    // no engineer is working -- or coming back to after a fight -- takes the closest
+    // engineer that is free (not building or mending, not fighting, not walking home
+    // from a defence) within ENGINEER_VICINITY, whatever its order. More than one
+    // engineer on a site, or one from further off, only by an order (build_structure
+    // on it, or repair_building). In asp67's match of 23 October a Viking site stood at
+    // 86% for 45 minutes after its engineer fell, while a new engineer idled 25 away.
+    // Not further, idle or not: in the match of 24 October an idle engineer was sent
+    // at any distance, and each one the Vikings trained walked from their academy to
+    // their site in the Greek base, 550 away, and died there -- four, unordered.
+    static get ENGINEER_VICINITY() { return 40; }
+    staffTrebuchetSites() {
+        for (const b of this.getAllBuildings()) {
+            if (!Game.isTrebuchetBuilding(b.type) || !b.underConstruction || !(b.health > 0)) continue;
+            const owner = this.getOwner(b), units = (owner && owner.units) || [];
+            if (units.some(u => u && u.health > 0 && u.type === 'engineer' &&
+                ((u.task === 'building' && u.buildTarget === b) || (u._engineerJob && u._engineerJob.target === b)))) continue;
+            let best = null, bestD = Infinity;
+            for (const e of units) {
+                if (!e || e.type !== 'engineer' || !(e.health > 0) || e.isAttacking || Game.engineerBusy(e) || e._defendReturn) continue;
+                const d = WarMath.hypot(b.x - e.x, b.z - e.z);
+                if (d <= Game.ENGINEER_VICINITY && d < bestD) { bestD = d; best = e; }
+            }
+            if (best) this.sendEngineer(best, b, 'building');
+        }
+    }
+    updateEngineerTasks(dt) {
+        this.staffTrebuchetSites();
+        for (const e of this.getAllUnits()) {
+            if (e.type !== 'engineer' || !(e.health > 0)) continue;
+            // Not building while it fights, nor once off the job: the flag drives the
+            // building animation, and an engineer kept it 60 away from its site (asp67).
+            if (e.isAttacking || !Game.engineerBusy(e)) {
+                if (e.isBuilding && !Game.engineerBusy(e) || e.isAttacking) e.isBuilding = false;
+                continue;
+            }
+            const building = e.task === 'building', t = building ? e.buildTarget : e.repairTarget;
+            const done = !t || !(t.health > 0)
+                || (building ? !t.underConstruction : (t.underConstruction || t.health >= t.maxHealth));
+            if (done) { this.endEngineerJob(e); continue; }
+            if (WarMath.hypot(t.x - e.x, t.z - e.z) > 3.5) {
+                e.isBuilding = false; e.isMoving = true; e.targetX = t.x; e.targetZ = t.z;
+                continue;
+            }
+            e.isMoving = false; e.isBuilding = true;
+            if (building) {
+                // As a villager builds (updateWorkerTasks, State 4): health grows with the
+                // work -- from nothing to full for a trebuchet, which starts at 0 (b1110).
+                const before = Math.min(1, (t.buildProgress || 0) / (t.buildTime || 10000));
+                t.buildProgress = (t.buildProgress || 0) + dt * (e.buildSpeed || 1);
+                const pct = Math.min(1, t.buildProgress / (t.buildTime || 10000));
+                const grows = Game.isTrebuchetBuilding(t.type) ? 1 : 0.8;
+                t.health = Math.min(t.maxHealth, t.health + t.maxHealth * grows * (pct - before));
+                if (t.buildProgress >= (t.buildTime || 10000)) {
+                    this.completeConstruction(t);
+                    // The engine joins its engineer's formation, as a unit trained into it
+                    // would (b1110, asp67: "A built trebuchet needs to behave like a unit, so
+                    // it needs to be added to formation"). Rolled off alone, seats moved it
+                    // alone, and the first tower it hit drew the whole town onto it.
+                    if (t._engine && e._standingOrder && this._standingOrders) this._standingOrders.join(e._standingOrder, t._engine);
+                    this.endEngineerJob(e);
+                }
+            } else if (this.repairBarrierMsLeft(t) <= 0) {
+                t.health = Math.min(t.maxHealth, t.health + dt / 1000 * 50);
+                if (t.health >= t.maxHealth) this.endEngineerJob(e);
+            }
+        }
     }
 
     // Remove one of `owner`'s own units (e.g. to free population). Cleans up any
@@ -3846,6 +4179,42 @@ class Game {
     static get WONDER_SCALE() { return 1.5; }
     static get WONDER_CLEARANCE() { return 7.0 * Game.WONDER_SCALE; }
     static get TOWER_SPACING() { return 15; }
+    // The two trebuchet sites (b1110); buildings.js's isTrebuchetBuilding, here too for
+    // the rules that run without it.
+    static isTrebuchetBuilding(type) { return type === 'trebuchet' || type === 'trebuchet_advanced'; }
+    // A trebuchet site on which no work has begun is unseen by every other seat
+    // (b1110, asp67): not in their state, not a target for their units, not in their
+    // contacts or fog. Placed, it was destroyed before its builder arrived -- one seat
+    // wiped out the other's sites over and over. It appears as a site the moment the
+    // first swing lands, and can be fought from then on.
+    static hiddenSite(b) {
+        return !!(b && Game.isTrebuchetBuilding(b.type) && b.underConstruction && !(b.buildProgress > 0));
+    }
+    // The population a list of units takes: every unit but the advanced trebuchet,
+    // which was built as a building and takes no unit slot (b1110).
+    static populationOf(units) {
+        let n = 0;
+        for (const u of units || []) if (u && u.unitType !== 'siege') n++;
+        return n;
+    }
+    // No tower within this of an enemy Town Center, on that Town Center's side of the
+    // map (b1110, asp67). A chain of towers walked across a whole map and the last two
+    // went up 12 from the enemy Town Center, killing its workers at the door and its
+    // soldiers as they were trained (23 Oct 2026). "Its side": the spot is nearer that
+    // Town Center than any of the builder's own, so a forward Town Center cannot be
+    // planted to deny the other side towers at home.
+    static get TOWER_TC_EXCLUSION() { return 200; }
+    // The enemy Town Center that forbids a tower of this owner at (x, z), or null.
+    towerSiteBlockedBy(ownerId, x, z) {
+        let own = Infinity, enemy = null, enemyD = Infinity;
+        for (const b of this.getAllBuildings()) {
+            if (!b || b.type !== 'town_center' || !(b.health > 0)) continue;
+            const d = WarMath.hypot(b.x - x, b.z - z);
+            if (b.owner === ownerId) { if (d < own) own = d; }
+            else if (d < enemyD) { enemyD = d; enemy = b; }
+        }
+        return enemy && enemyD <= Game.TOWER_TC_EXCLUSION && enemyD < own ? enemy : null;
+    }
     static get WONDER_BUILD_GAP() { return 11 * Game.WONDER_SCALE; }
 
     // How far a new building must stand from an existing one. `base` is the caller's own
@@ -3918,11 +4287,38 @@ class Game {
     // unit.visionBonus is a researched multiplier (e.g. Greek Farsight = 1.2),
     // applied per unit so this hot path never has to look up the owner.
     unitVision(unit) {
+        // A siege engine sees as the standing one does, 20 around itself (b1110).
+        if (unit && unit.unitType === 'siege') return 20;
         return (unit && unit.unitType === 'cavalry' ? 22.5 : 15) * ((unit && unit.visionBonus) || 1);
+    }
+
+    // A trebuchet's watch (b1110): TREBUCHET_TOWER_REVEAL around each enemy tower or tower
+    // site within its watch radius. Empty for anything without a watch.
+    towerWatchCircles(e) {
+        const out = [];
+        if (!e || !(e.watch > 0)) return out;
+        for (const t of this.getAllBuildings())
+            if (t && t.type === 'tower' && t.owner !== e.owner && t.health > 0
+                && WarMath.hypot(t.x - e.x, t.z - e.z) <= e.watch)
+                out.push({ x: t.x, z: t.z, r: TREBUCHET_TOWER_REVEAL });
+        return out;
     }
 
     // Shared sight radii for fog, model spotting, and exploration. Construction
     // sites grant no vision; completed wonders are long-range landmarks.
+    // Everything a building sees, as circles: its own sight around itself and, for a
+    // finished trebuchet (b1110, asp67), TREBUCHET_TOWER_REVEAL around each enemy tower
+    // or tower site within its watch -- and nothing else of what lies between, so a
+    // trebuchet is no lookout. Every vision path reads this (fog, seat vision, the
+    // vision index, contacts, exploration), so they agree.
+    buildingSightCircles(b) {
+        const r = this.buildingVision(b);
+        if (!(r > 0)) return [];
+        const out = [{ x: b.x, z: b.z, r }];
+        if (Game.isTrebuchetBuilding(b.type)) for (const c of this.towerWatchCircles(b)) out.push(c);
+        return out;
+    }
+
     buildingVision(b) {
         if (!b || b.underConstruction) return 0;
         if (b.type === 'tower') return 80;
@@ -4160,15 +4556,21 @@ class Game {
         const alongOf = (u) => (u.x - u.targetX) * u.formationAxis.x
                              + (u.z - u.targetZ) * u.formationAxis.z;
         const all = this.getAllUnits();
+        // A member already PAST its own slot is walking back to it, toward the body
+        // (b1110, asp67): the formation comes to meet it. It is not the lead. It was, and
+        // that made the whole body "trailing" -- released to each unit's own speed, out
+        // of step -- while the one coming to meet it was held back.
+        const oncoming = a => a > Game.FORMATION_IN_PLACE;
         all.forEach(u => {
             if (!u || !u.formationAxis || !u.formationGroup) return;
+            if (Game.engineerBusy(u)) return;   // away building or mending (b1110)
             const a = alongOf(u);
             let cur = info.get(u.formationGroup);
             if (cur === undefined) {
-                cur = { lead: a, trailing: 0, n: 0, cx: 0, cz: 0, target: null,
+                cur = { lead: oncoming(a) ? -Infinity : a, trailing: 0, trailingSpeed: Infinity, n: 0, cx: 0, cz: 0, target: null,
                         charging: false, fastest: 0 };
                 info.set(u.formationGroup, cur);
-            } else if (a > cur.lead) cur.lead = a;
+            } else if (a > cur.lead && !oncoming(a)) cur.lead = a;
             cur.n++; cur.cx += u.x; cur.cz += u.z;
             cur.fastest = Math.max(cur.fastest, u.speed || 1);
             if (!cur.target && u.attackTarget && u.attackTarget.health > 0) cur.target = u.attackTarget;
@@ -4179,8 +4581,24 @@ class Game {
         all.forEach(u => {
             if (!u || !u.formationAxis || !u.formationGroup) return;
             const g = info.get(u.formationGroup);
-            if (g && alongOf(u) < g.lead - Game.FORMATION_IN_PLACE) g.trailing++;
+            if (g && !Game.engineerBusy(u) && alongOf(u) < g.lead - Game.FORMATION_IN_PLACE) {
+                g.trailing++;
+                // The slowest one catching up: the body must stay slower than it.
+                g.trailingSpeed = Math.min(g.trailingSpeed, u.speed || 1);
+                if (u.unitType === 'siege') g.siegeGap = Math.max(g.siegeGap || 0, g.lead - alongOf(u));
+            }
         });
+        // A body waits standing for a trebuchet once it has fallen FORMATION_SIEGE_WAIT
+        // behind, until it is back in place (b1110). Without the margin a trebuchet
+        // nudged half a unit back stopped the whole body, which started again a moment
+        // later: stop-and-go every few seconds, a crowd rather than a formation (asp67).
+        const sw = this._siegeWait || (this._siegeWait = new Map());
+        info.forEach((g, gid) => {
+            const gap = g.siegeGap || 0, was = sw.get(gid);
+            g.waitForSiege = was ? gap > Game.FORMATION_IN_PLACE : gap > Game.FORMATION_SIEGE_WAIT;
+            sw.set(gid, g.waitForSiege);
+        });
+        for (const gid of sw.keys()) if (!info.has(gid)) sw.delete(gid);
         // Closest point of approach. A body held to its slowest member cannot catch
         // anything quicker than that member, and marching further in the same shape
         // does not change it: the distance falls to a minimum, then grows for the rest
@@ -4254,6 +4672,12 @@ class Game {
 
     // Close enough to its place to be held to the march pace again. Half a rank.
     static get FORMATION_IN_PLACE() { return 1.0; }
+    // How far behind the lead a member runs at its own speed; nearer, it closes on a ramp
+    // from the body's pace (moveSpeedOf, b1110). Twice FORMATION_IN_PLACE: a member in
+    // place by that test still closes the last of the gap, a little faster than the body.
+    static get FORMATION_CATCH_UP() { return 2.0; }
+    // How far behind its place a trebuchet falls before the body stops to wait (b1110).
+    static get FORMATION_SIEGE_WAIT() { return 4; }
 
     // What the formed-up part of a body does while the rest is still finding its
     // place: it eases off, to a fraction of the march pace.
@@ -4283,6 +4707,7 @@ class Game {
 
     moveSpeedOf(unit, deltaTime) {
         if (!unit) return 1.0;
+        unit._formWait = false;
         const own = unit.speed || 1.0;
         const m = unit.marchSpeed;
         if (!(typeof m === 'number' && m > 0)) return own;
@@ -4309,6 +4734,7 @@ class Game {
         // get through now keeps trying for as long as it takes.
         const ax = unit.formationAxis, g = (this._formLead && unit.formationGroup != null)
             ? this._formLead.get(unit.formationGroup) : undefined;
+        let ramp = 0;
         if (ax && g) {
             // The chase is on -- but only for the ones who can win it. A unit no
             // faster than the quarry adds nothing by breaking ranks and subtracts a
@@ -4322,20 +4748,44 @@ class Game {
                 return own > (g.tgtSpeed || 0) + Game.FORMATION_CHASE_MARGIN ? own : pace;
             }
             const along = (unit.x - unit.targetX) * ax.x + (unit.z - unit.targetZ) * ax.z;
-            if (along < g.lead - Game.FORMATION_IN_PLACE) return own;   // still finding its place
+            // Past its slot, walking back to it as the body comes on (b1110): at its own
+            // speed, and nobody waits for it -- the two are closing anyway.
+            if (along > Game.FORMATION_IN_PLACE) return own;
+            // Behind the lead it catches up on a ramp (b1110, asp67: "a formation forming
+            // close to a trebuchet turns into a jitter dance"): the body's pace at the lead,
+            // its own speed FORMATION_CATCH_UP behind it, in proportion between. It was a
+            // switch at FORMATION_IN_PLACE -- the body's pace inside, its own speed outside
+            // -- and a unit a rank back in a crowd was shoved across it by its neighbours'
+            // separation every few steps: measured in asp67's match of 25 October (20:37),
+            // an archer marching beside its trebuchet at 0.096 lunged one step at its own
+            // 1.1 every 0.3 s, and so did every unit near the line.
+            const behind = g.lead - along;
+            if (behind >= Game.FORMATION_CATCH_UP) return own;   // still finding its place
+            if (behind > 0) ramp = behind / Game.FORMATION_CATCH_UP;
+            // Standing for a trebuchet, one within FORMATION_IN_PLACE stands with the rest:
+            // closing on a lead that does not move, the ramp would inch it on for ever.
+            if (g.trailing > 0 && g.waitForSiege && behind <= Game.FORMATION_IN_PLACE) ramp = 0;
         }
+        const held = s => ramp > 0 ? s + (own - s) * ramp : s;
         // The regrouping slowdowns hold back the units IN place, so others can close up;
         // a unit still finding its place is released above, before them (b1050). The
         // priest check stood first and slowed the stragglers too, the very units it waits for.
         // A priest temporarily leaves its lane to heal, but remains part of the
         // marching body. Keep the existing regrouping pace until it returns.
         if(order&&!order.fighting&&order.units.some(p=>p.health>0&&p._standingOrder===order&&p._healingFormation))
-            return pace * Game.FORMATION_REFORM_PACE;
+            return held(pace * Game.FORMATION_REFORM_PACE);
         // In place, but the body is not: hold back so the stragglers can close. The
         // slowest of them is running at exactly this pace, so anything at or above
         // it leaves that one behind permanently.
-        if (ax && g && g.trailing > 0) return pace * Game.FORMATION_REFORM_PACE;
-        return pace;
+        // Slower than every member catching up, too (b1110): one slower than the march's
+        // pace -- it joined after the pace was set -- never closed on a body at 60% of it.
+        // A trebuchet catching up (b1110, asp67): the body stands until it is in place,
+        // then marches on with it. Held to 60% of a trebuchet's 0.16 it crept at 0.1 --
+        // slower than the engine it waited for, "so slow that it looks comical" -- and
+        // closed the gap at 0.064 instead of the trebuchet's whole 0.16.
+        if (ax && g && g.trailing > 0 && g.waitForSiege) { if (!ramp) unit._formWait = true; return held(0); }
+        if (ax && g && g.trailing > 0) return held(Math.min(pace, g.trailingSpeed) * Game.FORMATION_REFORM_PACE);
+        return held(pace);
     }
 
     // Where a unit marching in formation should be heading RIGHT NOW.
@@ -4531,9 +4981,15 @@ class Game {
         const eyes = new Map();
         players.forEach(p => {
             const list = [];
-            (p.units || []).forEach(u => { if (u.health > 0) list.push({ e: u, r: this.unitVision(u) }); });
+            (p.units || []).forEach(u => {
+                if (!(u.health > 0)) return;
+                list.push({ e: u, r: this.unitVision(u) });
+                if (u.watch) for (const c of this.towerWatchCircles(u)) list.push({ e: { x: c.x, z: c.z, type: u.type, owner: u.owner }, r: c.r });
+            });
             (p.buildings || []).forEach(b => {
-                if (b.health > 0 && !b.underConstruction) list.push({ e: b, r: this.buildingVision(b) });
+                if (b.health > 0 && !b.underConstruction)
+                    for (const c of this.buildingSightCircles(b))
+                        list.push({ e: c.x === b.x && c.z === b.z ? b : { x: c.x, z: c.z, type: b.type, owner: b.owner }, r: c.r });
             });
             eyes.set(p, list);
         });
@@ -4566,7 +5022,7 @@ class Game {
                 if (other === viewer) return;
                 const targets = [];
                 (other.units || []).forEach(u => { if (u.health > 0) targets.push(u); });
-                (other.buildings || []).forEach(b => { if (b.health > 0) targets.push(b); });
+                (other.buildings || []).forEach(b => { if (b.health > 0 && !Game.hiddenSite(b)) targets.push(b); });
                 const pairBest = { dist: Infinity, x: 0, z: 0, target: null, mine: null, hit: false };
 
                 targets.forEach(t => {
@@ -4650,9 +5106,13 @@ class Game {
                 }
             }
         };
-        (owner.units || []).forEach(u => { if (u.health > 0) mark(u.x, u.z, this.unitVision(u)); });
+        (owner.units || []).forEach(u => {
+            if (!(u.health > 0)) return;
+            mark(u.x, u.z, this.unitVision(u));
+            if (u.watch) for (const c of this.towerWatchCircles(u)) mark(c.x, c.z, c.r);
+        });
         (owner.buildings || []).forEach(b => {
-            if (b.health > 0) mark(b.x, b.z, this.buildingVision(b));
+            if (b.health > 0) for (const c of this.buildingSightCircles(b)) mark(c.x, c.z, c.r);
         });
     }
 
@@ -4724,13 +5184,40 @@ class Game {
         };
     }
 
+    // A finished trebuchet site becomes a trebuchet on wheels, where it stands (b1110,
+    // asp67): the simple engine, or the advanced one from a trebuchet_advanced site;
+    // with the damage the site took, facing as the site did. The site leaves without a
+    // collapse or a loss -- nothing was destroyed.
+    mobilizeTrebuchet(site) {
+        const owner = this.getOwnerByBuilding(site);
+        if (!owner || typeof createUnit !== 'function') return false;
+        const unit = createUnit(trebuchetTierOf(site.type).unit, site.x, site.z, site.owner, site.civilization, site.age);
+        if (!unit) return false;
+        unit.health = site.health >= site.maxHealth - 0.5 ? unit.maxHealth : Math.max(1, Math.min(unit.maxHealth, site.health));
+        unit._spawnDir = site._drawRY != null ? site._drawRY : (site.rotationY || 0);
+        site.underConstruction = false;
+        site.buildProgress = site.buildTime || 0;
+        const i = owner.buildings.indexOf(site);
+        if (i > -1) owner.buildings.splice(i, 1);
+        this.renderer.removeBuilding(site);
+        owner.units.push(unit);
+        this.renderer.addUnit(unit);
+        if (owner.resources) owner.resources.updatePopulation(Game.populationOf(owner.units));
+        site._engine = unit;
+        return true;
+    }
+
     // Finish a construction site: full HP, becomes functional, grants pop bonus.
     completeConstruction(building) {
         if (!building || !building.underConstruction) return;
+        // A trebuchet rolls off the site as a unit on wheels (b1110).
+        if (Game.isTrebuchetBuilding(building.type) && this.mobilizeTrebuchet(building)) return;
         this.noteWonder(building, 'built');   // no-op unless it IS a wonder
         building.underConstruction = false;
         building.buildProgress = building.buildTime || 0;
-        building.health = building.maxHealth;
+        // A site finishes with the damage it took while going up (b1110); an undamaged
+        // one at full health (the tolerance absorbs the sum of the steps' rounding).
+        if (building.health >= building.maxHealth - 0.5) building.health = building.maxHealth;
         const owner = this.getOwnerByBuilding(building);
         // Re-derive the cap from everything standing (never accumulate).
         if (owner) this.recomputeMaxPopulation(owner);
@@ -4757,6 +5244,7 @@ class Game {
         let best = null, bestD = Infinity;
         for (const b of owner.buildings) {
             if (!b.underConstruction || b.health <= 0) continue;
+            if (Game.isTrebuchetBuilding(b.type)) continue;   // an engineer's job, never a villager's (b1110)
             const hasBuilder = units.some(u => u && u.health > 0 && u.type === 'worker' &&
                 u.task === 'building' && u.buildTarget === b);
             if (hasBuilder) continue;
@@ -5256,9 +5744,15 @@ class Game {
                 unit.isBuilding = true;
                 unit.isMoving = false; // arrived — drop the walk flag the mover raised
                 const rate = (unit.buildSpeed || 1.0) * (owner.workerBuildSpeedBonus || 1.0);
+                const before = Math.min(1, (site.buildProgress || 0) / (site.buildTime || 10000));
                 site.buildProgress = (site.buildProgress || 0) + deltaTime * rate;
                 const pct = Math.min(1, site.buildProgress / (site.buildTime || 10000));
-                site.health = Math.max(site.health, site.maxHealth * (0.2 + 0.8 * pct));
+                // Health grows WITH the work, from 20% at the first stake to full at the
+                // last (b1110). It used to be lifted to that curve each step, so whatever
+                // damage a site took was put back by the builder's next swing: a site
+                // with a worker on it could not be damaged at all, and a forward tower
+                // could only be stopped by killing the builder.
+                site.health = Math.min(site.maxHealth, site.health + site.maxHealth * 0.8 * (pct - before));
 
                 if (site.buildProgress >= (site.buildTime || 10000)) {
                     this.completeConstruction(site);
@@ -5580,12 +6074,12 @@ class Game {
                         // Add to owner's unit list
                         if (building.owner === 'player') {
                             this.player.units.push(unit);
-                            this.player.resources.updatePopulation(this.player.units.length);
+                            this.player.resources.updatePopulation(Game.populationOf(this.player.units));
                         } else {
                             const ai = this.aiManager.aiPlayers.find(a => a.buildings.includes(building));
                             if (ai) {
                                 ai.units.push(unit);
-                                ai.resources.updatePopulation(ai.units.length);
+                                ai.resources.updatePopulation(Game.populationOf(ai.units));
                             }
                         }
                         this.renderer.addUnit(unit);
@@ -6131,11 +6625,11 @@ class Game {
     isPlayerEliminated(ai) {
         if (!ai || ai._eliminated) return true;
         const units = (ai.units || []).filter(u => u.health > 0);
-        if (units.some(u => u.type !== 'worker' && u.unitType !== 'support')) return false;   // 1
+        if (units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.unitType !== 'siege')) return false;   // 1
         const buildings = (ai.buildings || []).filter(b => b.health > 0);
         if (buildings.some(b => !b.underConstruction && b.isProducing && b.productionType)) return false;   // 2
         const cap = ai.resources && ai.resources.maxPopulation;
-        const room = typeof cap !== 'number' || cap > units.length;   // no cap known: not the gate
+        const room = typeof cap !== 'number' || cap > Game.populationOf(units);   // no cap known: not the gate
         if (room && this.canAffordAnyMilitary(ai)) return false;   // 3, trainers
         const can = cost => !!(ai.resources && cost && ai.resources.hasResources(cost));
         const def = id => (typeof getUnitDefFor === 'function' ? getUnitDefFor(ai.civilization, id) : null);

@@ -95,8 +95,8 @@ class OpenAIAIManager {
         const I = (d) => ({ type: 'integer', description: d });
         const XZ = { targetX: N('Map X. Always together with targetZ.'),
                      targetZ: N('Map Z. Always together with targetX.') };
-        const WHO = { units: { type: 'object', description: 'Object of {"type": count}, e.g. {"champion":3}, or a category like {"infantry":5}. Omit for the whole army.' },
-                      unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids from friendlyUnits. Wins over "units" when both are given.' },
+        const WHO = { units: { type: 'object', description: 'Object of {"type": count}, e.g. {"champion":3}, or a category like {"infantry":5} (categories only here, never in train_unit). Never an array. Omit for the whole army, trebuchets included; workers are left out: name them to take them. move_units takes {"worker":N} to put a villager on an exact spot; attack_target never takes workers.' },
+                      unitIds: { type: 'array', items: { type: 'integer' }, description: 'An array of unit ids from friendlyUnits, e.g. [183, 12]: exactly those units and nothing else; wins over "units". Ids are never reused, so a missing one died. Use it when WHICH unit matters: "units" takes whichever are nearest the target.' },
                       matchSpeed: S('Optional. "slowestUnit" holds the whole group to its slowest member so they arrive together instead of strung out. Omit to let every unit run at its own speed, which is faster for the quick ones and arrives piecemeal.'),
                       formation: S('Optional shape for the MARCH. Every shape keeps the shooters out of the contact rank and the cavalry on the wings. "line" — two ranks of melee, shooters behind, the widest front. "wedge" — a filled triangle, melee at the point. "block" — four to five deep, melee across the front, shooters on both flanks behind it. "screen" — melee ranks, an empty rank, then the shooters. Reforms after combat; reassigned units leave the group. Implies matchSpeed "slowestUnit".') };
         return [
@@ -105,25 +105,25 @@ class OpenAIAIManager {
             ['research_tech', 'Start researching one technology.',
              { techId: S('Tech id from research.available.') }, ['techId']],
             ['upgrade_age', 'Advance to the next age. Costs are in epoch.nextEpochCost.', {}, []],
-            ['build_structure', 'Place a new building. A worker is pulled to build it.',
+            ['build_structure', 'Place a new building. A worker is pulled to build it -- except a trebuchet (trebuchet, trebuchet_advanced): your nearest free engineer builds that, from any distance: one in a formation leaves it and returns to its place after, and the finished trebuchet joins that formation; one on no order stays by the trebuchet. An enemy tower in reach destroys the site; destroyed before its engineer begins, its cost is returned. Given at your own unfinished trebuchet, it sends one more engineer there and places and pays nothing.',
              Object.assign({ buildingType: S('Building type from buildings.buildable.') }, XZ), ['buildingType']],
             ['assign_workers', 'Move workers onto a resource.',
-             Object.assign({ resourceType: S('food|wood|stone|gold|farm. May omit only when targetX/targetZ identify a known node or your farm unambiguously.'),
+             Object.assign({ resourceType: S('food|wood|stone|gold|farm. May omit only when targetX/targetZ identify a known node or your farm unambiguously; the reason text never selects it.'),
                              count: I('How many. Default 3, max 20.'),
                              from: S('Any key from "workers" — where to TAKE them. "building" and "fighting" are taken when that ends. Omit to take idle first, then your largest stockpile.'),
                              whenCarrying: S('spillLoad|deliverLoad|skipAssignment — what a chosen worker does if it is carrying. Default spillLoad: move now, the load is lost.') }, XZ), []],
-            ['repair_building', 'Send workers to repair a damaged building. Omit the coordinates to repair the most damaged one.',
-             Object.assign({ count: I('How many workers. Default 1, max 5.') }, XZ), []],
+            ['repair_building', 'Send workers to repair a damaged building or trebuchet; for a trebuchet free engineers go too. At the coordinates of your trebuchet site, free engineers go to build it. Omit the coordinates to repair the most damaged one.',
+             Object.assign({ count: I('How many workers (and engineers, for a trebuchet). Default 1, max 5.') }, XZ), []],
             ['explore', 'Send a unit to scout a map tile, or up to three in a row.',
              { tile: S('Tile label from map.exploration, e.g. "C5" — column letter, then row number.'),
                then: { type: 'array', items: { type: 'string' }, maxItems: 2, description: 'Up to 2 more tiles, visited in order after "tile". Optional.' },
                unitType: S('Which unit type to send. Optional.'),
                unitIds: { type: 'array', items: { type: 'integer' }, description: 'Exact unit ids to send. Optional.' } }, ['tile']],
-            ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat. Incoming damage overrides all modes: fighters retaliate together, towers first; mobile threats obey chase limits. Regroup and resume afterward.',
-             Object.assign({mode:{type:'string',enum:['march','scout','guard','hold','patrol'],description:'Default march. Scout: travel without initiating combat; retaliate if attacked. Guard: travel then defend the position, chasing up to 64. Hold: travel, then each unit keeps its spot: it attacks only what is within its own reach, and answers whatever attacks it or anything of yours only within 19 of its spot; melee units will not run down archers, so hold under your towers. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
+            ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat. Incoming damage overrides all modes: fighters retaliate together, towers first; mobile threats obey chase limits. Regroup and resume afterward. A new order replaces it only for the units it names; "ordersInProgress" lists each order once with its unitIds. A formation slows its main body so priests and stragglers can rejoin. With a trebuchet, on any move but a scout (guard and hold until they reach their post), an enemy tower known or in sight that comes within the reach of a trebuchet on the way is besieged first (ordersInProgress shows "besieging"), then the order goes on.',
+             Object.assign({mode:{type:'string',enum:['march','scout','guard','hold','patrol'],description:'Default march. Scout: travel without initiating combat; retaliate if attacked. Guard: travel then defend the position, chasing up to 64; there it also goes after whatever damages your units or buildings within 60 of it, trebuchets included, and returns. Hold: travel, then each unit keeps its spot: it attacks only what is within its own reach, and answers whatever attacks it or anything of yours only within 19 of its spot; melee units will not run down archers, so hold under your towers. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
                 targets:{type:'string',enum:['any','military'],description:'Guard/patrol/march incidental targets: any enemy unit (default), or military only. Pursuit is bounded; explicit attack_target remains a commitment.'}}, XZ,
                 { tile: S('Tile label from map.exploration, e.g. "C5". Used only when targetX/targetZ are not given: the units go to the centre of that tile.') }, WHO), []],
-            ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining.',
+            ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining. On a tower, an order that includes a trebuchet stands the army at the trebuchet, out of the tower\'s reach, until the trebuchet falls; then the army attacks the tower. With a trebuchet along, a known enemy tower covering the point, or coming within the reach of a trebuchet on the way (also on the way to besiege another tower), is besieged so first, and the order goes on once it falls.',
              Object.assign({ targetId: S('Copy the exact string id from enemyBuildings or from an enemyUnits entry with "visible": true, including the unit_ or building_ prefix and full suffix. Do not shorten it or convert it to a number. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
              { unitType: S('Type from friendlyUnits. Default worker.'), count: I('How many. Default 1, max 20.') }, []],
@@ -131,6 +131,34 @@ class OpenAIAIManager {
              Object.assign({ buildingType: S('Type from friendlyBuildings.') }, XZ), ['buildingType']],
             ['wait', 'Leave the game orders unchanged. Use when you have neither a game command nor a plan update this turn.', {}, []]
         ].map(([name, description, params, required]) => ({ name, description, params, required }));
+    }
+
+    // The actions in full, for a seat that answers in raw JSON (b1110): it receives no
+    // tool schemas, so this is the only place it learns what each action and parameter
+    // means. Generated from ACTIONS, as the schemas are, so the two cannot drift. A
+    // parameter described the same way in several actions is described once.
+    static actionReference() {
+        const all = OpenAIAIManager.ACTIONS;
+        const uses = new Map();
+        for (const a of all) for (const [k, p] of Object.entries(a.params || {})) {
+            const key = k + '|' + (p.description || '');
+            uses.set(key, (uses.get(key) || 0) + 1);
+        }
+        const lines = ['ACTIONS (? = optional). Answer each with {"action": "<name>", "params": { ... }}; the plan with {"objective": "<1 line>", "plan": ["<step>"]}.'];
+        const shared = new Map();
+        for (const a of all) {
+            const req = a.required || [], keys = Object.keys(a.params || {});
+            lines.push(a.name + '(' + keys.map(k => k + (req.includes(k) ? '' : '?')).join(', ') + '): ' + a.description);
+            for (const k of keys) {
+                const prm = a.params[k], d = (prm.description || '') + (prm.enum ? ' (' + prm.enum.join('|') + ')' : '');
+                if (uses.get(k + '|' + (prm.description || '')) > 1) { shared.set(k, d); continue; }
+                lines.push('  ' + k + ': ' + d);
+            }
+        }
+        lines.push('Parameters shared by several actions:');
+        for (const [k, d] of shared) lines.push('  ' + k + ': ' + d);
+        lines.push('  reason: One line, in your own words, why you are doing this. Every action takes it.');
+        return lines.join('\n');
     }
 
     // The action list as the prompt shows it, generated from ACTIONS. Names and
@@ -850,7 +878,7 @@ class OpenAIAIManager {
         // advertised only the military hosts. The one action that could reach a
         // villager was therefore the only one a model was told about. Exactly the
         // drift the comment above warns against, on the line that warns about it.
-        const hosts = ['town_center', 'barracks', 'archery_range', 'stable', 'temple'];
+        const hosts = ['town_center', 'barracks', 'archery_range', 'stable', 'temple', 'academy'];
         const seen = new Map();
         const civTree = ((typeof getCivilization === 'function'
             ? getCivilization(civilization) : null) || {}).techTree || {};
@@ -970,6 +998,10 @@ class OpenAIAIManager {
     // At 4 the shapes were needlessly large -- a twenty-man line was 20 wide, wider
     // than most gaps between buildings, which is why lines snagged on clearance rings.
     static get FORMATION_SPACING() { return 2; }
+    // A trebuchet's place in a formation (b1110): its own row, this far apart and this
+    // far behind the last rank -- an engine is several times a soldier's width.
+    static get SIEGE_SPACING() { return 7; }
+    static get SIEGE_GAP() { return 5; }
     // "ranged_back" was the name of a shape and, to a model reading a list, the name
     // of the only shape that keeps its shooters out of the fight. Across 46 saved
     // transcripts it took 56% of every formation ever chosen, line took 41%, block one
@@ -1019,16 +1051,26 @@ class OpenAIAIManager {
         const out = new Map();
         // Use combat range for shooters; support belongs in the same ranks even
         // if its healing range changes. A formation slot never makes it a fighter.
-        const isRanged = u => u?.unitType === 'support' || ((u && u.range) || 0) > 1;
+        // An engineer (b1110) marches with the priests in the rear: weak, and there to
+        // build, not to hold the line.
+        const isRanged = u => u?.unitType === 'support' || u?.type === 'engineer' || ((u && u.range) || 0) > 1;
         // Every shape fills its ranged group front-first. Sort support last so
         // priests get the rear slots without a separate placement rule per shape.
-        const isSupport = u => !!(u && u.unitType === 'support');
+        const isSupport = u => !!(u && (u.unitType === 'support' || u.type === 'engineer'));
         // Horse is its own arm. Every shape here sorted by "can it shoot", which put
         // cavalry shoulder to shoulder inside a rank of foot -- the one detail that
         // made a formed-up body look wrong on screen. They ride on the WINGS, level
         // with the front: what it looks like in every painting of a battle line, and
         // what their speed is actually for.
         const isCav = u => !!(u && u.unitType === 'cavalry');
+        // Trebuchets march in a row of their own behind the body (b1110): packed into the
+        // shooters' ranks at a soldier's spacing, two engines several times a soldier's
+        // width overlapped each other and everyone beside them -- "a flock of hooligans,
+        // not a formation" (asp67).
+        const isSiege = u => !!(u && u.unitType === 'siege');
+        let degenerate = null;
+        const siege = units.filter(isSiege);
+        units = units.filter(u => !isSiege(u));
         let cav   = units.filter(isCav);
         let melee = units.filter(u => !isRanged(u) && !isCav(u));
         const shot  = units.filter(isRanged)
@@ -1145,8 +1187,11 @@ class OpenAIAIManager {
             ranks(shot, 3, (meleeRows || 0) + 1);
             // Everyone shoots, or nobody does: one body is not two, and a model that
             // asked for a screen and a firing line should be told it got one of them.
-            if (!melee.length || !shot.length) {
-                return { slots: out, degenerate: shot.length ? 'every unit is ranged' : 'no ranged units' };
+            // Said, not returned: the trebuchets' row and the wings below still have to be
+            // placed (b1110: two trebuchets alone in a screen got no slots at all). Nothing
+            // to say when there are no soldiers in it, only engines.
+            if ((melee.length || shot.length) && (!melee.length || !shot.length)) {
+                degenerate = shot.length ? 'every unit is ranged' : 'no ranged units';
             }
         } else {
             return { slots: null };
@@ -1164,7 +1209,16 @@ class OpenAIAIManager {
                 out.set(u, { f: -(onLeft ? i : i - left) * S, r: (onLeft ? -1 : 1) * lane });
             });
         }
-        return { slots: out };
+        // The trebuchets: one row, SIEGE_SPACING apart and centred, SIEGE_GAP behind the
+        // last rank of whatever shape the body took, wings included -- one rule for all four
+        // shapes. Last, so the engines' wide row does not push the horse outward.
+        if (siege.length) {
+            let back = 0;
+            out.forEach(v => { back = Math.min(back, v.f); });
+            const G = OpenAIAIManager.SIEGE_SPACING;
+            siege.forEach((u, i) => out.set(u, { f: back - (out.size ? OpenAIAIManager.SIEGE_GAP : 0), r: (i - (siege.length - 1) / 2) * G }));
+        }
+        return degenerate ? { slots: out, degenerate } : { slots: out };
     }
 
     // Put a force into `shape` for the march to (tx, tz). Facing is the group's own
@@ -2686,6 +2740,8 @@ class OpenAIAIManager {
                 wonderRequired: this.game.wonderRequired || null,
                 // Game seconds per countdown second; absent before build 1021, where it was 1.
                 wonderPace: this.game.wonderPace || 1,
+                // The normal pace the rules ran at, for a replay to run at the same (b1110).
+                normalSimSpeed: (typeof Game !== 'undefined' && Game.NORMAL_SIM_SPEED) || null,
                 promptVersion: (this.game.ui && this.game.ui.ARENA_PROMPT_VERSION) || null,
                 // What kind of record this is. `schema` lets a reader tell "not recorded"
                 // from "none happened" -- a file without it predates interventions,
@@ -3480,6 +3536,7 @@ class OpenAIAIManager {
         game.getAllBuildings().forEach(bldg => {
             if (ai.buildings.includes(bldg)) return;
             if (bldg.health <= 0) { knownEnemyBuildings.delete(bldg); return; } // destroyed
+            if ((typeof Game !== 'undefined' && Game.hiddenSite && Game.hiddenSite(bldg))) return;   // an unstarted trebuchet site: unseen (b1110)
             const isWonder = bldg.isWonder;
             const seenNow = isWonder || seeNow(bldg.x, bldg.z);
             if (seenNow) knownEnemyBuildings.add(bldg);          // discover/refresh
@@ -3549,6 +3606,7 @@ class OpenAIAIManager {
             else if (u.task === 'harvesting') action = 'harvesting';
             else if (u.task === 'carrying' || u.carryingResource) action = 'returning';
             else if (u.task === 'building') action = 'building';
+            else if (u.task === 'repairing') action = 'repairing';   // an engineer mending a trebuchet (b1110)
             else if (u.task === 'farm_work') action = 'farm_work';
             else if (u.isMoving) action = 'moving';
 
@@ -3563,7 +3621,11 @@ class OpenAIAIManager {
                 healthPct: Math.round((u.health / u.maxHealth) * 100),
                 // Workers report jobs elsewhere; standing groups report intent once
                 // in ordersInProgress instead of repeating it on every soldier.
-                ...(u.type === 'worker'||(u._standingOrder&&u._standingOrder.token===u._orderToken) ? {} : { action })
+                // Except an engineer away on a trebuchet job (b1110): in asp67's match of
+                // 24 October (15:14) one walking from its formation to a site showed no
+                // action, the seat took the site for unattended and sent a second engineer
+                // 700 from its academy.
+                ...(u.type === 'worker'||(u._standingOrder&&u._standingOrder.token===u._orderToken&&!OpenAIAIManager.engineerOnJob(u)) ? {} : { action })
             };
         });
 
@@ -3790,14 +3852,16 @@ class OpenAIAIManager {
             if (atPopCap) blockedBy.push('pop');
             if (tooPoor(def && def.cost)) blockedBy.push('cost');
             (host[u.age] = host[u.age] || []).push({
-                id: u.id, cost: costOf(def && def.cost), blockedBy, ...(gate ? { requiresTech: gate } : {})
+                id: u.id, cost: costOf(def && def.cost), blockedBy, ...(gate ? { requiresTech: gate } : {}),
+                // What it is for, where the name does not say it (b1110).
+                ...(u.id === 'engineer' ? { role: 'builds and repairs trebuchets on site; marches with the army' } : {})
             });
         });
 
         // --- Buildable structures for THIS civ (some civs lack e.g. the stable) ---
         // Only lists what your civilization can EVER build; if a type is missing,
         // your civ does not have it (don't waste turns trying).
-        const stdBuildings = ['town_center', 'house', 'farm', 'barracks', 'archery_range', 'stable', 'academy', 'tower', 'temple'];
+        const stdBuildings = ['town_center', 'house', 'farm', 'barracks', 'archery_range', 'stable', 'academy', 'tower', 'temple', 'trebuchet', 'trebuchet_advanced'];
         const buildableStructures = stdBuildings.map(t => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(t) : null;
             if (!def) return null;
@@ -3811,8 +3875,14 @@ class OpenAIAIManager {
             const blockedBy = [];
             if (!ageReached(reqAge)) blockedBy.push('age');
             if (!techDone) blockedBy.push('tech');
-            if (tooPoor(def.cost)) blockedBy.push('cost');
-            return { type: t, requiredAge: reqAge, requiresTech: reqTech, cost: costOf(def.cost), blockedBy };
+            // The price in THIS age (a trebuchet built in the iron age costs 20% more).
+            const price = (typeof buildingCost === 'function') ? buildingCost(def, ai.age) : def.cost;
+            if (tooPoor(price)) blockedBy.push('cost');
+            // What a trebuchet becomes, and how fast it rolls (b1110): seats took the
+            // standing engine for a unit and waited for it to move.
+            const treb = typeof isTrebuchetBuilding === 'function' && isTrebuchetBuilding(t) ? trebuchetTierOf(t) : null;
+            return { type: t, requiredAge: reqAge, requiresTech: reqTech, cost: costOf(price), blockedBy,
+                ...(treb ? { becomesUnit: treb.unit, speed: treb.speed } : {}) };
         }).filter(Boolean);
 
         // The Wonder belongs in this list. It was in no vocabulary at all: a model's
@@ -3853,7 +3923,7 @@ class OpenAIAIManager {
         // question ("what did I miss between turns?") — and filtered by age HERE so a
         // quiet map cannot serve a stale entry.
         const recentLosses = (ai._lostBuildings || [])
-            .filter(l => battleNow - l.at <= Game.BATTLE_KEEP_MS)
+            .filter(l => game.realSecsSince(l.at) * 1000 <= Game.BATTLE_KEEP_MS)   // match time (b1110)
             .map(l => Object.assign(
                 { type: l.type },
                 l.wonder ? { wonder: true } : {},
@@ -3883,7 +3953,7 @@ class OpenAIAIManager {
                 // "population" is the word the game already uses for exactly this, and the
                 // seat reads its own as population.used — so the two are directly
                 // comparable, in the vocabulary the model already holds.
-                entry.population = o.units.length;
+                entry.population = (typeof Game !== 'undefined' && Game.populationOf) ? Game.populationOf(o.units) : o.units.length;
                 entry.buildings = o.buildings.length;
                 // What this seat has seen of them and not seen die, by type, located or
                 // not, and how old those sightings are (b1042). An army that slipped away
@@ -4123,6 +4193,8 @@ class OpenAIAIManager {
         ai.units.forEach(unit => {
             const range = unit.unitType === 'cavalry' ? unitVisionRange * 1.2 : unitVisionRange;
             this.revealGridArea(grid, numTiles, unit.x, unit.z, range, halfSize, gridSize, 2);
+            if (unit.watch) for (const c of game.towerWatchCircles(unit))
+                this.revealGridArea(grid, numTiles, c.x, c.z, c.r, halfSize, gridSize, 2);
         });
 
         // Reveal around AI's buildings — FINISHED ones only. A construction plot
@@ -4130,7 +4202,8 @@ class OpenAIAIManager {
         // sweep is the reward for completing it, not for placing the stakes.
         ai.buildings.forEach(bldg => {
             if (bldg.underConstruction) return;
-            this.revealGridArea(grid, numTiles, bldg.x, bldg.z, game.buildingVision(bldg), halfSize, gridSize, 2);
+            for (const c of game.buildingSightCircles(bldg))
+                this.revealGridArea(grid, numTiles, c.x, c.z, c.r, halfSize, gridSize, 2);
         });
 
         // Mark visible as explored (simplified - in real game this decays)
@@ -4178,15 +4251,20 @@ class OpenAIAIManager {
             const dx = unit.x - x;
             const dz = unit.z - z;
             if (Math.sqrt(dx * dx + dz * dz) <= range) return 'visible';
+            if (unit.watch) for (const c of game.towerWatchCircles(unit)) {
+                const cx = c.x - x, cz = c.z - z;
+                if (Math.sqrt(cx * cx + cz * cz) <= c.r) return 'visible';
+            }
         }
 
         // Check against AI buildings (finished only — plots don't see)
         for (const bldg of ai.buildings) {
             if (bldg.underConstruction) continue;
-            const range = game.buildingVision(bldg);
-            const dx = bldg.x - x;
-            const dz = bldg.z - z;
-            if (Math.sqrt(dx * dx + dz * dz) <= range) return 'visible';
+            for (const c of game.buildingSightCircles(bldg)) {
+                const dx = c.x - x;
+                const dz = c.z - z;
+                if (Math.sqrt(dx * dx + dz * dz) <= c.r) return 'visible';
+            }
         }
 
         return null;
@@ -4215,7 +4293,8 @@ class OpenAIAIManager {
     // override it, and buildSystemPrompt() falls back to it — so the prompt the
     // user reads in the textarea is exactly the prompt the harness serves.
     // Placeholders resolved at match time: {{civilization}}, {{bonus}}, {{players}},
-    // {{mapSize}} (b1057: 800 or 1200).
+    // {{mapSize}} (b1057: 800 or 1200), {{actions}} (b1110: the full action reference,
+    // for a seat answering in raw JSON; empty for one calling tools).
     // {{terrain}} (the preset's summer/winter/desert brief) is still SUBSTITUTED, so a
     // hand-edited prompt may use it, but the default no longer spends tokens on it.
     //
@@ -4251,10 +4330,10 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Cavalry and scouts see further than other units (22.5 against 15); scouts and cavalry are also the fastest units.
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
 - "enemyUnits" is your memory of rival units: "visible": true is in sight now; "visible": false is how and where you LAST SAW it, "secondsAgo". It may have moved, been hurt or died since — you were not watching. "sightedAt" is where it came into your sight, so from there to x,z is the way it was going. A remembered unit leaves this list when you look at its spot again and it is not there; it is forgotten only when you see it die or your units kill it. Workers carry "carrying": empty, food, wood, stone, gold, or unknown, as last seen. The list holds the 50 most recent.
-- "enemyBuildings" lists every rival building you have found. "visible": true is in sight now; "visible": false is remembered as you last saw it, and its health, or whether it still stands, may have changed since.
+- "enemyBuildings" lists every rival building you have found. "visible": true is in sight now; "visible": false is remembered as you last saw it, and its health, or whether it still stands, may have changed since. A building still being built carries "state": "under_construction" and "buildPct".
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
-- "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool. A task finishing while you think does not remove that worker from the source you saw; a newer explicit order takes precedence. For assign_workers, resourceType may be omitted only when both coordinates unambiguously match a known resource node or your own farm; reason text never selects the resource.
+- "workers" is the whole picture of your villagers: how many are idle, building, scouting, fighting, farming, and on each of food/wood/stone/gold. Those key names are what assign_workers' "from" takes. Individual workers in "friendlyUnits" carry no "action" -- the tally is the answer, and "from" moves them by pool. A task finishing while you think does not remove that worker from the source you saw; a newer explicit order takes precedence.
 - "recentEvents" is the harness telling you what became of your orders since last turn — an attack that found nothing, a node that ran dry under your workers. Read it before repeating an order.
 - "threats" carries "underAttack" (what is being hit right now; "noDefenders": true when nothing of yours is fighting there) and "enemyWonders" — the only warning you get that a rival is going for the Wonder win.
 - "recentLosses" is what you lost since last turn, and to whom.
@@ -4264,6 +4343,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "gameStats.opponents[].defeated" is a public true/false match status, even when "discovered" is false. Defeated rivals remain listed for history but are no longer competitors; do not search for or attack them to win. This status reveals no locations or terrain.
 - "gameStats.opponents[].population" counts EVERYTHING a discovered rival owns, villagers included — the same measure as your own "population.used", and NOT an army size. Everywhere else in these tools "units" means fighters and "workers" means villagers; this one number does not follow that rule, which is why it is not called units. "seenAlive" counts by type the units of theirs you have seen and not seen die, including ones whose whereabouts you lost; "seenSecondsAgo" says how old those sightings are.
 - "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
+- siege_engineering (academy) allows training engineers: light foot soldiers who march in a formation's rear and can build and repair trebuchets on site; only an engineer builds a trebuchet. A finished trebuchet is a weak UNIT on wheels: build trebuchet for a simple_trebuchet (speed 0.16, reach 50, sight 120), or from the iron age trebuchet_advanced for an advanced_trebuchet (speed 0.32, reach 60, sight 144). It throws stone only at enemy towers and tower sites, outranging a tower's 18, and only while it stands; it sees nothing but enemy towers, moves when you name it or as part of a formation and takes no population. Damaged trebuchets are repaired by engineers and villagers. build_structure sends your nearest free engineer from any distance; if a site's engineer falls, a free engineer within 40 of it takes over unasked. An engineer finishes its trebuchet before following orders, unless a unit hits it.
 
 ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
 
@@ -4278,17 +4358,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
 
 "plan" saves your objective (one line) and plan (up to ${OpenAIAIManager.PLAN_MAX_STEPS} short steps). Call it only when something changed. Both persist across turns, so omit it to keep them and still issue up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} game commands.
 
-VALID ACTIONS & PARAMETERS (? = optional; each tool's own schema describes what they mean)
-Note: targetX and targetZ must ALWAYS be provided together.
-"units" and "buildings" each split in two: "units.trainable" / "buildings.buildable" are what you can order now, and "units.blocked" / "buildings.blocked" are what you cannot, each entry carrying "blockedBy" ("age", "tech", "host", "alreadyBuilt") and, for buildings, "requiresTech" and "requiredAge". Entries on the open side carry "cost", and a "blockedBy" of "cost" or "pop" when that is all that stands in the way.
-
-${OpenAIAIManager.actionsBrief()}
-
-PARAMETER CONSTRAINTS:
-unitIds: An ARRAY of ids from friendlyUnits, e.g. [183, 12]. Moves or attacks EXACTLY those units and nothing else; "units" is ignored when it is given. Ids are never reused, so one that is gone means that unit died. Use it when WHICH unit matters — "units" picks whichever are nearest the target, which is the wrong end when you are fetching a wounded one.
-units: An OBJECT of {"type": count}. Valid types: unit IDs (e.g., {"champion":3}) OR categories ({"infantry":5}). Categories work ONLY here, never in train_unit. Omit for whole army. Never an array. move_units also accepts {"worker":N} when named explicitly — that is how you place a unit on an exact spot; attack_target never takes workers.
-move_units mode: march (default), scout (no proactive attacks), guard (defend the destination, chasing up to 64), hold (defend the destination from each unit's own spot: it attacks only what is within its reach, and answers whatever attacks it or anything of yours only within 19 — melee will not run down archers, so hold under your towers), patrol (repeat current position ↔ destination). Optional targets: any (default) or military. Standing orders persist through incidental combat and regrouping; new orders replace them only for selected units. ordersInProgress lists each assignment once with unitIds; battles/encounters report combat. Formation recovery slows the main body so priests and other stragglers can rejoin. Incoming damage overrides every standing order: formation fighters retaliate together, prioritizing towers until destroyed. Mobile threats obey chase limits. Once the threat is destroyed or driven off, regroup and resume the saved order.
-matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows your units to walk in unison until they reach the fight.`;
+"units" and "buildings" each split in two: "units.trainable" / "buildings.buildable" are what you can order now, and "units.blocked" / "buildings.blocked" are what you cannot, each entry carrying "blockedBy" ("age", "tech", "host", "alreadyBuilt") and, for buildings, "requiresTech" and "requiredAge". Entries on the open side carry "cost", and a "blockedBy" of "cost" or "pop" when that is all that stands in the way.{{actions}}`;
     }
 
     // ----------------------------------------------------------------
@@ -4367,7 +4437,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
               + 'Calling the tools is still the primary channel; use this only when a call does not go through.'
             : '';
 
+        // The action reference only where the tool schemas do not go (b1110): a seat that
+        // calls tools has every action and parameter described in its schemas, and the
+        // copy in the prompt was a fifth of the prompt, paid on every turn.
+        const m = (controller && controller.model) || {};
+        const toolSeat = OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(m)) && !(m._reqOpts && m._reqOpts.omitTools);
         return base
+            .replace(/\{\{actions\}\}/g, toolSeat ? '' : '\n\n' + OpenAIAIManager.actionReference())
             .replace(/\{\{civilization\}\}/g, ai.civilization)
             .replace(/\{\{bonus\}\}/g, intoModelLang(civ?.bonus?.description) || 'None')
             .replace(/\{\{players\}\}/g, String(players || 2))
@@ -4484,12 +4560,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // prompt reached the budget (110k tokens, minute 58), for the rest of a 197-minute
         // match. Now the start is kept while the window fits, and when it does not it moves
         // forward in one jump, to HISTORY_REFILL of the budget: one full recompute per jump.
-        const cost = p => est(p.user) + est(p.assistant) + est(p.outcome || '') + 16;
+        // A turn answered with tools is replayed with its calls, and each call is answered
+        // in a message of its own (b1110): both are sent, so both are counted. The cost
+        // counted only the state recap, the reply and the outcome, and in asp67's match of
+        // 24 October (21:12) a seat set to a 32k context sent prompts of up to 33k tokens.
+        const cost = p => est(p.user) + est(p.assistant) + est(p.outcome || '') + 16
+            + (p.toolCalls && p.toolCalls.length ? est(JSON.stringify(p.toolCalls)) + 40 * p.toolCalls.length : 0);
         let start = Math.max(0, log.indexOf(controller._histAnchor));
         let used = 0;
         for (let i = start; i < log.length; i++) used += cost(log[i]);
         if (used > budget) {
-            const target = budget * OpenAIAIManager.HISTORY_REFILL;
+            // Never fewer than the newest HISTORY_MIN_TURNS (b1110, asp67: with a small
+            // context, or a token limit far under it, a share of the budget alone could
+            // leave a single past turn). If not even those fit, as many of the newest as do.
+            const newest = log.slice(-OpenAIAIManager.HISTORY_MIN_TURNS).reduce((a, p) => a + cost(p), 0);
+            const target = Math.max(budget * OpenAIAIManager.HISTORY_REFILL, Math.min(budget, newest));
             while (start < log.length - 1 && used > target) { used -= cost(log[start]); start++; }
         }
         controller._histAnchor = log[start];
@@ -4742,8 +4827,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // provider returns a 400 ("maximum context length …"), losing the turn. So we
         // estimate at a pessimistic ~3 chars/token AND keep a big headroom. `_ctxShrink`
         // ratchets this down further if an overflow ever still happens (self-healing).
-        const inputBudget = Math.max(2000, Math.floor((budget - reserve) * 0.8 * shrink));
-        const est = (s) => Math.ceil(String(s || '').length / 3); // conservative ~3 chars/token
+        // ~3 characters a token, scaled by what this seat's own server has reported
+        // (calibrateTokens, b1110): the right figure depends on the tokenizer, the
+        // language the seat plays in and the chat template, none of which can be known here.
+        const tokRatio = controller._tokRatio || 1;
+        const est = (s) => Math.ceil(String(s || '').length / 3 * tokRatio);
+        // The tool schemas go with every request to a seat that calls tools, and take their
+        // share of the window like everything else (b1110): about 3k tokens, which the
+        // budget never counted.
+        const toolSeat = OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(model)) && !(model._reqOpts && model._reqOpts.omitTools);
+        const toolsCost = toolSeat ? est(JSON.stringify(OpenAIAIManager.TOOLS)) : 0;
+        const inputBudget = Math.max(2000, Math.floor((budget - reserve) * 0.8 * shrink) - toolsCost);
 
         // (0) Standing objective/plan — frames every turn (sent in the present message).
         const head = [];
@@ -4871,12 +4965,37 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const provider = OpenAIAIManager.resolveProvider(model);
         const request = withRequest ? OpenAIAIManager.buildChatRequest(
             provider, model.endpoint, model.model || 'default', systemPrompt, turns, reqOpts || this.requestOptions(model)) : null;
-        return { systemPrompt, turns, provider, advice, request };
+        // The whole request at the plain 3 characters a token, for calibrateTokens to set
+        // against the prompt tokens the server reports for it.
+        const rawEst = (String(systemPrompt).length + (toolSeat ? JSON.stringify(OpenAIAIManager.TOOLS).length : 0)
+            + JSON.stringify(turns).length) / 3;
+        return { systemPrompt, turns, provider, advice, request, rawEst };
+    }
+
+    // Tokens per estimated token, learned from the seat's own server (b1110). A context
+    // set to 32k sent prompts of up to 33k tokens in asp67's match of 24 October (21:12):
+    // the estimate missed the tool schemas and the replayed calls, and no fixed
+    // characters-per-token figure holds across tokenizers and the four languages a seat
+    // can play in (asp67). Every reply says how many prompt tokens the request took; the
+    // ratio to our estimate of it scales every later estimate. Up at once when we
+    // underestimated, so the next request fits; down only slowly, as it may cost a turn.
+    calibrateTokens(controller, promptTokens, rawEst) {
+        if (!(promptTokens > 0) || !(rawEst > 0) || !controller || !controller.seat) return;
+        const seen = Math.max(0.5, Math.min(4, promptTokens / rawEst));
+        const prev = controller._tokRatio || 1;
+        controller.seat._tokRatio = seen > prev ? seen : prev * 0.8 + seen * 0.2;
     }
 
     // How full the history window is left after a jump (buildRollingTurns): the rest of the
-    // budget is what the following turns append into before the next jump.
-    static get HISTORY_REFILL() { return 0.6; }
+    // budget is what the following turns append into before the next jump. 0.4 since b1110
+    // (asp67), from 0.6: a jump recomputes the whole prompt, and in four matches of
+    // 24 October a jump turn took a median 5-22 s longer than its neighbours for DeepSeek
+    // V4.1 and 2-16 s for Qwen3.8. Leaving 40% instead of 60% makes room for half as many
+    // turns again before the next jump -- a third fewer jumps -- at the cost of a shorter
+    // memory right after one.
+    static get HISTORY_REFILL() { return 0.4; }
+    // ...but never fewer past turns than this after a jump, while they fit (b1110).
+    static get HISTORY_MIN_TURNS() { return 3; }
 
     // The parameters a turn is sent with: the model's own, overlaid with any request
     // shape its endpoint was found to need this match (model._reqOpts).
@@ -4894,7 +5013,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const model = controller.model;
         const ai = controller.aiPlayer;
 
-        const { systemPrompt, turns, provider, advice } = this.buildTurnRequest(controller, gameState, { withRequest: false });
+        const { systemPrompt, turns, provider, advice, rawEst } = this.buildTurnRequest(controller, gameState, { withRequest: false });
         if (advice != null) {
             // Recorded exactly as delivered, at the moment it reaches the prompt.
             controller.seat.pendingAdvice = [];
@@ -5072,6 +5191,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 controller.stats.promptTokens += usage.prompt;
                 controller.stats.completionTokens += usage.completion;
             }
+            if (usage) this.calibrateTokens(controller, usage.prompt, rawEst);
             // A reply cut short is worth saying out loud, with the numbers needed to
             // tell WHOSE limit did it. If the provider reports far fewer completion
             // tokens than we asked for, the cap was applied upstream (a proxy or a
@@ -6772,6 +6892,12 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     executeTrainUnit(ai, game, unitType, params = {}) {
         const civ = getCivilization(ai.civilization);
         const unitDef = getUnitDefFor(ai.civilization, unitType);
+        // The trebuchet on wheels is never trained: it is what a finished site becomes (b1110).
+        if (unitDef && (unitDef.type === 'siege' || unitDef.unitType === 'siege')) {
+            const site = unitType === 'advanced_trebuchet' ? 'trebuchet_advanced' : 'trebuchet';
+            this.outcome('log.out.unknownUnit', { unitType });
+            return `[ERROR] ${unitType} is not trained: it is what a finished "${site}" site becomes. Place one with build_structure "${site}", and your nearest free engineer builds it.`;
+        }
         if (!unitDef) {
             console.log(`[OpenAIAI] ${ai.id}: Unknown unit type "${unitType}"`);
             this.outcome('log.out.unknownUnit', { unitType });
@@ -6790,7 +6916,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                     + (first ? `You sent ${JSON.stringify(unitType)} — send "unitType": "${first}". One train_unit command trains one unit. ` : '')
                     + `The {"type": count} shape belongs to "units" in move_units and attack_target, never here. ${this.trainableListString(ai)}`;
             }
-            const cats = ['infantry', 'ranged', 'cavalry', 'support'];
+            const cats = ['infantry', 'ranged', 'cavalry', 'support', 'siege'];
             const catNote = cats.includes(String(unitType).toLowerCase())
                 ? ` "${unitType}" is a unit CATEGORY: those work only in the "units" parameter of move_units/attack_target, never in train_unit, which needs one exact unit id.`
                 : '';
@@ -6800,7 +6926,14 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const parenNote = (stripped !== String(unitType) && getUnitDefFor(ai.civilization, stripped))
                 ? ` Pass just "${stripped}" — "units.trainable" groups ids under the age they need; the age is not part of the id.`
                 : '';
-            return `[ERROR] Unknown unit type "${unitType}".${catNote}${parenNote} ${this.trainableListString(ai)} See "units.trainable" and "units.blocked" for the age each one needs.`;
+            // A building asked for by name (b1110): in asp67's match of 24 October (13:31) a
+            // seat asked train_unit for "trebuchet" and was given the training list, with
+            // nothing pointing at build_structure.
+            const bType = String(unitType).toLowerCase();
+            const buildNote = (typeof BUILDING_DEFS === 'object' && BUILDING_DEFS[bType])
+                ? ` "${bType}" is a building: place it with build_structure${typeof isTrebuchetBuilding === 'function' && isTrebuchetBuilding(bType) ? ', and your nearest free engineer builds it' : ''}.`
+                : '';
+            return `[ERROR] Unknown unit type "${unitType}".${catNote}${parenNote}${buildNote} ${this.trainableListString(ai)} See "units.trainable" and "units.blocked" for the age each one needs.`;
         }
 
         // Its own research before anything else (b1060): the first step of the chain.
@@ -6867,7 +7000,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         if (trainers.length === 0) {
             // Only reached for unique units with no tier mapping (reqB null).
             this.outcome('log.out.noBuildingTrains', { unitType });
-            return `[ERROR] ${unitType}: no finished building can train it. Trained at: barracks (infantry), archery_range (archers), stable (cavalry), temple (priest).`;
+            return `[ERROR] ${unitType}: no finished building can train it. Trained at: barracks (infantry), archery_range (archers), stable (cavalry), temple (priest), academy (engineer).`;
         }
 
         // 3) POPULATION (structural train-time gate).
@@ -7318,6 +7451,31 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             return `[ERROR] Unknown building "${buildingType}". Use a "type" from "buildings.buildable" and "buildings.blocked" — it lists every structure your civilization can build, with the age and unlock tech each needs.`;
         }
 
+        // build_structure on your own unfinished trebuchet of that type sends one more
+        // engineer to it, and places and spends nothing (b1110, asp67: "an engineer can
+        // be sent to a trebuchet build site with a repair or build order").
+        if (typeof isTrebuchetBuilding === 'function' && isTrebuchetBuilding(buildingType)
+            && Number.isFinite(Number(targetX)) && Number.isFinite(Number(targetZ))) {
+            const tx = Number(targetX), tz = Number(targetZ);
+            const site = ai.buildings.find(b => b.type === buildingType && b.underConstruction && b.health > 0
+                && WarMath.hypot(b.x - tx, b.z - tz) <= 8);
+            if (site) {
+                const e = game.pickEngineer(ai, site);
+                if (!e) {
+                    this.outcome('log.out.noEngineer', {});
+                    // None at all is not "none free" (b1110: told so with no engineer left).
+                    const owned = ai.units.some(u => u.type === 'engineer' && u.health > 0);
+                    return `[ERROR] ${buildingType} at (${Math.round(site.x)}, ${Math.round(site.z)}) is your unfinished one, and ` + (owned
+                        ? 'no engineer is free to send to it: yours are all fighting or on a trebuchet already.'
+                        : 'you have no engineer to send to it. Train one at the academy.');
+                }
+                game.sendEngineer(e, site, 'building');
+                e._orderToken = ++this._orderSeq;
+                const pct = Math.round(Math.min(1, (site.buildProgress || 0) / (site.buildTime || 10000)) * 100);
+                return `OK - engineer #${e.handle} goes to your unfinished ${buildingType} at (${Math.round(site.x)}, ${Math.round(site.z)}), ${pct}% built, to build it; nothing new is placed or paid.`;
+            }
+        }
+
         // ADVANCE first: a building gated to a later epoch can't be built yet. (Most
         // age-gated buildings also need a tech, but some — e.g. the temple — only
         // need the age, so check it before the tech/resource steps.)
@@ -7359,11 +7517,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // the twin -- and reporting a shortfall for a building the seat is about to be
         // told it already has is both a distraction and a scored rejection for something
         // it could not have known. Ordinary orders still meet this check exactly here.
+        // Its price in this age (b1110: an iron-age trebuchet costs 20% more).
+        const price = (typeof buildingCost === 'function') ? buildingCost(buildingDef, ai.age) : buildingDef.cost;
         const cannotAfford = () => {
-            if (ai.resources.hasResources(buildingDef.cost)) return null;
+            if (ai.resources.hasResources(price)) return null;
             console.log(`[OpenAIAI] ${ai.id}: Cannot afford ${buildingType}`);
             this.outcome('log.out.cannotAfford', { whatName: buildingDef.name });
-            return `[ERROR] Cannot afford ${buildingType}${this.shortfall(ai, buildingDef.cost)}.`;
+            return `[ERROR] Cannot afford ${buildingType}${this.shortfall(ai, price)}.`;
         };
         const maybeDuplicate = this.couldBeBlindDuplicate(controller, ai, buildingType);
         if (!maybeDuplicate) { const poor = cannotAfford(); if (poor) return poor; }
@@ -7447,6 +7607,16 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         }
         ({ x, z } = spot);
 
+        // No tower within 200 of an enemy Town Center on its side of the map (b1110).
+        if (buildingType === 'tower' && typeof game.towerSiteBlockedBy === 'function') {
+            const etc = game.towerSiteBlockedBy(ai.id, x, z);
+            if (etc) {
+                const d = Math.round(WarMath.hypot(etc.x - x, etc.z - z));
+                this.outcome('log.out.towerNearEnemyTC', { x: Math.round(x), z: Math.round(z), d });
+                return `[ERROR] tower: (${Math.round(x)}, ${Math.round(z)}) is ${d} from an enemy Town Center at (${Math.round(etc.x)}, ${Math.round(etc.z)}) and nearer to it than to any Town Center of yours. No tower may stand within ${Game.TOWER_TC_EXCLUSION} of an enemy Town Center on its side of the map.`;
+            }
+        }
+
         // Before a worker is chosen and before anything is spent: did this order ask
         // for something that appeared after the board this lane was given? Placed
         // here rather than earlier because the answer depends on the FINAL position --
@@ -7502,8 +7672,20 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // and returns to its old task afterwards. Without it, LLM players whose
         // workers were all gathering had their builds rejected while rule-based
         // rivals borrowed freely — an unfair asymmetry between controller types.
+        // A trebuchet is built by an engineer, and by nobody else (b1110).
+        let engineer = null;
+        if (isTrebuchetBuilding(buildingType)) {
+            engineer = game.pickEngineer(ai, { x, z });
+            if (!engineer) {
+                const owned = ai.units.some(u => u.type === 'engineer' && u.health > 0);
+                this.outcome('log.out.noEngineer', {});
+                return owned
+                    ? '[ERROR] trebuchet: no engineer free. Only an engineer builds a trebuchet, and yours are all fighting or on a trebuchet already.'
+                    : '[ERROR] trebuchet: only an engineer builds a trebuchet, and you have none. Train one at the academy (it needs siege_engineering).';
+            }
+        }
         const justSent = this.sentToScoutThisTurn(ai);
-        const pick = game.pickBuilder(ai, { x, z }, { forceBorrow: true, skip: justSent });
+        const pick = engineer ? { engineer, restore: false } : game.pickBuilder(ai, { x, z }, { forceBorrow: true, skip: justSent });
         if (pick.error === 'no_workers') {
             this.outcome('log.out.noWorkersBuild', { buildingType });
             return `[ERROR] You have no workers to build ${buildingType}.`;
@@ -7524,9 +7706,9 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // nothing in the answer to explain the gap.
         // pick.restore is set only when the builder was pulled off a task, so its
         // absence means this build just spent an idle hand.
-        if (!pick.restore) this.noteIdleTaken(ai, 1);
-        const walkSecs = pick.worker ? this.travelEtaSec(pick.worker, x, z) : 0;
-        ai.resources.spendResources(buildingDef.cost);
+        if (!pick.restore && !pick.engineer) this.noteIdleTaken(ai, 1);
+        const walkSecs = (pick.worker || pick.engineer) ? this.travelEtaSec(pick.worker || pick.engineer, x, z) : 0;
+        ai.resources.spendResources(price);
         if (controller) {
             const mine = controller._builtThisTurn || (controller._builtThisTurn = {});
             mine[buildingType] = (mine[buildingType] || 0) + 1;
@@ -7534,10 +7716,15 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Place a construction site and send the chosen worker to build it (pop bonus
         // is granted on completion via game.completeConstruction).
         const building = createBuilding(buildingType, x, z, ai.id, ai.civilization, { underConstruction: true, age: ai.age });
+        // Returned if destroyed before its engineer begins (b1110): game.refundUnstartedSite.
+        if (pick.engineer) building._prepaid = { ...price };
         ai.buildings.push(building);
         game.renderer.addBuilding(building);
-        if (pick.worker) pick.worker._orderToken = ++this._orderSeq;
-        game.applyBuilder(pick, building);
+        if (pick.engineer) game.sendEngineer(pick.engineer, building, 'building');
+        else {
+            if (pick.worker) pick.worker._orderToken = ++this._orderSeq;
+            game.applyBuilder(pick, building);
+        }
 
         console.log(`[OpenAIAI] ${ai.id}: Started ${buildingDef.name} at (${Math.round(x)}, ${Math.round(z)})`);
         const secs = this.realSecs(building.buildTime || 10000);
@@ -7550,6 +7737,15 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // the time this sentence is true the match is already back at 1x.
             ? ` This is your Wonder: once complete it must stand for ${(game.wonderRequired || 600)}s for you to win the match.`
             : '');
+        // In a formation it leaves it and comes back; on no order it walks there and stays
+        // (b1110). The reply said "leaves its formation ... returns to its place" for both,
+        // and an engineer trained at the academy, with no formation, stood by its finished
+        // trebuchet 20 from an enemy tower until it was shot (asp67's match of 24 October).
+        const who = !pick.engineer ? '' : pick.engineer._standingOrder
+            ? `engineer #${pick.engineer.handle} leaves its formation to build it (~${secs}s) and returns to its place after.`
+            : `engineer #${pick.engineer.handle} walks there from (${Math.round(pick.engineer.x)}, ${Math.round(pick.engineer.z)}) to build it (~${secs}s) and stays by the trebuchet after.`;
+        if (pick.engineer)
+            return `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); ${who} Its cost is returned if the site is destroyed before the engineer begins.${tail}`;
         return pick.restore
             ? `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); a worker was pulled off ${(pick && pick.wasDoing) || 'its task'} to build (~${secs}s) and will return afterwards${pick && pick.wasDoing === 'scouting' ? ' — that scout will NOT reach the tile you sent it to' : ''}.${tail}`
             : `OK - Construction of "${buildingType}" started at (${Math.round(x)}, ${Math.round(z)}); an idle worker is building it (~${secs}s).${tail}`;
@@ -7661,9 +7857,13 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // still means the army alone, so a bare move order never drags the economy
         // across the map.
         const split = (arr) => ({
-            combat: arr.filter(u => u.type !== 'worker' && u.unitType !== 'support'),
+            combat: arr.filter(u => u.type !== 'worker' && u.unitType !== 'support' && u.unitType !== 'siege'),
             support: arr.filter(u => u.type !== 'worker' && u.unitType === 'support'),
-            workers: arr.filter(u => u.type === 'worker')
+            workers: arr.filter(u => u.type === 'worker'),
+            // A trebuchet on wheels (b1110): its own bucket, as it never fights. A whole-army
+            // order takes it along with the rest (it was left home until asp67 asked for it
+            // to march with the army, which then goes at its pace).
+            siege: arr.filter(u => u.unitType === 'siege')
         });
         // Explicit handles win outright. "the nearest N of this type" cannot express
         // "that one", which is how a model that had correctly found its dying crossbowman
@@ -7684,13 +7884,19 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             // a different unit wearing its number. Say that, instead of quietly moving
             // whoever happens to be nearby.
             if (missing.length) note = ` (no longer yours or already dead: ${missing.join(', ')})`;
+            note += this.engineerJobNote(picked);
             // missing/alive travel with the selection so a caller can tell "some of the
             // named units died" from "all of them did". They are different situations
             // and only one of them is the model's mistake.
             return Object.assign(split(picked), { note, missing, alive: picked.length });
         }
         const hasMap = unitsMap && typeof unitsMap === 'object' && !Array.isArray(unitsMap) && Object.keys(unitsMap).length > 0;
-        if (!hasMap) return Object.assign(split(ai.units.filter(u => u.type !== 'worker' && u.health > 0)), { note: '' });
+        if (!hasMap) {
+            // Trebuchets included (b1110, asp67): one left home by every army order was
+            // moved by the seat on its own, and died alone.
+            const army = ai.units.filter(u => u.type !== 'worker' && u.health > 0);
+            return Object.assign(split(army), { note: this.engineerJobNote(army) });
+        }
         const live = ai.units.filter(u => u.health > 0);
 
         const chosen = new Set();
@@ -7710,7 +7916,25 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         let note = '';
         if (clamped.length) note += ` (clamped to what you own: ${clamped.join(', ')})`;
         if (skipped.length) note += ` (skipped: ${skipped.join(', ')})`;
+        note += this.engineerJobNote([...chosen]);
         return Object.assign(split([...chosen]), { note });
+    }
+
+    // An engineer finishes a trebuchet site before anything else but a fight (b1110,
+    // asp67: "Engineers should always finish build sites in their vicinity first before
+    // anything else, except retaliation"). An order that takes one on a job keeps it on
+    // the job: it joins the order's group and takes its slot when the trebuchet stands.
+    // asp67 had watched one stand in its formation beside an unstarted site -- the
+    // army's next order had swept it back in as an infantryman, and the job was gone
+    // without a word.
+    static engineerOnJob(u) {
+        return typeof Game !== 'undefined' && !!Game.engineerBusy && Game.engineerBusy(u);
+    }
+    engineerJobNote(units) {
+        const eng = (units || []).filter(u => OpenAIAIManager.engineerOnJob(u));
+        if (!eng.length) return '';
+        const one = eng.length === 1;
+        return ` (${eng.map(u => 'engineer #' + u.handle).join(', ')} finish${one ? 'es its' : ' their'} trebuchet first, then join${one ? 's' : ''} this order)`;
     }
 
     // "crossbowman #183 from (305, -30)" for one unit; a capped list for several. Capped
@@ -7737,6 +7961,38 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // model named those units; the ones still standing may be reserved for a different
     // order in the same turn, and auto-substituting is the harness deciding who fights.
     // Idle military auto-defend anyway. It states the facts and stops.
+    // A paced body with a trebuchet behind it stands until the trebuchet has caught up
+    // (game.moveSpeedOf, b1110), and the reply says so (asp67): "~Ns to arrive" was
+    // already the whole march, set by the trebuchet, but nothing said why the rest of
+    // the army stood still.
+    siegeWaitNote(units, tx, tz, pace) {
+        if (!pace || !pace.applied) return '';
+        const live = (units || []).filter(u => u && u.health > 0);
+        const siege = live.filter(u => u.unitType === 'siege'), rest = live.filter(u => u.unitType !== 'siege');
+        if (!siege.length || !rest.length) return '';
+        const far = Math.max(...rest.map(u => WarMath.hypot(u.x - tx, u.z - tz)));
+        const behind = siege.filter(u => WarMath.hypot(u.x - tx, u.z - tz) > far + 3);
+        if (!behind.length) return '';
+        return ` The others stand until ${behind.map(u => u.type + ' #' + u.handle).join(', ')} ${behind.length === 1 ? 'has' : 'have'} caught up, then march at ${behind.length === 1 ? 'its' : 'their'} pace.`;
+    }
+
+    // The trebuchets an attack takes along, said (b1110): they are not in the count of
+    // units attacking, and the reply named only the fighters and the priests.
+    siegeAlongNote(siege) {
+        if (!siege || !siege.length) return '';
+        return ` ${siege.map(u => u.type + ' #' + u.handle).join(', ')} go${siege.length === 1 ? 'es' : ''} with them; a trebuchet throws only at towers.`;
+    }
+
+    // attack_target naming only trebuchets on wheels (b1110). They have no attack: they
+    // throw at enemy towers by themselves, once they stand within reach.
+    // `note` names the units of the order that died before it landed (b1110): in asp67's
+    // match of 24 October (17:24) two archers and a trebuchet were named, the archers
+    // fell meanwhile, and the refusal spoke of the trebuchet alone.
+    siegeCannotAttack(note = '') {
+        this.outcome('log.out.siegeCannotAttack', {});
+        return `[ERROR] A trebuchet does not attack: it throws by itself at any enemy tower within its range once it stands still. Move it there with move_units.${note}`;
+    }
+
     orderedUnitsGone(ai, missing) {
         this.outcome('log.out.orderedUnitsGone', { ids: missing.join(', ') });
         return `[ERROR] Every unit you named is gone: ${missing.join(', ')} died between the state you read `
@@ -7777,7 +8033,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Optional {type:count} detachment; a move order repositions the whole
         // named force, priests included (they come along on a move as always).
         const sel = this.selectOrderedUnits(ai, unitsMap, targetX, targetZ, unitIds);
-        const unitsToMove = [...sel.combat, ...sel.support, ...sel.workers];
+        const unitsToMove = [...sel.combat, ...sel.support, ...sel.workers, ...(sel.siege || [])];
         if (unitsToMove.length === 0) {
             if (this.allNamedUnitsGone(unitIds, sel)) return this.orderedUnitsGone(ai, sel.missing);
             const ownsMilitary = ai.units.some(u => u.type !== 'worker' && u.health > 0);
@@ -7814,6 +8070,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const orderToken = ++this._orderSeq;
         let eta = 0;
         unitsToMove.forEach(unit => {
+            if (OpenAIAIManager.engineerOnJob(unit)) { unit._orderToken = orderToken; return; }   // finishes first (b1110)
             game.clearRetaliation(unit);
             // A worker may be carrying, mid-harvest, or standing on a farm. Setting
             // task=null alone would leave the farm's assignedWorker pointing at a unit
@@ -7855,7 +8112,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // Naming the units is what makes a wrong pick VISIBLE. Without it the reply for
         // moving the wrong crossbowman and the right one are the same sentence, so a model
         // has no way to notice and simply reissues.
-        return `OK - ${mode}: Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${form.note}${pace.note} — ~${eta}s to arrive.`;
+        return `OK - ${mode}: Moving ${this.describeMoved(unitsToMove)} to (${Math.round(targetX)}, ${Math.round(targetZ)})${sel.note}${form.note}${pace.note}${this.siegeWaitNote(unitsToMove, targetX, targetZ, pace)} — ~${eta}s to arrive.`;
     }
 
     wasShownTarget(ai, targetId) {
@@ -7876,7 +8133,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         let target = null;
         target = game.getAllUnits().find(u => (u.id || '') === targetId);
         if (!target) {
-            target = game.getAllBuildings().find(b => (b.id || '') === targetId);
+            target = game.getAllBuildings().find(b => (b.id || '') === targetId && (ai.buildings.includes(b) || !(typeof Game !== 'undefined' && Game.hiddenSite && Game.hiddenSite(b))));
         }
 
         if (!target) {
@@ -7927,6 +8184,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
         if (unitsToAttack.length === 0) {
             if (this.allNamedUnitsGone(unitIds, sel)) return this.orderedUnitsGone(ai, sel.missing);
+            if ((sel.siege || []).length) return this.siegeCannotAttack(sel.note);
             console.log(`[OpenAIAI] ${ai.id}: No units to attack with`);
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             if (ownsCombat) {
@@ -7943,7 +8201,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // of unitsToAttack -- a priest never engages -- but a body that walks together
         // has to be SHAPED together, and escorting them separately left them wandering
         // to a random spot within two units of the target while the army formed up.
-        const marching = unitsToAttack.concat((sel.support || []).filter(u => u && u.health > 0));
+        const marching = unitsToAttack.concat((sel.support || []).filter(u => u && u.health > 0), (sel.siege || []).filter(u => u && u.health > 0));
         const form = this.applyFormation(game, marching, target.x, target.z, formation);
         const pace = this.applyMatchSpeed(marching, matchSpeed || (form.applied ? 'slowestUnit' : ''));
         // One token for the whole order, minted here rather than inside the loop. Per
@@ -7952,6 +8210,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // reported one army marching on one target as N marches of one unit.
         const orderToken = ++this._orderSeq;
         unitsToAttack.forEach(unit => {
+            if (OpenAIAIManager.engineerOnJob(unit)) { unit._orderToken = orderToken; return; }   // finishes first (b1110)
             game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
             unit.attackTarget = target;
@@ -7978,6 +8237,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // picked on, only what attacks the army is answered. Said, so the model knows
         // why its army walked past a villager.
         const wonderNote = target.isWonder ? ' A Wonder is their only target: on the way they fight back only against what attacks them.' : '';
+        const siegeNote = this.siegeAlongNote((sel.siege || []).filter(u => u && u.health > 0));
         game.setStandingOrder?.(this,ai,marching,{x:target.x,z:target.z},{mode:'march',target,formation,matchSpeed});
 
         console.log(`[OpenAIAI] ${ai.id}: ${unitsToAttack.length} units attacking "${target.name || target.type}"`);
@@ -7994,10 +8254,17 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             const d = WarMath.hypot(u.x - target.x, u.z - target.z);
             return (best === null || d < best.d) ? { u, d } : best;
         }, null);
+        // A tower with trebuchets in the order (b1110): the army stands off while they throw,
+        // so "engaging ... in contact range" would tell the model the opposite of what
+        // happens (asp67's match of 24 October, 23:14, was told it at 27-35 from the tower).
+        if (target.type === 'tower' && (sel.siege || []).some(u => u && u.health > 0)) {
+            this.outcome('log.out.attackDispatched', { count: unitsToAttack.length, target: target.name || target.type });
+            return `OK - ${unitsToAttack.length} unit(s) ORDERED against "${target.name || target.type}": they stand off out of its reach while the trebuchets throw, and attack it once the trebuchets have fallen.${sel.note}${form.note}${pace.note}${this.siegeWaitNote(marching, target.x, target.z, pace)}${escortNote}${siegeNote}`;
+        }
         const inContact = nearest && nearest.d <= 30;
         if (inContact) {
             this.outcome('log.out.attackEngaging', { count: unitsToAttack.length, target: target.name || target.type });
-            return `OK - ${unitsToAttack.length} unit(s) engaging "${target.name || target.type}" — they are already in contact range.${sel.note}${pace.note}${escortNote}${wonderNote}`;
+            return `OK - ${unitsToAttack.length} unit(s) engaging "${target.name || target.type}" — they are already in contact range.${sel.note}${pace.note}${escortNote}${siegeNote}${wonderNote}`;
         }
         // The LAST unit to arrive, not the NEAREST one. Quoting the closest unit's eta
         // for a force spread across the map promises the moment the fight STARTS as
@@ -8008,7 +8275,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // "You will be told when they arrive" outlived the thing that told them, and
         // a promise the harness no longer keeps is worse than no promise. The clock is
         // in "ordersInProgress" now, and it counts down every turn instead of once.
-        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet.${sel.note}${form.note}${pace.note}${escortNote}${wonderNote}`;
+        return `OK - ${unitsToAttack.length} unit(s) ORDERED to attack "${target.name || target.type}" and now MARCHING there (~${eta}s). They have not fought anything yet.${sel.note}${form.note}${pace.note}${this.siegeWaitNote(marching, target.x, target.z, pace)}${escortNote}${siegeNote}${wonderNote}`;
     }
 
     executeAttackPosition(ai, game, targetX, targetZ, unitsMap, unitIds, matchSpeed, formation) {
@@ -8036,6 +8303,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const unitsToAttack = sel.combat;
         if (unitsToAttack.length === 0) {
             if (this.allNamedUnitsGone(unitIds, sel)) return this.orderedUnitsGone(ai, sel.missing);
+            if ((sel.siege || []).length) return this.siegeCannotAttack(sel.note);
             const ownsCombat = ai.units.some(u => u.type !== 'worker' && u.unitType !== 'support' && u.health > 0);
             if (ownsCombat) {
                 this.outcome('log.out.attackNoMatch', {});
@@ -8075,13 +8343,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         const token = ++this._orderSeq;
         let nearest = null, minDist = 40;
         for (const entity of [...game.getAllUnits(), ...game.getAllBuildings()]) {
-            if (this.isOwnedByAI(entity, ai) || entity.health <= 0) continue;
+            if (this.isOwnedByAI(entity, ai) || entity.health <= 0 || (typeof Game !== 'undefined' && Game.hiddenSite && Game.hiddenSite(entity))) continue;
             const d = WarMath.hypot(entity.x - targetX, entity.z - targetZ);
             if (d < minDist) { minDist = d; nearest = entity; }
         }
-        const form = this.applyFormation(game, unitsToAttack, targetX, targetZ, formation);
-        const pace = this.applyMatchSpeed(unitsToAttack, matchSpeed || (form.applied ? 'slowestUnit' : ''));
+        // Shaped and paced as one body with its priests and trebuchets, as the targetId
+        // branch does (b1110). This one shaped and paced the fighters alone: in asp67's
+        // match of 23 October a Viking order naming its advanced trebuchet was "matched
+        // to the slowest: all marching at 1 (engineer pace)", and the army reached the
+        // Wonder with the trebuchet 150 behind at 0.32.
+        const siegeGoing = (sel.siege || []).filter(u => u && u.health > 0);
+        const marching = unitsToAttack.concat((sel.support || []).filter(u => u && u.health > 0), siegeGoing);
+        const form = this.applyFormation(game, marching, targetX, targetZ, formation);
+        const pace = this.applyMatchSpeed(marching, matchSpeed || (form.applied ? 'slowestUnit' : ''));
         unitsToAttack.forEach(unit => {
+            if (OpenAIAIManager.engineerOnJob(unit)) { unit._orderToken = token; return; }   // finishes first (b1110)
             game.clearRetaliation(unit); // a fresh model order overrides the reflex
             unit.isAttacking = true;
             unit.attackTarget = nearest || null;
@@ -8106,16 +8382,21 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
         // full-army order, only the named priests on a detachment.
         const escorted = game.escortSupportUnits(sel.support, targetX, targetZ);
         const escortNote = escorted ? ` ${escorted} priest(s) escort to heal (they stand back, never engage).` : '';
-        game.setStandingOrder?.(this,ai,unitsToAttack.concat(sel.support||[]),{x:targetX,z:targetZ},{mode:'march',attack:true,formation,matchSpeed});
+        game.setStandingOrder?.(this,ai,marching,{x:targetX,z:targetZ},{mode:'march',attack:true,formation,matchSpeed});
+        // With trebuchets along, a known enemy tower in their reach of the point is
+        // besieged first, then the order goes on (b1110, StandingOrders.besiegeGuard).
+        const so = game._standingOrders, grp = marching.length ? marching[0]._standingOrder : null;
+        const guard = so && grp && so.besiegeGuard ? so.besiegeGuard(grp) : null;
+        const guardNote = guard ? ` A tower at (${Math.round(guard.x)}, ${Math.round(guard.z)}) covers that point within your trebuchets' reach: the army besieges it first (the trebuchets throw out of its reach, the soldiers stand beside them) and goes on to (${Math.round(targetX)}, ${Math.round(targetZ)}) once it falls.` : '';
 
         // The LAST unit to arrive, not the first one in the list. This quoted
         // unitsToAttack[0], so a mixed force was promised its scout cavalry's eta and
         // the model read the missing damage as a tough enemy rather than as an army
         // still walking -- the same lie "units attacking" used to tell, one field over.
         // move_units has always taken the max; these two now agree.
-        const eta = unitsToAttack.reduce((m, u) => Math.max(m, this.travelEtaSec(u, targetX, targetZ)), 0);
+        const eta = unitsToAttack.concat(siegeGoing).reduce((m, u) => Math.max(m, this.travelEtaSec(u, targetX, targetZ)), 0);
         this.outcome('log.out.attackMoving', { count: unitsToAttack.length, x: Math.round(targetX), z: Math.round(targetZ), eta });
-        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${form.note}${pace.note}${escortNote}${offNote}`;
+        return `OK - ${unitsToAttack.length} unit(s) attack-moving to (${Math.round(targetX)}, ${Math.round(targetZ)}) (~${eta}s).${sel.note}${form.note}${pace.note}${this.siegeWaitNote(marching, targetX, targetZ, pace)}${escortNote}${this.siegeAlongNote(siegeGoing)}${offNote}${guardNote}`;
     }
 
     // Each frame, close out open attack-move orders once they resolve.
@@ -8155,7 +8436,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 const arrived = onOrder.some(u => WarMath.hypot(u.x - r.tx, u.z - r.tz) <= ARRIVE) || onOrder.every(u => !u.isMoving);
                 if (arrived) {
                     const enemyNear = [...this.game.getAllUnits(), ...this.game.getAllBuildings()]
-                        .some(e => e.health > 0 && !this.isOwnedByAI(e, ai) && WarMath.hypot(e.x - r.tx, e.z - r.tz) <= ENGAGE);
+                        .some(e => e.health > 0 && !this.isOwnedByAI(e, ai) && !(typeof Game !== 'undefined' && Game.hiddenSite && Game.hiddenSite(e)) && WarMath.hypot(e.x - r.tx, e.z - r.tz) <= ENGAGE);
                     // The one arrival worth a line. No fight starts, so no battle entry is
                     // ever written, and the order's own units go quiet in the state -- from
                     // the model's side an empty clearing and a march still in progress look
@@ -8322,7 +8603,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
 
         // Priests are excluded from the auto-pick: a healer wandering the dark
         // alone is a wasted (and soon dead) medic. Explicit unitType still wins.
-        const idleMilitary = ai.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && !this.isInCombat(u) && notSentYet(u));
+        const idleMilitary = ai.units.filter(u => u.type !== 'worker' && u.unitType !== 'support' && u.unitType !== 'siege' && !this.isInCombat(u) && notSentYet(u));
         // The farthest-seeing idle soldier, the first of equals (b1060). That was "the
         // first rider, else the first soldier", the same pick while only riders saw
         // farther; the Maya's spotter walks and sees as far.
@@ -8959,7 +9240,29 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // Put workers on fixing a damaged own building (free; uses the build task's
     // machinery — game.assignWorkersToBuilding routes to task 'repairing').
     executeRepairBuilding(ai, game, params) {
-        const damaged = ai.buildings.filter(b => !b.underConstruction && b.health > 0 && b.health < b.maxHealth);
+        // A trebuchet on wheels is mended like a building (b1110).
+        const damaged = ai.buildings.filter(b => !b.underConstruction && b.health > 0 && b.health < b.maxHealth)
+            .concat(ai.units.filter(u => u.unitType === 'siege' && u.health > 0 && u.health < u.maxHealth));
+        // A trebuchet site named by its coordinates takes engineers to build it (b1110,
+        // asp67: "an engineer can be sent to a trebuchet build site with a repair or build
+        // order"). Only when named: the most damaged one is never a site.
+        const sites = (OpenAIAIManager.given(params.targetX) && OpenAIAIManager.given(params.targetZ))
+            ? ai.buildings.filter(b => b.underConstruction && b.health > 0 && typeof isTrebuchetBuilding === 'function' && isTrebuchetBuilding(b.type)) : [];
+        const site = sites.find(b => WarMath.hypot(b.x - Number(params.targetX), b.z - Number(params.targetZ)) <= 12);
+        if (site) {
+            const count = Math.max(1, Math.min(params.count || 1, 5));
+            const engineers = ai.units.filter(u => u.type === 'engineer' && u.health > 0 && !u.isAttacking && !Game.engineerBusy(u))
+                .sort((a, b) => WarMath.hypot(a.x - site.x, a.z - site.z) - WarMath.hypot(b.x - site.x, b.z - site.z)).slice(0, count);
+            if (!engineers.length) {
+                this.outcome('log.out.noEngineer', {});
+                const owned = ai.units.some(u => u.type === 'engineer' && u.health > 0);
+                return `[ERROR] ${site.type} at (${Math.round(site.x)}, ${Math.round(site.z)}) is a site: only engineers build it, and ` + (owned
+                    ? 'none is free (all fighting or on a trebuchet already).' : 'you have none. Train one at the academy.');
+            }
+            engineers.forEach(e => { game.sendEngineer(e, site, 'building'); e._orderToken = ++this._orderSeq; });
+            const pct = Math.round(Math.min(1, (site.buildProgress || 0) / (site.buildTime || 10000)) * 100);
+            return `OK - ${engineers.map(e => 'engineer #' + e.handle).join(', ')} go${engineers.length === 1 ? 'es' : ''} to build your ${site.type} at (${Math.round(site.x)}, ${Math.round(site.z)}), ${pct}% built.`;
+        }
         if (damaged.length === 0) {
             this.outcome('log.out.nothingToRepair', {});
             return `[ERROR] None of your buildings are damaged — nothing to repair. (Construction SITES are finished automatically by the worker build_structure assigned.)`;
@@ -8988,13 +9291,20 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             target = damaged.reduce((a, b) => (a.health / a.maxHealth <= b.health / b.maxHealth ? a : b));
         }
         const count = Math.max(1, Math.min(params.count || 1, 5));
+        // A trebuchet is mended by engineers as well as villagers (b1110).
+        const siegeJob = typeof Game !== 'undefined' && Game.trebuchetWork && Game.trebuchetWork(target);
         const workers = ai.units
-            .filter(u => u.type === 'worker' && u.health > 0 && u.task !== 'building' && !u.isBuilding)
+            .filter(u => (u.type === 'worker' && u.health > 0 && u.task !== 'building' && !u.isBuilding)
+                || (siegeJob && u.type === 'engineer' && u.health > 0 && !u.isAttacking && !Game.engineerBusy(u)))
             .sort((a, b) => WarMath.hypot(a.x - target.x, a.z - target.z) - WarMath.hypot(b.x - target.x, b.z - target.z))
             .slice(0, count);
         if (workers.length === 0) {
             this.outcome('log.out.noWorkersRepair', {});
-            return `[ERROR] No workers available to repair (all are constructing).`;
+            // Only villagers repair buildings, towers included; engineers mend only
+            // trebuchets (b1110). Said, when engineers are all this seat could have sent.
+            const engNote = !siegeJob && ai.units.some(u => u.type === 'engineer' && u.health > 0)
+                ? ' Only villagers repair buildings; engineers mend trebuchets only.' : '';
+            return `[ERROR] No workers available to repair (all are constructing).${engNote}`;
         }
         // Counted BEFORE assignWorkersToBuilding retasks them, or they all read as
         // repairers and the idle ones among them would go unnoticed.
@@ -9012,6 +9322,8 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
             ? ` NOTE: it is still under fire — repairs are locked until 10s after the LAST hit; the workers wait on site and start automatically.`
             : '';
         this.outcome('log.out.repairStarted', { count: workers.length, type: target.type, x: Math.round(target.x), z: Math.round(target.z), pct });
+        const engineersSent = workers.filter(w => w.type === 'engineer').length;
+        if (engineersSent) return `OK - ${workers.length - engineersSent} worker(s) and ${engineersSent} engineer(s) repairing your ${target.type} at (${Math.round(target.x)}, ${Math.round(target.z)}), currently ${pct}% HP.${barrierNote} The engineers return to their formation when it is whole.`;
         return `OK - ${workers.length} worker(s) repairing your ${target.type} at (${Math.round(target.x)}, ${Math.round(target.z)}), currently ${pct}% HP.${barrierNote} They idle when it is fully repaired — reassign them to resources afterwards.`;
     }
 
@@ -9860,7 +10172,11 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
     // seeing (b1041). Remembered entries repeat it until the building is seen again.
     static buildingSighting(b, game) {
         return { id: b.id, type: b.type, x: Math.round(b.x), z: Math.round(b.z),
-                 owner: game.seatLabel(b.owner), healthPct: Math.round((b.health / b.maxHealth) * 100) };
+                 owner: game.seatLabel(b.owner), healthPct: Math.round((b.health / b.maxHealth) * 100),
+                 // A site still being built, and how far along, as last seen (b1110): a
+                 // forward tower going up is something the other side can answer.
+                 ...(b.underConstruction ? { state: 'under_construction',
+                     buildPct: Math.round(Math.min(1, (b.buildProgress || 0) / (b.buildTime || 10000)) * 100) } : {}) };
     }
 
     // Persistently remember every ENEMY BUILDING a model has seen (buildings are
@@ -9879,6 +10195,7 @@ matchSpeed: Only "slowestUnit", and only on move_units and attack_target. Allows
                 if (ai.buildings.includes(b)) continue;            // own building
                 if (b.health <= 0) { ai._knownEnemyBuildings.delete(b); continue; } // gone
                 if (ai._knownEnemyBuildings.has(b)) continue;      // already known
+                if ((typeof Game !== 'undefined' && Game.hiddenSite && Game.hiddenSite(b))) continue;   // an unstarted trebuchet site (b1110)
                 if (b.isWonder || (see || (see = this.visionTestFor(ai, this.game)))(b.x, b.z)) {
                     ai._knownEnemyBuildings.add(b);
                     // As it looked at that moment (b1041): seen between turns, it is

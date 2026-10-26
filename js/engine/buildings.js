@@ -976,6 +976,68 @@
             }
             return p;
         },
+        // The trebuchet (b1110): a counterweight engine on wheels throwing toward +Z. Built
+        // in the iron age it is the advanced engine: a size up, a banded stone
+        // counterweight and a team pennant; otherwise a timber frame with a crate.
+        trebuchet: (o = {}) => {
+            const p = [];
+            const adv = !!o.advanced;   // the site's type decides, not the age (b1110)
+            const k = adv ? 1.25 : 1;              // the advanced engine is a size up
+            const axleY = 3.6 * k, halfW = 1.0 * k, base = 2.6 * k, lift = 0.35 * k;   // raised on its wheels
+            shadow(p, 3.4 * k);
+            // Two skids and three cross beams.
+            [-halfW, halfW].forEach(x => part(p, 'box', [0.3 * k, 0.3 * k, base * 2], 'wood', { x, y: 0.15 * k + lift }));
+            [-base * 0.85, 0, base * 0.85].forEach(z => part(p, 'box', [halfW * 2 + 0.3, 0.25 * k, 0.25 * k], 'bark', { y: 0.32 * k + lift, z }));
+            // A-frame uprights on each side, meeting at the axle.
+            const lean = Math.atan2(1.4 * k, axleY), post = Math.hypot(1.4 * k, axleY);
+            [-halfW, halfW].forEach(x => {
+                part(p, 'box', [0.22 * k, post, 0.22 * k], 'wood', { x, y: axleY / 2 + lift, z: 0.7 * k, rx: -lean });
+                part(p, 'box', [0.22 * k, post, 0.22 * k], 'wood', { x, y: axleY / 2 + lift, z: -0.7 * k, rx: lean });
+            });
+            const ay = axleY + lift;
+            // The axle in the owner's colour: it turns and travels with the engine, where
+            // the ground runner other buildings carry would not.
+            part(p, 'cylinder', [0.12 * k, 0.12 * k, halfW * 2 + 0.5, 8], 'iron', { y: ay, rz: Math.PI / 2, team: true });
+            // The throwing arm, cocked (b1110, asp67): the long end down and back, its sling
+            // and stone on the ground behind the engine, the counterweight raised up front.
+            // The arm, counterweight, sling and pennant are bone 'arm' -- a trebuchet on
+            // wheels swings them over the axle when it throws -- and the stone is bone
+            // 'stone', gone from the sling until the arm is back down and reloaded.
+            const arm = 7.0 * k, shortEnd = 1.8 * k, longEnd = arm - shortEnd;
+            const theta = Math.acos(Math.min(1, (ay - (lift + 0.75 * k)) / longEnd));
+            const dy = -Math.cos(theta), dz = -Math.sin(theta);   // the long end's direction
+            const c = arm / 2 - shortEnd;
+            const tag = (bone, from) => { for (let i = from; i < p.length; i++) p[i].bone = bone; };
+            const armFrom = p.length;
+            part(p, 'box', [0.22 * k, arm, 0.22 * k], 'wood', { y: ay + c * dy, z: c * dz, rx: theta });
+            const cwY = ay - shortEnd * dy - 0.65 * k, cwZ = -shortEnd * dz;
+            if (adv) {
+                part(p, 'box', [1.3, 1.2, 1.3], 'masonry', { y: cwY, z: cwZ });
+                [-0.35, 0.35].forEach(y => part(p, 'box', [1.36, 0.12, 1.36], 'iron', { y: cwY + y, z: cwZ }));
+            } else {
+                part(p, 'box', [0.95, 0.95, 0.95], 'bark', { y: cwY, z: cwZ });
+                part(p, 'box', [1.0, 0.1, 1.0], 'wood', { y: cwY + 0.3, z: cwZ });
+            }
+            // The sling, from the arm's tip down to the stone lying behind the engine.
+            const tipY = ay + longEnd * dy, tipZ = longEnd * dz;
+            const stoneY = 0.38 * k, stoneZ = tipZ - 0.45 * k;
+            const sy = stoneY - tipY, sz = stoneZ - tipZ, sl = Math.hypot(sy, sz);
+            part(p, 'cylinder', [0.03, 0.03, sl, 4], 'leather', { y: (tipY + stoneY) / 2, z: (tipZ + stoneZ) / 2, rx: Math.atan2(sz, sy) });
+            // The owner's pennant on the advanced engine's arm, near the tip.
+            if (adv) part(p, 'box', [0.04, 0.55, 0.9], 'cloth', { y: tipY + 0.45, z: tipZ + 0.3, team: true });
+            tag('arm', armFrom);
+            const stoneFrom = p.length;
+            part(p, 'sphere', [1, 8, 6], 'rock', { y: stoneY, z: stoneZ, sx: 0.38 * k, sy: 0.34 * k, sz: 0.38 * k });
+            tag('stone', stoneFrom);
+            // Four wheels on both engines.
+            [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sz]) =>
+                part(p, 'cylinder', [0.44 * k, 0.44 * k, 0.18 * k, 10], 'wood', { x: sx * (halfW + 0.2 * k), y: 0.44 * k, z: sz * base * 0.7, rz: Math.PI / 2 }));
+            // The owner's pennant on the advanced engine's arm.
+            if (adv) part(p, 'box', [0.04, 0.55, 0.9], 'cloth', { y: tipY + 0.1, z: tipZ - 0.45, team: true });
+            return p;
+        },
+        // The advanced engine's site and engine (b1110).
+        trebuchet_advanced: (o = {}) => builders.trebuchet({ ...o, advanced: true }),
         temple: (o = {}) => {
             const p = [];
             const civ = civOf(o);
@@ -1427,7 +1489,7 @@
     };
     EngineBuildings.entranceLamp = (type, age, civ, foot, buildingParts, side=-1, standalone=false) => {
         const parts=[];
-        if(type==='farm')return {parts};
+        if(type==='farm'||type==='trebuchet'||type==='trebuchet_advanced')return {parts};
         const early=['stone','neolithic'].includes(age);
         const mount=early?null:standalone?{x:side*1.8,y:1.74,z:8.2}:EngineBuildings.lampMount(buildingParts||EngineBuildings.parts(type,{age,civ}),side);
         if(!early&&!mount)return {parts};

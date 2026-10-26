@@ -135,6 +135,55 @@ const UNIT_DEFS = {
         type: 'support',
         tier: 'bronze',
         description: 'Heilt andere Einheiten in der Nähe'
+    },
+    // The engineer (b1110, asp67): a cheap, weak foot soldier trained at the academy
+    // after Siege Engineering, and the only unit that builds a trebuchet. It marches in
+    // the rear ranks of a formation, leaves its slot to build or mend a trebuchet, and
+    // walks back to it when done -- siege that comes with the army instead of a
+    // villager walking out alone. Villagers still repair trebuchets too.
+    engineer: {
+        id: 'engineer',
+        name: 'Pionier',
+        // A militia's price (b1110, asp67): seats are still learning to set a site
+        // where the approach is safe, and many engineers die to towers on the way.
+        cost: { food: 50, wood: 20, stone: 0, gold: 0 },
+        health: 50,
+        speed: 1.0,
+        attack: 4,
+        range: 0.5,
+        type: 'infantry',
+        tier: 'bronze',
+        requiresTech: 'siege_engineering',
+        buildSpeed: 1.0,
+        description: 'Leichter Nahkämpfer, der Triboke vor Ort baut und repariert; marschiert mit der Armee'
+    },
+    // The trebuchets on wheels (b1110, asp67). Never trained: a finished trebuchet site
+    // rolls off as one of these -- the simple engine at 0.16 (a fifth of the slowest
+    // unit), or, built in the iron age, the advanced one at 0.16. They join move orders
+    // and formations (a ranged slot), throw stone at enemy towers only, and only while
+    // they stand (TREBUCHET_TIERS). No attack of their own, so they never fight; no
+    // population; engineers and workers repair them, priests do not heal them.
+    simple_trebuchet: {
+        id: 'simple_trebuchet',
+        name: 'Tribok',
+        cost: { food: 0, wood: 0, stone: 0, gold: 0 },
+        health: 200,
+        speed: 0.16,
+        attack: 0,
+        range: 50,
+        type: 'siege',
+        description: 'Tribok auf Rädern, Geschwindigkeit 0,16: wirft im Stand Steine auf feindliche Türme'
+    },
+    advanced_trebuchet: {
+        id: 'advanced_trebuchet',
+        name: 'Schwerer Tribok',
+        cost: { food: 0, wood: 0, stone: 0, gold: 0 },
+        health: 400,
+        speed: 0.32,
+        attack: 0,
+        range: 60,
+        type: 'siege',
+        description: 'Schwerer Tribok auf Rädern, Geschwindigkeit 0,32: wirft im Stand Steine auf feindliche Türme'
     }
 };
 
@@ -260,6 +309,11 @@ function createUnit(type, x, z, owner, civilization, age) {
 
     // Researched bonuses (Quick Hands & co.) apply at spawn too — otherwise a
     // research quietly split the roster into boosted veterans and raw recruits.
+    // A trebuchet's throw, reload and watch (b1110), from its engine tier.
+    if ((type === 'simple_trebuchet' || type === 'advanced_trebuchet') && typeof trebuchetTier === 'function') {
+        const t = trebuchetTier(type === 'advanced_trebuchet' ? 'iron' : 'bronze');
+        Object.assign(unit, { advanced: type === 'advanced_trebuchet', siegeAttack: t.attack, reloadMs: t.reloadMs, watch: t.watch, range: t.range });
+    }
     if (ownerObj && typeof game !== 'undefined' && game && game.applyResearchedBonusesToUnit) {
         game.applyResearchedBonusesToUnit(unit, ownerObj);
     }
@@ -307,6 +361,8 @@ function upgradeBuildingToAge(building, newAge) {
     const uniqueBuilding = civ.uniqueBuildings.find(b => b.id === building.type);
     const buildingDef = uniqueBuilding || BUILDING_DEFS[building.type];
     if (!buildingDef || buildingDef.type === 'wonder') return false;
+    // A trebuchet keeps the engine it was built as (b1110): no age-up morph.
+    if (isTrebuchetBuilding(building.type)) return false;
     const ratio = building.maxHealth > 0 ? (building.health / building.maxHealth) : 1;
     building.age = newAge;
     building.maxHealth = buildingMaxHealth(buildingDef, civ, newAge);
@@ -337,7 +393,10 @@ function createBuilding(type, x, z, owner, civilization, options) {
     const age = (options && options.age && BUILDING_AGE_ORDER.includes(options.age)) ? options.age : 'stone';
 
     const underConstruction = !!(options && options.underConstruction);
-    const maxHealth = buildingMaxHealth(buildingDef, civ, age);
+    // A trebuchet's health, damage, reach and watch come from its engine tier, flat
+    // for every civilization (b1110).
+    const treb = typeof isTrebuchetBuilding === 'function' && isTrebuchetBuilding(type) ? trebuchetTierOf(type) : null;
+    const maxHealth = treb ? treb.health : buildingMaxHealth(buildingDef, civ, age);
     const buildTime = buildingDef.buildTime || 10000;
 
     return {
@@ -356,7 +415,9 @@ function createBuilding(type, x, z, owner, civilization, options) {
         buildProgress: 0,
         buildTime: buildTime,
         isWonder: buildingDef.type === 'wonder',
-        health: underConstruction ? Math.max(1, maxHealth * 0.2) : maxHealth,
+        // A trebuchet site starts at nothing (b1110, asp67): 0.01, shown as 0%, so every
+        // "still standing" check keeps it while the first arrow ends it.
+        health: underConstruction ? (typeof isTrebuchetBuilding === 'function' && isTrebuchetBuilding(type) ? 0.01 : Math.max(1, maxHealth * 0.2)) : maxHealth,
         maxHealth: maxHealth,
         owner: owner,
         civilization: civilization,
@@ -376,8 +437,9 @@ function createBuilding(type, x, z, owner, civilization, options) {
         productionDuration: 0,
         // Towers bite harder each epoch (TOWER_POWER), like their HP already does.
         attack: (type === 'tower' && typeof towerPower === 'function')
-            ? towerPower(age).attack : (buildingDef.attack || 0),
-        range: buildingDef.range || 0,
+            ? towerPower(age).attack : treb ? treb.attack : (buildingDef.attack || 0),
+        range: treb ? treb.range : (buildingDef.range || 0),
+        ...(treb ? { advanced: type === 'trebuchet_advanced', watch: treb.watch, reloadMs: treb.reloadMs } : {}),
         // Farm-specific properties
         foodAmount: type === 'farm' ? 300 : 0,
         maxFoodAmount: type === 'farm' ? 300 : 0,

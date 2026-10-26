@@ -40,12 +40,13 @@ Game.prototype.prepareVisualShowcase = function () {
         ['farm',-44,21],['farm',-44,37],['tower',44,30],
         ['stable',-25,54],['academy',25,54]].filter(([type])=>canBuild(type));
     if(['bronze','iron'].includes(age))plan.push(['temple',0,-24]);
+    // The trebuchets (b1110) are units on wheels: placed below.
     if(age==='iron') {
         const wonder=getCivilization(civ).uniqueBuildings.find(b=>b.type==='wonder');
         if(wonder)plan.push([wonder.id,0,80]);
     }
-    for(const [type,dx,dz] of plan) {
-        const building=createBuilding(type,x+dx,z+dz,'player',civ,{age});
+    for(const [type,dx,dz,builtIn] of plan) {
+        const building=createBuilding(type,x+dx,z+dz,'player',civ,{age:builtIn||age});
         if(!building) continue;
         this.terrain.clearResourcesNear(building.x,building.z,this.resourceClearance(type,building.isWonder)+3);
         player.buildings.push(building);r.addBuilding(building);
@@ -54,7 +55,7 @@ Game.prototype.prepareVisualShowcase = function () {
     // Every unit this civilization fields at this age, its own included (b1061): the
     // fixed shared roster showed the Maya on horseback and nobody's own units at all.
     const roster=[];
-    for(const host of ['barracks','archery_range','stable'])
+    for(const host of ['barracks','archery_range','stable','academy'])
         if(canBuild(host))for(const id of getTrainOptionsForBuilding(host,age,civ))if(!roster.includes(id))roster.push(id);
     if(['bronze','iron'].includes(age))roster.push('priest');
     roster.push('worker','worker');
@@ -62,8 +63,13 @@ Game.prototype.prepareVisualShowcase = function () {
         const unit=createUnit(roster[i],x-8+(i%4)*4,z+23+Math.floor(i/4)*4,'player',civ,age);
         if(unit) { player.units.push(unit);r.addUnit(unit); }
     }
+    // The simple engine from the bronze age; in the iron age the advanced one beside it.
+    for(const [id,dx,dz] of age==='iron'?[['simple_trebuchet',46,52],['advanced_trebuchet',60,44]]:age==='bronze'?[['simple_trebuchet',46,52]]:[]){
+        const treb=createUnit(id,x+dx,z+dz,'player',civ,age);
+        if(treb){player.units.push(treb);r.addUnit(treb);}
+    }
     this.updateMilitaryTrainOptions();
-    player.resources.updatePopulation(player.units.length);
+    player.resources.updatePopulation(Game.populationOf(player.units));
     r.cameraTarget.set(x,0,z+22);
     r._yaw=-Math.PI/7;r._pitch=Math.atan(.65);r._halfH=62;
     const label=document.createElement('div');

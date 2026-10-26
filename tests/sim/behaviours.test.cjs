@@ -91,3 +91,29 @@ test('auto-defense escort: only priests within reach, rallying behind the defend
     assert.ok(rally.x < 45, 'on the far side of the scout from the tower');
     assert.ok(!home.isMoving && Math.hypot(home.x - homeAt.x, home.z - homeAt.z) < 0.5, 'the priest at home stays at home');
 });
+
+// asp67 (b1110): "retaliating units need to return to their origin from where they started
+// the retaliation after eliminating the threats, except if an order has changed their
+// target location." A drafted soldier used to march on to the attacker's spot and stay.
+test('auto-defense: a soldier goes back to where it stood once the threat is gone, unless ordered elsewhere', () => {
+    for (const ordered of [false, true]) {
+        const { m, a, b, ca } = board();
+        // The raider hits a house 60 from the soldier: the soldier goes out to it.
+        const house = m.addBuilding(a, 'house', -60, -30);
+        const soldier = m.addUnit(a, 'champion', -60, 30);
+        const raider = m.addUnit(b, 'militia', -52, -30);
+        raider.health = 25;
+        raider.isAttacking = true; raider.attackTarget = house;
+        let won = false;
+        for (let t = 0; t < 30000 && !won; t += 250) { m.run(250); won = raider.health <= 0; }
+        assert.ok(won, 'the raider fell');
+        if (ordered) {
+            const r = String(m.command(ca, 'move_units', { unitIds: [soldier.handle], targetX: -100, targetZ: 30, reason: 'elsewhere' }));
+            assert.doesNotMatch(r, /\[ERROR\]/, r);
+        }
+        m.run(20000);
+        const d = (x, z) => Math.hypot(soldier.x - x, soldier.z - z);
+        if (ordered) assert.ok(d(-100, 30) < 4, 'the order wins: ' + soldier.x.toFixed(1) + ',' + soldier.z.toFixed(1));
+        else assert.ok(d(-60, 30) < 1, 'back where it stood: ' + soldier.x.toFixed(1) + ',' + soldier.z.toFixed(1));
+    }
+});

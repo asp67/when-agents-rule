@@ -112,14 +112,16 @@ class UIManager {
         const t0 = String(type || '');
         if (!t0) return false;
         if (typeof BUILDING_DEFS !== 'undefined' && BUILDING_DEFS[t0]) return true;
+        // A unit is never a building, whatever its name holds ('simple_trebuchet').
+        if (typeof UNIT_DEFS !== 'undefined' && UNIT_DEFS[t0]) return false;
         if (/^(market|wonder|range)$/.test(t0)) return true;
         if (typeof CIVILIZATIONS !== 'undefined')
             for (const id of Object.keys(CIVILIZATIONS))
                 if ((CIVILIZATIONS[id].uniqueBuildings || []).some(b => b.id === t0)) return true;
-        return /town_center|barracks|temple|academy|house|farm|stable|tower|range/.test(t0);
+        return /town_center|barracks|temple|academy|house|farm|stable|tower|range|trebuchet/.test(t0);
     }
 
-    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v108'; }
+    static get ARENA_PROMPT_VERSION() { return 'agents-rule-v109'; }
 
     constructor(game) {
         this.game = game;
@@ -224,6 +226,13 @@ class UIManager {
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
+    // A screen position given to a panel that is itself zoomed by the UI size (b1110):
+    // its "top" is counted in its own shrunken pixels, so a measured screen offset is
+    // divided back out -- or at Medium/Small the panel lands too high, over what it
+    // was placed below.
+    zoomedPx(px) {
+        return px / (UIManager.UI_SCALES[this.viewPreferences().uiScale] || 1);
+    }
     setUiScale(value) {
         if (!UIManager.UI_SCALES[value]) return;
         this.viewPreferences().uiScale = value;
@@ -2740,10 +2749,22 @@ class UIManager {
             const badge = (ent.seat != null && this.teamDotHtml) ? this.teamDotHtml(ent.seat, 9) : '●';
             return `<span style="color:${col};font-weight:bold;">${badge} ${tg(civ.name)}</span><br>`;
         };
+        // What a trebuchet does, either engine (b1110): it throws at towers only.
+        const siegeLines = (e) => `🏹 ${t('ui.engine.' + (e.advanced ? 'advanced' : 'simple'))}<br>`
+            + `⚔️ ${t('ui.throw', { dmg: e.siegeAttack || e.attack, s: Math.round((e.reloadMs || 6000) / 1000) })}<br>`
+            + `🎯 ${t('ui.range')}: ${+(e.range || 0).toFixed(1)}<br>`
+            + `👁️ ${t('ui.watch', { n: e.watch || 0 })}<br>`;
         if (unit) {
             let html = ownerLine(unit);
             html += `<strong>${tg(unit.name)}</strong> <em>${this.getUnitTypeDescription(unit.unitType)}</em><br>`;
             html += `❤️ ${t('ui.health')}: ${Math.floor(unit.health)}/${unit.maxHealth}<br>`;
+            if (unit.unitType === 'siege') {
+                html += siegeLines(unit);
+                html += `💨 ${t('ui.speed')}: ${unit.speed}<br>`;
+                infoDiv.innerHTML = html;
+                this.renderSpectatorSoundCaption(infoDiv);
+                return;
+            }
             html += `⚔️ ${t('ui.attack')}: ${unit.attack}<br>`;
             html += `💨 ${t('ui.speed')}: ${unit.speed}<br>`;
             if (unit.range > 1) {
@@ -2754,6 +2775,18 @@ class UIManager {
             let html = ownerLine(building);
             html += `<strong>${tg(building.name)}</strong><br>`;
             html += `❤️ ${t('ui.health')}: ${Math.floor(building.health)}/${building.maxHealth}<br>`;
+            // A site shows how far along it is (b1110); a tower its volley, a trebuchet
+            // its throw. Every building used to show its name and health only.
+            if (building.underConstruction) {
+                const pct = Math.round(Math.min(1, (building.buildProgress || 0) / (building.buildTime || 10000)) * 100);
+                html += `🏗️ ${t('ui.underConstruction', { pct })}<br>`;
+            } else if (building.type === 'tower') {
+                const arrows = typeof towerPower === 'function' ? towerPower(building.age).arrows : 1;
+                html += `⚔️ ${t('ui.volley', { n: arrows, dmg: building.attack })}<br>`;
+                html += `🎯 ${t('ui.range')}: ${building.range}<br>`;
+            } else if (typeof isTrebuchetBuilding === 'function' && isTrebuchetBuilding(building.type)) {
+                html += siegeLines(building);
+            }
             html += `<em>${this.getBuildingTypeDescription(building.type)}</em>`;
             infoDiv.innerHTML = html;
         } else if (node) {
@@ -3176,7 +3209,7 @@ class UIManager {
         // mode the bar is gone and the caption is a lower third (CSS).
         const bar = document.querySelector('#spectatorHUD .spectator-statusbar');
         const below = bar ? bar.getBoundingClientRect().bottom : 0;
-        el.style.top = below > 0 && !this.broadcastOn() ? Math.round(below + 8) + 'px' : '';
+        el.style.top = below > 0 && !this.broadcastOn() ? Math.round(this.zoomedPx(below + 8)) + 'px' : '';
         el.dataset.weight = String(e.weight);
         el.innerHTML = '<span class="chr-t">' + mmss(e.t || 0) + '</span> ' + this.chronicleText(e);
         // Restart the fade for each caption.
@@ -3621,7 +3654,11 @@ class UIManager {
             BUILDING_DEFS.farm,
             BUILDING_DEFS.tower,
             BUILDING_DEFS.academy,
-            BUILDING_DEFS.temple
+            BUILDING_DEFS.temple,
+            // The two trebuchet sites (b1110): the simple engine, and from the iron age
+            // the advanced one at +20%.
+            BUILDING_DEFS.trebuchet,
+            BUILDING_DEFS.trebuchet_advanced
         ];
         // Your civilization's Wonder (Iron age). Hidden once one already exists.
         const civ = getCivilization(this.game.player.civilization);
@@ -4341,7 +4378,7 @@ class UIManager {
         if (!holds.length) return;
         // Under the scoreboard, which wraps to more rows on a narrow screen.
         const below = board.getBoundingClientRect().bottom;
-        if (below > 0) w.style.top = Math.round(below + 8) + 'px';
+        if (below > 0) w.style.top = Math.round(this.zoomedPx(below + 8)) + 'px';
         const colorOf = ai => { const b = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
             return this.intentLayer ? this.intentLayer.colorOf(ai) : ((b && b.fill) || '#e9c46a'); };
         w.style.setProperty('--seat', colorOf(holds[0].ai));
@@ -5036,7 +5073,7 @@ class UIManager {
 
         // Units grouped by class; the tip describes the class (utype.* strings,
         // the same short descriptions used on selected-unit cards).
-        const unitIcons = { worker: '👷', infantry: '⚔️', ranged: '🏹', cavalry: '🐎', support: '✚' };
+        const unitIcons = { worker: '👷', infantry: '⚔️', ranged: '🏹', cavalry: '🐎', support: '✚', siege: '🪨' };
         const unitGroups = {};
         ai.units.forEach(u => {
             const k = u.type === 'worker' ? 'worker' : (u.unitType || 'infantry');

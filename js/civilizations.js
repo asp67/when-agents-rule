@@ -286,6 +286,18 @@ const CIVILIZATIONS = {
                 researchTime: 30000,  // 30 seconds
                 bonus: { buildingDamage: 0.3 },
                 appliesTo: 'ranged'
+            },
+            // === Bronzezeit - an der Akademie: Belagerungsbau (every civilization, b1110) ===
+            // Allows training engineers, who build the trebuchet: the answer to towers.
+            siege_engineering: {
+                name: 'Belagerungsbau',
+                cost: { food: 0, wood: 150, stone: 0, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Erlaubt das Ausbilden von Pionieren, die Triboke bauen können',
+                researchTime: 30000,  // 30 seconds
+                unlocks: { buildings: ['trebuchet', 'trebuchet_advanced'] }
             }
         }
     },
@@ -504,6 +516,18 @@ const CIVILIZATIONS = {
                 researchTime: 30000,  // 30 seconds
                 bonus: { buildingDamage: 0.3 },
                 appliesTo: 'ranged'
+            },
+            // === Bronzezeit - an der Akademie: Belagerungsbau (every civilization, b1110) ===
+            // Allows training engineers, who build the trebuchet: the answer to towers.
+            siege_engineering: {
+                name: 'Belagerungsbau',
+                cost: { food: 0, wood: 150, stone: 0, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Erlaubt das Ausbilden von Pionieren, die Triboke bauen können',
+                researchTime: 30000,  // 30 seconds
+                unlocks: { buildings: ['trebuchet', 'trebuchet_advanced'] }
             }
         }
     },
@@ -731,6 +755,18 @@ const CIVILIZATIONS = {
                 researchTime: 30000,  // 30 seconds
                 bonus: { buildingDamage: 0.3 },
                 appliesTo: 'ranged'
+            },
+            // === Bronzezeit - an der Akademie: Belagerungsbau (every civilization, b1110) ===
+            // Allows training engineers, who build the trebuchet: the answer to towers.
+            siege_engineering: {
+                name: 'Belagerungsbau',
+                cost: { food: 0, wood: 150, stone: 0, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Erlaubt das Ausbilden von Pionieren, die Triboke bauen können',
+                researchTime: 30000,  // 30 seconds
+                unlocks: { buildings: ['trebuchet', 'trebuchet_advanced'] }
             }
         }
     },
@@ -932,6 +968,18 @@ const CIVILIZATIONS = {
                 researchTime: 30000,  // 30 seconds
                 bonus: { buildingDamage: 0.3 },
                 appliesTo: 'ranged'
+            },
+            // === Bronzezeit - an der Akademie: Belagerungsbau (every civilization, b1110) ===
+            // Allows training engineers, who build the trebuchet: the answer to towers.
+            siege_engineering: {
+                name: 'Belagerungsbau',
+                cost: { food: 0, wood: 150, stone: 0, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Erlaubt das Ausbilden von Pionieren, die Triboke bauen können',
+                researchTime: 30000,  // 30 seconds
+                unlocks: { buildings: ['trebuchet', 'trebuchet_advanced'] }
             }
         }
     },
@@ -1134,6 +1182,18 @@ const CIVILIZATIONS = {
                 researchTime: 30000,
                 bonus: { buildingDamage: 0.3 },
                 appliesTo: 'ranged'
+            },
+            // === Bronzezeit - an der Akademie: Belagerungsbau (every civilization, b1110) ===
+            // Allows training engineers, who build the trebuchet: the answer to towers.
+            siege_engineering: {
+                name: 'Belagerungsbau',
+                cost: { food: 0, wood: 150, stone: 0, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Erlaubt das Ausbilden von Pionieren, die Triboke bauen können',
+                researchTime: 30000,  // 30 seconds
+                unlocks: { buildings: ['trebuchet', 'trebuchet_advanced'] }
             }
         }
     },
@@ -1332,6 +1392,18 @@ const CIVILIZATIONS = {
                 researchTime: 30000,
                 bonus: { buildingDamage: 0.3 },
                 appliesTo: 'ranged'
+            },
+            // === Bronzezeit - an der Akademie: Belagerungsbau (every civilization, b1110) ===
+            // Allows training engineers, who build the trebuchet: the answer to towers.
+            siege_engineering: {
+                name: 'Belagerungsbau',
+                cost: { food: 0, wood: 150, stone: 0, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Erlaubt das Ausbilden von Pionieren, die Triboke bauen können',
+                researchTime: 30000,  // 30 seconds
+                unlocks: { buildings: ['trebuchet', 'trebuchet_advanced'] }
             }
         }
     },
@@ -1539,6 +1611,18 @@ const CIVILIZATIONS = {
                 researchTime: 30000,
                 bonus: { buildingDamage: 0.3 },
                 appliesTo: 'ranged'
+            },
+            // === Bronzezeit - an der Akademie: Belagerungsbau (every civilization, b1110) ===
+            // Allows training engineers, who build the trebuchet: the answer to towers.
+            siege_engineering: {
+                name: 'Belagerungsbau',
+                cost: { food: 0, wood: 150, stone: 0, gold: 100 },
+                researchAt: 'academy',
+                requiredAge: 'bronze',
+                requires: [],
+                description: 'Erlaubt das Ausbilden von Pionieren, die Triboke bauen können',
+                researchTime: 30000,  // 30 seconds
+                unlocks: { buildings: ['trebuchet', 'trebuchet_advanced'] }
             }
         }
     }

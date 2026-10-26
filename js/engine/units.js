@@ -329,7 +329,19 @@
             const tier=o.tier||2, p=[];
             humanoid(p,o);
             headgear(p,o.civ,tier===1?'civil':'military',0,1.49,0);
-            if(tier===1) {
+            if(o.unit==='engineer') {
+                // The engineer (b1110): a team-colour tabard under a leather apron, a
+                // mallet in hand and a timber beam slung across the back -- a builder
+                // who marches with the army, not a soldier.
+                shoulders(p,'leather');
+                part(p,'frustum',[.30,.04,.25,.04,.53],'cloth',{y:.67,z:.22,team:true});
+                part(p,'frustum',[.25,.03,.21,.03,.40],'leather',{y:.60,z:.24});
+                held(p,'mallet','armR',[.37,.77,.045],q=>{
+                    part(q,'cylinder',[.028,.028,.60,6],'wood',{y:.20});
+                    part(q,'box',[.22,.12,.12],'iron',{y:.52});
+                },.35);
+                part(p,'box',[.07,.95,.07],'wood',{y:1.08,z:-.21,rz:.6});
+            } else if(tier===1) {
                 shoulders(p,'leather');
                 held(p,'club','armR',[.37,.77,.045],q=>
                     part(q,'cylinder',[.075,.045,.65,9],'wood',{y:.23}),.35);
@@ -494,7 +506,7 @@
         archer: 1, crossbowman: 2, elite_archer: 3,
         scout_cavalry: 1, cavalry: 2, heavy_cavalry: 3,
         slinger: 1, hoplite: 2, phalanx: 3, samurai: 3, archer_ship: 1,
-        legionary: 3, equites: 2, berserker: 3, axe_thrower: 1,
+        legionary: 3, equites: 2, berserker: 3, axe_thrower: 1, engineer: 1,
         scout: 1, spotter: 1, jaguar_warrior: 3, plumed_archer: 2   // spotter: its id until b1077, in older transcripts
     };
 

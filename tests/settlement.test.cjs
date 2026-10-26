@@ -39,7 +39,7 @@ test('entrance lamps vary by era, have finite geometry and stand clear of doors 
 
 test('later lamps find a supported facade on every cultural building, including open temples',()=>{
  for(const civ of ['greek','egyptian','persian','yamato'])for(const age of ['bronze','iron'])
- for(const type of scope.window.EngineBuildings.TYPES.filter(t=>t!=='farm')){
+ for(const type of scope.window.EngineBuildings.TYPES.filter(t=>t!=='farm'&&t!=='trebuchet'&&t!=='trebuchet_advanced')){
   const lamp=scope.window.EngineBuildings.entranceLamp(type,age,civ,{ex:8,ez:8});
   assert.ok(lamp.mount,`${civ} ${age} ${type} needs a supported mount`);
  }

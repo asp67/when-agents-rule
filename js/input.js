@@ -290,10 +290,16 @@ class InputManager {
         // Workers selected + right-click on one of YOUR buildings => send them
         // to finish its construction or repair it if it's damaged.
         const distance = o => Math.hypot(o.x-worldPos.x,o.z-worldPos.z);
+        // Engineers too, for a trebuchet (b1110): they build it and mend it.
         const selWorkers = orderedUnits
-            .filter(u => u && u.owner === 'player' && u.type === 'worker');
-        const ownBuilding=selWorkers.length?hit.buildings.filter(b=>b.owner==='player'&&b.health>0&&(b.underConstruction||b.health<b.maxHealth)).sort((a,b)=>distance(a)-distance(b))[0]:null;
-        const resource=selWorkers.length?this.game.findResourceNodeAtPosition?.(worldPos.x,worldPos.z):null;
+            .filter(u => u && u.owner === 'player' && (u.type === 'worker' || u.type === 'engineer'));
+        const ownBuilding=selWorkers.length?hit.buildings.filter(b=>b.owner==='player'&&b.health>0&&(b.underConstruction||b.health<b.maxHealth))
+            // A trebuchet on wheels is repaired like a building (b1110).
+            .concat((hit.units||[]).filter(u=>u.owner==='player'&&u.unitType==='siege'&&u.health>0&&u.health<u.maxHealth))
+            // Engineers alone work only on trebuchets.
+            .filter(b=>selWorkers.some(u=>u.type==='worker')||(typeof isTrebuchetBuilding==='function'&&isTrebuchetBuilding(b.type))||b.unitType==='siege')
+            .sort((a,b)=>distance(a)-distance(b))[0]:null;
+        const resource=selWorkers.some(u=>u.type==='worker')?this.game.findResourceNodeAtPosition?.(worldPos.x,worldPos.z):null;
 
         // Check if position is in undiscovered area
         const isUndiscovered = hit.hidden;
@@ -306,7 +312,7 @@ class InputManager {
 
         // Check if clicking on enemy building (attack) - only if visible
         const enemyBuildings = hit.buildings
-            .filter(b => b.owner !== 'player' && b.owner !== undefined && visibleNow(b)).sort((a,b)=>distance(a)-distance(b));
+            .filter(b => b.owner !== 'player' && b.owner !== undefined && visibleNow(b) && !(typeof Game !== 'undefined' && Game.hiddenSite && Game.hiddenSite(b))).sort((a,b)=>distance(a)-distance(b));
 
         // Block attacking in undiscovered areas
         if (isUndiscovered && (enemyUnits.length > 0 || enemyBuildings.length > 0)) {

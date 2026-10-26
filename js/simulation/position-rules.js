@@ -101,8 +101,34 @@ var WarPositionRules = Object.freeze({
                     unit.x = building.x + clr;
                 } else if (dist < clr) {
                     const push = (clr - dist) * 0.05 * sepK; // dt-scaled, like the pass above
-                    unit.x += (dx / dist) * push;
-                    unit.z += (dz / dist) * push;
+                    const rx = dx / dist, rz = dz / dist;
+                    unit.x += rx * push;
+                    unit.z += rz * push;
+                    // ROUND IT, on the way past (b1110). The push alone is straight out from
+                    // the centre, and a unit walking into the ring slid round only by the
+                    // sideways part of its own step -- none walking dead at the centre, which
+                    // stood there for good, and the wrong way for one aimed a few degrees
+                    // across the line: in asp67's match of 25 October (22:00) at 62:16 a
+                    // phalanx and a crossbowman behind their own tower, sent to a post past
+                    // it, each slid toward the other, and the two stood pressed together at
+                    // its back -- "one tries to round the tower to the left and one to the
+                    // right each nudging each other back". Now a unit pressed against a
+                    // building on its way past it goes round on its own side of the line from
+                    // the building to where it is going: the short way, which no unit on the
+                    // other side of that line takes, so none cross. Exactly on the line, one
+                    // fixed side. Only on the way PAST it: one headed for the building itself
+                    // (a worker bringing its load to the Town Center) still stops at its edge.
+                    const head = unit.isAttacking && unit.attackTarget ? unit.attackTarget
+                        : unit.isMoving && unit.targetX !== undefined ? { x: unit.targetX, z: unit.targetZ } : null;
+                    const bx = head && head.x - building.x, bz = head && head.z - building.z;
+                    if (head && head !== building && bx * bx + bz * bz > clr * clr) {
+                        const hx = head.x - unit.x, hz = head.z - unit.z;
+                        if (rx * hx + rz * hz < 0) {   // walking into it
+                            const side = rx * bz - rz * bx < 0 ? -1 : 1;
+                            unit.x += -rz * side * push;
+                            unit.z += rx * side * push;
+                        }
+                    }
                 }
             });
         });
