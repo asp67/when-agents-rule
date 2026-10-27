@@ -131,6 +131,11 @@ function fromPage(msg, pg) {
         case 'turn': {
             const s = seats.get(msg.token);
             if (!s || !s.listed) return;
+            // The page playing the seat owns it, whoever listed it last: a second WAR page
+            // listing the same seats (an older tab, another setup) took them over, so the
+            // harness's commands went to a page without the turn and its end_turn to nobody
+            // -- every round missed (asp67, 27 Oct, ChatGPT and OpenCode "keep timing out").
+            s.page = pg;
             if (msg.rules) s.rules = msg.rules;   // the seat's system prompt, for get_rules
             s.pendingTurn = { turn: msg.turn, state: typeof msg.state === 'string' ? msg.state : JSON.stringify(msg.state) };
             // Only to a wait still listening: one its harness gave up on is gone already.

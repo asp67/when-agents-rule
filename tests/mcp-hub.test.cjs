@@ -157,6 +157,31 @@ test('two WAR pages share the hub without knocking each other off; a page that c
     pa2.ws.close(); pb.ws.close();
 });
 
+// asp67, 27 Oct: ChatGPT and OpenCode "keep timing out" although the hub showed them giving
+// commands and ending their turns. A second WAR page listing the same seats (an older tab,
+// another setup) had taken them over: their commands went to a page without the turn, which
+// answered "That turn has closed", and their end_turn to nobody -- every round missed.
+test('the page that sends a seat its turn gets its commands and end_turn, whoever listed the seat last', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-pppp2222';
+    const playing = await fakePage(port), other = await fakePage(port);
+    playing.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+    other.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });   // the other page lists it too
+    await new Promise(r => setTimeout(r, 50));
+    playing.send({ type: 'turn', token: T, turn: 11, state: '{}' });
+    assert.match(said(await call(port, T, 'wait_for_turn')), /^IT IS YOUR TURN/);
+    const sent = call(port, T, 'upgrade_age', { reason: 'x' });
+    const action = await playing.next(m => m.type === 'action');
+    assert.equal(action.turn, 11, 'the command reached the page that holds the turn');
+    playing.send({ type: 'result', id: action.id, text: 'Queued (1/3)' });
+    assert.match(said(await sent), /Queued/);
+    await call(port, T, 'end_turn');
+    assert.equal((await playing.next(m => m.type === 'end_turn')).turn, 11, 'and so did end_turn');
+    playing.ws.close(); other.ws.close();
+});
+
 // asp67, 26 Oct: "do we have a mechanic that tells the harness when I quit the arena?" The
 // page sends "over"; a harness busy at that moment hears it on its next wait, and the next
 // arena waits for it to join again instead of showing the seat ready.
