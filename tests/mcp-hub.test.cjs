@@ -89,7 +89,9 @@ test('a turn: join, wait, three commands and a plan, a fourth refused, end_turn;
     const end = await call(port, T, 'end_turn');
     assert.match(said(end), /Turn ended\. Your next action: call wait_for_turn now\./);
     assert.equal((await pg.next(m => m.type === 'end_turn')).turn, 7);
-    assert.ok((await call(port, T, 'train_unit', {})).isError, 'no commands outside a turn');
+    const outside = await call(port, T, 'train_unit', {});
+    assert.match(said(outside), /It is not your turn/, 'no commands outside a turn');
+    assert.ok(!outside.isError, 'told, not an error result: harnesses pause a server after a few errors');
     // An error from the game is an error result.
     pg.send({ type: 'turn', token: T, turn: 8, state: '{}' });
     await call(port, T, 'wait_for_turn');
@@ -199,6 +201,32 @@ test('a refused join names the address it was called on; the page hears every ca
     assert.equal((await pg.next(m => m.type === 'call')).token, T, 'a call of the listed seat reaches its page');
     await call(port, T, 'get_rules');
     assert.equal((await pg.next(m => m.type === 'call')).token, T);
+    pg.ws.close();
+});
+
+// asp67, 27 Oct: Hermes thought 167 s in a 120 s round; its late commands got "It is not your
+// turn" as errors, it paused the server for a minute, and the next turn -- waiting in the hub
+// meanwhile -- reached it with 5 s left. The harness now hears the time left and "too late".
+test('a turn says how much of its round is left; commands after the round closed hear they came too late', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-late0001';
+    const pg = await fakePage(port);
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+    pg.send({ type: 'turn', token: T, turn: 5, state: '{}', msLeft: 120000, roundMs: 120000 });
+    await new Promise(r => setTimeout(r, 300));          // waiting in the hub counts down
+    assert.match(said(await call(port, T, 'wait_for_turn')), /^IT IS YOUR TURN\. About 1(19|20) s of this round are left \(a round is 120 s\)/);
+    pg.send({ type: 'turn_over', token: T, turn: 5 });
+    pg.send({ type: 'turn', token: T, turn: 6, state: '{}', msLeft: 1000, roundMs: 120000 });
+    await new Promise(r => setTimeout(r, 50));
+    const late = await call(port, T, 'train_unit', { unitType: 'worker' });
+    assert.match(said(late), /^Too late: your turn closed before this arrived, because the round ran out \(a round is 120 s; this came \d+ s after the turn was handed to you\)\. It was not run\. Your next turn is waiting/);
+    assert.ok(!late.isError);
+    // A turn whose round closed before anyone picked it up is not handed out stale.
+    pg.send({ type: 'turn_over', token: T, turn: 6 });
+    await new Promise(r => setTimeout(r, 50));
+    assert.match(said(await call(port, T, 'wait_for_turn')), /"waiting":true/);
     pg.ws.close();
 });
 

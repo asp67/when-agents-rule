@@ -137,7 +137,11 @@ function fromPage(msg, pg) {
             // -- every round missed (asp67, 27 Oct, ChatGPT and OpenCode "keep timing out").
             s.page = pg;
             if (msg.rules) s.rules = msg.rules;   // the seat's system prompt, for get_rules
-            s.pendingTurn = { turn: msg.turn, state: typeof msg.state === 'string' ? msg.state : JSON.stringify(msg.state) };
+            // msLeft/roundMs: how much of the round is left as the page sends the turn. Kept
+            // against the hub's own clock (`at`), so the time told is what is left on delivery
+            // -- a turn waiting here while its harness sleeps is running out all the same.
+            s.pendingTurn = { turn: msg.turn, state: typeof msg.state === 'string' ? msg.state : JSON.stringify(msg.state),
+                msLeft: Number.isFinite(msg.msLeft) ? msg.msLeft : null, roundMs: Number.isFinite(msg.roundMs) ? msg.roundMs : null, at: Date.now() };
             // Only to a wait still listening: one its harness gave up on is gone already.
             let w;
             while ((w = s.waiters.shift())) if (w.alive()) { w(deliverTurn(s)); break; }
@@ -145,7 +149,13 @@ function fromPage(msg, pg) {
         }
         case 'turn_over': {           // the page closed the turn (round timeout)
             const s = seats.get(msg.token);
-            if (s && s.turn && s.turn.turn === msg.turn) { s.turn = null; s.commands = 0; }
+            if (!s) return;
+            // Remembered, so commands arriving after it hear that they came too late rather
+            // than a bare "not your turn" (asp67, 27 Oct: Hermes took 167 s of a 120 s round).
+            if (s.turn && s.turn.turn === msg.turn) { s.closed = { turn: msg.turn, deliveredAt: s.turn.deliveredAt, roundMs: s.turn.roundMs, at: Date.now() }; s.turn = null; s.commands = 0; }
+            // A turn never picked up is over too: handing it out later gives the harness a
+            // state whose round has closed, and every command it sends is refused.
+            if (s.pendingTurn && s.pendingTurn.turn === msg.turn) s.pendingTurn = null;
             break;
         }
         case 'result': {
@@ -196,9 +206,28 @@ const overResult = s => s.final
 function release(s) { s.listed = false; s.page = null; s.turn = s.pendingTurn = null; }
 function deliverTurn(s) {
     const t = s.pendingTurn; s.pendingTurn = null;
-    s.turn = { turn: t.turn }; s.commands = 0;
-    log(s.token, `turn ${t.turn} delivered`);
-    return textResult(`IT IS YOUR TURN. Read the state below, give up to ${GAME.maxCommandsPerTurn} game commands with the game tools, then call end_turn.\n\n` + t.state);
+    s.turn = { turn: t.turn, deliveredAt: Date.now(), roundMs: t.roundMs }; s.commands = 0; s.closed = null;
+    const left = t.msLeft != null ? Math.max(0, Math.round((t.msLeft - (Date.now() - t.at)) / 1000)) : null;
+    log(s.token, `turn ${t.turn} delivered` + (left != null ? `, ${left} s left` : ''));
+    // The time left, as a fact: a harness that does not know the round is closing thinks
+    // for three minutes of a two-minute round and loses the turn without knowing why.
+    const time = left != null
+        ? ` About ${left} s of this round are left${t.roundMs ? ` (a round is ${Math.round(t.roundMs / 1000)} s)` : ''}: commands that arrive after it closes are not run.`
+        : '';
+    return textResult(`IT IS YOUR TURN.${time} Read the state below, give up to ${GAME.maxCommandsPerTurn} game commands with the game tools, then call end_turn.\n\n` + t.state);
+}
+// A command or end_turn with no turn open. Not an error result: nothing broke, the turn is
+// simply over -- and three error results in a row made Hermes pause the server for a
+// minute, so it missed the next turn too (asp67, 27 Oct).
+function noTurn(s) {
+    const c = s.closed;
+    if (c) {
+        const after = c.deliveredAt ? Math.round((Date.now() - c.deliveredAt) / 1000) : null;
+        return textResult(`Too late: your turn closed before this arrived, because the round ran out`
+            + (c.roundMs ? ` (a round is ${Math.round(c.roundMs / 1000)} s` + (after != null ? `; this came ${after} s after the turn was handed to you)` : ')') : '')
+            + '. It was not run. ' + (s.pendingTurn ? 'Your next turn is waiting: call wait_for_turn now, and answer within the round.' : NEXT_WAIT));
+    }
+    return textResult('It is not your turn. ' + NEXT_WAIT);
 }
 
 // ---- MCP ---------------------------------------------------------------------------
@@ -251,13 +280,13 @@ async function callTool(token, name, args, signal) {
         });
     }
     if (name === 'end_turn') {
-        if (!s.turn) return textResult('It is not your turn. ' + NEXT_WAIT, true);
+        if (!s.turn) return noTurn(s);
         toPage({ type: 'end_turn', token, turn: s.turn.turn });
         s.turn = null;
         return textResult('Turn ended. ' + NEXT_WAIT);
     }
     if (!GAME_NAMES.has(name)) return textResult(`Unknown tool "${name}".`, true);
-    if (!s.turn) return textResult('It is not your turn. ' + NEXT_WAIT, true);
+    if (!s.turn) return noTurn(s);
     const counts = !GAME.free.includes(name);
     if (counts && s.commands >= GAME.maxCommandsPerTurn)
         return textResult(`[ERROR] You have given ${GAME.maxCommandsPerTurn} commands this turn. Your next action: call end_turn.`, true);

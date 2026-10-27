@@ -144,7 +144,7 @@ class WarMcpLink {
     // `rules` (the seat's system prompt) goes with the seat's first turn, and to the hub
     // for get_rules. Aborting (a missed round, the match ending) tells the hub the turn
     // is over and rejects as fetch would.
-    playTurn(token, turn, text, rules, signal) {
+    playTurn(token, turn, text, rules, signal, timing) {
         return new Promise((resolve, reject) => {
             const prev = this.turns.get(token);
             if (prev) prev.reject(new Error('superseded by a newer turn'));
@@ -153,7 +153,8 @@ class WarMcpLink {
             const first = !this.rulesSent.has(token);
             if (first) this.rulesSent.add(token);
             const body = (first && rules ? 'RULES OF THE GAME (your system prompt; get_rules shows them again):\n\n' + rules + '\n\n---\n\n' : '') + text;
-            this._send({ type: 'turn', token, turn, state: body, rules: rules || '' });
+            // timing: { msLeft, roundMs } -- the hub tells the harness how long it has.
+            this._send(Object.assign({ type: 'turn', token, turn, state: body, rules: rules || '' }, timing || {}));
             if (signal) {
                 const stop = () => {
                     if (this.turns.get(token) !== t) return;

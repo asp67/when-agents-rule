@@ -5056,7 +5056,13 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         if (prev && this.lastTurnUsedTools(controller) && !/RESULT of your PREVIOUS action/.test(text))
             text = `RESULT of your PREVIOUS turn's commands: ${prev}\n\n` + text;
         const turnNo = controller.turnCount || 0;
-        let calls = await link.playTurn(model.mcpToken, turnNo, text, systemPrompt, signal);
+        // Turn-based: what is left of the round as the turn goes out. The hub counts it down
+        // to when the harness picks the turn up and tells it (asp67, 27 Oct: Hermes answered
+        // after 167 s of a 120 s round, and then a turn that had waited while it slept).
+        const roundMs = this.turnBased ? this.roundTimeoutMs() : null;
+        const timing = roundMs && this._roundStartedAt
+            ? { roundMs, msLeft: Math.max(0, this._roundStartedAt + roundMs - Date.now()) } : null;
+        let calls = await link.playTurn(model.mcpToken, turnNo, text, systemPrompt, signal, timing);
         if (!calls.some(c => c.name !== 'plan')) calls = calls.concat([{ name: 'wait', args: { reason: 'Ended the turn without a command.' } }]);
         const data = { choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null,
             tool_calls: calls.map((c, i) => ({ id: `mcp_${turnNo}_${i}`, type: 'function',

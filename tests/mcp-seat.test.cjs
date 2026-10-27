@@ -15,8 +15,8 @@ async function mcpSeat(answers) {
     const sent = [];
     // A stand-in for the hub link: it records what the seat was sent and answers with
     // the calls a harness would have made before end_turn.
-    const link = { playTurn: async (token, turn, text, rules, signal) => {
-        sent.push({ token, turn, text, rules });
+    const link = { playTurn: async (token, turn, text, rules, signal, timing) => {
+        sent.push({ token, turn, text, rules, timing });
         return answers.shift() || [];
     } };
     mgr._mcpLinks = new Map([['http://127.0.0.1:8765', link]]);
@@ -35,6 +35,18 @@ test('an MCP seat is sent the turn a library seat would be, and its calls become
     assert.match(sent[0].text, /Game State JSON:\n\{/, 'the state, as a library seat gets it');
     assert.match(sent[0].rules, /greek|Greek/i, 'and the seat\'s system prompt, for its first turn');
     assert.equal(c._answeredVia, 'tool_call', 'answered over the tool channel, as a library seat');
+});
+
+// The hub tells the harness how much of the round is left (asp67, 27 Oct: Hermes answered
+// after 167 s of a 120 s round). Turn-based only: a free-running seat has no round.
+test('a turn-based MCP seat\'s turn carries what is left of the round', async () => {
+    const { m, mgr, c, sent } = await mcpSeat([[{ name: 'train_unit', args: { unitType: 'worker', reason: 'r' } }]]);
+    mgr.turnBased = true;
+    mgr._roundTimeoutMs = 120000;
+    mgr._roundStartedAt = require('node:vm').runInContext('Date.now()', m.context) - 30000;   // the realm's own clock
+    await mgr.sendToOpenAI(c, mgr.buildGameStateJSON(c));
+    assert.equal(sent[0].timing.roundMs, 120000);
+    assert.ok(sent[0].timing.msLeft > 85000 && sent[0].timing.msLeft <= 90000, String(sent[0].timing.msLeft));
 });
 
 test('a turn ended with no command is a wait, and the next turn carries the last result', async () => {
