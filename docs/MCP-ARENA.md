@@ -156,6 +156,20 @@ An MCP entry in the model library offers "Start an assistant that leads me throu
 3. **A first test call.** The harness calls `check_connection` once. It starts nothing: `join` would set a harness polling for turns, spending tokens until a match begins. In a match the tool answers that it is not a game command, changed nothing, used no command, and what to do next.
 4. **Done**, with how a match is started.
 
-The assistant's page follows the seat with a `watch` message: the hub then tells it when the harness gets in touch and passes the check, never turns or actions, which belong to the page that plays the seat.
+The assistant's page watches the hub (`watch`): the hub tells it which harnesses connect, by the name each sends, and which pass the check, never turns or actions, which belong to the page that plays a seat.
 
 Under the arena's seats, while any is an MCP seat, a note says how such a match starts: copy the start chat message from the seat's row, send it in a new session of that harness, start the arena when the seat's dot is green.
+
+## One address per computer, the seat by its code (27 October 2026, hub 0.3.0)
+
+asp67: deleting an MCP entry and adding it again meant setting the harness up again, and the harness kept a dead `war_seat_…` server beside the new one. And a user with WAR on several computers would collect one more server per entry on each.
+
+So the identity moved from the address to the start message:
+- **Every harness has one server, `war`, at `http://127.0.0.1:8765/mcp`**, the same on every computer, set up once. The self-setup message asks the harness to remove older WAR servers of the same hub.
+- **The seat is chosen by its code** (the library entry's token) in the start chat message: `play WAR with the MCP server war, seat code seat-…: call its join tool with that code`. `join` takes it as `code`.
+- **The MCP session carries the seat.** The hub hands out an `Mcp-Session-Id` at `initialize`; `join` with a code ties that session to the seat, and every later call of the session is the seat's. A newer session joining with the same code takes the seat over (the harness restarted). A session id the hub does not know (the hub restarted) is adopted and asked for the code again; the code is still in the harness's chat. A harness that sends no session id is told to use the seat's own address.
+- **A seat's own address, `/mcp/<code>`, still works**: for such a harness, and for the setups made before. The library card shows it as the fallback.
+- **One MCP entry per seat.** Two seats on one entry would share a code; the second seat's dot says "already seat N" and blocks the start. A second entry costs nothing: the harness's one server serves it.
+- The hub tells the page which harness joined (its client name): the green dot's tooltip says so, and the setup assistant names the harness that connected and selects it in the entry.
+
+**Where things run.** The hub answers only on its own computer (`127.0.0.1`), on purpose: nobody on the network can play or read a seat. So the browser with WAR, the hub and the harness must be on one computer; only the WAR page may come from elsewhere. A page from a network address (not asp67.github.io, not localhost) is refused by the hub unless it is started with `--allow-origin <that address>`; the start lines add it by themselves, and say why. The library and the assistant say all this where the hub is started, the dot says "hub not running, or it refuses this page's address" for such a page, and a second hub on the same computer stops with a plain message instead of a stack trace.

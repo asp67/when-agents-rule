@@ -30,9 +30,38 @@
     Object.assign(UIManager.prototype, {
         mcpHarnesses() { return HARNESSES; },
         mcpHarnessName(id) { const h = HARNESSES.find(x => x.id === id); return h && h.name ? h.name : t('mcp.otherHarness'); },
-        mcpServerName(m) { return 'war_seat_' + m.id; },
+        // One server per computer, the same in every harness: "war" at the hub's shared address
+        // (asp67, 27 Oct). The seat is chosen by its code in the start message, so deleting or
+        // adding a library entry never means another server in the harness. The seat's own
+        // address stays, for a harness that keeps no MCP session.
+        mcpServerName() { return 'war'; },
         mcpHub(m) { return String((m && m.endpoint) || HUB_DEFAULT).trim().replace(/\/+$/, '') || HUB_DEFAULT; },
+        mcpSharedUrl(m) { return this.mcpHub(m) + '/mcp'; },
         mcpSeatUrl(m) { return this.mcpHub(m) + '/mcp/' + m.mcpToken; },
+        // The harness a hub client is, from the name it sends when it connects.
+        mcpHarnessFromClient(name) {
+            const n = String(name || '').toLowerCase();
+            const by = [['claude', 'claude-code'], ['codex', 'codex'], ['hermes', 'hermes'], ['opencode', 'opencode'], ['openclaw', 'openclaw'],
+                ['antigravity', 'antigravity'], ['gemini', 'antigravity'], ['zcode', 'zcode'], ['dsh', 'dsh'], ['deepseek', 'dsh'], ['cordis', 'dsh'],
+                ['chatgpt', 'chatgpt'], ['openai', 'chatgpt']];
+            const hit = by.find(([k]) => n.includes(k));
+            return hit ? hit[1] : null;
+        },
+        // The hub accepts WAR pages from asp67.github.io and this computer. A page from anywhere
+        // else (a web server on the network) needs --allow-origin, which the start lines add.
+        mcpPageOrigin() { try { return String(location.origin || ''); } catch (e) { return ''; } },
+        mcpOriginNeedsAllow(o) {
+            return !!o && o !== 'null' && !/^https:\/\/asp67\.github\.io$/.test(o) && !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(o);
+        },
+        // Where the hub runs and what it accepts, said once wherever it is started (asp67, 27 Oct:
+        // web server, hub and browser on three computers fails with only "hub not running").
+        mcpWhereNotes() {
+            const e = s => this.escapeHtml(String(s == null ? '' : s));
+            const o = this.mcpPageOrigin();
+            return `<p class="arena-hint mcp-where">${e(t('mcp.sameComputer'))}</p>`
+                + (o === 'null' ? `<p class="arena-hint mcp-as-warn">${e(t('mcp.fileNote'))}</p>`
+                : this.mcpOriginNeedsAllow(o) ? `<p class="arena-hint">${e(t('mcp.originNote', { origin: o }))}</p>` : '');
+        },
         mcpNewToken() {
             const a = new Uint8Array(15);
             (window.crypto || crypto).getRandomValues(a);
@@ -84,16 +113,17 @@
                 'New-Item -ItemType Directory -Force "$HOME\\war-mcp" | Out-Null; Set-Location "$HOME\\war-mcp"',
                 `Invoke-WebRequest "${base}war-mcp-hub.cjs" -OutFile war-mcp-hub.cjs`,
                 `Invoke-WebRequest "${base}war-tools.json" -OutFile war-tools.json`,
-                'node war-mcp-hub.cjs'].join('\n');
+                'node war-mcp-hub.cjs' + this.mcpAllowArg()].join('\n');
             return [
                 'mkdir -p ~/war-mcp && cd ~/war-mcp',
                 `curl -fsSLO "${base}war-mcp-hub.cjs"`,
                 `curl -fsSLO "${base}war-tools.json"`,
-                'node war-mcp-hub.cjs'].join('\n');
+                'node war-mcp-hub.cjs' + this.mcpAllowArg()].join('\n');
         },
+        mcpAllowArg() { const o = this.mcpPageOrigin(); return this.mcpOriginNeedsAllow(o) ? ' --allow-origin ' + o : ''; },
         // Step 2: the harness's own way to add the server. `how` is a translated line.
         mcpConnect(m) {
-            const name = this.mcpServerName(m), url = this.mcpSeatUrl(m);
+            const name = this.mcpServerName(m), url = this.mcpSharedUrl(m);
             const C = {
                 'claude-code': `claude mcp add --transport http ${name} ${url}`,
                 chatgpt: `Name: ${name}\nType: Streamable HTTP\nURL: ${url}`,
@@ -112,16 +142,18 @@
         // Step 2, the other way: the harness adds the server itself.
         mcpSelfSetup(m) {
             return `Please add an MCP server to your own configuration so that you can use its tools:\n`
-                + `- name: ${this.mcpServerName(m)}\n- transport: Streamable HTTP (remote)\n- URL: ${this.mcpSeatUrl(m)}\n`
+                + `- name: ${this.mcpServerName(m)}\n- transport: Streamable HTTP (remote)\n- URL: ${this.mcpSharedUrl(m)}\n`
+                + `If you already have other MCP servers whose address starts with ${this.mcpHub(m)} (for example named war_seat_...), remove them: `
+                + `this one server is all you need, for every WAR seat.\n`
                 + `Allow all of its tools without asking me each time. Then check that its tools appear `
-                + `(join, wait_for_turn, end_turn, train_unit, ...), and tell me whether I need to reload or restart you.`;
+                + `(join, wait_for_turn, end_turn, check_connection, ...), and tell me whether I need to reload or restart you.`;
         },
         // Step 3: what starts the harness playing.
         mcpKickoff(m) {
             const n = this.mcpServerName(m);
-            return `You are playing a seat in the strategy game WAR through the MCP server ${n}. You decide every move yourself.
+            return `You are playing a seat in the strategy game WAR through the MCP server ${n}. Your seat code is ${m.mcpToken}. You decide every move yourself.
 `
-                + `First call its join tool. Then play this loop until wait_for_turn reports that the match is over:
+                + `First call its join tool with the code ${m.mcpToken}. Then play this loop until wait_for_turn reports that the match is over:
 `
                 + `1. Call wait_for_turn. When it is your turn it returns the game state (the first time also the rules). While it answers "waiting", call it again at once.
 `
@@ -139,8 +171,8 @@
             const n = this.mcpServerName(m);
             const h = HARNESSES.find(x => x.id === m.harness);
             return h && h.goal
-                ? `/goal play WAR with the MCP server ${n}: call join, then keep playing until wait_for_turn reports that the match is over`
-                : `play WAR with the MCP server ${n}`;
+                ? `/goal play WAR with the MCP server ${n}, seat code ${m.mcpToken}: call its join tool with that code, then keep playing until wait_for_turn reports that the match is over`
+                : `play WAR with the MCP server ${n}, seat code ${m.mcpToken}: call its join tool with that code`;
         },
         mcpStartLine(m) {
             // Claude Code: start the session with our tools allowed, so no permission prompt
@@ -249,7 +281,7 @@
             clearInterval(a.timer);
             if (a.off) a.off();
             const m = this.getArenaModel(a.id);
-            if (m && a.link) a.link.unwatch(m.mcpToken);
+            if (a.link) a.link.unwatchHub();
             if (a.dlg.open) a.dlg.close();
         },
         // A hub from before the assistant has no check_connection: it must be started anew.
@@ -267,9 +299,16 @@
                 if (this._mcpAs !== a) return;
                 if (a.hub.ok && this.mcpHubCurrent(a.hub.version)) this.mcpAssistStep(2);
             } else if (a.link) {
-                const st = a.link.status(m.mcpToken);
-                if (a.step === 2 && st.harness) this.mcpAssistStep(3);
-                if (a.step === 3 && st.checked) this.mcpAssistStep(4);
+                // Step 2: any harness has reached the hub (named, so the user sees which); step 3:
+                // a check_connection made since the step began -- the real proof.
+                if (a.step === 2 && a.link.clients.size) {
+                    a.detected = [...a.link.clients.values()].map(c => c.name);
+                    const h = a.detected.length === 1 ? this.mcpHarnessFromClient(a.detected[0]) : null;
+                    if (h && h !== m.harness) { m.harness = h; this.saveArenaConfig(); this.renderArenaLibrary(); }
+                    this.mcpAssistStep(3);
+                }
+                const check = a.step === 3 && a.link.checks.find(c => c.at >= a.stepSince);
+                if (check) { a.checkedBy = check.name; this.mcpAssistStep(4); }
             }
             this.renderMcpAssistant();
         },
@@ -278,8 +317,8 @@
             if (step >= 2 && !a.link && typeof WarMcpLink === 'function') {
                 a.link = WarMcpLink.shared(this.mcpHub(m));
                 a.link.connect();
-                a.link.watch(m.mcpToken);
-                a.off = a.link.onChange(tok => { if (tok === m.mcpToken) this.mcpAssistTick(); });
+                a.link.watchHub();
+                a.off = a.link.onChange(tok => { if (tok === '*') this.mcpAssistTick(); });
             }
             a.step = step;
             a.stepSince = Date.now();
@@ -309,12 +348,13 @@
             const bodies = {
                 1: `<p>${e(t('mcp.as.s1Hint'))}</p><div class="mcp-shells">${tab('ps', 'PowerShell')}${tab('sh', 'bash')}</div>
                     ${this.mcpCode(this.mcpStartCommand(shell))}
-                    <p class="arena-hint">${e(t('mcp.as.s1Node'))}</p><p class="arena-hint">${e(t('mcp.chromeNote'))}</p>${status}`,
+                    <p class="arena-hint">${e(t('mcp.as.s1Node'))}</p>${this.mcpWhereNotes()}<p class="arena-hint">${e(t('mcp.chromeNote'))}</p>${status}`,
                 2: `<div class="arena-field"><label>${e(t('mcp.as.s2Pick'))}</label>
                     <select onchange="game.ui.mcpSetField(${m.id},'harness',this.value)">${harnessOpts}</select></div>
                     <p>${e(t('mcp.as.s2Hint'))}</p>${this.mcpCode(this.mcpSelfSetup(m))}
                     <p class="arena-hint">${e(t('mcp.as.s2Patience'))}</p>${status}`,
-                3: `<p>${e(t('mcp.as.s3Hint'))}</p>${this.mcpCode(this.mcpCheckMessage(m))}
+                3: `${a.detected && a.detected.length ? `<p class="mcp-as-ok">✓ ${e(t('mcp.as.detected', { names: a.detected.join(', ') }))}</p>` : ''}
+                    <p>${e(t('mcp.as.s3Hint'))}</p>${this.mcpCode(this.mcpCheckMessage(m))}
                     <p class="arena-hint">${e(t('mcp.as.s3Allow'))}</p>${status}`,
                 4: `<p class="mcp-as-ok">${e(t('mcp.as.s4Text'))}</p>`
             };
@@ -335,7 +375,7 @@
             const late = (after, key, v) => sec >= after ? `<p class="arena-hint mcp-as-late">${e(t(key, v))}</p>` : '';
             if (a.step === 1) return a.hub && a.hub.ok && !this.mcpHubCurrent(a.hub.version)
                 ? `<p class="mcp-as-warn">${e(t('mcp.as.s1Old', { v: a.hub.version }))}</p>` : wait(t('mcp.as.s1Wait'));
-            if (a.step === 2) return wait(t('mcp.as.s2Wait')) + late(360, 'mcp.as.s2Late', { tail: m.mcpToken.slice(-6) });
+            if (a.step === 2) return wait(t('mcp.as.s2Wait')) + late(360, 'mcp.as.s2Late', { addr: this.mcpSharedUrl(m) });
             if (a.step === 3) return wait(t('mcp.as.s3Wait')) + late(180, 'mcp.as.s3Late');
             return '';
         },
@@ -382,15 +422,17 @@
                 <div class="arena-field"><label>${t('mcp.fHub')}</label>
                     <input type="text" value="${e(this.mcpHub(m))}" onchange="game.ui.mcpSetField(${m.id},'endpoint',this.value)"></div>
                 <div class="arena-field" style="flex:2"><label>${t('mcp.fSeat')}</label>
-                    <div class="mcp-seat-url"><code>${e(this.mcpSeatUrl(m))}</code>
+                    <div class="mcp-seat-url"><code>${e(m.mcpToken)}</code>
                     <button type="button" class="hdr-add-btn" title="${e(t('mcp.newTokenTip'))}" onclick="game.ui.mcpRenewToken(${m.id})">${t('mcp.newToken')}</button></div></div>
             </div>
+            <p class="arena-hint mcp-own-addr">${e(t('mcp.ownAddr'))} <code>${e(this.mcpSeatUrl(m))}</code></p>
             </section>
             <section class="model-section">
             <h3>${t('mcp.step1')}</h3>
             <p class="arena-hint">${e(t('mcp.step1Hint'))}</p>
             <div class="mcp-shells">${tab('ps', 'PowerShell')}${tab('sh', 'bash')}</div>
             ${this.mcpCode(this.mcpStartCommand(shell))}
+            ${this.mcpWhereNotes()}
             <p class="arena-hint">${e(t('mcp.chromeNote'))}</p>
             <div class="model-test-row">
                 <button class="test-btn" onclick="game.ui.mcpCheckHub(${m.id})">${t('mcp.checkHub')}</button>
@@ -417,14 +459,22 @@
 
         // ---- the arena setup: one readiness dot per seat, and the start gate ----------
         // grey: not checked yet; yellow: checking / harness connecting; green: ready; red: not.
-        seatReadiness(slot) {
+        seatReadiness(slot, i) {
             if (!slot || slot.control === 'ki') return { cls: 'ok', text: t('seat.ready') };
             const m = (this._arenaConfig.models || []).find(x => x.id === slot.control);
             if (!m) return { cls: 'err', text: t('seat.noModel') };
             if (m.provider === 'mcp') {
+                // One MCP entry per seat: its code is the seat's, and two seats on one code took
+                // each other's turns. A second entry costs nothing -- the harness's one "war"
+                // server serves every seat (asp67, 27 Oct).
+                if (i != null) {
+                    const first = this.setupSlots().slice(0, i).findIndex(o => o.control === slot.control);
+                    if (first >= 0) return { cls: 'err', text: t('seat.mcpTwice', { n: first + 1 }), title: t('seat.mcpTwiceTip', { n: first + 1 }) };
+                }
                 if (typeof WarMcpLink !== 'function' || !m.mcpToken) return { cls: 'err', text: t('seat.hubDown') };
                 const st = WarMcpLink.shared(this.mcpHub(m)).status(m.mcpToken);
-                if (!st.hub) return { cls: 'err', text: t('seat.hubDown') };
+                if (!st.hub) return { cls: 'err', text: t(this.mcpOriginNeedsAllow(this.mcpPageOrigin()) ? 'seat.hubDownOrigin' : 'seat.hubDown') };
+                if (st.joined && st.client) return { cls: 'ok', text: t('seat.ready'), title: t('seat.readyAs', { client: st.client }) };
                 if (st.joined) return { cls: 'ok', text: t('seat.ready') };
                 if (st.harness) return { cls: 'pending', text: t('seat.harnessIn') };
                 return { cls: 'err', text: t('seat.waitHarness') };
@@ -438,7 +488,7 @@
         // and the seat is unchecked again.
         seatCheckKey(m) { return [m.id, m.endpoint, m.model, m.provider].join('|'); },
         seatReadyHtml(slot, i) {
-            const r = this.seatReadiness(slot);
+            const r = this.seatReadiness(slot, i);
             const e = s => this.escapeHtml(String(s == null ? '' : s));
             const retry = r.cls === 'err' && slot.control !== 'ki' ? ` onclick="event.stopPropagation(); game.ui.retrySeatCheck(${i})"` : '';
             return `<span class="seat-ready ${r.cls}" id="seatReady${i}" title="${e(r.title || r.text)}"${retry}><span class="seat-dot"></span><span class="seat-word">${e(r.text)}</span></span>`;
@@ -466,7 +516,7 @@
                     if (!m.mcpToken) return;
                     const hub = this.mcpHub(m);
                     if (!hubs.has(hub)) hubs.set(hub, []);
-                    hubs.get(hub).push({ token: m.mcpToken, seat: i + 1, name: m.name || this.mcpHarnessName(m.harness) });
+                    if (!hubs.get(hub).some(x => x.token === m.mcpToken)) hubs.get(hub).push({ token: m.mcpToken, seat: i + 1, name: m.name || this.mcpHarnessName(m.harness) });   // a second seat on one entry is refused, not listed
                     return;
                 }
                 const key = this.seatCheckKey(m);
@@ -510,7 +560,7 @@
         arenaStartBlocked() {
             if (this._setupMode === 'campaign') return [];
             return this.setupSlots().slice(0, this.setupSlotCount())
-                .map((slot, i) => this.seatReadiness(slot).cls === 'ok' ? null : t('ar.slot', { n: i + 1 }))
+                .map((slot, i) => this.seatReadiness(slot, i).cls === 'ok' ? null : t('ar.slot', { n: i + 1 }))
                 .filter(Boolean);
         },
         // An MCP seat plays turn-based, with a 180 s round unless one was set.

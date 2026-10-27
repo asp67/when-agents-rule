@@ -19,7 +19,9 @@
 'use strict';
 const http = require('http'), crypto = require('crypto'), fs = require('fs'), path = require('path');
 
-const VERSION = '0.2.0';   // 0.2.0: check_connection, and a page may watch a seat (the setup assistant)
+// 0.2.0: check_connection, and a page may watch the hub (the setup assistant).
+// 0.3.0: the shared address /mcp -- one per computer, the seat chosen by join's code.
+const VERSION = '0.3.0';
 const PROTOCOLS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -54,15 +56,17 @@ const LOOP = [
 ].join('\n');
 const KICKOFF = [
     'You are playing a seat in WAR ("When Agents Rule"), a real-time strategy game, against other players. You decide every move yourself.',
-    'First call join. Then play this loop until wait_for_turn reports that the match is over:',
+    'First call join, with your seat code if the message that told you to play gave one. Then play this loop until wait_for_turn reports that the match is over:',
     LOOP,
     'Do not stop to explain or to ask the user anything: keep calling the tools until the match is over.'
 ].join('\n');
 const NEXT_WAIT = 'Your next action: call wait_for_turn now.';
 
 const META_TOOLS = [
-    { name: 'join', description: 'Claim your seat in the waiting arena. Call this first. Returns the rules of the game for your seat.',
-      inputSchema: { type: 'object', properties: {}, required: [] } },
+    { name: 'join', description: 'Claim your seat in the waiting arena. Call this first, with your seat code: it is in the message that told you to play. '
+        + 'Returns the rules of the game for your seat.',
+      inputSchema: { type: 'object', properties: { code: { type: 'string',
+          description: 'Your seat code, as the message that told you to play gave it (it starts with "seat-").' } }, required: [] } },
     { name: 'wait_for_turn', description: 'Wait for your turn. Returns the game state when it is your turn, '
         + '{"waiting": true} if it is not yet (call again), or {"matchOver": true} when the match has ended. '
         + 'Calling it while your turn is open ends that turn.',
@@ -89,7 +93,7 @@ function log(token, text) {
     if (QUIET) return;
     const d = new Date(), p = n => String(n).padStart(2, '0');
     const s = seats.get(token);
-    console.log(`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}  ${s && s.seat != null ? 'seat ' + s.seat : String(token).slice(0, 10)}  ${text}`);
+    console.log(`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}  ${s && s.seat != null ? 'seat ' + s.seat : String(token).startsWith('seat-') ? String(token).slice(0, 10) : String(token)}  ${text}`);
 }
 
 // ---- state -------------------------------------------------------------------------
@@ -115,14 +119,46 @@ function toPage(obj) {
     const s = obj && obj.token ? seats.get(obj.token) : null;
     if (s && s.page && pages.has(s.page)) s.page.send(obj);
 }
-// What the setup assistant follows on the page that watches a seat it has not listed for an
-// arena: the harness got in touch, made a call, passed the check. Never turns or actions:
-// those belong to the page playing the seat, and a watcher answering one would race it.
-function toWatcher(obj) {
-    const s = obj && obj.token ? seats.get(obj.token) : null;
-    if (s && s.watchPage && s.watchPage !== s.page && pages.has(s.watchPage)) s.watchPage.send(obj);
+// What the setup assistant follows on a page that watches the hub: which harnesses got in
+// touch (by the name each sends when it connects) and which passed check_connection. Never
+// turns or actions: those belong to the page playing a seat, and a watcher answering one
+// would race it.
+const watchers = new Set();
+const clients = new Map();        // harness name -> { name, version, at }
+function tellWatchers(obj) { for (const pg of watchers) if (pages.has(pg)) pg.send(obj); }
+function noteClient(info) {
+    const name = String((info && info.name) || '').slice(0, 80);
+    if (!name) return;
+    const c = { name, version: String((info && info.version) || '').slice(0, 40), at: Date.now() };
+    clients.set(name, c);
+    tellWatchers(Object.assign({ type: 'client' }, c));
 }
-const tellPages = obj => { toPage(obj); toWatcher(obj); };
+
+// ---- the shared address (asp67, 27 Oct) ----------------------------------------------
+// One address per computer, http://127.0.0.1:8765/mcp, set up once in each harness. The seat
+// is chosen by the code in the start message (join with code), and the harness's MCP session
+// (Mcp-Session-Id) carries it from then on: deleting or adding a library entry no longer
+// means another server in every harness. A seat's own address (/mcp/<code>) still works, for
+// a harness that keeps no session and for the setups made before.
+const sessions = new Map();       // session id -> { id, client, version, token, last }
+const SESSION_MAX = 200;
+function sessionFor(id) {
+    if (!id) return null;
+    let x = sessions.get(id);
+    // An id the hub does not know (it was restarted) is adopted rather than refused: the
+    // harness then hears "join with your seat code" and the code is still in its chat.
+    if (!x) {
+        x = { id, client: '', version: '', token: null, last: 0 };
+        sessions.set(id, x);
+        if (sessions.size > SESSION_MAX) {
+            const oldest = [...sessions.values()].sort((a, b) => a.last - b.last)[0];
+            if (oldest && oldest !== x) sessions.delete(oldest.id);
+        }
+    }
+    x.last = Date.now();
+    return x;
+}
+const joinWithCode = 'call join with your seat code: it is in the message that told you to play (it starts with "seat-").';
 
 function fromPage(msg, pg) {
     switch (msg && msg.type) {
@@ -200,21 +236,16 @@ function fromPage(msg, pg) {
             log(s.token, 'match over');
             break;
         }
-        case 'watch': {                // the setup assistant follows this seat (not an arena)
-            if (!TOKEN_RE.test(msg.token || '')) return;
-            const s = seat(msg.token);
-            s.watchPage = pg;
-            if (s.seen) pg.send({ type: 'harness', token: s.token, connected: true });
-            if (s.checked) pg.send({ type: 'check', token: s.token });
+        case 'watch':                  // the setup assistant follows the hub
+            watchers.add(pg);
+            for (const c of clients.values()) pg.send(Object.assign({ type: 'client' }, c));
             break;
-        }
-        case 'unwatch': {
-            const s = seats.get(msg.token);
-            if (s && s.watchPage === pg) s.watchPage = null;
+        case 'unwatch':
+            watchers.delete(pg);
             break;
-        }
         case 'close':
             for (const s of seats.values()) if (s.page === pg) release(s);
+            watchers.delete(pg);
             break;
     }
 }
@@ -260,7 +291,7 @@ function noTurn(s) {
 // ---- MCP ---------------------------------------------------------------------------
 const textResult = (text, isError) => ({ content: [{ type: 'text', text: String(text) }], ...(isError ? { isError: true } : {}) });
 
-async function callTool(token, name, args, signal) {
+async function callTool(token, name, args, signal, ctx) {
     const s = seat(token);
     if (name === 'get_rules') return s.joined ? textResult(s.rules || '(no rules sent)') : textResult('Call join first.', true);
     if (name === 'join') {
@@ -268,12 +299,15 @@ async function callTool(token, name, args, signal) {
         // Names the address called: Antigravity, its config edited to a new address, went on
         // calling the old one until restarted, and told the user its config's address was
         // refused (asp67, 27 Oct). The harness can now say what went wrong.
+        if ((!s.listed || !pages.has(s.page)) && ctx && ctx.shared) return textResult(`The open arena has no seat with the code ${token}. `
+            + 'Check the code in the message that told you to play: the user copies that message from the seat\'s row in the WAR arena setup ("Copy start chat message"). '
+            + 'If the arena was set up anew since, the user sends you the new message. Then call join again with its code.', true);
         if (!s.listed || !pages.has(s.page)) return textResult(`The open arena does not use this seat address. You called ${hubBase()}/mcp/${token}, `
             + 'and the WAR arena setup lists a different address for its seat, or none. Tell the user which address you called. '
             + 'If the seat\'s address was changed in your MCP settings, you are still connected with the old one: the harness must reload or restart to use the new one. '
             + 'Otherwise the user picks this seat in the WAR arena setup. Then call join again.', true);
         s.joined = true;
-        toPage({ type: 'join', token });
+        toPage({ type: 'join', token, client: s.client || '' });
         return textResult((s.rules ? s.rules + '\n\n' : '')
             + `You have joined as seat ${s.seat != null ? s.seat : '?'}. This is how you play, until the match is over:\n`
             + LOOP + '\nDo not stop to explain or to ask: keep calling the tools. ' + NEXT_WAIT);
@@ -284,7 +318,7 @@ async function callTool(token, name, args, signal) {
     // tries it mid-game must not take it for a command or think it lost a turn (asp67).
     if (name === 'check_connection') {
         s.checked = true;
-        tellPages({ type: 'check', token });
+        tellWatchers({ type: 'check', name: s.client || '' });
         log(token, 'connection checked');
         const what = 'check_connection only confirms the connection while setting up: it is not a game command, changed nothing'
             + (s.turn ? ' and did not use one of your commands' : '') + '.';
@@ -341,19 +375,30 @@ async function callTool(token, name, args, signal) {
     return textResult(text, /^\[ERROR\]/.test(text));
 }
 
-async function rpc(token, msg, signal) {
+// ctx: { token } for a seat's own address; { shared, session } for the shared one, whose
+// seat is the one its session joined (none before join).
+async function rpc(ctx, msg, signal) {
     const { id, method, params } = msg || {};
-    if (msg && method === 'tools/call') log(token, 'calls ' + (params && params.name) + (params && params.arguments && Object.keys(params.arguments).length ? ' ' + JSON.stringify(params.arguments).slice(0, 120) : ''));
-    else if (msg && method && method !== 'ping') log(token, method + (method === 'initialize' && params && params.clientInfo ? ' from ' + params.clientInfo.name : ''));
+    const x = ctx.session || null;
+    if (x && method === 'initialize' && params && params.clientInfo) { x.client = String(params.clientInfo.name || '').slice(0, 80); x.version = String(params.clientInfo.version || '').slice(0, 40); }
+    const token = ctx.token || (x && x.token) || null;
+    const label = token || (ctx.shared ? 'war' + (x && x.client ? ' (' + x.client + ')' : '') : '?');
+    if (msg && method === 'tools/call') log(label, 'calls ' + (params && params.name) + (params && params.arguments && Object.keys(params.arguments).length ? ' ' + JSON.stringify(params.arguments).slice(0, 120) : ''));
+    else if (msg && method && method !== 'ping') log(label, method + (method === 'initialize' && params && params.clientInfo ? ' from ' + params.clientInfo.name : ''));
     const reply = result => ({ jsonrpc: '2.0', id, result });
     const fail = (code, message) => ({ jsonrpc: '2.0', id: id === undefined ? null : id, error: { code, message } });
     if (!msg || msg.jsonrpc !== '2.0' || typeof method !== 'string') return fail(-32600, 'Invalid Request');
     if (id === undefined) return null;   // a notification: nothing to answer
-    const s = seat(token);
-    if (!s.seen) { s.seen = true; tellPages({ type: 'harness', token, connected: true }); }
-    // Every call tells the page the harness is still at it: a seat whose harness has gone
-    // quiet for longer than a round is marked "harness idle" in the arena.
-    tellPages({ type: 'call', token });
+    if (method === 'initialize') noteClient(params && params.clientInfo);
+    if (token) {
+        const s = seat(token);
+        if (method === 'initialize' && params && params.clientInfo) s.client = String(params.clientInfo.name || '').slice(0, 80);
+        else if (x && x.client) s.client = x.client;
+        if (!s.seen) { s.seen = true; toPage({ type: 'harness', token, connected: true }); }
+        // Every call tells the page the harness is still at it: a seat whose harness has gone
+        // quiet for longer than a round is marked "harness idle" in the arena.
+        toPage({ type: 'call', token });
+    }
     switch (method) {
         case 'initialize': {
             const asked = params && params.protocolVersion;
@@ -366,7 +411,8 @@ async function rpc(token, msg, signal) {
         case 'tools/list': return reply({ tools: META_TOOLS.concat(GAME.tools) });
         case 'tools/call': {
             if (!params || typeof params.name !== 'string') return fail(-32602, 'Invalid params: name');
-            return reply(await callTool(token, params.name, params.arguments, signal));
+            if (ctx.shared && (params.name === 'join' || !token)) return reply(await sharedCall(ctx, params.name, params.arguments, signal));
+            return reply(await callTool(token, params.name, params.arguments, signal, ctx));
         }
         case 'prompts/list': return reply({ prompts: [{ name: 'play', description: 'Join this WAR seat and play the match to its end.' }] });
         case 'prompts/get':
@@ -376,6 +422,34 @@ async function rpc(token, msg, signal) {
     }
 }
 
+// A call on the shared address that has no seat yet, and every join there: join with a code
+// ties the session to that seat (taking it over from an older session, e.g. the harness
+// restarted); check_connection answers without one; anything else asks for the code.
+async function sharedCall(ctx, name, args, signal) {
+    const x = ctx.session;
+    const code = args && typeof args.code === 'string' ? args.code.trim() : '';
+    if (name === 'check_connection' && !(x && x.token)) {
+        tellWatchers({ type: 'check', name: (x && x.client) || '' });
+        log('war' + (x && x.client ? ' (' + x.client + ')' : ''), 'connection checked');
+        return textResult('Connected: WAR reaches this harness, and its tools work. Nothing more to do now: stop here. '
+            + 'When the user starts a match, they will send you the message to play; until then, call no other WAR tool.');
+    }
+    if (name !== 'join') return textResult('You have not joined a seat yet: ' + joinWithCode);
+    if (!x) return textResult('WAR cannot tell this harness\'s calls apart: it sends no MCP session id (Mcp-Session-Id). '
+        + `Use the seat's own address instead of the shared one: ${hubBase()}/mcp/${TOKEN_RE.test(code) ? code : '<seat code>'}. Tell the user so.`, true);
+    if (!code) return x.token ? callTool(x.token, 'join', args, signal, ctx) : textResult('To join, ' + joinWithCode, true);
+    if (!TOKEN_RE.test(code)) return textResult(`"${code.slice(0, 40)}" is not a seat code. ` + 'To join, ' + joinWithCode, true);
+    if (x.client && seats.has(code)) seats.get(code).client = x.client;   // join tells the page who joined
+    const r = await callTool(code, 'join', args, signal, ctx);
+    if (!r.isError) {
+        for (const o of sessions.values()) if (o !== x && o.token === code) o.token = null;
+        x.token = code;
+        const s = seat(code);
+        if (!s.seen) { s.seen = true; toPage({ type: 'harness', token: code, connected: true }); }
+    }
+    return r;
+}
+
 // ---- HTTP --------------------------------------------------------------------------
 function cors(req, res) {
     const o = req.headers.origin;
@@ -383,8 +457,9 @@ function cors(req, res) {
         res.setHeader('Access-Control-Allow-Origin', o);
         res.setHeader('Vary', 'Origin');
         res.setHeader('Access-Control-Allow-Private-Network', 'true');
-        res.setHeader('Access-Control-Allow-Headers', 'content-type, mcp-protocol-version, accept');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'content-type, mcp-protocol-version, mcp-session-id, accept');
+        res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     }
 }
 const hubBase = () => 'http://127.0.0.1:' + ((server.address() && server.address().port) || PORT);
@@ -397,11 +472,15 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
     if (url.pathname === '/status' && req.method === 'GET')
         return json(res, 200, { hub: 'war-mcp-hub', version: VERSION, page: pages.size > 0, pages: pages.size,
-            seats: [...seats.values()].filter(s => s.listed).map(s => ({ seat: s.seat, harness: s.seen, joined: s.joined })) });
-    const m = /^\/mcp\/([^/]+)\/?$/.exec(url.pathname);
-    if (!m) return json(res, 404, { error: 'not found' });
-    const token = m[1];
-    if (!TOKEN_RE.test(token)) return json(res, 404, { error: 'unknown seat address' });
+            seats: [...seats.values()].filter(s => s.listed).map(s => ({ seat: s.seat, harness: s.seen, joined: s.joined })),
+            sessions: sessions.size, clients: [...clients.keys()] });
+    const shared = url.pathname === '/mcp' || url.pathname === '/mcp/';
+    const m = shared ? null : /^\/mcp\/([^/]+)\/?$/.exec(url.pathname);
+    if (!shared && !m) return json(res, 404, { error: 'not found' });
+    const token = m ? m[1] : null;
+    if (!shared && !TOKEN_RE.test(token)) return json(res, 404, { error: 'unknown seat address' });
+    const sid = String(req.headers['mcp-session-id'] || '').slice(0, 100);
+    if (shared && req.method === 'DELETE') { if (sid) sessions.delete(sid); res.writeHead(204); return res.end(); }
     if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }); return res.end(); }
     let body = '';
     const gone = new AbortController();
@@ -410,13 +489,21 @@ const server = http.createServer((req, res) => {
     req.on('end', async () => {
         let msg;
         try { msg = JSON.parse(body); } catch (e) { return json(res, 400, { jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }); }
+        // The shared address: a new session at initialize, its id sent back in Mcp-Session-Id.
+        let ctx = { token };
+        if (shared) {
+            const init = [].concat(msg).some(q => q && q.method === 'initialize');
+            const x = sid ? sessionFor(sid) : init ? sessionFor(crypto.randomUUID()) : null;
+            if (x) res.setHeader('Mcp-Session-Id', x.id);
+            ctx = { shared: true, session: x };
+        }
         try {
             if (Array.isArray(msg)) {
-                const out = (await Promise.all(msg.map(x => rpc(token, x, gone.signal)))).filter(Boolean);
+                const out = (await Promise.all(msg.map(q => rpc(ctx, q, gone.signal)))).filter(Boolean);
                 if (!out.length) { res.writeHead(202); return res.end(); }
                 return json(res, 200, out);
             }
-            const out = await rpc(token, msg, gone.signal);
+            const out = await rpc(ctx, msg, gone.signal);
             if (!out) { res.writeHead(202); return res.end(); }
             json(res, 200, out);
         } catch (e) {
@@ -497,11 +584,23 @@ function stdioMode(token) {
 
 if (require.main === module) {
     if (process.argv.includes('--stdio')) stdioMode(arg('token'));
-    else server.listen(PORT, '127.0.0.1', () => {
-        const port = server.address().port;
-        console.log(`WAR MCP hub ${VERSION} on http://127.0.0.1:${port}`);
-        console.log(`  seat addresses: http://127.0.0.1:${port}/mcp/<seat-token>   (from the WAR model library)`);
-        console.log('  leave this window open while you play; Ctrl+C stops the hub');
-    });
+    else {
+        // A second hub on this computer: say so plainly instead of a stack trace (asp67, 27 Oct).
+        server.on('error', e => {
+            if (e && e.code === 'EADDRINUSE') {
+                console.error(`Port ${PORT} is already in use: a WAR hub is probably running on this computer already (look for its window).`);
+                console.error('You need only one. If that one is older, stop it with Ctrl+C in its window and start this again.');
+                process.exit(1);
+            }
+            throw e;
+        });
+        server.listen(PORT, '127.0.0.1', () => {
+            const port = server.address().port;
+            console.log(`WAR MCP hub ${VERSION} on http://127.0.0.1:${port}`);
+            console.log(`  harness address: http://127.0.0.1:${port}/mcp   (one for every seat; the seat code is in the start message)`);
+            console.log('  the hub only answers on this computer: your browser and your harness must run here too');
+            console.log('  leave this window open while you play; Ctrl+C stops the hub');
+        });
+    }
 }
 module.exports = { server, KICKOFF, VERSION };

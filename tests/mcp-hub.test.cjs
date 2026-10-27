@@ -45,7 +45,7 @@ test('a harness sees the tools and the play prompt before any arena is open, and
     const T = 'seat-token-aaaa1111';
     const init = await mcp(port, T, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '0' } });
     assert.equal(init.result.protocolVersion, '2025-06-18');
-    assert.match(init.result.instructions, /First call join\. Then play this loop[\s\S]*1\. Call wait_for_turn/);
+    assert.match(init.result.instructions, /First call join, with your seat code if the message that told you to play gave one\. Then play this loop[\s\S]*1\. Call wait_for_turn/);
     const names = (await mcp(port, T, 'tools/list')).result.tools.map(x => x.name);
     for (const n of ['join', 'wait_for_turn', 'end_turn', 'get_rules', 'train_unit', 'move_units', 'attack_target', 'plan']) assert.ok(names.includes(n), n);
     const play = (await mcp(port, T, 'prompts/get', { name: 'play' })).result.messages[0].content.text;
@@ -230,41 +230,91 @@ test('a turn says how much of its round is left; commands after the round closed
     pg.ws.close();
 });
 
-// The setup assistant (asp67, 27 Oct): a page watches a seat no arena lists, and hears its
-// harness get in touch and pass check_connection -- never its turns or actions. The check
-// starts nothing, and in a match it says plainly that it is not a game command.
+// The shared address (asp67, 27 Oct): one per computer, set up once in every harness; the
+// seat is chosen by join's code and carried by the MCP session. A page watching the hub (the
+// setup assistant) hears which harness connected and which passed check_connection -- never
+// turns or actions. check_connection starts nothing, and in a match it is no command.
+async function shared(port, method, params, sid) {
+    const r = await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST',
+        headers: Object.assign({ 'content-type': 'application/json' }, sid ? { 'mcp-session-id': sid } : {}),
+        body: JSON.stringify({ jsonrpc: '2.0', id: rid++, method, params }) });
+    return { body: await r.json(), sid: r.headers.get('mcp-session-id') };
+}
+const sharedCall = async (port, sid, name, args = {}) => (await shared(port, 'tools/call', { name, arguments: args }, sid)).body.result;
+const initShared = async (port, name) => (await shared(port, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name, version: '1' } })).sid;
+
+test('the shared address: a session joins a seat by its code, and keeps it', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-shar0001';
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.0');
+    const pg = await fakePage(port);
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
+    await new Promise(r => setTimeout(r, 50));
+    const sid = await initShared(port, 'claude-code');
+    assert.ok(sid, 'initialize hands out an Mcp-Session-Id');
+    assert.match(said(await sharedCall(port, sid, 'wait_for_turn')), /You have not joined a seat yet: call join with your seat code/);
+    const wrong = await sharedCall(port, sid, 'join', { code: 'seat-token-nothere1' });
+    assert.ok(wrong.isError && /The open arena has no seat with the code seat-token-nothere1/.test(said(wrong)), said(wrong));
+    assert.match(said(await sharedCall(port, sid, 'join', { code: T })), /You have joined as seat 2/);
+    const joined = await pg.next(m => m.type === 'join');
+    assert.equal(joined.token, T);
+    assert.equal(joined.client, 'claude-code', 'the page hears which harness joined');
+    // From now on the session's calls are the seat's.
+    pg.send({ type: 'turn', token: T, turn: 1, state: '{}' });
+    assert.match(said(await sharedCall(port, sid, 'wait_for_turn')), /^IT IS YOUR TURN/);
+    const sent = sharedCall(port, sid, 'train_unit', { unitType: 'worker' });
+    const action = await pg.next(m => m.type === 'action');
+    assert.equal(action.token, T);
+    pg.send({ type: 'result', id: action.id, text: 'Queued (1/3)' });
+    assert.match(said(await sent), /Queued/);
+    // The harness restarted: a new session takes the seat over with the same code; the old one lost it.
+    const sid2 = await initShared(port, 'claude-code');
+    assert.match(said(await sharedCall(port, sid2, 'join', { code: T })), /You have joined as seat 2/);
+    assert.match(said(await sharedCall(port, sid, 'end_turn')), /You have not joined a seat yet/);
+    // A session id the hub does not know (it restarted) is adopted, and asked for the code.
+    assert.match(said(await sharedCall(port, 'unknown-session-1', 'wait_for_turn')), /call join with your seat code/);
+    // No session id at all: join explains and names the seat's own address.
+    const none = await (await fetch(`http://127.0.0.1:${port}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'join', arguments: { code: T } } }) })).json();
+    assert.match(none.result.content[0].text, new RegExp(`sends no MCP session id[\\s\\S]*${port}/mcp/${T}`));
+    pg.ws.close();
+});
+
 test('check_connection: a watching page hears the harness and the check; in a match it is no command', LIMIT, async t => {
     const { p, port } = await startHub(); t.after(() => p.kill());
     const T = 'seat-token-watch001';
-    const st = await (await fetch(`http://127.0.0.1:${port}/status`)).json();
-    assert.equal(st.version, '0.2.0', 'the assistant asks for a hub with check_connection');
     const watcher = await fakePage(port);
-    watcher.send({ type: 'watch', token: T });
+    watcher.send({ type: 'watch' });
     await new Promise(r => setTimeout(r, 50));
-    const tools = (await mcp(port, T, 'tools/list', {})).result.tools.map(x => x.name);
+    const sid = await initShared(port, 'Hermes Agent');
+    const tools = (await shared(port, 'tools/list', {}, sid)).body.result.tools.map(x => x.name);
     assert.ok(tools.includes('check_connection'));
-    assert.equal((await watcher.next(m => m.type === 'harness')).token, T, 'the first call reaches the watcher');
-    const ok = said(await call(port, T, 'check_connection'));
-    assert.match(ok, /^Connected: WAR reaches this harness, and its tools work\. Nothing more to do now: stop here\./);
-    assert.equal((await watcher.next(m => m.type === 'check')).token, T);
+    assert.equal((await watcher.next(m => m.type === 'client')).name, 'Hermes Agent', 'the watcher hears which harness connected');
+    assert.match(said(await sharedCall(port, sid, 'check_connection')), /^Connected: WAR reaches this harness, and its tools work\. Nothing more to do now: stop here\./);
+    assert.equal((await watcher.next(m => m.type === 'check')).name, 'Hermes Agent');
+    // A page that starts watching later still hears the harnesses already connected.
+    const late = await fakePage(port);
+    late.send({ type: 'watch' });
+    assert.equal((await late.next(m => m.type === 'client')).name, 'Hermes Agent');
     // Later the seat plays in an arena on another page; mid-turn the check is no command.
     const arena = await fakePage(port);
     arena.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
     await new Promise(r => setTimeout(r, 50));
-    await call(port, T, 'join');
+    await sharedCall(port, sid, 'join', { code: T });
     arena.send({ type: 'turn', token: T, turn: 2, state: '{}' });
-    await call(port, T, 'wait_for_turn');
-    const mid = said(await call(port, T, 'check_connection'));
+    await sharedCall(port, sid, 'wait_for_turn');
+    const mid = said(await sharedCall(port, sid, 'check_connection'));
     assert.match(mid, /it is not a game command, changed nothing and did not use one of your commands\. It is still your turn/);
-    const sent = call(port, T, 'train_unit', { unitType: 'worker' });
+    const sent = sharedCall(port, sid, 'train_unit', { unitType: 'worker' });
     const action = await arena.next(m => m.type === 'action');
     assert.equal(action.name, 'train_unit', 'the check did not count: the command still goes to the arena');
     arena.send({ type: 'result', id: action.id, text: 'Queued (1/3)' });
     await sent;
-    let leaked = false; watcher.ws.onmessage = e => { if (/"type":"(action|turn)"/.test(e.data)) leaked = true; };
+    let leaked = false;
+    watcher.ws.onmessage = e => { if (/"type":"(action|turn)"/.test(e.data)) leaked = true; };
     await new Promise(r => setTimeout(r, 100));
     assert.equal(leaked, false, 'the watcher never sees turns or actions');
-    watcher.ws.close(); arena.ws.close();
+    watcher.ws.close(); late.ws.close(); arena.ws.close();
 });
 
 // asp67, 26 Oct: "do we have a mechanic that tells the harness when I quit the arena?" The

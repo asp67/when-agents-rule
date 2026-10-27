@@ -19,7 +19,9 @@ class WarMcpLink {
         this.turns = new Map();        // token -> { turn, calls, resolve, reject, counted }
         this.finals = new Map();       // token -> resolve(text|null): a closing message out
         this.rulesSent = new Set();    // tokens whose harness has had the rules
-        this.watched = new Set();      // tokens the setup assistant follows (not an arena's seats)
+        this.hubWatch = false;         // the setup assistant follows the hub
+        this.clients = new Map();      // harness name -> { name, version, at }: who connected
+        this.checks = [];              // [{ name, at }]: check_connection calls seen
         this.listeners = new Set();
         this.maxCommands = 3;
         this._retry = null;
@@ -41,19 +43,13 @@ class WarMcpLink {
     onChange(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
     status(token) {
         const s = this.state.get(token) || {};
-        return { hub: this.hubUp, harness: !!s.harness, joined: !!s.joined, checked: !!s.checked };
+        return { hub: this.hubUp, harness: !!s.harness, joined: !!s.joined, checked: !!s.checked, client: s.client || '' };
     }
-    // The setup assistant follows one seat that no arena lists yet: the hub tells this page
-    // when its harness gets in touch and when it passes check_connection, nothing else.
-    watch(token) {
-        this.watched.add(token);
-        if (!this.state.has(token)) this.state.set(token, { harness: false, joined: false });
-        this._send({ type: 'watch', token });
-    }
-    unwatch(token) {
-        if (!this.watched.delete(token)) return;
-        this._send({ type: 'unwatch', token });
-    }
+    // The setup assistant follows the hub: which harnesses connect (by the name each sends)
+    // and which pass check_connection -- before any seat is chosen, on the shared address.
+    // Listeners hear these as the token '*'.
+    watchHub() { this.hubWatch = true; this._send({ type: 'watch' }); }
+    unwatchHub() { this.hubWatch = false; this._send({ type: 'unwatch' }); }
     // How long the seat's harness has made no call to the hub, or null before its first.
     // A harness in its loop calls at least every wait (~25 s), so a silence longer than a
     // round means it has stopped, is asking its user something, or is still thinking.
@@ -62,7 +58,7 @@ class WarMcpLink {
         return s && s.lastCall ? Math.max(0, Date.now() - s.lastCall) : null;
     }
     _changed(token) {
-        const tokens = token ? [token] : this.seats.map(s => s.token).concat([...this.watched]);
+        const tokens = token ? [token] : this.seats.map(s => s.token);
         for (const t of tokens) for (const fn of this.listeners) { try { fn(t, this.status(t)); } catch (e) { /* a listener's fault stays its own */ } }
     }
 
@@ -80,7 +76,7 @@ class WarMcpLink {
             this.hubUp = true;
             for (const s of this.state.values()) { s.harness = false; s.joined = false; }
             this._sendArena();
-            for (const token of this.watched) this._send({ type: 'watch', token });
+            if (this.hubWatch) this._send({ type: 'watch' });
             this._changed();
         };
         ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } this._fromHub(m); };
@@ -116,11 +112,14 @@ class WarMcpLink {
 
     _fromHub(m) {
         if (m.type === 'hello') { if (m.maxCommandsPerTurn) this.maxCommands = m.maxCommandsPerTurn; return; }
+        if (m.type === 'client') {
+            this.clients.set(String(m.name || ''), { name: String(m.name || ''), version: String(m.version || ''), at: Date.now() });
+            this._changed('*');
+            return;
+        }
         if (m.type === 'check') {
-            const s = this.state.get(m.token) || {};
-            s.checked = true; s.harness = true; s.lastCall = Date.now();
-            this.state.set(m.token, s);
-            this._changed(m.token);
+            this.checks.push({ name: String(m.name || ''), at: Date.now() });
+            this._changed('*');
             return;
         }
         if (m.type === 'call') {
@@ -131,7 +130,7 @@ class WarMcpLink {
         if (m.type === 'harness' || m.type === 'join') {
             const s = this.state.get(m.token) || {};
             s.lastCall = Date.now();
-            if (m.type === 'harness') s.harness = true; else { s.harness = true; s.joined = true; }
+            if (m.type === 'harness') s.harness = true; else { s.harness = true; s.joined = true; if (m.client) s.client = String(m.client); }
             this.state.set(m.token, s);
             this._changed(m.token);
             return;
