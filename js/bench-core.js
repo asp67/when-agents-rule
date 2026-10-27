@@ -662,7 +662,7 @@ const CLASSES = Object.freeze({
     reference: ['assignBadCarry', 'assignBadFrom', 'assignBadSpill', 'assignFromSame', 'assignNeedsCoords',
         'assignNeedsResource', 'attackNeedsCoords', 'attackNoMatch', 'civCannotBuild', 'civCannotTrain',
         'exploreBadTile', 'exploreNeedsTile', 'exploreRouteTooLong', 'farmNeedsCoords', 'moveBadMode', 'moveNeedsCoords', 'moveNoMatch',
-        'notAResearchTech', 'notACommand', 'offMap', 'towerNearEnemyTC', 'siegeCannotAttack', 'renamedBuilding', 'repairNeedsCoords', 'targetIsOwn',
+        'misnamedCoords', 'notAResearchTech', 'notACommand', 'offMap', 'towerNearEnemyTC', 'siegeCannotAttack', 'renamedBuilding', 'repairNeedsCoords', 'targetIsOwn',
         'targetNotFound', 'targetOutOfSight', 'techIsBuilding', 'unknownBuilding', 'unknownTech', 'unknownUnit', 'unparsedCall', 'rawToolMarkup'],
     harness: ['executionFailed'],
     meta: ['healDropped', 'healStripped', 'laneDropped', 'roundMissed'],

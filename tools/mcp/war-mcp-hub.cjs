@@ -180,7 +180,10 @@ function fromPage(msg, pg) {
 // The end of the match. With a closing message (the same one a library seat gets: the final
 // state, the match in numbers, the question), the harness answers it with final_word.
 const overResult = s => s.final
-    ? { matchOver: true, result: s.over, finalMessage: s.final,
+    // Ends with how to answer: Sonnet 5.5 in Claude Code answered the first one in its chat,
+    // which the game cannot read (asp67, 27 Oct); OpenCode's DeepSeek used final_word.
+    ? { matchOver: true, result: s.over,
+        finalMessage: s.final + '\n\nANSWER BY CALLING final_word WITH YOUR TEXT. The game cannot read a reply in the chat.',
         next: 'This is your final message. Answer it by calling final_word with your thoughts; nothing will be executed. Then stop playing.' }
     : { matchOver: true, result: s.over, next: 'The match is over. Stop playing: there is nothing more to do.' };
 // A page let go of the seat (closed, reloaded, or a new arena without it). Its harness stays

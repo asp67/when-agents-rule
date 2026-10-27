@@ -131,6 +131,10 @@
         },
         mcpStartLine(m) {
             const h = HARNESSES.find(x => x.id === m.harness);
+            // Claude Code: start the session with our tools allowed, so no permission prompt
+            // stops the match (asp67's first Claude Code game needed nudging at the start).
+            if (m.harness === 'claude-code') return `claude --allowedTools "mcp__${this.mcpServerName(m)}__*"
+/mcp__${this.mcpServerName(m)}__play`;
             return h && h.prompts ? `/mcp__${this.mcpServerName(m)}__play` : this.mcpKickoff(m);
         },
 

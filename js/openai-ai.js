@@ -6365,6 +6365,24 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         return ` - short of ${short.join(', ')} (you have ${have.join(', ')} after this turn's earlier commands)`;
     }
 
+    // The names a model may put a position under that are not ours: refused with the right
+    // names rather than ignored. Only for actions that take targetX/targetZ, and only when
+    // neither is given -- a stray "x" beside a real targetX changes nothing.
+    static misnamedCoordinates(action, params) {
+        if (!params || typeof params !== 'object') return null;
+        const def = (OpenAIAIManager.ACTIONS || []).find(a => a.name === action);
+        if (!def || !def.params || !('targetX' in def.params)) return null;
+        if (OpenAIAIManager.given(params.targetX) || OpenAIAIManager.given(params.targetZ)) return null;
+        const wrong = ['x', 'y', 'z', 'X', 'Y', 'Z', 'posX', 'posY', 'posZ', 'targetY', 'target_x', 'target_z',
+            'position', 'pos', 'coords', 'coordinates', 'location', 'point', 'target'].filter(k => k in params && k !== 'target' || (k === 'target' && params.target && typeof params.target === 'object'));
+        if (!wrong.length) return null;
+        const sent = wrong.map(k => `"${k}"`).join(' and ');
+        // Coded where it is answered (executeAction: log.out.misnamedCoords).
+        const msg = `[ERROR] ${action} takes a position as "targetX" and "targetZ" (the map's x and z); you sent ${sent}, which ${wrong.length === 1 ? 'is not one of its parameters' : 'are not its parameters'}. Nothing was done. Send "targetX" and "targetZ"`
+            + (action === 'build_structure' ? ', or leave out every coordinate to build near your Town Center.' : '.');
+        return msg;
+    }
+
     executeAction(controller, actionData, validationError = null) {
         const ai = controller.aiPlayer;
         const game = this.game;
@@ -6461,6 +6479,14 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             if (params && typeof params.reason === 'string' && params.reason.trim()) st.reasonsGiven++;
         }
 
+        // A position sent under another name ("x"/"z", "position", ...). It was ignored, and
+        // build_structure then placed the building somewhere of its own choosing: in
+        // asp67's match of 27 October (00:30) Sonnet 5.5 sent {"x": "150", "z": "-348"} 23
+        // times, got a Town Center at (187, -438) and an OK, and so never learned the
+        // names -- until, with no Town Center left to place beside, it was told only "No
+        // Town Center found for placement reference" and concluded it could not rebuild.
+        const coordError = OpenAIAIManager.misnamedCoordinates(action, params);
+
         // Broken tool-call markup in the arguments: not run and not repaired (the harness
         // does not play for the model) -- told, so it sends the commands again. Checked
         // before the argument checks, so WAR and the Platform answer it the same way.
@@ -6469,6 +6495,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             actionResult = `[ERROR] ${action}: its arguments contain raw tool-call markup (<tool_call>, <arg_key>, <arg_value>), so this call was cut apart: nothing written inside it was run, including any command after the break. Send each command as its own tool call with plain JSON arguments.`;
         }
         else if (validationError) actionResult = `[ERROR] ${action}: ${validationError}`;
+        else if (coordError) { this.outcome('log.out.misnamedCoords', { action }); actionResult = coordError; }
         else switch (action) {
             case 'train_unit':
                 if (params?.unitType) {
@@ -7637,7 +7664,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             z = tc.z + WarMath.sin(ang) * rad;
         } else {
             this.outcome('log.out.noTCPlacement', {});
-            return `[ERROR] No Town Center found for placement reference.`;
+            // Say what to do (asp67's match of 27 October): with no Town Center a building
+            // needs a position, and the message never said so.
+            return `[ERROR] build_structure needs "targetX" and "targetZ" here: you have no Town Center to place it beside. Send the position, for example where one of your workers stands.`;
         }
 
         // Validate position: keep walkable gaps between buildings AND an exclusion

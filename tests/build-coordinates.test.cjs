@@ -25,3 +25,19 @@ test('malformed or incomplete building coordinates fail before spending or creat
   const h=setup();assert.match(h.build(x,z),/^\[ERROR\]/,String(x));assert.equal(h.spent(),0);assert.equal(h.added.length,0);
  }
 });
+// asp67's match of 27 October (00:30): Sonnet 5.5 sent {"x": "150", "z": "-348"} for its
+// buildings 23 times. The names were ignored and the building placed near the Town Center
+// with an OK, so it never learned them; with no Town Center left, "No Town Center found for
+// placement reference" did not say what was missing. Both now name targetX and targetZ.
+test('a position under another name is refused with the right names; with no Town Center the error asks for the position',()=>{
+ const h=setup(),M=h.m.constructor;
+ const err=M.misnamedCoordinates('build_structure',{buildingType:'house',x:'150',z:'-348'});
+ assert.match(err,/^\[ERROR\] build_structure takes a position as "targetX" and "targetZ".*you sent "x" and "z", which are not its parameters\. Nothing was done\./);
+ assert.match(err,/leave out every coordinate to build near your Town Center/);
+ assert.match(M.misnamedCoordinates('move_units',{position:{x:1,z:2}}),/you sent "position", which is not one of its parameters/);
+ assert.equal(M.misnamedCoordinates('build_structure',{buildingType:'house',targetX:1,targetZ:2,x:5}),null,'a stray x beside targetX changes nothing');
+ assert.equal(M.misnamedCoordinates('build_structure',{buildingType:'house'}),null,'no position at all: placed near the Town Center');
+ assert.equal(M.misnamedCoordinates('research_tech',{techId:'farm',x:3}),null,'an action without a position');
+ // No Town Center and no position: the answer asks for the position.
+ assert.match(h.m.executeBuildStructure(h.ai,h.game,'tower',undefined,undefined),/needs "targetX" and "targetZ" here: you have no Town Center/);
+});
