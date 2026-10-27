@@ -502,7 +502,7 @@ class Game {
         if (oppBar) oppBar.style.display = 'none';
 
         await this.waitForArenaScene();
-        this.gameStarted = true;
+        this.gameStarted = true; this.arenaEndedAt = null;
         if (this._arenaCover && this.ui.floatArenaLineup) this.ui.floatArenaLineup(this._arenaCover);
         this.sound?.matchStart();
         // Start game loop
@@ -517,7 +517,7 @@ class Game {
     // use these civs/controllers instead of the round-robin default.
     startGame(mode, numAI, opponentConfigs = null, visualShowcase = false) {
         this.ui.showScreen('gameScreen');
-        this.gameStarted = true;
+        this.gameStarted = true; this.arenaEndedAt = null;
 
         // In spectator mode, reset spectatorMode flag (it was set by startSpectatorMode)
         // spectatorMode is already true from startSpectatorMode()
@@ -6760,6 +6760,9 @@ class Game {
         if (!this.gameStarted) return; // guard against double-trigger
         this.sound?.notify(winnerAi?'victory':'defeat',true,{civilization:winnerAi?.civilization});
         this.gameStarted = false;
+        // When play stopped: a seat's silence ends here, not when the results are drawn
+        // after the closing questions (ui.seatMetrics).
+        this.arenaEndedAt = Date.now();
         // Ask whoever is still standing for a closing statement BEFORE stop(), which
         // aborts every controller's in-flight request. The question carries its own
         // abort handle so it survives that, but firing first keeps the order honest:

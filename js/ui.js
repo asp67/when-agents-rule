@@ -5326,7 +5326,11 @@ class UIManager {
         // see.
         const lats = (lat || []).slice();
         const med = (arr) => arr.length ? arr.slice().sort((a, b) => a - b)[arr.length >> 1] : 0;
-        const silentMs = st.lastAnswerAt ? Math.max(0, Date.now() - st.lastAnswerAt) : 0;
+        // Measured to the end of play, not to now: the results are drawn after the closing
+        // questions, and a final word that took three minutes made the winner "silent for
+        // the last 4 min" (asp67, 27 Oct, Hermes). The closing question is not a turn.
+        const until = (this.game && !this.game.gameStarted && this.game.arenaEndedAt) || Date.now();
+        const silentMs = st.lastAnswerAt ? Math.max(0, until - st.lastAnswerAt) : 0;
         return {
             decisions: st.requests, responded,
             // Split late from early, so a degrading endpoint reads as a CHANGE

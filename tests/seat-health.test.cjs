@@ -18,6 +18,18 @@ const stats = over => Object.assign({ requests: 0, latencies: [], timeouts: 0, n
     actionsAttempted: 0, actionsSucceeded: 0, actionsContended: 0, reasonsGiven: 0, invalidActions: 0, actionsRejected: 0,
     actionCounts: {}, turnsExecuted: 0 }, over);
 
+// asp67, 27 Oct: Hermes won and was tagged "silent for the last 4 min" -- the three
+// minutes its final word took were counted as silence. Silence ends with the match.
+test('silence is measured to the end of play, not to when the results are drawn', () => {
+    const u = ui();
+    const end = Date.now() - 200000;
+    u.game = { gameStarted: false, arenaEndedAt: end };
+    const m = u.seatMetrics({ stats: stats({ requests: 5, latencies: [5000], lastAnswerAt: end - 30000 }) });
+    assert.equal(m.silentMs, 30000);
+    u.game = { gameStarted: true, arenaEndedAt: end };       // a new match: silence is live again
+    assert.ok(u.seatMetrics({ stats: stats({ requests: 5, latencies: [5000], lastAnswerAt: Date.now() - 90000 }) }).silentMs >= 90000);
+});
+
 test('nothing is shown before the seat has done anything', () => {
     const u = ui();
     const m = u.seatMetrics({ stats: stats({}) });
