@@ -1317,6 +1317,11 @@ class UIManager {
         list.innerHTML = rows.length
             ? rows.map(r => this.renderModelCard(r.m, r.n)).join('')
             : `<p class="lib-empty">${t('ar.libEmpty')}</p>`;
+        // The hub hears the arena's MCP seats with their addresses as they are now: a new
+        // address, or an entry just made an MCP seat, was listed only once the setup was
+        // drawn again, and its harness's join was refused (asp67, 27 Oct, Antigravity).
+        // Not during a match: its seats keep the addresses it started with.
+        if (!(this.game && this.game.gameStarted) && typeof this.refreshSeatReadiness === 'function') this.refreshSeatReadiness();
     }
 
     // The card's way to this model's benchmark results: enabled once it has any (b1092).
