@@ -1812,7 +1812,9 @@ body.spectator-mode #unitInfo.spectator-card {
 .mcp-copy { flex: 0 0 auto; align-self: flex-start; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: #c9d1e0; border-radius: 4px; padding: 3px 10px; font-size: 0.78em; line-height: 1.4; cursor: pointer; white-space: nowrap; }
 .mcp-copy:hover { background: rgba(255,255,255,0.12); color: #fff; }
 .mcp-copy.done { border-color: #4caf6a; color: #9fd3ad; }
-.mcp-copy.seat-copy { align-self: center; margin-left: 8px; }
+.mcp-copy.seat-copy { align-self: center; margin-left: auto; }
+/* The start message comes first (it is what you do before the harness can join), the dot after it. */
+.seat-copy + .seat-ready { margin-left: 8px; }
 .mcp-shells { display: flex; gap: 6px; margin: 4px 0; }
 .mcp-shell { background: transparent; border: 1px solid rgba(255,255,255,0.15); color: #9aa6bd; border-radius: 4px; padding: 2px 10px; cursor: pointer; font-size: 0.85em; }
 .mcp-shell.on { border-color: var(--gold, #c9a45c); color: #fff; }

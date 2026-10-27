@@ -1748,8 +1748,8 @@ class UIManager {
                     <span class="arena-slot-title">${slotTitle(i)}</span>
                     <span class="arena-slot-summary">${civNames[slot.civ] || slot.civ} · ${e(ctrlName)}</span>
                     <span class="slot-prompt-badge" id="slotPromptBadge${i}" title="${t('ar.promptEditedTitle')}" style="${isLLM && slot.prompt != null ? '' : 'display:none'}">✎ ${t('ar.promptEdited')}</span>
-                    ${(!campaign && typeof this.seatReadyHtml === 'function') ? this.seatReadyHtml(slot, i) : ''}
                     ${(!campaign && typeof this.seatPlayCopyHtml === 'function') ? this.seatPlayCopyHtml(slot) : ''}
+                    ${(!campaign && typeof this.seatReadyHtml === 'function') ? this.seatReadyHtml(slot, i) : ''}
                 </div>
                 ${collapsed ? '' : body}
             </div>`;
