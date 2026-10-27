@@ -153,7 +153,7 @@ const BUILDING_DEFS = {
         range: 50,
         requiredAge: 'bronze',
         requiresTech: 'siege_engineering',
-        description: 'Belagerungsmaschine: fertig ein Tribok auf Rädern (Geschwindigkeit 0,16), der im Stand Steine auf feindliche Türme wirft',
+        description: 'Belagerungsmaschine: fertig ein Tribok auf Rädern (Geschwindigkeit 0,25), der im Stand Steine auf feindliche Türme wirft',
         buildTime: BASE_BUILD_TIME * 2  // 20 seconds to build
     },
     // The advanced engine's site (b1110, asp67: "allow both models per selection in iron
@@ -170,7 +170,7 @@ const BUILDING_DEFS = {
         range: 60,
         requiredAge: 'iron',
         requiresTech: 'siege_engineering',
-        description: 'Schwere Belagerungsmaschine (ab der Eisenzeit): fertig ein schwerer Tribok auf Rädern (Geschwindigkeit 0,32), der im Stand Steine auf feindliche Türme wirft',
+        description: 'Schwere Belagerungsmaschine (ab der Eisenzeit): fertig ein schwerer Tribok auf Rädern (Geschwindigkeit 0,5), der im Stand Steine auf feindliche Türme wirft',
         buildTime: BASE_BUILD_TIME * 2  // 20 seconds to build
     }
 };
@@ -184,8 +184,8 @@ const BUILDING_DEFS = {
 // the iron age buys a faster, sturdier engine and more time throwing before the defenders
 // arrive, not one no guard can answer (asp67). Health is flat.
 const TREBUCHET_TIERS = {
-    simple:   { health: 200, attack: 150, range: 50,   watch: 120, reloadMs: 6000, speed: 0.16, unit: 'simple_trebuchet' },
-    advanced: { health: 400, attack: 200, range: 60,   watch: 144, reloadMs: 6000, speed: 0.32, unit: 'advanced_trebuchet' }
+    simple:   { health: 200, attack: 150, range: 50,   watch: 120, reloadMs: 6000, speed: 0.25, unit: 'simple_trebuchet' },
+    advanced: { health: 400, attack: 200, range: 60,   watch: 144, reloadMs: 6000, speed: 0.5, unit: 'advanced_trebuchet' }
 };
 // How far around each enemy tower a trebuchet's watch reveals.
 const TREBUCHET_TOWER_REVEAL = 20;

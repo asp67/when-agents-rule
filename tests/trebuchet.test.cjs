@@ -159,7 +159,7 @@ test('a finished iron-age trebuchet becomes a unit on wheels where it stood, wit
     const { site, unit } = mobile(b, 10, 20);
     assert.ok(unit, 'a unit');
     assert.ok(!a.buildings.includes(site) && !g.getAllBuildings().includes(site), 'the site is gone');
-    assert.equal(unit.type, 'advanced_trebuchet'); assert.equal(unit.unitType, 'siege'); assert.equal(unit.speed, 0.32); assert.equal(unit.attack, 0);
+    assert.equal(unit.type, 'advanced_trebuchet'); assert.equal(unit.unitType, 'siege'); assert.equal(unit.speed, 0.5); assert.equal(unit.attack, 0);
     assert.equal(unit.maxHealth, 400); assert.equal(unit.health, 150, 'the damage the site took');
     assert.equal(unit.x, 10); assert.equal(unit.z, 20); assert.equal(unit._spawnDir, 1.2, 'facing as the site did');
     assert.equal(unit.siegeAttack, 200); assert.equal(unit.range, 60); assert.equal(unit.watch, 144);
@@ -192,7 +192,7 @@ test('a bare order takes it along like any unit; in a formation it marches as ra
     const r = String(m.command(ca, 'move_units', { unitIds: [unit.handle, ...w.map(u => u.handle)], targetX: -40, targetZ: 0, formation: 'line', reason: 'named' }));
     assert.doesNotMatch(r, /\[ERROR\]/);
     assert.ok(unit._standingOrder && unit._standingOrder === w[0]._standingOrder, 'it marches with them');
-    assert.equal(w[0].marchSpeed, 0.32, 'the formation goes at its pace');
+    assert.equal(w[0].marchSpeed, 0.5, 'the formation goes at its pace');
     const slots = unit._standingOrder.slots;
     const ahead = s => (s.x - -100);   // the march runs +x
     assert.ok(ahead(slots.get(unit)) < Math.min(...w.map(u => ahead(slots.get(u)))), 'a ranged slot, behind the melee');
@@ -327,18 +327,18 @@ test('engineers and villagers mend a trebuchet together', () => {
 // asp67: "Seats keep treating the trebuchet as a unit and thus expecting it to move ...
 // add wheels to the simple trebuchet and let it move at the speed of the advanced
 // trebuchet and double the speed of the advanced trebuchet." (b1110)
-test('a bronze-age trebuchet rolls off as the simple engine on wheels at 0.16; the iron-age one at 0.32', () => {
+test('a bronze-age trebuchet rolls off as the simple engine on wheels at 0.25; the iron-age one at 0.5', () => {
     const { m, a, g } = board();   // bronze
     const site = m.addBuilding(a, 'trebuchet', 0, 0, { underConstruction: true, health: 100, buildProgress: 20000 });
     g.completeConstruction(site);
     const simple = a.units.find(u => u.unitType === 'siege');
     assert.equal(simple.type, 'simple_trebuchet');
-    assert.equal(simple.speed, 0.16); assert.equal(simple.maxHealth, 200); assert.equal(simple.range, 50);
+    assert.equal(simple.speed, 0.25); assert.equal(simple.maxHealth, 200); assert.equal(simple.range, 50);
     assert.equal(simple.siegeAttack, 150); assert.equal(simple.watch, 120); assert.equal(simple.advanced, false);
-    assert.equal(ev(m, 'UNIT_DEFS.advanced_trebuchet.speed'), 0.32);
+    assert.equal(ev(m, 'UNIT_DEFS.advanced_trebuchet.speed'), 0.5);
     // What each engine becomes, and how fast it rolls.
     assert.equal(ev(m, `trebuchetTier('bronze').unit`), 'simple_trebuchet');
-    assert.equal(ev(m, `trebuchetTier('iron').speed`), 0.32);
+    assert.equal(ev(m, `trebuchetTier('iron').speed`), 0.5);
 });
 
 // asp67: "allow both models per selection in iron age, since a basic trebuchet is
@@ -346,7 +346,7 @@ test('a bronze-age trebuchet rolls off as the simple engine on wheels at 0.16; t
 test('in the iron age both engines can be chosen: a trebuchet site stays the simple engine', () => {
     const b = board(); b.a.age = 'iron';
     const { m, a, g } = b;
-    for (const [type, unit, speed] of [['trebuchet', 'simple_trebuchet', 0.16], ['trebuchet_advanced', 'advanced_trebuchet', 0.32]]) {
+    for (const [type, unit, speed] of [['trebuchet', 'simple_trebuchet', 0.25], ['trebuchet_advanced', 'advanced_trebuchet', 0.5]]) {
         const site = m.addBuilding(a, type, 0, 0, { underConstruction: true, health: 50, buildProgress: 20000 });
         g.completeConstruction(site);
         const u = a.units.find(x => x.type === unit);
@@ -414,7 +414,7 @@ test('a stone does its damage when it lands, even if its trebuchet is destroyed 
 // formation, make sure that until the trebuchet is destroyed, the formation does not
 // charge into the tower to be annihilated."
 test('a formation besieging a tower with a trebuchet stands off until the trebuchet is gone, then attacks', () => {
-  for (const [siteType, unitType, speed] of [['trebuchet', 'simple_trebuchet', 0.16], ['trebuchet_advanced', 'advanced_trebuchet', 0.32]]) {
+  for (const [siteType, unitType, speed] of [['trebuchet', 'simple_trebuchet', 0.25], ['trebuchet_advanced', 'advanced_trebuchet', 0.5]]) {
     const { m, a, b, g, ca } = board();
     const tower = m.addBuilding(b, 'tower', 0, 0);
     const site = m.addBuilding(a, siteType, -45, 0, { underConstruction: true, health: 100, buildProgress: 20000 });
@@ -503,9 +503,9 @@ test('an attack to a point paces its formation to the trebuchet it names, and sa
     const { unit } = mobile(b, -100, 0);
     const w = [0, 1, 2].map(i => m.addUnit(a, 'warrior', -100, 4 + i * 2));
     const r = String(m.command(ca, 'attack_target', { unitIds: [unit.handle, ...w.map(u => u.handle)], targetX: 100, targetZ: 0, matchSpeed: 'slowestUnit', reason: 'march' }));
-    assert.match(r, /all marching at 0\.32 \(advanced_trebuchet pace\)/, r);
+    assert.match(r, /all marching at 0\.5 \(advanced_trebuchet pace\)/, r);
     assert.match(r, new RegExp('advanced_trebuchet #' + unit.handle + ' goes with them'), r);
-    assert.ok(w.every(u => u.marchSpeed === 0.32), 'the fighters held to its pace');
+    assert.ok(w.every(u => u.marchSpeed === 0.5), 'the fighters held to its pace');
     m.run(30000);
     const lead = Math.max(...w.map(u => u.x));
     assert.ok(lead - unit.x < 20, 'still together: fighters ' + lead.toFixed(1) + ', trebuchet ' + unit.x.toFixed(1));
@@ -743,7 +743,7 @@ test('a trebuchet built by an engineer from a formation joins that formation, wh
     const g = army[0]._standingOrder;
     assert.ok(g && engine._standingOrder === g, 'in the army\'s formation');
     assert.ok(g.slots.has(engine), 'with a slot of its own');
-    assert.ok(army.every(u => u.marchSpeed === 0.16), 'the formation held to slowest now goes at its pace');
+    assert.ok(army.every(u => u.marchSpeed === 0.25), 'the formation held to slowest now goes at its pace');
     // The next whole-army order takes it along.
     m.command(ca, 'move_units', { targetX: 0, targetZ: 60, reason: 'onward' });
     assert.ok(engine._standingOrder && engine._standingOrder === army[0]._standingOrder, 'it marches on with them');

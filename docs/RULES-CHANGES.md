@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1128: trebuchets roll at 0.25 and 0.5 (27 October 2026)
+
+**Rules change.** asp67: the trebuchets "take too long to traverse the map in a wonder scenario". A seat can build one at a staging point instead, so the faster pace is for engines left somewhere on the field when a Wonder goes up.
+
+**Now:**
+- `simple_trebuchet` rolls at 0.25 (was 0.16) and `advanced_trebuchet` at 0.5 (was 0.32). At the game's 3 map units per second for speed 1.0, that is 0.75 and 1.5 units a second: a quarter and a half of a worker's pace. The advanced engine stays twice as fast as the simple one.
+- A formation with a trebuchet marches at its pace as before, so an army with a trebuchet now moves 56% faster.
+- The unit and site descriptions say the new speeds, in all four languages. The system prompt does too (`agents-rule-v111`).
+- **Tests:** `tests/trebuchet.test.cjs` checks the new speeds and the march pace they set.
+
 ## Build 1113: a formation standing for its trebuchet forms up without twitching (26 October 2026)
 
 **Rules change.** asp67, with a screen recording of a running match: "Simple trebuchet catching up to the formation leads to this" -- a wedge whose soldiers twitch on the spot.

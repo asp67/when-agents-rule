@@ -168,22 +168,22 @@ const UNIT_DEFS = {
         name: 'Tribok',
         cost: { food: 0, wood: 0, stone: 0, gold: 0 },
         health: 200,
-        speed: 0.16,
+        speed: 0.25,
         attack: 0,
         range: 50,
         type: 'siege',
-        description: 'Tribok auf Rädern, Geschwindigkeit 0,16: wirft im Stand Steine auf feindliche Türme'
+        description: 'Tribok auf Rädern, Geschwindigkeit 0,25: wirft im Stand Steine auf feindliche Türme'
     },
     advanced_trebuchet: {
         id: 'advanced_trebuchet',
         name: 'Schwerer Tribok',
         cost: { food: 0, wood: 0, stone: 0, gold: 0 },
         health: 400,
-        speed: 0.32,
+        speed: 0.5,
         attack: 0,
         range: 60,
         type: 'siege',
-        description: 'Schwerer Tribok auf Rädern, Geschwindigkeit 0,32: wirft im Stand Steine auf feindliche Türme'
+        description: 'Schwerer Tribok auf Rädern, Geschwindigkeit 0,5: wirft im Stand Steine auf feindliche Türme'
     }
 };
 
