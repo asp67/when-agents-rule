@@ -11,16 +11,18 @@
     const HUB_DEFAULT = 'http://127.0.0.1:8765';
     const ROUND_SEC = 180;   // asp67, 26 Oct: the longest turn that still makes sense; to be measured
 
-    // The harnesses with a known way in. `prompts`: it shows MCP prompts as commands.
+    // The harnesses with a known way in. `goal`: it has a /goal command that keeps it
+    // working until a condition holds -- without it Hermes stopped at its tool-call limit
+    // and Claude Code stopped to ask what to do (asp67, 27 Oct: "/goal worked").
     const HARNESSES = [
-        { id: 'claude-code', name: 'Claude Code', prompts: true },
+        { id: 'claude-code', name: 'Claude Code', goal: true },
         { id: 'chatgpt', name: 'ChatGPT' },
         { id: 'codex', name: 'Codex CLI' },
         { id: 'antigravity', name: 'Google Antigravity' },
         { id: 'zcode', name: 'ZCode' },
         { id: 'dsh', name: 'DeepSeek Harness' },
-        { id: 'hermes', name: 'Hermes Agent' },
-        { id: 'openclaw', name: 'OpenClaw' },
+        { id: 'hermes', name: 'Hermes Agent', goal: true },
+        { id: 'openclaw', name: 'OpenClaw', goal: true },
         { id: 'opencode', name: 'OpenCode' },
         { id: 'other', name: null }
     ];
@@ -129,25 +131,44 @@
 `
                 + `Do not stop to explain or to ask me anything: keep calling the tools until the match is over.`;
         },
-        mcpStartLine(m) {
+        // What to tell the harness once the seat waits for it. Short: the hub hands every
+        // harness the loop itself (its instructions, join's answer), and "play WAR" was all
+        // asp67 ever typed. It names the server, so a harness with several WAR seats picks
+        // the right one; where the harness has /goal, the goal keeps it playing to the end.
+        mcpPlayLine(m) {
+            const n = this.mcpServerName(m);
             const h = HARNESSES.find(x => x.id === m.harness);
+            return h && h.goal
+                ? `/goal play WAR with the MCP server ${n}: call join, then keep playing until wait_for_turn reports that the match is over`
+                : `play WAR with the MCP server ${n}`;
+        },
+        mcpStartLine(m) {
             // Claude Code: start the session with our tools allowed, so no permission prompt
             // stops the match (asp67's first Claude Code game needed nudging at the start).
-            if (m.harness === 'claude-code') return `claude --allowedTools "mcp__${this.mcpServerName(m)}__*"
-/mcp__${this.mcpServerName(m)}__play`;
-            return h && h.prompts ? `/mcp__${this.mcpServerName(m)}__play` : this.mcpKickoff(m);
+            if (m.harness === 'claude-code') return `claude --allowedTools "mcp__${this.mcpServerName(m)}__*"\n` + this.mcpPlayLine(m);
+            return this.mcpPlayLine(m);
+        },
+        // The same line in the arena setup's seat row, where the seat waits for its harness.
+        seatPlayCopyHtml(slot) {
+            const m = slot && slot.control !== 'ki' && (this._arenaConfig.models || []).find(x => x.id === slot.control);
+            if (!m || m.provider !== 'mcp' || !m.mcpToken) return '';
+            const line = this.mcpPlayLine(m);
+            return this.mcpCopyBtn(line, { label: t('mcp.seatCopy'), title: t('mcp.seatCopyTip', { line }), stop: true });
         },
 
         // Copy buttons: the text lives here, not in the markup, so nothing needs escaping twice.
-        mcpCopyBtn(text) {
+        mcpCopyBtn(text, opt = {}) {
             const k = (this._mcpCopyN = (this._mcpCopyN || 0) + 1);
             (this._mcpCopy || (this._mcpCopy = new Map())).set(k, text);
-            return `<button type="button" class="mcp-copy" onclick="game.ui.mcpCopy(${k}, this)">⧉ ${t('mcp.copy')}</button>`;
+            const e = s => this.escapeHtml(String(s));
+            const attr = s => e(s).replace(/"/g, '&quot;');   // the tip quotes "waiting for harness"
+            return `<button type="button" class="mcp-copy${opt.stop ? ' seat-copy' : ''}"${opt.title ? ` title="${attr(opt.title)}"` : ''} onclick="${opt.stop ? 'event.stopPropagation(); ' : ''}game.ui.mcpCopy(${k}, this)">⧉ ${e(opt.label || t('mcp.copy'))}</button>`;
         },
         mcpCopy(k, btn) {
             const text = this._mcpCopy && this._mcpCopy.get(k);
             if (text == null) return;
-            const done = () => { if (btn) { btn.textContent = '✓ ' + t('mcp.copied'); btn.classList.add('done'); setTimeout(() => { btn.textContent = '⧉ ' + t('mcp.copy'); btn.classList.remove('done'); }, 1500); } };
+            const label = btn ? btn.textContent : '';
+            const done = () => { if (btn) { btn.textContent = '✓ ' + t('mcp.copied'); btn.classList.add('done'); setTimeout(() => { btn.textContent = label; btn.classList.remove('done'); }, 1500); } };
             if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => this.mcpCopyFallback(text, done));
             else this.mcpCopyFallback(text, done);
         },
@@ -246,6 +267,8 @@
             <h3>${t('mcp.step3')}</h3>
             <p class="arena-hint">${e(t('mcp.step3Hint'))}</p>
             ${this.mcpCode(this.mcpStartLine(m))}
+            <p class="arena-hint">${e(t('mcp.step3Long'))}</p>
+            ${this.mcpCode(this.mcpKickoff(m))}
             </section>
             </div>
         </div>`;
