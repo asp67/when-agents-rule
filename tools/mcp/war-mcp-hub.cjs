@@ -19,7 +19,7 @@
 'use strict';
 const http = require('http'), crypto = require('crypto'), fs = require('fs'), path = require('path');
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';   // 0.2.0: check_connection, and a page may watch a seat (the setup assistant)
 const PROTOCOLS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -73,7 +73,13 @@ const META_TOOLS = [
       inputSchema: { type: 'object', properties: {}, required: [] } },
     { name: 'final_word', description: 'Only when the match has ended and wait_for_turn handed you its final message: '
         + 'your answer to it, in your own words. Nothing is executed; it is recorded with the match.',
-      inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'Your final word on the match.' } }, required: ['text'] } }
+      inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'Your final word on the match.' } }, required: ['text'] } },
+    // The setup assistant's test (asp67, 27 Oct): a call that proves the harness reaches the
+    // hub and may use its tools, and starts nothing -- join would set a harness polling for
+    // turns, spending tokens until a match begins.
+    { name: 'check_connection', description: 'Only for setting up: confirms that this harness reaches WAR and may use its tools. '
+        + 'It is not a game command: it does nothing in a match.',
+      inputSchema: { type: 'object', properties: {}, required: [] } }
 ];
 
 // What the harnesses do, one line each, in the hub's window (--quiet turns it off): the
@@ -109,6 +115,14 @@ function toPage(obj) {
     const s = obj && obj.token ? seats.get(obj.token) : null;
     if (s && s.page && pages.has(s.page)) s.page.send(obj);
 }
+// What the setup assistant follows on the page that watches a seat it has not listed for an
+// arena: the harness got in touch, made a call, passed the check. Never turns or actions:
+// those belong to the page playing the seat, and a watcher answering one would race it.
+function toWatcher(obj) {
+    const s = obj && obj.token ? seats.get(obj.token) : null;
+    if (s && s.watchPage && s.watchPage !== s.page && pages.has(s.watchPage)) s.watchPage.send(obj);
+}
+const tellPages = obj => { toPage(obj); toWatcher(obj); };
 
 function fromPage(msg, pg) {
     switch (msg && msg.type) {
@@ -186,6 +200,19 @@ function fromPage(msg, pg) {
             log(s.token, 'match over');
             break;
         }
+        case 'watch': {                // the setup assistant follows this seat (not an arena)
+            if (!TOKEN_RE.test(msg.token || '')) return;
+            const s = seat(msg.token);
+            s.watchPage = pg;
+            if (s.seen) pg.send({ type: 'harness', token: s.token, connected: true });
+            if (s.checked) pg.send({ type: 'check', token: s.token });
+            break;
+        }
+        case 'unwatch': {
+            const s = seats.get(msg.token);
+            if (s && s.watchPage === pg) s.watchPage = null;
+            break;
+        }
         case 'close':
             for (const s of seats.values()) if (s.page === pg) release(s);
             break;
@@ -253,6 +280,20 @@ async function callTool(token, name, args, signal) {
     }
     // After the end every call hears it, joined or not: a harness busy when the match
     // ended got "Call join first" for its end_turn and rejoined to find out (asp67, 26 Oct).
+    // Answered in every state, and in a match it says plainly what it is not: a model that
+    // tries it mid-game must not take it for a command or think it lost a turn (asp67).
+    if (name === 'check_connection') {
+        s.checked = true;
+        tellPages({ type: 'check', token });
+        log(token, 'connection checked');
+        const what = 'check_connection only confirms the connection while setting up: it is not a game command, changed nothing'
+            + (s.turn ? ' and did not use one of your commands' : '') + '.';
+        if (s.over) return textResult(`Connected. ${what} The match is over: stop playing.`);
+        if (s.turn) return textResult(`Connected. ${what} It is still your turn: give your game commands, then call end_turn.`);
+        if (s.joined) return textResult(`Connected. ${what} ${NEXT_WAIT}`);
+        return textResult('Connected: WAR reaches this harness, and its tools work. Nothing more to do now: stop here. '
+            + 'When the user starts a match, they will send you the message to play; until then, call no other WAR tool.');
+    }
     if (name === 'final_word') {
         if (s.final == null) return textResult('There is no final message to answer.' + (s.over ? ' The match is over: stop playing.' : ''));
         toPage({ type: 'final_word', token, text: String((args && args.text) || '') });
@@ -309,10 +350,10 @@ async function rpc(token, msg, signal) {
     if (!msg || msg.jsonrpc !== '2.0' || typeof method !== 'string') return fail(-32600, 'Invalid Request');
     if (id === undefined) return null;   // a notification: nothing to answer
     const s = seat(token);
-    if (!s.seen) { s.seen = true; if (s.listed) toPage({ type: 'harness', token, connected: true }); }
+    if (!s.seen) { s.seen = true; tellPages({ type: 'harness', token, connected: true }); }
     // Every call tells the page the harness is still at it: a seat whose harness has gone
     // quiet for longer than a round is marked "harness idle" in the arena.
-    toPage({ type: 'call', token });
+    tellPages({ type: 'call', token });
     switch (method) {
         case 'initialize': {
             const asked = params && params.protocolVersion;

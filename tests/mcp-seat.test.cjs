@@ -127,7 +127,7 @@ test('a seat\'s dot is green only while its harness is joined: not after the mat
     await new Promise(r => setTimeout(r, 100));
     assert.equal(link.status(TOKEN).joined, true);
     link.over(TOKEN, {});
-    assert.deepEqual(link.status(TOKEN), { hub: true, harness: true, joined: false }, 'after the match: harness in, not joined');
+    assert.deepEqual(link.status(TOKEN), { hub: true, harness: true, joined: false, checked: false }, 'after the match: harness in, not joined');
     assert.match(await join(), /joined as seat 1/);
     await new Promise(r => setTimeout(r, 100));
     assert.equal(link.status(TOKEN).joined, true);
@@ -138,7 +138,7 @@ test('a seat\'s dot is green only while its harness is joined: not after the mat
     for (let i = 0; i < 40 && !link.hubUp; i++) await new Promise(r => setTimeout(r, 100));
     assert.equal(link.hubUp, true, 'reconnected');
     await new Promise(r => setTimeout(r, 100));
-    assert.deepEqual(link.status(TOKEN), { hub: true, harness: false, joined: false }, 'red: waiting for the harness');
+    assert.deepEqual(link.status(TOKEN), { hub: true, harness: false, joined: false, checked: false }, 'red: waiting for the harness');
 });
 
 // The "harness idle" marker reads how long the seat's harness has made no call to the hub.

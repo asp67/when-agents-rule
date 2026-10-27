@@ -200,6 +200,146 @@
             }
         },
 
+        // Under the arena's seats, while any of them is an MCP seat: how such a match starts
+        // (asp67, 27 Oct). The steps the seat row's button and dot stand for, in words.
+        renderMcpArenaNote() {
+            const list = document.getElementById('arenaSlotsList');
+            if (!list) return;
+            let note = document.getElementById('mcpArenaNote');
+            const models = this._arenaConfig ? this._arenaConfig.models || [] : [];
+            const mcp = this._setupMode !== 'campaign' && this.setupSlots().slice(0, this.setupSlotCount())
+                .some(s => s.control !== 'ki' && (models.find(m => m.id === s.control) || {}).provider === 'mcp');
+            if (!mcp) { if (note) note.remove(); return; }
+            if (!note) {
+                note = document.createElement('div');
+                note.id = 'mcpArenaNote';
+                note.className = 'mcp-arena-note';
+                list.insertAdjacentElement('afterend', note);
+            }
+            const e = s => this.escapeHtml(String(s == null ? '' : s));
+            note.innerHTML = `<strong>${e(t('mcp.note.title'))}</strong><ol>`
+                + ['mcp.note.s1', 'mcp.note.s2', 'mcp.note.s3'].map(k => `<li>${e(t(k))}</li>`).join('') + '</ol>';
+        },
+
+        // ---- the setup assistant (asp67, 27 Oct) --------------------------------------
+        // Optional, for whoever finds the three steps of the card hard: it leads through
+        // starting the hub, letting the harness add the server itself, and one harmless test
+        // call, and checks each step by itself. No time limit anywhere: a harness took up to
+        // five minutes to set itself up (Hermes first worked out what an MCP server is), so a
+        // step only waits, and after a while offers hints. No config patching here: the
+        // harness's own setup worked for every harness asp67 tried.
+        openMcpAssistant(id) {
+            const m = this.getArenaModel(id);
+            if (!m || m.provider !== 'mcp' || !m.mcpToken) return;
+            if (this.game && this.game.gameStarted) return;   // its seats keep their state
+            this.closeMcpAssistant();
+            const dlg = document.createElement('dialog');
+            dlg.className = 'confirm-overlay mcp-assist';
+            dlg.innerHTML = '<div class="confirm-dialog mcp-assist-box" id="mcpAssistBox"></div>';
+            const a = this._mcpAs = { id, dlg, step: 1, hub: null, stepSince: Date.now(), link: null, off: null, drawn: 0 };
+            dlg.addEventListener('close', () => { if (this._mcpAs === a) this.closeMcpAssistant(); }, { once: true });
+            this.mountDialog(dlg);
+            a.timer = setInterval(() => this.mcpAssistTick(), 2000);
+            this.mcpAssistTick();
+        },
+        closeMcpAssistant() {
+            const a = this._mcpAs;
+            if (!a) return;
+            this._mcpAs = null;
+            clearInterval(a.timer);
+            if (a.off) a.off();
+            const m = this.getArenaModel(a.id);
+            if (m && a.link) a.link.unwatch(m.mcpToken);
+            if (a.dlg.open) a.dlg.close();
+        },
+        // A hub from before the assistant has no check_connection: it must be started anew.
+        mcpHubCurrent(v) { const [maj, min] = String(v || '0').split('.').map(Number); return maj > 0 || min >= 2; },
+        async mcpAssistTick() {
+            const a = this._mcpAs;
+            if (!a) return;
+            const m = this.getArenaModel(a.id);
+            if (!m) return this.closeMcpAssistant();
+            if (a.step === 1) {
+                try {
+                    const s = await (await fetch(this.mcpHub(m) + '/status', { cache: 'no-store' })).json();
+                    a.hub = { ok: true, version: s.version || '0' };
+                } catch (e) { a.hub = { ok: false }; }
+                if (this._mcpAs !== a) return;
+                if (a.hub.ok && this.mcpHubCurrent(a.hub.version)) this.mcpAssistStep(2);
+            } else if (a.link) {
+                const st = a.link.status(m.mcpToken);
+                if (a.step === 2 && st.harness) this.mcpAssistStep(3);
+                if (a.step === 3 && st.checked) this.mcpAssistStep(4);
+            }
+            this.renderMcpAssistant();
+        },
+        mcpAssistStep(step) {
+            const a = this._mcpAs, m = this.getArenaModel(a.id);
+            if (step >= 2 && !a.link && typeof WarMcpLink === 'function') {
+                a.link = WarMcpLink.shared(this.mcpHub(m));
+                a.link.connect();
+                a.link.watch(m.mcpToken);
+                a.off = a.link.onChange(tok => { if (tok === m.mcpToken) this.mcpAssistTick(); });
+            }
+            a.step = step;
+            a.stepSince = Date.now();
+            if (step === 4) clearInterval(a.timer);
+        },
+        mcpCheckMessage(m) {
+            return `Call the tool check_connection of the MCP server ${this.mcpServerName(m)} once, and tell me what it answered. Call no other tool of it.`;
+        },
+        // Drawn whole when the step changes; between, only the waiting line, so a copy
+        // button keeps its "Copied" and a selection survives the two-second check.
+        renderMcpAssistant(force) {
+            const a = this._mcpAs;
+            const box = a && document.getElementById('mcpAssistBox');
+            if (!box) return;
+            const m = this.getArenaModel(a.id);
+            const e = s => this.escapeHtml(String(s == null ? '' : s));
+            if (!force && a.drawn === a.step) {
+                const el = document.getElementById('mcpAsStatus');
+                if (el) el.innerHTML = this.mcpAssistStatus(a, m);
+                return;
+            }
+            a.drawn = a.step;
+            const shell = this.mcpShell();
+            const tab = (v, label) => `<button type="button" class="mcp-shell ${shell === v ? 'on' : ''}" onclick="game.ui.mcpSetShell('${v}'); game.ui.renderMcpAssistant(true)">${label}</button>`;
+            const harnessOpts = HARNESSES.map(h => `<option value="${h.id}" ${m.harness === h.id ? 'selected' : ''}>${e(h.name || t('mcp.otherHarness'))}</option>`).join('');
+            const status = `<div id="mcpAsStatus">${this.mcpAssistStatus(a, m)}</div>`;
+            const bodies = {
+                1: `<p>${e(t('mcp.as.s1Hint'))}</p><div class="mcp-shells">${tab('ps', 'PowerShell')}${tab('sh', 'bash')}</div>
+                    ${this.mcpCode(this.mcpStartCommand(shell))}
+                    <p class="arena-hint">${e(t('mcp.as.s1Node'))}</p><p class="arena-hint">${e(t('mcp.chromeNote'))}</p>${status}`,
+                2: `<div class="arena-field"><label>${e(t('mcp.as.s2Pick'))}</label>
+                    <select onchange="game.ui.mcpSetField(${m.id},'harness',this.value)">${harnessOpts}</select></div>
+                    <p>${e(t('mcp.as.s2Hint'))}</p>${this.mcpCode(this.mcpSelfSetup(m))}
+                    <p class="arena-hint">${e(t('mcp.as.s2Patience'))}</p>${status}`,
+                3: `<p>${e(t('mcp.as.s3Hint'))}</p>${this.mcpCode(this.mcpCheckMessage(m))}
+                    <p class="arena-hint">${e(t('mcp.as.s3Allow'))}</p>${status}`,
+                4: `<p class="mcp-as-ok">${e(t('mcp.as.s4Text'))}</p>`
+            };
+            const titles = { 1: t('mcp.as.s1'), 2: t('mcp.as.s2'), 3: t('mcp.as.s3'), 4: t('mcp.as.s4') };
+            const steps = [1, 2, 3, 4].map(k => {
+                const cls = a.step > k ? 'done' : a.step === k ? 'now' : 'later';
+                return `<section class="mcp-as-step ${cls}"><h4>${a.step > k || k === 4 && a.step === 4 ? '✓' : k + '.'} ${e(titles[k])}</h4>${a.step === k ? bodies[k] : ''}</section>`;
+            }).join('');
+            box.innerHTML = `<h3 class="confirm-title">🧭 ${e(t('mcp.as.title', { name: this.modelDisplayName ? this.modelDisplayName(m) : (m.name || '') }))}</h3>
+                ${steps}
+                <div class="confirm-actions"><button type="button" class="menu-btn" onclick="game.ui.closeMcpAssistant()">${e(t(a.step === 4 ? 'mcp.as.done' : 'mcp.as.close'))}</button></div>`;
+        },
+        mcpAssistStatus(a, m) {
+            const e = s => this.escapeHtml(String(s == null ? '' : s));
+            const sec = Math.floor((Date.now() - a.stepSince) / 1000);
+            const clock = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+            const wait = text => `<p class="mcp-as-wait"><span class="mcp-as-spin"></span>${e(text)} <span class="mcp-as-clock">${clock}</span></p>`;
+            const late = (after, key, v) => sec >= after ? `<p class="arena-hint mcp-as-late">${e(t(key, v))}</p>` : '';
+            if (a.step === 1) return a.hub && a.hub.ok && !this.mcpHubCurrent(a.hub.version)
+                ? `<p class="mcp-as-warn">${e(t('mcp.as.s1Old', { v: a.hub.version }))}</p>` : wait(t('mcp.as.s1Wait'));
+            if (a.step === 2) return wait(t('mcp.as.s2Wait')) + late(360, 'mcp.as.s2Late', { tail: m.mcpToken.slice(-6) });
+            if (a.step === 3) return wait(t('mcp.as.s3Wait')) + late(180, 'mcp.as.s3Late');
+            return '';
+        },
+
         // The library card of an MCP entry: its own body, the same header as every card.
         renderMcpCard(m, n) {
             const e = s => this.escapeHtml(s == null ? '' : String(s));
@@ -225,6 +365,7 @@
             <section class="model-section">
             <h3>${t('mcp.title')}</h3>
             <p class="arena-hint">${e(t('mcp.intro'))}</p>
+            <button type="button" class="test-btn mcp-assist-btn" onclick="game.ui.openMcpAssistant(${m.id})">🧭 ${e(t('mcp.as.open'))}</button>
             <div class="model-card-top">
                 <div class="arena-field"><label>${t('ar.fName')}</label>
                     <input type="text" value="${e(m.name)}" oninput="game.ui.setModelField(${m.id},'name',this.value)" placeholder="${e(this.mcpHarnessName(m.harness))}"></div>

@@ -1761,6 +1761,8 @@ class UIManager {
     // template as well, so it is stamped on afterwards by the one function that knows.
     _afterSlotsRendered() {
         this.refreshDerivedSlotBadges();
+        // How to start a match with MCP seats, under the seats (js/mcp-ui.js).
+        if (typeof this.renderMcpArenaNote === 'function') this.renderMcpArenaNote();
         // The readiness dots (js/mcp-ui.js): checks still missing start now.
         if (typeof this.refreshSeatReadiness === 'function') this.refreshSeatReadiness();
     }

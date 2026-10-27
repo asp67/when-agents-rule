@@ -146,3 +146,16 @@ tools, then tell me to restart you." After the restart the play prompt starts th
    (confirmed 26 Oct); Hermes, DeepSeek Harness and ZCode offered to add the server themselves.
 4. Transcript header, contract fingerprint, results category.
 5. Platform, after its anti-cheat layers.
+
+## The setup assistant (27 October 2026)
+
+An MCP entry in the model library offers "Start an assistant that leads me through setting up the MCP server". It is optional; the card's three manual steps stay for anyone who knows the way. The assistant checks each step by itself and has **no time limit**: a harness took up to five minutes to add the server to itself (Hermes first worked out what an MCP server is).
+
+1. **Start the hub.** The PowerShell or bash lines, with the Node.js hint. The page asks the hub's `/status` every 2 s; a hub older than 0.2.0 (no `check_connection`) is to be restarted.
+2. **Let the harness add the server.** Only the self-setup message, no config snippets to patch by hand (asp67: the harness's own setup worked for every harness). Green at the harness's first call to the seat's address. After six minutes, hints: the address the harness should list, a full restart.
+3. **A first test call.** The harness calls `check_connection` once. It starts nothing: `join` would set a harness polling for turns, spending tokens until a match begins. In a match the tool answers that it is not a game command, changed nothing, used no command, and what to do next.
+4. **Done**, with how a match is started.
+
+The assistant's page follows the seat with a `watch` message: the hub then tells it when the harness gets in touch and passes the check, never turns or actions, which belong to the page that plays the seat.
+
+Under the arena's seats, while any is an MCP seat, a note says how such a match starts: copy the start chat message from the seat's row, send it in a new session of that harness, start the arena when the seat's dot is green.

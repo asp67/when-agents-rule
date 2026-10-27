@@ -3222,3 +3222,23 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .sb-wonder .sb-wonder-sep { color: rgba(255, 255, 255, 0.45); font-weight: 400; }
 .broadcast-wonder .bw-row + .bw-row { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.12); }
 .an-wonder .an-wonder-sep { opacity: 0.5; }
+
+/* --- MCP setup assistant (js/mcp-ui.js) --- */
+.mcp-assist-btn { margin: 4px 0 10px; }
+.mcp-assist .mcp-assist-box { width: min(760px, 94vw); max-height: 90vh; overflow-y: auto; text-align: left; }
+.mcp-assist .confirm-title { text-align: center; margin-bottom: 14px; }
+.mcp-as-step { border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 14px; margin: 0 0 10px; background: rgba(255,255,255,0.02); }
+.mcp-as-step h4 { margin: 0; font-size: 1em; color: #e6ecf8; }
+.mcp-as-step.now { border-color: rgba(224,180,60,0.55); }
+.mcp-as-step.now h4 { margin-bottom: 8px; }
+.mcp-as-step.done h4 { color: #9fd3ad; }
+.mcp-as-step.later h4 { color: #6f7a90; }
+.mcp-as-step p { color: #cdd6e8; line-height: 1.45; margin: 6px 0; }
+.mcp-as-wait { display: flex; align-items: center; gap: 8px; color: #e0b43c !important; }
+.mcp-as-spin { width: 10px; height: 10px; border-radius: 50%; background: #e0b43c; animation: seatPulse 1s ease-in-out infinite alternate; flex: 0 0 auto; }
+.mcp-as-clock { color: #8a94a8; font-variant-numeric: tabular-nums; }
+.mcp-as-warn { color: #e8a29f !important; }
+.mcp-as-ok { color: #9fd3ad !important; font-size: 1.02em; }
+.mcp-as-late { border-left: 3px solid rgba(224,180,60,0.6); padding-left: 8px; }
+.mcp-arena-note { margin: 10px 0 4px; padding: 10px 14px; border-left: 3px solid rgba(224,180,60,0.6); background: rgba(224,180,60,0.06); border-radius: 6px; color: #cdd6e8; font-size: 0.9em; line-height: 1.45; }
+.mcp-arena-note ol { margin: 6px 0 0 18px; padding: 0; }

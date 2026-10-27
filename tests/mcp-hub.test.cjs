@@ -230,6 +230,43 @@ test('a turn says how much of its round is left; commands after the round closed
     pg.ws.close();
 });
 
+// The setup assistant (asp67, 27 Oct): a page watches a seat no arena lists, and hears its
+// harness get in touch and pass check_connection -- never its turns or actions. The check
+// starts nothing, and in a match it says plainly that it is not a game command.
+test('check_connection: a watching page hears the harness and the check; in a match it is no command', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-watch001';
+    const st = await (await fetch(`http://127.0.0.1:${port}/status`)).json();
+    assert.equal(st.version, '0.2.0', 'the assistant asks for a hub with check_connection');
+    const watcher = await fakePage(port);
+    watcher.send({ type: 'watch', token: T });
+    await new Promise(r => setTimeout(r, 50));
+    const tools = (await mcp(port, T, 'tools/list', {})).result.tools.map(x => x.name);
+    assert.ok(tools.includes('check_connection'));
+    assert.equal((await watcher.next(m => m.type === 'harness')).token, T, 'the first call reaches the watcher');
+    const ok = said(await call(port, T, 'check_connection'));
+    assert.match(ok, /^Connected: WAR reaches this harness, and its tools work\. Nothing more to do now: stop here\./);
+    assert.equal((await watcher.next(m => m.type === 'check')).token, T);
+    // Later the seat plays in an arena on another page; mid-turn the check is no command.
+    const arena = await fakePage(port);
+    arena.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+    arena.send({ type: 'turn', token: T, turn: 2, state: '{}' });
+    await call(port, T, 'wait_for_turn');
+    const mid = said(await call(port, T, 'check_connection'));
+    assert.match(mid, /it is not a game command, changed nothing and did not use one of your commands\. It is still your turn/);
+    const sent = call(port, T, 'train_unit', { unitType: 'worker' });
+    const action = await arena.next(m => m.type === 'action');
+    assert.equal(action.name, 'train_unit', 'the check did not count: the command still goes to the arena');
+    arena.send({ type: 'result', id: action.id, text: 'Queued (1/3)' });
+    await sent;
+    let leaked = false; watcher.ws.onmessage = e => { if (/"type":"(action|turn)"/.test(e.data)) leaked = true; };
+    await new Promise(r => setTimeout(r, 100));
+    assert.equal(leaked, false, 'the watcher never sees turns or actions');
+    watcher.ws.close(); arena.ws.close();
+});
+
 // asp67, 26 Oct: "do we have a mechanic that tells the harness when I quit the arena?" The
 // page sends "over"; a harness busy at that moment hears it on its next wait, and the next
 // arena waits for it to join again instead of showing the seat ready.
