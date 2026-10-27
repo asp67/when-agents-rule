@@ -42,6 +42,13 @@ class WarMcpLink {
         const s = this.state.get(token) || {};
         return { hub: this.hubUp, harness: !!s.harness, joined: !!s.joined };
     }
+    // How long the seat's harness has made no call to the hub, or null before its first.
+    // A harness in its loop calls at least every wait (~25 s), so a silence longer than a
+    // round means it has stopped, is asking its user something, or is still thinking.
+    quietMs(token) {
+        const s = this.state.get(token);
+        return s && s.lastCall ? Math.max(0, Date.now() - s.lastCall) : null;
+    }
     _changed(token) {
         const tokens = token ? [token] : this.seats.map(s => s.token);
         for (const t of tokens) for (const fn of this.listeners) { try { fn(t, this.status(t)); } catch (e) { /* a listener's fault stays its own */ } }
@@ -95,8 +102,14 @@ class WarMcpLink {
 
     _fromHub(m) {
         if (m.type === 'hello') { if (m.maxCommandsPerTurn) this.maxCommands = m.maxCommandsPerTurn; return; }
+        if (m.type === 'call') {
+            const s = this.state.get(m.token);
+            if (s) s.lastCall = Date.now();
+            return;
+        }
         if (m.type === 'harness' || m.type === 'join') {
             const s = this.state.get(m.token) || {};
+            s.lastCall = Date.now();
             if (m.type === 'harness') s.harness = true; else { s.harness = true; s.joined = true; }
             this.state.set(m.token, s);
             this._changed(m.token);

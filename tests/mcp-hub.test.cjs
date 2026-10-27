@@ -182,6 +182,26 @@ test('the page that sends a seat its turn gets its commands and end_turn, whoeve
     playing.ws.close(); other.ws.close();
 });
 
+// asp67, 27 Oct: Antigravity, its config edited to a new seat address, kept calling the old
+// one and told the user the NEW address was refused. The refusal names the address called.
+// And every call is reported to the page, which marks a harness quiet for over a round idle.
+test('a refused join names the address it was called on; the page hears every call of a listed seat', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-qqqq3333', OLD = 'seat-token-oldaddress';
+    const pg = await fakePage(port);
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 3 }] });
+    await new Promise(r => setTimeout(r, 50));
+    const refused = await call(port, OLD, 'join');
+    assert.equal(refused.isError, true);
+    assert.match(said(refused), new RegExp(`You called http://127\.0\.0\.1:${port}/mcp/${OLD}`));
+    assert.match(said(refused), /reload or restart/);
+    await call(port, T, 'join');
+    assert.equal((await pg.next(m => m.type === 'call')).token, T, 'a call of the listed seat reaches its page');
+    await call(port, T, 'get_rules');
+    assert.equal((await pg.next(m => m.type === 'call')).token, T);
+    pg.ws.close();
+});
+
 // asp67, 26 Oct: "do we have a mechanic that tells the harness when I quit the arena?" The
 // page sends "over"; a harness busy at that moment hears it on its next wait, and the next
 // arena waits for it to join again instead of showing the seat ready.

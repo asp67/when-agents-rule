@@ -129,6 +129,21 @@ test('a seat\'s dot is green only while its harness is joined: not after the mat
     assert.deepEqual(link.status(TOKEN), { hub: true, harness: false, joined: false }, 'red: waiting for the harness');
 });
 
+// The "harness idle" marker reads how long the seat's harness has made no call to the hub.
+test('the link knows how long a seat\'s harness has been quiet', () => {
+    const WarMcpLink = require('../js/mcp-link.js');
+    const link = new WarMcpLink('http://127.0.0.1:1');
+    link.setSeats([{ token: 'seat-token-quiet001', seat: 1 }]);
+    assert.equal(link.quietMs('seat-token-quiet001'), null, 'nothing before its first call');
+    link._fromHub({ type: 'call', token: 'seat-token-quiet001' });
+    const s = link.state.get('seat-token-quiet001');
+    s.lastCall -= 200000;
+    assert.ok(link.quietMs('seat-token-quiet001') >= 200000);
+    link._fromHub({ type: 'call', token: 'seat-token-quiet001' });
+    assert.ok(link.quietMs('seat-token-quiet001') < 1000, 'a call resets it');
+    assert.equal(link.quietMs('seat-token-unknown'), null);
+});
+
 test('stopping a match tells each MCP seat\'s harness it is over', async () => {
     const { mgr, c } = await mcpSeat([]);
     const told = [];

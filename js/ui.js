@@ -4967,6 +4967,14 @@ class UIManager {
                     paused = !!controller.paused;
                     objective = String(controller.objective || '').trim();
                     if (controller.stats) health = this.seatMetrics(controller);
+                    // An MCP seat whose harness has made no call for longer than a round:
+                    // it stopped or waits for its user (Hermes at its tool-call limit,
+                    // Claude Code asking what to do), and someone has to tell it to go on.
+                    if (health && controller.model.provider === 'mcp' && controller.model.mcpToken && typeof WarMcpLink === 'function') {
+                        const mgr = this.game.openAIAIManager;
+                        const quiet = mgr.mcpLink(controller.model.endpoint).quietMs(controller.model.mcpToken);
+                        if (quiet != null && quiet > mgr.roundTimeoutMs()) health.harnessIdleMs = quiet;
+                    }
                 }
             }
 
@@ -5277,6 +5285,7 @@ class UIManager {
         if (m.roundsMissed) bits.push(`<span class="warn" title="${esc(t('sh.missedTip'))}">${esc(t('sh.missed', { n: m.roundsMissed }))}</span>`);
         if (m.timeouts || m.networkErrors) bits.push(`<span class="bad" title="${esc(t('sh.errorsTip'))}">${esc(t('sh.errors', { n: m.timeouts + m.networkErrors }))}</span>`);
         if (m.contextOverflows) bits.push(`<span class="warn" title="${esc(t('sh.overflowTip'))}">${esc(t('sh.overflow', { n: m.contextOverflows }))}</span>`);
+        if (!paused && m.harnessIdleMs) bits.push(`<span class="bad" title="${esc(t('sh.idleTip'))}">${esc(t('sh.idle', { n: Math.round(m.harnessIdleMs / 1000) }))}</span>`);
         if (!paused && m.silentMs > 60000) bits.push(`<span class="bad" title="${esc(t('sh.silentTip'))}">${esc(t('sh.silent', { n: Math.round(m.silentMs / 1000) }))}</span>`);
         return bits.length ? `<div class="lb-health">${bits.join('')}</div>` : '';
     }

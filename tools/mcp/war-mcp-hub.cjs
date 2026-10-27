@@ -209,7 +209,13 @@ async function callTool(token, name, args, signal) {
     if (name === 'get_rules') return s.joined ? textResult(s.rules || '(no rules sent)') : textResult('Call join first.', true);
     if (name === 'join') {
         if (!pages.size) return textResult('No WAR arena is open. Open the arena setup in WAR, pick this seat, and call join again.', true);
-        if (!s.listed || !pages.has(s.page)) return textResult('The open arena does not use this seat. Pick it in the WAR arena setup, then call join again.', true);
+        // Names the address called: Antigravity, its config edited to a new address, went on
+        // calling the old one until restarted, and told the user its config's address was
+        // refused (asp67, 27 Oct). The harness can now say what went wrong.
+        if (!s.listed || !pages.has(s.page)) return textResult(`The open arena does not use this seat address. You called ${hubBase()}/mcp/${token}, `
+            + 'and the WAR arena setup lists a different address for its seat, or none. Tell the user which address you called. '
+            + 'If the seat\'s address was changed in your MCP settings, you are still connected with the old one: the harness must reload or restart to use the new one. '
+            + 'Otherwise the user picks this seat in the WAR arena setup. Then call join again.', true);
         s.joined = true;
         toPage({ type: 'join', token });
         return textResult((s.rules ? s.rules + '\n\n' : '')
@@ -275,6 +281,9 @@ async function rpc(token, msg, signal) {
     if (id === undefined) return null;   // a notification: nothing to answer
     const s = seat(token);
     if (!s.seen) { s.seen = true; if (s.listed) toPage({ type: 'harness', token, connected: true }); }
+    // Every call tells the page the harness is still at it: a seat whose harness has gone
+    // quiet for longer than a round is marked "harness idle" in the arena.
+    toPage({ type: 'call', token });
     switch (method) {
         case 'initialize': {
             const asked = params && params.protocolVersion;
@@ -308,6 +317,7 @@ function cors(req, res) {
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     }
 }
+const hubBase = () => 'http://127.0.0.1:' + ((server.address() && server.address().port) || PORT);
 function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); }
 
 const server = http.createServer((req, res) => {
