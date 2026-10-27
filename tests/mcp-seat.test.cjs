@@ -91,6 +91,44 @@ test('end to end: a harness over MCP plays a game seat through the hub', { timeo
     assert.match(await tool('get_rules'), /greek|Greek/i, 'get_rules has the seat\'s system prompt');
 });
 
+// asp67, 27 Oct: "after quitting the arena, all 4 seats still showed green even though I
+// restarted the MCP hub". The page kept "joined" from before; the hub had said so once.
+test('a seat\'s dot is green only while its harness is joined: not after the match, not after a hub restart', { timeout: 20000 }, async t => {
+    const { spawn } = require('node:child_process'), path = require('node:path');
+    const WarMcpLink = require('../js/mcp-link.js');
+    const startHub = port => new Promise((resolve, reject) => {
+        const p = spawn(process.execPath, [path.join(__dirname, '..', 'tools', 'mcp', 'war-mcp-hub.cjs'), '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+        let out = ''; p.stdout.on('data', c => { out += c; const mm = /127\.0\.0\.1:(\d+)/.exec(out); if (mm) resolve({ p, port: +mm[1] }); });
+        p.on('exit', code => reject(new Error('hub exited ' + code)));
+    });
+    let hub = await startHub(0);
+    t.after(() => hub.p.kill());
+    const base = 'http://127.0.0.1:' + hub.port, TOKEN = 'seat-token-dots0001';
+    const link = new WarMcpLink(base);
+    t.after(() => link.close());
+    link.connect();
+    link.setSeats([{ token: TOKEN, seat: 1, name: 'h' }]);
+    await new Promise(r => setTimeout(r, 150));
+    const join = async () => (await (await fetch(base + '/mcp/' + TOKEN, { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'join', arguments: {} } }) })).json()).result.content[0].text;
+    assert.match(await join(), /joined as seat 1/);
+    await new Promise(r => setTimeout(r, 100));
+    assert.equal(link.status(TOKEN).joined, true);
+    link.over(TOKEN, {});
+    assert.deepEqual(link.status(TOKEN), { hub: true, harness: true, joined: false }, 'after the match: harness in, not joined');
+    assert.match(await join(), /joined as seat 1/);
+    await new Promise(r => setTimeout(r, 100));
+    assert.equal(link.status(TOKEN).joined, true);
+    // The hub restarts on the same port; the page reconnects to a hub that knows no harness.
+    const port = hub.port;
+    await new Promise(r => { hub.p.once('exit', r); hub.p.kill(); });
+    hub = await startHub(port);
+    for (let i = 0; i < 40 && !link.hubUp; i++) await new Promise(r => setTimeout(r, 100));
+    assert.equal(link.hubUp, true, 'reconnected');
+    await new Promise(r => setTimeout(r, 100));
+    assert.deepEqual(link.status(TOKEN), { hub: true, harness: false, joined: false }, 'red: waiting for the harness');
+});
+
 test('stopping a match tells each MCP seat\'s harness it is over', async () => {
     const { mgr, c } = await mcpSeat([]);
     const told = [];

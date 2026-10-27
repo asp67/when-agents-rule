@@ -54,7 +54,14 @@ class WarMcpLink {
         try { ws = new WebSocket(this.base.replace(/^http/, 'ws') + '/page'); }
         catch (e) { this._reconnect(); return; }
         this.ws = ws;
-        ws.onopen = () => { this.hubUp = true; this._sendArena(); this._changed(); };
+        // What the seats' harnesses are doing is the hub's to say: it answers the seat list
+        // with every seat whose harness is in or joined. Kept from before, a restarted hub
+        // -- which knows no harness yet -- left the dots green (asp67, 27 Oct).
+        ws.onopen = () => {
+            this.hubUp = true;
+            for (const s of this.state.values()) { s.harness = false; s.joined = false; }
+            this._sendArena(); this._changed();
+        };
         ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } this._fromHub(m); };
         ws.onclose = () => {
             const was = this.hubUp; this.hubUp = false;
@@ -147,7 +154,13 @@ class WarMcpLink {
         });
     }
 
-    over(token, result) { this._send({ type: 'over', token, result: result || {} }); }
+    // The match is over for the seat: the hub tells its harness to stop, so it is no longer
+    // joined, and the next arena waits for it to join again -- here as on the hub.
+    over(token, result) {
+        this._send({ type: 'over', token, result: result || {} });
+        const s = this.state.get(token);
+        if (s && s.joined) { s.joined = false; this._changed(token); }
+    }
 
     // The closing message at the end of a match -- the one a library seat is asked -- and
     // the harness's answer, given with its final_word tool. null if it gives none before
@@ -159,6 +172,8 @@ class WarMcpLink {
             this.finals.set(token, resolve);
             this.turns.delete(token);
             this._send({ type: 'final', token, text: String(text || '') });
+            const s = this.state.get(token);
+            if (s && s.joined) { s.joined = false; this._changed(token); }
             if (signal) {
                 const stop = () => { if (this.finals.get(token) === resolve) { this.finals.delete(token); resolve(null); } };
                 if (signal.aborted) stop(); else signal.addEventListener('abort', stop, { once: true });
