@@ -67,3 +67,15 @@ AnalyzeTranscript.png shows the existing Episode 6 sample in the analyzer;
 ModelLibrary.png shows connection controls in a clean browser profile.
 These interface illustrations were captured in build 819. No private endpoints,
 credentials or model-library exports are included.
+
+## Agent harnesses and watching modes (build 1139)
+
+Captured on 28 October 2026 in headless Chromium against a local copy of the game, with
+a fresh browser profile and no credentials. No gameplay objects were edited.
+
+| Asset | Content |
+| --- | --- |
+| McpLibrary.png | An MCP entry in the model library (Hermes Agent), down to step 1 of its manual setup. The download lines show the public site, as a visitor sees them. |
+| McpAssistant.png | The setup assistant at step 3: a harness has reached a local test hub and is named. |
+| McpArenaSeats.png | The arena setup: one MCP seat joined (green), one waiting for its harness, two rule-based seats, and the start note below. |
+| AnalyzeMode.jpg / BroadcastMode.jpg | The same moment of a five-minute match, with and without the operator's panels. The four seats are stand-ins: a scripted endpoint answering with ordinary tool calls and reasons, under invented model names. They show the interface, not any model's play. |

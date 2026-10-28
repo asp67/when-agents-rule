@@ -11,6 +11,7 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 ![No build step](https://img.shields.io/badge/build-none%20required-success)
 ![Zero dependencies](https://img.shields.io/badge/dependencies-zero%20%C2%B7%20in--house%20engine-blue)
 ![Providers](https://img.shields.io/badge/providers-OpenAI%20%C2%B7%20Anthropic%20%C2%B7%20Ollama%20%C2%B7%20Google-purple)
+![Agent harnesses](https://img.shields.io/badge/agent%20harnesses-MCP-orange)
 
 <br>
 
@@ -26,11 +27,13 @@ A browser-based, Age-of-Empires-style real-time strategy game in which competing
 
 A sandbox arena for pitting language models against one another at a task they were never trained for: running an economy and an army, in real time, inside a small RTS they've never seen. Every player is an autonomous model agent governing its own civilization, and every match ends one of two ways — a rival razed to the ground, or a Wonder held in peace.
 
-This is an **agent harness** whose task happens to be a real-time strategy game. Every turn a model is handed a compact **JSON snapshot** of its situation (resources, buildings, units, fog-of-war discoveries, threats, tech tree, map bounds), **named command tools** — such as `move_units`, `attack_target` and `research_tech`, sharing a budget of three commands per turn — plus an independent `plan` tool to save its objective — and one instruction: **win.** Then it has to keep doing that, turn after turn, for a whole match.
+This is an **agent harness** whose task happens to be a real-time strategy game. Every turn a model is handed a compact **JSON snapshot** of its situation (resources, buildings, units and what each can do, fog-of-war discoveries, its memory of enemy units, threats, tech tree, map bounds), **named command tools** — such as `move_units`, `attack_target` and `research_tech`, sharing a budget of three commands per turn — plus an independent `plan` tool to save its objective — and one instruction: **win.** Then it has to keep doing that, turn after turn, for a whole match.
 
-The tools are real tool calls, extracted from the chat-completion response the same way OpenCode or any other agent harness extracts them. That matters for what a result means: a malformed call costs that call, not the turn, and a model gets the same per-call feedback it would get anywhere else it is deployed.
+A seat is played in one of two ways:
+- **A library model:** the game calls an endpoint you configure (OpenAI-compatible, Anthropic, Ollama or Google) and reads real tool calls from the reply, the way any agent harness does.
+- **🆕 An agent harness over MCP:** Claude Code, Hermes, OpenCode, ChatGPT and others play a seat themselves, through a small local hub, on their own subscription or local model. Same state, same tools, same rules — the harness around the model is what changes. [More below](#-agent-harnesses-over-mcp).
 
-It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). With the setup held steady (same civilization, fixed map seed, resource layout equal for every player) a match isolates the model well enough for narrow comparisons.
+It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). With the setup held steady (same civilization, fixed map seed, resources placed identically for every player) a match isolates the model well enough for narrow comparisons.
 
 <div align="center">
 
@@ -46,15 +49,15 @@ It's a hands-on testbed, not a benchmark — see [Disclaimers](#-disclaimers). W
 
 Most quick LLM demos reward a single clever answer. A full match rewards the things people actually care about in agents:
 
-- **🎯 Three actions a turn, and the turn will not wait.** The budget is the eval. A model does not get to do everything it can think of — it has to answer *what are the three most important things right now*, on a board that changes between its own calls. Lift the cap and the answer after a wipe is simply "rebuild all of it at once", which measures a bank balance rather than judgement.
-- **⚔️ Models develop their own doctrine.** Same rules, same prompt — yet you get pure economists racing for a Wonder next to warlords massing an army absurdly early. Which one a model turns out to be is part of what you're measuring.
-- **🧨 Pressure changes their play.** Raided, out-scouted, slipping down the leaderboard — many models genuinely switch tactics rather than doubling down. Watching one *notice* it is losing is worth the match on its own.
-- **🎯 Precise tool calling.** Every move must be valid JSON — one action, or up to three in one reply. Hallucinate a tool, fumble the schema, wrap it in prose — the turn is wasted, and you can watch format discipline hold or crumble.
+- **🎯 Three actions a turn, and the turn will not wait.** The budget is the eval. A model does not get to do everything it can think of — it has to answer *what are the three most important things right now*, on a board that changes between its own calls.
+- **⚔️ Models develop their own doctrine.** Same rules, same prompt — yet you get pure economists racing for a Wonder next to warlords massing an army absurdly early.
+- **🧨 Pressure changes their play.** Raided, out-scouted, slipping down the leaderboard — many models genuinely switch tactics rather than doubling down.
+- **🛠️ Precise tool calling.** Hallucinate a tool, fumble the schema, wrap it in prose — the call is wasted, and you can watch format discipline hold or crumble.
 - **🧭 An unfamiliar framework.** No fine-tuning, no examples of good play. Only the rules in the prompt and the state in front of it.
-- **🧠 Long-horizon strategy.** Economy → tech → military → conquest plays out over dozens of turns. Models that optimize forever and never build an army lose. The harness carries a model-authored **objective + plan** (up to 10 steps) across turns — but maintaining it is the model's job.
+- **🧠 Long-horizon strategy.** Economy → tech → military → conquest plays out over dozens of turns. The harness carries a model-authored **objective + plan** across turns — but maintaining it is the model's job.
 - **🔁 Error recovery.** A rejected action comes back with a precise reason. Does the model correct course, or bang on the same locked door?
-- **🗺️ Spatial reasoning.** Fog of war hides the map; resources and enemies must be scouted before they can be used or attacked.
-- **⏱️ Latency vs. quality.** In real-time mode faster models simply act more often, and a brilliant-but-slow model gets out-tempoed. Turn-based rounds remove that variable when you want to compare judgement instead.
+- **🗺️ Reasoning from partial information.** Fog of war hides the map. What a model remembers of enemy units is *where and how long ago it last saw them* — working out where they went is up to the model.
+- **🧩 The harness matters too.** Over MCP the same model can play through different agent harnesses, with their own memory, skills and habits — and they do not play the same.
 
 <div align="center">
 
@@ -67,35 +70,37 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 ## ✨ Features
 
 **The match**
-- **🤖 2–4 models, fighting live** — each with its own asynchronous decision pipeline.
-- **⏳ Two tempos** — *real time*, where faster models act more often, or **turn-based rounds**: every seat reads the same snapshot, all moves land together, and a configurable answer time (default 90 s) keeps one slow endpoint from stalling the rest. Missed rounds are recorded rather than hidden.
-- **⏱ Speed control** — 1× / 1.5× / 2× / 4×, plus **Pause** (which waits for answers already in flight, so no move is thrown away). Held at 1× while a Wonder stands, so the countdown can't be sped past.
-- **🌱 Seeded maps & fair placement** — the same seed reproduces the exact layout; food and wood fill an even 7×7 grid while scarce **stone and gold are placed identically for every player**. The map stops being a confound.
-
-- **🛡️ Persistent army orders** — march, scout without initiating combat, guard a position, or patrol between two points. Incoming damage triggers formation-wide retaliation, with towers first and bounded pursuit of mobile threats; survivors reform and resume their assignment, including priests in ranged slots. A new order replaces the selected units' previous assignment.
-- **🌗 Day and night** — a cosmetic 12-minute cycle with warm dusk, cool nights, campfires and entrance lights. Simulation speed does not accelerate the lighting cycle.
+- **🤖 2–4 seats, fighting live** — library models, agent harnesses over MCP and the rule-based AI, mixed freely. A seat's civilization can be fixed or **🎲 Random**: drawn anew each match, never twice in one.
+- **⏳ Two tempos.** *Real time*, where faster models act more often, or **turn-based rounds**: every seat reads the same snapshot, all moves land together, and a configurable answer time (default 90 s, 180 s with an MCP seat) keeps one slow seat from stalling the rest. Missed rounds are recorded, not hidden. Optional **lockstep** caps how much the world plays on while the models think, so no model ever answers a state older than that.
+- **⏱ Speed** — ½×, 1× (normal) and 2×, plus **Pause**. The Wonder countdown always counts normal-pace seconds, and the speed is recorded in the transcript.
+- **🌱 Seeded maps, fair placement** — a large 11 × 11 map (default) or the classic 7 × 7, summer, winter or desert. The same seed reproduces the exact layout; every seat gets the same home ground, and scarce **stone and gold are placed identically for every player**.
+- **🛡️ Persistent army orders** — march, scout, guard a position, or patrol between two points. Formations keep together, retaliate as one, and reform afterwards.
+- **🌗 Day and night** — a cosmetic 12-minute cycle with warm dusk, cool nights, campfires and entrance lights.
 
 **The models**
 - **🔌 Bring any model** — OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter, …), **Anthropic**, **Ollama**, **Google (Gemini)**, with auto-detection. Mix local and cloud in one match.
-- **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or an OAuth2 login button: one click for OpenRouter, or any login server that issues a client ID.
-- **🧰 Model library** — add, **test connection**, pick the served model, and set per-model **max tokens**, **context budget**, **language**, **temperature / top-p / top-k**, **thinking/reasoning** settings, and a raw request-body passthrough for anything newer than this harness. Connection, model/budgets, and collapsible advanced settings keep the basics together. Saved locally, exportable/importable.
-- **🧠 Rolling context that scales with the model** — history is sized to each model's context budget, so a 128K model remembers more of the match than a 32K one. Default is a real multi-turn conversation; a **minimize-tokens** toggle switches to compact one-line history.
+- **🧩 Bring any agent harness** — over **MCP**, with a setup assistant that leads you through it. See [Agent harnesses over MCP](#-agent-harnesses-over-mcp).
+- **🔐 Every auth style** — none, API key (Bearer), header secret, Basic, or an OAuth2 login button.
+- **🧰 Model library** — add, **test connection**, pick the served model, and set per-model **max tokens**, **context budget**, **language**, **sampling** and **thinking/reasoning** settings, and a raw request-body passthrough. Saved locally, exportable/importable.
+- **🚦 Readiness before the start** — each seat shows a dot: a library model is checked for working tool calls, an MCP seat waits for its harness to join. The arena starts when every dot is green.
+- **🧠 Rolling context that scales with the model** — history is sized to each model's context budget; a **minimize-tokens** toggle switches to compact one-line history.
 - **🪙 Token accounting** — provider-reported prompt + completion usage per model, next to latency.
 
 **Watching & reading it back**
-- **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and play/pause per model. Collapse the decisions panel to the latest turn’s command headlines for each seat.
-- **🏛️ Antiquity visual milestone** — warm directional light, cast shadows, irregular coastal water reflections, sculpted miniature units with cultural facial hair, angled handheld equipment and proportionate horses, continuous tree crowns, layered meadow/snow/sand surfaces with close-up ground detail, refined Greek architecture and camera controls integrated with the minimap. Arena configuration and the model library share the charcoal/bronze theme. Try **Explore civilizations** locally: choose civilization, summer/winter/desert, Stone through Iron Age, and time of day. Iron Age includes the civilization's Wonder; **Inspect workers** gives a close-up. Direct links: `/?showcase=1&civ=greek` (also `egyptian`, `yamato`, `persian`). The live transcript uses eight-turn pages to keep long matches responsive. [Scope, graphics settings and verification](docs/VISUAL_MILESTONE.md).
-- **🎬 A battlefield worth watching** — feathered fog of war, arrows and tower stones, hit flashes, animated deaths, battle pings, per-map ground cover, and an optional **action camera** that follows the fighting.
-- **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behavior tags, and a transparent 0–100 match heuristic (not a capability score). Each seat carries a conditions id: seats sharing it had the same declared conditions.
-- **📄 Exports** — the evaluation as a self-describing `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline appended at the end.
+- **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and pause per model.
+- **📺 Broadcast mode** — for a stream or a recording: the operator's panels make way for a scoreboard, captions of what each model just ordered and why, and a held Wonder's countdown in its seat's colour. **Esc** or one click brings the controls back. Nothing about the match changes.
+- **🎯 Intent and 🎬 auto camera** — floating cards show each model's latest orders and reasons where they point; the auto camera follows the fighting.
+- **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behaviour tags, each seat's **final word** on the match, and a transparent 0–100 match heuristic (not a capability score).
+- **📄 Exports** — the evaluation as `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline at the end.
 - **🎞️ [Analyze Transcript](#-analyze-transcript)** — load a saved transcript and read a finished match back, turn by turn, in the same 3D engine.
+- **🧪 [Benchmark](#-benchmark)** — fixed scenarios, the same for every model.
 - **🌍 Fully localized UI** — English, German, Spanish, Simplified Chinese, with the *model's* language chosen separately from the interface language.
-- **⌨️ Reading and navigation** — keyboard-accessible mode selection and modal dialogs, selectable transcript text, readable model names, and reduced interface motion when requested by your device settings.
 
 **The rest**
+- **🏛️ Explore civilizations** — every civilization's buildings and units in summer, winter or desert, Stone through Iron Age, at any time of day: `/?showcase=1&civ=greek` (also `egyptian`, `persian`, `yamato`, `roman`, `viking`, `maya`). [Scope, graphics settings and verification](docs/VISUAL_MILESTONE.md).
 - **🌙 Keeps running in a background tab** — a Web-Worker driver keeps the simulation and the models' turns going while the tab is hidden.
-- **🎮 Also human-playable** — a **Campaign** mode: pick your civilization and face 1–5 opponents, model- or AI-controlled, on three maps. If a model's endpoint dies mid-game that opponent falls back to the rule-based AI.
-- **🚫 No build step, no dependencies** — plain HTML/CSS/JS with an in-house WebGL engine; every texture painted procedurally at load. No CDN, no assets, no external code.
+- **🎮 Also human-playable** — a **Campaign** mode: pick your civilization and face 1–5 opponents, model- or AI-controlled.
+- **🚫 No build step, no dependencies** — plain HTML/CSS/JS with an in-house WebGL engine; every texture painted procedurally at load.
 
 ## 🚀 Quick start
 
@@ -108,28 +113,92 @@ node serve.cjs --open                 # Node 18+, built-ins only
 # python3 -m http.server 8088         # or any static server
 ```
 
-Then open **http://localhost:8088** and click **Play → 🏟️ Arena**. `serve.cjs` answers only this computer by default; add `--host 0.0.0.0` to reach it from other devices on your network, or `--port` to move it. The default is 8088 rather than 8080 because llama.cpp's server listens on 8080.
+Then open **http://localhost:8088** and click **Play → 🏟️ Arena**. `serve.cjs` answers only this computer by default; add `--host 0.0.0.0` to reach it from other devices on your network, or `--port` to move it.
 
-> 💡 **Fastest path to a match:** install [Ollama](https://ollama.com), pull something small and quick (`ollama pull qwen2.5:7b`), and point a couple of seats at `http://localhost:11434`. Small + fast beats large + slow in a real-time arena.
+> 💡 **Fastest path to a match:** install [Ollama](https://ollama.com), pull something small and quick, and point a couple of seats at `http://localhost:11434`. Small + fast beats large + slow in a real-time arena.
 >
 > 🐦 **Easy first pick:** `ollama pull ornith:9b` — ~6 GB of VRAM, runs on many consumer cards, and a surprisingly strong player for its size.
+>
+> 🧩 **Already use an agent harness?** Add an MCP seat and let the [setup assistant](#-agent-harnesses-over-mcp) connect it — no API key needed in the game at all.
 
 ## 🏟️ Setting up the Arena
 
-1. **Model Library** → add your models. Set the **endpoint**, pick the **provider** (or leave on auto-detect), choose **auth**, hit **🔌 Test connection**, select the served model. Optionally set max tokens, context budget, language, and sampling/thinking parameters.
-2. **Arena participants** → choose **2–4 seats**, then give each a **civilization** and a **controller**. Set the **difficulty**, an optional **map seed**, and whether to run **turn-based rounds** (with the answer time per round).
+1. **Model Library** → add your models. For an endpoint: set the **endpoint**, pick the **provider** (or leave on auto-detect), choose **auth**, hit **🔌 Test connection**, select the served model. For an agent harness: choose **MCP seat** as the provider and follow the assistant.
+2. **Arena participants** → choose **2–4 seats**, then give each a **civilization** (or 🎲 Random) and a **controller**. Set the **difficulty**, **map size**, an optional **map seed**, and whether to run **turn-based rounds**.
 3. **System prompt** → tweak the shared template, or give individual seats their own.
-4. **⚔️ Start Arena** and watch.
+4. Wait for every seat's dot to turn green, then **⚔️ Start Arena** and watch.
 
 <div align="center">
 
 ![Current model library and connection settings](Screenshots/ModelLibrary.png)
 
-<sub><i>The current model library: configure a provider, connection and model settings. Fresh browser profile; no credentials or private endpoints shown.</i></sub>
+<sub><i>The model library: configure a provider, connection and model settings. Fresh browser profile; no credentials or private endpoints shown.</i></sub>
 
 </div>
 
-While spectating you can **click a card** to fly the camera to that base, **drag** to pan, send a model **advice**, or **pause** one entirely. The decision log streams every move with the model's own reason, and flags rejections:
+> 💡 **The context budget is a real lever.** Default **65536** tokens; **↺ Max** fills in the model's true maximum. History is sized to it, either as a **multi-turn** conversation or **minimize tokens** (each past move as one line). Lower budgets are faster — on Ollama the budget also sets `num_ctx`. If a model overthinks, raise its **max tokens** (the *output* budget), not its context.
+
+## 🧩 Agent harnesses over MCP
+
+**An agent harness can play a seat itself.** Claude Code, Hermes, OpenCode, ChatGPT, Antigravity and others connect to the game through **MCP** (the Model Context Protocol) and get exactly what a library seat gets: the same game state, the same command tools, three commands a turn, the same rules and round times.
+
+**Why this is worth having:**
+- **No API key in the game.** The harness plays on its own subscription or its own local model. The game only talks to a small hub on your computer.
+- **Same model, different harness.** A harness is more than a pipe: it brings its own memory, skills, context handling and habits. In our matches, Hermes wrote itself a 49 KB playbook between games and a small bridge script that plays a whole turn in one call; OpenCode wrote JavaScript that boils the state down before the model reads it. Those are harness results, and the arena makes them visible.
+- **For people who live in their harness.** If your daily driver is Claude Code or Hermes, that's what plays — no second setup of models and keys.
+
+**How it fits together:**
+- **The hub** (`tools/mcp/war-mcp-hub.cjs`, Node 18+, no dependencies) runs on your computer and connects the WAR page with your harnesses. The library entry shows the lines that download and start it.
+- **One server per harness, set up once:** `war` at `http://127.0.0.1:8765/mcp`. It serves every seat, on every computer, so adding or deleting library entries never touches the harness again.
+- **The seat is chosen by its code.** Each MCP seat's row in the arena setup has a **Copy start chat message** button. The message names the server and the seat code; the harness calls `join` with it and plays until the match is over. Where a harness has a `/goal` command (Claude Code, Hermes, OpenClaw), the message uses it, so the harness keeps playing instead of stopping to ask.
+
+<div align="center">
+
+![An MCP entry in the model library: harness, model, hub address and seat code, with the setup assistant button and step 1, starting the hub](Screenshots/McpLibrary.png)
+
+<sub><i>An MCP entry in the model library: the harness, the model it runs (as you state it), the hub and the seat's code — and the button that starts the setup assistant.</i></sub>
+
+</div>
+
+**The setup assistant** is for anyone who would rather be led through it. Four steps, each checked by the game itself, with no time limit — some harnesses take a few minutes to work out what an MCP server is:
+1. **Start the hub** — paste the lines into PowerShell or a terminal; the step turns green when the hub answers.
+2. **Let your harness add the server** — paste one message into your harness; it adds the server to its own settings. The step turns green when the harness reaches the hub, and names it.
+3. **A first test call** — the harness calls `check_connection` once. It starts nothing; it only proves the harness may use the game's tools.
+4. **Done** — with how a match is started.
+
+<div align="center">
+
+| The setup assistant | The arena seats |
+|:---:|:---:|
+| ![The setup assistant at step 3: the hub runs, the harness is connected and named, the test message is ready to copy](Screenshots/McpAssistant.png) | ![The arena setup: an MCP seat that has joined, one waiting for its harness, two rule-based seats, and the note on how to start](Screenshots/McpArenaSeats.png) |
+
+<sub><i>Left: the assistant has found the hub and the harness, and waits for the test call. Right: in the arena setup, each MCP seat has its start message and a readiness dot; the arena starts when all are green.</i></sub>
+
+</div>
+
+**Built for the ways a harness actually behaves:**
+- **Every turn says how much of its round is left**, and commands that arrive after the round closed are answered *too late, not run* — not silently dropped.
+- **A seat you pause** is told it is paused, and nothing it sends meanwhile is queued as if it would run.
+- **A harness that stops calling** (a token limit, a crash) is marked *harness idle*, and after a round without a call it is *away*: the other seats no longer wait for it, and its next call brings it back.
+- **At the end** the harness gets the same closing question as every seat, and answers it with `final_word`.
+
+**Harnesses** — tested in real matches: **Claude Code**, **Hermes Agent**, **OpenCode**, **ChatGPT** (desktop), **Google Antigravity** and **DeepSeek Harness**. Setup instructions are included for **Codex CLI**, **ZCode** and **OpenClaw**; any harness that can add a Streamable HTTP MCP server should work.
+
+> ℹ️ **The hub answers only on your computer** (`127.0.0.1`), on purpose: nobody on your network can play or read your seats. So the browser with WAR, the hub and the harness run on one computer; only the WAR page itself may come from elsewhere. Web-only harnesses (chat sites that reach MCP servers from the provider's cloud) cannot reach it. Details in [docs/MCP-ARENA.md](docs/MCP-ARENA.md).
+
+## 👀 Watching a match
+
+While spectating you can **click a card** to fly the camera to that base, **drag** to pan, send a model **advice**, or **pause** one entirely. The decision log streams every move with the model's own reason, and flags rejections.
+
+<div align="center">
+
+| Analyze mode | 📺 Broadcast mode |
+|:---:|:---:|
+| ![Analyze mode: decision log, controls, leaderboard and intent cards over a Greek town at night](Screenshots/AnalyzeMode.jpg) | ![Broadcast mode: a scoreboard across the top and caption cards over the same town](Screenshots/BroadcastMode.jpg) |
+
+<sub><i>The same moment in both modes. The four seats here are stand-ins — a scripted endpoint answering with ordinary tool calls and reasons, under invented names — to show the interface, not anyone's play.</i></sub>
+
+</div>
 
 | Input | Spectator / replay | Campaign |
 | --- | --- | --- |
@@ -140,7 +209,7 @@ While spectating you can **click a card** to fly the camera to that base, **drag
 | One-finger drag / pinch | Pan / zoom | Pan / zoom |
 | Touch and hold | Coordinate flag | Hold still, then release to issue an order |
 
-For left-button-only campaign navigation, open the minimap's camera-options chevron and enable the **hand tool**. Switch it off to restore mouse box selection. Touch always uses one-finger panning. Moving after a hold, adding another finger or cancelling the gesture discards the pending touch order. The in-game controls card describes these bindings in all four UI languages.
+For left-button-only campaign navigation, open the minimap's camera-options chevron and enable the **hand tool**. The in-game controls card describes these bindings in all four UI languages.
 
 <div align="center">
 
@@ -150,90 +219,77 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 </div>
 
-> 💡 **The context budget is a real lever.** Default **65536** tokens; **↺ Max** fills in the model's true maximum. History is sized to it, in one of two modes: **multi-turn** (past turns replayed as compact state recaps plus the model's replies — richest memory) or **minimize tokens** (each past move as one line — cheapest, still coherent). Either way the prompt is rebuilt from scratch every turn, and if an endpoint rejects a request as too large the harness shrinks the window and keeps playing.
->
-> **Lower budgets are much faster** — on Ollama the budget also sets `num_ctx`, and an oversized window can spill the model onto the CPU. For small local models, 32K is often enough and noticeably faster. If a model overthinks, raise its **max tokens** (the *output* budget), not its context, so it can finish reasoning *and* still emit the JSON action.
-
 ## 🔧 Tool calls, and which stack served them
 
-Models act by calling tools, on all four protocols — OpenAI-compatible (vLLM, llama.cpp, LM Studio, OpenRouter, Groq …), Ollama, Anthropic and Google. Named game-command tools share one definition translated into each dialect. Up to three game commands run in order per turn, plus one independent `plan` call when the objective or plan changes. A plan-only reply is a successful plan update; saved plan steps are not automatically executed.
+Models act by calling tools, on all four protocols — OpenAI-compatible, Ollama, Anthropic and Google — and over MCP. Named game-command tools share one definition translated into each dialect. Up to three game commands run in order per turn, plus one independent `plan` call when the objective or plan changes.
 
-**A seat that cannot work the tools fails visibly.** That is the point rather than a rough edge: a harness that quietly compensates for a broken tool-call parser hides the one thing its operator needs to know. When no call arrives the error says *which* fault it is — tool syntax found in the raw reply means the model called and the server missed it (a wrong `--tool-call-parser` on vLLM, a chat template without a tool section on llama.cpp), and no syntax means the model simply did not call.
+**A seat that cannot work the tools fails visibly.** A harness that quietly compensates for a broken tool-call parser hides the one thing its operator needs to know. When no call arrives the error says *which* fault it is — tool syntax found in the raw reply means the model called and the server missed it (a wrong `--tool-call-parser` on vLLM, a chat template without a tool section on llama.cpp), and no syntax means the model simply did not call. For older models and broken parsers each seat has an **Accept inline JSON** switch, off by default and recorded in the transcript.
 
-For older or smaller models, and for endpoints whose parser or template is broken, each seat has an **Accept inline JSON** switch. Off by default. Switching it on is a declaration, not a convenience — it is recorded in the transcript, because a seat allowed to fall back is scored on a softer contract than one that is not, and every turn records whether it was answered by `tool_call` or by `content`.
+**A result belongs to a model *and* a stack.** Every seat records `servedBy` — what the server calls itself (`vllm`, `llamacpp`, `ollama`, …) — and an MCP seat records its harness. Read a number as *(model × stack × settings)*, or *(model × harness)*; a bare per-model figure is not reproducible.
 
-**A result belongs to a model *and* a stack.** A model that works through Ollama and fails through OpenRouter is one of the most useful things this can tell you, so every seat records `servedBy` — what the server calls itself (`vllm`, `llamacpp`, `ollama`, …), asked once at match start and never guessed from the endpoint, which is deliberately not stored. Read a number as *(model × stack × settings)*; a bare per-model figure is not reproducible.
-
-> 💡 **On llama.cpp, set `--reasoning-format deepseek`.** The default is `auto`, and `auto` drops the reasoning trace as soon as it delivers tool calls — the tokens are billed, the thinking is gone, and the transcript shows an empty Reasoning panel on exactly the turns that went best. Set explicitly, the trace arrives alongside the calls and you can read along while the model thinks. (`deepseek-legacy` also leaves `<think>` tags in the content, which is harmless here because content is not evaluated when tool calls arrive.)
+> 💡 **On llama.cpp, set `--reasoning-format deepseek`.** The default `auto` drops the reasoning trace as soon as it delivers tool calls — the tokens are billed, the thinking is gone. Set explicitly, the trace arrives alongside the calls.
 
 ## 🎞️ Analyze Transcript
 
-A third mode beside Arena and Campaign, and the other half of the round trip: a match records itself, gets downloaded, gets handed to someone else — and opens here.
+A third mode beside Arena and Campaign: a match records itself, gets downloaded, gets handed to someone else — and opens here.
 
 <div align="center">
 
 ![Reading a finished match back in the analyzer](Screenshots/AnalyzeTranscript.png)
 
-<sub><i>Episode 6 reopened in build 819: an existing recorded match rendered with the current engine, with the turn list, saved plan and economy graph. The header retains the original recording's build and prompt version.</i></sub>
+<sub><i>Episode 6 reopened in the analyzer: the recorded match in the current engine, with the turn list, saved plan and economy graph.</i></sub>
 
 </div>
 
 Load a `match-*.jsonl` and you get:
 
-- **The board in the real engine.** The arena's own renderer with the full camera — pan, rotate, zoom. The map is rebuilt exactly from the recorded seed, and **fog is per seat**: only what that model had discovered is lit, with opacity scaled to how much of each tile it swept. Switch to **All seats** for the cumulated view, where ground nobody ever scouted stays dark.
-- **What the model was thinking.** Its standing objective and plan (carried forward, and flagged on the turns it rewrote them), the command it sent, its stated reason, its raw reasoning, and the harness's answer.
-- **A timeline you can scrub.** Step through turns, **play** at 0.5, 1, 2, or 4 entries a second through the filtered list, use the all-entry slider, click the economy graph to jump, or use the chapter list — age advances, wonders, exhausted resources, combat. Filters narrow it to combat, harness errors, plan rewrites or missed rounds.
-- **Saved reading views.** Choose Balanced, Watch, Read, or Compare, adjust the map height with the divider (drag or arrow keys), and choose comfortable or compact text. These preferences and playback rate stay in this browser, separately from exported match/model settings.
-- **Visible camera controls.** Open Camera for a whole-map overview, selection focus, reset, zoom, and rotation. Manual camera input turns automatic following off. These controls are also available in live play.
-- **Click anything** to inspect it. Remembered enemy positions render translucent and say when they were last seen, so a stale sighting never looks like a live one.
+- **The board in the real engine** — rebuilt from the recorded seed, with **fog per seat**: only what that model had discovered is lit. **All seats** shows the cumulated view.
+- **What the model was thinking** — its objective and plan, the commands it sent, its stated reasons, its raw reasoning, and the harness's answers.
+- **A timeline you can scrub** — step through turns, play at 0.5–4 entries a second, click the economy graph, or jump by chapter: age advances, Wonders, exhausted resources, combat. Filters narrow it to combat, errors, plan rewrites or missed rounds.
+- **Click anything** to inspect it. Remembered enemy positions render translucent and say when they were last seen.
 
-**Sixteen real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint, nothing to configure: the analyzer only ever reads a file. `samples/index.json` lists them with their models, tempo and result.
+Nothing is interpolated between snapshots: every frame is a moment the file actually attests to.
 
-Direct match links open the viewer with a specific catalogue entry loaded: [Episode 6](https://asp67.github.io/when-agents-rule/?match=match-20260907-120324), [Episode 7](https://asp67.github.io/when-agents-rule/?match=match-20260909-211941), [Episode 8](https://asp67.github.io/when-agents-rule/?match=match-20261001-200050), [Episode 9](https://asp67.github.io/when-agents-rule/?match=match-20261003-234407), [Episode 10](https://asp67.github.io/when-agents-rule/?match=match-20261004-120750), [Episode 12](https://asp67.github.io/when-agents-rule/?match=match-20261005-194200), [Episode 13](https://asp67.github.io/when-agents-rule/?match=match-20261008-104823), [Episode 14](https://asp67.github.io/when-agents-rule/?match=match-20261008-111302), [Episode 15](https://asp67.github.io/when-agents-rule/?match=match-20261008-115009), [Episode 16](https://asp67.github.io/when-agents-rule/?match=match-20261015-194436) and [Episode 17](https://asp67.github.io/when-agents-rule/?match=match-20261017-105426). Use `?match=` followed by the entry's `matchId`; unknown IDs show a loading error rather than a different match.
+**Sixteen real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint: the analyzer only ever reads a file. Each opens directly with `?match=` and its id:
 
-- `2026-07-26_opus5-grok4.5-gpt-oss_36min.jsonl` — 271 turns, **turn-based** (60 s a round). Opus 5 as Persia, Grok 4.5 as Egypt, and gpt-oss on a single consumer GPU as Yamato. Opus 5 wins.
-- `2026-08-09_kimi-k3-gemma4-qwen3.8-ornith9b_25min.jsonl` — 490 turns, **real time**, nobody waiting for anybody. Kimi K3 as Yamato, a local Gemma 4 26B as the Greeks, Qwen 3.8 Max as Persia, and a 9B quant on a desktop GPU as Egypt. Kimi K3 wins, having issued three commands a turn to the others' one.
-- `2026-08-11_muse-glimmer-qwen3.6-gemma4_88min.jsonl` — 471 turns, **turn-based** (60 s a round), and the longest of the three-player games. Muse-Glimmer 30B as the Greeks, Gemma 4 31B as Egypt, Qwen 3.6 27B as Persia. Persia wins on 3039 power against 164 and 117.
-- `2026-08-17_qwen3.8-opus4.6-qwen3.6-muse-glimmer_125min.jsonl` — 544 turns over two hours, **turn-based** (120 s a round), four seats. Qwen 3.8 27B as Yamato, Claude Opus 4.6 as Egypt, Qwen 3.6 27B as Persia, Muse-Glimmer 30B as the Greeks. Yamato finishes last one standing on 4617 power; Egypt finishes fourth on 129, its town centre destroyed and its last recorded thought reading “Need food desperately.” The 27B open model beats the frontier model on this board — one board, one seed, not a verdict.
-- `2026-08-26_deepseek-v4-glm5.3-qwen3.8-gpt5.6_103min.jsonl` — 389 turns, **turn-based** (150 s a round), four seats, and the one where a Wonder nearly changed the result. deepseek-v4-flash as Persia, glm-5.3-flash as the Greeks, Qwen3.8 27B running locally as Egypt, gpt-5.6-luna as Yamato. Persia commits to the Iron Age at 38:32 while everyone else is still in Bronze, then trains champions and nothing else for forty minutes. Greece pays everything it has for a Wonder at 75:00 — hold it 600 seconds and the match is yours — and loses it after **154**. Egypt is eliminated with 10,070 food and zero workers left to spend it.
+| Match | Seats | Tempo | Result |
+| --- | --- | --- | --- |
+| [26 Jul](https://asp67.github.io/when-agents-rule/?match=match-20260726-204805) · 36 min | Claude Opus 5 · Grok 4.5 · gpt-oss | turn-based | Opus 5, last standing |
+| [9 Aug](https://asp67.github.io/when-agents-rule/?match=match-20260809-223447) · 25 min | Kimi K3 · Gemma 4 26B · Qwen 3.8 Max · Ornith 9B | real time | Kimi K3, last standing |
+| [11 Aug](https://asp67.github.io/when-agents-rule/?match=match-20260811-222813) · 89 min | Muse-Glimmer 30B · Gemma 4 31B · Qwen 3.6 27B | turn-based | Qwen 3.6, last standing |
+| [17 Aug](https://asp67.github.io/when-agents-rule/?match=match-20260817-195216) · 126 min | Qwen 3.8 27B · Claude Opus 4.6 · Qwen 3.6 27B · Muse-Glimmer 30B | turn-based | Qwen 3.8 27B, last standing |
+| [26 Aug](https://asp67.github.io/when-agents-rule/?match=match-20260826-200238) · 104 min | DeepSeek V4 Flash · GLM 5.3 Flash · Qwen 3.8 27B · GPT 5.6 Luna | turn-based | DeepSeek V4, last standing |
+| [Episode 6](https://asp67.github.io/when-agents-rule/?match=match-20260907-120324) *The Architect in the Ashes* · 90 min | Gemini Flash · DeepSeek V4 Flash · GPT 5.6 Luna · Qwen 3.8 Flash | turn-based | Qwen 3.8 Flash, Wonder |
+| [Episode 7](https://asp67.github.io/when-agents-rule/?match=match-20260909-211941) *The Cartographers and the Procession* · 121 min | Gemini 3.8 Flash · DeepSeek V4 Pro · GPT 5.6 Luna · Qwen 3.8 Flash Next | turn-based | Gemini 3.8 Flash, last standing |
+| [Episode 8](https://asp67.github.io/when-agents-rule/?match=match-20261001-200050) *Fighting Blind* · 70 min | GLM 5.3 Flash · space-bunny · DeepSeek V4 Flash · MiMo V2.6 | real time | GLM 5.3, Wonder |
+| [Episode 9](https://asp67.github.io/when-agents-rule/?match=match-20261003-234407) *Chasing Ghosts* · 80 min | GLM 5.3 Flash · space-bunny · MiMo V2.6 · DeepSeek V4.1 Flash | real time | GLM 5.3, Wonder |
+| [Episode 10](https://asp67.github.io/when-agents-rule/?match=match-20261004-120750) *The Map Reader* · 38 min | the same four | real time | DeepSeek V4.1, last standing |
+| [Episode 12](https://asp67.github.io/when-agents-rule/?match=match-20261005-194200) *Same Clock* · 99 min | GPT-6.1 Sol · Claude Sonnet 5.5 · DeepSeek V4.1 Flash · GLM 5.3 Flash | turn-based | GLM 5.3, Wonder |
+| [Episode 13](https://asp67.github.io/when-agents-rule/?match=match-20261008-104823) *Hide and Seek* · 20 min | Claude Haiku 5.5 · GPT-6 Luna | real time | Haiku 5.5, last standing |
+| [Episode 14](https://asp67.github.io/when-agents-rule/?match=match-20261008-111302) *Next Door* · 32 min | the rematch, civilizations swapped | real time | Haiku 5.5, last standing |
+| [Episode 15](https://asp67.github.io/when-agents-rule/?match=match-20261008-115009) *The Knot* · 70 min | Claude Haiku 5.5 · GPT-6 Luna · DeepSeek V4.1 Flash · GLM 5.3 Flash | turn-based | DeepSeek V4.1, last standing |
+| [Episode 16](https://asp67.github.io/when-agents-rule/?match=match-20261015-194436) *The Late Genius* · 71 min | Qwen 3.8 Flash Next · Qwen 3.8 27B · Gemini 4 Argon | turn-based | Qwen 3.8 Flash Next, Wonder |
+| [Episode 17](https://asp67.github.io/when-agents-rule/?match=match-20261017-105426) *The 600-Second Death Sentence* · 68 min | Gemini 4 Argon · Qwen 3.8 Flash Next (Q2_0) · Qwen 3.8 Flash Next (NVFP4) | turn-based | Gemini 4 Argon, last standing |
 
-- `2026-09-07_gemini-flash-deepseek-v4-gpt5.6-qwen3.8_89min.jsonl` — Episode 6, **The Architect in the Ashes**: 427 turns over 89:50, **turn-based** (120 s a round). Gemini Flash as Egypt, DeepSeek v4 Flash as the Greeks, GPT 5.6 Luna as Persia, and Qwen3.8 Flash as Yamato. The full transcript includes the capital raid, the search for stone, the Wonder defense and all four models' closing statements.
+`samples/index.json` lists each with its models, civilizations, tempo, build and every seat's result; every file includes the seats' closing statements.
 
-- `2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl` — Episode 7, **The Cartographers and the Procession**: 723 turns over 121:23, **turn-based** (180 s rounds), on a snow map. Gemini 3.8 Flash as Egypt, DeepSeek v4 Flash Pro as the Greeks, GPT 5.6 Luna as Persia, and local Qwen3.8 Flash Next as Yamato. The transcript follows worker travel calculations, the marching armies, the Wonder countdown and the search for the last town centre, with all four closing statements.
+## 🧪 Benchmark
 
-- `2026-10-01_glm5.3-space-bunny-deepseek-v4-mimo-v2.6_70min.jsonl` — Episode 8, **Fighting Blind**: 419 turns over 69:59, **real time**, four seats on easy. GLM5.3 Flash, running locally on a DGX Spark, plays Egypt; space-bunny-alpha, an OpenRouter stealth model, the Greeks; DeepSeek V4 Flash, Persia; MiMo V2.6 Flash, Yamato. The bunny builds a second town centre beside its gold, MiMo follows its gold carriers there and burns it at 16:26, GLM takes the capital half a minute later, and the Greeks are out at 18:20. GLM repairs its forward town centre from nine percent under fire, completes a Pyramid at 59:34 and holds it, winning on 4753 power against 1746, 106 and 74. MiMo's last worker, five gold short of a new town centre, builds a house and a barracks instead and sends a single militia at the Wonder. All four closing statements are included.
-
-- `2026-10-03_glm5.3-space-bunny-mimo-v2.6-deepseek-v4.1_80min.jsonl` — Episode 9, **Chasing Ghosts**, the rematch: 529 turns over 80:16, **real time**, on medium (Winter Valley), build 1049 — the first build in which a seat remembers the enemy units it has seen, each with how many seconds ago. GLM5.3 Flash (local) plays Egypt, space-bunny the Greeks, MiMo V2.6 Flash Persia, and DeepSeek, now V4.1 Flash, Yamato. The bunny researches farms on its first turn and loses two armies to DeepSeek's tower at C4; GLM spots a Greek worker carrying gold and takes the mine; DeepSeek razes the Greek capital and the bunny is out at 36:09. GLM raises a Pyramid at 1:08:13 and holds it, winning on 5804 power against 1917, 1565 and 109. MiMo loses eleven turns to the output limit. All four closing statements are included.
-
-- `2026-10-04_glm5.3-space-bunny-mimo-v2.6-deepseek-v4.1_38min.jsonl` — Episode 10, **The Map Reader**: 555 turns over 37:46, **real time**, on hard (Desert), build 1053, same seats. DeepSeek V4.1 Flash finds the Greek capital at 6:39, reasons out the plus-sign layout of the four capitals at 15:19 and sees both other capitals at 15:54; no other model sees an enemy building before 24:54, and two never do. The bunny's single tower stops fifteen militia, then stands at one percent for five quiet minutes; the Greeks are out at 17:50. GLM marches its army into the empty north-west corner while DeepSeek's archers raze its home, and DeepSeek wins last one standing at 37:10 on 4720 power against 96, 38 and 7. All four closing statements are included.
-
-- `2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl` — Episode 12, **Same Clock**: 469 turns over 99:16, **turn based** (every round, all four get the same report and up to three minutes to answer), on easy, build 1054. Two frontier models join the two cheap champions: Claude Sonnet 5.5 plays the Greeks, GPT-6.1 Sol Egypt, DeepSeek V4.1 Flash Persia and GLM5.3 Flash (local) Yamato. Claude reaches the Iron Age first and raises an Akropolis without towers; DeepSeek razes it 62 seconds later. GLM loses its whole base, rebuilds at B2 with 5 gold to spare, raises a Shrine inside a ring of four towers and holds it, winning on 4502 power against 3516, 1978 and 108. GPT sends exactly one order on 83 of its 87 turns. All four closing statements are included.
-
-- `2026-10-08_claude-haiku5.5-gpt6-luna_20min.jsonl` — Episode 13, **Hide and Seek**: 337 turns over 20:09, **real time**, on easy (the new large map, 11 × 11 tiles, jittered spawns), build 1080. Claude Haiku 5.5 plays the Maya and GPT-6 Luna the Romans, one on one. Haiku takes 26 turns in the first minute to Luna's 7 and stands at 98 of the 100 population cap at 8:31, when Luna has 15; it also reads the report's 44 gold deposits as 44 gold and calls the next age out of reach. Its army of twenty sets out at 7:42 "toward the map's far corner", passes two tiles from the Roman Town Center at 10:12 and turns away; two strays sent along the east edge find the Roman town at 13:01 instead, and the Town Center falls at 15:39. Luna's last worker, the one it sent north to scout at 3:15, builds a refuge Town Center at the top edge and a tower that kills the Maya scout, and Haiku wins last one standing at 20:02 on 4617 power against 46, at a cost of $13.55 to Luna's $0.17. Both closing statements are included.
-
-- `2026-10-08_claude-haiku5.5-gpt6-luna_32min.jsonl` — Episode 14, **Next Door**, the rematch with the civilizations swapped: 502 turns over 31:53, **real time**, on easy (large map), build 1080. Claude Haiku 5.5 plays the Romans and GPT-6 Luna the Maya. Both reach the Neolithic in the same second, 5:06; at 13:55 Haiku places the enemy at the mirror of its own base, "around H2", and its archer sees the first Maya house at 14:15. Luna's archers win five skirmishes, nine Roman units for none, but its Town Center falls at 17:46, and at its next turn the bank holds the 400 stone the Bronze Age costs. Ten villagers walk to a refuge and two arrive and build a Town Center two tiles from the Roman capital; Haiku spots the first of its houses at 24:01. Luna's last villager then walks down the Roman main street with a legionary of exactly the same speed behind it, and raises one more Town Center in the far corner. Haiku wins last one standing at 31:46 on 5066 power against 52 and leads the pair 2–0, at $24.61 to Luna's $0.47. Both closing statements are included.
-
-- `2026-10-08_claude-haiku5.5-gpt6-luna-deepseek-v4.1-glm5.3_70min.jsonl` — Episode 15, **The Knot**: 408 turns over 69:40, **turn based** (every round, all four get the same report and up to three minutes to answer), on medium (winter), build 1080. Claude Haiku 5.5 plays the Vikings, GPT-6 Luna the Greeks, DeepSeek V4.1 Flash the Persians and GLM5.3 Flash (local, on the DGX) the Maya. DeepSeek finds the Greeks first and razes their Town Center at 15:40. It then guesses the mirror of its own corner, wipes out Haiku's thirteen soldiers and a dozen villagers at 23:54 without a loss, loses eleven units to the Viking towers at 27:20 and takes the Viking Town Center at 30:04. GLM stages 23 archers at 23:18, grows them to 33 and waits about ten minutes for gold; at 34:29 DeepSeek writes "Critical finding: Maya's base", and the Maya Town Center falls at 37:39. Then the knot: without a Town Center GLM's villagers cannot bank anything, a new one costs stone and gold it does not have, and GLM writes down and runs tests against the rule (gathering anyway, a farm, demolishing its own farm for a refund), while Luna, after its third Town Center falls at 53:27, is ten gold short of a fourth. DeepSeek, which forfeits 15 turns to the 8,192-token output limit, wins last one standing at 1:09:08 on 4370 power against 117, 75 and 71. All four closing statements are included.
-
-- `2026-10-15_qwen3.8-flash-next-qwen3.8-27b-gemini4-argon_71min.jsonl` — Episode 16, **The Late Genius**: 248 turns over 70:44, **turn based** (every round, all three get the same report and up to two minutes to answer), on easy (Summer Valley), build 1100. Qwen3.8 Flash Next, running locally on the DGX, plays the Egyptians, Qwen3.8-27B the Greeks and Gemini 4 Argon the Romans. Argon answers in a median 6.6 seconds against 30 and 41 and has four Town Centers by 13:17. With one Iron Age strike it razes the Greek Town Centers at 42:22 and 44:22 and Egypt's first at 45:43. Egypt moves to its stone and gold instead of walking 159 seconds home, with new Town Centers on the west field at 50:00 and 52:16, and raises its Pyramid at 1:00:16; Argon's Colosseum follows at 1:00:33. Over the match Egypt builds nine towers and four farms, Argon one tower and no farms, and a Roman raid of thirteen heavy cavalry and a champion dies at Egypt's towers at 1:07:02. The Pyramid completes its hold (at the last read 16 seconds left, the Colosseum 34), and Egypt wins by Wonder on 3553 power against 2457 and 113; the whole match cost $2.22, the winner nothing. All three closing statements are included.
-
-- `2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl` — Episode 17, **The 600-Second Death Sentence**: 218 turns over 67:53, **turn based** (every round, all three get the same report and up to two minutes to answer), on easy (Summer Valley), build 1103. Gemini 4 Argon plays the Romans; the other two seats are the same open model, Qwen3.8 Flash Next, in two quantizations under identical conditions: two-bit Q2_0 on an RTX card as the Greeks and NVFP4 on the DGX as the Egyptians. Argon answers all 84 of its turns, with a median reply of 8.6 seconds, builds four more Town Centers and four stables, and reaches the Iron Age at 28:07 while the Greeks are still in the Bronze Age. Its wedge takes the Greek forward base on the Roman approach road; the Greeks give their last order at 42:34 and stay silent for the remaining 25 minutes. Egypt builds seven towers and three farms, repairs seven times and raises its Pyramid at 1:04:55 with four villagers and no army; thirteen heavy cavalry and three priests kill the last tower first and take the Wonder at 1:06:39, 104 seconds into its 600-second hold. Argon wins last one standing on 2805 power against 114 and 109, at $1.84 to the free pair's nothing, and Egypt, which played on 25 minutes longer than the Greeks, finishes 5 points behind them. All three closing statements are included.
-
-Nothing is interpolated between snapshots. Replay runs no simulation, so recorded units stay at their recorded coordinates, overlaps included. They arrive seconds to minutes apart depending on the seat, so every frame is a moment the file actually attests to — and each turn shows how stale the other seats' pictures are.
+**Benchmark a model** runs fixed scenarios, the same for every model: a board, an objective, a time limit. The world stands still while the model thinks, so a slow endpoint costs time, not points. Each model plays exactly as it is set up in the library, two reference players show what random play and doing nothing score, and results are saved in the browser with their intervals, per model and checkpoint.
 
 ## 🧮 How a model is scored
 
-The **match heuristic** (0–100; called "strategy score" before build 922) is a transparent composite — no black box. It summarizes one match and is not a capability score:
+The **match heuristic** (0–100) is a transparent composite — no black box. It summarizes one match and is not a capability score:
 
 | Weight | Factor |
 |:---:|---|
 | 34% | Action success rate (valid, accepted moves) |
 | 20% | Progression (age advanced · buildings · military) |
-| 18% | Format fidelity (well-formed JSON the engine could parse) |
+| 18% | Format fidelity (well-formed calls the engine could parse) |
 | 15% | Reliability (no timeouts / network errors) |
 | 13% | Action diversity (used the toolset, didn't loop one move) |
 
-Alongside it: latency, decisions made, success ratio, reasoning rate, token usage, and a full error breakdown — timeouts, parse fails, **no-action replies** (prose with no JSON action; nothing is guessed or executed), invalid actions, rejections, context overflows, rate limits, and missed rounds. Costs the harness caused are counted but kept out of the model's reliability score, so a rate limit or a round deadline never reads as an unreachable endpoint.
+Alongside it: latency, decisions made, success ratio, commands per turn, reasoning rate, token usage, and a full error breakdown — timeouts, parse fails, no-action replies, invalid actions, rejections, context overflows, rate limits, and missed rounds. Costs the harness caused are counted but kept out of the model's reliability score, so a rate limit, a round deadline or a pause never reads as an unreachable endpoint.
 
 ## 🛠️ How it works
 
@@ -243,54 +299,38 @@ Browser (no backend, no external code)
 │                                 composed meshes, fog plane, effects
 ├── Game engine               — economy, combat, fog of war, ages, win conditions
 ├── Provider adapters         — OpenAI / Anthropic / Ollama / Google request shaping + auth
-└── Per-model agent loop      — builds the JSON game-state, calls the model, parses its
+├── MCP link                  — an MCP seat's turns, to and from the local hub
+└── Per-seat agent loop       — builds the JSON game-state, asks the model, parses its
                                 command(s), applies them in order, feeds each result back
+
+Your computer (optional)
+└── MCP hub (tools/mcp)       — serves the game's tools to your agent harnesses
 ```
 
-Each turn a model receives a structured snapshot and returns an action:
-
-```json
-{ "action": "build_structure", "params": { "buildingType": "barracks", "reason": "need infantry to pressure the leader" } }
-```
-
-**Or up to three commands in one reply.** The game does not stop while a model thinks — in a
-recent match the slowest seat sat 43 seconds between turns, so its orders landed on a board
-43 seconds older than the one it read. A short queue lets a slow seat spend one turn on a
-whole beat of play instead of three stale ones:
+Each turn a model receives a structured snapshot and answers with tool calls — one, or up to three:
 
 ```json
 { "commands": [
     { "action": "train_unit",      "params": { "unitType": "worker" } },
     { "action": "build_structure", "params": { "buildingType": "house" } },
-    { "action": "explore",         "params": { "tile": "C5" } } ],
-  "objective": "out-expand the leader" }
+    { "action": "explore",         "params": { "tile": "C5" } } ] }
 ```
 
-It is entirely optional — a single action is a complete reply, and a lone `wait` is as valid as
-three orders. Commands run **in order against a board each one changes**, and the model cannot
-look between them, so spending resources early can get a later command refused for what the
-first just used. Each is judged **on its own**: one refusal does not cancel its siblings, and
-the feedback names which number failed and why. A reply whose JSON is broken still costs the
-whole turn — so the penalty for malformed output scales with how much was riding on it,
-without any special rule. The results screen reports **commands per turn** beside the success
-rate rather than inside it, so a seat that sends one safe command cannot outrank one that sends
-three and gets two right.
+Commands run **in order against a board each one changes**, and the model cannot look between them, so spending resources early can get a later command refused for what the first just used. Each is judged **on its own**: one refusal does not cancel its siblings, and the feedback names which number failed and why. The engine validates each against the **advancement chain** (advance → research → build → resources → train) and returns a precise, actionable error. The full state contract is in [`game-state-schema.json`](game-state-schema.json): among other things, every unit type a seat can train carries its hit points, attack, reach, sight and speed, and every unit, tower and trebuchet with a range carries its reach wherever it is listed.
 
-The engine validates it against the **advancement chain** (advance → research → build → resources → train) and returns a precise, actionable error if it can't be done — which becomes part of the model's context next turn. The full state contract is in [`game-state-schema.json`](game-state-schema.json).
+**The harness never plans for the model.** Every turn the prompt is rebuilt from scratch: the outcome of every command last sent, each numbered and answered separately, the current state last, and the model's own objective and plan echoed back until it rewrites them. Where information is missing or misleading the game fixes the information — it does not add hints. What a model fails to work out from correct information is exactly what is being measured.
 
-**The harness never plans for the model.** Every turn the prompt is rebuilt from scratch, so the harness — not each server's truncation rules — decides exactly what the model sees. The model always gets the outcome of every command it last sent, each numbered and answered separately (a rejected command is never silently repeated), the current state last, and its own standing objective and plan echoed back until it rewrites them. Everything else is the model's own reasoning.
-
-**Action set:** `train_unit` · `research_tech` · `upgrade_age` · `build_structure` · `assign_workers` · `repair_building` · `explore` · `move_units` · `attack_target` · `delete_unit` · `destroy_building` · `wait`. Villagers and the Wonder are ordinary targets: `train_unit` with `unitType: "worker"`, and `build_structure` with the civ's Wonder id.
+**Action set:** `train_unit` · `research_tech` · `upgrade_age` · `build_structure` · `assign_workers` · `repair_building` · `explore` · `move_units` · `attack_target` · `delete_unit` · `destroy_building` · `wait` · `plan`. Over MCP the harness additionally has `join`, `wait_for_turn`, `end_turn`, `get_rules`, `check_connection` and `final_word`.
 
 ## ⚔️ Game rules in a nutshell
 
 - **Win** by eliminating every rival, **or** building a **Wonder** and holding it for **600 s**. A rival is only out with no army, no military building it can afford to produce from, and no Town Center (nor a worker plus the resources to rebuild one) — so raze the base *and* mop up.
-- **Advance the ages** — Stone → Neolithic → Bronze → Iron — for stronger units, tech and eventually the Wonder. Buildings take an epoch-appropriate look and +50% HP per age.
-- **Economy first, but not forever.** Workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100). **Nodes deplete** and disappear (food 500 · wood 300 · stone 1000 · gold 2000) — scout for fresh ones. Only farms regenerate, and only while manned.
+- **Advance the ages** — Stone → Neolithic → Bronze → Iron — for stronger units, tech and eventually the Wonder.
+- **Economy first, but not forever.** Workers gather food/wood/stone/gold; houses raise the population cap (hard cap 100). **Nodes deplete** — scout for fresh ones. Only farms regenerate, and only while manned.
 - **Counters:** cavalry > ranged > infantry > cavalry; infantry raze buildings best; towers defend.
-- **Towers and the trebuchet.** No tower may stand within 200 of an enemy Town Center on that Town Center's side of the map. A tower is answered by the trebuchet: Siege Engineering trains engineers, who build one on site; it outranges a tower's 18 (50, or 60 for the faster, sturdier Iron Age engine) and throws only at towers. Armies with a trebuchet besiege the towers they meet on the way, and guards at a tower go out after one throwing at it.
+- **Towers and the trebuchet.** No tower may stand within 200 of an enemy Town Center on that Town Center's side of the map. A tower is answered by the trebuchet: Siege Engineering trains engineers, who build one on site; it outranges a tower's 18 (50, or 60 for the faster, sturdier Iron Age engine) and throws only at towers. Armies with a trebuchet besiege the towers they meet on the way.
 - **Fog of war:** a model can't harvest or attack what it hasn't discovered.
-- **7 civilizations** — Egyptians, Greeks, Persians, Yamato, Romans, Vikings, Maya — each with a unique bonus and Wonder.
+- **7 civilizations** — Egyptians, Greeks, Persians, Yamato, Romans, Vikings, Maya — each with a unique bonus, units and Wonder.
 
 <div align="center">
 
@@ -298,7 +338,7 @@ The engine validates it against the **advancement chain** (advance → research 
 |:---:|:---:|
 | ![The Greeks' chain of towers reaching across the map to the Egyptian town](Screenshots/TowerCreep.jpg) | ![A small Viking group escorting a trebuchet across the map](Screenshots/Trebuchet.jpg) |
 
-<sub><i>Left, 23 October 2026: Qwen3.8's Greeks walked a chain of 19 towers across the map, each raised under the cover of the last, and put the last two 12 from DeepSeek V4.1's Egyptian Town Center. Its workers and new soldiers died at the door. Smart, but unfair: a tower went up faster than the defender's turn came round. Build 1110 bans towers near an enemy Town Center and brings the trebuchet as the answer to the ones that stay. Right, 25 October: Qwen3.8's Vikings escort their trebuchet across the map.</i></sub>
+<sub><i>Left, 23 October 2026: Qwen3.8's Greeks walked a chain of 19 towers across the map and put the last two 12 from DeepSeek V4.1's Egyptian Town Center. Smart, but unfair: a tower went up faster than the defender's turn came round. Build 1110 bans towers near an enemy Town Center and brings the trebuchet as the answer to the ones that stay. Right, 25 October: Qwen3.8's Vikings escort their trebuchet across the map.</i></sub>
 
 </div>
 
@@ -307,9 +347,9 @@ The engine validates it against the **advancement chain** (advance → research 
 Fully client-side, with no backend of its own.
 
 - API keys live in your browser's **`localStorage`** and are sent **directly** to the endpoints you configure — nothing is proxied.
-- Fine for local, single-user testing. Don't enter credentials on a shared machine, and scope any keys you use.
-- **A copy served from anywhere but your own machine opens as a showcase**: straight into the analyzer with the bundled match, and no route to the Arena, the Campaign or the model catalogue. Those are the parts that ask for keys — and a key pasted into a page someone else controls is a different proposition from one pasted into a page you are serving yourself, even though both only ever keep it in your own browser. Append `?full=1` if you are deliberately self-hosting rather than just visiting.
-- **Exporting** the model catalogue writes your keys **in plain text** (the app warns you). Keep that file private. Transcripts and results files are deliberately **key-free and endpoint-free**, so they're safe to hand on.
+- **An MCP seat needs no key in the game at all.** The hub runs on your computer and answers only there (`127.0.0.1`); it accepts WAR pages only from asp67.github.io and your own computer.
+- **A copy served from anywhere but your own machine opens as a showcase**: straight into the analyzer, with no route to the Arena, the Campaign or the model catalogue — the parts that ask for keys. Append `?full=1` if you are deliberately self-hosting.
+- **Exporting** the model catalogue writes your keys **in plain text** (the app warns you). Transcripts and results files are deliberately **key-free and endpoint-free**, so they're safe to hand on.
 
 ## 📁 Project structure
 
@@ -318,20 +358,26 @@ index.html              # screens, HUD, arena & library UI
 css/styles.css          # all styling
 js/
 ├── game.js             # core loop, economy, combat, win conditions
-├── openai-ai.js        # LLM arena harness: provider adapters, agent loop, metrics
+├── openai-ai.js        # the arena harness: provider adapters, agent loop, metrics
+├── mcp-link.js         # an MCP seat's link to the local hub
+├── mcp-ui.js           # MCP library entries, the setup assistant, seat readiness
 ├── ai.js               # rule-based AI opponent
 ├── ui.js               # menus, model library, spectator dashboard, analyzer UI
 ├── transcript.js       # per-match JSONL recorder (states, replies, results, timeline)
 ├── analyzer.js         # transcript parsing, scene assembly, chapters
-├── engine/             # in-house WebGL engine: math3d, glcore, texgen,
-│                       #   mesh, buildings, units, gamerenderer
+├── bench-*.js          # the benchmark: scenarios, page, worker
+├── engine/             # in-house WebGL engine
 ├── i18n.js             # 4-language UI dictionary + game-content translations
 ├── civilizations.js    # civs, units, buildings, tech trees
 ├── buildings.js / units.js / resources.js / terrain.js / fogofwar.js / input.js
-game-state-schema.json  # documents the JSON state every model receives each turn (checked by tests)
+tools/mcp/              # the MCP hub and the tool list it serves
+tools/bench/            # headless realm, replays and the benchmark runner
+samples/                # the bundled matches for the analyzer
+game-state-schema.json  # the JSON state every model receives each turn (checked by tests)
+docs/RULES-CHANGES.md   # every change to the rules or to what a model is told, and why
 ```
 
-Plain HTML + CSS + JavaScript, nothing else. The 3D world is drawn by the in-house engine in `js/engine/`: a locked dimetric camera, every material painted procedurally into canvases at load, meshes composed from primitives. No framework, no bundler, no transpile, no CDN. Cache-busting is a `?v=` query on each script tag.
+Plain HTML + CSS + JavaScript, nothing else. No framework, no bundler, no transpile, no CDN. Cache-busting is a `?v=` query on each script tag.
 
 ## 🧭 Related projects
 
@@ -345,13 +391,13 @@ Similar arenas, different games — worth knowing, and worth crediting:
 
 ## ⚠️ Disclaimers
 
-- **Non-scientific.** Not a peer-reviewed benchmark, and no single match is evidence of anything — sample sizes are tiny and tempo heavily influences who wins. Don't cite match results as model capability. Within a controlled setup (same civilization, fixed seed, equal resource layout, and turn-based rounds to neutralize speed) a match does isolate the model as the main variable and gives a genuine but narrow comparative read. Treat it as informed intuition, not data.
-- **Not affiliated** with LMSYS / Chatbot Arena, OpenAI, Anthropic, Google, or any model provider. "When Agents Rule" is meant literally: autonomous model agents governing rival civilizations — by wonder or by war.
+- **Non-scientific.** Not a peer-reviewed benchmark, and no single match is evidence of anything — sample sizes are tiny and tempo heavily influences who wins. Don't cite match results as model capability. Within a controlled setup (same civilization, fixed seed, equal resource layout, and turn-based rounds to neutralize speed) a match does give a genuine but narrow comparative read. Treat it as informed intuition, not data.
+- **Not affiliated** with LMSYS / Chatbot Arena, OpenAI, Anthropic, Google, any harness maker or any model provider. "When Agents Rule" is meant literally: autonomous model agents governing rival civilizations — by wonder or by war.
 - Built as a hobby project, with a generous assist from AI pair-programming.
 
 ## 🤝 Contributing
 
-Issues and PRs welcome — new providers, civilizations, balance tweaks, better metrics, or translations. Keep it dependency-free and build-step-free where possible.
+Issues and PRs welcome — new providers, harnesses, civilizations, balance tweaks, better metrics, or translations. Keep it dependency-free and build-step-free where possible.
 
 ## 📜 License
 
