@@ -1694,7 +1694,9 @@ class UIManager {
         const campaign = this._setupMode === 'campaign';
         const slotTitle = (i) => campaign ? t('cmp.opp', { n: i + 1 }) : t('ar.slot', { n: i + 1 });
         list.innerHTML = this.setupSlots().slice(0, this.setupSlotCount()).map((slot, i) => {
-            const civOpts = Object.keys(civNames).map(c => `<option value="${c}" ${slot.civ === c ? 'selected' : ''}>${civNames[c]}</option>`).join('');
+            // "Random" (asp67, 28 Oct): drawn anew when the match starts (resolveRandomCivs).
+            const civOpts = `<option value="random" ${slot.civ === 'random' ? 'selected' : ''}>🎲 ${e(t('ar.civRandom'))}</option>`
+                + Object.keys(civNames).map(c => `<option value="${c}" ${slot.civ === c ? 'selected' : ''}>${civNames[c]}</option>`).join('');
             const modelOpts = modelRows.map(({ m: mm, n: mn }) => `<option value="${mm.id}" ${slot.control === mm.id ? 'selected' : ''}>${e(this.modelDisplayName(mm, mn))}</option>`).join('');
             const isLLM = slot.control !== 'ki';
             const promptBlock = isLLM ? `
@@ -1746,7 +1748,7 @@ class UIManager {
                     <span class="arena-slot-caret">▶</span>
                     ${this.teamDotHtml(seat, 12)}
                     <span class="arena-slot-title">${slotTitle(i)}</span>
-                    <span class="arena-slot-summary">${civNames[slot.civ] || slot.civ} · ${e(ctrlName)}</span>
+                    <span class="arena-slot-summary">${slot.civ === 'random' ? '🎲 ' + e(t('ar.civRandom')) : (civNames[slot.civ] || slot.civ)} · ${e(ctrlName)}</span>
                     <span class="slot-prompt-badge" id="slotPromptBadge${i}" title="${t('ar.promptEditedTitle')}" style="${isLLM && slot.prompt != null ? '' : 'display:none'}">✎ ${t('ar.promptEdited')}</span>
                     ${(!campaign && typeof this.seatPlayCopyHtml === 'function') ? this.seatPlayCopyHtml(slot) : ''}
                     ${(!campaign && typeof this.seatReadyHtml === 'function') ? this.seatReadyHtml(slot, i) : ''}
@@ -2691,7 +2693,23 @@ class UIManager {
         if (ta) cfg.prompt = ta.value;
         this.saveArenaConfig();
         const n = Math.min(4, Math.max(2, cfg.count || 4));
-        return cfg.slots.slice(0, n).map(slot => this.slotToSetupEntry(slot));
+        return this.resolveRandomCivs(cfg.slots.slice(0, n).map(slot => this.slotToSetupEntry(slot)));
+    }
+
+    // Seats set to "Random" get a civilization drawn as the match starts: one no other seat
+    // of this match has, while any is left, so each match starts with a new set (asp67,
+    // 28 Oct). The slot keeps "Random"; the match and its transcript get the drawn one.
+    resolveRandomCivs(entries, taken = []) {
+        const all = Object.keys(this.civNames());
+        const used = new Set(taken.concat(entries.filter(x => x && x.civ !== 'random').map(x => x.civ)));
+        entries.forEach(x => {
+            if (!x || x.civ !== 'random') return;
+            const free = all.filter(c => !used.has(c));
+            const pool = free.length ? free : all;
+            x.civ = pool[Math.floor(Math.random() * pool.length)];
+            used.add(x.civ);
+        });
+        return entries;
     }
 
     // Collect the campaign setup: the human's civ + the chosen opponents.
@@ -2700,7 +2718,7 @@ class UIManager {
         if (ta) this._arenaConfig.prompt = ta.value;
         this.saveSetup();
         const cc = this._campaignConfig;
-        const opponents = cc.slots.slice(0, cc.count).map(slot => this.slotToSetupEntry(slot));
+        const opponents = this.resolveRandomCivs(cc.slots.slice(0, cc.count).map(slot => this.slotToSetupEntry(slot)), [cc.playerCiv].filter(Boolean));
         const substituted = [];
         opponents.forEach((o, i) => {
             if (!o.unconfigured) return;
