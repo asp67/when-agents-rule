@@ -10203,6 +10203,8 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         const controller = (lane && lane.seat) || lane;   // seat operation; see demoteToRuleBased
         if (!controller) return;
         controller.defeated = true;
+        // A seat out of the match is not silent: its silence ends here (ui.seatMetrics).
+        if (!controller.defeatedAt) controller.defeatedAt = Date.now();
         if (controller.aiPlayer) controller.aiPlayer._eliminated = true;
         // Before the abort below, and deliberately fire-and-forget: this seat is out, so
         // nothing in the match is waiting on its answer.

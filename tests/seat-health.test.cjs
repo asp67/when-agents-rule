@@ -30,6 +30,14 @@ test('silence is measured to the end of play, not to when the results are drawn'
     assert.ok(u.seatMetrics({ stats: stats({ requests: 5, latencies: [5000], lastAnswerAt: Date.now() - 90000 }) }).silentMs >= 90000);
 });
 
+test('an eliminated seat is not silent after its elimination', () => {
+    const u = ui();
+    const end = Date.now() - 1000, out = Date.now() - 3000000;
+    u.game = { gameStarted: false, arenaEndedAt: end };
+    const m = u.seatMetrics({ defeatedAt: out, stats: stats({ requests: 5, latencies: [5000], lastAnswerAt: out - 60000 }) });
+    assert.equal(m.silentMs, 60000, 'a minute before it was out, not 51 minutes');
+});
+
 test('nothing is shown before the seat has done anything', () => {
     const u = ui();
     const m = u.seatMetrics({ stats: stats({}) });
