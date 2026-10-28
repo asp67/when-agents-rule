@@ -4944,13 +4944,19 @@ class Game {
     rememberedUnits(viewer) {
         const mem = viewer._unitMemory;
         if (!mem) return [];
+        const seats = (this.aiManager && this.aiManager.aiPlayers) || [];
         return [...mem.values()].filter(r => r.located)
             .sort((a, b) => (b.visible - a.visible) || (b.at - a.at))
             .slice(0, Game.UNIT_MEMORY_SHOWN)
             .map(r => {
                 const moved = r.sx !== undefined && WarMath.hypot(r.x - r.sx, r.z - r.sz) >= Game.CONTACT_FLAP_DIST;
+                // Its type's reach, as the seat can know it: the owner's civilization shows in
+                // the unit, the owner's research does not.
+                const o = r.owner === 'player' ? this.player : seats.find(a => a.id === r.owner);
+                const def = o && typeof getUnitDefFor === 'function' ? getUnitDefFor(o.civilization, r.type) : null;
+                const reach = def && def.range >= 3 ? { reach: Math.round(def.range * 10) / 10 } : {};
                 return Object.assign(
-                    { id: r.id, type: r.type, x: Math.round(r.x), z: Math.round(r.z), owner: this.seatLabel(r.owner), healthPct: r.hp },
+                    { id: r.id, type: r.type, x: Math.round(r.x), z: Math.round(r.z), owner: this.seatLabel(r.owner), healthPct: r.hp }, reach,
                     r.carrying !== undefined ? { carrying: r.carrying } : {},
                     { visible: !!r.visible },
                     r.visible ? {} : { secondsAgo: Math.max(0, Math.round(this.realSecsSince(r.at))) },

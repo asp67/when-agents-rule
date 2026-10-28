@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1136: units, towers and trebuchets carry their reach; the unit catalog carries the stats (28 October 2026)
+
+**Rules change** (what a model is told; no rule of the game changed). In asp67's match of 28 October Hermes won its siege with trebuchets and quoted their reach as 80: the state carried no range for any unit, tower or trebuchet, and the trebuchet's 50 and 60 were only in the system prompt. asp67: the model should know what it has at its disposal.
+
+**Now:**
+- **"reach"** (how far it shoots, a priest: heals; only for a range of 3 or more, so melee carries none) on every unit in `friendlyUnits` (its own, research included), on every unit in `enemyUnits` (its type's reach for its owner's civilization; the owner's research is not visible), on towers in `friendlyBuildings` and `enemyBuildings`, and on the tower and both trebuchet sites in `buildings` (the engine the site becomes).
+- **The unit catalog** (`units.trainable`, `units.blocked`) carries what a unit of that type trained now would have: `hp`, `attack`, `reach`, `sight` and `speed` (a worker is 1.0, the scale the trebuchet sites already used), from the civilization's definition with the seat's researched bonuses, as a unit gets them at spawn, and the sight the game gives it.
+- The system prompt names the fields (`agents-rule-v112` → `agents-rule-v113`), and `game-state-schema.json` lists them. Its `enemyUnits` description still said "units currently in your sight, old positions are not kept", wrong since the unit memory of b1068: it now describes the memory.
+
 ## Build 1135: the system prompt says exactly when a remembered unit leaves enemyUnits (28 October 2026)
 
 **Rules change** (what a model is told; no rule of the game changed). The prompt said a remembered unit "leaves this list when you look at its spot again and it is not there". The rule (`sweepUnitMemory`, since b1068) drops it only when its spot **has been out of the seat's sight and is then seen again** without it. A unit walking out of sight leaves at the edge of the seat's vision, so its spot usually stays in view, and it stays listed where it left, by design: that and `sightedAt` are what a seat extrapolates from. The sentence promised the opposite. In asp67's match of 27 October Hermes marched onto such a spot, found nobody, saw the archers still listed there, and concluded the listed position was a projection.

@@ -1021,6 +1021,28 @@ class OpenAIAIManager {
 
     // Partition a state list (array, or the units' host->age->entries object) into the
     // things that can be ordered and the things that cannot, keyed { <openName>, blocked }.
+    // How far a unit, tower or trebuchet shoots -- a priest: heals -- in map units, for the
+    // state's "reach" wherever one is listed (asp67, 28 Oct: the trebuchet's 50 was only in
+    // the prompt, and Hermes quoted it as 80). Contact weapons, melee at 0.5 to 2, carry none.
+    static reachOf(range) { return (typeof range === 'number' && range >= 3) ? Math.round(range * 10) / 10 : null; }
+    static withReach(range) { const r = OpenAIAIManager.reachOf(range); return r != null ? { reach: r } : {}; }
+    // What a unit of this type would be if trained now, for the catalog (asp67, 28 Oct: "the
+    // model should know what it has at its disposal"): its civilization's definition with
+    // the seat's researched bonuses, as applyResearchedBonusesToUnit gives them at spawn,
+    // and the sight the game gives it (unitVision). Speed on the scale the trebuchet sites
+    // already use (a worker is 1.0); a seat can time it against its own orders' ETAs.
+    catalogStats(ai, id, def) {
+        if (!def) return {};
+        const probe = { type: id, unitType: def.unitType || def.type, range: def.range, attack: def.attack || 0,
+            health: def.health || 0, maxHealth: def.health || 0, speed: def.speed || 0, ...(def.visionBonus ? { visionBonus: def.visionBonus } : {}) };
+        const g = this.game;
+        if (g && typeof g.applyResearchedBonusesToUnit === 'function') { try { g.applyResearchedBonusesToUnit(probe, ai); } catch (e) { /* the definition's stats then */ } }
+        const r1 = v => Math.round(v * 10) / 10;
+        const sight = g && typeof g.unitVision === 'function' ? g.unitVision(probe) : null;
+        return { hp: Math.round(probe.maxHealth), attack: r1(probe.attack), ...OpenAIAIManager.withReach(probe.range),
+            ...(sight != null ? { sight: r1(sight) } : {}), speed: Math.round(probe.speed * 100) / 100 };
+    }
+
     static splitByBlock(src, openName) {
         const isBlocked = e => (e.blockedBy || []).some(b => OpenAIAIManager.STRUCTURAL_BLOCKS.indexOf(b) >= 0);
         const strip = e => { const o = Object.assign({}, e); if (!(o.blockedBy || []).length) delete o.blockedBy; return o; };
@@ -3474,6 +3496,7 @@ class OpenAIAIManager {
                 x: Math.round(b.x),
                 z: Math.round(b.z),
                 healthPct: Math.round((b.health / b.maxHealth) * 100),
+                ...OpenAIAIManager.withReach(((typeof getBuildingDef === 'function' && getBuildingDef(b.type)) || {}).range),
                 state: constructing ? 'under_construction' : 'complete',
                 busy: busy,
                 activity: activity,
@@ -3628,6 +3651,7 @@ class OpenAIAIManager {
                 x: Math.round(u.x),
                 z: Math.round(u.z),
                 healthPct: Math.round((u.health / u.maxHealth) * 100),
+                ...OpenAIAIManager.withReach(u.range),
                 // Workers report jobs elsewhere; standing groups report intent once
                 // in ordersInProgress instead of repeating it on every soldier.
                 // Except an engineer away on a trebuchet job (b1110): in asp67's match of
@@ -3864,7 +3888,7 @@ class OpenAIAIManager {
             if (atPopCap) blockedBy.push('pop');
             if (tooPoor(def && def.cost)) blockedBy.push('cost');
             (host[u.age] = host[u.age] || []).push({
-                id: u.id, cost: costOf(def && def.cost), blockedBy, ...(gate ? { requiresTech: gate } : {}),
+                id: u.id, cost: costOf(def && def.cost), blockedBy, ...(gate ? { requiresTech: gate } : {}), ...this.catalogStats(ai, u.id, def),
                 // What it is for, where the name does not say it (b1110).
                 ...(u.id === 'engineer' ? { role: 'builds and repairs trebuchets on site; marches with the army' } : {})
             });
@@ -3899,7 +3923,7 @@ class OpenAIAIManager {
             // standing engine for a unit and waited for it to move.
             const treb = typeof isTrebuchetBuilding === 'function' && isTrebuchetBuilding(t) ? trebuchetTierOf(t) : null;
             return { type: t, requiredAge: reqAge, requiresTech: reqTech, cost: costOf(price), blockedBy,
-                ...(treb ? { becomesUnit: treb.unit, speed: treb.speed } : {}) };
+                ...(treb ? { becomesUnit: treb.unit, speed: treb.speed } : {}), ...OpenAIAIManager.withReach(treb ? treb.range : def.range) };
         }).filter(Boolean);
 
         // The Wonder belongs in this list. It was in no vocabulary at all: a model's
@@ -4348,6 +4372,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - Cavalry and scouts see further than other units (22.5 against 15); scouts and cavalry are also the fastest units.
 - Idle military auto-defend your home between turns, so you need not micro every raid. Auto-defense only repels; it never wins the game.
 - "enemyUnits" is your memory of rival units: "visible": true is in sight now; "visible": false is how and where you LAST SAW it, "secondsAgo". It may have moved, been hurt or died since — you were not watching. "sightedAt" is where it came into your sight, so from there to x,z is the way it was going. A remembered unit leaves this list when its spot has been out of your sight and is then seen again without it; it is forgotten only when you see it die or your units kill it. Workers carry "carrying": empty, food, wood, stone, gold, or unknown, as last seen. The list holds the 50 most recent.
+- "reach", wherever a unit, tower or trebuchet carries it, is how far it shoots (a priest: heals), in map units. A rival's unit carries its type's reach. Entries in "units" also carry what a unit of that type trained now would have: "hp", "attack", "sight" (map units) and "speed" (a worker is 1.0).
 - "enemyBuildings" lists every rival building you have found. "visible": true is in sight now; "visible": false is remembered as you last saw it, and its health, or whether it still stands, may have changed since. A building still being built carries "state": "under_construction" and "buildPct".
 - Resource nodes hold a finite amount and disappear when emptied.
 - "nearestNodes" lists the 10 nearest food/wood per Town Center and every stone/gold node — of the ones you have DISCOVERED. A type missing from it is one you have not scouted, not one the map lacks.
@@ -4985,8 +5010,15 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             provider, model.endpoint, model.model || 'default', systemPrompt, turns, reqOpts || this.requestOptions(model)) : null;
         // The whole request at the plain 3 characters a token, for calibrateTokens to set
         // against the prompt tokens the server reports for it.
+        // Counted as the budget above counts it: each message's text, not the messages as
+        // JSON, where every quote in the state is escaped and counts twice. The two drifted
+        // apart with every quote the state gained, and the units' stats of b1136 put a
+        // seat's request over its budget (tests/history-window).
+        // A replayed turn carries its calls as toolCalls, their answers as a tool turn's results.
+        const textOf = m => (typeof m.content === 'string' ? m.content : (m.content == null ? '' : JSON.stringify(m.content)))
+            + (m.toolCalls ? JSON.stringify(m.toolCalls) : '') + (m.results ? JSON.stringify(m.results) : '');
         const rawEst = (String(systemPrompt).length + (toolSeat ? JSON.stringify(OpenAIAIManager.TOOLS).length : 0)
-            + JSON.stringify(turns).length) / 3;
+            + turns.reduce((n, m) => n + textOf(m).length, 0)) / 3;
         return { systemPrompt, turns, provider, advice, request, rawEst };
     }
 
@@ -10295,6 +10327,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
     static buildingSighting(b, game) {
         return { id: b.id, type: b.type, x: Math.round(b.x), z: Math.round(b.z),
                  owner: game.seatLabel(b.owner), healthPct: Math.round((b.health / b.maxHealth) * 100),
+                 ...OpenAIAIManager.withReach(((typeof getBuildingDef === 'function' && getBuildingDef(b.type)) || {}).range),
                  // A site still being built, and how far along, as last seen (b1110): a
                  // forward tower going up is something the other side can answer.
                  ...(b.underConstruction ? { state: 'under_construction',

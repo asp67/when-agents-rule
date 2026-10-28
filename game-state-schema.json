@@ -389,6 +389,10 @@
           "producing"
         ],
         "properties": {
+          "reach": {
+            "type": "number",
+            "description": "How far it shoots (towers). Only on buildings that shoot."
+          },
           "type": {
             "type": "string"
           },
@@ -502,6 +506,10 @@
               "cost"
             ],
             "properties": {
+              "reach": {
+                "type": "number",
+                "description": "How far it shoots once built: a tower, or the engine a trebuchet site becomes."
+              },
               "type": {
                 "type": "string",
                 "description": "Pass this verbatim as build_structure's \"buildingType\"."
@@ -549,6 +557,10 @@
               "blockedBy"
             ],
             "properties": {
+              "reach": {
+                "type": "number",
+                "description": "How far it shoots once built: a tower, or the engine a trebuchet site becomes."
+              },
               "type": {
                 "type": "string",
                 "description": "Pass this verbatim as build_structure's \"buildingType\"."
@@ -601,6 +613,10 @@
           "visible"
         ],
         "properties": {
+          "reach": {
+            "type": "number",
+            "description": "How far it shoots (towers). Only on buildings that shoot."
+          },
           "id": {
             "type": "string",
             "description": "Stable target handle for attack_target(params.targetId)."
@@ -667,6 +683,10 @@
           "healthPct"
         ],
         "properties": {
+          "reach": {
+            "type": "number",
+            "description": "How far this unit shoots (a priest: heals), research included. Only on units with a range of 3 or more."
+          },
           "type": {
             "type": "string"
           },
@@ -818,7 +838,7 @@
     },
     "enemyUnits": {
       "type": "array",
-      "description": "Enemy units CURRENTLY in your sight (units move, so old positions are not kept). The `id` is a target handle for attack_target — ids track a moving unit better than stale coordinates.",
+      "description": "Your memory of rival units: \"visible\": true is in sight now; \"visible\": false is how and where you last saw it, \"secondsAgo\" ago, and \"sightedAt\" where it came into your sight. A remembered unit leaves the list when its spot has been out of your sight and is then seen again without it. The `id` is a target handle for attack_target.",
       "items": {
         "type": "object",
         "required": [
@@ -829,6 +849,10 @@
           "owner"
         ],
         "properties": {
+          "reach": {
+            "type": "number",
+            "description": "Its type's reach for its owner's civilization (the owner's research is not visible). Only on units with a range of 3 or more."
+          },
           "id": {
             "type": "string"
           },
@@ -953,6 +977,26 @@
                   "cost"
                 ],
                 "properties": {
+                  "hp": {
+                    "type": "integer",
+                    "description": "Hit points of a unit of this type trained now, research included."
+                  },
+                  "attack": {
+                    "type": "number",
+                    "description": "Its attack, research included."
+                  },
+                  "reach": {
+                    "type": "number",
+                    "description": "How far it shoots (a priest: heals), research included. Only where the range is 3 or more."
+                  },
+                  "sight": {
+                    "type": "number",
+                    "description": "How far it sees, in map units."
+                  },
+                  "speed": {
+                    "type": "number",
+                    "description": "How fast it moves; a worker is 1.0."
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -981,6 +1025,26 @@
                   "blockedBy"
                 ],
                 "properties": {
+                  "hp": {
+                    "type": "integer",
+                    "description": "Hit points of a unit of this type trained now, research included."
+                  },
+                  "attack": {
+                    "type": "number",
+                    "description": "Its attack, research included."
+                  },
+                  "reach": {
+                    "type": "number",
+                    "description": "How far it shoots (a priest: heals), research included. Only where the range is 3 or more."
+                  },
+                  "sight": {
+                    "type": "number",
+                    "description": "How far it sees, in map units."
+                  },
+                  "speed": {
+                    "type": "number",
+                    "description": "How fast it moves; a worker is 1.0."
+                  },
                   "id": {
                     "type": "string"
                   },
