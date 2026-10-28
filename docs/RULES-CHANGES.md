@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1140: a harness still thinking over its turn is not "away" (28 October 2026)
+
+**Rules change.** In asp67's match of 28 October (17:31, Strata against Hermes) every time-out was followed 1.5 s later by an "[AWAY]" for the same seat, sometimes two: seven rounds in all (Strata 4 of its 8 missed, Hermes 3 of its 10). Neither harness had stopped. Each had taken its turn and was still thinking over it when the round closed, so it had made no call for longer than a round, which is what b1139 took for "away". By construction every time-out turned into at least one more missed round.
+
+**Now** the hub (0.3.2) tells the page when it hands a turn to the harness, and a quiet seat is away only when its harness never took the last turn sent to it. A seat still thinking is asked the next round like any other; the hub holds that turn, and the late `end_turn` answers "Too late … Your next turn is waiting", so it can still play the round with the time left. A harness that has stopped (OpenCode at its token limit) never takes its turn: it is away from the round after the one it missed, as before. With a hub older than 0.3.2, which does not report the hand-over, the rule is b1139's.
+
+- **Tests:** `tests/mcp-pause-away.test.cjs` (the new case fails on b1139), `tests/mcp-seat.test.cjs`, `tests/mcp-hub.test.cjs`.
+
 ## Build 1139: an MCP seat that is paused hears so; one whose harness stops calling no longer holds up the rounds (28 October 2026)
 
 **Rules change.** Two edge cases from asp67's match of 28 October (14:44), both with OpenCode:

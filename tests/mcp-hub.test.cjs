@@ -78,6 +78,7 @@ test('a turn: join, wait, three commands and a plan, a fourth refused, end_turn;
     const turn = said(await w);
     assert.match(turn, /^IT IS YOUR TURN\. [\s\S]*then call end_turn\.\n\n/, 'the turn says what to do');
     assert.deepEqual(JSON.parse(turn.slice(turn.indexOf('\n\n') + 2)), { you: 'state of turn 7' });
+    assert.equal((await pg.next(m => m.type === 'took')).token, T, 'the page hears the harness took its turn');
     // Commands go to the page and its answer comes back.
     const answer = async () => { const a = await pg.next(m => m.type === 'action'); pg.send({ type: 'result', id: a.id, text: 'OK - ' + a.name }); return a; };
     for (const [name, args] of [['train_unit', { unitType: 'militia' }], ['plan', { objective: 'x' }], ['explore', {}], ['wait', {}]]) {
@@ -246,7 +247,7 @@ const initShared = async (port, name) => (await shared(port, 'initialize', { pro
 test('the shared address: a session joins a seat by its code, and keeps it', LIMIT, async t => {
     const { p, port } = await startHub(); t.after(() => p.kill());
     const T = 'seat-token-shar0001';
-    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.1');
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.2');
     const pg = await fakePage(port);
     pg.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
     await new Promise(r => setTimeout(r, 50));

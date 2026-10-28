@@ -61,6 +61,13 @@ class WarMcpLink {
         const s = this.state.get(token);
         return s && s.lastCall ? Math.max(0, Date.now() - s.lastCall) : null;
     }
+    // Whether the seat's harness took the last turn sent to it: quiet since, it is thinking
+    // over that turn, not gone. Null from a hub that does not say (before 0.3.2).
+    tookLastTurn(token) {
+        if (!this.sawTook) return null;
+        const s = this.state.get(token);
+        return !!(s && s.sentAt && s.tookAt >= s.sentAt);
+    }
     _changed(token) {
         const tokens = token ? [token] : this.seats.map(s => s.token);
         for (const t of tokens) for (const fn of this.listeners) { try { fn(t, this.status(t)); } catch (e) { /* a listener's fault stays its own */ } }
@@ -133,6 +140,12 @@ class WarMcpLink {
             if (s) s.lastCall = Date.now();
             return;
         }
+        if (m.type === 'took') {
+            this.sawTook = true;
+            const s = this.state.get(m.token);
+            if (s) s.tookAt = Date.now();
+            return;
+        }
         if (m.type === 'harness' || m.type === 'join') {
             const s = this.state.get(m.token) || {};
             s.lastCall = Date.now();
@@ -176,6 +189,9 @@ class WarMcpLink {
             if (prev) prev.reject(new Error('superseded by a newer turn'));
             const t = { turn, calls: [], counted: 0, resolve, reject };
             this.turns.set(token, t);
+            const st = this.state.get(token) || {};
+            st.sentAt = Date.now();   // by time: a seat's turn number can repeat after a missed round
+            this.state.set(token, st);
             const first = !this.rulesSent.has(token);
             if (first) this.rulesSent.add(token);
             const body = (first && rules ? 'RULES OF THE GAME (your system prompt; get_rules shows them again):\n\n' + rules + '\n\n---\n\n' : '') + text;

@@ -9788,7 +9788,13 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         let link = null;
         try { link = this.mcpLink(m.endpoint); } catch (e) { return false; }
         const q = link && typeof link.quietMs === 'function' ? link.quietMs(m.mcpToken) : null;
-        return q != null && q > this.roundTimeoutMs();
+        if (q == null || q <= this.roundTimeoutMs()) return false;
+        // Quiet because it is still thinking over the turn it took (asp67's match of 28 Oct,
+        // 17:31: every time-out was followed by one or two rounds "away", seven in all, while
+        // Strata and Hermes were mid-thought). Asked, it finds the next turn waiting at the
+        // hub when it ends the late one. A harness that stopped never takes its turn.
+        const took = typeof link.tookLastTurn === 'function' ? link.tookLastTurn(m.mcpToken) : null;
+        return took !== true;
     }
 
     noteRoundMissed(controller, away = false) {

@@ -156,6 +156,25 @@ test('the link knows how long a seat\'s harness has been quiet', () => {
     assert.equal(link.quietMs('seat-token-unknown'), null);
 });
 
+// A quiet harness that took its last turn is thinking over it; one that did not has stopped.
+test('the link knows whether a seat\'s harness took the last turn sent to it', async () => {
+    const WarMcpLink = require('../js/mcp-link.js');
+    const link = new WarMcpLink('http://127.0.0.1:1');
+    const T = 'seat-token-took0001';
+    link.setSeats([{ token: T, seat: 1 }]);
+    assert.equal(link.tookLastTurn(T), null, 'nothing from a hub that never says');
+    link._fromHub({ type: 'took', token: 'seat-token-other001', turn: 1 });
+    const ac = new AbortController();
+    link.playTurn(T, 4, 'state', '', ac.signal).catch(() => {});
+    assert.equal(link.tookLastTurn(T), false, 'sent, not taken');
+    link._fromHub({ type: 'took', token: T, turn: 4 });
+    assert.equal(link.tookLastTurn(T), true, 'taken');
+    await new Promise(r => setTimeout(r, 5));
+    link.playTurn(T, 4, 'state', '', ac.signal).catch(() => {});   // the next ask, same turn number
+    assert.equal(link.tookLastTurn(T), false, 'a newer turn not taken yet');
+    ac.abort();
+});
+
 test('stopping a match tells each MCP seat\'s harness it is over', async () => {
     const { mgr, c } = await mcpSeat([]);
     const told = [];

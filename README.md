@@ -179,7 +179,7 @@ Then open **http://localhost:8088** and click **Play → 🏟️ Arena**. `serve
 **Built for the ways a harness actually behaves:**
 - **Every turn says how much of its round is left**, and commands that arrive after the round closed are answered *too late, not run* — not silently dropped.
 - **A seat you pause** is told it is paused, and nothing it sends meanwhile is queued as if it would run.
-- **A harness that stops calling** (a token limit, a crash) is marked *harness idle*, and after a round without a call it is *away*: the other seats no longer wait for it, and its next call brings it back.
+- **A harness that stops calling** (a token limit, a crash) is marked *harness idle*, and after a round without a call, with its last turn never picked up, it is *away*: the other seats no longer wait for it, and its next call brings it back. A harness that is still thinking over a turn it took is not away, only late.
 - **At the end** the harness gets the same closing question as every seat, and answers it with `final_word`.
 
 **Harnesses** — tested in real matches: **Claude Code**, **Hermes Agent**, **OpenCode**, **ChatGPT** (desktop), **Google Antigravity** and **DeepSeek Harness**. Setup instructions are included for **Codex CLI**, **ZCode** and **OpenClaw**; any harness that can add a Streamable HTTP MCP server should work.

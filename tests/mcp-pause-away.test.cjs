@@ -17,9 +17,10 @@ async function twoMcpSeats() {
         { civ: 'persian', age: 'bronze', buildings: [['town_center', 250, 0]], units: [['worker', 230, 0]] }] });
     Object.assign(m.context, { AbortController, setTimeout, clearTimeout });
     const mgr = m.game.openAIAIManager;
-    const quiet = new Map(), asked = [], paused = [], open = new Map();
+    const quiet = new Map(), took = new Map(), asked = [], paused = [], open = new Map();
     const link = {
         quietMs: tok => quiet.has(tok) ? quiet.get(tok) : 0,
+        tookLastTurn: tok => took.has(tok) ? took.get(tok) : false,
         setPaused: (tok, p) => paused.push([tok, p]),
         playTurn: (token, turn, text, rules, signal) => new Promise((resolve, reject) => {
             asked.push(token);
@@ -39,7 +40,7 @@ async function twoMcpSeats() {
             c.lanes = [lane];
         }
     });
-    return { m, mgr, quiet, asked, paused, open, now: () => vm.runInContext('Date.now()', m.context) };
+    return { m, mgr, quiet, took, asked, paused, open, now: () => vm.runInContext('Date.now()', m.context) };
 }
 const flush = () => new Promise(r => setImmediate(r));
 const settle = () => new Promise(r => setTimeout(r, 150));
@@ -101,4 +102,23 @@ test('B: a seat whose harness has been quiet for a round is not asked, misses th
     await settle();
     assert.ok(asked.includes(a.model.mcpToken), 'back in the next round');
     assert.equal(a.stats.roundsMissed, 1, 'and that round is not missed');
+});
+
+// asp67's match of 28 Oct, 17:31: each time-out was followed by one or two rounds "away" --
+// seven in all -- while Strata and Hermes were still thinking over the turn they had taken.
+test('B: a seat quiet because it is still thinking over the turn it took is asked, not away', LIMIT, async t => {
+    const { m, mgr, quiet, took, asked, now } = await twoMcpSeats();
+    cleanUp(t, mgr);
+    mgr.turnBased = true;
+    mgr._roundTimeoutMs = 120000;
+    const [a, b] = m.controllers;
+    quiet.set(a.model.mcpToken, 125000);                 // took its last turn 125 s ago, thinking since
+    took.set(a.model.mcpToken, true);
+    mgr.updateTurnBased(now(), false);
+    await settle();
+    assert.deepEqual(asked.slice().sort(), [a.model.mcpToken, b.model.mcpToken].sort(), 'both asked');
+    assert.equal(a.stats.roundsMissed || 0, 0, 'no round missed for thinking');
+    // From a hub that does not say whether the turn was taken (before 0.3.2): away, as before.
+    took.set(a.model.mcpToken, null);
+    assert.equal(mgr.mcpAway(Object.assign(Object.create(a), { lanes: [] })), true);
 });

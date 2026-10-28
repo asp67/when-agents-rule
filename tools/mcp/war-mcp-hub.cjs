@@ -22,7 +22,8 @@ const http = require('http'), crypto = require('crypto'), fs = require('fs'), pa
 // 0.2.0: check_connection, and a page may watch the hub (the setup assistant).
 // 0.3.0: the shared address /mcp -- one per computer, the seat chosen by join's code.
 // 0.3.1: a seat the user paused hears so, and nothing it sends is queued.
-const VERSION = '0.3.1';
+// 0.3.2: the page hears when a turn is handed to the harness ("took").
+const VERSION = '0.3.2';
 const PROTOCOLS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -280,6 +281,9 @@ function deliverTurn(s) {
     s.turn = { turn: t.turn, deliveredAt: Date.now(), roundMs: t.roundMs }; s.commands = 0; s.closed = null;
     const left = t.msLeft != null ? Math.max(0, Math.round((t.msLeft - (Date.now() - t.at)) / 1000)) : null;
     log(s.token, `turn ${t.turn} delivered` + (left != null ? `, ${left} s left` : ''));
+    // The page tells a harness that is thinking over its turn from one that has stopped:
+    // both are quiet, but only this one took the turn.
+    toPage({ type: 'took', token: s.token, turn: t.turn });
     // The time left, as a fact: a harness that does not know the round is closing thinks
     // for three minutes of a two-minute round and loses the turn without knowing why.
     const time = left != null
