@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1137: explore with a named unit type sends that type or nothing (28 October 2026)
+
+**Rules change.** An `explore` naming a `unitType` with none of that type free this turn used to send whatever stood idle and say so in brackets ("no idle "scout_cavalry" was free, so your champion was used instead"). Hermes wrote it into its own playbook as "the expensive one": its champions and crossbowmen walked off the line to scout. The harness was replacing the model's choice (asp67: refuse, send nothing).
+
+**Now** a named type that the seat has none of answers `You have no "<type>" to explore with, so nothing was sent`, and one whose units are all scouting already this turn answers `Every "<type>" you have is already scouting this turn on an earlier command, so nothing was sent`. An `explore` naming no type still sends the farthest-seeing free soldier, as before.
+- **Tests:** `tests/explore-named.test.cjs` (fails on b1136).
+
 ## Build 1136: units, towers and trebuchets carry their reach; the unit catalog carries the stats (28 October 2026)
 
 **Rules change** (what a model is told; no rule of the game changed). In asp67's match of 28 October Hermes won its siege with trebuchets and quoted their reach as 80: the state carried no range for any unit, tower or trebuchet, and the trebuchet's 50 and 60 were only in the system prompt. asp67: the model should know what it has at its disposal.

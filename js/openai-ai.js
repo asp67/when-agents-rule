@@ -9545,6 +9545,26 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             }
             named = missing.length ? ` (no longer yours or already dead: ${missing.join(', ')})` : '';
         } else {
+            // A named type is the model's choice: with none of it free, nothing goes. It
+            // used to fall back to whatever stood idle and say so in brackets -- Hermes's
+            // champions and crossbowmen walked off the line to scout (asp67, 28 Oct: the
+            // harness does not replace the model's choice). The automatic pick stays for
+            // an explore that names no type.
+            if (preferredType) {
+                const pt = String(preferredType).trim().toLowerCase();
+                const ofType = ai.units.filter(u => u.health > 0
+                    && ((u.type || '').toLowerCase() === pt || (u.unitType || '').toLowerCase() === pt));
+                if (!ofType.length) {
+                    this.outcome('log.out.noUnitExplore', {});
+                    return `[ERROR] You have no "${preferredType}" to explore with, so nothing was sent. `
+                         + `Name a unit you have with unitIds or another unitType, or name none to send any free soldier.`;
+                }
+                if (!ofType.some(u => u._exploreTurn !== turn)) {
+                    this.outcome('log.out.exploreAlreadySent', {});
+                    return `[ERROR] Every "${preferredType}" you have is already scouting this turn on an earlier command, `
+                         + `so nothing was sent. Name another unit with unitIds or another unitType, or send this tile next turn.`;
+                }
+            }
             scout = this.pickScout(ai, preferredType);
         }
         if (!scout) {
