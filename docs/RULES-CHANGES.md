@@ -6,6 +6,12 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1135: the system prompt says exactly when a remembered unit leaves enemyUnits (28 October 2026)
+
+**Rules change** (what a model is told; no rule of the game changed). The prompt said a remembered unit "leaves this list when you look at its spot again and it is not there". The rule (`sweepUnitMemory`, since b1068) drops it only when its spot **has been out of the seat's sight and is then seen again** without it. A unit walking out of sight leaves at the edge of the seat's vision, so its spot usually stays in view, and it stays listed where it left, by design: that and `sightedAt` are what a seat extrapolates from. The sentence promised the opposite. In asp67's match of 27 October Hermes marched onto such a spot, found nobody, saw the archers still listed there, and concluded the listed position was a projection.
+
+**Now** the sentence states the rule: "A remembered unit leaves this list when its spot has been out of your sight and is then seen again without it." Nothing else is added: what follows from it is the model's to work out (asp67). Prompt `agents-rule-v112`.
+
 ## Build 1128: trebuchets roll at 0.25 and 0.5 (27 October 2026)
 
 **Rules change.** asp67: the trebuchets "take too long to traverse the map in a wonder scenario". A seat can build one at a staging point instead, so the faster pace is for engines left somewhere on the field when a Wonder goes up.
