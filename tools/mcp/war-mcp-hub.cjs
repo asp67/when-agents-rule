@@ -21,7 +21,8 @@ const http = require('http'), crypto = require('crypto'), fs = require('fs'), pa
 
 // 0.2.0: check_connection, and a page may watch the hub (the setup assistant).
 // 0.3.0: the shared address /mcp -- one per computer, the seat chosen by join's code.
-const VERSION = '0.3.0';
+// 0.3.1: a seat the user paused hears so, and nothing it sends is queued.
+const VERSION = '0.3.1';
 const PROTOCOLS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -159,6 +160,10 @@ function sessionFor(id) {
     return x;
 }
 const joinWithCode = 'call join with your seat code: it is in the message that told you to play (it starts with "seat-").';
+// A seat the user paused in the arena (asp67, 28 Oct): told, not left polling "not your turn
+// yet" with no idea why, and nothing it sends is queued as if it would run.
+const PAUSED = 'Your seat is paused by the user: the match goes on without you, and nothing you send now runs. '
+    + 'Call wait_for_turn: it hands you the next turn once you are resumed.';
 
 function fromPage(msg, pg) {
     switch (msg && msg.type) {
@@ -195,6 +200,14 @@ function fromPage(msg, pg) {
             // Only to a wait still listening: one its harness gave up on is gone already.
             let w;
             while ((w = s.waiters.shift())) if (w.alive()) { w(deliverTurn(s)); break; }
+            break;
+        }
+        case 'paused': {              // the user paused or resumed the seat in the arena
+            const s = seats.get(msg.token);
+            if (!s) return;
+            s.paused = !!msg.paused;
+            if (!s.paused) s.closed = null;   // a turn closed by the pause is no "too late"
+            log(s.token, s.paused ? 'paused by the user' : 'resumed by the user');
             break;
         }
         case 'turn_over': {           // the page closed the turn (round timeout)
@@ -349,18 +362,21 @@ async function callTool(token, name, args, signal, ctx) {
             w.alive = () => !(signal && signal.aborted);
             if (signal) signal.addEventListener('abort', () => { clearTimeout(timer); s.waiters = s.waiters.filter(x => x !== w); resolve(null); log(token, 'gave up waiting'); }, { once: true });
             const timer = setTimeout(() => { s.waiters = s.waiters.filter(x => x !== w);
-                resolve(textResult(JSON.stringify({ waiting: true, next: s.listed ? 'Not your turn yet. Call wait_for_turn again now.'
+                resolve(textResult(JSON.stringify(s.paused ? { waiting: true, paused: true, next: PAUSED }
+                    : { waiting: true, next: s.listed ? 'Not your turn yet. Call wait_for_turn again now.'
                     : 'No WAR arena has this seat open right now (the page was closed or reloaded). Call wait_for_turn again to wait for it.' }))); }, WAIT_MS);
             s.waiters.push(w);
         });
     }
     if (name === 'end_turn') {
+        if (s.paused) return textResult(PAUSED);
         if (!s.turn) return noTurn(s);
         toPage({ type: 'end_turn', token, turn: s.turn.turn });
         s.turn = null;
         return textResult('Turn ended. ' + NEXT_WAIT);
     }
     if (!GAME_NAMES.has(name)) return textResult(`Unknown tool "${name}".`, true);
+    if (s.paused) return textResult(PAUSED);
     if (!s.turn) return noTurn(s);
     const counts = !GAME.free.includes(name);
     if (counts && s.commands >= GAME.maxCommandsPerTurn)

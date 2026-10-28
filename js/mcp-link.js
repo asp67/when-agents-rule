@@ -20,6 +20,7 @@ class WarMcpLink {
         this.finals = new Map();       // token -> resolve(text|null): a closing message out
         this.rulesSent = new Set();    // tokens whose harness has had the rules
         this.hubWatch = false;         // the setup assistant follows the hub
+        this.pausedSeats = new Set();  // tokens the user paused in the arena
         this.clients = new Map();      // harness name -> { name, version, at }: who connected
         this.checks = [];              // [{ name, at }]: check_connection calls seen
         this.listeners = new Set();
@@ -54,6 +55,9 @@ class WarMcpLink {
     // A harness in its loop calls at least every wait (~25 s), so a silence longer than a
     // round means it has stopped, is asking its user something, or is still thinking.
     quietMs(token) {
+        // Only from a hub that reports every call (0.2.0 on): an older one never does, and
+        // every harness would look quiet -- idle, and away from the rounds -- after one round.
+        if (!this.sawCall) return null;
         const s = this.state.get(token);
         return s && s.lastCall ? Math.max(0, Date.now() - s.lastCall) : null;
     }
@@ -77,6 +81,7 @@ class WarMcpLink {
             for (const s of this.state.values()) { s.harness = false; s.joined = false; }
             this._sendArena();
             if (this.hubWatch) this._send({ type: 'watch' });
+            for (const token of this.pausedSeats) this._send({ type: 'paused', token, paused: true });
             this._changed();
         };
         ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } this._fromHub(m); };
@@ -123,6 +128,7 @@ class WarMcpLink {
             return;
         }
         if (m.type === 'call') {
+            this.sawCall = true;
             const s = this.state.get(m.token);
             if (s) s.lastCall = Date.now();
             return;
@@ -190,6 +196,13 @@ class WarMcpLink {
 
     // The match is over for the seat: the hub tells its harness to stop, so it is no longer
     // joined, and the next arena waits for it to join again -- here as on the hub.
+    // The user paused or resumed the seat: the hub tells its harness so, and refuses what
+    // it sends meanwhile instead of queuing it.
+    setPaused(token, paused) {
+        if (paused) this.pausedSeats.add(token); else this.pausedSeats.delete(token);
+        this._send({ type: 'paused', token, paused: !!paused });
+    }
+
     over(token, result) {
         this._send({ type: 'over', token, result: result || {} });
         const s = this.state.get(token);

@@ -5353,7 +5353,11 @@ class UIManager {
         // And a seat that was eliminated stops at its elimination: Egypt, out at 29:41 of a
         // 79-minute match, was "silent for the last 50 min" (asp67, 28 Oct).
         const until = Math.min((this.game && !this.game.gameStarted && this.game.arenaEndedAt) || Date.now(), controller.defeatedAt || Infinity);
-        const silentMs = st.lastAnswerAt ? Math.max(0, until - st.lastAnswerAt) : 0;
+        // Without the time the user had the seat paused: OpenCode, paused for most of its
+        // last nine minutes, was "silent for the last 9 min" (asp67, 28 Oct).
+        const pauses = (controller._pauseLog || []).concat(controller._pausedAt ? [[controller._pausedAt, until]] : []);
+        const pausedMs = st.lastAnswerAt ? pauses.reduce((n, [a, b]) => n + Math.max(0, Math.min(b, until) - Math.max(a, st.lastAnswerAt)), 0) : 0;
+        const silentMs = st.lastAnswerAt ? Math.max(0, until - st.lastAnswerAt - pausedMs) : 0;
         return {
             decisions: st.requests, responded,
             // Split late from early, so a degrading endpoint reads as a CHANGE

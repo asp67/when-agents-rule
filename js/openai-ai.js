@@ -9777,7 +9777,21 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
     // It is NOT an action, so it never touches actionsAttempted or successRate. Missing
     // a deadline is a latency fact, and the mode exists precisely to stop latency being
     // scored as judgement.
-    noteRoundMissed(controller) {
+    // An MCP seat whose harness has made no call to the hub for longer than a round is away
+    // (asp67, 28 Oct): OpenCode hit its token limit and every round waited the full 120 s for
+    // it, six times. An away seat is not asked, the round does not wait for it, and each round
+    // counts as missed; its harness's next call brings it back. A turn still out decides
+    // itself by its deadline, so a seat with one is never away.
+    mcpAway(c) {
+        const m = c && c.model;
+        if (!m || m.provider !== 'mcp' || !m.mcpToken || this.seatBusy(c)) return false;
+        let link = null;
+        try { link = this.mcpLink(m.endpoint); } catch (e) { return false; }
+        const q = link && typeof link.quietMs === 'function' ? link.quietMs(m.mcpToken) : null;
+        return q != null && q > this.roundTimeoutMs();
+    }
+
+    noteRoundMissed(controller, away = false) {
         const secs = Math.round(this.roundTimeoutMs() / 1000);
         if (controller.stats) controller.stats.roundsMissed = (controller.stats.roundsMissed || 0) + 1;
         // Flag it BEFORE aborting: the rejection this causes is about to surface in
@@ -9796,7 +9810,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             l.missed = true;
             try { if (l._abort) l._abort.abort(); } catch (e) { /* already settled */ }
         }
-        const msg = `[TIMEOUT] Your answer did not arrive within ${secs}s of the state being sent, so this round was played without you. Every round gives every player the same ${secs}s; see clock.secondsToAnswer.`;
+        const msg = away
+            ? `[AWAY] Your harness made no call to the game for longer than a round (${secs}s), so this round was played without you, and the next ones are until it calls again.`
+            : `[TIMEOUT] Your answer did not arrive within ${secs}s of the state being sent, so this round was played without you. Every round gives every player the same ${secs}s; see clock.secondsToAnswer.`;
         controller.conversationHistory.push({
             action: 'round_missed', reason: '', result: msg, failed: true
         });
@@ -9817,7 +9833,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             // near the turn it explains and reads as a seat skipped in silence. The
             // number is the only thing that pairs them up again.
             round: this._roundNo,
-            error: msg.replace(/^\[TIMEOUT\]\s*/, ''), lang: controller.model && controller.model.language,
+            error: msg.replace(/^\[(TIMEOUT|AWAY)\]\s*/, ''), lang: controller.model && controller.model.language,
             outcomeCode: 'log.out.roundMissed', outcomeParams: { secs, round: this._roundNo }
         });
         // Every other writer trims; this one did not, so a long match let the log grow
@@ -9842,6 +9858,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 // can place the gap on the curve without converting anything.
                 matchSeconds: Math.max(0, Math.round((Date.now() - t0) / 1000)),
                 deadlineSeconds: secs,
+                ...(away ? { away: true } : {}),
                 note: msg
             });
         }
@@ -10011,10 +10028,12 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
     }
 
     updateTurnBased(now, pausing) {
-        const live = this.aiControllers.filter(c => {
+        const active = this.aiControllers.filter(c => {
             if (this.isControllerDefeated(c)) { if (!c.defeated) this.markDefeated(c); return false; }
             return !c.paused;
         });
+        const away = active.filter(c => this.mcpAway(c));
+        const live = away.length ? active.filter(c => !away.includes(c)) : active;
         const game = this.game, lockstep = !!(game && game._lockstep);
         // Lockstep with no model seat left to wait for (all paused, all rule-based, all
         // defeated): the world plays slice after slice rather than standing still forever.
@@ -10052,6 +10071,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         this._roundNo++;
         this._roundStartedAt = now;
         this._roundPhase = 'wait';
+        away.forEach(c => this.noteRoundMissed(c, true));
         // Clearing first matters for a seat that was paused mid-round: its answer to a
         // question two rounds old must not be waiting in the queue when it comes back.
         // answeredRound goes with it -- it is the round's own tally of who has spoken.
@@ -10389,6 +10409,21 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         if (!controller) return null;
         if (!!controller.paused !== !!paused) {
             this.noteChange(controller.aiPlayer, { type: 'intervention', kind: paused ? 'seatPaused' : 'seatResumed', human: true });
+        }
+        // When it was paused, for the results' silence (ui.seatMetrics): a seat the user
+        // paused is not silent (asp67, 28 Oct: OpenCode, paused 9 minutes, was tagged so).
+        if (paused && !controller.paused) controller._pausedAt = Date.now();
+        if (!paused && controller.paused && controller._pausedAt) {
+            (controller._pauseLog || (controller._pauseLog = [])).push([controller._pausedAt, Date.now()]);
+            controller._pausedAt = null;
+        }
+        // An MCP seat: its open turn is closed, not left to collect commands that would
+        // never run, and its harness is told it is paused (asp67, 28 Oct).
+        const mcp = controller.model && controller.model.provider === 'mcp' && controller.model.mcpToken;
+        if (mcp && paused && !controller.paused) this.abortLanes(controller, 'the seat was paused');
+        if (mcp && !!controller.paused !== !!paused) {
+            try { this.mcpLink(controller.model.endpoint).setPaused(controller.model.mcpToken, !!paused); }
+            catch (e) { /* no hub: nothing waits on it */ }
         }
         controller.paused = !!paused;
         const ai = controller.aiPlayer;

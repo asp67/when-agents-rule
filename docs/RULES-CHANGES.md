@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1139: an MCP seat that is paused hears so; one whose harness stops calling no longer holds up the rounds (28 October 2026)
+
+**Rules change.** Two edge cases from asp67's match of 28 October (14:44), both with OpenCode:
+
+- **A seat the user pauses.** Its harness was told nothing and polled "not your turn yet". A turn open at the moment of the pause stayed open: the harness's commands were answered "Queued … runs when the round closes", and none ran, since a paused seat is not settled and its answer is cleared on resume. **Now** pausing an MCP seat closes its open turn (cancelled by the harness, not counted against the model) and its hub answers every call with "Your seat is paused by the user: the match goes on without you, and nothing you send now runs. Call wait_for_turn: it hands you the next turn once you are resumed." Hub 0.3.1.
+- **A harness that stops calling** (OpenCode ran into its token limit): every round waited the full 120 s for it, six rounds in a row. **Now** an MCP seat whose harness has made no call to the hub for longer than a round is **away**: it is not asked, the round does not wait for it, and each such round counts as missed, with "[AWAY] Your harness made no call to the game for longer than a round …" on file and in its next turn. Its harness's next call brings it back for the next round. A seat with a turn still out is never away: that turn ends by its deadline as before.
+- **The results** leave the time a seat was paused out of its silence: OpenCode, paused for most of its last nine minutes, was "silent for the last 9 min".
+- **Tests:** `tests/mcp-pause-away.test.cjs` (fails on b1138), `tests/mcp-hub.test.cjs` (a paused seat).
+
 ## Build 1137: explore with a named unit type sends that type or nothing (28 October 2026)
 
 **Rules change.** An `explore` naming a `unitType` with none of that type free this turn used to send whatever stood idle and say so in brackets ("no idle "scout_cavalry" was free, so your champion was used instead"). Hermes wrote it into its own playbook as "the expensive one": its champions and crossbowmen walked off the line to scout. The harness was replacing the model's choice (asp67: refuse, send nothing).

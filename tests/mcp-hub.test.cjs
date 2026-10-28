@@ -246,7 +246,7 @@ const initShared = async (port, name) => (await shared(port, 'initialize', { pro
 test('the shared address: a session joins a seat by its code, and keeps it', LIMIT, async t => {
     const { p, port } = await startHub(); t.after(() => p.kill());
     const T = 'seat-token-shar0001';
-    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.0');
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.1');
     const pg = await fakePage(port);
     pg.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
     await new Promise(r => setTimeout(r, 50));
@@ -315,6 +315,40 @@ test('check_connection: a watching page hears the harness and the check; in a ma
     await new Promise(r => setTimeout(r, 100));
     assert.equal(leaked, false, 'the watcher never sees turns or actions');
     watcher.ws.close(); late.ws.close(); arena.ws.close();
+});
+
+// asp67, 28 Oct: a seat the user pauses in the arena. Its harness used to poll "not your turn
+// yet" without knowing why, and commands sent into a turn open at the pause were answered
+// "Queued" and never ran. Now it hears it is paused, and nothing is queued.
+test('a paused seat hears it is paused, and nothing it sends is queued; resumed, it plays on', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-paus0001';
+    const pg = await fakePage(port);
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+    pg.send({ type: 'turn', token: T, turn: 4, state: '{}' });
+    await call(port, T, 'wait_for_turn');
+    pg.send({ type: 'turn_over', token: T, turn: 4 });          // the page closes the open turn
+    pg.send({ type: 'paused', token: T, paused: true });
+    await new Promise(r => setTimeout(r, 50));
+    const cmd = await call(port, T, 'train_unit', { unitType: 'worker' });
+    assert.match(said(cmd), /^Your seat is paused by the user: the match goes on without you, and nothing you send now runs\./);
+    assert.ok(!cmd.isError);
+    assert.match(said(await call(port, T, 'end_turn')), /^Your seat is paused by the user/);
+    const wait = JSON.parse(said(await call(port, T, 'wait_for_turn')));
+    assert.equal(wait.paused, true);
+    assert.match(wait.next, /it hands you the next turn once you are resumed/);
+    pg.send({ type: 'paused', token: T, paused: false });
+    pg.send({ type: 'turn', token: T, turn: 5, state: '{}' });
+    await new Promise(r => setTimeout(r, 50));
+    assert.match(said(await call(port, T, 'wait_for_turn')), /^IT IS YOUR TURN/);
+    const sent = call(port, T, 'train_unit', { unitType: 'worker' });
+    const action = await pg.next(m => m.type === 'action');
+    assert.equal(action.turn, 5, 'resumed, its commands reach the page again');
+    pg.send({ type: 'result', id: action.id, text: 'Queued (1/3)' });
+    await sent;
+    pg.ws.close();
 });
 
 // asp67, 26 Oct: "do we have a mechanic that tells the harness when I quit the arena?" The
