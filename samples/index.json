@@ -736,6 +736,51 @@
    ],
    "bytes": 5134577,
    "default": false
+  },
+  {
+   "file": "2026-10-28_hermes-deepseek-v4.1-claude-code-sonnet5.5-strata-qwen3.8-flashnext_48min.jsonl",
+   "matchId": "match-20261028-204554",
+   "date": 1793216755012,
+   "duration": "48:07",
+   "turns": 225,
+   "outcome": "wonder",
+   "seed": "rmvsiyee24mmh",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v113",
+   "build": 1139,
+   "winner": "HERMES MCP",
+   "players": [
+    {
+     "seat": 1,
+     "name": "HERMES MCP",
+     "model": "deepseek-v4.1-flash-1017",
+     "harness": "Hermes Agent",
+     "civ": "Persians",
+     "power": 5677,
+     "winner": true
+    },
+    {
+     "seat": 2,
+     "name": "ClaudeCode MCP",
+     "model": "claude-sonnet-5.5",
+     "harness": "Claude Code",
+     "civ": "Romans",
+     "power": 3643,
+     "winner": false
+    },
+    {
+     "seat": 0,
+     "name": "Strata MCP",
+     "model": "qwen3.8-flash-next",
+     "harness": "Strata",
+     "civ": "Yamato",
+     "power": 1721,
+     "winner": false
+    }
+   ],
+   "bytes": 5262085,
+   "default": false
   }
  ]
 }

@@ -250,7 +250,7 @@ Load a `match-*.jsonl` and you get:
 
 Nothing is interpolated between snapshots: every frame is a moment the file actually attests to.
 
-**Sixteen real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint: the analyzer only ever reads a file. Each opens directly with `?match=` and its id:
+**Seventeen real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint: the analyzer only ever reads a file. Each opens directly with `?match=` and its id:
 
 | Match | Seats | Tempo | Result |
 | --- | --- | --- | --- |
@@ -270,6 +270,7 @@ Nothing is interpolated between snapshots: every frame is a moment the file actu
 | [Episode 15](https://asp67.github.io/when-agents-rule/?match=match-20261008-115009) *The Knot* · 70 min | Claude Haiku 5.5 · GPT-6 Luna · DeepSeek V4.1 Flash · GLM 5.3 Flash | turn-based | DeepSeek V4.1, last standing |
 | [Episode 16](https://asp67.github.io/when-agents-rule/?match=match-20261015-194436) *The Late Genius* · 71 min | Qwen 3.8 Flash Next · Qwen 3.8 27B · Gemini 4 Argon | turn-based | Qwen 3.8 Flash Next, Wonder |
 | [Episode 17](https://asp67.github.io/when-agents-rule/?match=match-20261017-105426) *The 600-Second Death Sentence* · 68 min | Gemini 4 Argon · Qwen 3.8 Flash Next (Q2_0) · Qwen 3.8 Flash Next (NVFP4) | turn-based | Gemini 4 Argon, last standing |
+| [Episode 19](https://asp67.github.io/when-agents-rule/?match=match-20261028-204554) *The Server That Plays Back* · 48 min | three harnesses over MCP: Hermes Agent + DeepSeek V4.1 Flash · Claude Code + Claude Sonnet 5.5 · Strata + Qwen 3.8 Flash Next | turn-based | DeepSeek V4.1 (Hermes), Wonder |
 
 `samples/index.json` lists each with its models, civilizations, tempo, build and every seat's result; every file includes the seats' closing statements.
 
