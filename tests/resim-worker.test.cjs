@@ -33,7 +33,9 @@ function workerRealm() {
     ctx.self = ctx;
     ctx.importScripts = (...urls) => urls.forEach(u => vm.runInContext(blobs.get(u), ctx, { filename: u }));
     vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/resim-worker.js'), 'utf8'), ctx, { filename: 'js/resim-worker.js' });
-    const send = async data => { const n = out.length; await ctx.onmessage({ data }); return out[n]; };
+    // The reply is the last message a call posts; loading and progress notes come before it.
+    const send = async data => { const n = out.length; await ctx.onmessage({ data }); return out[out.length - 1]; };
+    send.notes = () => out;
     return { send, spawned };
 }
 

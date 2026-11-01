@@ -6936,20 +6936,38 @@ class UIManager {
     // (js/resim-worker.js), with every recorded world hash checked on the way. It is a
     // separate mode beside the snapshots, not a smoother version of them: every frame
     // comes from the rules, nothing is interpolated, and the hash chain certifies it.
-    // Offered only when the rules and the harness running here are the ones that made
-    // the recording; otherwise the snapshots are all there is, and the chip says so.
+    // Offered when the rules and the harness running here are the ones that made the
+    // recording, or when a rule checkpoint holds the ones that did (b1144); otherwise the
+    // snapshots are all there is, and the chip says so.
+    // Returns null (the rules running here), a checkpoint ({commit, build, ...} from
+    // rules/checkpoints.json), or why there is no replay: 'noInputs' or 'rulesChanged'.
     async anResimCheck() {
         const a = this.analyzer;
         if (!a || !a.inputs || !a.inputs.length) return 'noInputs';
         if (!a.contract || typeof WarConditions === 'undefined') return 'rulesChanged';
         if (!this._anHashes) this._anHashes = WarConditions.sourceHashes();
         const h = await this._anHashes;
-        return h.coreHash && h.coreHash === a.contract.coreHash && h.harnessHash === a.contract.harnessHash ? null : 'rulesChanged';
+        if (h.coreHash && h.coreHash === a.contract.coreHash && h.harnessHash === a.contract.harnessHash) return null;
+        const index = await this.anCheckpoints();
+        const v = index && (index.versions || []).find(x => x.coreHash === a.contract.coreHash && x.harnessHash === a.contract.harnessHash);
+        return v ? Object.assign({ repo: index.repo }, v) : 'rulesChanged';
+    }
+    // The rule checkpoints: every pushed version of the rules and the commit that holds it
+    // (tools/rules-checkpoints.cjs). Read once per page; no index (a page opened from
+    // disk) means no checkpoints, not an error.
+    anCheckpoints() {
+        if (!this._anCheckpoints) {
+            const tag = document.querySelector('script[src^="js/game.js"]'), v = tag ? (tag.getAttribute('src').split('?')[1] || '') : '';
+            this._anCheckpoints = fetch('rules/checkpoints.json' + (v ? '?' + v : ''))
+                .then(r => (r.ok ? r.json() : null)).catch(() => null);
+        }
+        return this._anCheckpoints;
     }
     async anResimOffer() {
         const why = await this.anResimCheck();
         const btn = document.getElementById('anResimBtn');
         if (!btn || !why) return;
+        if (typeof why === 'object') { btn.title = t('an.resimCheckpoint', { b: why.build }); return; }
         btn.disabled = true;
         btn.title = t(why === 'noInputs' ? 'an.resimNoInputs' : 'an.resimRulesChanged');
     }
@@ -6957,7 +6975,8 @@ class UIManager {
         const a = this.analyzer;
         if (!a) return;
         const why = await this.anResimCheck();
-        if (why) { this.showErrorMessage(t(why === 'noInputs' ? 'an.resimNoInputs' : 'an.resimRulesChanged')); return; }
+        if (typeof why === 'string') { this.showErrorMessage(t(why === 'noInputs' ? 'an.resimNoInputs' : 'an.resimRulesChanged')); return; }
+        const checkpoint = why;   // null: the rules running here
         const prev = this._anResim;
         this.anStopPlay();
         this.anResimStop(false);
@@ -6980,11 +6999,16 @@ class UIManager {
         const rs = this._anResim = { worker, inputs: a.inputs, step: 0, target: fromStep, total: 0, busy: true,
             playing: prev ? prev.playing : true, speed: prev ? prev.speed : 4, status: 'loading', checked: 0,
             ents: keep ? prev.ents : new Map(), problem: null, seekTo: fromStep > 0 ? fromStep : null,
-            marks: this.anResimMarks(a) };
+            marks: this.anResimMarks(a), checkpoint, loaded: null };
         rs.markAt = new Map(rs.marks.map(m => [m.idx, m.step]));
         worker.onmessage = e => this.anResimMessage(rs, e.data);
         worker.onerror = e => this.anResimMessage(rs, { type: 'error', problem: (e && e.message) || 'worker failed' });
-        worker.postMessage({ type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) });
+        // A checkpoint's files are read at its commit; the page's own hash function checks
+        // them against the recording before any of them runs.
+        worker.postMessage(checkpoint
+            ? { type: 'init', urls: {}, base: 'https://raw.githubusercontent.com/' + checkpoint.repo + '/' + checkpoint.commit + '/',
+                sha256: urls['js/sha256.js'], recs: [a.header, a.contract].concat(a.inputs) }
+            : { type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) });
         if (this.game.renderer) {
             this.game.renderer.resimPlaying = true;   // units move here: let them animate
             // The analyzer's auto camera is the live director over this replay (b1010).
@@ -7090,6 +7114,7 @@ class UIManager {
         // A progress note arrives while the worker is still working toward the step asked
         // for; the run stays busy.
         if (m.type === 'progress') { rs.progress = m.step; this.anResimHud(); return; }
+        if (m.type === 'loading') { rs.loaded = { read: m.read, files: m.files }; this.anResimHud(); return; }
         rs.busy = false;
         if (m.type === 'error') {
             rs.status = 'failed'; rs.playing = false;
@@ -7360,7 +7385,8 @@ class UIManager {
         if (!rs || !hud) return;
         const esc = s => this.escapeHtml(String(s == null ? '' : s));
         if (build || !document.getElementById('anResimTxt')) {
-            hud.innerHTML = '<span class="an-chip is-on">' + esc(t('an.resimMode')) + '</span>'
+            hud.innerHTML = '<span class="an-chip is-on"' + (rs.checkpoint ? ' title="' + esc(t('an.resimCheckpoint', { b: rs.checkpoint.build })) + '"' : '') + '>'
+                + esc(t('an.resimMode')) + (rs.checkpoint ? ' · ' + esc(t('an.resimRulesOf', { b: rs.checkpoint.build })) : '') + '</span>'
                 + '<button id="anResimPlay" class="an-chip" onclick="game.ui.anResimToggle()"></button>'
                 + '<select id="anResimSpeed" class="an-chip" onchange="game.ui.anResimSpeed(this.value)" aria-label="' + esc(t('an.resimSpeed')) + '">'
                 + [1, 4, 16, 64].map(n => '<option value="' + n + '"' + (n === rs.speed ? ' selected' : '') + '>' + n + '×</option>').join('') + '</select>'
@@ -7370,7 +7396,17 @@ class UIManager {
                 + '<span id="anResimTxt" class="an-cap-txt"></span>'
                 + '<button class="an-chip" onclick="game.ui.anResimStop()">' + esc(t('an.resimExit')) + '</button>';
         }
-        const clock = steps => { const sec = Math.floor(steps / 20); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+        // Steps are not seconds: a step is 50 ms of the rules' clock, and at normal speed 2
+        // (b1020) a match second is 40 of them, so "/ 20" showed a 98-minute match as 197.
+        // The world's own match clock where there is one, else its rate so far, else the
+        // header's speed as js/resim.js reads it.
+        const h = (this.analyzer && this.analyzer.header) || {};
+        const perStep = rs.step > 0 && Number.isFinite(rs.matchMs) && rs.matchMs > 0 ? rs.matchMs / rs.step
+            : 50 / (h.normalSimSpeed || h.wonderPace || (h.build >= 1020 ? 2 : 1));
+        const clock = steps => {
+            const sec = Math.floor((steps === rs.step && Number.isFinite(rs.matchMs) ? rs.matchMs : steps * perStep) / 1000);
+            return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+        };
         const play = document.getElementById('anResimPlay');
         if (play) {
             play.textContent = rs.status === 'certified' ? '↺' : (rs.playing ? '❚❚' : '▶');
@@ -7387,6 +7423,8 @@ class UIManager {
             const n = rs.inputsTotal || (rs.inputs ? rs.inputs.length : 0);
             txt.textContent = rs.seekTo != null && rs.status !== 'failed' && rs.status !== 'diverged'
                     ? t('an.resimSeeking', { t: clock(rs.progress != null ? rs.progress : rs.step), total: clock(rs.seekTo) })
+                : rs.status === 'loading' && rs.loaded && rs.loaded.read < rs.loaded.files
+                    ? t(rs.checkpoint ? 'an.resimFetching' : 'an.resimReading', { b: rs.checkpoint && rs.checkpoint.build, n: rs.loaded.read, m: rs.loaded.files })
                 : rs.status === 'loading' ? t('an.resimLoading')
                 : rs.status === 'failed' ? t('an.resimFailed', { e: rs.problem || '?' })
                 : rs.status === 'diverged' ? t('an.resimDiverged', { t: clock(rs.divergedAt), s: rs.divergedAt, n: rs.divergedSeq })

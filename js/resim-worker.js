@@ -11,9 +11,10 @@
 // transcript's rules are the rules running cannot be fooled by a cache serving one copy
 // to the hash and another to the engine.
 //
-// Messages in:  {type:'init', urls:{file:url}, recs:[header, contract, ...inputs]}
+// Messages in:  {type:'init', urls:{file:url}, recs:[header, contract, ...inputs], base?, sha256?}
 //               {type:'to', step}            advance, verifying, and send the scene
-// Messages out: {type:'ready', coreHash, harnessHash, lastInputStep, inputs}
+// Messages out: {type:'loading', read, files}  a rule file fetched (for the page's progress)
+//               {type:'ready', coreHash, harnessHash, lastInputStep, inputs}
 //               {type:'frame', step, checked, ok, problem, divergedAt, complete, ended, scene, fx}
 //
 // `fx`: what the rules asked the renderer to show since the last frame -- arrows and
@@ -57,21 +58,33 @@ let replay = null;
 const fx = [];   // the renderer calls since the last frame (see the header)
 const lf = s => String(s).replace(/\r\n/g, '\n');
 
-async function init({ urls, recs }) {
-    const fetchText = async url => { const r = await fetch(url, { cache: 'no-store' }); if (!r.ok) throw new Error('cannot read ' + url); return r.text(); };
+// `base`, when given, is where the files of an older version of the rules are read from
+// (a rule checkpoint, b1144: GitHub at the commit that holds them); otherwise they are the
+// page's own. `sha256` is the page's own hash function, run before anything fetched: the
+// texts are checked against the recording BEFORE any of them runs.
+async function init({ urls, recs, base = null, sha256 = null }) {
+    const fetchText = async url => { const r = await fetch(url, { cache: base ? 'force-cache' : 'no-store' }); if (!r.ok) throw new Error('cannot read ' + url); return r.text(); };
+    const urlOf = f => urls[f] || (base ? base + f : '../' + f);
+    const run = text => importScripts(URL.createObjectURL(new Blob([text], { type: 'text/javascript' })));
+    run(await fetchText(sha256 || urls['js/sha256.js'] || '../js/sha256.js'));
+    const pageSha = warSha256;
     // The manifest first: it names every other file, in load order.
-    const manifestText = await fetchText(urls['js/manifest.js'] || '../js/manifest.js');
-    importScripts(URL.createObjectURL(new Blob([manifestText], { type: 'text/javascript' })));
-    const files = WarManifest.vm.slice(), texts = {};
-    await Promise.all(files.concat('js/resim.js').map(async f => { texts[f] = await fetchText(urls[f] || '../' + f); }));
-    for (const f of files.concat('js/resim.js')) importScripts(URL.createObjectURL(new Blob([texts[f]], { type: 'text/javascript' })));
-    const coreHash = warSha256(WarManifest.rules.map(f => lf(texts[f])).join('\n'));
-    const harnessHash = warSha256(lf(texts[WarManifest.harness]));
+    const manifestText = await fetchText(urlOf('js/manifest.js'));
+    run(manifestText);
+    const files = WarManifest.vm.slice().concat('js/resim.js'), texts = {};
+    let read = 0;
+    await Promise.all(files.map(async f => {
+        texts[f] = await fetchText(urlOf(f));
+        self.postMessage({ type: 'loading', read: ++read, files: files.length });
+    }));
+    const coreHash = pageSha(WarManifest.rules.map(f => lf(texts[f])).join('\n'));
+    const harnessHash = pageSha(lf(texts[WarManifest.harness]));
 
     const contract = recs.find(r => r && r.type === 'contract');
     if (!contract || contract.coreHash !== coreHash || contract.harnessHash !== harnessHash) {
         return { type: 'error', problem: 'rules changed since recording', coreHash, harnessHash };
     }
+    for (const f of files) run(texts[f]);
     const header = WarResim.header(recs), inputs = WarResim.inputs(recs);
     const refusal = WarResim.refusal(header, inputs);
     if (refusal) return { type: 'error', problem: refusal };

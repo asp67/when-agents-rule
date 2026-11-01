@@ -247,6 +247,7 @@ Load a `match-*.jsonl` and you get:
 - **What the model was thinking** — its objective and plan, the commands it sent, its stated reasons, its raw reasoning, and the harness's answers.
 - **A timeline you can scrub** — step through turns, play at 0.5–4 entries a second, click the economy graph, or jump by chapter: age advances, Wonders, exhausted resources, combat. Filters narrow it to combat, errors, plan rewrites or missed rounds.
 - **Click anything** to inspect it. Remembered enemy positions render translucent and say when they were last seen.
+- **Playback** — a match recorded since late September carries its inputs, so it plays again through the real rules, every recorded world state checked on the way. One recorded under older rules plays under those: their files are read from GitHub at the commit that holds them ([`rules/checkpoints.json`](rules/checkpoints.json)) and checked against the recording before they run.
 
 Nothing is interpolated between snapshots: every frame is a moment the file actually attests to.
 
