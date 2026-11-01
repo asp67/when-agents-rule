@@ -83,3 +83,48 @@ test('a file with no chronicle keeps the guess, one line per moment rather than 
     assert.equal(JSON.stringify(fights.map(f => f.t + ' ' + f.text)), JSON.stringify(['180 In combat: Alpha, Beta', '240 In combat: Alpha, Beta', '300 In combat: Alpha, Beta']));
     assert.equal(JSON.stringify(fights[0].ids), JSON.stringify(['p1', 'p2']));
 });
+
+// Issue #4 (b1147): "35:13 wonder lost" opened the decision at 34:31, whose header still
+// read "wonder holds -- 9:40 to win", with nothing saying why.
+function withInputs() {
+    // Each seat asked every 60 s; at 40 steps a second (build 1054's normal speed 2).
+    const extra = [];
+    for (let k = 0; k < 6; k++) for (const p of ['p1', 'p2']) extra.push({ type: 'input', kind: 'observe', playerId: p, turnCount: k + 1, step: 2400 * k, seq: extra.length + 1 });
+    const s = setup(extra);
+    s.a.header.build = 1054;
+    s.a.order.filter(r => !r.type).forEach(r => { r.turn = Math.round(r._sec / 60) + 1; });
+    return s;
+}
+
+test('a match second is a step, from the moments each seat was asked', () => {
+    const { ui } = withInputs();
+    assert.equal(ui.anResimStepAtSec(0), 0);
+    assert.equal(ui.anResimStepAtSec(60), 2400);
+    assert.equal(ui.anResimStepAtSec(90), 3600, 'between two asks, evenly');
+    assert.equal(ui.anResimStepAtSec(330), 13200, 'past the last, at the header\'s speed');
+});
+
+test('in the snapshots, a jump to an event says what it shows and offers the next decision', () => {
+    const { ui, a } = withInputs();
+    ui.anResimCheck = async () => 'rulesChanged';
+    ui.anJumpEvent(130);   // between the asks at 120 and 180
+    const cur = a.current();
+    assert.equal(cur._sec, 120);
+    const note = ui.anEventNoteHtml(cur);
+    assert.match(note, /an\.evNote\{"t":"2:10","d":"2:00"\}/);
+    assert.match(note, /an\.evNext\{"d":"3:00"\}/);
+    assert.match(note, /game\.ui\.anSeek\(\d+\)/);
+    assert.doesNotMatch(note, /evPlay/, 'no replay offered where there is none');
+    a.seek(a.cursor + 1);
+    assert.equal(ui.anEventNoteHtml(a.current()), '', 'gone once the reader moves on');
+});
+
+test('in a replay, a jump to an event goes to its second, a few seconds early', () => {
+    const { ui } = withInputs();
+    const asked = [];
+    ui._anResim = { status: 'running' };
+    ui.anResimSeek = step => asked.push(step);
+    ui.anJumpEvent(130);
+    assert.equal(JSON.stringify(asked), JSON.stringify([ui.anResimStepAtSec(125)]));
+    assert.equal(ui._anEvent, null, 'no note: the world is at the event');
+});

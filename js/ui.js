@@ -7666,6 +7666,75 @@ class UIManager {
         if (!this.anResimSeekEntry(this.analyzer.cursor)) this.anRender();
     }
 
+    // An event picked in the list (b1147, issue #4). The list names when things happened;
+    // the decisions are when the seats were asked, and the last one before an event can be
+    // a minute earlier: "35:13 wonder lost" opened the decision at 34:31, whose header still
+    // read "wonder holds -- 9:40 to win". In a replay the world goes to the event's own
+    // second. In the snapshots the panel says what it shows, offers the next decision, and
+    // offers the replay from the event where there is one.
+    // In a replay it lands EVENT_LEAD seconds early, so the event is seen happening: a
+    // chronicle stamps a building lost after it fell, and at 35:14 the Akropolis was gone.
+    anJumpEvent(sec) {
+        this.anStopPlay();
+        const a = this.analyzer;
+        if (!a) return;
+        const step = this._anResim ? this.anResimStepAtSec(Math.max(0, sec - UIManager.EVENT_LEAD)) : null;
+        if (step != null) { this._anEvent = null; this.anResimSeek(step); return; }
+        a.seekSeconds(sec);
+        const ev = this._anEvent = { t: sec, cursor: a.cursor, playable: false };
+        this.anRender();
+        this.anResimCheck().then(why => {
+            if (this._anEvent !== ev || typeof why === 'string') return;
+            ev.playable = true;
+            this.anRender();
+        });
+    }
+    async anPlayEvent() {
+        const ev = this._anEvent, a = this.analyzer;
+        if (!ev || !a) return;
+        this._anEvent = null;
+        await this.anResimStart(this.anResimStepAtSec(Math.max(0, ev.t - UIManager.EVENT_LEAD), a) || 0);
+    }
+    static get EVENT_LEAD() { return 5; }
+    // The step at a match second, from the recorded inputs: each "observe" input is the
+    // step at which a seat was asked, and that turn's state carries the match second it
+    // was asked at -- an exact pair, where a decision's batch landed later than its state
+    // said. Between two pairs the clock runs evenly; past the last, at the header's speed.
+    anResimStepAtSec(sec, a = this.analyzer) {
+        if (!a || !a.inputs || !a.inputs.length) return null;
+        if (!a._timeMap || a._timeMap.inputs !== a.inputs) {
+            const at = new Map(a.order.filter(r => !r.type).map(r => [r.playerId + '#' + r.turn, r._sec]));
+            const pairs = a.inputs.filter(x => x.kind === 'observe')
+                .map(x => [at.get(x.playerId + '#' + x.turnCount), x.step]).filter(([s]) => Number.isFinite(s))
+                .sort((p, q) => p[1] - q[1]);
+            a._timeMap = { inputs: a.inputs, pairs };
+        }
+        const P = a._timeMap.pairs, h = a.header || {};
+        const perSec = 1000 / (50 / (h.normalSimSpeed || h.wonderPace || (h.build >= 1020 ? 2 : 1)));
+        if (!P.length) return Math.round(sec * perSec);
+        let i = -1;
+        for (let k = 0; k < P.length; k++) if (P[k][0] <= sec) i = k; else if (i >= 0) break;
+        if (i < 0) return Math.max(0, Math.round(P[0][1] - (P[0][0] - sec) * perSec));
+        const [s0, t0] = P[i], next = P.slice(i + 1).find(p => p[0] > s0);
+        const step = next ? t0 + (sec - s0) * (next[1] - t0) / (next[0] - s0) : t0 + (sec - s0) * perSec;
+        return Math.max(0, Math.round(step));
+    }
+    // The note over the decision panel after a jump to an event the snapshots cannot show
+    // at its own second.
+    anEventNoteHtml(r) {
+        const ev = this._anEvent, a = this.analyzer;
+        if (!ev || !r || !a || this._anResim || a.cursor !== ev.cursor || !(r._sec < ev.t - 1)) return '';
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const mmss = s => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+        const vis = a.visible();
+        const nextRec = vis.find(x => !x.type && x._sec >= ev.t);
+        const next = nextRec ? a.order.indexOf(nextRec) : -1;
+        return '<div class="an-ev-note" role="note">' + esc(t('an.evNote', { t: mmss(ev.t), d: mmss(r._sec) }))
+            + (next >= 0 ? ' <button type="button" class="an-chip" onclick="game.ui.anSeek(' + next + ')">' + esc(t('an.evNext', { d: mmss(nextRec._sec) })) + '</button>' : '')
+            + (ev.playable ? ' <button type="button" class="an-chip" onclick="game.ui.anPlayEvent()">' + esc(t('an.evPlay')) + '</button>' : '')
+            + '</div>';
+    }
+
     // A click on the plot becomes a moment. The SVG is a fixed 900x300 viewBox stretched
     // to whatever width the pane has, so the pixel is converted back through the same
     // margins the renderer used — otherwise the playhead lands where the reader did not
@@ -7682,7 +7751,11 @@ class UIManager {
         const frac = Math.max(0, Math.min(1, (vx - ML) / (W - ML - MR)));
         const samples = a.timeline.samples || [];
         const tMax = samples.length ? (samples[samples.length - 1].t || 1) : a.durationSec();
-        a.seekSeconds(Math.round(frac * tMax));
+        const sec = Math.round(frac * tMax);
+        // In a replay the world goes to the second clicked, not to the decision before it.
+        const step = this._anResim ? this.anResimStepAtSec(sec) : null;
+        if (step != null) { this.anResimSeek(step); return; }
+        a.seekSeconds(sec);
         if (!this.anResimSeekEntry(a.cursor)) this.anRender();
     }
 
@@ -7947,7 +8020,7 @@ class UIManager {
             '<button type="button" class="an-chip' + (k === f ? ' is-on' : '') + '" aria-pressed="' + (k === f) + '" onclick="game.ui.anSetChFilter(\'' + k + '\')"'
             + (k === 'key' ? ' title="' + esc(t('an.chKeyTip')) + '"' : '') + '>'
             + esc(t('an.ch_' + k)) + ' <span class="an-ch-n">' + a.chapters.filter(c => this.anChapterShown(c, k)).length + '</span></button>').join('') + '</div>' : '';
-        const ch = shown.map(c => '<button class="an-chapter an-ch-' + esc(c.kind) + '" onclick="game.ui.anJumpSec(' + c.t + ')">'
+        const ch = shown.map(c => '<button class="an-chapter an-ch-' + esc(c.kind) + '" onclick="game.ui.anJumpEvent(' + c.t + ')">'
             + '<span class="an-t">' + esc(mmss(c.t)) + '</span>' + esc(c.icon) + ' <span class="an-ch-txt">' + this.anChapterHtml(c) + '</span>'
             + '</button>').join('') || (a.chapters.length ? '<div class="an-none">' + esc(t('an.noneMatch')) + '</div>' : '');
         const link = this.anMomentLink();
@@ -8169,7 +8242,12 @@ class UIManager {
         });
         box.style.display = '';
         box.className = 'an-wonder' + cls;
-        box.innerHTML = parts.join(' <span class="an-wonder-sep">·</span> ');
+        // After a jump to a later event the clock is the decision's, not the event's: it
+        // says so (issue #4: "wonder lost" opened under "wonder holds -- 9:40 to win").
+        const ev = this._anEvent;
+        const asOf = ev && !this._anResim && a.cursor === ev.cursor && rec._sec < ev.t - 1
+            ? ' <i>' + esc(t('an.asOf', { t: mmss(rec._sec) })) + '</i>' : '';
+        box.innerHTML = parts.join(' <span class="an-wonder-sep">·</span> ') + asOf;
     }
     anRenderPick() {
         const box = document.getElementById('anPick');
@@ -8580,6 +8658,9 @@ class UIManager {
     }
 
     anDetailHtml(r) {
+        return this.anEventNoteHtml(r) + this.anDetailBodyHtml(r);
+    }
+    anDetailBodyHtml(r) {
         if (!r) return '';
         const a = this.analyzer;
         const esc = s => this.escapeHtml(String(s == null ? '' : s));
