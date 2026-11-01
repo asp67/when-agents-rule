@@ -138,3 +138,31 @@ test('the stage follows the rules\' maximum health through an age-up and researc
     draw('iron', { health: 1100, maxHealth: 1200 }, { health: 50, maxHealth: 50 });
     assert.ok(bld.health / bld.maxHealth < 1, 'the first damage shows');
 });
+
+// b1145: a jump either way is one request to the worker, never a restart, and only the
+// frame at the jump's step ends it -- a frame for an earlier request, still on its way,
+// used to end it at once (asp67, 1 Nov: "starting a replay a second time breaks").
+test('a jump is sent at once, either way, and ends only with the frame at its step', () => {
+    const scope = vm.createContext({ console, t: k => k, document: { getElementById: () => null, visibilityState: 'visible' }, location: { search: '' } });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/ui.js'), 'utf8') + '\nthis.UI = UIManager;', scope);
+    const u = Object.create(scope.UI.prototype), posted = [];
+    u.anResimStart = () => { throw new Error('a jump must not restart the replay'); };
+    u.anResimDraw = () => {}; u.anResimFollow = () => {}; u.anResimHud = () => {};
+    const rs = u._anResim = { status: 'running', step: 50000, target: 50000, busy: false, playing: true, ents: new Map(),
+        worker: { postMessage: m => posted.push(m) } };
+    u.anResimSeek(12000);   // back
+    assert.equal(JSON.stringify(posted), JSON.stringify([{ type: 'to', step: 12000 }]));
+    assert.equal(rs.seekTo, 12000);
+    const frame = step => ({ type: 'frame', step, checked: 1, ok: true, scene: { matchMs: step * 25, seats: [], nodes: [] }, fx: [], indexed: 48000 });
+    u.anResimMessage(rs, frame(50020));   // the playback frame asked for before the jump
+    assert.equal(rs.seekTo, 12000, 'an earlier frame does not end the jump');
+    u.anResimMessage(rs, frame(12000));
+    assert.equal(rs.seekTo, null, 'the frame at its step does');
+    assert.equal(rs.step, 12000);
+    u.anResimSeek(90000);   // forward, far
+    assert.equal(posted[posted.length - 1].step, 90000);
+    rs.status = 'certified';
+    u.anResimToggle();   // ↺ at the end: back to the start, not a rebuild
+    assert.equal(posted[posted.length - 1].step, 0);
+    assert.equal(rs.playing, true);
+});

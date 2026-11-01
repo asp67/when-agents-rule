@@ -7004,11 +7004,12 @@ class UIManager {
         worker.onmessage = e => this.anResimMessage(rs, e.data);
         worker.onerror = e => this.anResimMessage(rs, { type: 'error', problem: (e && e.message) || 'worker failed' });
         // A checkpoint's files are read at its commit; the page's own hash function checks
-        // them against the recording before any of them runs.
-        worker.postMessage(checkpoint
+        // them against the recording before any of them runs. Left alone, the worker walks
+        // on ahead and keeps keyframes, so later jumps are short (b1145).
+        worker.postMessage(Object.assign(checkpoint
             ? { type: 'init', urls: {}, base: 'https://raw.githubusercontent.com/' + checkpoint.repo + '/' + checkpoint.commit + '/',
                 sha256: urls['js/sha256.js'], recs: [a.header, a.contract].concat(a.inputs) }
-            : { type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) });
+            : { type: 'init', urls, recs: [a.header, a.contract].concat(a.inputs) }, { indexAhead: true }));
         if (this.game.renderer) {
             this.game.renderer.resimPlaying = true;   // units move here: let them animate
             // The analyzer's auto camera is the live director over this replay (b1010).
@@ -7113,7 +7114,8 @@ class UIManager {
         if (rs !== this._anResim) return;   // a stopped run's late answer
         // A progress note arrives while the worker is still working toward the step asked
         // for; the run stays busy.
-        if (m.type === 'progress') { rs.progress = m.step; this.anResimHud(); return; }
+        if (m.type === 'progress') { rs.progress = m.step; rs.progressFrom = m.from; this.anResimHud(); return; }
+        if (m.type === 'indexed') { rs.indexed = m.step; this.anResimHud(); return; }
         if (m.type === 'loading') { rs.loaded = { read: m.read, files: m.files }; this.anResimHud(); return; }
         rs.busy = false;
         if (m.type === 'error') {
@@ -7125,10 +7127,16 @@ class UIManager {
         } else if (m.type === 'frame') {
             rs.step = m.step; rs.checked = m.checked;
             rs.matchMs = m.scene ? m.scene.matchMs : undefined;
-            const landing = rs.seekTo != null;
-            if (rs.seekTo != null && rs.step >= rs.seekTo) rs.seekTo = null;
-            rs.progress = null;
-            this.anResimDraw(rs, m.scene, landing ? null : m.fx);
+            // The answer to a jump is the frame at its step: the worker lands a jump exactly,
+            // either way, unless the world cannot get there. A frame for an earlier request,
+            // still on its way when the jump was made, is not it.
+            const landing = rs.seekTo != null && (m.step === rs.seekTo || !m.ok || m.ended);
+            if (landing) rs.seekTo = null;
+            rs.progress = null; rs.progressFrom = null;
+            if (Number.isFinite(m.indexed)) rs.indexed = Math.max(rs.indexed || 0, m.indexed);
+            // Back before a divergence, or from the end: the world plays again.
+            if (m.ok && (rs.status === 'diverged' || rs.status === 'certified')) { rs.status = 'running'; rs.problem = null; }
+            this.anResimDraw(rs, m.scene, landing ? null : m.fx, landing);
             this.anResimFollow(rs);
             // A hash that differs is a divergence; anything else that stops it (the match
             // ending before an input, a seat no model played) is a replay that failed.
@@ -7150,7 +7158,8 @@ class UIManager {
             // It used to grow for as long as the worker was busy, so after a long seek the
             // next request was for everything played "meanwhile" -- a second freeze, the
             // units standing still until that was worked through too.
-            if (rs.playing && rs.status === 'running' && document.visibilityState !== 'hidden') {
+            // Not while a jump is under way: the jump's step is the target until it lands.
+            if (rs.playing && rs.status === 'running' && rs.seekTo == null && document.visibilityState !== 'hidden') {
                 const lead = Math.max(20, 20 * rs.speed);
                 rs.target = Math.min(rs.total, Math.max(rs.target, Math.min(rs.target + dt / 50 * rs.speed, rs.step + lead)));
             }
@@ -7165,19 +7174,22 @@ class UIManager {
     anResimToggle() {
         const rs = this._anResim;
         if (!rs) return;
-        if (rs.status === 'certified') { this.anResimStart(0); return; }
+        if (rs.status === 'certified') { rs.status = 'running'; rs.playing = true; this.anResimSeek(0); return; }
         rs.playing = !rs.playing;
         this.anResimHud();
     }
     anResimSpeed(v) { if (this._anResim) this._anResim.speed = Number(v) || 1; }
-    // Forward is more stepping. Back is a rebuild: the world is not kept at every step,
-    // so it is replayed from the start to the step asked for.
+    // A jump of any length, either way, sent at once: the worker takes the newest request
+    // and lands it from its nearest keyframe (b1145). A jump back used to rebuild the match
+    // from its first second, and a jump made while the worker walked toward another was
+    // read only once it got there.
     anResimSeek(v) {
         const rs = this._anResim, step = Math.max(0, Math.round(Number(v) || 0));
         if (!rs) return;
-        if (step < rs.step) { this.anResimStart(step); return; }
         rs.target = step;
-        if (step - rs.step > 600) rs.seekTo = step;   // long enough to show progress for
+        if (Math.abs(step - rs.step) > 40) rs.seekTo = step;   // a jump: shown as one, with its progress
+        if (rs.status === 'running') { rs.busy = true; rs.worker.postMessage({ type: 'to', step }); }
+        // Still loading: the first request, once it is ready, is for rs.target.
         this.anResimHud();
     }
     // The stage for a re-simulation: the recorded map, empty, and no fog. It is the
@@ -7203,7 +7215,7 @@ class UIManager {
     // One frame of the re-simulated world onto the stage. Entities persist by id and
     // move, rather than being rebuilt per frame; a building is rebuilt once when it
     // completes, because its scaffold is decided when it is created.
-    anResimDraw(rs, scene, fx) {
+    anResimDraw(rs, scene, fx, jump = false) {
         const r = this.game.renderer;
         if (!r || !scene) return;
         const seen = new Set();
@@ -7241,7 +7253,7 @@ class UIManager {
                     isHarvesting: u.isHarvesting, isBuilding: u.isBuilding, carryingResource: u.carryingResource,
                     carryingResourceType: u.carryingResourceType, attackTarget: null,
                     targetX: u.targetX == null ? undefined : u.targetX, targetZ: u.targetZ == null ? undefined : u.targetZ, task: u.task || null });
-                if (before > u.health) hurt.push([ent, before - u.health]);
+                if (!jump && before > u.health) hurt.push([ent, before - u.health]);
                 if (u.attackTarget) aims.push([ent, u.attackTarget]);
                 seat.units.push(ent);
             });
@@ -7264,7 +7276,7 @@ class UIManager {
                 }
                 // The rules' own maximum: an age-up raises it (and the health with it).
                 if (b.maxHealth > 0) ent.maxHealth = b.maxHealth;
-                if (ent.health > b.health) hurt.push([ent, ent.health - b.health]);
+                if (!jump && ent.health > b.health) hurt.push([ent, ent.health - b.health]);
                 ent.health = b.health;
                 ent.underConstruction = b.underConstruction;
                 if (b.underConstruction) ent.buildProgress = b.buildProgress;
@@ -7300,7 +7312,11 @@ class UIManager {
         rs.ents.forEach((ent, key) => {
             if (seen.has(key)) return;
             rs.ents.delete(key);
-            if (key[0] === 'u') r.killUnit(ent);
+            // After a jump, what is not there any more was not killed on screen: it is
+            // simply not in the world at this step (a jump back un-builds and un-trains).
+            if (jump && key[0] === 'u' && r.removeUnit) r.removeUnit(ent);
+            else if (jump && key[0] === 'b' && r.removeBuilding) r.removeBuilding(ent);
+            else if (key[0] === 'u') r.killUnit(ent);
             else if (key.endsWith(':site') && seen.has(key.slice(0, -5))) r.removeBuilding(ent);   // finished, not destroyed
             else r.killBuilding(ent);
             // Gone from the world: dead to the director too, which lets go of a fight's
@@ -7394,6 +7410,7 @@ class UIManager {
                 // No slider of its own: the timeline above the lists drives the replay.
                 + '<button id="anResimAuto" data-an-auto-camera class="an-chip" onclick="game.ui.anToggleAutoCam()">' + esc(t('an.autoCam')) + '</button>'
                 + '<span id="anResimTxt" class="an-cap-txt"></span>'
+                + '<span id="anResimBar" class="an-resim-bar" hidden><i></i></span>'
                 + '<button class="an-chip" onclick="game.ui.anResimStop()">' + esc(t('an.resimExit')) + '</button>';
         }
         // Steps are not seconds: a step is 50 ms of the rules' clock, and at normal speed 2
@@ -7431,6 +7448,27 @@ class UIManager {
                 : rs.status === 'certified' ? t('an.resimCertified', { n })
                 : t('an.resimStatus', { t: clock(rs.step), total: clock(rs.total), n: rs.checked, m: n });
             txt.classList.toggle('is-bad', rs.status === 'diverged' || rs.status === 'failed');
+            // How far a jump lands at once: the worker's furthest keyframe.
+            if (rs.status === 'running' && rs.seekTo == null && rs.indexed > rs.step + 2400)
+                txt.textContent += ' · ' + t('an.resimIndexed', { t: clock(rs.indexed) });
+        }
+        // Every wait has a bar (asp67, 1 Nov): the files read, the match rebuilt from its
+        // seed (no measure, so it runs), and a jump from where it began to where it goes.
+        const bar = document.getElementById('anResimBar');
+        if (bar) {
+            const bad = rs.status === 'failed' || rs.status === 'diverged';
+            let frac = null, busy = false;
+            if (!bad && rs.status === 'loading') {
+                if (rs.loaded && rs.loaded.read < rs.loaded.files) frac = rs.loaded.read / rs.loaded.files;
+                else busy = true;
+            } else if (!bad && rs.seekTo != null) {
+                const from = rs.progressFrom != null ? rs.progressFrom : rs.step, at = rs.progress != null ? rs.progress : from;
+                frac = rs.seekTo > from ? (at - from) / (rs.seekTo - from) : null;
+                busy = frac == null;
+            }
+            bar.hidden = frac == null && !busy;
+            bar.classList.toggle('is-busy', busy);
+            bar.firstChild.style.width = frac == null ? '' : Math.round(100 * Math.max(0.02, Math.min(1, frac))) + '%';
         }
     }
     anSetMode(mode) {

@@ -62,30 +62,8 @@ test('each sample\'s checkpoint holds the files its hashes name', NEEDS_GIT, () 
 });
 
 // The worker as a browser runs it, reading the checkpoint's files "from GitHub": fetch is
-// served from the git history at that commit.
-function workerRealm() {
-    const blobs = new Map(), out = [];
-    const ctx = vm.createContext({
-        console: { log() {}, info() {}, warn() {}, error() {}, debug() {} },
-        setTimeout, clearTimeout, Math, Date, performance, Promise, Proxy, Uint8ClampedArray, JSON,
-        Blob: class { constructor(parts) { this.text = parts.join(''); } },
-        URL: { createObjectURL: b => { const k = 'blob:' + blobs.size; blobs.set(k, b.text); return k; } },
-        fetch: async url => {
-            const raw = String(url).match(/^https:\/\/raw\.githubusercontent\.com\/asp67\/when-agents-rule\/([0-9a-f]{40})\/(.+)$/);
-            if (raw) { try { const text = git('show', raw[1] + ':' + raw[2]); return { ok: true, text: async () => text }; } catch (e) { return { ok: false }; } }
-            const file = path.join(ROOT, 'js', String(url).split('?')[0]);
-            return fs.existsSync(file) ? { ok: true, text: async () => fs.readFileSync(file, 'utf8') } : { ok: false };
-        },
-        postMessage: m => out.push(m),
-        Worker: class { terminate() {} },
-    });
-    ctx.self = ctx;
-    ctx.importScripts = (...urls) => urls.forEach(u => vm.runInContext(blobs.get(u), ctx, { filename: u }));
-    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/resim-worker.js'), 'utf8'), ctx, { filename: 'js/resim-worker.js' });
-    const send = async data => { await ctx.onmessage({ data }); return out[out.length - 1]; };
-    return { send, ctx, out };
-}
-const raw = commit => 'https://raw.githubusercontent.com/asp67/when-agents-rule/' + commit + '/';
+// served from the git history at that commit (tests/lib/resim-worker-realm.cjs).
+const { workerRealm, raw } = require('./lib/resim-worker-realm.cjs');
 
 test('an older match replays from its checkpoint, every hash on the way matching', NEEDS_GIT, async () => {
     const file = samples.find(s => /claude-haiku5\.5-gpt6-luna_20min/.test(s.file));
