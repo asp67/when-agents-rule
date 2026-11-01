@@ -2290,6 +2290,21 @@ class OpenAIAIManager {
         };
     }
 
+    // A provider error that arrived as a 200: OpenRouter answers so when the model's
+    // provider fails ({"error": {...}} and no choices). Read as a reply it was the
+    // model's EMPTY reply, a parse failure on its record and "You returned an EMPTY
+    // reply" in its next turn (asp67's match of 1 Nov: Nemotron, six turns, each back in
+    // 1-2 s with no usage, and its closing statement). { code, message } or null.
+    static providerErrorIn(data) {
+        if (!data || typeof data !== 'object' || !data.error) return null;
+        if ((Array.isArray(data.choices) && data.choices.length) || data.candidates || data.content || data.message) return null;
+        const e = data.error;
+        const code = (e && typeof e === 'object' && e.code != null) ? e.code : null;
+        const msg = (e && typeof e === 'object') ? (e.message || JSON.stringify(e)) : String(e);
+        const who = e && e.metadata && e.metadata.provider_name ? ` (${e.metadata.provider_name})` : '';
+        return { code, message: String(msg).slice(0, 300) + who };
+    }
+
     // Normalize any provider's response to { content, reasoning, tool_calls, finish_reason }.
     static normalizeResponse(provider, data) {
         if (provider === 'anthropic') {
@@ -5283,6 +5298,13 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             }
 
             const data = await response.json();
+            // The endpoint failed, not the model: a request failure, with the provider's
+            // own words on file. Not "API error (n)", so a provider having a bad hour does
+            // not trip the self-heal, which is for a request the server cannot accept.
+            const bodyErr = OpenAIAIManager.providerErrorIn(data);
+            if (bodyErr) throw new Error(Number(bodyErr.code) === 429
+                ? `API error (429): ${bodyErr.message}`
+                : `provider error in a 200 reply${bodyErr.code != null ? ` (${bodyErr.code})` : ''}: ${bodyErr.message}`);
             const norm = OpenAIAIManager.normalizeResponse(provider, data);
             // Token accounting: latency tells you speed, this tells you COST.
             const usage = OpenAIAIManager.extractUsage(provider, data);
@@ -6883,8 +6905,12 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 error = 'HTTP ' + res.status;
             } else {
                 const data = await res.json();
+                const bodyErr = OpenAIAIManager.providerErrorIn(data);
+                if (bodyErr) error = 'provider error' + (bodyErr.code != null ? ` (${bodyErr.code})` : '') + ': ' + bodyErr.message;
                 const norm = OpenAIAIManager.normalizeResponse(provider, data);
                 text = String((norm && (norm.content || norm.reasoning)) || '').trim();
+                // An empty closing statement on file says why, not just null.
+                if (!text && !error) error = 'an empty answer' + (norm && norm.finish_reason ? ` (finish_reason ${norm.finish_reason})` : '');
                 // extractUsage, not norm.usage: field names differ per provider and that
                 // static is where the mapping already lives (input_tokens, promptTokenCount,
                 // prompt_tokens...). Reading norm.usage recorded null for every provider.

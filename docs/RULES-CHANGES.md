@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1141: a provider error that arrives as a 200 is the endpoint's failure, not the model's empty reply (1 November 2026)
+
+**Rules change** (what a model is told and what goes on its record). OpenRouter answers HTTP 200 with `{"error": {...}}` and no `choices` when the model's provider fails. The harness read that body as a reply with nothing in it. In asp67's match of 1 November, Nemotron 3 Ultra (`:free`) got six of them, each back in 1–2 s with no token usage. Each was filed as the model's empty reply: a parse failure on its record, and "You returned an EMPTY reply" at the top of its next turn. Its closing statement was lost the same way and went on file as text `null`, error `null`.
+
+**Now:**
+- A 200 whose body carries an `error` and no answer is a failed request. It is counted as a network error, not a parse failure, and filed as `request_failed` with the provider's own message (and its name, when OpenRouter gives one). A `429` inside the body is a rate limit, as a 429 status already was. The self-heal, which drops replayed tool calls after repeated identical server refusals, does not count these: a provider having a bad hour is not a request the server cannot accept.
+- A closing statement lost to one is on file as `provider error (<code>): <message>`. One that came back empty says so: `an empty answer (finish_reason …)`.
+- **Tests:** `tests/provider-error-200.test.cjs` (all four fail on b1140).
+
 ## Build 1140: a harness still thinking over its turn is not "away" (28 October 2026)
 
 **Rules change.** In asp67's match of 28 October (17:31, Strata against Hermes) every time-out was followed 1.5 s later by an "[AWAY]" for the same seat, sometimes two: seven rounds in all (Strata 4 of its 8 missed, Hermes 3 of its 10). Neither harness had stopped. Each had taken its turn and was still thinking over it when the round closed, so it had made no call for longer than a round, which is what b1139 took for "away". By construction every time-out turned into at least one more missed round.
