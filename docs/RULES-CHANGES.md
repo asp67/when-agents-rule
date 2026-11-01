@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1142: a command missing its required argument carries a code (1 November 2026)
+
+**Harness change; the rules hash moves.** In asp67's match of 1 November (17:14, Strata against Hermes) Strata sent a `train_unit` with no arguments. It was refused with "train_unit requires "unitType" parameter." and no outcome code, so the Bench counted it as uncoded, which it cannot tell from a harness fault. The same held for `research_tech` without `techId`, and `build_structure` and `destroy_building` without `buildingType`.
+
+**Now** all four are `missingParam` (class `reference`), with the action and the missing argument as its parameters. What the model is told is unchanged.
+- **Tests:** `tests/missing-param-coded.test.cjs` (fails on b1141).
+
 ## Build 1141: a provider error that arrives as a 200 is the endpoint's failure, not the model's empty reply (1 November 2026)
 
 **Rules change** (what a model is told and what goes on its record). OpenRouter answers HTTP 200 with `{"error": {...}}` and no `choices` when the model's provider fails. The harness read that body as a reply with nothing in it. In asp67's match of 1 November, Nemotron 3 Ultra (`:free`) got six of them, each back in 1–2 s with no token usage. Each was filed as the model's empty reply: a parse failure on its record, and "You returned an EMPTY reply" at the top of its next turn. Its closing statement was lost the same way and went on file as text `null`, error `null`.

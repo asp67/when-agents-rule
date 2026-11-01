@@ -6561,6 +6561,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 if (params?.unitType) {
                     actionResult = this.executeTrainUnit(ai, game, params.unitType, params || {});
                 } else {
+                    // Coded (b1142), as attack/move were: asp67's match of 1 Nov had a train_unit sent
+                    // with no arguments, and the Bench counted it as uncoded.
+                    this.outcome('log.out.missingParam', { action: 'train_unit', param: 'unitType' });
                     actionResult = `[ERROR] train_unit requires "unitType" parameter.`;
                 }
                 break;
@@ -6569,6 +6572,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 if (params?.techId) {
                     actionResult = this.executeResearchTech(ai, game, params.techId, controller);
                 } else {
+                    this.outcome('log.out.missingParam', { action: 'research_tech', param: 'techId' });
                     actionResult = `[ERROR] research_tech requires "techId" parameter.`;
                 }
                 break;
@@ -6581,6 +6585,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 if (params?.buildingType) {
                     actionResult = this.executeBuildStructure(ai, game, params.buildingType, params?.targetX, params?.targetZ, controller);
                 } else {
+                    this.outcome('log.out.missingParam', { action: 'build_structure', param: 'buildingType' });
                     actionResult = `[ERROR] build_structure requires "buildingType" parameter.`;
                 }
                 break;
@@ -6639,6 +6644,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 if (params?.buildingType) {
                     actionResult = this.executeDestroyBuilding(ai, game, params.buildingType, params?.targetX, params?.targetZ);
                 } else {
+                    this.outcome('log.out.missingParam', { action: 'destroy_building', param: 'buildingType' });
                     actionResult = `[ERROR] destroy_building requires "buildingType" parameter.`;
                 }
                 break;
