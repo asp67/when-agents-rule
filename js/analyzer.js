@@ -208,33 +208,35 @@ class TranscriptAnalyzer {
         });
     }
 
-    // What a reader would want to jump to, from the sources that already computed it:
-    // the timeline's own event arrays, plus the turns where something happened that no
-    // graph shows — a fight, a refusal, a skipped round.
+    // What a reader would want to jump to. A recording with a chronicle (review #11, since
+    // build 1023) says it itself: each fight with both sides' losses, each building and
+    // Town Center lost and to whom, contact, ages, Wonders, eliminations. It was loaded and
+    // never shown here; the list was guessed from the snapshots instead, and 81 of the 98
+    // lines in one match were "X in combat", once per seat, with no rival, place or result
+    // (asp67, 1 Nov: "the event section ... needs some love"). An older file keeps the
+    // guess, its per-seat combat lines merged.
+    // Each chapter: {t, kind, icon, weight (1 minor, 2 notable, 3 decisive), ids (the
+    // seats in it), text (plain, for copying), ev (the chronicle record, when there is one)}.
     _buildChapters() {
+        if (this.chronicle.length) { this.chapters = this._chronicleChapters(); return; }
         const ch = [];
         const civOf = id => {
             const s = this.seats.get(id);
             return (s && (s.name || s.model || s.civ)) || id;
         };
         const tl = this.timeline || {};
-        (tl.ages || []).forEach(e => ch.push({ t: e.t, kind: 'age', icon: '⏫',
-            text: `${civOf(e.id)} → ${e.age}`, id: e.id }));
-        (tl.wonders || []).forEach(e => ch.push({ t: e.t, kind: 'wonder',
+        (tl.ages || []).forEach(e => ch.push({ t: e.t, kind: 'age', icon: '⏫', weight: 2,
+            text: `${civOf(e.id)} → ${e.age}`, id: e.id, ids: [e.id] }));
+        (tl.wonders || []).forEach(e => ch.push({ t: e.t, kind: 'wonder', weight: 3,
             icon: e.event === 'lost' ? '💥' : '🏛️',
-            text: `${civOf(e.id)} wonder ${e.event}`, id: e.id }));
-        (tl.exhausted || []).forEach(e => ch.push({ t: e.t, kind: 'dry', icon: '⚱',
-            text: `${civOf(e.id)}: ${e.type} ran out`, id: e.id }));
+            text: `${civOf(e.id)} wonder ${e.event}`, id: e.id, ids: [e.id] }));
+        this._minorChapters(ch, civOf);
         this.order.forEach((r, i) => {
-            if (r.type === 'round_missed') {
-                ch.push({ t: r._sec, kind: 'missed', icon: '⏱',
-                    text: `${civOf(r.playerId)} missed the round`, id: r.playerId, index: i });
-                return;
-            }
+            if (r.type) return;
             const b = r.state && r.state.battles;
             if (Array.isArray(b) && b.length) {
-                ch.push({ t: r._sec, kind: 'battle', icon: '⚔️',
-                    text: `${civOf(r.playerId)} in combat`, id: r.playerId, index: i });
+                ch.push({ t: r._sec, kind: 'battle', icon: '⚔️', weight: 2,
+                    text: `${civOf(r.playerId)} in combat`, id: r.playerId, ids: [r.playerId], index: i });
             }
         });
         // Battles span many turns, so one entry per turn would bury everything else.
@@ -246,7 +248,50 @@ class TranscriptAnalyzer {
                 && (c.kind === 'battle' ? (c.t - o.t) <= 45 : c.t === o.t));
             if (!dup) out.push(c);
         });
-        this.chapters = out;
+        // The seats in combat at the same moment are one line, not one each.
+        this.chapters = out.reduce((acc, c) => {
+            const prev = acc[acc.length - 1];
+            if (c.kind === 'battle' && prev && prev.kind === 'battle' && prev.t === c.t) {
+                prev.ids = prev.ids.concat(c.ids);
+                prev.text = 'In combat: ' + prev.ids.map(civOf).join(', ');
+            } else acc.push(c.kind === 'battle' ? Object.assign({}, c, { text: 'In combat: ' + civOf(c.id) }) : c);
+            return acc;
+        }, []);
+    }
+    // What no chronicle reports, for either kind of file: missed rounds and nodes run dry.
+    _minorChapters(ch, civOf) {
+        ((this.timeline || {}).exhausted || []).forEach(e => ch.push({ t: e.t, kind: 'dry', icon: '⚱', weight: 1,
+            text: `${civOf(e.id)}: ${e.type} ran out`, id: e.id, ids: [e.id] }));
+        this.order.forEach((r, i) => {
+            if (r.type === 'round_missed') ch.push({ t: r._sec, kind: 'missed', icon: '⏱', weight: 1,
+                text: `${civOf(r.playerId)} missed the round`, id: r.playerId, ids: [r.playerId], index: i });
+        });
+    }
+    // The chronicle as chapters. A fight is listed at its start (the record is written
+    // when it ends, `seconds` later), so a jump lands on it rather than after it. The
+    // per-moment clashes are left out: each one's fight is there, with its result.
+    _chronicleChapters() {
+        const civOf = id => { const s = this.seats.get(id); return (s && (s.name || s.model || s.civ)) || id || '?'; };
+        const ICON = { battle: '⚔️', 'building-lost': '🏚️', 'town-center-lost': '🔥', 'wonder-raised': '🏛️',
+            'wonder-countdown': '⏳', 'wonder-lost': '💥', age: '⏫', contact: '🤝', elimination: '☠️' };
+        const ch = [];
+        for (const e of this.chronicle) {
+            if (!ICON[e.kind]) continue;   // clash, speed, pause, resume
+            const ids = (e.seats || []).concat(e.by && !(e.seats || []).includes(e.by) ? [e.by] : []);
+            const who = civOf(e.seats && e.seats[0]);
+            const text = e.kind === 'battle'
+                ? `Fight, ${e.seconds || 0} s: ` + (e.seats || []).map(id => `${civOf(id)} lost ${(e.sides[id] || {}).lost || 0} of ${(e.sides[id] || {}).involved || 0}`).join(' · ')
+                : e.kind === 'age' ? `${who} → ${e.age}`
+                : e.kind === 'contact' ? `${who} and ${civOf(e.seats[1])} meet`
+                : e.kind === 'elimination' ? `${who} is eliminated`
+                : e.kind === 'wonder-raised' ? `${who} completes a Wonder`
+                : e.kind === 'wonder-countdown' ? `${who}: ${e.seconds} s left on the Wonder`
+                : `${who} loses ${e.building}` + (e.by ? ` to ${civOf(e.by)}` : '');
+            ch.push({ t: e.kind === 'battle' ? Math.max(0, (e.t || 0) - (e.seconds || 0)) : (e.t || 0),
+                kind: e.kind, icon: ICON[e.kind], weight: e.weight || 1, ids, id: ids[0], text, ev: e });
+        }
+        this._minorChapters(ch, civOf);
+        return ch.sort((a, b) => a.t - b.t);
     }
 
     // ---- the board --------------------------------------------------------

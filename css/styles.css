@@ -2793,9 +2793,15 @@ body.demo-only .an-src:hover { background:var(--gold); color:#1a1205; }
 .c-playhead-dot { fill:#fff; }
 .an-chapters { flex:0 0 auto; display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
 .an-ch-title { font-size:0.7em; color:#7f92a3; padding-right:3px; width:100%; }
-.an-chapter { display:inline-flex; align-items:center; gap:5px; cursor:pointer;
+/* The event list's filters (b1146). */
+.an-ch-filters { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0 6px; }
+.an-ch-n { opacity:.6; font-size:.9em; }
+.an-ch-txt .team-dot, .an-ch-txt b { vertical-align:baseline; }
+.an-chapter { display:flex; align-items:baseline; gap:5px; cursor:pointer; width:100%; text-align:left;
     background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1);
-    color:#bcd; border-radius:4px; padding:2px 6px; font-size:0.68em; }
+    color:#bcd; border-radius:4px; padding:3px 6px; font-size:0.7em; line-height:1.35; }
+.an-chapter .an-t { flex:0 0 auto; min-width:3.2em; font-variant-numeric:tabular-nums; }
+.an-ch-filters { width:100%; }
 .an-chapter:hover { background:rgba(255,255,255,0.13); color:#fff; }
 
 @media (max-width: 1000px) {

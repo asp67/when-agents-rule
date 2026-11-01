@@ -3217,15 +3217,25 @@ class UIManager {
         const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === id);
         return (ai ? this.teamDotHtml(ai.seat, 9) + ' ' : '') + '<b>' + this.escapeHtml(this.chronicleSeatName(id)) + '</b>';
     }
-    chronicleText(e) {
-        const who = this.chronicleSeatHtml(e.seats && e.seats[0]);
-        const bname = type => { const d = typeof getBuildingDef === 'function' ? getBuildingDef(type) : null; return this.escapeHtml(d && d.name ? tg(d.name) : String(type || '')); };
-        const by = e.by ? this.chronicleSeatHtml(e.by) : null;
+    // `seat` names a seat as HTML: the live game's by default, the analyzer's for a
+    // recorded match (b1146).
+    chronicleText(e, seat = id => this.chronicleSeatHtml(id)) {
+        const who = seat(e.seats && e.seats[0]);
+        // A civilization's own building (its Wonder: akropolis, pyramid, ...) is not in the
+        // shared table; its name is in the civilization's.
+        const bname = type => {
+            let d = typeof getBuildingDef === 'function' ? getBuildingDef(type) : null;
+            if (!d && typeof CIVILIZATIONS !== 'undefined') for (const c of Object.values(CIVILIZATIONS)) { d = (c.uniqueBuildings || []).find(u => u.id === type); if (d) break; }
+            return this.escapeHtml(d && d.name ? tg(d.name) : String(type || ''));
+        };
+        const by = e.by ? seat(e.by) : null;
+        const sides = () => e.seats.map(id => t('chr.battleSide', { who: seat(id), lost: (e.sides[id] || {}).lost || 0, of: (e.sides[id] || {}).involved || 0 })).join(' · ');
         switch (e.kind) {
-            case 'contact': return t('chr.contact', { a: who, b: this.chronicleSeatHtml(e.seats[1]) });
-            case 'clash': return t('chr.clash', { who: e.seats.map(id => this.chronicleSeatHtml(id)).join(' · ') });
-            case 'battle': return t('chr.battle', { s: e.seconds, lines: e.seats.map(id => t('chr.battleSide', {
-                who: this.chronicleSeatHtml(id), lost: e.sides[id].lost, of: e.sides[id].involved })).join(' · ') });
+            case 'contact': return t('chr.contact', { a: who, b: seat(e.seats[1]) });
+            case 'clash': return t('chr.clash', { who: e.seats.map(id => seat(id)).join(' · ') });
+            case 'battle': return t('chr.battle', { s: e.seconds, lines: sides() });
+            // The analyzer lists a fight at its start, so it is not "over after".
+            case 'battle-start': return t('an.chFight', { s: e.seconds, lines: sides() });
             case 'building-lost': case 'town-center-lost': case 'wonder-lost':
                 return t(by ? 'chr.lostBy' : 'chr.lost', { who, what: bname(e.building), by });
             case 'age': return t('chr.age', { who, age: this.escapeHtml(this.getAgeName(e.age)) });
@@ -6812,6 +6822,36 @@ class UIManager {
         const ok = await this.copyText(link);
         this.showNotice(ok ? t('an.linkCopied') : t('an.copyManual', { text: link }));
     }
+    // Which events a chapter filter shows: 'key' the notable and decisive (weight 2 and 3),
+    // 'fights', 'buildings' (lost, Town Centers, Wonders), 'all'; and only the picked
+    // seat's, when the list is filtered to one.
+    anChapterShown(c, f) {
+        const a = this.analyzer;
+        if (a && a.seatFilter && !((c.ids || [c.id]).includes(a.seatFilter))) return false;
+        if (f === 'key') return c.weight == null || c.weight >= 2;
+        if (f === 'fights') return c.kind === 'battle';
+        if (f === 'buildings') return /lost$|^wonder/.test(c.kind);
+        return true;
+    }
+    anSetChFilter(f) { this._anChFilter = f; this.anRender(); }
+    // A seat as the analyzer names it, with its team mark (not in plain text: the mark
+    // carries a label for screen readers, which a copied chapter would read out).
+    anChapterSeatHtml(id, plain = false) {
+        const s = this.analyzer && this.analyzer.seats.get(id);
+        return (s && !plain ? this.teamDotHtml(s.seat, 9) + ' ' : '') + '<b>' + this.escapeHtml(s ? (s.name || s.model || s.civ) : String(id || '?')) + '</b>';
+    }
+    // A chapter's line: the chronicle's own words where there is a record, in the
+    // reader's language; the plain text otherwise.
+    anChapterHtml(c, plain = false) {
+        if (!c.ev) return this.escapeHtml(c.text || '');
+        const e = c.ev.kind === 'battle' ? Object.assign({}, c.ev, { kind: 'battle-start' }) : c.ev;
+        return this.chronicleText(e, id => this.anChapterSeatHtml(id, plain));
+    }
+    anChapterPlain(c) {
+        if (!c.ev) return String(c.text || '');
+        return this.anChapterHtml(c, true).replace(/<[^>]*>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+    }
     // YouTube chapters from the analyzer's chapters: the first at 0:00, each at least ten
     // seconds after the one before, every time shifted by the video's own offset (the
     // seconds of video before the match began). Said, not guessed: the offset is asked.
@@ -6819,10 +6859,11 @@ class UIManager {
         const a = this.analyzer;
         const out = [];
         let last = -Infinity;
-        for (const c of (a && a.chapters) || []) {
+        // The highlights: every minor fight and lost house would bury a video's chapters.
+        for (const c of ((a && a.chapters) || []).filter(x => x.weight == null || x.weight >= 2)) {
             const at = Math.max(0, Math.floor(c.t + offsetSec));
             if (at - last < 10) continue;
-            const line = (c.icon ? c.icon + ' ' : '') + String(c.text || '').replace(/\s+/g, ' ').trim();
+            const line = (c.icon ? c.icon + ' ' : '') + this.anChapterPlain(c).replace(/\s+/g, ' ').trim();
             if (!line.trim()) continue;
             out.push([at, line]); last = at;
         }
@@ -7898,9 +7939,17 @@ class UIManager {
             if (a.inputs && a.inputs.length) this.anResimOffer();
         }
 
-        const ch = a.chapters.map(c => '<button class="an-chapter" onclick="game.ui.anJumpSec(' + c.t + ')">'
-            + '<span class="an-t">' + esc(mmss(c.t)) + '</span>' + esc(c.icon) + ' ' + esc(c.text)
-            + '</button>').join('');
+        // The events: highlights by default, or fights, buildings, all (b1146); the seat
+        // filter applies here too.
+        const f = this._anChFilter || 'key';
+        const shown = a.chapters.filter(c => this.anChapterShown(c, f));
+        const chips = a.chapters.length ? '<div class="an-ch-filters" role="group">' + ['key', 'fights', 'buildings', 'all'].map(k =>
+            '<button type="button" class="an-chip' + (k === f ? ' is-on' : '') + '" aria-pressed="' + (k === f) + '" onclick="game.ui.anSetChFilter(\'' + k + '\')"'
+            + (k === 'key' ? ' title="' + esc(t('an.chKeyTip')) + '"' : '') + '>'
+            + esc(t('an.ch_' + k)) + ' <span class="an-ch-n">' + a.chapters.filter(c => this.anChapterShown(c, k)).length + '</span></button>').join('') + '</div>' : '';
+        const ch = shown.map(c => '<button class="an-chapter an-ch-' + esc(c.kind) + '" onclick="game.ui.anJumpSec(' + c.t + ')">'
+            + '<span class="an-t">' + esc(mmss(c.t)) + '</span>' + esc(c.icon) + ' <span class="an-ch-txt">' + this.anChapterHtml(c) + '</span>'
+            + '</button>').join('') || (a.chapters.length ? '<div class="an-none">' + esc(t('an.noneMatch')) + '</div>' : '');
         const link = this.anMomentLink();
         const tools = '<div class="an-ch-tools">'
             + (link ? '<button type="button" class="an-chip" onclick="game.ui.anCopyLink()" title="' + esc(t('an.copyLinkTip')) + '">' + esc(t('an.copyLink')) + '</button>' : '')
@@ -7909,7 +7958,7 @@ class UIManager {
                 + '<button type="button" class="an-chip" onclick="game.ui.anCopyChapters()" title="' + esc(t('an.copyChaptersTip')) + '">' + esc(t('an.copyChapters')) + '</button>' : '')
             + '</div>';
         document.getElementById('anChapters').innerHTML = this.anTaleHtml()
-            + (ch ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + tools + ch : (link ? tools : ''));
+            + (a.chapters.length ? '<div class="an-ch-title">' + esc(t('an.chapters')) + '</div>' + tools + chips + ch : (link ? tools : ''));
     }
 
     // ---- the stage: the real engine, showing a finished match -----------------
