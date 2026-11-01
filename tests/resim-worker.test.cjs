@@ -83,6 +83,9 @@ test('the worker certifies a recording made under the rules it runs, and draws t
     assert.ok(own.buildings.every(b => typeof b.age === 'string' && b.age.length), JSON.stringify(own.buildings.map(b => b.age)));
     assert.ok(own.units.every(u => typeof u.id === 'string' && typeof u.x === 'number' && u.type));
     assert.ok(end.scene.nodes.length > 10);
+    // The rules' maximum health rides with each one (b1143): the stage's own entity keeps
+    // the maximum of the age it was first seen in.
+    for (const e of own.units.concat(own.buildings)) assert.ok(e.maxHealth > 0 && e.health <= e.maxHealth, JSON.stringify(e));
 });
 
 test('the worker refuses a recording made under other rules, and names a divergence', async () => {

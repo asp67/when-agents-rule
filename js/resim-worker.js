@@ -138,7 +138,26 @@ function frame(step) {
     fx.length = 0;
     return { type: 'frame', step: replay.step, checked: replay.checked, ok: replay.ok, problem: replay.problem,
              divergedAt: replay.divergedAt, divergedSeq: replay.divergedSeq, complete: replay.complete, ended: !game.gameStarted,
-             scene: replay.scene(), fx: recent };
+             scene: withMaxHealth(replay.scene()), fx: recent };
+}
+
+// Each unit's and building's maximum health as the rules have it now. The stage used to
+// take it from its own entity, made when the thing was first seen: an age-up raises a
+// building's maximum and scales its health with it (morphBuildingsToAge), research raises
+// a unit's, and the stage kept the old maximum. A building then stood above it, with no
+// health bar, until damage took it below -- about half way down for an Iron Age building
+// first seen in the Stone Age (asp67, 1 Nov). Added here rather than in resim.js, so it
+// holds for any version of the rules the worker runs.
+function withMaxHealth(scene) {
+    const players = game.aiManager.aiPlayers;
+    scene.seats.forEach(s => {
+        const ai = players.find(p => p.id === s.id);
+        if (!ai) return;
+        const units = new Map(ai.units.map(u => [u.id, u])), buildings = new Map(ai.buildings.map(b => [b.id, b]));
+        s.units.forEach(u => { const e = units.get(u.id); if (e && e.maxHealth > 0) u.maxHealth = e.maxHealth; });
+        s.buildings.forEach(b => { const e = buildings.get(b.id); if (e && e.maxHealth > 0) b.maxHealth = e.maxHealth; });
+    });
+    return scene;
 }
 
 self.onmessage = async ({ data }) => {

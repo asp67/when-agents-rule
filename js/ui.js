@@ -7210,6 +7210,8 @@ class UIManager {
                     r.addUnit(ent);
                 }
                 const before = ent.health;
+                // The rules' own maximum (research raises it), so the bar is a share of it.
+                if (u.maxHealth > 0) ent.maxHealth = u.maxHealth;
                 Object.assign(ent, { x: u.x, z: u.z, health: u.health, isMoving: u.isMoving, isAttacking: u.isAttacking, attackTimer: u.attackTimer || 0,
                     isHarvesting: u.isHarvesting, isBuilding: u.isBuilding, carryingResource: u.carryingResource,
                     carryingResourceType: u.carryingResourceType, attackTarget: null,
@@ -7235,6 +7237,8 @@ class UIManager {
                     ent.age = b.age;
                     if (r.rebuildBuildingMesh) r.rebuildBuildingMesh(ent);
                 }
+                // The rules' own maximum: an age-up raises it (and the health with it).
+                if (b.maxHealth > 0) ent.maxHealth = b.maxHealth;
                 if (ent.health > b.health) hurt.push([ent, ent.health - b.health]);
                 ent.health = b.health;
                 ent.underConstruction = b.underConstruction;

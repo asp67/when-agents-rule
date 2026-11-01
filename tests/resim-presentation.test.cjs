@@ -113,3 +113,28 @@ test('the replay director sees stage entities: one target, not a copy per frame,
     assert.equal(parts.filter(p => p.health > 0).length, 2, 'the hunter and its prey, once each: ' + parts.length);
     assert.ok(f.r < 5, 'framed on the fight where it is now: r=' + f.r);
 });
+
+// asp67, 1 Nov (b1143): in a replay a building showed no health bar until about half its
+// health was gone. The stage made each entity once, with the maximum health of the age it
+// was first seen in; an age-up raised the rules' maximum and the health with it, and the
+// stage's health then stood above its own stale maximum. The scene now carries the rules'
+// maximum, and the stage follows it.
+test('the stage follows the rules\' maximum health through an age-up and research', () => {
+    const scope = vm.createContext({ console, t: k => k, document: { getElementById: () => null }, location: { search: '' } });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/ui.js'), 'utf8') + '\nthis.UI = UIManager;', scope);
+    scope.createUnit = (type, x, z, owner) => ({ type, x, z, owner, health: 40, maxHealth: 40 });
+    scope.createBuilding = (type, x, z, owner) => ({ type, x, z, owner, health: 600, maxHealth: 600 });
+    const u = Object.create(scope.UI.prototype), noop = () => {};
+    u.game = { renderer: { addUnit: noop, killUnit: noop, removeUnit: noop, addBuilding: noop, killBuilding: noop, removeBuilding: noop, rebuildBuildingMesh: noop } };
+    const rs = { ents: new Map(), speed: 1 };
+    const draw = (age, b, w) => u.anResimDraw(rs, { seats: [{ id: 'a', seat: 0, civilization: 'greek', epoch: age,
+        units: [Object.assign({ id: 'w1', type: 'warrior', x: 0, z: 0 }, w)],
+        buildings: [Object.assign({ id: 'b1', type: 'barracks', age, x: 5, z: 5, underConstruction: false }, b)] }], nodes: [], battles: [], simNow: 0 }, null);
+    draw('stone', { health: 600, maxHealth: 600 }, { health: 40, maxHealth: 40 });
+    draw('iron', { health: 1200, maxHealth: 1200 }, { health: 50, maxHealth: 50 });   // aged up; armour researched
+    const bld = rs.ents.get('bb1'), war = rs.ents.get('uw1');
+    assert.deepEqual([bld.health, bld.maxHealth], [1200, 1200], 'full health is a full bar');
+    assert.deepEqual([war.health, war.maxHealth], [50, 50]);
+    draw('iron', { health: 1100, maxHealth: 1200 }, { health: 50, maxHealth: 50 });
+    assert.ok(bld.health / bld.maxHealth < 1, 'the first damage shows');
+});
