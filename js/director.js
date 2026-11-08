@@ -337,7 +337,7 @@ class Director {
 
     // The most interesting thing that is NOT this subject, for the horizon. A shot
     // of workers is a shot of workers; the same shot with a rival's town beyond it
-    // is the state of the match. Prefers an enemy town centre, then any enemy
+    // is the state of the match. Prefers an enemy Town Center, then any enemy
     // building, and gives up rather than aiming at nothing in particular.
     horizonFor(owner, from) {
         let best = null, bestD = Infinity;
@@ -418,7 +418,7 @@ class Director {
     }
 
     // WHAT is being hit, not just whether something is. A Wonder under attack is the
-    // match being decided; a town centre is a player being ended; a hut is a hut. They
+    // match being decided; a Town Center is a player being ended; a hut is a hut. They
     // all scored the same, so a skirmish with more swings in it could outrank the
     // assault that settled the game.
     siegeAt(f, now) {
@@ -483,7 +483,7 @@ class Director {
                 const nth = (this._shotNo[key] = (this._shotNo[key] || 0) + 1);
                 // Where to stand. With a building under attack the answer is not "any
                 // of four sides": stand OPPOSITE it, so the thing being fought over sits
-                // BEYOND the melee rather than between the camera and it. A town centre
+                // BEYOND the melee rather than between the camera and it. A Town Center
                 // is tall and wide and will happily fill the frame with roof while the
                 // fight happens behind it. Vary within a quarter-turn of that so the
                 // coverage still changes without ever swinging around the back.

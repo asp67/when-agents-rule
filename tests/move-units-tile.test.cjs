@@ -22,11 +22,11 @@ async function setup() {
     return { g, mgr, u, turn };
 }
 
-test('a tile alone sends the units to its centre', async () => {
+test('a tile alone sends the units to its center', async () => {
     const { g, mgr, u, turn } = await setup();
     const res = turn({ mode: 'scout', tile: 'g6' });
     assert.doesNotMatch(res, /\[ERROR\]/, res);
-    assert.match(res, /\(centre of tile G6\)$/);
+    assert.match(res, /\(center of tile G6\)$/);
     const centre = mgr.tileCentre(g, 'G6');
     const cell = 800 / 7;
     assert.ok(Math.abs(centre.x - (-400 + 6.5 * cell)) < 1e-9 && Math.abs(centre.z - (-400 + 5.5 * cell)) < 1e-9);
@@ -37,7 +37,7 @@ test('a tile alone sends the units to its centre', async () => {
 test('coordinates win over a tile', async () => {
     const { u, turn } = await setup();
     const res = turn({ tile: 'G6', targetX: -60, targetZ: 40 });
-    assert.doesNotMatch(res, /\[ERROR\]|centre of tile/, res);
+    assert.doesNotMatch(res, /\[ERROR\]|center of tile/, res);
     assert.ok(Math.hypot(u._moveOrderTo.x + 60, u._moveOrderTo.z - 40) < 1, 'went to the coordinates');
 });
 

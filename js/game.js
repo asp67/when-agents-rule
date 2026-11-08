@@ -5644,7 +5644,7 @@ class Game {
                         }
                     });
                     if (closestTC) {
-                        // Head straight for the town centre; the worker drops as soon
+                        // Head straight for the Town Center; the worker drops as soon
                         // as it reaches the drop radius from whatever side it approaches.
                         unit.targetX = closestTC.x;
                         unit.targetZ = closestTC.z;

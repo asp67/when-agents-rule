@@ -539,7 +539,7 @@ class AIManager {
     // every tech hosted anywhere else was unreachable for the whole match. Between a
     // third and half of each civ's tree, depending on the civ, including iron_working and
     // the armour upgrades. It even researched the ACADEMY unlock (that one is hosted at
-    // the town centre, and unlock techs sort first) and then never built the thing it had
+    // the Town Center, and unlock techs sort first) and then never built the thing it had
     // just paid to unlock.
     //
     // Gated in the caller, like stable and archery_range above: buildStructure checks
@@ -879,7 +879,7 @@ class AIManager {
         return true;
     }
 
-    // Returns a valid {x,z} near the town centre or null — WITHOUT spending.
+    // Returns a valid {x,z} near the Town Center or null — WITHOUT spending.
     findBuildPosition(ai, tc, buildingType, isWonder) {
         for (let attempts = 0; attempts < 24; attempts++) {
             const x = tc.x + (this.game.rand(ai, 'build-site') - 0.5) * 60;

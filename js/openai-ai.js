@@ -122,7 +122,7 @@ class OpenAIAIManager {
             ['move_units', 'Persistent movement order. Nearby combat interrupts march/guard/patrol; survivors regroup and resume. Scout never initiates combat. Incoming damage overrides all modes: fighters retaliate together, towers first; mobile threats obey chase limits. Regroup and resume afterward. A new order replaces it only for the units it names; "ordersInProgress" lists each order once with its unitIds. A formation slows its main body so priests and stragglers can rejoin. With a trebuchet, on any move but a scout (guard and hold until they reach their post), an enemy tower known or in sight that comes within the reach of a trebuchet on the way is besieged first (ordersInProgress shows "besieging"), then the order goes on.',
              Object.assign({mode:{type:'string',enum:['march','scout','guard','hold','patrol'],description:'Default march. Scout: travel without initiating combat; retaliate if attacked. Guard: travel then defend the position, chasing up to 64; there it also goes after whatever damages your units or buildings within 60 of it, trebuchets included, and returns. Hold: travel, then each unit keeps its spot: it attacks only what is within its own reach, and answers whatever attacks it or anything of yours only within 19 of its spot; melee units will not run down archers, so hold under your towers. Patrol: repeat between current group position and destination. New orders replace old ones for selected units.'},
                 targets:{type:'string',enum:['any','military'],description:'Guard/patrol/march incidental targets: any enemy unit (default), or military only. Pursuit is bounded; explicit attack_target remains a commitment.'}}, XZ,
-                { tile: S('Tile label from map.exploration, e.g. "C5". Used only when targetX/targetZ are not given: the units go to the centre of that tile.') }, WHO), []],
+                { tile: S('Tile label from map.exploration, e.g. "C5". Used only when targetX/targetZ are not given: the units go to the center of that tile.') }, WHO), []],
             ['attack_target', 'Attack a unit or building by id, or attack-move to a position. Coordinates start a march; "ordersInProgress" in the state carries its secondsRemaining. On a tower, an order that includes a trebuchet stands the army at the trebuchet, out of the tower\'s reach, until the trebuchet falls; then the army attacks the tower. With a trebuchet along, a known enemy tower covering the point, or coming within the reach of a trebuchet on the way (also on the way to besiege another tower), is besieged so first, and the order goes on once it falls.',
              Object.assign({ targetId: S('Copy the exact string id from enemyBuildings or from an enemyUnits entry with "visible": true, including the unit_ or building_ prefix and full suffix. Do not shorten it or convert it to a number. Use this OR targetX/targetZ.') }, XZ, WHO), []],
             ['delete_unit', 'Delete your own units, e.g. to free population.',
@@ -6602,7 +6602,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                     actionResult = at
                         ? this.executeMoveUnits(ai, game, params.units, at.x, at.z, params.unitIds, params.matchSpeed, params.formation, params.mode, params.targets)
                         : `[ERROR] "${params.tile}" is not a map tile. Use a COLUMN LETTER then a ROW NUMBER: A-${lastCol} and 1-${T}, e.g. "C5", or give "targetX" and "targetZ".`;
-                    if (at && !/^\[ERROR\]/.test(actionResult)) actionResult += ` (centre of tile ${String(params.tile).trim().toUpperCase()})`;
+                    if (at && !/^\[ERROR\]/.test(actionResult)) actionResult += ` (center of tile ${String(params.tile).trim().toUpperCase()})`;
                 } else {
                     // Coded (b1080): it was one of the harness's uncoded refusals, so the Bench
                     // could not tell it from a harness fault. Seen 7 Oct: a model wrote its
@@ -7726,7 +7726,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 return `[ERROR] Cannot build at (${Math.round(x)}, ${Math.round(z)}): that spot is outside the playable map, so no worker can reach it. Land reaches max(|x|,|z|) = ${lim} on that bearing; your target is ${cheb}.`;
             }
         } else if (tc) {
-            // Default: a ring around the town centre, so buildings spread out.
+            // Default: a ring around the Town Center, so buildings spread out.
             // Roughly double the old radius so bases occupy a larger footprint.
             const ang = game.rand(ai, 'build-site') * Math.PI * 2;
             const rad = isWonderBuild ? (game.rand(ai, 'build-site') - 0.5) * 20 : 18 + game.rand(ai, 'build-site') * 28;

@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1148: what a model reads says "center", as its ids do (8 November 2026)
+
+**Harness change; the harness hash moves.** In asp67's matches of 7 November DeepSeek V4.1 Flash wrote "Town Centre" in 21 reasons and all three closing statements. Nothing of ours says that: building ids, names and messages say `town_center` and "Town Center", and across all 324 recorded matches no model ever sent a `town_centre` id. But two pieces of model-facing text did use the British spelling: the `move_units` tile description ("the units go to the centre of that tile") and the move's result ("(centre of tile C5)").
+
+**Now** both say "center", like the ids. The system prompt is unchanged (its command list shows parameter names, not descriptions), so the prompt version stays. The state schema's descriptions, the comments that said "town centre", a test message and one line of this file follow. Recorded model text is not touched.
+- **Tests:** `tests/model-text-spelling.test.cjs` holds the default system prompt and the MCP tool definitions to American spelling (fails on b1147); `tests/move-units-tile.test.cjs` reads the new result.
+
 ## Build 1142: a command missing its required argument carries a code (1 November 2026)
 
 **Harness change; the rules hash moves.** In asp67's match of 1 November (17:14, Strata against Hermes) Strata sent a `train_unit` with no arguments. It was refused with "train_unit requires "unitType" parameter." and no outcome code, so the Bench counted it as uncoded, which it cannot tell from a harness fault. The same held for `research_tech` without `techId`, and `build_structure` and `destroy_building` without `buildingType`.
@@ -2194,7 +2201,7 @@ When the rule-based AI has no enemy in sight, it sends its army out in search le
 
 Measured:
 
-- **Search:** an 8-soldier army on the arena's two-seat spawns now sees the rival town centre after about 10 minutes. With the old rules it never does (`tests/sim/anchors.test.cjs`).
+- **Search:** an 8-soldier army on the arena's two-seat spawns now sees the rival Town Center after about 10 minutes. With the old rules it never does (`tests/sim/anchors.test.cjs`).
 - **Matches:** between rule-based seats, 83 of 96 matches now end by elimination, at a median of 24 minutes. The styles' calibration is in [ANCHORS.md](ANCHORS.md).
 - **Golden trace:** the opening-economy trace changes from its 5.5-minute checkpoint, when the first army marches.
 

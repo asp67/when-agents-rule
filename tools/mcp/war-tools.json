@@ -233,7 +233,7 @@
           },
           "tile": {
             "type": "string",
-            "description": "Tile label from map.exploration, e.g. \"C5\". Used only when targetX/targetZ are not given: the units go to the centre of that tile."
+            "description": "Tile label from map.exploration, e.g. \"C5\". Used only when targetX/targetZ are not given: the units go to the center of that tile."
           },
           "units": {
             "type": "object",

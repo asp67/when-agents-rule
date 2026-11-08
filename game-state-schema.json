@@ -195,7 +195,7 @@
     },
     "map": {
       "type": "object",
-      "description": "World geometry. The map is a square centred on (0,0); enemies can be anywhere inside bounds.",
+      "description": "World geometry. The map is a square centered on (0,0); enemies can be anywhere inside bounds.",
       "required": [
         "size",
         "bounds",
@@ -249,7 +249,7 @@
               "type": "null"
             }
           ],
-          "description": "Centre of your buildings (your base)."
+          "description": "Center of your buildings (your base)."
         },
         "yourBaseTiles": {
           "type": "object",
@@ -346,7 +346,7 @@
             "items": {
               "type": "integer"
             },
-            "description": "[x, z] centre of the fighting."
+            "description": "[x, z] center of the fighting."
           },
           "ongoing": {
             "type": "boolean",

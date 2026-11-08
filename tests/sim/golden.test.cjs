@@ -14,7 +14,7 @@ const trace = (m, ms, every) => {
     return out;
 };
 
-// Two rule-based seats from the ordinary arena start: town centre, three workers, a
+// Two rule-based seats from the ordinary arena start: Town Center, three workers, a
 // real map. Pins the start path, gathering, building, training, research and the
 // rule-based brain's economy.
 test('opening economy: two rule-based seats, six minutes', async t => {
@@ -25,7 +25,7 @@ test('opening economy: two rule-based seats, six minutes', async t => {
 
 // Forty a side on a flat board -- melee, archers, cavalry and priests. One side
 // assaults the other's base through the models' own command path; the defenders hold
-// under two towers and a town centre with no orders at all, so everything they do is
+// under two towers and a Town Center with no orders at all, so everything they do is
 // the harness's own damage-triggered defense. Pins movement, formations, combat,
 // towers, healing, retaliation and the positional pass.
 test('40 v 40 with priests and towers', t => {

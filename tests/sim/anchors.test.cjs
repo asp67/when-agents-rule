@@ -157,5 +157,5 @@ test('a rule-based army finds a rival base across the map', () => {
         m.run(1000);
         if (me._knownEnemyBuildings.has(tc)) found = s;
     }
-    assert.ok(found != null, 'it never saw the rival town centre in fifteen minutes');
+    assert.ok(found != null, 'it never saw the rival Town Center in fifteen minutes');
 });

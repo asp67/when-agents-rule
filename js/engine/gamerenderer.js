@@ -1268,7 +1268,7 @@
             if (!building.underConstruction) {
                 // Plant the post clear of the ACTUAL mesh. The old flat 3.4 (5.4 for
                 // wonders) was a footprint no building ever agreed to: a tower reaches
-                // ~3.2, but a town centre, house or archery range reaches ~6 and a
+                // ~3.2, but a Town Center, house or archery range reaches ~6 and a
                 // wonder more — and the pole is only 2.6 tall with its cloth at 2.25,
                 // far below those roofs. So every large building simply swallowed its
                 // own flag, and ownership stopped reading at a glance exactly where it
