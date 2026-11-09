@@ -781,6 +781,114 @@
    ],
    "bytes": 5262085,
    "default": false
+  },
+  {
+   "file": "2026-11-07_pi-hy4-hermes-deepseek-v4.1_17min.jsonl",
+   "matchId": "match-20261107-163435",
+   "date": 1794065675176,
+   "duration": "16:57",
+   "turns": 88,
+   "outcome": "last_standing",
+   "seed": "rmw6kdpkug0sr",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v113",
+   "build": 1147,
+   "winner": "HERMES MCP",
+   "players": [
+    {
+     "seat": 1,
+     "name": "HERMES MCP",
+     "model": "deepseek-v4.1-flash-1017",
+     "harness": "Hermes Agent",
+     "civ": "Yamato",
+     "power": 1636,
+     "winner": true
+    },
+    {
+     "seat": 0,
+     "name": "pi MCP",
+     "model": "tencent-hy4",
+     "harness": "π",
+     "civ": "Romans",
+     "power": 5,
+     "winner": false
+    }
+   ],
+   "bytes": 1492801,
+   "default": false
+  },
+  {
+   "file": "2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl",
+   "matchId": "match-20261107-165308",
+   "date": 1794066788947,
+   "duration": "12:06",
+   "turns": 79,
+   "outcome": "last_standing",
+   "seed": "rmw6l1lw4lumm",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v113",
+   "build": 1147,
+   "winner": "HERMES MCP",
+   "players": [
+    {
+     "seat": 1,
+     "name": "HERMES MCP",
+     "model": "deepseek-v4.1-flash-1017",
+     "harness": "Hermes Agent",
+     "civ": "Persians",
+     "power": 2336,
+     "winner": true
+    },
+    {
+     "seat": 0,
+     "name": "pi MCP",
+     "model": "tencent-hy4",
+     "harness": "π",
+     "civ": "Greeks",
+     "power": 37,
+     "winner": false
+    }
+   ],
+   "bytes": 1268346,
+   "default": false
+  },
+  {
+   "file": "2026-11-07_pi-hy4-hermes-deepseek-v4.1_23min.jsonl",
+   "matchId": "match-20261107-170708",
+   "date": 1794067628620,
+   "duration": "22:50",
+   "turns": 170,
+   "outcome": "last_standing",
+   "seed": "rmw6ljlh5m7je",
+   "difficulty": "easy",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v113",
+   "build": 1147,
+   "winner": "HERMES MCP",
+   "players": [
+    {
+     "seat": 1,
+     "name": "HERMES MCP",
+     "model": "deepseek-v4.1-flash-1017",
+     "harness": "Hermes Agent",
+     "civ": "Maya",
+     "power": 4828,
+     "winner": true
+    },
+    {
+     "seat": 0,
+     "name": "pi MCP",
+     "model": "tencent-hy4",
+     "harness": "π",
+     "civ": "Egyptians",
+     "power": 5,
+     "winner": false
+    }
+   ],
+   "bytes": 2910697,
+   "default": false
   }
  ]
 }
