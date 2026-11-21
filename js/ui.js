@@ -4978,6 +4978,7 @@ class UIManager {
         };
         const civNames = this.civNames();
 
+        const profiles = this.evalSeats();
         // Build a ranked snapshot
         const rows = this.game.aiManager.aiPlayers.map(ai => {
             const civ = getCivilization(ai.civilization);
@@ -5014,7 +5015,8 @@ class UIManager {
                 }
             }
 
-            return { ai, civ, colorHex, workers, military, alive, modelName, thinking, isLLM, adviceCount, paused, objective, health, score: this.spectatorPowerScore(ai) };
+            return { ai, civ, colorHex, workers, military, alive, modelName, thinking, isLLM, adviceCount, paused, objective, health,
+                profile: isLLM && profiles ? profiles[ai.id] : null, score: this.spectatorPowerScore(ai) };
         });
 
         // Sort: alive first, then by score desc
@@ -5053,6 +5055,7 @@ class UIManager {
                     </div>
                     ${(r.isLLM && r.health && r.alive) ? this.seatHealthHtml(r.health, r.paused) : ''}
                     ${(r.isLLM && r.objective) ? `<div class="lb-objective" title="${this.escapeHtml(r.objective)}"><span aria-hidden="true">\u{1F3AF}</span> ${this.escapeHtml(r.objective.length > 90 ? r.objective.slice(0, 89) + '\u2026' : r.objective)}</div>` : ''}
+                    ${r.profile ? this.seatProfileHtml(r.profile) : ''}
                     <div class="lb-stats">
                         <span class="lb-stat">\u{1F465} ${ai.resources.population}/${ai.resources.maxPopulation}</span>
                         <span class="lb-stat">\u{1F477} ${r.workers}</span>
@@ -5093,6 +5096,40 @@ class UIManager {
             if (flyAi) { this.renderLbFlyout(flyAi); this.positionLbFlyout(); }
             else this.closeLbFlyout();
         }
+    }
+
+    // ---- The evaluation profile on the seat cards (overhaul step D1) ----------
+    // What the ledger has worked out for the match being watched, by seat id. The
+    // ledger is fed by the transcript recorder as lines are written (js/eval/ledger.js),
+    // so these are the numbers the exported file gives. null when nothing is recorded.
+    evalSeats() {
+        const tr = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        if (!tr || !tr.ledger) return null;
+        const byId = {};
+        for (const s of tr.ledger.profile().seats) byId[s.id] = s;
+        return byId;
+    }
+
+    // One bar per part of the profile that exists: Grounding and Planning so far, the
+    // others as their steps land. The tooltip carries what the number rests on, so a
+    // bar is never just a bar.
+    seatProfileHtml(p) {
+        if (!p || !p.decisions) return '';
+        const esc = s => this.escapeHtml(String(s));
+        const share = v => v == null ? '–' : (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + ' %';
+        const clock = sec => sec == null ? '–' : Math.floor(sec / 60) + ':' + String(Math.floor(sec) % 60).padStart(2, '0');
+        const g = p.grounding, pl = p.planning, top = g.mistakes[0];
+        const groundTip = !g.judged ? t('eval.groundingNone')
+            : t('eval.groundingTip', { ok: g.ok, judged: g.judged, pct: share(g.rate), contended: g.contended })
+                + (top ? ' ' + t('eval.mistakes', { code: top.code, n: top.n, repeated: g.repeated }) : '');
+        const planTip = !pl.statements ? t('eval.planningNone', { n: p.decisions })
+            : t('eval.planningTip', { statements: pl.statements, revisions: pl.revisions, first: clock(pl.firstAt.sec),
+                coverage: share(pl.coverage), concrete: pl.concrete, steps: pl.steps, revised: pl.shocks.revised, shocks: pl.shocks.n });
+        const bar = (key, score, tip) => `<span class="lb-dim${score == null ? ' is-empty' : ''}" title="${esc(tip + ' ' + t('eval.provisional'))}">`
+            + `<span class="lb-dim-name">${esc(t('eval.' + key))}</span>`
+            + `<span class="lb-dim-track"><i style="width:${score == null ? 0 : Math.round(score)}%"></i></span>`
+            + `<b>${score == null ? '–' : Math.round(score)}</b></span>`;
+        return `<div class="lb-profile">${bar('grounding', g.score, groundTip)}${bar('planning', pl.score, planTip)}</div>`;
     }
 
     // ---- Leaderboard achievement flyout --------------------------------------

@@ -3105,6 +3105,16 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .intent-bubble .intent-call { font-weight: 600; white-space: nowrap; margin-left: 2px; }
 .lb-objective { font-size: 0.72em; color: #cfd8e3; margin: 2px 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-list.collapsed .lb-objective { display: none; }
+/* The evaluation profile on a seat card (overhaul step D1): one small bar per part of
+   the profile that exists. Two columns, so six bars will be three rows. */
+.lb-profile { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin: 2px 0 4px; }
+.lb-dim { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 0.68em; color: #aebccc; }
+.lb-dim-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-dim-track { flex: 1 1 20px; min-width: 16px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.lb-dim-track i { display: block; height: 100%; border-radius: 2px; background: #63b9a7; transition: width 0.6s cubic-bezier(.2,.7,.3,1); }
+.lb-dim b { min-width: 1.5em; text-align: right; color: #fff; font-variant-numeric: tabular-nums; }
+.lb-dim.is-empty b { color: #7f8a99; }
+.lb-list.collapsed .lb-profile { display: none; }
 .intent-bubble .intent-refused { color: #9c2412; font-weight: bold; }
 
 /* Broadcast mode (review #11): the operator's furniture goes, a scoreboard and lower
