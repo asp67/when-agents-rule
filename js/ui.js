@@ -163,6 +163,7 @@ class UIManager {
         const active = (id) => { const el = document.getElementById(id); return el && el.classList.contains('active'); };
         if (this._arenaConfig && active('modelLibraryScreen')) this.renderArenaLibrary();
         if (this._benchPage) this._benchPage.onLanguageChanged();
+        if (this._seasonPage) this._seasonPage.onLanguageChanged();
         // renderSetupOptions too, not just the slots. It builds the difficulty table and
         // the campaign civ picker by writing t() straight into innerHTML, which no
         // data-i18n attribute can reach — so those two were the only things on the setup
@@ -2578,12 +2579,27 @@ class UIManager {
 
     // Rematch: the match that just ended, again -- same seats and settings, same map
     // seed, same tempo. Leaving the results screen deletes its transcripts as usual.
-    async rematchArena() {
+    //
+    // `swap` (b1164): the same match with the models' seats traded. Map, civilizations and
+    // every rule-based seat stay where they were, so the two matches differ only in which
+    // model sat where: the season table reads them as a pair and takes the seat out of the
+    // difference (js/eval/season.js).
+    async rematchArena(swap = false) {
         const spec = this.game.arenaSpec;
         if (!spec) return this.leaveArenaSummary(false);
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         try { if (rec) await rec.purge(); } catch (e) { /* starting anyway */ }
-        return this.game.startArenaFromSetup(spec);
+        return this.game.startArenaFromSetup(swap ? Object.assign({}, spec, { setup: UIManager.swapModelSeats(spec.setup) }) : spec);
+    }
+    // The model seats moved on by one among themselves: with two models, a straight trade.
+    // A seat keeps its civilization; a rule-based seat keeps everything.
+    static swapModelSeats(setup) {
+        const list = (setup || []).map(s => Object.assign({}, s));
+        const at = list.map((s, i) => (s.type === 'llm' ? i : -1)).filter(i => i >= 0);
+        if (at.length < 2) return list;
+        const players = at.map(i => list[i]);
+        at.forEach((i, k) => { list[i] = Object.assign({}, players[(k + 1) % at.length], { civ: setup[i].civ }); });
+        return list;
     }
 
     // Opens the match that just ended in the transcript analyzer, without a download
@@ -5911,6 +5927,15 @@ class UIManager {
                         if (carried.seats.length) results.profile = carried;
                     }
                     rec.finish([results, timeline]);
+                    // And the match joins the season table (overhaul step D9): who sat where
+                    // under which conditions, the placement and the scores. Kept in this
+                    // browser, forgettable on the Season page; no prompt and no reply is in it.
+                    this._seasonKept = false;
+                    if (results.profile && typeof SeasonPage !== 'undefined' && typeof WarSeason !== 'undefined' && typeof WarConditions !== 'undefined') {
+                        const entry = WarSeason.entryFrom({ header: rec.matchMeta, contract: this.game.openAIAIManager.contract || null, results, profile: results.profile, source: 'played' },
+                            { conditions: WarConditions });
+                        this._seasonKept = SeasonPage.keep(entry);
+                    }
                 }
                 catch (e) { console.warn('[transcript] summary tail failed', e); }
             }
@@ -5933,6 +5958,11 @@ class UIManager {
         const saveBtn = document.getElementById('summarySaveBtn');
         const rematchBtn = document.getElementById('summaryRematchBtn');
         if (rematchBtn) rematchBtn.style.display = (snapshot || !this.game.arenaSpec) ? 'none' : '';
+        // The swapped rematch needs two model seats to trade; the Season button, a match that was kept for it.
+        const swapBtn = document.getElementById('summaryRematchSwapBtn'), seasonBtn = document.getElementById('summarySeasonBtn');
+        const models = ((this.game.arenaSpec && this.game.arenaSpec.setup) || []).filter(s => s.type === 'llm').length;
+        if (swapBtn) swapBtn.style.display = (snapshot || models < 2) ? 'none' : '';
+        if (seasonBtn) seasonBtn.style.display = (snapshot || !this._seasonKept) ? 'none' : '';
         if (newBtn) newBtn.style.display = snapshot ? 'none' : '';
         if (menuBtn) menuBtn.style.display = snapshot ? 'none' : '';
         if (saveBtn) saveBtn.style.display = snapshot ? 'none' : '';

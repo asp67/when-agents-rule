@@ -1,0 +1,2186 @@
+{
+ "kind": "war-season-entries/1",
+ "scale": "v1",
+ "entries": [
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20260726-204805",
+   "at": 1785091686017,
+   "build": null,
+   "promptVersion": "agents-rule-v61",
+   "mapSeed": "rms25i061oe94",
+   "mapSize": 800,
+   "duration": "36:09",
+   "outcome": "last_standing",
+   "layout": "yamato,egyptian,persian",
+   "players": 3,
+   "source": "sample",
+   "file": "2026-07-26_opus5-grok4.5-gpt-oss_36min.jsonl",
+   "seats": [
+    {
+     "id": "ai_f5qsi9y16",
+     "seat": 0,
+     "civ": "yamato",
+     "name": "RTX gpt-oss:latest",
+     "model": "gpt-oss:latest",
+     "rank": 2,
+     "of": 3,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 96,
+     "scores": {
+      "grounding": null,
+      "planning": 87.6,
+      "follow": null,
+      "tactical": null,
+      "strategy": 47.4,
+      "index": 47.4
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 2,
+      "parts": 1
+     },
+     "latencyMs": 13939.5
+    },
+    {
+     "id": "ai_ewedtnd9i",
+     "seat": 1,
+     "civ": "egyptian",
+     "name": "OR3 grok-4.5",
+     "model": "x-ai/grok-4.5",
+     "rank": 3,
+     "of": 3,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 80,
+     "scores": {
+      "grounding": null,
+      "planning": 89.4,
+      "follow": null,
+      "tactical": null,
+      "strategy": 29.4,
+      "index": 29.4
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 6,
+      "parts": 1
+     },
+     "latencyMs": 16424.5
+    },
+    {
+     "id": "ai_gs7sngw3k",
+     "seat": 2,
+     "civ": "persian",
+     "name": "OR1 opus-5",
+     "model": "anthropic/claude-opus-5",
+     "rank": 1,
+     "of": 3,
+     "winner": true,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 95,
+     "scores": {
+      "grounding": null,
+      "planning": 86.8,
+      "follow": null,
+      "tactical": null,
+      "strategy": 98.2,
+      "index": 98.2
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 8,
+      "parts": 1
+     },
+     "latencyMs": 17688
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20260809-223447",
+   "at": 1786307687283,
+   "build": null,
+   "promptVersion": "agents-rule-v62",
+   "mapSeed": "rmsm9h4qw29gs",
+   "mapSize": 800,
+   "duration": "25:29",
+   "outcome": "last_standing",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-08-09_kimi-k3-gemma4-qwen3.8-ornith9b_25min.jsonl",
+   "seats": [
+    {
+     "id": "ai_i7kvxaffk",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "RTX Ornith-9B-Q8",
+     "model": "Ornith-1.0-9B-Q8_0.gguf",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "real-time",
+     "core": null,
+     "decisions": 73,
+     "scores": {
+      "grounding": null,
+      "planning": 91.9,
+      "follow": null,
+      "tactical": null,
+      "strategy": 11,
+      "index": 11
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 0,
+      "parts": 1
+     },
+     "latencyMs": 10412
+    },
+    {
+     "id": "ai_y520bsama",
+     "seat": 1,
+     "civ": "greek",
+     "name": "dgx-gemma4-26b-a4b-mtp",
+     "model": "Gemma4-26B",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "real-time",
+     "core": null,
+     "decisions": 148,
+     "scores": {
+      "grounding": null,
+      "planning": 83.3,
+      "follow": null,
+      "tactical": null,
+      "strategy": 55.2,
+      "index": 55.2
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 3,
+      "parts": 1
+     },
+     "latencyMs": 12542.5
+    },
+    {
+     "id": "ai_8but92ji4",
+     "seat": 2,
+     "civ": "persian",
+     "name": "OR1 qwen3.8-max",
+     "model": "qwen/qwen3.8-max:nitro",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "real-time",
+     "core": null,
+     "decisions": 38,
+     "scores": {
+      "grounding": null,
+      "planning": 93.2,
+      "follow": null,
+      "tactical": null,
+      "strategy": 27.9,
+      "index": 27.9
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 2,
+      "parts": 1
+     },
+     "latencyMs": 18953.5
+    },
+    {
+     "id": "ai_hmi1ph5y7",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "OR2 kimi-k3",
+     "model": "moonshotai/kimi-k3:nitro",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": null,
+     "protocol": "real-time",
+     "core": null,
+     "decisions": 231,
+     "scores": {
+      "grounding": null,
+      "planning": 90.9,
+      "follow": null,
+      "tactical": null,
+      "strategy": 100,
+      "index": 100
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 4,
+      "parts": 1
+     },
+     "latencyMs": 5926
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20260811-222813",
+   "at": 1786480093550,
+   "build": null,
+   "promptVersion": "agents-rule-v64",
+   "mapSeed": "rmsp44ea95s82",
+   "mapSize": 800,
+   "duration": "88:38",
+   "outcome": "last_standing",
+   "layout": "egyptian,greek,persian",
+   "players": 3,
+   "source": "sample",
+   "file": "2026-08-11_muse-glimmer-qwen3.6-gemma4_88min.jsonl",
+   "seats": [
+    {
+     "id": "ai_69ml360ib",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "OR1 gemma-4-31b-it",
+     "model": "google/gemma-4-31b-it",
+     "rank": 3,
+     "of": 3,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 215,
+     "scores": {
+      "grounding": null,
+      "planning": 80.9,
+      "follow": null,
+      "tactical": null,
+      "strategy": 39.9,
+      "index": 39.9
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 7,
+      "parts": 1
+     },
+     "latencyMs": 13336
+    },
+    {
+     "id": "ai_vrfbnoj58",
+     "seat": 1,
+     "civ": "greek",
+     "name": "OR2 muse-glimmer-30b",
+     "model": "meta/muse-glimmer-30b",
+     "rank": 2,
+     "of": 3,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 41,
+     "scores": {
+      "grounding": null,
+      "planning": 84.8,
+      "follow": null,
+      "tactical": null,
+      "strategy": 37.1,
+      "index": 37.1
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 0,
+      "parts": 1
+     },
+     "latencyMs": 7131
+    },
+    {
+     "id": "ai_3naqjagyz",
+     "seat": 2,
+     "civ": "persian",
+     "name": "OR3 qwen3.6-27b",
+     "model": "qwen/qwen3.6-27b",
+     "rank": 1,
+     "of": 3,
+     "winner": true,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 215,
+     "scores": {
+      "grounding": null,
+      "planning": 92.2,
+      "follow": null,
+      "tactical": null,
+      "strategy": 98.1,
+      "index": 98.1
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 10,
+      "parts": 1
+     },
+     "latencyMs": 15651
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20260817-195216",
+   "at": 1786989136337,
+   "build": null,
+   "promptVersion": "agents-rule-v76",
+   "mapSeed": "rmsxj6y6zb5ta",
+   "mapSize": 800,
+   "duration": "125:34",
+   "outcome": "last_standing",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-08-17_qwen3.8-opus4.6-qwen3.6-muse-glimmer_125min.jsonl",
+   "seats": [
+    {
+     "id": "ai_1wd6mvq6r",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "OR1 claude-opus-4.6",
+     "model": "anthropic/claude-opus-4.6",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 85,
+     "scores": {
+      "grounding": null,
+      "planning": 90,
+      "follow": null,
+      "tactical": null,
+      "strategy": 12.6,
+      "index": 12.6
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 0,
+      "parts": 1
+     },
+     "latencyMs": 13102
+    },
+    {
+     "id": "ai_zd34uy1ii",
+     "seat": 1,
+     "civ": "greek",
+     "name": "OR2 muse-glimmer-30b",
+     "model": "meta/muse-glimmer-30b",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 166,
+     "scores": {
+      "grounding": null,
+      "planning": 87.9,
+      "follow": null,
+      "tactical": null,
+      "strategy": 64,
+      "index": 64
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 3,
+      "parts": 1
+     },
+     "latencyMs": 9689.5
+    },
+    {
+     "id": "ai_ximaaxol7",
+     "seat": 2,
+     "civ": "persian",
+     "name": "OR3 qwen3.6-27b",
+     "model": "qwen/qwen3.6-27b",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 135,
+     "scores": {
+      "grounding": null,
+      "planning": 74.1,
+      "follow": null,
+      "tactical": null,
+      "strategy": 49.1,
+      "index": 49.1
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 2,
+      "parts": 1
+     },
+     "latencyMs": 11002
+    },
+    {
+     "id": "ai_gizfg9wpn",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "OR4 qwen3.8-27b",
+     "model": "qwen/qwen3.8-27b",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 158,
+     "scores": {
+      "grounding": null,
+      "planning": 81.9,
+      "follow": null,
+      "tactical": null,
+      "strategy": 100,
+      "index": 100
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 2,
+      "parts": 1
+     },
+     "latencyMs": 33170.5
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20260826-200238",
+   "at": 1787767358862,
+   "build": null,
+   "promptVersion": "agents-rule-v92",
+   "mapSeed": "rmtaeiyj83civ",
+   "mapSize": 800,
+   "duration": "103:47",
+   "outcome": "last_standing",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-08-26_deepseek-v4-glm5.3-qwen3.8-gpt5.6_103min.jsonl",
+   "seats": [
+    {
+     "id": "ai_z9x9guxvc",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "DGX Qwen3.8 27B dflash",
+     "model": "Qwen3.8",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 89,
+     "scores": {
+      "grounding": null,
+      "planning": 87.3,
+      "follow": null,
+      "tactical": null,
+      "strategy": 41,
+      "index": 41
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 0,
+      "parts": 1
+     },
+     "latencyMs": 69342
+    },
+    {
+     "id": "ai_8xid43s2v",
+     "seat": 1,
+     "civ": "greek",
+     "name": "OR1 glm-5.3-flash",
+     "model": "z-ai/glm-5.3-flash",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 96,
+     "scores": {
+      "grounding": null,
+      "planning": 69.1,
+      "follow": null,
+      "tactical": null,
+      "strategy": 66.5,
+      "index": 66.5
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 4,
+      "parts": 1
+     },
+     "latencyMs": 59048
+    },
+    {
+     "id": "ai_e150faqlz",
+     "seat": 2,
+     "civ": "persian",
+     "name": "OR2 deepseek-v4-flash-vision-exp",
+     "model": "deepseek/deepseek-v4-flash",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 102,
+     "scores": {
+      "grounding": null,
+      "planning": 91,
+      "follow": null,
+      "tactical": null,
+      "strategy": 100,
+      "index": 100
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 3,
+      "parts": 1
+     },
+     "latencyMs": 16014
+    },
+    {
+     "id": "ai_byhh3092a",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "OR3 gpt-5.6-luna",
+     "model": "openai/gpt-5.6-luna",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 102,
+     "scores": {
+      "grounding": null,
+      "planning": 57.2,
+      "follow": null,
+      "tactical": null,
+      "strategy": 24.6,
+      "index": 24.6
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 2,
+      "parts": 1
+     },
+     "latencyMs": 6693
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20260907-120324",
+   "at": 1788775405443,
+   "build": null,
+   "promptVersion": "agents-rule-v93",
+   "mapSeed": "rmtr2ovt5sg01",
+   "mapSize": 800,
+   "duration": "89:50",
+   "outcome": "wonder",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-09-07_gemini-flash-deepseek-v4-gpt5.6-qwen3.8_89min.jsonl",
+   "seats": [
+    {
+     "id": "ai_shstygxgb",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "OR1 gemini-flash",
+     "model": "gemini-flash-latest",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 131,
+     "scores": {
+      "grounding": null,
+      "planning": 91,
+      "follow": null,
+      "tactical": null,
+      "strategy": 55,
+      "index": 55
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 8,
+      "parts": 1
+     },
+     "latencyMs": 13933
+    },
+    {
+     "id": "ai_w6bim8ey9",
+     "seat": 1,
+     "civ": "greek",
+     "name": "OR2 deepseek-v4-flash-vision-exp",
+     "model": "deepseek/deepseek-v4-flash",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 131,
+     "scores": {
+      "grounding": null,
+      "planning": 63.9,
+      "follow": null,
+      "tactical": null,
+      "strategy": 74,
+      "index": 74
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 9,
+      "parts": 1
+     },
+     "latencyMs": 20934
+    },
+    {
+     "id": "ai_h38a96d10",
+     "seat": 2,
+     "civ": "persian",
+     "name": "OR3 gpt-5.6-luna",
+     "model": "openai/gpt-5.6-luna",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 52,
+     "scores": {
+      "grounding": null,
+      "planning": 49.4,
+      "follow": null,
+      "tactical": null,
+      "strategy": 11.5,
+      "index": 11.5
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 2,
+      "parts": 1
+     },
+     "latencyMs": 7121
+    },
+    {
+     "id": "ai_kg61ytqge",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "OR4 qwen3.8-flash",
+     "model": "qwen/qwen3.8-flash",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 113,
+     "scores": {
+      "grounding": null,
+      "planning": 59,
+      "follow": null,
+      "tactical": null,
+      "strategy": 92.8,
+      "index": 92.8
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 6,
+      "parts": 1
+     },
+     "latencyMs": 34968
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20260909-211941",
+   "at": 1788981581877,
+   "build": null,
+   "promptVersion": "agents-rule-v98",
+   "mapSeed": "rmtuhfyojlg3u",
+   "mapSize": 800,
+   "duration": "121:23",
+   "outcome": "last_standing",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-09-09_gemini3.8-deepseek-v4-gpt5.6-qwen3.8_121min.jsonl",
+   "seats": [
+    {
+     "id": "ai_965ap6qa4",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "OR1 gemini3.8-flash",
+     "model": "gemini-flash-latest",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 279,
+     "scores": {
+      "grounding": null,
+      "planning": 86.2,
+      "follow": null,
+      "tactical": null,
+      "strategy": 94.5,
+      "index": 94.5
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 26,
+      "parts": 1
+     },
+     "latencyMs": 13123
+    },
+    {
+     "id": "ai_y0uzx5i32",
+     "seat": 1,
+     "civ": "greek",
+     "name": "OR2 deepseek-v4-flash-pro",
+     "model": "deepseek/deepseek-v4-flash",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 91,
+     "scores": {
+      "grounding": null,
+      "planning": 92.8,
+      "follow": null,
+      "tactical": null,
+      "strategy": 55.9,
+      "index": 55.9
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 3,
+      "parts": 1
+     },
+     "latencyMs": 13230
+    },
+    {
+     "id": "ai_mw1bxezqb",
+     "seat": 2,
+     "civ": "persian",
+     "name": "OR3 gpt-5.6-luna",
+     "model": "openai/gpt-5.6-luna",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 280,
+     "scores": {
+      "grounding": null,
+      "planning": 58.2,
+      "follow": null,
+      "tactical": null,
+      "strategy": 46.4,
+      "index": 46.4
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 27,
+      "parts": 1
+     },
+     "latencyMs": 6661
+    },
+    {
+     "id": "ai_a8xuhgsyl",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "DGX Qwen3.8-flash-next",
+     "model": "Qwen3.8",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": null,
+     "protocol": "turn-based",
+     "core": null,
+     "decisions": 73,
+     "scores": {
+      "grounding": null,
+      "planning": 80.8,
+      "follow": null,
+      "tactical": null,
+      "strategy": 36.6,
+      "index": 36.6
+     },
+     "counts": {
+      "rated": 0,
+      "threats": 2,
+      "parts": 1
+     },
+     "latencyMs": 53598
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261001-200050",
+   "at": 1790877651214,
+   "build": 1023,
+   "promptVersion": "agents-rule-v101",
+   "mapSeed": "rmupubbbbnur8",
+   "mapSize": 800,
+   "duration": "69:59",
+   "outcome": "wonder",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-10-01_glm5.3-space-bunny-deepseek-v4-mimo-v2.6_70min.jsonl",
+   "seats": [
+    {
+     "id": "ai_0sty8k2ooj0",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": "d18d13623cbd",
+     "protocol": "real-time",
+     "core": "727c5aa49a92",
+     "decisions": 190,
+     "scores": {
+      "grounding": 44.1,
+      "planning": 62.5,
+      "follow": 82.1,
+      "tactical": 40,
+      "strategy": 92.2,
+      "index": 56.9
+     },
+     "counts": {
+      "rated": 447,
+      "threats": 10,
+      "parts": 4
+     },
+     "latencyMs": 20627
+    },
+    {
+     "id": "ai_0xlm6tfisnx",
+     "seat": 1,
+     "civ": "greek",
+     "name": "O space-bunny",
+     "model": "stealth/space-bunny-alpha",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": "a3dc724140df",
+     "protocol": "real-time",
+     "core": "727c5aa49a92",
+     "decisions": 29,
+     "scores": {
+      "grounding": 59.5,
+      "planning": 89.1,
+      "follow": 73.6,
+      "tactical": 0,
+      "strategy": 7.5,
+      "index": 33.2
+     },
+     "counts": {
+      "rated": 74,
+      "threats": 1,
+      "parts": 4
+     },
+     "latencyMs": 38055
+    },
+    {
+     "id": "ai_0qe60klzvcw",
+     "seat": 2,
+     "civ": "persian",
+     "name": "O deepseek-v4-flash",
+     "model": "deepseek/deepseek-v4-flash-0731",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": "e89bf1cc7864",
+     "protocol": "real-time",
+     "core": "727c5aa49a92",
+     "decisions": 67,
+     "scores": {
+      "grounding": 73,
+      "planning": 90.3,
+      "follow": 87,
+      "tactical": 100,
+      "strategy": 54.9,
+      "index": 76.6
+     },
+     "counts": {
+      "rated": 185,
+      "threats": 2,
+      "parts": 4
+     },
+     "latencyMs": 54049
+    },
+    {
+     "id": "ai_0xtkjc8syh6",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "O mimo-v2.6 flash",
+     "model": "xiaomi/mimo-v2.6-flash",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": "e89bf1cc7864",
+     "protocol": "real-time",
+     "core": "727c5aa49a92",
+     "decisions": 133,
+     "scores": {
+      "grounding": 50.6,
+      "planning": 0,
+      "follow": 0,
+      "tactical": 40,
+      "strategy": 34.5,
+      "index": 31.3
+     },
+     "counts": {
+      "rated": 324,
+      "threats": 5,
+      "parts": 4
+     },
+     "latencyMs": 24777
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261003-234407",
+   "at": 1791063847444,
+   "build": 1049,
+   "promptVersion": "agents-rule-v105",
+   "mapSeed": "rmusx64xgkt4u",
+   "mapSize": 800,
+   "duration": "80:16",
+   "outcome": "wonder",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-10-03_glm5.3-space-bunny-mimo-v2.6-deepseek-v4.1_80min.jsonl",
+   "seats": [
+    {
+     "id": "ai_130tn86t8il",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": "6c7700aa6b6e",
+     "protocol": "real-time",
+     "core": "dc18f44a3e2b",
+     "decisions": 274,
+     "scores": {
+      "grounding": 0,
+      "planning": 75,
+      "follow": 60,
+      "tactical": 75,
+      "strategy": 93,
+      "index": 53.3
+     },
+     "counts": {
+      "rated": 392,
+      "threats": 4,
+      "parts": 4
+     },
+     "latencyMs": 13888.5
+    },
+    {
+     "id": "ai_0u9ehm80go4",
+     "seat": 1,
+     "civ": "greek",
+     "name": "O space-bunny",
+     "model": "stealth/space-bunny-alpha",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": "39425ffe4c60",
+     "protocol": "real-time",
+     "core": "dc18f44a3e2b",
+     "decisions": 88,
+     "scores": {
+      "grounding": 44.4,
+      "planning": 84.3,
+      "follow": 88.6,
+      "tactical": 50,
+      "strategy": 17.1,
+      "index": 46.6
+     },
+     "counts": {
+      "rated": 252,
+      "threats": 4,
+      "parts": 4
+     },
+     "latencyMs": 24136
+    },
+    {
+     "id": "ai_0jxoe7w9z47",
+     "seat": 2,
+     "civ": "persian",
+     "name": "O mimo-v2.6 flash",
+     "model": "xiaomi/mimo-v2.6-flash",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": "5ea15fe306f9",
+     "protocol": "real-time",
+     "core": "dc18f44a3e2b",
+     "decisions": 71,
+     "scores": {
+      "grounding": 74.2,
+      "planning": 67.9,
+      "follow": 79.6,
+      "tactical": 50,
+      "strategy": 39.2,
+      "index": 54.4
+     },
+     "counts": {
+      "rated": 155,
+      "threats": 2,
+      "parts": 4
+     },
+     "latencyMs": 40757
+    },
+    {
+     "id": "ai_0csl0dgysfc",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "O deepseek-v4.1-flash",
+     "model": "deepseek/deepseek-v4.1-flash",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": "5ea15fe306f9",
+     "protocol": "real-time",
+     "core": "dc18f44a3e2b",
+     "decisions": 96,
+     "scores": {
+      "grounding": 88.4,
+      "planning": 83.6,
+      "follow": 77.2,
+      "tactical": 75,
+      "strategy": 67,
+      "index": 73.7
+     },
+     "counts": {
+      "rated": 259,
+      "threats": 4,
+      "parts": 4
+     },
+     "latencyMs": 33234
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261004-120750",
+   "at": 1791108470470,
+   "build": 1053,
+   "promptVersion": "agents-rule-v105",
+   "mapSeed": "rmutnqk4fnnyb",
+   "mapSize": 800,
+   "duration": "37:46",
+   "outcome": "last_standing",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-10-04_glm5.3-space-bunny-mimo-v2.6-deepseek-v4.1_38min.jsonl",
+   "seats": [
+    {
+     "id": "ai_0o7h3i3drni",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": "47174e4674b4",
+     "protocol": "real-time",
+     "core": "02512ee72c9e",
+     "decisions": 160,
+     "scores": {
+      "grounding": 0,
+      "planning": 61.4,
+      "follow": 65.7,
+      "tactical": 33.3,
+      "strategy": 55.2,
+      "index": 32.2
+     },
+     "counts": {
+      "rated": 236,
+      "threats": 3,
+      "parts": 4
+     },
+     "latencyMs": 11549.5
+    },
+    {
+     "id": "ai_11iwb3yq2xc",
+     "seat": 1,
+     "civ": "greek",
+     "name": "O space-bunny",
+     "model": "stealth/space-bunny-alpha",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": "9bcae896bae4",
+     "protocol": "real-time",
+     "core": "02512ee72c9e",
+     "decisions": 25,
+     "scores": {
+      "grounding": 0,
+      "planning": 92,
+      "follow": 75,
+      "tactical": 0,
+      "strategy": 19.2,
+      "index": 22.1
+     },
+     "counts": {
+      "rated": 63,
+      "threats": 2,
+      "parts": 4
+     },
+     "latencyMs": 39385
+    },
+    {
+     "id": "ai_04q8mykeld9",
+     "seat": 2,
+     "civ": "persian",
+     "name": "O mimo-v2.6 flash",
+     "model": "xiaomi/mimo-v2.6-flash",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": "3bde1e5a90f0",
+     "protocol": "real-time",
+     "core": "02512ee72c9e",
+     "decisions": 52,
+     "scores": {
+      "grounding": 47.8,
+      "planning": 89.3,
+      "follow": 71.4,
+      "tactical": 0,
+      "strategy": 26,
+      "index": 34.4
+     },
+     "counts": {
+      "rated": 115,
+      "threats": 1,
+      "parts": 4
+     },
+     "latencyMs": 25037.5
+    },
+    {
+     "id": "ai_0gqqobakjfh",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "O deepseek-v4.1-flash",
+     "model": "deepseek/deepseek-v4.1-flash",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": "3bde1e5a90f0",
+     "protocol": "real-time",
+     "core": "02512ee72c9e",
+     "decisions": 318,
+     "scores": {
+      "grounding": 76.3,
+      "planning": 64.9,
+      "follow": 64.6,
+      "tactical": 75,
+      "strategy": 92.3,
+      "index": 71.4
+     },
+     "counts": {
+      "rated": 506,
+      "threats": 8,
+      "parts": 4
+     },
+     "latencyMs": 4073.5
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261005-194200",
+   "at": 1791222121908,
+   "build": 1054,
+   "promptVersion": "agents-rule-v105",
+   "mapSeed": "rmuvjehoy37wk",
+   "mapSize": 800,
+   "duration": "99:16",
+   "outcome": "wonder",
+   "layout": "egyptian,greek,persian,yamato",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl",
+   "seats": [
+    {
+     "id": "ai_0zq94wbtkep",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "O gpt-6.1-sol",
+     "model": "openai/gpt-6.1-sol",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": "17fa61a9cf20",
+     "protocol": "turn-based",
+     "core": "fa14e4244183",
+     "decisions": 87,
+     "scores": {
+      "grounding": 61.5,
+      "planning": 81.5,
+      "follow": 42.9,
+      "tactical": 50,
+      "strategy": 11.4,
+      "index": 39.5
+     },
+     "counts": {
+      "rated": 78,
+      "threats": 2,
+      "parts": 4
+     },
+     "latencyMs": 4816
+    },
+    {
+     "id": "ai_11o4rb2weqi",
+     "seat": 1,
+     "civ": "greek",
+     "name": "O claude-sonnet-5.5",
+     "model": "anthropic/claude-sonnet-5.5",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": "45bec2c835af",
+     "protocol": "turn-based",
+     "core": "fa14e4244183",
+     "decisions": 128,
+     "scores": {
+      "grounding": 94.3,
+      "planning": 58.3,
+      "follow": 75.8,
+      "tactical": 66.7,
+      "strategy": 71.7,
+      "index": 69.2
+     },
+     "counts": {
+      "rated": 350,
+      "threats": 6,
+      "parts": 4
+     },
+     "latencyMs": 6472
+    },
+    {
+     "id": "ai_0t2alj8efpb",
+     "seat": 2,
+     "civ": "persian",
+     "name": "O deepseek-v4.1-flash",
+     "model": "deepseek/deepseek-v4.1-flash",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": "45bec2c835af",
+     "protocol": "turn-based",
+     "core": "fa14e4244183",
+     "decisions": 128,
+     "scores": {
+      "grounding": 69.9,
+      "planning": 83,
+      "follow": 75.6,
+      "tactical": 66.7,
+      "strategy": 52.7,
+      "index": 63
+     },
+     "counts": {
+      "rated": 365,
+      "threats": 6,
+      "parts": 4
+     },
+     "latencyMs": 8974
+    },
+    {
+     "id": "ai_0lx1jczvm3x",
+     "seat": 3,
+     "civ": "yamato",
+     "name": "DGX GLM5.3 Flash",
+     "model": "GLM5.3",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": "88b63b50f1b5",
+     "protocol": "turn-based",
+     "core": "fa14e4244183",
+     "decisions": 126,
+     "scores": {
+      "grounding": 66.3,
+      "planning": 67.1,
+      "follow": 89.1,
+      "tactical": 100,
+      "strategy": 77.2,
+      "index": 75.8
+     },
+     "counts": {
+      "rated": 326,
+      "threats": 3,
+      "parts": 4
+     },
+     "latencyMs": 41542.5
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261008-115009",
+   "at": 1791453010326,
+   "build": 1080,
+   "promptVersion": "agents-rule-v107",
+   "mapSeed": "rmuzcv8cgjlz0",
+   "mapSize": 1200,
+   "duration": "69:40",
+   "outcome": "last_standing",
+   "layout": "viking,greek,persian,maya",
+   "players": 4,
+   "source": "sample",
+   "file": "2026-10-08_claude-haiku5.5-gpt6-luna-deepseek-v4.1-glm5.3_70min.jsonl",
+   "seats": [
+    {
+     "id": "ai_04ca9bhbti2",
+     "seat": 0,
+     "civ": "viking",
+     "name": "O claude-haiku-5.5",
+     "model": "anthropic/claude-haiku-5.5",
+     "rank": 2,
+     "of": 4,
+     "winner": false,
+     "cond": "232be3dd886c",
+     "protocol": "turn-based",
+     "core": "d660ffca6795",
+     "decisions": 64,
+     "scores": {
+      "grounding": 100,
+      "planning": 65.9,
+      "follow": 71.4,
+      "tactical": 0,
+      "strategy": 39.1,
+      "index": 46.6
+     },
+     "counts": {
+      "rated": 156,
+      "threats": 2,
+      "parts": 4
+     },
+     "latencyMs": 4516
+    },
+    {
+     "id": "ai_16rcchwc9au",
+     "seat": 1,
+     "civ": "greek",
+     "name": "O gpt6-luna",
+     "model": "gpt-luna-latest",
+     "rank": 4,
+     "of": 4,
+     "winner": false,
+     "cond": "4aafccc2ceca",
+     "protocol": "turn-based",
+     "core": "d660ffca6795",
+     "decisions": 110,
+     "scores": {
+      "grounding": 83.1,
+      "planning": 86.6,
+      "follow": 61.2,
+      "tactical": 50,
+      "strategy": 11.5,
+      "index": 49.4
+     },
+     "counts": {
+      "rated": 177,
+      "threats": 4,
+      "parts": 4
+     },
+     "latencyMs": 18607
+    },
+    {
+     "id": "ai_0kartg3uvl7",
+     "seat": 2,
+     "civ": "persian",
+     "name": "O deepseek-v4.1-flash",
+     "model": "deepseek/deepseek-v4.1-flash",
+     "rank": 1,
+     "of": 4,
+     "winner": true,
+     "cond": "4aafccc2ceca",
+     "protocol": "turn-based",
+     "core": "d660ffca6795",
+     "decisions": 117,
+     "scores": {
+      "grounding": 96.6,
+      "planning": 89.2,
+      "follow": 91.9,
+      "tactical": 100,
+      "strategy": 95.2,
+      "index": 93.5
+     },
+     "counts": {
+      "rated": 293,
+      "threats": 4,
+      "parts": 4
+     },
+     "latencyMs": 20474
+    },
+    {
+     "id": "ai_0qq53l1eq06",
+     "seat": 3,
+     "civ": "maya",
+     "name": "DGX GLM5.3 flash",
+     "model": "GLM5.3",
+     "rank": 3,
+     "of": 4,
+     "winner": false,
+     "cond": "8a56a5bcaef3",
+     "protocol": "turn-based",
+     "core": "d660ffca6795",
+     "decisions": 117,
+     "scores": {
+      "grounding": 0,
+      "planning": 66.9,
+      "follow": 73.7,
+      "tactical": 66.7,
+      "strategy": 31.8,
+      "index": 37
+     },
+     "counts": {
+      "rated": 236,
+      "threats": 3,
+      "parts": 4
+     },
+     "latencyMs": 18051
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261008-104823",
+   "at": 1791449303421,
+   "build": 1080,
+   "promptVersion": "agents-rule-v107",
+   "mapSeed": "rmuzans3qvaa5",
+   "mapSize": 1200,
+   "duration": "20:09",
+   "outcome": "last_standing",
+   "layout": "maya,roman",
+   "players": 2,
+   "source": "sample",
+   "file": "2026-10-08_claude-haiku5.5-gpt6-luna_20min.jsonl",
+   "seats": [
+    {
+     "id": "ai_132d2oezjj2",
+     "seat": 0,
+     "civ": "maya",
+     "name": "O claude-haiku-5.5",
+     "model": "anthropic/claude-haiku-5.5",
+     "rank": 1,
+     "of": 2,
+     "winner": true,
+     "cond": "b46bd8eb7999",
+     "protocol": "real-time",
+     "core": "d660ffca6795",
+     "decisions": 274,
+     "scores": {
+      "grounding": 79.9,
+      "planning": 56.9,
+      "follow": 57.6,
+      "tactical": 60,
+      "strategy": 97.2,
+      "index": 67.5
+     },
+     "counts": {
+      "rated": 348,
+      "threats": 5,
+      "parts": 4
+     },
+     "latencyMs": 4253
+    },
+    {
+     "id": "ai_0lx6dqsbf9z",
+     "seat": 1,
+     "civ": "roman",
+     "name": "O gpt6-luna",
+     "model": "gpt-luna-latest",
+     "rank": 2,
+     "of": 2,
+     "winner": false,
+     "cond": "71479b62090c",
+     "protocol": "real-time",
+     "core": "d660ffca6795",
+     "decisions": 63,
+     "scores": {
+      "grounding": 48.5,
+      "planning": 91,
+      "follow": 65.1,
+      "tactical": 0,
+      "strategy": 10.8,
+      "index": 29.6
+     },
+     "counts": {
+      "rated": 97,
+      "threats": 1,
+      "parts": 4
+     },
+     "latencyMs": 17797
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261008-111302",
+   "at": 1791450783773,
+   "build": 1080,
+   "promptVersion": "agents-rule-v107",
+   "mapSeed": "rmuzbjigv3owr",
+   "mapSize": 1200,
+   "duration": "31:53",
+   "outcome": "last_standing",
+   "layout": "roman,maya",
+   "players": 2,
+   "source": "sample",
+   "file": "2026-10-08_claude-haiku5.5-gpt6-luna_32min.jsonl",
+   "seats": [
+    {
+     "id": "ai_0z7wc523ufz",
+     "seat": 0,
+     "civ": "roman",
+     "name": "O claude-haiku-5.5",
+     "model": "anthropic/claude-haiku-5.5",
+     "rank": 1,
+     "of": 2,
+     "winner": true,
+     "cond": "b46bd8eb7999",
+     "protocol": "real-time",
+     "core": "d660ffca6795",
+     "decisions": 388,
+     "scores": {
+      "grounding": 93.5,
+      "planning": 52.5,
+      "follow": 77.2,
+      "tactical": 57.1,
+      "strategy": 92,
+      "index": 70.8
+     },
+     "counts": {
+      "rated": 616,
+      "threats": 7,
+      "parts": 4
+     },
+     "latencyMs": 4826
+    },
+    {
+     "id": "ai_02zswt69krz",
+     "seat": 1,
+     "civ": "maya",
+     "name": "O gpt6-luna",
+     "model": "gpt-luna-latest",
+     "rank": 2,
+     "of": 2,
+     "winner": false,
+     "cond": "71479b62090c",
+     "protocol": "real-time",
+     "core": "d660ffca6795",
+     "decisions": 114,
+     "scores": {
+      "grounding": 87.3,
+      "planning": 83.7,
+      "follow": 62.7,
+      "tactical": 40,
+      "strategy": 16.1,
+      "index": 49
+     },
+     "counts": {
+      "rated": 158,
+      "threats": 5,
+      "parts": 4
+     },
+     "latencyMs": 14884
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261015-194436",
+   "at": 1792086277193,
+   "build": 1100,
+   "promptVersion": "agents-rule-v108",
+   "mapSeed": "rmv9twbwza5kw",
+   "mapSize": 1200,
+   "duration": "70:44",
+   "outcome": "wonder",
+   "layout": "egyptian,greek,roman",
+   "players": 3,
+   "source": "sample",
+   "file": "2026-10-15_qwen3.8-flash-next-qwen3.8-27b-gemini4-argon_71min.jsonl",
+   "seats": [
+    {
+     "id": "ai_02m0sqrdcry",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "DGX Qwen3.8 flash next",
+     "model": "Qwen3.8",
+     "rank": 1,
+     "of": 3,
+     "winner": true,
+     "cond": "e93abdf1cd40",
+     "protocol": "turn-based",
+     "core": "aa01b49f7814",
+     "decisions": 82,
+     "scores": {
+      "grounding": 64.6,
+      "planning": 69.4,
+      "follow": 81.9,
+      "tactical": 33.3,
+      "strategy": 82.9,
+      "index": 59.4
+     },
+     "counts": {
+      "rated": 226,
+      "threats": 3,
+      "parts": 4
+     },
+     "latencyMs": 41424
+    },
+    {
+     "id": "ai_0771niszao2",
+     "seat": 1,
+     "civ": "greek",
+     "name": "O qwen3.8-27b",
+     "model": "qwen/qwen3.8-27b",
+     "rank": 3,
+     "of": 3,
+     "winner": false,
+     "cond": "90115412fec5",
+     "protocol": "turn-based",
+     "core": "aa01b49f7814",
+     "decisions": 83,
+     "scores": {
+      "grounding": 9.1,
+      "planning": 85.3,
+      "follow": 68.2,
+      "tactical": 40,
+      "strategy": 15.1,
+      "index": 30.6
+     },
+     "counts": {
+      "rated": 154,
+      "threats": 5,
+      "parts": 4
+     },
+     "latencyMs": 30109
+    },
+    {
+     "id": "ai_0yjrou2kcmd",
+     "seat": 2,
+     "civ": "roman",
+     "name": "O gemini-4-argon",
+     "model": "google/gemini-4-argon",
+     "rank": 2,
+     "of": 3,
+     "winner": false,
+     "cond": "d15bf526ed59",
+     "protocol": "turn-based",
+     "core": "aa01b49f7814",
+     "decisions": 83,
+     "scores": {
+      "grounding": 100,
+      "planning": 94.2,
+      "follow": 97.4,
+      "tactical": 33.3,
+      "strategy": 63.7,
+      "index": 72.2
+     },
+     "counts": {
+      "rated": 219,
+      "threats": 3,
+      "parts": 4
+     },
+     "latencyMs": 6586
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261017-105426",
+   "at": 1792227266921,
+   "build": 1103,
+   "promptVersion": "agents-rule-v108",
+   "mapSeed": "rmvc5u89neavy",
+   "mapSize": 1200,
+   "duration": "67:53",
+   "outcome": "last_standing",
+   "layout": "egyptian,greek,roman",
+   "players": 3,
+   "source": "sample",
+   "file": "2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl",
+   "seats": [
+    {
+     "id": "ai_0pnml525hj7",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "DGX Qwen3.8 flash next nvfp4",
+     "model": "Qwen3.8",
+     "rank": 3,
+     "of": 3,
+     "winner": false,
+     "cond": "5f4e1f896296",
+     "protocol": "turn-based",
+     "core": "fa255d295136",
+     "decisions": 82,
+     "scores": {
+      "grounding": 47.1,
+      "planning": 81.7,
+      "follow": 73.6,
+      "tactical": 66.7,
+      "strategy": 37.7,
+      "index": 52.9
+     },
+     "counts": {
+      "rated": 227,
+      "threats": 3,
+      "parts": 4
+     },
+     "latencyMs": 36288.5
+    },
+    {
+     "id": "ai_0a0u3hwt4kj",
+     "seat": 1,
+     "civ": "greek",
+     "name": "RTX qwen3.8 flash next Q2_0",
+     "model": "qwen3.8-flash-next-q2_0",
+     "rank": 2,
+     "of": 3,
+     "winner": false,
+     "cond": "5f4e1f896296",
+     "protocol": "turn-based",
+     "core": "fa255d295136",
+     "decisions": 52,
+     "scores": {
+      "grounding": 85.6,
+      "planning": 87.1,
+      "follow": 87.5,
+      "tactical": 0,
+      "strategy": 34.1,
+      "index": 49
+     },
+     "counts": {
+      "rated": 139,
+      "threats": 1,
+      "parts": 4
+     },
+     "latencyMs": 30981.5
+    },
+    {
+     "id": "ai_0wgevva3hic",
+     "seat": 2,
+     "civ": "roman",
+     "name": "O gemini-4-argon",
+     "model": "google/gemini-4-argon",
+     "rank": 1,
+     "of": 3,
+     "winner": true,
+     "cond": "68c866cfca7b",
+     "protocol": "turn-based",
+     "core": "fa255d295136",
+     "decisions": 84,
+     "scores": {
+      "grounding": 100,
+      "planning": 94.5,
+      "follow": 92.2,
+      "tactical": 75,
+      "strategy": 84.8,
+      "index": 86.7
+     },
+     "counts": {
+      "rated": 228,
+      "threats": 4,
+      "parts": 4
+     },
+     "latencyMs": 8635
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261028-204554",
+   "at": 1793216755012,
+   "build": 1139,
+   "promptVersion": "agents-rule-v113",
+   "mapSeed": "rmvsiyee24mmh",
+   "mapSize": 1200,
+   "duration": "48:07",
+   "outcome": "wonder",
+   "layout": "yamato,persian,roman",
+   "players": 3,
+   "source": "sample",
+   "file": "2026-10-28_hermes-deepseek-v4.1-claude-code-sonnet5.5-strata-qwen3.8-flashnext_48min.jsonl",
+   "seats": [
+    {
+     "id": "ai_0f4e2xeptxm",
+     "seat": 0,
+     "civ": "yamato",
+     "name": "Strata MCP",
+     "model": "harness",
+     "rank": 3,
+     "of": 3,
+     "winner": false,
+     "cond": "2320d0ca9db7",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 74,
+     "scores": {
+      "grounding": 61.9,
+      "planning": 80.3,
+      "follow": 93.3,
+      "tactical": 50,
+      "strategy": 17.4,
+      "index": 51.1
+     },
+     "counts": {
+      "rated": 210,
+      "threats": 2,
+      "parts": 4
+     },
+     "latencyMs": 26985
+    },
+    {
+     "id": "ai_02vny8tc0p6",
+     "seat": 1,
+     "civ": "persian",
+     "name": "HERMES MCP",
+     "model": "Deepseek V4.1 Flash 1017",
+     "rank": 1,
+     "of": 3,
+     "winner": true,
+     "cond": "2320d0ca9db7",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 75,
+     "scores": {
+      "grounding": 80,
+      "planning": 53.3,
+      "follow": 60,
+      "tactical": 100,
+      "strategy": 94.6,
+      "index": 76.7
+     },
+     "counts": {
+      "rated": 200,
+      "threats": 1,
+      "parts": 4
+     },
+     "latencyMs": 6806
+    },
+    {
+     "id": "ai_0w928jq26c4",
+     "seat": 2,
+     "civ": "roman",
+     "name": "ClaudeCode MCP",
+     "model": "Sonnet 5.5",
+     "rank": 2,
+     "of": 3,
+     "winner": false,
+     "cond": "2320d0ca9db7",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 76,
+     "scores": {
+      "grounding": 94.8,
+      "planning": 36.6,
+      "follow": 50,
+      "tactical": 100,
+      "strategy": 48.5,
+      "index": 65.4
+     },
+     "counts": {
+      "rated": 192,
+      "threats": 5,
+      "parts": 4
+     },
+     "latencyMs": 9180.5
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261107-165308",
+   "at": 1794066788947,
+   "build": 1147,
+   "promptVersion": "agents-rule-v113",
+   "mapSeed": "rmw6l1lw4lumm",
+   "mapSize": 1200,
+   "duration": "12:06",
+   "outcome": "last_standing",
+   "layout": "greek,persian",
+   "players": 2,
+   "source": "sample",
+   "file": "2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl",
+   "seats": [
+    {
+     "id": "ai_0gqapr4r4wj",
+     "seat": 0,
+     "civ": "greek",
+     "name": "pi MCP",
+     "model": "tencent Hy4",
+     "rank": 2,
+     "of": 2,
+     "winner": false,
+     "cond": "ba441132b2b0",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 40,
+     "scores": {
+      "grounding": 0,
+      "planning": 100,
+      "follow": 66.7,
+      "tactical": null,
+      "strategy": 25.8,
+      "index": 30.8
+     },
+     "counts": {
+      "rated": 55,
+      "threats": 0,
+      "parts": 3
+     },
+     "latencyMs": 12.5
+    },
+    {
+     "id": "ai_1154pkpduvp",
+     "seat": 1,
+     "civ": "persian",
+     "name": "HERMES MCP",
+     "model": "Deepseek V4.1 Flash 1017",
+     "rank": 1,
+     "of": 2,
+     "winner": true,
+     "cond": "ba441132b2b0",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 39,
+     "scores": {
+      "grounding": 90.8,
+      "planning": 91.7,
+      "follow": 50,
+      "tactical": null,
+      "strategy": 85.3,
+      "index": 74
+     },
+     "counts": {
+      "rated": 109,
+      "threats": 0,
+      "parts": 3
+     },
+     "latencyMs": 4952
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261107-163435",
+   "at": 1794065675176,
+   "build": 1147,
+   "promptVersion": "agents-rule-v113",
+   "mapSeed": "rmw6kdpkug0sr",
+   "mapSize": 1200,
+   "duration": "16:57",
+   "outcome": "last_standing",
+   "layout": "roman,yamato",
+   "players": 2,
+   "source": "sample",
+   "file": "2026-11-07_pi-hy4-hermes-deepseek-v4.1_17min.jsonl",
+   "seats": [
+    {
+     "id": "ai_0uzhg9xa71n",
+     "seat": 0,
+     "civ": "roman",
+     "name": "pi MCP",
+     "model": "tencent Hy4",
+     "rank": 2,
+     "of": 2,
+     "winner": false,
+     "cond": "ba441132b2b0",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 44,
+     "scores": {
+      "grounding": 54,
+      "planning": 61.1,
+      "follow": 70,
+      "tactical": 20,
+      "strategy": 28.9,
+      "index": 36.4
+     },
+     "counts": {
+      "rated": 87,
+      "threats": 5,
+      "parts": 4
+     },
+     "latencyMs": 17
+    },
+    {
+     "id": "ai_13mz4vc5qmr",
+     "seat": 1,
+     "civ": "yamato",
+     "name": "HERMES MCP",
+     "model": "Deepseek V4.1 Flash 1017",
+     "rank": 1,
+     "of": 2,
+     "winner": true,
+     "cond": "ba441132b2b0",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 44,
+     "scores": {
+      "grounding": 100,
+      "planning": 61.9,
+      "follow": 83.3,
+      "tactical": 100,
+      "strategy": 82.2,
+      "index": 83.5
+     },
+     "counts": {
+      "rated": 124,
+      "threats": 2,
+      "parts": 4
+     },
+     "latencyMs": 6077
+    }
+   ]
+  },
+  {
+   "v": 1,
+   "scale": "v1",
+   "matchId": "match-20261107-170708",
+   "at": 1794067628620,
+   "build": 1147,
+   "promptVersion": "agents-rule-v113",
+   "mapSeed": "rmw6ljlh5m7je",
+   "mapSize": 1200,
+   "duration": "22:50",
+   "outcome": "last_standing",
+   "layout": "egyptian,maya",
+   "players": 2,
+   "source": "sample",
+   "file": "2026-11-07_pi-hy4-hermes-deepseek-v4.1_23min.jsonl",
+   "seats": [
+    {
+     "id": "ai_034gwfzm4ud",
+     "seat": 0,
+     "civ": "egyptian",
+     "name": "pi MCP",
+     "model": "tencent Hy4",
+     "rank": 2,
+     "of": 2,
+     "winner": false,
+     "cond": "ba441132b2b0",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 85,
+     "scores": {
+      "grounding": 0,
+      "planning": 57.6,
+      "follow": 62.5,
+      "tactical": 33.3,
+      "strategy": 15.7,
+      "index": 21.3
+     },
+     "counts": {
+      "rated": 128,
+      "threats": 3,
+      "parts": 4
+     },
+     "latencyMs": 13
+    },
+    {
+     "id": "ai_09gw2l18jjn",
+     "seat": 1,
+     "civ": "maya",
+     "name": "HERMES MCP",
+     "model": "Deepseek V4.1 Flash 1017",
+     "rank": 1,
+     "of": 2,
+     "winner": true,
+     "cond": "ba441132b2b0",
+     "protocol": "turn-based",
+     "core": "c1b548ef8cc6",
+     "decisions": 85,
+     "scores": {
+      "grounding": 95.9,
+      "planning": 66.7,
+      "follow": 50,
+      "tactical": 0,
+      "strategy": 90.4,
+      "index": 54.9
+     },
+     "counts": {
+      "rated": 244,
+      "threats": 2,
+      "parts": 4
+     },
+     "latencyMs": 8688
+    }
+   ]
+  }
+ ]
+}

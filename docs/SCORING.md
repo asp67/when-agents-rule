@@ -173,6 +173,50 @@ node tools/eval/anchors.cjs --minutes 40 --seeds 3
 
 A run belongs to one build of the rules and prints the core hash it was played under.
 
+## Across matches: the season table
+
+One match is one sample. The Season page (main menu) and `node tools/eval/season.cjs`
+add a model's profiles up over matches, under three rules.
+
+**Only the same conditions are added together.** A seat's result joins the results of
+other seats with the same conditions id: the same rules code, the same contract family
+(prompt, tools, limits, history mode, harness), the same ruleset and protocol. That is
+`WarConditions`, the rule the results screen already uses. A different scoring scale is a
+different group too. Seats whose conditions were not recorded are listed and compared with
+nothing. Two seats of one match can have different contracts, and then each belongs to its
+own group: sitting at the same table does not make two results comparable.
+
+**A mean says how sure it is.** From two matches on, every mean has a 95 % interval
+(Student's t over matches, cut to the 0-100 scale). One match has a number and no
+interval.
+
+**Nothing is called ahead unless it is apart.** A model is marked ahead on a part only if
+it and every other model in the group have at least two matches and its interval touches
+none of theirs. Otherwise the table says "not separated yet". A single match never makes
+a leader.
+
+Beside the means:
+
+- **Head to head.** How often two models met, and who placed above whom.
+- **Seat-swapped rematches.** Two matches on the same map seed with the same civilization
+  in every seat, in which two models traded seats. The mean of their difference over the
+  pair no longer contains what the seat, the spawn or the civilization was worth. The
+  results screen has a button for it: "Rematch, seats swapped". One pair is one sample;
+  from two pairs on the difference has an interval, and it is apart only if the interval
+  excludes zero.
+
+Where the matches come from: the samples that ship with WAR (`samples/season.json`), every
+arena match that ends in the browser (a small entry is kept: scores and who sat where, no
+prompts or replies; it can be forgotten on the page), and transcript files added on the
+page, which are scored on the spot.
+
+What the shipped matches say, 21 November 2026: of 20 matches, ten sets of conditions hold
+more than one result. Only one of them compares two models over more than one match:
+Hermes and pi met three times, Hermes placed first three times, and is ahead on Strategy
+(86.0, between 75.7 and 96.3, against 23.5). On the Index, 70.8 against 29.5, it is not:
+three matches leave the intervals touching. Fourteen seats stand alone under their
+conditions, and 26 are from matches before conditions were recorded.
+
 ## Limits
 
 - **One match is one sample.** Scores move with the opponents, the map and the civilization.

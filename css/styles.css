@@ -2122,6 +2122,43 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 
 .summary-legend { text-align: center; color: #8a93a8; font-size: 0.8em; margin: 4px 0 18px; }
+/* The Season page (overhaul step D9). */
+/* A screen of its own, opaque like the Benchmark page: it can be opened from the results
+   screen, with a finished match still behind it. */
+#seasonScreen { background: var(--bg-0, #151915); color: var(--text, #e0e0e0); color-scheme: dark; padding: clamp(16px, 3vw, 48px); overflow: auto; }
+.season-content { max-width: 1180px; }
+.season-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 12px; }
+.season-bar .menu-btn { margin: 0; }
+.season-file { cursor: pointer; }
+.season-check { font-size: 0.9rem; color: #c9d3e2; cursor: pointer; }
+.season-count { margin-left: auto; font-size: 0.85rem; color: #8a93a8; }
+.season-how, .season-note, .season-verdict, .season-empty { font-size: 0.86rem; line-height: 1.5; color: #aeb8cc; margin: 6px 0 12px; text-align: left; }
+.season-note { color: #e9c46a; }
+.season-empty { text-align: center; padding: 26px 0; }
+.season-group, .season-loose { margin: 0 0 18px; padding: 14px 16px 12px; border-radius: 8px; background: rgba(18, 22, 30, 0.72); border: 1px solid rgba(221, 211, 180, 0.16); text-align: left; }
+.season-group h3 { margin: 0 0 10px; font-size: 1rem; color: #ddd3b4; font-weight: 600; }
+.season-group h3 code, .season-table code { font-size: 0.9em; color: #9fd0c4; }
+.season-group h3 small { margin-left: 12px; font-size: 0.8em; font-weight: 400; color: #8a93a8; }
+.season-group h4 { margin: 12px 0 4px; font-size: 0.82rem; font-weight: 600; color: #b9c4d2; text-transform: uppercase; letter-spacing: 0.06em; }
+.season-loose > summary { cursor: pointer; color: #ddd3b4; font-size: 0.95rem; }
+.season-scroll { overflow-x: auto; }
+.season-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; color: #dfe5ee; }
+.season-table th { padding: 5px 8px; text-align: center; font-weight: 500; color: #b9c4d2; white-space: nowrap; }
+.season-table th[scope="row"], .season-table thead th:first-child { text-align: left; }
+.season-table td { padding: 6px 8px; text-align: center; border-top: 1px solid rgba(255, 255, 255, 0.07); vertical-align: top; font-variant-numeric: tabular-nums; }
+.season-table tbody th { border-top: 1px solid rgba(255, 255, 255, 0.07); color: #fff; }
+.sn-cell { min-width: 84px; }
+.sn-cell b { font-size: 1.08em; color: #fff; }
+.sn-cell.is-lead b { color: #f2c46a; }
+.sn-cell.is-empty b { color: #7f8a99; }
+.sn-cell small { display: block; font-size: 0.78em; color: #8d97a8; }
+.sn-range { position: relative; display: block; height: 6px; margin: 3px 2px 0; border-radius: 3px; background: rgba(255, 255, 255, 0.08); }
+.sn-range u { position: absolute; top: 1px; height: 4px; border-radius: 2px; background: rgba(99, 185, 167, 0.55); }
+.sn-range s { position: absolute; top: -1px; width: 2px; height: 8px; margin-left: -1px; background: #e8eef7; }
+.sn-cell.is-lead .sn-range u { background: rgba(242, 196, 106, 0.6); }
+.season-list { margin: 0; padding-left: 18px; font-size: 0.86rem; color: #c9d3e2; }
+.season-list li { margin: 2px 0; }
+
 /* The report card: the Bench view's matrix at the width of the results screen. */
 .summary-profile { max-width: 760px; margin: 0 auto 22px; padding: 14px 18px 10px; border-radius: 8px; background: rgba(18, 22, 30, 0.72); border: 1px solid rgba(221, 211, 180, 0.16); font-size: 0.95rem; color: #dfe5ee; text-align: left; }
 .summary-profile .bm th[scope="row"] { width: 130px; }
