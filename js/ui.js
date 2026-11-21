@@ -5224,7 +5224,7 @@ class UIManager {
         return byId;
     }
 
-    // One bar per part of the profile that exists: Grounding and Planning so far, the
+    // One bar per part of the profile that exists: Grounding, Planning, Follow-through, the
     // others as their steps land. The tooltip carries what the number rests on, so a
     // bar is never just a bar.
     seatProfileHtml(p) {
@@ -5239,11 +5239,15 @@ class UIManager {
         const planTip = !pl.statements ? t('eval.planningNone', { n: p.decisions })
             : t('eval.planningTip', { statements: pl.statements, revisions: pl.revisions, first: clock(pl.firstAt.sec),
                 coverage: share(pl.coverage), concrete: pl.concrete, steps: pl.steps, revised: pl.shocks.revised, shocks: pl.shocks.n });
+        const fl = p.follow;
+        const followTip = !fl ? '' : !fl.judged ? t('eval.groundingNone') : !pl.statements ? t('eval.planningNone', { n: p.decisions })
+            : t('eval.followTip', { acted: fl.acted, closed: fl.acted + fl.dropped, late: fl.late, pending: fl.pending,
+                wait: fl.decisionsToAct == null ? '–' : fl.decisionsToAct, serving: fl.ordersServing, orders: fl.ordersUnderPlan });
         const bar = (key, score, tip) => `<span class="lb-dim${score == null ? ' is-empty' : ''}" title="${esc(tip + ' ' + t('eval.provisional'))}">`
             + `<span class="lb-dim-name">${esc(t('eval.' + key))}</span>`
             + `<span class="lb-dim-track"><i style="width:${score == null ? 0 : Math.round(score)}%"></i></span>`
             + `<b>${score == null ? '–' : Math.round(score)}</b></span>`;
-        return `<div class="lb-profile">${bar('grounding', g.score, groundTip)}${bar('planning', pl.score, planTip)}</div>`;
+        return `<div class="lb-profile">${bar('grounding', g.score, groundTip)}${bar('planning', pl.score, planTip)}${fl ? bar('follow', fl.score, followTip) : ''}</div>`;
     }
 
     // ---- Leaderboard achievement flyout --------------------------------------

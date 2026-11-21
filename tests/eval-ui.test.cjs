@@ -45,7 +45,10 @@ test('the card reads the ledger of the match being recorded, by seat', () => {
 test('a seat card shows one bar per part of the profile, with what it rests on', () => {
     const u = ui(), seats = (u.game = { openAIAIManager: { transcripts: { ledger: ledger() } } }, u.evalSeats());
     const html = u.seatProfileHtml(seats.a);
-    assert.equal((html.match(/class="lb-dim"/g) || []).length, 2);
+    assert.equal((html.match(/class="lb-dim"/g) || []).length, 3);
+    // Its one checkable step, "Build a tower", was never carried out in 38 decisions.
+    assert.match(html, /eval\.follow<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>0<\/b>/);
+    assert.match(html, /eval\.followTip\{&quot;acted&quot;:0,&quot;closed&quot;:1,&quot;late&quot;:0,&quot;pending&quot;:0,&quot;wait&quot;:&quot;–&quot;,&quot;serving&quot;:0,&quot;orders&quot;:0\}/);
     // 39 of 40 valid is 97.5 %: a quarter of the way to zero on the v0 scale, so 75.
     assert.match(html, /eval\.grounding<\/span><span class="lb-dim-track"><i style="width:75%"><\/i><\/span><b>75<\/b>/);
     assert.match(html, /eval\.groundingTip\{&quot;ok&quot;:39,&quot;judged&quot;:40,&quot;pct&quot;:&quot;97\.5 %&quot;,&quot;contended&quot;:0\}/);
@@ -53,7 +56,7 @@ test('a seat card shows one bar per part of the profile, with what it rests on',
     // One plan from the first decision, one of its two steps checkable, no shock: (1 + 0.5 + 1) / 3.
     assert.match(html, /eval\.planning<\/span><span class="lb-dim-track"><i style="width:83%"><\/i><\/span><b>83<\/b>/);
     assert.match(html, /eval\.planningTip\{&quot;statements&quot;:1,&quot;revisions&quot;:1,&quot;first&quot;:&quot;1:15&quot;/);
-    assert.equal((html.match(/eval\.provisional/g) || []).length, 2);
+    assert.equal((html.match(/eval\.provisional/g) || []).length, 3);
 });
 
 test('nothing judged is a dash and no plan is a zero, and neither is hidden', () => {

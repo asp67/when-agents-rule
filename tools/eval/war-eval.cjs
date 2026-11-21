@@ -7,8 +7,9 @@
 //   node tools/eval/war-eval.cjs a.jsonl b.jsonl --json           the full profiles as JSON
 //
 // Reported so far: grounding (were the commands valid when issued), planning (a live,
-// concrete plan, restated after a shock) and, beside them, efficiency (what a decision
-// cost). Follow-through, tactical response, strategy and versatility follow in later steps.
+// concrete plan, restated after a shock), follow-through (does it do what its plan says)
+// and, beside them, efficiency (what a decision cost). Tactical response, strategy and
+// versatility follow in later steps.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), readline = require('node:readline');
 const WarEval = require(path.join(__dirname, '..', '..', 'js', 'eval', 'ledger.js'));
@@ -49,6 +50,15 @@ function report(file, p) {
         p.seats.map(s => { const g = s.planning; return [name(s), fix(g.score, 0), g.statements, g.revisions,
             g.firstAt ? clock(g.firstAt.sec) + ' (decision ' + g.firstAt.decision + ')' : 'never', pct(g.coverage),
             g.steps ? g.concrete + ' of ' + g.steps : '-', g.shocks.n ? g.shocks.revised + ' of ' + g.shocks.n : 'no shock']; }))));
+    const of = (a, b) => a == null ? '-' : a + ' of ' + b;
+    out.push('', table([['FOLLOW-THROUGH', 'score', 'steps followed', 'acted on', 'dropped', 'of which late', 'pending', 'decisions to act', 'commitments met', 'orders serving the plan']].concat(
+        p.seats.map(s => { const h = s.follow; return [name(s), fix(h.score, 0), h.steps, fix(h.acted), fix(h.dropped), fix(h.late), fix(h.pending),
+            fix(h.decisionsToAct, 1), of(h.commitmentsMet, h.commitments), of(h.ordersServing, h.ordersUnderPlan)]; }))));
+    const r = WarEval.READER.heldOut;
+    out.push('', 'A step is followed if it is new and names something checkable; acted on means an order that worked carried it out within '
+        + WarEval.FOLLOW_WINDOW + ' decisions.',
+        'The step reader, on ' + r.steps + ' steps read by hand that it was never adjusted against: ' + pct(r.precision) + ' of what it reports is in the step, and it finds '
+        + pct(r.recall) + ' of what is.');
     out.push('', table([['EFFICIENCY', 'decisions', 'latency median', 'p90', 'tokens in', 'out', 'out per ok command', 'commands per decision', 'missed rounds']].concat(
         p.seats.map(s => { const e = s.efficiency, t = e.tokens; return [name(s), s.decisions, secs(e.latencyMs && e.latencyMs.median), secs(e.latencyMs && e.latencyMs.p90),
             t ? fix(t.promptMedian) : 'not reported', t ? fix(t.completionMedian) : '-', t ? fix(t.completionPerOk) : '-', fix(e.commandsPerDecision, 2), e.missedRounds]; }))));
