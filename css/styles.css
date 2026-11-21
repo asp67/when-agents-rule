@@ -2598,8 +2598,9 @@ body.spectator-mode #unitInfo.spectator-card {
 .c-wondericon { font-size: 12px; }
 .c-mark { stroke-width: 2.4; opacity: 0.95; }
 
-/* The race chart (overhaul step D5): the same chart, small, left of the minimap. Not
-   shown in broadcast mode, like every other operator panel. */
+/* The race chart (overhaul step D5): the same chart, small, left of the minimap, in
+   either mode. On a small window it gets narrower and stays (it used to be hidden below
+   1100 px, which read as the chart having gone missing). */
 .race-chart {
     position: absolute; z-index: 1000;
     right: calc(var(--mm-edge) + var(--mm-canvas) + var(--mm-gut) + 44px); bottom: var(--mm-bottom);
@@ -2681,6 +2682,8 @@ body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 @media (max-width: 1360px) {
     body:not(.broadcast-mode) .bench-left { left: 14px; }
     body:not(.broadcast-mode) .bench-right { right: 16px; }
+    /* ...and lie over them while Bench is on: under them they could not be seen at all. */
+    body:not(.broadcast-mode) .bench-panel { z-index: 1002; }
 }
 .bench-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-weight: 700; color: #dec594; letter-spacing: 0.2px; }
 .bench-head span { font-weight: 400; font-size: 0.82em; color: #8d97a8; }
@@ -2746,7 +2749,8 @@ body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 .bc-card.is-missed { background: rgba(240, 160, 128, 0.1); }
 .bc-card.is-waiting { background: rgba(233, 196, 106, 0.13); }
 @media (max-width: 1100px) { .bench-right { width: 300px; } .bench-left { width: 280px; } }
-@media (max-width: 1100px) { .race-chart { display: none !important; } }
+/* Never wider than the room between the left edge and the minimap. */
+@media (max-width: 1100px) { .race-chart { width: min(300px, calc(100vw - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - 16px)); } }
 
 /* Round-answer-time field: indented under the turn-based checkbox it belongs to,
    and dimmed when that checkbox is off so it cannot look like a live setting. */

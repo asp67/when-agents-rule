@@ -316,6 +316,9 @@ test('the race chart is an overlay of either mode: its switch works in broadcast
     // Nothing in the stylesheet takes an overlay away in a mode, or a mode's own panels away for an overlay.
     const css = fs.readFileSync(path.join(root, 'css/styles.css'), 'utf8');
     assert.doesNotMatch(css, /body\.broadcast-mode\s+(#raceChart|\.bench-panel)\s*\{\s*display:\s*none/);
+    // Nor does a small window: the chart gets narrower there and stays on screen.
+    assert.doesNotMatch(css, /\.race-chart\s*\{[^}]*display:\s*none/);
+    assert.match(css, /@media \(max-width: 1100px\) \{ \.race-chart \{ width: min\(300px, calc\(100vw - /);
     assert.doesNotMatch(css, /body\.bench-view[^{]*#(aiDecisionLog|spectatorLeaderboard)[^{]*\{\s*display:\s*none/);
     assert.match(css, /\.bench-left \{ left: 354px;/);                   // beside the decision log, not over it
     assert.match(css, /\.bench-right \{ right: 328px;/);                 // beside the leaderboard
