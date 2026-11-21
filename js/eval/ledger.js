@@ -11,8 +11,9 @@
 // the order in which different seats' lines arrive changes nothing: a file lists one
 // seat after another, a live match interleaves them, and both give the same profile.
 //
-// This step fills two parts of the profile:
+// Three parts of the profile are filled so far:
 //   grounding    were the commands valid when they were issued?
+//   planning     does the seat keep a live, concrete plan, and restate it after a shock?
 //   efficiency   what did a decision cost? Shown beside the profile, never inside it.
 (function (root) {
     'use strict';
@@ -49,6 +50,67 @@
         return parsed.action ? 1 : 0;       // the single-command reply of early builds
     }
 
+    // ---- planning (step C2) ---------------------------------------------------------
+    // What a decision said about the plan, by the analyzer's own rule for "planned": a
+    // non-empty list of steps, or an objective with text in it. null when it said nothing.
+    function planOf(parsed) {
+        if (!parsed || typeof parsed !== 'object') return null;
+        const steps = Array.isArray(parsed.plan) && parsed.plan.length ? parsed.plan.map(s => String(s)) : null;
+        const objective = typeof parsed.objective === 'string' && parsed.objective.trim() ? parsed.objective.trim() : null;
+        return steps || objective ? { objective, steps } : null;
+    }
+
+    // The names a seat was shown: what it could train, build and research, and who it is
+    // up against. A plan step is checkable when it names one of them, and only names the
+    // seat itself was given count -- a step is never matched against a list it never saw.
+    function everyValue(node, key, into, depth) {
+        if (!node || typeof node !== 'object' || depth > 5) return;
+        if (Array.isArray(node)) { for (const x of node) everyValue(x, key, into, depth + 1); return; }
+        if (typeof node[key] === 'string') into.add(node[key]);
+        for (const k in node) if (k !== 'cost' && node[k] && typeof node[k] === 'object') everyValue(node[k], key, into, depth + 1);
+    }
+    function learnNames(vocab, state) {
+        if (!state || typeof state !== 'object') return;
+        // `units` and `buildings` from build 1023 on; the two flat lists before that.
+        everyValue(state.units && (state.units.trainable || state.units.blocked) ? state.units : state.trainableUnits, 'id', vocab.units, 0);
+        const b = state.buildings && (state.buildings.buildable || state.buildings.blocked) ? state.buildings : state.buildableStructures;
+        everyValue(b, 'type', vocab.buildings, 0);
+        const r = state.research || {};
+        for (const x of r.researched || []) if (typeof x === 'string') vocab.techs.add(x);
+        everyValue(r.available, 'id', vocab.techs, 0);
+        for (const o of (state.gameStats && state.gameStats.opponents) || []) {
+            if (o && typeof o.id === 'string') vocab.opponents.add(o.id);
+            if (o && typeof o.civilization === 'string') vocab.opponents.add(o.civilization);
+        }
+    }
+    const plain = s => ' ' + String(s).toLowerCase().replace(/[_\-]/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    // The name as a word of the step, in the singular or one of its plurals.
+    function names(text, name) {
+        const n = String(name).toLowerCase().replace(/[_\-]/g, ' ');
+        return text.includes(' ' + n + ' ') || text.includes(' ' + n + 's ') || text.includes(' ' + n + 'es ')
+            || (n.endsWith('y') && text.includes(' ' + n.slice(0, -1) + 'ies '))
+            || (n.endsWith('man') && text.includes(' ' + n.slice(0, -3) + 'men '));
+    }
+    // What a step commits to, as kinds of command that could carry it out. An empty list
+    // is a step nothing recorded could confirm: "stay flexible", "play well".
+    function checkable(step, vocab) {
+        const text = plain(step), kinds = [];
+        const add = (kind, name) => { if (!kinds.some(k => k.kind === kind && k.name === name)) kinds.push({ kind, name }); };
+        for (const u of vocab.units) if (u !== 'worker' && names(text, u)) add('train', u);
+        for (const b of vocab.buildings) if (names(text, b)) add('build', b);
+        for (const x of vocab.techs) if (!vocab.buildings.has(x) && names(text, x)) add('research', x);
+        if (/ (iron|bronze|neolithic) age | age up | next age | advance to /.test(text)) add('age', 'age');
+        if (/ wonder /.test(text)) add('wonder', 'wonder');
+        if (/ workers? | villagers? /.test(text)) add('train', 'worker');
+        if (/ (attack|raze|destroy|kill|raid|strike|assault|siege|hunt) /.test(text) || [...vocab.opponents].some(o => names(text, o))) add('attack', 'attack');
+        if (/ (scout|explore|find|search|sweep) /.test(text)) add('explore', 'explore');
+        return kinds;
+    }
+    // Something in the state a plan could not have counted on. Read from what the MODEL
+    // was shown, never from the world: a raid it was not told about is not a shock to it.
+    const SHOCK_WINDOW = 3;                  // decisions a seat has to restate its plan
+    const LOSS_FROM = 12, LOSS_SHARE = 0.75; // a quarter of its people gone since the last decision
+
     class Ledger {
         constructor() {
             this.match = null;
@@ -60,7 +122,8 @@
         _seat(o) {
             let s = this.seats.get(o.playerId);
             if (!s) {
-                s = { id: o.playerId, seat: null, civ: null, model: null, name: null, turns: [], markers: {} };
+                s = { id: o.playerId, seat: null, civ: null, model: null, name: null, turns: [], markers: {},
+                    vocab: { units: new Set(), buildings: new Set(), techs: new Set(), opponents: new Set() } };
                 this.seats.set(o.playerId, s);
             }
             if (s.seat == null && o.seat != null) s.seat = o.seat;
@@ -98,8 +161,16 @@
             }
             if (!o.playerId) return;         // not a line of this format
             const tokens = o.tokens && typeof o.tokens === 'object' ? o.tokens : null;
-            const clock = o.state && o.state.clock;
-            this._seat(o).turns.push({
+            const st = o.state && typeof o.state === 'object' ? o.state : {};
+            const clock = st.clock, threats = st.threats || {};
+            const seat = this._seat(o);
+            learnNames(seat.vocab, st);
+            seat.turns.push({
+                plan: planOf(o.parsed),
+                // What the state showed that a plan could not have counted on.
+                people: num(st.population ? st.population.used : (st.resources ? st.resources.population : null)),
+                attacked: Array.isArray(threats.underAttack) && threats.underAttack.length > 0,
+                wonders: Array.isArray(threats.enemyWonders) ? threats.enemyWonders.map(w => String(w && w.id)) : [],
                 turn: num(o.turn),
                 sec: clock ? num(clock.matchSeconds) : null,
                 latencyMs: num(o.latencyMs) > 0 ? o.latencyMs : null,
@@ -150,6 +221,62 @@
             };
         }
 
+        // Does it keep a live, concrete plan?
+        _planning(seat) {
+            const turns = seat.turns, vocab = seat.vocab;
+            const history = [], shocks = [];
+            let standing = null, covered = 0, statements = 0, steps = 0, concrete = 0;
+            let people = null, wasAttacked = false;
+            const seenWonders = new Set();
+            const same = (a, b) => plain(a.objective || '') === plain(b.objective || '')
+                && a.steps.length === b.steps.length && a.steps.every((s, i) => plain(s) === plain(b.steps[i]));
+            turns.forEach((t, i) => {
+                // A shock is in the state the decision was GIVEN, so it comes before the
+                // decision's own plan: restating the plan in that very reply answers it.
+                if (people != null && t.people != null && people >= LOSS_FROM && t.people <= people * LOSS_SHARE) shocks.push({ at: i, kind: 'losses', revised: false });
+                if (t.people != null) people = t.people;
+                if (t.attacked && !wasAttacked) shocks.push({ at: i, kind: 'attacked', revised: false });
+                wasAttacked = t.attacked;
+                for (const id of t.wonders) if (!seenWonders.has(id)) { seenWonders.add(id); shocks.push({ at: i, kind: 'wonder', revised: false }); }
+
+                if (t.plan) {
+                    statements++;
+                    // A statement that leaves one half out keeps that half as it stood.
+                    const next = { objective: t.plan.objective != null ? t.plan.objective : (standing ? standing.objective : null),
+                        steps: t.plan.steps || (standing ? standing.steps.map(s => s.text) : []) };
+                    if (!standing || !same(next, { objective: standing.objective, steps: standing.steps.map(s => s.text) })) {
+                        const known = new Set(standing ? standing.steps.map(s => plain(s.text)) : []);
+                        standing = { decision: i + 1, turn: t.turn, sec: t.sec, objective: next.objective,
+                            steps: next.steps.map(text => ({ text, fresh: !known.has(plain(text)), checks: checkable(text, vocab) })) };
+                        history.push(standing);
+                        for (const s of standing.steps) if (s.fresh) { steps++; if (s.checks.length) concrete++; }
+                        for (const sh of shocks) if (!sh.revised && i - sh.at <= SHOCK_WINDOW) sh.revised = true;
+                    }
+                }
+                if (standing) covered++;
+            });
+            const coverage = turns.length ? covered / turns.length : null;
+            const concreteRate = steps ? concrete / steps : null;
+            const answered = shocks.filter(s => s.revised).length;
+            const kinds = { attacked: 0, wonder: 0, losses: 0 };
+            for (const s of shocks) kinds[s.kind]++;
+            return {
+                // Every decision that stated a plan, and how many of those changed it.
+                statements, revisions: history.length,
+                firstAt: history.length ? { decision: history[0].decision, sec: history[0].sec } : null,
+                coverage, steps, concrete, concreteRate,
+                shocks: Object.assign({ n: shocks.length, revised: answered }, kinds),
+                standing: standing ? { objective: standing.objective, since: standing.decision, sec: standing.sec,
+                    steps: standing.steps.map(s => ({ text: s.text, checkable: s.checks.length > 0 })) } : null,
+                history: history.map(h => ({ decision: h.decision, sec: h.sec, steps: h.steps.length })),
+                // v0: the mean of coverage, concrete steps and revision after a shock; a
+                // seat no shock reached is held to its coverage for the third part. A seat
+                // that never stated a plan has none, which is 0 and not a missing value.
+                score: !turns.length ? null : !history.length ? 0
+                    : Math.round(1000 * (coverage + (concreteRate || 0) + (shocks.length ? answered / shocks.length : coverage)) / 3) / 10
+            };
+        }
+
         // What did a decision cost? Beside the profile, never inside it.
         _efficiency(seat, ok) {
             const turns = seat.turns;
@@ -175,15 +302,20 @@
             };
         }
 
+        // Worked out again only when a line has arrived since: the page asks once a
+        // second, a match adds a line every few. Treat the result as read-only.
         profile() {
+            if (this._profile && this._profileLines === this.lines + ':' + this.unreadable) return this._profile;
             const seats = [...this.seats.values()].map(s => {
                 const grounding = this._grounding(s.turns);
                 return { id: s.id, seat: s.seat, civ: s.civ, model: s.model, name: s.name,
-                    decisions: s.turns.length, grounding, efficiency: this._efficiency(s, grounding.ok) };
+                    decisions: s.turns.length, grounding, planning: this._planning(s), efficiency: this._efficiency(s, grounding.ok) };
             });
             seats.sort((a, b) => (a.seat == null ? 1e9 : a.seat) - (b.seat == null ? 1e9 : b.seat) || String(a.id).localeCompare(String(b.id)));
-            return { kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, match: this.match,
+            this._profileLines = this.lines + ':' + this.unreadable;
+            this._profile = { kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, match: this.match,
                 lines: this.lines, unreadable: this.unreadable, seats };
+            return this._profile;
         }
     }
 

@@ -6,9 +6,9 @@
 //   node tools/eval/war-eval.cjs samples/<match>.jsonl            a table per match
 //   node tools/eval/war-eval.cjs a.jsonl b.jsonl --json           the full profiles as JSON
 //
-// This step reports two parts: grounding (were the commands valid when issued) and, beside
-// it, efficiency (what a decision cost). Planning, follow-through, tactical response,
-// strategy and versatility follow in later steps.
+// Reported so far: grounding (were the commands valid when issued), planning (a live,
+// concrete plan, restated after a shock) and, beside them, efficiency (what a decision
+// cost). Follow-through, tactical response, strategy and versatility follow in later steps.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), readline = require('node:readline');
 const WarEval = require(path.join(__dirname, '..', '..', 'js', 'eval', 'ledger.js'));
@@ -44,6 +44,11 @@ function report(file, p) {
         out.push('', 'Most frequent mistakes');
         for (const s of worst) out.push('  ' + name(s) + ': ' + s.grounding.mistakes.slice(0, 4).map(x => x.code + ' ' + x.n).join(', '));
     }
+    const clock = sec => sec == null ? '-' : Math.floor(sec / 60) + ':' + String(Math.round(sec) % 60).padStart(2, '0');
+    out.push('', table([['PLANNING', 'score', 'plan stated', 'changed', 'first plan', 'decisions under a plan', 'checkable steps', 'restated after a shock']].concat(
+        p.seats.map(s => { const g = s.planning; return [name(s), fix(g.score, 0), g.statements, g.revisions,
+            g.firstAt ? clock(g.firstAt.sec) + ' (decision ' + g.firstAt.decision + ')' : 'never', pct(g.coverage),
+            g.steps ? g.concrete + ' of ' + g.steps : '-', g.shocks.n ? g.shocks.revised + ' of ' + g.shocks.n : 'no shock']; }))));
     out.push('', table([['EFFICIENCY', 'decisions', 'latency median', 'p90', 'tokens in', 'out', 'out per ok command', 'commands per decision', 'missed rounds']].concat(
         p.seats.map(s => { const e = s.efficiency, t = e.tokens; return [name(s), s.decisions, secs(e.latencyMs && e.latencyMs.median), secs(e.latencyMs && e.latencyMs.p90),
             t ? fix(t.promptMedian) : 'not reported', t ? fix(t.completionMedian) : '-', t ? fix(t.completionPerOk) : '-', fix(e.commandsPerDecision, 2), e.missedRounds]; }))));
