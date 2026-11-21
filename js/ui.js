@@ -230,7 +230,9 @@ class UIManager {
             // The Bench view (overhaul steps D2 to D4): the same rule.
             bench: saved.bench === true,
             // The comparison lower third of broadcast mode (overhaul step D7): the same rule.
-            compare: saved.compare === true
+            compare: saved.compare === true,
+            // The second camera (overhaul step B3): the same rule.
+            second: saved.second === true
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
@@ -4168,6 +4170,14 @@ class UIManager {
         }
         this.refreshIntentButton();
         // The strategic zoom layer (review #12), regrouped four times a second.
+        // The second camera (overhaul step B3): the renderer asks every frame where it
+        // stands; which fight it is on is settled four times a second.
+        if (this.updateSecondCam) {
+            this._second = null;
+            if (this.game.renderer) this.game.renderer.secondView = now => this.secondViewPose(now);
+            this.refreshSecondCam();
+            this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSecondCam(); }, 250));
+        }
         // The model's view (overhaul step B1): off at the start of every match.
         this.seatView = typeof SeatView === 'function' ? new SeatView(this.game) : null;
         if (this.seatView) this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSeatView(); }, SeatView.REFRESH_MS));
@@ -4302,6 +4312,9 @@ class UIManager {
         clearTimeout(this._chronicleTimer); this._chronicleTimer = null; this._chronicleQueue = [];
         document.getElementById('chronicleCaption')?.remove();
         document.getElementById('compareStrip')?.remove();
+        if (this.game.renderer) this.game.renderer.secondView = null;
+        this._second = null;
+        { const sc = document.getElementById('secondCam'); if (sc) sc.style.display = 'none'; }
         if (this.seatView) this.seatView.set(null);          // the renderer gets its own fog and every entity back
         document.getElementById('seatViewBadge')?.remove();
         this.stopIntentOverlay();
@@ -4632,7 +4645,8 @@ class UIManager {
                     icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()),
                     icon('broadcastBench', '\u{1F4CA}', t('spec.benchTitle'), () => { if (this.toggleBenchView) this.toggleBenchView(); }),
                     icon('broadcastRace', '\u{1F4C8}', t('spec.raceTitle'), () => this.toggleRaceChart()),
-                    icon('broadcastCompare', '\u2696\uFE0F', t('spec.compareTitle'), () => { if (this.toggleCompare) this.toggleCompare(); }), exit);
+                    icon('broadcastCompare', '\u2696\uFE0F', t('spec.compareTitle'), () => { if (this.toggleCompare) this.toggleCompare(); }),
+                    icon('broadcastSecond', '\u{1F3A5}', t('spec.secondTitle'), () => { if (this.toggleSecondCam) this.toggleSecondCam(); }), exit);
                 this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
             }
@@ -4735,6 +4749,7 @@ class UIManager {
             on('broadcastBench', !!this.benchOn && this.benchOn());
             on('broadcastRace', this.raceOn());
             on('broadcastCompare', !!this.compareOn && this.compareOn());
+            on('broadcastSecond', !!this.secondOn && this.secondOn());
         }
         const w = document.getElementById('broadcastWonder');
         if (!w) return;

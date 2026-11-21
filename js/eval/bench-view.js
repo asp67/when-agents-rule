@@ -61,11 +61,12 @@
         this._benchKeyWired = true;
         document.addEventListener('keydown', e => {
             const key = String(e.key || '').toLowerCase();
-            if ((key !== 'b' && key !== 'r' && key !== 'c' && key !== 'v') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+            if ((key !== 'b' && key !== 'r' && key !== 'c' && key !== 'v' && key !== 'i') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
             const el = e.target;
             if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
             if (!this.game.spectatorMode || !this.game.gameStarted) return;
             if (key === 'v') { if (!this.seatView) return; e.preventDefault(); this.toggleSeatView(); return; }
+            if (key === 'i') { if (!this.toggleSecondCam) return; e.preventDefault(); this.toggleSecondCam(); return; }
             if (key === 'c' ? !(this.broadcastOn && this.broadcastOn()) : !document.getElementById(key === 'b' ? 'benchMatrix' : 'raceChart')) return;
             e.preventDefault();
             if (key === 'b') this.toggleBenchView(); else if (key === 'r') this.toggleRaceChart(); else this.toggleCompare();

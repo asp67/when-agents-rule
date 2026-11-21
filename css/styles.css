@@ -3425,6 +3425,23 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .lb-list.collapsed .lb-health { display: none; }
 
 /* Strategic zoom layer (review #12). */
+/* The second camera (overhaul step B3): beside the minimap, where the race chart sits; above
+   it when both are on. The picture is a canvas of its own, so it lies over the map like any
+   panel; on a small window, where it reaches the leaderboard, it lies over that too, as the
+   Bench panels do. */
+.second-cam {
+    position: absolute; z-index: 1002; pointer-events: none;
+    right: calc(var(--mm-edge) + var(--mm-canvas) + var(--mm-gut) + 44px); bottom: var(--mm-bottom);
+    width: min(480px, 26vw); padding: 6px; border-radius: 4px;
+    background: rgba(10, 14, 30, 0.94); border: 1px solid rgba(221, 211, 180, 0.34); box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+body.race-view .second-cam { bottom: calc(var(--mm-bottom) + 212px); }
+.second-cam canvas { display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 2px; background: #0b1020; }
+.second-head { display: flex; align-items: baseline; gap: 10px; margin: 0 2px 5px; font-size: 0.78em; white-space: nowrap; overflow: hidden; }
+.second-head b { color: #f2c46a; letter-spacing: 0.04em; text-transform: uppercase; font-size: 0.92em; }
+.second-head span { color: #e8eef7; overflow: hidden; text-overflow: ellipsis; }
+.second-head i { color: #8a93a8; font-style: normal; }
+@media (max-width: 1100px) { .second-cam { width: min(300px, calc(100vw - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - 16px)); } }
 /* The reel on the results screen: the same frame as the report card above it. */
 .reel-list { list-style: none; margin: 0; padding: 0; }
 .reel-list li { display: grid; grid-template-columns: 52px 1fr auto; column-gap: 12px; align-items: baseline; padding: 7px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); }

@@ -378,6 +378,7 @@ js/
 ├── seat-view.js        # the model's view (key V): the 3-D world as one seat knows it, its fog, the rivals it sees, ghosts where it only remembers
 ├── eval/moments.js     # the heaviest moments of a match, each with the decision behind it
 ├── moments-view.js     # the reel of the heaviest moments on the results screen, each opening in the analyzer
+├── second-camera.js    # the second camera (key I): a fight the main picture is not showing, live in a small 3-D picture beside the minimap
 ├── eval/season.js      # the season table: profiles added up over matches under the same conditions, with intervals
 ├── season-page.js      # the Season page beside Benchmark: sample matches, matches played here, transcripts added
 ├── bench-*.js          # the benchmark: scenarios, page, worker

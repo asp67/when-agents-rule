@@ -6,7 +6,7 @@
     <title>When Agents Rule</title>
     <link rel="icon" href="favicon.ico?v=793" sizes="16x16 32x32 48x48 64x64 256x256">
     <link rel="icon" href="favicon.svg?v=793" type="image/svg+xml" sizes="any">
-    <link rel="stylesheet" href="css/styles.css?v=1172">
+    <link rel="stylesheet" href="css/styles.css?v=1173">
     <link rel="stylesheet" href="css/antiquity.css?v=1106">
     <!-- ?diag=1 -- the console, on the page.
 
@@ -397,6 +397,7 @@
                 <button class="sb-end" id="intentBtn" onclick="game.ui.toggleIntentLayer()" aria-pressed="true" data-i18n="spec.intent" data-i18n-title="spec.intentTitle" title="Show what each model just ordered, and why">🎯 Intent</button>
                 <button class="sb-end" id="benchBtn" onclick="game.ui.toggleBenchView()" aria-pressed="false" data-i18n="spec.bench" data-i18n-title="spec.benchTitle" title="Bench panels: the models compared, added to either mode (B)">📊 Bench</button>
                 <button class="sb-end" id="raceBtn" onclick="game.ui.toggleRaceChart()" aria-pressed="false" data-i18n="spec.race" data-i18n-title="spec.raceTitle" title="Race chart: the match so far as a curve per seat, in either mode (R)">📈 Race</button>
+                <button class="sb-end" id="secondCamBtn" onclick="game.ui.toggleSecondCam()" aria-pressed="false" data-i18n="spec.second" data-i18n-title="spec.secondTitle" title="Second camera: a fight the main picture is not showing plays in a small picture beside the minimap. High quality only (I)">🎥 2nd cam</button>
                 <button class="sb-end" id="broadcastBtn" onclick="game.ui.toggleBroadcast()" aria-pressed="false" data-i18n="spec.broadcast" data-i18n-title="spec.broadcastTitle" title="Broadcast mode: scoreboard and captions, no operator controls">📺 Broadcast</button>
                 <button class="sb-end" id="arenaSnapshotBtn" onclick="game.toggleArenaSnapshot()" data-i18n="spec.evaluate" data-i18n-title="spec.evaluateTitle" title="Live-Zwischenstand ansehen (Spiel läuft weiter)">Auswertung ▸</button>
                 <button class="sb-end sb-quit" onclick="game.cancelGame()" data-i18n="spec.quit" data-i18n-title="spec.quitTitle" title="Arena beenden und zur Auswertung">✕ Beenden</button>
@@ -407,6 +408,9 @@
         <!-- The Bench view (overhaul steps D2 to D4): in place of the decision log and the leaderboard. -->
         <div id="benchLeft" class="bench-panel bench-left" style="display:none;"></div>
         <div id="benchMatrix" class="bench-panel bench-right" style="display:none;"></div>
+
+        <!-- The second camera (overhaul step B3): a fight the main picture is not showing, live. -->
+        <div id="secondCam" class="second-cam" style="display:none;"><div class="second-head" id="secondCamHead"></div><canvas id="secondCamCanvas"></canvas></div>
 
         <!-- The race chart (overhaul step D5): the summary's line chart, live and small. -->
         <div id="raceChart" class="race-chart" style="display:none;">
@@ -739,8 +743,8 @@
     <script src="js/engine/bloom.js?v=960"></script>
     <script src="js/engine/fx.js?v=960"></script>
     <script src="js/engine/perf.js?v=1150"></script>
-    <script src="js/engine/gamerenderer.js?v=1167"></script>
-    <script src="js/i18n.js?v=1172"></script>
+    <script src="js/engine/gamerenderer.js?v=1173"></script>
+    <script src="js/i18n.js?v=1173"></script>
     <script src="js/civilizations.js?v=1110"></script>
     <script src="js/identity.js?v=962"></script>
     <script src="js/buildings.js?v=1128"></script>
@@ -765,16 +769,17 @@
     <script src="js/chronicle.js?v=1040"></script>
     <script src="js/intent-layer.js?v=1057"></script>
     <script src="js/strategic-layer.js?v=973"></script>
-    <script src="js/ui.js?v=1172"></script>
-    <script src="js/eval/bench-view.js?v=1172"></script>
+    <script src="js/ui.js?v=1173"></script>
+    <script src="js/eval/bench-view.js?v=1173"></script>
     <script src="js/eval/marks.js?v=1166"></script>
     <script src="js/seat-view.js?v=1167"></script>
     <script src="js/eval/moments.js?v=1168"></script>
     <script src="js/moments-view.js?v=1172"></script>
+    <script src="js/second-camera.js?v=1173"></script>
     <script src="js/eval/season.js?v=1164"></script>
     <script src="js/season-page.js?v=1164"></script>
     <script src="js/mcp-ui.js?v=1132"></script>
-    <script src="js/game.js?v=1172"></script>
+    <script src="js/game.js?v=1173"></script>
     <script src="js/boot.js?v=1149"></script>
     <script src="js/standing-orders.js?v=1110"></script>
     <script src="js/showcase.js?v=1110"></script>

@@ -169,6 +169,10 @@
             // a filter for the units and buildings that seat cannot see. Both null: everything.
             this.fogView = null;
             this.entityHidden = null;
+            // A second picture of the same world at the same moment (js/second-camera.js):
+            // someone names a place and a 2-D canvas to put it in. Null: one picture.
+            this.secondView = null;
+            this._frameNo = 0;                // which frame this is, so nothing is moved twice in one
             this._fogCanvas = null;
             this._dl = { opaque: [], blended: [], bars: [] }; // per-frame lists
             this.WHITE = [1, 1, 1];
@@ -655,6 +659,7 @@
 
         // Width over height of the picture being drawn.
         _aspect() {
+            if (this._insetAspect) return this._insetAspect;   // the second picture has a shape of its own
             const pin = this._pinnedSize;
             return pin ? pin.w / pin.h : (this.W || 1) / (this.H || 1);
         }
@@ -2098,11 +2103,20 @@
             for (const b of this.buildings) if (b._engine) this._composeBuilding(b);
         }
 
+        // Builds the lists one picture is drawn from. With a second picture (secondView) it
+        // runs twice in a frame, once per camera, and the world must not move twice: what
+        // ages on its own (falling ghosts, dust, shots in flight, rings) ages in the main
+        // picture's run only, and a unit or building turns in whichever run reaches it first.
         _assembleFrame(tSec, dt, bb) {
             this._refreshIdentity();
             const m3 = M();
             const dl = this._dl;
             dl.opaque.length = 0; dl.blended.length = 0; dl.bars.length = 0;
+            // The second picture is built first and stamps with the number the main run takes next.
+            const inset = !!this._insetPass, frameDt = dt;
+            const frameNo = inset ? (this._frameNo || 0) + 1 : (this._frameNo = (this._frameNo || 0) + 1);
+            const once = e => { if (e.frameNo === frameNo) return 0; e.frameNo = frameNo; return frameDt; };
+            if (inset) dt = 0;
             const now = performance.now();
             const FLASH = [1, 0.28, 0.22];
             const quad = this._buf('quad', [1, 1]);
@@ -2132,7 +2146,9 @@
             }
 
             // ambient shrubbery/flowers/pebbles — skipped when zoomed far out
-            if (this.graphicsQuality === 'cinematic' && typeof EngineGrass !== 'undefined') {
+            // Not in the second picture: the tufts are built around one camera, and two would
+            // have them built and thrown away every frame.
+            if (!inset && this.graphicsQuality === 'cinematic' && typeof EngineGrass !== 'undefined') {
                 if (!this._grass) this._grass = new EngineGrass.Grass(this);
                 const grassStart = performance.now();
                 dl.opaque.push(...this._grass.frame());
@@ -2199,7 +2215,7 @@
             for (const b of this.buildings) {
                 const eb = b._engine;
                 if (!eb || (b.mesh && b.mesh.visible === false) || (this.entityHidden && this.entityHidden(b, 'building')) || this._cull(b.x, b.z, 18)) continue;
-                if ((b.type === 'trebuchet' || b.type === 'trebuchet_advanced') && !b.underConstruction) this._turnTrebuchet(b, dt);
+                if ((b.type === 'trebuchet' || b.type === 'trebuchet_advanced') && !b.underConstruction) this._turnTrebuchet(b, once(eb));
                 const distance=Math.hypot(b.x-this.cameraTarget.x,b.z-this.cameraTarget.z);
                 const detailFade=lightDetailFade(distance,this._halfH);
                 // Clear the previous frame's light when hidden, zoomed out or disabled.
@@ -2320,6 +2336,7 @@
                 // signal every mover updates by definition. (The renderer's legacy
                 // MOVER was deleted for this same stale-target reason; its facing
                 // was left reading the same rotten value.)
+                const udt = once(ue);
                 let dir = this._unitDir.get(u);
                 if (dir === undefined) { dir = u._spawnDir || 0; this._unitDir.set(u, dir); }
                 const prev = this._unitPrev.get(u);
@@ -2344,7 +2361,7 @@
                         // the spot. At the old flat dt·10 rate a 180° turn took ~0.3s
                         // and cavalry visibly rode BACKWARDS through every U-turn.
                         if (Math.abs(d) > 1.8) dir = want;
-                        else dir += d * Math.min(1, dt * (10 + 12 * Math.abs(d)));
+                        else dir += d * Math.min(1, udt * (10 + 12 * Math.abs(d)));
                         this._unitDir.set(u, dir);
                     }
                 }
@@ -2359,7 +2376,7 @@
                     let d = ue.restDir - dir;
                     while (d > Math.PI) d -= Math.PI * 2;
                     while (d < -Math.PI) d += Math.PI * 2;
-                    if (Math.abs(d) > 1e-3) { dir += d * Math.min(1, dt * 6); this._unitDir.set(u, dir); }
+                    if (Math.abs(d) > 1e-3) { dir += d * Math.min(1, udt * 6); this._unitDir.set(u, dir); }
                 }
                 this._unitPrev.set(u, { x: u.x, z: u.z });
                 // Strides follow the ground actually covered (a jump -- a respawn, a seek
@@ -2385,7 +2402,7 @@
                 if (ue.hasParrot === undefined) ue.hasParrot = ue.entries.some(e => e.bone === 'parrot');
                 if (ue.hasParrot) {
                     const want = !still && u.isMoving ? 1 : 0, lift = ue.parrotLift ?? want;
-                    ue.parrotLift = want > lift ? Math.min(want, lift + dt * 0.9) : Math.max(want, lift - dt * 0.9);
+                    ue.parrotLift = want > lift ? Math.min(want, lift + udt * 0.9) : Math.max(want, lift - udt * 0.9);
                     Object.assign(pose.mats, EngineUnits.parrotPose(ue.parrotLift, still ? 0 : tSec, ue.phase));
                 }
                 const spin = m3.rotationY(dir);
@@ -2550,7 +2567,7 @@
             // Intent marks (review #11): what the models just ordered, laid on the ground in
             // perspective like a selection ring -- a ring at each target, a dashed path from
             // the units with an arrowhead, a cross over a refused one. The UI supplies them.
-            const marks = this.intentMarks ? this.intentMarks() : null;
+            const marks = !inset && this.intentMarks ? this.intentMarks() : null;   // the orders are read in the main picture
             if (marks && marks.length) {
                 const bar = this._buf('box', [1, 1, 1]);
                 const flat = (x, z, yaw, len, wid, tint, alpha) => dl.blended.push({ buf: bar, tex: this.tex.white, tint, alpha,
@@ -2787,6 +2804,12 @@
                 game._director.measureCoverage(this, Date.now());
             }
             const bb = M().billboard(cam.view);
+            this._syncFog();
+            const atmosphere = window.EngineAtmosphere.daylight(
+                this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0),
+                this._daySun, this._daySky, this._theme);
+            this._sun = atmosphere.sun;
+            this._sky = atmosphere.sky;
             // Draw between the last two simulation steps (see beginSimStep). The frame's
             // geometry is built from unit positions in _assembleFrame and nowhere after,
             // so the smoothed positions exist only for that call, and the true ones are
@@ -2794,17 +2817,31 @@
             const alpha = (!this.replayMode && this.game && this.game.gameStarted && this.game.simAlpha)
                 ? this.game.simAlpha() : 1;
             const shown = alpha < 1 ? this._smoothUnits(alpha) : null;
-            try { this._assembleFrame(now / 1000, deltaTime, bb); }
-            finally { if (shown) this._restoreUnits(shown); }
-            this._syncFog();
-            const atmosphere = window.EngineAtmosphere.daylight(
-                this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0),
-                this._daySun, this._daySky, this._theme);
-            this._sun = atmosphere.sun;
-            this._sky = atmosphere.sky;
+            try {
+                // The second picture goes first: into a corner of this same frame, and from
+                // there into its own canvas. The main picture then clears the frame and is
+                // drawn over that corner, so the lists, the lights and the shadows left
+                // behind are the main picture's.
+                const second = this.secondView ? this.secondView(now) : null;
+                if (second) this._drawSecond(second, now, deltaTime, atmosphere);
+                this._assembleFrame(now / 1000, deltaTime, bb);
+            } finally { if (shown) this._restoreUnits(shown); }
             this._renderShadows();
+            this._drawPicture(cam, atmosphere, now, [0, 0, this.PW || this.W, this.PH || this.H], false);
+            this._completedFrames=(this._completedFrames || 0)+1;
+            if (this.perf) this.perf.frameEnd();
+            this._govern(now);
+        }
 
-            gl.viewport(0, 0, this.PW || this.W, this.PH || this.H);
+        // One picture: this camera, this light, the lists standing in this._dl, into this
+        // rectangle of the drawing buffer (x, y from the bottom left, in buffer pixels).
+        // The second picture is clipped to its rectangle and gets no bloom: the halo is a
+        // copy of the whole frame.
+        _drawPicture(cam, atmosphere, now, rect, inset) {
+            const gl = this.gl;
+            gl.viewport(rect[0], rect[1], rect[2], rect[3]);
+            // A clear takes the whole buffer unless it is told where to stop.
+            if (inset) { gl.enable(gl.SCISSOR_TEST); gl.scissor(rect[0], rect[1], rect[2], rect[3]); }
             gl.clearColor(this._sky[0], this._sky[1], this._sky[2], 1); // deep sea beyond the map
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             gl.useProgram(this.prog);
@@ -2895,10 +2932,12 @@
             gl.uniform1f(this.prog.uniforms.uUnlit, 1.0);
             draw(this._dl.blended);
             if (this._fogEntry) draw([this._fogEntry]);
-            if (this._ringEntries && this._ringEntries.length) draw(this._ringEntries);
+            // Not in the second picture: a ping is made to be seen from far off and runs 40
+            // units out, which floods a close picture of the fight it comes from.
+            if (!inset && this._ringEntries && this._ringEntries.length) draw(this._ringEntries);
             // Cinematic: a soft halo on what is brightest, a little more at night. After the
             // fog, so hidden ground cannot glow; before the bars, so they never do.
-            if (this.visualStyle === 'film' && window.EngineBloom) {
+            if (!inset && this.visualStyle === 'film' && window.EngineBloom) {
                 if (this._bloom === undefined) this._bloom = EngineBloom.create(gl);
                 if (this._bloom && this._bloom.apply(this.PW || this.W, this.PH || this.H, 0.22 + 0.3 * atmosphere.night)) {
                     gl.useProgram(this.prog);
@@ -2912,9 +2951,40 @@
             gl.enable(gl.DEPTH_TEST);
             gl.depthMask(true);
             gl.disable(gl.BLEND);
-            this._completedFrames=(this._completedFrames || 0)+1;
-            if (this.perf) this.perf.frameEnd();
-            this._govern(now);
+            if (inset) gl.disable(gl.SCISSOR_TEST);
+        }
+
+        // The second picture (overhaul step B3): the same world at the same moment from
+        // another place. view = { x, z, halfH, yaw, pitch, canvas }, the canvas a 2-D one
+        // whose size is the picture's. Drawn into the bottom left corner of the frame and
+        // copied out; the camera, the lists and the picture's shape are the main one's again
+        // afterwards, whatever happens here.
+        _drawSecond(view, now, deltaTime, atmosphere) {
+            const c = view.canvas, w = c && c.width, h = c && c.height, PW = this.PW || this.W, PH = this.PH || this.H;
+            if (!(w > 0 && h > 0) || w > PW || h > PH) return false;
+            const ctx = c.getContext('2d');
+            if (!ctx) return false;
+            const t = this.cameraTarget;
+            const keep = { x: t.x, z: t.z, yaw: this._yaw, pitch: this._pitch, halfH: this._halfH, lookY: this._lookY, cam: this._cam, dl: this._dl };
+            t.x = view.x; t.z = view.z;
+            this._yaw = view.yaw; this._pitch = view.pitch; this._halfH = view.halfH; this._lookY = 0;
+            this._insetAspect = w / h;
+            this._insetPass = true;
+            this._dl = this._dl2 || (this._dl2 = { opaque: [], blended: [], bars: [] });
+            try {
+                const cam = this._computeCam();
+                this._assembleFrame(now / 1000, deltaTime, M().billboard(cam.view));
+                this._renderShadows();
+                this._drawPicture(cam, atmosphere, now, [0, 0, w, h], true);
+                // The drawing buffer counts from the bottom, a canvas from the top.
+                ctx.drawImage(this.canvas, 0, PH - h, w, h, 0, 0, w, h);
+            } finally {
+                t.x = keep.x; t.z = keep.z;
+                this._yaw = keep.yaw; this._pitch = keep.pitch; this._halfH = keep.halfH; this._lookY = keep.lookY;
+                this._cam = keep.cam; this._dl = keep.dl;
+                this._insetAspect = 0; this._insetPass = false;
+            }
+            return true;
         }
     }
 
