@@ -371,6 +371,7 @@ js/
 ├── transcript.js       # per-match JSONL recorder (states, replies, results, timeline)
 ├── analyzer.js         # transcript parsing, scene assembly, chapters
 ├── eval/ledger.js      # the evaluation profile, read from transcript lines only (live and from a file)
+├── eval/bench-view.js  # the Bench view (key B): comparison matrix, plan tracker, response clock
 ├── bench-*.js          # the benchmark: scenarios, page, worker
 ├── perf-bench.js       # ?perf=1 frame-time readout, ?perf=bench frame benchmark (docs/PERFORMANCE.md)
 ├── engine/             # in-house WebGL engine

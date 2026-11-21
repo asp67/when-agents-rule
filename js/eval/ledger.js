@@ -382,6 +382,8 @@
             const st = o.state && typeof o.state === 'object' ? o.state : {};
             const clock = st.clock, threats = st.threats || {};
             const seat = this._seat(o);
+            // How far the match has got, by the latest clock any seat was shown.
+            if (clock && num(clock.matchSeconds) != null && clock.matchSeconds > (this.lastSec || 0)) this.lastSec = clock.matchSeconds;
             learnNames(seat.vocab, st);
             const outcomes = Array.isArray(o.outcomes) ? o.outcomes.map(x => ({ code: x && x.code != null ? String(x.code) : null,
                 verdict: x && VERDICTS.includes(x.verdict) ? x.verdict : 'unknown' })) : null;
@@ -425,6 +427,7 @@
             const codes = new Map();
             let unjudged = 0, repeated = 0;
             const before = [];               // the mistakes of the last decisions, newest last
+            const errors = [];               // every mistake with the decision it was made in
             for (const t of turns) {
                 const mine = [];
                 if (!t.outcomes) unjudged += t.commands;
@@ -434,6 +437,7 @@
                         count[x.verdict]++;
                         if (x.verdict !== 'avoidable' && x.verdict !== 'invalid') continue;
                         codes.set(x.code, (codes.get(x.code) || 0) + 1);
+                        errors.push({ turn: t.turn, sec: t.sec, code: x.code, verdict: x.verdict });
                         if (before.some(prev => prev.includes(x.code))) repeated++;
                         mine.push(x.code);
                     }
@@ -449,6 +453,7 @@
                 judged, ok: count.ok, avoidable: count.avoidable, invalid: count.invalid,
                 contended: count.contended, harnessFault: count.harnessFault, unjudged,
                 rate, repeated, repeatRate: mistakes ? repeated / mistakes : null,
+                errors,
                 mistakes: [...codes.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
                     .map(([code, n]) => ({ code, n })),
                 // v0: one command in ten refused for a reason the state had shown is 0.
@@ -503,9 +508,9 @@
                 firstAt: history.length ? { decision: history[0].decision, sec: history[0].sec } : null,
                 coverage, steps, concrete, concreteRate,
                 shocks: Object.assign({ n: shocks.length, revised: answered }, kinds),
-                standing: standing ? { objective: standing.objective, since: standing.decision, sec: standing.sec,
+                standing: standing ? { objective: standing.objective, since: standing.decision, turn: standing.turn, sec: standing.sec,
                     steps: standing.steps.map(s => ({ text: s.text, checkable: s.checks.length > 0 })) } : null,
-                history: history.map(h => ({ decision: h.decision, sec: h.sec, steps: h.steps.length })),
+                history: history.map(h => ({ decision: h.decision, turn: h.turn, sec: h.sec, steps: h.steps.length })),
                 // v0: the mean of coverage, concrete steps and revision after a shock; a
                 // seat no shock reached is held to its coverage for the third part. A seat
                 // that never stated a plan has none, which is 0 and not a missing value.
@@ -687,21 +692,33 @@
             };
         }
 
+        // The profile as it stood at an earlier moment of the match: every seat's decisions
+        // up to that match second and nothing after. What the page compares "now" with.
+        profileAt(sec) {
+            const key = this.lines + ':' + this.unreadable + ':' + sec;
+            if (this._past && this._pastKey === key) return this._past;
+            this._pastKey = key;
+            return this._past = this._work([...this.seats.values()].map(s => Object.assign({}, s, { turns: s.turns.filter(t => t.sec != null && t.sec <= sec) })));
+        }
+
         // Worked out again only when a line has arrived since: the page asks once a
         // second, a match adds a line every few. Treat the result as read-only.
         profile() {
             if (this._profile && this._profileLines === this.lines + ':' + this.unreadable) return this._profile;
-            const seats = [...this.seats.values()].map(s => {
+            this._profileLines = this.lines + ':' + this.unreadable;
+            return this._profile = this._work([...this.seats.values()]);
+        }
+
+        _work(list) {
+            const seats = list.map(s => {
                 const grounding = this._grounding(s.turns), planning = this._planning(s);
                 return { id: s.id, seat: s.seat, civ: s.civ, model: s.model, name: s.name,
                     decisions: s.turns.length, grounding, planning, follow: this._follow(s, this._plans), tactical: this._tactical(s),
                     efficiency: this._efficiency(s, grounding.ok) };
             });
             seats.sort((a, b) => (a.seat == null ? 1e9 : a.seat) - (b.seat == null ? 1e9 : b.seat) || String(a.id).localeCompare(String(b.id)));
-            this._profileLines = this.lines + ':' + this.unreadable;
-            this._profile = { kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, match: this.match,
+            return { kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, match: this.match,
                 lines: this.lines, unreadable: this.unreadable, seats };
-            return this._profile;
         }
     }
 

@@ -2576,6 +2576,74 @@ body.spectator-mode #unitInfo.spectator-card {
 .race-wait { margin: 14px 0; font-size: 0.74em; color: #93a6c8; text-align: center; }
 .race-key { margin: 3px 0 0; font-size: 0.62em; line-height: 1.35; color: #8d97a8; }
 body.broadcast-mode #raceChart { display: none !important; }
+
+/* The Bench view (overhaul steps D2 to D4). Two panels in the slots of the decision log
+   and the leaderboard, which it trades places with; same panel look as theirs. */
+body.bench-view #aiDecisionLog, body.bench-view #spectatorLeaderboard { display: none !important; }
+body.broadcast-mode .bench-panel { display: none !important; }
+.bench-panel {
+    position: absolute; z-index: 1000; top: 14px; padding: 8px 10px 10px; overflow-y: auto;
+    background: rgba(25, 30, 25, 0.95); border: 1px solid rgba(221, 211, 180, 0.16); border-radius: 4px;
+    color: #e0e0e0; font-size: 0.8em; scrollbar-width: thin;
+}
+.bench-left { left: 14px; width: 332px; max-height: calc(100vh - 28px); }
+.bench-right { right: 16px; width: 344px; max-height: calc(100vh - 312px); }
+.bench-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-weight: 700; color: #dec594; letter-spacing: 0.2px; }
+.bench-head span { font-weight: 400; font-size: 0.82em; color: #8d97a8; }
+.bench-clockhead { margin-top: 12px; padding-top: 9px; border-top: 1px solid rgba(221, 211, 180, 0.14); }
+.bench-none { margin: 6px 0; color: #8d97a8; }
+/* the matrix */
+.bm { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.bm th[scope="row"] { width: 86px; text-align: left; font-weight: 500; color: #b9c4d2; padding: 5px 4px 5px 0; }
+.bm thead th { padding: 0 3px 5px; font-weight: 600; }
+/* A seat's name in full, on up to three short lines: a column is about sixty pixels wide. */
+.bm-seat { cursor: pointer; border-bottom: 2px solid transparent; text-align: center; vertical-align: bottom; font-size: 0.82em; line-height: 1.15; overflow-wrap: anywhere; }
+.bm-seat span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
+.bm-seat.is-pinned { border-bottom-color: var(--civ, #dec594); }
+.bm-cell, .bm-cost { padding: 4px 3px; text-align: center; vertical-align: top; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.bm-cell { cursor: pointer; }
+.bm-cell:hover, .bm-cell.is-open { background: rgba(255, 255, 255, 0.06); }
+.bm-cell b, .bm-cost b { font-size: 1.18em; font-variant-numeric: tabular-nums; color: #fff; }
+.bm-cell.is-lead b { color: #f2c46a; }
+.bm-cell.is-empty b { color: #7f8a99; }
+.bm-cell em { margin-left: 3px; font-style: normal; font-size: 0.78em; font-variant-numeric: tabular-nums; }
+.bm-up { color: #63b9a7; } .bm-down { color: #f0a080; }
+.bm-bar { display: block; height: 3px; margin: 3px 4px 2px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.bm-bar u { display: block; height: 100%; background: #63b9a7; text-decoration: none; }
+.bm-cell.is-lead .bm-bar u { background: #f2c46a; }
+.bm-cell small, .bm-cost small { display: block; font-size: 0.8em; color: #8d97a8; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bm-cost b { font-size: 1em; font-weight: 600; }
+.bench-evidence { margin-top: 10px; padding-top: 8px; border-top: 2px solid var(--civ, rgba(221, 211, 180, 0.3)); }
+.bench-evidence ul { list-style: none; margin: 0; padding: 0; }
+.bench-evidence li { padding: 2px 3px; border-radius: 3px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bench-evidence li:hover { background: rgba(255, 255, 255, 0.07); }
+.be-when { display: inline-block; min-width: 5.6em; color: #8d97a8; font-variant-numeric: tabular-nums; }
+/* the plan tracker */
+.bp-seat { margin: 0 0 10px; padding-left: 8px; border-left: 3px solid var(--civ, #dec594); }
+.bp-seat h4 { display: flex; align-items: center; gap: 5px; margin: 0 0 3px; font-size: 1em; }
+.bp-seat h4 span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bp-seat h4 em { font-style: normal; font-weight: 400; font-size: 0.86em; color: #b9c4d2; white-space: nowrap; }
+.bp-objective { margin: 0 0 2px; color: #e9dfc8; }
+.bp-age { margin: 0 0 5px; font-size: 0.86em; color: #8d97a8; cursor: pointer; }
+.bp-steps { list-style: none; margin: 0; padding: 0; }
+.bp-steps li { display: flex; gap: 6px; padding: 1px 0; line-height: 1.35; }
+.bp-steps li i { flex: none; width: 1em; text-align: center; font-style: normal; }
+.bp-steps li span { flex: 1; min-width: 0; }
+.bp-steps li small { flex: none; color: #8d97a8; font-variant-numeric: tabular-nums; }
+.bp-steps .is-acted i { color: #63b9a7; } .bp-steps .is-acted span { color: #cfe6df; }
+.bp-steps .is-dropped i { color: #f0a080; } .bp-steps .is-dropped span { color: #a8a39a; text-decoration: line-through; text-decoration-color: rgba(240, 160, 128, 0.5); }
+.bp-steps .is-late i { color: #e9c46a; }
+.bp-steps .is-uncheckable span, .bp-steps .is-uncheckable i { color: #7f8a99; }
+.bp-ribbon { position: relative; height: 9px; margin: 6px 0 0; border-bottom: 1px solid rgba(255, 255, 255, 0.18); }
+.bp-ribbon i { position: absolute; bottom: 0; width: 2px; height: 8px; margin-left: -1px; background: var(--civ, #dec594); }
+/* the response clock */
+.bc-card { display: flex; align-items: baseline; gap: 6px; margin: 0 0 4px; padding: 4px 6px; border-left: 3px solid var(--civ, #dec594); border-radius: 0 3px 3px 0; background: rgba(255, 255, 255, 0.04); cursor: pointer; }
+.bc-card:hover { background: rgba(255, 255, 255, 0.08); }
+.bc-time { flex: none; color: #8d97a8; font-variant-numeric: tabular-nums; }
+.bc-line { flex: 1; min-width: 0; line-height: 1.35; }
+.bc-card.is-missed { background: rgba(240, 160, 128, 0.1); }
+.bc-card.is-waiting { background: rgba(233, 196, 106, 0.13); }
+@media (max-width: 1100px) { .bench-right { width: 300px; } .bench-left { width: 280px; } }
 @media (max-width: 1100px) { .race-chart { display: none !important; } }
 
 /* Round-answer-time field: indented under the turn-based checkbox it belongs to,

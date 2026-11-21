@@ -225,7 +225,9 @@ class UIManager {
             broadcast: saved.broadcast !== false,
             // The race chart (overhaul step D5) is off until someone asks for it: a new
             // panel over the map must not turn up in a recording by itself.
-            race: saved.race === true
+            race: saved.race === true,
+            // The Bench view (overhaul steps D2 to D4): the same rule.
+            bench: saved.bench === true
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
@@ -3987,6 +3989,11 @@ class UIManager {
         if (this._chartSigs) delete this._chartSigs.raceChartBox;
         this.refreshRaceChart();
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateRaceChart(); }, 1000));
+        if (this.refreshBenchView) {
+            this._benchSig = null; this._benchSeats = null; this._benchEvidence = null;
+            this.refreshBenchView();
+            this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateBenchView(); }, 1500));
+        }
 
         // Periodic refresh
         // Skip dashboard DOM work while the tab is hidden — the background driver
@@ -5227,32 +5234,40 @@ class UIManager {
     // One bar per part of the profile that exists: Grounding, Planning, Follow-through, the
     // others as their steps land. The tooltip carries what the number rests on, so a
     // bar is never just a bar.
-    seatProfileHtml(p) {
-        if (!p || !p.decisions) return '';
-        const esc = s => this.escapeHtml(String(s));
+    // What each part of a seat's profile rests on, in words: the tooltips of the seat
+    // card and of the Bench view's matrix, so the two can never tell different stories.
+    evalTips(p) {
         const share = v => v == null ? '–' : (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + ' %';
         const clock = sec => sec == null ? '–' : Math.floor(sec / 60) + ':' + String(Math.floor(sec) % 60).padStart(2, '0');
-        const g = p.grounding, pl = p.planning, top = g.mistakes[0];
-        const groundTip = !g.judged ? t('eval.groundingNone')
-            : t('eval.groundingTip', { ok: g.ok, judged: g.judged, pct: share(g.rate), contended: g.contended })
-                + (top ? ' ' + t('eval.mistakes', { code: top.code, n: top.n, repeated: g.repeated }) : '');
-        const planTip = !pl.statements ? t('eval.planningNone', { n: p.decisions })
-            : t('eval.planningTip', { statements: pl.statements, revisions: pl.revisions, first: clock(pl.firstAt.sec),
-                coverage: share(pl.coverage), concrete: pl.concrete, steps: pl.steps, revised: pl.shocks.revised, shocks: pl.shocks.n });
-        const fl = p.follow;
-        const followTip = !fl ? '' : !fl.judged ? t('eval.groundingNone') : !pl.statements ? t('eval.planningNone', { n: p.decisions })
-            : t('eval.followTip', { acted: fl.acted, closed: fl.acted + fl.dropped, late: fl.late, pending: fl.pending,
-                wait: fl.decisionsToAct == null ? '–' : fl.decisionsToAct, serving: fl.ordersServing, orders: fl.ordersUnderPlan });
-        const bar = (key, score, tip) => `<span class="lb-dim${score == null ? ' is-empty' : ''}" title="${esc(tip + ' ' + t('eval.provisional'))}">`
-            + `<span class="lb-dim-name">${esc(t('eval.' + key))}</span>`
-            + `<span class="lb-dim-track"><i style="width:${score == null ? 0 : Math.round(score)}%"></i></span>`
-            + `<b>${score == null ? '–' : Math.round(score)}</b></span>`;
-        const ta = p.tactical;
+        const g = p.grounding, pl = p.planning, fl = p.follow, ta = p.tactical, top = g.mistakes[0];
         const chances = ta ? ta.episodes + ta.wonders : 0;
-        const tacticalTip = !ta ? '' : !ta.judged ? t('eval.groundingNone') : !chances ? t('eval.tacticalNone')
-            : t('eval.tacticalTip', { atOnce: ta.atOnce, episodes: ta.episodes, answered: ta.answered, lost: ta.lost,
-                wonderAnswered: ta.wonderAnswered, wonders: ta.wonders });
-        return `<div class="lb-profile">${bar('grounding', g.score, groundTip)}${bar('planning', pl.score, planTip)}${fl ? bar('follow', fl.score, followTip) : ''}${ta ? bar('tactical', ta.score, tacticalTip) : ''}</div>`;
+        return {
+            grounding: !g.judged ? t('eval.groundingNone')
+                : t('eval.groundingTip', { ok: g.ok, judged: g.judged, pct: share(g.rate), contended: g.contended })
+                    + (top ? ' ' + t('eval.mistakes', { code: top.code, n: top.n, repeated: g.repeated }) : ''),
+            planning: !pl.statements ? t('eval.planningNone', { n: p.decisions })
+                : t('eval.planningTip', { statements: pl.statements, revisions: pl.revisions, first: clock(pl.firstAt.sec),
+                    coverage: share(pl.coverage), concrete: pl.concrete, steps: pl.steps, revised: pl.shocks.revised, shocks: pl.shocks.n }),
+            follow: !fl ? '' : !fl.judged ? t('eval.groundingNone') : !pl.statements ? t('eval.planningNone', { n: p.decisions })
+                : t('eval.followTip', { acted: fl.acted, closed: fl.acted + fl.dropped, late: fl.late, pending: fl.pending,
+                    wait: fl.decisionsToAct == null ? '–' : fl.decisionsToAct, serving: fl.ordersServing, orders: fl.ordersUnderPlan }),
+            tactical: !ta ? '' : !ta.judged ? t('eval.groundingNone') : !chances ? t('eval.tacticalNone')
+                : t('eval.tacticalTip', { atOnce: ta.atOnce, episodes: ta.episodes, answered: ta.answered, lost: ta.lost,
+                    wonderAnswered: ta.wonderAnswered, wonders: ta.wonders })
+        };
+    }
+
+    seatProfileHtml(p) {
+        if (!p || !p.decisions) return '';
+        const esc = s => this.escapeHtml(String(s)), tips = this.evalTips(p);
+        const bar = key => {
+            const score = p[key].score;
+            return `<span class="lb-dim${score == null ? ' is-empty' : ''}" title="${esc(tips[key] + ' ' + t('eval.provisional'))}">`
+                + `<span class="lb-dim-name">${esc(t('eval.' + key))}</span>`
+                + `<span class="lb-dim-track"><i style="width:${score == null ? 0 : Math.round(score)}%"></i></span>`
+                + `<b>${score == null ? '–' : Math.round(score)}</b></span>`;
+        };
+        return `<div class="lb-profile">${['grounding', 'planning', 'follow', 'tactical'].filter(k => p[k]).map(bar).join('')}</div>`;
     }
 
     // ---- Leaderboard achievement flyout --------------------------------------
