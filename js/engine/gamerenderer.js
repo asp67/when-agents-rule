@@ -1388,7 +1388,7 @@
                     eb.fire=[world[0]*x+world[8]*z+world[12],world[5]*y+world[13],world[2]*x+world[10]*z+world[14]];
                 }
                 if(building.type!=='farm')eb.wear={buf:this._buf('disc',[1,18]),tex:this.tex.mote,
-                    tint:this._theme==='winter'?[.45,.43,.37]:[.32,.25,.16],alpha:.26,
+                    tint:this._theme==='winter'?[.38,.36,.31]:[.27,.21,.135],alpha:.26,lit:true,
                     model:m3.multiply(world,m3.multiply(m3.translation(0,.025,fp.ez+.5),m3.scaling(1.45,1,2.3)))};
                 eb.opaque.push({
                     buf: this._buf('cylinder', [0.07, 0.09, 2.6, 5]), tex: this.tex.bark, tint: this.WHITE,
@@ -2805,7 +2805,7 @@
             }
             const bb = M().billboard(cam.view);
             this._syncFog();
-            const atmosphere = window.EngineAtmosphere.daylight(
+            const atmosphere = window.EngineAtmosphere.lighting(
                 this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0),
                 this._daySun, this._daySky, this._theme);
             this._sun = atmosphere.sun;
@@ -2851,6 +2851,12 @@
             gl.uniform3fv(this.prog.uniforms.uSunColor, this._sun);
             gl.uniform3fv(this.prog.uniforms.uAmbient, AMBIENT.map((v,i)=>v*(1-atmosphere.night*[0.60,0.51,0.34][i])));
             gl.uniform1f(this.prog.uniforms.uNight, atmosphere.night);
+            // Atmospheric lighting (EngineAtmosphere.lighting): the key, the two fills, the grade.
+            gl.uniform3fv(this.prog.uniforms.uKey, atmosphere.key);
+            gl.uniform3fv(this.prog.uniforms.uFillHigh, atmosphere.fillHigh);
+            gl.uniform3fv(this.prog.uniforms.uFillLow, atmosphere.fillLow);
+            gl.uniform4fv(this.prog.uniforms.uGrade, atmosphere.grade);
+            gl.uniform1f(this.prog.uniforms.uRim, atmosphere.rim);
             gl.uniform3fv(this.prog.uniforms.uSky, this._sky);
             gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
             gl.activeTexture(gl.TEXTURE0);
@@ -2897,9 +2903,13 @@
             // reference, which is safe -- the frame's lists are not changed while drawing.
             const U = this.prog.uniforms, NO_CLOTH = this._noCloth || (this._noCloth = [0, 0, 0, 0]);
             const NO_LIGHTS = this._noLocalLights || (this._noLocalLights = new Float32Array(12));
-            const draw = (list) => {
-                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights;
+            const draw = (list, unlit) => {
+                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit;
                 for (const obj of list) {
+                    // The blended pass is drawn unlit (smoke, flames, rings, glass); an entry
+                    // that is part of the ground says so and takes the ground's light.
+                    const ul = obj.lit ? 0 : unlit;
+                    if (ul !== lit) { gl.uniform1f(U.uUnlit, ul); lit = ul; }
                     const v = obj.vegetation ? 1 : 0;
                     if (v !== veg) { gl.uniform1f(U.uVegetation, v); veg = v; }
                     if (obj.tex !== tex) { gl.bindTexture(gl.TEXTURE_2D, obj.tex); tex = obj.tex; }
@@ -2923,18 +2933,16 @@
                 }
             };
 
-            gl.uniform1f(this.prog.uniforms.uUnlit, 0.0);
-            draw(this._dl.opaque);
+            draw(this._dl.opaque, 0);
 
             gl.enable(gl.BLEND);
             gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
             gl.depthMask(false);
-            gl.uniform1f(this.prog.uniforms.uUnlit, 1.0);
-            draw(this._dl.blended);
-            if (this._fogEntry) draw([this._fogEntry]);
+            draw(this._dl.blended, 1);
+            if (this._fogEntry) draw([this._fogEntry], 1);
             // Not in the second picture: a ping is made to be seen from far off and runs 40
             // units out, which floods a close picture of the fight it comes from.
-            if (!inset && this._ringEntries && this._ringEntries.length) draw(this._ringEntries);
+            if (!inset && this._ringEntries && this._ringEntries.length) draw(this._ringEntries, 1);
             // Cinematic: a soft halo on what is brightest, a little more at night. After the
             // fog, so hidden ground cannot glow; before the bars, so they never do.
             if (!inset && this.visualStyle === 'film' && window.EngineBloom) {
@@ -2947,7 +2955,7 @@
                 }
             }
             gl.disable(gl.DEPTH_TEST); // bars read over everything, like the old sprites
-            draw(this._dl.bars);
+            draw(this._dl.bars, 1);
             gl.enable(gl.DEPTH_TEST);
             gl.depthMask(true);
             gl.disable(gl.BLEND);

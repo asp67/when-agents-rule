@@ -33,6 +33,44 @@
             sky: blend([0.075,0.105,0.19],blend(sky,[0.67,0.40,0.32],warm*0.6),daylight)
         };
     };
+    // Atmospheric lighting adds its light up in linear space (overhaul step A1). These
+    // are the amounts; the display curve is a square root in the shader, so a colour here
+    // is the square of the colour it looks like.
+    EngineAtmosphere.LIGHT = {
+        // By day the key light is not chosen, it is solved for: full sun on flat ground
+        // must come to the colour it had before, the sky's fill of that time plus the
+        // theme's sun at this height. Every ground palette was painted against that, and
+        // squaring a warm sun instead turned desert sand orange.
+        skyUp: [0.44, 0.49, 0.54], sunUp: 0.696,
+        moonGain: 4.6,                      // at night: the night's light squared, times this. A moon that models shapes
+        fillSky: 0.55, fillFloor: 0.03,     // how much of the sky's colour comes down as fill, and a floor under it
+        nightFill: [0.04, 0.065, 0.13],     // what a clear night adds, so shade is dark blue and not black
+        bounce: 0.10,                       // how much of the key light the ground sends back up
+        fillLow: 0.25,                      // how much of the sky fill reaches a face that looks down
+        ground: { summer: [0.55, 0.70, 0.35], desert: [0.90, 0.75, 0.50], winter: [0.85, 0.90, 1.0] },
+        duskKey: [0.16, 0.0, -0.08],        // the low sun: more red, less blue, at its most halfway to night
+        duskGain: [0.02, 0.0, -0.02],       // the grade of that hour
+        saturation: 1.12, nightSaturation: 0.92, duskSaturation: 0.08,
+        rim: 1.6, nightRim: 3.2             // sky light on an edge turned away: what lifts a figure off dark ground
+    };
+    // daylight() and, from it, what the Atmospheric shader is given: the key light (sun
+    // or moon), the fill from above and from below, the grade (gain per channel, then
+    // saturation) and the strength of the rim.
+    EngineAtmosphere.lighting = (seconds, sun, sky, theme='summer') => {
+        const L=EngineAtmosphere.LIGHT, day=EngineAtmosphere.daylight(seconds,sun,sky,theme);
+        const n=day.night, dusk=4*n*(1-n), ground=L.ground[theme]||L.ground.summer;
+        const fillHigh=day.sky.map((v,i)=>v*v*L.fillSky+L.fillFloor+n*L.nightFill[i]);
+        const key=day.sun.map((v,i)=>{
+            const sunlit=L.skyUp[i]+v*L.sunUp;                           // flat ground in full sun, as it looked
+            const byDay=Math.max(0,(sunlit*sunlit-fillHigh[i])/L.sunUp), byNight=v*v*L.moonGain;
+            return (byDay+(byNight-byDay)*n)*(1+dusk*L.duskKey[i]);
+        });
+        const fillLow=key.map((v,i)=>v*ground[i]*L.bounce+fillHigh[i]*L.fillLow);
+        return { night:n, sun:day.sun, sky:day.sky, key, fillHigh, fillLow,
+            grade:[1+dusk*L.duskGain[0],1+dusk*L.duskGain[1],1+dusk*L.duskGain[2],
+                L.saturation+(L.nightSaturation-L.saturation)*n+dusk*L.duskSaturation],
+            rim:L.rim+(L.nightRim-L.rim)*n };
+    };
     // Snap in the light's image plane: rounding world X/Z leaves fractional
     // shadow texels after the sun rotation, which makes edges crawl during pans.
     EngineAtmosphere.shadowCamera = (m, target, halfH, size, sun) => {
@@ -103,6 +141,9 @@
         uniform float uShadowDepthPerTexel;
         uniform float uUnlit, uAlpha, uTime, uNight, uMaterial, uAtmosphere, uShadowStrength, uShadowTexel;
         uniform vec2 uHaze;
+        uniform vec3 uKey, uFillHigh, uFillLow;
+        uniform vec4 uGrade;
+        uniform float uRim;
         varying vec3 vNormal, vWorld;
         varying vec2 vUv;
         varying float vDepth;
@@ -196,11 +237,19 @@
             }
             float sun = max(dot(n,uSunDir),0.0);
             vec3 legacy = base*(uAmbient + uSunColor*sun);
-            // Cool sky fill against warm sun; material colour remains legible in shade.
-            vec3 skyFill = mix(vec3(0.21,0.22,0.19),vec3(0.44,0.49,0.54), n.y*0.5+0.5);
-            skyFill *= mix(vec3(1.0),vec3(0.40,0.49,0.66),uNight);
-            vec3 light = skyFill + uSunColor*sun*visibility(n);
-            vec3 col = base*light;
+            // Atmospheric: light is added up in linear space and brought back to the
+            // display at the end (a square and a square root stand in for the display
+            // curve). The key light is the sun or the moon; the fill comes from the sky
+            // above and, warmer and weaker, from the lit ground below.
+            vec3 albedo = base*base;
+            vec3 light = mix(uFillLow,uFillHigh,n.y*0.5+0.5) + uKey*sun*visibility(n);
+            vec3 col = albedo*light;
+            // Sky light along an edge turned away from the eye, on things that stand:
+            // it is what lifts a figure off the ground at night.
+            if (uMaterial < 0.5 || uMaterial > 2.5) {
+                float rim = 1.0-max(dot(n,eye),0.0);
+                col += albedo*uFillHigh*rim*rim*rim*uRim;
+            }
             // One nearby entrance lamp per building, without extra light/shadow passes.
             for(int i=0;i<3;i++){
               vec4 localLight=uLocalLights[i];
@@ -208,8 +257,9 @@
                 vec3 delta=localLight.xyz-vWorld;
                 float d2=dot(delta,delta);
                 float facing=max(0.0,dot(n,delta*inversesqrt(max(.01,d2))));
-                vec3 glow=base*vec3(1.0,.46,.12)*facing*localLight.w*1.8/(1.0+d2*1.7);
-                col+=glow;legacy+=glow;
+                float reach=facing*localLight.w/(1.0+d2*1.7);
+                col+=albedo*vec3(1.0,.30,.045)*reach*5.2;
+                legacy+=base*vec3(1.0,.46,.12)*reach*1.8;
               }
             }
             if (uMaterial > 2.5 && uMaterial < 3.5) {
@@ -217,7 +267,7 @@
                 vec3 specTint=mix(vec3(1.0),base,0.3);
                 float spec=pow(max(dot(n,normalize(eye+uSunDir)),0.0),48.0);
                 float rim=pow(1.0-max(dot(n,eye),0.0),4.0);
-                col += specTint*uSunColor*spec*0.85 + uSky*rim*0.22;
+                col += specTint*uKey*spec*0.6 + uSky*uSky*rim*0.3;
             }
             if (water > 0.01) {
                 // World coordinates keep offshore and coastal waves continuous.
@@ -236,10 +286,18 @@
                 vec3 sea=mix(base*vec3(0.72,0.96,1.02)*mix(vec3(1.0),vec3(0.38,0.48,0.65),uNight),uSky*0.72,fresnel*0.8);
                 sea += uSunColor*glint*0.42;
                 sea *= 0.98+swell.x*0.04;
-                col = mix(col,sea,water);
+                // The sea keeps the look it was tuned to: its own shoulder, then into
+                // linear with the rest.
+                sea = sea/(vec3(1.0)+sea*0.16)*1.12;
+                col = mix(col,sea*sea,water);
             }
-            // A mild shoulder preserves bright plaster without bleaching the scene.
-            col = col/(vec3(1.0)+col*0.16)*1.12;
+            // The shoulder works on the brightest channel and scales the colour by it, so
+            // bright plaster and lit sand roll off without losing their hue. Then back to
+            // the display, and the grade of the hour.
+            float peak = max(col.r,max(col.g,col.b));
+            col *= min(1.0/max(peak,0.0001),(1.06+peak*0.10)/(1.0+peak*0.62));
+            col = sqrt(col);
+            col = mix(vec3(dot(col,vec3(0.299,0.587,0.114))),col,uGrade.a)*uGrade.rgb;
             col = mix(legacy,col,uAtmosphere);
             col = mix(col,base,uUnlit);
             float haze = clamp((vDepth-uHaze.x)/max(1.0,uHaze.y-uHaze.x),0.0,1.0);
