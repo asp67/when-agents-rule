@@ -376,6 +376,8 @@ js/
 ├── eval/bench-view.js  # the Bench panels (key B), an overlay of analyze and broadcast mode: comparison matrix, plan tracker, response clock; the comparison lower third of broadcast mode (key C)
 ├── eval/marks.js       # evaluation marks in the world: a tick for a plan step done, an arrow to a threat answered, a plate over a finished battle
 ├── seat-view.js        # the model's view (key V): the 3-D world as one seat knows it, its fog, the rivals it sees, ghosts where it only remembers
+├── eval/moments.js     # the heaviest moments of a match, each with the decision behind it
+├── moments-view.js     # the corner replay of a decisive fight (key P) and the reel on the results screen
 ├── eval/season.js      # the season table: profiles added up over matches under the same conditions, with intervals
 ├── season-page.js      # the Season page beside Benchmark: sample matches, matches played here, transcripts added
 ├── bench-*.js          # the benchmark: scenarios, page, worker

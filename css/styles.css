@@ -3421,6 +3421,25 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .lb-list.collapsed .lb-health { display: none; }
 
 /* Strategic zoom layer (review #12). */
+/* The corner replay (overhaul step B2): beside the minimap, where the race chart sits; above it when both are on. */
+.replay-corner {
+    position: fixed; right: calc(var(--mm-edge) + var(--mm-canvas) + var(--mm-gut) + 44px); bottom: var(--mm-bottom); z-index: 1001; pointer-events: none;
+    padding: 7px 9px 9px; border-radius: 5px; background: rgba(10, 14, 30, 0.92); border: 1px solid rgba(221, 211, 180, 0.3); color: #e8eef7;
+}
+body.race-view .replay-corner { bottom: calc(var(--mm-bottom) + 222px); }
+.replay-corner canvas { display: block; border-radius: 3px; }
+.replay-head { display: flex; flex-direction: column; gap: 1px; margin-bottom: 6px; font-size: 0.78em; }
+.replay-head b { color: #f2c46a; letter-spacing: 0.03em; }
+.replay-head span { color: #c9d3e2; }
+/* The reel on the results screen: the same frame as the report card above it. */
+.reel-list { list-style: none; margin: 0; padding: 0; }
+.reel-list li { display: grid; grid-template-columns: 52px 1fr auto; column-gap: 12px; align-items: baseline; padding: 7px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); }
+.reel-time { color: #ddd3b4; font-variant-numeric: tabular-nums; font-weight: 600; }
+.reel-what { color: #fff; }
+.reel-why { grid-column: 2; font-size: 0.86em; color: #9fd0c4; }
+.reel-why.is-none { color: #8a93a8; }
+.reel-list li .test-btn { grid-column: 3; grid-row: 1 / span 2; align-self: center; }
+
 /* The model's view (overhaul step B1): whose eyes these are, above the minimap; and the
    hollow marks for what that seat only remembers. */
 .seat-view-badge {
