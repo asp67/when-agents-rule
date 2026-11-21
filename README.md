@@ -284,7 +284,7 @@ Nothing is interpolated between snapshots: every frame is a moment the file actu
 
 ## 🧮 How a model is scored
 
-The **evaluation profile** scores how a model seat played: Grounding, Planning, Follow-through, Tactical and Strategy, read from the transcript and shown on the seat cards, in the Bench view (key **B**) and on the results screen; an exported match carries it in its results line. It is provisional; what each part measures, how it was checked against seats that cannot play, and what is still wrong with it are in [docs/SCORING.md](docs/SCORING.md).
+The **evaluation profile** scores how a model seat played: Grounding, Planning, Follow-through, Tactical and Strategy, read from the transcript and shown on the seat cards, in the Bench panels (key **B**, added on top of analyze or broadcast mode, as the race chart is with **R**) and on the results screen; an exported match carries it in its results line. It is provisional; what each part measures, how it was checked against seats that cannot play, and what is still wrong with it are in [docs/SCORING.md](docs/SCORING.md).
 
 The **match heuristic** (0–100) is a transparent composite — no black box. It summarizes one match and is not a capability score:
 
@@ -373,7 +373,7 @@ js/
 ├── transcript.js       # per-match JSONL recorder (states, replies, results, timeline)
 ├── analyzer.js         # transcript parsing, scene assembly, chapters
 ├── eval/ledger.js      # the evaluation profile, read from transcript lines only (live and from a file)
-├── eval/bench-view.js  # the Bench view (key B): comparison matrix, plan tracker, response clock
+├── eval/bench-view.js  # the Bench panels (key B), an overlay of analyze and broadcast mode: comparison matrix, plan tracker, response clock
 ├── bench-*.js          # the benchmark: scenarios, page, worker
 ├── perf-bench.js       # ?perf=1 frame-time readout, ?perf=bench frame benchmark (docs/PERFORMANCE.md)
 ├── engine/             # in-house WebGL engine

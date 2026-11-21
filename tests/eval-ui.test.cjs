@@ -108,11 +108,12 @@ test('nothing judged is a dash and no plan is a zero, and neither is hidden', ()
 // ---- the race chart (step D5) ------------------------------------------------------------
 // A page with just enough elements for the chart to draw into, counting every redraw.
 function racePage() {
-    const els = {}, writes = { n: 0 }, store = {};
+    const els = {}, writes = { n: 0 }, store = {}, cls = new Set();
     const el = id => els[id] || (els[id] = { id, style: {}, classList: { toggle() {}, contains: () => false }, setAttribute() {}, textContent: '',
         _html: '', get innerHTML() { return this._html; }, set innerHTML(v) { this._html = v; if (id === 'raceChartMain') writes.n++; } });
     ['raceChart', 'raceBtn', 'raceChartBox', 'raceChartMain', 'raceTitle', 'raceModePower', 'raceModeGathered', 'raceWait'].forEach(el);
-    const u = ui({ document: { getElementById: id => els[id] || null }, getUiLang: () => 'en', tg: s => s,
+    const u = ui({ document: { getElementById: id => els[id] || null,
+            body: { classList: { toggle: (c, on) => { if (on) cls.add(c); else cls.delete(c); }, contains: c => cls.has(c) } } }, getUiLang: () => 'en', tg: s => s,
         getCivilization: () => ({ name: 'Civ', color: 0x336699 }),
         localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } } });
     u.teamDotHtml = () => '';
@@ -120,7 +121,7 @@ function racePage() {
     u.game = { _timeline: { samples: samples(4), ages: [{ id: 'a', age: 'bronze', t: 10 }], wonders: [] },
         aiManager: { aiPlayers: [{ id: 'a', seat: 0, civilization: 'greek' }, { id: 'b', seat: 1, civilization: 'persian' }] },
         openAIAIManager: { transcripts: { ledger: WarEval.createLedger() } } };
-    return { u, els, writes, store, samples };
+    return { u, els, writes, store, samples, cls };
 }
 const planLine = (playerId, sec, steps) => JSON.stringify({ turn: 1, playerId, state: { clock: { matchSeconds: sec } }, parsed: { commands: [], plan: steps } });
 
@@ -296,4 +297,31 @@ test('the saved results carry the profile as a table, and name the heuristic as 
     assert.ok(html.indexOf('id="summaryProfile"') > html.indexOf('id="summaryWinner"') && html.indexOf('id="summaryProfile"') < html.indexOf('id="summaryGrid"'));
     const card = src.slice(src.indexOf('<div class="sum-card$' + '{r.isWinner'), src.indexOf("document.getElementById('summaryGrid').innerHTML"));
     assert.doesNotMatch(card, /sum-sound/);
+});
+
+test('the race chart is an overlay of either mode: its switch works in broadcast mode and lights the icon on the board', () => {
+    const { u, els, cls } = racePage();
+    let drawn = 0;
+    u.renderBroadcast = () => { drawn++; };
+    u.toggleRaceChart();                                                // in analyze mode
+    assert.deepEqual([cls.has('race-view'), els.raceChart.style.display, drawn], [true, '', 0]);
+    cls.add('broadcast-mode');                                          // and it stays through the switch of mode
+    u.refreshRaceChart();
+    assert.deepEqual([u.raceOn(), els.raceChart.style.display], [true, '']);
+    u.toggleRaceChart(false);
+    assert.deepEqual([cls.has('race-view'), els.raceChart.style.display, drawn], [false, 'none', 1]);
+    u.toggleRaceChart(true);
+    assert.deepEqual([u.raceOn(), els.raceChart.style.display, drawn], [true, '', 2]);
+    // Nothing in the stylesheet takes an overlay away in a mode, or a mode's own panels away for an overlay.
+    const css = fs.readFileSync(path.join(root, 'css/styles.css'), 'utf8');
+    assert.doesNotMatch(css, /body\.broadcast-mode\s+(#raceChart|\.bench-panel)\s*\{\s*display:\s*none/);
+    assert.doesNotMatch(css, /body\.bench-view[^{]*#(aiDecisionLog|spectatorLeaderboard)[^{]*\{\s*display:\s*none/);
+    assert.match(css, /\.bench-left \{ left: 354px;/);                   // beside the decision log, not over it
+    assert.match(css, /\.bench-right \{ right: 328px;/);                 // beside the leaderboard
+    assert.match(css, /body\.broadcast-mode \.bench-left \{ left: 16px;/);
+    // The broadcast board carries an icon for each beside its others, lit while on.
+    const src = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8');
+    assert.match(src, /icon\('broadcastBench'[^\n]+toggleBenchView\(\)/);
+    assert.match(src, /icon\('broadcastRace'[^\n]+toggleRaceChart\(\)/);
+    assert.match(src, /on\('broadcastBench', [^\n]+benchOn\(\)\);\s+on\('broadcastRace', this\.raceOn\(\)\);/);
 });

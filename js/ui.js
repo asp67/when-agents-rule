@@ -4422,8 +4422,12 @@ class UIManager {
                 this._broadcastQuit = quit;
                 const ctl = document.createElement('span');
                 ctl.className = 'broadcast-ctls';
+                // And the two overlays that either mode can carry: the Bench panels and the
+                // race chart. The bar's buttons are gone here, so these and B / R switch them.
                 ctl.append(icon('broadcastAuto', '\u{1F3AC}', t('spec.actionCamTitle'), () => this.game.toggleActionCam()),
-                    icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()), exit);
+                    icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()),
+                    icon('broadcastBench', '\u{1F4CA}', t('spec.benchTitle'), () => { if (this.toggleBenchView) this.toggleBenchView(); }),
+                    icon('broadcastRace', '\u{1F4C8}', t('spec.raceTitle'), () => this.toggleRaceChart()), exit);
                 this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
             }
@@ -4449,6 +4453,8 @@ class UIManager {
             this._broadcastQuit = null;
         }
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
+        // The overlays stay through the switch and move to the new mode's places.
+        if (this.updateBenchView) { this._benchTop = null; this.updateBenchView(); }
     }
     // One pill per seat, in seat order: badge, name, age, army, workers, buildings, and
     // how often a spectator's advice reached that model -- a broadcast must not hide that
@@ -4520,6 +4526,8 @@ class UIManager {
             const on = (id, v) => { const b = document.getElementById(id); if (b) { b.classList.toggle('sb-on', !!v); b.setAttribute('aria-pressed', v ? 'true' : 'false'); } };
             on('broadcastAuto', this.game._actionCam);
             on('broadcastIntent', this.intentOn());
+            on('broadcastBench', !!this.benchOn && this.benchOn());
+            on('broadcastRace', this.raceOn());
         }
         const w = document.getElementById('broadcastWonder');
         if (!w) return;
@@ -5194,6 +5202,7 @@ class UIManager {
         this.viewPreferences().race = !!on;
         this.saveViewPreferences();
         this.refreshRaceChart();
+        if (this.broadcastOn() && this.renderBroadcast) this.renderBroadcast();   // its icon on the board follows
     }
     setRaceMode(mode) {
         this._raceMode = mode === 'gathered' ? 'gathered' : 'power';
@@ -5203,6 +5212,8 @@ class UIManager {
         const on = this.raceOn(), panel = document.getElementById('raceChart'), btn = document.getElementById('raceBtn');
         if (btn) { btn.classList.toggle('sb-on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
         if (panel) panel.style.display = on ? '' : 'none';
+        // Said on the body too: in broadcast mode the caption keeps clear of the chart.
+        if (document.body && document.body.classList) document.body.classList.toggle('race-view', on);
         this.updateRaceChart();
     }
     // A seat's plan changes as marks on the chart's clock.

@@ -1,7 +1,10 @@
 // The Bench view (overhaul steps D2 to D4): the evaluation profile as a screen.
 //
-// A switch in the spectator bar, or the B key, trades the decision log and the
-// leaderboard for three things read from the ledger (js/eval/ledger.js):
+// A switch (the Bench button in the bar, the icon on the broadcast board, or the B key)
+// that ADDS two panels to whichever mode is on screen. Analyze mode keeps its decision log
+// and leaderboard, and the panels stand inside them; broadcast mode keeps its scoreboard
+// and captions, and the panels stand at the edges under the board. Three things, read
+// from the ledger (js/eval/ledger.js):
 //   the matrix          every part of the profile by seat, with what it rests on, how it
 //                       moved over the last ten minutes, and the decisions behind a cell;
 //                       under the scored parts their Index, the range used, and the cost
@@ -26,19 +29,38 @@
         this.viewPreferences().bench = !!on;
         this.saveViewPreferences();
         this.refreshBenchView();
+        if (this.broadcastOn && this.broadcastOn() && this.renderBroadcast) this.renderBroadcast();   // its icon follows
     };
-    // B switches the view while a match is being watched, except while typing.
+    // B switches the Bench panels and R the race chart while a match is being watched, in
+    // either mode and except while typing. In broadcast mode the bar is gone, so the keys
+    // and the two icons on the board are the way to them.
     P.wireBenchKey = function () {
         if (this._benchKeyWired) return;
         this._benchKeyWired = true;
         document.addEventListener('keydown', e => {
-            if ((e.key !== 'b' && e.key !== 'B') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+            const key = String(e.key || '').toLowerCase();
+            if ((key !== 'b' && key !== 'r') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
             const el = e.target;
             if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
-            if (!this.game.spectatorMode || !this.game.gameStarted || !document.getElementById('benchMatrix')) return;
+            if (!this.game.spectatorMode || !this.game.gameStarted || !document.getElementById(key === 'b' ? 'benchMatrix' : 'raceChart')) return;
             e.preventDefault();
-            this.toggleBenchView();
+            if (key === 'b') this.toggleBenchView(); else this.toggleRaceChart();
         });
+    };
+    // Where the panels start: under the mode's own top strip, the bar in analyze mode and
+    // the scoreboard in broadcast mode, which wraps to a second row when there are many
+    // seats. Measured, and handed to the stylesheet as --bench-top. The transcript panel
+    // opens in the slot beside the leaderboard, so the matrix is told when it is up.
+    P.benchPlace = function () {
+        const body = document.body;
+        if (!body || !body.style || !body.style.setProperty) return;
+        body.classList.toggle('tv-open', !!this._transcriptFor);
+        const anchor = document.getElementById(body.classList.contains('broadcast-mode') ? 'broadcastBoard' : 'spectatorHUD');
+        const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+        const top = r && r.height ? Math.round(this.zoomedPx(r.bottom + 10)) + 'px' : '';
+        if (top === this._benchTop) return;
+        this._benchTop = top;
+        if (top) body.style.setProperty('--bench-top', top); else body.style.removeProperty('--bench-top');
     };
     P.refreshBenchView = function () {
         this.wireBenchKey();
@@ -117,6 +139,7 @@
     P.updateBenchView = function () {
         const left = document.getElementById('benchLeft'), right = document.getElementById('benchMatrix');
         if (!left || !right || !this.benchOn()) return;
+        this.benchPlace();
         const ledger = this.benchLedger(), ev = this._benchEvidence;
         const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : ''].join(':');
         if (sig === this._benchSig) return;

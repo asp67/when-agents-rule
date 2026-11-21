@@ -13,14 +13,15 @@ const SAMPLE = path.join(root, 'samples/2026-10-05_gpt6.1-sol-claude-sonnet5.5-d
 
 // A page with the two panels and the button, and the UI class with the Bench view on it.
 function page() {
-    const els = {}, store = {}, body = new Set(), keys = [];
+    const els = {}, store = {}, body = new Set(), keys = [], vars = {};
     const el = id => els[id] || (els[id] = { id, style: {}, innerHTML: '', classList: { toggle() {} }, setAttribute() {} });
     ['benchLeft', 'benchMatrix', 'benchBtn'].forEach(el);
     const context = vm.createContext({ console, Date, WarEval, t: (k, v) => k + (v ? JSON.stringify(v) : ''), getUiLang: () => 'en',
         OpenAIAIManager: { MAX_COMMANDS_PER_TURN: 3 },
         localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
         document: { getElementById: id => els[id] || null, addEventListener: (type, fn) => keys.push(fn),
-            body: { classList: { toggle: (c, on) => { if (on) body.add(c); else body.delete(c); }, contains: c => body.has(c) } } } });
+            body: { style: { setProperty: (k, v) => { vars[k] = v; }, removeProperty: k => { delete vars[k]; } },
+                classList: { toggle: (c, on) => { if (on) body.add(c); else body.delete(c); }, contains: c => body.has(c) } } } });
     for (const f of ['js/ui.js', 'js/eval/bench-view.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8') + '\nthis.UI = UIManager;', context);
     const u = Object.create(context.UI.prototype);
     u.escapeHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -28,7 +29,7 @@ function page() {
     Object.assign(u, { teamDotHtml: () => '', renderTranscriptViewer() {}, updateSpectatorPlayerList() {}, tvJumpTo: turn => opened.push(turn) });
     const ledger = WarEval.createLedger();
     u.game = { spectatorMode: true, gameStarted: true, openAIAIManager: { transcripts: { ledger } } };
-    return { u, els, store, body, keys, ledger, opened };
+    return { u, els, store, body, keys, ledger, opened, vars };
 }
 // One decision of seat a or b: a plan, orders with their verdicts, and what the state showed under attack.
 const decision = (id, sec, o = {}) => JSON.stringify({ turn: o.turn || 1, playerId: id, name: 'Seat ' + id, seat: id === 'a' ? 0 : 1, latencyMs: 4000,
@@ -226,4 +227,45 @@ test('D8: the results screen shows the same matrix, and a decision opens where i
     assert.match(els.summaryProfile.innerHTML, /#1 0:10<\/span> c</);            // the list is still there to read
     assert.equal(u.benchOpenTurn('a', 1), undefined);
     assert.equal(calls.length, 3);
+});
+
+test('the panels are an overlay of either mode: under the mode\'s own top strip, switched by B, and R for the race chart', () => {
+    const { u, els, body, keys, vars } = page();
+    els.spectatorHUD = { getBoundingClientRect: () => ({ bottom: 81, height: 67 }) };
+    els.broadcastBoard = { getBoundingClientRect: () => ({ bottom: 122, height: 110 }) };    // many seats: wrapped to two rows
+    let race = 0, board = 0;
+    u.toggleRaceChart = () => { race++; };
+    u.renderBroadcast = () => { board++; };
+    const press = key => keys[0]({ key, target: {}, preventDefault() {} });
+    u.refreshBenchView();
+    press('r');                                                         // no race chart on this page yet: nothing to switch
+    assert.equal(race, 0);
+    els.raceChart = { style: {} };
+    // Analyze mode: on, under the bar, and the bar's own panels are not touched.
+    press('b');
+    assert.deepEqual([u.benchOn(), vars['--bench-top'], body.has('tv-open'), board], [true, '91px', false, 0]);
+    assert.deepEqual([els.benchLeft.style.display, els.benchMatrix.style.display], ['', '']);
+    // Into broadcast mode: still on, now under the scoreboard, however tall it is.
+    body.add('broadcast-mode');
+    u.updateBenchView();
+    assert.deepEqual([u.benchOn(), vars['--bench-top']], [true, '132px']);
+    // There the bar is gone: B and the icon on the board are the switch, and the icon is redrawn.
+    press('B');
+    assert.deepEqual([u.benchOn(), els.benchMatrix.style.display, board], [false, 'none', 1]);
+    press('b');
+    assert.deepEqual([u.benchOn(), els.benchMatrix.style.display, board], [true, '', 2]);
+    press('r'); press('R');
+    assert.equal(race, 2);
+    press('r', { tagName: 'INPUT' });
+    // A smaller UI size zooms the panels, so the measured offset is divided back out.
+    u.viewPreferences().uiScale = 'medium';
+    u.updateBenchView();
+    assert.equal(vars['--bench-top'], Math.round(132 / 0.85) + 'px');
+    // The transcript panel shares the slot beside the leaderboard: the stylesheet is told when it is up.
+    u._transcriptFor = 'a';
+    u.updateBenchView();
+    assert.equal(body.has('tv-open'), true);
+    u._transcriptFor = null;
+    u.updateBenchView();
+    assert.equal(body.has('tv-open'), false);
 });

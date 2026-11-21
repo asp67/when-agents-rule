@@ -15,7 +15,7 @@ single number as a result.
 | Where | What |
 |---|---|
 | Seat cards while watching | One bar per part, and the Index. The tooltip says what each bar rests on. |
-| Bench view (key **B**) | The parts by seat, with the raw measure, the trend over ten minutes and the decisions behind each cell. |
+| Bench panels (key **B**) | The parts by seat, with the raw measure, the trend over ten minutes and the decisions behind each cell. An overlay: it adds to analyze mode or to broadcast mode and replaces nothing of either. |
 | Results screen | The same matrix, at the end of a match and in the Results card during one. A decision in a cell's list opens in the analyzer. |
 | Saved results (`.md`) | A table of the parts and the Index per model seat. |
 | The transcript's `results` line | `profile`: every number of the profile, without the long lists behind them. |

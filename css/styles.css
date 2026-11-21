@@ -2585,19 +2585,39 @@ body.spectator-mode #unitInfo.spectator-card {
 .race-close:hover { color: #fff; }
 .race-wait { margin: 14px 0; font-size: 0.74em; color: #93a6c8; text-align: center; }
 .race-key { margin: 3px 0 0; font-size: 0.62em; line-height: 1.35; color: #8d97a8; }
-body.broadcast-mode #raceChart { display: none !important; }
+/* The race chart is an overlay of both modes. In broadcast mode the caption (bottom left)
+   keeps clear of it. */
+body.broadcast-mode.race-view .chronicle-caption { max-width: min(900px, calc(100vw / var(--ui-scale, 1) - 64px - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - min(360px, 30vw) - 16px)); }
 
-/* The Bench view (overhaul steps D2 to D4). Two panels in the slots of the decision log
-   and the leaderboard, which it trades places with; same panel look as theirs. */
-body.bench-view #aiDecisionLog, body.bench-view #spectatorLeaderboard { display: none !important; }
-body.broadcast-mode .bench-panel { display: none !important; }
+/* The Bench panels (overhaul steps D2 to D4). An overlay of BOTH modes: they add to what a
+   mode shows and replace none of it.
+     analyze mode    the decision log (left) and the leaderboard (right) stay; the panels
+                     stand inside them, under the bar
+     broadcast mode  the scoreboard and the captions stay; the panels stand at the edges
+                     under the board, and the left one ends above the caption
+   --bench-top is measured from the bar or the board (benchPlace), which may wrap. */
 .bench-panel {
-    position: absolute; z-index: 1000; top: 14px; padding: 8px 10px 10px; overflow-y: auto;
+    position: absolute; z-index: 1000; top: var(--bench-top, 92px); padding: 8px 10px 10px; overflow-y: auto;
     background: rgba(25, 30, 25, 0.95); border: 1px solid rgba(221, 211, 180, 0.16); border-radius: 4px;
-    color: #e0e0e0; font-size: 0.8em; scrollbar-width: thin;
+    color: #e0e0e0; font-size: 0.8em; scrollbar-width: thin; zoom: var(--ui-scale, 1);
 }
-.bench-left { left: 14px; width: 332px; max-height: calc(100vh - 28px); }
-.bench-right { right: 16px; width: 344px; max-height: calc(100vh - 312px); }
+/* Beside the decision log (14 + 332) and beside the leaderboard (16 + 304). */
+.bench-left { left: 354px; width: 332px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 92px) - 14px); }
+.bench-right { right: 328px; width: 344px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 92px) - 312px); }
+/* The transcript panel opens beside the leaderboard too (right: 330px, 440 wide). Where
+   there is room the matrix steps aside; where there is not, the transcript lies over it
+   until it is closed. */
+#transcriptViewer { z-index: 1001; }
+@media (min-width: 1800px) { body.tv-open:not(.broadcast-mode) .bench-right { right: 778px; } }
+body.broadcast-mode .bench-left { left: 16px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 78px) - 150px); }
+body.broadcast-mode .bench-right { right: 16px; }
+body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
+/* A window too narrow for log, two panels and leaderboard side by side: the panels take
+   the outer slots over the log and the leaderboard rather than each other. */
+@media (max-width: 1360px) {
+    body:not(.broadcast-mode) .bench-left { left: 14px; }
+    body:not(.broadcast-mode) .bench-right { right: 16px; }
+}
 .bench-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-weight: 700; color: #dec594; letter-spacing: 0.2px; }
 .bench-head span { font-weight: 400; font-size: 0.82em; color: #8d97a8; }
 .bench-clockhead { margin-top: 12px; padding-top: 9px; border-top: 1px solid rgba(221, 211, 180, 0.14); }
