@@ -3421,6 +3421,16 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .lb-list.collapsed .lb-health { display: none; }
 
 /* Strategic zoom layer (review #12). */
+/* The model's view (overhaul step B1): whose eyes these are, above the minimap; and the
+   hollow marks for what that seat only remembers. */
+.seat-view-badge {
+    /* Left of the leaderboard and above the minimap's row: over the map, on nobody's panel. */
+    position: fixed; right: 330px; bottom: 305px; z-index: 1001; pointer-events: none; zoom: var(--ui-scale, 1);
+    display: flex; align-items: center; gap: 7px; max-width: 420px; white-space: nowrap; padding: 6px 12px; border-radius: 6px; font-size: 0.82em; line-height: 1.3;
+    color: #eef3f8; background: rgba(10, 14, 30, 0.9); border: 1px solid rgba(255, 255, 255, 0.16); border-left: 4px solid var(--seat, #ddd3b4);
+}
+.intent-svg .seat-ghost { fill: rgba(10, 14, 30, 0.28); stroke-width: 2.5; stroke-dasharray: 5 4; }
+.intent-svg .seat-ghost.is-building { stroke-dasharray: 7 5; }
 /* Evaluation marks (overhaul step B4), in the same overlay as the strategic marks. */
 .intent-svg .eval-text { font-size: 12.5px; font-weight: 600; fill: #dfe8f2; font-family: inherit; }
 .intent-svg .eval-plate { fill: rgba(10, 14, 30, 0.88); stroke-width: 1.5; }

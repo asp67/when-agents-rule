@@ -165,6 +165,10 @@
             this.tex = null;                  // built on setTerrain (theme-aware)
             this._theme = null;
             this._fogTex = null;              // GL texture wrapping the fog canvas
+            // The model's view (js/seat-view.js): one seat's fog in place of the match's, and
+            // a filter for the units and buildings that seat cannot see. Both null: everything.
+            this.fogView = null;
+            this.entityHidden = null;
             this._fogCanvas = null;
             this._dl = { opaque: [], blended: [], bars: [] }; // per-frame lists
             this.WHITE = [1, 1, 1];
@@ -2138,7 +2142,7 @@
             if (this._props && this._halfH < 90) {
                 for (const pr of this._props) {
                     if (this._cull(pr.x, pr.z, 3)) continue;
-                    if (typeof EngineGrass !== 'undefined' && !EngineGrass.visibleRect(this.game?.fogOfWar,pr.x,pr.z,3,3,true)) continue;
+                    if (typeof EngineGrass !== 'undefined' && !EngineGrass.visibleRect(this._fow(),pr.x,pr.z,3,3,true)) continue;
                     dl.opaque.push(pr);
                 }
             }
@@ -2187,14 +2191,14 @@
                 this._rubble = this._rubble.filter(r => ambientTime - r.born < EngineFx.RUBBLE_SECONDS && ambientTime >= r.born);
                 for (const r of this._rubble) {
                     if (this._cull(r.x, r.z, r.r + 2)) continue;
-                    if (this.game?.fogOfWar && !this.game.fogOfWar.isPositionVisible(r.x, r.z)) continue;   // explored or in sight
+                    if (this._fow() && !this._fow().isPositionVisible(r.x, r.z)) continue;   // explored or in sight
                     EngineFx.rubble(r, ambientTime, { m3, bb, quad, ringBuf, boxBuf, tex: this.tex, dl });
                 }
             }
             // buildings
             for (const b of this.buildings) {
                 const eb = b._engine;
-                if (!eb || (b.mesh && b.mesh.visible === false) || this._cull(b.x, b.z, 18)) continue;
+                if (!eb || (b.mesh && b.mesh.visible === false) || (this.entityHidden && this.entityHidden(b, 'building')) || this._cull(b.x, b.z, 18)) continue;
                 if ((b.type === 'trebuchet' || b.type === 'trebuchet_advanced') && !b.underConstruction) this._turnTrebuchet(b, dt);
                 const distance=Math.hypot(b.x-this.cameraTarget.x,b.z-this.cameraTarget.z);
                 const detailFade=lightDetailFade(distance,this._halfH);
@@ -2215,7 +2219,7 @@
                         for(const en of eb.opaque)en.localLights=lights;
                         for(const en of eb.details)en.localLights=lights;
                         for(const lamp of eb.lamps||[]){
-                        if(lamp&&lampNight>0&&(!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(lamp.position[0],lamp.position[2]))){
+                        if(lamp&&lampNight>0&&(!this._fow()||this._fow().isPositionVisible(lamp.position[0],lamp.position[2]))){
                             const [x,y,z]=lamp.position;
                             const flicker=1+.05*Math.sin(ambientTime*8+x)+.025*Math.sin(ambientTime*13+z);
                             const strength=2*lampNight*detailFade*flicker;
@@ -2228,7 +2232,7 @@
                         }
                         // Alpha fade shares the existing blended pass near the limit.
                         for(const p of eb.details) (detailFade===1?dl.opaque:dl.blended).push(detailFade===1?p:{...p,alpha:detailFade});
-                        const visible=eb.fire&&(!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(eb.fire[0],eb.fire[2]));
+                        const visible=eb.fire&&(!this._fow()||this._fow().isPositionVisible(eb.fire[0],eb.fire[2]));
                         if(eb.fire&&visible&&hearths++<8){
                             const [x,y,z]=eb.fire,phase=ambientTime+b.x*.17+b.z*.11;
                             addLight(x,y+.55,z,3*detailFade);
@@ -2270,7 +2274,7 @@
                 // where the viewer can see, and never more than twelve at once.
                 if (this.visualStyle === 'film' && !b.underConstruction && hpct < 0.7 && b._fireBox && burning < 12
                     && !(b._fade != null && b._fade < 1)
-                    && (!this.game?.fogOfWar || this.game.fogOfWar.isPositionVisible(b.x, b.z))) {
+                    && (!this._fow() || this._fow().isPositionVisible(b.x, b.z))) {
                     burning++;
                     const lights = EngineFx.burning(b, hpct, ambientTime, this._reducedMotion, { m3, bb, quad, ringBuf, tex: this.tex, dl, eye: this._cam && this._cam.eye });
                     if (lights) for (const en of eb.opaque) en.localLights = en.localLights ? EngineFx.mergeLights(en.localLights, lights) : lights;
@@ -2305,7 +2309,7 @@
             // units
             for (const u of this.units) {
                 const ue = u._engine;
-                if (!ue || (u.mesh && u.mesh.visible === false) || this._cull(u.x, u.z, 6)) continue;
+                if (!ue || (u.mesh && u.mesh.visible === false) || (this.entityHidden && this.entityHidden(u, 'unit')) || this._cull(u.x, u.z, 6)) continue;
                 // Travel facing follows ACTUAL motion, not stale destinations. Only
                 // SOME movers maintain targetX/targetZ: game.js's attack-move march
                 // sets isMoving and advances the unit without ever touching it, and
@@ -2395,7 +2399,7 @@
                     if(!this._workerLampModel)this._workerLampModel=EngineUnits.batches(EngineUnits.workerLantern()).map(p=>({buf:GLCore.createMeshBuffers(this.gl,p.mesh),texName:p.tex,flame:p.blend,tint:p.blend?[1,.66,.18]:p.tex==='white'?[1,.91,.70]:this.WHITE}));
                     const [lx,ly,lz]=EngineUnits.WORKER_LANTERN_POSITION;
                     const x=world[0]*lx+world[8]*lz+world[12],y=world[5]*ly+world[13],z=world[2]*lx+world[10]*lz+world[14];
-                    const visible=!this.game?.fogOfWar||this.game.fogOfWar.isPositionVisible(x,z);
+                    const visible=!this._fow()||this._fow().isPositionVisible(x,z);
                     const strength=visible?1.1*lampNight*lampFade*(1+.04*Math.sin(ambientTime*7+ue.phase)):0;
                     workerLights=ue.lampLights||=(new Float32Array(12));workerLights.set([x,y,z,strength]);
                     for(const part of this._workerLampModel){
@@ -2684,9 +2688,14 @@
             return tex;
         }
 
+        // Whose fog is drawn. The match's own, unless a view of one seat's knowledge is
+        // on (js/seat-view.js, the model's view): then that seat's, a second fog object
+        // with the same shape. Everything in this file that asks the fog asks here.
+        _fow() { return this.fogView || (this.game && this.game.fogOfWar) || null; }
+
         // fog display canvas → GL texture (uploaded only when fog marked it dirty)
         _syncFog() {
-            const fow = this.game && this.game.fogOfWar;
+            const fow = this._fow();
             this._clutterFogActive = !!fow?.fogGrid;
             if (this._clutterFogActive && (this._clutterFow!==fow || this._clutterFogVersion!==fow.visibilityVersion)) {
                 const gl=this.gl,n=fow.numTiles,bytes=new Uint8Array(n*n);
@@ -2815,7 +2824,7 @@
             gl.uniform1f(this.prog.uniforms.uGrassTime,(now/1000)%(Math.PI*20));
             gl.uniform1f(this.prog.uniforms.uClothTime,(this.game?._environmentSeconds||0)%Math.PI);
             gl.uniform1f(this.prog.uniforms.uClutterFog,this._clutterFogActive?1:0);
-            gl.uniform1f(this.prog.uniforms.uClutterMapSize,this.game?.fogOfWar?.mapSize || 800);
+            gl.uniform1f(this.prog.uniforms.uClutterMapSize,this._fow()?.mapSize || 800);
             gl.activeTexture(gl.TEXTURE4);
             gl.bindTexture(gl.TEXTURE_2D,this._clutterVisibilityTex || this.tex.white);
             gl.uniform1i(this.prog.uniforms.uClutterVisibility,4);

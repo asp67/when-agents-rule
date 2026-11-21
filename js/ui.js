@@ -2930,6 +2930,7 @@ class UIManager {
         const layer = this.intentLayer, r = this.game.renderer;
         svg.innerHTML = '';
         if (r && r.worldToScreen) this.drawStrategic(svg, NS);
+        if (r && r.worldToScreen) this.drawSeatGhosts(svg, NS);
         if (r && r.worldToScreen && this.intentOn()) this.drawEvalMarks(svg, NS);
         if (!layer || !r || !r.worldToScreen || !this.intentOn() || this._intentMarksOnly) { box.innerHTML = ''; return; }
         // The marks themselves lie on the ground, drawn by the renderer (intentMarks);
@@ -3128,6 +3129,95 @@ class UIManager {
         if (!name) return b.text;
         const detail = this.logDetail(b.params, b.seat);
         return name + (detail || (b.params && b.params.tile ? ' (' + b.params.tile + ')' : ''));
+    }
+
+    // ---- The model's view (overhaul step B1) ---------------------------------
+    // One key, V, flips the 3-D view between everything and what one seat knows: its
+    // fog, the rivals it can see, and ghosts where it only remembers. The seat is the
+    // one the minimap's knob shows; with none pressed, the first model seat. The knob
+    // and the view then stay together: another knob moves the view, the same knob again
+    // (every seat) ends it. js/seat-view.js does the work; this is the switch.
+    seatViewOn() { return !!(this.seatView && this.seatView.on()); }
+    toggleSeatView(on = !this.seatViewOn()) {
+        const g = this.game;
+        if (!this.seatView || !g.spectatorMode || !g.gameStarted) return false;
+        if (on) {
+            let seat = g.minimapFogSeat;
+            if (seat == null) {
+                const ctrls = (g.openAIAIManager && g.openAIAIManager.aiControllers) || [], ais = (g.aiManager && g.aiManager.aiPlayers) || [];
+                const first = ais.find(a => ctrls.some(c => c.id === a.id)) || ais[0];
+                seat = first ? first.seat : null;
+            }
+            if (seat == null || !this.seatView.set(seat)) { this.seatView.set(null); this.refreshSeatView(); return false; }
+            // The minimap shows the same seat, held there as a knob pressed by hand is. If the
+            // view pressed the knob itself, it lets go of it again when it is switched off.
+            this._seatViewKnob = g.minimapFogSeat == null;
+            g.minimapFogSeat = seat; g._minimapFogManual = true;
+            this.refreshMinimapFogKnobs();
+            if (g.updateMinimap) g.updateMinimap();
+        } else {
+            this.seatView.set(null);
+            if (this._seatViewKnob) {
+                g.minimapFogSeat = null; g._minimapFogManual = false;
+                this.refreshMinimapFogKnobs();
+                if (g.updateMinimap) g.updateMinimap();
+            }
+            this._seatViewKnob = false;
+        }
+        this.refreshSeatView();
+        return this.seatViewOn();
+    }
+    // Called on a timer: the view follows the knob, and its fog follows the seat's units.
+    updateSeatView() {
+        if (!this.seatViewOn()) return;
+        const seat = this.game.minimapFogSeat;
+        if (seat == null) { this.seatView.set(null); this._seatViewKnob = false; this.refreshSeatView(); return; }       // "every seat" on the minimap ends the view
+        if (seat !== this.seatView.seat) { this.seatView.set(seat); this.refreshSeatView(); }
+        else this.seatView.refresh();
+    }
+    // The badge that says whose eyes these are, so a fogged map is never mistaken for a fault.
+    refreshSeatView() {
+        let el = document.getElementById('seatViewBadge');
+        if (!this.seatViewOn()) { if (el) el.remove(); return; }
+        const ai = this.seatView.ai(), ctrls = (this.game.openAIAIManager && this.game.openAIAIManager.aiControllers) || [];
+        const ctrl = ai && ctrls.find(c => c.id === ai.id);
+        const who = (ctrl && ctrl.model && ctrl.model.name) || this.anCivName(ai && ai.civilization);
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'seatViewBadge'; el.className = 'seat-view-badge';
+            el.setAttribute('role', 'status');
+            document.body.appendChild(el);
+        }
+        el.style.setProperty('--seat', this.legibleColor(this.identityHex(ai.id, ai.civilization, ai.seat)));
+        el.innerHTML = this.teamDotHtml(ai.seat, 10) + '<span>' + this.escapeHtml(t('view.badge', { who })) + '</span>';
+    }
+    // What the seat believes and cannot see, as hollow marks: a rival unit where it was
+    // last seen, a building that fell out of its sight. Drawn whether or not Intent is on:
+    // they are part of the view, not of the story layer.
+    drawSeatGhosts(svg, NS) {
+        if (!this.seatViewOn()) return;
+        const r = this.game.renderer, ghosts = this.seatView.ghosts();
+        if (!ghosts.length) return;
+        const g = document.createElementNS(NS, 'g');
+        g.setAttribute('class', 'seat-ghosts');
+        const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        for (const q of ghosts) {
+            const p = r.worldToScreen(q.x, 0, q.z);
+            if (!p) continue;
+            const owner = ais.find(a => a.id === q.owner);
+            const color = owner ? this.legibleColor(this.identityHex(owner.id, owner.civilization, owner.seat)) : '#cfd8e3';
+            const size = q.kind === 'building' ? 13 : 7;
+            const mark = document.createElementNS(NS, q.kind === 'building' ? 'rect' : 'circle');
+            if (q.kind === 'building') { mark.setAttribute('x', (p.x - size).toFixed(1)); mark.setAttribute('y', (p.y - size).toFixed(1)); mark.setAttribute('width', size * 2); mark.setAttribute('height', size * 2); mark.setAttribute('rx', 3); }
+            else { mark.setAttribute('cx', p.x.toFixed(1)); mark.setAttribute('cy', p.y.toFixed(1)); mark.setAttribute('r', size); }
+            mark.setAttribute('class', 'seat-ghost is-' + q.kind);
+            mark.setAttribute('stroke', color);
+            const title = document.createElementNS(NS, 'title');
+            title.textContent = t(q.kind === 'building' ? 'view.ghostBuilding' : 'view.ghostUnit', { what: tg(String(q.type).replace(/_/g, ' ')) });
+            mark.appendChild(title);
+            g.appendChild(mark);
+        }
+        svg.appendChild(g);
     }
 
     // Evaluation marks in the world (overhaul step B4): a tick where a plan step was
@@ -4065,6 +4155,9 @@ class UIManager {
         }
         this.refreshIntentButton();
         // The strategic zoom layer (review #12), regrouped four times a second.
+        // The model's view (overhaul step B1): off at the start of every match.
+        this.seatView = typeof SeatView === 'function' ? new SeatView(this.game) : null;
+        if (this.seatView) this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSeatView(); }, SeatView.REFRESH_MS));
         // Evaluation marks (overhaul step B4): what the ledger has just judged, where it happened.
         this.evalMarks = typeof EvalMarks === 'function' ? new EvalMarks() : null;
         if (this.evalMarks) this._spectatorIntervals.push(setInterval(() => {
@@ -4196,6 +4289,8 @@ class UIManager {
         clearTimeout(this._chronicleTimer); this._chronicleTimer = null; this._chronicleQueue = [];
         document.getElementById('chronicleCaption')?.remove();
         document.getElementById('compareStrip')?.remove();
+        if (this.seatView) this.seatView.set(null);          // the renderer gets its own fog and every entity back
+        document.getElementById('seatViewBadge')?.remove();
         this.stopIntentOverlay();
         if (this.game.renderer) this.game.renderer.intentMarks = null;
         if (this.broadcastOn()) this.toggleBroadcast(false, false);

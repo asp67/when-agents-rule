@@ -111,7 +111,7 @@
             if (r.graphicsQuality !== 'cinematic' || r._halfH >= 160 || !r.terrain) return [];
             const half = (r.terrain.size || 800) / 2 - 10;   // was capped at 390, the 800 map's value (b1057)
             const x = r.cameraTarget.x, z = r.cameraTarget.z;
-            const fow=r.game?.fogOfWar;
+            const fow=r._fow ? r._fow() : r.game?.fogOfWar;   // the model's view swaps the fog (gamerenderer._fow)
             if(this.fow!==fow || this.fogVersion!==fow?.visibilityVersion) {
                 this.visibility.clear();this.fow=fow;this.fogVersion=fow?.visibilityVersion;
             }

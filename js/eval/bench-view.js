@@ -54,16 +54,18 @@
     // B switches the Bench panels and R the race chart while a match is being watched, in
     // either mode and except while typing. In broadcast mode the bar is gone, so the keys
     // and the icons on the board are the way to them. C switches the comparison lower
-    // third, which exists in broadcast mode only.
+    // third, which exists in broadcast mode only. V flips the 3-D view between everything
+    // and what one seat knows (the model's view, js/seat-view.js).
     P.wireBenchKey = function () {
         if (this._benchKeyWired) return;
         this._benchKeyWired = true;
         document.addEventListener('keydown', e => {
             const key = String(e.key || '').toLowerCase();
-            if ((key !== 'b' && key !== 'r' && key !== 'c') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+            if ((key !== 'b' && key !== 'r' && key !== 'c' && key !== 'v') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
             const el = e.target;
             if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
             if (!this.game.spectatorMode || !this.game.gameStarted) return;
+            if (key === 'v') { if (!this.seatView) return; e.preventDefault(); this.toggleSeatView(); return; }
             if (key === 'c' ? !(this.broadcastOn && this.broadcastOn()) : !document.getElementById(key === 'b' ? 'benchMatrix' : 'raceChart')) return;
             e.preventDefault();
             if (key === 'b') this.toggleBenchView(); else if (key === 'r') this.toggleRaceChart(); else this.toggleCompare();
