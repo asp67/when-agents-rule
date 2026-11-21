@@ -2728,7 +2728,18 @@
             requestAnimationFrame(() => this.animate());
             // The frame benchmark draws its own frames, one after another (js/perf-bench.js).
             if (this.holdFrames) return;
+            // No screen is showing the map: the start screen, the setup pages and the
+            // results kept the graphics card drawing a picture nobody could see (b1152).
+            // Sound keeps its tick, which is how it notices a match has gone quiet.
+            if (this._offScreen()) { if (this.game && this.game.sound) this.game.sound.update(); return; }
             this.renderFrame();
+        }
+
+        // True while the canvas is in the page but not displayed: it, or a screen it sits
+        // in, is display:none. A canvas not in the page at all (a test's stand-in) draws.
+        _offScreen() {
+            const c = this.canvas;
+            return !!c && c.isConnected === true && c.offsetParent === null;
         }
 
         // One frame, drawn now. animate() calls it once per display refresh.

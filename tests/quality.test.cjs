@@ -214,3 +214,20 @@ test('Auto adapts only a picture someone is watching, and remembers what it foun
     r.game = { gameStarted: false }; r.replayMode = true;
     assert.doesNotThrow(() => slow(2000));        // a replay counts as a picture too
 });
+
+test('nothing is drawn while no screen shows the map, and sound keeps its tick', () => {
+    const s = context(), r = renderer(s);
+    let frames = 0, ticks = 0, asked = 0;
+    s.requestAnimationFrame = () => { asked++; };
+    r.renderFrame = () => { frames++; };
+    r.game = { sound: { update() { ticks++; } } };
+    // A stand-in that is not in a page at all: draws, as every test renderer does.
+    r.animate(); assert.deepEqual([frames, ticks, asked], [1, 0, 1]);
+    // In the page, on a hidden screen: display:none gives no offsetParent.
+    r.canvas = { isConnected: true, offsetParent: null, style: {} };
+    r.animate(); r.animate(); assert.deepEqual([frames, ticks, asked], [1, 2, 3]);
+    r.canvas.offsetParent = {};
+    r.animate(); assert.deepEqual([frames, ticks], [2, 2]);
+    // The benchmark holds the loop and draws for itself, visible or not.
+    r.holdFrames = true; r.animate(); assert.deepEqual([frames, ticks, asked], [2, 2, 5]);
+});
