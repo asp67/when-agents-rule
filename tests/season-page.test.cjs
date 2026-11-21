@@ -112,7 +112,7 @@ test('a transcript file added here is scored here; a file that is not one is nam
     assert.equal(p.note, 'season.added{"n":1} season.refused{"files":"notes.txt, gone.jsonl"}');
     const kept = Page.load();
     assert.deepEqual(Array.from(kept, e => [e.source, e.file, e.scale, Array.from(e.seats, s => s.name + ' ' + s.cond + ' #' + s.rank).join(', ')].join(' | ')),
-        ['imported | ' + name + ' | v1 | pi MCP ba441132b2b0 #2, HERMES MCP ba441132b2b0 #1']);
+        ['imported | ' + name + ' | v2 | pi MCP ba441132b2b0 #2, HERMES MCP ba441132b2b0 #1']);
     assert.match(els.seasonBody.innerHTML, /<p class="season-note">season\.added/);
     assert.match(els.seasonBody.innerHTML, /<th scope="row" title="Deepseek V4\.1 Flash 1017">HERMES MCP<\/th><td>1<\/td><td>1<\/td>/);
     // Added again, it is still one match.

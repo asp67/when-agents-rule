@@ -35,10 +35,10 @@ test('a seat that only waits has nothing to be rated on: a wait can never be ref
 test('a seat that states a plan and never acts has a plan and no follow-through', async () => {
     const s = seatOf(await play('plan-only'));
     assert.deepEqual([s.planning.statements, s.planning.steps, s.planning.concrete, s.planning.coverage], [1, 5, 5, 1]);
-    // Six decisions in, its five steps are still open: nothing acted on, and too early to call them dropped.
-    assert.deepEqual([s.follow.steps, s.follow.acted, s.follow.pending, s.follow.score], [5, 0, 5, null]);
-    // So the plan is not in its Index yet, and its waits give it no Grounding.
-    assert.deepEqual([s.grounding.score, s.index.plan, s.index.of], [null, null, 1]);
+    // The match is over and none of its five steps was carried out: all dropped, however short the match was.
+    assert.deepEqual([s.follow.steps, s.follow.acted, s.follow.pending, s.follow.dropped, s.follow.score], [5, 0, 0, 5, 0]);
+    // So its plan counts for nothing in its Index, and its waits give it no Grounding.
+    assert.deepEqual([s.grounding.score, s.index.plan, s.index.of], [null, 0, 2]);
 });
 
 test('random-valid names only what its state shows: refused for the world\'s reasons, never invalid', async () => {

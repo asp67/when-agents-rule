@@ -2691,7 +2691,7 @@ body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 .bm th[scope="row"] { width: 86px; text-align: left; font-weight: 500; color: #b9c4d2; padding: 5px 4px 5px 0; }
 .bm thead th { padding: 0 3px 5px; font-weight: 600; }
 /* A seat's name in full, on up to three short lines: a column is about sixty pixels wide. */
-.bm-seat { cursor: pointer; border-bottom: 2px solid transparent; text-align: center; vertical-align: bottom; font-size: 0.82em; line-height: 1.15; overflow-wrap: anywhere; }
+.bm-seat { cursor: pointer; border-bottom: 2px solid transparent; text-align: center; vertical-align: top;   /* badges in one line, whether a name wraps or not */ font-size: 0.82em; line-height: 1.15; overflow-wrap: anywhere; }
 .bm-seat span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
 .bm-seat.is-pinned { border-bottom-color: var(--civ, #dec594); }
 .bm-cell, .bm-cost { padding: 4px 3px; text-align: center; vertical-align: top; border-top: 1px solid rgba(255, 255, 255, 0.06); }

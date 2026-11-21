@@ -27,7 +27,10 @@
         // How raw rates become 0-100. 'v0' was the mapping proposed with the plan. 'v1' is
         // v0 after the anchor run (tools/eval/anchors.cjs, docs/SCORING.md): a wait is left
         // out of the Grounding rate, and a plan counts in the Index as far as it was followed.
-        SCALE: 'v1',
+        // 'v2' (asp67's first real match on the Bench view, 21 Nov 2026): a plan step is no
+        // longer called dropped ten decisions after it was stated. It stays open while it
+        // stands in the plan, and one carried out late is carried out.
+        SCALE: 'v2',
         // What the Index is the mean of. 'plan' is Planning as far as it was followed.
         INDEX_PARTS: ['grounding', 'plan', 'tactical', 'strategy'],
         // A mistake made again inside this many decisions counts as repeated.
@@ -576,7 +579,7 @@
         // without one, and pending while the window is still open. A step carried out
         // later, while it still stood in the plan, is counted as late: it stays dropped
         // for the score, and is reported so the window can be argued with.
-        _follow(seat, history) {
+        _follow(seat, history, final = false) {
             const turns = seat.turns, vocab = seat.vocab, W = WarEval.FOLLOW_WINDOW, last = turns.length - 1;
             const judged = turns.some(t => t.cmds.some(c => c.ok != null));
             const tracked = [];
@@ -603,19 +606,27 @@
                         if (s.at > i || (s.acted != null && s.met.size === s.checks.length)) continue;
                         const hit = s.checks.findIndex(k => serves(c, k, vocab));
                         if (hit < 0) continue;
-                        if (i - s.at <= W) {
+                        // Carried out: within the window, whatever became of the plan since, or at
+                        // any later time while the step still stood in it. A long-term step (an
+                        // age, a raid once an army exists) takes as long as it takes.
+                        if (i - s.at <= W || i < s.until) {
                             // The order that first carried the step out: which, when, and where it pointed.
                             if (s.acted == null) { s.acted = i - s.at; s.by = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, action: c.action, name: c.name, x: c.x, z: c.z }; }
                             s.met.add(hit);
                         }
-                        else if (s.acted == null && s.late == null && i < s.until) s.late = i - s.at;
                     }
                 }
             });
-            const state = s => s.acted != null ? 'acted' : last - s.at >= W ? (s.late != null ? 'late' : 'dropped') : 'pending';
-            const count = { acted: 0, dropped: 0, late: 0, pending: 0 };
+            // Open while it stands in the plan, and for the window after it was stated. Dropped
+            // when the seat took it out of its plan with no order behind it, or the match
+            // ended with it undone. (Until v2 a step was dropped ten decisions after it was
+            // stated, which struck out an age-up or a raid long before either was possible.)
+            const state = s => s.acted != null ? 'acted' : final ? 'dropped' : (last - s.at < W || s.until >= turns.length) ? 'pending' : 'dropped';
+            const count = { acted: 0, dropped: 0, pending: 0 };
             for (const s of tracked) count[state(s)]++;
-            const closed = count.acted + count.dropped + count.late;
+            // Carried out, but more than the window after it was stated: reported, and counted as carried out.
+            count.late = tracked.filter(s => s.acted != null && s.acted > W).length;
+            const closed = count.acted + count.dropped;
             const waits = tracked.filter(s => s.acted != null).map(s => s.acted);
             const commitments = sum(tracked.filter(s => state(s) !== 'pending').map(s => s.checks.length));
             const met = sum(tracked.filter(s => state(s) !== 'pending').map(s => s.met.size));
@@ -625,7 +636,7 @@
             if (!judged) return { steps: tracked.length, acted: null, dropped: null, late: null, pending: null, rate: null, decisionsToAct: null,
                 commitments: null, commitmentsMet: null, ordersUnderPlan: null, ordersServing: null, servingRate: null, standing: null, judged, score: null };
             return {
-                steps: tracked.length, acted: count.acted, dropped: count.dropped + count.late, late: count.late, pending: count.pending,
+                steps: tracked.length, acted: count.acted, dropped: count.dropped, late: count.late, pending: count.pending,
                 rate: closed ? count.acted / closed : null,
                 decisionsToAct: waits.length ? quantile(waits, 0.5) : null,
                 // A step can commit to several things; this is how many of them were carried out.
@@ -641,8 +652,8 @@
                     return { text: s.text, state: !s.checks.length ? 'uncheckable' : f ? state(f) : 'pending', after: f && f.acted != null ? f.acted : null };
                 }) : null,
                 judged,
-                // v0: the share of followed steps that were acted on. No plan, or a plan with
-                // nothing checkable in it, earns nothing: 0. Nothing closed yet, or a file
+                // The share of settled steps that were carried out. No plan, or a plan with
+                // nothing checkable in it, earns nothing: 0. Nothing settled yet, or a file
                 // that records no outcomes, is a dash.
                 score: !turns.length || !judged ? null : !history.length ? 0
                     : !tracked.length ? (last >= W ? 0 : null) : closed ? Math.round(1000 * count.acted / closed) / 10 : null
@@ -865,7 +876,7 @@
             const seats = list.map(s => {
                 const grounding = this._grounding(s.turns), planning = this._planning(s);
                 const out = { id: s.id, seat: s.seat, civ: s.civ, model: s.model, name: s.name,
-                    decisions: s.turns.length, grounding, planning, follow: this._follow(s, this._plans), tactical: this._tactical(s),
+                    decisions: s.turns.length, grounding, planning, follow: this._follow(s, this._plans, !!this.results && until == null), tactical: this._tactical(s),
                     strategy: this._strategy(s, until), versatility: this._versatility(s),
                     efficiency: this._efficiency(s, grounding.ok) };
                 // The Index: the mean of the parts that have a score. A summary of the bars,

@@ -65,7 +65,7 @@ test('D2: the matrix shows the command-line scorer\'s values at match end', asyn
     // Under the scored rows: their Index as the scorer prints it, then the range used, then the cost.
     const index = [...right.matchAll(/class="bm-index"[^>]*><b>([^<]*)<\/b><small>bench\.indexOf\{&quot;n&quot;:(\d)\}/g)].map(m => m[1] + '/' + m[2]);
     assert.deepEqual(index, scored.seats.map(s => Math.round(s.index.value) + '/' + s.index.of));
-    assert.deepEqual(index, ['40/4', '69/4', '63/4', '76/4']);
+    assert.deepEqual(index, ['44/4', '69/4', '63/4', '76/4']);
     assert.match(right, /bench\.range<small>bench\.rangeUnit<\/small><\/th>.*<b>11 · 10 · 13<\/b><\/td>/s);
     assert.match(right, /bench\.rangeTip\{&quot;units&quot;:&quot;archer, cavalry, champion/);
     assert.ok(right.indexOf('bm-indexrow') < right.indexOf('bench.range<') && right.indexOf('bench.range<') < right.indexOf('bench.eff<'));

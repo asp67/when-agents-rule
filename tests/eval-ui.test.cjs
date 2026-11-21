@@ -45,12 +45,13 @@ test('the card reads the ledger of the match being recorded, by seat', () => {
 test('a seat card shows one bar per part of the profile, with what it rests on', () => {
     const u = ui(), seats = (u.game = { openAIAIManager: { transcripts: { ledger: ledger() } } }, u.evalSeats());
     const html = u.seatProfileHtml(seats.a);
-    assert.equal((html.match(/class="lb-dim"/g) || []).length, 3);
+    assert.equal((html.match(/class="lb-dim"/g) || []).length, 2);
     // And a fourth, empty: this seat was never shown a threat, which is a dash and not a zero.
     assert.match(html, /lb-dim is-empty" title="eval\.tacticalNone eval\.provisional">.*eval\.tactical<\/span>.*<b>–<\/b>/);
-    // Its one checkable step, "Build a tower", was never carried out in 38 decisions.
-    assert.match(html, /eval\.follow<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>0<\/b>/);
-    assert.match(html, /eval\.followTip\{&quot;acted&quot;:0,&quot;closed&quot;:1,&quot;late&quot;:0,&quot;pending&quot;:0,&quot;wait&quot;:&quot;–&quot;,&quot;serving&quot;:0,&quot;orders&quot;:0\}/);
+    // Its one checkable step, "Build a tower", has not been carried out in 38 decisions and still stands in its plan:
+    // open, not dropped, so there is nothing settled to score yet. A dash, and the tooltip says one is open.
+    assert.match(html, /eval\.follow<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>–<\/b>/);
+    assert.match(html, /eval\.followTip\{&quot;acted&quot;:0,&quot;closed&quot;:0,&quot;late&quot;:0,&quot;pending&quot;:1,&quot;wait&quot;:&quot;–&quot;,&quot;serving&quot;:0,&quot;orders&quot;:0\}/);
     // 39 of 40 valid is 97.5 %: a quarter of the way to zero on the v0 scale, so 75.
     assert.match(html, /eval\.grounding<\/span><span class="lb-dim-track"><i style="width:75%"><\/i><\/span><b>75<\/b>/);
     assert.match(html, /eval\.groundingTip\{&quot;ok&quot;:39,&quot;judged&quot;:40,&quot;pct&quot;:&quot;97\.5 %&quot;,&quot;contended&quot;:0\}/);
@@ -60,9 +61,9 @@ test('a seat card shows one bar per part of the profile, with what it rests on',
     assert.match(html, /eval\.planningTip\{&quot;statements&quot;:1,&quot;revisions&quot;:1,&quot;first&quot;:&quot;1:15&quot;/);
     // Strategy has nothing to read yet: no power reading has been shown to the ledger.
     assert.match(html, /lb-dim is-empty" title="eval\.strategyNone eval\.provisional">.*eval\.strategy<\/span>.*<b>–<\/b>/);
-    // The Index sits with the bars. Its plan was never followed, so the plan counts for
-    // nothing in it: (75 + 0) / 2, and it says of how many parts.
-    assert.match(html, /class="lb-dim lb-index" title="eval\.indexTip\{&quot;n&quot;:2,&quot;parts&quot;:4,&quot;plan&quot;:0\} eval\.provisional">.*eval\.index<\/span>.*<b>38<\/b>/);
+    // The Index sits with the bars. Whether its plan is followed is still open, so the plan
+    // is left out of it for now: Grounding alone, and it says of how many parts.
+    assert.match(html, /class="lb-dim lb-index" title="eval\.indexTip\{&quot;n&quot;:1,&quot;parts&quot;:4,&quot;plan&quot;:&quot;–&quot;\} eval\.provisional">.*eval\.index<\/span>.*<b>75<\/b>/);
     assert.ok(html.indexOf('lb-index') > html.indexOf('eval.strategy<'), 'the Index comes after the bars');
     assert.equal((html.match(/eval\.provisional/g) || []).length, 6);
 });
@@ -282,7 +283,7 @@ test('the saved results carry the profile as a table, and name the heuristic as 
     l.addLine(JSON.stringify({ type: 'results', ranking: [{ playerId: 'a', rank: 1, isWinner: true }, { playerId: 'b', rank: 2 }, { playerId: 'c', rank: 3 }] }));
     const profile = WarEval.publicProfile(l.profile());
     const md = u.buildResultsMarkdown({ reports: [], reason: 'timeout', durStr: '10:00', playerCount: 3, profile });
-    assert.match(md, /## Evaluation profile\n\nScale v1, provisional\. One match is one sample/);
+    assert.match(md, /## Evaluation profile\n\nScale v2, provisional\. One match is one sample/);
     assert.match(md, /\| Seat \| Grounding \| Planning \| Follow-through \| Tactical \| Strategy \| Index \|/);
     // Seat a: 39 of 40 valid; one plan; its one step dropped; no threat; 60 % of the power and first place.
     assert.match(md, /\| Seat a \| 75 \(97\.5 % of 40\) \| 83 \(1 stated, 1 changed\) \| 0 \(0 of 1 steps\) \| – \(no threat shown\) \| 100 \(60\.0 % of power, placed 1\) \| 58\.3 \(3 of 4 parts\) \|/);

@@ -58,12 +58,13 @@ function report(file, p) {
             g.firstAt ? clock(g.firstAt.sec) + ' (decision ' + g.firstAt.decision + ')' : 'never', pct(g.coverage),
             g.steps ? g.concrete + ' of ' + g.steps : '-', g.shocks.n ? g.shocks.revised + ' of ' + g.shocks.n : 'no shock']; }))));
     const of = (a, b) => a == null ? '-' : a + ' of ' + b;
-    out.push('', table([['FOLLOW-THROUGH', 'score', 'steps followed', 'acted on', 'dropped', 'of which late', 'pending', 'decisions to act', 'commitments met', 'orders serving the plan']].concat(
-        p.seats.map(s => { const h = s.follow; return [name(s), fix(h.score, 0), h.steps, fix(h.acted), fix(h.dropped), fix(h.late), fix(h.pending),
+    out.push('', table([['FOLLOW-THROUGH', 'score', 'steps followed', 'acted on', 'of which late', 'dropped', 'open', 'decisions to act', 'commitments met', 'orders serving the plan']].concat(
+        p.seats.map(s => { const h = s.follow; return [name(s), fix(h.score, 0), h.steps, fix(h.acted), fix(h.late), fix(h.dropped), fix(h.pending),
             fix(h.decisionsToAct, 1), of(h.commitmentsMet, h.commitments), of(h.ordersServing, h.ordersUnderPlan)]; }))));
     const r = WarEval.READER.heldOut;
-    out.push('', 'A step is followed if it is new and names something checkable; acted on means an order that worked carried it out within '
-        + WarEval.FOLLOW_WINDOW + ' decisions.',
+    out.push('', 'A step is followed if it is new and names something checkable; acted on means an order that worked carried it out, within '
+        + WarEval.FOLLOW_WINDOW + ' decisions or later while it still stood in the plan (late).',
+        'Dropped: taken out of the plan with no order behind it, or left undone when the match ended. Open: still standing in the plan.',
         'The step reader, on ' + r.steps + ' steps read by hand that it was never adjusted against: ' + pct(r.precision) + ' of what it reports is in the step, and it finds '
         + pct(r.recall) + ' of what is.');
     out.push('', table([['TACTICAL RESPONSE', 'score', 'attacks shown', 'answered at once', 'within 3 decisions', 'cost a building', 'held', 'rival Wonders', 'attacked']].concat(

@@ -5,10 +5,10 @@ scored parts, a row of facts about the range a seat used, and the cost of a deci
 them. Everything is read from the match transcript and nothing else, so a recorded match
 can be scored again at any time and gives the numbers the page showed while it ran.
 
-**Status: scale `v1`, provisional.** The definitions below are built and tested, and the
+**Status: scale `v2`, provisional.** The definitions below are built and tested, and the
 scores have been checked against anchor seats (see [Anchors](#anchors)). That check changed
-two things, which is what `v1` is. Read the bars and what they rest on. Do not quote a
-single number as a result.
+two things (`v1`); the first real match watched with the Bench view changed a third (`v2`).
+Read the bars and what they rest on. Do not quote a single number as a result.
 
 ## Where to read it
 
@@ -32,7 +32,7 @@ scoring a match differently never changes what a match is.
 |---|---|---|---|
 | **Grounding** | Were its commands valid when it issued them? | Commands that worked, of those that worked or were refused for a reason its state had shown. A `wait` is left out. | 90 % valid is 0, 100 % is 100, straight line between. |
 | **Planning** | Does it hold a live, concrete plan? | Share of decisions under a stated plan; share of plan steps that name something checkable; share of shocks (attacked, heavy losses, a rival Wonder) followed by a changed plan within three decisions. | The mean of the three. No shock: the first counts twice. Never stated a plan: 0. |
-| **Follow-through** | Does it do what its plan says? | Of the new, checkable plan steps: those an order that worked carried out within ten decisions. | The share acted on. No plan: 0. |
+| **Follow-through** | Does it do what its plan says? | Of the new, checkable plan steps that are settled: those an order that worked carried out, within ten decisions of being stated or later while the step still stood in the plan. | The share carried out. No plan: 0. |
 | **Tactical** | Shown a threat, is its next order aimed at it? | Attacks on its own things and rival Wonders, from the decision whose state first showed them. An answer is an order that worked and is aimed there: an attack or march to it, the threatened units moved out, a tower or repair on the spot. | The share answered in the same or the next decision; for a rival Wonder, within three. |
 | **Strategy** | Does its play turn into winning? | Placement; its share of all power over the match against an even split; the share of battle losses that were the other side's. | The mean of the three. Half again an even share is full marks. |
 
@@ -45,7 +45,10 @@ What each part deliberately leaves out:
 - **Planning** counts a plan as changed only when its text changed. Saying the same plan
   again changes nothing.
 - **Follow-through** counts only orders that worked. A refused order carries nothing out.
-  Training more soldiers does not answer "build a tower".
+  Training more soldiers does not answer "build a tower". A step is settled when it was
+  carried out, when the seat took it out of its plan with no order behind it, or when the
+  match ended with it undone. Until then it is open and counts for neither side: an age-up
+  or a raid "once an army exists" takes as long as it takes.
 - **Tactical** does not count training as an answer, and does not score whether the town
   was held: that is a matter of strength as well. What the attack cost is shown beside it.
 - **Strategy** uses the game's own power score exactly as the timeline recorded it. Its
@@ -106,7 +109,8 @@ seats is paying for something other than playing.
 | random-valid | One to three commands a round, built only from names and places its state shows. |
 
 Twelve matches, 40 minutes each, a decision every 30 seconds, three map seeds, core hash
-`d13976c3e047f6dd`, 21 November 2026, on scale `v1`:
+`d13976c3e047f6dd`, 21 November 2026, on scale `v2` (the same as on `v1`: no anchor carries a
+plan step out):
 
 | Anchor | Grounding | Planning | Follow-through | Tactical | Strategy | Index |
 |---|---:|---:|---:|---:|---:|---:|
@@ -115,7 +119,7 @@ Twelve matches, 40 minutes each, a decision every 30 seconds, three map seeds, c
 | plan-only | – | 100 | 0 | – | 6 | 3.3 |
 | random-valid | 0 | 0 | 0 | 50 | 6 | 10.0 |
 
-For comparison, the four model seats of the 5 October sample have an Index of 39.5, 63.0,
+For comparison, the four model seats of the 5 October sample have an Index of 43.8, 63.0,
 69.2 and 75.8.
 
 What the table says:
@@ -161,6 +165,30 @@ What that did to nine reference seats. Their order within each match is unchange
 | Gemini 4 Argon (17 Oct) | 100 | 100 | 89.3 | 86.7 |
 | pi (7 Nov) | 3.2 | 0 | 48.9 | 30.8 |
 | Hermes (7 Nov) | 90.8 | 90.8 | 79.5 | 74.0 |
+
+### What the first real match changed
+
+On `v1` a plan step was called dropped ten decisions after it was stated. In a match where
+a model decides every twenty seconds that is three minutes: "upgrade to the next age" and
+"raid once an army exists" were struck out long before either was possible. On `v2` a step
+stays open while it stands in the plan, and one carried out late is carried out (the
+scorer still says how many were late). It is dropped when the seat takes it out of its plan
+with no order behind it, or when the match ends with it undone.
+
+| Seat (match) | Follow-through v1 | v2 | Index v1 | v2 |
+|---|---:|---:|---:|---:|
+| GPT 6.1 Sol (5 Oct) | 42.9 | 64.3 | 39.5 | 43.8 |
+| Claude Sonnet 5.5 (5 Oct) | 75.8 | 75.8 | 69.2 | 69.2 |
+| DeepSeek V4.1 Flash (5 Oct) | 75.6 | 75.7 | 63.0 | 63.0 |
+| GLM 5.3 Flash (5 Oct) | 89.1 | 89.1 | 75.8 | 75.8 |
+| Qwen3.8 Flash-Next NVFP4 (17 Oct) | 73.6 | 72.0 | 52.9 | 52.6 |
+| Qwen3.8 Flash-Next Q2_0 (17 Oct) | 87.5 | 76.2 | 49.0 | 46.5 |
+| Gemini 4 Argon (17 Oct) | 92.2 | 94.1 | 86.7 | 87.2 |
+| pi (7 Nov) | 66.7 | 66.7 | 30.8 | 30.8 |
+| Hermes (7 Nov) | 50.0 | 100 | 74.0 | 89.3 |
+
+A score goes up where steps were carried out late (GPT 6.1, Hermes) and down where steps
+were still open when the match ended and now count as undone (the two Qwen seats).
 
 Still open: a seat that repeats one real, safe command (assign a worker to food, every
 round) is valid every time and keeps Grounding 100. Its other bars show what it is. No
@@ -214,8 +242,9 @@ page, which are scored on the spot.
 What the shipped matches say, 21 November 2026: of 20 matches, ten sets of conditions hold
 more than one result. Only one of them compares two models over more than one match:
 Hermes and pi met three times, Hermes placed first three times, and is ahead on Strategy
-(86.0, between 75.7 and 96.3, against 23.5). On the Index, 70.8 against 29.5, it is not:
-three matches leave the intervals touching. Fourteen seats stand alone under their
+(86.0, between 75.7 and 96.3, against 23.5) and on Follow-through (every step carried out in
+all three, against 73.9). On the Index, 79.5 against 30.6, it is not: three matches leave
+the intervals touching. Fourteen seats stand alone under their
 conditions, and 26 are from matches before conditions were recorded.
 
 ## Limits

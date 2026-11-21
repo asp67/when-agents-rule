@@ -22,7 +22,7 @@
     const TREND_SEC = 600;
     const clock = sec => sec == null ? '–' : Math.floor(sec / 60) + ':' + String(Math.floor(sec) % 60).padStart(2, '0');
     const share = v => v == null ? '–' : (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + ' %';
-    const GLYPH = { acted: '✓', pending: '○', dropped: '✕', late: '◐', uncheckable: '·' };
+    const GLYPH = { acted: '✓', pending: '○', dropped: '✕', uncheckable: '·' };
     // The raw measure under a score, with the count it rests on.
     const rawOf = (key, s) => {
         const g = s.grounding, pl = s.planning, fl = s.follow, ta = s.tactical;
