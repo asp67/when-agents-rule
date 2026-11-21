@@ -4143,8 +4143,72 @@ class UIManager {
     // Both narrow the SOURCE list before the 160-entry render cap, so filtering
     // reaches back through the whole history rather than only the visible slice.
     logFilter() {
-        if (!this._logFilter) this._logFilter = { players: new Set(), text: '' };
+        if (!this._logFilter) this._logFilter = { players: new Set(), text: '', tags: new Set() };
         return this._logFilter;
+    }
+
+    // ---- Tags on the decision feed (overhaul step D6) -------------------------
+    // What became of a logged command, by the harness's own rule (verdictFor) applied
+    // to what the entry already carries: its result text and its outcome code. So the
+    // tag on a card and the verdict in the transcript are the same judgement, and the
+    // harness was not touched to get it. A rejected card used to look the same whether
+    // the model had misread the state or had simply been beaten to a busy barracks.
+    //
+    //   mistake  refused for a reason the state had shown; the tag is the reason's code
+    //   invalid  not a callable command at all
+    //   timing   refused on something no state could have warned of: not scored
+    //   again    the same mistake as in one of this seat's last two decisions
+    //   plan     a reply that stated a plan and gave no command
+    logVerdict(entry) {
+        if (!entry || entry.isAdvice || entry.isControl || typeof entry.result !== 'string') return null;
+        if (typeof OpenAIAIManager === 'undefined' || typeof OpenAIAIManager.verdictFor !== 'function') return null;
+        const code = String(entry.outcomeCode || '').replace(/^log\.out\./, '');
+        return { code, verdict: OpenAIAIManager.verdictFor(entry.result, code) };
+    }
+    // Every seat's mistakes by decision, so a card can tell whether its own is a repeat.
+    logMistakeIndex(log) {
+        const index = new Map();
+        for (const entry of log) {
+            const v = this.logVerdict(entry);
+            if (!v || !v.code || entry.move == null || (v.verdict !== 'avoidable' && v.verdict !== 'invalid')) continue;
+            const key = entry.playerId + '|' + entry.move;
+            if (!index.has(key)) index.set(key, new Set());
+            index.get(key).add(v.code);
+        }
+        return index;
+    }
+    logTags(entry, index) {
+        if (entry && entry.action === 'plan_only') return [{ kind: 'plan', group: 'plan', label: t('log.tagPlan'), tip: t('log.tagPlanTip') }];
+        const v = this.logVerdict(entry);
+        if (!v || v.verdict === 'ok') return [];
+        if (v.verdict === 'contended') return [{ kind: 'timing', group: 'timing', label: t('log.tagTiming'), tip: t('log.tagTimingTip') }];
+        if (v.verdict === 'invalid') return [{ kind: 'invalid', group: 'mistake', label: t('log.tagInvalid'), tip: t('log.tagInvalidTip') }];
+        if (v.verdict !== 'avoidable') return [];
+        const tags = [{ kind: 'mistake', group: 'mistake', label: v.code || t('log.tagMistake'), tip: t('log.tagMistakeTip') }];
+        const before = n => index && index.get(entry.playerId + '|' + (entry.move - n));
+        if (v.code && entry.move != null && [1, 2].some(n => before(n) && before(n).has(v.code)))
+            tags.push({ kind: 'again', group: 'mistake', label: t('log.tagAgain'), tip: t('log.tagAgainTip') });
+        return tags;
+    }
+    setLogTagFilter(group) {
+        const f = this.logFilter();
+        if (f.tags.has(group)) f.tags.delete(group); else f.tags.add(group);
+        this._lastLogSig = null;
+        this.renderLogTagChips();
+        this.updateDecisionLog();
+    }
+    // Three chips beside the seat chips, and they work the same way: independent
+    // toggles, none on means no filter.
+    renderLogTagChips() {
+        const el = document.getElementById('aiLogTags');
+        if (!el) return;
+        const on = this.logFilter().tags;
+        const sig = [...on].sort().join(',') + '#' + getUiLang();
+        if (sig === this._logTagChipSig) return;
+        this._logTagChipSig = sig;
+        el.innerHTML = [['mistake', 'log.chipMistakes'], ['timing', 'log.chipTiming'], ['plan', 'log.chipPlan']].map(([group, key]) =>
+            `<button class="ai-log-chip ai-log-tagchip is-${group}${on.has(group) ? ' is-on' : ''}" onclick="game.ui.setLogTagFilter('${group}')"`
+            + ` aria-pressed="${on.has(group)}" title="${this.escapeHtml(t('log.chipTip'))}">${this.escapeHtml(t(key))}</button>`).join('');
     }
 
     // Independent on/off toggles rather than a radio group: watching two rivals at
@@ -4212,8 +4276,10 @@ class UIManager {
     // Everything the reader can SEE for an entry, lowercased — so searching matches
     // the words on screen (localized action label, detail, reason, outcome) rather
     // than the internal codes behind them.
-    logHaystack(entry, actionLabel, detail) {
+    logHaystack(entry, actionLabel, detail, tags) {
         const parts = [
+            // The tags are on the card, so a search finds them: "cannotAfford", "timing".
+            (tags || []).map(x => x.label).join(' '),
             actionLabel, detail, entry.civName && tg(entry.civName), entry.action,
             entry.reason, this.renderOutcome(entry), entry.error, entry.result,
             // The "✗ rejected" marker is rendered from the UI language but was not
@@ -4719,8 +4785,9 @@ class UIManager {
 
         const log = this.game.openAIAIManager.decisionLog;
         this.renderLogPlayerChips();
+        this.renderLogTagChips();
         const f = this.logFilter();
-        const filtering = !!(f.players.size || f.text);
+        const filtering = !!(f.players.size || f.text || f.tags.size);
         const compact = entriesEl.classList.contains('collapsed');
 
         if (log.length === 0) {
@@ -4737,7 +4804,7 @@ class UIManager {
         // filter is part of the signature: without it, typing in the search box
         // would not repaint until the next decision arrived.
         const sig = [getUiLang(), this.game.openAIAIManager.decisionLogRevision, log.length, (log[0] ? log[0].timestamp : 0),
-                     [...f.players].sort().join(','), f.text, compact].join(':');
+                     [...f.players].sort().join(','), f.text, [...f.tags].sort().join(','), compact].join(':');
         if (sig === this._lastLogSig) return;
         this._lastLogSig = sig;
 
@@ -4752,14 +4819,17 @@ class UIManager {
         // filters have run — so a search reaches the entire history, not just the
         // 160 entries that would have been rendered anyway.
         const view = [];
+        const mistakes = this.logMistakeIndex(log);
         for (const entry of compact ? this.compactDecisionEntries(log) : log) {
             if (f.players.size && !f.players.has(entry.playerId)) continue;
+            const tags = this.logTags(entry, mistakes);
+            if (f.tags.size && !tags.some(x => f.tags.has(x.group))) continue;
             const pp = entry.params || {};
             const actionLabel = entry.isAdvice ? t('log.advice')
                 : (actionNames[entry.action] || this.escapeHtml(entry.action));
             const detail = this.logDetail(pp, entry.playerId);
-            if (f.text && !this.logHaystack(entry, actionLabel, detail).includes(f.text)) continue;
-            view.push({ entry, actionLabel, detail });
+            if (f.text && !this.logHaystack(entry, actionLabel, detail, tags).includes(f.text)) continue;
+            view.push({ entry, actionLabel, detail, tags });
             if (view.length >= 160) break;
         }
 
@@ -4774,7 +4844,7 @@ class UIManager {
 
         let html = '';
         const now = Date.now();
-        view.forEach(({ entry, actionLabel, detail }, idx) => {
+        view.forEach(({ entry, actionLabel, detail, tags }, idx) => {
             // The head used to say how long ago the move was taken. Two things wrong
             // with that: the panel already carries the match clock, so "when" was
             // answered above -- and the number did not actually tick. This list only
@@ -4852,6 +4922,7 @@ class UIManager {
                         <span class="log-civ" style="color: ${civColor}">${this.escapeHtml(tg(entry.civName))}</span>
                         <span class="log-action">${actionLabel}${this.escapeHtml(detail)}${entry.failed ? ` <span class="log-x">✗ ${t('log.rejected')}</span>` : ''}</span>
                     </div>
+                    ${tags.length ? `<div class="log-tags">${tags.map(x => `<span class="log-tag is-${x.kind}" title="${this.escapeHtml(x.tip)}">${this.escapeHtml(x.label)}</span>`).join('')}</div>` : ''}
                     ${entry.reason ? `<span class="log-reason">“${this.escapeHtml(entry.reason)}”</span>` : ''}
                     ${entry.failed ? `<span class="log-error">⚠ ${this.escapeHtml(rejection)}</span>` : ''}
                     ${!entry.failed && (!entry.reason || f.text) && (locOutcome || entry.result) ? `<span class="log-outcome">${this.escapeHtml(locOutcome || entry.result.replace(/^OK\s*-\s*/, ''))}</span>` : ''}

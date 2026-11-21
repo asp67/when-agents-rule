@@ -139,3 +139,98 @@ test('with fewer than two samples it says so instead of drawing a dot', () => {
     u.toggleRaceChart(true);
     assert.deepEqual([writes.n, els.raceChartBox.style.display, els.raceWait.style.display], [0, 'none', '']);
 });
+
+// ---- tags on the decision feed (step D6) -------------------------------------------------
+// The harness's own class, so a tag is judged by the rule that judges the transcript.
+function harness() {
+    const scope = { console, getCivilization: () => ({ name: 'Civ', color: 0 }) };
+    vm.createContext(scope);
+    vm.runInContext(fs.readFileSync(path.join(root, 'js/openai-ai.js'), 'utf8'), scope);
+    return vm.runInContext('OpenAIAIManager', scope);
+}
+const Manager = harness();
+const entry = (playerId, move, result, code, extra) => Object.assign({ playerId, move, action: 'train_unit', params: {}, result,
+    outcomeCode: code ? 'log.out.' + code : undefined, failed: /^\[ERROR\]/.test(result || '') }, extra);
+const kinds = tags => Array.from(tags, x => x.kind + ':' + x.label);
+
+test('a card is tagged with what became of its command, by the harness\'s own verdict', () => {
+    const u = ui({ OpenAIAIManager: Manager });
+    const log = [
+        entry('a', 3, 'OK - trained', 'trainUnit'),
+        entry('a', 3, '[ERROR] Cannot afford worker', 'cannotAfford'),
+        entry('a', 3, '[ERROR] Barracks is busy', 'trainerBusy'),
+        entry('a', 3, '[ERROR] Unknown action "conjure".', null),
+        { playerId: 'a', move: 4, action: 'plan_only', params: {} },
+        { playerId: 'a', move: 4, action: 'request_failed', params: {}, failed: true, error: 'timeout' },
+        { playerId: 'a', isAdvice: true, reason: 'build towers', result: '[ERROR] not a command' },
+        entry('a', 5, '[ERROR] healed', 'healDropped', { isControl: true }),
+    ];
+    const index = u.logMistakeIndex(log);
+    assert.deepEqual(log.map(e => kinds(u.logTags(e, index))), [
+        [],                                             // it worked: nothing to say
+        ['mistake:cannotAfford'],                       // the state had shown the price
+        ['timing:log.tagTiming'],                       // nobody could have known: not the model's doing
+        ['invalid:log.tagInvalid'],
+        ['plan:log.tagPlan'],
+        [],                                             // a lost turn is not a judged command
+        [], [],                                         // nor advice, nor the harness's own notes
+    ]);
+    // The verdict is the harness's, to the letter.
+    for (const e of log.slice(0, 4)) assert.equal(u.logVerdict(e).verdict, Manager.verdictFor(e.result, String(e.outcomeCode || '').replace(/^log\.out\./, '')));
+    // Without the harness class on the page there is nothing to judge with, and no tag.
+    assert.equal(ui().logVerdict(log[1]), null);
+});
+
+test('the same mistake within two decisions is marked as made again, as the ledger counts it', () => {
+    const u = ui({ OpenAIAIManager: Manager });
+    const miss = (move, code, player = 'a') => entry(player, move, '[ERROR] no', code);
+    // Newest first, as the log is kept.
+    const log = [miss(7, 'cannotAfford'), miss(6, 'populationLimit'), miss(5, 'cannotAfford'), miss(2, 'cannotAfford'),
+        miss(5, 'cannotAfford', 'b'), miss(1, 'cannotAfford'), miss(1, 'cannotAfford')];
+    const index = u.logMistakeIndex(log);
+    assert.deepEqual(log.map(e => kinds(u.logTags(e, index)).join(' ')), [
+        'mistake:cannotAfford again:log.tagAgain',      // decision 7 after 5
+        'mistake:populationLimit',                      // another mistake
+        'mistake:cannotAfford',                         // 5 after 2: three decisions on
+        'mistake:cannotAfford again:log.tagAgain',      // 2 after 1
+        'mistake:cannotAfford',                         // seat b made it for the first time
+        'mistake:cannotAfford', 'mistake:cannotAfford', // twice in one decision is not a repeat
+    ]);
+    // The ledger, given the same decisions, counts the same repeats.
+    const l = WarEval.createLedger(), by = {};
+    for (const e of log.filter(e => e.playerId === 'a')) (by[e.move] = by[e.move] || []).push(e);
+    for (let move = 1; move <= 7; move++) l.addLine(line('a', (by[move] || []).map(e => ['avoidable', e.outcomeCode.replace('log.out.', '')])));
+    const again = log.filter(e => e.playerId === 'a' && u.logTags(e, index).some(x => x.kind === 'again')).length;
+    assert.equal(l.profile().seats.find(s => s.id === 'a').grounding.repeated, again);
+});
+
+test('tag chips filter the feed like the seat chips, and a search finds a tag', () => {
+    const els = {}, el = id => els[id] || (els[id] = { id, _html: '', get innerHTML() { return this._html; }, set innerHTML(v) { this._html = v; },
+        classList: { contains: () => false, toggle() {} }, children: [], scrollTop: 0, textContent: '', querySelector: () => null });
+    ['aiLogEntries', 'aiLogCount', 'aiLogTags'].forEach(el);
+    const u = ui({ OpenAIAIManager: Manager, document: { getElementById: id => els[id] || null }, getUiLang: () => 'en', tg: s => s, hasI18n: () => false });
+    u.game = { openAIAIManager: { decisionLogRevision: 1, decisionLog: [
+        entry('a', 2, '[ERROR] Cannot afford worker', 'cannotAfford', { civName: 'Greeks', color: '#fff', timestamp: 3 }),
+        entry('b', 2, '[ERROR] Barracks is busy', 'trainerBusy', { civName: 'Persians', color: '#fff', timestamp: 2 }),
+        entry('a', 1, 'OK - trained', 'trainUnit', { civName: 'Greeks', color: '#fff', timestamp: 1 }),
+    ] }, aiManager: { aiPlayers: [] } };
+    Object.assign(u, { renderLogPlayerChips() {}, logActionNames: () => ({ train_unit: 'Train' }), logDetail: () => '', teamDotHtml: () => '',
+        legibleColor: c => c, logEntryLinkable: () => false, updateDecisionLogTopBtn() {} });
+    const cards = () => (els.aiLogEntries.innerHTML.match(/class="ai-log-entry/g) || []).length;
+    u.updateDecisionLog();
+    assert.equal(cards(), 3);
+    assert.match(els.aiLogTags.innerHTML, /log\.chipMistakes.*log\.chipTiming.*log\.chipPlan/s);
+    assert.match(els.aiLogEntries.innerHTML, /<div class="log-tags"><span class="log-tag is-mistake" title="log\.tagMistakeTip">cannotAfford<\/span><\/div>/);
+    u.setLogTagFilter('mistake');
+    assert.deepEqual([cards(), els.aiLogCount.textContent], [1, '(1/3)']);
+    assert.match(els.aiLogTags.innerHTML, /is-mistake is-on/);
+    u.setLogTagFilter('timing');                         // two chips on: either tag
+    assert.equal(cards(), 2);
+    u.setLogTagFilter('mistake'); u.setLogTagFilter('timing');
+    assert.equal(cards(), 3);                            // none on: no filter
+    u.setLogTagFilter('plan');
+    assert.equal(cards(), 0);
+    u.setLogTagFilter('plan');
+    u.setLogTextFilter('cannotafford');                  // the code is on the card, so it is found
+    assert.equal(cards(), 1);
+});

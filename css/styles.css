@@ -1299,6 +1299,21 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 .coord-flag .cf-row .team-dot { flex: none; }
 
+/* Tags on a decision card (overhaul step D6): what became of the command. A mistake
+   wears its reason's code; "timing" is the refusal nobody could have foreseen. */
+.ai-log-entry .log-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 1px; }
+.ai-log-entries.collapsed .log-tags { display: none; }
+.ai-log-entry .log-tag {
+    padding: 0 5px; border-radius: 3px; border: 1px solid;
+    font-size: 0.66em; font-weight: 600; line-height: 1.5; white-space: nowrap; letter-spacing: 0.2px;
+}
+.log-tag.is-mistake { color: #f2c46a; border-color: rgba(242, 196, 106, 0.5); }
+.log-tag.is-invalid { color: #ff8597; border-color: rgba(255, 133, 151, 0.55); }
+.log-tag.is-again { color: #1b1508; background: #e0b24e; border-color: #e0b24e; }
+.log-tag.is-timing { color: #a9b6cc; border-color: rgba(169, 182, 204, 0.45); }
+.log-tag.is-plan { color: #7fd0bd; border-color: rgba(99, 185, 167, 0.55); }
+.ai-log-tagchip { font-size: 0.68em; }
+
 /* Rejected-action marker + reason in the decision log */
 .ai-log-entry .log-x {
     color: #ff8597;
