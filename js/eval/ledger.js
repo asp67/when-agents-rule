@@ -340,6 +340,25 @@
     const SHOCK_WINDOW = 3;                  // decisions a seat has to restate its plan
     const LOSS_FROM = 12, LOSS_SHARE = 0.75; // a quarter of its people gone since the last decision
 
+    const timelineOf = o => ({ samples: Array.isArray(o.samples) ? o.samples : [], ages: Array.isArray(o.ages) ? o.ages : [] });
+    const resultsOf = o => ({ ranking: (Array.isArray(o.ranking) ? o.ranking : []).map(r => ({ id: r.playerId, rank: num(r.rank), winner: !!r.isWinner })),
+        profile: o.profile && typeof o.profile === 'object' ? o.profile : null });
+
+    // The profile as an export carries it (step D8): every seat a model decided for, every
+    // number, and none of the long lists behind them (each mistake, each plan change, each
+    // threat). All of it can be worked out again from the transcript it travels in.
+    const LONG = { grounding: ['errors'], planning: ['history', 'standing'], follow: ['standing'], tactical: ['list'] };
+    WarEval.publicProfile = p => ({ kind: p.kind, scale: p.scale, seats: p.seats.filter(s => s.decisions > 0).map(s => {
+        const out = { id: s.id, seat: s.seat, civ: s.civ, name: s.name, model: s.model, decisions: s.decisions, index: s.index };
+        for (const k of ['grounding', 'planning', 'follow', 'tactical', 'strategy', 'versatility', 'efficiency']) {
+            out[k] = Object.assign({}, s[k]);
+            for (const f of LONG[k] || []) delete out[k][f];
+        }
+        return out;
+    }) });
+    // Do two profiles say the same? Compared as they would be written to a file.
+    WarEval.sameProfile = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
     class Ledger {
         constructor() {
             this.match = null;
@@ -386,8 +405,8 @@
                 for (const p of o.players || []) if (p && p.id) this._seat({ playerId: p.id, seat: p.seat, civ: p.civ, model: p.model, name: p.name });
                 return;
             }
-            if (o.type === 'timeline') { this.timeline = { samples: Array.isArray(o.samples) ? o.samples : [], ages: Array.isArray(o.ages) ? o.ages : [] }; return; }
-            if (o.type === 'results') { this.results = { ranking: (Array.isArray(o.ranking) ? o.ranking : []).map(r => ({ id: r.playerId, rank: num(r.rank), winner: !!r.isWinner })) }; return; }
+            if (o.type === 'timeline') { this.timeline = timelineOf(o); return; }
+            if (o.type === 'results') { this.results = resultsOf(o); return; }
             if (o.type === 'chronicle') {
                 if (o.kind === 'battle' && o.sides && typeof o.sides === 'object') this.battles.push({ t: num(o.t), sides: o.sides });
                 return;
@@ -731,6 +750,17 @@
             return this._past = this._work([...this.seats.values()].map(s => Object.assign({}, s, { turns: s.turns.filter(t => t.sec != null && t.sec <= sec) })), sec);
         }
 
+        // The profile as it will stand once the match's two closing lines are in the file
+        // (step D8). The results line carries the profile, so the profile is worked out
+        // before that line exists; a reader of the file then arrives at the same numbers.
+        profileWith(results, timeline) {
+            const keep = [this.results, this.timeline];
+            if (results) this.results = resultsOf(results);
+            if (timeline) this.timeline = timelineOf(timeline);
+            try { return this._work([...this.seats.values()]); }
+            finally { this.results = keep[0]; this.timeline = keep[1]; }
+        }
+
         // The timeline as it stands while the match is still running. The file gets it
         // as one line at the end; until then the page hands over the same object the
         // line will be written from, and the line replaces it when it arrives.
@@ -837,7 +867,9 @@
             });
             seats.sort((a, b) => (a.seat == null ? 1e9 : a.seat) - (b.seat == null ? 1e9 : b.seat) || String(a.id).localeCompare(String(b.id)));
             return { kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, match: this.match,
-                lines: this.lines, unreadable: this.unreadable, seats };
+                lines: this.lines, unreadable: this.unreadable, seats,
+                // The profile the file itself carries in its results line, if it does.
+                recorded: (this.results && this.results.profile) || null };
         }
     }
 

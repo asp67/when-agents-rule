@@ -16,6 +16,9 @@ single number as a result.
 |---|---|
 | Seat cards while watching | One bar per part, and the Index. The tooltip says what each bar rests on. |
 | Bench view (key **B**) | The parts by seat, with the raw measure, the trend over ten minutes and the decisions behind each cell. |
+| Results screen | The same matrix, at the end of a match and in the Results card during one. A decision in a cell's list opens in the analyzer. |
+| Saved results (`.md`) | A table of the parts and the Index per model seat. |
+| The transcript's `results` line | `profile`: every number of the profile, without the long lists behind them. |
 | `node tools/eval/war-eval.cjs <match.jsonl>` | The same numbers as tables. `--json` gives the full profile. |
 | `game.ui.evalLedger().profile()` | The profile object in the page's console. |
 
@@ -185,9 +188,20 @@ A run belongs to one build of the rules and prints the core hash it was played u
 - **The anchors' Strategy has no battle part.** The chronicle is page code and does not run
   in the headless realm.
 
+## The profile in an exported match
+
+From build 1162 on, the `results` line of a transcript carries the profile the match was
+shown with. Scoring the file again gives the same numbers: the scorer checks this and says
+so in its first lines, or says that they differ, which means the scoring has changed since
+the file was written. The scale label travels with the profile for that reason.
+
+The carried profile depends on the placement and the timeline, which are written in the
+same breath. It is therefore worked out as it will stand once those lines are in the file,
+not as it stood a moment before.
+
 ## The match heuristic
 
-The 0-100 match heuristic on the results screen (command success 34, progression 20,
-format 18, reliability 15, action diversity 13) is still there and still in the exports. It
-summarizes one match and is not part of the profile. It moves into a folded Legacy block
-when the profile comes to the results screen.
+The 0-100 match heuristic (command success 34, progression 20, format 18, reliability 15,
+action diversity 13) summarizes one match and is not part of the profile. On the results
+screen it sits in a folded block, "Legacy: match heuristic", under the seat cards. It is
+still in every export, named as what it is.

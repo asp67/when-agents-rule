@@ -36,7 +36,13 @@ function report(file, p) {
     const out = [path.basename(file),
         'build ' + (m.build == null ? 'not recorded' : m.build) + ', prompt ' + (m.promptVersion || 'not recorded')
         + ', ' + p.seats.length + ' seats, ' + p.seats.reduce((n, s) => n + s.decisions, 0) + ' decisions'
-        + (p.unreadable ? ', ' + p.unreadable + ' unreadable lines' : ''), ''];
+        + (p.unreadable ? ', ' + p.unreadable + ' unreadable lines' : '')];
+    // A file from build 1162 on carries the profile it was shown with. Scored again here,
+    // it should say the same; where it does not, the scoring has changed since.
+    if (p.recorded) out.push('The file carries its own profile, scale ' + p.recorded.scale + ': '
+        + (WarEval.sameProfile(JSON.parse(JSON.stringify(WarEval.publicProfile(p))), p.recorded) ? 'scored again here, it is the same.'
+            : 'scored again here on scale ' + p.scale + ', it differs. The numbers below are this build\'s.'));
+    out.push('');
     out.push(table([['GROUNDING', 'score', 'valid', 'ok', 'of which waits', 'avoidable', 'invalid', 'repeated', 'contended', 'not judged']].concat(
         p.seats.map(s => { const g = s.grounding; return [name(s), fix(g.score, 0), pct(g.rate), g.ok, g.waits, g.avoidable, g.invalid, g.repeated, g.contended, g.unjudged]; }))));
     if (p.seats.some(s => !s.grounding.judged && s.grounding.unjudged))

@@ -271,3 +271,29 @@ test('tag chips filter the feed like the seat chips, and a search finds a tag', 
     u.setLogTextFilter('cannotafford');                  // the code is on the card, so it is found
     assert.equal(cards(), 1);
 });
+
+test('the saved results carry the profile as a table, and name the heuristic as what it is', () => {
+    const u = ui();
+    u.game = {};
+    u.summaryReasonText = r => r;
+    const l = ledger();
+    l.addLine(JSON.stringify({ type: 'timeline', samples: [{ t: 5, p: { a: { pw: 600 }, b: { pw: 400 }, c: { pw: 0 } } }], ages: [] }));
+    l.addLine(JSON.stringify({ type: 'results', ranking: [{ playerId: 'a', rank: 1, isWinner: true }, { playerId: 'b', rank: 2 }, { playerId: 'c', rank: 3 }] }));
+    const profile = WarEval.publicProfile(l.profile());
+    const md = u.buildResultsMarkdown({ reports: [], reason: 'timeout', durStr: '10:00', playerCount: 3, profile });
+    assert.match(md, /## Evaluation profile\n\nScale v1, provisional\. One match is one sample/);
+    assert.match(md, /\| Seat \| Grounding \| Planning \| Follow-through \| Tactical \| Strategy \| Index \|/);
+    // Seat a: 39 of 40 valid; one plan; its one step dropped; no threat; 60 % of the power and first place.
+    assert.match(md, /\| Seat a \| 75 \(97\.5 % of 40\) \| 83 \(1 stated, 1 changed\) \| 0 \(0 of 1 steps\) \| – \(no threat shown\) \| 100 \(60\.0 % of power, placed 1\) \| 58\.3 \(3 of 4 parts\) \|/);
+    assert.ok(md.indexOf('## Evaluation profile') < md.indexOf('## Ranking'));
+    // Without a profile (no model seat, or nothing recorded) the file is what it always was.
+    assert.doesNotMatch(u.buildResultsMarkdown({ reports: [], reason: 'timeout', durStr: '10:00', playerCount: 2 }), /Evaluation profile/);
+    const src = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8');
+    assert.match(src, /Legacy match heuristic \(not a capability score, not part of the profile\)/);
+    // On the results screen the heuristic sits in a folded block, not on the seat cards.
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    assert.match(html, /<details class="summary-legacy" id="summaryLegacy" hidden>\s*<summary data-i18n="sum\.legacy">[^<]+<\/summary>\s*<div id="summaryLegacyRows"><\/div>\s*<p class="summary-legend" id="summaryLegend"><\/p>\s*<\/details>/);
+    assert.ok(html.indexOf('id="summaryProfile"') > html.indexOf('id="summaryWinner"') && html.indexOf('id="summaryProfile"') < html.indexOf('id="summaryGrid"'));
+    const card = src.slice(src.indexOf('<div class="sum-card$' + '{r.isWinner'), src.indexOf("document.getElementById('summaryGrid').innerHTML"));
+    assert.doesNotMatch(card, /sum-sound/);
+});

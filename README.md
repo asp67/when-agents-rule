@@ -90,7 +90,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and pause per model.
 - **📺 Broadcast mode** — for a stream or a recording: the operator's panels make way for a scoreboard, captions of what each model just ordered and why, and a held Wonder's countdown in its seat's colour. **Esc** or one click brings the controls back. Nothing about the match changes.
 - **🎯 Intent and 🎬 auto camera** — floating cards show each model's latest orders and reasons where they point; the auto camera follows the fighting.
-- **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behaviour tags, each seat's **final word** on the match, and a transparent 0–100 match heuristic (not a capability score).
+- **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behaviour tags, each seat's **final word** on the match, the **evaluation profile** of each model seat (see below), and a transparent 0–100 match heuristic (not a capability score), folded away as legacy.
 - **📄 Exports** — the evaluation as `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline at the end.
 - **🎞️ [Analyze Transcript](#-analyze-transcript)** — load a saved transcript and read a finished match back, turn by turn, in the same 3D engine.
 - **🧪 [Benchmark](#-benchmark)** — fixed scenarios, the same for every model.
@@ -284,7 +284,7 @@ Nothing is interpolated between snapshots: every frame is a moment the file actu
 
 ## 🧮 How a model is scored
 
-The **evaluation profile** scores how a model seat played: Grounding, Planning, Follow-through, Tactical and Strategy, read from the transcript and shown on the seat cards and in the Bench view (key **B**). It is provisional; what each part measures, how it was checked against seats that cannot play, and what is still wrong with it are in [docs/SCORING.md](docs/SCORING.md).
+The **evaluation profile** scores how a model seat played: Grounding, Planning, Follow-through, Tactical and Strategy, read from the transcript and shown on the seat cards, in the Bench view (key **B**) and on the results screen; an exported match carries it in its results line. It is provisional; what each part measures, how it was checked against seats that cannot play, and what is still wrong with it are in [docs/SCORING.md](docs/SCORING.md).
 
 The **match heuristic** (0–100) is a transparent composite — no black box. It summarizes one match and is not a capability score:
 

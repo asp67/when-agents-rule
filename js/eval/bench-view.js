@@ -67,12 +67,51 @@
         if (at >= 0) pins.splice(at, 1); else { pins.push(id); if (pins.length > 2) pins.shift(); }
         this._benchSig = null;
         this.updateBenchView();
+        this.updateSummaryProfile();
+    };
+    // A decision named in an evidence list, opened where it can be read. While a match
+    // runs that is the transcript panel; from the results card over a running match the
+    // card closes first; after the end the transcript opens in the analyzer at that seat's
+    // decision, which leaves the results screen as the Analyzer button does.
+    P.benchOpenTurn = function (playerId, turn) {
+        if (turn == null) return;
+        const sum = document.getElementById('arenaSummaryScreen');
+        if (!sum || !sum.classList.contains('active')) return this.openTranscriptTurn(playerId, turn);
+        if (sum.classList.contains('snapshot')) { this.closeArenaSnapshot(); return this.openTranscriptTurn(playerId, turn); }
+        const ledger = this.benchLedger(), seat = ledger && ledger.profile().seats.find(s => s.id === playerId);
+        if (!seat || seat.seat == null || !this.summaryCanOpen()) return;
+        return this.watchInAnalyzer().then(() => this.anApplyMoment({ seat: seat.seat + 1, turn }));
+    };
+    // After the end a decision can be opened only while the transcript is still held.
+    P.summaryCanOpen = function () {
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        return !!(rec && rec.hasData && rec.hasData());
+    };
+
+    // The report card (overhaul step D8): the comparison matrix on the results screen,
+    // from the same ledger and the same markup as the Bench view. It is drawn after the
+    // match's closing lines have reached the ledger, so at the end it shows the numbers
+    // the exported file gives.
+    P.updateSummaryProfile = function () {
+        const el = document.getElementById('summaryProfile'), sum = document.getElementById('arenaSummaryScreen');
+        if (!el || !sum) return;
+        const ledger = this.benchLedger();
+        const has = !!ledger && ledger.profile().seats.some(s => s.decisions > 0);
+        el.style.display = has ? '' : 'none';
+        if (!has) { if (el.innerHTML) el.innerHTML = ''; this._sumProfileSig = null; return; }
+        const snapshot = sum.classList.contains('snapshot'), ev = this._benchEvidence;
+        const link = snapshot ? 'bench.open' : this.summaryCanOpen() ? 'sum.openAnalyzer' : null;
+        const sig = [ledger.lines + '.' + ledger.rev, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : '', link].join(':');
+        if (sig === this._sumProfileSig) return;
+        this._sumProfileSig = sig;
+        el.innerHTML = this.benchHtml(ledger, { link }).right + `<p class="summary-profile-note">${this.escapeHtml(t('sum.profileNote'))}</p>`;
     };
     P.benchShowEvidence = function (key, id) {
         const cur = this._benchEvidence;
         this._benchEvidence = cur && cur.key === key && cur.id === id ? null : { key, id };
         this._benchSig = null;
         this.updateBenchView();
+        this.updateSummaryProfile();
     };
 
     P.updateBenchView = function () {
@@ -87,7 +126,8 @@
     };
 
     // The two panels as markup. Apart from the page it is given, it reads nothing but the ledger.
-    P.benchHtml = function (ledger) {
+    // `link` is the tooltip key of what a click on a decision does here, or null where it can do nothing.
+    P.benchHtml = function (ledger, { link = 'bench.open' } = {}) {
         const esc = s => this.escapeHtml(String(s == null ? '' : s)), ev = this._benchEvidence;
         const profile = ledger ? ledger.profile() : null;
         const seats = profile ? profile.seats.filter(s => s.decisions > 0) : [];
@@ -101,7 +141,7 @@
         const ink = s => this.legibleColor ? this.legibleColor(this.identityHex ? this.identityHex(s.id, s.civ, s.seat) : '#cccccc') : '#cccccc';
         const dot = s => this.teamDotHtml ? this.teamDotHtml(s.seat, 10) : '';
         const label = s => esc(s.name || s.model || s.id);
-        const open = (s, turn) => turn == null ? '' : ` onclick="event.stopPropagation(); game.ui.openTranscriptTurn('${esc(s.id)}', ${Number(turn)})" title="${esc(t('bench.open'))}"`;
+        const open = (s, turn) => turn == null || !link ? '' : ` onclick="event.stopPropagation(); game.ui.benchOpenTurn('${esc(s.id)}', ${Number(turn)})" title="${esc(t(link))}"`;
         let pins = (this._benchSeats || []).filter(id => seats.some(s => s.id === id));
         if (!pins.length) pins = [(seats.find(s => s.planning.standing) || seats[0]).id];
 

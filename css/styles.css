@@ -2122,6 +2122,16 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 
 .summary-legend { text-align: center; color: #8a93a8; font-size: 0.8em; margin: 4px 0 18px; }
+/* The report card: the Bench view's matrix at the width of the results screen. */
+.summary-profile { max-width: 760px; margin: 0 auto 22px; padding: 14px 18px 10px; border-radius: 8px; background: rgba(18, 22, 30, 0.72); border: 1px solid rgba(221, 211, 180, 0.16); font-size: 0.95rem; color: #dfe5ee; text-align: left; }
+.summary-profile .bm th[scope="row"] { width: 130px; }
+.summary-profile .bench-evidence li { white-space: normal; }
+.summary-profile-note { margin: 10px 0 0; font-size: 0.8em; color: #8a93a8; }
+.summary-legacy { max-width: 760px; margin: 4px auto 14px; font-size: 0.85rem; color: #aeb8cc; text-align: left; }
+.summary-legacy > summary { cursor: pointer; color: #8a93a8; }
+.summary-legacy .sum-sound { margin: 8px 0 0; }
+.summary-legacy .summary-legend { text-align: left; margin: 10px 0 4px; }
+.sum-sound-name { flex: 0 0 34%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--civ, #dfe5ee); }
 .summary-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: stretch;
     max-width: 1180px; margin: 0 auto; padding-bottom: 30px; }
 /* One size for every action here. The menu styles they borrow were made for a column of

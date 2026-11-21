@@ -5829,10 +5829,6 @@ class UIManager {
                         <div class="sum-id"><div class="sum-model">${this.escapeHtml(r.model)}</div><div class="sum-civ">${this.teamDotHtml(r.ai.seat, 9)}${r.civName}${r.alive ? '' : ` · <b style="color:#ff6b81">${t('spec.defeated')}</b>`}</div></div>
                         <span class="sum-power" title="${t('sum.endScore')}">${r.power}</span>
                     </div>
-                    <div class="sum-sound">
-                        <div class="sum-sound-bar"><div class="sum-sound-fill" style="width:${r.soundness}%"></div></div>
-                        <div class="sum-sound-val">${r.soundness}<span>${t('sum.strategySuffix')}</span></div>
-                    </div>
                     <div class="sum-tags">${tagsHtml}</div>
                     ${condHtml}
                     <div class="sum-metrics">
@@ -5857,6 +5853,17 @@ class UIManager {
         });
         document.getElementById('summaryGrid').innerHTML = html;
 
+        // The match heuristic, folded away (overhaul step D8): one row per model seat and
+        // the weights it is made of. It summarizes a match and is no part of the profile.
+        const legacyRows = reports.filter(r => r.isLLM && r.metrics).map(r => `
+                <div class="sum-sound" style="--civ:${r.color}">
+                    <span class="sum-sound-name">${this.teamDotHtml(r.ai.seat, 9)}${this.escapeHtml(r.model)}</span>
+                    <div class="sum-sound-bar"><div class="sum-sound-fill" style="width:${r.soundness}%"></div></div>
+                    <div class="sum-sound-val">${r.soundness}<span>${t('sum.strategySuffix')}</span></div>
+                </div>`).join('');
+        const legacyBox = document.getElementById('summaryLegacy'), legacyEl = document.getElementById('summaryLegacyRows');
+        if (legacyEl) legacyEl.innerHTML = legacyRows;
+        if (legacyBox) legacyBox.hidden = !legacyRows;
         document.getElementById('summaryLegend').textContent = t('sum.legend');
         this.renderSummaryConditions();
 
@@ -5877,12 +5884,31 @@ class UIManager {
         // Guarded on !snapshot: the Results button opens this mid-match with numbers
         // that are not final, and a second results line would leave a reader guessing
         // which one counts.
+        //
+        // The evaluation profile travels in the results line (overhaul step D8). It
+        // depends on the placement and the timeline, which are these two lines, so it is
+        // worked out as it will stand once they are written: a reader who scores the
+        // exported file arrives at the numbers the file carries.
+        const ledger = this.evalLedger(), canScore = !!ledger && typeof WarEval !== 'undefined';
         if (!snapshot) {
             const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
             if (rec && rec.hasData && rec.hasData()) {
-                try { rec.finish([this.publicResults(this._lastSummary), this.publicTimeline()]); }
+                try {
+                    const results = this.publicResults(this._lastSummary), timeline = this.publicTimeline();
+                    if (canScore) {
+                        const carried = WarEval.publicProfile(ledger.profileWith(results, timeline));
+                        if (carried.seats.length) results.profile = carried;
+                    }
+                    rec.finish([results, timeline]);
+                }
                 catch (e) { console.warn('[transcript] summary tail failed', e); }
             }
+        }
+        // For the saved results and the report card: the profile as the ledger now has it
+        // (final after a real end, the running one in a snapshot).
+        if (canScore) {
+            const now = WarEval.publicProfile(ledger.profile());
+            this._lastSummary.profile = now.seats.length ? now : null;
         }
 
         // Snapshot: Back returns to the running game; hide the terminal
@@ -5917,6 +5943,7 @@ class UIManager {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         if (rec && !snapshot) { try { rec.flushAll(); } catch (e) {} }
         this.updateTranscriptOffer(snapshot);
+        if (this.updateSummaryProfile) this.updateSummaryProfile();
         this.renderSummaryChart();
     }
 
@@ -9154,6 +9181,29 @@ class UIManager {
         L.push(`- **Winner:** ${winner ? `${winner.model} (${winner.civName}, ${winner.isLLM ? 'LLM' : 'rule-based'}) — ${winner.power} pts` : 'none (draw)'}`);
         L.push('');
 
+        // The evaluation profile (overhaul step D8): how each model seat played, as the
+        // transcript of this match scores. The same numbers the results line carries.
+        const prof = summary.profile;
+        if (prof && prof.seats && prof.seats.length) {
+            const n = v => v == null ? '–' : String(Math.round(v));
+            const pc = v => v == null ? '–' : (v * 100).toFixed(1) + ' %';
+            L.push(`## Evaluation profile`);
+            L.push('');
+            L.push(`Scale ${prof.scale}, provisional. One match is one sample of a model against these opponents on this map. What each part measures: docs/SCORING.md.`);
+            L.push('');
+            L.push(`| Seat | Grounding | Planning | Follow-through | Tactical | Strategy | Index |`);
+            L.push(`|---|---:|---:|---:|---:|---:|---:|`);
+            for (const s of prof.seats) {
+                const g = s.grounding, pl = s.planning, fl = s.follow, ta = s.tactical, st = s.strategy;
+                L.push(`| ${String(s.name || s.model || s.id).replace(/\|/g, '/')} | ${n(g.score)} (${pc(g.rate)} of ${g.rated}) | ${n(pl.score)} (${pl.statements} stated, ${pl.revisions} changed) | `
+                    + `${n(fl.score)} (${fl.acted == null || !(fl.acted + fl.dropped) ? 'no step closed' : fl.acted + ' of ' + (fl.acted + fl.dropped) + ' steps'}) | ${n(ta.score)} (${ta.atOnce == null || !(ta.episodes + ta.wonders) ? 'no threat shown' : (ta.atOnce + ta.wonderAnswered) + ' of ' + (ta.episodes + ta.wonders) + ' threats'}) | `
+                    + `${n(st.score)} (${pc(st.powerShare)} of power${st.rank != null ? ', placed ' + st.rank : ''}) | ${s.index.value == null ? '–' : s.index.value.toFixed(1)} (${s.index.of} of ${s.index.parts} parts) |`);
+            }
+            L.push('');
+            L.push(`The Index is the mean of Grounding, the plan as far as it was followed (Planning × Follow-through), Tactical and Strategy. A dash is a part the match gave no chance for.`);
+            L.push('');
+        }
+
         L.push(`## Ranking`);
         L.push('');
         reports.forEach((r, idx) => {
@@ -9175,7 +9225,7 @@ class UIManager {
             L.push(`- Resources: ${r.food} food · ${r.wood} wood · ${r.stone} stone · ${r.gold} gold`);
             const m = r.metrics;
             if (r.isLLM && m) {
-                L.push(`- Match heuristic (not a capability score): ${r.soundness}/100`);
+                L.push(`- Legacy match heuristic (not a capability score, not part of the profile): ${r.soundness}/100`);
                 L.push(`- Decisions: ${m.decisions} (answered ${m.responded}${(m.roundsMissed || 0) ? ` · ${m.roundsMissed} missed the round deadline` : ''})`);
                 // Only when it says something: a match where every reply carried one
                 // command prints exactly what it always did.

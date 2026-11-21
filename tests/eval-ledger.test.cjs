@@ -809,3 +809,64 @@ test('the command-line report prints strategy, the range and the Index beside th
     assert.match(text, /Score scale v1: provisional\. valid = ok of ok \+ avoidable \+ invalid, with waits left out/);
     assert.match(text, /One match is one sample/);
 });
+
+// ---- the profile in the export (overhaul step D8) ------------------------------------
+test('the profile a results line carries is the profile its own file gives', async () => {
+    class Blob { constructor(parts) { this.text = parts.join(''); } }
+    const context = vm.createContext({ console, navigator: {}, Blob, Date, WarEval });
+    vm.runInContext(fs.readFileSync(path.join(root, 'js/transcript.js'), 'utf8') + '\nthis.T = TranscriptRecorder;', context);
+    const rec = new context.T();
+    await rec.begin('match-d8', [{ id: 'a', civilization: 'greek', seat: 0, name: 'Seat A', model: 'model-a' },
+        { id: 'b', civilization: 'persian', seat: 1, name: 'Seat B', model: 'model-b' }], { build: 1162, promptVersion: 'v-test' });
+    const raid = [{ kind: 'building', type: 'barracks', x: 100, z: 100, attackerAt: { x: 108, z: 102, owner: 'persian-2' } }];
+    for (let n = 1; n <= 14; n++) {
+        for (const id of ['a', 'b']) {
+            rec.record(id, { at: 1000 + n, latencyMs: 900, tokens: { prompt: 9000, completion: 200 },
+                state: { clock: { matchSeconds: n * 30 }, population: { used: 12 }, buildings: { buildable: [{ type: 'tower' }] },
+                    friendlyBuildings: [{ type: 'barracks', x: 100, z: 100 }], threats: { underAttack: n === 6 ? raid : [], enemyWonders: [] } },
+                parsed: Object.assign({ commands: [{ action: n === 6 ? 'attack_target' : n % 4 ? 'build_structure' : 'wait', params: n === 6 ? { targetX: 105, targetZ: 100 } : { buildingType: 'tower' } }] },
+                    id === 'a' && n === 1 ? { objective: 'Hold', plan: ['Build a tower'] } : null) });
+            rec.noteResult(id, 'ok', undefined, [{ n: 1, action: n === 6 ? 'attack_target' : n % 4 ? 'build_structure' : 'wait', code: 'c', verdict: id === 'b' && n % 5 === 0 ? 'avoidable' : 'ok' }]);
+        }
+    }
+    const before = JSON.stringify(rec.ledger.profile());
+    const results = { type: 'results', outcome: 'last_standing', ranking: [{ playerId: 'a', rank: 1, isWinner: true }, { playerId: 'b', rank: 2, isWinner: false }] };
+    const timeline = { type: 'timeline', samples: Array.from({ length: 80 }, (_, i) => ({ t: i * 5, p: { a: { pw: 600 + i }, b: { pw: 400 } } })), ages: [{ t: 120, id: 'a', age: 'neolithic' }] };
+    // Worked out before the two lines exist, and the ledger is left as it was.
+    const carried = WarEval.publicProfile(rec.ledger.profileWith(results, timeline));
+    assert.equal(JSON.stringify(rec.ledger.profile()), before);
+    assert.deepEqual([carried.seats[0].strategy.final, carried.seats[0].strategy.rank, carried.seats[0].strategy.samples], [true, 1, 80]);
+    results.profile = carried;
+    rec.finish([results, timeline]);
+    // A reader of the exported file, scoring it again, arrives at what the file carries.
+    const text = (await rec.exportBlob()).text;
+    const again = WarEval.profileOf(text);
+    assert.ok(WarEval.sameProfile(JSON.parse(JSON.stringify(WarEval.publicProfile(again))), again.recorded));
+    assert.deepEqual(JSON.parse(JSON.stringify(rec.ledger.profile())), JSON.parse(JSON.stringify(again)));     // and the page's own, after the end
+    // It is a profile with something in it: every part of seat a has a score.
+    const a = again.recorded.seats[0];
+    assert.deepEqual([a.name, a.decisions, a.grounding.waits, a.grounding.rated, a.planning.statements, a.tactical.episodes, a.tactical.atOnce], ['Seat A', 14, 3, 11, 1, 1, 1]);
+    for (const k of WarEval.SCORED) assert.equal(typeof a[k].score, 'number', k);
+    assert.equal(typeof a.index.value, 'number');
+    // The long lists stay in the transcript: the export carries the numbers.
+    assert.deepEqual([a.grounding.errors, a.planning.history, a.planning.standing, a.follow.standing, a.tactical.list], [undefined, undefined, undefined, undefined, undefined]);
+    assert.ok(again.seats[0].tactical.list.length === 1 && again.seats[0].planning.history.length === 1);
+    assert.ok(JSON.stringify(carried).length < 6000, 'the carried profile is ' + JSON.stringify(carried).length + ' characters');
+    // The scorer says whether the file agrees with it, and notices a number that was changed.
+    const file = path.join(require('node:os').tmpdir(), 'war-d8-' + process.pid + '.jsonl');
+    try {
+        fs.writeFileSync(file, text);
+        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v1: scored again here, it is the same\./);
+        fs.writeFileSync(file, text.replace('"waits":3', '"waits":2'));
+        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v1: scored again here on scale v1, it differs\./);
+    } finally { fs.rmSync(file, { force: true }); }
+    // A file without one says nothing about it.
+    assert.doesNotMatch(report('x.jsonl', await profileFile(sample('2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl'))), /carries its own profile/);
+});
+
+test('a seat no model decided for is not in the exported profile', () => {
+    const l = WarEval.createLedger();
+    [seatsLine, move(['Build a tower'], [['build_structure', 'tower']]), timelineOf([tick(5, 100, 500)]), resultsOf('b')].forEach(x => l.addLine(x));
+    const p = l.profile(), pub = WarEval.publicProfile(p);
+    assert.deepEqual([p.seats.length, pub.seats.length, pub.seats[0].id, pub.kind, pub.scale, p.recorded], [2, 1, 'a', 'war-eval/1', 'v1', null]);
+});

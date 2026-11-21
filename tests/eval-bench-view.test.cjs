@@ -68,7 +68,7 @@ test('D2: the matrix shows the command-line scorer\'s values at match end', asyn
     u.benchShowEvidence('strategy', scored.seats[1].id);                // Sonnet: led clearly from 58:13 and came second
     const ev = u.benchHtml(ledger).right.split('bench-evidence')[1];
     assert.match(ev, /6:52<\/span> age\.neolithic.*13:32<\/span> age\.bronze.*22:22<\/span> age\.iron.*58:13<\/span> bench\.lead · bench\.leadLost.*bench\.battles\{&quot;n&quot;:36,&quot;destroyed&quot;:136,&quot;lost&quot;:144\}/s);
-    assert.doesNotMatch(ev, /openTranscriptTurn/);
+    assert.doesNotMatch(ev, /benchOpenTurn/);
     u.benchShowEvidence('strategy', scored.seats[1].id);
     assert.match(right, /class="bm-(up|down)" title="bench\.trendTip\{&quot;then&quot;:\d+\}">[▲▼]\d+</);
 });
@@ -81,7 +81,7 @@ test('D2: every string of the Bench view is keyed in all four languages', () => 
     const keys = new Set([...src.matchAll(/t\('([a-z]+\.[A-Za-z0-9.]+)'/g)].map(m => m[1]).concat([...src.matchAll(/data-i18n(?:-title)?="([^"]+)"/g)].map(m => m[1])));
     for (const state of ['acted', 'pending', 'dropped', 'late', 'uncheckable']) keys.add('bench.st.' + state);
     for (const dim of WarEval.SCORED) keys.add('eval.' + dim);
-    for (const k of ['bench.leadWon', 'bench.leadLost', 'eval.index', 'eval.indexTip', 'eval.waits', 'eval.groundingWaits', 'eval.strategyPlaced', 'eval.strategyTip', 'eval.strategyLive', 'eval.strategyNone', 'age.neolithic', 'age.bronze', 'age.iron']) keys.add(k);
+    for (const k of ['bench.leadWon', 'bench.leadLost', 'eval.index', 'eval.indexTip', 'eval.waits', 'eval.groundingWaits', 'sum.openAnalyzer', 'sum.legacy', 'eval.strategyPlaced', 'eval.strategyTip', 'eval.strategyLive', 'eval.strategyNone', 'age.neolithic', 'age.bronze', 'age.iron']) keys.add(k);
     keys.delete('bench.st.'); keys.delete('eval.');                      // the two prefixes those are built from
     assert.ok(keys.size >= 30, 'only ' + keys.size + ' keys found: did the pattern change?');
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of keys) assert.ok(k in context.I[lang], lang + ' lacks ' + k);
@@ -174,11 +174,56 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.notEqual(els.benchMatrix.innerHTML, 'untouched');
     // A cell opens the decisions behind it, and each of those opens in the transcript.
     u.benchShowEvidence('grounding', 'a');
-    assert.match(els.benchMatrix.innerHTML, /bench-evidence.*openTranscriptTurn\('a', 1\).*#1 0:10<\/span> c</s);
-    u.openTranscriptTurn('a', 1);
+    assert.match(els.benchMatrix.innerHTML, /bench-evidence.*benchOpenTurn\('a', 1\)" title="bench\.open".*#1 0:10<\/span> c</s);
+    u.benchOpenTurn('a', 1);
     assert.deepEqual([u._transcriptFor, u._tvPinned, opened.join()], ['a', 1, '1']);
     u.benchShowEvidence('grounding', 'a');                              // the same cell again closes it
     assert.doesNotMatch(els.benchMatrix.innerHTML, /bench-evidence/);
     press('B');
     assert.deepEqual([u.benchOn(), body.has('bench-view'), els.benchLeft.style.display], [false, false, 'none']);
+});
+
+test('D8: the results screen shows the same matrix, and a decision opens where it can be read', async () => {
+    const { u, els, ledger, opened } = page();
+    const cls = new Set(), calls = [];
+    els.arenaSummaryScreen = { classList: { contains: c => cls.has(c) } };
+    els.summaryProfile = { style: {}, innerHTML: '' };
+    // No model seat has decided anything: there is no card.
+    u.updateSummaryProfile();
+    assert.deepEqual([els.summaryProfile.style.display, els.summaryProfile.innerHTML], ['none', '']);
+    ledger.addLine(decision('a', 10, { plan: ['Build a tower'], orders: [['train_unit', { unitType: 'militia' }, 'avoidable']] }));
+    // The Results card over a running match: the Bench view's own matrix, and a note under it.
+    cls.add('active'); cls.add('snapshot');
+    u.benchShowEvidence('grounding', 'a');
+    assert.equal(els.summaryProfile.style.display, '');
+    const card = els.summaryProfile.innerHTML;
+    assert.ok(card.startsWith(u.benchHtml(ledger).right), 'the card is the matrix the Bench view draws');
+    assert.match(card, /<p class="summary-profile-note">sum\.profileNote<\/p>$/);
+    assert.match(card, /benchOpenTurn\('a', 1\)" title="bench\.open"/);
+    // The card is redrawn every second while it is up; nothing is rebuilt unless something changed.
+    els.summaryProfile.innerHTML = 'untouched';
+    u.updateSummaryProfile();
+    assert.equal(els.summaryProfile.innerHTML, 'untouched');
+    // A decision clicked there: the card closes and the transcript panel opens at it.
+    u.closeArenaSnapshot = () => { calls.push('close'); cls.clear(); };
+    u.benchOpenTurn('a', 1);
+    assert.deepEqual([calls.join(), u._transcriptFor, opened.join()], ['close', 'a', '1']);
+    // After the end the match is read in the analyzer: at that seat (counted from 1, as a
+    // moment link does) and that decision. The tooltip says the click leaves the screen.
+    cls.add('active');
+    let held = true;
+    u.game.openAIAIManager.transcripts.hasData = () => held;
+    u.watchInAnalyzer = async () => { calls.push('analyzer'); };
+    u.anApplyMoment = m => { calls.push('moment ' + m.seat + '/' + m.turn); };
+    u.updateSummaryProfile();
+    assert.match(els.summaryProfile.innerHTML, /benchOpenTurn\('a', 1\)" title="sum\.openAnalyzer"/);
+    await u.benchOpenTurn('a', 1);
+    assert.deepEqual(calls.slice(1), ['analyzer', 'moment 1/1']);
+    // Once the transcript is gone there is nothing to open, and nothing offers to.
+    held = false;
+    u.updateSummaryProfile();
+    assert.doesNotMatch(els.summaryProfile.innerHTML, /benchOpenTurn/);
+    assert.match(els.summaryProfile.innerHTML, /#1 0:10<\/span> c</);            // the list is still there to read
+    assert.equal(u.benchOpenTurn('a', 1), undefined);
+    assert.equal(calls.length, 3);
 });
