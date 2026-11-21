@@ -724,6 +724,7 @@
 
         setTerrain(terrain) {
             if (this._grass) { this._grass.dispose(); this._grass = null; }
+            if (this._occl) { this._occl.dispose(this.gl); this._occl = null; }
             if(this._clutterVisibilityTex){this.gl.deleteTexture(this._clutterVisibilityTex);this._clutterVisibilityTex=null;}
             this._clutterFow=null;
             this.terrain = terrain;
@@ -990,6 +991,86 @@
                 if (!shown || this._cull(c.x, c.z, margin)) continue;
                 for (const g of c.groups) (g.blend ? dl.blended : dl.opaque).push(g.entry);
             }
+        }
+
+        // ---- contact shading (overhaul step A2) ----------------------------------
+        // How strongly the ground darkens under what stands on it. Nothing in Simple
+        // lighting (the comparison keeps its look) and nothing on Low (it is one more
+        // texture read on every piece of ground).
+        _occlStrength() {
+            return this.visualStyle !== 'classic' && this.graphicsQuality !== 'low' && this.terrain && window.EngineOcclusion ? EngineRenderer.CONTACT : 0;
+        }
+
+        // What a resource node darkens: a tree by its crown, a rock by its body.
+        _occlOf(res, i) {
+            if (res.type === 'wood') { const s = 0.85 + ((i * 37) % 100) / 200; return { x: res.x, z: res.z, r: 1.5 * s, strength: 0.78 }; }
+            if (res.type === 'stone') return { x: res.x, z: res.z, r: 1.7, strength: 0.72 };
+            if (res.type === 'gold') return { x: res.x, z: res.z, r: 1.5, strength: 0.72 };
+            return { x: res.x, z: res.z, r: 1.0, strength: 0.5 };
+        }
+
+        // Brings the occlusion map up to what stands on the map now. Buildings count while
+        // they are drawn: one the fog hides, or one the model's view leaves out, darkens
+        // nothing, so the ground does not give it away. Resource nodes count while they
+        // have something left; their places never change, so they are sorted into a grid
+        // once. A few changed tiles are painted per frame.
+        _syncOcclusion() {
+            if (!this._occlStrength()) return;
+            const rs = this.terrain.resources || [];
+            let o = this._occl;
+            if (!o || o.rs !== rs || o.n !== rs.length) {
+                if (o) o.dispose(this.gl);
+                const span = this.terrain.size > 0 ? this.terrain.size : 800;
+                o = this._occl = new EngineOcclusion.Map(span, size => { const c = document.createElement('canvas'); c.width = c.height = size; return c; });
+                o.rs = rs; o.n = rs.length;
+                o.cell = 64; o.grid = new Map(); o.alive = new Uint8Array(rs.length); o.shown = new Map(); o.tick = 0;
+                for (let i = 0; i < rs.length; i++) {
+                    const res = rs[i], key = Math.floor(res.x / o.cell) + ',' + Math.floor(res.z / o.cell);
+                    if (!o.grid.has(key)) o.grid.set(key, []);
+                    o.grid.get(key).push(i);
+                    o.alive[i] = res.amount > 0 ? 1 : 0;
+                }
+            }
+            // Buildings: every sixth frame is often enough for something that takes minutes to build.
+            if (o.tick++ % 6 === 0) {
+                const seen = new Set();
+                for (const b of this.buildings) {
+                    const fp = b._grassFootprint;
+                    const drawn = !!(b._engine && fp) && !(b.mesh && b.mesh.visible === false) && !(this.entityHidden && this.entityHidden(b, 'building'));
+                    if (!drawn) continue;
+                    seen.add(b);
+                    const was = o.shown.get(b);
+                    if (was && was.x === b.x && was.z === b.z && was.ex === fp.ex && was.ez === fp.ez) continue;
+                    if (was) o.touch(was.x, was.z, Math.hypot(was.ex, was.ez));
+                    // The footprint carries a unit of margin for the grass; the walls stand inside it.
+                    const box = { x: b.x, z: b.z, ex: fp.ex, ez: fp.ez, strength: 1 };
+                    o.shown.set(b, box);
+                    o.touch(box.x, box.z, Math.hypot(box.ex, box.ez));
+                }
+                for (const [b, box] of o.shown) if (!seen.has(b)) { o.shown.delete(b); o.touch(box.x, box.z, Math.hypot(box.ex, box.ez)); }
+                // Resource nodes: one that ran out leaves the map.
+                for (let i = 0; i < rs.length; i++) {
+                    const alive = rs[i].amount > 0 ? 1 : 0;
+                    if (alive !== o.alive[i]) { o.alive[i] = alive; o.touch(rs[i].x, rs[i].z, 2); }
+                }
+            }
+            o.sync(this.gl, (x0, z0, x1, z1) => this._occlBlobs(x0, z0, x1, z1), EngineRenderer.CONTACT_TILES_PER_FRAME);
+        }
+
+        // What stands in this world rectangle, for the occlusion map to paint.
+        _occlBlobs(x0, z0, x1, z1) {
+            const o = this._occl, out = [];
+            for (let cz = Math.floor(z0 / o.cell); cz <= Math.floor(z1 / o.cell); cz++)
+                for (let cx = Math.floor(x0 / o.cell); cx <= Math.floor(x1 / o.cell); cx++)
+                    for (const i of o.grid.get(cx + ',' + cz) || []) {
+                        const res = o.rs[i];
+                        if (!o.alive[i] || res.x < x0 || res.x > x1 || res.z < z0 || res.z > z1) continue;
+                        out.push(this._occlOf(res, i));
+                    }
+            for (const box of o.shown.values())
+                if (box.x + box.ex >= x0 && box.x - box.ex <= x1 && box.z + box.ez >= z0 && box.z - box.ez <= z1)
+                    out.push({ x: box.x, z: box.z, ex: Math.max(0.5, box.ex - 1), ez: Math.max(0.5, box.ez - 1), strength: box.strength });
+            return out;
         }
 
         // ---- entities --------------------------------------------------------
@@ -2805,6 +2886,7 @@
             }
             const bb = M().billboard(cam.view);
             this._syncFog();
+            this._syncOcclusion();
             const atmosphere = window.EngineAtmosphere.lighting(
                 this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0),
                 this._daySun, this._daySky, this._theme);
@@ -2857,6 +2939,12 @@
             gl.uniform3fv(this.prog.uniforms.uFillLow, atmosphere.fillLow);
             gl.uniform4fv(this.prog.uniforms.uGrade, atmosphere.grade);
             gl.uniform1f(this.prog.uniforms.uRim, atmosphere.rim);
+            // Contact shading: the occlusion map over the playable square, and how strong.
+            const occl = this._occlStrength() && this._occl && this._occl.texture ? this._occl : null;
+            gl.activeTexture(gl.TEXTURE5);
+            gl.bindTexture(gl.TEXTURE_2D, occl ? occl.texture : this.tex.white);
+            gl.uniform1i(this.prog.uniforms.uOccl, 5);
+            gl.uniform2f(this.prog.uniforms.uOcclMap, occl ? 1 / occl.span : 0, occl ? this._occlStrength() : 0);
             gl.uniform3fv(this.prog.uniforms.uSky, this._sky);
             gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
             gl.activeTexture(gl.TEXTURE0);
@@ -2997,6 +3085,11 @@
     }
 
     EngineRenderer.QUALITY_CHOICES = ['auto', 'cinematic', 'balanced', 'low'];
+    // Contact shading: how much light the ground loses right under a wall or a crown, and
+    // how many changed tiles of the map are painted in one frame (all 256 at a match's
+    // start take eleven frames).
+    EngineRenderer.CONTACT = 0.7;
+    EngineRenderer.CONTACT_TILES_PER_FRAME = 24;
     EngineRenderer.RESOLUTION_CAP = { low: 1, balanced: 1.5, cinematic: 2 };
     window.EngineRenderer = EngineRenderer;
 })();

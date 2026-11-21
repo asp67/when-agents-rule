@@ -144,6 +144,8 @@
         uniform vec3 uKey, uFillHigh, uFillLow;
         uniform vec4 uGrade;
         uniform float uRim;
+        uniform sampler2D uOccl;
+        uniform vec2 uOcclMap;
         varying vec3 vNormal, vWorld;
         varying vec2 vUv;
         varying float vDepth;
@@ -242,7 +244,23 @@
             // curve). The key light is the sun or the moon; the fill comes from the sky
             // above and, warmer and weaker, from the lit ground below.
             vec3 albedo = base*base;
-            vec3 light = mix(uFillLow,uFillHigh,n.y*0.5+0.5) + uKey*sun*visibility(n);
+            // Contact shading (uOcclMap: one over the map's span, then the strength). The
+            // ground and the grass read what stands on them from a top-down map, never
+            // under fog, which would give away what the fog hides. Things that stand
+            // darken toward their own foot. The fill is taken in full and the key light
+            // by three quarters: with the fill alone the ground beside a sunlit wall
+            // hardly changed.
+            float contact = 1.0;
+            if (uOcclMap.y > 0.0) {
+                if ((uMaterial > 0.5 && uMaterial < 1.5) || uVegetation > 0.5) {
+                    float occ = texture2D(uOccl, vWorld.xz*uOcclMap.x + 0.5).r;
+                    if (uClutterFog > 0.5) occ *= texture2D(uClutterVisibility, vWorld.xz/uClutterMapSize + 0.5).r;
+                    contact = 1.0 - occ*uOcclMap.y;
+                } else if (uMaterial < 0.5) {
+                    contact = mix(1.0 - 0.55*uOcclMap.y, 1.0, smoothstep(0.0, 1.5, vWorld.y));
+                }
+            }
+            vec3 light = mix(uFillLow,uFillHigh,n.y*0.5+0.5)*contact + uKey*sun*visibility(n)*mix(1.0,contact,0.75);
             vec3 col = albedo*light;
             // Sky light along an edge turned away from the eye, on things that stand:
             // it is what lifts a figure off the ground at night.
