@@ -165,9 +165,11 @@
         this.updateSpectatorPlayerList();
         if (this.tvJumpTo) this.tvJumpTo(turn);
     };
-    // Up to two seats' plans side by side; picking a third lets the oldest go.
+    // Up to two seats' plans side by side; picking a third lets the oldest go. Until someone
+    // picks, the first two seats that have a plan are shown, and a pick starts from those.
     P.benchPin = function (id) {
-        const pins = this._benchSeats || (this._benchSeats = []);
+        if (!this._benchSeats || !this._benchSeats.length) this._benchSeats = (this._benchShown || []).slice();
+        const pins = this._benchSeats;
         const at = pins.indexOf(id);
         if (at >= 0) pins.splice(at, 1); else { pins.push(id); if (pins.length > 2) pins.shift(); }
         this._benchSig = null;
@@ -249,7 +251,11 @@
         const label = s => esc(s.name || s.model || s.id);
         const open = (s, turn) => turn == null || !link ? '' : ` onclick="event.stopPropagation(); game.ui.benchOpenTurn('${esc(s.id)}', ${Number(turn)})" title="${esc(t(link))}"`;
         let pins = (this._benchSeats || []).filter(id => seats.some(s => s.id === id));
-        if (!pins.length) pins = [(seats.find(s => s.planning.standing) || seats[0]).id];
+        if (!pins.length) {
+            pins = seats.filter(s => s.planning.standing).slice(0, 2).map(s => s.id);
+            if (!pins.length) pins = [seats[0].id];
+        }
+        this._benchShown = pins;
 
         // ---- the matrix ------------------------------------------------------
         const raw = rawOf;

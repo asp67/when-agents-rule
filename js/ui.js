@@ -3258,20 +3258,33 @@ class UIManager {
         const ink = id => { const ai = ais.find(a => a.id === id); return ai ? this.legibleColor(this.identityHex(ai.id, ai.civilization, ai.seat)) : '#e8eef7'; };
         // The civilization's name without the emblem in front of it: the plate has the seat's colour for that.
         const who = id => { const ai = ais.find(a => a.id === id); return ai ? String(this.civNames()[ai.civilization] || ai.civilization).replace(/^[^\p{L}]+/u, '') : '?'; };
-        // A line of text on a dark plate, centred on x with its bottom at y.
-        const plate = (parent, x, y, parts, cls) => {
-            const text = el('text', { x: x.toFixed(1), y: (y - 7).toFixed(1), 'text-anchor': 'middle', class: 'eval-text' }, parent);
-            for (const p of parts) { const s = el('tspan', p.fill ? { fill: p.fill } : {}, text); s.textContent = p.text; }
+        // A line of text on a dark plate, centred on x, its top at `top` or lower. The marks'
+        // plates stand UNDER their point: the intent bubbles stand above it, and the two
+        // used to lie on top of each other. A plate that would cover one already placed
+        // (two steps carried out at the same building) goes under it.
+        const placed = [], H = 22, GAP = 3;
+        const plate = (parent, x, top, parts, cls) => {
             const w = Math.max(40, parts.reduce((n, p) => n + p.text.length, 0) * 6.6 + 16);
-            const back = el('rect', { x: (x - w / 2).toFixed(1), y: (y - 22).toFixed(1), width: w.toFixed(1), height: 22, rx: 5, class: 'eval-plate ' + cls }, parent);
-            parent.insertBefore(back, text);
+            let y = top, moved = true;
+            while (moved) {
+                moved = false;
+                for (const q of placed) if (x - w / 2 < q.x1 && x + w / 2 > q.x0 && y < q.y1 + GAP && y + H > q.y0 - GAP) { y = q.y1 + GAP; moved = true; }
+            }
+            placed.push({ x0: x - w / 2, x1: x + w / 2, y0: y, y1: y + H });
+            el('rect', { x: (x - w / 2).toFixed(1), y: y.toFixed(1), width: w.toFixed(1), height: H, rx: 5, class: 'eval-plate ' + cls }, parent);
+            const text = el('text', { x: x.toFixed(1), y: (y + 15).toFixed(1), 'text-anchor': 'middle', class: 'eval-text' }, parent);
+            for (const p of parts) { const s = el('tspan', p.fill ? { fill: p.fill } : {}, text); s.textContent = p.text; }
         };
+        const ticks = [];   // one tick per place, however many steps were carried out there
         for (const m of items) {
             const mg = el('g', { opacity: m.opacity.toFixed(2), class: 'eval-mark eval-' + m.kind });
             if (m.kind === 'step') {
-                el('circle', { cx: m.x.toFixed(1), cy: (m.y - 30).toFixed(1), r: 11, class: 'eval-tick', stroke: ink(m.id) }, mg);
-                el('path', { d: `M${(m.x - 5).toFixed(1)} ${(m.y - 30).toFixed(1)} l3.5 4 l6.5 -8`, class: 'eval-tick-mark' }, mg);
-                plate(mg, m.x, m.y - 44, [{ text: t('mark.step') + ' ' }, { text: m.text, fill: '#ffffff' }], 'is-step');
+                if (!ticks.some(q => Math.abs(q.x - m.x) < 8 && Math.abs(q.y - m.y) < 8)) {
+                    ticks.push({ x: m.x, y: m.y });
+                    el('circle', { cx: m.x.toFixed(1), cy: (m.y + 20).toFixed(1), r: 11, class: 'eval-tick', stroke: ink(m.id) }, mg);
+                    el('path', { d: `M${(m.x - 5).toFixed(1)} ${(m.y + 20).toFixed(1)} l3.5 4 l6.5 -8`, class: 'eval-tick-mark' }, mg);
+                }
+                plate(mg, m.x, m.y + 36, [{ text: t('mark.step') + ' ' }, { text: m.text, fill: '#ffffff' }], 'is-step');
             } else if (m.kind === 'answer') {
                 if (m.from) {
                     const dx = m.x - m.from.x, dy = m.y - m.from.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
@@ -3279,12 +3292,12 @@ class UIManager {
                     el('polygon', { points: [[m.x, m.y], [m.x - ux * 14 - uy * 7, m.y - uy * 14 + ux * 7], [m.x - ux * 14 + uy * 7, m.y - uy * 14 - ux * 7]]
                         .map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' '), class: 'eval-arrow-head' }, mg);
                 }
-                plate(mg, m.x, m.y - 18, [{ text: who(m.id) + ' ', fill: ink(m.id) },
+                plate(mg, m.x, m.y + 16, [{ text: who(m.id) + ' ', fill: ink(m.id) },
                     { text: m.wonder ? t('mark.answerWonder') : t('mark.answer', { what: m.what.map(x => tg(String(x).replace(/_/g, ' '))).join(', ') }) }], 'is-answer');
             } else {
                 const parts = [{ text: '⚔ ' }];
                 m.sides.forEach((s, k) => { if (k) parts.push({ text: ' · ' }); parts.push({ text: t('mark.lost', { who: who(s.id), n: s.lost }), fill: ink(s.id) }); });
-                plate(mg, m.x, m.y - 26, parts, 'is-battle');
+                plate(mg, m.x, m.y + 16, parts, 'is-battle');
             }
         }
         svg.appendChild(g);

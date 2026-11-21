@@ -164,3 +164,29 @@ test('the marks are part of the story layer: the Intent switch hides them, and t
     vm.runInContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8') + ';this.I = I18N;', context);
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of ['mark.step', 'mark.answer', 'mark.answerWonder', 'mark.lost']) assert.ok(k in context.I[lang], lang + ' lacks ' + k);
 });
+
+test('mark labels stand under their point and under one another, never on top of each other', () => {
+    const { u, node } = ui();
+    const now = Date.now();
+    // Two plan steps carried out at the same Town Center, and a third at a building right beside it.
+    u.evalMarks.marks.push({ kind: 'step', id: 'a', text: 'Train villagers without a pause', by: { action: 'train_unit', x: 100, z: 100 }, born: now, life: 8000 },
+        { kind: 'step', id: 'a', text: 'Research house', by: { action: 'research_tech', x: 100, z: 100 }, born: now, life: 8000 },
+        { kind: 'step', id: 'a', text: 'Build a tower', by: { action: 'build_structure', x: 130, z: 104 }, born: now, life: 8000 },
+        { kind: 'answer', id: 'a', to: { x: 100, z: 100 }, by: { action: 'build_structure' }, what: ['town_center'], wonder: false, born: now, life: 8000 });
+    const svg = node('svg');
+    u.drawEvalMarks(svg, 'ns');
+    const plates = [];
+    const walk = e => { if ((e.attrs.class || '').startsWith('eval-plate')) plates.push({ x0: +e.attrs.x, x1: +e.attrs.x + +e.attrs.width, y0: +e.attrs.y, y1: +e.attrs.y + +e.attrs.height }); e.children.forEach(walk); };
+    walk(svg);
+    assert.equal(plates.length, 4);
+    // Every plate is below its point (y 100 or 104 on this stand-in), where no intent bubble stands.
+    assert.ok(plates.every(p => p.y0 >= 100), JSON.stringify(plates));
+    // No two of them touch.
+    for (let i = 0; i < plates.length; i++) for (let j = i + 1; j < plates.length; j++) {
+        const a = plates[i], b = plates[j];
+        assert.ok(a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0, 'plates ' + i + ' and ' + j + ' overlap: ' + JSON.stringify([a, b]));
+    }
+    // The two steps at one building share one tick; the building beside it has its own.
+    assert.equal(count(svg, 'eval-tick'), 2);
+    assert.deepEqual(texts(svg).slice(0, 2), ['mark.step Train villagers without a pause', 'mark.step Research house']);
+});

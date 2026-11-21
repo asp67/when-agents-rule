@@ -126,13 +126,23 @@ test('D3: two seats\' plans side by side, and a third pin lets the oldest go', (
     ledger.addLine(JSON.stringify({ turn: 1, playerId: 'c', name: 'Seat c', seat: 2, parsed: { commands: [], plan: ['Scout'] }, state: { clock: { matchSeconds: 10 } } }));
     u.toggleBenchView(true);
     const plans = () => (els.benchLeft.innerHTML.match(/class="bp-seat"/g) || []).length;
-    assert.equal(plans(), 1);                                            // the first seat with a plan, until someone picks
-    u.benchPin('a'); u.benchPin('b');
+    // Until someone picks: the first two seats that have a plan, so a two-seat match shows both at once.
     assert.equal(plans(), 2);
+    assert.match(els.benchLeft.innerHTML, /Seat a[\s\S]*Seat b/);
+    assert.doesNotMatch(els.benchLeft.innerHTML, /Seat c/);
+    // A pick starts from what is shown: a third lets the oldest go, and a shown seat picked again is taken away.
     u.benchPin('c');
     assert.deepEqual([plans(), u._benchSeats.join()], [2, 'b,c']);
     u.benchPin('b');
     assert.deepEqual([plans(), u._benchSeats.join()], [1, 'c']);
+    u.benchPin('c');                                                     // nothing picked any more: the first two again
+    assert.deepEqual([plans(), u._benchSeats.join()], [2, '']);
+    // One seat with a plan and one without: the one with it, alone.
+    const solo = page();
+    solo.ledger.addLine(decision('a', 10, { orders: [['train_unit', { unitType: 'militia' }]] }));
+    solo.ledger.addLine(decision('b', 10, { plan: ['Build a tower'] }));
+    solo.u.toggleBenchView(true);
+    assert.deepEqual([(solo.els.benchLeft.innerHTML.match(/class="bp-seat"/g) || []).length, /Seat b/.test(solo.els.benchLeft.innerHTML)], [1, true]);
 });
 
 test('D4: a threat\'s clock starts when the seat was shown it, counts its decisions, and closes with the answer and the outcome', () => {
