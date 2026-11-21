@@ -146,6 +146,8 @@
         uniform float uRim;
         uniform sampler2D uOccl;
         uniform vec2 uOcclMap;
+        uniform vec2 uGroundVary;
+        uniform vec4 uSoil;
         varying vec3 vNormal, vWorld;
         varying vec2 vUv;
         varying float vDepth;
@@ -206,6 +208,19 @@
                 if (min(fogUv.x,fogUv.y) < 0.0 || max(fogUv.x,fogUv.y) > 1.0
                     || texture2D(uClutterVisibility,fogUv).r < 0.99) discard;
             }
+            // The top-down map of the ground (EngineOcclusion): what stands on it here and
+            // how worn it is. Read by the ground and the grass; nothing under fog, which
+            // would give away what the fog hides.
+            vec2 ground = vec2(0.0);
+            bool onGround = (uMaterial > 0.5 && uMaterial < 1.5) || uVegetation > 0.5;
+            if (uOcclMap.y > 0.0 && onGround) {
+                vec4 standing = texture2D(uOccl, vWorld.xz*uOcclMap.x + 0.5);
+                ground = vec2(standing.r, standing.a);
+                if (uClutterFog > 0.5) ground *= texture2D(uClutterVisibility, vWorld.xz/uClutterMapSize + 0.5).r;
+            }
+            // Grass does not grow where it is walked on: tuft by tuft it gives out as the
+            // ground wears, so a path shows through it.
+            if (uVegetation > 0.5 && vPebble < 0.5 && ground.y > 0.14 + 0.5*waveHash(floor(vWorld.xz*1.6))) discard;
             vec4 t = texture2D(uTex, vUv);
             vec3 base = t.rgb * uTint;
             if (uVegetation > 0.5) base *= mix(0.90,1.06,vGrassTip);
@@ -214,6 +229,7 @@
                 vec3(mix(.40,.50,vUv.y)),uGrayGravel);
             vec3 n = normalize(vNormal);
             vec3 eye = normalize(uEye-vWorld);
+            float groundCover = 1.0, relief = 1.0;
             float water = uMaterial > 1.5 && uMaterial < 2.5 ? 1.0
                 : (uMaterial > 0.5 && uMaterial < 1.5 ? texture2D(uCoast,vUv).r : 0.0);
             if (uMaterial > 0.5 && uMaterial < 1.5) {
@@ -224,6 +240,7 @@
                 vec2 a=texture2D(uGroundDetail,vWorld.xz/16.0).rg-vec2(0.502);
                 vec2 b=texture2D(uGroundDetail,mat2(0.8,0.6,-0.6,0.8)*vWorld.xz/39.0).rg-vec2(0.502);
                 float cover=clamp(dot(vec4(base,1.0),uGroundCover),0.0,1.0);
+                groundCover=cover;
                 float grain=mix(a.g, a.r, cover)*0.85+mix(b.g,b.r,cover)*0.35;
                 float nearDetail=1.0-smoothstep(120.0,320.0,distance(uEye,vWorld));
                 base*=1.0+grain*nearDetail*(1.0-water);
@@ -236,31 +253,51 @@
                 // at full strength on top, washing out their detail: dry ground on those
                 // maps is a touch darker (gamerenderer sets the gain per theme).
                 base*=mix(uGroundGain,1.0,water);
+                // Worn ground goes toward the bare soil of this land (uSoil, and how far),
+                // the ground's own grain and a slow wobble breaking the edge of a path.
+                float worn=smoothstep(0.10,0.62,ground.y+grain*0.5+0.09*sin(vWorld.x*0.83+vWorld.z*0.41)*sin(vWorld.z*0.67-vWorld.x*0.29))*(1.0-water);
+                base=mix(base,uSoil.rgb*(0.94+grain*0.5),worn*uSoil.a);
+                groundCover*=1.0-worn;
             }
             float sun = max(dot(n,uSunDir),0.0);
             vec3 legacy = base*(uAmbient + uSunColor*sun);
+            // Open ground is not one flat fill (overhaul step A3): three slow waves, 40 to
+            // 160 units long, make it a little lighter here and darker there, lean the
+            // meadow toward dry or lush with them (uGroundVary: how much lighter and
+            // darker, how much of the lean), and shade their slopes against the sun as
+            // if the land rolled. The grass on it follows, or it would lie over the
+            // patches like a sheet. Atmospheric only: the sum for Simple lighting is taken
+            // above, from the plain colour.
+            if (uAtmosphere > 0.5 && uGroundVary.x > 0.0 && ((uMaterial > 0.5 && uMaterial < 1.5) || (uVegetation > 0.5 && vPebble < 0.5))) {
+                vec2 q=vWorld.xz;
+                float w1=q.x*0.021+q.y*0.034, w2=q.y*0.047-q.x*0.031+1.7, w3=q.x*0.083+q.y*0.071+0.6;
+                float broad=0.4*sin(w1)+0.35*sin(w2)+0.25*sin(w3);
+                vec2 slope=vec2(0.4*0.021*cos(w1)-0.35*0.031*cos(w2)+0.25*0.083*cos(w3),
+                    0.4*0.034*cos(w1)+0.35*0.047*cos(w2)+0.25*0.071*cos(w3));
+                float land=1.0-water;
+                base*=1.0+land*uGroundVary.x*broad;
+                base*=mix(vec3(1.0),mix(vec3(0.95,1.0,0.93),vec3(1.06,1.0,0.90),broad*0.5+0.5),land*groundCover*uGroundVary.y);
+                relief=1.0-land*82.0*uGroundVary.x*dot(slope,uSunDir.xz);
+            }
             // Atmospheric: light is added up in linear space and brought back to the
             // display at the end (a square and a square root stand in for the display
             // curve). The key light is the sun or the moon; the fill comes from the sky
             // above and, warmer and weaker, from the lit ground below.
             vec3 albedo = base*base;
             // Contact shading (uOcclMap: one over the map's span, then the strength). The
-            // ground and the grass read what stands on them from a top-down map, never
-            // under fog, which would give away what the fog hides. Things that stand
+            // ground and the grass darken by what stands on them (read above). Things that stand
             // darken toward their own foot. The fill is taken in full and the key light
             // by three quarters: with the fill alone the ground beside a sunlit wall
             // hardly changed.
             float contact = 1.0;
             if (uOcclMap.y > 0.0) {
-                if ((uMaterial > 0.5 && uMaterial < 1.5) || uVegetation > 0.5) {
-                    float occ = texture2D(uOccl, vWorld.xz*uOcclMap.x + 0.5).r;
-                    if (uClutterFog > 0.5) occ *= texture2D(uClutterVisibility, vWorld.xz/uClutterMapSize + 0.5).r;
-                    contact = 1.0 - occ*uOcclMap.y;
+                if (onGround) {
+                    contact = 1.0 - ground.x*uOcclMap.y;
                 } else if (uMaterial < 0.5) {
                     contact = mix(1.0 - 0.55*uOcclMap.y, 1.0, smoothstep(0.0, 1.5, vWorld.y));
                 }
             }
-            vec3 light = mix(uFillLow,uFillHigh,n.y*0.5+0.5)*contact + uKey*sun*visibility(n)*mix(1.0,contact,0.75);
+            vec3 light = mix(uFillLow,uFillHigh,n.y*0.5+0.5)*contact + uKey*sun*relief*visibility(n)*mix(1.0,contact,0.75);
             vec3 col = albedo*light;
             // Sky light along an edge turned away from the eye, on things that stand:
             // it is what lifts a figure off the ground at night.

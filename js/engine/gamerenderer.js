@@ -348,6 +348,11 @@
             const norm=Math.max(.0001,axis.reduce((sum,v)=>sum+v*v,0));
             this._groundCover=axis.map(v=>v/norm);
             this._groundCover.push(-this._groundCover.reduce((sum,v,i)=>sum+v*palette.soil[i]/255,0));
+            // Worn ground shows this land's bare soil, as far as the land lets it: a path
+            // across a meadow is earth, one across snow is grey slush, one across sand
+            // is only firmer sand.
+            const bare = EngineRenderer.WORN[theme] || EngineRenderer.WORN.summer;
+            this._soil = [...palette.soil.map(v => v / 255 * bare[0]), bare[1]];
             // theme atmosphere: sun character first, then the sea beyond the map.
             this._sun = theme === 'winter' ? [0.74, 0.77, 0.83]
                 : (theme === 'desert' ? [0.99, 0.82, 0.59] : [0.96, 0.84, 0.66]);
@@ -1024,6 +1029,7 @@
                 o = this._occl = new EngineOcclusion.Map(span, size => { const c = document.createElement('canvas'); c.width = c.height = size; return c; });
                 o.rs = rs; o.n = rs.length;
                 o.cell = 64; o.grid = new Map(); o.alive = new Uint8Array(rs.length); o.shown = new Map(); o.tick = 0;
+                o.aprons = new WeakSet(); o.trodAt = null; o.treads = 0; o.upkeep = 0; this._trod = new WeakMap();
                 for (let i = 0; i < rs.length; i++) {
                     const res = rs[i], key = Math.floor(res.x / o.cell) + ',' + Math.floor(res.z / o.cell);
                     if (!o.grid.has(key)) o.grid.set(key, []);
@@ -1043,8 +1049,11 @@
                     if (was && was.x === b.x && was.z === b.z && was.ex === fp.ex && was.ez === fp.ez) continue;
                     if (was) o.touch(was.x, was.z, Math.hypot(was.ex, was.ez));
                     // The footprint carries a unit of margin for the grass; the walls stand inside it.
-                    const box = { x: b.x, z: b.z, ex: fp.ex, ez: fp.ez, strength: 1 };
+                    const wearAt = b._engine.wear && b._engine.wear.model;      // the decal before the door says where the door is
+                    const box = { x: b.x, z: b.z, ex: fp.ex, ez: fp.ez, strength: 1, apron: b.type !== 'farm', door: wearAt ? [wearAt[12], wearAt[14]] : null };
                     o.shown.set(b, box);
+                    // The earth around a building is packed by those who built it and use it.
+                    if (box.apron && !o.aprons.has(b)) { o.aprons.add(b); this._packEarth(o, box, EngineRenderer.TREAD.apron, EngineRenderer.TREAD.door); }
                     o.touch(box.x, box.z, Math.hypot(box.ex, box.ez));
                 }
                 for (const [b, box] of o.shown) if (!seen.has(b)) { o.shown.delete(b); o.touch(box.x, box.z, Math.hypot(box.ex, box.ez)); }
@@ -1054,7 +1063,50 @@
                     if (alive !== o.alive[i]) { o.alive[i] = alive; o.touch(rs[i].x, rs[i].z, 2); }
                 }
             }
+            this._treadGround(o);
             o.sync(this.gl, (x0, z0, x1, z1) => this._occlBlobs(x0, z0, x1, z1), EngineRenderer.CONTACT_TILES_PER_FRAME);
+        }
+
+        // Lived-in ground (overhaul step A3): once a second of match time, every unit that
+        // is drawn treads the way it came since the last look, a little; many feet make a
+        // path, and what is no longer walked grows over again. Counted in the match's own
+        // clock, so a match run at four times the speed wears the same paths. Cosmetic
+        // state: nothing reads it but the shader.
+        _treadGround(o) {
+            // The analyzer's still board is a moment, not a march. A re-simulated replay
+            // moves as a match does and wears its own ground; when it jumps, what was worn
+            // belongs to another time and is wiped.
+            if (this.replayMode && !this.resimPlaying) return;
+            if (this.ageSource && !this.ageSource()) { if (o.treads) { o.clearWear(); o.treads = 0; } o.trodAt = null; this._trod = new WeakMap(); return; }
+            const g = this.game, now = g && g.simNow ? g.simNow() : performance.now();
+            o.regrow(now);
+            if (o.trodAt == null || now < o.trodAt) { o.trodAt = now; return; }
+            if (now - o.trodAt < 1000) return;
+            o.trodAt = now;
+            const T = EngineRenderer.TREAD, prev = this._trod;
+            for (const u of this.units) {
+                const ue = u._engine;
+                if (!ue || !(u.health > 0)) continue;
+                const was = prev.get(u);
+                if (!was) { prev.set(u, { x: u.x, z: u.z }); continue; }
+                const fx = was.x, fz = was.z, d = Math.hypot(u.x - fx, u.z - fz);
+                was.x = u.x; was.z = u.z;
+                // Standing still wears nothing; a jump (a respawn, a seek) is not a walk; a unit
+                // that is not drawn leaves no trace to give it away.
+                if (d < 0.4 || d > 30) continue;
+                if ((u.mesh && u.mesh.visible === false) || (this.entityHidden && this.entityHidden(u, 'unit'))) continue;
+                const heavy = ue.static || ue.type === 'siege';
+                o.treadLine(fx, fz, u.x, u.z, heavy ? T.siege : ue.type === 'cavalry' ? T.horse : T.foot, heavy ? 1.5 : 1.0);
+                o.treads++;
+            }
+            // The earth around a building is kept packed while it stands.
+            if (++o.upkeep % 30 === 0) for (const box of o.shown.values()) if (box.apron) this._packEarth(o, box, T.upkeep, T.upkeep * 2);
+        }
+
+        // The earth around a building: a little all round, and well trodden before its door.
+        _packEarth(o, box, around, door) {
+            o.tread(box.x, box.z, around, Math.max(box.ex, box.ez) + 2.2);
+            if (box.door) o.tread(box.door[0], box.door[1], door, 3.4);
         }
 
         // What stands in this world rectangle, for the occlusion map to paint.
@@ -1563,6 +1615,8 @@
         }
 
         killUnit(unit) {
+            // Where someone fell the ground is churned (lived-in ground, overhaul step A3).
+            if (this._occl && this._occlStrength() && !(this.replayMode && !this.resimPlaying)) { this._occl.tread(unit.x, unit.z, EngineRenderer.TREAD.fallen, 1.8); this._occl.treads++; }
             this._ghostFrom(unit, 'unit');
             this.removeUnit(unit);
             unit.healthBar = null;
@@ -1576,6 +1630,11 @@
                 this._rubble.push({ x: building.x, z: building.z, r: Math.max(1.5, Math.min(7, Math.max(fb.ex, fb.ez))),
                     born: this.game?._environmentSeconds || 0, seed: EngineFx.seedOf(building.id || (building.x + ',' + building.z)) });
                 if (this._rubble.length > 40) this._rubble.shift();
+            }
+            // ...and where a building came down, the ground stays bare for a long while.
+            if (this._occl && this._occlStrength() && !(this.replayMode && !this.resimPlaying)) {
+                const fp = building._grassFootprint;
+                this._occl.tread(building.x, building.z, EngineRenderer.TREAD.ruin, (fp ? Math.max(fp.ex, fp.ez) : 5) + 1.2); this._occl.treads++;
             }
             this._ghostFrom(building, 'building');
             this.removeBuilding(building);
@@ -2945,6 +3004,11 @@
             gl.bindTexture(gl.TEXTURE_2D, occl ? occl.texture : this.tex.white);
             gl.uniform1i(this.prog.uniforms.uOccl, 5);
             gl.uniform2f(this.prog.uniforms.uOcclMap, occl ? 1 / occl.span : 0, occl ? this._occlStrength() : 0);
+            // Broad variation of open ground: how much lighter and darker, and how much the
+            // meadow leans toward dry or lush with it. Snow only rolls; it does not turn green.
+            const vary = EngineRenderer.GROUND_VARY[this._theme] || EngineRenderer.GROUND_VARY.summer;
+            gl.uniform2f(this.prog.uniforms.uGroundVary, vary[0], vary[1]);
+            gl.uniform4fv(this.prog.uniforms.uSoil, this._soil || [0.5, 0.45, 0.35, 0]);
             gl.uniform3fv(this.prog.uniforms.uSky, this._sky);
             gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
             gl.activeTexture(gl.TEXTURE0);
@@ -3089,6 +3153,15 @@
     // how many changed tiles of the map are painted in one frame (all 256 at a match's
     // start take eleven frames).
     EngineRenderer.CONTACT = 0.7;
+    EngineRenderer.GROUND_VARY = { summer: [0.11, 1.0], desert: [0.09, 0.3], winter: [0.07, 0.0] };
+    // Worn ground. What one pass adds, of 255 (so some twenty workers' passes show and
+    // forty make a path); what a death and a fallen building leave; what a new building
+    // packs around itself and before its door; and what a standing building is topped up
+    // by every thirty seconds, against the regrowth (twice that before the door).
+    EngineRenderer.TREAD = { foot: 6, horse: 9, siege: 16, fallen: 46, ruin: 150, apron: 85, door: 190, upkeep: 4 };
+    // The bare soil of each land: how dark against the palette's soil, and how far worn
+    // ground goes toward it.
+    EngineRenderer.WORN = { summer: [0.92, 0.85], desert: [0.84, 0.55], winter: [0.9, 0.5] };
     EngineRenderer.CONTACT_TILES_PER_FRAME = 24;
     EngineRenderer.RESOLUTION_CAP = { low: 1, balanced: 1.5, cinematic: 2 };
     window.EngineRenderer = EngineRenderer;

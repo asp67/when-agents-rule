@@ -1,5 +1,6 @@
 // Contact shading (overhaul step A2): js/engine/occlusion.js keeps a top-down map of what
 // stands on the ground, in tiles; the renderer keeps it current and the shader reads it.
+// The map's second channel, wear, is step A3 (tests/ground.test.cjs).
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
@@ -68,13 +69,15 @@ test('painting takes a few tiles a frame: each cleared, painted from what stands
     assert.deepEqual(asked[0], [-REACH, -REACH, 50 + REACH, 50 + REACH]);
     // The whole texture is made once, empty; then one piece per tile at the tile's own place.
     const whole = log.filter(l => l[0] === 'texImage2D'), parts = log.filter(l => l[0] === 'texSubImage2D');
-    assert.deepEqual([whole.length, whole[0].slice(1, 9).join()], [1, 'TEXTURE_2D,0,LUMINANCE,1024,1024,0,LUMINANCE,UNSIGNED_BYTE']);
-    assert.deepEqual(parts.map(p => p.slice(1, 9).join()), ['TEXTURE_2D,0,512,512,64,64,LUMINANCE,UNSIGNED_BYTE', 'TEXTURE_2D,0,640,512,64,64,LUMINANCE,UNSIGNED_BYTE']);
-    assert.ok(parts[0][9] instanceof Uint8Array && parts[0][9].length === 64 * 64);
+    assert.deepEqual([whole.length, whole[0].slice(1, 9).join()], [1, 'TEXTURE_2D,0,LUMINANCE_ALPHA,1024,1024,0,LUMINANCE_ALPHA,UNSIGNED_BYTE']);
+    assert.deepEqual(parts.map(p => p.slice(1, 9).join()), ['TEXTURE_2D,0,512,512,64,64,LUMINANCE_ALPHA,UNSIGNED_BYTE', 'TEXTURE_2D,0,640,512,64,64,LUMINANCE_ALPHA,UNSIGNED_BYTE']);
+    assert.ok(parts[0][9] instanceof Uint8Array && parts[0][9].length === 64 * 64 * 2, 'two channels a pixel');
     // One buffer serves every tile (the card copies it as it is sent), so it holds the last one
-    // here: the tile at 640, whose stand-in pixels count up from 10 in red.
+    // here: the tile at 640, whose stand-in pixels count up from 10 in red. What stands is the
+    // red of what was painted; the other channel is the wear, none here.
     assert.equal(parts[0][9], parts[1][9]);
-    assert.deepEqual([parts[1][9][0], parts[1][9][1], parts[1][9][5]], [10, 11, 15], 'one channel: the red of what was painted');
+    assert.deepEqual(Array.from(parts[1][9].slice(0, 6)), [10, 0, 11, 0, 12, 0]);
+    assert.deepEqual([m.occ[512 * 1024 + 640], m.occ[512 * 1024 + 641]], [10, 11], 'and it is kept, so a tile can be sent again without being painted again');
     // On the canvas, per tile: clip to the tile, clear it, then paint so that overlaps take the darker of the two.
     const k = c.calls.map(x => x[0] + (x.length > 1 ? ' ' + x.slice(1).join(',') : ''));
     const first = k.slice(0, k.indexOf('restore') + 2);
@@ -82,7 +85,7 @@ test('painting takes a few tiles a frame: each cleared, painted from what stands
     assert.deepEqual(first.slice(-2), ['restore', 'read 512,512,64,64']);
     assert.equal(m.sync(gl, blobs, 24), 1);
     assert.equal(m.sync(gl, blobs, 24), 0, 'nothing changed: nothing painted, nothing sent');
-    assert.deepEqual([m.painted, log.filter(l => l[0] === 'texSubImage2D').length], [3, 3]);
+    assert.deepEqual([m.painted, m.sent, log.filter(l => l[0] === 'texSubImage2D').length], [3, 3, 3]);
     m.dispose(gl);
     assert.equal(m.texture, null);
     // No canvas (a test's stand-in renderer): the map does nothing and breaks nothing.
@@ -209,7 +212,10 @@ test('no contact shading in Simple lighting or on Low; another map starts anothe
 test('the shader reads the map for the ground and the grass, never under fog, and darkens standing things toward their foot', () => {
     const f = vm.runInContext('EngineAtmosphere.fragment', renderer().context);
     assert.match(f, /uniform sampler2D uOccl;\s+uniform vec2 uOcclMap;/);
-    assert.match(f, /if \(\(uMaterial > 0\.5 && uMaterial < 1\.5\) \|\| uVegetation > 0\.5\) \{\s+float occ = texture2D\(uOccl, vWorld\.xz\*uOcclMap\.x \+ 0\.5\)\.r;\s+if \(uClutterFog > 0\.5\) occ \*= texture2D\(uClutterVisibility, vWorld\.xz\/uClutterMapSize \+ 0\.5\)\.r;\s+contact = 1\.0 - occ\*uOcclMap\.y;/);
+    // One read of the map, for the ground and the grass, and nothing of it under fog.
+    assert.match(f, /bool onGround = \(uMaterial > 0\.5 && uMaterial < 1\.5\) \|\| uVegetation > 0\.5;\s+if \(uOcclMap\.y > 0\.0 && onGround\) \{\s+vec4 standing = texture2D\(uOccl, vWorld\.xz\*uOcclMap\.x \+ 0\.5\);\s+ground = vec2\(standing\.r, standing\.a\);\s+if \(uClutterFog > 0\.5\) ground \*= texture2D\(uClutterVisibility, vWorld\.xz\/uClutterMapSize \+ 0\.5\)\.r;/);
+    assert.equal((f.match(/texture2D\(uOccl/g) || []).length, 1);
+    assert.match(f, /if \(onGround\) \{\s+contact = 1\.0 - ground\.x\*uOcclMap\.y;/);
     assert.match(f, /\} else if \(uMaterial < 0\.5\) \{\s+contact = mix\(1\.0 - 0\.55\*uOcclMap\.y, 1\.0, smoothstep\(0\.0, 1\.5, vWorld\.y\)\);/);
     // Simple lighting is not touched by it.
     assert.doesNotMatch(f, /legacy[^;\n]*contact/);

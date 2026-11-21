@@ -92,8 +92,9 @@ test('the shader adds light up in linear space, rolls off by the brightest chann
     const f = A.fragment;
     assert.match(f, /uniform vec3 uKey, uFillHigh, uFillLow;\s+uniform vec4 uGrade;\s+uniform float uRim;/);
     assert.match(f, /vec3 albedo = base\*base;/);
-    // The fill and the key; `contact` is the contact shading of step A2 (tests/occlusion.test.cjs).
-    assert.match(f, /vec3 light = mix\(uFillLow,uFillHigh,n\.y\*0\.5\+0\.5\)\*contact \+ uKey\*sun\*visibility\(n\)\*mix\(1\.0,contact,0\.75\);/);
+    // The fill and the key; `contact` is the contact shading of step A2 (tests/occlusion.test.cjs),
+    // `relief` the rolling ground of step A3 (tests/ground.test.cjs).
+    assert.match(f, /vec3 light = mix\(uFillLow,uFillHigh,n\.y\*0\.5\+0\.5\)\*contact \+ uKey\*sun\*relief\*visibility\(n\)\*mix\(1\.0,contact,0\.75\);/);
     assert.match(f, /float peak = max\(col\.r,max\(col\.g,col\.b\)\);\s+col \*= min\(1\.0\/max\(peak,0\.0001\),\(1\.06\+peak\*0\.10\)\/\(1\.0\+peak\*0\.62\)\);\s+col = sqrt\(col\);/);
     assert.match(f, /col = mix\(vec3\(dot\(col,vec3\(0\.299,0\.587,0\.114\)\)\),col,uGrade\.a\)\*uGrade\.rgb;/);
     // The shoulder never takes the brightest channel past white, and passes mid tones nearly as they are.
