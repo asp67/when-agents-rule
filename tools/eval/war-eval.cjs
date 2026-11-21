@@ -7,9 +7,9 @@
 //   node tools/eval/war-eval.cjs a.jsonl b.jsonl --json           the full profiles as JSON
 //
 // Reported so far: grounding (were the commands valid when issued), planning (a live,
-// concrete plan, restated after a shock), follow-through (does it do what its plan says)
-// and, beside them, efficiency (what a decision cost). Tactical response, strategy and
-// versatility follow in later steps.
+// concrete plan, restated after a shock), follow-through (does it do what its plan says),
+// tactical response (is the next order aimed at a threat it was shown) and, beside them,
+// efficiency (what a decision cost). Strategy and versatility follow in a later step.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), readline = require('node:readline');
 const WarEval = require(path.join(__dirname, '..', '..', 'js', 'eval', 'ledger.js'));
@@ -59,6 +59,18 @@ function report(file, p) {
         + WarEval.FOLLOW_WINDOW + ' decisions.',
         'The step reader, on ' + r.steps + ' steps read by hand that it was never adjusted against: ' + pct(r.precision) + ' of what it reports is in the step, and it finds '
         + pct(r.recall) + ' of what is.');
+    out.push('', table([['TACTICAL RESPONSE', 'score', 'attacks shown', 'answered at once', 'within 3 decisions', 'cost a building', 'held', 'rival Wonders', 'attacked']].concat(
+        p.seats.map(s => { const g = s.tactical; return [name(s), fix(g.score, 0), g.episodes, fix(g.atOnce), fix(g.answered), fix(g.lost), fix(g.held), g.wonders, fix(g.wonderAnswered)]; }))));
+    out.push('', 'An answer is an order that worked and is aimed at the threat: an attack or a march to it, the threatened units moved out, a tower or a repair there.',
+        'Training more soldiers is not one. A seat that was shown no threat has no score.');
+    const shown = p.seats.filter(s => s.tactical.list.length);
+    if (shown.length) {
+        out.push('', 'Threats, at the moment each seat was first shown them');
+        for (const s of shown) out.push('  ' + name(s) + ': ' + s.tactical.list.map(e => clock(e.sec) + ' #' + e.turn + ' ' + (e.kind === 'wonder' ? 'rival Wonder' : e.what.join('+'))
+            + (e.answeredAfter == null ? ' (no answer' : e.answeredAfter === 0 ? ' (answered' : ' (answered ' + e.answeredAfter + ' later')
+            + (e.outcome === 'lost' ? ', lost)' : ')')).join(', '));
+        out.push('  #n is the n-th decision of that seat: ?match=' + ((p.match && p.match.matchId) || '<match id>') + '&seat=<seat number>&turn=<n> opens it in the analyzer.');
+    }
     out.push('', table([['EFFICIENCY', 'decisions', 'latency median', 'p90', 'tokens in', 'out', 'out per ok command', 'commands per decision', 'missed rounds']].concat(
         p.seats.map(s => { const e = s.efficiency, t = e.tokens; return [name(s), s.decisions, secs(e.latencyMs && e.latencyMs.median), secs(e.latencyMs && e.latencyMs.p90),
             t ? fix(t.promptMedian) : 'not reported', t ? fix(t.completionMedian) : '-', t ? fix(t.completionPerOk) : '-', fix(e.commandsPerDecision, 2), e.missedRounds]; }))));

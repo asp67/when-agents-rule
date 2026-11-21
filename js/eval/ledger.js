@@ -11,10 +11,11 @@
 // the order in which different seats' lines arrive changes nothing: a file lists one
 // seat after another, a live match interleaves them, and both give the same profile.
 //
-// Four parts of the profile are filled so far:
+// Five parts of the profile are filled so far:
 //   grounding    were the commands valid when they were issued?
 //   planning     does the seat keep a live, concrete plan, and restate it after a shock?
 //   follow       does it do what its plan says?
+//   tactical     when it is shown a threat, is its next order aimed at it?
 //   efficiency   what did a decision cost? Shown beside the profile, never inside it.
 (function (root) {
     'use strict';
@@ -27,6 +28,11 @@
         REPEAT_WINDOW: 2,
         // A plan step is acted on if a command carries it out within this many decisions.
         FOLLOW_WINDOW: 10,
+        // A threat is answered by an order aimed at it within this many decisions, counting
+        // the one that was shown it; "at once" is that one or the next. An order is aimed at
+        // a threat when it points within RESPONSE_RADIUS of an attacker or of what is attacked.
+        RESPONSE_WINDOW: 3,
+        RESPONSE_RADIUS: 40,
         // How well the step reader reads, measured on plan steps from the shipped matches
         // that were read by hand (tests/eval-reader-steps.json; tests/eval-reader.test.cjs
         // recomputes these and fails when they stop being true). `heldOut` is the half
@@ -67,14 +73,53 @@
     // The commands of a decision as follow-through and tactical response need them: what
     // was ordered, the unit, building or technology it named, where it pointed, and
     // whether it worked. `ok` is null where no outcome was recorded.
-    function commandList(parsed, outcomes) {
+    function commandList(parsed, outcomes, state) {
         const list = !parsed || typeof parsed !== 'object' ? [] : Array.isArray(parsed.commands) ? parsed.commands : (parsed.action ? [parsed] : []);
+        let rivals = null, own = null;
+        const place = (lists, id) => { for (const l of lists) for (const e of Array.isArray(l) ? l : []) if (e && String(e.id) === String(id) && num(e.x) != null && num(e.z) != null) return e; return null; };
         return list.map((c, i) => {
             const q = (c && c.params && typeof c.params === 'object') ? c.params : {}, o = outcomes ? outcomes[i] : null;
             const name = q.unitType != null ? q.unitType : q.buildingType != null ? q.buildingType : q.techId;
-            return { action: String(c && c.action), name: name != null ? String(name) : null, x: num(q.targetX), z: num(q.targetZ),
+            const cmd = { action: String(c && c.action), name: name != null ? String(name) : null, x: num(q.targetX), z: num(q.targetZ),
                 target: q.targetId != null ? String(q.targetId) : null, scouting: q.mode === 'scout', ok: o ? o.verdict === 'ok' : null };
+            // A target named by its id points where the state showed that thing.
+            if (cmd.target && cmd.x == null && state) {
+                rivals = rivals || [state.enemyUnits, state.enemyBuildings, state.threats && state.threats.enemyWonders];
+                const e = place(rivals, cmd.target);
+                if (e) { cmd.x = e.x; cmd.z = e.z; }
+            }
+            // Units moved by their ids: where they stood, so pulling threatened people out can be told from marching elsewhere.
+            if (cmd.action === 'move_units' && Array.isArray(q.unitIds) && q.unitIds.length && state) {
+                own = own || [state.friendlyUnits];
+                const at = q.unitIds.map(id => place(own, id)).filter(Boolean);
+                if (at.length) cmd.from = at.map(e => ({ x: e.x, z: e.z }));
+            }
+            return cmd;
         });
+    }
+    // What the state said is under attack, and from where: null when nothing is.
+    function threatOf(threats) {
+        const list = Array.isArray(threats && threats.underAttack) ? threats.underAttack.filter(u => u && num(u.x) != null && num(u.z) != null) : [];
+        if (!list.length) return null;
+        return { targets: list.map(u => ({ kind: u.kind === 'building' ? 'building' : 'unit', type: String(u.type), x: u.x, z: u.z })),
+            attackers: list.filter(u => u.attackerAt && num(u.attackerAt.x) != null && num(u.attackerAt.z) != null)
+                .map(u => ({ x: u.attackerAt.x, z: u.attackerAt.z, owner: u.attackerAt.owner != null ? String(u.attackerAt.owner) : null })),
+            undefended: list.some(u => u.noDefenders === true) };
+    }
+    const near = (a, b, r) => a && b && a.x != null && b.x != null && Math.abs(a.x - b.x) <= r && Math.abs(a.z - b.z) <= r;
+    // Is this order aimed at the threat, or does it protect what is threatened?
+    function answers(cmd, points, R) {
+        if (cmd.ok !== true) return false;
+        const at = list => list.some(pt => near(cmd, pt, R));
+        switch (cmd.action) {
+            case 'attack_target': return at(points.attackers) || at(points.targets);
+            // Sending units to the fight, or taking the threatened ones out of it.
+            case 'move_units': return !cmd.scouting && (at(points.attackers) || at(points.targets)
+                || (cmd.from || []).some(u => points.targets.some(t => t.kind === 'unit' && near(u, t, R / 2))));
+            case 'build_structure': return cmd.name === 'tower' && at(points.targets);
+            case 'repair_building': return at(points.targets.filter(t => t.kind === 'building'));
+        }
+        return false;
     }
     // Does this command carry out that commitment of a plan step?
     function serves(cmd, check, vocab) {
@@ -340,8 +385,23 @@
             learnNames(seat.vocab, st);
             const outcomes = Array.isArray(o.outcomes) ? o.outcomes.map(x => ({ code: x && x.code != null ? String(x.code) : null,
                 verdict: x && VERDICTS.includes(x.verdict) ? x.verdict : 'unknown' })) : null;
+            // Buildings that were under attack are watched until the attack is over: one
+            // that is no longer in the seat's own list has fallen.
+            const threat = threatOf(threats), fallen = [];
+            if (seat.watch && seat.watch.length) {
+                const mine = Array.isArray(st.friendlyBuildings) ? st.friendlyBuildings : null;
+                if (mine) seat.watch = seat.watch.filter(t => {
+                    if (mine.some(b => b && String(b.type) === t.type && near(b, t, 3))) return true;
+                    fallen.push(t); return false;
+                });
+                if (!threat) seat.watch = [];
+            }
+            if (threat) for (const t of threat.targets) if (t.kind === 'building' && !(seat.watch = seat.watch || []).some(w => w.type === t.type && near(w, t, 3))) seat.watch.push(t);
             seat.turns.push({
-                cmds: commandList(o.parsed, outcomes),
+                threat, fallen,
+                rivalWonders: Array.isArray(threats.enemyWonders) ? threats.enemyWonders.filter(w => w && w.id != null)
+                    .map(w => ({ id: String(w.id), x: num(w.x), z: num(w.z), owner: w.owner != null ? String(w.owner) : null })) : [],
+                cmds: commandList(o.parsed, outcomes, st),
                 plan: planOf(o.parsed),
                 // What the state showed that a plan could not have counted on.
                 people: num(st.population ? st.population.used : (st.resources ? st.resources.population : null)),
@@ -527,6 +587,81 @@
             };
         }
 
+        // When it is shown a threat, is its next order aimed at it? (step C4)
+        //
+        // An episode is the stretch of decisions whose state said something of the seat's
+        // is under attack: it opens at the first such state, so a seat is never charged
+        // for a raid it was not told about. It is answered by the first order that worked
+        // and is aimed at the threat or protects what is threatened: an attack or a march
+        // to where the attackers or their targets are, the threatened units moved out, a
+        // tower raised or a building repaired there. Training more soldiers is not an
+        // answer: it is aimed at nothing. A new rival Wonder is a threat of its own,
+        // answered by an attack on it.
+        _tactical(seat) {
+            const turns = seat.turns, R = WarEval.RESPONSE_RADIUS, W = WarEval.RESPONSE_WINDOW;
+            const judged = turns.some(t => t.cmds.some(c => c.ok != null));
+            const episodes = [];
+            let open = null;
+            turns.forEach((t, i) => {
+                if (t.threat && !open) {
+                    open = { kind: 'attack', decision: i + 1, turn: t.turn, sec: t.sec, targets: [], attackers: [], by: null, undefended: false,
+                        answeredAfter: null, decisions: 0, lost: [], ended: false };
+                    episodes.push(open);
+                }
+                if (open) {
+                    for (const f of t.fallen) open.lost.push(f.type);
+                    if (!t.threat) { open.ended = true; open = null; }
+                }
+                if (open) {
+                    open.decisions++;
+                    for (const x of t.threat.targets) if (!open.targets.some(y => y.type === x.type && near(x, y, 3))) open.targets.push(x);
+                    for (const x of t.threat.attackers) { if (!open.attackers.some(y => near(x, y, 3))) open.attackers.push(x); if (!open.by && x.owner) open.by = x.owner; }
+                    if (t.threat.undefended) open.undefended = true;
+                }
+                // An answer counts inside the window even when the raid has already left
+                // the state: it is aimed at where the seat last saw it.
+                for (const e of episodes) {
+                    const after = i - (e.decision - 1);
+                    if (e.answeredAfter == null && after >= 0 && after < W && t.cmds.some(c => answers(c, e, R))) e.answeredAfter = after;
+                }
+            });
+            // A rival Wonder, from the decision that first showed it.
+            const seen = new Set(), wonders = [];
+            turns.forEach((t, i) => {
+                for (const w of t.rivalWonders) if (!seen.has(w.id)) {
+                    seen.add(w.id);
+                    wonders.push({ kind: 'wonder', decision: i + 1, turn: t.turn, sec: t.sec, id: w.id, x: w.x, z: w.z, by: w.owner, answeredAfter: null });
+                }
+                for (const w of wonders) {
+                    const after = i - (w.decision - 1);
+                    if (w.answeredAfter == null && after < W && t.cmds.some(c => c.ok === true && c.action === 'attack_target' && (c.target === w.id || near(c, w, R)))) w.answeredAfter = after;
+                }
+            });
+            const answered = episodes.filter(e => e.answeredAfter != null), atOnce = answered.filter(e => e.answeredAfter <= 1);
+            const wonderAnswered = wonders.filter(w => w.answeredAfter != null);
+            const chances = episodes.length + wonders.length;
+            const list = episodes.map(e => ({ kind: 'attack', decision: e.decision, turn: e.turn, sec: e.sec, what: [...new Set(e.targets.map(x => x.type))], by: e.by,
+                decisions: e.decisions, undefended: e.undefended, answeredAfter: e.answeredAfter,
+                outcome: e.lost.length ? 'lost' : e.ended ? 'held' : 'open', lost: e.lost }))
+                .concat(wonders.map(w => ({ kind: 'wonder', decision: w.decision, turn: w.turn, sec: w.sec, what: ['wonder'], by: w.by, answeredAfter: w.answeredAfter })))
+                .sort((a, b) => a.decision - b.decision);
+            if (!judged) return { episodes: episodes.length, wonders: wonders.length, answered: null, atOnce: null, unanswered: null, wonderAnswered: null,
+                decisionsToAnswer: null, lost: null, held: null, list, judged, score: null };
+            return {
+                episodes: episodes.length, answered: answered.length, atOnce: atOnce.length, unanswered: episodes.length - answered.length,
+                decisionsToAnswer: answered.length ? quantile(answered.map(e => e.answeredAfter), 0.5) : null,
+                // What became of the buildings that were attacked. Reported beside the answer,
+                // not inside the score: holding a town is a matter of strength as well.
+                lost: episodes.filter(e => e.lost.length).length, held: episodes.filter(e => !e.lost.length && e.ended).length,
+                undefended: episodes.filter(e => e.undefended).length,
+                wonders: wonders.length, wonderAnswered: wonderAnswered.length,
+                // Every episode, with the moment the seat was first shown it.
+                list, judged,
+                // v0: the share of threats answered at once. No threat shown is a dash.
+                score: !chances ? null : Math.round(1000 * (atOnce.length + wonderAnswered.length) / chances) / 10
+            };
+        }
+
         // What did a decision cost? Beside the profile, never inside it.
         _efficiency(seat, ok) {
             const turns = seat.turns;
@@ -559,7 +694,8 @@
             const seats = [...this.seats.values()].map(s => {
                 const grounding = this._grounding(s.turns), planning = this._planning(s);
                 return { id: s.id, seat: s.seat, civ: s.civ, model: s.model, name: s.name,
-                    decisions: s.turns.length, grounding, planning, follow: this._follow(s, this._plans), efficiency: this._efficiency(s, grounding.ok) };
+                    decisions: s.turns.length, grounding, planning, follow: this._follow(s, this._plans), tactical: this._tactical(s),
+                    efficiency: this._efficiency(s, grounding.ok) };
             });
             seats.sort((a, b) => (a.seat == null ? 1e9 : a.seat) - (b.seat == null ? 1e9 : b.seat) || String(a.id).localeCompare(String(b.id)));
             this._profileLines = this.lines + ':' + this.unreadable;

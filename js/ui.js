@@ -5247,7 +5247,12 @@ class UIManager {
             + `<span class="lb-dim-name">${esc(t('eval.' + key))}</span>`
             + `<span class="lb-dim-track"><i style="width:${score == null ? 0 : Math.round(score)}%"></i></span>`
             + `<b>${score == null ? '–' : Math.round(score)}</b></span>`;
-        return `<div class="lb-profile">${bar('grounding', g.score, groundTip)}${bar('planning', pl.score, planTip)}${fl ? bar('follow', fl.score, followTip) : ''}</div>`;
+        const ta = p.tactical;
+        const chances = ta ? ta.episodes + ta.wonders : 0;
+        const tacticalTip = !ta ? '' : !ta.judged ? t('eval.groundingNone') : !chances ? t('eval.tacticalNone')
+            : t('eval.tacticalTip', { atOnce: ta.atOnce, episodes: ta.episodes, answered: ta.answered, lost: ta.lost,
+                wonderAnswered: ta.wonderAnswered, wonders: ta.wonders });
+        return `<div class="lb-profile">${bar('grounding', g.score, groundTip)}${bar('planning', pl.score, planTip)}${fl ? bar('follow', fl.score, followTip) : ''}${ta ? bar('tactical', ta.score, tacticalTip) : ''}</div>`;
     }
 
     // ---- Leaderboard achievement flyout --------------------------------------

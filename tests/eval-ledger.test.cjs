@@ -476,3 +476,125 @@ test('no plan, or a plan with nothing checkable in it, earns nothing', () => {
         state: { units: { trainable: { barracks: { stone: [{ id: 'militia' }] } } } } })]);
     assert.deepEqual([old.judged, old.score, old.acted, old.steps], [false, null, null, 1]);
 });
+
+// ---- tactical response (step C4) ---------------------------------------------------------
+// name, score, attack episodes, answered inside the window, of which at once, median
+// decisions to answer, episodes that cost a building, episodes held, episodes the state
+// called undefended, rival Wonders sighted, of which attacked.
+const TACTICAL = {
+    '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
+        ['O gpt-6.1-sol', 50, 1, 1, 1, 0, 1, 0, 1, 1, 0],
+        ['O claude-sonnet-5.5', 66.7, 5, 3, 3, 0, 2, 3, 1, 1, 1],
+        ['O deepseek-v4.1-flash', 66.7, 4, 2, 2, 0, 2, 2, 2, 2, 2],
+        ['DGX GLM5.3 Flash', 100, 2, 2, 2, 0, 1, 1, 1, 1, 1],
+    ],
+    '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
+        ['DGX Qwen3.8 flash next nvfp4', 66.7, 3, 2, 2, 0, 1, 2, 1, 0, 0],
+        ['RTX qwen3.8 flash next Q2_0', 0, 1, 0, 0, null, 1, 0, 1, 0, 0],
+        ['O gemini-4-argon', 75, 3, 2, 2, 0, 0, 3, 0, 1, 1],
+    ],
+    // Twelve minutes in which neither seat was ever shown a threat: a dash, not a zero.
+    '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
+        ['pi MCP', null, 0, 0, 0, null, 0, 0, 0, 0, 0],
+        ['HERMES MCP', null, 0, 0, 0, null, 0, 0, 0, 0, 0],
+    ],
+};
+for (const [file, want] of Object.entries(TACTICAL)) {
+    test('tactical response on ' + file.slice(0, 10) + ' is what it was', async () => {
+        const p = await profileFile(sample(file));
+        assert.deepEqual(p.seats.map(s => { const g = s.tactical; return [s.name, g.score, g.episodes, g.answered, g.atOnce, g.decisionsToAnswer, g.lost, g.held, g.undefended, g.wonders, g.wonderAnswered]; }), want);
+    });
+}
+
+test('every episode opens at a state that showed the threat, after one that did not', () => {
+    let episodes = 0;
+    for (const file of samples) {
+        const text = fs.readFileSync(sample(file), 'utf8'), byTurn = new Map();
+        for (const l of text.split('\n')) {
+            if (!l || l.startsWith('{"type"')) continue;
+            const o = JSON.parse(l), th = (o.state && o.state.threats) || {};
+            byTurn.set(o.playerId + '|' + o.turn, { attacked: (th.underAttack || []).length > 0, wonders: (th.enemyWonders || []).map(w => String(w.id)), sec: o.state && o.state.clock && o.state.clock.matchSeconds });
+        }
+        for (const s of WarEval.profileOf(text).seats) for (const e of s.tactical.list) {
+            const at = byTurn.get(s.id + '|' + e.turn), before = byTurn.get(s.id + '|' + (e.turn - 1));
+            assert.ok(at, file + ' ' + s.name + ' turn ' + e.turn);
+            assert.equal(at.sec, e.sec, file + ': the episode carries the moment of its first sighting');
+            if (e.kind === 'attack') { assert.equal(at.attacked, true, file + ' ' + s.name); if (before) assert.equal(before.attacked, false, file + ' ' + s.name + ': it had not been shown before'); }
+            else assert.ok(at.wonders.length > 0 && !(before && before.wonders.length === at.wonders.length && before.wonders.every(w => at.wonders.includes(w))), file + ' ' + s.name + ': a Wonder it had not been shown');
+            episodes++;
+        }
+    }
+    assert.ok(episodes >= 100, 'only ' + episodes + ' episodes in the shipped matches');
+});
+
+// One decision: what the state showed under attack, and what was ordered.
+const scene = (attack, orders, more) => JSON.stringify({ turn: 1, playerId: 'a',
+    parsed: { commands: (orders || []).map(o => ({ action: o.action, params: o })) },
+    outcomes: (orders || []).map((o, i) => ({ n: i + 1, action: o.action, code: 'c', verdict: o.verdict || 'ok' })),
+    state: Object.assign({ clock: { matchSeconds: 100 }, population: { used: 20 },
+        threats: { underAttack: attack || [], enemyWonders: [] },
+        friendlyBuildings: [{ type: 'barracks', x: 100, z: 100 }, { type: 'town_center', x: 0, z: 0 }],
+        friendlyUnits: [{ id: 1, type: 'worker', x: 102, z: 98 }, { id: 2, type: 'worker', x: -200, z: -200 }],
+        enemyUnits: [{ id: 'e1', type: 'archer', x: 110, z: 104, owner: 'maya-2' }] }, more) });
+const raid = [{ kind: 'building', type: 'barracks', x: 100, z: 100, healthPct: 60, attackerAt: { x: 110, z: 104, owner: 'maya-2' } }];
+const workerRaid = [{ kind: 'unit', type: 'worker', x: 102, z: 98, healthPct: 50, attackerAt: { x: 110, z: 104, owner: 'maya-2' } }];
+const tactical = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile().seats[0].tactical; };
+const calm = scene(null, [{ action: 'train_unit', unitType: 'worker' }]);
+
+test('an order aimed at the threat answers it; training more soldiers does not', () => {
+    const one = order => tactical([calm, scene(raid, [order]), calm]);
+    assert.deepEqual([one({ action: 'attack_target', targetX: 108, targetZ: 100 }).answered, one({ action: 'attack_target', targetX: 108, targetZ: 100 }).score], [1, 100]);
+    assert.equal(one({ action: 'attack_target', targetId: 'e1' }).answered, 1);          // a target named by its id points where the state showed it
+    assert.equal(one({ action: 'attack_target', targetX: -300, targetZ: -300 }).answered, 0);   // an attack somewhere else is not an answer
+    assert.equal(one({ action: 'move_units', targetX: 95, targetZ: 105, units: { militia: 4 } }).answered, 1);
+    assert.equal(one({ action: 'move_units', mode: 'scout', targetX: 95, targetZ: 105 }).answered, 0);
+    assert.equal(one({ action: 'build_structure', buildingType: 'tower', targetX: 104, targetZ: 96 }).answered, 1);
+    assert.equal(one({ action: 'build_structure', buildingType: 'house', targetX: 104, targetZ: 96 }).answered, 0);
+    assert.equal(one({ action: 'repair_building', targetX: 100, targetZ: 100 }).answered, 1);
+    assert.equal(one({ action: 'train_unit', unitType: 'militia' }).answered, 0);
+    assert.deepEqual([one({ action: 'train_unit', unitType: 'militia' }).unanswered, one({ action: 'train_unit', unitType: 'militia' }).score], [1, 0]);
+    assert.equal(one({ action: 'attack_target', targetX: 108, targetZ: 100, verdict: 'avoidable' }).answered, 0);   // an order that was refused answered nothing
+});
+
+test('pulling the threatened people out protects them, wherever they are sent', () => {
+    const out = tactical([calm, scene(workerRaid, [{ action: 'move_units', unitIds: [1], targetX: -250, targetZ: -250 }]), calm]);
+    assert.equal(out.answered, 1);
+    const other = tactical([calm, scene(workerRaid, [{ action: 'move_units', unitIds: [2], targetX: -250, targetZ: -250 }]), calm]);
+    assert.equal(other.answered, 0);                                                        // somebody else, far from the raid
+});
+
+test('at once is the decision that was shown the threat or the next; the window is three', () => {
+    const answer = scene(null, [{ action: 'attack_target', targetX: 108, targetZ: 100 }]);
+    const after = n => tactical([calm, scene(raid, []), ...Array.from({ length: n - 1 }, () => calm), ...(n ? [answer] : []), calm]);
+    assert.deepEqual([after(1).answered, after(1).atOnce, after(1).score], [1, 1, 100]);   // the raid had left the state: still aimed at where it was
+    assert.deepEqual([after(2).answered, after(2).atOnce, after(2).score, after(2).decisionsToAnswer], [1, 0, 0, 2]);
+    assert.deepEqual([after(3).answered, after(3).unanswered], [0, 1]);
+});
+
+test('one attack is one episode however long it lasts, and what it cost is reported beside the answer', () => {
+    const gone = { friendlyBuildings: [{ type: 'town_center', x: 0, z: 0 }] };
+    const t = tactical([calm, scene(raid, []), scene(raid, []), scene(null, [], gone), calm, scene(workerRaid, [{ action: 'attack_target', targetId: 'e1' }]), calm]);
+    assert.deepEqual([t.episodes, t.answered, t.lost, t.held, t.score], [2, 1, 1, 1, 50]);
+    assert.deepEqual(t.list.map(e => [e.kind, e.decision, e.sec, e.decisions, e.outcome, e.what.join(), e.by, e.answeredAfter]),
+        [['attack', 2, 100, 2, 'lost', 'barracks', 'maya-2', null], ['attack', 6, 100, 1, 'held', 'worker', 'maya-2', 0]]);
+    // A match that ends with the attack still on: neither held nor lost.
+    assert.equal(tactical([calm, scene(raid, [])]).list[0].outcome, 'open');
+    assert.equal(tactical([calm, scene([Object.assign({ noDefenders: true }, raid[0])], [])]).undefended, 1);
+});
+
+test('a rival Wonder is a threat from the decision that first showed it, answered by an attack on it', () => {
+    const wonder = { threats: { underAttack: [], enemyWonders: [{ id: 'w1', type: 'pyramid', x: 300, z: 300, owner: 'maya-2' }] } };
+    const hit = tactical([calm, scene(null, [], wonder), scene(null, [{ action: 'attack_target', targetId: 'w1' }], wonder), scene(null, [], wonder)]);
+    assert.deepEqual([hit.wonders, hit.wonderAnswered, hit.episodes, hit.score], [1, 1, 0, 100]);
+    assert.equal(tactical([calm, scene(null, [{ action: 'attack_target', targetX: 310, targetZ: 290 }], wonder)]).wonderAnswered, 1);
+    assert.equal(tactical([calm, scene(null, [{ action: 'attack_target', targetX: 0, targetZ: 0 }], wonder), calm, calm]).wonderAnswered, 0);
+    assert.equal(tactical([calm, scene(null, [], wonder), calm, calm, scene(null, [{ action: 'attack_target', targetId: 'w1' }], wonder)]).score, 0);   // the fourth decision is too late
+});
+
+test('a seat that was never shown a threat has no tactical score, and a file without outcomes is not judged', () => {
+    const none = tactical([calm, calm, calm]);
+    assert.deepEqual([none.episodes, none.wonders, none.score, none.list.length], [0, 0, null, 0]);
+    const old = tactical([JSON.stringify({ turn: 1, playerId: 'a', parsed: { commands: [{ action: 'attack_target', params: { targetX: 108, targetZ: 100 } }] },
+        state: { threats: { underAttack: raid, enemyWonders: [] } } })]);
+    assert.deepEqual([old.judged, old.episodes, old.answered, old.score], [false, 1, null, null]);
+});
