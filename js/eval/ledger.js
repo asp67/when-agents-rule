@@ -347,7 +347,7 @@
     // The profile as an export carries it (step D8): every seat a model decided for, every
     // number, and none of the long lists behind them (each mistake, each plan change, each
     // threat). All of it can be worked out again from the transcript it travels in.
-    const LONG = { grounding: ['errors'], planning: ['history', 'standing'], follow: ['standing'], tactical: ['list'] };
+    const LONG = { grounding: ['errors'], planning: ['history', 'standing'], follow: ['standing', 'done'], tactical: ['list'] };
     WarEval.publicProfile = p => ({ kind: p.kind, scale: p.scale, seats: p.seats.filter(s => s.decisions > 0).map(s => {
         const out = { id: s.id, seat: s.seat, civ: s.civ, name: s.name, model: s.model, decisions: s.decisions, index: s.index };
         for (const k of ['grounding', 'planning', 'follow', 'tactical', 'strategy', 'versatility', 'efficiency']) {
@@ -586,13 +586,14 @@
                 let until = turns.length;
                 for (let j = hi + 1; j < history.length; j++)
                     if (!history[j].steps.some(x => plain(x.text) === plain(s.text))) { until = history[j].decision - 1; break; }
-                tracked.push({ key: plain(s.text), at: h.decision - 1, until, checks: s.checks, met: new Set(), acted: null, late: null });
+                tracked.push({ key: plain(s.text), text: s.text, at: h.decision - 1, until, checks: s.checks, met: new Set(), acted: null, late: null, by: null });
             }));
             let served = 0, underPlan = 0, hi = -1;
             turns.forEach((t, i) => {
                 while (hi + 1 < history.length && history[hi + 1].decision - 1 <= i) hi++;
                 const standing = hi >= 0 ? history[hi] : null;
-                for (const c of t.cmds) {
+                for (let ci = 0; ci < t.cmds.length; ci++) {
+                    const c = t.cmds[ci];
                     if (c.ok !== true) continue;
                     if (standing && aboutPlan(c)) {
                         underPlan++;
@@ -602,7 +603,11 @@
                         if (s.at > i || (s.acted != null && s.met.size === s.checks.length)) continue;
                         const hit = s.checks.findIndex(k => serves(c, k, vocab));
                         if (hit < 0) continue;
-                        if (i - s.at <= W) { if (s.acted == null) s.acted = i - s.at; s.met.add(hit); }
+                        if (i - s.at <= W) {
+                            // The order that first carried the step out: which, when, and where it pointed.
+                            if (s.acted == null) { s.acted = i - s.at; s.by = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, action: c.action, name: c.name, x: c.x, z: c.z }; }
+                            s.met.add(hit);
+                        }
                         else if (s.acted == null && s.late == null && i < s.until) s.late = i - s.at;
                     }
                 }
@@ -627,6 +632,9 @@
                 commitments, commitmentsMet: met,
                 // Of the orders a plan can be about, given under a standing plan: how many carried out one of its steps.
                 ordersUnderPlan: underPlan, ordersServing: served, servingRate: underPlan ? served / underPlan : null,
+                // Every step that was acted on, with the order that did it (the marks in the world).
+                done: tracked.filter(s => s.by).map(s => ({ text: s.text, stated: s.at + 1, decision: s.by.decision, turn: s.by.turn, sec: s.by.sec,
+                    by: { n: s.by.n, action: s.by.action, name: s.by.name, x: s.by.x, z: s.by.z } })),
                 // The standing plan, step by step, for the page.
                 standing: standing ? standing.steps.map(s => {
                     const f = s.checks.length ? byKey.get(plain(s.text)) : null;
@@ -676,7 +684,11 @@
                 // the state: it is aimed at where the seat last saw it.
                 for (const e of episodes) {
                     const after = i - (e.decision - 1);
-                    if (e.answeredAfter == null && after >= 0 && after < W && t.cmds.some(c => answers(c, e, R))) e.answeredAfter = after;
+                    if (e.answeredAfter != null || after < 0 || after >= W) continue;
+                    const ci = t.cmds.findIndex(c => answers(c, e, R));
+                    if (ci < 0) continue;
+                    e.answeredAfter = after;
+                    e.answer = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, action: t.cmds[ci].action, x: t.cmds[ci].x, z: t.cmds[ci].z };
                 }
             });
             // A rival Wonder, from the decision that first showed it.
@@ -688,7 +700,11 @@
                 }
                 for (const w of wonders) {
                     const after = i - (w.decision - 1);
-                    if (w.answeredAfter == null && after < W && t.cmds.some(c => c.ok === true && c.action === 'attack_target' && (c.target === w.id || near(c, w, R)))) w.answeredAfter = after;
+                    if (w.answeredAfter != null || after >= W) continue;
+                    const ci = t.cmds.findIndex(c => c.ok === true && c.action === 'attack_target' && (c.target === w.id || near(c, w, R)));
+                    if (ci < 0) continue;
+                    w.answeredAfter = after;
+                    w.answer = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, action: 'attack_target', x: t.cmds[ci].x, z: t.cmds[ci].z };
                 }
             });
             const answered = episodes.filter(e => e.answeredAfter != null), atOnce = answered.filter(e => e.answeredAfter <= 1);
@@ -696,8 +712,11 @@
             const chances = episodes.length + wonders.length;
             const list = episodes.map(e => ({ kind: 'attack', decision: e.decision, turn: e.turn, sec: e.sec, what: [...new Set(e.targets.map(x => x.type))], by: e.by,
                 decisions: e.decisions, undefended: e.undefended, answeredAfter: e.answeredAfter,
+                // Where the threat was (the attackers, as the seat was shown them, else what they hit) and the order that answered it.
+                at: e.attackers[0] ? { x: e.attackers[0].x, z: e.attackers[0].z } : e.targets[0] ? { x: e.targets[0].x, z: e.targets[0].z } : null, answer: e.answer || null,
                 outcome: e.lost.length ? 'lost' : e.ended ? 'held' : 'open', lost: e.lost }))
-                .concat(wonders.map(w => ({ kind: 'wonder', decision: w.decision, turn: w.turn, sec: w.sec, what: ['wonder'], by: w.by, answeredAfter: w.answeredAfter })))
+                .concat(wonders.map(w => ({ kind: 'wonder', decision: w.decision, turn: w.turn, sec: w.sec, what: ['wonder'], by: w.by, answeredAfter: w.answeredAfter,
+                    at: w.x != null && w.z != null ? { x: w.x, z: w.z } : null, answer: w.answer || null })))
                 .sort((a, b) => a.decision - b.decision);
             if (!judged) return { episodes: episodes.length, wonders: wonders.length, answered: null, atOnce: null, unanswered: null, wonderAnswered: null,
                 decisionsToAnswer: null, lost: null, held: null, list, judged, score: null };

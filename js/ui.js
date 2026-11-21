@@ -2930,6 +2930,7 @@ class UIManager {
         const layer = this.intentLayer, r = this.game.renderer;
         svg.innerHTML = '';
         if (r && r.worldToScreen) this.drawStrategic(svg, NS);
+        if (r && r.worldToScreen && this.intentOn()) this.drawEvalMarks(svg, NS);
         if (!layer || !r || !r.worldToScreen || !this.intentOn() || this._intentMarksOnly) { box.innerHTML = ''; return; }
         // The marks themselves lie on the ground, drawn by the renderer (intentMarks);
         // only the bubbles are screen-space.
@@ -2978,7 +2979,7 @@ class UIManager {
         // it, toward the middle of the view; before stacking, and again after, since
         // stacking can raise a bubble into one.
         const ov = box.getBoundingClientRect();
-        const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo']
+        const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo', 'benchLeft', 'benchMatrix', 'raceChart', 'compareStrip']
             .map(id => document.getElementById(id))
             .filter(el => el && el.offsetParent !== null && el.offsetWidth > 0)
             .map(el => { const q = el.getBoundingClientRect();
@@ -3127,6 +3128,74 @@ class UIManager {
         if (!name) return b.text;
         const detail = this.logDetail(b.params, b.seat);
         return name + (detail || (b.params && b.params.tile ? ' (' + b.params.tile + ')' : ''));
+    }
+
+    // Evaluation marks in the world (overhaul step B4): a tick where a plan step was
+    // carried out, an arrow from the responders to the threat their order answers, and a
+    // plate over a finished battle with what each side lost. What they say comes from the
+    // ledger and the chronicle (js/eval/marks.js); here they are placed and drawn. Part of
+    // the story layer: the Intent switch hides them with the rest.
+    evalMarkPlace(m) {
+        const ai = ((this.game.aiManager && this.game.aiManager.aiPlayers) || []).find(a => a.id === m.id);
+        if (!ai) return null;
+        const L = this.intentLayer, by = m.by || {};
+        if (m.kind === 'answer') {
+            // From the fighting units, where the order sent some; a tower or a repair stands at the threat.
+            const sent = by.action === 'attack_target' || by.action === 'move_units';
+            return { at: m.to, from: sent && L ? L.centroid((ai.units || []).filter(u => u.type !== 'worker')) : null };
+        }
+        if (by.x != null && by.z != null) return { at: { x: by.x, z: by.z }, from: null };
+        // An order that names no place: the building that carries it out, as the intent layer finds it.
+        const at = L ? L.home(ai, by.action, { unitType: by.name, techId: by.name }) : null;
+        return at ? { at, from: null } : null;
+    }
+    drawEvalMarks(svg, NS) {
+        const M = this.evalMarks, r = this.game.renderer;
+        if (!M || !M.marks.length || !this.game.spectatorMode || !this.game.gameStarted) return;
+        const items = M.frame((x, z) => r.worldToScreen(x, 0, z), m => this.evalMarkPlace(m));
+        if (!items.length) return;
+        const g = document.createElementNS(NS, 'g');
+        g.setAttribute('class', 'eval-marks');
+        const el = (tag, attrs, parent = g) => {
+            const e = document.createElementNS(NS, tag);
+            for (const k in attrs) e.setAttribute(k, attrs[k]);
+            parent.appendChild(e);
+            return e;
+        };
+        const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        const ink = id => { const ai = ais.find(a => a.id === id); return ai ? this.legibleColor(this.identityHex(ai.id, ai.civilization, ai.seat)) : '#e8eef7'; };
+        // The civilization's name without the emblem in front of it: the plate has the seat's colour for that.
+        const who = id => { const ai = ais.find(a => a.id === id); return ai ? String(this.civNames()[ai.civilization] || ai.civilization).replace(/^[^\p{L}]+/u, '') : '?'; };
+        // A line of text on a dark plate, centred on x with its bottom at y.
+        const plate = (parent, x, y, parts, cls) => {
+            const text = el('text', { x: x.toFixed(1), y: (y - 7).toFixed(1), 'text-anchor': 'middle', class: 'eval-text' }, parent);
+            for (const p of parts) { const s = el('tspan', p.fill ? { fill: p.fill } : {}, text); s.textContent = p.text; }
+            const w = Math.max(40, parts.reduce((n, p) => n + p.text.length, 0) * 6.6 + 16);
+            const back = el('rect', { x: (x - w / 2).toFixed(1), y: (y - 22).toFixed(1), width: w.toFixed(1), height: 22, rx: 5, class: 'eval-plate ' + cls }, parent);
+            parent.insertBefore(back, text);
+        };
+        for (const m of items) {
+            const mg = el('g', { opacity: m.opacity.toFixed(2), class: 'eval-mark eval-' + m.kind });
+            if (m.kind === 'step') {
+                el('circle', { cx: m.x.toFixed(1), cy: (m.y - 30).toFixed(1), r: 11, class: 'eval-tick', stroke: ink(m.id) }, mg);
+                el('path', { d: `M${(m.x - 5).toFixed(1)} ${(m.y - 30).toFixed(1)} l3.5 4 l6.5 -8`, class: 'eval-tick-mark' }, mg);
+                plate(mg, m.x, m.y - 44, [{ text: t('mark.step') + ' ' }, { text: m.text, fill: '#ffffff' }], 'is-step');
+            } else if (m.kind === 'answer') {
+                if (m.from) {
+                    const dx = m.x - m.from.x, dy = m.y - m.from.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+                    el('line', { x1: m.from.x.toFixed(1), y1: m.from.y.toFixed(1), x2: (m.x - ux * 12).toFixed(1), y2: (m.y - uy * 12).toFixed(1), class: 'eval-arrow' }, mg);
+                    el('polygon', { points: [[m.x, m.y], [m.x - ux * 14 - uy * 7, m.y - uy * 14 + ux * 7], [m.x - ux * 14 + uy * 7, m.y - uy * 14 - ux * 7]]
+                        .map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' '), class: 'eval-arrow-head' }, mg);
+                }
+                plate(mg, m.x, m.y - 18, [{ text: who(m.id) + ' ', fill: ink(m.id) },
+                    { text: m.wonder ? t('mark.answerWonder') : t('mark.answer', { what: m.what.map(x => tg(String(x).replace(/_/g, ' '))).join(', ') }) }], 'is-answer');
+            } else {
+                const parts = [{ text: '⚔ ' }];
+                m.sides.forEach((s, k) => { if (k) parts.push({ text: ' · ' }); parts.push({ text: t('mark.lost', { who: who(s.id), n: s.lost }), fill: ink(s.id) }); });
+                plate(mg, m.x, m.y - 26, parts, 'is-battle');
+            }
+        }
+        svg.appendChild(g);
     }
 
     // The strategic zoom layer (review #12): bases, armies with their counts, and live
@@ -3981,7 +4050,7 @@ class UIManager {
         this.chronicle = typeof MatchChronicle === 'function' ? new MatchChronicle(this.game) : null;
         this._chronicleQueue = [];
         if (this.chronicle) {
-            this.chronicle.subscribe(e => { this.chronicleCaption(e); this.broadcastSlate(e); });
+            this.chronicle.subscribe(e => { this.chronicleCaption(e); this.broadcastSlate(e); if (this.evalMarks && this.intentOn()) this.evalMarks.battle(e); });
             this._spectatorIntervals.push(setInterval(() => { if (this.chronicle) this.chronicle.update(); }, 250));
         }
         this.refreshIntentButton();
@@ -3996,6 +4065,12 @@ class UIManager {
         }
         this.refreshIntentButton();
         // The strategic zoom layer (review #12), regrouped four times a second.
+        // Evaluation marks (overhaul step B4): what the ledger has just judged, where it happened.
+        this.evalMarks = typeof EvalMarks === 'function' ? new EvalMarks() : null;
+        if (this.evalMarks) this._spectatorIntervals.push(setInterval(() => {
+            const ledger = !document.hidden && this.intentOn() ? this.evalLedger() : null;
+            if (ledger) this.evalMarks.poll(ledger.profile());
+        }, 500));
         this.strategicLayer = typeof StrategicLayer === 'function' ? new StrategicLayer(this.game) : null;
         if (this.strategicLayer) this._spectatorIntervals.push(setInterval(() => { if (this.strategicLayer && !document.hidden) this.strategicLayer.poll(); }, 250));
 

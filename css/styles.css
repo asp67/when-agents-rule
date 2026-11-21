@@ -3421,6 +3421,16 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
 .lb-list.collapsed .lb-health { display: none; }
 
 /* Strategic zoom layer (review #12). */
+/* Evaluation marks (overhaul step B4), in the same overlay as the strategic marks. */
+.intent-svg .eval-text { font-size: 12.5px; font-weight: 600; fill: #dfe8f2; font-family: inherit; }
+.intent-svg .eval-plate { fill: rgba(10, 14, 30, 0.88); stroke-width: 1.5; }
+.intent-svg .eval-plate.is-step { stroke: rgba(99, 185, 167, 0.9); }
+.intent-svg .eval-plate.is-answer { stroke: rgba(242, 196, 106, 0.9); }
+.intent-svg .eval-plate.is-battle { stroke: rgba(255, 255, 255, 0.35); }
+.intent-svg .eval-tick { fill: #1f8d6b; stroke-width: 2.5; }
+.intent-svg .eval-tick-mark { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.intent-svg .eval-arrow { stroke: #f2c46a; stroke-width: 3; stroke-dasharray: 9 6; stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8)); }
+.intent-svg .eval-arrow-head { fill: #f2c46a; stroke: rgba(0, 0, 0, 0.6); stroke-width: 1; }
 .intent-svg .strat-n { fill: #fff; stroke: rgba(0,0,0,0.75); stroke-width: 3px; paint-order: stroke; font-weight: 700; font-family: inherit; }
 .intent-svg .strat-battle { fill: rgba(255,90,60,0.18); stroke: #ff5a3c; stroke-width: 2; stroke-dasharray: 5 4; }
 .intent-svg .strat-pole { stroke: #fff; stroke-width: 2; stroke-linecap: round; opacity: 0.5; }
