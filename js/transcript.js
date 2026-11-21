@@ -36,6 +36,17 @@ class TranscriptRecorder {
         this.available = !!(navigator.storage && navigator.storage.getDirectory);
         this._writing = Promise.resolve(); // serialises appends; concurrent
                                            // seek+write on one file would interleave
+        this.ledger = null;        // the evaluation ledger of the match being recorded
+    }
+
+    // Every line this recorder writes is made here, so the evaluation ledger
+    // (js/eval/ledger.js, overhaul step C1) reads a match in progress exactly as it will
+    // read the file afterwards. It is handed the line's TEXT, not the object: what it
+    // scores is what was written. Never throws into the caller, like everything here.
+    _line(obj) {
+        const text = JSON.stringify(obj);
+        if (this.ledger) { try { this.ledger.addLine(text); } catch (e) { console.warn('[transcript] ledger failed', e); } }
+        return text + '\n';
     }
 
     static ROOT() { return 'transcripts'; }
@@ -64,6 +75,9 @@ class TranscriptRecorder {
         await this.purge();
         this.matchId = matchId;
         this.mem.clear(); this.pending.clear(); this.meta.clear(); this.counts.clear(); this.open.clear();
+        // A fresh ledger per match. It outlives purge(): the results screen reads it
+        // after the files are gone, and it holds a few numbers per decision, no text.
+        this.ledger = (typeof WarEval !== 'undefined' && WarEval.createLedger) ? WarEval.createLedger() : null;
         (players || []).forEach(p => this.meta.set(p.id, {
             civ: p.civilization, seat: p.seat, model: p.model || null, name: p.name || null
         }));
@@ -79,7 +93,7 @@ class TranscriptRecorder {
                 settings: p.settings || null })) });
         try {
             const buf = this.pending.get('__match__') || [];
-            buf.push(JSON.stringify(this.matchMeta) + '\n');
+            buf.push(this._line(this.matchMeta));
             this.pending.set('__match__', buf);
             await this.flush('__match__');
         } catch (e) { console.warn('[transcript] match header failed', e); }
@@ -135,8 +149,8 @@ class TranscriptRecorder {
             // it follows, and a pipelined seat has more than one in flight.
             this._sealAllFor(playerId);
             const buf = this.pending.get(playerId) || [];
-            buf.push(JSON.stringify(Object.assign({ playerId },
-                this.meta.get(playerId) || {}, entry)) + '\n');
+            buf.push(this._line(Object.assign({ playerId },
+                this.meta.get(playerId) || {}, entry)));
             this.pending.set(playerId, buf);
             if (buf.length >= this.FLUSH_EVERY) this.flush(playerId);
         } catch (e) {
@@ -150,7 +164,7 @@ class TranscriptRecorder {
         if (!this.matchId || !entry) return;
         const key = TranscriptRecorder.MATCH_KEY();
         const buf = this.pending.get(key) || [];
-        buf.push(JSON.stringify(entry) + '\n');
+        buf.push(this._line(entry));
         this.pending.set(key, buf);
         this.flush(key);
     }
@@ -163,7 +177,7 @@ class TranscriptRecorder {
         try {
             const key = TranscriptRecorder.EVENTS_KEY();
             const buf = this.pending.get(key) || [];
-            buf.push(JSON.stringify(entry) + '\n');
+            buf.push(this._line(entry));
             this.pending.set(key, buf);
             if (buf.length >= this.FLUSH_EVERY * 5) this.flush(key);
         } catch (e) {
@@ -178,7 +192,7 @@ class TranscriptRecorder {
         try {
             const key = TranscriptRecorder.EVENTS_KEY();
             const buf = this.pending.get(key) || [];
-            buf.push(JSON.stringify(entry) + '\n');
+            buf.push(this._line(entry));
             this.pending.set(key, buf);
             this.flush(key);
         } catch (e) {
@@ -200,7 +214,7 @@ class TranscriptRecorder {
             const key = TranscriptRecorder.SUMMARY_KEY();
             const buf = this.pending.get(key) || [];
             (Array.isArray(payload) ? payload : [payload])
-                .forEach(o => { if (o) buf.push(JSON.stringify(o) + '\n'); });
+                .forEach(o => { if (o) buf.push(this._line(o)); });
             this.pending.set(key, buf);
             return this.flush(key);
         } catch (e) {
@@ -234,7 +248,7 @@ class TranscriptRecorder {
         this.open.delete(key);
         const playerId = t.playerId;
         const buf = this.pending.get(playerId) || [];
-        buf.push(JSON.stringify(t) + '\n');
+        buf.push(this._line(t));
         this.pending.set(playerId, buf);
         if (buf.length >= this.FLUSH_EVERY) this.flush(playerId);
     }

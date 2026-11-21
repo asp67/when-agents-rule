@@ -370,6 +370,7 @@ js/
 ├── ui.js               # menus, model library, spectator dashboard, analyzer UI
 ├── transcript.js       # per-match JSONL recorder (states, replies, results, timeline)
 ├── analyzer.js         # transcript parsing, scene assembly, chapters
+├── eval/ledger.js      # the evaluation profile, read from transcript lines only (live and from a file)
 ├── bench-*.js          # the benchmark: scenarios, page, worker
 ├── perf-bench.js       # ?perf=1 frame-time readout, ?perf=bench frame benchmark (docs/PERFORMANCE.md)
 ├── engine/             # in-house WebGL engine
@@ -378,6 +379,7 @@ js/
 ├── buildings.js / units.js / resources.js / terrain.js / fogofwar.js / input.js
 tools/mcp/              # the MCP hub and the tool list it serves
 tools/bench/            # headless realm, replays and the benchmark runner
+tools/eval/             # war-eval.cjs: the evaluation profile of a recorded match
 samples/                # the bundled matches for the analyzer
 game-state-schema.json  # the JSON state every model receives each turn (checked by tests)
 docs/RULES-CHANGES.md   # every change to the rules or to what a model is told, and why
