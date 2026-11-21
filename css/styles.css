@@ -2534,6 +2534,34 @@ body.spectator-mode #unitInfo.spectator-card {
 .c-wonder { stroke-width: 2; opacity: 0.9; }
 .c-wonder.is-lost { stroke-dasharray: 5 3; }
 .c-wondericon { font-size: 12px; }
+.c-mark { stroke-width: 2.4; opacity: 0.95; }
+
+/* The race chart (overhaul step D5): the same chart, small, left of the minimap. Not
+   shown in broadcast mode, like every other operator panel. */
+.race-chart {
+    position: absolute; z-index: 1000;
+    right: calc(var(--mm-edge) + var(--mm-canvas) + var(--mm-gut) + 44px); bottom: var(--mm-bottom);
+    width: min(360px, 30vw); padding: 7px 10px 6px;
+    background: rgba(25, 30, 25, 0.95); border: 1px solid rgba(221, 211, 180, 0.16); border-radius: 4px;
+}
+.race-chart .chart-head { margin-bottom: 3px; gap: 6px; }
+.race-chart .chart-title { font-size: 0.74em; color: #dec594; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.race-chart .chart-mode { font-size: 0.66em; padding: 2px 7px; }
+.race-chart .chart-svg { height: 132px; }
+/* The chart is drawn 900 wide and shown at about a third of that: its type is set
+   three times as large so it reads at the size it lands. */
+.race-chart .c-ylab, .race-chart .c-xlab { font-size: 26px; }
+.race-chart .c-ageicon, .race-chart .c-wondericon { font-size: 26px; }
+.race-chart .c-line { stroke-width: 5; }
+.race-chart .c-age { stroke-width: 3; stroke-dasharray: 7 9; }
+.race-chart .c-wonder { stroke-width: 4; }
+.race-chart .c-mark { stroke-width: 5; }
+.race-close { margin-left: 2px; padding: 0 5px; font: inherit; font-size: 0.95em; line-height: 1.2; color: #93a6c8; background: none; border: 0; cursor: pointer; }
+.race-close:hover { color: #fff; }
+.race-wait { margin: 14px 0; font-size: 0.74em; color: #93a6c8; text-align: center; }
+.race-key { margin: 3px 0 0; font-size: 0.62em; line-height: 1.35; color: #8d97a8; }
+body.broadcast-mode #raceChart { display: none !important; }
+@media (max-width: 1100px) { .race-chart { display: none !important; } }
 
 /* Round-answer-time field: indented under the turn-based checkbox it belongs to,
    and dimmed when that checkbox is off so it cannot look like a live setting. */

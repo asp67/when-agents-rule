@@ -222,7 +222,10 @@ class UIManager {
             // Broadcast mode is how a watched match opens (b1011); analyze mode -- the
             // decisions log, the leaderboard, the controls -- is a click away, and the
             // last choice is kept.
-            broadcast: saved.broadcast !== false
+            broadcast: saved.broadcast !== false,
+            // The race chart (overhaul step D5) is off until someone asks for it: a new
+            // panel over the map must not turn up in a recording by itself.
+            race: saved.race === true
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
@@ -3980,6 +3983,10 @@ class UIManager {
         this.updateSpectatorPlayerList();
         this.updateDecisionLog();
         this.updateArenaStatus();
+        // The race chart, if it was left on. A new match starts it from an empty cache.
+        if (this._chartSigs) delete this._chartSigs.raceChartBox;
+        this.refreshRaceChart();
+        this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateRaceChart(); }, 1000));
 
         // Periodic refresh
         // Skip dashboard DOM work while the tab is hidden — the background driver
@@ -5096,6 +5103,42 @@ class UIManager {
             if (flyAi) { this.renderLbFlyout(flyAi); this.positionLbFlyout(); }
             else this.closeLbFlyout();
         }
+    }
+
+    // ---- The race chart (overhaul step D5) ------------------------------------
+    // The summary's own line chart, small and live beside the minimap: who stood where
+    // over the match so far, with every age-up and Wonder marked as the summary marks
+    // them, and a tick wherever a seat changed its plan. Same samples, same thinning to
+    // 300 points, and the same signature check, so it redraws only when a sample or a
+    // plan change has arrived.
+    raceOn() { return !!this.viewPreferences().race; }
+    toggleRaceChart(on = !this.raceOn()) {
+        this.viewPreferences().race = !!on;
+        this.saveViewPreferences();
+        this.refreshRaceChart();
+    }
+    setRaceMode(mode) {
+        this._raceMode = mode === 'gathered' ? 'gathered' : 'power';
+        this.updateRaceChart();
+    }
+    refreshRaceChart() {
+        const on = this.raceOn(), panel = document.getElementById('raceChart'), btn = document.getElementById('raceBtn');
+        if (btn) { btn.classList.toggle('sb-on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+        if (panel) panel.style.display = on ? '' : 'none';
+        this.updateRaceChart();
+    }
+    // A seat's plan changes as marks on the chart's clock.
+    racePlanMarks() {
+        const marks = [], seats = this.evalSeats() || {};
+        for (const id in seats) for (const h of seats[id].planning.history) if (h.sec != null) marks.push({ id, t: h.sec });
+        return marks;
+    }
+    updateRaceChart() {
+        if (!this.raceOn() || !document.getElementById('raceChart')) return;
+        this.renderSummaryChart({ el: { box: 'raceChartBox', main: 'raceChartMain', title: 'raceTitle', gathered: 'raceModeGathered', power: 'raceModePower' },
+            mode: this._raceMode || 'power', marks: this.racePlanMarks(), sigKey: 'race' });
+        const box = document.getElementById('raceChartBox'), wait = document.getElementById('raceWait');
+        if (box && wait) wait.style.display = box.style.display === 'none' ? '' : 'none';
     }
 
     // ---- The evaluation profile on the seat cards (overhaul step D1) ----------
@@ -6471,6 +6514,7 @@ class UIManager {
         // or a scrub would repaint nothing. Cached per target box: two charts on two
         // screens sharing one signature would each suppress the other's redraw.
         const sig = all.length + ':' + mode + ':' + players.length + ':' + getUiLang()
+            + ':' + (S.marks ? S.marks.length : 0)
             + ':' + (S.playheadSeconds == null ? '-' : S.playheadSeconds)
             + ':' + (S.sigKey || 'live');
         this._chartSigs = this._chartSigs || {};
@@ -6542,6 +6586,16 @@ class UIManager {
                 + '" x2="' + x + '" y2="' + (H - MB - 13) + '" stroke="' + esc(this.chartColor(pl)) + '"/>';
             svg += '<text class="c-wondericon" x="' + x + '" y="' + (H - MB - 3)
                 + '" text-anchor="middle">' + (lost ? '💥' : '🏛️') + '</text>';
+        });
+        // Marks a caller adds, as short ticks standing on the time axis in the seat's
+        // colour, one row per seat so two seats' ticks never hide each other. The race
+        // chart puts a seat's plan changes here (overhaul step D5).
+        (S.marks || []).forEach(m => {
+            const pl = players.find(p => p.id === m.id);
+            if (!pl || !(m.t >= 0) || m.t > tMax) return;
+            const x = X(m.t).toFixed(1), y = H - MB - 1 - ((pl.seat || 0) % 4) * 7;
+            svg += '<line class="c-mark" x1="' + x + '" y1="' + y + '" x2="' + x + '" y2="' + (y - 6)
+                + '" stroke="' + esc(this.chartColor(pl)) + '"/>';
         });
         players.forEach(pl => {
             const pts = samples.map(r => X(r.t).toFixed(1) + ',' + Y(this.chartValue(r, pl.id, mode)).toFixed(1)).join(' ');

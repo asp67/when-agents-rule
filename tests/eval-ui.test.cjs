@@ -67,3 +67,75 @@ test('nothing judged is a dash and no plan is a zero, and neither is hidden', ()
     assert.equal(u.seatProfileHtml(seats.c), '');
     assert.equal(u.seatProfileHtml(null), '');
 });
+
+// ---- the race chart (step D5) ------------------------------------------------------------
+// A page with just enough elements for the chart to draw into, counting every redraw.
+function racePage() {
+    const els = {}, writes = { n: 0 }, store = {};
+    const el = id => els[id] || (els[id] = { id, style: {}, classList: { toggle() {}, contains: () => false }, setAttribute() {}, textContent: '',
+        _html: '', get innerHTML() { return this._html; }, set innerHTML(v) { this._html = v; if (id === 'raceChartMain') writes.n++; } });
+    ['raceChart', 'raceBtn', 'raceChartBox', 'raceChartMain', 'raceTitle', 'raceModePower', 'raceModeGathered', 'raceWait'].forEach(el);
+    const u = ui({ document: { getElementById: id => els[id] || null }, getUiLang: () => 'en', tg: s => s,
+        getCivilization: () => ({ name: 'Civ', color: 0x336699 }),
+        localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } } });
+    u.teamDotHtml = () => '';
+    const samples = n => Array.from({ length: n }, (_, i) => ({ t: i * 5, p: { a: { pw: 100 + i, al: 1 }, b: { pw: 100 + 2 * i, al: 1 } } }));
+    u.game = { _timeline: { samples: samples(4), ages: [{ id: 'a', age: 'bronze', t: 10 }], wonders: [] },
+        aiManager: { aiPlayers: [{ id: 'a', seat: 0, civilization: 'greek' }, { id: 'b', seat: 1, civilization: 'persian' }] },
+        openAIAIManager: { transcripts: { ledger: WarEval.createLedger() } } };
+    return { u, els, writes, store, samples };
+}
+const planLine = (playerId, sec, steps) => JSON.stringify({ turn: 1, playerId, state: { clock: { matchSeconds: sec } }, parsed: { commands: [], plan: steps } });
+
+test('the race chart is off until asked for, and remembers being switched on', () => {
+    const { u, els, writes, store } = racePage();
+    assert.equal(u.raceOn(), false);
+    u.refreshRaceChart();
+    assert.deepEqual([els.raceChart.style.display, writes.n], ['none', 0]);
+    u.toggleRaceChart();
+    assert.equal(u.raceOn(), true);
+    assert.equal(JSON.parse(store.warViewPreferencesV1).race, true);
+    assert.deepEqual([els.raceChart.style.display, writes.n, els.raceWait.style.display], ['', 1, 'none']);
+    u.toggleRaceChart(false);
+    assert.equal(els.raceChart.style.display, 'none');
+});
+
+test('it draws a line per seat with a tick for every changed plan, and only when something arrived', () => {
+    const { u, els, writes, samples } = racePage(), ledger = u.game.openAIAIManager.transcripts.ledger;
+    ledger.addLine(planLine('a', 5, ['Build a tower']));
+    ledger.addLine(planLine('a', 12, ['Build a tower']));          // said again: not a change, no tick
+    u.toggleRaceChart(true);
+    const svg = () => els.raceChartMain.innerHTML, count = cls => (svg().match(new RegExp('class="' + cls + '"', 'g')) || []).length;
+    assert.deepEqual([count('c-line'), count('c-mark'), count('c-age'), writes.n], [2, 1, 1, 1]);
+    assert.deepEqual(JSON.parse(JSON.stringify(u.racePlanMarks())), [{ id: 'a', t: 5 }]);   // by value: the page's realm made it
+    // Asked again a second later with nothing new: not redrawn.
+    u.updateRaceChart(); u.updateRaceChart();
+    assert.equal(writes.n, 1);
+    // A changed plan redraws it, and so does a new sample.
+    ledger.addLine(planLine('b', 14, ['Train militia']));
+    u.updateRaceChart();
+    assert.deepEqual([writes.n, count('c-mark')], [2, 2]);
+    u.game._timeline.samples = samples(5);
+    u.updateRaceChart();
+    assert.equal(writes.n, 3);
+    // The other curve, on request.
+    u.setRaceMode('gathered');
+    assert.equal(writes.n, 4);
+    // A long match is thinned to about 300 points a line, as on the results screen.
+    u.game._timeline.samples = samples(2000);
+    u.updateRaceChart();
+    const points = svg().match(/<polyline class="c-line" points="([^"]*)"/)[1].split(' ').length;
+    assert.ok(points <= 302 && points >= 280, points + ' points');
+    // A mark past the last sample, or for a seat that is not on the chart, is left out.
+    u.game._timeline.samples = samples(3);
+    ledger.addLine(planLine('zz', 3, ['Scout']));
+    u.updateRaceChart();
+    assert.equal(count('c-mark'), 1);                               // a at 5 s; b's 14 s is past 10 s
+});
+
+test('with fewer than two samples it says so instead of drawing a dot', () => {
+    const { u, els, writes, samples } = racePage();
+    u.game._timeline.samples = samples(1);
+    u.toggleRaceChart(true);
+    assert.deepEqual([writes.n, els.raceChartBox.style.display, els.raceWait.style.display], [0, 'none', '']);
+});
