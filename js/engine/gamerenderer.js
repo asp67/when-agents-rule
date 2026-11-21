@@ -143,8 +143,19 @@
             this._shadowTarget = null;
             this._lightMatrix = M().identity();
             this._shadowStrength = 0;
-            const quality = 'cinematic'; // High on a full page reload; in-page choices remain in effect.
-            this.setGraphicsQuality(quality);
+            // Graphics: the viewer's choice, remembered (overhaul step F2). 'auto' measures
+            // this machine while it draws, and is what a browser gets that never chose.
+            // The old key is not read: every page load wrote 'cinematic' into it, so it
+            // never recorded a choice.
+            let choice = null, found = '';
+            try { choice = localStorage.getItem('warQuality'); found = localStorage.getItem('warQualityAuto') || ''; } catch (e) {}
+            this.qualityChoice = EngineRenderer.QUALITY_CHOICES.includes(choice) ? choice : 'auto';
+            const [autoTier, autoLevel] = found.split(':');
+            this._governor = window.EnginePerf ? new EnginePerf.Governor({
+                tier: autoTier, level: Number(autoLevel) || 0, costOf: () => this.perf.recentCost(90) }) : null;
+            const auto = this.qualityChoice === 'auto';
+            this.setGraphicsQuality(auto ? (this._governor ? this._governor.tier : 'cinematic') : this.qualityChoice);
+            if (this.perf) this.perf.setGpuTiming(auto, 'governor');
 
             this._geo = new Map();          // 'kind:args' → GPU buffers
             this._resEntries = new WeakMap(); // resource → prebaked entries
@@ -189,6 +200,23 @@
         }
 
         // ---- materials -------------------------------------------------------
+        // What the viewer picked: 'auto', or a tier that then stays exactly as picked.
+        // Picking Auto again measures afresh, from the top.
+        setQualityChoice(choice) {
+            if (!EngineRenderer.QUALITY_CHOICES.includes(choice)) choice = 'auto';
+            const auto = choice === 'auto';
+            this.qualityChoice = choice;
+            try {
+                localStorage.setItem('warQuality', choice);
+                if (auto) localStorage.removeItem('warQualityAuto');
+            } catch (e) {}
+            if (auto && this._governor) this._governor.reset('cinematic', 0);
+            if (this.perf) this.perf.setGpuTiming(auto, 'governor');
+            this.setGraphicsQuality(auto ? 'cinematic' : choice);
+            if (this.canvas) this._sizeCanvas();
+        }
+
+        // The tier being drawn. The choice behind it is setQualityChoice's.
         setGraphicsQuality(value) {
             const sizes = { low: 0, balanced: 1024, cinematic: 2048 };
             if (!Object.prototype.hasOwnProperty.call(sizes,value)) value = 'balanced';
@@ -197,7 +225,21 @@
             if (value !== 'cinematic' && this._grass) { this._grass.dispose(); this._grass = null; }
             EngineAtmosphere.disposeShadowTarget(this.gl,this._shadowTarget);
             this._shadowTarget = sizes[value] ? EngineAtmosphere.createShadowTarget(this.gl,sizes[value]) : null;
-            try { localStorage.setItem('warGraphicsQuality',value); } catch (e) {}
+            if (this.canvas) this._sizeCanvas();      // each tier has its own resolution ceiling
+        }
+
+        // Auto quality: show the governor this frame's gap and draw with what it decides.
+        _govern(now) {
+            const g = this._governor;
+            if (!g || !this.perf || this.qualityChoice !== 'auto' || this._pinnedSize) return;
+            // Only a picture someone is looking at: a match, a showcase or a replay.
+            if (!this.replayMode && !(this.game && this.game.gameStarted)) return;
+            const act = g.frame(this.perf.lastInterval, now);
+            if (!act) return;
+            if (act.tier !== this.graphicsQuality) this.setGraphicsQuality(act.tier);
+            this._sizeCanvas();
+            try { localStorage.setItem('warQualityAuto', g.tier + ':' + g.level); } catch (e) {}
+            if (this.onQualityChange) this.onQualityChange(act);
         }
 
         _renderShadows() {
@@ -581,7 +623,7 @@
         // buffer is that times a resolution scale, or a size someone pinned (the frame
         // benchmark draws 1920x1080 on every machine, whatever the window is).
         _sizeCanvas() {
-            const c = this.canvas, pin = this._pinnedSize, scale = this.renderScale || 1;
+            const c = this.canvas, pin = this._pinnedSize, scale = this.renderScale = this._pickScale();
             const w = pin ? pin.w : Math.max(1, Math.round(this.W * scale));
             const h = pin ? pin.h : Math.max(1, Math.round(this.H * scale));
             if (c.width !== w) c.width = w;
@@ -590,6 +632,16 @@
             c.style.width = this.W + 'px';
             c.style.height = this.H + 'px';
             this.PW = w; this.PH = h;
+        }
+
+        // Drawing-buffer pixels per page pixel: the display's own ratio as far as the tier
+        // allows, times what the governor has taken off. Low stays at one, which is what
+        // every tier drew before.
+        _pickScale() {
+            const ratio = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+            const cap = EngineRenderer.RESOLUTION_CAP[this.graphicsQuality] || 1;
+            const auto = this.qualityChoice === 'auto' && this._governor ? this._governor.scale : 1;
+            return Math.max(0.5, Math.min(ratio, cap)) * auto;
         }
 
         pinRenderSize(w, h) {
@@ -2842,8 +2894,11 @@
             gl.disable(gl.BLEND);
             this._completedFrames=(this._completedFrames || 0)+1;
             if (this.perf) this.perf.frameEnd();
+            this._govern(now);
         }
     }
 
+    EngineRenderer.QUALITY_CHOICES = ['auto', 'cinematic', 'balanced', 'low'];
+    EngineRenderer.RESOLUTION_CAP = { low: 1, balanced: 1.5, cinematic: 2 };
     window.EngineRenderer = EngineRenderer;
 })();

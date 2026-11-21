@@ -60,6 +60,7 @@
             this.reset();
             this.detail = false;
             this._timer = null;
+            this._timingFor = new Set();
             this._pending = [];
             this._open = false;
         }
@@ -71,6 +72,20 @@
             this._draws = 0; this._tris = 0;
             this._last = -1; this._t0 = 0;           // -1: no frame yet
             this.lastInterval = 0;                    // 0 when the last gap was a stall
+        }
+
+        // GPU time on its own: a query per frame, cheap enough to leave on while the
+        // quality governor needs it. `who` keeps two askers from switching each other off.
+        setGpuTiming(on, who) {
+            if (on) this._timingFor.add(who || 'caller'); else this._timingFor.delete(who || 'caller');
+            if (!this.gl) return;
+            if (this._timingFor.size && !this._timer) this._timer = gpuTimer(this.gl);
+            else if (!this._timingFor.size && this._timer) {
+                this._closeQuery();
+                for (const q of this._pending) this._timer.drop(q);
+                this._pending.length = 0;
+                this._timer = null;
+            }
         }
 
         // Draw calls, triangles and GPU time. Off by default: see the header.
@@ -98,14 +113,8 @@
                     if (own) { gl.drawElements = de; gl.drawArrays = da; }
                     else { delete gl.drawElements; delete gl.drawArrays; }
                 };
-                this._timer = gpuTimer(gl);
-            } else {
-                if (this._unwrap) { this._unwrap(); this._unwrap = null; }
-                this._closeQuery();
-                if (this._timer) for (const q of this._pending) this._timer.drop(q);
-                this._pending.length = 0;
-                this._timer = null;
-            }
+            } else if (this._unwrap) { this._unwrap(); this._unwrap = null; }
+            this.setGpuTiming(on, 'detail');
         }
 
         get gpuSupported() { return !!this._timer; }
@@ -175,6 +184,18 @@
             };
         }
 
+        // What the newest frames cost: the page's share and the GPU's, null where the
+        // browser does not report it.
+        recentCost(count) {
+            const tail = (ring, n) => {
+                const k = Math.min(count, n, RING), out = new Array(k);
+                for (let i = 0; i < k; i++) out[i] = ring[(n - k + i) % RING];
+                return out;
+            };
+            return { build: EnginePerf.summary(tail(this.build, this.nBuild)).median,
+                gpu: this._timer && this.nGpu ? EnginePerf.summary(tail(this.gpu, this.nGpu)).median : null };
+        }
+
         // The newest gaps, oldest first, for the readout's strip.
         recent(count) {
             const n = Math.min(count, this.nInterval, RING), out = new Array(n);
@@ -237,7 +258,166 @@
         remove() { clearInterval(this._timer); this.el.remove(); }
     }
 
+    // ---- the quality governor (overhaul step F2) -------------------------------------
+    // Keeps the picture smooth on a machine nobody measured beforehand. It reads the gaps
+    // between frames a window at a time and has two levers:
+    //   resolution  cheap to change and hard to see: one small step is the first thing
+    //               tried, the deeper ones are kept for the lightest tier
+    //   tier        visible (shadows, grass), so it waits longer, starts sharp again at
+    //               full resolution, and never comes back up on its own
+    // Every step down is judged in the next window. One that bought nothing is undone: the
+    // time is going somewhere graphics settings do not reach -- the simulation, a browser
+    // holding the page to 30 a second on battery, a remote desktop. Where the browser
+    // reports GPU time that is known beforehand and the step is never taken.
+    // The resolution comes back when the picture has been smooth for a while; a raise that
+    // does not hold is taken back at once and the next one waits twice as long.
+    class Governor {
+        constructor(opts) {
+            const o = opts || {};
+            this.scales = o.scales || [1, 0.85, 0.7, 0.6];
+            this.tiers = o.tiers || ['cinematic', 'balanced', 'low'];
+            this.slowMs = o.slowMs || 22;              // on average slower than 45 a second
+            this.fastMs = o.fastMs || 18.5;            // holding 60
+            this.windowMs = o.windowMs || 1500;
+            this.minFrames = o.minFrames || 20;
+            this.patience = o.patience || 2;           // slow windows before resolution moves
+            this.tierPatience = o.tierPatience || 6;   // ...and before the tier does: nine seconds
+            this.gentle = o.gentle == null ? 1 : o.gentle;   // resolution steps taken before the tier
+            this.settleMs = o.settleMs || 600;         // a change rebuilds buffers: not a sample
+            this.raiseAfterMs = o.raiseAfterMs || 20000;
+            this.raiseMaxMs = o.raiseMaxMs || 300000;
+            this.idleMs = o.idleMs || 60000;           // how long a lever that did not help rests
+            this.idleMaxMs = o.idleMaxMs || 1800000;
+            this.minGain = o.minGain || 0.08;
+            this.judgeWindows = o.judgeWindows || 2;   // how long a step down is watched
+            this.boundShare = o.boundShare || 0.6;     // of the gap spent on the frame itself
+            this.costOf = o.costOf || null;            // () => { build, gpu } in ms, gpu may be null
+            this.reset(o.tier, o.level);
+        }
+
+        reset(tier, level) {
+            this.tierIndex = Math.max(0, this.tiers.indexOf(tier));
+            this.level = Math.max(0, Math.min(this.scales.length - 1, level | 0));
+            this._sum = 0; this._n = 0;
+            this._slow = 0; this._fastSince = -1;
+            this._quietUntil = 0;
+            this._judge = null;                        // { lever, before } after a step down
+            this._probe = 0;                           // windows left to watch after a raise
+            this._resolutionRests = 0; this._tierRests = 0;
+            this._resolutionIdle = this.idleMs; this._tierIdle = this.idleMs;
+            this._raiseAfter = this.raiseAfterMs;
+        }
+
+        get scale() { return this.scales[this.level]; }
+        get tier() { return this.tiers[this.tierIndex]; }
+
+        // One frame's gap in ms; 0 for a frame that was not timed. Returns null, or what
+        // to draw with from now on: { scale, tier, why }.
+        frame(gapMs, now) {
+            if (!(gapMs > 0) || now < this._quietUntil) return null;
+            this._sum += gapMs; this._n++;
+            if (this._sum < this.windowMs || this._n < this.minFrames) return null;
+            const mean = this._sum / this._n;
+            this._sum = 0; this._n = 0;
+            return this._window(mean, now);
+        }
+
+        _changed(now, why) {
+            this._quietUntil = now + this.settleMs;
+            this._slow = 0; this._fastSince = -1;
+            return { scale: this.scale, tier: this.tier, why };
+        }
+
+        _window(mean, now) {
+            const slow = mean > this.slowMs, fast = mean < this.fastMs;
+            const cost = this.costOf ? this.costOf() : null, known = !!cost && cost.gpu != null;
+
+            if (this._judge) {
+                // Two windows, not one: a single window on a busy machine is noise enough
+                // to make a useless step look like a gain.
+                const j = this._judge;
+                j.sum += mean;
+                if (--j.left > 0) return null;
+                this._judge = null;
+                const after = j.sum / this.judgeWindows;
+                if (after > this.slowMs && 1 - after / j.before < this.minGain) {
+                    // Each failure doubles the rest, so a picture that is slow for another
+                    // reason does not lose and regain its shadows once a minute.
+                    if (j.lever === 'resolution') {
+                        this.level--;
+                        this._resolutionRests = now + this._resolutionIdle;
+                        this._resolutionIdle = Math.min(this.idleMaxMs, this._resolutionIdle * 2);
+                    } else {
+                        this.tierIndex--;
+                        this.level = j.level;
+                        this._tierRests = now + this._tierIdle;
+                        this._tierIdle = Math.min(this.idleMaxMs, this._tierIdle * 2);
+                    }
+                    const out = this._changed(now, j.lever + ' did not help');
+                    this._slow = 1;                    // still slow: the other lever is next
+                    return out;
+                }
+                if (j.lever === 'resolution') this._resolutionIdle = this.idleMs;
+                else {
+                    this._tierIdle = this.idleMs;
+                    this._resolutionRests = 0;         // a lighter tier: resolution may matter again
+                    this._resolutionIdle = this.idleMs;
+                }
+            }
+            if (this._probe) {
+                if (slow) {
+                    this._probe = 0;
+                    this.level++;
+                    this._raiseAfter = Math.min(this.raiseMaxMs, this._raiseAfter * 2);
+                    return this._changed(now, 'raise did not hold');
+                }
+                if (--this._probe === 0) this._raiseAfter = this.raiseAfterMs;
+            }
+
+            if (slow) {
+                this._fastSince = -1;
+                // The frame itself is cheap: something else sets the pace.
+                if (known && cost.build + cost.gpu < this.boundShare * mean) { this._slow = 0; return null; }
+                if (++this._slow < this.patience) return null;
+                const tierFree = this.tierIndex < this.tiers.length - 1 && now >= this._tierRests;
+                // One small step of resolution first: the change nobody sees. After that a
+                // lighter tier drawn sharp beats this one drawn coarse, so the deeper steps
+                // are for when there is no lighter tier to go to.
+                const depth = tierFree ? this.gentle : this.scales.length - 1;
+                if (this.level < depth && now >= this._resolutionRests) {
+                    this.level++;
+                    this._judge = { lever: 'resolution', before: mean, left: this.judgeWindows, sum: 0 };
+                    return this._changed(now, 'slow: resolution down');
+                }
+                // The tier is the visible lever: it waits for the picture to have been
+                // slow for a while, not for one busy moment.
+                if (tierFree && this._slow >= this.tierPatience) {
+                    this._judge = { lever: 'tier', before: mean, level: this.level, left: this.judgeWindows, sum: 0 };
+                    this.tierIndex++;
+                    this.level = 0;
+                    return this._changed(now, 'slow: tier down');
+                }
+                if (!tierFree) this._slow = 0;         // nothing left to give
+                return null;
+            }
+
+            this._slow = 0;
+            if (!fast) { this._fastSince = -1; return null; }
+            if (this._fastSince < 0) this._fastSince = now;
+            if (this.level > 0 && now - this._fastSince >= this._raiseAfter) {
+                // With GPU time known, do not try a raise the numbers already rule out.
+                const more = Math.pow(this.scales[this.level - 1] / this.scale, 2);
+                if (known && cost.build + cost.gpu * more > this.fastMs * 0.9) return null;
+                this.level--;
+                this._probe = 2;
+                return this._changed(now, 'smooth: resolution up');
+            }
+            return null;
+        }
+    }
+
     EnginePerf.Meter = Meter;
+    EnginePerf.Governor = Governor;
     EnginePerf.Overlay = Overlay;
     EnginePerf.RING = RING;
     EnginePerf.SLOW_MS = SLOW_MS;

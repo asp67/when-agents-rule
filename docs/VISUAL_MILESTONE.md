@@ -34,13 +34,14 @@ Open the chevron beside the minimap:
 
 | Setting | Behaviour |
 | --- | --- |
-| Low | Atmospheric lighting and water; no cast-shadow map. |
-| Balanced | 1024 × 1024 shadow map. Default. |
-| Cinematic | 2048 × 2048 shadow map. Higher GPU cost. |
+| Auto | Default since build 1150. Measures this computer while it draws and keeps the picture at about 45 frames a second or better: one small step of resolution first, then a lighter tier. Remembers what it found; picking Auto again measures afresh. |
+| Low | Atmospheric lighting and water; no cast-shadow map. One drawn pixel per page pixel. |
+| Balanced | 1024 × 1024 shadow map. Up to 1.5 device pixels per page pixel on a high-density display. |
+| High | 2048 × 2048 shadow map, grass, lanterns. Up to 2 device pixels per page pixel. Higher GPU cost. |
 | Atmospheric lighting | New light, shadows and water treatment. |
 | Simple lighting | Diffuse-light comparison using the same geometry, textures and camera. This is not a complete reproduction of the previous version. |
 
-Graphics quality is saved locally, separately from match/model exports. Shadow targets are released on quality changes, and allocation failure falls back to unshadowed rendering. Cast shadows fade out between camera half-heights 100 and 160; overview shots use the existing contact shading instead of stretching a low-resolution shadow across the whole map.
+Graphics quality is saved locally, separately from match/model exports, and a picked tier stays exactly as picked across reloads; only Auto adapts. What a frame costs on a given machine is measured with `?perf=1` and `?perf=bench` ([PERFORMANCE.md](PERFORMANCE.md)). Shadow targets are released on quality changes, and allocation failure falls back to unshadowed rendering. Cast shadows fade out between camera half-heights 100 and 160; overview shots use the existing contact shading instead of stretching a low-resolution shadow across the whole map.
 
 ## Verification and limits
 

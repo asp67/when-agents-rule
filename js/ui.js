@@ -364,7 +364,10 @@ class UIManager {
         const dock = document.getElementById(analyzer && analyzer.classList.contains('active') ? 'anCameraDock' : 'mapToolsDock');
         if (dock && box.parentElement !== dock) dock.appendChild(box);
         const watching=!!(this.game.spectatorMode || (analyzer && analyzer.classList.contains('active')));
-        const state=[getUiLang(),watching,!!this.game.renderer.panMode].join(':');
+        // Auto names the tier it settled on, so the menu follows the renderer's choice.
+        const r0=this.game.renderer;
+        if(!r0.onQualityChange) r0.onQualityChange=()=>this.renderCameraControls();
+        const state=[getUiLang(),watching,!!r0.panMode,r0.qualityChoice,r0.graphicsQuality].join(':');
         if(this._cameraControlsLanguage===state) return;
         this._cameraControlsLanguage=state;
         const wasOpen=!!box.querySelector('details[open]');
@@ -385,11 +388,11 @@ class UIManager {
         box.innerHTML = ['overview','selection','zoomIn','zoomOut'].map(button).join('')
             + `<details class="camera-more"><summary title="${esc(t('art.cameraOptions'))}" aria-label="${esc(t('art.cameraOptions'))}">${svg(icons.more)}</summary>
                 <div class="camera-popover"><div class="camera-secondary">${(watching?['reset','turnLeft','turnRight']:['pan','reset','turnLeft','turnRight']).map(button).join('')}</div>
-                <label>${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['cinematic','balanced','low'].map(k=>`<option value="${k}">${esc(t('art.'+k))}</option>`).join('')}</select></label>
+                <label title="${esc(t('art.qualityTip'))}">${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['auto','cinematic','balanced','low'].map(k=>`<option value="${k}">${esc(k==='auto'&&r0.qualityChoice==='auto'?t('art.autoNow',{tier:t('art.'+r0.graphicsQuality)}):t('art.'+k))}</option>`).join('')}</select></label>
                 <label title="${esc(t('art.lightTip'))}">${esc(t('art.light'))}<select onchange="game.renderer.setVisualStyle ? game.renderer.setVisualStyle(this.value) : (game.renderer.visualStyle=this.value)"><option value="film">${esc(t('art.film'))}</option><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label>
                 <label title="${esc(t('art.uiSizeTip'))}">${esc(t('art.uiSize'))}<select onchange="game.ui.setUiScale(this.value)">${['regular','medium','small'].map(k=>`<option value="${k}">${esc(t('art.ui_'+k))}</option>`).join('')}</select></label></div></details>`;
         if(wasOpen) box.querySelector('details').open=true;
-        box.querySelector('select').value = this.game.renderer.graphicsQuality || 'balanced';
+        box.querySelector('select').value = r0.qualityChoice || r0.graphicsQuality || 'balanced';
         box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
         box.querySelectorAll('select')[2].value = this.viewPreferences().uiScale;
         if (this.game.sound) {
@@ -441,8 +444,10 @@ class UIManager {
         });
     }
 
+    // 'auto', or a tier that stays as picked. Remembered across reloads (overhaul step F2).
     setGraphicsQuality(value) {
-        this.game.renderer.setGraphicsQuality(value);
+        this.game.renderer.setQualityChoice(value);
+        this.renderCameraControls();
     }
 
     cameraAction(action) {

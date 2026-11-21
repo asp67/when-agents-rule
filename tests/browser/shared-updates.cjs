@@ -20,7 +20,9 @@ const server=http.createServer((req,res)=>{
   browser=await chromium.launch({headless:true,...(process.env.WAR_CHROME_PATH?{executablePath:process.env.WAR_CHROME_PATH}:{}),args:['--enable-unsafe-swiftshader']});
   const page=await browser.newPage({viewport:{width:1500,height:1000}}),errors=[];
   page.on('pageerror',e=>errors.push(e.message));
-  await page.addInitScript(()=>{localStorage.setItem('warGraphicsQuality','low');localStorage.setItem('warUiLang','en');});
+  // The key from before b1150 is no longer read. A fixed tier, because Auto would adapt
+  // to this run's software renderer in the middle of the checks below.
+  await page.addInitScript(()=>{localStorage.setItem('warGraphicsQuality','low');if(!localStorage.getItem('warQuality'))localStorage.setItem('warQuality','cinematic');localStorage.setItem('warUiLang','en');});
   await page.goto(origin+'/?full=1');await page.waitForFunction(()=>typeof game!=='undefined'&&game?.renderer);
   assert.equal(await page.evaluate(()=>game.renderer.graphicsQuality),'cinematic');
   const build=Number(fs.readFileSync(path.join(root,'index.html'),'utf8').match(/js\/game\.js\?v=(\d+)/)[1]);
@@ -87,9 +89,12 @@ const server=http.createServer((req,res)=>{
   await page.evaluate(()=>{const ai=game.aiManager.aiPlayers[0];ai.currentResearch=null;ai.researchedTechs.farm=true;game.ui.updateSpectatorPlayerList();});
   assert.equal(await page.locator('.is-researching').count(),0);
   assert.equal(await page.locator('.lb-fly-sec').first().locator('.lb-fly-chip').count(),2);
+  // A picked tier survives a reload (b1150); the rest of this run wants High again.
   await page.evaluate(()=>game.ui.setGraphicsQuality('low'));await page.reload();
   await page.waitForFunction(()=>typeof game!=='undefined'&&game?.renderer);
-  assert.equal(await page.evaluate(()=>game.renderer.graphicsQuality),'cinematic');
+  assert.equal(await page.evaluate(()=>game.renderer.graphicsQuality),'low');
+  assert.equal(await page.evaluate(()=>game.renderer.qualityChoice),'low');
+  await page.evaluate(()=>game.ui.setGraphicsQuality('cinematic'));
   // Load a shipped transcript and ensure replay geometry stays fixed between frames.
   await page.evaluate(async()=>{game.ui.anOpen();await game.ui.anLoadSample();game.ui.anSetLayout('watch');});
   await page.waitForFunction(()=>game.ui.analyzer?.order?.length>0&&game.renderer.replayMode);

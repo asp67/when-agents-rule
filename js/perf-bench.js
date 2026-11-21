@@ -176,7 +176,7 @@ const WarPerfBench = {
     async run(onProgress) {
         if (this.running) return null;
         this.running = true;
-        const r = game.renderer, before = { tier: r.graphicsQuality, style: r.visualStyle, held: r.holdFrames };
+        const r = game.renderer, before = { tier: r.graphicsQuality, style: r.visualStyle, held: r.holdFrames, pin: r._pinnedSize };
         try {
             r.holdFrames = true;
             r.perf.setDetail(true);
@@ -196,6 +196,7 @@ const WarPerfBench = {
             r.setGraphicsQuality(before.tier);
             r.visualStyle = before.style;
             r.holdFrames = before.held;
+            r.pinRenderSize(before.pin ? before.pin.w : 0, before.pin ? before.pin.h : 0);
             this.running = false;
         }
     },
@@ -255,6 +256,7 @@ const WarPerfBench = {
         // Nothing draws between runs: left to itself the page would redraw this scene at
         // the display's rate, and the next run would start on a warm machine.
         game.renderer.holdFrames = true;
+        game.renderer.pinRenderSize(this.SIZE.w, this.SIZE.h);
         const go = async () => {
             let previous = null;
             try { previous = JSON.parse(localStorage.getItem('warPerfLast') || 'null'); } catch (e) {}
@@ -305,7 +307,7 @@ window.addEventListener('load', () => {
     const r = game.renderer;
     r.perf.setDetail(true);
     const names = { cinematic: 'High', balanced: 'Balanced', low: 'Low' };
-    WarPerfBench.overlay = new EnginePerf.Overlay(r.perf, () => (names[r.graphicsQuality] || r.graphicsQuality)
+    WarPerfBench.overlay = new EnginePerf.Overlay(r.perf, () => (r.qualityChoice === 'auto' ? 'Auto: ' : '') + (names[r.graphicsQuality] || r.graphicsQuality)
         + '   ' + r.canvas.width + 'x' + r.canvas.height
         + (r.renderScale && r.renderScale !== 1 ? '   x' + r.renderScale.toFixed(2) : ''));
 });
