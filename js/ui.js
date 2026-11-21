@@ -230,9 +230,7 @@ class UIManager {
             // The Bench view (overhaul steps D2 to D4): the same rule.
             bench: saved.bench === true,
             // The comparison lower third of broadcast mode (overhaul step D7): the same rule.
-            compare: saved.compare === true,
-            // The corner replay of a decisive fight (overhaul step B2): the same rule.
-            replays: saved.replays === true
+            compare: saved.compare === true
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
@@ -4155,8 +4153,7 @@ class UIManager {
         this.chronicle = typeof MatchChronicle === 'function' ? new MatchChronicle(this.game) : null;
         this._chronicleQueue = [];
         if (this.chronicle) {
-            this.chronicle.subscribe(e => { this.chronicleCaption(e); this.broadcastSlate(e); if (this.evalMarks && this.intentOn()) this.evalMarks.battle(e);
-                if (this.replayBattle) this.replayBattle(e); });
+            this.chronicle.subscribe(e => { this.chronicleCaption(e); this.broadcastSlate(e); if (this.evalMarks && this.intentOn()) this.evalMarks.battle(e); });
             this._spectatorIntervals.push(setInterval(() => { if (this.chronicle) this.chronicle.update(); }, 250));
         }
         this.refreshIntentButton();
@@ -4171,15 +4168,6 @@ class UIManager {
         }
         this.refreshIntentButton();
         // The strategic zoom layer (review #12), regrouped four times a second.
-        // The corner replay (overhaul step B2): fights are taped while they are fought, and
-        // a decisive one is shown again when the chronicle reports it over.
-        if (this.tapeFights) {
-            this._tapes = new Map(); this._replay = null;
-            const rb = document.getElementById('replayBtn');
-            if (rb) { rb.classList.toggle('sb-on', this.replaysOn()); rb.setAttribute('aria-pressed', this.replaysOn() ? 'true' : 'false'); }
-            this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.tapeFights(); }, 250));
-            this._spectatorIntervals.push(setInterval(() => { if (this._replay && !document.hidden) this.drawReplay(); }, 60));
-        }
         // The model's view (overhaul step B1): off at the start of every match.
         this.seatView = typeof SeatView === 'function' ? new SeatView(this.game) : null;
         if (this.seatView) this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSeatView(); }, SeatView.REFRESH_MS));
@@ -4314,7 +4302,6 @@ class UIManager {
         clearTimeout(this._chronicleTimer); this._chronicleTimer = null; this._chronicleQueue = [];
         document.getElementById('chronicleCaption')?.remove();
         document.getElementById('compareStrip')?.remove();
-        if (this.closeReplay) { this.closeReplay(); this._tapes = null; }
         if (this.seatView) this.seatView.set(null);          // the renderer gets its own fog and every entity back
         document.getElementById('seatViewBadge')?.remove();
         this.stopIntentOverlay();
@@ -4645,8 +4632,7 @@ class UIManager {
                     icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()),
                     icon('broadcastBench', '\u{1F4CA}', t('spec.benchTitle'), () => { if (this.toggleBenchView) this.toggleBenchView(); }),
                     icon('broadcastRace', '\u{1F4C8}', t('spec.raceTitle'), () => this.toggleRaceChart()),
-                    icon('broadcastCompare', '\u2696\uFE0F', t('spec.compareTitle'), () => { if (this.toggleCompare) this.toggleCompare(); }),
-                    icon('broadcastReplay', '\u23EA', t('spec.replayTitle'), () => { if (this.toggleReplays) this.toggleReplays(); }), exit);
+                    icon('broadcastCompare', '\u2696\uFE0F', t('spec.compareTitle'), () => { if (this.toggleCompare) this.toggleCompare(); }), exit);
                 this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
             }
@@ -4749,7 +4735,6 @@ class UIManager {
             on('broadcastBench', !!this.benchOn && this.benchOn());
             on('broadcastRace', this.raceOn());
             on('broadcastCompare', !!this.compareOn && this.compareOn());
-            on('broadcastReplay', !!this.replaysOn && this.replaysOn());
         }
         const w = document.getElementById('broadcastWonder');
         if (!w) return;

@@ -1,6 +1,5 @@
 // Moments (overhaul step B2): js/eval/moments.js picks the heaviest events of a match and
-// the decision behind each; js/moments-view.js tapes fights for the corner replay and
-// draws the reel on the results screen.
+// the decision behind each; js/moments-view.js draws the reel on the results screen.
 const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
@@ -80,75 +79,18 @@ test('the 5 October match in five moments, each with the decision the transcript
 
 // ---- the page ---------------------------------------------------------------------
 function page() {
-    const els = {}, store = {}, drawn = { dots: 0, crosses: 0 };
-    const ctx = { clearRect() {}, fillRect() {}, beginPath() {}, arc() { drawn.dots++; }, fill() {}, stroke() {}, moveTo() { drawn.crosses += 0.5; }, lineTo() {}, set fillStyle(v) {}, set strokeStyle(v) {}, set lineWidth(v) {}, set globalAlpha(v) {} };
-    const make = () => { const e = { style: {}, children: [], _html: '', setAttribute() {}, remove() { delete els[e.id]; }, querySelector: s => (s === 'canvas' ? { getContext: () => ctx } : null),
-        get firstChild() { return e.head || (e.head = { innerHTML: '' }); } };
-        Object.defineProperty(e, 'innerHTML', { get: () => e._html, set: v => { e._html = v; } }); return e; };
-    const cls = new Set();
+    const els = {}, store = {}, cls = new Set();
     els.arenaSummaryScreen = { classList: { contains: c => cls.has(c) } };
     els.summaryReel = { style: {}, innerHTML: '' };
     const context = vm.createContext({ console, Date, Math, WarEval, WarMoments,
         t: (k, v) => k + (v ? JSON.stringify(v) : ''), tg: s => s, OpenAIAIManager: { MAX_COMMANDS_PER_TURN: 3 },
         localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
-        document: { getElementById: id => els[id] || null, createElement: make, body: { appendChild: e => { els[e.id] = e; }, classList: { contains: () => false } } } });
+        document: { getElementById: id => els[id] || null, body: { classList: { contains: () => false } } } });
     for (const f of ['js/ui.js', 'js/moments-view.js']) vm.runInContext(read(f) + '\nthis.UI = UIManager;', context);
     const u = Object.create(context.UI.prototype);
-    u.escapeHtml = s => String(s); u.chronicleSeatHtml = id => '[' + id + ']'; u.identityHex = id => '#' + id; u.chronicleText = e => 'text:' + e.kind;
-    const fight = { x: 100, z: 100, lastAt: 0, sides: { a: {}, b: {} } };
-    const a = { id: 'a', seat: 0, civilization: 'greek', units: [{ id: 1, x: 95, z: 100, health: 5 }, { id: 2, x: 98, z: 104, health: 5 }, { id: 9, x: 400, z: 400, health: 5 }] };
-    const b = { id: 'b', seat: 1, civilization: 'maya', units: [{ id: 3, x: 106, z: 99, health: 5 }] };
-    let sim = 0;
-    u.game = { gameStarted: true, spectatorMode: true, _battles: [fight], simNow: () => sim, constructor: { BATTLE_QUIET_MS: 10000 }, aiManager: { aiPlayers: [a, b] } };
-    return { u, els, cls, drawn, fight, a, b, setSim: v => { sim = v; } };
+    u.escapeHtml = s => String(s); u.chronicleText = e => 'text:' + e.kind;
+    return { u, els, cls };
 }
-
-test('a fight is taped while it is fought, only when replays are asked for, and only what stands near it', () => {
-    const { u, a, b, fight, setSim } = page();
-    assert.deepEqual([u.replaysOn(), u.tapeFights(1000), u._tapes.size], [false, 0, 0]);       // off until asked for: nothing is kept
-    u.toggleReplays(true);
-    assert.equal(u.tapeFights(1000), 1);
-    a.units[0].x = 97; b.units[0].health = 0;                                         // one closes in, one falls
-    u.tapeFights(1250);
-    const tape = u._tapes.get(fight);
-    assert.deepEqual(Array.from(tape.frames, f => Array.from(f.dots, d => d[0]).join()), ['1,2,3', '1,2']);    // the unit 300 away is not in the picture
-    assert.deepEqual(Array.from(tape.frames[1].dots[0]), [1, 'a', 97, 100]);
-    // Frames older than the tape is long are let go; a fight over for a while and never asked for is dropped whole.
-    for (let k = 2; k < 200; k++) u.tapeFights(1000 + k * 250);
-    assert.ok(tape.frames.length <= 181 && tape.frames[0].t >= 1000 + 199 * 250 - 45000);
-    setSim(60000);                                                                   // the last blow was a minute ago
-    u.tapeFights(60000);
-    assert.equal(u._tapes.has(fight), true);                                         // still within the grace for a late report
-    u.tapeFights(120000);
-    assert.equal(u._tapes.size, 0);
-    u.toggleReplays(false);
-    assert.equal(u.tapeFights(121000), 0);
-});
-
-test('a decisive fight is shown again in the corner: faster than it was fought, with a cross where a unit fell', () => {
-    const { u, els, drawn, b } = page();
-    u.toggleReplays(true);
-    for (let k = 0; k < 20; k++) { if (k === 10) b.units[0].health = 0; u.tapeFights(1000 + k * 250); }     // 4.75 s of fight; b's unit falls half way
-    const over = { kind: 'battle', t: 130, seconds: 5, x: 104, z: 98, weight: 2, sides: { a: { lost: 0 }, b: { lost: 1 } } };
-    // A skirmish the chronicle weighs at one is not replayed; nor a fight somewhere else.
-    assert.equal(u.replayBattle(Object.assign({}, over, { weight: 1 }), 6000), false);
-    assert.equal(u.replayBattle(Object.assign({}, over, { x: 300, z: 300 }), 6000), false);
-    assert.equal(u.replayBattle(over, 6000), true);
-    assert.equal(els.replayCorner.head.innerHTML, '<b>replay.title{"time":"2:05"}</b><span>[a] replay.lost{"n":0} · [b] replay.lost{"n":1}</span>');
-    assert.deepEqual([drawn.dots, drawn.crosses], [3, 0]);                            // its first frame: everyone still stands
-    // Two and a half times as fast: 1 s of showing is 2.5 s of fight, past the fall.
-    const at = ms => { const f = u.replayFrameAt(u._replay, 6000 + ms); return [f.index, f.frame.dots.length, f.done]; };
-    assert.deepEqual([at(0), at(1000), at(1900), at(5000)], [[0, 3, false], [10, 2, false], [19, 2, true], [19, 2, true]]);
-    drawn.dots = drawn.crosses = 0;
-    u.drawReplay(6000 + 1000);
-    assert.deepEqual([drawn.dots, drawn.crosses], [2, 1]);
-    // It closes by itself, and at once when replays are switched off.
-    u.drawReplay(6000 + 9100);
-    assert.deepEqual([els.replayCorner, u._replay], [undefined, null]);
-    u.replayBattle(over, 20000);
-    u.toggleReplays(false);
-    assert.equal(els.replayCorner, undefined);
-});
 
 test('the results screen lists the moments with the decision behind each, and opens one in the analyzer', async () => {
     const { u, els, cls } = page();
@@ -197,20 +139,18 @@ test('the results screen lists the moments with the decision behind each, and op
     assert.deepEqual([els.summaryReel.style.display, els.summaryReel.innerHTML], ['none', '']);
 });
 
-test('the pieces are wired, off until asked for, and keyed in four languages', () => {
-    const ui = read('js/ui.js'), html = read('index.html');
-    assert.match(ui, /replays: saved\.replays === true/);
-    assert.match(ui, /if \(this\.replayBattle\) this\.replayBattle\(e\);/);
-    assert.match(ui, /setInterval\(\(\) => \{ if \(!document\.hidden\) this\.tapeFights\(\); \}, 250\)/);
-    assert.match(ui, /icon\('broadcastReplay'[^\n]+toggleReplays\(\)/);
+test('the reel is wired and keyed in four languages; nothing of the corner replay is left', () => {
+    const ui = read('js/ui.js'), html = read('index.html'), view = read('js/moments-view.js');
     assert.match(ui, /if \(this\.updateSummaryReel\) this\.updateSummaryReel\(\);/);
-    assert.match(read('js/eval/bench-view.js'), /if \(key === 'p'\) \{ if \(!this\.toggleReplays\) return; e\.preventDefault\(\); this\.toggleReplays\(\); return; \}/);
-    assert.match(html, /id="replayBtn" onclick="game\.ui\.toggleReplays\(\)"/);
     assert.ok(html.indexOf('id="summaryReel"') > html.indexOf('id="summaryProfile"') && html.indexOf('id="summaryReel"') < html.indexOf('id="summaryGrid"'));
+    // The top-down corner replay of build 1168 was taken out in build 1172: no button, no key,
+    // no tape, no string. A real one needs a second renderer.
+    const left = /replayBtn|toggleReplays|replaysOn|tapeFights|replayBattle|drawReplay|broadcastReplay|replay-corner|saved\.replays|key === 'p'|"spec\.replay|"replay\./;
+    for (const f of ['js/ui.js', 'js/moments-view.js', 'js/eval/bench-view.js', 'js/i18n.js', 'css/styles.css', 'index.html']) assert.doesNotMatch(read(f), left, f);
     const context = vm.createContext({ window: {}, navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} },
         document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {} } });
     vm.runInContext(read('js/i18n.js') + ';this.I = I18N;', context);
-    const keys = [...read('js/moments-view.js').matchAll(/t\('([a-z]+\.[A-Za-z0-9.]+)'/g)].map(m => m[1]).concat(['spec.replay', 'spec.replayTitle']);
-    assert.ok(keys.length >= 9);
+    const keys = [...view.matchAll(/t\('([a-z]+\.[A-Za-z0-9.]+)'/g)].map(m => m[1]);
+    assert.ok(keys.length >= 6);
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of keys) assert.ok(k in context.I[lang], lang + ' lacks ' + k);
 });
