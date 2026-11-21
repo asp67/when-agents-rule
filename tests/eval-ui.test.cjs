@@ -60,8 +60,9 @@ test('a seat card shows one bar per part of the profile, with what it rests on',
     assert.match(html, /eval\.planningTip\{&quot;statements&quot;:1,&quot;revisions&quot;:1,&quot;first&quot;:&quot;1:15&quot;/);
     // Strategy has nothing to read yet: no power reading has been shown to the ledger.
     assert.match(html, /lb-dim is-empty" title="eval\.strategyNone eval\.provisional">.*eval\.strategy<\/span>.*<b>–<\/b>/);
-    // The Index sits with the bars it is the mean of: (75 + 83.3 + 0) / 3, and says of how many.
-    assert.match(html, /class="lb-dim lb-index" title="eval\.indexTip\{&quot;n&quot;:3\} eval\.provisional">.*eval\.index<\/span>.*<b>53<\/b>/);
+    // The Index sits with the bars. Its plan was never followed, so the plan counts for
+    // nothing in it: (75 + 0) / 2, and it says of how many parts.
+    assert.match(html, /class="lb-dim lb-index" title="eval\.indexTip\{&quot;n&quot;:2,&quot;parts&quot;:4,&quot;plan&quot;:0\} eval\.provisional">.*eval\.index<\/span>.*<b>38<\/b>/);
     assert.ok(html.indexOf('lb-index') > html.indexOf('eval.strategy<'), 'the Index comes after the bars');
     assert.equal((html.match(/eval\.provisional/g) || []).length, 6);
 });
@@ -89,6 +90,16 @@ test('nothing judged is a dash and no plan is a zero, and neither is hidden', ()
     assert.match(html, /eval\.grounding<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>–<\/b>/);
     assert.match(html, /title="eval\.planningNone\{&quot;n&quot;:1\} eval\.provisional"/);
     assert.match(html, /eval\.planning<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>0<\/b>/);
+    // A seat that has only waited is told so: its waits are counted and there is nothing to rate.
+    const w = WarEval.createLedger();
+    for (let i = 0; i < 3; i++) w.addLine(JSON.stringify({ turn: 1, playerId: 'w', parsed: { commands: [{ action: 'wait' }] }, outcomes: [{ n: 1, action: 'wait', code: 'waited', verdict: 'ok' }] }));
+    w.addLine(JSON.stringify({ turn: 1, playerId: 'w', parsed: { commands: [{ action: 'x' }, { action: 'wait' }] },
+        outcomes: [{ n: 1, action: 'x', code: 'k', verdict: 'ok' }, { n: 2, action: 'wait', code: 'waited', verdict: 'ok' }] }));
+    const waited = u.seatProfileHtml(w.profile().seats[0]);
+    assert.match(waited, /eval\.groundingTip\{&quot;ok&quot;:1,&quot;judged&quot;:1,&quot;pct&quot;:&quot;100 %&quot;,&quot;contended&quot;:0\} eval\.waits\{&quot;n&quot;:4\}/);
+    const only = WarEval.createLedger();
+    only.addLine(JSON.stringify({ turn: 1, playerId: 'w', parsed: { commands: [{ action: 'wait' }] }, outcomes: [{ n: 1, action: 'wait', code: 'waited', verdict: 'ok' }] }));
+    assert.match(u.seatProfileHtml(only.profile().seats[0]), /lb-dim is-empty" title="eval\.groundingWaits\{&quot;n&quot;:1\} eval\.provisional">.*eval\.grounding<\/span>.*<b>–<\/b>/);
     // A seat that has not decided anything yet gets no bars at all.
     assert.equal(u.seatProfileHtml(seats.c), '');
     assert.equal(u.seatProfileHtml(null), '');

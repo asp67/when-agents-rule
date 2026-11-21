@@ -18,10 +18,10 @@ const samples = fs.readdirSync(path.join(root, 'samples')).filter(f => f.endsWit
 // requests, most frequent mistake.
 const PINNED = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 87, 78, 3, 0, 1, 1, 0, 63, 4816, 6249, 19332, 93, 103, 0.954, 4, 0, 0, 'notDiscovered'],
+        ['O gpt-6.1-sol', 87, 78, 3, 0, 1, 1, 0, 61.5, 4816, 6249, 19332, 93, 103, 0.954, 4, 0, 0, 'notDiscovered'],
         ['O claude-sonnet-5.5', 128, 349, 2, 0, 5, 1, 0, 94.3, 6472, 10569, 72032, 563, 238, 2.789, 0, 0, 0, 'commandLimit'],
         ['O deepseek-v4.1-flash', 128, 354, 11, 0, 4, 2, 2, 69.9, 8974, 21991, 57415, 1804.5, 801, 2.898, 1, 0, 0, 'noTCWorkers'],
-        ['DGX GLM5.3 Flash', 126, 321, 11, 0, 2, 0, 0, 66.9, 41543, 73085, 42176, 744.5, 320, 2.651, 0, 1, 1, 'populationLimit'],
+        ['DGX GLM5.3 Flash', 126, 321, 11, 0, 2, 0, 0, 66.3, 41543, 73085, 42176, 744.5, 320, 2.651, 0, 1, 1, 'populationLimit'],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
         ['DGX Qwen3.8 flash next nvfp4', 82, 215, 12, 0, 2, 0, 2, 47.1, 36289, 74921, 8140, 1500.5, 654, 2.793, 0, 2, 0, 'assignFromEmpty'],
@@ -31,7 +31,7 @@ const PINNED = {
     // Two MCP seats: their harnesses report no token usage, and that reads as "not
     // reported", never as zero.
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 40, 56, 6, 0, 5, 1, 5, 3.2, 13, 22, null, null, null, 1.7, 0, 0, 0, 'noTCWorkers'],
+        ['pi MCP', 40, 56, 6, 0, 5, 1, 5, 0, 13, 22, null, null, null, 1.7, 0, 0, 0, 'noTCWorkers'],
         ['HERMES MCP', 39, 108, 1, 0, 2, 0, 0, 90.8, 4952, 18946, null, null, null, 2.846, 0, 0, 1, 'populationLimit'],
     ],
 };
@@ -48,12 +48,13 @@ for (const [file, want] of Object.entries(PINNED)) {
     test('the profile of ' + file.slice(0, 10) + ' (' + want.length + ' seats) is what it was', async () => {
         const p = await profileFile(sample(file));
         assert.deepEqual(p.seats.map(row), want);
-        assert.equal(p.kind, 'war-eval/1'); assert.equal(p.scale, 'v0'); assert.equal(p.unreadable, 0);
-        // valid = ok of ok + avoidable + invalid, and the score is the v0 mapping of it.
+        assert.equal(p.kind, 'war-eval/1'); assert.equal(p.scale, 'v1'); assert.equal(p.unreadable, 0);
+        // valid = ok of ok + avoidable + invalid with the waits left out, and the score is the mapping of it.
         for (const s of p.seats) {
             const g = s.grounding;
             assert.equal(g.judged, g.ok + g.avoidable + g.invalid);
-            assert.equal(g.rate, g.ok / g.judged);
+            assert.equal(g.rated, g.judged - g.waits);
+            assert.equal(g.rate, (g.ok - g.waits) / g.rated);
             assert.equal(g.score, Math.round(1000 * Math.max(0, 1 - (1 - g.rate) * 10)) / 10);
         }
     });
@@ -160,6 +161,23 @@ const turnLine = (playerId, outcomes, extra) => JSON.stringify(Object.assign({ t
     outcomes: outcomes ? outcomes.map(([verdict, code], i) => ({ n: i + 1, action: 'x', code, verdict })) : undefined }, extra));
 const grounding = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile().seats[0].grounding; };
 
+test('a wait can never be refused, so it is counted and left out of the rate', () => {
+    const wait = (verdict = 'ok') => ({ n: 1, action: 'wait', code: 'waited', verdict });
+    const line = outcomes => JSON.stringify({ turn: 1, playerId: 'a', parsed: { commands: outcomes.map(o => ({ action: o.action })) }, outcomes });
+    const act = (verdict, code = 'c') => ({ n: 1, action: 'train_unit', code, verdict });
+    // 18 orders that worked, 2 refused, and 20 waits: 90 % valid, not 95 %.
+    let g = grounding([line(Array.from({ length: 18 }, () => act('ok')).concat([act('avoidable', 'cannotAfford'), act('avoidable', 'cannotAfford')], Array.from({ length: 20 }, () => wait())))]);
+    assert.deepEqual([g.judged, g.ok, g.waits, g.rated, g.rate, g.score], [40, 38, 20, 20, 0.9, 0]);
+    // Only waits: counted as the harness counts them, and nothing to rate. A dash, not 100.
+    g = grounding([line([wait()]), line([wait()]), line([wait()])]);
+    assert.deepEqual([g.judged, g.ok, g.waits, g.rated, g.rate, g.score], [3, 3, 3, 0, null, null]);
+    // A wait that was refused is a mistake like any other.
+    g = grounding([line([wait('invalid'), act('ok')])]);
+    assert.deepEqual([g.waits, g.rated, g.invalid, g.rate], [0, 2, 1, 0.5]);
+    // Across the shipped matches the counts stay the harness's own: waits are among the ok.
+    for (const f of samples) for (const s of WarEval.profileOf(fs.readFileSync(sample(f), 'utf8')).seats) assert.ok(s.grounding.waits <= s.grounding.ok, f);
+});
+
 test('contended commands and the harness\'s own failures leave both sides of the rate', () => {
     const g = grounding([turnLine('a', [['ok', 'k'], ['ok', 'k'], ['contended', 'trainerBusy'], ['harnessFault', 'executionFailed'], ['avoidable', 'cannotAfford']])]);
     assert.deepEqual([g.judged, g.ok, g.avoidable, g.contended, g.harnessFault], [3, 2, 1, 1, 1]);
@@ -218,7 +236,7 @@ test('the command-line report says so when a file predates recorded outcomes', a
     assert.match(text, /build not recorded/);
     const mcp = report('x.jsonl', await profileFile(sample('2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl')));
     assert.match(mcp, /not reported/);
-    assert.match(mcp, /pi MCP +3 +90\.3 %/);
+    assert.match(mcp, /pi MCP +0 +89\.1 % +56 +7 /);            // seven of its 56 were waits
     assert.doesNotMatch(mcp, /recorded from build 1023/);
 });
 
@@ -606,20 +624,20 @@ test('a seat that was never shown a threat has no tactical score, and a file wit
 // and how many parts it is the mean of.
 const STRATEGY = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 11.4, 17.1, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 49.8, 5],
-        ['O claude-sonnet-5.5', 71.7, 74.3, 2, 0.376, 0.721, 3493, false, 36, 136, 144, '412/812/1342', 3, 6, 4, 9, 73.4, 5],
-        ['O deepseek-v4.1-flash', 52.7, 62.4, 3, 0.252, 0.184, null, null, 48, 205, 151, '372/1147/2037', 10, 9, 13, 9, 69.6, 5],
-        ['DGX GLM5.3 Flash', 77.2, 65.9, 1, 0.288, 0.107, null, null, 44, 99, 81, '372/1147/2493', 11, 10, 13, 10, 80.1, 5],
+        ['O gpt-6.1-sol', 11.4, 17.1, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 39.5, 4],
+        ['O claude-sonnet-5.5', 71.7, 74.3, 2, 0.376, 0.721, 3493, false, 36, 136, 144, '412/812/1342', 3, 6, 4, 9, 69.2, 4],
+        ['O deepseek-v4.1-flash', 52.7, 62.4, 3, 0.252, 0.184, null, null, 48, 205, 151, '372/1147/2037', 10, 9, 13, 9, 63, 4],
+        ['DGX GLM5.3 Flash', 77.2, 65.9, 1, 0.288, 0.107, null, null, 44, 99, 81, '372/1147/2493', 11, 10, 13, 10, 75.8, 4],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 37.7, 56.6, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 61.4, 5],
-        ['RTX qwen3.8 flash next Q2_0', 34.1, 26.2, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 58.9, 5],
-        ['O gemini-4-argon', 84.8, 77.3, 1, 0.413, 0.358, 3558, true, 21, 138, 54, '622/1112/1687', 6, 6, 12, 9, 89.3, 5],
+        ['DGX Qwen3.8 flash next nvfp4', 37.7, 56.6, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 52.9, 4],
+        ['RTX qwen3.8 flash next Q2_0', 34.1, 26.2, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 49, 4],
+        ['O gemini-4-argon', 84.8, 77.3, 1, 0.413, 0.358, 3558, true, 21, 138, 54, '622/1112/1687', 6, 6, 12, 9, 86.7, 4],
     ],
-    // Neither MCP seat has a tactical score here: four parts, not five.
+    // Neither MCP seat has a tactical score here: three parts, not four.
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 25.8, 38.7, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 48.9, 4],
-        ['HERMES MCP', 85.3, 78, 1, 0.727, 0.993, 410, true, 7, 13, 9, '255/710', 4, 6, 5, 7, 79.5, 4],
+        ['pi MCP', 25.8, 38.7, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 30.8, 3],
+        ['HERMES MCP', 85.3, 78, 1, 0.727, 0.993, 410, true, 7, 13, 9, '255/710', 4, 6, 5, 7, 74, 3],
     ],
 };
 for (const [file, want] of Object.entries(STRATEGY)) {
@@ -742,22 +760,38 @@ test('the range used is what worked, as facts and without a score', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(v)), { units: ['militia'], buildings: ['tower'], techs: ['longbow'], orders: ['attack_target', 'build_structure', 'research_tech', 'train_unit'], score: null });
 });
 
-test('the Index is the plain mean of the scored parts that have a score, and the range is not one of them', () => {
+test('the Index is the mean of four parts, and a plan counts in it as far as it was followed', () => {
     assert.deepEqual(Array.from(WarEval.SCORED), ['grounding', 'planning', 'follow', 'tactical', 'strategy']);
+    assert.deepEqual(Array.from(WarEval.INDEX_PARTS), ['grounding', 'plan', 'tactical', 'strategy']);
+    const index = s => JSON.parse(JSON.stringify(s.index));
     const l = WarEval.createLedger();
     [seatsLine, move(['Build a tower'], [['build_structure', 'tower']])].forEach(x => l.addLine(x));
     let s = l.profile().seats[0];
-    // Grounding 100, planning 100, follow-through 100; never shown a threat, no power reading: three parts.
+    // Grounding 100; a plan of one step, carried out: 100 x 100. Never shown a threat, no power reading: two parts.
     assert.deepEqual([s.grounding.score, s.planning.score, s.follow.score, s.tactical.score, s.strategy.score], [100, 100, 100, null, null]);
-    assert.deepEqual(JSON.parse(JSON.stringify(s.index)), { value: 100, of: 3, parts: 5 });
+    assert.deepEqual(index(s), { value: 100, of: 2, parts: 4, plan: 100 });
     l.addLine(timelineOf([tick(5, 100, 500)])); l.addLine(resultsOf('b'));
     s = l.profile().seats.find(x => x.id === 'a');
-    assert.deepEqual([s.strategy.score, s.index.value, s.index.of], [11.1, 77.8, 4]);
+    assert.deepEqual([s.strategy.score, s.index.value, s.index.of], [11.1, 70.4, 3]);
+    // The plan-only anchor on paper: one concrete plan, then only waits, for longer than
+    // the window a step is followed. Planning is full, follow-through is nothing, and
+    // the Index has nothing to show for either. The waits leave it no Grounding.
+    const talker = WarEval.createLedger();
+    [seatsLine, move(['Build a tower', 'Train militia'], [['wait']])].concat(Array.from({ length: 12 }, () => move(null, [['wait']]))).forEach(x => talker.addLine(x));
+    s = talker.profile().seats[0];
+    assert.deepEqual([s.grounding.score, s.planning.score, s.follow.score], [null, 100, 0]);
+    assert.deepEqual(index(s), { value: 0, of: 1, parts: 4, plan: 0 });
+    // A plan too young to have been followed or dropped is left out, not counted as nothing.
+    const young = WarEval.createLedger();
+    [seatsLine, move(['Build a tower'], [['train_unit', 'worker']])].forEach(x => young.addLine(x));
+    s = young.profile().seats[0];
+    assert.deepEqual([s.planning.score, s.follow.score], [100, null]);
+    assert.deepEqual(index(s), { value: 100, of: 1, parts: 4, plan: null });
     // A file without outcomes leaves one part that can be read: it decided and stated no
     // plan. The Index says how few parts it stands on.
     const none = WarEval.createLedger();
     none.addLine(JSON.stringify({ turn: 1, playerId: 'z', parsed: { commands: [{ action: 'wait' }] } }));
-    assert.deepEqual(JSON.parse(JSON.stringify(none.profile().seats[0].index)), { value: 0, of: 1, parts: 5 });
+    assert.deepEqual(index(none.profile().seats[0]), { value: 0, of: 1, parts: 4, plan: 0 });
     // A seat no model decided for is in the match and on the timeline, and has no Index.
     const other = l.profile().seats.find(x => x.id === 'b');
     assert.deepEqual([other.decisions, other.strategy.rank, other.strategy.score, other.index.value, other.index.of], [0, 1, 100, null, 0]);
@@ -769,7 +803,9 @@ test('the command-line report prints strategy, the range and the Index beside th
     assert.match(text, /STRATEGY +score +placed +share of power +even split +time ahead +clear lead/);
     assert.match(text, /O gemini-4-argon +85 +1 of 3 +41\.3 % +33\.3 % +35\.8 % +from 59:18, won +21 +138 : 54 +neolithic 10:22, bronze 18:32, iron 28:07/);
     assert.match(text, /RANGE USED +unit types +buildings +technologies +kinds of order\n.*\n.*\nO gemini-4-argon +6 +6 +12 +9/);
-    assert.match(text, /INDEX +mean +of +grounding +planning +follow +tactical +strategy/);
-    assert.match(text, /O gemini-4-argon +89\.3 +5 parts +100 +\d+ +\d+ +\d+ +85/);
+    assert.match(text, /INDEX +mean +of +grounding +plan as followed +tactical +strategy/);
+    assert.match(text, /O gemini-4-argon +86\.7 +4 parts +100 +87 +\d+ +85/);
+    assert.match(text, /GROUNDING +score +valid +ok +of which waits +avoidable/);
+    assert.match(text, /Score scale v1: provisional\. valid = ok of ok \+ avoidable \+ invalid, with waits left out/);
     assert.match(text, /One match is one sample/);
 });

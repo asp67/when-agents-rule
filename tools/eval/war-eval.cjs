@@ -37,8 +37,8 @@ function report(file, p) {
         'build ' + (m.build == null ? 'not recorded' : m.build) + ', prompt ' + (m.promptVersion || 'not recorded')
         + ', ' + p.seats.length + ' seats, ' + p.seats.reduce((n, s) => n + s.decisions, 0) + ' decisions'
         + (p.unreadable ? ', ' + p.unreadable + ' unreadable lines' : ''), ''];
-    out.push(table([['GROUNDING', 'score', 'valid', 'ok', 'avoidable', 'invalid', 'repeated', 'contended', 'not judged']].concat(
-        p.seats.map(s => { const g = s.grounding; return [name(s), fix(g.score, 0), pct(g.rate), g.ok, g.avoidable, g.invalid, g.repeated, g.contended, g.unjudged]; }))));
+    out.push(table([['GROUNDING', 'score', 'valid', 'ok', 'of which waits', 'avoidable', 'invalid', 'repeated', 'contended', 'not judged']].concat(
+        p.seats.map(s => { const g = s.grounding; return [name(s), fix(g.score, 0), pct(g.rate), g.ok, g.waits, g.avoidable, g.invalid, g.repeated, g.contended, g.unjudged]; }))));
     if (p.seats.some(s => !s.grounding.judged && s.grounding.unjudged))
         out.push('', 'No command outcomes in this file: they are recorded from build 1023 on, so grounding cannot be read from it.');
     const worst = p.seats.filter(s => s.grounding.mistakes.length);
@@ -85,10 +85,12 @@ function report(file, p) {
     out.push('', table([['EFFICIENCY', 'decisions', 'latency median', 'p90', 'tokens in', 'out', 'out per ok command', 'commands per decision', 'missed rounds']].concat(
         p.seats.map(s => { const e = s.efficiency, t = e.tokens; return [name(s), s.decisions, secs(e.latencyMs && e.latencyMs.median), secs(e.latencyMs && e.latencyMs.p90),
             t ? fix(t.promptMedian) : 'not reported', t ? fix(t.completionMedian) : '-', t ? fix(t.completionPerOk) : '-', fix(e.commandsPerDecision, 2), e.missedRounds]; }))));
-    out.push('', table([['INDEX', 'mean', 'of'].concat(WarEval.SCORED)].concat(
-        p.seats.map(s => [name(s), fix(s.index.value, 1), s.index.of + ' parts'].concat(WarEval.SCORED.map(k => fix(s[k].score, 0)))))));
-    out.push('', 'The Index is the plain mean of the parts that have a score. One match is one sample: compare models on the parts, over several matches.');
-    out.push('', 'Score scale ' + p.scale + ': provisional. valid = ok of ok + avoidable + invalid; contended commands are left out of both.');
+    out.push('', table([['INDEX', 'mean', 'of', 'grounding', 'plan as followed', 'tactical', 'strategy']].concat(
+        p.seats.map(s => [name(s), fix(s.index.value, 1), s.index.of + ' parts', fix(s.grounding.score, 0), fix(s.index.plan, 0), fix(s.tactical.score, 0), fix(s.strategy.score, 0)]))));
+    out.push('', 'The Index is the mean of the parts that have a score. A plan counts as far as it was followed: planning times follow-through, as one part.',
+        'One match is one sample: compare models on the parts, over several matches.');
+    out.push('', 'Score scale ' + p.scale + ': provisional. valid = ok of ok + avoidable + invalid, with waits left out (a wait can never be refused);',
+        'contended commands are left out of both.');
     return out.join('\n');
 }
 

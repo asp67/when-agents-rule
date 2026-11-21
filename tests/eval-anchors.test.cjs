@@ -23,9 +23,13 @@ test('a seat that does nothing has nothing to be judged on, and is still in the 
     assert.deepEqual([rival.decisions, rival.strategy.rank, rival.index.value], [0, 1, null]);
 });
 
-test('a seat that only waits is always valid: the anchor that shows what a rate alone is worth', async () => {
+test('a seat that only waits has nothing to be rated on: a wait can never be refused', async () => {
     const s = seatOf(await play('wait-only'));
-    assert.deepEqual([s.grounding.judged, s.grounding.ok, s.grounding.score, s.planning.score, Array.from(s.versatility.orders)], [6, 6, 100, 0, ['wait']]);
+    assert.deepEqual([s.grounding.judged, s.grounding.ok, s.grounding.waits, s.grounding.rated, s.grounding.score], [6, 6, 6, 0, null]);
+    assert.deepEqual([s.planning.score, Array.from(s.versatility.orders)], [0, ['wait']]);
+    // What is left to it is a plan it never stated and its place in the match.
+    assert.deepEqual([s.index.of, s.index.plan], [2, 0]);
+    assert.ok(s.index.value < 15, 'Index ' + s.index.value);
 });
 
 test('a seat that states a plan and never acts has a plan and no follow-through', async () => {
@@ -33,6 +37,8 @@ test('a seat that states a plan and never acts has a plan and no follow-through'
     assert.deepEqual([s.planning.statements, s.planning.steps, s.planning.concrete, s.planning.coverage], [1, 5, 5, 1]);
     // Six decisions in, its five steps are still open: nothing acted on, and too early to call them dropped.
     assert.deepEqual([s.follow.steps, s.follow.acted, s.follow.pending, s.follow.score], [5, 0, 5, null]);
+    // So the plan is not in its Index yet, and its waits give it no Grounding.
+    assert.deepEqual([s.grounding.score, s.index.plan, s.index.of], [null, null, 1]);
 });
 
 test('random-valid names only what its state shows: refused for the world\'s reasons, never invalid', async () => {
@@ -57,7 +63,7 @@ test('the summary is one row per anchor, averaged over its matches, in the score
         for (const k of WarEval.SCORED) assert.equal(sum[a][k], seatOf(played[a])[k].score, a + ' ' + k);
     }
     const text = report(sum);
-    assert.match(text, /ANCHOR +matches +decisions +commands judged +valid +eliminated +grounding +planning +follow +tactical +strategy +Index +of parts/);
+    assert.match(text, /ANCHOR +matches +decisions +commands rated +valid +eliminated +grounding +planning +follow +tactical +strategy +Index +of parts/);
     assert.match(text, /do-nothing +1 +6 +0 +- +0 +- +0/);
 });
 

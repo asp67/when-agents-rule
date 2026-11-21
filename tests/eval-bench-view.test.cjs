@@ -50,7 +50,7 @@ test('D2: the matrix shows the command-line scorer\'s values at match end', asyn
     assert.deepEqual(cells(right), want);
     assert.equal(want.length, 20);
     // Under each score, the raw measure and the count it rests on.
-    assert.match(right, /<small>99\.4 % · 351<\/small>/);              // Sonnet: valid commands of those judged
+    assert.match(right, /<small>99\.4 % · 350<\/small>/);              // Sonnet: valid commands of those rated (one wait left out)
     assert.match(right, /<small>25\/33<\/small>/);                     // ...and plan steps acted on
     // The leader of a row is marked, and a cell says how it moved over the last ten minutes.
     assert.equal((right.match(/bm-cell is-lead/g) || []).length, 5);    // one per row: no two seats tie for a lead in this match
@@ -60,7 +60,7 @@ test('D2: the matrix shows the command-line scorer\'s values at match end', asyn
     // Under the scored rows: their Index as the scorer prints it, then the range used, then the cost.
     const index = [...right.matchAll(/class="bm-index"[^>]*><b>([^<]*)<\/b><small>bench\.indexOf\{&quot;n&quot;:(\d)\}/g)].map(m => m[1] + '/' + m[2]);
     assert.deepEqual(index, scored.seats.map(s => Math.round(s.index.value) + '/' + s.index.of));
-    assert.deepEqual(index, ['50/5', '73/5', '70/5', '80/5']);
+    assert.deepEqual(index, ['40/4', '69/4', '63/4', '76/4']);
     assert.match(right, /bench\.range<small>bench\.rangeUnit<\/small><\/th>.*<b>11 · 10 · 13<\/b><\/td>/s);
     assert.match(right, /bench\.rangeTip\{&quot;units&quot;:&quot;archer, cavalry, champion/);
     assert.ok(right.indexOf('bm-indexrow') < right.indexOf('bench.range<') && right.indexOf('bench.range<') < right.indexOf('bench.eff<'));
@@ -81,7 +81,7 @@ test('D2: every string of the Bench view is keyed in all four languages', () => 
     const keys = new Set([...src.matchAll(/t\('([a-z]+\.[A-Za-z0-9.]+)'/g)].map(m => m[1]).concat([...src.matchAll(/data-i18n(?:-title)?="([^"]+)"/g)].map(m => m[1])));
     for (const state of ['acted', 'pending', 'dropped', 'late', 'uncheckable']) keys.add('bench.st.' + state);
     for (const dim of WarEval.SCORED) keys.add('eval.' + dim);
-    for (const k of ['bench.leadWon', 'bench.leadLost', 'eval.index', 'eval.indexTip', 'eval.strategyPlaced', 'eval.strategyTip', 'eval.strategyLive', 'eval.strategyNone', 'age.neolithic', 'age.bronze', 'age.iron']) keys.add(k);
+    for (const k of ['bench.leadWon', 'bench.leadLost', 'eval.index', 'eval.indexTip', 'eval.waits', 'eval.groundingWaits', 'eval.strategyPlaced', 'eval.strategyTip', 'eval.strategyLive', 'eval.strategyNone', 'age.neolithic', 'age.bronze', 'age.iron']) keys.add(k);
     keys.delete('bench.st.'); keys.delete('eval.');                      // the two prefixes those are built from
     assert.ok(keys.size >= 30, 'only ' + keys.size + ' keys found: did the pattern change?');
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of keys) assert.ok(k in context.I[lang], lang + ' lacks ' + k);

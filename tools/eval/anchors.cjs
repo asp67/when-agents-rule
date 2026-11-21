@@ -113,7 +113,7 @@ function summarize(matches) {
         for (const k of WarEval.SCORED) row[k] = mean(mine.map(x => x.seat[k].score));
         row.index = mean(mine.map(x => x.seat.index.value));
         row.parts = mean(mine.map(x => x.seat.index.of));
-        row.commands = mean(mine.map(x => x.seat.grounding.judged));
+        row.commands = mean(mine.map(x => x.seat.grounding.rated));
         row.valid = mean(mine.map(x => x.seat.grounding.rate));
         row.powerShare = mean(mine.map(x => x.seat.strategy.powerShare));
         out[a] = row;
@@ -126,7 +126,7 @@ function table(rows) {
     return rows.map(r => r.map((v, c) => c === 0 ? String(v).padEnd(width[c]) : String(v).padStart(width[c])).join('  ')).join('\n');
 }
 function report(summary) {
-    return table([['ANCHOR', 'matches', 'decisions', 'commands judged', 'valid', 'eliminated'].concat(WarEval.SCORED, ['Index', 'of parts'])].concat(
+    return table([['ANCHOR', 'matches', 'decisions', 'commands rated', 'valid', 'eliminated'].concat(WarEval.SCORED, ['Index', 'of parts'])].concat(
         Object.entries(summary).map(([a, r]) => [a, r.matches, fix(r.decisions), fix(r.commands), r.valid == null ? '-' : (r.valid * 100).toFixed(1) + ' %', r.eliminated]
             .concat(WarEval.SCORED.map(k => fix(r[k])), [fix(r.index, 1), fix(r.parts, 1)]))));
 }

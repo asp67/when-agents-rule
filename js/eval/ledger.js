@@ -24,9 +24,12 @@
     'use strict';
     const WarEval = {
         VERSION: 1,
-        // How raw rates become 0-100. 'v0' is the mapping proposed with the plan, stated
-        // so it can be argued with; calibration against anchors is a later step (C6).
-        SCALE: 'v0',
+        // How raw rates become 0-100. 'v0' was the mapping proposed with the plan. 'v1' is
+        // v0 after the anchor run (tools/eval/anchors.cjs, docs/SCORING.md): a wait is left
+        // out of the Grounding rate, and a plan counts in the Index as far as it was followed.
+        SCALE: 'v1',
+        // What the Index is the mean of. 'plan' is Planning as far as it was followed.
+        INDEX_PARTS: ['grounding', 'plan', 'tactical', 'strategy'],
         // A mistake made again inside this many decisions counts as repeated.
         REPEAT_WINDOW: 2,
         // A plan step is acted on if a command carries it out within this many decisions.
@@ -404,6 +407,7 @@
             if (clock && num(clock.matchSeconds) != null && clock.matchSeconds > (this.lastSec || 0)) this.lastSec = clock.matchSeconds;
             learnNames(seat.vocab, st);
             const outcomes = Array.isArray(o.outcomes) ? o.outcomes.map(x => ({ code: x && x.code != null ? String(x.code) : null,
+                action: x && x.action != null ? String(x.action) : null,
                 verdict: x && VERDICTS.includes(x.verdict) ? x.verdict : 'unknown' })) : null;
             // Buildings that were under attack are watched until the attack is over: one
             // that is no longer in the seat's own list has fallen.
@@ -443,7 +447,7 @@
         _grounding(turns) {
             const count = { ok: 0, avoidable: 0, invalid: 0, contended: 0, harnessFault: 0, unknown: 0 };
             const codes = new Map();
-            let unjudged = 0, repeated = 0;
+            let unjudged = 0, repeated = 0, waits = 0;
             const before = [];               // the mistakes of the last decisions, newest last
             const errors = [];               // every mistake with the decision it was made in
             for (const t of turns) {
@@ -453,6 +457,7 @@
                     unjudged += Math.max(0, t.commands - t.outcomes.length);
                     for (const x of t.outcomes) {
                         count[x.verdict]++;
+                        if (x.verdict === 'ok' && x.action === 'wait') waits++;
                         if (x.verdict !== 'avoidable' && x.verdict !== 'invalid') continue;
                         codes.set(x.code, (codes.get(x.code) || 0) + 1);
                         errors.push({ turn: t.turn, sec: t.sec, code: x.code, verdict: x.verdict });
@@ -465,16 +470,23 @@
             }
             // What the model could have got right: contended commands and the harness's
             // own failures leave both sides, as they do in the match results.
+            //
+            // A wait can never be refused, so it is no evidence of grounding either way:
+            // it stays in the counts (they are the harness's own) and leaves the rate. A
+            // seat that only waits has nothing to be rated on. (The wait-only anchor
+            // scored 100 before this; among shipped matches waits were up to 27 % of a
+            // seat's judged commands.)
             const mistakes = count.avoidable + count.invalid, judged = count.ok + mistakes;
-            const rate = judged ? count.ok / judged : null;
+            const rated = judged - waits;
+            const rate = rated ? (count.ok - waits) / rated : null;
             return {
-                judged, ok: count.ok, avoidable: count.avoidable, invalid: count.invalid,
+                judged, waits, rated, ok: count.ok, avoidable: count.avoidable, invalid: count.invalid,
                 contended: count.contended, harnessFault: count.harnessFault, unjudged,
                 rate, repeated, repeatRate: mistakes ? repeated / mistakes : null,
                 errors,
                 mistakes: [...codes.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
                     .map(([code, n]) => ({ code, n })),
-                // v0: one command in ten refused for a reason the state had shown is 0.
+                // One command in ten refused for a reason the state had shown is 0.
                 score: rate == null ? null : Math.round(1000 * clamp01(1 - (1 - rate) * 10)) / 10
             };
         }
@@ -807,11 +819,20 @@
                     decisions: s.turns.length, grounding, planning, follow: this._follow(s, this._plans), tactical: this._tactical(s),
                     strategy: this._strategy(s, until), versatility: this._versatility(s),
                     efficiency: this._efficiency(s, grounding.ok) };
-                // The Index: the plain mean of the scored parts that have a score. A
-                // summary of the bars, never a replacement for them; one match is one sample.
+                // The Index: the mean of the parts that have a score. A summary of the bars,
+                // never a replacement for them; one match is one sample.
+                //
+                // A plan counts as far as it was followed: Planning and Follow-through enter
+                // as ONE part, their product. Planning by itself measures the stated plan,
+                // and a seat that states one and never plays it scored an Index of 52 as a
+                // plain mean of five (the plan-only anchor). No plan is 0; a plan whose
+                // follow-through cannot be read yet leaves the part out.
                 // A seat no model decided for (a rule-based opponent) has a strategy row and no Index.
-                const have = s.turns.length ? WarEval.SCORED.map(k => out[k].score).filter(v => v != null) : [];
-                out.index = { value: have.length ? Math.round(10 * have.reduce((a, b) => a + b, 0) / have.length) / 10 : null, of: have.length, parts: WarEval.SCORED.length };
+                const p = out.planning.score, f = out.follow.score;
+                const plan = p == null ? null : p === 0 ? 0 : f == null ? null : Math.round(p * f / 10) / 10;
+                const part = { grounding: out.grounding.score, plan, tactical: out.tactical.score, strategy: out.strategy.score };
+                const have = s.turns.length ? WarEval.INDEX_PARTS.map(k => part[k]).filter(v => v != null) : [];
+                out.index = { value: have.length ? Math.round(10 * have.reduce((a, b) => a + b, 0) / have.length) / 10 : null, of: have.length, parts: WarEval.INDEX_PARTS.length, plan };
                 return out;
             });
             seats.sort((a, b) => (a.seat == null ? 1e9 : a.seat) - (b.seat == null ? 1e9 : b.seat) || String(a.id).localeCompare(String(b.id)));

@@ -5252,8 +5252,9 @@ class UIManager {
         const g = p.grounding, pl = p.planning, fl = p.follow, ta = p.tactical, st = p.strategy, top = g.mistakes[0];
         const chances = ta ? ta.episodes + ta.wonders : 0;
         return {
-            grounding: !g.judged ? t('eval.groundingNone')
-                : t('eval.groundingTip', { ok: g.ok, judged: g.judged, pct: share(g.rate), contended: g.contended })
+            grounding: !g.rated ? (g.waits ? t('eval.groundingWaits', { n: g.waits }) : t('eval.groundingNone'))
+                : t('eval.groundingTip', { ok: g.ok - g.waits, judged: g.rated, pct: share(g.rate), contended: g.contended })
+                    + (g.waits ? ' ' + t('eval.waits', { n: g.waits }) : '')
                     + (top ? ' ' + t('eval.mistakes', { code: top.code, n: top.n, repeated: g.repeated }) : ''),
             planning: !pl.statements ? t('eval.planningNone', { n: p.decisions })
                 : t('eval.planningTip', { statements: pl.statements, revisions: pl.revisions, first: clock(pl.firstAt.sec),
@@ -5268,7 +5269,8 @@ class UIManager {
                 : (st.final && st.rank != null ? t('eval.strategyPlaced', { rank: st.rank, of: st.of }) + ' ' : '')
                     + t('eval.strategyTip', { share: share(st.powerShare), even: share(st.evenShare), lead: share(st.leadShare), destroyed: st.destroyed, lost: st.lost })
                     + (st.final ? '' : ' ' + t('eval.strategyLive')),
-            index: !p.index || p.index.value == null ? t('eval.groundingNone') : t('eval.indexTip', { n: p.index.of })
+            index: !p.index || p.index.value == null ? t('eval.groundingNone')
+                : t('eval.indexTip', { n: p.index.of, parts: p.index.parts, plan: p.index.plan == null ? '–' : Math.round(p.index.plan) })
         };
     }
 

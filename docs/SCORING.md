@@ -5,10 +5,10 @@ scored parts, a row of facts about the range a seat used, and the cost of a deci
 them. Everything is read from the match transcript and nothing else, so a recorded match
 can be scored again at any time and gives the numbers the page showed while it ran.
 
-**Status: scale `v0`, provisional.** The definitions below are built and tested. The
-mapping from a measure to a 0-100 score has been checked against anchor seats (see
-[Anchors](#anchors)), and that check found two things that are not right yet. Read the
-bars and what they rest on. Do not quote a single number as a result.
+**Status: scale `v1`, provisional.** The definitions below are built and tested, and the
+scores have been checked against anchor seats (see [Anchors](#anchors)). That check changed
+two things, which is what `v1` is. Read the bars and what they rest on. Do not quote a
+single number as a result.
 
 ## Where to read it
 
@@ -24,9 +24,9 @@ scoring a match differently never changes what a match is.
 
 ## The parts
 
-| Part | The question | The measure | Score (v0) |
+| Part | The question | The measure | Score |
 |---|---|---|---|
-| **Grounding** | Were its commands valid when it issued them? | Commands that worked, of those that worked or were refused for a reason its state had shown. | 90 % valid is 0, 100 % is 100, straight line between. |
+| **Grounding** | Were its commands valid when it issued them? | Commands that worked, of those that worked or were refused for a reason its state had shown. A `wait` is left out. | 90 % valid is 0, 100 % is 100, straight line between. |
 | **Planning** | Does it hold a live, concrete plan? | Share of decisions under a stated plan; share of plan steps that name something checkable; share of shocks (attacked, heavy losses, a rival Wonder) followed by a changed plan within three decisions. | The mean of the three. No shock: the first counts twice. Never stated a plan: 0. |
 | **Follow-through** | Does it do what its plan says? | Of the new, checkable plan steps: those an order that worked carried out within ten decisions. | The share acted on. No plan: 0. |
 | **Tactical** | Shown a threat, is its next order aimed at it? | Attacks on its own things and rival Wonders, from the decision whose state first showed them. An answer is an order that worked and is aimed there: an attack or march to it, the threatened units moved out, a tower or repair on the spot. | The share answered in the same or the next decision; for a rival Wonder, within three. |
@@ -35,8 +35,9 @@ scoring a match differently never changes what a match is.
 What each part deliberately leaves out:
 
 - **Grounding** leaves out commands refused for something no state could have warned of
-  (`contended`: a trainer that became busy in the same instant) and the harness's own
-  failures. They are counted and shown, and are in neither side of the rate.
+  (`contended`: a trainer that became busy in the same instant), the harness's own
+  failures, and every `wait`: a wait can never be refused, so it is evidence of nothing.
+  All three are counted and shown, and are in neither side of the rate.
 - **Planning** counts a plan as changed only when its text changed. Saying the same plan
   again changes nothing.
 - **Follow-through** counts only orders that worked. A refused order carries nothing out.
@@ -62,9 +63,16 @@ score. A zero is a measured zero: a seat that never stated a plan has Planning 0
 
 ### The Index
 
-The plain mean of the scored parts that have a score, with the number of parts it rests on.
-It is shown only with the bars. One match is one sample of one model against particular
-opponents on one map: compare models on the parts, over several matches.
+The mean of four parts, as many as have a score: Grounding, the plan as far as it was
+followed, Tactical and Strategy. The number of parts it rests on is shown with it.
+
+"The plan as far as it was followed" is Planning times Follow-through, as one part. The two
+bars stay separate on screen, because they answer different questions. In a single number
+a plan that was never played must count for nothing: no plan is 0, a full plan nobody acted
+on is 0, and a plan too young for its steps to have been followed or dropped is left out.
+
+The Index is shown only with the bars. One match is one sample of one model against
+particular opponents on one map: compare models on the parts, over several matches.
 
 ## How a plan step is read
 
@@ -94,56 +102,51 @@ seats is paying for something other than playing.
 | random-valid | One to three commands a round, built only from names and places its state shows. |
 
 Twelve matches, 40 minutes each, a decision every 30 seconds, three map seeds, core hash
-`d13976c3e047f6dd`, 21 November 2026:
+`d13976c3e047f6dd`, 21 November 2026, on scale `v1`:
 
 | Anchor | Grounding | Planning | Follow-through | Tactical | Strategy | Index |
 |---|---:|---:|---:|---:|---:|---:|
 | do-nothing | – | 0 | – | – | 6 | 3.3 |
-| wait-only | **100** | 0 | 0 | – | 6 | **26.6** |
-| plan-only | **100** | **100** | 0 | – | 6 | **51.6** |
-| random-valid | 0 | 0 | 0 | 50 | 6 | 7.9 |
+| wait-only | – | 0 | 0 | – | 6 | 3.3 |
+| plan-only | – | 100 | 0 | – | 6 | 3.3 |
+| random-valid | 0 | 0 | 0 | 50 | 6 | 10.0 |
 
-For comparison, the four model seats of the 5 October sample have an Index of 49.8, 69.6,
-73.4 and 80.1.
+For comparison, the four model seats of the 5 October sample have an Index of 39.5, 63.0,
+69.2 and 75.8.
 
-What holds:
+What the table says:
 
-- Doing nothing and random play sit at the floor. Random play is valid 43.9 % of the time
+- All four anchors sit at the floor of the Index. Random play is valid 37.0 % of the time
   and scores Grounding 0.
 - Strategy is at the floor for all four: they place last and hold a tenth of the power.
-- Follow-through cannot be talked up: the plan-only seat has 0.
-
-What does not hold:
-
-1. **A `wait` is free credit in Grounding.** It can never be refused, so every one counts
-   as a valid command. A seat that only waits scores 100. Among shipped matches, up to
-   27 % of a model seat's judged commands are waits.
-2. **A plan that is stated once and never played scores Planning 100.** Planning measures
-   the stated plan; only Follow-through knows it was never acted on. Each part is right by
-   its own definition, but the plain mean then gives the plan-only seat an Index of 51.6,
-   above a model that played for 99 minutes.
-3. **Tactical on one threat is chance.** The random seat was shown two threats in three
-   matches and answered one, by attacking the only rival unit in sight. A Tactical score
-   needs the count beside it, which the Bench view and the scorer print.
+- **The plan-only seat still has a Planning bar of 100.** That is by design: Planning
+  measures the stated plan, Follow-through says it was never played, and the Index counts
+  the two together. Read alone, the Planning bar says only that a plan was stated.
+- **Tactical on one threat is chance.** The random seat was shown two threats in three
+  matches and answered one, by attacking the only rival unit in sight. That one answer is
+  its whole Index. A Tactical score needs the count beside it, which the Bench view and the
+  scorer print.
 
 The first three anchors were eliminated in two of three matches without their state ever
 showing an attack: with a decision every 30 seconds the final rush fell between two states.
 That is why their Tactical is a dash and the plan-only seat met no shock.
 
-### Proposed, not applied
+### What the first run changed
 
-Two changes would put all four anchors at the floor. They change definitions, so they wait
-for a decision.
+On scale `v0` the same twelve matches gave the wait-only seat Grounding 100 and an Index of
+26.6, and the plan-only seat Grounding 100, Planning 100 and an Index of 51.6: above a
+model that had played for 99 minutes. Two definitions were wrong, and `v1` changes them:
 
-- **A.** Leave `wait` out of the Grounding rate. A seat that only waits then has no
-  Grounding score.
-- **B.** In the Index, count a plan as far as it was followed: Planning and Follow-through
-  enter as one part, their product. The two bars stay as they are.
+- **A `wait` was free credit.** It can never be refused, so each one counted as a valid
+  command. Among shipped matches, waits were up to 27 % of a seat's judged commands. A wait
+  is now counted, shown, and left out of the rate. A seat that only waits has no Grounding
+  score.
+- **The Index was a plain mean of five bars**, so a stated plan paid whether or not it was
+  played. A plan now counts as far as it was followed.
 
-With both, the anchors' Index is 3 (do-nothing, wait-only, plan-only) and about 10
-(random-valid, all of it the one lucky answer to a threat). The reference seats keep their order within each match:
+What that did to nine reference seats. Their order within each match is unchanged:
 
-| Seat (match) | Grounding now | with A | Index now | with A and B |
+| Seat (match) | Grounding v0 | v1 | Index v0 | v1 |
 |---|---:|---:|---:|---:|
 | GPT 6.1 Sol (5 Oct) | 63.0 | 61.5 | 49.8 | 39.5 |
 | Claude Sonnet 5.5 (5 Oct) | 94.3 | 94.3 | 73.4 | 69.2 |
@@ -155,9 +158,9 @@ With both, the anchors' Index is 3 (do-nothing, wait-only, plan-only) and about 
 | pi (7 Nov) | 3.2 | 0 | 48.9 | 30.8 |
 | Hermes (7 Nov) | 90.8 | 90.8 | 79.5 | 74.0 |
 
-Not covered by A and B: a seat that repeats one real, safe command (assign a worker to
-food, every round) is valid every time and keeps Grounding 100. Its other bars show what it
-is. No anchor for it has been run.
+Still open: a seat that repeats one real, safe command (assign a worker to food, every
+round) is valid every time and keeps Grounding 100. Its other bars show what it is. No
+anchor for it has been run.
 
 To run the anchors again:
 

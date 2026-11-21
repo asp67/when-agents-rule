@@ -108,7 +108,7 @@
         // ---- the matrix ------------------------------------------------------
         const raw = (key, s) => {
             const g = s.grounding, pl = s.planning, fl = s.follow, ta = s.tactical;
-            if (key === 'grounding') return g.judged ? share(g.rate) + ' · ' + g.judged : '';
+            if (key === 'grounding') return g.rated ? share(g.rate) + ' · ' + g.rated : '';
             if (key === 'planning') return pl.statements ? share(pl.coverage) + ' · ' + pl.revisions + '×' : '';
             if (key === 'follow') return fl.judged && fl.acted + fl.dropped ? fl.acted + '/' + (fl.acted + fl.dropped) : '';
             if (key === 'strategy') return s.strategy.samples ? share(s.strategy.powerShare) + (s.strategy.rank != null ? ' · #' + s.strategy.rank : '') : '';
