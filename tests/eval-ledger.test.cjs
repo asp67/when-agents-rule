@@ -598,3 +598,178 @@ test('a seat that was never shown a threat has no tactical score, and a file wit
         state: { threats: { underAttack: raid, enemyWonders: [] } } })]);
     assert.deepEqual([old.judged, old.episodes, old.answered, old.score], [false, 1, null, null]);
 });
+
+// ---- Strategy, the range used and the Index (overhaul steps C5 and C6) ------
+// name, score, the score without the placement, rank, share of power, share of the
+// time ahead, clear lead from (s), converted, battles, destroyed, lost, ages reached at
+// (s), unit types, buildings, technologies and kinds of order used with success, Index
+// and how many parts it is the mean of.
+const STRATEGY = {
+    '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
+        ['O gpt-6.1-sol', 11.4, 17.1, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 49.8, 5],
+        ['O claude-sonnet-5.5', 71.7, 74.3, 2, 0.376, 0.721, 3493, false, 36, 136, 144, '412/812/1342', 3, 6, 4, 9, 73.4, 5],
+        ['O deepseek-v4.1-flash', 52.7, 62.4, 3, 0.252, 0.184, null, null, 48, 205, 151, '372/1147/2037', 10, 9, 13, 9, 69.6, 5],
+        ['DGX GLM5.3 Flash', 77.2, 65.9, 1, 0.288, 0.107, null, null, 44, 99, 81, '372/1147/2493', 11, 10, 13, 10, 80.1, 5],
+    ],
+    '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
+        ['DGX Qwen3.8 flash next nvfp4', 37.7, 56.6, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 61.4, 5],
+        ['RTX qwen3.8 flash next Q2_0', 34.1, 26.2, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 58.9, 5],
+        ['O gemini-4-argon', 84.8, 77.3, 1, 0.413, 0.358, 3558, true, 21, 138, 54, '622/1112/1687', 6, 6, 12, 9, 89.3, 5],
+    ],
+    // Neither MCP seat has a tactical score here: four parts, not five.
+    '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
+        ['pi MCP', 25.8, 38.7, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 48.9, 4],
+        ['HERMES MCP', 85.3, 78, 1, 0.727, 0.993, 410, true, 7, 13, 9, '255/710', 4, 6, 5, 7, 79.5, 4],
+    ],
+};
+for (const [file, want] of Object.entries(STRATEGY)) {
+    test('strategy, range and Index on ' + file.slice(0, 10) + ' are what they were', async () => {
+        const p = await profileFile(sample(file));
+        assert.deepEqual(p.seats.map(s => { const g = s.strategy, v = s.versatility; return [s.name, g.score, g.running, g.rank, +g.powerShare.toFixed(3), +g.leadShare.toFixed(3),
+            g.clearLeadAt, g.converted, g.battles, g.destroyed, g.lost, g.ages.map(a => a.sec).join('/'), v.units.length, v.buildings.length, v.techs.length, v.orders.length,
+            s.index.value, s.index.of]; }), want);
+        for (const s of p.seats) assert.equal(s.versatility.score, null);
+    });
+}
+
+test('strategy reads the match\'s own record: its placement, its power score, its battles', () => {
+    let files = 0;
+    for (const f of samples) {
+        const lines = fs.readFileSync(sample(f), 'utf8').split('\n').filter(Boolean).map(l => JSON.parse(l));
+        const results = lines.find(o => o.type === 'results'), timeline = lines.find(o => o.type === 'timeline');
+        if (!results || !timeline || !timeline.samples.length) continue;
+        files++;
+        const p = WarEval.profileOf(fs.readFileSync(sample(f), 'utf8'));
+        for (const s of p.seats) {
+            const row = results.ranking.find(r => r.playerId === s.id), g = s.strategy;
+            assert.deepEqual([g.final, g.rank, g.of, g.winner], [true, row.rank, results.ranking.length, !!row.isWinner], f + ' ' + s.name);
+            assert.ok(g.powerShare > 0 && g.powerShare < 1 && g.score >= 0 && g.score <= 100, f + ' ' + s.name);
+        }
+        // Every seat's share of all power: together they are all of it. (A seat with no
+        // decisions is not in the profile, so only where every seat is.)
+        if (p.seats.length === results.ranking.length) assert.ok(Math.abs(p.seats.reduce((a, s) => a + s.strategy.powerShare, 0) - 1) < 1e-9, f);
+        // A battle's losses are counted once on each side of it.
+        const battles = lines.filter(o => o.type === 'chronicle' && o.kind === 'battle');
+        for (const s of p.seats) assert.equal(s.strategy.lost, battles.reduce((a, b) => a + ((b.sides[s.id] || {}).lost || 0), 0), f + ' ' + s.name);
+    }
+    assert.ok(files >= 15, 'only ' + files + ' files with results and a timeline');
+});
+
+// A two-seat match on paper: a's decisions, and what the match wrote about itself.
+const seatsLine = JSON.stringify({ type: 'match', players: [{ id: 'a', seat: 0 }, { id: 'b', seat: 1 }] });
+const tick = (t, a, b) => ({ t, p: { a: { pw: a, al: 1 }, b: { pw: b, al: 1 } } });
+const timelineOf = (samples, ages) => JSON.stringify({ type: 'timeline', samples, ages: ages || [] });
+const resultsOf = winner => JSON.stringify({ type: 'results', ranking: [{ playerId: winner, rank: 1, isWinner: true }, { playerId: winner === 'a' ? 'b' : 'a', rank: 2, isWinner: false }] });
+const battle = (t, a, b) => JSON.stringify({ type: 'chronicle', kind: 'battle', t, sides: { a: { involved: 9, lost: a }, b: { involved: 9, lost: b } } });
+const strategyOf = lines => { const l = WarEval.createLedger(); [seatsLine, move(null, [['assign_workers']])].concat(lines).forEach(x => l.addLine(x)); return l.profile().seats.find(s => s.id === 'a').strategy; };
+
+test('strategy is the mean of placement, share of power against an even split, and the exchange in battles', () => {
+    // Even power, no battle, won: placement 1, power (0.5 x 2 / 1.5) = two thirds.
+    const even = Array.from({ length: 10 }, (_, i) => tick(i * 5, 500, 500));
+    let g = strategyOf([timelineOf(even), resultsOf('a')]);
+    assert.deepEqual([g.placement, g.powerShare, g.evenShare, g.exchange, g.score, g.running], [1, 0.5, 0.5, null, 83.3, 66.7]);
+    // The same match lost: only the placement moves.
+    g = strategyOf([timelineOf(even), resultsOf('b')]);
+    assert.deepEqual([g.placement, g.score, g.running, g.winner], [0, 33.3, 66.7, false]);
+    // Three quarters of all power is half again an even split: full marks, and no more than that.
+    g = strategyOf([timelineOf(even.map(x => tick(x.t, 900, 300))), resultsOf('a')]);
+    assert.deepEqual([g.powerShare, g.leadShare, g.score], [0.75, 1, 100]);
+    // Battles: it destroyed 6 and lost 2, so three quarters of the losses were the other side's.
+    g = strategyOf([battle(20, 1, 4), battle(30, 1, 2), timelineOf(even), resultsOf('a')]);
+    assert.deepEqual([g.battles, g.destroyed, g.lost, g.exchange, g.score], [2, 6, 2, 0.75, 80.6]);
+    // A battle it was not in is not its battle.
+    g = strategyOf([JSON.stringify({ type: 'chronicle', kind: 'battle', t: 5, sides: { b: { lost: 3 }, c: { lost: 1 } } }), timelineOf(even)]);
+    assert.deepEqual([g.battles, g.exchange], [0, null]);
+});
+
+test('a clear lead is a quarter more power than the next seat, held five minutes, and it is said whether it was won', () => {
+    const run = (from, to, a, b) => { const out = []; for (let t = from; t < to; t += 5) out.push(tick(t, a, b)); return out; };
+    // 1.25 times for 4:55 is not one; for five minutes it is, from the reading that completes them.
+    let g = strategyOf([timelineOf(run(0, 100, 500, 500).concat(run(100, 395, 625, 500), run(395, 600, 500, 500))), resultsOf('a')]);
+    assert.deepEqual([g.clearLeadAt, g.converted], [null, null]);
+    g = strategyOf([timelineOf(run(0, 100, 500, 500).concat(run(100, 400, 625, 500), run(400, 600, 500, 500))), resultsOf('a')]);
+    assert.deepEqual([g.clearLeadAt, g.converted], [395, true]);
+    g = strategyOf([timelineOf(run(0, 100, 500, 500).concat(run(100, 400, 625, 500), run(400, 600, 100, 500))), resultsOf('b')]);
+    assert.deepEqual([g.clearLeadAt, g.converted], [395, false]);
+    // A fifth more is ahead, and counted as time ahead, but it is not a clear lead.
+    g = strategyOf([timelineOf(run(0, 600, 600, 500)), resultsOf('a')]);
+    assert.deepEqual([g.leadShare, g.clearLeadAt], [1, null]);
+    assert.deepEqual([WarEval.LEAD_FACTOR, WarEval.LEAD_SECONDS], [1.25, 300]);
+});
+
+test('a running match has no placement yet, and the timeline shown to it gives way to the line in the file', () => {
+    const l = WarEval.createLedger();
+    [seatsLine, move(null, [['assign_workers']]), battle(20, 1, 3)].forEach(x => l.addLine(x));
+    assert.deepEqual([l.profile().seats[0].strategy.samples, l.profile().seats[0].strategy.exchange], [0, 0.75]);
+    const live = { samples: [tick(5, 600, 400), tick(10, 600, 400)], ages: [{ t: 8, id: 'a', age: 'neolithic' }] };
+    l.preview(live);
+    let g = l.profile().seats[0].strategy;
+    assert.deepEqual(JSON.parse(JSON.stringify([g.final, g.rank, g.placement, g.samples, g.powerShare, g.score, g.running, g.ages])), [false, null, null, 2, 0.6, 77.5, 77.5, [{ age: 'neolithic', sec: 8 }]]);
+    // Shown the same timeline again, nothing is worked out again; with a new reading it is.
+    const before = l.profile();
+    l.preview(live);
+    assert.equal(l.profile(), before);
+    live.samples.push(tick(15, 200, 800));
+    l.preview(live);
+    assert.equal(l.profile().seats[0].strategy.samples, 3);
+    // The file's own lines are the last word, and what the page showed then equals the file.
+    l.addLine(resultsOf('a')); l.addLine(timelineOf(live.samples, live.ages));
+    live.samples.push(tick(20, 0, 1000)); l.preview(live);               // too late: not in the file
+    const fromFile = WarEval.createLedger();
+    [seatsLine, move(null, [['assign_workers']]), battle(20, 1, 3), resultsOf('a'), timelineOf(live.samples.slice(0, 3), live.ages)].forEach(x => fromFile.addLine(x));
+    assert.deepEqual(l.profile(), fromFile.profile());
+    assert.deepEqual([l.profile().seats[0].strategy.final, l.profile().seats[0].strategy.samples], [true, 3]);
+    assert.doesNotThrow(() => { WarEval.createLedger().preview(null); WarEval.createLedger().preview({}); });
+});
+
+test('the profile as it stood at a second reads the timeline and the battles up to it, without the placement', () => {
+    const l = WarEval.createLedger();
+    [seatsLine, JSON.stringify(Object.assign(JSON.parse(move(null, [['assign_workers']])), { state: { clock: { matchSeconds: 10 } } })),
+        battle(20, 0, 4), battle(300, 6, 0), timelineOf([tick(5, 500, 500), tick(10, 500, 500), tick(400, 100, 900)], [{ t: 8, id: 'a', age: 'neolithic' }, { t: 350, id: 'a', age: 'bronze' }]), resultsOf('b')].forEach(x => l.addLine(x));
+    const then = l.profileAt(100).seats[0].strategy, now = l.profile().seats[0].strategy;
+    assert.deepEqual([then.final, then.placement, then.samples, then.battles, then.exchange, then.ages.length], [false, null, 2, 1, 1, 1]);
+    assert.deepEqual([now.final, now.placement, now.samples, now.battles, now.exchange, now.ages.length], [true, 0, 3, 2, 0.4, 2]);
+    assert.equal(then.score, then.running);
+});
+
+test('the range used is what worked, as facts and without a score', () => {
+    const l = WarEval.createLedger();
+    [move(null, [['train_unit', 'worker'], ['train_unit', 'militia'], ['train_unit', 'archer', 'avoidable']]),
+        move(null, [['build_structure', 'tower'], ['research_tech', 'longbow'], ['train_unit', 'militia']]),
+        move(null, [['build_structure', 'barracks', 'contended'], ['attack_target']])].forEach(x => l.addLine(x));
+    const v = l.profile().seats[0].versatility;
+    // The archer was refused and the barracks came to nothing; a worker is not an army.
+    assert.deepEqual(JSON.parse(JSON.stringify(v)), { units: ['militia'], buildings: ['tower'], techs: ['longbow'], orders: ['attack_target', 'build_structure', 'research_tech', 'train_unit'], score: null });
+});
+
+test('the Index is the plain mean of the scored parts that have a score, and the range is not one of them', () => {
+    assert.deepEqual(Array.from(WarEval.SCORED), ['grounding', 'planning', 'follow', 'tactical', 'strategy']);
+    const l = WarEval.createLedger();
+    [seatsLine, move(['Build a tower'], [['build_structure', 'tower']])].forEach(x => l.addLine(x));
+    let s = l.profile().seats[0];
+    // Grounding 100, planning 100, follow-through 100; never shown a threat, no power reading: three parts.
+    assert.deepEqual([s.grounding.score, s.planning.score, s.follow.score, s.tactical.score, s.strategy.score], [100, 100, 100, null, null]);
+    assert.deepEqual(JSON.parse(JSON.stringify(s.index)), { value: 100, of: 3, parts: 5 });
+    l.addLine(timelineOf([tick(5, 100, 500)])); l.addLine(resultsOf('b'));
+    s = l.profile().seats.find(x => x.id === 'a');
+    assert.deepEqual([s.strategy.score, s.index.value, s.index.of], [11.1, 77.8, 4]);
+    // A file without outcomes leaves one part that can be read: it decided and stated no
+    // plan. The Index says how few parts it stands on.
+    const none = WarEval.createLedger();
+    none.addLine(JSON.stringify({ turn: 1, playerId: 'z', parsed: { commands: [{ action: 'wait' }] } }));
+    assert.deepEqual(JSON.parse(JSON.stringify(none.profile().seats[0].index)), { value: 0, of: 1, parts: 5 });
+    // A seat no model decided for is in the match and on the timeline, and has no Index.
+    const other = l.profile().seats.find(x => x.id === 'b');
+    assert.deepEqual([other.decisions, other.strategy.rank, other.strategy.score, other.index.value, other.index.of], [0, 1, 100, null, 0]);
+});
+
+test('the command-line report prints strategy, the range and the Index beside the parts', async () => {
+    const file = sample('2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl');
+    const text = report(file, await profileFile(file));
+    assert.match(text, /STRATEGY +score +placed +share of power +even split +time ahead +clear lead/);
+    assert.match(text, /O gemini-4-argon +85 +1 of 3 +41\.3 % +33\.3 % +35\.8 % +from 59:18, won +21 +138 : 54 +neolithic 10:22, bronze 18:32, iron 28:07/);
+    assert.match(text, /RANGE USED +unit types +buildings +technologies +kinds of order\n.*\n.*\nO gemini-4-argon +6 +6 +12 +9/);
+    assert.match(text, /INDEX +mean +of +grounding +planning +follow +tactical +strategy/);
+    assert.match(text, /O gemini-4-argon +89\.3 +5 parts +100 +\d+ +\d+ +\d+ +85/);
+    assert.match(text, /One match is one sample/);
+});

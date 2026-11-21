@@ -45,15 +45,31 @@ test('D2: the matrix shows the command-line scorer\'s values at match end', asyn
     const { u, ledger } = page();
     for (const line of fs.readFileSync(SAMPLE, 'utf8').split('\n')) ledger.addLine(line);
     const scored = await profileFile(SAMPLE);                       // what tools/eval/war-eval.cjs prints
-    const want = ['grounding', 'planning', 'follow', 'tactical'].flatMap(k => scored.seats.map(s => s[k].score == null ? '–' : String(Math.round(s[k].score))));
+    const want = ['grounding', 'planning', 'follow', 'tactical', 'strategy'].flatMap(k => scored.seats.map(s => s[k].score == null ? '–' : String(Math.round(s[k].score))));
     const { right } = u.benchHtml(ledger);
     assert.deepEqual(cells(right), want);
-    assert.equal(want.length, 16);
+    assert.equal(want.length, 20);
     // Under each score, the raw measure and the count it rests on.
     assert.match(right, /<small>99\.4 % · 351<\/small>/);              // Sonnet: valid commands of those judged
     assert.match(right, /<small>25\/33<\/small>/);                     // ...and plan steps acted on
     // The leader of a row is marked, and a cell says how it moved over the last ten minutes.
-    assert.equal((right.match(/bm-cell is-lead/g) || []).length, 4);    // one per row: no two seats tie for a lead in this match
+    assert.equal((right.match(/bm-cell is-lead/g) || []).length, 5);    // one per row: no two seats tie for a lead in this match
+    // Strategy: share of all power and the placement; at match end the placement is a step, so no trend.
+    assert.match(right, /<small>28\.8 % · #1<\/small>/);                // GLM, the winner
+    assert.doesNotMatch(right.split('eval.strategy<')[1].split('bm-indexrow')[0], /bm-(up|down)/);
+    // Under the scored rows: their Index as the scorer prints it, then the range used, then the cost.
+    const index = [...right.matchAll(/class="bm-index"[^>]*><b>([^<]*)<\/b><small>bench\.indexOf\{&quot;n&quot;:(\d)\}/g)].map(m => m[1] + '/' + m[2]);
+    assert.deepEqual(index, scored.seats.map(s => Math.round(s.index.value) + '/' + s.index.of));
+    assert.deepEqual(index, ['50/5', '73/5', '70/5', '80/5']);
+    assert.match(right, /bench\.range<small>bench\.rangeUnit<\/small><\/th>.*<b>11 · 10 · 13<\/b><\/td>/s);
+    assert.match(right, /bench\.rangeTip\{&quot;units&quot;:&quot;archer, cavalry, champion/);
+    assert.ok(right.indexOf('bm-indexrow') < right.indexOf('bench.range<') && right.indexOf('bench.range<') < right.indexOf('bench.eff<'));
+    // The strategy cell opens what the match recorded: the ages, the lead, the battles.
+    u.benchShowEvidence('strategy', scored.seats[1].id);                // Sonnet: led clearly from 58:13 and came second
+    const ev = u.benchHtml(ledger).right.split('bench-evidence')[1];
+    assert.match(ev, /6:52<\/span> age\.neolithic.*13:32<\/span> age\.bronze.*22:22<\/span> age\.iron.*58:13<\/span> bench\.lead · bench\.leadLost.*bench\.battles\{&quot;n&quot;:36,&quot;destroyed&quot;:136,&quot;lost&quot;:144\}/s);
+    assert.doesNotMatch(ev, /openTranscriptTurn/);
+    u.benchShowEvidence('strategy', scored.seats[1].id);
     assert.match(right, /class="bm-(up|down)" title="bench\.trendTip\{&quot;then&quot;:\d+\}">[▲▼]\d+</);
 });
 
@@ -64,7 +80,8 @@ test('D2: every string of the Bench view is keyed in all four languages', () => 
     const src = fs.readFileSync(path.join(root, 'js/eval/bench-view.js'), 'utf8') + fs.readFileSync(path.join(root, 'index.html'), 'utf8').split('\n').filter(l => /benchBtn/.test(l)).join('\n');
     const keys = new Set([...src.matchAll(/t\('([a-z]+\.[A-Za-z0-9.]+)'/g)].map(m => m[1]).concat([...src.matchAll(/data-i18n(?:-title)?="([^"]+)"/g)].map(m => m[1])));
     for (const state of ['acted', 'pending', 'dropped', 'late', 'uncheckable']) keys.add('bench.st.' + state);
-    for (const dim of ['grounding', 'planning', 'follow', 'tactical']) keys.add('eval.' + dim);
+    for (const dim of WarEval.SCORED) keys.add('eval.' + dim);
+    for (const k of ['bench.leadWon', 'bench.leadLost', 'eval.index', 'eval.indexTip', 'eval.strategyPlaced', 'eval.strategyTip', 'eval.strategyLive', 'eval.strategyNone', 'age.neolithic', 'age.bronze', 'age.iron']) keys.add(k);
     keys.delete('bench.st.'); keys.delete('eval.');                      // the two prefixes those are built from
     assert.ok(keys.size >= 30, 'only ' + keys.size + ' keys found: did the pattern change?');
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of keys) assert.ok(k in context.I[lang], lang + ' lacks ' + k);
@@ -144,7 +161,11 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     ledger.addLine(decision('a', 10, { plan: ['Build a tower'], orders: [['train_unit', { unitType: 'militia' }, 'avoidable']] }));
     u.updateBenchView();
     const first = els.benchMatrix.innerHTML;
-    assert.deepEqual(cells(first), ['0', '100', '–', '–']);               // one refused order of one; a plan of one checkable step; nothing closed; no threat
+    assert.deepEqual(cells(first), ['0', '100', '–', '–', '–']);          // one refused order of one; a plan of one checkable step; nothing closed; no threat; no power reading
+    // A new reading on the timeline redraws it too: the strategy row lives on it.
+    u.game._timeline = { samples: [{ t: 5, p: { a: { pw: 300 }, b: { pw: 300 } } }], ages: [] };
+    u.updateBenchView();
+    assert.deepEqual(cells(els.benchMatrix.innerHTML), ['0', '100', '–', '–', '67']);
     els.benchMatrix.innerHTML = 'untouched';
     u.updateBenchView();
     assert.equal(els.benchMatrix.innerHTML, 'untouched');

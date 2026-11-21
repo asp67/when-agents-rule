@@ -5224,11 +5224,21 @@ class UIManager {
     // ledger is fed by the transcript recorder as lines are written (js/eval/ledger.js),
     // so these are the numbers the exported file gives. null when nothing is recorded.
     evalSeats() {
+        const ledger = this.evalLedger();
+        if (!ledger) return null;
+        const byId = {};
+        for (const s of ledger.profile().seats) byId[s.id] = s;
+        return byId;
+    }
+
+    // The ledger of the match being watched. The file gets the five-second timeline as
+    // one line at the end, so while the match runs the ledger is shown the timeline as it
+    // stands: the object that line will be written from.
+    evalLedger() {
         const tr = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         if (!tr || !tr.ledger) return null;
-        const byId = {};
-        for (const s of tr.ledger.profile().seats) byId[s.id] = s;
-        return byId;
+        if (tr.ledger.preview && this.game._timeline) tr.ledger.preview(this.game._timeline);
+        return tr.ledger;
     }
 
     // One bar per part of the profile that exists: Grounding, Planning, Follow-through, the
@@ -5239,7 +5249,7 @@ class UIManager {
     evalTips(p) {
         const share = v => v == null ? '–' : (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + ' %';
         const clock = sec => sec == null ? '–' : Math.floor(sec / 60) + ':' + String(Math.floor(sec) % 60).padStart(2, '0');
-        const g = p.grounding, pl = p.planning, fl = p.follow, ta = p.tactical, top = g.mistakes[0];
+        const g = p.grounding, pl = p.planning, fl = p.follow, ta = p.tactical, st = p.strategy, top = g.mistakes[0];
         const chances = ta ? ta.episodes + ta.wonders : 0;
         return {
             grounding: !g.judged ? t('eval.groundingNone')
@@ -5253,7 +5263,12 @@ class UIManager {
                     wait: fl.decisionsToAct == null ? '–' : fl.decisionsToAct, serving: fl.ordersServing, orders: fl.ordersUnderPlan }),
             tactical: !ta ? '' : !ta.judged ? t('eval.groundingNone') : !chances ? t('eval.tacticalNone')
                 : t('eval.tacticalTip', { atOnce: ta.atOnce, episodes: ta.episodes, answered: ta.answered, lost: ta.lost,
-                    wonderAnswered: ta.wonderAnswered, wonders: ta.wonders })
+                    wonderAnswered: ta.wonderAnswered, wonders: ta.wonders }),
+            strategy: !st ? '' : !st.samples ? t('eval.strategyNone')
+                : (st.final && st.rank != null ? t('eval.strategyPlaced', { rank: st.rank, of: st.of }) + ' ' : '')
+                    + t('eval.strategyTip', { share: share(st.powerShare), even: share(st.evenShare), lead: share(st.leadShare), destroyed: st.destroyed, lost: st.lost })
+                    + (st.final ? '' : ' ' + t('eval.strategyLive')),
+            index: !p.index || p.index.value == null ? t('eval.groundingNone') : t('eval.indexTip', { n: p.index.of })
         };
     }
 
@@ -5267,7 +5282,10 @@ class UIManager {
                 + `<span class="lb-dim-track"><i style="width:${score == null ? 0 : Math.round(score)}%"></i></span>`
                 + `<b>${score == null ? '–' : Math.round(score)}</b></span>`;
         };
-        return `<div class="lb-profile">${['grounding', 'planning', 'follow', 'tactical'].filter(k => p[k]).map(bar).join('')}</div>`;
+        // The Index sits with the bars it is the mean of, and nowhere by itself.
+        const index = p.index && p.index.value != null
+            ? `<span class="lb-dim lb-index" title="${esc(tips.index + ' ' + t('eval.provisional'))}"><span class="lb-dim-name">${esc(t('eval.index'))}</span><span class="lb-dim-track"></span><b>${Math.round(p.index.value)}</b></span>` : '';
+        return `<div class="lb-profile">${WarEval.SCORED.filter(k => p[k]).map(bar).join('')}${index}</div>`;
     }
 
     // ---- Leaderboard achievement flyout --------------------------------------

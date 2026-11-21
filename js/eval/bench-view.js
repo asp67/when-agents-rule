@@ -3,7 +3,8 @@
 // A switch in the spectator bar, or the B key, trades the decision log and the
 // leaderboard for three things read from the ledger (js/eval/ledger.js):
 //   the matrix          every part of the profile by seat, with what it rests on, how it
-//                       moved over the last ten minutes, and the decisions behind a cell
+//                       moved over the last ten minutes, and the decisions behind a cell;
+//                       under the scored parts their Index, the range used, and the cost
 //   the plan tracker    a seat's standing plan step by step: acted on, open, dropped
 //   the response clock  each threat from the moment a seat was SHOWN it, the decisions it
 //                       has had since, and what became of it
@@ -14,7 +15,7 @@
 (function () {
     if (typeof UIManager === 'undefined') return;
     const P = UIManager.prototype;
-    const DIMS = ['grounding', 'planning', 'follow', 'tactical'];
+    const DIMS = WarEval.SCORED;
     const TREND_SEC = 600;
     const clock = sec => sec == null ? '–' : Math.floor(sec / 60) + ':' + String(Math.floor(sec) % 60).padStart(2, '0');
     const share = v => v == null ? '–' : (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + ' %';
@@ -49,10 +50,7 @@
         this.updateBenchView();
     };
 
-    P.benchLedger = function () {
-        const tr = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
-        return (tr && tr.ledger) || null;
-    };
+    P.benchLedger = function () { return this.evalLedger(); };
     // A seat's decision in the transcript viewer: where every list in this view leads.
     P.openTranscriptTurn = function (playerId, turn) {
         if (turn == null) return;
@@ -81,7 +79,7 @@
         const left = document.getElementById('benchLeft'), right = document.getElementById('benchMatrix');
         if (!left || !right || !this.benchOn()) return;
         const ledger = this.benchLedger(), ev = this._benchEvidence;
-        const sig = [ledger ? ledger.lines : -1, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : ''].join(':');
+        const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : ''].join(':');
         if (sig === this._benchSig) return;
         this._benchSig = sig;
         const view = this.benchHtml(ledger);
@@ -113,13 +111,15 @@
             if (key === 'grounding') return g.judged ? share(g.rate) + ' · ' + g.judged : '';
             if (key === 'planning') return pl.statements ? share(pl.coverage) + ' · ' + pl.revisions + '×' : '';
             if (key === 'follow') return fl.judged && fl.acted + fl.dropped ? fl.acted + '/' + (fl.acted + fl.dropped) : '';
+            if (key === 'strategy') return s.strategy.samples ? share(s.strategy.powerShare) + (s.strategy.rank != null ? ' · #' + s.strategy.rank : '') : '';
             return ta.judged && ta.episodes + ta.wonders ? (ta.atOnce + ta.wonderAnswered) + '/' + (ta.episodes + ta.wonders) : '';
         };
         const rows = DIMS.map(key => {
             const scores = seats.map(s => s[key].score).filter(v => v != null);
             const best = scores.length > 1 ? Math.max(...scores) : null;
             return `<tr><th scope="row">${esc(t('eval.' + key))}</th>` + seats.map(s => {
-                const score = s[key].score, before = then(s.id, key);
+                // Strategy gains the placement when the match ends: a step, not a trend.
+                const score = s[key].score, before = key === 'strategy' && s.strategy.final ? null : then(s.id, key);
                 const delta = score != null && before != null ? Math.round(score) - Math.round(before) : 0;
                 const trend = delta ? `<em class="${delta > 0 ? 'bm-up' : 'bm-down'}" title="${esc(t('bench.trendTip', { then: Math.round(before) }))}">${delta > 0 ? '▲' : '▼'}${Math.abs(delta)}</em>` : '';
                 const cls = (score == null ? ' is-empty' : '') + (best != null && score === best ? ' is-lead' : '') + (ev && ev.key === key && ev.id === s.id ? ' is-open' : '');
@@ -127,6 +127,15 @@
                     + `<b>${score == null ? '–' : Math.round(score)}</b>${trend}<i class="bm-bar"><u style="width:${score == null ? 0 : Math.round(score)}%"></u></i>`
                     + `<small>${esc(raw(key, s)) || '&nbsp;'}</small></td>`;
             }).join('') + '</tr>';
+        }).join('');
+        const index = seats.map(s => `<td class="bm-index" title="${esc(this.evalTips(s).index + ' ' + t('eval.provisional'))}">`
+            + `<b>${s.index.value == null ? '–' : Math.round(s.index.value)}</b><small>${s.index.value == null ? '&nbsp;' : esc(t('bench.indexOf', { n: s.index.of }))}</small></td>`).join('');
+        // The range a seat used with success: facts beside the profile, no score.
+        const list = a => a.length ? a.join(', ') : '–';
+        const range = seats.map(s => {
+            const v = s.versatility, any = v.units.length + v.buildings.length + v.techs.length;
+            return `<td class="bm-cost bm-range" title="${esc(t('bench.rangeTip', { units: list(v.units), buildings: list(v.buildings), techs: list(v.techs) }))}">`
+                + `<b>${any ? v.units.length + ' · ' + v.buildings.length + ' · ' + v.techs.length : '–'}</b></td>`;
         }).join('');
         const cost = seats.map(s => {
             const e = s.efficiency, lat = e.latencyMs ? e.latencyMs.median : null;
@@ -138,7 +147,9 @@
         let right = `<div class="bench-head">${esc(t('bench.matrix'))}<span>${esc(t('eval.provisional'))}</span></div>`
             + `<table class="bm"><thead><tr><th></th>` + seats.map(s =>
                 `<th scope="col" class="bm-seat${pins.includes(s.id) ? ' is-pinned' : ''}" style="--civ:${esc(ink(s))}" onclick="game.ui.benchPin('${esc(s.id)}')" title="${esc(t('bench.pin'))}">${dot(s)}<span>${label(s)}</span></th>`).join('')
-            + `</tr></thead><tbody>${rows}<tr class="bm-costrow"><th scope="row">${esc(t('bench.eff'))}</th>${cost}</tr></tbody></table>`;
+            + `</tr></thead><tbody>${rows}<tr class="bm-indexrow"><th scope="row">${esc(t('eval.index'))}</th>${index}</tr>`
+            + `<tr class="bm-costrow"><th scope="row">${esc(t('bench.range'))}<small>${esc(t('bench.rangeUnit'))}</small></th>${range}</tr>`
+            + `<tr class="bm-costrow"><th scope="row">${esc(t('bench.eff'))}</th>${cost}</tr></tbody></table>`;
 
         // What a cell rests on: the decisions behind it, each a way into the transcript.
         const seatOf = id => seats.find(s => s.id === id);
@@ -151,6 +162,12 @@
                 `<li${open(s, h.turn)}><span class="be-when">#${h.turn} ${clock(h.sec)}</span> ${esc(t('bench.planChanged', { n: h.steps }))}</li>`);
             else if (ev.key === 'follow') items = (s.follow.standing || []).map(x =>
                 `<li${open(s, s.planning.standing && s.planning.standing.turn)} class="is-${x.state}"><span class="be-when">${GLYPH[x.state]}</span> ${esc(x.text)}</li>`);
+            else if (ev.key === 'strategy') {
+                const g = s.strategy, line = (when, text) => `<li class="be-plain"><span class="be-when">${when}</span> ${esc(text)}</li>`;
+                items = g.ages.map(a => line(clock(a.sec), t('age.' + a.age)));
+                if (g.clearLeadAt != null) items.push(line(clock(g.clearLeadAt), t('bench.lead') + (g.converted == null ? '' : ' · ' + t(g.converted ? 'bench.leadWon' : 'bench.leadLost'))));
+                if (g.battles) items.push(line('⚔', t('bench.battles', { n: g.battles, destroyed: g.destroyed, lost: g.lost })));
+            }
             else items = s.tactical.list.slice(-12).reverse().map(e =>
                 `<li${open(s, e.turn)}><span class="be-when">#${e.turn} ${clock(e.sec)}</span> ${esc(this.benchThreatLine(e, s))}</li>`);
             right += `<div class="bench-evidence" style="--civ:${esc(ink(s))}"><div class="bench-head">${esc(t('eval.' + ev.key))} · ${label(s)}<span>${esc(t('bench.evidence'))}</span></div>`

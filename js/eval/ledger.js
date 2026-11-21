@@ -11,11 +11,14 @@
 // the order in which different seats' lines arrive changes nothing: a file lists one
 // seat after another, a live match interleaves them, and both give the same profile.
 //
-// Five parts of the profile are filled so far:
+// Six parts of the profile are filled, five of them scored:
 //   grounding    were the commands valid when they were issued?
 //   planning     does the seat keep a live, concrete plan, and restate it after a shock?
 //   follow       does it do what its plan says?
 //   tactical     when it is shown a threat, is its next order aimed at it?
+//   strategy     does its play turn into winning?
+//   versatility  the range it used, as facts: no score until "where it helps" has a rule
+// and over the scored parts an Index, their plain mean, never to be shown without them.
 //   efficiency   what did a decision cost? Shown beside the profile, never inside it.
 (function (root) {
     'use strict';
@@ -33,6 +36,11 @@
         // a threat when it points within RESPONSE_RADIUS of an attacker or of what is attacked.
         RESPONSE_WINDOW: 3,
         RESPONSE_RADIUS: 40,
+        // A clear lead is this much more power than the next seat, held for this long.
+        LEAD_FACTOR: 1.25,
+        LEAD_SECONDS: 300,
+        // The parts of the profile that carry a score, in the order they are shown.
+        SCORED: ['grounding', 'planning', 'follow', 'tactical', 'strategy'],
         // How well the step reader reads, measured on plan steps from the shipped matches
         // that were read by hand (tests/eval-reader-steps.json; tests/eval-reader.test.cjs
         // recomputes these and fails when they stop being true). `heldOut` is the half
@@ -335,6 +343,10 @@
             this.seats = new Map();          // playerId -> { id, seat, civ, model, name, turns: [], markers: {} }
             this.lines = 0;
             this.unreadable = 0;
+            // What the match itself recorded: the five-second timeline and the results
+            // arrive as its last lines, the battles as they happen.
+            this.timeline = null; this.results = null; this.battles = [];
+            this._preview = null; this.rev = 0;
         }
 
         _seat(o) {
@@ -369,6 +381,12 @@
                 this.match = { matchId: o.matchId || null, build: o.build != null ? o.build : null,
                     promptVersion: o.promptVersion || null };
                 for (const p of o.players || []) if (p && p.id) this._seat({ playerId: p.id, seat: p.seat, civ: p.civ, model: p.model, name: p.name });
+                return;
+            }
+            if (o.type === 'timeline') { this.timeline = { samples: Array.isArray(o.samples) ? o.samples : [], ages: Array.isArray(o.ages) ? o.ages : [] }; return; }
+            if (o.type === 'results') { this.results = { ranking: (Array.isArray(o.ranking) ? o.ranking : []).map(r => ({ id: r.playerId, rank: num(r.rank), winner: !!r.isWinner })) }; return; }
+            if (o.type === 'chronicle') {
+                if (o.kind === 'battle' && o.sides && typeof o.sides === 'object') this.battles.push({ t: num(o.t), sides: o.sides });
                 return;
             }
             if (o.type) {
@@ -695,26 +713,106 @@
         // The profile as it stood at an earlier moment of the match: every seat's decisions
         // up to that match second and nothing after. What the page compares "now" with.
         profileAt(sec) {
-            const key = this.lines + ':' + this.unreadable + ':' + sec;
+            const key = this.lines + ':' + this.unreadable + ':' + this.rev + ':' + sec;
             if (this._past && this._pastKey === key) return this._past;
             this._pastKey = key;
-            return this._past = this._work([...this.seats.values()].map(s => Object.assign({}, s, { turns: s.turns.filter(t => t.sec != null && t.sec <= sec) })));
+            return this._past = this._work([...this.seats.values()].map(s => Object.assign({}, s, { turns: s.turns.filter(t => t.sec != null && t.sec <= sec) })), sec);
+        }
+
+        // The timeline as it stands while the match is still running. The file gets it
+        // as one line at the end; until then the page hands over the same object the
+        // line will be written from, and the line replaces it when it arrives.
+        preview(timeline) {
+            if (this.timeline || !timeline || !Array.isArray(timeline.samples)) return;
+            const n = timeline.samples.length;
+            if (this._preview && this._previewN === n) return;
+            this._preview = { samples: timeline.samples.slice(), ages: Array.isArray(timeline.ages) ? timeline.ages.slice() : [] };
+            this._previewN = n; this.rev++;
+        }
+
+        // Does its play turn into winning? (step C5)
+        //
+        // From what the match recorded about itself: the power score every five seconds,
+        // the battles, and at the end the placement. Until the results are in, the score
+        // rests on the first two and says it is not final.
+        _strategy(seat, until) {
+            const tl = this.timeline || this._preview, id = seat.id;
+            const samples = (tl ? tl.samples : []).filter(x => x && x.p && x.p[id] && (until == null || x.t <= until));
+            let share = 0, counted = 0, leading = 0, run = 0, clearAt = null, seats = 0;
+            const step = samples.length > 1 ? Math.max(1, (samples[samples.length - 1].t - samples[0].t) / (samples.length - 1)) : 5;
+            for (const x of samples) {
+                const all = Object.keys(x.p), mine = x.p[id].pw || 0;
+                const total = all.reduce((a, k) => a + (x.p[k].pw || 0), 0), best = Math.max(0, ...all.filter(k => k !== id).map(k => x.p[k].pw || 0));
+                seats = Math.max(seats, all.length);
+                if (!total) continue;
+                counted++; share += mine / total;
+                if (mine >= best) leading++;
+                run = all.length > 1 && mine >= best * WarEval.LEAD_FACTOR && mine > 0 ? run + 1 : 0;
+                if (clearAt == null && run * step >= WarEval.LEAD_SECONDS) clearAt = x.t;
+            }
+            const powerShare = counted ? share / counted : null;
+            let fought = 0, destroyed = 0, lost = 0;
+            for (const b of this.battles) {
+                if (!b.sides[id] || (until != null && b.t > until)) continue;
+                fought++; lost += b.sides[id].lost || 0;
+                for (const k in b.sides) if (k !== id) destroyed += b.sides[k].lost || 0;
+            }
+            const exchange = destroyed + lost ? destroyed / (destroyed + lost) : null;
+            const final = !!this.results && until == null, row = final ? this.results.ranking.find(r => r.id === id) : null;
+            const n = final ? this.results.ranking.length : seats;
+            const placement = row && row.rank != null && n > 1 ? (n - row.rank) / (n - 1) : null;
+            const mean = list => { const have = list.filter(v => v != null); return have.length ? Math.round(1000 * have.reduce((a, b) => a + b, 0) / have.length) / 10 : null; };
+            const power = powerShare == null || !seats ? null : clamp01(powerShare * seats / 1.5);
+            return {
+                final, rank: row ? row.rank : null, of: n || null, winner: row ? row.winner : null, placement,
+                powerShare, evenShare: seats ? 1 / seats : null, leadShare: counted ? leading / counted : null, samples: counted,
+                // A clear lead, and whether it was turned into the win.
+                clearLeadAt: clearAt, converted: clearAt == null || !row ? null : row.rank === 1,
+                battles: fought, destroyed, lost, exchange,
+                ages: (tl ? tl.ages : []).filter(a => a && a.id === id && (until == null || a.t <= until)).map(a => ({ age: a.age, sec: a.t })),
+                // v0: the mean of placement, share of power against an even split (half
+                // again as much is full marks) and the share of battle losses that were
+                // the other side's. A part the match gave no chance for is left out.
+                // Without the placement it is the same number a running match shows.
+                score: mean([placement, power, exchange]), running: mean([power, exchange])
+            };
+        }
+
+        // The range a seat used with success. Facts only: breadth for its own sake earns
+        // nothing, and the rule for "where it helps" is not written yet, so no score.
+        _versatility(seat) {
+            const units = new Set(), buildings = new Set(), techs = new Set(), orders = new Set();
+            for (const t of seat.turns) for (const c of t.cmds) {
+                if (c.ok !== true) continue;
+                orders.add(c.action);
+                if (c.action === 'train_unit' && c.name && c.name !== 'worker') units.add(c.name);
+                if (c.action === 'build_structure' && c.name) buildings.add(c.name);
+                if (c.action === 'research_tech' && c.name) techs.add(c.name);
+            }
+            return { units: [...units].sort(), buildings: [...buildings].sort(), techs: [...techs].sort(), orders: [...orders].sort(), score: null };
         }
 
         // Worked out again only when a line has arrived since: the page asks once a
         // second, a match adds a line every few. Treat the result as read-only.
         profile() {
-            if (this._profile && this._profileLines === this.lines + ':' + this.unreadable) return this._profile;
-            this._profileLines = this.lines + ':' + this.unreadable;
+            if (this._profile && this._profileLines === this.lines + ':' + this.unreadable + ':' + this.rev) return this._profile;
+            this._profileLines = this.lines + ':' + this.unreadable + ':' + this.rev;
             return this._profile = this._work([...this.seats.values()]);
         }
 
-        _work(list) {
+        _work(list, until) {
             const seats = list.map(s => {
                 const grounding = this._grounding(s.turns), planning = this._planning(s);
-                return { id: s.id, seat: s.seat, civ: s.civ, model: s.model, name: s.name,
+                const out = { id: s.id, seat: s.seat, civ: s.civ, model: s.model, name: s.name,
                     decisions: s.turns.length, grounding, planning, follow: this._follow(s, this._plans), tactical: this._tactical(s),
+                    strategy: this._strategy(s, until), versatility: this._versatility(s),
                     efficiency: this._efficiency(s, grounding.ok) };
+                // The Index: the plain mean of the scored parts that have a score. A
+                // summary of the bars, never a replacement for them; one match is one sample.
+                // A seat no model decided for (a rule-based opponent) has a strategy row and no Index.
+                const have = s.turns.length ? WarEval.SCORED.map(k => out[k].score).filter(v => v != null) : [];
+                out.index = { value: have.length ? Math.round(10 * have.reduce((a, b) => a + b, 0) / have.length) / 10 : null, of: have.length, parts: WarEval.SCORED.length };
+                return out;
             });
             seats.sort((a, b) => (a.seat == null ? 1e9 : a.seat) - (b.seat == null ? 1e9 : b.seat) || String(a.id).localeCompare(String(b.id)));
             return { kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, match: this.match,

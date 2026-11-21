@@ -9,7 +9,8 @@
 // Reported so far: grounding (were the commands valid when issued), planning (a live,
 // concrete plan, restated after a shock), follow-through (does it do what its plan says),
 // tactical response (is the next order aimed at a threat it was shown) and, beside them,
-// efficiency (what a decision cost). Strategy and versatility follow in a later step.
+// strategy (does its play turn into winning) and, beside them, the range it used and
+// efficiency (what a decision cost). Over the scored parts an Index, their plain mean.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), readline = require('node:readline');
 const WarEval = require(path.join(__dirname, '..', '..', 'js', 'eval', 'ledger.js'));
@@ -71,9 +72,22 @@ function report(file, p) {
             + (e.outcome === 'lost' ? ', lost)' : ')')).join(', '));
         out.push('  #n is the n-th decision of that seat: ?match=' + ((p.match && p.match.matchId) || '<match id>') + '&seat=<seat number>&turn=<n> opens it in the analyzer.');
     }
+    const place = g => g.rank == null ? '-' : g.rank + ' of ' + g.of;
+    out.push('', table([['STRATEGY', 'score', 'placed', 'share of power', 'even split', 'time ahead', 'clear lead', 'battles', 'destroyed : lost', 'ages reached']].concat(
+        p.seats.map(s => { const g = s.strategy; return [name(s), fix(g.score, 0), place(g), pct(g.powerShare), pct(g.evenShare), pct(g.leadShare),
+            g.clearLeadAt == null ? 'never' : 'from ' + clock(g.clearLeadAt) + (g.converted == null ? '' : g.converted ? ', won' : ', not won'),
+            g.battles, g.destroyed + ' : ' + g.lost, g.ages.map(a => a.age + ' ' + clock(a.sec)).join(', ') || '-']; }))));
+    out.push('', 'Strategy is the mean of placement, share of power against an even split (half again as much is full marks) and the share of battle losses that were',
+        'the other side\'s. A clear lead is ' + WarEval.LEAD_FACTOR + ' times the next seat\'s power held for ' + WarEval.LEAD_SECONDS + ' seconds. Power is the game\'s own power score, unchanged.');
+    out.push('', table([['RANGE USED', 'unit types', 'buildings', 'technologies', 'kinds of order']].concat(
+        p.seats.map(s => { const v = s.versatility; return [name(s), v.units.length, v.buildings.length, v.techs.length, v.orders.length]; }))));
+    out.push('', 'Used with success. Facts, not a score: range counts for nothing until it can be tied to where it helped.');
     out.push('', table([['EFFICIENCY', 'decisions', 'latency median', 'p90', 'tokens in', 'out', 'out per ok command', 'commands per decision', 'missed rounds']].concat(
         p.seats.map(s => { const e = s.efficiency, t = e.tokens; return [name(s), s.decisions, secs(e.latencyMs && e.latencyMs.median), secs(e.latencyMs && e.latencyMs.p90),
             t ? fix(t.promptMedian) : 'not reported', t ? fix(t.completionMedian) : '-', t ? fix(t.completionPerOk) : '-', fix(e.commandsPerDecision, 2), e.missedRounds]; }))));
+    out.push('', table([['INDEX', 'mean', 'of'].concat(WarEval.SCORED)].concat(
+        p.seats.map(s => [name(s), fix(s.index.value, 1), s.index.of + ' parts'].concat(WarEval.SCORED.map(k => fix(s[k].score, 0)))))));
+    out.push('', 'The Index is the plain mean of the parts that have a score. One match is one sample: compare models on the parts, over several matches.');
     out.push('', 'Score scale ' + p.scale + ': provisional. valid = ok of ok + avoidable + invalid; contended commands are left out of both.');
     return out.join('\n');
 }

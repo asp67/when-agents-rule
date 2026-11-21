@@ -10,7 +10,7 @@ const root = path.resolve(__dirname, '..');
 const WarEval = require(path.join(root, 'js/eval/ledger.js'));
 
 function ui(extra) {
-    const context = vm.createContext(Object.assign({ console, Date, t: (k, v) => k + (v ? JSON.stringify(v) : ''),
+    const context = vm.createContext(Object.assign({ console, Date, WarEval, t: (k, v) => k + (v ? JSON.stringify(v) : ''),
         OpenAIAIManager: { MAX_COMMANDS_PER_TURN: 3 }, document: { getElementById: () => null } }, extra));
     vm.runInContext(fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8') + '\nthis.UI = UIManager;', context);
     const u = Object.create(context.UI.prototype);
@@ -58,7 +58,28 @@ test('a seat card shows one bar per part of the profile, with what it rests on',
     // One plan from the first decision, one of its two steps checkable, no shock: (1 + 0.5 + 1) / 3.
     assert.match(html, /eval\.planning<\/span><span class="lb-dim-track"><i style="width:83%"><\/i><\/span><b>83<\/b>/);
     assert.match(html, /eval\.planningTip\{&quot;statements&quot;:1,&quot;revisions&quot;:1,&quot;first&quot;:&quot;1:15&quot;/);
-    assert.equal((html.match(/eval\.provisional/g) || []).length, 4);
+    // Strategy has nothing to read yet: no power reading has been shown to the ledger.
+    assert.match(html, /lb-dim is-empty" title="eval\.strategyNone eval\.provisional">.*eval\.strategy<\/span>.*<b>–<\/b>/);
+    // The Index sits with the bars it is the mean of: (75 + 83.3 + 0) / 3, and says of how many.
+    assert.match(html, /class="lb-dim lb-index" title="eval\.indexTip\{&quot;n&quot;:3\} eval\.provisional">.*eval\.index<\/span>.*<b>53<\/b>/);
+    assert.ok(html.indexOf('lb-index') > html.indexOf('eval.strategy<'), 'the Index comes after the bars');
+    assert.equal((html.match(/eval\.provisional/g) || []).length, 6);
+});
+
+test('the strategy bar reads the timeline as it stands, and says the placement is still to come', () => {
+    const l = ledger(), u = ui();
+    const tick = (t, a, b) => ({ t, p: { a: { pw: a }, b: { pw: b }, c: { pw: 0 } } });
+    u.game = { openAIAIManager: { transcripts: { ledger: l } }, _timeline: { samples: [tick(5, 600, 400), tick(10, 600, 400)], ages: [] } };
+    let html = u.seatProfileHtml(u.evalSeats().a);
+    // 60 % of all power among three seats: 0.6 x 3 / 1.5, capped at full marks.
+    assert.match(html, /eval\.strategy<\/span><span class="lb-dim-track"><i style="width:100%"><\/i><\/span><b>100<\/b>/);
+    assert.match(html, /title="eval\.strategyTip\{&quot;share&quot;:&quot;60\.0 %&quot;,&quot;even&quot;:&quot;33\.3 %&quot;,&quot;lead&quot;:&quot;100 %&quot;,&quot;destroyed&quot;:0,&quot;lost&quot;:0\} eval\.strategyLive eval\.provisional"/);
+    // At the end the file's own lines take over, and the tooltip leads with the placement.
+    l.addLine(JSON.stringify({ type: 'results', ranking: [{ playerId: 'b', rank: 1, isWinner: true }, { playerId: 'a', rank: 2 }, { playerId: 'c', rank: 3 }] }));
+    l.addLine(JSON.stringify({ type: 'timeline', samples: u.game._timeline.samples, ages: [] }));
+    html = u.seatProfileHtml(u.evalSeats().a);
+    assert.match(html, /title="eval\.strategyPlaced\{&quot;rank&quot;:2,&quot;of&quot;:3\} eval\.strategyTip\{[^}]*\} eval\.provisional"/);
+    assert.match(html, /eval\.strategy<\/span><span class="lb-dim-track"><i style="width:75%"><\/i><\/span><b>75<\/b>/);   // (0.5 + 1) / 2
 });
 
 test('nothing judged is a dash and no plan is a zero, and neither is hidden', () => {
