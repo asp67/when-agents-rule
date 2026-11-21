@@ -2626,6 +2626,33 @@ body.spectator-mode #unitInfo.spectator-card {
    keeps clear of it. */
 body.broadcast-mode.race-view .chronicle-caption { max-width: min(900px, calc(100vw / var(--ui-scale, 1) - 64px - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - min(360px, 30vw) - 16px)); }
 
+/* The comparison lower third of broadcast mode (overhaul step D7): in the caption's place,
+   and never at the same time as a caption (updateCompare). The seats stand side by side so
+   the strip stays low, under the left Bench panel when that is on too. */
+.broadcast-compare {
+    position: fixed; left: 32px; bottom: 40px; z-index: 999; pointer-events: none; zoom: var(--ui-scale, 1);
+    max-width: min(980px, calc(100vw / var(--ui-scale, 1) - 64px)); padding: 9px 16px 10px; border-radius: 6px;
+    color: #e8eef7; background: rgba(10, 14, 30, 0.86); border: 1px solid rgba(221, 211, 180, 0.22); border-left: 4px solid #ddd3b4;
+    backdrop-filter: blur(3px); opacity: 0; transition: opacity 0.5s ease;
+}
+.broadcast-compare.is-in { opacity: 1; }
+body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(100vw / var(--ui-scale, 1) - 64px - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - min(360px, 30vw) - 16px)); }
+.bcmp-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+.bcmp-head b { font-size: 1.05em; color: #ddd3b4; letter-spacing: 0.02em; }
+.bcmp-head span { font-size: 0.86em; color: #b8c6d6; }
+.bcmp-head em { margin-left: auto; font-style: normal; font-size: 0.72em; color: #8d97a8; }
+.bcmp-rows { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.bcmp-seat { display: flex; flex-direction: column; gap: 2px; min-width: 150px; padding-left: 8px; border-left: 3px solid var(--civ, #ccc); }
+.bcmp-name { font-size: 0.86em; color: #d9e2ec; white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.bcmp-val { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 8px; }
+.bcmp-val b { font-size: 1.35em; font-variant-numeric: tabular-nums; color: #fff; }
+.bcmp-seat.is-lead .bcmp-val b { color: #f2c46a; }
+.bcmp-bar { display: block; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.bcmp-bar u { display: block; height: 100%; border-radius: 3px; background: #63b9a7; }
+.bcmp-seat.is-lead .bcmp-bar u { background: #f2c46a; }
+.bcmp-val small { grid-column: 1 / -1; font-size: 0.74em; color: #8d97a8; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .broadcast-compare { transition: none; } }
+
 /* The Bench panels (overhaul steps D2 to D4). An overlay of BOTH modes: they add to what a
    mode shows and replace none of it.
      analyze mode    the decision log (left) and the leaderboard (right) stay; the panels

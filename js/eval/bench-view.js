@@ -23,6 +23,26 @@
     const clock = sec => sec == null ? '–' : Math.floor(sec / 60) + ':' + String(Math.floor(sec) % 60).padStart(2, '0');
     const share = v => v == null ? '–' : (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + ' %';
     const GLYPH = { acted: '✓', pending: '○', dropped: '✕', late: '◐', uncheckable: '·' };
+    // The raw measure under a score, with the count it rests on.
+    const rawOf = (key, s) => {
+        const g = s.grounding, pl = s.planning, fl = s.follow, ta = s.tactical;
+        if (key === 'grounding') return g.rated ? share(g.rate) + ' · ' + g.rated : '';
+        if (key === 'planning') return pl.statements ? share(pl.coverage) + ' · ' + pl.revisions + '×' : '';
+        if (key === 'follow') return fl.judged && fl.acted + fl.dropped ? fl.acted + '/' + (fl.acted + fl.dropped) : '';
+        if (key === 'strategy') return s.strategy.samples ? share(s.strategy.powerShare) + (s.strategy.rank != null ? ' · #' + s.strategy.rank : '') : '';
+        return ta.judged && ta.episodes + ta.wonders ? (ta.atOnce + ta.wonderAnswered) + '/' + (ta.episodes + ta.wonders) : '';
+    };
+    // ---- Broadcast comparisons (overhaul step D7) -----------------------------
+    // How long one comparison stays, how long the strip keeps away after a caption, and
+    // what a part must have had to go on before it is shown at all: a handful of
+    // opportunities for EVERY model seat (a handful of minutes of power readings, for
+    // Strategy). A part resting on one threat or two commands is not broadcast.
+    const COMPARE = { showMs: 9000, quietMs: 3000, handful: 5, samples: 60 };
+    const chances = (key, s) => key === 'grounding' ? (s.grounding.rated || 0)
+        : key === 'planning' ? (s.decisions || 0)
+        : key === 'follow' ? (s.follow.judged ? (s.follow.acted || 0) + (s.follow.dropped || 0) : 0)
+        : key === 'tactical' ? (s.tactical.judged ? s.tactical.episodes + s.tactical.wonders : 0)
+        : (s.strategy.samples || 0);
 
     P.benchOn = function () { return !!this.viewPreferences().bench; };
     P.toggleBenchView = function (on = !this.benchOn()) {
@@ -33,20 +53,80 @@
     };
     // B switches the Bench panels and R the race chart while a match is being watched, in
     // either mode and except while typing. In broadcast mode the bar is gone, so the keys
-    // and the two icons on the board are the way to them.
+    // and the icons on the board are the way to them. C switches the comparison lower
+    // third, which exists in broadcast mode only.
     P.wireBenchKey = function () {
         if (this._benchKeyWired) return;
         this._benchKeyWired = true;
         document.addEventListener('keydown', e => {
             const key = String(e.key || '').toLowerCase();
-            if ((key !== 'b' && key !== 'r') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+            if ((key !== 'b' && key !== 'r' && key !== 'c') || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
             const el = e.target;
             if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
-            if (!this.game.spectatorMode || !this.game.gameStarted || !document.getElementById(key === 'b' ? 'benchMatrix' : 'raceChart')) return;
+            if (!this.game.spectatorMode || !this.game.gameStarted) return;
+            if (key === 'c' ? !(this.broadcastOn && this.broadcastOn()) : !document.getElementById(key === 'b' ? 'benchMatrix' : 'raceChart')) return;
             e.preventDefault();
-            if (key === 'b') this.toggleBenchView(); else this.toggleRaceChart();
+            if (key === 'b') this.toggleBenchView(); else if (key === 'r') this.toggleRaceChart(); else this.toggleCompare();
         });
     };
+    // ---- Broadcast comparisons (overhaul step D7) -----------------------------
+    // A lower third of broadcast mode: one part of the profile at a time, every model seat
+    // side by side, changing every few seconds. It shares the caption's place, so it steps
+    // aside while a caption is up and for a moment after. An overlay like the others: off
+    // until asked for (the ⚖ icon on the board, or C), and remembered.
+    P.compareOn = function () { return !!this.viewPreferences().compare; };
+    P.toggleCompare = function (on = !this.compareOn()) {
+        this.viewPreferences().compare = !!on;
+        this.saveViewPreferences();
+        this._cmp = null;
+        this.updateCompare();
+        if (this.broadcastOn && this.broadcastOn() && this.renderBroadcast) this.renderBroadcast();
+    };
+    // The parts that may be shown now, each with every model seat: only where every seat
+    // has had a handful of opportunities, and only with two seats or more to compare.
+    P.compareList = function (profile) {
+        const seats = profile ? profile.seats.filter(s => s.decisions > 0) : [];
+        if (seats.length < 2) return [];
+        return DIMS.filter(key => seats.every(s => s[key].score != null && chances(key, s) >= (key === 'strategy' ? COMPARE.samples : COMPARE.handful)))
+            .map(key => ({ key, seats: seats.map(s => ({ id: s.id, seat: s.seat, civ: s.civ, name: s.name || s.model || s.id, score: s[key].score, raw: rawOf(key, s), n: chances(key, s) })) }));
+    };
+    P.compareHtml = function (item) {
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const ink = s => this.legibleColor ? this.legibleColor(this.identityHex ? this.identityHex(s.id, s.civ, s.seat) : '#cccccc') : '#cccccc';
+        const best = Math.max(...item.seats.map(s => s.score)), tie = item.seats.filter(s => s.score === best).length > 1;
+        return `<div class="bcmp-head"><b>${esc(t('eval.' + item.key))}</b><span>${esc(t('bench.cmp.' + item.key))}</span><em>${esc(t('eval.provisional'))}</em></div>`
+            + '<div class="bcmp-rows">' + item.seats.map(s => `<div class="bcmp-seat${!tie && s.score === best ? ' is-lead' : ''}" style="--civ:${esc(ink(s))}">`
+                + `<span class="bcmp-name">${this.teamDotHtml ? this.teamDotHtml(s.seat, 10) : ''}${esc(s.name)}</span>`
+                + `<span class="bcmp-val"><b>${Math.round(s.score)}</b><i class="bcmp-bar"><u style="width:${Math.round(s.score)}%"></u></i><small>${esc(s.raw) || '&nbsp;'}</small></span></div>`).join('') + '</div>';
+    };
+    // Called on a timer while a match is watched. `now` is passed in by the tests.
+    P.updateCompare = function (now = Date.now()) {
+        let el = document.getElementById('compareStrip');
+        const on = this.compareOn() && !!this.broadcastOn && this.broadcastOn() && this.game.spectatorMode && this.game.gameStarted;
+        if (!on) { if (el) el.remove(); this._cmp = null; return; }
+        const st = this._cmp || (this._cmp = { key: null, since: 0, quietUntil: 0, html: null });
+        // A caption is up for as long as its timer runs (nextChronicleCaption).
+        if (this._chronicleTimer) st.quietUntil = now + COMPARE.quietMs;
+        const ledger = this.benchLedger();
+        const list = ledger ? this.compareList(ledger.profile()) : [];
+        if (!list.length || now < st.quietUntil) { if (el) el.classList.remove('is-in'); st.since = 0; return; }
+        // The next part when this one has had its time, was interrupted, or may no longer be shown.
+        if (!st.since || now - st.since >= COMPARE.showMs || !list.some(x => x.key === st.key)) {
+            st.key = list[(list.findIndex(x => x.key === st.key) + 1) % list.length].key;
+            st.since = now;
+        }
+        const html = this.compareHtml(list.find(x => x.key === st.key));
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'compareStrip'; el.className = 'broadcast-compare';
+            el.setAttribute('role', 'status');
+            document.body.appendChild(el);
+            st.html = null;
+        }
+        if (html !== st.html) { el.innerHTML = html; st.html = html; }
+        el.classList.add('is-in');
+    };
+
     // Where the panels start: under the mode's own top strip, the bar in analyze mode and
     // the scoreboard in broadcast mode, which wraps to a second row when there are many
     // seats. Measured, and handed to the stylesheet as --bench-top. The transcript panel
@@ -169,14 +249,7 @@
         if (!pins.length) pins = [(seats.find(s => s.planning.standing) || seats[0]).id];
 
         // ---- the matrix ------------------------------------------------------
-        const raw = (key, s) => {
-            const g = s.grounding, pl = s.planning, fl = s.follow, ta = s.tactical;
-            if (key === 'grounding') return g.rated ? share(g.rate) + ' · ' + g.rated : '';
-            if (key === 'planning') return pl.statements ? share(pl.coverage) + ' · ' + pl.revisions + '×' : '';
-            if (key === 'follow') return fl.judged && fl.acted + fl.dropped ? fl.acted + '/' + (fl.acted + fl.dropped) : '';
-            if (key === 'strategy') return s.strategy.samples ? share(s.strategy.powerShare) + (s.strategy.rank != null ? ' · #' + s.strategy.rank : '') : '';
-            return ta.judged && ta.episodes + ta.wonders ? (ta.atOnce + ta.wonderAnswered) + '/' + (ta.episodes + ta.wonders) : '';
-        };
+        const raw = rawOf;
         const rows = DIMS.map(key => {
             const scores = seats.map(s => s[key].score).filter(v => v != null);
             const best = scores.length > 1 ? Math.max(...scores) : null;

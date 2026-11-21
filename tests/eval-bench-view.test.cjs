@@ -20,7 +20,11 @@ function page() {
         OpenAIAIManager: { MAX_COMMANDS_PER_TURN: 3 },
         localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
         document: { getElementById: id => els[id] || null, addEventListener: (type, fn) => keys.push(fn),
-            body: { style: { setProperty: (k, v) => { vars[k] = v; }, removeProperty: k => { delete vars[k]; } },
+            // An element made by the page: it is in the document once appended, and gone once removed.
+            createElement: () => { const cls = new Set(); const e = { style: {}, innerHTML: '', writes: 0, setAttribute() {},
+                classList: { add: c => cls.add(c), remove: c => cls.delete(c), contains: c => cls.has(c) }, remove() { delete els[e.id]; } };
+                let html = ''; Object.defineProperty(e, 'innerHTML', { get: () => html, set: v => { html = v; e.writes++; } }); return e; },
+            body: { appendChild: e => { els[e.id] = e; }, style: { setProperty: (k, v) => { vars[k] = v; }, removeProperty: k => { delete vars[k]; } },
                 classList: { toggle: (c, on) => { if (on) body.add(c); else body.delete(c); }, contains: c => body.has(c) } } } });
     for (const f of ['js/ui.js', 'js/eval/bench-view.js']) vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8') + '\nthis.UI = UIManager;', context);
     const u = Object.create(context.UI.prototype);
@@ -83,7 +87,9 @@ test('D2: every string of the Bench view is keyed in all four languages', () => 
     for (const state of ['acted', 'pending', 'dropped', 'late', 'uncheckable']) keys.add('bench.st.' + state);
     for (const dim of WarEval.SCORED) keys.add('eval.' + dim);
     for (const k of ['bench.leadWon', 'bench.leadLost', 'eval.index', 'eval.indexTip', 'eval.waits', 'eval.groundingWaits', 'sum.openAnalyzer', 'sum.legacy', 'eval.strategyPlaced', 'eval.strategyTip', 'eval.strategyLive', 'eval.strategyNone', 'age.neolithic', 'age.bronze', 'age.iron']) keys.add(k);
-    keys.delete('bench.st.'); keys.delete('eval.');                      // the two prefixes those are built from
+    for (const dim of WarEval.SCORED) keys.add('bench.cmp.' + dim);
+    keys.add('spec.compareTitle');
+    keys.delete('bench.st.'); keys.delete('eval.'); keys.delete('bench.cmp.');   // the prefixes those are built from
     assert.ok(keys.size >= 30, 'only ' + keys.size + ' keys found: did the pattern change?');
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of keys) assert.ok(k in context.I[lang], lang + ' lacks ' + k);
     // No sentence is written into the markup itself.
@@ -268,4 +274,104 @@ test('the panels are an overlay of either mode: under the mode\'s own top strip,
     u._transcriptFor = null;
     u.updateBenchView();
     assert.equal(body.has('tv-open'), false);
+});
+
+// ---- broadcast comparisons (step D7) -------------------------------------------------
+const seatsOf = list => Array.from(list, x => x.key + ':' + Array.from(x.seats, s => s.name + '=' + Math.round(s.score) + '/' + s.n).join(','));
+const keysOf = list => Array.from(list, x => x.key);
+
+test('D7: a part is broadcast only when every model seat has had a handful of opportunities', async () => {
+    const { u, ledger } = page();
+    const work = (id, n, o = {}) => Array.from({ length: n }, (_, i) => decision(id, 10 + i * 10, Object.assign({ turn: i + 1, orders: [['train_unit', { unitType: 'militia' }, i % 4 ? 'ok' : 'avoidable']] }, i ? null : o)));
+    // One model seat: nothing to compare, whatever it has done.
+    work('a', 8).forEach(l => ledger.addLine(l));
+    assert.deepEqual(keysOf(u.compareList(ledger.profile())), []);
+    // Two seats, eight commands and eight decisions each: Grounding and Planning. No step
+    // has been closed, no threat was shown and no power reading exists: those stay off air.
+    work('b', 8, { plan: ['Build a tower'] }).forEach(l => ledger.addLine(l));
+    assert.deepEqual(seatsOf(u.compareList(ledger.profile())), ['grounding:Seat a=0/8,Seat b=0/8', 'planning:Seat a=0/8,Seat b=100/8']);
+    // Four of something is not a handful: with seat c in the match, only four commands in, Grounding goes.
+    const few = WarEval.createLedger();
+    work('a', 8).concat(work('b', 4)).forEach(l => few.addLine(l));
+    assert.deepEqual(keysOf(u.compareList(few.profile())), []);
+    // Five minutes of power readings bring Strategy on.
+    ledger.preview({ samples: Array.from({ length: 60 }, (_, i) => ({ t: i * 5, p: { a: { pw: 300 }, b: { pw: 500 } } })), ages: [] });
+    assert.deepEqual(keysOf(u.compareList(ledger.profile())), ['grounding', 'planning', 'strategy']);
+    ledger.preview({ samples: [{ t: 0, p: { a: { pw: 300 }, b: { pw: 500 } } }], ages: [] });
+    // The 5 October match at its end: four parts for all four seats. GPT 6.1 was shown two threats and GLM 5.3 three, so Tactical is not broadcast.
+    const full = WarEval.createLedger();
+    for (const line of fs.readFileSync(SAMPLE, 'utf8').split('\n')) full.addLine(line);
+    const list = u.compareList(full.profile());
+    assert.deepEqual(keysOf(list), ['grounding', 'planning', 'follow', 'strategy']);
+    assert.deepEqual(full.profile().seats.map(s => s.tactical.episodes + s.tactical.wonders), [2, 6, 6, 3]);
+    // What is shown is the scorer's number with the count it rests on, and the best seat is marked unless two tie.
+    const scored = await profileFile(SAMPLE);
+    assert.deepEqual(Array.from(list[0].seats, s => s.name + ' ' + s.score + ' ' + s.n), scored.seats.map(s => s.name + ' ' + s.grounding.score + ' ' + s.grounding.rated));
+    const html = u.compareHtml(list[0]);
+    assert.match(html, /^<div class="bcmp-head"><b>eval\.grounding<\/b><span>bench\.cmp\.grounding<\/span><em>eval\.provisional<\/em><\/div>/);
+    assert.equal((html.match(/class="bcmp-seat/g) || []).length, 4);
+    assert.match(html, /class="bcmp-seat is-lead"[^>]*><span class="bcmp-name">O claude-sonnet-5\.5<\/span><span class="bcmp-val"><b>94<\/b><i class="bcmp-bar"><u style="width:94%"><\/u><\/i><small>99\.4 % · 350<\/small>/);
+    assert.equal((html.match(/is-lead/g) || []).length, 1);
+    assert.doesNotMatch(u.compareHtml({ key: 'planning', seats: [{ id: 'a', name: 'A', score: 50, raw: '' }, { id: 'b', name: 'B', score: 50, raw: '' }] }), /is-lead/);
+});
+
+test('D7: one comparison at a time, in broadcast mode only, and never while a caption is up', () => {
+    const { u, els, body, keys, store, ledger } = page();
+    let board = 0;
+    u.renderBroadcast = () => { board++; };
+    const press = key => keys[0]({ key, target: {}, preventDefault() {} });
+    const work = (id, o) => Array.from({ length: 8 }, (_, i) => decision(id, 10 + i * 10, Object.assign({ turn: i + 1, orders: [['train_unit', { unitType: 'militia' }, 'ok']] }, i ? null : o)));
+    work('a', { plan: ['Build a tower'] }).concat(work('b')).forEach(l => ledger.addLine(l));
+    u.refreshBenchView();
+    const strip = () => els.compareStrip, shown = () => !!strip() && strip().classList.contains('is-in'), part = () => (/<b>eval\.(\w+)<\/b>/.exec(strip().innerHTML) || [])[1];
+    // Off until asked for, and C means nothing outside broadcast mode.
+    u.updateCompare(1000);
+    press('c');
+    assert.deepEqual([u.compareOn(), strip()], [false, undefined]);
+    body.add('broadcast-mode');
+    u.updateCompare(1000);
+    assert.equal(strip(), undefined);
+    press('c');
+    assert.deepEqual([u.compareOn(), JSON.parse(store.warViewPreferencesV1).compare, board], [true, true, 1]);
+    // The first part, then the next after nine seconds, round and round. (The switch drew it once
+    // on the real clock; from here the test's own clock runs.)
+    u._cmp = null;
+    u.updateCompare(1000);
+    assert.deepEqual([shown(), part()], [true, 'grounding']);
+    const writes = strip().writes;
+    u.updateCompare(5000);
+    assert.deepEqual([part(), strip().writes], ['grounding', writes]);              // nothing is redrawn while it stands
+    u.updateCompare(10000);
+    assert.equal(part(), 'planning');
+    u.updateCompare(19000);
+    assert.equal(part(), 'grounding');
+    // A caption comes up: the strip steps aside, stays away three seconds after it, and returns with the next part.
+    u._chronicleTimer = 7;
+    u.updateCompare(21000);
+    assert.equal(shown(), false);
+    u._chronicleTimer = null;
+    u.updateCompare(23000);
+    assert.equal(shown(), false);
+    u.updateCompare(24100);
+    assert.deepEqual([shown(), part()], [true, 'planning']);
+    // Leaving broadcast mode takes the strip along; the choice is kept for the next time.
+    body.delete('broadcast-mode');
+    u.updateCompare(25000);
+    assert.deepEqual([strip(), u.compareOn()], [undefined, true]);
+    body.add('broadcast-mode');
+    u.updateCompare(26000);
+    assert.equal(shown(), true);
+    press('C');
+    assert.deepEqual([u.compareOn(), strip(), board], [false, undefined, 2]);
+    // With nothing fit to show, nothing is shown.
+    const { u: v, els: e2, body: b2 } = page();
+    b2.add('broadcast-mode');
+    v.viewPreferences().compare = true;
+    v.updateCompare(1000);
+    assert.equal(e2.compareStrip, undefined);
+    // The board carries its icon, lit while on, and the strip is cleared with the caption at the end of a match.
+    const src = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8');
+    assert.match(src, /icon\('broadcastCompare'[^\n]+toggleCompare\(\)/);
+    assert.match(src, /on\('broadcastCompare', [^\n]+compareOn\(\)\);/);
+    assert.match(src, /getElementById\('chronicleCaption'\)\?\.remove\(\);\r?\n\s+document\.getElementById\('compareStrip'\)\?\.remove\(\);/);
 });

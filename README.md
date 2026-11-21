@@ -373,7 +373,7 @@ js/
 ├── transcript.js       # per-match JSONL recorder (states, replies, results, timeline)
 ├── analyzer.js         # transcript parsing, scene assembly, chapters
 ├── eval/ledger.js      # the evaluation profile, read from transcript lines only (live and from a file)
-├── eval/bench-view.js  # the Bench panels (key B), an overlay of analyze and broadcast mode: comparison matrix, plan tracker, response clock
+├── eval/bench-view.js  # the Bench panels (key B), an overlay of analyze and broadcast mode: comparison matrix, plan tracker, response clock; the comparison lower third of broadcast mode (key C)
 ├── eval/season.js      # the season table: profiles added up over matches under the same conditions, with intervals
 ├── season-page.js      # the Season page beside Benchmark: sample matches, matches played here, transcripts added
 ├── bench-*.js          # the benchmark: scenarios, page, worker

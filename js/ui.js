@@ -228,7 +228,9 @@ class UIManager {
             // panel over the map must not turn up in a recording by itself.
             race: saved.race === true,
             // The Bench view (overhaul steps D2 to D4): the same rule.
-            bench: saved.bench === true
+            bench: saved.bench === true,
+            // The comparison lower third of broadcast mode (overhaul step D7): the same rule.
+            compare: saved.compare === true
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
@@ -4009,6 +4011,8 @@ class UIManager {
             this._benchSig = null; this._benchSeats = null; this._benchEvidence = null;
             this.refreshBenchView();
             this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateBenchView(); }, 1500));
+            this._cmp = null;
+            this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateCompare(); }, 500));
         }
 
         // Periodic refresh
@@ -4116,6 +4120,7 @@ class UIManager {
         clearTimeout(this._soundCaptionTimer);this._soundCaptionTimer=null;this._soundCaption=null;
         clearTimeout(this._chronicleTimer); this._chronicleTimer = null; this._chronicleQueue = [];
         document.getElementById('chronicleCaption')?.remove();
+        document.getElementById('compareStrip')?.remove();
         this.stopIntentOverlay();
         if (this.game.renderer) this.game.renderer.intentMarks = null;
         if (this.broadcastOn()) this.toggleBroadcast(false, false);
@@ -4443,7 +4448,8 @@ class UIManager {
                 ctl.append(icon('broadcastAuto', '\u{1F3AC}', t('spec.actionCamTitle'), () => this.game.toggleActionCam()),
                     icon('broadcastIntent', '\u{1F3AF}', t('spec.intentTitle'), () => this.toggleIntentLayer()),
                     icon('broadcastBench', '\u{1F4CA}', t('spec.benchTitle'), () => { if (this.toggleBenchView) this.toggleBenchView(); }),
-                    icon('broadcastRace', '\u{1F4C8}', t('spec.raceTitle'), () => this.toggleRaceChart()), exit);
+                    icon('broadcastRace', '\u{1F4C8}', t('spec.raceTitle'), () => this.toggleRaceChart()),
+                    icon('broadcastCompare', '\u2696\uFE0F', t('spec.compareTitle'), () => { if (this.toggleCompare) this.toggleCompare(); }), exit);
                 this._broadcastCtl = ctl;
                 document.body.append(board, wonder);
             }
@@ -4471,6 +4477,7 @@ class UIManager {
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
         // The overlays stay through the switch and move to the new mode's places.
         if (this.updateBenchView) { this._benchTop = null; this.updateBenchView(); }
+        if (this.updateCompare) this.updateCompare();          // the lower third belongs to broadcast mode: it comes and goes with it
     }
     // One pill per seat, in seat order: badge, name, age, army, workers, buildings, and
     // how often a spectator's advice reached that model -- a broadcast must not hide that
@@ -4544,6 +4551,7 @@ class UIManager {
             on('broadcastIntent', this.intentOn());
             on('broadcastBench', !!this.benchOn && this.benchOn());
             on('broadcastRace', this.raceOn());
+            on('broadcastCompare', !!this.compareOn && this.compareOn());
         }
         const w = document.getElementById('broadcastWonder');
         if (!w) return;
