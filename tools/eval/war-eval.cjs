@@ -8,9 +8,9 @@
 //
 // Reported so far: grounding (were the commands valid when issued), planning (a live,
 // concrete plan, restated after a shock), follow-through (does it do what its plan says),
-// tactical response (is the next order aimed at a threat it was shown) and, beside them,
-// strategy (does its play turn into winning) and, beside them, the range it used and
-// efficiency (what a decision cost). Over the scored parts an Index, their plain mean.
+// tactical response (is the next order aimed at a threat it was shown) and strategy (does
+// its play turn into winning); beside them, the range it used and efficiency (what a
+// decision cost). Over the scored parts an Index, their plain mean. docs/SCORING.md.
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), readline = require('node:readline');
 const WarEval = require(path.join(__dirname, '..', '..', 'js', 'eval', 'ledger.js'));
@@ -95,7 +95,7 @@ function report(file, p) {
 async function main(argv) {
     const json = argv.includes('--json'), files = argv.filter(a => !a.startsWith('--'));
     if (!files.length || argv.includes('--help') || argv.includes('-h')) {
-        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 11).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+        console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 13).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
         process.exitCode = files.length ? 0 : 2;
         return;
     }

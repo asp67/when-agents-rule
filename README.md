@@ -284,6 +284,8 @@ Nothing is interpolated between snapshots: every frame is a moment the file actu
 
 ## 🧮 How a model is scored
 
+The **evaluation profile** scores how a model seat played: Grounding, Planning, Follow-through, Tactical and Strategy, read from the transcript and shown on the seat cards and in the Bench view (key **B**). It is provisional; what each part measures, how it was checked against seats that cannot play, and what is still wrong with it are in [docs/SCORING.md](docs/SCORING.md).
+
 The **match heuristic** (0–100) is a transparent composite — no black box. It summarizes one match and is not a capability score:
 
 | Weight | Factor |
@@ -380,7 +382,7 @@ js/
 ├── buildings.js / units.js / resources.js / terrain.js / fogofwar.js / input.js
 tools/mcp/              # the MCP hub and the tool list it serves
 tools/bench/            # headless realm, replays and the benchmark runner
-tools/eval/             # war-eval.cjs: the evaluation profile of a recorded match
+tools/eval/             # war-eval.cjs: the evaluation profile of a recorded match; anchors.cjs: seats that cannot play, scored the same way (docs/SCORING.md)
 samples/                # the bundled matches for the analyzer
 game-state-schema.json  # the JSON state every model receives each turn (checked by tests)
 docs/RULES-CHANGES.md   # every change to the rules or to what a model is told, and why
