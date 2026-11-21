@@ -107,7 +107,9 @@ window.addEventListener('load', () => {
         document.body.classList.add('demo-only');
     }
     const viewerParams = new URLSearchParams(location.search);
-    if (viewerParams.has('match') || WAR_DEMO_ONLY) {
+    // ?perf=bench takes the page for the frame benchmark (js/perf-bench.js): opening the
+    // analyzer under it would have two things drawing with one renderer.
+    if (viewerParams.get('perf') !== 'bench' && (viewerParams.has('match') || WAR_DEMO_ONLY)) {
         game.ui.anOpen();
         if (viewerParams.has('match')) {
             // A moment in it, if the link names one (review #11).

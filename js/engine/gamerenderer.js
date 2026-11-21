@@ -90,17 +90,20 @@
             const W = container.clientWidth || window.innerWidth || 1280;
             const H = container.clientHeight || window.innerHeight || 720;
             const canvas = document.createElement('canvas');
-            canvas.width = W; canvas.height = H;
             canvas.style.display = 'block';
             container.appendChild(canvas);
             this.canvas = canvas;
             this.W = W; this.H = H;
+            this.renderScale = 1;             // drawing-buffer pixels per page pixel
+            this._sizeCanvas();
             this.gl = GLCore.createContext(canvas, { preserveDrawingBuffer: true });
+            // What each frame costs (js/engine/perf.js). Light unless ?perf=1 asks for more.
+            this.perf = window.EnginePerf ? new EnginePerf.Meter(this.gl) : null;
 
             // inner-renderer + scene shims (see header)
             this.renderer = {
                 domElement: canvas,
-                setSize: (w, h) => { this.W = w; this.H = h; canvas.width = w; canvas.height = h; },
+                setSize: (w, h) => { this.W = w; this.H = h; this._sizeCanvas(); },
                 setPixelRatio: () => {},
                 render: () => {}
             };
@@ -447,7 +450,7 @@
         _computeCam() {
             this._clampTarget();
             const m3 = M();
-            const aspect = (this.W || 1) / (this.H || 1);
+            const aspect = this._aspect();
             // Narrow-FOV perspective: the eye sits far enough away that the frame
             // still covers ±halfH world units at the target — same zoom feel as
             // the old ortho, minus its reverse-perspective illusion at max zoom.
@@ -516,7 +519,7 @@
         wholeMapHalf(pitch) {
             const coast = TexGen.TERRAIN_LAND + (TexGen.COAST_WOBBLE || 0) / 2;
             const extent = coast * 2 * 1.10;   // outermost shore, plus sea to sit in
-            const aspect = (this.W || 1) / (this.H || 1);
+            const aspect = this._aspect();
             const need = Math.max(extent * Math.sin(pitch), extent / aspect) / 2;
             return Math.max(MIN_HALF, Math.min(maxHalf(), need * 1.06));
         }
@@ -571,6 +574,33 @@
 
         onWindowResize() {
             this.setSize(this.container.clientWidth, this.container.clientHeight);
+        }
+
+        // The drawing buffer has a size of its own. W and H stay the size of the element
+        // on the page, which is what the pointer and every label are measured in; the
+        // buffer is that times a resolution scale, or a size someone pinned (the frame
+        // benchmark draws 1920x1080 on every machine, whatever the window is).
+        _sizeCanvas() {
+            const c = this.canvas, pin = this._pinnedSize, scale = this.renderScale || 1;
+            const w = pin ? pin.w : Math.max(1, Math.round(this.W * scale));
+            const h = pin ? pin.h : Math.max(1, Math.round(this.H * scale));
+            if (c.width !== w) c.width = w;
+            if (c.height !== h) c.height = h;
+            // Without a size of its own the element would grow with its buffer.
+            c.style.width = this.W + 'px';
+            c.style.height = this.H + 'px';
+            this.PW = w; this.PH = h;
+        }
+
+        pinRenderSize(w, h) {
+            this._pinnedSize = w > 0 && h > 0 ? { w: Math.round(w), h: Math.round(h) } : null;
+            this._sizeCanvas();
+        }
+
+        // Width over height of the picture being drawn.
+        _aspect() {
+            const pin = this._pinnedSize;
+            return pin ? pin.w / pin.h : (this.W || 1) / (this.H || 1);
         }
 
         // ---- terrain ---------------------------------------------------------
@@ -2644,7 +2674,15 @@
 
         animate() {
             requestAnimationFrame(() => this.animate());
+            // The frame benchmark draws its own frames, one after another (js/perf-bench.js).
+            if (this.holdFrames) return;
+            this.renderFrame();
+        }
+
+        // One frame, drawn now. animate() calls it once per display refresh.
+        renderFrame() {
             const now = performance.now();
+            if (this.perf) this.perf.frameBegin(now);
             const deltaTime = Math.min(0.1, (now - this._lastTime) / 1000);
             this._lastTime = now;
 
@@ -2694,7 +2732,7 @@
             this._sky = atmosphere.sky;
             this._renderShadows();
 
-            gl.viewport(0, 0, this.W, this.H);
+            gl.viewport(0, 0, this.PW || this.W, this.PH || this.H);
             gl.clearColor(this._sky[0], this._sky[1], this._sky[2], 1); // deep sea beyond the map
             gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
             gl.useProgram(this.prog);
@@ -2790,7 +2828,7 @@
             // fog, so hidden ground cannot glow; before the bars, so they never do.
             if (this.visualStyle === 'film' && window.EngineBloom) {
                 if (this._bloom === undefined) this._bloom = EngineBloom.create(gl);
-                if (this._bloom && this._bloom.apply(this.W, this.H, 0.22 + 0.3 * atmosphere.night)) {
+                if (this._bloom && this._bloom.apply(this.PW || this.W, this.PH || this.H, 0.22 + 0.3 * atmosphere.night)) {
                     gl.useProgram(this.prog);
                     gl.enable(gl.BLEND);
                     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -2803,6 +2841,7 @@
             gl.depthMask(true);
             gl.disable(gl.BLEND);
             this._completedFrames=(this._completedFrames || 0)+1;
+            if (this.perf) this.perf.frameEnd();
         }
     }
 

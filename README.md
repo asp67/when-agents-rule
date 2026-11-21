@@ -371,6 +371,7 @@ js/
 ├── transcript.js       # per-match JSONL recorder (states, replies, results, timeline)
 ├── analyzer.js         # transcript parsing, scene assembly, chapters
 ├── bench-*.js          # the benchmark: scenarios, page, worker
+├── perf-bench.js       # ?perf=1 frame-time readout, ?perf=bench frame benchmark (docs/PERFORMANCE.md)
 ├── engine/             # in-house WebGL engine
 ├── i18n.js             # 4-language UI dictionary + game-content translations
 ├── civilizations.js    # civs, units, buildings, tech trees
