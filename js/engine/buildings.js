@@ -1447,18 +1447,40 @@
     //
     // yardKit: the pieces the yards are put together from. at(u, v) is a place u left of
     // the left wall and v forward of the front wall; a thing there shows when u + v > 0.
-    const yardKit = (parts, foot) => {
-        const wall = -foot.ex, front = foot.ez, half = Math.PI / 2;
+    //
+    // A house, a tower and a farm are built many times over, and a town of them had the
+    // same woodpile at the same corner of every house. So their yards come in several
+    // layouts (b1201, yardPlace below): the same things, standing elsewhere. The place
+    // says which side they stand on, and a seed that shifts each of them a little.
+    //   left (as ever): at(u, v) = u left of the left wall, v forward of the front wall.
+    //   right: at(u, v) = beside the right wall, running back from the front corner. It
+    //     is the left layout turned round the building, so what stood apart in the picture
+    //     still does; the right wall faces the camera, and nothing there is hidden. It
+    //     keeps behind the front wall's line: the flag stands before the right corner.
+    // Nothing is mirrored or turned (a mirrored mesh would be drawn inside out): only the
+    // places change.
+    const yardKit = (parts, foot, place = {}) => {
+        const wall = -foot.ex, front = foot.ez, half = Math.PI / 2, right = place.side === 'R';
         const P = (kind, args, tex, t) => part(parts, kind, args, tex, t);
-        // fx, fz: beside a farm's far corner. A farm is a flat field and hides nothing.
-        const k = { P, half, wall, front, fx: wall - 1.0, fz: -foot.ez * .6 };
-        k.at = (u, v) => [wall - u, front + v];
+        // fx, fz: beside a farm's edge, by default at its far left corner. A farm is a
+        // flat field and hides nothing, so its yard may stand at either side.
+        const slot = FARM_SLOTS[place.slot || 0];
+        // out: the way from the building, -1 on its left and +1 on its right.
+        const k = { P, half, wall, front, out: place.slot ? slot[0] : right ? 1 : -1, fx: slot[0] * (foot.ex + 1.0), fz: slot[1] * foot.ez };
+        let calls = 0;
+        k.at = (u, v) => {
+            const n = calls++;
+            // Outward and forward only: nearer the wall or further back it would be hidden.
+            // (Up to a unit: with less, two layouts on one side could not be told apart.)
+            if (place.seed) { u += yardNoise(place.seed, n * 2) * .9; v += yardNoise(place.seed, n * 2 + 1) * 1.0 - .15; }
+            return right ? [foot.ex + v + 1.2, front - u] : [wall - u, front + v];
+        };
         // Six logs, three, two and one, their ends to the viewer: firewood, or rice bales.
         k.logs = (x, z, r = .14, len = 1.15, tex = 'bark') => { for (let i = 0; i < 6; i++) { const up = i > 4 ? 2 : i > 2 ? 1 : 0, c = i - [0, 3, 5][up];
             P('cylinder', [r, r, len, 7], tex, { x: x + (c - (2 - up) / 2) * r * (29 / 14), y: r + up * r * (25 / 14), z, rx: half }); } };
-        // A heap of five stones to throw, running left from x.
+        // A heap of five stones to throw, running away from the building from x.
         k.heap = (x, z) => { for (let i = 0; i < 5; i++) { const up = i > 2 ? 1 : 0, c = up ? i - 3 : i;
-            P('sphere', [.2, 6, 4], 'rock', { x: x - c * .37 - up * .18, y: .17 + up * .3, z: z + up * .1 + (c % 2) * .08 }); } };
+            P('sphere', [.2, 6, 4], 'rock', { x: x + k.out * (c * .37 + up * .18), y: .17 + up * .3, z: z + up * .1 + (c % 2) * .08 }); } };
         k.jar = (x, z, h, tint) => { P('cylinder', [.3 * h, .21 * h, h * .65, 8], 'white', { x, y: h * .325, z, tint });
             P('cylinder', [.15 * h, .3 * h, h * .35, 8], 'white', { x, y: h * .825, z, tint }); };
         // Three small pots on a stall's table.
@@ -1546,6 +1568,37 @@
         return k;
     };
 
+    // A number in [0, 1) from a seed and a count. It is for the look only: it has nothing
+    // to do with the game's random numbers, and nothing in the rules reads a yard.
+    const yardNoise = (seed, n) => { const v = Math.sin(seed * 12.9898 + n * 78.233) * 43758.5453; return v - Math.floor(v); };
+    // Where a farm's yard stands: the side (-1 left, +1 right) and how far along the edge,
+    // in half-depths of the field from its middle (negative: toward the back).
+    const FARM_SLOTS = [[-1, -.6], [-1, -.1], [-1, .3], [1, -.5]];
+    // How many layouts the yard of a building comes in. A building not named has one.
+    const YARD_VARIANTS = { house: 6, tower: 4, farm: 4 };
+    // The layout of a variant. jars: the side the two jars stand on; yard: the place for
+    // yardKit. The two never stand on the right together: beside the right wall there is
+    // room for one of them. The hearth stays on the left in every layout: on the right its
+    // light falls on the wall the camera sees and paints it orange at noon (tried, b1201).
+    // Variant 0 is the layout every building had.
+    const yardPlace = (type, variant) => {
+        const n = YARD_VARIANTS[type] || 1, v = ((variant | 0) % n + n) % n;
+        if (type === 'house') return { jars: v === 2 || v === 3 ? 'R' : 'L', seed: v, yard: { side: v >= 4 ? 'R' : 'L', seed: v } };
+        if (type === 'tower') return { jars: 'L', seed: 0, yard: { side: v >= 2 ? 'R' : 'L', seed: v } };
+        if (type === 'farm') return { jars: 'L', seed: 0, yard: { slot: v } };
+        return { jars: 'L', seed: 0, yard: {} };
+    };
+    EngineBuildings.YARD_VARIANTS = YARD_VARIANTS;
+    // Which layout a building at (x, z) has: the same one every time it is drawn, on every
+    // machine and in every replay, and not the same as its neighbour's as a rule.
+    EngineBuildings.yardVariant = (type, x, z) => {
+        const n = YARD_VARIANTS[type];
+        if (!n) return 0;
+        let h = Math.imul(Math.round(x), 73856093) ^ Math.imul(Math.round(z), 19349663);
+        h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15;
+        return (h >>> 0) % n;
+    };
+
     const CLAY = [.68, .33, .20], RED = [.60, .12, .10], PALE = [.85, .82, .72];
     const YARDS = {
         greek: (k, type) => {
@@ -1623,10 +1676,11 @@
             else if (type === 'farm') {
                 // A water lift: a long pole on a frame, a bucket on a rope at its long end over
                 // the field, a ball of mud at its short one.
-                const x = k.fx, z = k.fz, dx = Math.sin(1.17), dy = Math.cos(1.17);
+                // (The long end is the one over the field, whichever edge the lift stands at.)
+                const x = k.fx, z = k.fz, to = -k.out, dx = to * Math.sin(1.17), dy = Math.cos(1.17);
                 for (const s of [-1, 1]) P('cylinder', [.05, .06, 1.7, 6], 'bark', { x, y: .85, z: z + s * .2 });
                 P('cylinder', [.03, .03, .5, 5], 'bark', { x, y: 1.6, z, rx: half });
-                P('cylinder', [.035, .05, 2.8, 6], 'bark', { x: x + .5 * dx, y: 1.63 + .5 * dy, z, rz: -1.17 });
+                P('cylinder', [.035, .05, 2.8, 6], 'bark', { x: x + .5 * dx, y: 1.63 + .5 * dy, z, rz: -1.17 * to });
                 P('sphere', [.22, 7, 5], 'white', { x: x - .9 * dx, y: 1.63 - .9 * dy, z, tint: ochre });
                 P('cylinder', [.012, .012, 1.4, 4], 'bark', { x: x + 1.9 * dx, y: 1.63 + 1.9 * dy - .7, z });
                 P('cylinder', [.13, .1, .22, 8], 'leather', { x: x + 1.9 * dx, y: 1.63 + 1.9 * dy - 1.5, z });
@@ -1820,7 +1874,7 @@
             } else if (type === 'tower') { k.logs(...at(.8, .7)); k.heap(...at(1.6, -.2)); }
             else if (type === 'farm') {
                 // The maize crib: a thatched store on four posts, and a basket of cobs.
-                const x = k.fx - .15, z = k.fz;
+                const x = k.fx + k.out * .15, z = k.fz;
                 for (const [dx, dz] of [[-.4, -.4], [.4, -.4], [-.4, .4], [.4, .4]]) P('cylinder', [.05, .06, .8, 6], 'bark', { x: x + dx, y: .4, z: z + dz });
                 P('box', [1.05, .07, 1.05], 'wood', { x, y: .835, z }); P('box', [.9, .55, .9], 'wood', { x, y: 1.14, z });
                 P('pyramid', [1.4, 1.4, .65], 'thatch', { x, y: 1.41, z });
@@ -1892,15 +1946,20 @@
     };
     EngineBuildings.YARD_CIVS = Object.keys(YARDS);
 
-    EngineBuildings.settlement = (type, civ, foot) => {
-        const parts=[];
+    EngineBuildings.settlement = (type, civ, foot, variant = 0) => {
+        const parts=[], place=yardPlace(type, variant);
         // A yard may have a fire of its own (the Persian temple's): it burns like a hearth.
-        const yardFire = YARDS[civ] ? YARDS[civ](yardKit(parts, foot), type) : null;
+        const yardFire = YARDS[civ] ? YARDS[civ](yardKit(parts, foot, place.yard), type) : null;
         if (!['town_center','house','market'].includes(type)) return yardFire ? {parts, fire: yardFire} : {parts};
-        const x=-foot.ex-1.7,z=foot.ez*.35;
+        // The hearth and the jars stand beside the left wall, a little further out and
+        // forward by the layout's seed (never back: there the house hides them). In some
+        // layouts the jars stand beside the right wall instead, anywhere along it.
+        const n1=place.seed?yardNoise(place.seed,91):0,n2=place.seed?yardNoise(place.seed,92):0,jarsRight=place.jars==='R';
+        const x=-foot.ex-1.7-n1*.5,z=foot.ez*.35+n2*.5;
+        const jx=jarsRight?foot.ex+1.3+n1*.6:x,jz=jarsRight?foot.ez*(.1-n2*.7)-.9:z;
         const jarTint=civ==='persian'?[.25,.58,.60]:civ==='egyptian'?[.75,.58,.35]:[.68,.33,.20];
         for(let i=0;i<2;i++) {
-            const px=x+i*.6,pz=z+.9+i*.2,h=i?.55:.8;
+            const px=jx+i*.6,pz=jz+.9+i*.2,h=i?.55:.8;
             if(civ==='yamato') {
                 part(parts,'cylinder',[.25,.27,h,8],'wood',{x:px,y:h/2,z:pz});
                 for(const y of [h*.2,h*.8])part(parts,'cylinder',[.275,.275,.055,8],'bark',{x:px,y,z:pz});

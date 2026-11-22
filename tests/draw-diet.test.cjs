@@ -75,8 +75,9 @@ test('a finished building: batches for the picture, a caster for the shadow, its
     assert.match(s, /this\._dl = \{ opaque: \[\], blended: \[\], bars: \[\], casters: \[\] \};/);
     assert.match(s, /this\._dl2 = \{ opaque: \[\], blended: \[\], bars: \[\], casters: \[\] \}\)/);
     assert.match(s, /\(dl\.casters \|\| \(dl\.casters = \[\]\)\)\.length = 0;/);
-    // The dressing: merged per material and cached with the model; a Wonder's has its own key (two lamps).
-    assert.match(s, /const dressed=modelKey\?dressing\.parts\.map\(p=>p\.blend\?Object\.assign\(\{\},p,\{blend:false\}\):p\):null;\s+eb\.details=modelKey\s+\? this\._buildingBatches\(modelKey\+'\|dressing\|'\+!!building\.isWonder,dressed\)/);
+    // The dressing: merged per material and cached with the model; a Wonder's has its own key (two lamps),
+    // and so has each layout of a yard (build 1201).
+    assert.match(s, /const dressed=modelKey\?dressing\.parts\.map\(p=>p\.blend\?Object\.assign\(\{\},p,\{blend:false\}\):p\):null;\s+eb\.details=modelKey\s+\? this\._buildingBatches\(modelKey\+'\|dressing\|'\+!!building\.isWonder\+'\|'\+variant,dressed\)/);
     // Left out, with the worn patch before the door, from where units are their far models; the lights stay.
     assert.match(s, /if\(this\._halfH<=EngineRenderer\.FAR_UNIT_HALF_H\)\{\s+for\(const p of eb\.details\)/);
     assert.match(s, /if\(eb\.wear&&this\._halfH<=EngineRenderer\.FAR_UNIT_HALF_H\)dl\.blended\.push/);
@@ -85,16 +86,19 @@ test('a finished building: batches for the picture, a caster for the shadow, its
     // The dressing casts as one shape as well (build 1185): its batches say they cast nothing, and its
     // caster goes with it only while it is drawn solid. Fading out it is see-through and casts nothing.
     assert.match(s, /\.map\(g=>\(\{buf:g\.buf,tex:this\.tex\[g\.texName\],tint:g\.tint\|\|this\.WHITE,model:world,noShadow:true\}\)\)/);
-    assert.match(s, /eb\.detailCasters=modelKey\?this\._buildingCaster\(modelKey\+'\|dressing\|'\+!!building\.isWonder,dressed\)\.map\(buf=>\(\{buf,model:world\}\)\):null;/);
+    assert.match(s, /eb\.detailCasters=modelKey\?this\._buildingCaster\(modelKey\+'\|dressing\|'\+!!building\.isWonder\+'\|'\+variant,dressed\)\.map\(buf=>\(\{buf,model:world\}\)\):null;/);
     assert.match(s, /if\(detailFade===1&&eb\.detailCasters\)for\(const en of eb\.detailCasters\)dl\.casters\.push\(en\);/);
 });
 
-test('the dressing of a building really is the same for every building of its model', () => {
+test('the dressing of a building really is the same for every building of its model and layout', () => {
     const { W } = load(), B = W.EngineBuildings;
     const fp = { ex: 5, ez: 5, ey: 6 };
     const a = JSON.stringify(B.settlement('house', 'greek', fp)), b = JSON.stringify(B.settlement('house', 'greek', fp));
     assert.equal(a, b);
     assert.notEqual(a, JSON.stringify(B.settlement('house', 'egyptian', fp)));
+    // A layout (build 1201) is as fixed as the model: the same parts every time it is asked for.
+    for (let v = 0; v < B.YARD_VARIANTS.house; v++) assert.equal(JSON.stringify(B.settlement('house', 'greek', fp, v)), JSON.stringify(B.settlement('house', 'greek', fp, v)));
+    assert.notEqual(a, JSON.stringify(B.settlement('house', 'greek', fp, 4)));
     assert.doesNotMatch(src('buildings'), /Math\.random/);
 });
 

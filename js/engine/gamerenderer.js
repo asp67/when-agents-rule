@@ -1868,7 +1868,10 @@
                 const trebK = building.type === 'trebuchet_advanced' ? 1.25 : building.type === 'trebuchet' ? 1 : 0;
                 const offX = trebK ? -1.0 * trebK : fp.ex + 0.55, offZ = trebK ? 2.6 * trebK * 0.85 : fp.ez + 0.55;
                 const offY = trebK ? 0.35 * trebK : 0;   // a trebuchet stands raised on its wheels
-                const dressing=EngineBuildings.settlement(building.type,building.civilization,fp);
+                // A house, a tower and a farm have several layouts of yard (b1201): which one
+                // is the building's place's, so a row of houses is not a row of the same yard.
+                const variant=EngineBuildings.yardVariant(building.type,building.x,building.z);
+                const dressing=EngineBuildings.settlement(building.type,building.civilization,fp,variant);
                 eb.lamps=[];
                 for(const side of (building.type==='town_center'||building.isWonder?[-1,1]:[-1])){
                     const lamp=EngineBuildings.entranceLamp(building.type,building.age,building.civilization,fp,parts,side,!!building.isWonder);
@@ -1886,13 +1889,13 @@
                 // as it was.
                 const dressed=modelKey?dressing.parts.map(p=>p.blend?Object.assign({},p,{blend:false}):p):null;
                 eb.details=modelKey
-                    ? this._buildingBatches(modelKey+'|dressing|'+!!building.isWonder,dressed)
+                    ? this._buildingBatches(modelKey+'|dressing|'+!!building.isWonder+'|'+variant,dressed)
                         .map(g=>({buf:g.buf,tex:this.tex[g.texName],tint:g.tint||this.WHITE,model:world,noShadow:true}))
                     : dressing.parts.map(p=>({buf:this._buf(p.kind,p.args),tex:this.tex[p.tex],
                         tint:p.tint||this.WHITE,model:m3.multiply(world,p.m)}));
                 // ...and it casts as one shape, like the building: its batches each have their own
                 // tint, so merging them saved little, and each was drawn again for its shadow.
-                eb.detailCasters=modelKey?this._buildingCaster(modelKey+'|dressing|'+!!building.isWonder,dressed).map(buf=>({buf,model:world})):null;
+                eb.detailCasters=modelKey?this._buildingCaster(modelKey+'|dressing|'+!!building.isWonder+'|'+variant,dressed).map(buf=>({buf,model:world})):null;
                 if(dressing.fire){
                     const [x,y,z]=dressing.fire;
                     eb.fire=[world[0]*x+world[8]*z+world[12],world[5]*y+world[13],world[2]*x+world[10]*z+world[14]];

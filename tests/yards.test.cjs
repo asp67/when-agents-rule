@@ -118,6 +118,100 @@ test('no building, yard or lamp names a texture the renderer does not make', () 
         check(parts, civ + ' ' + type);
         check(B.settlement(type, civ, foot).parts, civ + ' ' + type + ' yard');
         check(B.entranceLamp(type, age, civ, foot, parts).parts, civ + ' ' + type + ' lamp');
+        for (let v = 1; v < (B.YARD_VARIANTS[type] || 1); v++) check(B.settlement(type, civ, foot, v).parts, civ + ' ' + type + ' yard ' + v);
     }
     assert.deepEqual([...missing], []);
+});
+
+// --- layouts (build 1201): a house, a tower and a farm are built many times over, and their
+// yards come in several layouts, the same things standing elsewhere.
+const VARIED = Object.entries(B.YARD_VARIANTS);
+
+test('a house has six layouts of yard, a tower and a farm four, and no other building more than one', () => {
+    assert.deepEqual(Object.assign({}, B.YARD_VARIANTS), { house: 6, tower: 4, farm: 4 });
+    const foot = FEET[1];
+    for (const civ of CIVS) for (const type of B.TYPES) {
+        const plain = sign(B.settlement(type, civ, foot).parts);
+        assert.equal(sign(B.settlement(type, civ, foot, 0).parts), plain, civ + ' ' + type + ': layout 0 is the one without a number');
+        if (!B.YARD_VARIANTS[type]) for (const v of [1, 2, 5]) assert.equal(sign(B.settlement(type, civ, foot, v).parts), plain, civ + ' ' + type + ' has one layout');
+    }
+});
+
+test('the layouts of a building are all different, of the same things', () => {
+    const foot = FEET[0];
+    const things = parts => parts.map(p => p.kind + '|' + p.args.join(',') + '|' + p.tex + '|' + (p.tint || '')).sort().join(';');
+    for (const civ of CIVS) for (const [type, n] of VARIED) {
+        const seen = new Set(), first = things(B.settlement(type, civ, foot, 0).parts);
+        for (let v = 0; v < n; v++) {
+            const parts = B.settlement(type, civ, foot, v).parts;
+            seen.add(sign(parts));
+            // The same things, so the same materials: a layout costs no draw more than another.
+            assert.equal(things(parts), first, civ + ' ' + type + ' layout ' + v + ' is made of the same things');
+        }
+        assert.equal(seen.size, n, civ + ' ' + type + ': ' + seen.size + ' different layouts of ' + n);
+    }
+});
+
+test('in every layout the yard stands where the camera sees it, clear of the walls, the door and the flag', () => {
+    for (const civ of CIVS) for (const foot of FEET) for (const [type, n] of VARIED) for (let v = 0; v < n; v++) {
+        const all = B.settlement(type, civ, foot, v);
+        for (const p of all.parts) {
+            const x = p.m[12], z = p.m[14], where = civ + ' ' + type + ' layout ' + v + ' (' + x.toFixed(2) + ', ' + z.toFixed(2) + ')';
+            assert.ok(Mesh[p.kind](...p.args).positions.every(Number.isFinite) && Array.from(p.m).every(Number.isFinite), where + ' is sound');
+            assert.ok(p.m[13] >= 0 && p.m[13] < 2.5, where + ' is low');
+            if (type === 'farm') { assert.ok(Math.abs(x) > foot.ex - 1 && Math.abs(x) < foot.ex + 3.2, where + ': at one of the field\'s side edges'); continue; }
+            assert.ok(Math.abs(x) > foot.ex + 0.2, where + ': beside the building, not in it and not before the door');
+            assert.ok(Math.abs(x) < foot.ex + 6.5, where + ': within reach');
+            // On the right everything shows, and keeps behind the flag at the front corner.
+            if (x > 0) assert.ok(Math.hypot(x - foot.ex - 0.55, z - foot.ez - 0.55) > 0.9, where + ': clear of the flag');
+        }
+        // What the yard adds (the first parts) stands forward enough on the left to show.
+        const base = B.settlement(type, NONE, foot, v).parts.length;
+        for (const p of all.parts.slice(0, all.parts.length - base)) {
+            const x = p.m[12], z = p.m[14], d = -foot.ex - x;
+            if (type !== 'farm' && x < 0) assert.ok(z > foot.ez - d - 0.75, civ + ' ' + type + ' layout ' + v + ': not behind the building (' + x.toFixed(2) + ', ' + z.toFixed(2) + ')');
+        }
+    }
+});
+
+test('the hearth burns on the left in every layout of a house, while its jars or its yard stand on the right in some', () => {
+    // On the right its light falls on the wall the camera sees and paints it orange at noon.
+    const foot = FEET[0];
+    for (const civ of CIVS) {
+        const sides = new Set();
+        for (let v = 0; v < B.YARD_VARIANTS.house; v++) {
+            const r = B.settlement('house', civ, foot, v);
+            assert.ok(r.fire && r.fire[0] < -foot.ex - 1, civ + ' house layout ' + v + ': the hearth is left of the house');
+            sides.add(r.parts.some(p => p.m[12] > foot.ex) ? 'right' : 'left');
+        }
+        assert.deepEqual([...sides].sort(), ['left', 'right'], civ + ': some layouts use the right side, some do not');
+    }
+});
+
+test('a building\'s layout follows from its place: always the same there, spread evenly over the map', () => {
+    for (const [type, n] of VARIED) {
+        const count = new Array(n).fill(0);
+        for (let x = -400; x < 400; x += 20) for (let z = -400; z < 400; z += 20) {
+            const v = B.yardVariant(type, x, z);
+            assert.ok(Number.isInteger(v) && v >= 0 && v < n);
+            assert.equal(B.yardVariant(type, x, z), v);
+            assert.equal(B.yardVariant(type, x + 0.2, z - 0.3), v, 'a place is a whole unit: the layout does not flicker with a fraction');
+            count[v]++;
+        }
+        for (const c of count) assert.ok(c > 1600 / n * 0.7 && c < 1600 / n * 1.3, type + ': ' + count.join(' '));
+        // Neighbours are different more often than not.
+        let same = 0, pairs = 0;
+        for (let x = -400; x < 400; x += 4) for (let z = -400; z < 400; z += 4) { pairs++; if (B.yardVariant(type, x, z) === B.yardVariant(type, x + 4, z)) same++; }
+        assert.ok(same / pairs < 1.5 / n, type + ': ' + same + ' of ' + pairs + ' neighbours share a layout');
+    }
+    for (const type of ['town_center', 'barracks', 'archery_range', 'academy', 'temple', 'stable', 'wonder']) assert.equal(B.yardVariant(type, 12, 34), 0, type);
+});
+
+test('the renderer asks for the layout of the building\'s place and keeps one model a layout', () => {
+    const src = fs.readFileSync(path.join(root, 'js/engine/gamerenderer.js'), 'utf8');
+    assert.ok(src.includes('const variant=EngineBuildings.yardVariant(building.type,building.x,building.z);'));
+    assert.ok(src.includes('EngineBuildings.settlement(building.type,building.civilization,fp,variant)'));
+    // Two layouts under one key would share the first one's mesh.
+    assert.ok(src.includes("this._buildingBatches(modelKey+'|dressing|'+!!building.isWonder+'|'+variant,dressed)"));
+    assert.ok(src.includes("this._buildingCaster(modelKey+'|dressing|'+!!building.isWonder+'|'+variant,dressed)"));
 });
