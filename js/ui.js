@@ -6248,7 +6248,15 @@ class UIManager {
                         const carried = WarEval.publicProfile(ledger.profileWith(results, timeline));
                         if (carried.seats.length) results.profile = carried;
                     }
-                    rec.finish([results, timeline]);
+                    // The scores over the match go into the file too (build 1221): the profile
+                    // as it stood every half minute, so the history can be read later without
+                    // the scorer. Worked out with the timeline that is written beside it.
+                    let scores = null;
+                    if (canScore && typeof ledger.history === 'function') {
+                        try { if (ledger.preview) ledger.preview(timeline); scores = ledger.history(); if (!scores.samples.length) scores = null; }
+                        catch (e) { console.warn('[transcript] score history failed', e); }
+                    }
+                    rec.finish([results, timeline, scores]);
                     // And the match joins the season table (overhaul step D9): who sat where
                     // under which conditions, the placement and the scores. Kept in this
                     // browser, forgettable on the Season page; no prompt and no reply is in it.

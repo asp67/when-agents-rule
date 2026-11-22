@@ -37,6 +37,13 @@
         REPEAT_WINDOW: 2,
         // A plan step is acted on if a command carries it out within this many decisions.
         FOLLOW_WINDOW: 10,
+        // The scores over the match (build 1221): how many seconds lie between two samples
+        // of the history, and what a seat's sample holds, in this order. Everything is as
+        // it stood at that second: the scores of the profile, then what they were counted
+        // from and what they cost so far. A score that could not be given yet is null.
+        HISTORY_SEC: 30,
+        HISTORY_FIELDS: ['decisions', 'index', 'grounding', 'planning', 'follow', 'tactical', 'strategy',
+            'commands', 'ok', 'avoidable', 'invalid', 'repeated', 'promptTokens', 'completionTokens', 'thinkingMs'],
         // A threat is answered by an order aimed at it within this many decisions, counting
         // the one that was shown it; "at once" is that one or the next. An order is aimed at
         // a threat when it points within RESPONSE_RADIUS of an attacker or of what is attacked.
@@ -821,6 +828,48 @@
             if (this._past && this._pastKey === key) return this._past;
             this._pastKey = key;
             return this._past = this._work([...this.seats.values()].map(s => Object.assign({}, s, { turns: s.turns.filter(t => t.sec != null && t.sec <= sec) })), sec);
+        }
+
+        // The scores over the whole match, to be written into the transcript as a line of
+        // its own (asp67, 22 November 2026: "Scoring needs to be part of the transcript, so
+        // that the score history is saved over the entire match and can be analyzed
+        // later"). The profile as it stood every HISTORY_SEC seconds and at the end, a row
+        // of numbers a seat (WarEval.HISTORY_FIELDS says which). Nothing in it is new
+        // knowledge: it is profileAt() asked many times, so a reader who scores the file
+        // arrives at the same rows, and a file from before this build has them worked out
+        // on reading. It does not depend on the results line, which is written with it.
+        history(every = WarEval.HISTORY_SEC) {
+            const seats = [...this.seats.values()].filter(s => s.turns.length);
+            let end = 0;
+            for (const s of seats) for (const t of s.turns) if (t.sec != null && t.sec > end) end = t.sec;
+            const tl = this.timeline && this.timeline.samples;
+            if (tl && tl.length && num(tl[tl.length - 1].t) > end) end = num(tl[tl.length - 1].t);
+            const times = [];
+            for (let t = every; t < end; t += every) times.push(t);
+            if (end > 0) times.push(end);
+            const samples = times.map(t => {
+                const v = {};
+                for (const p of this.profileAt(t).seats) {
+                    if (!p.decisions) continue;
+                    const turns = this.seats.get(p.id).turns.filter(x => x.sec != null && x.sec <= t), g = p.grounding;
+                    v[p.id] = [p.decisions, p.index.value, g.score, p.planning.score, p.follow.score, p.tactical.score, p.strategy.score,
+                        sum(turns.map(x => x.commands)), g.ok, g.avoidable, g.invalid, g.repeated,
+                        sum(turns.map(x => x.prompt || 0)), sum(turns.map(x => x.completion || 0)), sum(turns.map(x => x.latencyMs || 0))];
+                }
+                return { t, v };
+            });
+            return { type: 'scores', kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, everySec: every, fields: WarEval.HISTORY_FIELDS.slice(),
+                seats: seats.map(s => ({ id: s.id, seat: s.seat, civ: s.civ, name: s.name, model: s.model })), samples };
+        }
+        // A seat's history as one list a field, from a 'scores' line or from history():
+        // { t: [...], index: [...], grounding: [...], ... }. Null for a seat that is not in it.
+        static series(scores, id) {
+            if (!scores || !Array.isArray(scores.samples) || !Array.isArray(scores.fields)) return null;
+            const rows = scores.samples.filter(s => s.v && s.v[id]);
+            if (!rows.length) return null;
+            const out = { t: rows.map(s => s.t) };
+            scores.fields.forEach((f, i) => { out[f] = rows.map(s => s.v[id][i]); });
+            return out;
         }
 
         // The profile as it will stand once the match's two closing lines are in the file

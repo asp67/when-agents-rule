@@ -309,6 +309,33 @@ The carried profile depends on the placement and the timeline, which are written
 same breath. It is therefore worked out as it will stand once those lines are in the file,
 not as it stood a moment before.
 
+## The scores over the match
+
+From build 1221 on, a transcript also carries a `scores` line, written with the results and
+the timeline: the profile as it stood every 30 seconds of the match and at its end. It is
+there so the history can be read later without the scorer.
+
+```json
+{"type":"scores","kind":"war-eval/1","scale":"v3","everySec":30,
+ "fields":["decisions","index","grounding","planning","follow","tactical","strategy",
+           "commands","ok","avoidable","invalid","repeated","promptTokens","completionTokens","thinkingMs"],
+ "seats":[{"id":"ai_1","seat":0,"civ":"greek","name":"...","model":"..."}],
+ "samples":[{"t":30,"v":{"ai_1":[1,null,100,0,null,null,50,2,2,0,0,0,5210,340,4100]}}]}
+```
+
+A sample holds one row of numbers a seat, in the order `fields` gives. The seven scores come
+first, as the profile had them at that second (`null` where a part could not be scored yet);
+then what they were counted from so far (commands given, how many worked, how many were
+refused for a reason the state had shown, how many could not be called, how many repeated a
+mistake); then what it cost so far (tokens in and out, and the time spent waiting for answers).
+Token counts are 0 for a seat whose harness reports no usage, as an MCP seat's does not.
+
+Nothing in the line is new knowledge. It is `profileAt()` asked once a sample, so scoring the
+file again gives the same rows, and for a file from before build 1221 the rows are worked out
+on reading (`ledger.history()`). The last sample is the profile as it stood at the last
+second, before the placement was known; the final profile, which knows the placement, is
+the one in the `results` line. The two can differ in Strategy and so in the Index.
+
 ## The match heuristic
 
 The 0-100 match heuristic (command success 34, progression 20, format 18, reliability 15,

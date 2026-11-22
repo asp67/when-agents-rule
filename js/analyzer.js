@@ -26,6 +26,7 @@ class TranscriptAnalyzer {
         this.contract = null;    // type:"contract" — what each seat was offered, fingerprinted
         this.results = null;     // type:"results" — absent if the match was interrupted
         this.timeline = null;    // type:"timeline" — ditto
+        this.scores = null;      // type:"scores": the scores over the match, where the file carries them
         this.turns = [];         // every turn, chronological across all seats
         this.markers = [];       // type:"round_missed" and anything else non-turn
         this.inputs = [];        // type:"input" -- what a re-simulation replays (review #9), never a row
@@ -74,6 +75,7 @@ class TranscriptAnalyzer {
             if (o.type === 'contract') { this.contract = o; continue; }
             if (o.type === 'results') { this.results = o; continue; }
             if (o.type === 'timeline') { this.timeline = o; continue; }
+            if (o.type === 'scores') { this.scores = o; continue; }   // the scores over the match (build 1221)
             if (o.type === 'input') { this.inputs.push(o); continue; }
             if (o.type === 'chronicle') { this.chronicle.push(o); continue; }
             if (o.type) { this.markers.push(o); continue; }   // round_missed and future kinds

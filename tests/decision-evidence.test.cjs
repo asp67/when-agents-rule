@@ -176,3 +176,46 @@ test('the seat cards can be ordered by the Index, and the choice is kept', () =>
         'eval.planState.acted', 'eval.planState.begun', 'eval.planState.part', 'eval.planState.pending', 'eval.planState.dropped', 'eval.planState.uncheckable'])
         assert.equal(i18n.split('"' + key + '":').length - 1, 4, key);
 });
+
+// Build 1221 (asp67): "Scoring needs to be part of the transcript, so that the score history
+// is saved over the entire match and can be analyzed later."
+test('the scores over the match are a line of the transcript, and a reader arrives at the same rows', () => {
+    const lines = [];
+    for (let n = 1; n <= 9; n++) lines.push(decision(n, n === 1 ? { plan: ['Build a tower by the gate', 'Train militia'], orders: [['assign_workers']] }
+        : n === 4 ? { attack: raid, orders: [['attack_target', { targetX: 105, targetZ: 100 }]] } : n % 2 ? { orders: [militia] } : { orders: [tower, ['train_unit', { unitType: 'militia' }, 'avoidable']] }));
+    const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x));
+    const h = l.history();
+    assert.deepEqual([h.type, h.scale, h.everySec, h.kind], ['scores', WarEval.SCALE, 30, 'war-eval/' + WarEval.VERSION]);
+    assert.deepEqual(plain(h.fields), plain(WarEval.HISTORY_FIELDS)); assert.equal(h.fields.length, 15);
+    assert.deepEqual(plain(h.seats), [{ id: 'a', seat: 0, civ: null, name: 'Seat a', model: null }]);
+    // Decisions fall every 30 s from 0:30 to 4:30: a sample at each, the last at the last decision.
+    assert.deepEqual(h.samples.map(s => s.t), [30, 60, 90, 120, 150, 180, 210, 240, 270]);
+    // Every row is the profile as it stood at that second, and what it was counted from.
+    for (const s of h.samples) {
+        const p = l.profileAt(s.t).seats[0], row = s.v.a, at = f => row[h.fields.indexOf(f)];
+        assert.deepEqual([at('decisions'), at('index'), at('grounding'), at('planning'), at('follow'), at('tactical'), at('strategy')],
+            [p.decisions, p.index.value, p.grounding.score, p.planning.score, p.follow.score, p.tactical.score, p.strategy.score], 'at ' + s.t);
+        assert.deepEqual([at('ok'), at('avoidable'), at('invalid'), at('repeated')], [p.grounding.ok, p.grounding.avoidable, p.grounding.invalid, p.grounding.repeated]);
+        assert.equal(at('decisions'), s.t / 30);
+    }
+    // They grow: a decision more each sample, never fewer commands or mistakes.
+    const col = f => h.samples.map(s => s.v.a[h.fields.indexOf(f)]);
+    for (const f of ['decisions', 'commands', 'ok', 'avoidable']) assert.ok(col(f).every((v, i, a) => !i || v >= a[i - 1]), f);
+    assert.equal(col('avoidable')[8], 3); assert.equal(col('commands')[8], 12);   // three refused orders among twelve
+    // As lists a field, for a graph.
+    const series = WarEval.Ledger.series(h, 'a');
+    assert.deepEqual([series.t.length, series.index.length, series.decisions[8]], [9, 9, 9]);
+    assert.equal(WarEval.Ledger.series(h, 'nobody'), null); assert.equal(WarEval.Ledger.series(null, 'a'), null);
+    // Written into the file and read again: the line changes no number, and the rows worked out from the file are the rows in it.
+    const again = WarEval.createLedger();
+    lines.concat([JSON.stringify(h)]).forEach(x => again.addLine(x));
+    assert.deepEqual(plain(again.history().samples), plain(h.samples));
+    assert.ok(WarEval.sameProfile(WarEval.publicProfile(again.profile()), WarEval.publicProfile(l.profile())));
+    // A seat that never decided is in no row; an empty match has no rows.
+    assert.equal(WarEval.createLedger().history().samples.length, 0);
+    // The page writes it with the results and the timeline, and the analyzer keeps it apart from the markers.
+    const ui = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8'), an = fs.readFileSync(path.join(root, 'js/analyzer.js'), 'utf8');
+    assert.match(ui, /rec\.finish\(\[results, timeline, scores\]\);/);
+    assert.match(an, /if \(o\.type === 'scores'\) \{ this\.scores = o; continue; \}/);
+    assert.ok(an.indexOf("o.type === 'scores'") < an.indexOf('if (o.type) { this.markers.push(o); continue; }'));
+});

@@ -148,7 +148,7 @@ test('every string of the page is keyed in all four languages, and it opens and 
 test('a finished match joins the table, and a rematch can trade the models\' seats', () => {
     const src = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8');
     // Kept right after the closing lines are written, from the same results the file carries.
-    assert.match(src, /rec\.finish\(\[results, timeline\]\);[\s\S]{0,700}WarSeason\.entryFrom\(\{ header: rec\.matchMeta, contract: this\.game\.openAIAIManager\.contract \|\| null, results, profile: results\.profile, source: 'played' \}[\s\S]{0,120}this\._seasonKept = SeasonPage\.keep\(entry\);/);
+    assert.match(src, /rec\.finish\(\[results, timeline, scores\]\);[\s\S]{0,700}WarSeason\.entryFrom\(\{ header: rec\.matchMeta, contract: this\.game\.openAIAIManager\.contract \|\| null, results, profile: results\.profile, source: 'played' \}[\s\S]{0,120}this\._seasonKept = SeasonPage\.keep\(entry\);/);
     const context = vm.createContext({ console, Date, WarEval, t: k => k, OpenAIAIManager: { MAX_COMMANDS_PER_TURN: 3 }, document: { getElementById: () => null } });
     vm.runInContext(src + '\nthis.UI = UIManager;', context);
     const swap = s => JSON.parse(JSON.stringify(context.UI.swapModelSeats(s)));
