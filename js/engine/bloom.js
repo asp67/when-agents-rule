@@ -100,27 +100,33 @@
             return {
                 // Add the bloom of what is on screen now. Leaves the default framebuffer
                 // bound, blending off and depth testing on; the caller restores its program.
-                apply(W, H, strength) {
+                // from: { tex, w, h }, the scene where it was drawn into a picture of its
+                // own (js/engine/post.js): read as it is, and the frame is not copied.
+                apply(W, H, strength, from) {
                     if (!(strength > 0) || W < 8 || H < 8) return false;
                     if (!size || size[0] !== W || size[1] !== H) {
                         release();
                         const qw = Math.max(1, W >> 2), qh = Math.max(1, H >> 2);
-                        scene = texture(gl, W, H); a = target(gl, qw, qh); b = target(gl, qw, qh);
+                        a = target(gl, qw, qh); b = target(gl, qw, qh);
                         if (!a || !b) { release(); return false; }
                         size = [W, H];
                     }
                     const cull = gl.isEnabled(gl.CULL_FACE);
                     gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE); gl.depthMask(false);
                     gl.activeTexture(gl.TEXTURE0);
-                    // The finished frame, antialiasing resolved.
-                    gl.bindTexture(gl.TEXTURE_2D, scene);
-                    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, W, H);
+                    if (from) gl.bindTexture(gl.TEXTURE_2D, from.tex);
+                    else {
+                        // The finished frame, antialiasing resolved.
+                        if (!scene) scene = texture(gl, W, H);
+                        gl.bindTexture(gl.TEXTURE_2D, scene);
+                        gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, W, H);
+                    }
                     // Bright parts at a quarter of the size.
                     gl.bindFramebuffer(gl.FRAMEBUFFER, a.fb);
                     gl.viewport(0, 0, a.w, a.h);
                     gl.useProgram(progs.bright);
                     gl.uniform1i(progs.bright.uniforms.uSrc, 0);
-                    gl.uniform2f(progs.bright.uniforms.uTexel, 1 / W, 1 / H);
+                    gl.uniform2f(progs.bright.uniforms.uTexel, 1 / (from ? from.w : W), 1 / (from ? from.h : H));
                     gl.uniform1f(progs.bright.uniforms.uThreshold, EngineBloom.THRESHOLD);
                     gl.uniform1f(progs.bright.uniforms.uKnee, EngineBloom.KNEE);
                     draw(progs.bright);

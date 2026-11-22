@@ -288,3 +288,49 @@ that draw more.
 Short of the plan's "a frame allocates nothing": the matrices are no longer allocated,
 the entries of the draw lists still are (an object each, and a tint for some), and by
 the browser's coarse count they are the larger part of what a frame leaves behind.
+
+## The scene in a picture of its own (overhaul step A10, build 1189)
+
+The scene is drawn straight into the canvas, and still is whenever nothing else is
+wanted. `js/engine/post.js` adds a second way: the scene into a multisampled target of
+its own, then onto the canvas through one filter. It is used in two cases.
+
+**A smaller scene.** When the quality governor takes resolution off (its steps are 0.85,
+0.7 and 0.6), the canvas used to shrink and the browser stretched it back, which blurs
+everything on it alike. Now the canvas keeps the display's resolution: the scene is
+drawn smaller into the target, sharpened on its way up (`EnginePost.SHARPEN`), and the
+health bars and banners that follow are drawn at the canvas's own size.
+`renderer.postUpscale = false` gives the old way back, and WebGL 1 has only the old way.
+
+**Focus.** `renderer.tiltShift` blurs a close-up toward the top and bottom of the
+picture, full from a camera half-height of 14 down and gone from 28 up
+(`EngineRenderer.FOCUS`), on High only. It is built and switched off: a look to be
+decided by eye, not by a number.
+
+Checked in the page, 1920x1080, High. The same frozen frame drawn straight and through
+the target at full size: 4 pixels of two million differ by more than 4 of 255, the
+largest by 11, and the alpha the canvas ends up with is the same everywhere. With the
+bloom, which then reads the target instead of copying the frame: 33 pixels, the largest
+by 13.
+
+What it costs on this card, in a light scene (0.6 to 1.0 ms a frame, three runs each, so
+only differences of 0.2 ms and more mean anything):
+
+| | ms a frame, median |
+| --- | --- |
+| straight into the canvas | 0.6 to 0.7 |
+| through the target, full size | 0.8 |
+| Cinematic light, the frame copied for the bloom | 0.8 |
+| Cinematic light, the bloom reading the target | 0.8 to 1.1 |
+| the old way at 0.7: the canvas shrunk | 0.7 to 1.0 |
+| the new way at 0.7: the scene shrunk, sharpened up | 0.8 to 1.0 |
+| a close-up, focus off / on | 0.6 to 0.7 / 0.7 to 0.8 |
+
+So the target is one or two tenths of a millisecond here, which is why a picture at
+full size does not go through it; and the bloom is no cheaper for reading the target
+than for copying the frame, so the plan's "bloom without the frame copy" is true only
+where the target is in use anyway. What the sharpened upscale and the pass cost on an
+integrated card is not known: this machine never governs down, and the office machines
+are unmeasured.
+
+Not changed: when the governor steps, and by how much. Only how a step is drawn.

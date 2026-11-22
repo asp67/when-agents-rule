@@ -179,6 +179,15 @@
             // after asp67 had seen it side by side with what was. False: every material its
             // own texture at every distance, as before.
             this.unitPalette = true;
+            // The scene in a picture of its own (overhaul step A10, js/engine/post.js).
+            // postUpscale: what the quality governor takes off the resolution is taken off
+            // the scene, which is then sharpened up to a canvas that keeps its size; false
+            // shrinks the canvas instead, as before. tiltShift: a close-up blurs toward the
+            // top and bottom of the picture; off until asked for.
+            this.postUpscale = true;
+            this.tiltShift = false;
+            this.postAlways = false;          // for measuring: the scene in its own picture even at full size
+            this.sceneScale = 1;              // scene pixels per drawing-buffer pixel
             this._frameNo = 0;                // which frame this is, so nothing is moved twice in one
             this._fogCanvas = null;
             // Per-frame lists. casters: what is drawn into the shadow map only (a building's
@@ -674,7 +683,29 @@
             const ratio = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
             const cap = EngineRenderer.RESOLUTION_CAP[this.graphicsQuality] || 1;
             const auto = this.qualityChoice === 'auto' && this._governor ? this._governor.scale : 1;
-            return Math.max(0.5, Math.min(ratio, cap)) * auto;
+            // Where the scene can be drawn into a picture of its own, the canvas keeps the
+            // display's resolution and the scene is drawn smaller (see _drawPicture).
+            const own = this._postAble();
+            this.sceneScale = own ? auto : 1;
+            return Math.max(0.5, Math.min(ratio, cap)) * (own ? 1 : auto);
+        }
+
+        _postAble() {
+            return this.postUpscale !== false && this._postFx !== null
+                && typeof EnginePost !== 'undefined' && EnginePost.supported(this.gl);
+        }
+
+        _post() {
+            if (this._postFx === undefined) this._postFx = (typeof EnginePost !== 'undefined' && EnginePost.create(this.gl)) || null;
+            return this._postFx;
+        }
+
+        // How much of the focus effect this picture gets: all of it on a close-up, none
+        // from the height where a town is seen whole. High only, and only when switched on.
+        _focusAmount() {
+            if (!this.tiltShift || this.graphicsQuality !== 'cinematic') return 0;
+            const F = EngineRenderer.FOCUS;
+            return Math.max(0, Math.min(1, (F.far - this._halfH) / (F.far - F.near)));
         }
 
         pinRenderSize(w, h) {
@@ -3161,6 +3192,7 @@
         renderFrame() {
             const now = performance.now();
             if (this._fm) this._fm.reset();   // last frame's scratch matrices are free again
+            if (this._postFailed) { this._postFailed = false; this._sizeCanvas(); }
             if (this.perf) this.perf.frameBegin(now);
             const deltaTime = Math.min(0.1, (now - this._lastTime) / 1000);
             this._lastTime = now;
@@ -3230,6 +3262,20 @@
         // copy of the whole frame.
         _drawPicture(cam, atmosphere, now, rect, inset) {
             const gl = this.gl;
+            // The main picture goes into a picture of its own when it is drawn smaller
+            // than the canvas or is to be focused (overhaul step A10); otherwise straight
+            // into the canvas, as always. Not the second picture: it is a corner of the
+            // frame that is copied out before the main one is drawn.
+            const CW = rect[2], CH = rect[3];
+            let own = null;
+            if (!inset) {
+                const s = this.sceneScale > 0 && this.sceneScale < 1 ? this.sceneScale : 1, focus = this._focusAmount();
+                if ((s < 1 || focus > 0 || this.postAlways) && this._post()) {
+                    const sw = Math.max(1, Math.round(CW * s)), sh = Math.max(1, Math.round(CH * s));
+                    if (this._postFx.begin(sw, sh)) { own = { s, focus, sh }; rect = [0, 0, sw, sh]; }
+                    else { this._postFx = null; this._postFailed = true; }   // the card will not: the canvas shrinks again
+                }
+            }
             gl.viewport(rect[0], rect[1], rect[2], rect[3]);
             // A clear takes the whole buffer unless it is told where to stop.
             if (inset) { gl.enable(gl.SCISSOR_TEST); gl.scissor(rect[0], rect[1], rect[2], rect[3]); }
@@ -3358,11 +3404,22 @@
             // Not in the second picture: a ping is made to be seen from far off and runs 40
             // units out, which floods a close picture of the fight it comes from.
             if (!inset && this._ringEntries && this._ringEntries.length) draw(this._ringEntries, 1);
+            // The scene is finished: onto the canvas, sharpened if it was drawn smaller and
+            // focused if that is on. What follows is drawn on the canvas at its own size.
+            if (own) {
+                const F = EngineRenderer.FOCUS;
+                this._postFx.present(CW, CH, { sharpen: own.s < 1 ? EnginePost.SHARPEN : 0,
+                    focus: own.focus > 0 ? [F.line, F.band, F.blur * own.focus * own.sh / 1080] : null });
+                gl.useProgram(this.prog);
+                gl.enable(gl.BLEND);
+                gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+                gl.depthMask(false);
+            }
             // Cinematic: a soft halo on what is brightest, a little more at night. After the
             // fog, so hidden ground cannot glow; before the bars, so they never do.
             if (!inset && this.visualStyle === 'film' && window.EngineBloom) {
                 if (this._bloom === undefined) this._bloom = EngineBloom.create(gl);
-                if (this._bloom && this._bloom.apply(this.PW || this.W, this.PH || this.H, 0.22 + 0.3 * atmosphere.night)) {
+                if (this._bloom && this._bloom.apply(this.PW || this.W, this.PH || this.H, 0.22 + 0.3 * atmosphere.night, own ? this._postFx.scene : null)) {
                     gl.useProgram(this.prog);
                     gl.enable(gl.BLEND);
                     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -3418,6 +3475,11 @@
     // From this camera half-height up a unit is drawn from its middle-distance model, where
     // unitPalette is on. At 30 a soldier stands some seventy pixels tall on a 1080-line screen.
     EngineRenderer.MID_UNIT_HALF_H = 30;
+    // Focus on a close-up (tiltShift): full from a camera half-height of near down, none
+    // from far up; the sharp band lies around line of the picture (0.5 = its middle,
+    // where the camera looks), band of the picture's height to either side; blur is the
+    // radius at the picture's top and bottom edge, in pixels of a 1080-line picture.
+    EngineRenderer.FOCUS = { near: 14, far: 28, line: 0.5, band: 0.17, blur: 5 };
     EngineRenderer.CONTACT = 0.7;
     EngineRenderer.GROUND_VARY = { summer: [0.11, 1.0], desert: [0.09, 0.3], winter: [0.07, 0.0], none: [0, 0] };
     // Worn ground. What one pass adds, of 255 (so some twenty workers' passes show and
