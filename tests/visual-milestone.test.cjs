@@ -139,6 +139,7 @@ test('unit batches share geometry across seats while keeping team and badge tint
 test('tree forks meet the trunk, with a single closed canopy and unchanged resource data',()=>{
     const s=context(),r=Object.create(s.EngineRenderer.prototype);
     Object.assign(r,{_resEntries:new WeakMap(),_theme:'summer',tex:{shadow:'shadow',worldBark:'bark',worldFoliage:'foliage'}});
+    r._treeSpecies=()=>'oak';   // the oak is the tree with forks and one crown (build 1196: three kinds a land)
     r._buf=(kind,args)=>({kind,args});
     for(let i=0;i<4;i++) {
         const res={type:'wood',x:17,z:-32,amount:100},before={...res};
@@ -405,7 +406,7 @@ test('packed shadow writes disable dithering and restore its previous state',()=
 
 test('seasonal trees have finite outward geometry, varied silhouettes and bounded material batches',()=>{
  const s=context();
- for(const style of ['pine','bare','desert'])for(let v=0;v<4;v++)for(const mat of ['bark','foliage','snow']){
+ for(const style of ['pine','bare','desert','fir','cypress','olive','palm','thorn'])for(let v=0;v<4;v++)for(const mat of ['bark','foliage','snow']){
   const mesh=s.EngineMesh.seasonalTree(style,v,mat);
   assert.ok(mesh.positions.every(Number.isFinite));assert.ok(mesh.normals.every(Number.isFinite));
   assert.equal(s.EngineMesh.auditWinding(mesh),0,style+'/'+v+'/'+mat);
@@ -419,8 +420,9 @@ test('seasonal trees have finite outward geometry, varied silhouettes and bounde
   r._theme=theme;r._resEntries=new WeakMap();let bare=0;
   for(let i=0;i<20;i++){
    const res={type:'wood',x:i,z:0,amount:100},before={...res},e=r._resourceEntries(res,i);
-   assert.ok(e.opaque.length<=3);assert.deepEqual(res,before);
-   if(e.opaque[0].buf.args[0]==='bare'){bare++;assert.equal(e.opaque.length,1);}
+   const tree=e.opaque.filter(p=>p.kind==='seasonalTree');   // beside it there may be undergrowth (build 1196)
+   assert.ok(tree.length>=1&&tree.length<=3&&e.opaque.length<=tree.length+4);assert.deepEqual(res,before);
+   if(e.opaque[0].buf.args[0]==='bare'){bare++;assert.equal(tree.length,1);}
   }
   assert.equal(bare,theme==='winter'?4:0);
  }

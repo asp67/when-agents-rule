@@ -987,17 +987,18 @@
             const add = (kind, args, tex, model, blend) =>
                 (blend ? e.blended : e.opaque).push({ buf: this._buf(kind, args), tex: this.tex[tex], model, kind, args, texName: tex });
             if (res.type === 'wood') {
-                add('disc', [2.2, 14], 'shadow', TRS(res.x, 0.05, res.z, s, 1, s), true);
-                if (this._theme === 'winter' || this._theme === 'desert') {
-                    const bare=this._theme==='winter' && ((i*37+11)%10)<2;
-                    const style=this._theme==='desert'?'desert':bare?'bare':'pine';
+                // Which kind of tree stands here (overhaul step A5): three a land, in stands.
+                const kind = this._treeSpecies(res, i), look = EngineRenderer.TREE_LOOK[kind];
+                add('disc', [2.2, 14], 'shadow', TRS(res.x, 0.05, res.z, s * look.shade, 1, s * look.shade), true);
+                if (look.style) {
+                    const style=look.style;
                     const model=TRS(res.x,0,res.z,s,s,s,rot);
                     add('seasonalTree',[style,i%4,'bark'],'worldBark',model);
-                    if(!bare){
+                    if(look.foliage){
                         add('seasonalTree',[style,i%4,'foliage'],'worldFoliage',model);
-                        e.opaque[e.opaque.length-1].tint=this._theme==='desert'?[.78,.78,.66]:[.82,.94,1];
+                        if(Array.isArray(look.foliage))e.opaque[e.opaque.length-1].tint=look.foliage;
                     }
-                    if(style==='pine'){
+                    if(look.snow){
                         add('seasonalTree',[style,i%4,'snow'],'white',model);
                         e.opaque[e.opaque.length-1].tint=[.87,.92,.96];
                     }
@@ -1014,6 +1015,20 @@
                     }
                     add('canopy',[i%4],'worldFoliage',TRS(res.x,3.3*s,res.z,2.15*s,1.38*s,1.88*s,rot));
                 }
+                // Undergrowth: a low shrub or two at the foot of some trees. It is the tree's,
+                // and goes when the tree is felled.
+                const land = EngineRenderer.TREES[this._theme] ? this._theme : 'summer', under = EngineRenderer.UNDERGROWTH[land];
+                const lot = (i * 29 + 3) % 100;
+                if (lot < under.share * 100) for (let k = 0; k < 1 + (lot % 2); k++) {
+                    const a = rot + 2.1 + k * 2.6, d = (1.0 + ((i * 13 + k * 7) % 10) / 14) * s, r = 0.34 + ((i * 17 + k * 5) % 10) / 40;
+                    const ux = res.x + Math.sin(a) * d, uz = res.z + Math.cos(a) * d;
+                    add('sphere', [1, 6, 4], 'worldFoliage', TRS(ux, r * 0.55, uz, r, r * 0.62, r, rot));
+                    if (under.tint) e.opaque[e.opaque.length - 1].tint = under.tint;
+                    if (under.snow) {
+                        add('sphere', [1, 6, 4], 'white', TRS(ux, r * 0.98, uz, r * 0.8, r * 0.26, r * 0.8, rot));
+                        e.opaque[e.opaque.length - 1].tint = [.87, .92, .96];
+                    }
+                }
             } else if (res.type === 'stone') {
                 add('disc', [2.0, 14], 'shadow', TRS(res.x, 0.05, res.z, 1, 1, 1), true);
                 add('sphere', [1, 9, 6], 'worldStone', TRS(res.x, 0.9 - sink(2.3), res.z, 1.7, 1.15, 1.5, rot));
@@ -1025,6 +1040,23 @@
             }
             this._resEntries.set(res, e);
             return e;
+        }
+
+        // Which kind of tree a wood node is drawn as: one of its land's three
+        // (EngineRenderer.TREES). Trees of a kind stand together: a slow field over the map
+        // (standField) picks the kind, so a forest has stands of oak and groves of olive
+        // instead of a salt-and-pepper mix, and one tree in seven strays into its
+        // neighbours'. A fifth of a winter wood is bare, scattered as it always was.
+        // By where the node stands and its number in the list only: the same map draws
+        // the same trees every time, and no rule knows about it.
+        _treeSpecies(res, i) {
+            const land = EngineRenderer.TREES[this._theme] ? this._theme : 'summer';
+            const [first, second, third] = EngineRenderer.TREES[land];
+            if (land === 'winter' && ((i * 37 + 11) % 10) < 2) return third;
+            const field = EngineRenderer.standField(res.x, res.z);
+            // (In winter the third kind is the bare tree above, and the pine keeps the larger share.)
+            const pick = field < (land === 'winter' ? 0.6 : 0.5) ? first : (field < 0.74 || land === 'winter') ? second : third;
+            return ((i * 53 + 7) % 7) === 0 ? (pick === first ? second : first) : pick;
         }
 
         // Resource nodes are drawn in CHUNKS (b1082): every node in a 64-unit square merged
@@ -3512,6 +3544,40 @@
     // From this camera half-height up a unit is drawn from its middle-distance model, where
     // unitPalette is on. At 30 a soldier stands some seventy pixels tall on a 1080-line screen.
     EngineRenderer.MID_UNIT_HALF_H = 30;
+    // The trees of each land (overhaul step A5), most common first, and how each is
+    // drawn: the style EngineMesh.seasonalTree builds it in (none: the oak, built in
+    // _resourceEntries), the tint of its foliage (true: leaves, untinted), whether snow
+    // lies on it, and how wide the soft shadow at its foot is against an oak's.
+    // A chunk of forest is a draw per texture and tint, so the kinds of a land share
+    // tints where a tint of their own would hardly be seen: the olive has the oak's, the
+    // fir the pine's, the thorn the acacia's. Only the cypress and the palm, whose colour
+    // is half of what they are, have their own: one draw more per chunk in two lands,
+    // none in the third.
+    EngineRenderer.TREES = { summer: ['oak', 'olive', 'cypress'], winter: ['pine', 'fir', 'bare'], desert: ['acacia', 'palm', 'thorn'] };
+    EngineRenderer.TREE_LOOK = {
+        oak: { shade: 1 },
+        olive: { style: 'olive', foliage: true, shade: 0.85 },
+        cypress: { style: 'cypress', foliage: [0.6, 0.76, 0.62], shade: 0.55 },
+        pine: { style: 'pine', foliage: [0.82, 0.94, 1], snow: true, shade: 1 },
+        fir: { style: 'fir', foliage: [0.82, 0.94, 1], snow: true, shade: 0.7 },
+        bare: { style: 'bare', shade: 0.8 },
+        acacia: { style: 'desert', foliage: [0.78, 0.78, 0.66], shade: 1 },
+        palm: { style: 'palm', foliage: [0.74, 0.92, 0.62], shade: 0.7 },
+        thorn: { style: 'thorn', foliage: [0.78, 0.78, 0.66], shade: 0.75 }
+    };
+    // Undergrowth: the share of trees with a shrub or two at their foot, and its tint.
+    // The tint is one a tree of the land already has (the oak's none, the pine's, the
+    // acacia's), for the same reason the kinds share theirs.
+    EngineRenderer.UNDERGROWTH = { summer: { share: 0.45, tint: null }, winter: { share: 0.25, tint: EngineRenderer.TREE_LOOK.pine.foliage, snow: true },
+        desert: { share: 0.3, tint: EngineRenderer.TREE_LOOK.acacia.foliage } };
+    // A slow field over the map, 0 to 1, the same for the same place: value noise on a
+    // lattice of 70 units, so a stand of one kind is a few dozen trees across.
+    EngineRenderer.standField = (x, z) => {
+        const at = (ix, iz) => { let n = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
+        const gx = x / 70, gz = z / 70, x0 = Math.floor(gx), z0 = Math.floor(gz), fx = gx - x0, fz = gz - z0;
+        const sx = fx * fx * (3 - 2 * fx), sz = fz * fz * (3 - 2 * fz);
+        return (at(x0, z0) * (1 - sx) + at(x0 + 1, z0) * sx) * (1 - sz) + (at(x0, z0 + 1) * (1 - sx) + at(x0 + 1, z0 + 1) * sx) * sz;
+    };
     // How large a stone, gold or food site is drawn by what is left of it: [share from, size].
     EngineRenderer.RES_SHRINK = [[0.75, 1], [0.5, 0.86], [0.25, 0.72], [0, 0.58]];
     // Focus on a close-up (tiltShift): full from a camera half-height of near down, none

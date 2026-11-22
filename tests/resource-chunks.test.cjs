@@ -65,7 +65,8 @@ test('a forest is a few draws, and a felled or fogged tree collapses in place', 
     const show = res => { if (res.mesh.trunk) res.mesh.trunk.visible = res.mesh.leaves.visible = true; else res.mesh.visible = true; };
     rs.slice(0, 30).forEach(show);
     let dl = frame();
-    assert.ok(dl.opaque.length <= 4, `${dl.opaque.length} opaque draws for 30 trees`);   // bark, crown (and the gold, unseen)
+    // bark, the crowns, the cypresses' darker green (build 1196: three kinds a land), and the gold, unseen
+    assert.ok(dl.opaque.length <= 4, `${dl.opaque.length} opaque draws for 30 trees`);
     assert.ok(dl.blended.length <= 1, 'their shadows in one');
     const chunk = r._resChunks.list[0];
     const shown = chunk.members.filter(m => m.shown).length;

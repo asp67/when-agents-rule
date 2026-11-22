@@ -185,8 +185,10 @@
 
     // One continuous crown, with broad asymmetric lobes and a scalloped silhouette.
     // No intersecting canopy balls and no random per-vertex spikes.
-    EngineMesh.canopy = (variant = 0) => {
-        const mesh=EngineMesh.sphere(1,24,16);
+    // fine: the one large crown of an oak. A tree made of several small crowns asks for
+    // the coarse one (false), a third of the corners.
+    EngineMesh.canopy = (variant = 0, fine = true) => {
+        const mesh=fine?EngineMesh.sphere(1,24,16):EngineMesh.sphere(1,14,9);
         for (let i=0;i<mesh.positions.length;i+=3) {
             const x=mesh.positions[i], y=mesh.positions[i+1], z=mesh.positions[i+2];
             const theta=Math.atan2(z,x), ring=Math.sqrt(x*x+z*z);
@@ -196,6 +198,33 @@
             mesh.positions[i+2]=z*lobe*(1+0.10*y);
         }
         // Area-weighted surface normals, welded across the UV seam and poles.
+        const sums=new Map(), keys=[];
+        for(let i=0;i<mesh.positions.length;i+=3) {
+            const key=mesh.positions.slice(i,i+3).map(v=>(Math.abs(v)<1e-5?0:v).toFixed(5)).join(':');
+            keys.push(key); if(!sums.has(key)) sums.set(key,[0,0,0]);
+        }
+        for(let i=0;i<mesh.indices.length;i+=3) {
+            const ids=mesh.indices.slice(i,i+3), pts=ids.map(j=>mesh.positions.slice(j*3,j*3+3));
+            const n=window.M3D.cross(window.M3D.sub(pts[1],pts[0]),window.M3D.sub(pts[2],pts[0]));
+            for(const j of ids) { const sum=sums.get(keys[j]); for(let k=0;k<3;k++) sum[k]+=n[k]; }
+        }
+        keys.forEach((key,i)=>mesh.normals.splice(i*3,3,...window.M3D.normalize(sums.get(key))));
+        return mesh;
+    };
+
+    // A cypress's foliage: one tall flame, widest low down and drawn to a point, with a
+    // slow twist in its outline. Its height and width are the caller's scale.
+    EngineMesh.spindle = (variant = 0) => {
+        const mesh=EngineMesh.sphere(1,12,10);
+        for (let i=0;i<mesh.positions.length;i+=3) {
+            const x=mesh.positions[i], y=mesh.positions[i+1], z=mesh.positions[i+2];
+            const ring=Math.sqrt(x*x+z*z);
+            if (ring<1e-6) continue;
+            const theta=Math.atan2(z,x);
+            const wide=Math.pow(ring,0.8)*(1.1-0.4*y)*(1+0.07*Math.sin(theta*4+variant+y*3));
+            mesh.positions[i]=x/ring*wide; mesh.positions[i+2]=z/ring*wide;
+        }
+        // Area-weighted surface normals, welded across the UV seam and poles (as the canopy's are).
         const sums=new Map(), keys=[];
         for(let i=0;i<mesh.positions.length;i+=3) {
             const key=mesh.positions.slice(i,i+3).map(v=>(Math.abs(v)<1e-5?0:v).toFixed(5)).join(':');
@@ -292,11 +321,16 @@
     };
 
     // Seasonal resource trees: a few reusable variants, batched by material.
+    // Styles: pine, fir and bare (winter); desert (an acacia), palm and thorn (desert);
+    // cypress and olive (summer, beside the oak the renderer builds from a trunk, two
+    // forks and one fine crown). Overhaul step A5: three kinds a land.
     EngineMesh.seasonalTree = (style, variant = 0, material = 'bark') => {
         const m=window.M3D,parts=[];
         const add=(kind,args,texture,position,scale=[1,1,1])=>{
             if(texture===material)parts.push({kind,args,m:m.multiply(m.translation(...position),m.scaling(...scale))});
         };
+        // A part with a matrix of its own (a palm's fronds lean and droop).
+        const put=(kind,args,texture,matrix)=>{ if(texture===material)parts.push({kind,args,m:matrix}); };
         const branch=(a,b,r0,r1)=>{
             if(material!=='bark')return;
             const delta=b.map((v,i)=>v-a[i]),length=Math.hypot(...delta),up=delta.map(v=>v/length);
@@ -304,11 +338,13 @@
             const forward=m.cross(right,up),mid=a.map((v,i)=>(v+b[i])/2);
             parts.push({kind:'cylinder',args:[r1,r0,length,6],m:[...right,0,...up,0,...forward,0,...mid,1]});
         };
-        if(style==='pine') {
-            const height=5.1+variant*.38,width=1.6+(variant%3)*.18;
-            branch([0,0,0],[0,height*.79,0],.29,.045);
-            for(let tier=0;tier<4;tier++) {
-                const y=1.65+tier*(height-2)/4,r=width*(1-tier*.21),h=1.9-tier*.18;
+        if(style==='pine'||style==='fir') {
+            // The fir: taller, half as wide again as it is narrow, six skirts instead of four.
+            const fir=style==='fir',tiers=fir?6:4;
+            const height=fir?6.7+variant*.3:5.1+variant*.38,width=fir?1.0+(variant%3)*.1:1.6+(variant%3)*.18;
+            branch([0,0,0],[0,height*.79,0],fir?.24:.29,.045);
+            for(let tier=0;tier<tiers;tier++) {
+                const y=1.65+tier*(height-2)/tiers,r=width*(1-tier*(fir?.13:.21)),h=(fir?1.7:1.9)-tier*(fir?.11:.18);
                 const ox=Math.sin(tier*2+variant)*.15,oz=Math.cos(tier*2.7+variant)*.12;
                 add('pineBough',[tier+variant],'foliage',[ox,y,oz],[r,h,r*.87]);
                 // Snow rests on upper boughs, leaving dark needles visible below.
@@ -318,6 +354,41 @@
                     branch([0,y-.38,0],tip,.07,.015);
                 }
             }
+        } else if(style==='cypress') {
+            // A short foot of trunk and one tall flame of foliage: the tallest tree of the summer land.
+            branch([0,0,0],[0,1.2,0],.2,.13);
+            add('spindle',[variant],'foliage',[0,3.3+variant*.2,0],[.6+(variant%2)*.07,2.9+variant*.2,.58]);
+        } else if(style==='olive') {
+            // Low and broad: a thick leaning trunk, three limbs, a small crown on each.
+            const lean=(variant-1.5)*.12,fork=[lean,1.15,.05];
+            branch([0,0,0],fork,.34,.23);
+            const limbs=[[lean-.85,2.25,.25],[lean+.9,2.2,-.3],[lean+.05,2.5,.7]];
+            limbs.forEach((tip,j)=>{
+                branch(fork,tip,.21-j*.02,.09);
+                add('canopy',[(variant+j)%4,false],'foliage',[tip[0]*1.06,tip[1]+.38,tip[2]*1.06],[1.42-j*.07,.74,1.28]);
+            });
+        } else if(style==='palm') {
+            // A bent trunk in three lengths, a heart, and eight fronds that rise and then hang.
+            const bend=.18+variant*.05,top=[bend*2.6,4.3+variant*.3,.1];
+            branch([0,0,0],[bend*.6,1.5,0],.24,.19);
+            branch([bend*.6,1.5,0],[bend*1.6,3.0,.05],.19,.15);
+            branch([bend*1.6,3.0,.05],top,.15,.12);
+            add('sphere',[1,6,4],'bark',top,[.26,.22,.26]);
+            for(let j=0;j<8;j++) {
+                const a=j*.785+variant*.4,droop=.2+(j%3)*.14;
+                const root=m.multiply(m.translation(...top),m.multiply(m.rotationY(-a),m.rotationZ(.3)));
+                put('sphere',[1,6,4],'foliage',m.multiply(root,m.multiply(m.translation(.78,0,0),m.scaling(.82,.05,.2))));
+                const elbow=m.multiply(root,m.multiply(m.translation(1.5,0,0),m.rotationZ(-.85-droop)));
+                put('sphere',[1,6,4],'foliage',m.multiply(elbow,m.multiply(m.translation(.66,0,0),m.scaling(.72,.045,.16))));
+            }
+        } else if(style==='thorn') {
+            // A thorn bush grown to a small tree: three thin stems under two flat pads of leaves.
+            for(let j=0;j<3;j++) {
+                const a=j*2.094+variant;
+                branch([Math.cos(a)*.12,0,Math.sin(a)*.12],[Math.cos(a)*.7,1.6+j*.12,Math.sin(a)*.7],.09,.04);
+            }
+            add('canopy',[variant,false],'foliage',[0,1.9,0],[1.5,.3,1.3]);
+            add('canopy',[(variant+1)%4,false],'foliage',[.5,2.08,.3],[.9,.22,.8]);
         } else {
             const desert=style==='desert',lean=(variant-1.5)*.09;
             branch([0,0,0],[lean,2.4,0],.3,.15);
