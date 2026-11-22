@@ -239,6 +239,33 @@
         return mesh;
     };
 
+    // A rock with flat faces (overhaul step A5): a coarse ball pushed in and out corner by
+    // corner, its underside cut off so that it sits, and every face lit as one plane --
+    // three corners of its own per face, which is what makes it read as broken stone and
+    // not as a pebble. Its size is the caller's scale; four variants are four shapes.
+    EngineMesh.crag = (variant = 0) => {
+        const src=EngineMesh.sphere(1,7,4), P=src.positions, U=src.uvs;
+        const push=(x,y,z)=>{ const h=Math.sin(x*12.9898+y*78.233+z*37.719+variant*4.137)*43758.5453; return 0.74+0.5*(h-Math.floor(h)); };
+        // Rounded first, so that the two copies of a corner along the ball's seam move alike.
+        const at=i=>{ const x=Math.round(P[i*3]*1e4)/1e4, y=Math.round(P[i*3+1]*1e4)/1e4, z=Math.round(P[i*3+2]*1e4)/1e4, r=push(x,y,z);
+            return [x*r, Math.max(-0.42,y*r), z*r]; };
+        const out={positions:[],normals:[],uvs:[],indices:[]};
+        for(let i=0;i<src.indices.length;i+=3) {
+            const ids=[src.indices[i],src.indices[i+1],src.indices[i+2]], pts=ids.map(at);
+            let n=window.M3D.cross(window.M3D.sub(pts[1],pts[0]),window.M3D.sub(pts[2],pts[0]));
+            const length=Math.hypot(n[0],n[1],n[2]);
+            if(length<1e-7) continue;                          // the slivers at the poles
+            n=n.map(v=>v/length);
+            // Outward: away from a point inside the rock.
+            const flip=n[0]*(pts[0][0]+pts[1][0]+pts[2][0])+n[1]*(pts[0][1]+pts[1][1]+pts[2][1]-0.6)+n[2]*(pts[0][2]+pts[1][2]+pts[2][2])<0;
+            if(flip) n=n.map(v=>-v);
+            const base=out.positions.length/3;
+            for(const k of (flip?[0,2,1]:[0,1,2])) { out.positions.push(...pts[k]); out.normals.push(...n); out.uvs.push(U[ids[k]*2],U[ids[k]*2+1]); }
+            out.indices.push(base,base+1,base+2);
+        }
+        return out;
+    };
+
     // Bake TRS into vertices before batching. Bones are applied afterwards, so
     // weapons, hands and armor keep their original animation pivots.
     EngineMesh.mergeParts = (parts) => {

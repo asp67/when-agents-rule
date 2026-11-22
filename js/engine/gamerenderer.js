@@ -879,6 +879,66 @@
             }
             this._freePropChunks();
             this._props = props;
+            this._coast = this._coastRocks(terrain);
+        }
+
+        // ---- the shore's rocks (overhaul step A5) -----------------------------------------
+        // The shore was one smooth band of sand all the way round the island. Now rocks lie
+        // along it, on the wet sand and in the shallows, and here and there a headland of
+        // crags stands at the waterline.
+        //
+        // They are scenery and stand where nothing happens: every one is beyond the line a
+        // unit can walk to (LAND - 4, js/terrain.js) and beyond the map's square, so no
+        // unit meets one and no building could stand there. Laid by the map's seed, like the
+        // scatter: the same map has the same rocks. Drawn at every height (a crag is four
+        // units across, not a pebble), in chunks like the scatter's, and hidden while the
+        // map's edge beside them is unexplored.
+        static get COAST_CHUNK() { return 256; }
+
+        _coastRocks(terrain) {
+            if (typeof TexGen === 'undefined' || !TexGen.coastSampler) return [];
+            const C = EngineRenderer.COAST, LAND = TexGen.TERRAIN_LAND, W = TexGen.TERRAIN_WORLD, wob = TexGen.coastSampler(TERRAIN_SEED);
+            let seed = 97531;
+            if (terrain && terrain.seed != null && terrain.seed !== '') { seed = 7; for (const ch of String(terrain.seed)) seed = (seed * 33 + ch.charCodeAt(0)) >>> 0; }
+            const rng = TexGen.rng(seed), m3 = M();
+            // Where along the ray (px, pz) the shore lies off its line by "off" (see _coastRibbonMesh).
+            const radiusAt = (px, pz, target) => {
+                let lo = target - TexGen.COAST_WOBBLE, hi = target + TexGen.COAST_WOBBLE;
+                for (let i = 0; i < 18; i++) {
+                    const mid = (lo + hi) / 2;
+                    if (mid + wob((mid * px) / W + 0.5, (mid * pz) / W + 0.5) < target) lo = mid; else hi = mid;
+                }
+                return (lo + hi) / 2;
+            };
+            const edge = TexGen.MAP_SIZE / 2 - 4, inMap = v => Math.max(-edge, Math.min(edge, v));
+            const out = [];
+            // t: where round the island (0 to 4, a side each); off: how far out from the
+            // shore's line (below zero: up the beach); w, h, d: the rock's size.
+            const rock = (t, off, w, h, d) => {
+                const u = ((t % 4) + 4) % 4, side = Math.min(3, Math.floor(u)), s = u - side;
+                const p = side === 0 ? [1, s * 2 - 1] : side === 1 ? [1 - s * 2, 1] : side === 2 ? [-1, 1 - s * 2] : [s * 2 - 1, -1];
+                const r = radiusAt(p[0], p[1], LAND + off), x = r * p[0], z = r * p[1];
+                // Sunk by a fifth to two fifths of its height: a rock grows out of the sand, it does not lie on it.
+                const model = m3.multiply(m3.multiply(m3.translation(x, h * (0.42 - 0.2 - rng() * 0.2), z), m3.rotationY(rng() * 6.283)), m3.scaling(w / 2, h / 1.66, d / 2));
+                out.push({ kind: 'crag', args: [(rng() * 4) | 0], texName: 'worldStone', tint: this.WHITE, model, x, z, fx: inMap(x), fz: inMap(z), size: Math.max(w, d) });
+            };
+            const n = Math.round(8 * LAND / C.step), per = 1 / (2 * LAND);       // per: one world unit along the shore, in t
+            for (let i = 0; i < n; i++) {
+                const t = ((i + rng() * 0.6) / n) * 4;
+                if (EngineRenderer.standField(i * C.step * 1.4, 913.7) > C.headland) {
+                    // A headland: three or four crags shoulder to shoulder at the waterline, taller than a
+                    // man and overlapping into a low wall of rock, and mostly a rock or two fallen off it.
+                    const k = 3 + (rng() < 0.5 ? 1 : 0);
+                    for (let j = 0; j < k; j++) rock(t + ((j - (k - 1) / 2) * 2.7 + rng() - 0.5) * per, 1.5 + rng() * 3.5, 3.0 + rng() * 1.6, 1.9 + rng() * 1.6, 2.4 + rng() * 1.2);
+                    if (rng() < 0.8) rock(t + (rng() - 0.5) * 7 * per, 6.5 + rng() * 5, 1.0 + rng() * 0.9, 0.7 + rng() * 0.7, 0.9 + rng() * 0.8);
+                } else if (rng() < C.scatter) {
+                    // Elsewhere: a rock on the wet sand or in the shallows, one in four of them large.
+                    const big = rng() < 0.25, at = -1.5 + rng() * 12.5;
+                    rock(t, at, big ? 1.1 + rng() * 0.9 : 0.45 + rng() * 0.6, big ? 0.8 + rng() * 0.7 : 0.35 + rng() * 0.4, big ? 1.0 + rng() * 0.8 : 0.4 + rng() * 0.55);
+                    if (rng() < 0.35) rock(t + (1 + rng() * 1.5) * per, at + (rng() - 0.5) * 2, 0.35 + rng() * 0.4, 0.3 + rng() * 0.3, 0.35 + rng() * 0.4);
+                }
+            }
+            return out;
         }
 
         // ---- the scatter on open ground, in chunks (overhaul step A4) -------------
@@ -924,10 +984,12 @@
             return T.tex;
         }
 
-        _propChunks() {
-            if (this._propChunkList) return this._propChunkList;
-            const CH = EngineRenderer.PROP_CHUNK, byKey = new Map(), list = [];
-            for (const p of this._props || []) {
+        _propChunks() { return this._propChunkList || (this._propChunkList = this._chunkProps(this._props || [], EngineRenderer.PROP_CHUNK)); }
+        _coastChunks() { return this._coastChunkList || (this._coastChunkList = this._chunkProps(this._coast || [], EngineRenderer.COAST_CHUNK)); }
+
+        _chunkProps(props, CH) {
+            const byKey = new Map(), list = [];
+            for (const p of props) {
                 const cx = Math.floor(p.x / CH), cz = Math.floor(p.z / CH), key = cx + ',' + cz;
                 let c = byKey.get(key);
                 if (!c) { c = { x: (cx + 0.5) * CH, z: (cz + 0.5) * CH, members: [], groups: null }; byKey.set(key, c); list.push(c); }
@@ -936,26 +998,31 @@
                 const en = slot != null
                     ? { kind: p.kind, args: p.args, texName: '#tints', flat: (slot + 0.5) / EngineRenderer.PROP_TINTS, model: p.model }
                     : { kind: p.kind, args: p.args, texName: p.texName, tex: this.tex[p.texName], tint: p.tint === this.WHITE ? null : p.tint, model: p.model };
-                c.members.push({ x: p.x, z: p.z, shown: false, ranges: [], entries: { opaque: [en], blended: [] } });
+                // fx, fz: where its fog is looked up, for what stands beyond the map's edge.
+                c.members.push({ x: p.x, z: p.z, fx: p.fx == null ? p.x : p.fx, fz: p.fz == null ? p.z : p.fz, shown: false, ranges: [], entries: { opaque: [en], blended: [] } });
             }
-            return (this._propChunkList = list);
+            return list;
         }
 
         _freePropChunks() {
             const gl = this.gl;
-            for (const c of this._propChunkList || []) for (const g of c.groups || []) GLCore.deleteMeshBuffers(gl, g.buf);
+            for (const list of [this._propChunkList, this._coastChunkList]) for (const c of list || []) for (const g of c.groups || []) GLCore.deleteMeshBuffers(gl, g.buf);
             this._propChunkList = null;
+            this._coastChunkList = null;
             if (this._propTints) { if (this._propTints.tex) gl.deleteTexture(this._propTints.tex); this._propTints = null; }
         }
 
-        _pushPropChunks(dl) {
+        _pushPropChunks(dl) { this._pushChunked(this._propChunks(), EngineRenderer.PROP_CHUNK, dl); }
+        _pushCoastChunks(dl) { this._pushChunked(this._coastChunks(), EngineRenderer.COAST_CHUNK, dl); }
+
+        _pushChunked(chunks, CH, dl) {
             const fow = this._fow(), seen = typeof EngineGrass !== 'undefined' ? EngineGrass.visibleRect : null;
-            const margin = EngineRenderer.PROP_CHUNK * 0.71 + 3;
-            for (const c of this._propChunks()) {
+            const margin = CH * 0.71 + 3;
+            for (const c of chunks) {
                 if (this._cull(c.x, c.z, margin)) continue;
                 // Shown where all the ground around it is explored, as each was before.
                 let want = 0;
-                for (const mb of c.members) { mb.want = !seen || seen(fow, mb.x, mb.z, 3, 3, true); if (mb.want) want++; }
+                for (const mb of c.members) { mb.want = !seen || seen(fow, mb.fx, mb.fz, 3, 3, true); if (mb.want) want++; }
                 if (!want && !c.groups) continue;
                 if (!c.groups) this._buildResourceChunk(c);
                 let shown = 0;
@@ -2614,6 +2681,8 @@
             }
             // (sub-pixel at halfH 90+, and the draw-call budget thanks us)
             if (this._props && this._halfH < 90) this._pushPropChunks(dl);
+            // The shore's rocks, at every height: a crag is as large as a house.
+            if (this._coast && this._coast.length) this._pushCoastChunks(dl);
 
             // resources (fog toggles handle visibility; depletion nulls res.mesh)
             if (this.terrain && this.terrain.resources) this._pushResourceChunks(dl);
@@ -3544,6 +3613,10 @@
     // From this camera half-height up a unit is drawn from its middle-distance model, where
     // unitPalette is on. At 30 a soldier stands some seventy pixels tall on a 1080-line screen.
     EngineRenderer.MID_UNIT_HALF_H = 30;
+    // The shore's rocks: one place every "step" units round the island; a headland of
+    // crags where the slow field along the shore is above "headland" (about a sixth of
+    // the shore); elsewhere a rock at this share of the places.
+    EngineRenderer.COAST = { step: 9, headland: 0.7, scatter: 0.55 };
     // The trees of each land (overhaul step A5), most common first, and how each is
     // drawn: the style EngineMesh.seasonalTree builds it in (none: the oak, built in
     // _resourceEntries), the tint of its foliage (true: leaves, untinted), whether snow
