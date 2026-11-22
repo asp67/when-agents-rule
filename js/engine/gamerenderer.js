@@ -866,8 +866,8 @@
                 for (let i = 0; i < 150; i++) pebble(Array(3).fill(.40+.10*i/149),'white');
             } else if (theme === 'desert') {
                 for (let i = 0; i < 180; i++) bush(false);
-                for (let i = 0; i < 150; i++) pebble([0.82, 0.6, 0.42]); // rust rocks
-                for (let i = 0; i < 90; i++) pebble([0.9, 0.8, 0.62]);
+                for (let i = 0; i < 150; i++) pebble(EngineRenderer.DESERT_STONE[0]); // rust rocks
+                for (let i = 0; i < 90; i++) pebble(EngineRenderer.DESERT_STONE[1]);
             } else {
                 for (let i = 0; i < 260; i++) bush(false);
                 const petals = [[0.85, 0.84, 0.70], [0.78, 0.68, 0.40], [0.64, 0.57, 0.62]];
@@ -878,9 +878,170 @@
                 }
                 for (let i = 0; i < 150; i++) pebble(Array(3).fill(.40+.10*i/149),'white');
             }
+            // What grows and lies on the ground besides (overhaul step A6), and the reeds at
+            // the water. Sown apart from the scatter above, which is as it was.
+            for (const p of this._groundScatter(terrain, theme, pSeed)) props.push(p);
+            for (const p of this._shoreReeds(terrain, theme, pSeed)) props.push(p);
             this._freePropChunks();
             this._props = props;
             this._coast = this._coastRocks(terrain);
+        }
+
+        // ---- what grows and lies on open ground (overhaul step A6) -------------------------
+        // The scatter was single bushes, pebbles and a hundred pale flower dots a map. Now:
+        //   flowers: drifts on green ground, a patch of twelve to twenty-nine on thin stems, one
+        //     colour leading a patch and a second mixed in. Summer; a few in the desert
+        //     where it is green.
+        //   beds of pebbles on dry ground, five to nine stones each, in the land's stone.
+        //   dry tufts: clumps of pale blades, where the land has no meadow (winter, desert).
+        //   fallen logs beside the woods: a trunk on its side, mostly with the stump it broke
+        //     from and a broken branch; under snow in winter, bleached in the desert.
+        // By the map's seed: the same map has the same ground. A patch, a bed or a log is ONE
+        // member of its chunk whatever it is made of, so the fog is asked once for it.
+        //
+        // tier: the lowest tier that draws it (1 Balanced, 2 High; Low draws none of this).
+        // Every second patch is High's alone, which makes Balanced the half the plan asks for.
+        static get SCATTER() {
+            return {
+                summer: { flowers: 240, beds: 90, tufts: 0, logs: 70 },
+                winter: { flowers: 0, beds: 70, tufts: 170, logs: 60 },
+                desert: { flowers: 50, beds: 110, tufts: 180, logs: 28 }
+            };
+        }
+
+        _groundScatter(terrain, theme, seed) {
+            const S = EngineRenderer.SCATTER[theme] || EngineRenderer.SCATTER.summer, m3 = M(), WHITE = this.WHITE;
+            const rng = TexGen.rng((Math.imul(seed | 0, 2654435761) ^ 0x5bd1e995) >>> 0);
+            const cover = TexGen.grassCoverSampler(theme, TexGen.TERRAIN_SEED, TexGen.TERRAIN_WORLD);
+            const HALF = 340, out = [];                       // keep off the beach ring, like the scatter
+            const TR = (x, y, z, sx, sy, sz, ry, rz) => {
+                let m = m3.translation(x, y, z);
+                if (ry) m = m3.multiply(m, m3.rotationY(ry));
+                if (rz) m = m3.multiply(m, m3.rotationZ(rz));
+                return m3.multiply(m, m3.scaling(sx, sy, sz));
+            };
+            // Small things cast nothing: a shadow of a pebble or a petal is under a pixel.
+            const small = (kind, args, tint, model) => ({ kind, args, texName: 'white', tint, model, noCast: true });
+            const where = (accept, tries = 40) => {
+                for (let i = 0; i < tries; i++) {
+                    const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
+                    if (accept(x, z)) return [x, z];
+                }
+                return null;
+            };
+            let n = 0;
+            const member = (x, z, parts, always) => out.push({ x, z, parts, tier: always || n++ % 2 === 0 ? 1 : 2 });
+
+            // Flowers, in drifts: where a slow field runs high over green ground.
+            const PETALS = theme === 'desert' ? [[0.92, 0.80, 0.30], [0.86, 0.52, 0.56]]
+                : [[0.80, 0.22, 0.17], [0.93, 0.80, 0.26], [0.94, 0.92, 0.84], [0.58, 0.44, 0.74], [0.40, 0.50, 0.82]];
+            const STEM = [0.36, 0.50, 0.22];
+            for (let i = 0; i < S.flowers; i++) {
+                const at = where((x, z) => cover(x, z) > 0.65 && EngineRenderer.standField(x + 900, z - 400) > 0.52);
+                if (!at) continue;
+                const lead = PETALS[(rng() * PETALS.length) | 0], second = PETALS[(rng() * PETALS.length) | 0];
+                const count = 12 + ((rng() * 18) | 0), spread = 1.3 + rng() * 1.4, parts = [];
+                for (let k = 0; k < count; k++) {
+                    const a = rng() * 6.283, d = Math.sqrt(rng()) * spread, x = at[0] + Math.cos(a) * d, z = at[1] + Math.sin(a) * d;
+                    const h = 0.34 + rng() * 0.28, s = 0.11 + rng() * 0.07;
+                    parts.push(small('cylinder', [0.02, 0.024, 1, 4], STEM, TR(x, h / 2, z, 1, h, 1)));
+                    parts.push(small('sphere', [1, 5, 3], rng() < 0.8 ? lead : second, TR(x, h, z, s, s * 0.7, s)));
+                }
+                member(at[0], at[1], parts);
+            }
+
+            // Beds of pebbles, on dry ground. In the desert they are the land's rust and sand
+            // (the stone texture, as its single pebbles are); elsewhere greys.
+            for (let i = 0; i < S.beds; i++) {
+                const at = where((x, z) => cover(x, z) < 0.35);
+                if (!at) continue;
+                const count = 5 + ((rng() * 5) | 0), parts = [];
+                for (let k = 0; k < count; k++) {
+                    const a = rng() * 6.283, d = Math.sqrt(rng()) * 1.3, s = 0.10 + rng() * 0.17;
+                    const model = TR(at[0] + Math.cos(a) * d, s * 0.3, at[1] + Math.sin(a) * d, s * 1.3, s * 0.55, s, rng() * 6.283);
+                    if (theme === 'desert') parts.push({ kind: 'sphere', args: [1, 5, 3], texName: 'worldStone', tint: rng() < 0.6 ? EngineRenderer.DESERT_STONE[0] : EngineRenderer.DESERT_STONE[1], model, noCast: true });
+                    else { const g = 0.40 + 0.02 * ((rng() * 6) | 0); parts.push(small('sphere', [1, 5, 3], [g, g, g], model)); }
+                }
+                member(at[0], at[1], parts);
+            }
+
+            // Dry tufts: three pale blades leaning apart, three to five tufts together.
+            const DRY = theme === 'winter' ? [0.62, 0.56, 0.42] : [0.74, 0.64, 0.40];
+            for (let i = 0; i < S.tufts; i++) {
+                const at = where((x, z) => theme === 'winter' ? cover(x, z) > 0.4 : cover(x, z) < 0.55);
+                if (!at) continue;
+                const parts = [], tufts = 3 + ((rng() * 3) | 0);
+                for (let j = 0; j < tufts; j++) {
+                    const a = rng() * 6.283, d = j ? 0.35 + rng() * 0.6 : 0, x = at[0] + Math.cos(a) * d, z = at[1] + Math.sin(a) * d, turn = rng() * 6.283, h = 0.45 + rng() * 0.4;
+                    for (let k = 0; k < 3; k++) parts.push(small('cylinder', [0, 0.08, 1, 4], DRY, TR(x, h * 0.48, z, 1, h, 1, turn + k * 2.094, 0.28)));
+                }
+                member(at[0], at[1], parts);
+            }
+
+            // Fallen logs, beside the woods: near a tree, clear of every site.
+            const sites = terrain.resources || [], trees = sites.filter(o => o.type === 'wood' && !(o.amount <= 0));
+            const pale = theme === 'desert' ? [0.94, 0.90, 0.80] : WHITE;
+            for (let i = 0; i < S.logs && trees.length; i++) {
+                let at = null;
+                for (let t = 0; t < 12 && !at; t++) {
+                    const tree = trees[(rng() * trees.length) | 0], a = rng() * 6.283, d = 2.6 + rng() * 3.2;
+                    const x = tree.x + Math.cos(a) * d, z = tree.z + Math.sin(a) * d;
+                    if (Math.abs(x) < HALF && Math.abs(z) < HALF && !sites.some(o => (o.x - x) ** 2 + (o.z - z) ** 2 < 2.3 * 2.3)) at = [x, z];
+                }
+                if (!at) continue;
+                const [x, z] = at, turn = rng() * 6.283, len = 2.0 + rng() * 1.6, r = 0.2 + rng() * 0.08, dx = Math.cos(turn), dz = -Math.sin(turn);
+                // The trunk: a cylinder stands along y, so it is laid over (rz) and then turned (ry).
+                const parts = [{ kind: 'cylinder', args: [0.86, 1, 1, 7], texName: 'worldBark', tint: pale, model: TR(x, r * 0.92, z, r, len, r, turn, Math.PI / 2) }];
+                if (rng() < 0.55) parts.push({ kind: 'cylinder', args: [0.9, 1.15, 1, 7], texName: 'worldBark', tint: pale, model: TR(x - dx * (len / 2 + 0.55), 0.21, z - dz * (len / 2 + 0.55), r * 1.15, 0.42, r * 1.15, rng() * 6.283) });
+                if (rng() < 0.6) parts.push({ kind: 'cylinder', args: [0.6, 1, 1, 5], texName: 'worldBark', tint: pale, model: TR(x + dx * len * 0.18, r * 1.5, z + dz * len * 0.18, 0.07, 0.75, 0.07, turn + 1.2, 0.85) });
+                if (theme === 'winter') parts.push(small('box', [1, 1, 1], [0.93, 0.96, 1], TR(x, r * 1.86, z, len * 0.82, 0.07, r * 1.1, turn)));
+                // A log is as large as a man: every tier that has scatter draws every log.
+                member(x, z, parts, true);
+            }
+            return out;
+        }
+
+        // Reeds at the water: clumps of stalks along some stretches of the shore, a few with
+        // the brown heads of the reed mace. They stand on the wet sand and in the shallows,
+        // beyond the line a unit can walk to and beyond the map's square (like the shore's
+        // rocks, and not where its headlands of crags are), so nothing meets one.
+        static get REEDS() { return { step: 9, share: 0.5, perStep: 0.75 }; }
+
+        _shoreReeds(terrain, theme, seed) {
+            const R = EngineRenderer.REEDS, C = EngineRenderer.COAST, LAND = TexGen.TERRAIN_LAND, W = TexGen.TERRAIN_WORLD, wob = TexGen.coastSampler(TERRAIN_SEED);
+            const rng = TexGen.rng((Math.imul(seed | 0, 40503) ^ 0x2545f491) >>> 0), m3 = M(), out = [];
+            const radiusAt = (px, pz, target) => {
+                let lo = target - TexGen.COAST_WOBBLE, hi = target + TexGen.COAST_WOBBLE;
+                for (let i = 0; i < 18; i++) {
+                    const mid = (lo + hi) / 2;
+                    if (mid + wob((mid * px) / W + 0.5, (mid * pz) / W + 0.5) < target) lo = mid; else hi = mid;
+                }
+                return (lo + hi) / 2;
+            };
+            const edge = TexGen.MAP_SIZE / 2 - 4, inMap = v => Math.max(-edge, Math.min(edge, v));
+            const STALK = theme === 'winter' ? [0.64, 0.54, 0.33] : theme === 'desert' ? [0.56, 0.58, 0.32] : [0.42, 0.53, 0.26];
+            const HEAD = [0.34, 0.21, 0.12];
+            const n = Math.round(8 * LAND / R.step);
+            let k = 0;
+            for (let i = 0; i < n; i++) {
+                // Not on a headland, and only where the reeds' own slow field runs high.
+                if (EngineRenderer.standField(i * C.step * 1.4, 913.7) > C.headland) continue;
+                if (EngineRenderer.standField(i * R.step * 1.9 + 4000, 517.3) < 1 - R.share) continue;
+                if (rng() > R.perStep) continue;
+                const t = ((i + rng()) / n) * 4, u = ((t % 4) + 4) % 4, side = Math.min(3, Math.floor(u)), s = u - side;
+                const p = side === 0 ? [1, s * 2 - 1] : side === 1 ? [1 - s * 2, 1] : side === 2 ? [-1, 1 - s * 2] : [s * 2 - 1, -1];
+                const r = radiusAt(p[0], p[1], LAND - 1.5 + rng() * 4), x = r * p[0], z = r * p[1];
+                const stalks = 10 + ((rng() * 7) | 0), parts = [];
+                for (let j = 0; j < stalks; j++) {
+                    const a = rng() * 6.283, d = Math.sqrt(rng()) * 1.0, h = 1.2 + rng() * 1.0, lean = (rng() - 0.5) * 0.3, turn = rng() * 6.283;
+                    const sx = x + Math.cos(a) * d, sz = z + Math.sin(a) * d;
+                    let m = m3.multiply(m3.multiply(m3.translation(sx, 0, sz), m3.rotationY(turn)), m3.rotationZ(lean));
+                    parts.push({ kind: 'cylinder', args: [0.02, 0.045, 1, 4], texName: 'white', tint: STALK, model: m3.multiply(m3.multiply(m, m3.translation(0, h / 2, 0)), m3.scaling(1, h, 1)), noCast: true });
+                    if (j < 3 && theme !== 'desert') parts.push({ kind: 'cylinder', args: [0.075, 0.075, 0.32, 5], texName: 'white', tint: HEAD, model: m3.multiply(m, m3.translation(0, h * 0.9, 0)), noCast: true });
+                }
+                out.push({ x, z, fx: inMap(x), fz: inMap(z), parts, tier: k++ % 2 === 0 ? 1 : 2 });
+            }
+            return out;
         }
 
         // ---- the shore's rocks (overhaul step A5) -----------------------------------------
@@ -994,13 +1155,17 @@
                 const cx = Math.floor(p.x / CH), cz = Math.floor(p.z / CH), key = cx + ',' + cz;
                 let c = byKey.get(key);
                 if (!c) { c = { x: (cx + 0.5) * CH, z: (cz + 0.5) * CH, members: [], groups: null }; byKey.set(key, c); list.push(c); }
-                // On the white texture the tint is the whole colour: read it from the strip.
-                const slot = p.texName === 'white' ? this._propTintSlot(p.tint) : null;
-                const en = slot != null
-                    ? { kind: p.kind, args: p.args, texName: '#tints', flat: (slot + 0.5) / EngineRenderer.PROP_TINTS, model: p.model }
-                    : { kind: p.kind, args: p.args, texName: p.texName, tex: this.tex[p.texName], tint: p.tint === this.WHITE ? null : p.tint, model: p.model };
+                // A prop is one part, or (since build 1204: a patch of flowers, a log) a list of them.
+                const opaque = (p.parts || [p]).map(q => {
+                    // On the white texture the tint is the whole colour: read it from the strip.
+                    const slot = q.texName === 'white' ? this._propTintSlot(q.tint) : null;
+                    return slot != null
+                        ? { kind: q.kind, args: q.args, texName: '#tints', flat: (slot + 0.5) / EngineRenderer.PROP_TINTS, model: q.model, noCast: !!q.noCast }
+                        : { kind: q.kind, args: q.args, texName: q.texName, tex: this.tex[q.texName], tint: q.tint === this.WHITE ? null : q.tint, model: q.model, noCast: !!q.noCast };
+                });
                 // fx, fz: where its fog is looked up, for what stands beyond the map's edge.
-                c.members.push({ x: p.x, z: p.z, fx: p.fx == null ? p.x : p.fx, fz: p.fz == null ? p.z : p.fz, shown: false, ranges: [], entries: { opaque: [en], blended: [] } });
+                // tier: the lowest tier that draws it (0, or left out: every tier).
+                c.members.push({ x: p.x, z: p.z, fx: p.fx == null ? p.x : p.fx, fz: p.fz == null ? p.z : p.fz, tier: p.tier || 0, shown: false, ranges: [], entries: { opaque, blended: [] } });
             }
             return list;
         }
@@ -1019,11 +1184,23 @@
         _pushChunked(chunks, CH, dl) {
             const fow = this._fow(), seen = typeof EngineGrass !== 'undefined' ? EngineGrass.visibleRect : null;
             const margin = CH * 0.71 + 3;
+            // What a tier draws of the scatter (b1204): Low what it always drew, Balanced
+            // half of the flowers, beds, tufts and reeds besides, High all of them.
+            const level = this.graphicsQuality === 'cinematic' ? 2 : this.graphicsQuality === 'balanced' ? 1 : 0;
+            // Nothing of the scatter shows through a building that stands on it (a log would
+            // stick out of the wall). Looked at when the town changes, not every frame.
+            let stamp = 17;
+            for (const b of this.buildings || []) if (b.health > 0) stamp = (stamp * 31 + b.x * 7 + b.z * 13 + (b._grassFootprint ? b._grassFootprint.ex + b._grassFootprint.ez * 3 : 1)) % 2147483647;
             for (const c of chunks) {
                 if (this._cull(c.x, c.z, margin)) continue;
+                if (c.town !== stamp) {
+                    c.town = stamp;
+                    for (const mb of c.members) mb.built = (this.buildings || []).some(b => b.health > 0 && b._grassFootprint
+                        && Math.abs(b.x - mb.x) < b._grassFootprint.ex + 1 && Math.abs(b.z - mb.z) < b._grassFootprint.ez + 1);
+                }
                 // Shown where all the ground around it is explored, as each was before.
                 let want = 0;
-                for (const mb of c.members) { mb.want = !seen || seen(fow, mb.fx, mb.fz, 3, 3, true); if (mb.want) want++; }
+                for (const mb of c.members) { mb.want = mb.tier <= level && !mb.built && (!seen || seen(fow, mb.fx, mb.fz, 3, 3, true)); if (mb.want) want++; }
                 if (!want && !c.groups) continue;
                 if (!c.groups) this._buildResourceChunk(c);
                 let shown = 0;
@@ -1201,7 +1378,8 @@
                     const m = mesh(en.kind, en.args, en.flat);
                     place(en.texName + '|' + (en.tint ? en.tint.join(',') : '') + '|' + blend,
                         () => ({ tex: en.flat != null ? this._propTintTexture() : en.tex, tint: en.tint || null, blend }), mb, m, en.model);
-                    if (!blend) place('caster', () => ({ caster: true }), mb, m, en.model);
+                    // (A part may say it casts nothing: a petal, a pebble.)
+                    if (!blend && !en.noCast) place('caster', () => ({ caster: true }), mb, m, en.model);
                 }
             }
             const one = this._identity || (this._identity = M().identity());
@@ -3656,6 +3834,8 @@
         desert: { share: 0.3, tint: EngineRenderer.TREE_LOOK.acacia.foliage } };
     // A slow field over the map, 0 to 1, the same for the same place: value noise on a
     // lattice of 70 units, so a stand of one kind is a few dozen trees across.
+    // The desert's stones: rust and sand, for its single pebbles and its beds of them.
+    EngineRenderer.DESERT_STONE = [[0.82, 0.6, 0.42], [0.9, 0.8, 0.62]];
     EngineRenderer.standField = (x, z) => {
         const at = (ix, iz) => { let n = (Math.imul(ix, 374761393) + Math.imul(iz, 668265263)) | 0; n = Math.imul(n ^ (n >>> 13), 1274126177); return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
         const gx = x / 70, gz = z / 70, x0 = Math.floor(gx), z0 = Math.floor(gz), fx = gx - x0, fz = gz - z0;
