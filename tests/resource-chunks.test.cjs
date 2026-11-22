@@ -13,6 +13,7 @@ function load() {
     // The engine's own mesh helpers, with only the upload stood in for.
     vm.runInContext(src('glcore'), scope);
     scope.window.GLCore.createMeshBuffers = (gl, mesh) => ({ mesh, position: { data: Float32Array.from(mesh.positions) } });
+    scope.window.GLCore.createShadowBuffers = (gl, mesh) => ({ mesh, shadowOnly: true, position: { data: Float32Array.from(mesh.positions) } });
     vm.runInContext('Object.assign(globalThis, window);' + src('gamerenderer'), scope);
     return { scope, R: vm.runInContext('window.EngineRenderer', scope), W: scope.window };
 }

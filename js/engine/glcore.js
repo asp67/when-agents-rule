@@ -126,6 +126,19 @@
     };
 
     // Bind a mesh's buffers to a program's standard attributes and draw it.
+    // A mesh that is only ever drawn into the shadow map: where its corners are, which bone
+    // each hangs on if any, and nothing else. The shadow's program reads no normals and no
+    // texture coordinates, and a caster is a second copy of geometry already on the card.
+    GLCore.createShadowBuffers = (gl, mesh) => {
+        const buf = (target, data) => { const b = gl.createBuffer(); gl.bindBuffer(target, b); gl.bufferData(target, data, gl.STATIC_DRAW); return b; };
+        return {
+            position: buf(gl.ARRAY_BUFFER, new Float32Array(mesh.positions)),
+            bone: mesh.bones ? buf(gl.ARRAY_BUFFER, new Float32Array(mesh.bones)) : null,
+            index: buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(mesh.indices)),
+            count: mesh.indices.length
+        };
+    };
+
     // Draws a mesh. With vertex array objects the mesh is pointed at once per program
     // and remembered: a draw is then three calls instead of some ten, which is most of what
     // a draw call costs the page. The array is let go again after every draw, so nothing

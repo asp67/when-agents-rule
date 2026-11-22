@@ -949,26 +949,37 @@
                 return src.get(k);
             };
             const open = new Map(), groups = [];
+            // Every solid part goes into its material's batch for the picture and, a second
+            // time, into the chunk's caster for the shadow map (overhaul step A4): the shadow
+            // pass drew every material's batch of every chunk, five or so a chunk, and a
+            // shadow has no material. A felled or fogged node is collapsed in both, since both
+            // are in its ranges.
+            const place = (key, make, mb, m, model) => {
+                const nv = m.positions.length / 3;
+                let g = open.get(key);
+                if (!g || g.nv + nv > 65535) {   // a WebGL 1 index range per batch
+                    g = Object.assign(make(), { items: [], nv: 0 });
+                    open.set(key, g); groups.push(g);
+                }
+                mb.ranges.push({ g, start: g.nv, count: nv });
+                g.items.push({ mesh: m, m: model });
+                g.nv += nv;
+            };
             for (const mb of c.members) {
                 const e = this._resourceEntries(rs[mb.i], mb.i);
                 for (const [en, blend] of [...e.opaque.map(x => [x, false]), ...e.blended.map(x => [x, true])]) {
-                    const key = en.texName + '|' + (en.tint ? en.tint.join(',') : '') + '|' + blend;
-                    const m = mesh(en.kind, en.args), nv = m.positions.length / 3;
-                    let g = open.get(key);
-                    if (!g || g.nv + nv > 65535) {   // a WebGL 1 index range per batch
-                        g = { tex: en.tex, tint: en.tint || null, blend, items: [], nv: 0 };
-                        open.set(key, g); groups.push(g);
-                    }
-                    mb.ranges.push({ g, start: g.nv, count: nv });
-                    g.items.push({ mesh: m, m: en.model });
-                    g.nv += nv;
+                    const m = mesh(en.kind, en.args);
+                    place(en.texName + '|' + (en.tint ? en.tint.join(',') : '') + '|' + blend, () => ({ tex: en.tex, tint: en.tint || null, blend }), mb, m, en.model);
+                    if (!blend) place('caster', () => ({ caster: true }), mb, m, en.model);
                 }
             }
+            const one = this._identity || (this._identity = M().identity());
             for (const g of groups) {
                 const merged = EngineMesh.mergeMeshes(g.items);
                 g.pos = merged.positions.slice();           // the shown copy, to restore from
-                g.buf = GLCore.createMeshBuffers(gl, merged);
-                g.entry = { buf: g.buf, tex: g.tex, tint: g.tint || undefined, model: this._identity || (this._identity = M().identity()) };
+                g.buf = g.caster ? GLCore.createShadowBuffers(gl, merged) : GLCore.createMeshBuffers(gl, merged);
+                g.entry = g.caster ? { buf: g.buf, model: one }
+                    : { buf: g.buf, tex: g.tex, tint: g.tint || undefined, model: one, noShadow: !g.blend };
                 g.items = null;
             }
             c.groups = groups;
@@ -1013,7 +1024,7 @@
                 }
                 c.shown = shown;
                 if (!shown || this._cull(c.x, c.z, margin)) continue;
-                for (const g of c.groups) (g.blend ? dl.blended : dl.opaque).push(g.entry);
+                for (const g of c.groups) (g.caster ? (dl.casters || (dl.casters = [])) : g.blend ? dl.blended : dl.opaque).push(g.entry);
             }
         }
 
@@ -1284,7 +1295,7 @@
                 skin: built.batches.map(p => ({ buf: GLCore.createMeshBuffers(this.gl, p.mesh), texName: p.tex,
                     team: p.team, accent: p.accent, bone: null, blend: p.blend, badgePaint: p.badgePaint })),
                 meshes: built.batches.map(p => p.mesh),      // the same batches in memory: the middle-distance model is merged from them
-                caster: built.caster ? GLCore.createMeshBuffers(this.gl, built.caster) : null,
+                caster: built.caster ? GLCore.createShadowBuffers(this.gl, built.caster) : null,
                 bones: built.bones,
                 cpu: EngineUnits.batches(parts).map(p => ({ mesh: p.mesh, texName: p.tex, team: p.team, accent: p.accent, bone: p.bone, blend: p.blend, badgePaint: p.badgePaint }))
             };
@@ -1506,7 +1517,7 @@
             if (this._buildingCasters.has(modelKey)) return this._buildingCasters.get(modelKey);
             const out = [];
             let group = [], count = 0;
-            const flush = () => { if (group.length) out.push(GLCore.createMeshBuffers(this.gl, EngineMesh.mergeParts(group))); group = []; count = 0; };
+            const flush = () => { if (group.length) out.push(GLCore.createShadowBuffers(this.gl, EngineMesh.mergeParts(group))); group = []; count = 0; };
             for (const p of parts) {
                 if (p.blend) continue;
                 const gen = EngineMesh[p.kind];
@@ -1617,11 +1628,15 @@
                 // ten a building, each twice with the shadow pass. It is the same for every
                 // building of a model, so it is cached with the model. All of it is drawn solid,
                 // as it was.
+                const dressed=modelKey?dressing.parts.map(p=>p.blend?Object.assign({},p,{blend:false}):p):null;
                 eb.details=modelKey
-                    ? this._buildingBatches(modelKey+'|dressing|'+!!building.isWonder,dressing.parts.map(p=>p.blend?Object.assign({},p,{blend:false}):p))
-                        .map(g=>({buf:g.buf,tex:this.tex[g.texName],tint:g.tint||this.WHITE,model:world}))
+                    ? this._buildingBatches(modelKey+'|dressing|'+!!building.isWonder,dressed)
+                        .map(g=>({buf:g.buf,tex:this.tex[g.texName],tint:g.tint||this.WHITE,model:world,noShadow:true}))
                     : dressing.parts.map(p=>({buf:this._buf(p.kind,p.args),tex:this.tex[p.tex],
                         tint:p.tint||this.WHITE,model:m3.multiply(world,p.m)}));
+                // ...and it casts as one shape, like the building: its batches each have their own
+                // tint, so merging them saved little, and each was drawn again for its shadow.
+                eb.detailCasters=modelKey?this._buildingCaster(modelKey+'|dressing|'+!!building.isWonder,dressed).map(buf=>({buf,model:world})):null;
                 if(dressing.fire){
                     const [x,y,z]=dressing.fire;
                     eb.fire=[world[0]*x+world[8]*z+world[12],world[5]*y+world[13],world[2]*x+world[10]*z+world[14]];
@@ -2498,8 +2513,11 @@
                         // Alpha fade shares the existing blended pass near the limit. From the
                         // height where units become their far models the dressing is smaller than a
                         // pixel and is left out; its lamps and hearth above still light the night.
-                        if(this._halfH<=EngineRenderer.FAR_UNIT_HALF_H)
+                        if(this._halfH<=EngineRenderer.FAR_UNIT_HALF_H){
                             for(const p of eb.details) (detailFade===1?dl.opaque:dl.blended).push(detailFade===1?p:{...p,alpha:detailFade});
+                            // Drawn solid it casts; fading out it is see-through and casts nothing, as before.
+                            if(detailFade===1&&eb.detailCasters)for(const en of eb.detailCasters)dl.casters.push(en);
+                        }
                         const visible=eb.fire&&(!this._fow()||this._fow().isPositionVisible(eb.fire[0],eb.fire[2]));
                         if(eb.fire&&visible&&hearths++<8){
                             const [x,y,z]=eb.fire,phase=ambientTime+b.x*.17+b.z*.11;
@@ -2672,15 +2690,25 @@
                     const visible=!this._fow()||this._fow().isPositionVisible(x,z);
                     const strength=visible?1.1*lampNight*lampFade*(1+.04*Math.sin(ambientTime*7+ue.phase)):0;
                     workerLights=ue.lampLights||=(new Float32Array(12));workerLights.set([x,y,z,strength]);
-                    for(const part of this._workerLampModel){
-                        const e={...part,tex:this.tex[part.texName],model:world,localLights:workerLights};
+                    // How much of a lantern is drawn follows how much of it can be seen (overhaul
+                    // step A4). It hangs a hand's breadth wide on a belt, and was six or seven
+                    // draws a worker with two more for its shadow at every height, the whole map
+                    // included: with a hundred workers in view at night, nine hundred draws.
+                    // Up close: all of it, as it was. From the middle distance, where a unit
+                    // shares one texture: its iron frame and its flame, and no shadow of its own.
+                    // From where units are their far models: only its light, the glow on the
+                    // ground and around the flame, which is what is seen of it from there.
+                    const lampNear=this._halfH<=EngineRenderer.MID_UNIT_HALF_H, lampFar=this._halfH>EngineRenderer.FAR_UNIT_HALF_H;
+                    if(!lampFar)for(const part of this._workerLampModel){
+                        if(!lampNear&&!part.flame&&part.texName!=='iron')continue;
+                        const e={...part,tex:this.tex[part.texName],model:world,localLights:workerLights,noShadow:!lampNear};
                         // Flame uses the unlit pass, so it cannot turn blue in night light.
                         if(part.flame){if(strength>0)dl.blended.push({...e,alpha:Math.min(1,strength)});}
                         else (lampFade===1?dl.opaque:dl.blended).push(lampFade===1?e:{...e,alpha:lampFade});
                     }
                     if(strength>0){
                         dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.18,additive:true,model:m3.multiply(m3.translation(x,.035,z),m3.scaling(1.6,1,1.6))});
-                        for(const [w,h,tint,alpha]of[[.40,.46,[1,.38,.06],.28],[.09,.14,[1,.80,.38],.9]])
+                        for(const [w,h,tint,alpha]of(lampFar?[[.40,.46,[1,.38,.06],.28]]:[[.40,.46,[1,.38,.06],.28],[.09,.14,[1,.80,.38],.9]]))
                             dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,model:m3.multiply(m3.multiply(m3.translation(x,y+.015,z),bb),m3.scaling(w,h,1))});
                     }
                 }

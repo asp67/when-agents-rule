@@ -9,7 +9,8 @@ function load() {
     const scope = { window: {}, console, performance: { now: () => 1000 } }; scope.window.window = scope.window; vm.createContext(scope);
     for (const f of ['math3d', 'mesh', 'texgen', 'buildings', 'units', 'atmosphere']) vm.runInContext(src(f), scope);
     let made = 0;
-    scope.window.GLCore = { createMeshBuffers: (gl, mesh) => ({ id: ++made, mesh }), drawMesh: (gl, prog, buf) => gl.drawn.push(buf) };
+    scope.window.GLCore = { createMeshBuffers: (gl, mesh) => ({ id: ++made, mesh }), createShadowBuffers: (gl, mesh) => ({ id: ++made, mesh, shadowOnly: true }),
+        drawMesh: (gl, prog, buf) => gl.drawn.push(buf) };
     vm.runInContext('Object.assign(globalThis, window);' + src('gamerenderer'), scope);
     return { W: scope.window, R: vm.runInContext('window.EngineRenderer', scope), scope };
 }

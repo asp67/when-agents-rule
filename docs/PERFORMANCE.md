@@ -176,3 +176,42 @@ against the shared one, two runs each taken in turn on build 1183:
 
 With it, 200 units are about a thousand of those calls; the other two thousand are the
 town around them, which is where the diet would have to go on.
+
+**Step 5, build 1185: the town.** A count of what the other two thousand calls were named
+three things, and each was cut where nothing can be seen of the cut:
+
+- *A worker's lantern* was six or seven draws and two more for its shadow, at every
+  camera height, the whole-map view included: with a hundred workers at night, about nine
+  hundred draws for something a hand's breadth wide. Up close it is drawn as it was. From
+  the middle distance (`MID_UNIT_HALF_H`, where a unit shares one texture) its iron frame
+  and its flame are drawn and it casts no shadow of its own. From where units are their
+  far models (`FAR_UNIT_HALF_H`) only its light is drawn, the glow on the ground and
+  around the flame, which is what is seen of it from there.
+- *A building's dressing* (carts, jars, benches) was merged per tint in step 2, and each
+  of those batches was drawn again for its shadow. It now casts as one shape, like the
+  building, and only while it is drawn solid.
+- *A forest chunk* was drawn into the shadow map once per material, five or so a chunk.
+  Every solid part is now also in the chunk's one caster; a felled or fogged tree is
+  collapsed in both.
+
+A caster is made with `GLCore.createShadowBuffers`: positions, bones where there are any,
+and indices. The shadow's program reads nothing else, so casters no longer hold normals
+and texture coordinates on the card.
+
+The army view again (628 units, High, night, so the lanterns count), build 1184 against
+build 1185, two runs of 1185:
+
+| | draw calls a frame | | ms a frame, median | | |
+| --- | --- | --- | --- | --- | --- |
+| | 1184 | 1185 | 1184 | 1185 | |
+| 200 units in view (half-height 45) | 3129 | 2650 | 5.5 | 4.8 | -13 % |
+| 256 units in view (half-height 90) | 3855 | 3120 | 6.7 | 6.0 | -10 % |
+
+Against build 1173, before the diet, the same views were 9516 and 11954 calls and 14.4
+and 17.3 ms: a third of the calls and a third of the time. The benchmark on build 1185,
+one run: draw calls on Low 463, on Balanced 660, on High 1066 (build 1173: 627, 1179,
+1860); a frame 1.92, 2.09 and 5.98 ms, High with Cinematic light 5.63.
+
+Still not the plan's 900 calls with 400 units in view. What is left in a town is the
+props (a draw and a shadow draw each), a building's pole and runner, and the units
+themselves at four or five draws; and the frame still allocates its matrices anew.

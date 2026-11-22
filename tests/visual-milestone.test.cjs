@@ -123,7 +123,7 @@ test('baking scaled armor preserves positions and unit normals through every lim
 
 test('unit batches share geometry across seats while keeping team and badge tints per instance',()=>{
     const s=context(),r=Object.create(s.EngineRenderer.prototype);
-    s.GLCore={createMeshBuffers:(_,mesh)=>({mesh})};
+    s.GLCore={createMeshBuffers:(_,mesh)=>({mesh}),createShadowBuffers:(_,mesh)=>({mesh})};
     s.getTeamBadge=()=>({shape:'circle'});
     Object.assign(r,{units:[],gl:{},tex:new Proxy({},{get:(_,key)=>key}),WHITE:[1,1,1]});
     r._flagTexture=(seat,tint)=>({seat,tint});
@@ -219,7 +219,7 @@ test('civilization facial hair covers every human class, with visible mouths and
         }
     }
     const r=Object.create(s.EngineRenderer.prototype);
-    s.GLCore={createMeshBuffers:(_,mesh)=>({mesh})};s.getTeamBadge=()=>({shape:'circle'});
+    s.GLCore={createMeshBuffers:(_,mesh)=>({mesh}),createShadowBuffers:(_,mesh)=>({mesh})};s.getTeamBadge=()=>({shape:'circle'});
     Object.assign(r,{units:[],gl:{},tex:new Proxy({},{get:(_,key)=>key}),WHITE:[1,1,1]});
     r._flagTexture=(seat,tint)=>({seat,tint});
     r._badgeTints=()=>({fill:[1,0,0],rim:[0,1,0]});
