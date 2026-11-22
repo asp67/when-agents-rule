@@ -373,5 +373,97 @@
         else fly(2, [0.42, 0.56, 0.26], 0.36);
     };
 
+    // ---- a building breaks apart (overhaul step A9, build 1208) -------------------------------
+    // A building that fell sank into the ground as one flat thing. Now its own parts come
+    // away from each other: each is thrown outward from the middle, the higher the further,
+    // turns as it falls, lands and lies, and all of them fade at the end. The parts are the
+    // building's (EngineBuildings.parts); which way each goes follows from the building's
+    // id, so a replay breaks it the same way.
+    EngineFx.BREAK_SECONDS = 1.6;
+    EngineFx.BREAK_MAX_PARTS = 140;      // a Wonder of more parts than this sinks as before
+    EngineFx.shatter = (parts, seed) => parts.filter(p => !p.blend && p.tex !== 'shadow').map((p, i) => {
+        const cx = p.m[12], cy = p.m[13], cz = p.m[14], d = Math.hypot(cx, cz);
+        const a = d > 0.3 ? Math.atan2(cz, cx) + (rnd(seed, i) - 0.5) * 0.9 : rnd(seed, i) * Math.PI * 2;
+        const out = 1.0 + rnd(seed, i + 50) * 2.4 + cy * 0.3, vy = 1.2 + rnd(seed, i + 100) * 3.2;
+        // When it lands: its middle a little above the ground.
+        const rest = Math.min(cy, 0.2);
+        return { p, cx, cy, cz, vx: Math.cos(a) * out, vz: Math.sin(a) * out, vy, rest,
+            lands: (vy + Math.sqrt(vy * vy + 18 * Math.max(0, cy - rest))) / 9,
+            spin: (rnd(seed, i + 150) - 0.5) * 6, axis: i % 3, delay: rnd(seed, i + 200) * 0.22 };
+    });
+    // Where a piece is t seconds after the building fell, as a matrix in the building's own space.
+    EngineFx.shatterMatrix = (piece, t, m3) => {
+        const tt = Math.min(Math.max(0, t - piece.delay), piece.lands);
+        const y = Math.max(piece.rest, piece.cy + piece.vy * tt - 4.5 * tt * tt), turn = piece.spin * tt;
+        const spin = piece.axis === 0 ? m3.rotationX(turn) : piece.axis === 1 ? m3.rotationY(turn) : m3.rotationZ(turn);
+        return m3.multiply(m3.multiply(m3.multiply(m3.translation(piece.cx + piece.vx * tt, y, piece.cz + piece.vz * tt), spin),
+            m3.translation(-piece.cx, -piece.cy, -piece.cz)), piece.p.m);
+    };
+    // How much of the pieces shows: all of them, then fading over the last third.
+    EngineFx.breakFade = t => Math.max(0, Math.min(1, (EngineFx.BREAK_SECONDS - t) / (EngineFx.BREAK_SECONDS * 0.33)));
+
+    // ---- birds over quiet land (overhaul step A9, build 1208) ---------------------------------
+    // A few small flocks circle where nothing is going on: no unit and no building the
+    // viewer can see within reach, on ground that has been explored. When someone comes
+    // they scatter and are gone, and gather again over another quiet place. They go by
+    // what the picture shows, never by what the fog hides: a flock tells nothing about a
+    // hidden army. Where they circle is laid by the map's seed; how they fly, by the clock.
+    EngineFx.BIRD_REACH = 30;
+    EngineFx.birdMesh = () => {
+        // Two wings raised to a shallow V and a sliver of a body, seen from both sides.
+        const tris = [[[0, 0, 0.2], [-0.62, 0.2, -0.1], [0, 0, -0.16]], [[0, 0, 0.2], [0, 0, -0.16], [0.62, 0.2, -0.1]],
+            [[0, 0, 0.42], [-0.05, 0, 0], [0.05, 0, 0]], [[0, 0, -0.38], [0.06, 0, 0], [-0.06, 0, 0]]];
+        const out = { positions: [], normals: [], uvs: [], indices: [] };
+        for (const tri of tris) for (const side of [1, -1]) {
+            const base = out.positions.length / 3;
+            for (const v of tri) { out.positions.push(...v); out.normals.push(0, side, 0); out.uvs.push(0.5, 0.5); }
+            out.indices.push(base, base + (side === 1 ? 1 : 2), base + (side === 1 ? 2 : 1));
+        }
+        return out;
+    };
+    class Birds {
+        constructor(seed, half = 300) {
+            this.homes = [];
+            for (let i = 0; i < 12; i++) this.homes.push([(rnd(seed, i * 2 + 300) * 2 - 1) * half, (rnd(seed, i * 2 + 301) * 2 - 1) * half]);
+            this.flocks = [];
+            this.next = 0;
+        }
+        // level: 1 two flocks, 2 three. quiet(x, z): whether a place is quiet and explored.
+        // Returns the birds to draw: { x, y, z, heading, flap, size }.
+        frame(t, dt, level, quiet) {
+            const want = level > 1 ? 3 : 2, out = [];
+            while (this.flocks.length < want) this.flocks.push({ home: -1, k: 0, staying: false, checked: -99, n: 4 + (this.flocks.length * 2) % 3, turn: this.flocks.length % 2 ? -1 : 1 });
+            this.flocks.length = want;
+            this.flocks.forEach((f, fi) => {
+                if (t - f.checked > 1.5 || t < f.checked) {
+                    f.checked = t;
+                    if (f.home >= 0) f.staying = quiet(this.homes[f.home][0], this.homes[f.home][1]);
+                    // Gone: look for the next quiet place that no other flock has.
+                    if (f.k <= 0 && !f.staying) for (let tries = 0; tries < this.homes.length; tries++) {
+                        const h = this.next++ % this.homes.length;
+                        if (this.flocks.some(o => o !== f && o.home === h)) continue;
+                        if (quiet(this.homes[h][0], this.homes[h][1])) { f.home = h; f.staying = true; break; }
+                    }
+                }
+                f.k = Math.max(0, Math.min(1, f.k + (f.staying ? 0.4 : -0.9) * Math.max(0, dt || 0)));
+                if (f.home < 0 || f.k <= 0.02) return;
+                const [hx, hz] = this.homes[f.home];
+                const cx = hx + 10 * Math.sin(t * 0.05 + fi * 2.1), cz = hz + 10 * Math.cos(t * 0.037 + fi * 1.3);
+                for (let i = 0; i < f.n; i++) {
+                    const ang = f.turn * t * 0.45 + i * (Math.PI * 2 / f.n) + 0.4 * Math.sin(t * 0.3 + i * 1.9);
+                    // Coming and going they are far out and high, and small with the distance.
+                    const R = 5 + 1.6 * Math.sin(t * 0.4 + i * 1.7) + (1 - f.k) * 34;
+                    out.push({ x: cx + Math.cos(ang) * R, z: cz + Math.sin(ang) * R, y: 9 + 1.2 * Math.sin(t * 0.6 + i * 2) + (1 - f.k) * 7,
+                        heading: Math.atan2(-Math.sin(ang) * f.turn, Math.cos(ang) * f.turn) + Math.PI / 2,
+                        // A few beats, then a glide.
+                        flap: Math.sin(t * 8.5 + i * 1.3) * (0.35 + 0.65 * Math.max(0, Math.sin(t * 0.9 + i * 2.6))),
+                        size: 0.75 * Math.min(1, f.k * 2.5) });
+                }
+            });
+            return out;
+        }
+    }
+    EngineFx.Birds = Birds;
+
     window.EngineFx = EngineFx;
 })();

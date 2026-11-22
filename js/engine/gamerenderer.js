@@ -2004,7 +2004,7 @@
                 parts = EngineBuildings.parts(type, { age: building.age, civ: building.civilization });
                 modelKey = `${type}|${building.age}|${building.civilization}`;
             }
-            const eb = { opaque: [], blended: [], shell: null, world, bs };
+            const eb = { opaque: [], blended: [], shell: null, world, bs, teamTint: tint };
             const grassFoot = this._meshFootprint(parts, `${building.type}|${building.age}|${building.civilization}|${!!building.underConstruction}`);
             const ca = Math.abs(Math.cos(building.rotationY || 0)), sa = Math.abs(Math.sin(building.rotationY || 0));
             building._grassFootprint = { ex: (grassFoot.ex*ca + grassFoot.ez*sa)*bs + 1,
@@ -2198,10 +2198,35 @@
                 const fp = building._grassFootprint;
                 this._occl.tread(building.x, building.z, EngineRenderer.TREAD.ruin, (fp ? Math.max(fp.ex, fp.ez) : 5) + 1.2); this._occl.treads++;
             }
-            this._ghostFrom(building, 'building');
+            // It breaks apart (overhaul step A9): its own parts thrown outward, turning, landing,
+            // fading (EngineFx.shatter). Where the tier has no effects, for a site still being
+            // built, a Wonder of too many parts, or a third building falling at once: it sinks
+            // into the ground as it always did.
+            if (!this._breakApart(building)) this._ghostFrom(building, 'building');
             this.removeBuilding(building);
             building.healthBar = null;
             this.spawnDust(building.x, 1.4, building.z, 24, 0xb0a48e);
+        }
+
+        _breakApart(building) {
+            const eb = building._engine;
+            if (!eb || !eb.world || building.underConstruction || this._fxLevel() < 1 || typeof EngineFx === 'undefined' || !EngineFx.shatter) return false;
+            const breaks = this._breaks || (this._breaks = []);
+            if (breaks.length >= 2) return false;
+            // The model it was drawn with (_composeBuilding): its own, or the stand-in for a kind unknown here.
+            const type = EngineBuildings.TYPES.indexOf(building.type) >= 0 ? building.type : (building.isWonder ? 'wonder' : 'house');
+            const parts = EngineBuildings.parts(type, { age: building.age, civ: building.civilization });
+            if (!parts.length || parts.length > EngineFx.BREAK_MAX_PARTS) return false;
+            const pieces = EngineFx.shatter(parts, EngineFx.seedOf(building.id || (building.x + ',' + building.z)));
+            for (const piece of pieces) {
+                const p = piece.p;
+                piece.entry = { buf: this._buf(p.kind, p.args), tex: this.tex[p.tex] || this.tex.white, tint: p.team ? eb.teamTint : (p.tint || this.WHITE) };
+            }
+            breaks.push({ pieces, world: eb.world, t: 0 });
+            // More dust than a sinking building raised, and from its corners.
+            const fp = building._grassFootprint;
+            if (fp) for (const [sx, sz] of [[-1, -1], [1, 1]]) this.spawnDust(building.x + sx * fp.ex * 0.5, 0.8, building.z + sz * fp.ez * 0.5, 16, 0xb0a48e);
+            return true;
         }
 
         spawnProjectile(from, to, kind, shooter, timing) {
@@ -2297,6 +2322,7 @@
             this._rings.forEach(r => { r.active = false; });
             if (this._particles) this._particles.clear();
             this._ghosts = [];
+            this._breaks = [];
         }
 
         clearScene() {
@@ -3244,6 +3270,45 @@
 
             if (!inset) this._marching = onTheMove;
 
+            // Buildings breaking apart (overhaul step A9): each piece where its fall has taken it.
+            if (this._breaks && this._breaks.length) {
+                for (let i = this._breaks.length - 1; i >= 0; i--) {
+                    const b = this._breaks[i];
+                    b.t += once(b);
+                    if (b.t >= EngineFx.BREAK_SECONDS) { this._breaks.splice(i, 1); continue; }
+                    const fade = EngineFx.breakFade(b.t);
+                    for (const piece of b.pieces) {
+                        const model = fm.multiply(b.world, EngineFx.shatterMatrix(piece, b.t, fm));
+                        if (fade < 1) dl.blended.push({ buf: piece.entry.buf, tex: piece.entry.tex, tint: piece.entry.tint, alpha: fade, model });
+                        else dl.opaque.push({ buf: piece.entry.buf, tex: piece.entry.tex, tint: piece.entry.tint, model });
+                    }
+                }
+            }
+
+            // Birds over quiet land (overhaul step A9): a few flocks where nothing the viewer
+            // can see is going on. Not in the second picture, and not from so high that a
+            // bird is under a pixel.
+            if (fxLevel > 0 && !inset && this._halfH < 140 && this.terrain && typeof EngineFx !== 'undefined' && EngineFx.Birds) {
+                if (!this._birds || this._birdSeed !== this.terrain.seed) {
+                    this._birdSeed = this.terrain.seed;
+                    this._birds = new EngineFx.Birds(EngineFx.seedOf(this.terrain.seed), Math.min(300, (this.terrain.size || 800) / 2 - 90));
+                }
+                const fow = this._fow(), seen = typeof EngineGrass !== 'undefined' ? EngineGrass.visibleRect : null, reach = EngineFx.BIRD_REACH * EngineFx.BIRD_REACH;
+                const shown = (e, kind) => e.health > 0 && !(e.mesh && e.mesh.visible === false) && !(this.entityHidden && this.entityHidden(e, kind));
+                const quiet = (x, z) => {
+                    if (seen && fow && !seen(fow, x, z, 8, 8, true)) return false;
+                    for (const b of this.buildings) if (shown(b, 'building') && (b.x - x) ** 2 + (b.z - z) ** 2 < reach) return false;
+                    for (const u of this.units) if (shown(u, 'unit') && (u.x - x) ** 2 + (u.z - z) ** 2 < reach) return false;
+                    return true;
+                };
+                const birdBuf = this._birdBuf || (this._birdBuf = GLCore.createMeshBuffers(this.gl, EngineFx.birdMesh()));
+                for (const b of this._birds.frame(tSec, dt, fxLevel, quiet)) {
+                    if (this._cull(b.x, b.z, 2)) continue;
+                    dl.opaque.push({ buf: birdBuf, tex: this.tex.white, tint: EngineRenderer.BIRD_TINT, noShadow: true,
+                        model: fm.multiply(fm.multiply(fm.translation(b.x, b.y, b.z), fm.rotationY(b.heading)), fm.scaling(b.size, b.size * b.flap, b.size)) });
+                }
+            }
+
             // ghost collapses (deaths)
             for (let i = this._ghosts.length - 1; i >= 0; i--) {
                 const g = this._ghosts[i];
@@ -3862,6 +3927,8 @@
         desert: { share: 0.3, tint: EngineRenderer.TREE_LOOK.acacia.foliage } };
     // A slow field over the map, 0 to 1, the same for the same place: value noise on a
     // lattice of 70 units, so a stand of one kind is a few dozen trees across.
+    // A bird against the ground: dark, a touch warm.
+    EngineRenderer.BIRD_TINT = [0.17, 0.16, 0.15];
     // The desert's stones: rust and sand, for its single pebbles and its beds of them.
     EngineRenderer.DESERT_STONE = [[0.82, 0.6, 0.42], [0.9, 0.8, 0.62]];
     EngineRenderer.standField = (x, z) => {
