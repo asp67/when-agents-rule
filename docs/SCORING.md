@@ -348,19 +348,33 @@ the one in the `results` line. The two can differ in Strategy and so in the Inde
 
 ## The comparison board
 
-The Bench view's panel shows a mini card: a row a model with three sections, and a click
-opens the board at full size (builds 1222 to 1226). The full size also opens from the
-results screen (the button under the report card) and in the transcript analyzer
-(*Comparison*, in its bar), where it reads the loaded file. Nothing on the board is a new
-score. It lays out what the ledger already holds.
+The Bench view's panel shows a mini card, and a click opens the board at full size (builds
+1222 to 1227). The full size also opens from the results screen (the button under the
+report card) and in the transcript analyzer (*Comparison*, in its bar), where it reads the
+loaded file. Nothing on the board is a new score. It lays out what the ledger already holds.
 
-**Three sections a model.**
+**One grid: a column a model, so the models stand side by side.** Three sections from top
+to bottom, in the mini card and at full size alike (the layout of build 1227; the first one,
+which stacked the models and put the power graph under gameplay, was thrown out):
 
-- *Gameplay score*: its power over the match with the other seats' behind it, its rank by
-  power and its share of all power.
-- *Model performance and cost*: the Index and its five parts over the match (the `scores`
-  line above), and under it tokens and thinking time so far.
-- *Score summary*: the Index and every part as they stand, with what each rests on.
+- *Gameplay*: Grounding, Planning, Follow-through, Tactical and Strategy over the match, in
+  one graph a model (the `scores` line above). Under it a strip of the decisions that went
+  wrong (the decision inspector, below).
+- *Model performance*: three graphs over the match, each on ONE scale for all models:
+  seconds a decision, tokens a decision, and the share of orders refused. Each is the rate
+  of the seat's latest decisions (its last three or more), not a running total, so a
+  slowdown, a growing prompt or a run of refusals shows as a slope.
+- *Summary*: one table, a row a figure: the Index and its five parts, cost, discipline, and
+  what the game's harness did for the seat. The better value of a row stands out.
+
+Not on the board: the power graph (the Race chart has it), the matrix with the decisions
+behind every cell (the report card on the results screen has it), and the chart to share.
+
+**It must not hold the game up.** While a match runs the board is drawn again whenever a
+decision arrives. A sample of the history is scored again only when the decisions, battles
+or power readings it rests on have changed in number (`Ledger.liveHistory`), within a
+budget of 8 ms a refresh; what does not fit follows in the next refreshes. A refresh keeps
+the place the reader had scrolled to.
 
 **Cost and time per task.** Beside the Index stand what it cost: all tokens (prompt plus
 completion), the time spent waiting for answers, and two ratios, Index points a million
@@ -376,9 +390,10 @@ tokens and no ratio, which is not a zero.
 | Mistakes not made again | 1 minus the share of mistakes repeated within the next two decisions |
 | Requests lost | requests that failed or were cancelled, and rounds missed |
 
-**The decision inspector** (`Ledger.trace`). Under a model's sections the board marks the
-decisions to go and read, on the match's clock and as a list; a click opens one in the
-transcript. Five kinds:
+**The decision inspector** (`Ledger.trace`). Under a model's gameplay graph a strip marks
+the decisions to go and read, on the match's clock; a mark says what it is on hover, and a
+click opens that decision in the transcript. The number of loops is a figure of the
+summary. Five kinds:
 
 | Kind | What the record shows |
 | --- | --- |
@@ -394,20 +409,21 @@ against the harness's codes. Three decisions is `WarEval.LOOP_MIN`: among the sh
 samples such runs are 3, 4, 4, 6, 19 and 20 decisions long. The inspector scores nothing.
 
 **Raw model or harness** (`harness` in a seat's profile, not in the profile a file
-carries). Beside a seat's name stands who plays it, and in its summary what the game's own
-harness did for it, from lines the transcript already writes:
+carries). Beside a seat's name stands who plays it, and one row of the summary says what
+the game's own harness did for it, from lines the transcript already writes:
 
 - answers with no tool call, whose orders the harness read out of the text (`answeredVia`);
 - requests the harness adapted (`adaptation` lines, by kind: a parameter or the tools left
   out after the endpoint refused them, the context shrunk, earlier turns dropped);
 - a human's interventions (`intervention` lines: advice, a seat paused and resumed).
 
-A file older than transcript schema 2 does not record the last two, and the board says "not
-recorded" rather than 0. What an agent framework does inside itself is in no transcript.
+A file older than transcript schema 2 does not record the last two, and the board leaves
+them out rather than showing 0. What an agent framework does inside itself is in no transcript.
 
 **Charts to share** (js/eval/share.js). One SVG of 1600 x 900 that stands by itself, saved
-as it is or as a PNG. For a match: the Index against speed or against tokens a decision, a
-point a model, and beside it where on the map each seat sent its orders. For a season group
+as it is or as a PNG. A chart sums a match up, so it stands on the results screen under the
+report card, not on the live board. For a match: the Index against speed or against tokens
+a decision, a point a model, and beside it where on the map each seat sent its orders. For a season group
 (Season page): the mean Index with a whisker from the lowest match to the highest, or the
 share of matches placed first, against the median time a decision took. A round point is a
 raw model, a diamond an agent harness. A seat with no value on an axis is named under the
