@@ -102,7 +102,7 @@
             this.cover = TexGen.grassCoverSampler(renderer._theme, TexGen.TERRAIN_SEED, TexGen.TERRAIN_WORLD);
         }
         disposeTile(tile) {
-            for (const batch of tile.batches) for (const key of ['position', 'normal', 'uv', 'index']) this.renderer.gl.deleteBuffer(batch.buf[key]);
+            for (const batch of tile.batches) GLCore.deleteMeshBuffers(this.renderer.gl, batch.buf);
         }
         dispose() { for (const tile of this.cache.values()) this.disposeTile(tile); this.cache.clear(); }
         frame() {

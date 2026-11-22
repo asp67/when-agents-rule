@@ -7,6 +7,8 @@ function setup(){
     const scope={window:{M3D:{scaling:(...args)=>args}},GLCore:{createMeshBuffers:(_gl,m)=>({position:++id,normal:++id,uv:++id,index:++id,count:m.indices.length})},
         performance:{now:()=>(clock.t+=1)}};
     vm.createContext(scope);
+    // The engine's own mesh helpers (how buffers are given back, since build 1179), with only the upload stood in for.
+    {const upload=scope.GLCore.createMeshBuffers;vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/glcore.js'),'utf8'),scope);scope.GLCore=Object.assign(scope.window.GLCore,{createMeshBuffers:upload});}
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
     scope.TexGen=scope.window.TexGen;
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/grass.js'),'utf8'),scope);

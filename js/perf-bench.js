@@ -99,6 +99,8 @@ const WarPerfBench = {
         const gl = game.renderer.gl, dbg = gl.getExtension('WEBGL_debug_renderer_info');
         return {
             gpu: String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)),
+            webgl: gl.warVersion || 1,
+            arrays: !!GLCore.vaoOf(gl),
             cores: navigator.hardwareConcurrency || null,
             pixelRatio: window.devicePixelRatio || 1,
             screen: (screen.width || 0) + 'x' + (screen.height || 0),

@@ -6,11 +6,17 @@
 
     GLCore.createContext = (canvas, opts) => {
         const cfg = Object.assign({ antialias: true }, opts || {});
+        // WebGL 2 is asked for first (overhaul step A4): vertex array objects and
+        // instancing are part of it instead of extensions that may be missing. The
+        // shaders are the same GLSL either way. WebGL 1 remains the fallback, and
+        // { webgl1: true } asks for it outright (the page's ?webgl=1, for comparing).
+        const one = !!cfg.webgl1;
+        delete cfg.webgl1;
         // 'experimental-webgl' is the same WebGL 1, exposed under the old name by some
         // older builds and by drivers the browser has half-blocklisted. Costs one line
         // and is occasionally the difference between a working machine and a black
         // screen, so ask twice before giving up.
-        const gl = canvas.getContext('webgl', cfg) || canvas.getContext('experimental-webgl', cfg);
+        const gl = (!one && canvas.getContext('webgl2', cfg)) || canvas.getContext('webgl', cfg) || canvas.getContext('experimental-webgl', cfg);
         // A marked error, because the caller has to tell THIS apart from every other
         // failure: it is the one that is about the machine rather than about the game.
         if (!gl) {
@@ -24,7 +30,22 @@
         // (EngineMesh.auditWinding returns 0 for the whole library).
         gl.enable(gl.CULL_FACE);
         gl.cullFace(gl.BACK);
+        gl.warVersion = (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) ? 2 : 1;
         return gl;
+    };
+
+    // Vertex array objects: part of WebGL 2, an extension in WebGL 1, missing on a few old
+    // drivers (then null, and a mesh is pointed at afresh for every draw, as it always was).
+    GLCore.vaoOf = gl => {
+        if (gl._warVao !== undefined) return gl._warVao;
+        let v = null;
+        if (typeof gl.createVertexArray === 'function') {
+            v = { create: () => gl.createVertexArray(), bind: a => gl.bindVertexArray(a), remove: a => gl.deleteVertexArray(a) };
+        } else {
+            const ext = typeof gl.getExtension === 'function' ? gl.getExtension('OES_vertex_array_object') : null;
+            if (ext) v = { create: () => ext.createVertexArrayOES(), bind: a => ext.bindVertexArrayOES(a), remove: a => ext.deleteVertexArrayOES(a) };
+        }
+        return (gl._warVao = v);
     };
 
     GLCore.compileProgram = (gl, vsSource, fsSource) => {
@@ -99,7 +120,35 @@
     };
 
     // Bind a mesh's buffers to a program's standard attributes and draw it.
+    // Draws a mesh. With vertex array objects the mesh is pointed at once per program
+    // and remembered: a draw is then three calls instead of some ten, which is most of what
+    // a draw call costs the page. The array is let go again after every draw, so nothing
+    // drawn by hand afterwards (the bloom's quad) can write into a mesh's array.
     GLCore.drawMesh = (gl, program, buffers) => {
+        const vao = GLCore.vaoOf(gl);
+        if (!vao) { GLCore.pointMesh(gl, program, buffers); gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0); return; }
+        let array = buffers.arrays && buffers.arrays.get(program);
+        if (array) vao.bind(array);
+        else {
+            array = vao.create();
+            (buffers.arrays || (buffers.arrays = new Map())).set(program, array);
+            vao.bind(array);
+            GLCore.pointMesh(gl, program, buffers);      // kept by the array, the index buffer included
+        }
+        gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0);
+        vao.bind(null);
+    };
+
+    // Gives a mesh's buffers back to the card, with the arrays that pointed at them.
+    GLCore.deleteMeshBuffers = (gl, buffers) => {
+        if (!buffers) return;
+        const vao = GLCore.vaoOf(gl);
+        if (buffers.arrays) { if (vao) for (const a of buffers.arrays.values()) vao.remove(a); buffers.arrays = null; }
+        for (const k of ['position', 'normal', 'uv', 'index']) if (buffers[k]) gl.deleteBuffer(buffers[k]);
+    };
+
+    // Points the program's attributes at a mesh's buffers.
+    GLCore.pointMesh = (gl, program, buffers) => {
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position);
         gl.enableVertexAttribArray(program.attribs.aPosition);
         gl.vertexAttribPointer(program.attribs.aPosition, 3, gl.FLOAT, false, 0, 0);
@@ -114,7 +163,6 @@
             gl.vertexAttribPointer(program.attribs.aUv, 2, gl.FLOAT, false, 0, 0);
         }
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
-        gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0);
     };
 
     window.GLCore = GLCore;

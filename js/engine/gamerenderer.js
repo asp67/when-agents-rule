@@ -96,7 +96,9 @@
             this.W = W; this.H = H;
             this.renderScale = 1;             // drawing-buffer pixels per page pixel
             this._sizeCanvas();
-            this.gl = GLCore.createContext(canvas, { preserveDrawingBuffer: true });
+            // ?webgl=1 asks for WebGL 1, to compare with or to get around a driver's WebGL 2.
+            this.gl = GLCore.createContext(canvas, { preserveDrawingBuffer: true,
+                webgl1: typeof location !== 'undefined' && /[?&]webgl=1(&|$)/.test(location.search || '') });
             // What each frame costs (js/engine/perf.js). Light unless ?perf=1 asks for more.
             this.perf = window.EnginePerf ? new EnginePerf.Meter(this.gl) : null;
 
@@ -914,8 +916,7 @@
 
         _freeResourceChunks() {
             const gl = this.gl;
-            for (const c of this._resChunks.list) for (const g of c.groups || [])
-                for (const k of ['position', 'normal', 'uv', 'index']) gl.deleteBuffer(g.buf[k]);
+            for (const c of this._resChunks.list) for (const g of c.groups || []) GLCore.deleteMeshBuffers(gl, g.buf);
             this._resChunks = null;
         }
 

@@ -10,7 +10,9 @@ function load() {
     const scope = { window: {}, console }; scope.window.window = scope.window; vm.createContext(scope);
     for (const f of ['math3d', 'mesh', 'texgen', 'buildings', 'units']) vm.runInContext(src(f), scope);
     // A buffer is its own data, so writes into it can be read back.
-    scope.window.GLCore = { createMeshBuffers: (gl, mesh) => ({ mesh, position: { data: Float32Array.from(mesh.positions) } }) };
+    // The engine's own mesh helpers, with only the upload stood in for.
+    vm.runInContext(src('glcore'), scope);
+    scope.window.GLCore.createMeshBuffers = (gl, mesh) => ({ mesh, position: { data: Float32Array.from(mesh.positions) } });
     vm.runInContext('Object.assign(globalThis, window);' + src('gamerenderer'), scope);
     return { scope, R: vm.runInContext('window.EngineRenderer', scope), W: scope.window };
 }

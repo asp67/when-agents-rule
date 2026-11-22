@@ -85,3 +85,29 @@ run before it. And a difference is only a difference between runs taken in turn 
 same machine in the same minutes.
 
 What these steps cost on an office machine has not been measured.
+
+## The draw-call diet (overhaul step A4)
+
+A draw call costs the page time whatever it draws, and on an office machine the page's
+time is the scarce one. Where the calls go, counted in the benchmark's scene on High
+(the shadow pass draws every solid thing a second time and is not in these numbers):
+
+| shot | solid | see-through | of the solid: buildings | units | grass |
+| --- | --- | --- | --- | --- | --- |
+| overview, the whole map | 1881 | 893 | 1385 (72 buildings, 19 each) | 598 (157 units, 4 each: the far model) | 0 |
+| town | 769 | 195 | 345 (23, 15 each) | 94 (5 units, 19 each) | 3 |
+| close-up | 426 | 123 | 253 (19, 13 each) | 62 (3, 21 each) | 17 |
+| night town | 1103 | 213 | 403 (20, 20 each) | 281 (15, 19 each) | 302 |
+
+So a building is some fifteen to twenty calls and a unit some nineteen, each twice where
+shadows are cast; at the whole-map zoom every building is still drawn part by part.
+
+**Step 1, build 1179: WebGL 2 and vertex array objects.** The context is WebGL 2 where the
+browser has it, WebGL 1 otherwise (and with `?webgl=1`, to compare or to get around a
+driver). The shaders are the same. A mesh is now pointed at once per program and
+remembered in a vertex array object, so a draw is three calls to the card instead of
+some ten. On the development machine the page's time building a frame went from about
+2.6 to about 2.3 ms on High and stayed at half a millisecond on Low and Balanced, which
+is inside what two runs differ by there: that machine's processor is not the one this is
+for. Draw calls and triangles are unchanged. What it buys on an office machine has not
+been measured.
