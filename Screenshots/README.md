@@ -42,14 +42,28 @@ Source compression and any original recording frame-pacing issues remain.
 ## Episode stills
 
 Three stills from later episodes replaced the September settlement, formation and
-village stills on 7 October 2026. Each is an unchanged full frame (1920 x 1080) of
+village stills on 7 October 2026; two of them are still in use. Each is an unchanged full frame (1920 x 1080) of
 the episode's OBS recording; the matches themselves are in `samples/`.
 
 | Asset | Source | Content |
 | --- | --- | --- |
 | WinterTown.jpg | Episode 9, OBS 0:50:14 | GLM 5.3's Egyptian town in a winter match, with its notes |
 | ArcherRaid.jpg | Episode 10, OBS 0:25:42 | DeepSeek V4.1's Yamato archers raze GLM 5.3's Egyptian base |
-| WonderHeld.jpg | Episode 12, OBS 0:34:34 | The whole island while Claude Sonnet 5.5's Greeks hold a Wonder |
+
+## Overlays and scoring (build 1228)
+
+Four Windows screenshots of the game window during and after a live three-model arena match
+on 22 November 2026 (DeepSeek V4.1, nemotron-3-ultra, qwen3.8-flash; 62:36, Wonder held).
+The two match views are scaled from 2290 x 1301 to 1920 wide and saved as JPEG; the two
+interface crops are the original PNGs. Nothing was edited. They replaced WonderHeld.jpg
+(Episode 12) on 23 November 2026.
+
+| Asset | Source | Content |
+| --- | --- | --- |
+| BenchWonder.jpg | Screenshot, 23:06, match clock 58:01 | Broadcast mode with the plan panel, the comparison card, the comparison strip and the race chart on: qwen3.8-flash's Maya hold their Wonder, 4:13 to go |
+| BenchDusk.jpg | Screenshot, 22:59, match clock 51:21 | The same overlays over DeepSeek V4.1's Yamato town at dusk |
+| ComparisonBoard.png | Screenshot, 22:41, match clock 33:38 | The comparison board at full size, three models side by side |
+| ReportCard.png | Screenshot, 23:10, after the match | The report card on the results screen with the chart to share |
 
 ## Rules illustrations
 

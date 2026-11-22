@@ -76,6 +76,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **🌱 Seeded maps, fair placement** — a large 11 × 11 map (default) or the classic 7 × 7, summer, winter or desert. The same seed reproduces the exact layout; every seat gets the same home ground, and scarce **stone and gold are placed identically for every player**.
 - **🛡️ Persistent army orders** — march, scout, guard a position, or patrol between two points. Formations keep together, retaliate as one, and reform afterwards.
 - **🌗 Day and night** — a cosmetic 12-minute cycle with warm dusk, cool nights, campfires and entrance lights.
+- **🎨 Graphics that scale** — Low, Balanced, High, or **Auto**, which holds the frame rate by itself. On the higher tiers: cast shadows under a moving sun, wind in the grass, paths worn where units walk, wet shores, and buildings that collapse into rubble. [How frame time is measured](docs/PERFORMANCE.md).
 
 **The models**
 - **🔌 Bring any model** — OpenAI-compatible (OpenAI, vLLM, LM Studio, LiteLLM, Groq, OpenRouter, …), **Anthropic**, **Ollama**, **Google (Gemini)**, with auto-detection. Mix local and cloud in one match.
@@ -90,7 +91,9 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and pause per model.
 - **📺 Broadcast mode** — for a stream or a recording: the operator's panels make way for a scoreboard, captions of what each model just ordered and why, and a held Wonder's countdown in its seat's colour. **Esc** or one click brings the controls back. Nothing about the match changes.
 - **🎯 Intent and 🎬 auto camera** — floating cards show each model's latest orders and reasons where they point; the auto camera follows the fighting.
-- **📊 End-of-match evaluation** — latency, decisions, action-success rate, format fidelity, reasoning rate, error breakdown, behaviour tags, each seat's **final word** on the match, the **evaluation profile** of each model seat (see below), and a transparent 0–100 match heuristic (not a capability score), folded away as legacy.
+- **📈 Bench view** — on top of either mode (key **B**): every model's plan with its steps ticked off as they are carried out, the threats it was shown and how it answered, and a **comparison card** that opens the models side by side. See [How a model is scored](#-how-a-model-is-scored).
+- **📊 End-of-match evaluation** — a **report card** with each model seat's evaluation profile, a **chart to share**, the heaviest moments of the match with the decision behind each, and per seat: latency, tokens, error breakdown, behaviour tags and its **final word** on the match.
+- **🗓️ Season table** — a model's profiles added up over matches, only under the same declared conditions, with every match's value shown beside the mean.
 - **📄 Exports** — the evaluation as `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline at the end.
 - **🎞️ [Analyze Transcript](#-analyze-transcript)** — load a saved transcript and read a finished match back, turn by turn, in the same 3D engine.
 - **🧪 [Benchmark](#-benchmark)** — fixed scenarios, the same for every model.
@@ -213,11 +216,15 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 <div align="center">
 
-![The whole island from above while Claude Sonnet 5.5's Greeks hold a Wonder, 9:50 from victory](Screenshots/WonderHeld.jpg)
+| A Wonder held | A town at dusk |
+|:---:|:---:|
+| ![Broadcast mode with the overlays on: the Maya of qwen3.8-flash hold their Wonder with 4:13 to go, a trebuchet line before it, and DeepSeek V4.1's plan to raze it on the left](Screenshots/BenchWonder.jpg) | ![DeepSeek V4.1's Yamato town at dusk in broadcast mode, with the plan panel, the comparison card and the race chart on](Screenshots/BenchDusk.jpg) |
 
-<sub><i>Episode 12 from above: Claude Sonnet 5.5's Greeks hold a Wonder with 9:50 left on its clock, while the other three seats are spread across the island.</i></sub>
+<sub><i>A three-model match on 22 November 2026 (build 1228), in broadcast mode with the overlays on: the models' plans on the left, the comparison card top right, the race chart bottom right. Left: qwen3.8-flash's Maya hold their Wonder with 4:13 on its clock while DeepSeek V4.1's plan reads "raze maya-3's el_castillo wonder"; the Wonder held. Right: DeepSeek V4.1's Yamato town at dusk.</i></sub>
 
 </div>
+
+**Overlays** go on top of either mode, each off until you ask for it: the **Bench view** (**B**), the **race chart** of power over time (**R**), the **model's view**, the world as one seat knows it with its own fog (**V**), a **second camera** on a fight the main picture is not showing (**I**), and in broadcast mode a strip that compares the models on one part of the profile at a time (**C**).
 
 ## 🔧 Tool calls, and which stack served them
 
@@ -284,19 +291,35 @@ Nothing is interpolated between snapshots: every frame is a moment the file actu
 
 ## 🧮 How a model is scored
 
-The **evaluation profile** scores how a model seat played: Grounding, Planning, Follow-through, Tactical and Strategy, read from the transcript and shown on the seat cards, in the Bench panels (key **B**, added on top of analyze or broadcast mode, as the race chart is with **R**) and on the results screen; an exported match carries it in its results line. The **Season table** (main menu) adds a model's profiles up over matches, only under the same declared conditions, with intervals; it never names a leader on one match. It is provisional; what each part measures, how it was checked against seats that cannot play, and what is still wrong with it are in [docs/SCORING.md](docs/SCORING.md).
+The **evaluation profile** scores how a model seat played, from the transcript alone:
 
-The **match heuristic** (0–100) is a transparent composite — no black box. It summarizes one match and is not a capability score:
+| Part | What it asks |
+| --- | --- |
+| **Grounding** | Were its orders valid when it gave them? |
+| **Planning** | Does it keep a live, concrete plan? |
+| **Follow-through** | Does it carry out what its plan says? |
+| **Tactical** | Shown a threat, does it answer at once? |
+| **Strategy** | Did its play turn into power and a win? |
 
-| Weight | Factor |
-|:---:|---|
-| 34% | Action success rate (valid, accepted moves) |
-| 20% | Progression (age advanced · buildings · military) |
-| 18% | Format fidelity (well-formed calls the engine could parse) |
-| 15% | Reliability (no timeouts / network errors) |
-| 13% | Action diversity (used the toolset, didn't loop one move) |
+The **Index** is the mean of Grounding, the plan as far as it was followed, Tactical and Strategy. One match is one sample.
 
-Alongside it: latency, decisions made, success ratio, commands per turn, reasoning rate, token usage, and a full error breakdown — timeouts, parse fails, no-action replies, invalid actions, rejections, context overflows, rate limits, and missed rounds. Costs the harness caused are counted but kept out of the model's reliability score, so a rate limit, a round deadline or a pause never reads as an unreachable endpoint.
+<div align="center">
+
+| The comparison board | The report card |
+|:---:|:---:|
+| <img src="Screenshots/ComparisonBoard.png" alt="The comparison board: three models side by side, their five scores over the match on top, seconds, tokens and refused orders per decision in the middle, a summary table below" width="560"> | <img src="Screenshots/ReportCard.png" alt="The report card on the results screen: the profile of three models as a matrix, and under it the chart to share with the Index against tokens per decision and a map of where each model sent its orders" width="300"> |
+
+<sub><i>The same match, 33 minutes in and at its end. Left: the models side by side. Right: the report card with the chart to share.</i></sub>
+
+</div>
+
+- **During a match** the Bench view (key **B**) shows a comparison card; a click opens the **board**, the models side by side: their five scores over the match with the decisions that went wrong marked on the clock (a loop on a refused order, a limit ignored, an order at something that is not there, a threat left alone), then seconds per decision, tokens per decision and the share of orders refused, then one summary table with cost and discipline. Every seat is tagged **raw model** or **agent harness**.
+- **After it** the results screen carries the **report card**: every number opens the decisions behind it, and a **chart to share** puts the match into one picture (PNG or SVG). The exported transcript carries the profile and the scores every 30 seconds of the match, so a file can be read back the same way in [Analyze Transcript](#-analyze-transcript).
+- **Across matches** the **Season table** (main menu) adds a model's profiles up, only under the same declared conditions. A mean stands with its interval and with the lowest, the median and the highest match, and nothing is called ahead on one match.
+
+The profile is provisional. What each part measures, how it was checked against seats that cannot play, and what is still wrong with it are in [docs/SCORING.md](docs/SCORING.md).
+
+The results also list latency, tokens, commands per turn and a full error breakdown. Costs the harness caused (a rate limit, a round deadline, a pause) are counted but kept out of the model's reliability. The older 0–100 **match heuristic** is still there, folded away as legacy: it summarizes one match and is not a capability score.
 
 ## 🛠️ How it works
 
@@ -372,15 +395,16 @@ js/
 ├── ui.js               # menus, model library, spectator dashboard, analyzer UI
 ├── transcript.js       # per-match JSONL recorder (states, replies, results, timeline)
 ├── analyzer.js         # transcript parsing, scene assembly, chapters
-├── eval/ledger.js      # the evaluation profile, read from transcript lines only (live and from a file)
-├── eval/bench-view.js  # the Bench panels (key B), an overlay of analyze and broadcast mode: comparison matrix, plan tracker, response clock; the comparison lower third of broadcast mode (key C)
-├── eval/marks.js       # evaluation marks in the world: a tick for a plan step done, an arrow to a threat answered, a plate over a finished battle
-├── seat-view.js        # the model's view (key V): the 3-D world as one seat knows it, its fog, the rivals it sees, ghosts where it only remembers
-├── eval/moments.js     # the heaviest moments of a match, each with the decision behind it
-├── moments-view.js     # the reel of the heaviest moments on the results screen, each opening in the analyzer
-├── second-camera.js    # the second camera (key I): a fight the main picture is not showing, live in a small 3-D picture beside the minimap
-├── eval/season.js      # the season table: profiles added up over matches under the same conditions, with intervals
-├── season-page.js      # the Season page beside Benchmark: sample matches, matches played here, transcripts added
+├── eval/               # the evaluation, read from transcript lines only (docs/SCORING.md)
+│   ├── ledger.js       #   the profile of every seat, live and from a file
+│   ├── bench-view.js   #   the Bench view (key B), the comparison board, the report card
+│   ├── season.js       #   profiles added up over matches under the same conditions
+│   ├── share.js        #   a match or a season group as one picture to share
+│   └── marks.js / moments.js   # marks in the world; the heaviest moments of a match
+├── season-page.js      # the Season page
+├── moments-view.js     # the moments reel on the results screen
+├── seat-view.js        # the model's view (key V)
+├── second-camera.js    # the second camera (key I)
 ├── bench-*.js          # the benchmark: scenarios, page, worker
 ├── perf-bench.js       # ?perf=1 frame-time readout, ?perf=bench frame benchmark (docs/PERFORMANCE.md)
 ├── engine/             # in-house WebGL engine
@@ -391,8 +415,8 @@ js/
 ├── fog-display.js      # how the fog of war looks; fogofwar.js keeps what has been seen
 tools/mcp/              # the MCP hub and the tool list it serves
 tools/bench/            # headless realm, replays and the benchmark runner
-tools/eval/             # war-eval.cjs: the evaluation profile of a recorded match; season.cjs: the season table of many; anchors.cjs: seats that cannot play, scored the same way (docs/SCORING.md)
-samples/                # the bundled matches for the analyzer; season.json is their entries for the Season page (node tools/eval/season.cjs samples --write samples/season.json)
+tools/eval/             # the same evaluation from the command line: one match, the season table, the reference seats
+samples/                # the bundled matches for the analyzer, and their entries for the Season page (season.json)
 game-state-schema.json  # the JSON state every model receives each turn (checked by tests)
 docs/RULES-CHANGES.md   # every change to the rules or to what a model is told, and why
 ```
