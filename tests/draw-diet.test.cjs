@@ -273,3 +273,60 @@ test('the scatter is kept as recipes and drawn through its chunks only', () => {
     // The forests' builder is the one that merges them; a prop brings its own parts to it.
     assert.match(s, /const e = mb\.entries \|\| this\._resourceEntries\(rs\[mb\.i\], mb\.i\);/);
 });
+
+// ---- overhaul step A5, first slice (build 1195): a site that is used up gets smaller --------
+test('a stone, gold or food site is drawn smaller in steps as it is used up; a tree stays whole until it is felled', () => {
+    const { W, R } = load();
+    const log = [];
+    let cur = null;
+    const gl = { ARRAY_BUFFER: 1, bindBuffer: (t, b) => { cur = b; }, bufferSubData: (t, off, d) => { cur.data.set(d, off / 4); log.push(cur); }, deleteBuffer() {} };
+    W.GLCore.createMeshBuffers = (g, mesh) => ({ mesh, position: { data: Float32Array.from(mesh.positions) } });
+    W.GLCore.createShadowBuffers = (g, mesh) => ({ mesh, shadowOnly: true, position: { data: Float32Array.from(mesh.positions) } });
+    const r = Object.create(R.prototype);
+    Object.assign(r, { gl, _resEntries: new WeakMap(), _theme: 'summer', _geo: new Map(), _cull: () => false, _buf: (kind, args) => ({ kind, args }) });
+    r.tex = new Proxy({}, { get: (o, k) => (o[k] = o[k] || { name: k }) });
+    const node = (type, x, z, amount) => ({ type, x, z, amount, health: amount, mesh: type === 'wood' ? { trunk: { visible: true }, leaves: { visible: true } } : { visible: true } });
+    const stone = node('stone', 30, 30, 1000), gold = node('gold', 40, 30, 2000), food = node('food', 30, 40, 500), tree = node('wood', 40, 40, 300);
+    r.terrain = { resources: [stone, gold, food, tree] };
+    // The steps: by the share of what the node started with, and never for wood.
+    const S = R.RES_SHRINK;
+    assert.deepEqual([1, 0.75, 0.74, 0.5, 0.49, 0.25, 0.24, 0.001].map(share => r._resourceScale({ type: 'stone', amount: share * 1000, health: 1000 })),
+        [S[0][1], S[0][1], S[1][1], S[1][1], S[2][1], S[2][1], S[3][1], S[3][1]]);
+    assert.equal(S[0][1], 1);
+    assert.ok(S.every((s, i) => i === 0 || (s[0] < S[i - 1][0] && s[1] < S[i - 1][1])) && S[S.length - 1][1] >= 0.5, 'smaller each step, and never a speck');
+    assert.equal(r._resourceScale({ type: 'wood', amount: 10, health: 300 }), 1);
+    assert.equal(r._resourceScale({ type: 'stone', amount: 10 }), 1, 'a node that does not say what it started with is drawn as built');
+    const frame = () => { const dl = { opaque: [], blended: [], casters: [] }; r._pushResourceChunks(dl); return dl; };
+    frame();
+    assert.equal(log.length, 0, 'full nodes are drawn as they were built');
+    const chunk = r._resChunks.list[0], mb = chunk.members.find(m => m.i === 0), caster = chunk.groups.find(g => g.caster);
+    const full = mb.ranges.map(x => Array.from(x.g.pos.subarray(x.start * 3, (x.start + x.count) * 3)));
+    // Loads carried off inside one step write nothing; crossing a step writes the node once, in every batch it is in.
+    stone.amount = 900; frame();
+    assert.equal(log.length, 0);
+    stone.amount = 600; frame();
+    assert.equal(log.length, mb.ranges.length);
+    assert.equal(mb.scale, S[1][1]);
+    mb.ranges.forEach((x, k) => {
+        const now = x.g.buf.position.data.subarray(x.start * 3, (x.start + x.count) * 3);
+        for (let i = 0; i < now.length; i += 3) {
+            assert.ok(Math.abs(now[i] - (30 + (full[k][i] - 30) * S[1][1])) < 1e-4 && Math.abs(now[i + 1] - full[k][i + 1] * S[1][1]) < 1e-4
+                && Math.abs(now[i + 2] - (30 + (full[k][i + 2] - 30) * S[1][1])) < 1e-4, 'toward the point it stands on');
+        }
+    });
+    assert.ok(mb.ranges.some(x => x.g === caster), 'its shadow shrinks with it');
+    log.length = 0; frame();
+    assert.equal(log.length, 0, 'nothing more until the next step');
+    // The other kinds too; the tree not, however little is left of it.
+    gold.amount = 400; food.amount = 100; tree.amount = 5; log.length = 0; frame();
+    const of = i => chunk.members.find(m => m.i === i);
+    assert.deepEqual([of(1).scale, of(2).scale, of(3).scale], [S[3][1], S[3][1], 1]);
+    assert.equal(log.length, of(1).ranges.length + of(2).ranges.length);
+    // A replay that jumps back shows the node whole again; used up, it is gone as before.
+    stone.amount = 1000; log.length = 0; frame();
+    assert.equal(mb.scale, 1);
+    mb.ranges.forEach((x, k) => assert.deepEqual(Array.from(x.g.buf.position.data.subarray(x.start * 3, (x.start + x.count) * 3)), full[k]));
+    stone.amount = 0; stone.mesh = null; frame();
+    assert.equal(mb.shown, false);
+    for (const x of mb.ranges) assert.ok(x.g.buf.position.data.subarray(x.start * 3, (x.start + x.count) * 3).every(v => v === 0));
+});

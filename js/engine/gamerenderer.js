@@ -1048,7 +1048,7 @@
                 const cx = Math.floor(res.x / CH), cz = Math.floor(res.z / CH), key = cx + ',' + cz;
                 let c = byKey.get(key);
                 if (!c) { c = { x: (cx + 0.5) * CH, z: (cz + 0.5) * CH, members: [], groups: null, shown: 0 }; byKey.set(key, c); list.push(c); }
-                c.members.push({ i, shown: false, ranges: [] });
+                c.members.push({ i, x: res.x, z: res.z, shown: false, scale: 1, ranges: [] });
             }
             this._resChunks = { rs, n: rs.length, gen: this._resEntries, list };
             return this._resChunks;
@@ -1119,20 +1119,45 @@
             c.shown = c.members.length;
         }
 
-        _showResource(mb, show) {
+        // scale: how large the node is drawn, about the point it stands on (see
+        // _resourceScale). 1, or left out, is the size it was built at.
+        _showResource(mb, show, scale = 1) {
             const gl = this.gl;
             for (const r of mb.ranges) {
-                const g = r.g;
+                const g = r.g, n = r.count * 3;
                 gl.bindBuffer(gl.ARRAY_BUFFER, g.buf.position);
                 let data;
-                if (show) data = g.pos.subarray(r.start * 3, (r.start + r.count) * 3);
-                else {
-                    if (!this._resZeros || this._resZeros.length < r.count * 3) this._resZeros = new Float32Array(r.count * 3 * 2);
-                    data = this._resZeros.subarray(0, r.count * 3);
+                if (show && scale === 1) data = g.pos.subarray(r.start * 3, r.start * 3 + n);
+                else if (show) {
+                    if (!this._resScaled || this._resScaled.length < n) this._resScaled = new Float32Array(n * 2);
+                    data = this._resScaled.subarray(0, n);
+                    const from = r.start * 3, cx = mb.x, cz = mb.z;
+                    for (let k = 0; k < n; k += 3) {
+                        data[k] = cx + (g.pos[from + k] - cx) * scale;
+                        data[k + 1] = g.pos[from + k + 1] * scale;
+                        data[k + 2] = cz + (g.pos[from + k + 2] - cz) * scale;
+                    }
+                } else {
+                    if (!this._resZeros || this._resZeros.length < n) this._resZeros = new Float32Array(n * 2);
+                    data = this._resZeros.subarray(0, n);
                 }
                 gl.bufferSubData(gl.ARRAY_BUFFER, r.start * 12, data);
             }
             mb.shown = show;
+            mb.scale = show ? scale : 1;
+        }
+
+        // A site that is used up gets smaller (overhaul step A5): a rock, an ore heap or a
+        // berry bush is drawn at the size of the first step of RES_SHRINK its remaining
+        // share has not fallen under. In steps, so a node is rewritten three times in its
+        // life and not with every load carried off. A tree stays whole until it is felled.
+        // The share is what is left of what the node started with (its health, which the
+        // rules never change).
+        _resourceScale(res) {
+            if (!res || res.type === 'wood' || !(res.health > 0)) return 1;
+            const share = res.amount / res.health;
+            for (const [from, scale] of EngineRenderer.RES_SHRINK) if (share >= from) return scale;
+            return 1;
         }
 
         _pushResourceChunks(dl) {
@@ -1144,13 +1169,14 @@
                     const res = rs[mb.i];
                     const vis = !!(res.mesh && res.amount > 0 && (res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible));
                     mb.want = vis;
+                    mb.wantScale = vis ? this._resourceScale(res) : 1;
                     if (vis) want++;
                 }
                 if (!want && !c.groups) continue;
                 if (!c.groups) this._buildResourceChunk(c);
                 let shown = 0;
                 for (const mb of c.members) {
-                    if (mb.want !== mb.shown) this._showResource(mb, mb.want);
+                    if (mb.want !== mb.shown || (mb.want && mb.wantScale !== mb.scale)) this._showResource(mb, mb.want, mb.wantScale);
                     if (mb.shown) shown++;
                 }
                 c.shown = shown;
@@ -3486,6 +3512,8 @@
     // From this camera half-height up a unit is drawn from its middle-distance model, where
     // unitPalette is on. At 30 a soldier stands some seventy pixels tall on a 1080-line screen.
     EngineRenderer.MID_UNIT_HALF_H = 30;
+    // How large a stone, gold or food site is drawn by what is left of it: [share from, size].
+    EngineRenderer.RES_SHRINK = [[0.75, 1], [0.5, 0.86], [0.25, 0.72], [0, 0.58]];
     // Focus on a close-up (tiltShift): full from a camera half-height of near down, none
     // from far up; the sharp band lies around line of the picture (0.5 = its middle,
     // where the camera looks), band of the picture's height to either side; blur is the
