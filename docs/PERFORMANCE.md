@@ -111,3 +111,26 @@ some ten. On the development machine the page's time building a frame went from 
 is inside what two runs differ by there: that machine's processor is not the one this is
 for. Draw calls and triangles are unchanged. What it buys on an office machine has not
 been measured.
+
+**Step 2, build 1180: buildings.** A shadow has no material, so a building now casts as
+one merged shape instead of once per material batch (six to eight draws each before). Its
+dressing (jars, fences, lamps, a hearth) is merged per material and cached with the model
+like the building itself, and is left out, with the worn patch before the door, from the
+height where units become their far models and it is smaller than a pixel; the lamps and
+hearths still light the night from there. The benchmark, build 1173 against build 1180,
+two runs each taken in turn, the card quiet this time:
+
+| | draw calls, median | | ms per frame, mean | | |
+| --- | --- | --- | --- | --- | --- |
+| | 1173 | 1180 | 1173 | 1180 | |
+| Low | 627 | 627 | 1.94 | 1.88 | -3 % |
+| Balanced | 1179 | 1092 | 2.24 | 2.24 | 0 % |
+| High | 1860 | 1571 | 6.54 | 5.95 | -9 % |
+| High, Cinematic light | 1866 | 1577 | 6.39 | 5.57 | -13 % |
+
+That is the whole of steps A1 to A4 so far against the build before them: the look steps
+and the diet together leave Low and Balanced where they were and make High faster. The
+page's time building a frame went from 0.4, 0.5 and 1.8 ms to 0.3, 0.4 and 1.6.
+
+Still to come in this step of the plan: units (some nineteen draws each, twice with
+shadows), which is where a late game with armies in view spends its calls.

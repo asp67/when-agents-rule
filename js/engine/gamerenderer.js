@@ -176,7 +176,9 @@
             this.secondView = null;
             this._frameNo = 0;                // which frame this is, so nothing is moved twice in one
             this._fogCanvas = null;
-            this._dl = { opaque: [], blended: [], bars: [] }; // per-frame lists
+            // Per-frame lists. casters: what is drawn into the shadow map only (a building's
+            // one merged shape, in place of its batch per material).
+            this._dl = { opaque: [], blended: [], bars: [], casters: [] };
             this.WHITE = [1, 1, 1];
 
             window.addEventListener('resize', () => this.onWindowResize());
@@ -273,6 +275,11 @@
             // Only geometry already admitted by the visibility/fog pass can cast.
             for (const obj of this._dl.opaque) {
                 if (obj === this._ground || obj === this._sea || obj.noShadow) continue;
+                gl.uniformMatrix4fv(this.shadowProg.uniforms.uModel,false,obj.model);
+                GLCore.drawMesh(gl,this.shadowProg,obj.buf);
+            }
+            // A shadow has no material: a building casts as one shape, not batch by batch.
+            for (const obj of this._dl.casters || []) {
                 gl.uniformMatrix4fv(this.shadowProg.uniforms.uModel,false,obj.model);
                 GLCore.drawMesh(gl,this.shadowProg,obj.buf);
             }
@@ -1425,6 +1432,29 @@
             return batches;
         }
 
+        // The shape a building casts its shadow with (overhaul step A4): every solid part
+        // merged into one mesh whatever its material, cached per model. The shadow pass drew
+        // each material's batch, six to eight draws a building; this is one (two for the
+        // largest Wonders, whose parts do not fit one 16-bit index range).
+        _buildingCaster(modelKey, parts) {
+            if (!this._buildingCasters) this._buildingCasters = new Map();
+            if (this._buildingCasters.has(modelKey)) return this._buildingCasters.get(modelKey);
+            const out = [];
+            let group = [], count = 0;
+            const flush = () => { if (group.length) out.push(GLCore.createMeshBuffers(this.gl, EngineMesh.mergeParts(group))); group = []; count = 0; };
+            for (const p of parts) {
+                if (p.blend) continue;
+                const gen = EngineMesh[p.kind];
+                if (!gen) continue;
+                const n = gen(...p.args).positions.length / 3;
+                if (count + n > 65535) flush();
+                group.push(p); count += n;
+            }
+            flush();
+            this._buildingCasters.set(modelKey, out);
+            return out;
+        }
+
         _composeBuilding(building) {
             const m3 = M();
             const civ = (typeof getCivilization === 'function') ? getCivilization(building.civilization) : null;
@@ -1476,10 +1506,12 @@
                 // own draw call, twice a frame with the shadow pass, and the Colosseum alone
                 // has 225 of them.
                 for (const g of this._buildingBatches(modelKey, parts)) {
+                    // noShadow: the batches are drawn for their materials; the shadow is the caster's.
                     const entry = { buf: g.buf, tex: this.tex[g.texName], tint: g.team ? tint : (g.tint || this.WHITE),
-                        model: world, base: m3.identity() };
+                        model: world, base: m3.identity(), noShadow: true };
                     (g.blend ? eb.blended : eb.opaque).push(entry);
                 }
+                eb.casters = this._buildingCaster(modelKey, parts).map(buf => ({ buf, model: world }));
             } else parts.forEach((p, i) => {
                 const entry = {
                     buf: this._buf(p.kind, p.args), tex: this.tex[p.tex],
@@ -1515,8 +1547,16 @@
                             pool:m3.multiply(world,m3.multiply(m3.translation(x,.035,z),m3.scaling(2.1,1,1.8)))});
                     }
                 }
-                eb.details=dressing.parts.map(p=>({buf:this._buf(p.kind,p.args),tex:this.tex[p.tex],
-                    tint:p.tint||this.WHITE,model:m3.multiply(world,p.m)}));
+                // The dressing (jars, fences, lamps, a hearth) is merged per material like the
+                // building it belongs to (overhaul step A4): it was a draw a part, some eight to
+                // ten a building, each twice with the shadow pass. It is the same for every
+                // building of a model, so it is cached with the model. All of it is drawn solid,
+                // as it was.
+                eb.details=modelKey
+                    ? this._buildingBatches(modelKey+'|dressing|'+!!building.isWonder,dressing.parts.map(p=>p.blend?Object.assign({},p,{blend:false}):p))
+                        .map(g=>({buf:g.buf,tex:this.tex[g.texName],tint:g.tint||this.WHITE,model:world}))
+                    : dressing.parts.map(p=>({buf:this._buf(p.kind,p.args),tex:this.tex[p.tex],
+                        tint:p.tint||this.WHITE,model:m3.multiply(world,p.m)}));
                 if(dressing.fire){
                     const [x,y,z]=dressing.fire;
                     eb.fire=[world[0]*x+world[8]*z+world[12],world[5]*y+world[13],world[2]*x+world[10]*z+world[14]];
@@ -1543,7 +1583,7 @@
                     const rz = building.isWonder ? 6.8 : 5.1;
                     const rw = building.isWonder ? 2.2 : 1.7;
                     eb.opaque.push({
-                        buf: this._buf('box', [rw, 0.05, 3.8]), tex: this.tex.cloth, tint,
+                        buf: this._buf('box', [rw, 0.05, 3.8]), tex: this.tex.cloth, tint, noShadow: true,   // it lies flat on the ground
                         model: m3.multiply(world, m3.translation(0, 0.08, rz))
                     });
                 }
@@ -2253,6 +2293,7 @@
             const m3 = M();
             const dl = this._dl;
             dl.opaque.length = 0; dl.blended.length = 0; dl.bars.length = 0;
+            (dl.casters || (dl.casters = [])).length = 0;
             // The second picture is built first and stamps with the number the main run takes next.
             const inset = !!this._insetPass, frameDt = dt;
             const frameNo = inset ? (this._frameNo || 0) + 1 : (this._frameNo = (this._frameNo || 0) + 1);
@@ -2369,7 +2410,7 @@
                     for(const p of eb.flagParts){p.entry.model=m3.multiply(flag,p.local);p.entry.cloth=cloth;}
                 }
                 if(this.graphicsQuality==='cinematic'&&detailFade>0&&!(b._fade!=null&&b._fade<1)) {
-                    if(eb.wear)dl.blended.push({...eb.wear,alpha:eb.wear.alpha*detailFade});
+                    if(eb.wear&&this._halfH<=EngineRenderer.FAR_UNIT_HALF_H)dl.blended.push({...eb.wear,alpha:eb.wear.alpha*detailFade});
                     if(eb.details&&courtyards++<24){
                         const lights=new Float32Array(12);let lightIndex=0;
                         const addLight=(x,y,z,strength)=>{if(lightIndex<3)lights.set([x,y,z,strength],4*lightIndex++);};
@@ -2387,8 +2428,11 @@
                                     model:m3.multiply(m3.multiply(m3.translation(x,y,z),bb),m3.scaling(w,h*flicker,1))});
                         }
                         }
-                        // Alpha fade shares the existing blended pass near the limit.
-                        for(const p of eb.details) (detailFade===1?dl.opaque:dl.blended).push(detailFade===1?p:{...p,alpha:detailFade});
+                        // Alpha fade shares the existing blended pass near the limit. From the
+                        // height where units become their far models the dressing is smaller than a
+                        // pixel and is left out; its lamps and hearth above still light the night.
+                        if(this._halfH<=EngineRenderer.FAR_UNIT_HALF_H)
+                            for(const p of eb.details) (detailFade===1?dl.opaque:dl.blended).push(detailFade===1?p:{...p,alpha:detailFade});
                         const visible=eb.fire&&(!this._fow()||this._fow().isPositionVisible(eb.fire[0],eb.fire[2]));
                         if(eb.fire&&visible&&hearths++<8){
                             const [x,y,z]=eb.fire,phase=ambientTime+b.x*.17+b.z*.11;
@@ -2425,6 +2469,7 @@
                 } else {
                 for (const en of eb.opaque) dl.opaque.push(flash ? { ...en, tint: FLASH } : en);
                 for (const en of eb.blended) dl.blended.push(en);
+                if (eb.casters) for (const en of eb.casters) dl.casters.push(en);
                 }
                 const hpct = b.health / b.maxHealth;
                 // Cinematic: a damaged building smokes, then burns, then blazes. Only
@@ -3135,7 +3180,7 @@
             this._yaw = view.yaw; this._pitch = view.pitch; this._halfH = view.halfH; this._lookY = 0;
             this._insetAspect = w / h;
             this._insetPass = true;
-            this._dl = this._dl2 || (this._dl2 = { opaque: [], blended: [], bars: [] });
+            this._dl = this._dl2 || (this._dl2 = { opaque: [], blended: [], bars: [], casters: [] });
             try {
                 const cam = this._computeCam();
                 this._assembleFrame(now / 1000, deltaTime, M().billboard(cam.view));
