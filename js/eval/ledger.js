@@ -75,7 +75,9 @@
 
     // Lines about a seat that are not decisions. `input` lines name a seat too, but they
     // are the replay's record of what the engine was told, not something the model did.
-    const SEAT_MARKERS = new Set(['round_missed', 'request_failed', 'request_cancelled', 'final_word']);
+    // 'adaptation' and 'intervention' (build 1224): the harness changing its own request for
+    // a seat, and a human stepping in. Counted by kind, for the board's "raw or harnessed".
+    const SEAT_MARKERS = new Set(['round_missed', 'request_failed', 'request_cancelled', 'final_word', 'adaptation', 'intervention']);
     // The harness's verdicts (OpenAIAIManager.verdictFor). Only the first three are the
     // model's own doing: `contended` was refused on something no state could have warned
     // of, `harnessFault` is the harness failing on a valid command.
@@ -398,7 +400,7 @@
         _seat(o) {
             let s = this.seats.get(o.playerId);
             if (!s) {
-                s = { id: o.playerId, seat: null, civ: null, model: null, name: null, turns: [], markers: {},
+                s = { id: o.playerId, seat: null, civ: null, model: null, name: null, turns: [], markers: {}, kinds: {}, harness: null,
                     vocab: { units: new Set(), buildings: new Set(), techs: new Set(), opponents: new Set(), wonders: new Set(['wonder']) } };
                 this.seats.set(o.playerId, s);
             }
@@ -406,6 +408,10 @@
             if (s.civ == null && (o.civ || o.civilization)) s.civ = o.civ || o.civilization;
             if (s.model == null && o.model) s.model = o.model;
             if (s.name == null && o.name) s.name = o.name;
+            // What plays the seat, from the match's first line: the model itself through
+            // WAR's request loop, or an agent framework of its own over MCP.
+            if (!s.harness && o.settings && typeof o.settings === 'object') s.harness = { external: !!o.settings.harnessExternal,
+                kind: o.settings.harness != null ? String(o.settings.harness) : null, provider: o.settings.provider != null ? String(o.settings.provider) : null };
             return s;
         }
 
@@ -426,7 +432,9 @@
             if (o.type === 'match') {
                 this.match = { matchId: o.matchId || null, build: o.build != null ? o.build : null,
                     promptVersion: o.promptVersion || null };
-                for (const p of o.players || []) if (p && p.id) this._seat({ playerId: p.id, seat: p.seat, civ: p.civ, model: p.model, name: p.name });
+                // 'war-transcript/2' and later record adaptations and interventions; in an older file their absence says nothing.
+                this.schema = o.schema != null ? String(o.schema) : null;
+                for (const p of o.players || []) if (p && p.id) this._seat({ playerId: p.id, seat: p.seat, civ: p.civ, model: p.model, name: p.name, settings: p.settings });
                 return;
             }
             if (o.type === 'timeline') { this.timeline = timelineOf(o); return; }
@@ -439,6 +447,7 @@
                 if (!o.playerId || !SEAT_MARKERS.has(o.type)) return;
                 const s = this._seat(o);
                 s.markers[o.type] = (s.markers[o.type] || 0) + 1;
+                if (o.kind != null) { const k = o.type + ':' + o.kind; s.kinds[k] = (s.kinds[k] || 0) + 1; }
                 return;
             }
             if (!o.playerId) return;         // not a line of this format
@@ -475,6 +484,8 @@
                 attacked: Array.isArray(threats.underAttack) && threats.underAttack.length > 0,
                 wonders: Array.isArray(threats.enemyWonders) ? threats.enemyWonders.map(w => String(w && w.id)) : [],
                 turn: num(o.turn),
+                // How the answer was read: the model's own tool calls, or commands the harness took out of its prose.
+                via: o.answeredVia != null ? String(o.answeredVia) : null,
                 sec: clock ? num(clock.matchSeconds) : null,
                 latencyMs: num(o.latencyMs) > 0 ? o.latencyMs : null,
                 prompt: tokens ? num(tokens.prompt) : null,
@@ -886,6 +897,31 @@
             return { id, decisions: seat.turns.length, judged: seat.turns.some(t => t.outcomes), marks, counts };
         }
 
+        // ---- raw model or harness (build 1224) ---------------------------------------
+        // asp67's list of 22 November 2026: "Separate Raw Model vs. Harnessed results ...
+        // make it transparent what the base model did versus what the harness fixed."
+        // What the record holds of that, beside the profile and never inside a score:
+        //   external      an agent framework of its own plays the seat over MCP (its memory,
+        //                 its tool loop and its retries are not in this file); else the
+        //                 model's own answers through WAR's request loop
+        //   fromProse     answers with no tool call, whose commands the harness read out
+        //                 of the text
+        //   adaptations   requests the harness changed for the seat: a parameter or the
+        //                 tools left out, the context shrunk, earlier turns dropped
+        //   interventions a human's advice, or a seat paused and resumed
+        _harness(s) {
+            const h = s.harness, via = { tool_call: 0, content: 0, unknown: 0 };
+            for (const t of s.turns) via[t.via === 'tool_call' || t.via === 'content' ? t.via : 'unknown']++;
+            const kinds = type => Object.keys(s.kinds || {}).filter(k => k.startsWith(type + ':')).sort()
+                .map(k => ({ kind: k.slice(type.length + 1), n: s.kinds[k] }));
+            const adaptations = kinds('adaptation'), interventions = kinds('intervention'), m = /^war-transcript\/(\d+)/.exec(this.schema || '');
+            return { known: !!h, external: h ? h.external : null, kind: h ? h.kind : null, provider: h ? h.provider : null,
+                byToolCall: via.tool_call, fromProse: via.content, viaUnknown: via.unknown,
+                adaptations, adapted: sum(adaptations.map(x => x.n)), interventions, intervened: sum(interventions.map(x => x.n)),
+                // Does this file record adaptations and interventions at all?
+                recorded: !!m && Number(m[1]) >= 2 };
+        }
+
         // The profile as it stood at an earlier moment of the match: every seat's decisions
         // up to that match second and nothing after. What the page compares "now" with.
         profileAt(sec) {
@@ -1057,7 +1093,7 @@
                 const out = { id: s.id, seat: s.seat, civ: s.civ, model: s.model, name: s.name,
                     decisions: s.turns.length, grounding, planning, follow: this._follow(s, this._plans, !!this.results && until == null), tactical: this._tactical(s),
                     strategy: this._strategy(s, until), versatility: this._versatility(s),
-                    efficiency: this._efficiency(s, grounding.ok) };
+                    efficiency: this._efficiency(s, grounding.ok), harness: this._harness(s) };
                 // The Index: the mean of the parts that have a score. A summary of the bars,
                 // never a replacement for them; one match is one sample.
                 //

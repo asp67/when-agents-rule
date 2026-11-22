@@ -286,3 +286,68 @@ test('the board at full size opens without the Bench panels: from the results sc
         assert.match(an, /if \(this\.ledger\) this\.ledger\.add\(o\);/);
     });
 });
+
+// ---- raw model or harness (build 1224) -----------------------------------------------
+// asp67's list: "Separate Raw Model vs. Harnessed results ... make it transparent what the
+// base model did versus what the harness fixed."
+function seated(schema = 'war-transcript/2') {
+    const p = page(), { ledger } = p;
+    ledger.addLine(JSON.stringify({ type: 'match', matchId: 'm1', schema, players: [
+        { id: 'a', seat: 0, civ: 'roman', model: 'model-a', name: 'Seat a', settings: { provider: 'openai', toolFallback: false } },
+        { id: 'b', seat: 1, civ: 'maya', model: 'model-b', name: 'Seat b', settings: { provider: 'mcp', harness: 'hermes', harnessExternal: true } }] }));
+    for (let n = 1; n <= 6; n++) {
+        const line = JSON.parse(decision('a', n * 60, { turn: n, orders: [militia] }));
+        line.answeredVia = n === 4 ? 'content' : 'tool_call';
+        ledger.addLine(JSON.stringify(line));
+    }
+    for (let n = 1; n <= 3; n++) ledger.addLine(decision('b', n * 120, { turn: n, orders: [militia] }));   // an MCP seat's answers carry no form
+    const note = o => ledger.addLine(JSON.stringify(Object.assign({ playerId: 'a', at: 1, matchSeconds: 100 }, o)));
+    note({ type: 'adaptation', kind: 'contextShrunk' }); note({ type: 'adaptation', kind: 'contextShrunk' }); note({ type: 'adaptation', kind: 'paramOmitted', params: ['reasoning'] });
+    note({ type: 'intervention', kind: 'advice', human: true, text: 'build a tower' });
+    return p;
+}
+
+test('raw model or harness: who plays the seat, and what the game\u2019s own harness did for it', () => {
+    const { ledger } = seated();
+    const [a, b] = ledger.profile().seats;
+    assert.deepEqual(plain(a.harness), { known: true, external: false, kind: null, provider: 'openai', byToolCall: 5, fromProse: 1, viaUnknown: 0,
+        adaptations: [{ kind: 'contextShrunk', n: 2 }, { kind: 'paramOmitted', n: 1 }], adapted: 3, interventions: [{ kind: 'advice', n: 1 }], intervened: 1, recorded: true });
+    assert.deepEqual(plain(b.harness), { known: true, external: true, kind: 'hermes', provider: 'mcp', byToolCall: 0, fromProse: 0, viaUnknown: 3,
+        adaptations: [], adapted: 0, interventions: [], intervened: 0, recorded: true });
+    // None of it is inside a score, and none of it is in the profile a file carries: an older file's recorded profile still compares equal.
+    const plainMatch = page().ledger;
+    for (let n = 1; n <= 6; n++) plainMatch.addLine(decision('a', n * 60, { turn: n, orders: [militia] }));
+    const bare = plainMatch.profile().seats[0];
+    assert.deepEqual([a.index.value, a.grounding.score], [bare.index.value, bare.grounding.score]);
+    assert.equal('harness' in WarEval.publicProfile(ledger.profile()).seats[0], false);
+    // A file with no first line says nothing of who plays; one older than schema 2 does not record what the harness did.
+    assert.deepEqual([bare.harness.known, bare.harness.external, bare.harness.recorded], [false, null, false]);
+    assert.equal(seated('war-transcript/1').ledger.profile().seats[0].harness.recorded, false);
+    assert.equal(seated(null).ledger.profile().seats[0].harness.recorded, false);
+    // The profile at an earlier moment carries the same seat facts.
+    assert.equal(ledger.profileAt(120).seats[1].harness.external, true);
+});
+
+test('raw model or harness on the board: a tag beside the name, and the harness\u2019s part in the summary', () => {
+    const { u, els } = seated();
+    u.toggleBenchView(true);
+    const mini = els.benchMatrix.innerHTML;
+    assert.match(mini, /<span>Seat a<\/span><em class="bf-kind is-raw" title="bench\.h\.rawTip">bench\.h\.raw<\/em><\/div>/);
+    assert.match(mini, /<span>Seat b<\/span><em class="bf-kind is-harness" title="bench\.h\.harnessTip">bench\.h\.harness · hermes<\/em><\/div>/);
+    u.toggleBenchFull(true);
+    const [, a, b] = els.benchFull.innerHTML.split('<section class="bf-seat"');
+    assert.match(a, /<h3><span>Seat a<\/span><small>model-a<\/small><em class="bf-kind is-raw"/);
+    assert.match(b, /<h3><span>Seat b<\/span><small>model-b<\/small><em class="bf-kind is-harness"/);
+    const rows = html => [...html.split('<div class="bf-harness">')[1].split('</dl>')[0].matchAll(/<dt>([^<]*)<\/dt><dd>([^<]*)<\/dd>/g)].map(m => m[1].replace('bench.h.', '') + ': ' + m[2]);
+    assert.deepEqual(rows(a), ['plays: bench.h.raw', 'prose: 1 / 6', 'adapted: 3 (contextShrunk ×2, paramOmitted ×1)', 'human: 1 (advice ×1)']);
+    assert.deepEqual(rows(b), ['plays: bench.h.harness · hermes', 'prose: bench.h.notRecorded', 'adapted: 0', 'human: 0']);
+    // An older file: what was not recorded is said to be not recorded, never shown as a zero.
+    const old = seated('war-transcript/1');
+    old.u.toggleBenchView(true); old.u.toggleBenchFull(true);
+    assert.deepEqual(rows(old.els.benchFull.innerHTML.split('<section class="bf-seat"')[1]).slice(2), ['adapted: bench.h.notRecorded', 'human: bench.h.notRecorded']);
+    // No first line at all: no tag.
+    const bare = page();
+    for (let n = 1; n <= 2; n++) bare.ledger.addLine(decision('a', n * 60, { turn: n, orders: [militia] }));
+    assert.doesNotMatch(bare.u.benchMiniHtml(bare.ledger), /bf-kind/);
+    assert.match(bare.u.benchHarnessHtml(bare.ledger.profile().seats[0]), /<dt>bench\.h\.plays<\/dt><dd>bench\.h\.notRecorded<\/dd>/);
+});

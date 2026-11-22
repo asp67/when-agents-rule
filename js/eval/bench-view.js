@@ -384,7 +384,7 @@
             const game = linesSvg(others.concat(Object.assign(thin(d.power.t, d.power.v, 60), { ink: ink(s), width: 1.8 })), { w: W, h: H, end: data.end, max: data.most });
             const model = linesSvg([Object.assign(thin(d.score.t, d.score.index || [], 60), { ink: PART_INK.index, width: 1.8 })], { w: W, h: H, end: data.end, max: 100 });
             const parts = DIMS.map(k => `<i title="${esc(t('eval.' + k))}">${esc(t('bench.b.' + k))} ${s[k].score == null ? '–' : Math.round(s[k].score)}</i>`).join('');
-            return `<div class="bc-seat" style="--civ:${esc(ink(s))}"><div class="bc-name">${dot(s)}<span>${esc(s.name || s.model || s.id)}</span></div>`
+            return `<div class="bc-seat" style="--civ:${esc(ink(s))}"><div class="bc-name">${dot(s)}<span>${esc(s.name || s.model || s.id)}</span>${this.benchKindTag(s)}</div>`
                 + `<div class="bc-sec"><span class="bc-lab">${esc(t('bench.b.game'))}</span>${game}<b>${last.power == null ? '–' : Math.round(last.power)}</b>`
                 + `<small>#${byPower.indexOf(s) + 1}${last.share == null ? '' : ' · ' + share(last.share)}</small></div>`
                 + `<div class="bc-sec"><span class="bc-lab">${esc(t('bench.b.model'))}</span>${model}<b>${esc(tokText(c.tokens))}${c.tokens == null ? '' : ' tok'}</b>`
@@ -430,7 +430,7 @@
             const top = a => Math.max(1e-9, ...a);
             const cost = linesSvg([{ t: sc.t, v: tokens.map(v => v / top(tokens)), ink: '#8fbdf0', width: 1.8 }, { t: sc.t, v: minutes.map(v => v / top(minutes)), ink: '#f2c46a', width: 1.8 }], { w: W, h: 56, end: data.end, max: 1 });
             const summary = DIMS.map(k => `<tr><th scope="row"><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</th><td>${s[k].score == null ? '–' : Math.round(s[k].score)}</td><td>${esc(rawOf(k, s))}</td></tr>`).join('');
-            return `<section class="bf-seat" style="--civ:${esc(ink(s))}"><h3>${dot(s)}<span>${esc(s.name || s.model || s.id)}</span>${s.model && s.model !== s.name ? `<small>${esc(s.model)}</small>` : ''}</h3><div class="bf-secs">`
+            return `<section class="bf-seat" style="--civ:${esc(ink(s))}"><h3>${dot(s)}<span>${esc(s.name || s.model || s.id)}</span>${s.model && s.model !== s.name ? `<small>${esc(s.model)}</small>` : ''}${this.benchKindTag(s)}</h3><div class="bf-secs">`
                 + `<div class="bf-sec"><h4>${esc(t('bench.b.gameFull'))}</h4>${game}${axis}<dl>`
                 + row(t('bench.b.power'), last.power == null ? '–' : String(Math.round(last.power))) + row(t('bench.b.rank'), '#' + (byPower.indexOf(s) + 1) + ' / ' + seats.length)
                 + row(t('bench.b.share'), pct(last.share), t('bench.b.shareTip')) + '</dl></div>'
@@ -443,10 +443,35 @@
                 + row(t('bench.b.recovery'), pct(c.recovery), t('bench.b.recoveryTip'))
                 + row(t('bench.b.lost'), String(c.lost), t('bench.b.lostTip', { failed: c.failed, cancelled: c.cancelled, missed: c.missed })) + '</dl></div>'
                 + `<div class="bf-sec bf-sum"><h4>${esc(t('bench.b.summaryFull'))}</h4><div class="bf-index"><b>${s.index.value == null ? '–' : Math.round(s.index.value)}</b><span>${esc(t('eval.index'))}</span></div>`
-                + `<table>${summary}</table><p class="bf-note">${esc(t('bench.b.decisions', { n: s.decisions }))}</p></div></div>`
+                + `<table>${summary}</table><p class="bf-note">${esc(t('bench.b.decisions', { n: s.decisions }))}</p>${this.benchHarnessHtml(s)}</div></div>`
                 + this.benchTraceHtml(ledger, s, data.end) + '</section>';
         }).join('');
         return `<div class="bf-box" onclick="event.stopPropagation()">${head}<div class="bf-body">${legend}${cards}<div class="bf-matrix">${matrixHtml || ''}</div></div></div>`;
+    };
+
+    // ---- raw model or harness (build 1224) -----------------------------------------
+    // Beside a seat's name: is this the model's own play, or an agent framework's with the
+    // model inside it? And in its summary what WAR's own harness did for it, in numbers.
+    P.benchKindTag = function (s) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x)), h = s.harness;
+        if (!h || !h.known) return '';
+        return h.external
+            ? `<em class="bf-kind is-harness" title="${esc(t('bench.h.harnessTip'))}">${esc(t('bench.h.harness'))}${h.kind && h.kind !== 'other' ? ' · ' + esc(h.kind) : ''}</em>`
+            : `<em class="bf-kind is-raw" title="${esc(t('bench.h.rawTip'))}">${esc(t('bench.h.raw'))}</em>`;
+    };
+    P.benchHarnessHtml = function (s) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x)), h = s.harness;
+        if (!h) return '';
+        const row = (label, value, tip) => `<div${tip ? ` title="${esc(tip)}"` : ''}><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`;
+        const list = a => a.map(x => x.kind + ' ×' + x.n).join(', ');
+        const answered = h.byToolCall + h.fromProse;
+        const count = (n, kinds) => !h.recorded ? t('bench.h.notRecorded') : n ? n + ' (' + list(kinds) + ')' : '0';
+        return `<div class="bf-harness"><h5>${esc(t('bench.h.title'))}</h5><dl>`
+            + row(t('bench.h.plays'), !h.known ? t('bench.h.notRecorded') : h.external ? t('bench.h.harness') + (h.kind && h.kind !== 'other' ? ' · ' + h.kind : '') : t('bench.h.raw'),
+                !h.known ? '' : t(h.external ? 'bench.h.harnessTip' : 'bench.h.rawTip'))
+            + row(t('bench.h.prose'), answered ? h.fromProse + ' / ' + answered : t('bench.h.notRecorded'), t('bench.h.proseTip'))
+            + row(t('bench.h.adapted'), count(h.adapted, h.adaptations), t('bench.h.adaptedTip'))
+            + row(t('bench.h.human'), count(h.intervened, h.interventions), t('bench.h.humanTip')) + '</dl></div>';
     };
 
     // ---- the decision inspector (build 1223) --------------------------------------

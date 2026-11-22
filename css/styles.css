@@ -2717,6 +2717,13 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bf-sum td { text-align: right; padding: 1px 0 1px 8px; color: #f1ede0; white-space: nowrap; }
 .bf-sum td:last-child { color: #9aa2b1; }
 .bf-note { margin: 6px 0 0; color: #9aa2b1; }
+/* Raw model or agent harness (build 1224): a tag beside the seat's name, and what the game's own harness did for it. */
+.bf-kind { flex: 0 0 auto; margin-left: 4px; padding: 1px 7px; border-radius: 9px; font-size: 0.72em; font-style: normal; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; cursor: help; }
+.bf-kind.is-raw { color: #9fd9c8; border: 1px solid rgba(127, 208, 189, 0.5); }
+.bf-kind.is-harness { color: #1a1408; background: #f2c46a; border: 1px solid #f2c46a; }
+.bc-name .bf-kind { font-size: 0.66em; padding: 0 5px; }
+.bf-harness { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(221, 211, 180, 0.12); }
+.bf-harness h5 { margin: 0 0 4px; font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.06em; color: #b9b29a; font-weight: 600; }
 /* The decision inspector (build 1223): where a model's play went wrong, on the match's clock and as a list. */
 .bf-trace { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(221, 211, 180, 0.12);
     --bt-loop: #ff6b6b; --bt-constraint: #ffb454; --bt-awareness: #c59cf0; --bt-threat: #5cc8ff; --bt-refused: #9aa3b2; }
