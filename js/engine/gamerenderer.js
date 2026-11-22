@@ -130,9 +130,9 @@
             this.prog = GLCore.compileProgram(this.gl, EngineAtmosphere.vertex, EngineAtmosphere.fragment);
             this.shadowProg = GLCore.compileProgram(this.gl, EngineAtmosphere.shadowVertex, EngineAtmosphere.shadowFragment);
             this.sunDir = M().normalize([-0.65, 0.72, 0.36]);
-            // A candidate, off: the light travels through the day and the shadows with it
-            // (EngineAtmosphere.sunDirection). Off, it stands where it always has.
-            this.movingSun = false;
+            // The light travels through the day and the shadows with it (on since build 1193)
+            // (EngineAtmosphere.sunDirection). false: it stands where it always has.
+            this.movingSun = true;
             // Lighting: 'classic' (Simple), 'cinematic' (Atmospheric) or 'film' (Cinematic:
             // Atmospheric plus bloom, burning buildings and rubble). Remembered per browser.
             let style = null;

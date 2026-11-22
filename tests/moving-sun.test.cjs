@@ -1,6 +1,7 @@
-// A candidate, switched off (build 1192): the light travels through the day, so the
-// shadows do. asp67, 22 November: "An invisible sun would still move the shadows though,
-// might be worth trying." Off, the light stands where it always has and nothing changes.
+// The light travels through the day, so the shadows do. asp67, 22 November: "An invisible
+// sun would still move the shadows though, might be worth trying." Built switched off in
+// build 1192, switched on by asp67 in build 1193 after seeing it. renderer.movingSun =
+// false: the light stands where it always has and nothing changes.
 const test = require('node:test'), assert = require('node:assert/strict');
 const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
 const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
@@ -60,9 +61,9 @@ test('a lower light is made up for in part, and not at all at noon or where the 
     assert.deepEqual(Array.from(low.fillHigh), Array.from(plain.fillHigh), 'the sky\'s fill is the hour\'s, whatever the light does');
 });
 
-test('switched off, and off means exactly as before', () => {
+test('on since build 1193, and off still means exactly as before', () => {
     const r = read('js/engine/gamerenderer.js');
-    assert.match(r, /this\.movingSun = false;/);
+    assert.match(r, /this\.movingSun = true;/);
     assert.match(r, /const rest = this\._sunRest \|\| \(this\._sunRest = this\.sunDir\);\s+this\.sunDir = this\.movingSun\s+\? EngineAtmosphere\.sunDirection\(rest, EngineAtmosphere\.sunPhase\(hour, this\._theme\)\) : rest;/);
     assert.match(r, /this\.movingSun \? rest\[1\] \/ this\.sunDir\[1\] : 1\);/);
     // The shadow map and the shader read the same direction, the one of this frame.
