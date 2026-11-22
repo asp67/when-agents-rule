@@ -128,3 +128,34 @@ test('in a replay, a jump to an event goes to its second, a few seconds early', 
     assert.equal(JSON.stringify(asked), JSON.stringify([ui.anResimStepAtSec(125)]));
     assert.equal(ui._anEvent, null, 'no note: the world is at the event');
 });
+
+// Build 1216 (asp67, 22 November 2026): "Jumping to a scene by clicking view in the results
+// screen jumps to the wrong timestamp sometimes 20 or more minutes before the action".
+test('a seat that lost turns does not pull a jump back: its marks claim later seconds for earlier steps', () => {
+    const context = vm.createContext({ console, document: { getElementById: () => null } });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/ui.js'), 'utf8') + '\nthis.UI = UIManager;', context);
+    const U = context.UI, u = Object.create(U.prototype);
+    // Thirty rounds, two minutes apart, 4000 steps a round. Seat a keeps count. Seat b lost
+    // ten turns after its fifth: its record number k is the one of round k + 10 from there on.
+    const order = [], inputs = [];
+    for (let r = 1; r <= 30; r++) {
+        order.push({ playerId: 'a', turn: r, _sec: r * 120 });
+        inputs.push({ kind: 'observe', playerId: 'a', turnCount: r, step: r * 4000 });
+        inputs.push({ kind: 'observe', playerId: 'b', turnCount: r, step: r * 4000 });
+        if (r <= 5) order.push({ playerId: 'b', turn: r, _sec: r * 120 });
+        else if (r > 15) order.push({ playerId: 'b', turn: r - 10, _sec: r * 120 });
+    }
+    u.analyzer = { inputs, order, header: { build: 1147, normalSimSpeed: 2 } };
+    // The fight at 50:00 is round 25, step 100000. Seat b's sixth record says 32:00 for step
+    // 24000, at which a scan that stops at the first later second ended: nineteen rounds early.
+    assert.equal(u.anResimStepAtSec(3000), 100000);
+    assert.equal(u.anResimStepAtSec(3060), 102000, 'and between two rounds, evenly');
+    for (let r = 1; r <= 30; r++) assert.equal(u.anResimStepAtSec(r * 120), r * 4000, 'round ' + r);
+    // The marks themselves: one a step, the seconds never going back, the false ones gone.
+    const marks = u.analyzer._timeMap.pairs;
+    assert.equal(marks.length, 30);
+    for (let i = 1; i < marks.length; i++) assert.ok(marks[i][0] > marks[i - 1][0] && marks[i][1] > marks[i - 1][1]);
+    assert.deepEqual(Array.from(U.timePairs([[100, 10], [900, 20], [200, 30], [300, 40], [250, 40]]), p => p.join(':')), ['100:10', '200:30', '250:40'],
+        'kept only if nothing after it claims an earlier second, and of several at one step the earliest');
+    assert.equal(U.timePairs([]).length, 0);
+});

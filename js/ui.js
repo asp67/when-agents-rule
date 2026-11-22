@@ -8293,20 +8293,41 @@ class UIManager {
         if (!a || !a.inputs || !a.inputs.length) return null;
         if (!a._timeMap || a._timeMap.inputs !== a.inputs) {
             const at = new Map(a.order.filter(r => !r.type).map(r => [r.playerId + '#' + r.turn, r._sec]));
-            const pairs = a.inputs.filter(x => x.kind === 'observe')
-                .map(x => [at.get(x.playerId + '#' + x.turnCount), x.step]).filter(([s]) => Number.isFinite(s))
-                .sort((p, q) => p[1] - q[1]);
+            const pairs = UIManager.timePairs(a.inputs.filter(x => x.kind === 'observe')
+                .map(x => [at.get(x.playerId + '#' + x.turnCount), x.step]).filter(([s]) => Number.isFinite(s)));
             a._timeMap = { inputs: a.inputs, pairs };
         }
         const P = a._timeMap.pairs, h = a.header || {};
         const perSec = 1000 / (50 / (h.normalSimSpeed || h.wonderPace || (h.build >= 1020 ? 2 : 1)));
         if (!P.length) return Math.round(sec * perSec);
         let i = -1;
-        for (let k = 0; k < P.length; k++) if (P[k][0] <= sec) i = k; else if (i >= 0) break;
+        for (let k = 0; k < P.length && P[k][0] <= sec; k++) i = k;
         if (i < 0) return Math.max(0, Math.round(P[0][1] - (P[0][0] - sec) * perSec));
         const [s0, t0] = P[i], next = P.slice(i + 1).find(p => p[0] > s0);
         const step = next ? t0 + (sec - s0) * (next[1] - t0) / (next[0] - s0) : t0 + (sec - s0) * perSec;
         return Math.max(0, Math.round(step));
+    }
+    // Which match second belongs to which step, from the seats' observations: [second, step],
+    // in step order, the seconds never going back.
+    //
+    // A seat's observation is joined to its transcript record by the number of the turn.
+    // A seat that lost turns has fewer records than observations, so from the first loss
+    // on its record of that number is a later one: its marks claim a later second for an
+    // earlier step, by a round for every turn it lost. A harness seat that sat out ten
+    // rounds was twenty minutes ahead of itself, and a jump to an event stopped at its
+    // first false mark, that far before the event (asp67, 22 November 2026: "sometimes 20
+    // or more minutes before the action"). So a mark is kept only if nothing after it
+    // claims an earlier second, and of several at one step the earliest: time does not
+    // run backwards, and whoever says otherwise has miscounted.
+    static timePairs(pairs) {
+        const sorted = pairs.slice().sort((p, q) => p[1] - q[1] || q[0] - p[0]), kept = [];
+        let least = Infinity, step = null;
+        for (let i = sorted.length - 1; i >= 0; i--) {
+            const [sec, at] = sorted[i];
+            if (sec > least || (at === step && sec >= least)) continue;
+            kept.push(sorted[i]); least = sec; step = at;
+        }
+        return kept.reverse();
     }
     // The note over the decision panel after a jump to an event the snapshots cannot show
     // at its own second.
