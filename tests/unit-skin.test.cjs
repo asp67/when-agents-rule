@@ -74,7 +74,7 @@ test('the shaders move a vertex by its bone and then by the unit; a mesh without
     assert.match(f.vertex, /vec4 local = vec4\(aPosition, 1\.0\);\s+vec3 normal = aNormal;\s+if \(uSkin > 0\.5\) \{\s+mat4 bone = uBones\[int\(aBone \+ 0\.5\)\];\s+local = bone \* local;\s+normal = mat3\(bone\) \* normal;[^\n]*\n\s+\}\s+bool stone = aUv\.x < -0\.5;/);
     // Between the bone and the unit an instanced mesh (the grass, b1202) is set down by its entry; a
     // mesh without a list goes straight on to the unit's matrix, as it always did.
-    assert.match(f.vertex, /if \(uInstanced > 0\.5\) \{[\s\S]+?\n            \}\s+vec4 world = uModel \* local;/);
+    assert.match(f.vertex, /if \(uInstanced > 1\.5\) \{[\s\S]+?\} else if \(sown\) \{[\s\S]+?\n            \}\s+vec4 world = uModel \* local;/);
     assert.match(f.vertex, /vNormal = basis \* \(normal \/ max\(scale2, vec3\(0\.00001\)\)\);/);
     assert.match(f.shadowVertex, /if \(uSkin > 0\.5\) local = uBones\[int\(aBone \+ 0\.5\)\] \* local;\s+gl_Position = uLightMatrix\*uModel\*local;/);
     // What that sum does, in numbers: a bone's matrix first, the unit's after. It is what a draw per

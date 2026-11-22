@@ -66,7 +66,7 @@ test('dry ground generates no grass; green areas have dense low cover that takes
     // The colour is read where the tuft stands: the shader makes the map's coordinate from
     // the placed corner, and the renderer tells it how wide the map is.
     const shader=read('js/engine/atmosphere.js');
-    assert.match(shader,/if \(uInstanced > 0\.5\) vUv = stone \? vec2\(-1\.0, stoneShade\) : local\.xz \/ uInstanceWorld \+ 0\.5;/);
+    assert.match(shader,/if \(sown\) vUv = stone \? vec2\(-1\.0, stoneShade\) : local\.xz \/ uInstanceWorld \+ 0\.5;/);
     assert.match(read('js/engine/gamerenderer.js'),/gl\.uniform1f\(this\.prog\.uniforms\.uInstanceWorld, TexGen\.TERRAIN_WORLD\);/);
 });
 
@@ -328,15 +328,17 @@ test('without instancing nothing instanced is drawn, and there is no grass',()=>
 
 test('the shader places an instanced tuft by its entry and leaves every other mesh as it was',()=>{
     const s=read('js/engine/atmosphere.js');
-    assert.match(s,/attribute vec4 aInstance;\s+uniform float uInstanced, uInstanceWorld;/);
+    assert.match(s,/attribute vec4 aInstance;[\s\S]+?uniform float uInstanced, uInstanceWorld;/);
+    // Sown on the ground (the grass) is 1; 2 is a particle (build 1206), which is neither stretched nor coloured so.
+    assert.match(s,/bool sown = uInstanced > 0\.5 && uInstanced < 1\.5;/);
     // A tuft keeps its base and is stretched from there; a pebble is scaled whole; both are turned and set down.
     assert.match(s,/float size = length\(aInstance\.zw\);\s+if \(stone\) p \*= size;\s+else if \(p\.y > 0\.1\) \{ p\.y \*= size; p\.xz \*= size; \}\s+float c = aInstance\.z \/ size, s = aInstance\.w \/ size;/);
-    assert.doesNotMatch(s.slice(s.indexOf('if (uInstanced > 0.5) {'),s.indexOf('vec4 world = uModel * local;')),/\b(cos|sin)\(aInstance/,'no angle is worked out for each corner');
+    assert.doesNotMatch(s.slice(s.indexOf('} else if (sown) {'),s.indexOf('vec4 world = uModel * local;')),/\b(cos|sin)\(aInstance/,'no angle is worked out for each corner');
     assert.match(s,/local\.xyz = vec3\(c\*p\.x \+ s\*p\.z \+ aInstance\.x, p\.y, c\*p\.z - s\*p\.x \+ aInstance\.y\);/);
     // The sway and the tip's lighter green go by the placed height, not the one tuft's.
-    assert.match(s,/vGrassTip = clamp\(\(\(uInstanced > 0\.5 \? local\.y : aPosition\.y\)-0\.018\) \/ 0\.562, 0\.0, 1\.0\);/);
+    assert.match(s,/vGrassTip = clamp\(\(\(sown \? local\.y : aPosition\.y\)-0\.018\) \/ 0\.562, 0\.0, 1\.0\);/);
     const r=read('js/engine/gamerenderer.js');
-    assert.match(r,/const inst = obj\.buf\.instance \? 1 : 0;\s+if \(inst !== instanced\) \{ gl\.uniform1f\(U\.uInstanced, inst\); instanced = inst; \}/);
+    assert.match(r,/const inst = obj\.buf\.instance \? \(obj\.buf\.stride === 8 \? 2 : 1\) : 0;\s+if \(inst !== instanced\) \{ gl\.uniform1f\(U\.uInstanced, inst\); instanced = inst; \}/);
     // Every tier that has grass draws it, and a change of tier begins afresh.
     assert.match(r,/if \(!inset && typeof EngineGrass !== 'undefined' && EngineGrass\.TIERS\[this\.graphicsQuality\]\) \{/);
     assert.match(r,/if \(this\._grass\) \{ this\._grass\.dispose\(\); this\._grass = null; \}\s+EngineAtmosphere\.disposeShadowTarget/);

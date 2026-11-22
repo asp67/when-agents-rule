@@ -82,7 +82,6 @@
             this._projectiles = [];
             this._rings = [];
             this._ghosts = [];
-            this._dustPool = [];
             this._bannerTex = new Map();
             this._lastTime = performance.now();
 
@@ -2263,37 +2262,40 @@
 
         flashHit(entity) {
             if (!entity) return;
-            entity._flashUntil = performance.now() + 130;
+            const now = performance.now();
+            // Sparks off what was hit (overhaul step A9): off a unit at chest height; off a
+            // building chips of stone too, from the wall on a side chosen by chance. Not for
+            // every blow of a melee: one a tenth of a second for each thing hit.
+            if (this._fxLevel() > 0 && !(now < entity._sparkUntil) && !this._cull(entity.x, entity.z, 4)) {
+                const P = this._fx(), fp = entity._grassFootprint;
+                entity._sparkUntil = now + 100;
+                if (P && fp) { const a = Math.random() * Math.PI * 2; EngineFx.sparks(P, entity.x + Math.cos(a) * (fp.ex - 0.8), 1.2 + Math.random() * 1.6, entity.z + Math.sin(a) * (fp.ez - 0.8), true); }
+                else if (P) EngineFx.sparks(P, entity.x, 1.0, entity.z, false);
+            }
+            entity._flashUntil = now + 130;
             this.spawnBattleRing(entity.x, entity.z);   // a hit is a damage wave, within its cooldown
         }
 
-        // Pooled dust burst: N billboarded motes scattering under gravity.
+        // The particles of this renderer (EngineFx.Particles, overhaul step A9): made when the
+        // first is wanted. null where the effects file is not loaded.
+        _fx() {
+            if (this._particles === undefined) this._particles = typeof EngineFx !== 'undefined' && EngineFx.Particles ? new EngineFx.Particles() : null;
+            return this._particles;
+        }
+        // What this tier draws of the new effects (EngineFx.level): 0 none of them.
+        _fxLevel() { return typeof EngineFx !== 'undefined' && EngineFx.level ? EngineFx.level(this.graphicsQuality, this._reducedMotion) : 0; }
+
+        // A burst of dust: N motes scattering under gravity. On every tier, as it always was;
+        // particles since build 1206 (a burst was a draw a mote).
         spawnDust(x, y, z, count, color) {
-            let d = this._dustPool.find(q => !q.active);
-            if (!d) {
-                if (this._dustPool.length >= 16) return;
-                d = { N: 24, pos: new Float32Array(72), vel: new Float32Array(72) };
-                this._dustPool.push(d);
-            }
-            d.active = true;
-            d.t = 0;
-            d.dur = 0.8;
-            d.n = Math.min(d.N, count || d.N);
-            d.tint = this._tintOf(color == null ? 0xb0a48e : color);
-            for (let i = 0; i < d.n; i++) {
-                const j = i * 3;
-                d.pos[j] = x; d.pos[j + 1] = y; d.pos[j + 2] = z;
-                const a = Math.random() * Math.PI * 2, r = 1.5 + Math.random() * 3;
-                d.vel[j] = Math.cos(a) * r;
-                d.vel[j + 1] = 2.2 + Math.random() * 2.6;
-                d.vel[j + 2] = Math.sin(a) * r;
-            }
+            const P = this._fx();
+            if (P) EngineFx.burst(P, x, y, z, Math.min(24, count || 24), this._tintOf(color == null ? 0xb0a48e : color));
         }
 
         resetEffects() {
             this._projectiles.forEach(p => { p.active = false; });
             this._rings.forEach(r => { r.active = false; });
-            this._dustPool.forEach(d => { d.active = false; });
+            if (this._particles) this._particles.clear();
             this._ghosts = [];
         }
 
@@ -3240,29 +3242,8 @@
                 }
             }
 
-            // dust motes: scatter, rise, settle, fade
-            for (const d of this._dustPool) {
-                if (!d.active) continue;
-                d.t += dt;
-                const k = d.t / d.dur;
-                if (k >= 1) { d.active = false; continue; }
-                const a = 0.8 * (1 - k);
-                for (let i = 0; i < d.n; i++) {
-                    const j = i * 3;
-                    d.pos[j] += d.vel[j] * dt;
-                    d.pos[j + 1] += d.vel[j + 1] * dt;
-                    d.pos[j + 2] += d.vel[j + 2] * dt;
-                    d.vel[j + 1] -= 7 * dt; // gravity
-                    dl.blended.push({
-                        buf: quad, tex: this.tex.white, tint: d.tint, alpha: a,
-                        model: fm.multiply(
-                            fm.multiply(fm.translation(d.pos[j], Math.max(0.12, d.pos[j + 1]), d.pos[j + 2]), bb),
-                            fm.scaling(0.55, 0.55, 1))
-                    });
-                }
-            }
-
             // projectiles
+            const fxLevel = this._fxLevel(), trails = fxLevel > 0 ? this._fx() : null;
             for (const p of this._projectiles) {
                 if (!p.active) continue;
                 if (p.round && p.simLand != null && this.game && this.game.simNow) {
@@ -3280,6 +3261,16 @@
                 const z = p.sz + (p.tz - p.sz) * k;
                 const y = p.sy + (p.ty - p.sy) * k + Math.sin(Math.PI * k) * p.arc;
                 const yaw = Math.atan2(p.tx - p.sx, p.tz - p.sz);
+                // The streak behind the shot (overhaul step A9), along the way it is flying
+                // at this point of its arc. Drawn anew in each picture; the smoke a fire
+                // arrow and a boulder leave hanging is laid once, at even steps of the flight.
+                if (trails && !this._cull(x, z, 4)) {
+                    let vx = p.tx - p.sx, vy = (p.ty - p.sy) + Math.PI * Math.cos(Math.PI * k) * p.arc, vz = p.tz - p.sz;
+                    const vl = Math.hypot(vx, vy, vz) || 1;
+                    let puff = false;
+                    if (!inset) { p.trail = (p.trail || 0) + dt; if (p.trail >= EngineFx.SMOKE_STEP) { p.trail = 0; puff = true; } }
+                    EngineFx.trail(trails, p.round ? 'boulder' : p.fire ? 'fire' : p.scale > 0.2 ? 'stone' : 'arrow', x, y, z, vx / vl, vy / vl, vz / vl, puff);
+                }
                 if (p.round) {
                     // The boulder tumbles as it flies.
                     dl.opaque.push({ buf: this._buf('sphere', [1, 10, 8]), tex: this.tex.rock || this.tex.white, tint: p.tint,
@@ -3299,6 +3290,14 @@
                         dl.blended.push({ buf: quad, tex: this.tex.mote, tint, alpha, additive: true,
                             model: fm.multiply(fm.multiply(fm.translation(tx, y + 0.04, tz), bb), fm.scaling(w, w * 1.25, 1)) });
                 }
+            }
+
+            // The particles: dust, sparks, chips, trails (EngineFx.Particles). Moved on once a
+            // frame, whichever picture is built first, and drawn in both: two draws.
+            const particles = this._particles;
+            if (particles) {
+                particles.update(once(particles));
+                for (const e of particles.entries(this, quad, fm, bb)) dl.blended.push(e);
             }
 
             // Intent marks (review #11): what the models just ordered, laid on the ground in
@@ -3604,6 +3603,9 @@
             gl.useProgram(this.prog);
             gl.uniformMatrix4fv(this.prog.uniforms.uProj, false, cam.proj);
             gl.uniformMatrix4fv(this.prog.uniforms.uView, false, cam.view);
+            // The picture's own right and up, in the world: a particle is a square laid along them.
+            gl.uniform3f(this.prog.uniforms.uBillRight, cam.view[0], cam.view[4], cam.view[8]);
+            gl.uniform3f(this.prog.uniforms.uBillUp, cam.view[1], cam.view[5], cam.view[9]);
             gl.uniform3fv(this.prog.uniforms.uSunDir, this.sunDir);
             gl.uniform3fv(this.prog.uniforms.uSunColor, this._sun);
             gl.uniform3fv(this.prog.uniforms.uAmbient, AMBIENT.map((v,i)=>v*(1-atmosphere.night*[0.60,0.51,0.34][i])));
@@ -3685,7 +3687,8 @@
                 let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit, bones, mist, instanced;
                 for (const obj of list) {
                     // An instanced mesh (the grass): the shader places each drawing by its list.
-                    const inst = obj.buf.instance ? 1 : 0;
+                    // (1: sown on the ground, the grass. 2: particles, squares facing the camera.)
+                    const inst = obj.buf.instance ? (obj.buf.stride === 8 ? 2 : 1) : 0;
                     if (inst !== instanced) { gl.uniform1f(U.uInstanced, inst); instanced = inst; }
                     // A unit's bones: sent when they change, and the shader told whether the
                     // mesh has any (uSkin). Batches of one unit follow each other, so a unit

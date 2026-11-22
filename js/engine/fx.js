@@ -131,5 +131,169 @@
             }
         },
     };
+    // ---- particles (overhaul step A9, build 1206) -------------------------------------------
+    // Dust, sparks, chips and trails. Until now every mote of dust was a draw of its own (a
+    // burst was twenty-four) and there was nothing else. Now all the particles in a picture
+    // are two draws: one list for what is laid over the scene (dust, smoke, chips) and one
+    // for what is added to it as light (sparks, flame). Each is a square that faces the
+    // camera, placed by the card from a list of eight numbers a particle: where it is, how
+    // large, its colour and how much of it shows (GLCore.createInstances, stride 8). The
+    // sprite is soft: about a third of the square's width shows, so sizes are generous.
+    //
+    // Presentation only. A particle is born from something the renderer was already told
+    // (a hit, a shot, a death) or already draws (a marching unit), never from a new rule,
+    // and its chance comes from Math.random, not from the game's random numbers.
+    const FIELDS = 16;   // x y z  vx vy vz  age life  size grow  r g b  alpha gravity kind
+    class Particles {
+        constructor(max = 1400) {
+            this.max = max; this.n = 0;
+            this.p = new Float32Array(max * FIELDS);
+            this.lists = [new Float32Array(max * 8), new Float32Array(max * 8)];   // laid over, added
+            this.counts = [0, 0];
+            this.bufs = [null, null];
+            // What is drawn this frame and not kept: the streak behind a shot (streak, below).
+            this.passing = [];
+        }
+        // A streak for this frame: n squares along a line from (x, y, z) back by len, each
+        // smaller and fainter than the one before. Not kept: whoever wants it next frame
+        // asks again, so it follows a shot exactly and ends when the shot does.
+        streak(x, y, z, dx, dy, dz, len, n, size, tint, alpha, additive) {
+            for (let i = 0; i < n; i++) {
+                const k = i / n, s = k * len;
+                this.passing.push(x - dx * s, y - dy * s, z - dz * s, size * (1 - 0.6 * k), tint[0], tint[1], tint[2], alpha * (1 - k) * (1 - k), additive ? 1 : 0);
+            }
+        }
+        // o: x y z, vx vy vz (units a second), life (seconds), size and grow (its size at the
+        // end, as a factor), tint, alpha, gravity, additive, drag (how fast it slows: 0 none).
+        emit(o) {
+            if (this.n >= this.max) return false;
+            const j = this.n++ * FIELDS, p = this.p, t = o.tint || WHITE;
+            p[j] = o.x; p[j + 1] = o.y; p[j + 2] = o.z;
+            p[j + 3] = o.vx || 0; p[j + 4] = o.vy || 0; p[j + 5] = o.vz || 0;
+            p[j + 6] = 0; p[j + 7] = o.life || 0.5;
+            p[j + 8] = o.size || 0.3; p[j + 9] = o.grow == null ? 1 : o.grow;
+            p[j + 10] = t[0]; p[j + 11] = t[1]; p[j + 12] = t[2];
+            p[j + 13] = o.alpha == null ? 1 : o.alpha;
+            p[j + 14] = o.gravity || 0;
+            // kind: 0 laid over, 1 added as light; +2 when it slows in the air (smoke, dust that hangs).
+            p[j + 15] = (o.additive ? 1 : 0) + (o.drag ? 2 : 0);
+            return true;
+        }
+        clear() { this.n = 0; this.counts[0] = this.counts[1] = 0; this.passing.length = 0; }
+        update(dt) {
+            if (!(dt > 0)) return;
+            const p = this.p;
+            for (let i = this.n - 1; i >= 0; i--) {
+                const j = i * FIELDS;
+                p[j + 6] += dt;
+                if (p[j + 6] >= p[j + 7]) {            // gone: the last one takes its place
+                    const last = --this.n * FIELDS;
+                    if (last !== j) p.copyWithin(j, last, last + FIELDS);
+                    continue;
+                }
+                p[j + 4] -= p[j + 14] * dt;
+                if (p[j + 15] >= 2) { const slow = Math.max(0, 1 - 2.4 * dt); p[j + 3] *= slow; p[j + 4] *= slow; p[j + 5] *= slow; }
+                p[j] += p[j + 3] * dt; p[j + 1] += p[j + 4] * dt; p[j + 2] += p[j + 5] * dt;
+                // What falls lands and lies: it does not sink through the ground.
+                if (p[j + 1] < 0.08 && p[j + 14] > 0) { p[j + 1] = 0.08; p[j + 3] *= 0.4; p[j + 5] *= 0.4; p[j + 4] = 0; }
+            }
+        }
+        // Writes the two lists: x y z size, r g b and what shows of it. A particle comes in
+        // over the first tenth of its life and goes over the rest.
+        fill() {
+            const p = this.p, c = this.counts;
+            c[0] = c[1] = 0;
+            for (let i = 0; i < this.n; i++) {
+                const j = i * FIELDS, k = p[j + 6] / p[j + 7], which = p[j + 15] % 2, out = this.lists[which], o = c[which]++ * 8;
+                out[o] = p[j]; out[o + 1] = p[j + 1]; out[o + 2] = p[j + 2];
+                out[o + 3] = p[j + 8] * (1 + (p[j + 9] - 1) * k);
+                out[o + 4] = p[j + 10]; out[o + 5] = p[j + 11]; out[o + 6] = p[j + 12];
+                out[o + 7] = p[j + 13] * (k < 0.1 ? k / 0.1 : (1 - k) / 0.9);
+            }
+            // ...and this frame's streaks, as far as the lists have room.
+            const q = this.passing;
+            for (let i = 0; i + 8 < q.length; i += 9) {
+                const which = q[i + 8];
+                if (c[which] >= this.max) continue;
+                const out = this.lists[which], o = c[which]++ * 8;
+                for (let f = 0; f < 8; f++) out[o + f] = q[i + f];
+            }
+            q.length = 0;
+            return c;
+        }
+        // The draws for this frame. With instancing: at most two. Without it (an old WebGL 1
+        // driver): one a particle, as dust always was.
+        entries(r, quad, fm, bb) {
+            if (!this.n && !this.passing.length) return NONE;
+            const c = this.fill(), out = [], gl = r.gl, tex = r.tex.mote || r.tex.white;
+            const instanced = typeof GLCore !== 'undefined' && typeof GLCore.instancingOf === 'function' && GLCore.instancingOf(gl);
+            for (let which = 0; which < 2; which++) {
+                if (!c[which]) continue;
+                const data = this.lists[which].subarray(0, c[which] * 8);
+                if (instanced) {
+                    if (!this.bufs[which]) { this.bufs[which] = GLCore.createInstances(gl, quad, data, 8); this.ents = this.ents || []; this.ents[which] = { buf: this.bufs[which], tex, additive: which === 1, particles: true }; }
+                    else GLCore.setInstances(gl, this.bufs[which], data);
+                    const e = this.ents[which];
+                    e.tex = tex; e.model = r._identity || (r._identity = window.M3D.identity());
+                    out.push(e);
+                } else for (let i = 0; i < c[which]; i++) {
+                    const o = i * 8, s = data[o + 3];
+                    out.push({ buf: quad, tex, tint: [data[o + 4], data[o + 5], data[o + 6]], alpha: data[o + 7], additive: which === 1,
+                        model: fm.multiply(fm.multiply(fm.translation(data[o], data[o + 1], data[o + 2]), bb), fm.scaling(s, s, 1)) });
+                }
+            }
+            return out;
+        }
+        dispose(gl) { for (let i = 0; i < 2; i++) if (this.bufs[i]) { GLCore.deleteMeshBuffers(gl, this.bufs[i]); this.bufs[i] = null; } }
+    }
+    const WHITE = [1, 1, 1], NONE = [];
+    const rand = (a, b) => a + Math.random() * (b - a);
+    EngineFx.Particles = Particles;
+
+    // What a tier draws of the new effects: Low the dust bursts it always had, Balanced and
+    // High the rest. A viewer who asked for less motion gets the bursts only.
+    EngineFx.level = (quality, still) => still ? 0 : quality === 'cinematic' ? 2 : quality === 'balanced' ? 1 : 0;
+
+    // A burst of dust: what a death or a fallen building always raised, as soft motes now.
+    EngineFx.burst = (P, x, y, z, count, tint) => {
+        for (let i = 0; i < count; i++) {
+            const a = Math.random() * Math.PI * 2, s = rand(1.5, 4.5);
+            P.emit({ x, y, z, vx: Math.cos(a) * s, vy: rand(2.2, 4.8), vz: Math.sin(a) * s, life: rand(0.6, 0.95), size: rand(1.0, 1.6), grow: 1.6, tint, alpha: 0.9, gravity: 7 });
+        }
+    };
+
+    // A hit: sparks off a unit; chips of stone and a spark or two off a wall.
+    EngineFx.sparks = (P, x, y, z, wall) => {
+        const n = wall ? 3 : 6;
+        for (let i = 0; i < n; i++) {
+            const a = Math.random() * Math.PI * 2, s = rand(1.6, 4.2);
+            P.emit({ x: x + Math.cos(a) * 0.3, y, z: z + Math.sin(a) * 0.3, vx: Math.cos(a) * s, vy: rand(1.5, 4.5), vz: Math.sin(a) * s, life: rand(0.3, 0.55), size: rand(0.42, 0.7), grow: 0.35,
+                tint: [1, rand(0.5, 0.78), rand(0.12, 0.3)], alpha: 1, gravity: 9, additive: true });
+        }
+        if (wall) for (let i = 0; i < 5; i++) {
+            const a = Math.random() * Math.PI * 2, s = rand(1.2, 3.2), g = rand(0.5, 0.72);
+            P.emit({ x, y, z, vx: Math.cos(a) * s, vy: rand(1.2, 3.6), vz: Math.sin(a) * s, life: rand(0.45, 0.8), size: rand(0.4, 0.7), tint: [g, g * 0.97, g * 0.92], alpha: 1, gravity: 9 });
+        }
+    };
+
+    // What a shot draws behind it in the air: a streak along the way it came (dx, dy, dz:
+    // the way it flies), every frame of its flight. An arrow's is pale and three units
+    // long; a fire arrow's glows; a sling stone's is short; a boulder's is dust. A fire
+    // arrow and a boulder leave smoke and dust hanging as well, a puff every SMOKE_STEP
+    // seconds (puff: whether one is due).
+    EngineFx.SMOKE_STEP = 0.05;
+    EngineFx.trail = (P, kind, x, y, z, dx, dy, dz, puff) => {
+        if (kind === 'fire') {
+            P.streak(x, y, z, dx, dy, dz, 2.6, 9, 0.75, [1, 0.5, 0.12], 0.9, true);
+            if (puff) P.emit({ x, y: y + 0.05, z, vy: 0.5, life: 0.7, size: 0.26, grow: 2.2, tint: [0.4, 0.39, 0.38], alpha: 0.25, drag: 1 });
+        } else if (kind === 'boulder') {
+            P.streak(x, y, z, dx, dy, dz, 2.2, 6, 1.3, [0.62, 0.6, 0.56], 0.4, false);
+            if (puff) P.emit({ x, y, z, life: 0.6, size: 0.5, grow: 1.7, tint: [0.62, 0.6, 0.56], alpha: 0.2, drag: 1 });
+        } else if (kind === 'stone') {
+            P.streak(x, y, z, dx, dy, dz, 1.2, 5, 0.45, [0.9, 0.9, 0.88], 0.5, false);
+        } else {
+            P.streak(x, y, z, dx, dy, dz, 3.0, 12, 0.5, [0.98, 0.96, 0.9], 0.8, false);
+        }
+    };
     window.EngineFx = EngineFx;
 })();

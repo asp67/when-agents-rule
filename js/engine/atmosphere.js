@@ -135,6 +135,12 @@
         // whether the mesh being drawn has such a list; uInstanceWorld is the width of the
         // ground's colour map, which a tuft takes its colour from where it stands.
         attribute vec4 aInstance;
+        // A particle (overhaul step A9; uInstanced is 2): a square that faces the camera. Its
+        // entry is where it is and how large, and a second four its colour and how much of
+        // it shows. uBillRight and uBillUp are the picture's own right and up in the world.
+        attribute vec4 aInstanceColor;
+        uniform vec3 uBillRight, uBillUp;
+        varying mediump vec4 vInst;
         uniform float uInstanced, uInstanceWorld;
         uniform mat4 uProj, uView, uModel, uLightMatrix;
         // A unit's limbs (overhaul step A4): each vertex names the bone it hangs on and is
@@ -161,7 +167,13 @@
             }
             bool stone = aUv.x < -0.5;
             float stoneShade = 0.0;
-            if (uInstanced > 0.5) {
+            vInst = vec4(1.0);
+            bool sown = uInstanced > 0.5 && uInstanced < 1.5;      // grass and its pebbles
+            if (uInstanced > 1.5) {
+                local.xyz = aInstance.xyz + (uBillRight*aPosition.x + uBillUp*aPosition.y)*aInstance.w;
+                normal = vec3(0.0, 1.0, 0.0);
+                vInst = aInstanceColor;
+            } else if (sown) {
                 // A pebble is the pebble mesh at the entry's size. A tuft keeps its base and
                 // is stretched from there: its tips move up and out by the entry's height.
                 vec3 p = local.xyz;
@@ -181,7 +193,7 @@
                 world.xz+=vec2(-uCloth.w,uCloth.z)*fold;
             }
             vPebble = stone ? 1.0 : 0.0;
-            vGrassTip = clamp(((uInstanced > 0.5 ? local.y : aPosition.y)-0.018) / 0.562, 0.0, 1.0);
+            vGrassTip = clamp(((sown ? local.y : aPosition.y)-0.018) / 0.562, 0.0, 1.0);
             vGust = 0.0;
             if (uVegetation > 0.5 && vPebble < 0.5) {
                 // Every tuft flutters where it stands, as it always has...
@@ -207,7 +219,7 @@
             vWorld = world.xyz;
             vUv = aUv + uUvOffset;
             // A tuft is the colour of the ground it stands on; a pebble has a shade of its own.
-            if (uInstanced > 0.5) vUv = stone ? vec2(-1.0, stoneShade) : local.xz / uInstanceWorld + 0.5;
+            if (sown) vUv = stone ? vec2(-1.0, stoneShade) : local.xz / uInstanceWorld + 0.5;
             vec4 vp = uView * world;
             vDepth = -vp.z;
             vShadow = uLightMatrix * world;
@@ -223,6 +235,7 @@
         uniform sampler2D uClutterVisibility;
         uniform float uClutterMapSize, uClutterFog, uPebbleGround, uGrayGravel, uGroundGain;
         uniform mediump float uVegetation;
+        varying mediump vec4 vInst;
         varying mediump float vGust;
         varying mediump float vGrassTip, vPebble;
         uniform vec4 uGroundCover;
@@ -326,7 +339,7 @@
                 t.rgb *= (0.86 + 0.30*bank)*mix(vec3(1.0), vec3(0.34,0.40,0.56), uNight);
                 t.a = min(1.0, t.a*(1.0 + 0.16*bank));
             }
-            vec3 base = t.rgb * uTint;
+            vec3 base = t.rgb * uTint * vInst.rgb;
             // Bent over in a gust, the blades show their paler side: the wave one sees cross a field.
             if (uVegetation > 0.5) base *= mix(0.90,1.06,vGrassTip) * (1.0 + 0.15*vGust*vGrassTip);
             if (uVegetation > 0.5 && vPebble > 0.5) base = mix(
@@ -522,7 +535,7 @@
             col = mix(col, uAir.rgb, uAir.a*(1.0-exp(-beyond*uAirDist.y))*(1.0-uUnlit)*uAtmosphere);
             float haze = clamp((vDepth-uHaze.x)/max(1.0,uHaze.y-uHaze.x),0.0,1.0);
             float alpha = uMaterial > 0.5 && uMaterial < 2.5 ? 1.0 : t.a;
-            gl_FragColor = vec4(mix(col,uSky,haze),alpha*uAlpha);
+            gl_FragColor = vec4(mix(col,uSky,haze),alpha*uAlpha*vInst.a);
         }`;
     EngineAtmosphere.shadowVertex = `
         attribute vec3 aPosition;

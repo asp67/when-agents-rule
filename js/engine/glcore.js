@@ -64,21 +64,22 @@
     };
 
     // A list of places for a mesh that is already on the card: four numbers an entry
-    // (what they mean is the shader's business: aInstance). The result is drawn like any
+    // (what they mean is the shader's business: aInstance), or eight (stride 8: a second
+    // four, aInstanceColor -- the particles of build 1206). The result is drawn like any
     // mesh; it shares the mesh's buffers and owns only its list. `instances` is how many
     // entries a draw takes, from the start of the list: set it lower to draw fewer.
-    GLCore.createInstances = (gl, mesh, data) => {
+    GLCore.createInstances = (gl, mesh, data, stride = 4) => {
         const instance = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, instance);
         gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
         return { position: mesh.position, normal: mesh.normal, uv: mesh.uv, bone: null, index: mesh.index, count: mesh.count,
-            shared: true, instance, instances: data.length / 4, capacity: data.length / 4 };
+            shared: true, instance, stride, instances: data.length / stride, capacity: data.length / stride };
     };
     // The same list, longer or changed: sent whole again.
     GLCore.setInstances = (gl, buffers, data) => {
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.instance);
         gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-        buffers.instances = buffers.capacity = data.length / 4;
+        buffers.instances = buffers.capacity = data.length / (buffers.stride || 4);
     };
 
     GLCore.compileProgram = (gl, vsSource, fsSource) => {
@@ -230,13 +231,22 @@
         // without one says so too -- where there are no vertex arrays the setting is the
         // context's, and would be left over from the grass.
         if (program.attribs.aInstance !== undefined) {
-            const inst = GLCore.instancingOf(gl), at = program.attribs.aInstance;
+            const inst = GLCore.instancingOf(gl), at = program.attribs.aInstance, colour = program.attribs.aInstanceColor;
+            const wide = buffers.stride === 8, bytes = wide ? 32 : 0;
             if (buffers.instance && inst) {
                 gl.bindBuffer(gl.ARRAY_BUFFER, buffers.instance);
                 gl.enableVertexAttribArray(at);
-                gl.vertexAttribPointer(at, 4, gl.FLOAT, false, 0, 0);
+                gl.vertexAttribPointer(at, 4, gl.FLOAT, false, bytes, 0);
                 inst.divisor(at, 1);
             } else { gl.disableVertexAttribArray(at); if (inst) inst.divisor(at, 0); }
+            // The second four of a wide list: a particle's colour and how much of it shows.
+            if (colour !== undefined) {
+                if (buffers.instance && inst && wide) {
+                    gl.enableVertexAttribArray(colour);
+                    gl.vertexAttribPointer(colour, 4, gl.FLOAT, false, bytes, 16);
+                    inst.divisor(colour, 1);
+                } else { gl.disableVertexAttribArray(colour); if (inst) inst.divisor(colour, 0); }
+            }
         }
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
     };

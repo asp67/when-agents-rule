@@ -47,7 +47,7 @@ test('the air thickens with how many times farther a thing is than what the came
     assert.ok(of(3.5) > 0.24 && of(3.5) < A.AIR.amount, 'the far edge of a low shot');
     assert.ok(of(100) <= A.AIR.amount);
     // It comes before the far fade into the sky, and the renderer gives it the look-at distance.
-    assert.ok(src.indexOf('uAir.a*(1.0-exp(') < src.indexOf('gl_FragColor = vec4(mix(col,uSky,haze),alpha*uAlpha);'));
+    assert.ok(src.indexOf('uAir.a*(1.0-exp(') < src.indexOf('gl_FragColor = vec4(mix(col,uSky,haze),alpha*uAlpha*vInst.a);'));
     const r = read('js/engine/gamerenderer.js');
     assert.match(r, /gl\.uniform4fv\(this\.prog\.uniforms\.uAir, atmosphere\.air \|\| \[0, 0, 0, 0\]\);/);
     assert.match(r, /gl\.uniform2f\(this\.prog\.uniforms\.uAirDist, cam\.dist \|\| 1, atmosphere\.airRate \|\| 0\);/);
