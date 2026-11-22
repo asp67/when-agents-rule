@@ -92,21 +92,39 @@ class SeasonPage {
     // ---- Drawing ------------------------------------------------------------------
     // A mean with its interval: the number, the range under it, and both on a 0-100 track
     // so two rows can be compared by eye. One match is a number and the words "1 match".
-    cell(x, lead) {
+    // `sp` is the spread over the same matches (build 1225): the lowest, the median and the
+    // highest under the interval, and a tick on the track for every single match.
+    cell(x, lead, sp) {
         if (!x || x.mean == null) return '<td class="sn-cell is-empty"><b>–</b></td>';
+        const ticks = sp && sp.n >= 2 ? sp.values.map(v => `<em style="left:${v}%"></em>`).join('') : '';
         const range = x.n < 2 ? `<small>${this.esc(t('season.oneMatch'))}</small><i class="sn-range"><s style="left:${x.mean}%"></s></i>`
-            : `<small>${x.lo.toFixed(0)}–${x.hi.toFixed(0)}</small><i class="sn-range"><u style="left:${x.lo}%;width:${Math.max(1, x.hi - x.lo)}%"></u><s style="left:${x.mean}%"></s></i>`;
-        const tip = x.n < 2 ? t('season.oneMatchTip') : t('season.cellTip', { mean: x.mean.toFixed(1), lo: x.lo.toFixed(1), hi: x.hi.toFixed(1), n: x.n });
+            : `<small>${x.lo.toFixed(0)}–${x.hi.toFixed(0)}</small>`
+                + (sp && sp.n >= 2 ? `<small class="sn-spread">${sp.min.toFixed(0)} · ${sp.median.toFixed(0)} · ${sp.max.toFixed(0)}</small>` : '')
+                + `<i class="sn-range"><u style="left:${x.lo}%;width:${Math.max(1, x.hi - x.lo)}%"></u>${ticks}<s style="left:${x.mean}%"></s></i>`;
+        const tip = x.n < 2 ? t('season.oneMatchTip') : t('season.cellTip', { mean: x.mean.toFixed(1), lo: x.lo.toFixed(1), hi: x.hi.toFixed(1), n: x.n })
+            + (sp && sp.n >= 2 ? ' ' + t('season.spreadTip', { min: sp.min.toFixed(1), median: sp.median.toFixed(1), max: sp.max.toFixed(1), values: sp.values.map(v => v.toFixed(0)).join(', ') }) : '');
         return `<td class="sn-cell${lead ? ' is-lead' : ''}" title="${this.esc(tip + (lead ? ' ' + t('season.leadTip') : ''))}"><b>${x.mean.toFixed(0)}${lead ? ' ★' : ''}</b>${range}</td>`;
     }
+    // Who played: the model's own answers, or an agent framework with the model inside it.
+    viaTag(via) {
+        if (!via) return '';
+        const harness = String(via).startsWith('harness'), name = harness ? String(via).split(':')[1] : '';
+        return ` <em class="bf-kind ${harness ? 'is-harness' : 'is-raw'}" title="${this.esc(t(harness ? 'bench.h.harnessTip' : 'bench.h.rawTip'))}">${this.esc(t(harness ? 'bench.h.harness' : 'bench.h.raw'))}${name ? ' · ' + this.esc(name) : ''}</em>`;
+    }
     head() {
-        return `<tr><th>${this.esc(t('season.model'))}</th><th>${this.esc(t('season.matches'))}</th><th>${this.esc(t('season.firsts'))}</th>`
+        return `<tr><th>${this.esc(t('season.model'))}</th><th>${this.esc(t('season.matches'))}</th><th>${this.esc(t('season.firsts'))}</th><th title="${this.esc(t('season.placesTip'))}">${this.esc(t('season.places'))}</th>`
             + WarSeason.PARTS.map(p => `<th>${this.esc(t('eval.' + p))}</th>`).join('') + '</tr>';
     }
     group(g) {
         const L = k => this.esc(WarSeason.label(k)), signed = v => (v > 0 ? '+' : '') + v.toFixed(1);
-        const rows = g.models.map(m => `<tr><th scope="row" title="${this.esc(m.model || '')}">${this.esc(m.name || m.model || '?')}</th><td>${m.matches}</td><td>${m.firsts}</td>`
-            + WarSeason.PARTS.map(p => this.cell(m.parts[p], g.leaders[p] === m.key)).join('') + '</tr>').join('');
+        // Every placement, oldest first; a long history shows its newest twelve.
+        const places = m => { const a = m.places || []; return a.length ? (a.length > 12 ? '… ' : '') + a.slice(-12).map(x => x.rank).join(' · ') : '–'; };
+        const rows = g.models.map(m => `<tr><th scope="row" title="${this.esc(m.model || '')}">${this.esc(m.name || m.model || '?')}${this.viaTag(m.via)}</th><td>${m.matches}</td><td>${m.firsts}</td>`
+            + `<td class="sn-places" title="${this.esc(t('season.placesTip'))}">${places(m)}</td>`
+            + WarSeason.PARTS.map(p => this.cell(m.parts[p], g.leaders[p] === m.key, m.spread && m.spread[p])).join('') + '</tr>').join('');
+        // Raw models and agent harnesses in one table: said under it.
+        const kinds = new Set(g.models.map(m => m.via ? String(m.via).split(':')[0] : null).filter(Boolean));
+        const mixed = kinds.size > 1 ? `<p class="season-verdict">${this.esc(t('season.mixed'))}</p>` : '';
         const led = WarSeason.PARTS.some(p => g.leaders[p]);
         const verdict = g.models.length < 2 ? t('season.oneModel') : led ? t('season.someLead')
             : g.models.some(m => m.matches < 2) ? t('season.needTwo') : t('season.touch');
@@ -120,7 +138,7 @@ class SeasonPage {
         return `<section class="season-group">
             <h3>${this.esc(t('season.conditions'))} <code>${this.esc(g.id)}</code><small>${this.esc(t('season.groupMeta', { protocol: g.protocol || '?', builds: g.builds.join(', ') || '–', scale: g.scale || '?', n: g.matches }))}</small></h3>
             <div class="season-scroll"><table class="season-table"><thead>${this.head()}</thead><tbody>${rows}</tbody></table></div>
-            <p class="season-verdict">${this.esc(verdict)}</p>
+            <p class="season-verdict">${this.esc(verdict)}</p>${mixed}
             ${h2h ? `<h4>${this.esc(t('season.headToHead'))}</h4><ul class="season-list">${h2h}</ul>` : ''}
             ${swaps ? `<h4>${this.esc(t('season.swaps'))}</h4><ul class="season-list">${swaps}</ul>` : ''}
         </section>`;

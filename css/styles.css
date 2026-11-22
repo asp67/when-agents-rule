@@ -2158,6 +2158,11 @@ body.spectator-mode #unitInfo.spectator-card {
 .sn-range { position: relative; display: block; height: 6px; margin: 3px 2px 0; border-radius: 3px; background: rgba(255, 255, 255, 0.08); }
 .sn-range u { position: absolute; top: 1px; height: 4px; border-radius: 2px; background: rgba(99, 185, 167, 0.55); }
 .sn-range s { position: absolute; top: -1px; width: 2px; height: 8px; margin-left: -1px; background: #e8eef7; }
+/* Every match as a tick on the track, and lowest · median · highest in words (build 1225). */
+.sn-range em { position: absolute; top: 0; width: 1px; height: 6px; background: rgba(232, 238, 247, 0.5); }
+.sn-cell small.sn-spread { color: #a9b3c4; font-variant-numeric: tabular-nums; }
+.sn-places { white-space: nowrap; color: #c9cfdb; font-variant-numeric: tabular-nums; }
+.season-table .bf-kind { font-size: 0.7em; vertical-align: middle; }
 .sn-cell.is-lead .sn-range u { background: rgba(242, 196, 106, 0.6); }
 .season-list { margin: 0; padding-left: 18px; font-size: 0.86rem; color: #c9d3e2; }
 .season-list li { margin: 2px 0; }

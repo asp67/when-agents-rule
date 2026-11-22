@@ -57,8 +57,12 @@ test('the table marks a model ahead only where it is apart, and says in words wh
     assert.match(html, /season\.conditions <code>cond-a<\/code><small>season\.groupMeta\{&quot;protocol&quot;:&quot;turn-based&quot;,&quot;builds&quot;:&quot;1164&quot;,&quot;scale&quot;:&quot;v1&quot;,&quot;n&quot;:3\}/);
     // Alpha is ahead on all six columns, Beta on none: six stars, each with its range on the track.
     assert.equal((html.match(/class="sn-cell is-lead"/g) || []).length, 6);
-    assert.match(html, /<th scope="row" title="Alpha-model">Alpha<\/th><td>3<\/td><td>3<\/td><td class="sn-cell is-lead" title="season\.cellTip\{&quot;mean&quot;:&quot;90\.0&quot;,&quot;lo&quot;:&quot;85\.0&quot;,&quot;hi&quot;:&quot;95\.0&quot;,&quot;n&quot;:3\} season\.leadTip"><b>90 ★<\/b><small>85–95<\/small>/);
-    assert.match(html, /<i class="sn-range"><u style="left:85%;width:10%"><\/u><s style="left:90%"><\/s><\/i>/);
+    // Build 1225: beside the mean and its interval stand every placement, the lowest, the median and the highest match, and a tick a match.
+    assert.match(html, /<th scope="row" title="Alpha-model">Alpha<\/th><td>3<\/td><td>3<\/td><td class="sn-places" title="season\.placesTip">1 · 1 · 1<\/td><td class="sn-cell is-lead" title="season\.cellTip\{&quot;mean&quot;:&quot;90\.0&quot;,&quot;lo&quot;:&quot;85\.0&quot;,&quot;hi&quot;:&quot;95\.0&quot;,&quot;n&quot;:3\} season\.spreadTip\{&quot;min&quot;:&quot;88\.0&quot;,&quot;median&quot;:&quot;90\.0&quot;,&quot;max&quot;:&quot;92\.0&quot;,&quot;values&quot;:&quot;90, 88, 92&quot;\} season\.leadTip"><b>90 ★<\/b><small>85–95<\/small><small class="sn-spread">88 · 90 · 92<\/small>/);
+    assert.match(html, /<i class="sn-range"><u style="left:85%;width:10%"><\/u><em style="left:90%"><\/em><em style="left:88%"><\/em><em style="left:92%"><\/em><s style="left:90%"><\/s><\/i>/);
+    assert.match(html, /<th scope="row" title="Beta-model">Beta<\/th><td>3<\/td><td>0<\/td><td class="sn-places" title="season\.placesTip">2 · 2 · 2<\/td>/);
+    assert.match(html, /<tr><th>season\.model<\/th><th>season\.matches<\/th><th>season\.firsts<\/th><th title="season\.placesTip">season\.places<\/th>/);
+    assert.doesNotMatch(html, /bf-kind|season\.mixed/, 'these entries do not say who played: no tag, no note');
     assert.match(html, /<p class="season-verdict">season\.someLead<\/p>/);
     assert.match(html, /season\.met\{&quot;a&quot;:&quot;Alpha&quot;,&quot;b&quot;:&quot;Beta&quot;,&quot;n&quot;:3,&quot;aAhead&quot;:3,&quot;bAhead&quot;:0\}/);
     assert.match(html, /season\.count\{&quot;n&quot;:3,&quot;kept&quot;:3\}/);
@@ -114,7 +118,11 @@ test('a transcript file added here is scored here; a file that is not one is nam
     assert.deepEqual(Array.from(kept, e => [e.source, e.file, e.scale, Array.from(e.seats, s => s.name + ' ' + s.cond + ' #' + s.rank).join(', ')].join(' | ')),
         ['imported | ' + name + ' | v3 | pi MCP ba441132b2b0 #2, HERMES MCP ba441132b2b0 #1']);
     assert.match(els.seasonBody.innerHTML, /<p class="season-note">season\.added/);
-    assert.match(els.seasonBody.innerHTML, /<th scope="row" title="Deepseek V4\.1 Flash 1017">HERMES MCP<\/th><td>1<\/td><td>1<\/td>/);
+    // Who played stands beside the name (build 1225): both seats of this match are agent harnesses, so nothing is mixed.
+    assert.match(els.seasonBody.innerHTML, /<th scope="row" title="Deepseek V4\.1 Flash 1017">HERMES MCP <em class="bf-kind is-harness" title="bench\.h\.harnessTip">bench\.h\.harness · hermes<\/em><\/th><td>1<\/td><td>1<\/td><td class="sn-places" title="season\.placesTip">1<\/td>/);
+    assert.match(els.seasonBody.innerHTML, />pi MCP <em class="bf-kind is-harness" title="bench\.h\.harnessTip">bench\.h\.harness<\/em><\/th>/);
+    assert.deepEqual(Array.from(kept[0].seats, x => x.via), ['harness', 'harness:hermes']);
+    assert.doesNotMatch(els.seasonBody.innerHTML, /season\.mixed/);
     // Added again, it is still one match.
     await p.addFiles([{ name, text: async () => text }]);
     assert.equal(Page.load().length, 1);
@@ -168,4 +176,32 @@ test('a finished match joins the table, and a rematch can trade the models\' sea
     const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
     assert.match(html, /id="summaryRematchSwapBtn" onclick="game\.ui\.rematchArena\(true\)"/);
     assert.match(html, /id="summarySeasonBtn" onclick="game\.ui\.seasonPage\(\)\.open\(\)"/);
+});
+
+test('build 1225: raw models and agent harnesses in one table are tagged, and the table says so', () => {
+    const { Page, p } = page();
+    const via = (m, vias) => { m.seats.forEach((s, i) => { s.via = vias[i]; }); return m; };
+    for (const [a, b] of [[90, 10], [60, 30]]) Page.keep(via(match([['Alpha', 0, 1, a], ['Beta', 1, 2, b]]), ['raw', 'harness:claude-code']));
+    p.samples = [];
+    const html = p.html();
+    assert.match(html, /title="Alpha-model">Alpha <em class="bf-kind is-raw" title="bench\.h\.rawTip">bench\.h\.raw<\/em><\/th>/);
+    assert.match(html, /title="Beta-model">Beta <em class="bf-kind is-harness" title="bench\.h\.harnessTip">bench\.h\.harness · claude-code<\/em><\/th>/);
+    assert.match(html, /<p class="season-verdict">season\.\w+<\/p><p class="season-verdict">season\.mixed<\/p>/);
+    // Two matches: the lowest, the median and the highest, and a tick for each on the track.
+    assert.match(html, /<small class="sn-spread">60 · 75 · 90<\/small><i class="sn-range"><u [^>]*><\/u><em style="left:90%"><\/em><em style="left:60%"><\/em><s style="left:75%"><\/s><\/i>/);
+    // One match has no spread to show: the words "1 match", as before.
+    const one = page();
+    one.Page.keep(match([['Alpha', 0, 1, 90], ['Beta', 1, 2, 10]]));
+    one.p.samples = [];
+    assert.doesNotMatch(one.p.html(), /sn-spread|<em style/);
+    // A long history shows its newest twelve placements.
+    const long = page();
+    for (let i = 0; i < 14; i++) long.Page.keep(match([['Alpha', 0, i < 2 ? 2 : 1, 80], ['Beta', 1, i < 2 ? 1 : 2, 20]]));
+    long.p.samples = [];
+    assert.match(long.p.html(), /<td class="sn-places" title="season\.placesTip">… 1 · 1 · 1 · 1 · 1 · 1 · 1 · 1 · 1 · 1 · 1 · 1<\/td>/);
+    // Every string is keyed in all four languages.
+    const ctx = vm.createContext({ window: {}, navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} }, document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {} } });
+    vm.runInContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8') + ';this.I = I18N;', ctx);
+    for (const lang of ['en', 'de', 'es', 'zh']) for (const k of ['season.places', 'season.placesTip', 'season.spreadTip', 'season.mixed', 'bench.h.raw', 'bench.h.harness', 'bench.h.rawTip', 'bench.h.harnessTip'])
+        assert.ok(k in ctx.I[lang], lang + ' lacks ' + k);
 });

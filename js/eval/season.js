@@ -43,6 +43,16 @@
         const half = (T95[n - 2] || 1.96) * sd / Math.sqrt(n);
         return { mean: r1(mean), lo: r1(Math.max(lowest, mean - half)), hi: r1(Math.min(highest, mean + half)), n, sd: r1(sd) };
     }
+    // Every match's value beside the mean (build 1225; asp67's list of 22 November 2026:
+    // "Show variance, not just averages ... min/max/median. This prevents cherry-picked
+    // highlights"): the lowest, the median and the highest match, and the values themselves
+    // in the order they were played, so a mean cannot hide the one good match it rests on.
+    function spread(values) {
+        const v = values.filter(x => typeof x === 'number' && isFinite(x)), n = v.length;
+        if (!n) return { n: 0, min: null, median: null, max: null, values: [] };
+        const s = v.slice().sort((a, b) => a - b), mid = n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+        return { n, min: r1(s[0]), median: r1(mid), max: r1(s[n - 1]), values: v.map(r1) };
+    }
     // Are two means apart? Only with an interval on both sides, and only if they do not touch.
     function separated(a, b) {
         return !!a && !!b && a.n >= 2 && b.n >= 2 && (a.lo > b.hi || b.lo > a.hi);
@@ -53,9 +63,12 @@
     const modelKey = s => String(s.name || '') + '\u0000' + String(s.model || '');
 
     // What one seat contributes, from its public profile.
-    function seatOf(p, { rank, of, winner, cond, protocol, core }) {
+    function seatOf(p, { rank, of, winner, cond, protocol, core, via }) {
         const e = p.efficiency || {}, ta = p.tactical || {}, g = p.grounding || {};
         return { id: p.id, seat: p.seat == null ? null : p.seat, civ: p.civ || null, name: p.name || null, model: p.model || null,
+            // Who played the seat (build 1225): 'raw' for the model's own answers, 'harness' or
+            // 'harness:<name>' for an agent framework over MCP, null where the file does not say.
+            via: via || null,
             rank: rank == null ? null : rank, of: of == null ? null : of, winner: !!winner,
             cond: cond || null, protocol: protocol || null, core: core || null,
             decisions: p.decisions || 0,
@@ -74,7 +87,9 @@
         const seats = profile.seats.map(p => {
             const row = ranking.find(r => r.playerId === p.id) || {};
             const c = conditions ? conditions.seat(header, contract, p.id) : null;
-            return seatOf(p, { rank: row.rank, of: ranking.length || null, winner: row.isWinner,
+            const set = (players.find(x => x && x.id === p.id) || {}).settings;
+            const via = !set || typeof set !== 'object' ? null : !set.harnessExternal ? 'raw' : 'harness' + (set.harness && set.harness !== 'other' ? ':' + set.harness : '');
+            return seatOf(p, { via, rank: row.rank, of: ranking.length || null, winner: row.isWinner,
                 cond: conditions ? conditions.id(c) : null, protocol: conditions ? conditions.protocolOf(header) : null,
                 core: contract && contract.coreHash ? String(contract.coreHash).slice(0, 12) : null });
         });
@@ -153,17 +168,23 @@
         const out = [];
         for (const g of groups.values()) {
             const models = new Map();
-            for (const m of g.in.values()) for (const s of m.all) {
+            // In the order the matches were played, so the values and the places read as a history.
+            const played = [...g.in.values()].sort((x, y) => (x.e.at || 0) - (y.e.at || 0));
+            for (const m of played) for (const s of m.all) {
                 const k = modelKey(s);
                 let row = models.get(k);
-                if (!row) models.set(k, row = { key: k, name: s.name, model: s.model, values: {}, matches: 0, firsts: 0, ranks: [] });
+                if (!row) models.set(k, row = { key: k, name: s.name, model: s.model, via: null, values: {}, matches: 0, firsts: 0, ranks: [] });
                 row.matches++;
+                if (row.via == null && s.via) row.via = s.via;
                 if (s.rank === 1) row.firsts++;
-                if (s.rank != null) row.ranks.push(s.rank);
+                if (s.rank != null) row.ranks.push({ rank: s.rank, of: s.of == null ? null : s.of });
                 for (const p of PARTS) if (s.scores[p] != null) (row.values[p] || (row.values[p] = [])).push(s.scores[p]);
             }
-            const rows = [...models.values()].map(r => ({ key: r.key, name: r.name, model: r.model, matches: r.matches, firsts: r.firsts,
-                parts: Object.fromEntries(PARTS.map(p => [p, interval(r.values[p] || [])])) }));
+            const rows = [...models.values()].map(r => ({ key: r.key, name: r.name, model: r.model, via: r.via, matches: r.matches, firsts: r.firsts,
+                // Every placement, oldest first: "first place twice" beside the two matches it finished last in.
+                places: r.ranks,
+                parts: Object.fromEntries(PARTS.map(p => [p, interval(r.values[p] || [])])),
+                spread: Object.fromEntries(PARTS.map(p => [p, spread(r.values[p] || [])])) }));
             rows.sort((a, b) => (b.parts.index.mean == null ? -1 : b.parts.index.mean) - (a.parts.index.mean == null ? -1 : a.parts.index.mean) || String(a.name).localeCompare(String(b.name)));
             // Ahead on a part: apart from EVERY other model that has a value there.
             const leaders = {};
@@ -226,5 +247,5 @@
 
     const label = key => { const [name, model] = String(key).split('\u0000'); return name || model || '?'; };
 
-    return { VERSION: 1, PARTS, interval, separated, apartFromZero, modelKey, label, entryFrom, entryOf, table };
+    return { VERSION: 1, PARTS, interval, spread, separated, apartFromZero, modelKey, label, entryFrom, entryOf, table };
 });

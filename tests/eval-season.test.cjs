@@ -169,3 +169,49 @@ test('samples/season.json is what the shipped matches give, on this build\'s sca
     // Nowhere in the shipped matches is a model ahead of another on the Index.
     assert.equal(t.groups.some(g => g.leaders.index), false);
 });
+
+// Build 1225 (asp67's list, 22 November 2026): "Show variance, not just averages ... show
+// min/max/median. This prevents cherry-picked highlights and builds trust."
+test('beside the mean: the lowest, the median and the highest match, every value and every placement as played', () => {
+    assert.deepEqual(WarSeason.spread([70, 20, 90]), { n: 3, min: 20, median: 70, max: 90, values: [70, 20, 90] });
+    assert.deepEqual(WarSeason.spread([10, 40, 20, 30]), { n: 4, min: 10, median: 25, max: 40, values: [10, 40, 20, 30] });   // an even count: between the middle two
+    assert.deepEqual(WarSeason.spread([55]), { n: 1, min: 55, median: 55, max: 55, values: [55] });
+    assert.deepEqual(WarSeason.spread([null, undefined, NaN]), { n: 0, min: null, median: null, max: null, values: [] });
+    // One good match among three: the mean says 60, the spread shows what it is made of.
+    const t = WarSeason.table([
+        match([['Alpha', 0, 1, 95], ['Beta', 1, 2, 50]], { at: 300 }),
+        match([['Alpha', 0, 2, 40], ['Beta', 1, 1, 52]], { at: 100 }),
+        match([['Alpha', 1, 2, 45], ['Beta', 0, 1, 54]], { at: 200 })]);
+    const a = row(t.groups[0], 'Alpha'), b = row(t.groups[0], 'Beta');
+    assert.deepEqual([a.parts.index.mean, a.spread.index], [60, { n: 3, min: 40, median: 45, max: 95, values: [40, 45, 95] }]);
+    assert.deepEqual(b.spread.index, { n: 3, min: 50, median: 52, max: 54, values: [52, 54, 50] });
+    // Every placement, oldest first, with how many sat: nothing is left out.
+    assert.deepEqual([a.places, a.firsts, a.matches], [[{ rank: 2, of: 2 }, { rank: 2, of: 2 }, { rank: 1, of: 2 }], 1, 3]);
+    assert.deepEqual(b.places.map(x => x.rank), [1, 1, 2]);
+    // A part with no score in a match is left out of the spread as it is out of the mean.
+    const g = WarSeason.table([match([['Alpha', 0, 1, { index: 80, tactical: null }], ['Beta', 1, 2, 10]]), match([['Alpha', 0, 1, { index: 60, tactical: 30 }], ['Beta', 1, 2, 10]])]).groups[0];
+    assert.deepEqual([row(g, 'Alpha').spread.tactical.n, row(g, 'Alpha').spread.index.values], [1, [80, 60]]);
+});
+
+test('who played a seat is part of what a match contributes: the model itself, or an agent harness', () => {
+    const header = { type: 'match', matchId: 'h1', startedAt: 5, players: [
+        { id: 'a', seat: 0, civ: 'greek', settings: { provider: 'openai' } },
+        { id: 'b', seat: 1, civ: 'maya', settings: { provider: 'mcp', harness: 'hermes', harnessExternal: true } },
+        { id: 'c', seat: 2, civ: 'roman', settings: { provider: 'mcp', harness: 'other', harnessExternal: true } },
+        { id: 'd', seat: 3, civ: 'yamato' }] };
+    const seat = id => ({ id, seat: 0, name: id, model: id, decisions: 3, grounding: {}, planning: {}, follow: {}, tactical: {}, strategy: {}, index: { value: 50, of: 1 }, efficiency: {} });
+    const e = WarSeason.entryFrom({ header, profile: { scale: 'v3', seats: ['a', 'b', 'c', 'd'].map(seat) } }, { conditions: null });
+    assert.deepEqual(e.seats.map(s => s.via), ['raw', 'harness:hermes', 'harness', null]);
+    // The row of a model carries it; an entry kept before this build has none, which is not "raw".
+    const withVia = (m, vias) => { m.seats.forEach((s, i) => { s.via = vias[i]; }); return m; };
+    const t = WarSeason.table([withVia(match([['Alpha', 0, 1, 80], ['Beta', 1, 2, 40]]), ['raw', 'harness:hermes']), match([['Alpha', 0, 1, 70], ['Beta', 1, 2, 30]])]);
+    assert.deepEqual([row(t.groups[0], 'Alpha').via, row(t.groups[0], 'Beta').via], ['raw', 'harness:hermes']);
+    assert.equal(row(WarSeason.table([match([['Alpha', 0, 1, 80], ['Beta', 1, 2, 40]])]).groups[0], 'Alpha').via, null);
+});
+
+test('the shipped season entries say who played every seat', { skip: !HAS_SAMPLES }, () => {
+    const entries = JSON.parse(fs.readFileSync(sample('season.json'), 'utf8')).entries;
+    const vias = entries.flatMap(e => e.seats.map(s => s.via));
+    assert.ok(vias.every(v => v === 'raw' || /^harness(:[\w-]+)?$/.test(v)), 'every seat of every sample has it');
+    assert.ok(vias.includes('raw') && vias.includes('harness:hermes') && vias.includes('harness:claude-code'));
+});
