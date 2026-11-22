@@ -5,7 +5,8 @@ test('courtyard props stay outside the building and leave the central entrance c
  const foot={ex:6,ez:5};
  for(const civ of ['greek','egyptian','persian','yamato'])for(const type of ['house','town_center','market']){
   const dressing=scope.window.EngineBuildings.settlement(type,civ,foot);
-  assert.ok(dressing.parts.length<=10);
+  // The Greek yard (b1199) adds to the two jars and the hearth: tests/greek-yard.test.cjs.
+  assert.ok(dressing.parts.length<=(civ==='greek'?45:10));
   for(const p of dressing.parts){
    const mesh=scope.window.EngineMesh[p.kind](...p.args);
    assert.ok(mesh.positions.every(Number.isFinite));
@@ -14,7 +15,8 @@ test('courtyard props stay outside the building and leave the central entrance c
   }
   assert.equal(!!dressing.fire,type!=='market');
  }
- for(const type of ['farm','tower','barracks','wonder'])assert.equal(scope.window.EngineBuildings.settlement(type,'greek',foot).parts.length,0);
+ for(const civ of ['egyptian','persian','yamato'])for(const type of ['farm','tower','barracks','wonder'])assert.equal(scope.window.EngineBuildings.settlement(type,civ,foot).parts.length,0);
+ assert.equal(scope.window.EngineBuildings.settlement('wonder','greek',foot).parts.length,0);
 });
 
 test('entrance lamps vary by era, have finite geometry and stand clear of doors and hitching rails',()=>{

@@ -1429,8 +1429,114 @@
     };
 
     // Optional courtyard dressing, deliberately separate from collision bounds.
+    // The Greek yard (overhaul step A5): what stands beside each kind of building and says
+    // what it is for. Until build 1199 only a house and a Town Center had anything outside
+    // (two jars and a hearth); a barracks, an archery range, an academy, a temple, a tower
+    // and a farm stood bare on the grass. The Greeks are the first civilization done; the
+    // others keep what they had until theirs is drawn.
+    //
+    // Everything stands at the building's front left corner: left of the wall, and so far
+    // forward that the building does not hide it. The picture is always taken from the
+    // front right, so what stands beside the left wall further back is behind the house
+    // (the first version of this yard was, and nothing of it could be seen). That corner
+    // is clear of the door, the runner before it and the flag at the front right. It is
+    // dressing: merged per material, drawn on High only and only from close by, and no
+    // part of the footprint -- a unit can walk through it. Materials are kept to the few
+    // the yard already had (bark, wood, thatch, stone, plaster, iron, the jars' clay):
+    // every other one would be one more draw for each building in view.
+    const greekYard = (parts, type, foot) => {
+        // wall: the left wall's plane; front: the front wall's. A thing d left of the wall
+        // shows from the front right when it stands further forward than front - d.
+        const wall = -foot.ex, front = foot.ez, half = Math.PI / 2, clay = [.68, .33, .20];
+        const P = (kind, args, tex, t) => part(parts, kind, args, tex, t);
+        // Firewood: six logs, three, two and one, their ends to the viewer.
+        const logs = (x, z) => { for (let i = 0; i < 6; i++) { const up = i > 4 ? 2 : i > 2 ? 1 : 0, k = i - [0, 3, 5][up];
+            P('cylinder', [.14, .14, 1.15, 7], 'bark', { x: x + (k - (2 - up) / 2) * .29, y: .14 + up * .25, z, rx: half }); } };
+        if (type === 'house') logs(wall - .9, front + .75);
+        else if (type === 'town_center') {
+            // A market stall under an awning that slopes down to the front: a table, three
+            // small jars and a crate on it.
+            const sx = wall - 1.5, sz = front + .1;
+            for (const [dx, dz] of [[-.8, -.6], [.8, -.6], [-.8, .6], [.8, .6]]) { const h = dz > 0 ? 1.55 : 1.85; P('cylinder', [.045, .05, h, 6], 'bark', { x: sx + dx, y: h / 2, z: sz + dz }); }
+            P('box', [1.9, .04, 1.5], 'awning', { x: sx, y: 1.72, z: sz, rx: .2 });
+            P('box', [1.5, .07, .7], 'wood', { x: sx, y: .78, z: sz });
+            for (const [dx, dz] of [[-.65, -.28], [.65, -.28], [-.65, .28], [.65, .28]]) P('box', [.07, .76, .07], 'wood', { x: sx + dx, y: .38, z: sz + dz });
+            for (let i = 0; i < 3; i++) P('cylinder', [.11, .08, .22, 8], 'white', { x: sx - .45 + i * .3, y: .925, z: sz + .12, tint: clay });
+            P('box', [.34, .26, .34], 'wood', { x: sx + .45, y: .945, z: sz - .1, ry: .3 });
+            // A handcart to its left: a bed with side boards on two wheels, its shafts resting on the ground.
+            // (Out in front of the stall, not behind it: seen from the front right, what stands
+            // two units further left and one back is exactly behind the awning.)
+            const cx = wall - 3.5, cz = front + 1.6;
+            P('box', [1.3, .1, .75], 'wood', { x: cx, y: .55, z: cz });
+            for (const side of [-1, 1]) {
+                P('cylinder', [.36, .36, .07, 12], 'wood', { x: cx + .1, y: .36, z: cz + side * .44, rx: half });
+                P('box', [1.3, .2, .05], 'wood', { x: cx, y: .7, z: cz + side * .35 });
+                P('box', [1.0, .05, .05], 'wood', { x: cx + 1.1, y: .42, z: cz + side * .3, rz: -.26 });
+            }
+        } else if (type === 'barracks') {
+            // A rack of four spears, two round shields against the front wall, and a straw man on a stake.
+            const rx = wall - 1.0, rz = front + .25;
+            for (const side of [-1, 1]) P('cylinder', [.05, .06, 1.25, 6], 'bark', { x: rx + side * .75, y: .625, z: rz });
+            P('cylinder', [.04, .04, 1.6, 6], 'bark', { x: rx, y: 1.15, z: rz, rz: half });
+            for (let i = 0; i < 4; i++) {
+                const x = rx - .5 + i * .33;
+                // Leaning back onto the rail from in front of it, the point up.
+                P('cylinder', [.02, .02, 1.9, 5], 'wood', { x, y: .93, z: rz + .28, rx: -.3 });
+                P('cylinder', [0, .035, .2, 5], 'iron', { x, y: .93 + 1.05 * .9553, z: rz + .28 - 1.05 * .2955, rx: -.3 });
+            }
+            for (let i = 0; i < 2; i++) {
+                const x = wall + .15 - i * .8;
+                P('cylinder', [.36, .36, .05, 12], 'wood', { x: x - 1.9, y: .36, z: front + 1.15, rx: half - .28 });
+                P('sphere', [.09, 6, 4], 'iron', { x: x - 1.9, y: .37, z: front + 1.2 });
+            }
+            const px = wall - 2.9, pz = front - .4;
+            P('cylinder', [.05, .06, 1.5, 6], 'bark', { x: px, y: .75, z: pz });
+            P('cylinder', [.035, .035, .9, 6], 'bark', { x: px, y: 1.18, z: pz, rz: half });
+            P('cylinder', [.17, .2, .62, 8], 'thatch', { x: px, y: .95, z: pz });
+            P('sphere', [.15, 7, 5], 'thatch', { x: px, y: 1.45, z: pz });
+        } else if (type === 'archery_range') {
+            // Two straw butts on three legs each, facing the front, a pale ring and a red centre on each.
+            for (let i = 0; i < 2; i++) {
+                const tx = wall - 1.1 - i * 1.5, tz = front + .3 - i * .9, lean = half - .12;
+                for (const a of [.5, 2.6, 4.7]) P('cylinder', [.03, .035, 1.3, 5], 'bark', { x: tx + Math.cos(a) * .24, y: .62, z: tz - .2 + Math.sin(a) * .2, rx: Math.sin(a) * .2 + .1, rz: -Math.cos(a) * .2 });
+                P('cylinder', [.46, .46, .2, 14], 'thatch', { x: tx, y: 1.0, z: tz, rx: lean });
+                P('cylinder', [.3, .3, .02, 12], 'white', { x: tx, y: 1.0 + .11 * .12, z: tz + .11 * .993, rx: lean, tint: [.85, .82, .72] });
+                P('cylinder', [.12, .12, .02, 10], 'white', { x: tx, y: 1.0 + .125 * .12, z: tz + .125 * .993, rx: lean, tint: clay });
+            }
+        } else if (type === 'academy') {
+            // A stone bench, a fallen column in two drums with its capital, and a sundial on a short pillar.
+            const bx = wall - 1.1, bz = front + .5;
+            for (const side of [-1, 1]) P('box', [.3, .36, .45], 'rock', { x: bx + side * .5, y: .18, z: bz });
+            P('box', [1.45, .1, .5], 'rock', { x: bx, y: .41, z: bz });
+            P('cylinder', [.2, .2, .6, 10], 'plaster', { x: wall - 2.6, y: .2, z: front - .5, rz: half });
+            P('cylinder', [.2, .2, .5, 10], 'plaster', { x: wall - 3.3, y: .2, z: front - .25, ry: .4, rz: half });
+            P('box', [.5, .14, .5], 'plaster', { x: wall - 2.2, y: .07, z: front - 1.1, ry: .5 });
+            P('cylinder', [.14, .17, .8, 8], 'plaster', { x: wall - 2.6, y: .4, z: front + 1.3 });
+            P('cylinder', [.26, .26, .04, 12], 'rock', { x: wall - 2.6, y: .84, z: front + 1.3, rx: .35 });
+        } else if (type === 'temple') {
+            // An altar of two blocks, and two bronze bowls on three legs.
+            const ax = wall - 1.3, az = front + .6;
+            P('box', [1.0, .6, .7], 'plaster', { x: ax, y: .3, z: az });
+            P('box', [1.15, .1, .85], 'plaster', { x: ax, y: .65, z: az });
+            for (const [tx, tz] of [[wall - .7, front - .4], [wall - 2.6, front + .1]]) {
+                for (const a of [0, 2.094, 4.189]) P('cylinder', [.02, .025, .9, 5], 'iron', { x: tx + Math.cos(a) * .13, y: .44, z: tz + Math.sin(a) * .13, rx: -Math.sin(a) * .15, rz: Math.cos(a) * .15 });
+                P('cylinder', [.2, .1, .14, 10], 'iron', { x: tx, y: .95, z: tz });
+            }
+        } else if (type === 'tower') {
+            // Firewood for the watch, and a heap of stones to throw.
+            logs(wall - .8, front + .7);
+            for (let i = 0; i < 5; i++) { const up = i > 2 ? 1 : 0, k = up ? i - 3 : i;
+                P('sphere', [.2, 6, 4], 'rock', { x: wall - 1.6 - k * .37 - up * .18, y: .17 + up * .3, z: front - .2 + up * .1 + (k % 2) * .08 }); }
+        } else if (type === 'farm') {
+            // A haystack round its pole, at the field's far corner.
+            P('cylinder', [.03, .03, 1.7, 5], 'bark', { x: wall - 1.0, y: .85, z: -foot.ez * .6 });
+            P('cylinder', [.14, .8, 1.25, 10], 'thatch', { x: wall - 1.0, y: .625, z: -foot.ez * .6 });
+        }
+    };
+
     EngineBuildings.settlement = (type, civ, foot) => {
         const parts=[];
+        if (civ === 'greek') greekYard(parts, type, foot);
         if (!['town_center','house','market'].includes(type)) return {parts};
         const x=-foot.ex-1.7,z=foot.ez*.35;
         const jarTint=civ==='persian'?[.25,.58,.60]:civ==='egyptian'?[.75,.58,.35]:[.68,.33,.20];
@@ -1447,7 +1553,7 @@
         }
         if(type==='market')return {parts};
         const fire=[x,0,z-.7];
-        part(parts,'cylinder',[.46,.5,.16,10],'stone',{x,y:.08,z:fire[2]});
+        part(parts,'cylinder',[.46,.5,.16,10],'rock',{x,y:.08,z:fire[2]});
         part(parts,'disc',[.36,10],'white',{x,y:.167,z:fire[2],tint:[.10,.07,.055]});
         for(const rx of [-.55,.55])part(parts,'box',[.12,.10,.62],'bark',{x,y:.21,z:fire[2],ry:rx});
         return {parts,fire};
@@ -1495,7 +1601,7 @@
         if(!early&&!mount)return {parts};
         const x=early?side*1.65:mount.x,z=early?foot.ez+.45:mount.z+.32;
         if(early){
-            part(parts,'cylinder',[.18,.26,.13,8],'stone',{x,y:.065,z});
+            part(parts,'cylinder',[.18,.26,.13,8],'rock',{x,y:.065,z});
             part(parts,'cylinder',[.055,.075,1.65,6],'bark',{x,y:.9,z});
             part(parts,'cylinder',[.13,.09,.3,7],'leather',{x,y:1.72,z,tint:[.45,.32,.20]});
             return {parts,light:[x,1.94,z],early:true};
@@ -1507,7 +1613,7 @@
             return {parts,light:[x,lightY+dy,z],early:false,mount};
         };
         if(standalone){
-            part(parts,'cylinder',[.22,.3,.15,8],'stone',{x,y:.075,z});
+            part(parts,'cylinder',[.22,.3,.15,8],'rock',{x,y:.075,z});
             part(parts,'cylinder',[.07,.09,1.65,6],civ==='yamato'?'wood':'iron',{x,y:.9,z});
         }else part(parts,'box',[.14,.34,.10],'iron',{x,y:1.78,z:mount.z+.025});
         if(!standalone)part(parts,'box',[.10,.09,.42],'iron',{x,y:1.70,z:mount.z+.17});
