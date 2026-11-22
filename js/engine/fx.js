@@ -179,6 +179,8 @@
             p[j + 15] = (o.additive ? 1 : 0) + (o.drag ? 2 : 0);
             return true;
         }
+        // A light for this frame: one square added to the scene (a torch's flame, its glow).
+        flare(x, y, z, size, tint, alpha) { this.passing.push(x, y, z, size, tint[0], tint[1], tint[2], alpha, 1); }
         clear() { this.n = 0; this.counts[0] = this.counts[1] = 0; this.passing.length = 0; }
         update(dt) {
             if (!(dt > 0)) return;
@@ -295,5 +297,81 @@
             P.streak(x, y, z, dx, dy, dz, 3.0, 12, 0.5, [0.98, 0.96, 0.9], 0.8, false);
         }
     };
+
+    // ---- what a unit raises and carries (overhaul step A9, build 1207) ------------------------
+    // Read from what the unit is doing as it is drawn: walking, working, the hour. Nothing
+    // is asked of the rules.
+    //
+    // Dust: a walker leaves a puff for every stretch of ground it covers, a rider for half
+    // that stretch and a larger one, an engine larger still. So an army's dust is as large
+    // as the army: a scout raises a wisp, sixty men a cloud. In the land's own colour:
+    // earth, sand, powder snow.
+    // (Paler than the ground it rises from, or it would not show against it.)
+    EngineFx.GROUND_DUST = { summer: [[0.84, 0.77, 0.62], 0.62], desert: [[0.98, 0.92, 0.76], 0.70], winter: [[1, 1, 1], 0.65] };
+    EngineFx.DUST_EVERY = { infantry: 1.6, ranged: 1.6, priest: 1.6, cavalry: 0.8, worker: 3.2, engine: 0.8 };
+    EngineFx.TORCH_NIGHT = 0.35;      // how much of the night there must be before torches are lit
+    EngineFx.TORCH_HAND = [0.36, 2.0, 0.14];
+    // o: moved (units this frame), tSec, level (1 Balanced, 2 High), theme, night (0 to 1),
+    // world (the unit's matrix), far (drawn as its far model: too small for a torch or chips),
+    // marching (how many units were on the move last frame).
+    //
+    // The more that march together, the fewer puffs each one leaves (one in 1 + marching / 12):
+    // sixty men still raise far more than six, but not ten times the dust, which would hide them.
+    EngineFx.unitMotion = (P, u, ue, o) => {
+        const kind = ue.static ? 'engine' : ue.type;
+        if (u.isMoving && o.moved > 0.001 && o.moved < 3) {
+            // Balanced: half the puffs.
+            const every = (EngineFx.DUST_EVERY[kind] || 1.6) * (o.level > 1 ? 1 : 2) * (1 + (o.marching || 0) / 12);
+            ue.dustWalk = (ue.dustWalk || 0) + o.moved;
+            if (ue.dustWalk >= every) {
+                ue.dustWalk = 0;
+                const [tint, alpha] = EngineFx.GROUND_DUST[o.theme] || EngineFx.GROUND_DUST.summer;
+                P.emit({ x: u.x + rand(-0.3, 0.3), y: 0.15, z: u.z + rand(-0.3, 0.3), vx: rand(-0.3, 0.3), vy: rand(0.35, 0.8), vz: rand(-0.3, 0.3),
+                    life: rand(1.0, 1.7), size: kind === 'engine' ? 3.4 : kind === 'cavalry' ? 2.8 : 2.2, grow: 2.3, tint, alpha, drag: 1 });
+            }
+        }
+        // Torches: at night one soldier in three carries one (which, by the unit: the same
+        // man every night). A flame over the hand, a glow about the bearer, now and then an
+        // ember. The flame is drawn, not lit: it throws no light on the ground or the men.
+        ue.torchLit = 0;
+        if (o.night > EngineFx.TORCH_NIGHT && !o.far && !ue.static && ue.type !== 'worker' && ue.type !== 'priest') {
+            if (ue.torch === undefined) ue.torch = Math.floor((ue.phase || 0) * 1000) % 3 === 0;
+            if (ue.torch) {
+                const w = o.world, [lx, ly, lz] = EngineFx.TORCH_HAND;
+                const x = w[0] * lx + w[8] * lz + w[12], y = ly + w[13], z = w[2] * lx + w[10] * lz + w[14];
+                const k = Math.min(1, (o.night - EngineFx.TORCH_NIGHT) / 0.25), ph = (ue.phase || 0);
+                const f = 1 + 0.16 * Math.sin(o.tSec * 11 + ph * 7) + 0.08 * Math.sin(o.tSec * 17 + ph * 3);
+                P.flare(x, y + 0.22, z, 1.15 * f, [1, 0.42, 0.08], 0.9 * k);
+                P.flare(x, y + 0.14, z, 0.55 * f, [1, 0.85, 0.40], 0.95 * k);
+                P.flare(x, y - 0.5, z, 5.5, [1, 0.45, 0.12], 0.09 * k);
+                if (Math.random() < 0.04) P.emit({ x, y: y + 0.3, z, vx: rand(-0.4, 0.4), vy: rand(0.8, 1.6), vz: rand(-0.4, 0.4), life: rand(0.5, 0.9), size: 0.3, grow: 0.3, tint: [1, 0.6, 0.2], alpha: 0.9, additive: true });
+                ue.torchLit = k;
+            }
+        }
+        // Chips: a worker's tool comes down once in a swing (EngineUnits.pose, 'harvest': the
+        // arm is lowest when sin(5.5 t + phase) is -1), and what it strikes gives something up.
+        if ((u.isHarvesting || u.isBuilding) && !o.far) {
+            const swing = Math.floor((o.tSec * 5.5 + (ue.phase || 0) + Math.PI / 2) / (2 * Math.PI));
+            if (ue.swing !== undefined && swing !== ue.swing) {
+                const w = o.world, reach = 0.75;
+                EngineFx.chips(P, u.isBuilding ? 'saw' : (u.harvestTarget && u.harvestTarget.type) || 'food', w[8] * reach + w[12], 0.75, w[10] * reach + w[14]);
+            }
+            ue.swing = swing;
+        } else ue.swing = undefined;
+    };
+
+    // What a blow of a tool throws up: wood chips at a tree, stone chips and a spark at a
+    // quarry, a glint at a gold seam, a leaf or two at a bush or a field, sawdust where a
+    // building goes up.
+    EngineFx.chips = (P, kind, x, y, z) => {
+        const fly = (n, tint, size, extra) => { for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = rand(0.8, 2.4);
+            P.emit(Object.assign({ x, y, z, vx: Math.cos(a) * s, vy: rand(1.4, 3.2), vz: Math.sin(a) * s, life: rand(0.4, 0.7), size, tint, alpha: 1, gravity: 9 }, extra)); } };
+        if (kind === 'wood') fly(4, [0.80, 0.63, 0.40], 0.42);
+        else if (kind === 'stone') { fly(4, [0.62, 0.62, 0.64], 0.42); fly(1, [1, 0.8, 0.4], 0.4, { additive: true, life: 0.25 }); }
+        else if (kind === 'gold') { fly(3, [0.58, 0.55, 0.50], 0.4); fly(2, [1, 0.86, 0.32], 0.5, { additive: true, life: 0.35 }); }
+        else if (kind === 'saw') { for (let i = 0; i < 3; i++) P.emit({ x: x + rand(-0.3, 0.3), y: y - 0.2, z: z + rand(-0.3, 0.3), vy: rand(0.2, 0.6), life: rand(0.6, 0.9), size: 0.9, grow: 1.9, tint: [0.82, 0.70, 0.50], alpha: 0.4, drag: 1 }); }
+        else fly(2, [0.42, 0.56, 0.26], 0.36);
+    };
+
     window.EngineFx = EngineFx;
 })();

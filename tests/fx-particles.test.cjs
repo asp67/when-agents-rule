@@ -178,11 +178,96 @@ test('the renderer: dust bursts are particles on every tier; sparks and trails o
     assert.match(r, /entity\._sparkUntil = now \+ 100;/);
     // A shot's streak follows the way it flies at this point of its arc.
     assert.match(r, /let vx = p\.tx - p\.sx, vy = \(p\.ty - p\.sy\) \+ Math\.PI \* Math\.cos\(Math\.PI \* k\) \* p\.arc, vz = p\.tz - p\.sz;/);
-    assert.match(r, /const fxLevel = this\._fxLevel\(\), trails = fxLevel > 0 \? this\._fx\(\) : null;/);
+    assert.match(r, /const fxLevel = this\._fxLevel\(\), fxP = fxLevel > 0 \? this\._fx\(\) : null;/);
+    assert.match(r, /const trails = fxP;/);
     assert.match(r, /if \(this\._particles\) this\._particles\.clear\(\);/);
     // Presentation only: the rules know nothing of it, and it takes no number from the game's dice.
     const fxSrc = read('js/engine/fx.js');
     assert.doesNotMatch(fxSrc, /SimRng|game\.rng|\.rng\(/);
     const manifest = read('js/manifest.js');
     assert.doesNotMatch(manifest.slice(manifest.indexOf('rules'), manifest.indexOf(']', manifest.indexOf('rules'))), /fx\.js|gamerenderer/);
+});
+
+// ---- what a unit raises and carries (build 1207) ----------------------------------------
+const ONE = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+const walk = (F, type, opts, steps = 80, step = 0.2) => {
+    const P = new F.Particles(400), u = { x: 0, z: 0, isMoving: true }, ue = { type, phase: 0.001 };
+    for (let i = 0; i < steps; i++) { u.x += step; F.unitMotion(P, u, ue, Object.assign({ moved: step, tSec: i / 60, level: 2, theme: 'summer', night: 0, world: ONE, far: false, marching: 0 }, opts)); }
+    return P;
+};
+
+test('dust under marching feet: a puff for every stretch walked, more for a rider, less in a crowd and on Balanced', () => {
+    const { F } = fx();
+    // Sixteen units walked in steps of a fifth (the steps do not add up exactly, so a puff comes
+    // every eight or nine of them).
+    const foot = walk(F, 'infantry').n;
+    assert.ok(foot >= 8 && foot <= 10, 'a puff every 1.6 units: ' + foot);
+    // Within a quarter of what is wanted (the same rounding of steps, twice over).
+    const near2 = (n, want) => Math.abs(n - want) <= Math.max(2, want * 0.25);
+    assert.ok(near2(walk(F, 'cavalry').n, foot * 2), 'a rider: twice as many');
+    assert.ok(near2(walk(F, 'worker').n, foot / 2));
+    assert.ok(near2(walk(F, 'infantry', { level: 1 }).n, foot / 2), 'Balanced: half the puffs');
+    assert.ok(near2(walk(F, 'infantry', { marching: 12 }).n, foot / 2), 'twelve on the move: each leaves half');
+    assert.ok(walk(F, 'infantry', { marching: 60 }).n <= 2);
+    // An army's dust still grows with the army, though not in step with it.
+    const total = n => n / (1 + n / 12);
+    assert.ok(total(60) > total(13) && total(13) > total(3) && total(60) < 60 / 4);
+    // Standing still raises none; nor does a jump across the map (a replay's cut).
+    const P = new F.Particles(8), u = { x: 0, z: 0, isMoving: false }, ue = { type: 'infantry' };
+    for (let i = 0; i < 50; i++) F.unitMotion(P, u, ue, { moved: 0.2, tSec: 0, level: 2, theme: 'summer', night: 0, world: ONE });
+    assert.equal(P.n, 0);
+    u.isMoving = true; F.unitMotion(P, u, ue, { moved: 40, tSec: 0, level: 2, theme: 'summer', night: 0, world: ONE });
+    assert.equal(P.n, 0);
+    // In the land's colour, and paler than it.
+    for (const theme of ['summer', 'desert', 'winter']) {
+        const Q = walk(F, 'infantry', { theme }, 9);
+        Q.fill();
+        const [tint, alpha] = F.GROUND_DUST[theme];
+        assert.ok(Math.abs(Q.lists[0][4] - tint[0]) < 1e-6 && alpha > 0.5 && tint.every(v => v > 0.6), theme);
+    }
+});
+
+test('torches: at night one soldier in three carries a flame and a glow; never a worker, a priest or an engine', () => {
+    const { F } = fx();
+    const at = (type, phase, night, extra) => { const P = new F.Particles(16), ue = Object.assign({ type, phase }, extra); F.unitMotion(P, { x: 5, z: 7, isMoving: false }, ue, { moved: 0, tSec: 1, level: 1, theme: 'summer', night, world: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 7, 1], far: !!(extra && extra.far) }); return { P, ue }; };
+    const lit = at('infantry', 0.003, 0.9);
+    assert.equal(lit.ue.torchLit, 1);
+    assert.equal(lit.P.passing.length, 27, 'a flame, its core and a glow about the bearer: three squares, for this frame only');
+    assert.ok(lit.P.passing.filter((_, i) => i % 9 === 8).every(v => v === 1), 'all three are added as light');
+    const [hx, hy, hz] = F.TORCH_HAND;
+    assert.ok(Math.abs(lit.P.passing[0] - (5 + hx)) < 1e-6 && Math.abs(lit.P.passing[2] - (7 + hz)) < 1e-6 && lit.P.passing[1] > hy, 'over the hand');
+    assert.equal(at('infantry', 0.003, 0.2).ue.torchLit, 0, 'not before night has come');
+    assert.ok(at('infantry', 0.003, 0.45).ue.torchLit < 1, 'lit gradually as it falls');
+    assert.equal(at('infantry', 0.001, 0.9).P.passing.length, 0, 'two in three carry none');
+    for (const type of ['worker', 'priest']) assert.equal(at(type, 0.003, 0.9).P.passing.length, 0, type);
+    assert.equal(at('infantry', 0.003, 0.9, { static: true }).P.passing.length, 0, 'an engine');
+    // One in three, whichever way the units are numbered.
+    let bearers = 0; for (let i = 0; i < 300; i++) if (at('infantry', (i * 1.37) % 6.28, 0.9).ue.torchLit) bearers++;
+    assert.ok(bearers > 70 && bearers < 130, bearers + ' of 300');
+});
+
+test('chips: once a swing a worker\'s tool throws up what it strikes', () => {
+    const { F } = fx();
+    const work = (u, seconds) => { const P = new F.Particles(200), ue = { type: 'worker', phase: 0 }; let made = 0;
+        for (let i = 0; i < seconds * 60; i++) { const before = P.n; F.unitMotion(P, u, ue, { moved: 0, tSec: i / 60, level: 1, theme: 'summer', night: 0, world: ONE, far: false }); made += P.n - before; P.update(0); }
+        return { P, made, ue }; };
+    // A swing is 2 pi / 5.5 seconds: in four seconds, three blows land (the first frame only starts the count).
+    const wood = work({ x: 0, z: 0, isHarvesting: true, harvestTarget: { type: 'wood' } }, 4);
+    assert.equal(wood.made, 3 * 4, 'four chips a blow');
+    const stone = work({ x: 0, z: 0, isHarvesting: true, harvestTarget: { type: 'stone' } }, 4);
+    assert.equal(stone.made, 3 * 5); stone.P.fill(); assert.equal(stone.P.counts[1], 3, 'a spark a blow off the rock');
+    assert.equal(work({ x: 0, z: 0, isHarvesting: true, harvestTarget: { type: 'gold' } }, 4).made, 3 * 5);
+    assert.equal(work({ x: 0, z: 0, isBuilding: true }, 4).made, 3 * 3, 'sawdust where a building goes up');
+    assert.equal(work({ x: 0, z: 0, isHarvesting: true, harvestTarget: null }, 4).made, 3 * 2, 'a field or a bush: a leaf or two');
+    assert.equal(work({ x: 0, z: 0 }, 4).made, 0, 'idle hands throw up nothing');
+    // The chips fly from before the worker, where the tool comes down.
+    const P = new F.Particles(8); F.chips(P, 'wood', 3, 0.75, 4); assert.ok(P.p[0] === 3 && P.p[2] === 4);
+});
+
+test('the renderer asks once a frame for a unit that is seen whole, and draws the torch\'s shaft from close by', () => {
+    const r = read('js/engine/gamerenderer.js');
+    assert.match(r, /if \(fxP && !inset && !still && !\(u\._fade != null && u\._fade < 1\)\) \{/);
+    assert.match(r, /EngineFx\.unitMotion\(fxP, u, ue, \{ moved, tSec, level: fxLevel, theme: this\._theme, night: lampNight, world, far, marching \}\);/);
+    assert.match(r, /if \(ue\.torchLit > 0 && this\._halfH <= EngineRenderer\.MID_UNIT_HALF_H\) \{/);
+    assert.match(r, /if \(!inset\) this\._marching = onTheMove;/);
 });

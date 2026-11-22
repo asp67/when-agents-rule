@@ -3040,6 +3040,11 @@
             }
 
             // units
+            // What this tier draws of the effects (EngineFx.level), and the particles for them.
+            const fxLevel = this._fxLevel(), fxP = fxLevel > 0 ? this._fx() : null;
+            // How many were on the move last frame: an army's dust is thinned by its own size.
+            const marching = this._marching || 0;
+            let onTheMove = 0;
             for (const u of this.units) {
                 const ue = u._engine;
                 if (!ue || (u.mesh && u.mesh.visible === false) || (this.entityHidden && this.entityHidden(u, 'unit')) || this._cull(u.x, u.z, 6)) continue;
@@ -3126,6 +3131,20 @@
                 const world = m3.multiplyInto(ue.mWorld || (ue.mWorld = new Float32Array(16)), fm.translation(u.x, pose.bob, u.z), spin);
                 const flat = m3.multiplyInto(ue.mFlat || (ue.mFlat = new Float32Array(16)), fm.translation(u.x, 0, u.z), spin);
                 const flash = u._flashUntil && now < u._flashUntil;
+                // What the unit raises and carries (overhaul step A9): dust under its feet, a
+                // torch at night, chips where a worker strikes. Once a frame (the main
+                // picture), for a unit that is seen whole and is not a held moment of a replay.
+                if (fxP && !inset && !still && !(u._fade != null && u._fade < 1)) {
+                    const far = this._halfH > EngineRenderer.FAR_UNIT_HALF_H;
+                    if (u.isMoving) onTheMove++;
+                    EngineFx.unitMotion(fxP, u, ue, { moved, tSec, level: fxLevel, theme: this._theme, night: lampNight, world, far, marching });
+                    // The torch's shaft, from close by: the flame alone would hang in the air.
+                    if (ue.torchLit > 0 && this._halfH <= EngineRenderer.MID_UNIT_HALF_H) {
+                        const [lx, ly, lz] = EngineFx.TORCH_HAND;
+                        dl.opaque.push({ buf: this._buf('box', [1, 1, 1]), tex: this.tex.bark, tint: this.WHITE, noShadow: true,
+                            model: fm.multiply(world, fm.multiply(fm.translation(lx, ly - 0.45, lz), fm.scaling(0.06, 0.95, 0.06))) });
+                    }
+                }
                 let workerLights=null;
                 const lampFade=lightDetailFade(Math.hypot(u.x-this.cameraTarget.x,u.z-this.cameraTarget.z),this._halfH);
                 if(ue.lampLights)ue.lampLights.fill(0);
@@ -3223,6 +3242,8 @@
                 }
             }
 
+            if (!inset) this._marching = onTheMove;
+
             // ghost collapses (deaths)
             for (let i = this._ghosts.length - 1; i >= 0; i--) {
                 const g = this._ghosts[i];
@@ -3243,7 +3264,7 @@
             }
 
             // projectiles
-            const fxLevel = this._fxLevel(), trails = fxLevel > 0 ? this._fx() : null;
+            const trails = fxP;
             for (const p of this._projectiles) {
                 if (!p.active) continue;
                 if (p.round && p.simLand != null && this.game && this.game.simNow) {
