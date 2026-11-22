@@ -145,15 +145,21 @@ test('the board: the match as a picture, against speed or tokens, with the order
     // The order map: a seat a square; seat a's seven placed orders, four of them in one corner.
     assert.deepEqual(speed.heat.seats.map(s => [s.name, s.grid.placed, s.grid.most]), [['Seat a', 7, 4], ['Seat b', 2, 2]]);
     assert.equal(u.benchShareSpec(WarEval.createLedger()), null);
-    // At full size it stands under the models and above the matrix, with its buttons.
+    // It sums a match up, so it stands on the results screen under the report card, with its buttons (build 1227:
+    // "share is for the game summary, not the live comparison"). The board at full size does not carry it.
     u.toggleBenchFull(true);
-    const html = els.benchFull.innerHTML;
-    assert.match(html, /<\/section><div class="bf-share"><h4>share\.title<small>share\.tip<\/small><\/h4><div class="bs-bar"><button type="button" class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('speed'\)">share\.speed<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareAxis\('tokens'\)">share\.tokens<\/button><span><\/span><button type="button" class="bs-btn" onclick="game\.ui\.benchShareSave\('png'\)">share\.png<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareSave\('svg'\)">share\.svg<\/button><\/div><div class="bs-pic"><svg xmlns/);
-    assert.match(html, /<\/svg><\/div><\/div><div class="bf-matrix">/);
+    assert.doesNotMatch(els.benchFull.innerHTML, /bf-share|<svg xmlns/);
+    u.toggleBenchFull(false);
+    els.arenaSummaryScreen = { classList: { contains: c => c === 'active' }, style: {} };
+    els.summaryProfile = { style: {}, innerHTML: '' };
+    u.updateSummaryProfile();
+    const html = els.summaryProfile.innerHTML;
+    assert.match(html, /<p class="summary-profile-note">sum\.profileNote<\/p><div class="bf-share"><h4>share\.title<small>share\.tip<\/small><\/h4><div class="bs-bar"><button type="button" class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('speed'\)">share\.speed<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareAxis\('tokens'\)">share\.tokens<\/button><span><\/span><button type="button" class="bs-btn" onclick="game\.ui\.benchShareSave\('png'\)">share\.png<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareSave\('svg'\)">share\.svg<\/button><\/div><div class="bs-pic"><svg xmlns/);
+    assert.match(html, /<\/svg><\/div><\/div>$/);
     assert.match(html, />share\.notShown Seat b<\/text>/);
     u.benchShareAxis('tokens');
-    assert.match(els.benchFull.innerHTML, /class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('tokens'\)"/);
-    assert.match(els.benchFull.innerHTML, />share\.xTokens<\/text>/);
+    assert.match(els.summaryProfile.innerHTML, /class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('tokens'\)"/);
+    assert.match(els.summaryProfile.innerHTML, />share\.xTokens<\/text>/);
     // Saved under the match's name and the axis; the SVG goes out as it is.
     const saved = [];
     u.shareSave = (svg, name, kind) => { saved.push([svg.slice(0, 4), name, kind]); return Promise.resolve(true); };

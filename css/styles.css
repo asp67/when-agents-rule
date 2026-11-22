@@ -263,7 +263,8 @@ body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; 
 .lb-flyout {
     position: fixed;
     display: none;
-    z-index: 260;
+    /* Above the Bench panels (1000 to 1002): the comparison card lay on top of it. */
+    z-index: 1010;
     width: 300px;
     max-height: 62vh;
     overflow: auto;
@@ -2675,53 +2676,75 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
     position: absolute; z-index: 1000; top: var(--bench-top, 92px); padding: 8px 10px 10px; overflow-y: auto;
     background: rgba(25, 30, 25, 0.95); border: 1px solid rgba(221, 211, 180, 0.16); border-radius: 4px;
     color: #e0e0e0; font-size: 0.8em; scrollbar-width: thin; zoom: var(--ui-scale, 1);
+    /* A long word in a plan (a list of names joined by slashes) wraps; it used to give the panel a sideways scroll bar. */
+    overflow-x: hidden; overflow-wrap: anywhere;
 }
-/* The comparison board (build 1222). The mini card: a row a model, three sections each. */
-.bc-list { display: flex; flex-direction: column; gap: 6px; cursor: pointer; }
-.bc-list:hover .bc-seat { border-color: rgba(221, 211, 180, 0.34); }
-.bc-seat { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px 8px; padding: 5px 7px 6px; border: 1px solid rgba(221, 211, 180, 0.14);
-    border-left: 3px solid var(--civ, #ccc); border-radius: 4px; background: rgba(255, 255, 255, 0.03); }
-.bc-name { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--civ, #e0e0e0); white-space: nowrap; overflow: hidden; }
-.bc-name span { overflow: hidden; text-overflow: ellipsis; }
-.bc-sec { display: flex; flex-direction: column; min-width: 0; }
-.bc-lab { font-size: 0.78em; text-transform: uppercase; letter-spacing: 0.04em; color: #9aa2b1; }
-.bc-sec b { font-size: 1.12em; color: #f1ede0; line-height: 1.15; white-space: nowrap; }
-.bc-sec small { color: #aab0bd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bc-sum .bc-index { font-size: 1.9em; color: #ddd3b4; line-height: 1.02; }
-.bc-parts { display: flex; flex-wrap: wrap; gap: 0 5px; white-space: normal !important; }
-.bc-parts i { font-style: normal; }
-.bg-chart { display: block; width: 100%; height: 30px; margin: 2px 0 1px; background: rgba(0, 0, 0, 0.22); border-radius: 2px; }
-/* At full size: an overlay over the map, a card a model, three sections side by side. */
+/* The comparison board (build 1222, laid out again in build 1227): one grid, a column a model, so the models
+   stand side by side. Top to bottom: gameplay, model performance, summary. The mini card is the same grid
+   without its label column. */
+.bb { --lab: 232px; display: flex; flex-direction: column; gap: 3px; min-width: 0;
+    --bt-loop: #ff6b6b; --bt-constraint: #ffb454; --bt-awareness: #c59cf0; --bt-threat: #5cc8ff; --bt-refused: #9aa3b2; }
+.bb-row { display: grid; grid-template-columns: var(--lab) repeat(var(--n, 1), minmax(0, 1fr)); gap: 0 12px; align-items: stretch; }
+.bb.is-mini { cursor: pointer; gap: 2px; }
+.bb.is-mini .bb-row { grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: 0 6px; }
+.bb-lab { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; color: #aab0bd; }
+.bb-lab b { color: #d7d2c2; font-weight: 600; }
+.bb-lab small { color: #7f8797; }
+.bb-col { position: relative; min-width: 0; }
+.bb-sec { margin-top: 3px; padding: 0; font-size: 0.86em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #dec594; border-bottom: 1px solid rgba(221, 211, 180, 0.18); }
+.bb.is-mini .bb-sec { margin-top: 3px; padding: 0; font-size: 0.74em; font-weight: 600; color: #9aa2b1; border-bottom: 0; }
+.bb-head .bb-col { display: flex; align-items: center; gap: 6px; padding: 3px 6px; overflow: hidden; white-space: nowrap; font-size: 1.08em; font-weight: 600;
+    color: var(--civ, #e0e0e0); background: rgba(255, 255, 255, 0.04); border-top: 3px solid var(--civ, #ccc); border-radius: 0 0 3px 3px; }
+.bb-head .bb-col span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bb.is-mini .bb-head .bb-col { gap: 3px; padding: 2px 3px; font-size: 0.92em; border-top-width: 2px; }
+.bb.is-mini:hover .bb-head .bb-col { background: rgba(255, 255, 255, 0.1); }
+.bb-graph { margin-top: 3px; }
+.bg-chart { display: block; width: 100%; background: rgba(0, 0, 0, 0.25); border-radius: 2px; }
+.bg-chart.bb-game { height: 108px; }
+.bg-chart.bb-rate { height: 38px; }
+.bb.is-mini .bg-chart.bb-game { height: 44px; }
+.bb.is-mini .bg-chart.bb-rate { height: 26px; }
+.bb-now { position: absolute; top: 2px; right: 5px; font-size: 0.9em; font-weight: 600; color: #f1ede0; font-variant-numeric: tabular-nums; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; }
+.bb.is-mini .bb-now { top: 0; right: 2px; font-size: 0.82em; }
+.bb-keys { display: flex; flex-direction: column; gap: 1px; font-size: 0.92em; }
+.bb-keys i { display: inline-block; width: 12px; height: 3px; margin-right: 6px; border-radius: 1px; vertical-align: middle; }
+.bb-axis .bb-col { display: flex; justify-content: space-between; align-items: flex-start; font-size: 0.8em; color: #7f8797; }
+.bb-axis .bb-lab { justify-content: flex-start; }
+/* The decisions that went wrong, on the match's clock under the gameplay graph (the decision inspector, build 1223). */
+.bb-marks { margin-top: 2px; }
+.bb-marks .bb-col { display: flex; align-items: center; }
+.bt-keys { flex-direction: row; flex-wrap: wrap; gap: 0 8px; font-size: 0.84em; }
+.bt-keys i { width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; background: var(--ink); }
+.bb .is-loop { --ink: var(--bt-loop); }
+.bb .is-constraint { --ink: var(--bt-constraint); }
+.bb .is-awareness { --ink: var(--bt-awareness); }
+.bb .is-threat { --ink: var(--bt-threat); }
+.bb .is-refused { --ink: var(--bt-refused); }
+.bt-strip { position: relative; width: 100%; height: 14px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, 0.05); }
+.bt-strip i { position: absolute; top: 2px; bottom: 2px; min-width: 3px; margin-left: -1px; border-radius: 1px; background: var(--ink); opacity: 0.9; cursor: pointer; }
+.bt-strip i.is-loop { top: 0; bottom: 0; margin-left: 0; opacity: 0.55; }
+.bt-strip i:hover { opacity: 1; outline: 1px solid #fff; }
+/* The summary: a row a figure, a column a model. */
+.bb-fig { line-height: 1.27; border-bottom: 1px dotted rgba(255, 255, 255, 0.07); }
+.bb-fig.is-first { margin-top: 3px; padding-top: 2px; border-top: 1px solid rgba(221, 211, 180, 0.14); }
+.bb-fig .bb-lab { flex-direction: row; align-items: center; justify-content: flex-start; gap: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #c9cfdb; }
+.bb-fig .bb-lab i { flex: none; width: 10px; height: 3px; margin-right: 6px; border-radius: 1px; }
+.bb-fig .bb-col { overflow: hidden; text-align: center; white-space: nowrap; text-overflow: ellipsis; color: #f1ede0; font-variant-numeric: tabular-nums; }
+.bb-fig .is-lead { font-weight: 700; color: #f2c46a; }
+.bb-fig.is-index .bb-lab { font-weight: 700; color: #ddd3b4; }
+.bb-fig.is-index .bb-col { font-size: 1.6em; font-weight: 700; line-height: 1.1; color: #ddd3b4; }
+.bb-index .bb-col { display: flex; align-items: baseline; justify-content: center; gap: 5px; overflow: hidden; }
+.bb-index b { font-size: 1.7em; line-height: 1.05; color: #ddd3b4; }
+.bb-index small { white-space: nowrap; color: #aab0bd; }
+/* At full size: an overlay over the map that holds the grid and nothing else. */
 .bench-full { position: fixed; inset: 0; z-index: 1500; display: flex; align-items: center; justify-content: center; background: rgba(8, 10, 8, 0.72); zoom: var(--ui-scale, 1); }
-.bf-box { width: min(1180px, 94%); max-height: 90%; display: flex; flex-direction: column; background: rgba(25, 30, 25, 0.98);
+.bf-box { width: min(1500px, 97%); max-height: 97%; display: flex; flex-direction: column; background: rgba(25, 30, 25, 0.98);
     border: 1px solid rgba(221, 211, 180, 0.3); border-radius: 6px; color: #e0e0e0; font-size: 0.86em; }
-.bf-head { display: flex; align-items: baseline; gap: 12px; padding: 10px 14px; border-bottom: 1px solid rgba(221, 211, 180, 0.16); }
+.bf-head { display: flex; align-items: baseline; gap: 12px; padding: 5px 14px; border-bottom: 1px solid rgba(221, 211, 180, 0.16); }
 .bf-head b { font-size: 1.25em; color: #ddd3b4; }
 .bf-head span { color: #9aa2b1; flex: 1; }
 .bf-close { font: inherit; color: #e0e0e0; background: transparent; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; padding: 2px 9px; cursor: pointer; }
-.bf-body { overflow-y: auto; padding: 10px 14px 14px; scrollbar-width: thin; }
-.bf-seat { margin: 0 0 12px; padding: 8px 10px 10px; border: 1px solid rgba(221, 211, 180, 0.14); border-left: 4px solid var(--civ, #ccc); border-radius: 5px; background: rgba(255, 255, 255, 0.03); }
-.bf-seat h3 { display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 1.12em; color: var(--civ, #e0e0e0); }
-.bf-seat h3 small { color: #9aa2b1; font-weight: 400; }
-.bf-secs { display: grid; grid-template-columns: 1fr 1.25fr 0.9fr; gap: 14px; }
-.bf-sec h4 { margin: 0 0 4px; font-size: 0.86em; text-transform: uppercase; letter-spacing: 0.05em; color: #9aa2b1; font-weight: 600; }
-.bf-sec .bg-chart { height: 96px; }
-.bf-model .bg-chart + .bf-axis + .bg-chart { height: 56px; }
-.bf-axis { display: flex; justify-content: space-between; color: #7f8797; font-size: 0.82em; margin: 0 0 4px; }
-.bf-sec dl { margin: 6px 0 0; display: grid; grid-template-columns: 1fr; gap: 1px; }
-.bf-sec dl div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px dotted rgba(255, 255, 255, 0.08); }
-.bf-sec dt { color: #aab0bd; }
-.bf-sec dd { margin: 0; color: #f1ede0; font-weight: 600; white-space: nowrap; }
-.bf-legend { display: flex; flex-wrap: wrap; gap: 3px 12px; margin: 0 0 8px; color: #aab0bd; font-size: 0.9em; }
-.bf-legend i, .bf-sum th i { display: inline-block; width: 10px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 1px; }
-.bf-index { display: flex; align-items: baseline; gap: 8px; }
-.bf-index b { font-size: 2.6em; color: #ddd3b4; line-height: 1; }
-.bf-index span { color: #9aa2b1; }
-.bf-sum table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-.bf-sum th { text-align: left; font-weight: 400; color: #c9cfdb; padding: 1px 0; }
-.bf-sum td { text-align: right; padding: 1px 0 1px 8px; color: #f1ede0; white-space: nowrap; }
-.bf-sum td:last-child { color: #9aa2b1; }
-.bf-note { margin: 6px 0 0; color: #9aa2b1; }
+.bf-body { overflow: auto; padding: 2px 14px 8px; scrollbar-width: thin; }
 /* A chart to share (build 1226): the picture as it will be saved, and the buttons that save it. */
 .bf-share { margin: 4px 0 12px; padding: 10px 12px 12px; border: 1px solid rgba(221, 211, 180, 0.14); border-radius: 5px; background: rgba(255, 255, 255, 0.03); }
 .bf-share h4 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 8px; font-size: 0.92em; text-transform: uppercase; letter-spacing: 0.06em; color: #b9b29a; }
@@ -2740,35 +2763,6 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bf-kind { flex: 0 0 auto; margin-left: 4px; padding: 1px 7px; border-radius: 9px; font-size: 0.72em; font-style: normal; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; cursor: help; }
 .bf-kind.is-raw { color: #9fd9c8; border: 1px solid rgba(127, 208, 189, 0.5); }
 .bf-kind.is-harness { color: #1a1408; background: #f2c46a; border: 1px solid #f2c46a; }
-.bc-name .bf-kind { font-size: 0.66em; padding: 0 5px; }
-.bf-harness { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(221, 211, 180, 0.12); }
-.bf-harness h5 { margin: 0 0 4px; font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.06em; color: #b9b29a; font-weight: 600; }
-/* The decision inspector (build 1223): where a model's play went wrong, on the match's clock and as a list. */
-.bf-trace { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(221, 211, 180, 0.12);
-    --bt-loop: #ff6b6b; --bt-constraint: #ffb454; --bt-awareness: #c59cf0; --bt-threat: #5cc8ff; --bt-refused: #9aa3b2; }
-.bf-trace h4 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 6px; font-size: 0.92em; text-transform: uppercase; letter-spacing: 0.06em; color: #b9b29a; }
-.bf-trace h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; color: #8b93a3; }
-.bt-chips { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 6px; }
-.bt-chip { display: inline-flex; align-items: center; gap: 5px; color: #d7d2c2; }
-.bt-chip i, .bt-list li b::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--ink); }
-.bt-chip.is-loop, .bt-strip .is-loop, .bt-list .is-loop { --ink: var(--bt-loop); }
-.bt-chip.is-constraint, .bt-strip .is-constraint, .bt-list .is-constraint { --ink: var(--bt-constraint); }
-.bt-chip.is-awareness, .bt-strip .is-awareness, .bt-list .is-awareness { --ink: var(--bt-awareness); }
-.bt-chip.is-threat, .bt-strip .is-threat, .bt-list .is-threat { --ink: var(--bt-threat); }
-.bt-chip.is-refused, .bt-strip .is-refused, .bt-list .is-refused { --ink: var(--bt-refused); }
-.bt-strip { position: relative; height: 22px; border-radius: 3px; background: rgba(255, 255, 255, 0.05); overflow: hidden; }
-.bt-strip i { position: absolute; top: 3px; bottom: 3px; min-width: 3px; margin-left: -1px; border-radius: 1px; background: var(--ink); opacity: 0.85; cursor: pointer; }
-.bt-strip i.is-loop { top: 0; bottom: 0; opacity: 0.55; margin-left: 0; }
-.bt-strip i.is-threat { top: 0; bottom: 11px; }
-.bt-strip i:hover { opacity: 1; outline: 1px solid #fff; }
-.bt-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 9.6em; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1px 18px; }
-.bt-list li { display: flex; align-items: baseline; gap: 8px; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #cfcaba; white-space: nowrap; overflow: hidden; }
-.bt-list li:hover { background: rgba(255, 255, 255, 0.07); }
-.bt-list li .be-when { flex: 0 0 5.6em; color: #8b93a3; font-variant-numeric: tabular-nums; }
-.bt-list li b { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; color: var(--ink); font-weight: 600; }
-.bt-list li span:last-child { overflow: hidden; text-overflow: ellipsis; }
-.bf-matrix { margin-top: 4px; padding-top: 10px; border-top: 1px solid rgba(221, 211, 180, 0.16); }
-@media (max-width: 1100px) { .bf-secs { grid-template-columns: 1fr; } }
 /* Beside the decision log (14 + 332) and beside the leaderboard (16 + 304). */
 .bench-left { left: 354px; width: 332px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 92px) - 14px); }
 .bench-right { right: 328px; width: 344px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 92px) - 312px); }

@@ -213,7 +213,19 @@
             if (o && typeof o.civilization === 'string') vocab.opponents.add(o.civilization);
         }
     }
-    const plain = s => ' ' + String(s).toLowerCase().replace(/[_\-]/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    // A text in plain words. Kept by text (build 1227): the planning part asks for the
+    // same objectives and steps at every profile, and with the reading of a step below
+    // that was 65 of the 78 ms a profile of an 80-minute match of four seats took.
+    const PLAIN = new Map();
+    const plain = s => {
+        const key = String(s);
+        let v = PLAIN.get(key);
+        if (v === undefined) {
+            if (PLAIN.size > 20000) PLAIN.clear();
+            PLAIN.set(key, v = ' ' + key.toLowerCase().replace(/[_\-]/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() + ' ');
+        }
+        return v;
+    };
     // ---- reading a plan step (step C3) -------------------------------------------
     // What a step commits its seat to, as kinds of command that could carry it out. An
     // empty list is a step nothing recorded could confirm: "stay flexible", "keep the
@@ -260,6 +272,7 @@
     const singular = w => w.endsWith('men') ? w.slice(0, -3) + 'man' : w.endsWith('ies') ? w.slice(0, -3) + 'y' : w.endsWith('es') && w.length > 4 ? [w.slice(0, -1), w.slice(0, -2)] : w.endsWith('s') ? w.slice(0, -1) : w;
     const sameWord = (word, name) => word === name || [].concat(singular(word)).includes(name);
 
+    const STEP_READS = new WeakMap();    // a seat's names -> the steps read against them
     function checkable(step, vocab) {
         const out = [];
         const add = (kind, name) => { if (!out.some(k => k.kind === kind && k.name === name)) out.push({ kind, name }); };
@@ -549,6 +562,17 @@
         // Does it keep a live, concrete plan?
         _planning(seat) {
             const turns = seat.turns, vocab = seat.vocab;
+            // What a step commits to depends on its words and on the names the seat has been
+            // shown. Both stand still between two profiles nearly always, so a reading is
+            // kept by text for as long as the seat's names are the same in number.
+            const sig = vocab.units.size + ':' + vocab.buildings.size + ':' + vocab.techs.size + ':' + vocab.opponents.size + ':' + vocab.wonders.size;
+            let read = STEP_READS.get(vocab);
+            if (!read || read.sig !== sig) STEP_READS.set(vocab, read = { sig, by: new Map() });
+            const checksOf = text => {
+                let v = read.by.get(text);
+                if (!v) read.by.set(text, v = checkable(text, vocab));
+                return v.map(k => Object.assign({}, k));
+            };
             const history = [], shocks = [];
             let standing = null, covered = 0, statements = 0, steps = 0, concrete = 0;
             let people = null, wasAttacked = false;
@@ -572,7 +596,7 @@
                     if (!standing || !same(next, { objective: standing.objective, steps: standing.steps.map(s => s.text) })) {
                         const known = new Set(standing ? standing.steps.map(s => plain(s.text)) : []);
                         standing = { decision: i + 1, turn: t.turn, sec: t.sec, objective: next.objective,
-                            steps: next.steps.map(text => ({ text, fresh: !known.has(plain(text)), checks: checkable(text, vocab) })) };
+                            steps: next.steps.map(text => ({ text, fresh: !known.has(plain(text)), checks: checksOf(text) })) };
                         history.push(standing);
                         for (const s of standing.steps) if (s.fresh) { steps++; if (s.checks.length) concrete++; }
                         for (const sh of shocks) if (!sh.revised && i - sh.at <= SHOCK_WINDOW) sh.revised = true;
@@ -952,47 +976,70 @@
         // arrives at the same rows, and a file from before this build has them worked out
         // on reading. It does not depend on the results line, which is written with it.
         history(every = WarEval.HISTORY_SEC) { return this._history(every, null); }
-        // The timeline's readings, every five seconds: from the file's own line once it is
-        // there, and until then as the page has shown them to the ledger (preview).
-        power() { const tl = this.timeline || this._preview; return (tl && tl.samples) || []; }
-        // The same for a match still being played, asked again at every decision (the
-        // comparison board's graphs, build 1222). A sample is kept once it can no longer
-        // change, and only the newest are worked out again. It can change for a while: a
-        // seat's record carries the second its state was built at and arrives when the
-        // seat has answered, which a slow one does minutes later. `settle` is how long.
-        liveHistory(every = WarEval.HISTORY_SEC, settle = 600) {
-            const key = every + ':' + settle;
-            if (!this._live || this._live.key !== key) this._live = { key, at: new Map() };
-            return this._history(every, this._live.at, settle);
+        // The same for a match still being played, asked again at every refresh of the
+        // comparison board. It must be cheap: until build 1227 it scored the last ten
+        // minutes again every time, twenty scorings of the whole match, and asp67 saw the
+        // game stand still for half a second whenever the board was worked out.
+        //
+        // A sample at second T rests on the decisions whose state was built at or before T,
+        // and on the battles and power readings up to T. A slow seat's decision arrives
+        // minutes after that second, and a battle is written when it is over, so a sample
+        // can still change; but it changes only when the NUMBER of those changes. Those
+        // numbers are the sample's signature: a sample whose signature stands is kept. The
+        // rest are worked out newest first until `budgetMs` is used up (one at least), and
+        // `_live.pending` says how many still wait, so the page can ask again in a moment
+        // instead of freezing. The last point is the profile as it stands, which the page
+        // has worked out anyway.
+        liveHistory(every = WarEval.HISTORY_SEC, budgetMs = 8) {
+            if (!this._live || this._live.every !== every) this._live = { every, at: new Map(), pending: 0 };
+            return this._history(every, this._live, budgetMs);
         }
-        _history(every, kept, settle = 0) {
+        _history(every, live, budgetMs = 0) {
             const seats = [...this.seats.values()].filter(s => s.turns.length);
             let end = 0;
             for (const s of seats) for (const t of s.turns) if (t.sec != null && t.sec > end) end = t.sec;
-            const tl = this.power();
-            if (tl.length && num(tl[tl.length - 1].t) > end) end = num(tl[tl.length - 1].t);
-            const times = [];
-            for (let t = every; t < end; t += every) times.push(t);
-            if (end > 0) times.push(end);
-            const sample = t => {
+            const tl = this.timeline || this._preview, last = tl && tl.samples && tl.samples.length ? num(tl.samples[tl.samples.length - 1].t) : null;
+            if (last != null && last > end) end = last;
+            const grid = [];
+            for (let t = every; t < end; t += every) grid.push(t);
+            const rows = (profile, t) => {
                 const v = {};
-                for (const p of this.profileAt(t).seats) {
+                for (const p of profile.seats) {
                     if (!p.decisions) continue;
-                    const turns = this.seats.get(p.id).turns.filter(x => x.sec != null && x.sec <= t), g = p.grounding;
+                    const all = this.seats.get(p.id).turns, turns = t == null ? all : all.filter(x => x.sec != null && x.sec <= t), g = p.grounding;
                     v[p.id] = [p.decisions, p.index.value, g.score, p.planning.score, p.follow.score, p.tactical.score, p.strategy.score,
                         sum(turns.map(x => x.commands)), g.ok, g.avoidable, g.invalid, g.repeated,
                         sum(turns.map(x => x.prompt || 0)), sum(turns.map(x => x.completion || 0)), sum(turns.map(x => x.latencyMs || 0))];
                 }
-                return { t, v };
+                return v;
             };
-            const samples = times.map(t => {
-                if (!kept) return sample(t);
-                const settled = t % every === 0 && t < end - settle;
-                if (settled && kept.has(t)) return kept.get(t);
-                const s = sample(t);
-                if (settled) kept.set(t, s);
-                return s;
-            });
+            const sample = t => ({ t, v: rows(this.profileAt(t), t) });
+            let samples;
+            if (!live) {
+                samples = grid.map(sample);
+                if (end > 0) samples.push(sample(end));
+            } else {
+                const clock = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
+                const started = clock();
+                let did = 0, waiting = 0;
+                for (let i = grid.length - 1; i >= 0; i--) {
+                    const t = grid[i];
+                    let sig = '';
+                    for (const s of seats) { let n = 0; for (const x of s.turns) if (x.sec != null && x.sec <= t) n++; sig += n + ','; }
+                    // Strategy also rests on the battles and the power readings up to that second.
+                    let fights = 0, readings = 0;
+                    for (const b of this.battles) if (!(b.t > t)) fights++;
+                    if (tl && tl.samples) for (const x of tl.samples) if (x && x.t <= t) readings++;
+                    sig += fights + ',' + readings;
+                    const kept = live.at.get(t);
+                    if (kept && kept.sig === sig) continue;
+                    if (!did || clock() - started < budgetMs) { live.at.set(t, { sig, s: sample(t) }); did++; }
+                    else waiting++;
+                }
+                live.pending = waiting;
+                samples = grid.map(t => live.at.get(t)).filter(Boolean).map(k => k.s);
+                if (end > 0) samples.push({ t: end, v: rows(this.profile(), null) });
+            }
             return { type: 'scores', kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, everySec: every, fields: WarEval.HISTORY_FIELDS.slice(),
                 seats: seats.map(s => ({ id: s.id, seat: s.seat, civ: s.civ, name: s.name, model: s.model })), samples };
         }

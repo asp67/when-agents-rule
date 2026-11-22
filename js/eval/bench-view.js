@@ -228,14 +228,16 @@
         el.style.display = has ? '' : 'none';
         if (!has) { if (el.innerHTML) el.innerHTML = ''; this._sumProfileSig = null; return; }
         const ev = this._benchEvidence, link = this.benchLinkKey();
-        const sig = [ledger.lines + '.' + ledger.rev, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : '', link].join(':');
+        const sig = [ledger.lines + '.' + ledger.rev, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : '', link, this._shareAxis || ''].join(':');
         if (sig === this._sumProfileSig) return;
         this._sumProfileSig = sig;
-        // Under the matrix: the way to the board at full size, with the graphs over the
-        // match, the cost and the decisions where a model's play went wrong (build 1223).
+        // Under the matrix: the way to the board with the graphs over the match (build
+        // 1223), and the chart to share, which sums a match up and so belongs here and not
+        // on the live board (build 1227).
         el.innerHTML = this.benchHtml(ledger, { link }).right
             + `<button type="button" class="summary-board-btn" onclick="game.ui.toggleBenchFull(true)">${this.escapeHtml(t('bench.b.fullBtn'))}</button>`
-            + `<p class="summary-profile-note">${this.escapeHtml(t('sum.profileNote'))}</p>`;
+            + `<p class="summary-profile-note">${this.escapeHtml(t('sum.profileNote'))}</p>`
+            + this.benchShareHtml(ledger);
     };
     P.benchShowEvidence = function (key, id) {
         const cur = this._benchEvidence;
@@ -256,45 +258,67 @@
             return;
         }
         if (panels) this.benchPlace();
-        const ledger = this.benchLedger(), ev = this._benchEvidence, link = this.benchLinkKey();
-        const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : '',
-            open, panels, link, this._shareAxis || ''].join(':');
+        const ledger = this.benchLedger(), link = this.benchLinkKey();
+        const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), open, panels, link].join(':');
         if (sig === this._benchSig) return;
         this._benchSig = sig;
-        const view = this.benchHtml(ledger, { link });
+        // The scores over the match, once for the mini card and the full size alike.
+        const data = this.benchSeries(ledger);
         if (panels) {
-            left.innerHTML = view.left;
-            // On screen: the mini card, a row a model, readable at a glance. A click opens the
-            // board at full size, where the matrix with its evidence now lives (build 1222).
-            right.innerHTML = this.benchMiniHtml(ledger);
+            left.innerHTML = this.benchHtml(ledger, { link, matrix: false }).left;
+            right.innerHTML = this.benchMiniHtml(ledger, data);
         }
-        if (full) { full.style.display = open ? '' : 'none'; full.innerHTML = open ? this.benchFullHtml(ledger, view.right) : ''; }
+        if (full) {
+            // Drawn again in place: where the reader had scrolled to is where they stay
+            // (it used to jump back to the top at every decision).
+            const body = open && full.querySelector ? full.querySelector('.bf-body') : null, at = body ? body.scrollTop : 0;
+            full.style.display = open ? '' : 'none';
+            full.innerHTML = open ? this.benchFullHtml(ledger, data, link) : '';
+            const again = at && full.querySelector ? full.querySelector('.bf-body') : null;
+            if (again) again.scrollTop = at;
+        }
+        // Samples of the history that did not fit into this refresh's budget: ask again in
+        // a moment, a little at a time, so the game never stands still for a graph.
+        if (ledger && ledger._live && ledger._live.pending > 0 && !this._benchFill && typeof setTimeout === 'function') {
+            this._benchFill = setTimeout(() => { this._benchFill = null; this._benchSig = null; this.updateBenchView(); }, 120);
+        }
     };
 
-    // ---- the comparison board (build 1222) ----------------------------------------
-    // asp67, 22 November 2026, after watching matches on the matrix: "Change the lines to
-    // graphs over time. Separate it in 3 distinct sections per model: gameplay score,
-    // model performance and cost, score summary. Have a mini card on screen that is still
-    // readable and toggle a full size view when clicked."
+    // ---- the comparison board (build 1222, laid out again in build 1227) ---------------
+    // asp67, 22 November 2026: "Change the lines to graphs over time. Separate it in 3
+    // distinct sections per model: gameplay score, model performance and cost, score
+    // summary. Have a mini card on screen that is still readable and toggle a full size
+    // view when clicked." The first build read that wrongly and was thrown out the same
+    // day: it put the power graph under gameplay, the five scores under performance, the
+    // models under each other, the old matrix and the share chart at the bottom, and it
+    // jumped back to the top at every refresh. In asp67's words what was wanted: "graphs
+    // over time, models side by side, top section Gameplay, middle model performance,
+    // bottom summary."
     //
-    // So a model is three sections, in the mini card and at full size alike:
-    //   gameplay score               its power over the match, with the others' behind it
-    //   model performance and cost   its Index and the parts of it over the match; what that
-    //                                cost in tokens and thinking time; the score per cost;
-    //                                and its discipline (orders that could not be called,
-    //                                orders refused for a reason it had been shown, how
-    //                                often a mistake was not made again, requests lost)
-    //   score summary                the numbers as they stand
-    // The graphs are the scores over the match (ledger.history, the line a transcript now
-    // carries) and the timeline's power. Nothing is worked out here but layout and ratios.
+    // So the board is one grid. A COLUMN is a model, and the models stand side by side.
+    //   Gameplay            Grounding, Planning, Follow-through, Tactical and Strategy
+    //                       over the match in one graph a model, and under it a strip of
+    //                       the decisions that went wrong (Ledger.trace), each a way into
+    //                       the transcript
+    //   Model performance   over the match, on one scale for all models so the columns
+    //                       can be compared: seconds a decision, tokens a decision, the
+    //                       share of orders refused. Each is the rate of the seat's LATEST
+    //                       decisions, so a slowdown or a growing prompt shows as a slope
+    //   Summary             one table, a row a figure: the Index and its parts, what the
+    //                       play cost, how disciplined it was, what the harness did
+    // The mini card is the same grid with the labels left out and one graph a section.
+    // Nothing is worked out here but layout, rates and ratios. The power graph is the Race
+    // chart's, the matrix with its evidence is the report card's on the results screen, and
+    // the chart to share stands there too: none of them is on this board.
     const PART_INK = { index: '#ddd3b4', grounding: '#7fd0bd', planning: '#8fbdf0', follow: '#9fd08a', tactical: '#f2c46a', strategy: '#e89ac0' };
+    const TRACE_KINDS = ['loop', 'constraint', 'awareness', 'threat', 'refused'];
     const tokText = n => n == null ? '–' : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'k' : String(Math.round(n));
     const durText = ms => ms == null ? '–' : ms >= 60000 ? Math.round(ms / 60000) + ' min' : Math.round(ms / 1000) + ' s';
     const ratio = v => v == null || !isFinite(v) ? '–' : v >= 100 ? String(Math.round(v)) : v >= 10 ? v.toFixed(1) : v.toFixed(2);
-    // Lines over time as one SVG. lines: [{ t, v, ink, width, dim }], a null value breaks a line.
+    // Lines over time as one SVG. lines: [{ t, v, ink, width }], a null value breaks a line.
     const linesSvg = (lines, { w, h, end, min = 0, max, cls = '' }) => {
         const top = max != null ? max : Math.max(1, ...lines.map(l => Math.max(0, ...l.v.filter(v => v != null))));
-        const x = t => end > 0 ? (t / end) * w : 0, y = v => h - 1 - ((v - min) / ((top - min) || 1)) * (h - 2);
+        const x = t => end > 0 ? (t / end) * w : 0, y = v => h - 1 - ((Math.min(top, v) - min) / ((top - min) || 1)) * (h - 2);
         const path = l => {
             let d = '', pen = false;
             for (let i = 0; i < l.t.length; i++) {
@@ -302,7 +326,7 @@
                 d += (pen ? 'L' : 'M') + x(l.t[i]).toFixed(1) + ' ' + y(l.v[i]).toFixed(1);
                 pen = true;
             }
-            return d ? `<path d="${d}" fill="none" stroke="${l.ink}" stroke-width="${l.width || 1.5}" opacity="${l.dim ? 0.3 : 1}" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>` : '';
+            return d ? `<path d="${d}" fill="none" stroke="${l.ink}" stroke-width="${l.width || 1.5}" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>` : '';
         };
         return `<svg class="bg-chart ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${lines.map(path).join('')}</svg>`;
     };
@@ -315,30 +339,53 @@
         return { t: T, v: V };
     };
 
-    // Everything the board draws, by seat: the scores over the match and the power over it.
+    // How a seat has been deciding lately, at every sample of its history: seconds a
+    // decision, tokens a decision and the share of its orders that were refused, each over
+    // its latest RATE_DECISIONS decisions or more (back to the sample that many decisions
+    // ago). A running total would only ever rise; this shows when a seat slows down, when
+    // its prompt grows, when it starts to get orders refused. Null where there is nothing
+    // to divide by: before the first decision, for tokens a harness does not report, and
+    // for refusals in a file that does not record what became of the orders.
+    const RATE_DECISIONS = 3;
+    P.benchRates = function (sc) {
+        const n = sc && sc.t ? sc.t.length : 0, out = { t: n ? sc.t : [], sec: [], tok: [], refused: [] };
+        if (!n) return out;
+        const tokens = i => (sc.promptTokens[i] || 0) + (sc.completionTokens[i] || 0), bad = i => (sc.avoidable[i] || 0) + (sc.invalid[i] || 0);
+        const reports = tokens(n - 1) > 0, judged = (sc.ok[n - 1] || 0) + bad(n - 1) > 0;
+        for (let i = 0; i < n; i++) {
+            let j = i - 1;
+            while (j >= 0 && sc.decisions[i] - sc.decisions[j] < RATE_DECISIONS) j--;
+            const from = f => j >= 0 ? f(j) : 0;
+            const decisions = sc.decisions[i] - from(k => sc.decisions[k]), orders = sc.commands[i] - from(k => sc.commands[k]);
+            out.sec.push(decisions > 0 ? (sc.thinkingMs[i] - from(k => sc.thinkingMs[k])) / decisions / 1000 : null);
+            out.tok.push(decisions > 0 && reports ? (tokens(i) - from(tokens)) / decisions : null);
+            out.refused.push(orders > 0 && judged ? Math.min(100, 100 * (bad(i) - from(bad)) / orders) : null);
+        }
+        return out;
+    };
+    // Everything the board draws, by seat: the scores over the match, the rates from them,
+    // and the largest value of each rate over all seats (the one scale a row is drawn on).
+    // A finished match is scored once and kept; a running one is asked for cheaply (see
+    // Ledger.liveHistory), with a budget so the game never waits for a graph.
     P.benchSeries = function (ledger) {
         if (!ledger || typeof ledger.history !== 'function') return null;
-        const h = typeof ledger.liveHistory === 'function' && !ledger.results ? ledger.liveHistory() : ledger.history();
-        const tl = typeof ledger.power === 'function' ? ledger.power() : [];
-        const end = Math.max(h.samples.length ? h.samples[h.samples.length - 1].t : 0, tl.length ? Number(tl[tl.length - 1].t) || 0 : 0);
-        const seats = {};
-        let most = 1;
+        let h;
+        if (ledger.results || typeof ledger.liveHistory !== 'function') {
+            const key = ledger.lines + ':' + ledger.rev;
+            if (!ledger._boardHistory || ledger._boardHistory.key !== key) ledger._boardHistory = { key, h: ledger.history() };
+            h = ledger._boardHistory.h;
+        } else h = ledger.liveHistory(WarEval.HISTORY_SEC, this._benchBudget == null ? 8 : this._benchBudget);
+        const seats = {}, top = { sec: 0, tok: 0, refused: 0 };
+        let end = h.samples.length ? h.samples[h.samples.length - 1].t : 0;
         for (const s of h.seats) {
-            const power = { t: [], v: [], share: [] };
-            for (const x of tl) {
-                const mine = x.p && x.p[s.id];
-                if (!mine) continue;
-                let all = 0;
-                for (const id in x.p) all += Math.max(0, Number(x.p[id].pw) || 0);
-                power.t.push(Number(x.t) || 0); power.v.push(Number(mine.pw) || 0); power.share.push(all ? (Number(mine.pw) || 0) / all : null);
-                if (mine.pw > most) most = mine.pw;
-            }
-            seats[s.id] = { score: WarEval.Ledger.series(h, s.id) || { t: [] }, power };
+            const score = WarEval.Ledger.series(h, s.id) || { t: [] }, rates = this.benchRates(score.t.length ? score : null);
+            for (const k of ['sec', 'tok', 'refused']) for (const v of rates[k]) if (v != null && v > top[k]) top[k] = v;
+            seats[s.id] = { score, rates };
         }
-        return { end, seats, most };
+        return { end, seats, top };
     };
-    // What a seat's play cost and how disciplined it was, from its profile: the numbers of
-    // the middle section.
+    // What a seat's play cost and how disciplined it was, from its profile: the figures of
+    // the summary.
     P.benchCost = function (s) {
         const g = s.grounding, e = s.efficiency, tok = e.tokens;
         const tokens = tok ? tok.promptTotal + tok.completionTotal : null, mistakes = g.avoidable + g.invalid;
@@ -356,6 +403,12 @@
             failed: e.failedRequests || 0, cancelled: e.cancelledRequests || 0, missed: e.missedRounds || 0
         };
     };
+    // Thinking time so far by seat, kept from the scores over the match: the profile's
+    // own efficiency block knows the median wait, not the sum.
+    P.benchKeepThinking = function (data) {
+        this._benchThinking = {};
+        for (const id in data.seats) { const v = data.seats[id].score.thinkingMs; this._benchThinking[id] = v && v.length ? v[v.length - 1] : null; }
+    };
 
     P.toggleBenchFull = function (on = !this._benchFull) {
         this._benchFull = !!on;
@@ -367,91 +420,139 @@
         this.updateBenchView();
     };
 
-    // The mini card: a row a model, three sections each, and a click opens the full size.
-    P.benchMiniHtml = function (ledger) {
-        const esc = s => this.escapeHtml(String(s == null ? '' : s));
-        const profile = ledger ? ledger.profile() : null, seats = profile ? profile.seats.filter(s => s.decisions > 0) : [];
-        const head = `<div class="bench-head">${esc(t('bench.matrix'))}<span>${esc(t(seats.length ? 'bench.b.open' : 'eval.provisional'))}</span></div>`;
-        if (!seats.length) return head + `<p class="bench-none">${esc(t('bench.none'))}</p>`;
-        const data = this.benchSeries(ledger), ink = s => this.legibleColor ? this.legibleColor(this.identityHex ? this.identityHex(s.id, s.civ, s.seat) : '#cccccc') : '#cccccc';
-        this.benchKeepThinking(data);
-        const dot = s => this.teamDotHtml ? this.teamDotHtml(s.seat, 10) : '';
-        const byPower = seats.slice().sort((a, b) => this.benchLast(data, b.id).power - this.benchLast(data, a.id).power);
-        const W = 96, H = 30;
-        return head + `<div class="bc-list" role="button" tabindex="0" title="${esc(t('bench.b.openTip'))}" onclick="game.ui.toggleBenchFull(true)">` + seats.map(s => {
-            const d = data.seats[s.id], last = this.benchLast(data, s.id), c = this.benchCost(s);
-            const others = seats.filter(o => o.id !== s.id).map(o => Object.assign(thin(data.seats[o.id].power.t, data.seats[o.id].power.v, 60), { ink: '#aab0bd', width: 1, dim: true }));
-            const game = linesSvg(others.concat(Object.assign(thin(d.power.t, d.power.v, 60), { ink: ink(s), width: 1.8 })), { w: W, h: H, end: data.end, max: data.most });
-            const model = linesSvg([Object.assign(thin(d.score.t, d.score.index || [], 60), { ink: PART_INK.index, width: 1.8 })], { w: W, h: H, end: data.end, max: 100 });
-            const parts = DIMS.map(k => `<i title="${esc(t('eval.' + k))}">${esc(t('bench.b.' + k))} ${s[k].score == null ? '–' : Math.round(s[k].score)}</i>`).join('');
-            return `<div class="bc-seat" style="--civ:${esc(ink(s))}"><div class="bc-name">${dot(s)}<span>${esc(s.name || s.model || s.id)}</span>${this.benchKindTag(s)}</div>`
-                + `<div class="bc-sec"><span class="bc-lab">${esc(t('bench.b.game'))}</span>${game}<b>${last.power == null ? '–' : Math.round(last.power)}</b>`
-                + `<small>#${byPower.indexOf(s) + 1}${last.share == null ? '' : ' · ' + share(last.share)}</small></div>`
-                + `<div class="bc-sec"><span class="bc-lab">${esc(t('bench.b.model'))}</span>${model}<b>${esc(tokText(c.tokens))}${c.tokens == null ? '' : ' tok'}</b>`
-                + `<small>${esc(durText(c.thinkingMs))}${c.perMTok == null ? '' : ' · ' + esc(ratio(c.perMTok)) + '/M'}</small></div>`
-                + `<div class="bc-sec bc-sum"><span class="bc-lab">${esc(t('bench.b.summary'))}</span><b class="bc-index">${s.index.value == null ? '–' : Math.round(s.index.value)}</b><small class="bc-parts">${parts}</small></div></div>`;
+    // Who plays a seat, beside its name: the model's own answers, or an agent framework
+    // with the model inside it (build 1224).
+    P.benchKindTag = function (s) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x)), h = s.harness;
+        if (!h || !h.known) return '';
+        return h.external
+            ? `<em class="bf-kind is-harness" title="${esc(t('bench.h.harnessTip'))}">${esc(t('bench.h.harness'))}${h.kind && h.kind !== 'other' ? ' · ' + esc(h.kind) : ''}</em>`
+            : `<em class="bf-kind is-raw" title="${esc(t('bench.h.rawTip'))}">${esc(t('bench.h.raw'))}</em>`;
+    };
+    // What the game's own harness did for a seat, in a few words: answers it read out of
+    // prose, requests it adapted, a human's interventions (build 1224).
+    P.benchHelpText = function (s) {
+        const h = s.harness;
+        if (!h) return t('bench.h.notRecorded');
+        const said = [];
+        if (h.fromProse) said.push(t('bench.h.sProse', { n: h.fromProse }));
+        if (h.recorded && h.adapted) said.push(t('bench.h.sAdapted', { n: h.adapted }));
+        if (h.recorded && h.intervened) said.push(t('bench.h.sHuman', { n: h.intervened }));
+        if (said.length) return said.join(', ');
+        return h.recorded || h.byToolCall ? t('bench.h.none') : t('bench.h.notRecorded');
+    };
+    // The decisions that went wrong, on the match's clock (the decision inspector, build
+    // 1223): a mark a finding under the gameplay graph, a loop as a span, each a way into
+    // the transcript.
+    P.benchMarksHtml = function (s, tr, end, link) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x));
+        if (!tr || !tr.judged) return `<div class="bt-strip is-none" title="${esc(t('bench.t.unjudged'))}"></div>`;
+        const order = m => String(m.action == null ? '?' : m.action).replace(/_/g, ' ') + (m.code ? ' · ' + m.code : '');
+        const line = m => m.kind === 'threat' ? this.benchThreatLine(m.threat, s)
+            : m.kind === 'loop' ? t(m.open ? 'bench.t.loopOpen' : 'bench.t.loopLine', { order: order(m), n: m.n, upTo: m.upTo })
+            : order(m) + (m.orders > 1 ? ' ×' + m.orders : '');
+        const at = sec => end > 0 && sec != null ? Math.max(0, Math.min(100, 100 * sec / end)) : 0;
+        return `<div class="bt-strip"${tr.marks.length ? '' : ` title="${esc(t('bench.t.none'))}"`}>` + tr.marks.map(m => {
+            const left = at(m.sec), width = m.kind === 'loop' ? Math.max(0, at(m.upToSec) - left) : 0;
+            const open = m.turn == null || !link ? '' : ` onclick="event.stopPropagation(); game.ui.benchOpenTurn('${esc(s.id)}', ${Number(m.turn)})"`;
+            return `<i class="is-${m.kind}" style="left:${left.toFixed(1)}%${width ? ';width:' + width.toFixed(1) + '%' : ''}"${open} title="#${m.turn} ${clock(m.sec)} · ${esc(t('bench.t.' + m.kind))}: ${esc(line(m))}"></i>`;
         }).join('') + '</div>';
     };
-    // Thinking time so far by seat, kept from the scores over the match: the profile's
-    // own efficiency block knows the median wait, not the sum.
-    P.benchKeepThinking = function (data) {
-        this._benchThinking = {};
-        for (const id in data.seats) { const v = data.seats[id].score.thinkingMs; this._benchThinking[id] = v && v.length ? v[v.length - 1] : null; }
-    };
-    // A seat's newest power and share of all power.
-    P.benchLast = function (data, id) {
-        const p = data.seats[id] ? data.seats[id].power : null, n = p ? p.v.length : 0;
-        return { power: n ? p.v[n - 1] : null, share: n ? p.share[n - 1] : null };
-    };
 
-    // The board at full size: every model's three sections with their graphs, and under
-    // them the matrix with the decisions behind each number, as it stood in the panel.
-    P.benchFullHtml = function (ledger, matrixHtml) {
-        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+    // The board as markup: at full size, or as the mini card. `data` is benchSeries().
+    P.benchBoardHtml = function (ledger, data, { mini = false, link = 'bench.open' } = {}) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x));
         const profile = ledger ? ledger.profile() : null, seats = profile ? profile.seats.filter(s => s.decisions > 0) : [];
-        const close = `<button type="button" class="bf-close" onclick="game.ui.toggleBenchFull(false)" title="${esc(t('bench.b.close'))}" aria-label="${esc(t('bench.b.close'))}">✕</button>`;
-        const head = `<div class="bf-head"><b>${esc(t('bench.matrix'))}</b><span>${esc(t('eval.provisional'))}</span>${close}</div>`;
-        if (!seats.length) return `<div class="bf-box">${head}<p class="bench-none">${esc(t('bench.none'))}</p></div>`;
-        const data = this.benchSeries(ledger), ink = s => this.legibleColor ? this.legibleColor(this.identityHex ? this.identityHex(s.id, s.civ, s.seat) : '#cccccc') : '#cccccc';
+        if (!seats.length || !data) return `<p class="bench-none">${esc(t('bench.none'))}</p>`;
         this.benchKeepThinking(data);
-        const dot = s => this.teamDotHtml ? this.teamDotHtml(s.seat, 12) : '';
-        const byPower = seats.slice().sort((a, b) => this.benchLast(data, b.id).power - this.benchLast(data, a.id).power);
-        const W = 300, H = 96, pct = v => v == null ? '–' : share(v);
-        const row = (label, value, tip) => `<div${tip ? ` title="${esc(tip)}"` : ''}><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`;
-        const axis = `<div class="bf-axis"><span>0:00</span><span>${clock(data.end)}</span></div>`;
-        const legend = '<div class="bf-legend">' + ['index'].concat(DIMS).map(k => `<span><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</span>`).join('') + '</div>';
-        const cards = seats.map(s => {
-            const d = data.seats[s.id], last = this.benchLast(data, s.id), c = this.benchCost(s), sc = d.score;
-            const others = seats.filter(o => o.id !== s.id).map(o => Object.assign(thin(data.seats[o.id].power.t, data.seats[o.id].power.v, 240), { ink: '#aab0bd', width: 1, dim: true }));
-            const game = linesSvg(others.concat(Object.assign(thin(d.power.t, d.power.v, 240), { ink: ink(s), width: 2.2 })), { w: W, h: H, end: data.end, max: data.most });
-            const perf = linesSvg(DIMS.map(k => ({ t: sc.t, v: sc[k] || [], ink: PART_INK[k], width: 1.2 })).concat({ t: sc.t, v: sc.index || [], ink: PART_INK.index, width: 2.4 }), { w: W, h: H, end: data.end, max: 100 });
-            // Cost: tokens and thinking time so far, each against its own largest value.
-            const tokens = (sc.promptTokens || []).map((v, i) => v + (sc.completionTokens ? sc.completionTokens[i] : 0)), minutes = (sc.thinkingMs || []).map(v => v / 60000);
-            const top = a => Math.max(1e-9, ...a);
-            const cost = linesSvg([{ t: sc.t, v: tokens.map(v => v / top(tokens)), ink: '#8fbdf0', width: 1.8 }, { t: sc.t, v: minutes.map(v => v / top(minutes)), ink: '#f2c46a', width: 1.8 }], { w: W, h: 56, end: data.end, max: 1 });
-            const summary = DIMS.map(k => `<tr><th scope="row"><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</th><td>${s[k].score == null ? '–' : Math.round(s[k].score)}</td><td>${esc(rawOf(k, s))}</td></tr>`).join('');
-            return `<section class="bf-seat" style="--civ:${esc(ink(s))}"><h3>${dot(s)}<span>${esc(s.name || s.model || s.id)}</span>${s.model && s.model !== s.name ? `<small>${esc(s.model)}</small>` : ''}${this.benchKindTag(s)}</h3><div class="bf-secs">`
-                + `<div class="bf-sec"><h4>${esc(t('bench.b.gameFull'))}</h4>${game}${axis}<dl>`
-                + row(t('bench.b.power'), last.power == null ? '–' : String(Math.round(last.power))) + row(t('bench.b.rank'), '#' + (byPower.indexOf(s) + 1) + ' / ' + seats.length)
-                + row(t('bench.b.share'), pct(last.share), t('bench.b.shareTip')) + '</dl></div>'
-                + `<div class="bf-sec bf-model"><h4>${esc(t('bench.b.modelFull'))}</h4>${perf}${axis}${cost}`
-                + `<div class="bf-legend"><span><i style="background:#8fbdf0"></i>${esc(t('bench.b.tokens'))}</span><span><i style="background:#f2c46a"></i>${esc(t('bench.b.thinking'))}</span></div><dl>`
-                + row(t('bench.b.tokens'), c.tokens == null ? t('bench.b.noUsage') : tokText(c.tokens) + ' (' + tokText(c.promptTokens) + ' + ' + tokText(c.completionTokens) + ')', t('bench.b.tokensTip'))
-                + row(t('bench.b.thinking'), durText(c.thinkingMs))
-                + row(t('bench.b.perMTok'), ratio(c.perMTok), t('bench.b.perTip')) + row(t('bench.b.perMin'), ratio(c.perMin), t('bench.b.perTip'))
-                + row(t('bench.b.invalid'), pct(c.invalidRate), t('bench.b.invalidTip')) + row(t('bench.b.refused'), pct(c.refusedRate), t('bench.b.refusedTip'))
-                + row(t('bench.b.recovery'), pct(c.recovery), t('bench.b.recoveryTip'))
-                + row(t('bench.b.lost'), String(c.lost), t('bench.b.lostTip', { failed: c.failed, cancelled: c.cancelled, missed: c.missed })) + '</dl></div>'
-                + `<div class="bf-sec bf-sum"><h4>${esc(t('bench.b.summaryFull'))}</h4><div class="bf-index"><b>${s.index.value == null ? '–' : Math.round(s.index.value)}</b><span>${esc(t('eval.index'))}</span></div>`
-                + `<table>${summary}</table><p class="bf-note">${esc(t('bench.b.decisions', { n: s.decisions }))}</p>${this.benchHarnessHtml(s)}</div></div>`
-                + this.benchTraceHtml(ledger, s, data.end) + '</section>';
+        const ink = s => this.legibleColor ? this.legibleColor(this.identityHex ? this.identityHex(s.id, s.civ, s.seat) : '#cccccc') : '#cccccc';
+        const dot = s => this.teamDotHtml ? this.teamDotHtml(s.seat, mini ? 9 : 12) : '';
+        const name = s => s.name || s.model || s.id;
+        const series = s => data.seats[s.id] || { score: { t: [] }, rates: { t: [], sec: [], tok: [], refused: [] } };
+        const W = mini ? 100 : 320, most = mini ? 50 : 200;
+        const cells = make => seats.map(s => `<div class="bb-col" style="--civ:${esc(ink(s))}">${make(s)}</div>`).join('');
+        const row = (cls, label, make) => `<div class="bb-row ${cls}">${mini ? '' : `<div class="bb-lab">${label}</div>`}${cells(make)}</div>`;
+        const band = key => `<div class="bb-sec">${esc(t(key))}</div>`;
+        const head = row('bb-head', '', s => `${dot(s)}<span title="${esc(name(s) + (s.model && s.model !== s.name ? ' · ' + s.model : ''))}">${esc(name(s))}</span>${mini ? '' : this.benchKindTag(s)}`);
+        const axis = (label = '') => mini ? '' : row('bb-axis', label, () => `<span>0:00</span><span>${clock(data.end)}</span>`);
+        // Gameplay: the five scores over the match.
+        const game = s => { const sc = series(s).score; return linesSvg(DIMS.map(k => Object.assign(thin(sc.t, sc[k] || [], most), { ink: PART_INK[k], width: mini ? 1.2 : 1.6 })), { w: W, h: mini ? 44 : 108, end: data.end, max: 100, cls: 'bb-game' }); };
+        const keys = '<span class="bb-keys">' + DIMS.map(k => `<span><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</span>`).join('') + '</span>';
+        // Model performance: a row a rate, every model on the same scale.
+        const now = a => { for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return a[i]; return null; };
+        // The end of a scale: the next round number at or above the largest value of any model.
+        const round = v => { const m = Math.pow(10, Math.floor(Math.log10(v))); return [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find(k => k * m >= v - 1e-9) * m; };
+        const RATES = [
+            { key: 'sec', label: 'bench.b.secPer', ink: '#f2c46a', top: round(Math.max(1, data.top.sec)), text: v => v >= 10 ? Math.round(v) + ' s' : v.toFixed(1) + ' s' },
+            { key: 'tok', label: 'bench.b.tokPer', ink: '#8fbdf0', top: round(Math.max(1, data.top.tok)), text: v => tokText(v) },
+            { key: 'refused', label: 'bench.b.refusedNow', ink: '#ff8f7a', top: round(Math.max(10, data.top.refused)), text: v => Math.round(v) + ' %' }
+        ];
+        const rate = (r, s) => {
+            const rt = series(s).rates, last = now(rt[r.key]);
+            return linesSvg([Object.assign(thin(rt.t, rt[r.key], most), { ink: r.ink, width: mini ? 1.3 : 1.7 })], { w: W, h: mini ? 26 : 38, end: data.end, max: r.top, cls: 'bb-rate' })
+                + `<b class="bb-now">${last == null ? esc(t(r.key === 'tok' ? 'bench.b.noUsage' : 'bench.h.notRecorded')) : esc(r.text(last))}</b>`;
+        };
+        if (mini) {
+            return `<div class="bb is-mini" style="--n:${seats.length}" role="button" tabindex="0" title="${esc(t('bench.b.openTip'))}" onclick="game.ui.toggleBenchFull(true)">`
+                + head + band('bench.b.game') + row('bb-graph', '', game)
+                + band('bench.b.model') + row('bb-graph', '', s => rate(RATES[0], s))
+                + band('bench.b.summary') + row('bb-index', '', s => `<b>${s.index.value == null ? '–' : Math.round(s.index.value)}</b><small>${esc(tokText(this.benchCost(s).tokens))}${this.benchCost(s).tokens == null ? '' : ' tok'}</small>`)
+                + '</div>';
+        }
+        const traces = {};
+        for (const s of seats) traces[s.id] = typeof ledger.trace === 'function' ? ledger.trace(s.id) : null;
+        const kinds = TRACE_KINDS.filter(k => seats.some(s => traces[s.id] && traces[s.id].counts[k]));
+        const markTitle = `<b title="${esc(t('bench.t.tip'))}">${esc(t('bench.t.title'))}</b>`;
+        const markKeys = '<span class="bb-keys bt-keys">' + kinds.map(k => `<span class="is-${k}" title="${esc(t('bench.t.' + k + 'Tip'))}"><i></i>${esc(t('bench.t.' + k))}</span>`).join('') + '</span>';
+        // Summary: a row a figure, a column a model; the best of a row stands out where there is one.
+        const cost = {};
+        for (const s of seats) cost[s.id] = this.benchCost(s);
+        const pct = v => v == null ? '–' : share(v), num0 = v => v == null ? '–' : String(Math.round(v));
+        const ROWS = [
+            { label: t('eval.index'), val: s => s.index.value, text: num0, best: 1, cls: 'is-index', tip: s => this.evalTips(s).index },
+            ...DIMS.map(k => ({ label: t('eval.' + k), ink: PART_INK[k], val: s => s[k].score, text: num0, best: 1, tip: s => this.evalTips(s)[k] })),
+            { label: t('bench.b.tokens'), first: true, val: s => cost[s.id].tokens, text: v => v == null ? t('bench.b.noUsage') : tokText(v), tip: () => t('bench.b.tokensTip') },
+            { label: t('bench.b.thinking'), val: s => cost[s.id].thinkingMs, text: durText },
+            { label: t('bench.b.perMTok'), val: s => cost[s.id].perMTok, text: ratio, best: 1, tip: () => t('bench.b.perTip') },
+            { label: t('bench.b.perMin'), val: s => cost[s.id].perMin, text: ratio, best: 1, tip: () => t('bench.b.perTip') },
+            { label: t('bench.b.invalid'), first: true, val: s => cost[s.id].invalidRate, text: pct, best: -1, tip: () => t('bench.b.invalidTip') },
+            { label: t('bench.b.refused'), val: s => cost[s.id].refusedRate, text: pct, best: -1, tip: () => t('bench.b.refusedTip') },
+            { label: t('bench.b.recovery'), val: s => cost[s.id].recovery, text: pct, best: 1, tip: () => t('bench.b.recoveryTip') },
+            { label: t('bench.t.loops'), val: s => traces[s.id] && traces[s.id].judged ? traces[s.id].counts.loop : null, text: num0, best: -1, tip: () => t('bench.t.loopTip') },
+            { label: t('bench.b.lost'), val: s => cost[s.id].lost, text: num0, best: -1, tip: s => t('bench.b.lostTip', { failed: cost[s.id].failed, cancelled: cost[s.id].cancelled, missed: cost[s.id].missed }) },
+            { label: t('bench.h.help'), first: true, val: () => null, text: null, words: s => this.benchHelpText(s), tip: () => t('bench.h.helpTip') }
+        ];
+        const table = ROWS.map(r => {
+            const vals = seats.map(r.val).filter(v => v != null && isFinite(v));
+            const lead = r.best && vals.length > 1 && Math.max(...vals) !== Math.min(...vals) ? (r.best > 0 ? Math.max(...vals) : Math.min(...vals)) : null;
+            return row('bb-fig' + (r.first ? ' is-first' : '') + (r.cls ? ' ' + r.cls : ''), (r.ink ? `<i style="background:${r.ink}"></i>` : '') + esc(r.label), s => {
+                const v = r.val(s), text = r.words ? r.words(s) : r.text(v);
+                return `<span${v != null && v === lead ? ' class="is-lead"' : ''}${r.tip ? ` title="${esc(r.tip(s))}"` : ''}>${esc(text)}</span>`;
+            });
         }).join('');
-        return `<div class="bf-box" onclick="event.stopPropagation()">${head}<div class="bf-body">${legend}${cards}${this.benchShareHtml(ledger)}<div class="bf-matrix">${matrixHtml || ''}</div></div></div>`;
+        return `<div class="bb" style="--n:${seats.length}">` + head
+            + band('bench.b.gameFull') + row('bb-graph', keys, game) + row('bb-marks', markTitle, s => this.benchMarksHtml(s, traces[s.id], data.end, link)) + axis(markKeys)
+            + band('bench.b.modelFull') + RATES.map(r => row('bb-graph', `<b title="${esc(t('bench.b.rateTip'))}">${esc(t(r.label))}</b><small>0 – ${esc(r.text(r.top))}</small>`, s => rate(r, s))).join('') + axis()
+            + band('bench.b.summaryFull') + table + '</div>';
+    };
+    // The mini card: the board in the panel, and a click opens it at full size.
+    P.benchMiniHtml = function (ledger, data = this.benchSeries(ledger)) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x));
+        const any = !!(ledger && ledger.profile().seats.some(s => s.decisions > 0));
+        return `<div class="bench-head">${esc(t('bench.matrix'))}<span>${esc(t(any ? 'bench.b.open' : 'eval.provisional'))}</span></div>` + this.benchBoardHtml(ledger, data, { mini: true });
+    };
+    // The board at full size: nothing but the grid, sized to be read without scrolling.
+    P.benchFullHtml = function (ledger, data = this.benchSeries(ledger), link = this.benchLinkKey()) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x));
+        const close = `<button type="button" class="bf-close" onclick="game.ui.toggleBenchFull(false)" title="${esc(t('bench.b.close'))}" aria-label="${esc(t('bench.b.close'))}">✕</button>`;
+        return `<div class="bf-box" onclick="event.stopPropagation()"><div class="bf-head"><b>${esc(t('bench.matrix'))}</b><span>${esc(t('eval.provisional'))}</span>${close}</div>`
+            + `<div class="bf-body">${this.benchBoardHtml(ledger, data, { link })}</div></div>`;
     };
 
     // ---- a chart to share (build 1226) ----------------------------------------------
     // The match as one picture (js/eval/share.js): the Index against what it cost, a point
-    // a model, and where on the map each sent its orders. Saved as PNG or SVG.
+    // a model, and where on the map each sent its orders. Saved as PNG or SVG. It stands on
+    // the results screen, under the report card.
     const SOURCE = 'When Agents Rule · github.com/asp67/when-agents-rule';
     P.benchShareSpec = function (ledger, axis = this._shareAxis || 'speed') {
         const profile = ledger ? ledger.profile() : null, seats = profile ? profile.seats.filter(s => s.decisions > 0) : [];
@@ -489,8 +590,7 @@
     };
     P.benchShareAxis = function (axis) {
         this._shareAxis = axis === 'tokens' ? 'tokens' : 'speed';
-        this._benchSig = null;
-        this.updateBenchView();
+        this.updateSummaryProfile();
     };
     P.benchShareSave = function (kind) {
         const ledger = this.benchLedger(), spec = this.benchShareSpec(ledger);
@@ -527,61 +627,11 @@
             .catch(e => { console.warn('[share] no picture', e); if (this.showErrorMessage) this.showErrorMessage(t('share.failed')); return false; });
     };
 
-    // ---- raw model or harness (build 1224) -----------------------------------------
-    // Beside a seat's name: is this the model's own play, or an agent framework's with the
-    // model inside it? And in its summary what WAR's own harness did for it, in numbers.
-    P.benchKindTag = function (s) {
-        const esc = x => this.escapeHtml(String(x == null ? '' : x)), h = s.harness;
-        if (!h || !h.known) return '';
-        return h.external
-            ? `<em class="bf-kind is-harness" title="${esc(t('bench.h.harnessTip'))}">${esc(t('bench.h.harness'))}${h.kind && h.kind !== 'other' ? ' · ' + esc(h.kind) : ''}</em>`
-            : `<em class="bf-kind is-raw" title="${esc(t('bench.h.rawTip'))}">${esc(t('bench.h.raw'))}</em>`;
-    };
-    P.benchHarnessHtml = function (s) {
-        const esc = x => this.escapeHtml(String(x == null ? '' : x)), h = s.harness;
-        if (!h) return '';
-        const row = (label, value, tip) => `<div${tip ? ` title="${esc(tip)}"` : ''}><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>`;
-        const list = a => a.map(x => x.kind + ' ×' + x.n).join(', ');
-        const answered = h.byToolCall + h.fromProse;
-        const count = (n, kinds) => !h.recorded ? t('bench.h.notRecorded') : n ? n + ' (' + list(kinds) + ')' : '0';
-        return `<div class="bf-harness"><h5>${esc(t('bench.h.title'))}</h5><dl>`
-            + row(t('bench.h.plays'), !h.known ? t('bench.h.notRecorded') : h.external ? t('bench.h.harness') + (h.kind && h.kind !== 'other' ? ' · ' + h.kind : '') : t('bench.h.raw'),
-                !h.known ? '' : t(h.external ? 'bench.h.harnessTip' : 'bench.h.rawTip'))
-            + row(t('bench.h.prose'), answered ? h.fromProse + ' / ' + answered : t('bench.h.notRecorded'), t('bench.h.proseTip'))
-            + row(t('bench.h.adapted'), count(h.adapted, h.adaptations), t('bench.h.adaptedTip'))
-            + row(t('bench.h.human'), count(h.intervened, h.interventions), t('bench.h.humanTip')) + '</dl></div>';
-    };
-
-    // ---- the decision inspector (build 1223) --------------------------------------
-    // Under a model's three sections: the decisions where its play went wrong, on the
-    // match's clock and as a list, each a way into the transcript at that decision. What
-    // counts as which is the ledger's (Ledger.trace); here it is only laid out.
-    const TRACE_KINDS = ['loop', 'constraint', 'awareness', 'threat', 'refused'];
-    P.benchTraceHtml = function (ledger, s, end) {
-        const esc = x => this.escapeHtml(String(x == null ? '' : x));
-        const tr = ledger && typeof ledger.trace === 'function' ? ledger.trace(s.id) : null;
-        if (!tr) return '';
-        const head = `<h4>${esc(t('bench.t.title'))}<small>${esc(t('bench.t.tip'))}</small></h4>`;
-        if (!tr.judged) return `<div class="bf-trace">${head}<p class="bench-none">${esc(t('bench.t.unjudged'))}</p></div>`;
-        if (!tr.marks.length) return `<div class="bf-trace">${head}<p class="bench-none">${esc(t('bench.t.none'))}</p></div>`;
-        const link = this.benchLinkKey();
-        const open = m => m.turn == null || !link ? '' : ` onclick="game.ui.benchOpenTurn('${esc(s.id)}', ${Number(m.turn)})"`;
-        const order = m => String(m.action == null ? '?' : m.action).replace(/_/g, ' ') + (m.code ? ' · ' + m.code : '');
-        const line = m => m.kind === 'threat' ? this.benchThreatLine(m.threat, s)
-            : m.kind === 'loop' ? t(m.open ? 'bench.t.loopOpen' : 'bench.t.loopLine', { order: order(m), n: m.n, upTo: m.upTo })
-            : order(m) + (m.orders > 1 ? ' ×' + m.orders : '');
-        const at = sec => end > 0 && sec != null ? Math.max(0, Math.min(100, 100 * sec / end)) : 0;
-        const chips = TRACE_KINDS.filter(k => tr.counts[k]).map(k => `<span class="bt-chip is-${k}" title="${esc(t('bench.t.' + k + 'Tip'))}"><i></i>${tr.counts[k]} ${esc(t('bench.t.' + k))}</span>`).join('');
-        const strip = tr.marks.map(m => {
-            const left = at(m.sec), width = m.kind === 'loop' ? Math.max(0, at(m.upToSec) - left) : 0;
-            return `<i class="is-${m.kind}" style="left:${left.toFixed(1)}%${width ? ';width:' + width.toFixed(1) + '%' : ''}"${open(m)} title="#${m.turn} ${clock(m.sec)} · ${esc(t('bench.t.' + m.kind))}: ${esc(line(m))}"></i>`;
-        }).join('');
-        const list = tr.marks.map(m => `<li class="is-${m.kind}"${open(m)}${link ? ` title="${esc(t(link))}"` : ''}><span class="be-when">#${m.turn} ${clock(m.sec)}</span><b>${esc(t('bench.t.' + m.kind))}</b><span>${esc(line(m))}</span></li>`).join('');
-        return `<div class="bf-trace">${head}<div class="bt-chips">${chips}</div><div class="bt-strip">${strip}</div><div class="bf-axis"><span>0:00</span><span>${clock(end)}</span></div><ul class="bt-list">${list}</ul></div>`;
-    };
     // The two panels as markup. Apart from the page it is given, it reads nothing but the ledger.
     // `link` is the tooltip key of what a click on a decision does here, or null where it can do nothing.
-    P.benchHtml = function (ledger, { link = 'bench.open' } = {}) {
+    // `matrix: false` leaves the matrix out: behind the live panels it is not shown, and its
+    // trend alone cost a scoring of the whole match at every refresh.
+    P.benchHtml = function (ledger, { link = 'bench.open', matrix = true } = {}) {
         const esc = s => this.escapeHtml(String(s == null ? '' : s)), ev = this._benchEvidence;
         const profile = ledger ? ledger.profile() : null;
         const seats = profile ? profile.seats.filter(s => s.decisions > 0) : [];
@@ -590,7 +640,7 @@
             return { left: `<div class="bench-head">${esc(t('bench.plan'))}</div><p class="bench-none">${esc(t('bench.none'))}</p>`, right: none };
         }
         const now = ledger.lastSec || 0;
-        const past = now >= TREND_SEC + 60 ? ledger.profileAt(now - TREND_SEC) : null;
+        const past = matrix && now >= TREND_SEC + 60 ? ledger.profileAt(now - TREND_SEC) : null;
         const then = (id, key) => { const s = past && past.seats.find(x => x.id === id); return s && s[key] ? s[key].score : null; };
         const ink = s => this.legibleColor ? this.legibleColor(this.identityHex ? this.identityHex(s.id, s.civ, s.seat) : '#cccccc') : '#cccccc';
         const dot = s => this.teamDotHtml ? this.teamDotHtml(s.seat, 10) : '';
@@ -603,7 +653,10 @@
         }
         this._benchShown = pins;
 
+        const seatOf = id => seats.find(s => s.id === id);
+        let right = '';
         // ---- the matrix ------------------------------------------------------
+        if (matrix) {
         const raw = rawOf;
         const rows = DIMS.map(key => {
             const scores = seats.map(s => s[key].score).filter(v => v != null);
@@ -635,7 +688,7 @@
             return `<td class="bm-cost" title="${esc(t('bench.effTip', { lat: latText, tok: tok == null ? '–' : tok, cmds: e.commandsPerDecision == null ? '–' : e.commandsPerDecision.toFixed(2), missed: e.missedRounds }))}">`
                 + `<b>${esc(latText)}</b><small>${tok == null ? '&nbsp;' : esc(t('bench.tok', { n: tok }))}</small></td>`;
         }).join('');
-        let right = `<div class="bench-head">${esc(t('bench.matrix'))}<span>${esc(t('eval.provisional'))}</span></div>`
+        right = `<div class="bench-head">${esc(t('bench.matrix'))}<span>${esc(t('eval.provisional'))}</span></div>`
             + `<table class="bm"><thead><tr><th></th>` + seats.map(s =>
                 `<th scope="col" class="bm-seat${pins.includes(s.id) ? ' is-pinned' : ''}" style="--civ:${esc(ink(s))}" onclick="game.ui.benchPin('${esc(s.id)}')" title="${esc(t('bench.pin'))}">${dot(s)}<span>${label(s)}</span></th>`).join('')
             + `</tr></thead><tbody>${rows}<tr class="bm-indexrow"><th scope="row">${esc(t('eval.index'))}</th>${index}</tr>`
@@ -643,7 +696,6 @@
             + `<tr class="bm-costrow"><th scope="row">${esc(t('bench.eff'))}</th>${cost}</tr></tbody></table>`;
 
         // What a cell rests on: the decisions behind it, each a way into the transcript.
-        const seatOf = id => seats.find(s => s.id === id);
         if (ev && seatOf(ev.id)) {
             const s = seatOf(ev.id);
             let items = [];
@@ -663,6 +715,8 @@
                 `<li${open(s, e.turn)}><span class="be-when">#${e.turn} ${clock(e.sec)}</span> ${esc(this.benchThreatLine(e, s))}</li>`);
             right += `<div class="bench-evidence" style="--civ:${esc(ink(s))}"><div class="bench-head">${esc(t('eval.' + ev.key))} · ${label(s)}<span>${esc(t('bench.evidence'))}</span></div>`
                 + (items.length ? `<ul>${items.join('')}</ul>` : `<p class="bench-none">${esc(t('bench.nothing'))}</p>`) + '</div>';
+        }
+
         }
 
         // ---- the plan tracker ------------------------------------------------

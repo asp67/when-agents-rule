@@ -179,17 +179,16 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.equal(u.benchOn(), true);
     ledger.addLine(decision('a', 10, { plan: ['Build a tower'], orders: [['train_unit', { unitType: 'militia' }, 'avoidable']] }));
     u.updateBenchView();
-    // On screen is the mini card (build 1222); the matrix lives in the full-size view, which a click on the card opens.
-    assert.match(els.benchMatrix.innerHTML, /class="bc-list"[^>]*onclick="game\.ui\.toggleBenchFull\(true\)"/);
+    // On screen is the mini card: the comparison board, a column a model (builds 1222 and 1227). A click opens it at
+    // full size. The matrix is the report card's on the results screen: the same markup from the same ledger.
+    assert.match(els.benchMatrix.innerHTML, /<div class="bb is-mini" style="--n:1"[^>]*onclick="game\.ui\.toggleBenchFull\(true\)"/);
     assert.deepEqual([cells(els.benchMatrix.innerHTML).length, els.benchFull.innerHTML, els.benchFull.style.display], [0, '', 'none']);
-    u.toggleBenchFull(true);
-    assert.equal(els.benchFull.style.display, '');
-    const first = els.benchFull.innerHTML;
-    assert.deepEqual(cells(first), ['0', '100', '–', '–', '–']);          // one refused order of one; a plan of one checkable step; nothing closed; no threat; no power reading
-    // A new reading on the timeline redraws it too: the strategy row lives on it.
+    const matrix = () => u.benchHtml(ledger).right;
+    assert.deepEqual(cells(matrix()), ['0', '100', '–', '–', '–']);       // one refused order of one; a plan of one checkable step; nothing closed; no threat; no power reading
+    // A new reading on the timeline redraws the panels too: the strategy score lives on it.
     u.game._timeline = { samples: [{ t: 5, p: { a: { pw: 300 }, b: { pw: 300 } } }], ages: [] };
     u.updateBenchView();
-    assert.deepEqual(cells(els.benchFull.innerHTML), ['0', '100', '–', '–', '67']);
+    assert.deepEqual(cells(matrix()), ['0', '100', '–', '–', '67']);
     els.benchMatrix.innerHTML = 'untouched';
     u.updateBenchView();
     assert.equal(els.benchMatrix.innerHTML, 'untouched');
@@ -198,16 +197,20 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.notEqual(els.benchMatrix.innerHTML, 'untouched');
     // A cell opens the decisions behind it, and each of those opens in the transcript.
     u.benchShowEvidence('grounding', 'a');
-    assert.match(els.benchFull.innerHTML, /bench-evidence.*benchOpenTurn\('a', 1\)" title="bench\.open".*#1 0:10<\/span> c</s);
+    assert.match(matrix(), /bench-evidence.*benchOpenTurn\('a', 1\)" title="bench\.open".*#1 0:10<\/span> c</s);
     u.benchOpenTurn('a', 1);
     assert.deepEqual([u._transcriptFor, u._tvPinned, opened.join()], ['a', 1, '1']);
     u.benchShowEvidence('grounding', 'a');                              // the same cell again closes it
-    assert.doesNotMatch(els.benchFull.innerHTML, /bench-evidence/);
-    // Escape, or its button, closes the full size; the mini card stays.
+    assert.doesNotMatch(matrix(), /bench-evidence/);
+    // The board at full size holds the grid and no matrix; Escape, or its button, closes it, and the mini card stays.
+    u.toggleBenchFull(true);
+    assert.equal(els.benchFull.style.display, '');
+    assert.match(els.benchFull.innerHTML, /<div class="bb" style="--n:1">/);
+    assert.equal(cells(els.benchFull.innerHTML).length, 0);
     assert.equal(keys.length, 2);
     keys[1]({ key: 'Escape' });
     assert.deepEqual([u._benchFull, els.benchFull.style.display, els.benchFull.innerHTML], [false, 'none', '']);
-    assert.match(els.benchMatrix.innerHTML, /bc-seat/);
+    assert.match(els.benchMatrix.innerHTML, /bb is-mini/);
     press('B');
     assert.deepEqual([u.benchOn(), body.has('bench-view'), els.benchLeft.style.display], [false, false, 'none']);
 });
