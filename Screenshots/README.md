@@ -56,7 +56,7 @@ Four Windows screenshots of the game window during and after a live three-model 
 on 22 November 2026 (DeepSeek V4.1, nemotron-3-ultra, qwen3.8-flash; 62:36, Wonder held).
 The two match views are scaled from 2290 x 1301 to 1920 wide and saved as JPEG; the two
 interface crops are the original PNGs. Nothing was edited. They replaced WonderHeld.jpg
-(Episode 12) on 23 November 2026.
+(Episode 12) on 22 November 2026.
 
 | Asset | Source | Content |
 | --- | --- | --- |
