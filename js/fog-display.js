@@ -15,7 +15,7 @@
     // How far the reveal edge feathers, in WORLD units. Against a 15-unit unit
     // vision radius this is the difference between fog that is lit and fog that
     // is cut out with scissors.
-    FogOfWarManager.FEATHER_WORLD = 5;
+    FogOfWarManager.FEATHER_WORLD = 8;   // 5 until build 1191: mist has no drawn line for an edge
 
     // How far the fog reaches PAST the map, and the width it fades out over. The
     // plane used to be exactly mapSize, so it stopped dead at ±400 while the coast

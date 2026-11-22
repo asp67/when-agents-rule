@@ -108,7 +108,7 @@ test('the fog keeps its grid without its picture, and draws it where the picture
         clearRect() {}, fillRect() {}, createLinearGradient: () => ({ addColorStop() {} }), set filter(v) {}, set fillStyle(v) {} });
     const page = load(['js/fogofwar.js', 'js/fog-display.js'], { document: { createElement: () => { canvases++; return { width: 0, height: 0, getContext: ctx2d }; } }, Uint8ClampedArray });
     const Fog2 = vm.runInContext('FogOfWarManager', page), g = new Fog2(game());
-    assert.deepEqual([Fog2.FEATHER_WORLD, Fog2.EDGE_MARGIN_WORLD, canvases, images, g.fogDirty], [5, 60, 3, 1, true]);
+    assert.deepEqual([Fog2.FEATHER_WORLD, Fog2.EDGE_MARGIN_WORLD, canvases, images, g.fogDirty], [8, 60, 3, 1, true]);   // 8 since the fog is mist (build 1191)
     assert.deepEqual([g._marginCells, g.displayWorldSize, g.fogDisplayCanvas.width], [30, 160, (N + 60) * 4]);
     g.updateFog();
     assert.deepEqual([images, g.visibilityVersion], [2, 2]);

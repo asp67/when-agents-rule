@@ -3160,7 +3160,7 @@
                 const size = fow.displayWorldSize || fow.mapSize || 800;
                 this._fogEntry = {
                     buf: this._buf('gridPlane', [size, 1, 1]),
-                    tex: this._fogTex, tint: this.WHITE,
+                    tex: this._fogTex, tint: this.WHITE, mist: true,   // drawn as drifting mist (step A8)
                     model: M().translation(0, 0.95, 0)
                 };
             } else if (fow.fogDirty) {
@@ -3311,6 +3311,9 @@
             gl.uniform4fv(this.prog.uniforms.uSoil, this._soil || [0.5, 0.45, 0.35, 0]);
             gl.uniform3fv(this.prog.uniforms.uSky, this._sky);
             gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
+            // The air between: its colour and amount at this hour, and the distance it is counted from.
+            gl.uniform4fv(this.prog.uniforms.uAir, atmosphere.air || [0, 0, 0, 0]);
+            gl.uniform2f(this.prog.uniforms.uAirDist, cam.dist || 1, atmosphere.airRate || 0);
             gl.activeTexture(gl.TEXTURE0);
             gl.uniform1i(this.prog.uniforms.uTex, 0);
             gl.uniform3fv(this.prog.uniforms.uEye,cam.eye);
@@ -3356,7 +3359,7 @@
             const U = this.prog.uniforms, NO_CLOTH = this._noCloth || (this._noCloth = [0, 0, 0, 0]);
             const NO_LIGHTS = this._noLocalLights || (this._noLocalLights = new Float32Array(12));
             const draw = (list, unlit) => {
-                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit, bones;
+                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit, bones, mist;
                 for (const obj of list) {
                     // A unit's bones: sent when they change, and the shader told whether the
                     // mesh has any (uSkin). Batches of one unit follow each other, so a unit
@@ -3371,6 +3374,8 @@
                     // that is part of the ground says so and takes the ground's light.
                     const ul = obj.lit ? 0 : unlit;
                     if (ul !== lit) { gl.uniform1f(U.uUnlit, ul); lit = ul; }
+                    const ms = obj.mist ? 1 : 0;
+                    if (ms !== mist) { gl.uniform1f(U.uMist, ms); mist = ms; }
                     const v = obj.vegetation ? 1 : 0;
                     if (v !== veg) { gl.uniform1f(U.uVegetation, v); veg = v; }
                     if (obj.tex !== tex) { gl.bindTexture(gl.TEXTURE_2D, obj.tex); tex = obj.tex; }

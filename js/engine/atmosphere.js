@@ -53,6 +53,18 @@
         saturation: 1.12, nightSaturation: 0.92, duskSaturation: 0.08,
         rim: 1.6, nightRim: 3.2             // sky light on an edge turned away: what lifts a figure off dark ground
     };
+    // The air between the eye and what it looks at (overhaul step A8). What lies beyond
+    // the point the camera looks at takes on the air's colour, more the farther it is:
+    // none at that point, amount at most, rate = how fast it gets there (of the amount,
+    // 1 - exp(-rate x how many times farther)). The colour is the hour's sky lifted
+    // toward tone by lift; at night there is less of it and it is the night's own blue.
+    // Measured against the look-at distance, not in world units, so the whole-map view
+    // is not a wall of haze and a low shot across a town still has depth.
+    EngineAtmosphere.AIR = { amount: 0.34, nightAmount: 0.26, rate: 0.75, lift: 0.52, nightLift: 0.10, tone: [0.80, 0.86, 0.93] };
+    EngineAtmosphere.air = (day) => {
+        const A=EngineAtmosphere.AIR, n=day.night, lift=A.lift+(A.nightLift-A.lift)*n;
+        return [0,1,2].map(i=>day.sky[i]+(A.tone[i]-day.sky[i])*lift).concat(A.amount+(A.nightAmount-A.amount)*n);
+    };
     // daylight() and, from it, what the Atmospheric shader is given: the key light (sun
     // or moon), the fill from above and from below, the grade (gain per channel, then
     // saturation) and the strength of the rim.
@@ -66,7 +78,7 @@
             return (byDay+(byNight-byDay)*n)*(1+dusk*L.duskKey[i]);
         });
         const fillLow=key.map((v,i)=>v*ground[i]*L.bounce+fillHigh[i]*L.fillLow);
-        return { night:n, sun:day.sun, sky:day.sky, key, fillHigh, fillLow,
+        return { night:n, sun:day.sun, sky:day.sky, key, fillHigh, fillLow, air:EngineAtmosphere.air(day), airRate:EngineAtmosphere.AIR.rate,
             grade:[1+dusk*L.duskGain[0],1+dusk*L.duskGain[1],1+dusk*L.duskGain[2],
                 L.saturation+(L.nightSaturation-L.saturation)*n+dusk*L.duskSaturation],
             rim:L.rim+(L.nightRim-L.rim)*n };
@@ -154,6 +166,9 @@
         uniform float uShadowDepthPerTexel;
         uniform float uUnlit, uAlpha, uTime, uNight, uMaterial, uAtmosphere, uShadowStrength, uShadowTexel;
         uniform vec2 uHaze;
+        uniform vec4 uAir;
+        uniform vec2 uAirDist;
+        uniform float uMist;
         uniform vec3 uKey, uFillHigh, uFillLow;
         uniform vec4 uGrade;
         uniform float uRim;
@@ -235,6 +250,16 @@
             // ground wears, so a path shows through it.
             if (uVegetation > 0.5 && vPebble < 0.5 && ground.y > 0.14 + 0.5*waveHash(floor(vWorld.xz*1.6))) discard;
             vec4 t = texture2D(uTex, vUv);
+            // The fog of war as mist (overhaul step A8): two soft fields drifting across
+            // each other make banks that are a little lighter and denser, and by night
+            // the mist is dark, not a grey sheet over a dark land. It only ever thickens:
+            // what the fog hides stays as hidden as it was.
+            if (uMist > 0.5) {
+                vec2 q = vWorld.xz*0.026;
+                float bank = waveField(q + uTime*vec2(0.021,0.012)).x*0.62 + waveField(q*2.4 - uTime*vec2(0.017,0.029)).x*0.38;
+                t.rgb *= (0.86 + 0.30*bank)*mix(vec3(1.0), vec3(0.34,0.40,0.56), uNight);
+                t.a = min(1.0, t.a*(1.0 + 0.16*bank));
+            }
             vec3 base = t.rgb * uTint;
             if (uVegetation > 0.5) base *= mix(0.90,1.06,vGrassTip);
             if (uVegetation > 0.5 && vPebble > 0.5) base = mix(
@@ -375,6 +400,11 @@
             col = mix(vec3(dot(col,vec3(0.299,0.587,0.114))),col,uGrade.a)*uGrade.rgb;
             col = mix(legacy,col,uAtmosphere);
             col = mix(col,base,uUnlit);
+            // The air between (overhaul step A8): what lies beyond the point the camera
+            // looks at fades toward the air's colour. Not what is drawn unlit -- a flame
+            // or a marker is seen through it -- and not in Simple lighting.
+            float beyond = max(0.0, vDepth/max(1.0,uAirDist.x) - 1.0);
+            col = mix(col, uAir.rgb, uAir.a*(1.0-exp(-beyond*uAirDist.y))*(1.0-uUnlit)*uAtmosphere);
             float haze = clamp((vDepth-uHaze.x)/max(1.0,uHaze.y-uHaze.x),0.0,1.0);
             float alpha = uMaterial > 0.5 && uMaterial < 2.5 ? 1.0 : t.a;
             gl_FragColor = vec4(mix(col,uSky,haze),alpha*uAlpha);
