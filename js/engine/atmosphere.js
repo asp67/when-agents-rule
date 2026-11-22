@@ -255,9 +255,16 @@
                 base*=mix(uGroundGain,1.0,water);
                 // Worn ground goes toward the bare soil of this land (uSoil, and how far),
                 // the ground's own grain and a slow wobble breaking the edge of a path.
-                float worn=smoothstep(0.10,0.62,ground.y+grain*0.5+0.09*sin(vWorld.x*0.83+vWorld.z*0.41)*sin(vWorld.z*0.67-vWorld.x*0.29))*(1.0-water);
-                base=mix(base,uSoil.rgb*(0.94+grain*0.5),worn*uSoil.a);
-                groundCover*=1.0-worn;
+                // Only where the ground IS worn, and the breaking-up grows with the wear:
+                // as first written (build 1176) the grain alone passed the threshold, so
+                // unworn ground everywhere took specks of soil, in Simple lighting and on
+                // Low too, where nothing is meant to wear at all.
+                if(ground.y>0.004){
+                    float edge=(grain*0.5+0.09*sin(vWorld.x*0.83+vWorld.z*0.41)*sin(vWorld.z*0.67-vWorld.x*0.29))*min(1.0,ground.y*6.0);
+                    float worn=smoothstep(0.10,0.62,ground.y+edge)*(1.0-water);
+                    base=mix(base,uSoil.rgb*(0.94+grain*0.5),worn*uSoil.a);
+                    groundCover*=1.0-worn;
+                }
             }
             float sun = max(dot(n,uSunDir),0.0);
             vec3 legacy = base*(uAmbient + uSunColor*sun);

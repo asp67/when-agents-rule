@@ -226,7 +226,19 @@ test('the shader: broad variation and relief on open ground, bare soil and thinn
     assert.match(src, /const vary = this\.graphicsQuality === 'low' \? EngineRenderer\.GROUND_VARY\.none\s+: \(EngineRenderer\.GROUND_VARY\[this\._theme\] \|\| EngineRenderer\.GROUND_VARY\.summer\);/);
     for (const v of Object.values(R.GROUND_VARY)) assert.ok(v[0] * (wa + wb + wc) <= 0.12, 'never more than an eighth lighter or darker');
     // Worn ground: toward this land's soil, the edge broken by the ground's grain; no grass on it.
-    assert.match(f, /float worn=smoothstep\(0\.10,0\.62,ground\.y\+grain\*0\.5\+[^;]+\)\*\(1\.0-water\);\s+base=mix\(base,uSoil\.rgb\*\(0\.94\+grain\*0\.5\),worn\*uSoil\.a\);\s+groundCover\*=1\.0-worn;/);
+    assert.match(f, /if\(ground\.y>0\.004\)\{\s+float edge=\(grain\*0\.5\+0\.09\*sin\([^;]+\)\*min\(1\.0,ground\.y\*6\.0\);\s+float worn=smoothstep\(0\.10,0\.62,ground\.y\+edge\)\*\(1\.0-water\);\s+base=mix\(base,uSoil\.rgb\*\(0\.94\+grain\*0\.5\),worn\*uSoil\.a\);\s+groundCover\*=1\.0-worn;\s+\}/);
+    // Unworn ground stays as it is, whatever its grain (build 1181: as first written, the grain alone
+    // passed the threshold and all ground took specks of soil, in Simple lighting and on Low too).
+    // The same sum in numbers: the grain runs to about 0.6 either way, the wobble to 0.09.
+    const smooth = (a, b, x) => { const k = Math.max(0, Math.min(1, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
+    const wornAt = (wear, grain, wobble) => (wear > 0.004 ? smooth(0.10, 0.62, wear + (grain * 0.5 + 0.09 * wobble) * Math.min(1, wear * 6)) : 0);
+    for (const grain of [-0.6, 0, 0.6]) for (const wobble of [-1, 1]) {
+        assert.equal(wornAt(0, grain, wobble), 0, 'no wear, no soil');
+        assert.ok(wornAt(0.02, grain, wobble) < 0.001, 'a first footstep is not a path');
+        assert.ok(wornAt(1, grain, wobble) > 0.95, 'ground worn bare is bare whatever the grain');
+    }
+    assert.ok(wornAt(0.3, 0.6, 1) > wornAt(0.3, -0.6, -1) + 0.3, 'and in between the grain breaks the edge');
+    assert.ok(smooth(0.10, 0.62, 0.6 * 0.5 + 0.09) > 0.5, 'which is what the unguarded sum gave on unworn ground');
     assert.match(f, /if \(uVegetation > 0\.5 && vPebble < 0\.5 && ground\.y > 0\.14 \+ 0\.5\*waveHash\(floor\(vWorld\.xz\*1\.6\)\)\) discard;/);
     assert.match(src, /this\._soil = \[\.\.\.palette\.soil\.map\(v => v \/ 255 \* bare\[0\]\), bare\[1\]\];/);
     assert.match(src, /gl\.uniform4fv\(this\.prog\.uniforms\.uSoil, this\._soil \|\| \[0\.5, 0\.45, 0\.35, 0\]\);/);
