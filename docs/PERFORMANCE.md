@@ -215,3 +215,39 @@ one run: draw calls on Low 463, on Balanced 660, on High 1066 (build 1173: 627, 
 Still not the plan's 900 calls with 400 units in view. What is left in a town is the
 props (a draw and a shadow draw each), a building's pole and runner, and the units
 themselves at four or five draws; and the frame still allocates its matrices anew.
+
+**Step 6, build 1186: the scatter on open ground.** Bushes, pebbles and flower tufts,
+some 500 to 770 a map, were a draw each and a shadow draw each, and each was looked up
+in the fog every frame. They are now merged the way the forests are: every prop in a
+square of 128 units (`EngineRenderer.PROP_CHUNK`) in one mesh per material, and one caster
+for the square's shadow. A prop still under fog is collapsed in place and restored when
+the ground around it is explored.
+
+A pebble, a flower or a cap of snow is the plain white texture times a tint of its own,
+a hundred and fifty greys for the pebbles alone, and a tint is set once per draw. Those
+tints are put in a strip texture, one texel each, and the prop reads its texel
+(`_propTintSlot`): the same colour to the eighth bit, in one draw for all of them. A
+square is then three or four draws and a shadow draw, whatever stands in it.
+
+Checked with stills of build 1185 against 1186 in all three lands, at four distances and
+close on single pebbles: the pictures differ only where units and water move, and by a
+row of pixels along the lower edge of two bushes.
+
+The benchmark, build 1185 against build 1186, one run each, the card quiet:
+
+| | draw calls, median | | ms per frame, mean | |
+| --- | --- | --- | --- | --- |
+| | 1185 | 1186 | 1185 | 1186 |
+| Low | 463 | 412 | 1.92 | 1.95 |
+| Balanced | 660 | 529 | 2.09 | 2.03 |
+| High | 1066 | 959 | 5.98 | 5.77 |
+| High, Cinematic light | | 965 | 5.63 | 5.63 |
+
+A tenth to a fifth fewer draw calls, and no frame time that can be told from the noise
+on this card; the triangles went up by a few thousand, because a square is drawn whole
+when a corner of it is in view. In the army view the scatter was a small part: 2641 to
+2571 draw calls with 200 units in view, 5.1 ms both. Where few props of a square are
+explored the square costs more than they did: four draws for one bush instead of two.
+
+Left of the diet: a building's pole and runner, the units at four or five draws, and
+the matrices a frame allocates anew.

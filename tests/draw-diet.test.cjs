@@ -12,7 +12,7 @@ function load() {
     scope.window.GLCore = { createMeshBuffers: (gl, mesh) => { made++; return { mesh, n: mesh.positions.length / 3 }; },
         createShadowBuffers: (gl, mesh) => { made++; return { mesh, n: mesh.positions.length / 3, shadowOnly: true }; }, drawMesh: (gl, prog, buf) => gl.drawn.push(buf) };
     vm.runInContext('Object.assign(globalThis, window);' + src('gamerenderer'), scope);
-    return { W: scope.window, R: vm.runInContext('window.EngineRenderer', scope), made: () => made };
+    return { W: scope.window, R: vm.runInContext('window.EngineRenderer', scope), made: () => made, scope };
 }
 const vertsOf = (W, parts) => parts.reduce((n, p) => n + W.EngineMesh[p.kind](...p.args).positions.length / 3, 0);
 
@@ -184,4 +184,91 @@ test('a worker\'s lantern is drawn as far as it can be seen: all of it up close,
     // Not on Balanced or Low, as before; and not for a soldier.
     r.graphicsQuality = 'balanced'; r.game._environmentSeconds = W.EngineAtmosphere.previewTime('summer', 'night');
     assert.deepEqual(at(MID - 5), { solid: '', casts: 0, flame: 0, glow: 0 });
+});
+
+// ---- the scatter on open ground (build 1186) -----------------------------------------------
+test('bushes, pebbles and flowers are drawn a chunk at a time, and a tint of its own is read from a strip', () => {
+    const { W, R, scope } = load(), m3 = W.M3D;
+    const log = [], strips = [];
+    let cur = null, freed = 0, textures = 0;
+    const gl = { ARRAY_BUFFER: 1, TEXTURE_2D: 2, RGBA: 3, UNSIGNED_BYTE: 4, NEAREST: 5, CLAMP_TO_EDGE: 6, TEXTURE_MIN_FILTER: 7, TEXTURE_MAG_FILTER: 8, TEXTURE_WRAP_S: 9, TEXTURE_WRAP_T: 10,
+        bindBuffer: (t, b) => { cur = b; }, bufferSubData: (t, off, d) => { cur.data.set(d, off / 4); log.push(cur); },
+        createTexture: () => ({ strip: ++textures }), bindTexture() {}, texParameteri() {}, deleteTexture() { textures--; },
+        texImage2D: (t, l, f, w, h, b, f2, ty, px) => strips.push({ w, h, px: Array.from(px) }) };
+    W.GLCore.createMeshBuffers = (g, mesh) => ({ mesh, position: { data: Float32Array.from(mesh.positions) } });
+    W.GLCore.createShadowBuffers = (g, mesh) => ({ mesh, shadowOnly: true, position: { data: Float32Array.from(mesh.positions) } });
+    W.GLCore.deleteMeshBuffers = () => { freed++; };
+    const r = Object.create(R.prototype);
+    const WHITE = [1, 1, 1];
+    Object.assign(r, { gl, WHITE, _theme: 'summer', _cull: () => false, terrain: { resources: [] }, fogView: null, game: null });
+    r.tex = new Proxy({}, { get: (o, k) => (o[k] = o[k] || { name: k }) });
+    const at = (kind, args, texName, tint, x, z) => ({ kind, args, texName, tint, model: m3.translation(x, 0.3, z), x, z });
+    const grey = v => [v, v, v];
+    r._props = [
+        at('sphere', [1, 7, 5], 'worldFoliage', WHITE, 10, 10), at('sphere', [1, 7, 5], 'worldFoliage', [0.88, 0.95, 0.85], 11, 10),
+        at('sphere', [1, 7, 5], 'worldFoliage', WHITE, 40, 70),
+        at('sphere', [1, 6, 4], 'white', grey(0.40), 20, 30), at('sphere', [1, 6, 4], 'white', grey(0.45), 60, 30), at('sphere', [1, 6, 4], 'white', grey(0.4001), 90, 90),
+        at('sphere', [1, 5, 4], 'white', [0.85, 0.84, 0.70], 100, 20),
+        at('sphere', [1, 6, 4], 'white', grey(0.50), 200, 30)          // the next square over
+    ];
+    const frame = () => { const dl = { opaque: [], blended: [], casters: [] }; r._pushPropChunks(dl); return dl; };
+    const dl = frame();
+    // Seven props in the first square: plain bushes, tinted bushes, and everything that is white times a tint.
+    const first = dl.opaque.slice(0, 3), names = first.map(e => (e.tex.name || 'strip') + (e.tint ? ' tinted' : ''));
+    assert.deepEqual(names.sort(), ['strip', 'worldFoliage', 'worldFoliage tinted'], 'three draws for seven props');
+    assert.equal(dl.opaque.length, 4, 'and one for the square beside it');
+    assert.ok(dl.opaque.every(e => e.noShadow === true));
+    assert.equal(dl.casters.length, 2, 'a caster a square: eight shadow draws were, two are');
+    const sphere = n => W.EngineMesh.sphere(...n).positions.length / 3;
+    assert.equal(dl.casters[0].buf.mesh.positions.length / 3, 3 * sphere([1, 7, 5]) + 3 * sphere([1, 6, 4]) + sphere([1, 5, 4]));
+    // The strip: one texel a tint, the same grey twice takes one, and each prop reads the middle of its own.
+    const N = R.PROP_TINTS, strip = strips[strips.length - 1];
+    assert.deepEqual([strip.w, strip.h, textures], [N, 1, 1]);
+    const b8 = v => Math.round(v * 255);
+    assert.deepEqual(strip.px.slice(0, 16), [b8(0.40), b8(0.40), b8(0.40), 255, b8(0.45), b8(0.45), b8(0.45), 255, b8(0.85), b8(0.84), b8(0.70), 255, 128, 128, 128, 255]);
+    assert.ok(strip.px.slice(16).every(v => v === 255));
+    const flat = first.find(e => !e.tex.name), uvs = flat.buf.mesh.uvs, n64 = sphere([1, 6, 4]);
+    const us = i => Array.from(new Set(Array.from(uvs.slice(i * 2, (i + n64) * 2)).filter((v, k) => k % 2 === 0)));
+    assert.deepEqual(us(0), [Math.fround(0.5 / N)], 'the first pebble: texel 0');
+    assert.deepEqual(us(n64), [Math.fround(1.5 / N)], 'the second: texel 1');
+    assert.deepEqual(us(2 * n64), [Math.fround(0.5 / N)], 'a grey that rounds to the first one shares its texel');
+    assert.ok(Array.from(uvs).filter((v, k) => k % 2 === 1).every(v => v === 0.5));
+    assert.equal(flat.tint, undefined, 'and no tint on the draw: the strip is the colour');
+    // Under fog a prop is collapsed in its batch and in the caster, and comes back when the ground is explored.
+    const chunk = r._propChunkList[0], caster = chunk.groups.find(g => g.caster), bush = chunk.members[2];
+    let hidden = true;
+    scope.EngineGrass = { visibleRect: (fow, x, z, ex, ez, all) => { assert.deepEqual([ex, ez, all], [3, 3, true]); return !(hidden && x === 40 && z === 70); } };
+    log.length = 0;
+    const fogged = frame();
+    assert.equal(fogged.opaque.length, 4);
+    assert.equal(log.length, 2, 'one write in its batch, one in the caster');
+    const inCaster = bush.ranges.find(x => x.g === caster);
+    assert.ok(caster.buf.position.data.subarray(inCaster.start * 3, (inCaster.start + inCaster.count) * 3).every(v => v === 0));
+    hidden = false; log.length = 0;
+    frame();
+    assert.equal(log.length, 2);
+    assert.ok(caster.buf.position.data.subarray(inCaster.start * 3, (inCaster.start + inCaster.count) * 3).some(v => v !== 0), 'restored');
+    frame();
+    assert.equal(log.length, 2, 'nothing written while nothing changes');
+    // A square out of view is not looked at; one with nothing explored is not built.
+    r._cull = (x) => x > 128;
+    assert.equal(frame().opaque.length, 3);
+    // A new map frees the old one's chunks and its strip.
+    r._freePropChunks();
+    assert.deepEqual([freed, textures, r._propChunkList, r._propTints], [4 + 2, 0, null, null]);
+    // Past the strip's width a tint keeps a draw of its own rather than a wrong colour.
+    r._props = []; for (let i = 0; i < N + 2; i++) r._props.push(at('sphere', [1, 6, 4], 'white', [i / 255, 0, 0], 5 + (i % 10), 5));
+    const many = frame();
+    assert.equal(many.opaque.length, 1 + 2);
+    assert.equal(many.opaque.filter(e => e.tint).length, 2);
+});
+
+test('the scatter is kept as recipes and drawn through its chunks only', () => {
+    const s = src('gamerenderer');
+    assert.match(s, /props\.push\(\{ kind, args, texName: tex, tint, model: TRSp\(x, y, z, sx, sy, sz, ry\), x, z \}\)/);
+    assert.match(s, /this\._freePropChunks\(\);\s+this\._props = props;/);
+    assert.match(s, /if \(this\._props && this\._halfH < 90\) this\._pushPropChunks\(dl\);/);
+    assert.doesNotMatch(s, /dl\.opaque\.push\(pr\)/);
+    // The forests' builder is the one that merges them; a prop brings its own parts to it.
+    assert.match(s, /const e = mb\.entries \|\| this\._resourceEntries\(rs\[mb\.i\], mb\.i\);/);
 });

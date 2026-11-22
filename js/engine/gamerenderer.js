@@ -794,8 +794,8 @@
             const m3 = M();
             // Actual ground cover sits above the blended terrain surface; no
             // duplicate painted bushes, flowers or pebble spots underneath it.
-            // Prebaked entries, themed, seeded (a map seed reproduces the scatter),
-            // drawn only below halfH 90 (sub-pixel beyond) and culled per prop.
+            // Themed, seeded (a map seed reproduces the scatter), drawn only below
+            // halfH 90 (sub-pixel beyond), in chunks: see _pushPropChunks.
             let pSeed = 424242;
             if (terrain.seed != null && terrain.seed !== '') {
                 pSeed = 0;
@@ -810,7 +810,7 @@
                 return m3.multiply(m, m3.scaling(sx, sy, sz));
             };
             const prop = (kind, args, tex, tint, x, y, z, sx, sy, sz, ry) =>
-                props.push({ buf: this._buf(kind, args), tex: this.tex[tex], tint, model: TRSp(x, y, z, sx, sy, sz, ry), x, z });
+                props.push({ kind, args, texName: tex, tint, model: TRSp(x, y, z, sx, sy, sz, ry), x, z });
             const bush = (snowCap) => {
                 const x = (rng() * 2 - 1) * HALF, z = (rng() * 2 - 1) * HALF;
                 const s = 0.45 + rng() * 0.5;
@@ -843,7 +843,95 @@
                 }
                 for (let i = 0; i < 150; i++) pebble(Array(3).fill(.40+.10*i/149),'white');
             }
+            this._freePropChunks();
             this._props = props;
+        }
+
+        // ---- the scatter on open ground, in chunks (overhaul step A4) -------------
+        // Bushes, pebbles and flower tufts were a draw each and a shadow draw each: some
+        // 65 and 65 in a town view, and each looked up in the fog every frame. They are
+        // merged the way the forests are (_buildResourceChunk): every prop in a square of
+        // PROP_CHUNK units in one mesh per material, and one caster for the square's
+        // shadow. A prop still under fog is collapsed in place and restored when the
+        // ground around it is explored.
+        //
+        // A pebble, a flower or a cap of snow is the plain white texture times a tint of
+        // its own (a hundred and fifty greys for the pebbles), and a tint is set once per
+        // draw. So those tints are put in a strip texture, one texel each, and the prop
+        // reads its texel: the same colour, in one draw for all of them.
+        static get PROP_CHUNK() { return 128; }
+        static get PROP_TINTS() { return 64; }
+
+        _propTintSlot(tint) {
+            const T = this._propTints || (this._propTints = { slots: new Map(), px: [], tex: null, painted: -1 });
+            const rgb = [0, 1, 2].map(i => Math.max(0, Math.min(255, Math.round(tint[i] * 255))));
+            const key = rgb.join(',');
+            if (!T.slots.has(key)) {
+                if (T.slots.size >= EngineRenderer.PROP_TINTS) return null;
+                T.slots.set(key, T.slots.size);
+                T.px.push(rgb);
+            }
+            return T.slots.get(key);
+        }
+
+        _propTintTexture() {
+            const T = this._propTints, gl = this.gl, n = EngineRenderer.PROP_TINTS;
+            if (T.tex && T.painted === T.px.length) return T.tex;
+            const px = new Uint8Array(n * 4).fill(255);
+            T.px.forEach((rgb, slot) => px.set(rgb, slot * 4));
+            if (!T.tex) T.tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, T.tex);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            T.painted = T.px.length;
+            return T.tex;
+        }
+
+        _propChunks() {
+            if (this._propChunkList) return this._propChunkList;
+            const CH = EngineRenderer.PROP_CHUNK, byKey = new Map(), list = [];
+            for (const p of this._props || []) {
+                const cx = Math.floor(p.x / CH), cz = Math.floor(p.z / CH), key = cx + ',' + cz;
+                let c = byKey.get(key);
+                if (!c) { c = { x: (cx + 0.5) * CH, z: (cz + 0.5) * CH, members: [], groups: null }; byKey.set(key, c); list.push(c); }
+                // On the white texture the tint is the whole colour: read it from the strip.
+                const slot = p.texName === 'white' ? this._propTintSlot(p.tint) : null;
+                const en = slot != null
+                    ? { kind: p.kind, args: p.args, texName: '#tints', flat: (slot + 0.5) / EngineRenderer.PROP_TINTS, model: p.model }
+                    : { kind: p.kind, args: p.args, texName: p.texName, tex: this.tex[p.texName], tint: p.tint === this.WHITE ? null : p.tint, model: p.model };
+                c.members.push({ x: p.x, z: p.z, shown: false, ranges: [], entries: { opaque: [en], blended: [] } });
+            }
+            return (this._propChunkList = list);
+        }
+
+        _freePropChunks() {
+            const gl = this.gl;
+            for (const c of this._propChunkList || []) for (const g of c.groups || []) GLCore.deleteMeshBuffers(gl, g.buf);
+            this._propChunkList = null;
+            if (this._propTints) { if (this._propTints.tex) gl.deleteTexture(this._propTints.tex); this._propTints = null; }
+        }
+
+        _pushPropChunks(dl) {
+            const fow = this._fow(), seen = typeof EngineGrass !== 'undefined' ? EngineGrass.visibleRect : null;
+            const margin = EngineRenderer.PROP_CHUNK * 0.71 + 3;
+            for (const c of this._propChunks()) {
+                if (this._cull(c.x, c.z, margin)) continue;
+                // Shown where all the ground around it is explored, as each was before.
+                let want = 0;
+                for (const mb of c.members) { mb.want = !seen || seen(fow, mb.x, mb.z, 3, 3, true); if (mb.want) want++; }
+                if (!want && !c.groups) continue;
+                if (!c.groups) this._buildResourceChunk(c);
+                let shown = 0;
+                for (const mb of c.members) {
+                    if (mb.want !== mb.shown) this._showResource(mb, mb.want);
+                    if (mb.shown) shown++;
+                }
+                if (!shown) continue;
+                for (const g of c.groups) (g.caster ? (dl.casters || (dl.casters = [])) : dl.opaque).push(g.entry);
+            }
         }
 
         _resourceEntries(res, i) {
@@ -943,10 +1031,18 @@
         _buildResourceChunk(c) {
             const rs = this.terrain.resources, gl = this.gl;
             const src = this._resSrc || (this._resSrc = new Map());
-            const mesh = (kind, args) => {
+            // flat: every corner reads one texel of the tint strip (see _propTintSlot).
+            const mesh = (kind, args, flat) => {
                 const k = kind + ':' + args.join(',');
                 if (!src.has(k)) src.set(k, EngineMesh[kind](...args));
-                return src.get(k);
+                if (flat == null) return src.get(k);
+                const kf = k + '@' + flat;
+                if (!src.has(kf)) {
+                    const m = src.get(k), uvs = new Float32Array(m.uvs.length);
+                    for (let i = 0; i < uvs.length; i += 2) { uvs[i] = flat; uvs[i + 1] = 0.5; }
+                    src.set(kf, { positions: m.positions, normals: m.normals, uvs, indices: m.indices });
+                }
+                return src.get(kf);
             };
             const open = new Map(), groups = [];
             // Every solid part goes into its material's batch for the picture and, a second
@@ -966,10 +1062,11 @@
                 g.nv += nv;
             };
             for (const mb of c.members) {
-                const e = this._resourceEntries(rs[mb.i], mb.i);
+                const e = mb.entries || this._resourceEntries(rs[mb.i], mb.i);   // a prop brings its own
                 for (const [en, blend] of [...e.opaque.map(x => [x, false]), ...e.blended.map(x => [x, true])]) {
-                    const m = mesh(en.kind, en.args);
-                    place(en.texName + '|' + (en.tint ? en.tint.join(',') : '') + '|' + blend, () => ({ tex: en.tex, tint: en.tint || null, blend }), mb, m, en.model);
+                    const m = mesh(en.kind, en.args, en.flat);
+                    place(en.texName + '|' + (en.tint ? en.tint.join(',') : '') + '|' + blend,
+                        () => ({ tex: en.flat != null ? this._propTintTexture() : en.tex, tint: en.tint || null, blend }), mb, m, en.model);
                     if (!blend) place('caster', () => ({ caster: true }), mb, m, en.model);
                 }
             }
@@ -2419,13 +2516,7 @@
                 this.grassStats.cpuMs = performance.now() - grassStart;
             }
             // (sub-pixel at halfH 90+, and the draw-call budget thanks us)
-            if (this._props && this._halfH < 90) {
-                for (const pr of this._props) {
-                    if (this._cull(pr.x, pr.z, 3)) continue;
-                    if (typeof EngineGrass !== 'undefined' && !EngineGrass.visibleRect(this._fow(),pr.x,pr.z,3,3,true)) continue;
-                    dl.opaque.push(pr);
-                }
-            }
+            if (this._props && this._halfH < 90) this._pushPropChunks(dl);
 
             // resources (fog toggles handle visibility; depletion nulls res.mesh)
             if (this.terrain && this.terrain.resources) this._pushResourceChunks(dl);
