@@ -83,6 +83,17 @@ const DIR_CONTACT_PAIR_COOLDOWN_MS = 45000;
 // push: fraction the frame tightens over the shot — life without motion sickness.
 // pan: radians of yaw drift ACROSS the shot. Fights only, and deliberately.
 //
+// Close-up craft (overhaul step B5, build 1212). Three more fields, all of them honoured
+// only INSIDE a shot: a cut still lands where it lands, sharp where the new shot says.
+// drift: radians the camera eases round its subject over the WHOLE shot. Close shots:
+//        a face held dead still is a photograph. Not where the camera stands on a tripod
+//        (pose.eye), which turns to follow and must not walk.
+// focus: how much of the focus effect the shot asks for, 0 to 1, whatever its height.
+//        The sharp line of the picture then lies on the subject, not on its middle.
+// pull:  [from, to] as shares of the shot's time. Between them the sharp line travels
+//        from the subject to the shot's second subject (pose.second): from the scout to
+//        what it found, from the building under attack to who attacks it.
+//
 // The economy half of a match wants what it already has: no panning, a slow tighten,
 // a good fixed angle, the overview beat. It is slow play and the camera should be
 // slow with it. A fight is the opposite and often lasts seconds -- so those shots cut
@@ -95,13 +106,13 @@ const DIR_SHOTS = {
     selected:  { dur: [9000, 9000],   pitch: 0.42, track: true,  push: 0 },
     brawl:     { dur: [2200, 3400],   pitch: 0.44, track: true,  push: 0.06, pan: 0.11 },
     imminent:  { dur: [1800, 2400],   pitch: 0.44, track: true,  push: 0 },
-    pov:       { dur: [5500, 8000],   pitch: 0.24, track: false, push: 0 },
+    pov:       { dur: [5500, 8000],   pitch: 0.24, track: false, push: 0,    focus: 0.7, pull: [0.2, 0.6] },
     // Pitch is SCOUT's, not a lower one of its own. Nearly every contact is cut to
     // from the scout shot -- it is the same unit, one second later, having found
     // somebody -- and arriving at a different elevation made a continuation read as a
     // jump to somewhere else. Short duration still: a near miss IS short, and holding
     // it past the moment turns a discovery into two units standing about.
-    contact:   { dur: [3500, 5000],   pitch: 0.28, track: true,  push: 0.05 },
+    contact:   { dur: [3500, 5000],   pitch: 0.28, track: true,  push: 0.05, focus: 0.8, pull: [0.25, 0.7] },
     wonder:    { dur: [8000, 10500],  pitch: 0.34, track: false, push: 0.10 },
     follow:    { dur: [8000, 12000],  pitch: 0.36, track: true,  push: 0 },
     walk:      { dur: [6500, 9000],   pitch: 0.25, track: true,  push: 0 },
@@ -113,8 +124,8 @@ const DIR_SHOTS = {
     overview:  { dur: [9000, 12000],  pitch: 0.50, track: false, push: 0 },
     // Close-ups track from the first frame (settle 0): at that frame a unit walking
     // waits for nobody. Aimed at chest height (pose.lookY) with a slow push in.
-    closeup:   { dur: [3500, 4500],   pitch: 0.17, track: true,  push: 0.04, settle: 0 },
-    clash:     { dur: [2200, 2900],   pitch: 0.17, track: true,  push: 0,    settle: 0 }
+    closeup:   { dur: [3500, 4500],   pitch: 0.17, track: true,  push: 0.07, settle: 0, drift: 0.07, focus: 1 },
+    clash:     { dur: [2200, 2900],   pitch: 0.17, track: true,  push: 0.03, settle: 0, drift: 0.05, focus: 1 }
 };
 
 class Director {
@@ -540,7 +551,7 @@ class Director {
                         x: b.x + (dx / L) * 14, z: b.z + (dz / L) * 14,
                         yaw: this.snapYaw(this.yawAlong(dx, dz)),
                         halfH: Math.max(26, Math.min(70, L * 0.9 + 20)),
-                        subject: { kind: 'ent', ent: b }
+                        subject: { kind: 'ent', ent: b }, second: threat
                     };
                 });
             }
@@ -711,7 +722,7 @@ class Director {
                         // 26 is the scout shot's exact value; this opens a little with
                         // the gap and stops well short of where it was.
                         halfH: Math.max(26, Math.min(42, 24 + L * 0.22)),
-                        subject: { kind: 'ent', ent: mine }
+                        subject: { kind: 'ent', ent: mine }, second: them
                     };
                 });
                 break;   // one contact shot offered at a time, the closest
@@ -966,6 +977,12 @@ class Director {
             const k2 = Math.min(1, (held - settle) / (2000 * this.lapse));
             this.shot.pose.yaw = this.shot.pose.yaw0 + this.shot.panDir * spec.pan * k2;
         }
+        // The drift of a close shot (step B5): a few degrees round the subject, eased in and
+        // out over the time the shot was planned for, the same way round as its arc would go.
+        if (spec.drift && !this.shot.pose.eye) {
+            const kd = Math.min(1, held / Math.max(1, this.shot.planned - this.shot.born));
+            this.shot.pose.yaw = this.shot.pose.yaw0 + this.shot.panDir * spec.drift * kd * kd * (3 - 2 * kd);
+        }
         // A slow tighten over the shot. Small on purpose: enough that the frame is
         // alive, not enough to notice as movement.
         const k = spec.push ? (1 - spec.push * Math.min(1, held / (this.shot.until - this.shot.born))) : 1;
@@ -979,8 +996,28 @@ class Director {
             halfH: this.shot.pose.halfH * k,
             lookY: this.shot.pose.lookY || 0, closeup: !!this.shot.pose.closeup,
             eye: this.shot.pose.eye || null,
+            focus: spec.focus ? this.focusOf(spec, held) : null,
             cut
         };
+    }
+
+    // What should be sharp in the picture now (step B5): a place in the world and how much
+    // of the focus effect the shot asks for. The subject, at the height the shot looks at;
+    // in a shot with a second subject the place travels to it while the pull runs, and
+    // stays on the first if the second has fallen. Null when the subject is gone.
+    focusOf(spec, held) {
+        const shot = this.shot, g = this.game;
+        const p = (shot.subject && g._resolveCamSubject(shot.subject)) || shot.pose;
+        const y = shot.pose.lookY || 1;
+        let x = p.x, z = p.z;
+        const to = shot.pose.second;
+        if (spec.pull && to && to.health > 0) {
+            const total = Math.max(1, shot.planned - shot.born);
+            const t = Math.max(0, Math.min(1, (held / total - spec.pull[0]) / (spec.pull[1] - spec.pull[0])));
+            const s = t * t * (3 - 2 * t);
+            x += (to.x - x) * s; z += (to.z - z) * s;
+        }
+        return { x, y, z, amount: spec.focus };
     }
 
     // Is a decision bubble being read? The intent overlay says whether any bubble's point

@@ -150,7 +150,7 @@ test('the frame: a picture of its own only when one is wanted, never for the sec
     assert.ok(at('this._postFx.present(CW, CH,') < at('this._bloom.apply('));
     assert.ok(at('this._bloom.apply(') < at('draw(this._dl.bars, 1);'));
     assert.match(body, /sharpen: own\.s < 1 \? EnginePost\.SHARPEN : 0,/);
-    assert.match(body, /focus: own\.focus > 0 \? \[F\.line, F\.band, F\.blur \* own\.focus \* own\.sh \/ 1080\] : null/);
+    assert.match(body, /focus: own\.focus > 0 \? \[this\._focusNow == null \? F\.line : this\._focusNow, F\.band, F\.blur \* own\.focus \* own\.sh \/ 1080\] : null/);
     assert.match(body, /_bloom\.apply\(this\.PW \|\| this\.W, this\.PH \|\| this\.H, 0\.22 \+ 0\.3 \* atmosphere\.night, own \? this\._postFx\.scene : null\)/);
     assert.match(s, /if \(this\._postFailed\) \{ this\._postFailed = false; this\._sizeCanvas\(\); \}/);
     // Focus is on (build 1190, switched on from stills); the measuring switch is not.

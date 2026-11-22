@@ -465,6 +465,9 @@
         // height (lookY), and follows its subject tightly: at that frame a unit walking
         // at the usual easing would leave the picture in under a second.
         applyPose(shot, deltaTime) {
+            // What the shot wants sharp (step B5), and whether the picture has just cut.
+            this._shotFocus = shot.focus || null;
+            if (shot.cut) this._focusCut = true;
             const want = Math.max(shot.closeup ? CLOSE_MIN_HALF : MIN_HALF, Math.min(maxHalf(), shot.halfH));
             const lookY = shot.lookY || 0;
             if (shot.cut) {
@@ -708,7 +711,26 @@
         _focusAmount() {
             if (!this.tiltShift || this.graphicsQuality !== 'cinematic') return 0;
             const F = EngineRenderer.FOCUS;
-            return Math.max(0, Math.min(1, (F.far - this._halfH) / (F.far - F.near)));
+            const byHeight = Math.max(0, Math.min(1, (F.far - this._halfH) / (F.far - F.near)));
+            // A shot of the director's may ask for more than its height gives (step B5).
+            return this._shotFocus ? Math.max(byHeight, Math.min(1, this._shotFocus.amount || 0)) : byHeight;
+        }
+
+        // Which line of the picture is sharp (0 its bottom, 1 its top): its middle, where
+        // the camera looks, unless the director's shot names a place in the world (step
+        // B5). Then it is that place's line, kept away from the picture's edges, and it
+        // travels there rather than jumps: that travel is the focus pull. A cut jumps.
+        _focusLine(dt) {
+            const F = EngineRenderer.FOCUS, f = this._shotFocus;
+            let want = F.line;
+            if (f) {
+                const at = this.worldToScreen(f.x, f.y, f.z), h = this.canvas.clientHeight;
+                if (at && h > 0) want = Math.max(F.lineMin, Math.min(F.lineMax, 1 - at.y / h));
+            }
+            if (this._focusAt === undefined || this._focusCut) this._focusAt = want;
+            else this._focusAt += (want - this._focusAt) * Math.min(1, Math.max(0, dt) * F.pullRate);
+            this._focusCut = false;
+            return this._focusAt;
         }
 
         pinRenderSize(w, h) {
@@ -3597,7 +3619,8 @@
             const live = typeof game !== 'undefined' && game && game._actionCam && game.spectatorMode && game.gameStarted && game.directorPose;
             const shot = this.poseSource ? this.poseSource() : (live ? game.directorPose() : null);
             if (shot) this.applyPose(shot, deltaTime);
-            else if ((this._lookY || 0) > 0.001 || this._halfH < MIN_HALF) {
+            else this._shotFocus = null;
+            if (!shot && ((this._lookY || 0) > 0.001 || this._halfH < MIN_HALF)) {
                 // Leaving a close-up: back to the ground and the user's zoom range.
                 const k = Math.min(1, deltaTime * 2);
                 this._lookY = (this._lookY || 0) * (1 - k);
@@ -3611,6 +3634,7 @@
             // draw ------------------------------------------------------------
             const gl = this.gl;
             const cam = this._computeCam();
+            this._focusNow = this._focusLine(deltaTime);   // with this picture's camera
             if (this.game?.sound) this.game.sound.update();
             if (typeof game !== 'undefined' && game?._actionCam && game.spectatorMode
                 && game.gameStarted && game._director) {
@@ -3826,7 +3850,7 @@
             if (own) {
                 const F = EngineRenderer.FOCUS;
                 this._postFx.present(CW, CH, { sharpen: own.s < 1 ? EnginePost.SHARPEN : 0,
-                    focus: own.focus > 0 ? [F.line, F.band, F.blur * own.focus * own.sh / 1080] : null });
+                    focus: own.focus > 0 ? [this._focusNow == null ? F.line : this._focusNow, F.band, F.blur * own.focus * own.sh / 1080] : null });
                 gl.useProgram(this.prog);
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -3938,7 +3962,9 @@
     // from far up; the sharp band lies around line of the picture (0.5 = its middle,
     // where the camera looks), band of the picture's height to either side; blur is the
     // radius at the picture's top and bottom edge, in pixels of a 1080-line picture.
-    EngineRenderer.FOCUS = { near: 14, far: 28, line: 0.5, band: 0.17, blur: 5 };
+    // lineMin, lineMax: how near the picture's bottom and top a shot may put the sharp line
+    // (step B5); pullRate: how fast the line travels to where it is wanted, per second.
+    EngineRenderer.FOCUS = { near: 14, far: 28, line: 0.5, band: 0.17, blur: 5, lineMin: 0.24, lineMax: 0.76, pullRate: 3 };
     EngineRenderer.CONTACT = 0.7;
     EngineRenderer.GROUND_VARY = { summer: [0.11, 1.0], desert: [0.09, 0.3], winter: [0.07, 0.0], none: [0, 0] };
     // Worn ground. What one pass adds, of 255 (so some twenty workers' passes show and
