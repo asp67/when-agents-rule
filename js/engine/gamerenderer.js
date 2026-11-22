@@ -385,7 +385,7 @@
             // across a meadow is earth, one across snow is grey slush, one across sand
             // is only firmer sand.
             const bare = EngineRenderer.WORN[theme] || EngineRenderer.WORN.summer;
-            this._soil = [...palette.soil.map(v => v / 255 * bare[0]), bare[1]];
+            this._soil = [...palette.soil.map(v => v / 255 * bare[0]), bare[1] * EngineRenderer.WORN_SHOW];
             // theme atmosphere: sun character first, then the sea beyond the map.
             this._sun = theme === 'winter' ? [0.74, 0.77, 0.83]
                 : (theme === 'desert' ? [0.99, 0.82, 0.59] : [0.96, 0.84, 0.66]);
@@ -965,7 +965,9 @@
                 const count = 12 + ((rng() * 18) | 0), spread = 1.3 + rng() * 1.4, parts = [];
                 for (let k = 0; k < count; k++) {
                     const a = rng() * 6.283, d = Math.sqrt(rng()) * spread, x = at[0] + Math.cos(a) * d, z = at[1] + Math.sin(a) * d;
-                    const h = 0.34 + rng() * 0.28, s = 0.11 + rng() * 0.07;
+                    // asp67, 22 November 2026, from matches: "the flowers are too big, reduce flower head size
+                    // to 0.5 of current and flower height over ground to 0.5 of current" (EngineRenderer.FLOWERS).
+                    const h = (0.34 + rng() * 0.28) * EngineRenderer.FLOWERS.height, s = (0.11 + rng() * 0.07) * EngineRenderer.FLOWERS.head;
                     parts.push(small('cylinder', [0.02, 0.024, 1, 4], STEM, TR(x, h / 2, z, 1, h, 1)));
                     parts.push(small('sphere', [1, 5, 3], rng() < 0.8 ? lead : second, TR(x, h, z, s, s * 0.7, s)));
                 }
@@ -3988,6 +3990,14 @@
     // The bare soil of each land: how dark against the palette's soil, and how far worn
     // ground goes toward it.
     EngineRenderer.WORN = { summer: [0.92, 0.85], desert: [0.84, 0.55], winter: [0.9, 0.5] };
+    // How much of that is shown. asp67, 22 November 2026: "the dirt paths the units leave behind
+    // are too dominant, can we make them 50% transparent ... so that they match into the scene
+    // more?" So a path is half ground and half soil at its most worn, in every land. What is
+    // worn, where and how fast is unchanged, and so is the thinner grass on a path.
+    EngineRenderer.WORN_SHOW = 0.5;
+    // A flower against the size it was first given (build 1204): its height over the ground and
+    // the size of its head. The stems keep their thickness.
+    EngineRenderer.FLOWERS = { height: 0.5, head: 0.5 };
     EngineRenderer.CONTACT_TILES_PER_FRAME = 24;
     EngineRenderer.RESOLUTION_CAP = { low: 1, balanced: 1.5, cinematic: 2 };
     window.EngineRenderer = EngineRenderer;

@@ -240,7 +240,11 @@ test('the shader: broad variation and relief on open ground, bare soil and thinn
     assert.ok(wornAt(0.3, 0.6, 1) > wornAt(0.3, -0.6, -1) + 0.3, 'and in between the grain breaks the edge');
     assert.ok(smooth(0.10, 0.62, 0.6 * 0.5 + 0.09) > 0.5, 'which is what the unguarded sum gave on unworn ground');
     assert.match(f, /if \(uVegetation > 0\.5 && vPebble < 0\.5 && ground\.y > 0\.14 \+ 0\.5\*waveHash\(floor\(vWorld\.xz\*1\.6\)\)\) discard;/);
-    assert.match(src, /this\._soil = \[\.\.\.palette\.soil\.map\(v => v \/ 255 \* bare\[0\]\), bare\[1\]\];/);
+    // Build 1228 (asp67: the paths "are too dominant, can we make them 50% transparent"): a path shows at half of
+    // what the land allows. Only how much is SHOWN: what is worn, and the thinner grass on it, are as they were.
+    assert.match(src, /this\._soil = \[\.\.\.palette\.soil\.map\(v => v \/ 255 \* bare\[0\]\), bare\[1\] \* EngineRenderer\.WORN_SHOW\];/);
+    assert.equal(R.WORN_SHOW, 0.5);
+    assert.deepEqual([R.WORN.summer[1], R.WORN.desert[1], R.WORN.winter[1]].map(v => Math.round(v * R.WORN_SHOW * 1000) / 1000), [0.425, 0.275, 0.25]);
     assert.match(src, /gl\.uniform4fv\(this\.prog\.uniforms\.uSoil, this\._soil \|\| \[0\.5, 0\.45, 0\.35, 0\]\);/);
     assert.match(src, /gl\.uniform2f\(this\.prog\.uniforms\.uGroundVary, vary\[0\], vary\[1\]\);/);
     assert.ok(R.WORN.summer[1] > R.WORN.winter[1] && R.WORN.summer[1] > R.WORN.desert[1], 'a path shows most across a meadow');

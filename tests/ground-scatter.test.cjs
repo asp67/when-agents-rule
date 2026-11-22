@@ -39,6 +39,7 @@ test('every land has its own ground: flowers in summer, dry tufts in winter and 
         }
     }
     assert.equal(S.winter.flowers, 0); assert.equal(S.summer.tufts, 0);
+    assert.deepEqual(JSON.parse(JSON.stringify(R.FLOWERS)), { height: 0.5, head: 0.5 });
 });
 
 test('the ground is the map\'s: the same seed lays the same, another seed another, and everything is sound and off the beach', () => {
@@ -72,6 +73,14 @@ test('flowers grow on green ground in drifts, beds lie on dry ground, logs besid
             const heads = p.parts.filter(q => q.kind === 'sphere'), stems = p.parts.filter(q => q.kind === 'cylinder');
             assert.ok(heads.length >= 12 && heads.length <= 29 && stems.length === heads.length, 'twelve to twenty-nine flowers, each on its stem');
             assert.ok(new Set(heads.map(q => q.tint.join())).size <= 2, 'one colour leads a patch, a second mixed in');
+            // Build 1228 (asp67: "the flowers are too big, reduce flower head size to 0.5 of current and flower height
+            // over ground to 0.5 of current"): a head 0.055 to 0.09 across where it was 0.11 to 0.18, standing 0.17 to
+            // 0.31 over the ground where it stood 0.34 to 0.62; and every head sits on the top of its stem.
+            heads.forEach((q, i) => {
+                assert.ok(q.model[0] >= 0.055 - 1e-6 && q.model[0] <= 0.09 + 1e-6, 'head ' + q.model[0]);
+                assert.ok(q.model[13] >= 0.17 - 1e-6 && q.model[13] <= 0.31 + 1e-6, 'height ' + q.model[13]);
+                assert.ok(Math.abs(stems[i].model[5] - q.model[13]) < 1e-6 && Math.abs(stems[i].model[13] - q.model[13] / 2) < 1e-6, 'the stem reaches the head');
+            });
         }
         if (k === 'bed') { assert.ok(cover(p.x, p.z) < 0.35); assert.ok(p.parts.length >= 5 && p.parts.length <= 9); }
         if (k === 'log') {
