@@ -2198,10 +2198,10 @@
                 const fp = building._grassFootprint;
                 this._occl.tread(building.x, building.z, EngineRenderer.TREAD.ruin, (fp ? Math.max(fp.ex, fp.ez) : 5) + 1.2); this._occl.treads++;
             }
-            // It breaks apart (overhaul step A9): its own parts thrown outward, turning, landing,
-            // fading (EngineFx.shatter). Where the tier has no effects, for a site still being
-            // built, a Wonder of too many parts, or a third building falling at once: it sinks
-            // into the ground as it always did.
+            // It comes down on itself (overhaul step A9): walls in chunks that tip inward, the
+            // roof dropping onto them and breaking up (EngineFx.collapse). Where the tier has no
+            // effects, for a site still being built, a farm, a Wonder of too many parts, or one
+            // building more than may fall at once: it sinks into the ground as it always did.
             if (!this._breakApart(building)) this._ghostFrom(building, 'building');
             this.removeBuilding(building);
             building.healthBar = null;
@@ -2210,24 +2210,33 @@
 
         _breakApart(building) {
             const eb = building._engine;
-            if (!eb || !eb.world || building.underConstruction || this._fxLevel() < 1 || typeof EngineFx === 'undefined' || !EngineFx.shatter) return false;
+            if (!eb || !eb.world || building.underConstruction || this._fxLevel() < 1 || typeof EngineFx === 'undefined' || !EngineFx.collapse) return false;
+            // A farm is a field and a fence: there is nothing in it to come down.
+            if (building.type === 'farm') return false;
             const breaks = this._breaks || (this._breaks = []);
-            if (breaks.length >= 2) return false;
+            if (breaks.length >= EngineFx.BREAK_AT_ONCE) return false;
             // The model it was drawn with (_composeBuilding): its own, or the stand-in for a kind unknown here.
             const type = EngineBuildings.TYPES.indexOf(building.type) >= 0 ? building.type : (building.isWonder ? 'wonder' : 'house');
             const parts = EngineBuildings.parts(type, { age: building.age, civ: building.civilization });
             if (!parts.length || parts.length > EngineFx.BREAK_MAX_PARTS) return false;
-            const pieces = EngineFx.shatter(parts, EngineFx.seedOf(building.id || (building.x + ',' + building.z)));
+            // Its parts cut into chunks (EngineFx.collapse), each a small mesh of its own in the
+            // building's space, made now and thrown away when the heap has faded.
+            const pieces = EngineFx.collapse(parts, EngineFx.seedOf(building.id || (building.x + ',' + building.z)), (kind, args) => EngineMesh[kind](...args));
+            if (!pieces.length) return false;
             for (const piece of pieces) {
                 const p = piece.p;
-                piece.entry = { buf: this._buf(p.kind, p.args), tex: this.tex[p.tex] || this.tex.white, tint: p.team ? eb.teamTint : (p.tint || this.WHITE) };
+                piece.entry = { buf: GLCore.createMeshBuffers(this.gl, piece.mesh), tex: this.tex[p.tex] || this.tex.white, tint: p.team ? eb.teamTint : (p.tint || this.WHITE) };
+                piece.mesh = null;
+                piece.m = new Float32Array(16);
             }
-            breaks.push({ pieces, world: eb.world, t: 0 });
-            // More dust than a sinking building raised, and from its corners.
             const fp = building._grassFootprint;
-            if (fp) for (const [sx, sz] of [[-1, -1], [1, 1]]) this.spawnDust(building.x + sx * fp.ex * 0.5, 0.8, building.z + sz * fp.ez * 0.5, 16, 0xb0a48e);
+            breaks.push({ pieces, world: eb.world, t: 0, dust: 0, x: building.x, z: building.z, ex: fp ? fp.ex * 0.6 : 2, ez: fp ? fp.ez * 0.6 : 2 });
             return true;
         }
+
+        // The chunks of collapsing buildings are meshes of their own: given back when a heap
+        // has faded, when a match ends and when the scene is cleared.
+        _dropBreak(b) { for (const piece of b.pieces) { GLCore.deleteMeshBuffers(this.gl, piece.entry.buf); piece.entry.buf = null; } }
 
         spawnProjectile(from, to, kind, shooter, timing) {
             if (this.game?.sound) this.game.sound.projectile(from, kind, shooter);
@@ -2322,6 +2331,7 @@
             this._rings.forEach(r => { r.active = false; });
             if (this._particles) this._particles.clear();
             this._ghosts = [];
+            if (this._breaks) for (const b of this._breaks) this._dropBreak(b);
             this._breaks = [];
         }
 
@@ -3264,15 +3274,20 @@
 
             if (!inset) this._marching = onTheMove;
 
-            // Buildings breaking apart (overhaul step A9): each piece where its fall has taken it.
+            // Buildings coming down (overhaul step A9): each chunk where its fall has taken it,
+            // and dust when the walls go, when the roof lands and as the heap settles.
             if (this._breaks && this._breaks.length) {
                 for (let i = this._breaks.length - 1; i >= 0; i--) {
                     const b = this._breaks[i];
                     b.t += once(b);
-                    if (b.t >= EngineFx.BREAK_SECONDS) { this._breaks.splice(i, 1); continue; }
+                    if (b.t >= EngineFx.BREAK_SECONDS) { this._dropBreak(b); this._breaks.splice(i, 1); continue; }
+                    while (fxP && b.dust < EngineFx.BREAK_DUST.length && b.t >= EngineFx.BREAK_DUST[b.dust]) {
+                        EngineFx.rubbleDust(fxP, b.x, b.z, b.ex, b.ez, b.dust === 1 ? 9 : 5);
+                        b.dust++;
+                    }
                     const fade = EngineFx.breakFade(b.t);
                     for (const piece of b.pieces) {
-                        const model = fm.multiply(b.world, EngineFx.shatterMatrix(piece, b.t, fm));
+                        const model = fm.multiply(b.world, EngineFx.collapseMatrix(piece, b.t, piece.m));
                         if (fade < 1) dl.blended.push({ buf: piece.entry.buf, tex: piece.entry.tex, tint: piece.entry.tint, alpha: fade, model });
                         else dl.opaque.push({ buf: piece.entry.buf, tex: piece.entry.tex, tint: piece.entry.tint, model });
                     }

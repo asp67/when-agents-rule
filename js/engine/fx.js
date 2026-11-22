@@ -369,34 +369,208 @@
         else fly(2, [0.42, 0.56, 0.26], 0.36);
     };
 
-    // ---- a building breaks apart (overhaul step A9, build 1208) -------------------------------
-    // A building that fell sank into the ground as one flat thing. Now its own parts come
-    // away from each other: each is thrown outward from the middle, the higher the further,
-    // turns as it falls, lands and lies, and all of them fade at the end. The parts are the
-    // building's (EngineBuildings.parts); which way each goes follows from the building's
-    // id, so a replay breaks it the same way.
-    EngineFx.BREAK_SECONDS = 1.6;
+    // ---- a building collapses (overhaul step A9; build 1208, done over in build 1210) -----------
+    // A building that fell sank into the ground as one flat thing. Build 1208 threw its
+    // parts outward whole, which looked like a kicked-over box of wooden blocks: a roof
+    // slid off in one piece. Now the building comes down on itself. Its large parts are
+    // cut into irregular chunks (a body is one solid block in the model, a roof one prism).
+    // The walls give way first, from the top, and their chunks tip and fall inward; the
+    // roof holds a moment longer, sags from the middle and drops onto them, breaking up
+    // as it goes. What is left lies as a low heap inside the footprint and fades.
+    // How it breaks follows from the building's id, so a replay breaks it the same way.
+    EngineFx.BREAK_SECONDS = 2.7;
+    EngineFx.BREAK_FADE = 0.7;           // the heap fades over this long at the end
     EngineFx.BREAK_MAX_PARTS = 140;      // a Wonder of more parts than this sinks as before
-    EngineFx.shatter = (parts, seed) => parts.filter(p => !p.blend && p.tex !== 'shadow').map((p, i) => {
-        const cx = p.m[12], cy = p.m[13], cz = p.m[14], d = Math.hypot(cx, cz);
-        const a = d > 0.3 ? Math.atan2(cz, cx) + (rnd(seed, i) - 0.5) * 0.9 : rnd(seed, i) * Math.PI * 2;
-        const out = 1.0 + rnd(seed, i + 50) * 2.4 + cy * 0.3, vy = 1.2 + rnd(seed, i + 100) * 3.2;
-        // When it lands: its middle a little above the ground.
-        const rest = Math.min(cy, 0.2);
-        return { p, cx, cy, cz, vx: Math.cos(a) * out, vz: Math.sin(a) * out, vy, rest,
-            lands: (vy + Math.sqrt(vy * vy + 18 * Math.max(0, cy - rest))) / 9,
-            spin: (rnd(seed, i + 150) - 0.5) * 6, axis: i % 3, delay: rnd(seed, i + 200) * 0.22 };
-    });
-    // Where a piece is t seconds after the building fell, as a matrix in the building's own space.
-    EngineFx.shatterMatrix = (piece, t, m3) => {
-        const tt = Math.min(Math.max(0, t - piece.delay), piece.lands);
-        const y = Math.max(piece.rest, piece.cy + piece.vy * tt - 4.5 * tt * tt), turn = piece.spin * tt;
-        const spin = piece.axis === 0 ? m3.rotationX(turn) : piece.axis === 1 ? m3.rotationY(turn) : m3.rotationZ(turn);
-        return m3.multiply(m3.multiply(m3.multiply(m3.translation(piece.cx + piece.vx * tt, y, piece.cz + piece.vz * tt), spin),
-            m3.translation(-piece.cx, -piece.cy, -piece.cz)), piece.p.m);
+    EngineFx.BREAK_MAX_PIECES = 110;     // chunks a building, all its parts together
+    EngineFx.BREAK_AT_ONCE = 4;          // buildings coming down at the same time; one more sinks as before
+    EngineFx.CHUNK = { wall: 1.5, roof: 1.25 };   // a part longer than this is cut again
+
+    // A mesh as loose triangles, eight numbers a corner (place, normal, texture place), moved
+    // by a part's matrix into the building's own space.
+    EngineFx.looseTriangles = (mesh, m) => {
+        const P = mesh.positions, N = mesh.normals, U = mesh.uvs, I = mesh.indices, out = new Array(I.length * 8);
+        // Normals go by the matrix's cofactors, so a part that was stretched keeps its faces' directions.
+        const c0 = m[5] * m[10] - m[6] * m[9], c1 = m[6] * m[8] - m[4] * m[10], c2 = m[4] * m[9] - m[5] * m[8];
+        const c3 = m[2] * m[9] - m[1] * m[10], c4 = m[0] * m[10] - m[2] * m[8], c5 = m[1] * m[8] - m[0] * m[9];
+        const c6 = m[1] * m[6] - m[2] * m[5], c7 = m[2] * m[4] - m[0] * m[6], c8 = m[0] * m[5] - m[1] * m[4];
+        for (let k = 0; k < I.length; k++) {
+            const i = I[k] * 3, j = I[k] * 2, o = k * 8, x = P[i], y = P[i + 1], z = P[i + 2], a = N[i], b = N[i + 1], c = N[i + 2];
+            out[o] = m[0] * x + m[4] * y + m[8] * z + m[12]; out[o + 1] = m[1] * x + m[5] * y + m[9] * z + m[13]; out[o + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+            const nx = c0 * a + c3 * b + c6 * c, ny = c1 * a + c4 * b + c7 * c, nz = c2 * a + c5 * b + c8 * c, l = Math.hypot(nx, ny, nz) || 1;
+            out[o + 3] = nx / l; out[o + 4] = ny / l; out[o + 5] = nz / l; out[o + 6] = U[j]; out[o + 7] = U[j + 1];
+        }
+        return out;
     };
-    // How much of the pieces shows: all of them, then fading over the last third.
-    EngineFx.breakFade = t => Math.max(0, Math.min(1, (EngineFx.BREAK_SECONDS - t) / (EngineFx.BREAK_SECONDS * 0.33)));
+    // Cut loose triangles in two along the plane n . p = d: [what lies before it, what lies
+    // behind]. Each half is closed again where it was cut, so a chunk is a solid thing and
+    // not a shell one can look into. (The closing face fans out from the middle of the cut,
+    // which is right for the plain shapes buildings are made of.)
+    EngineFx.cutTriangles = (tris, nx, ny, nz, d) => {
+        const EPS = 1e-5, front = [], back = [], cutEdges = [], side = [0, 0, 0];
+        const corner = o => [tris[o], tris[o + 1], tris[o + 2], tris[o + 3], tris[o + 4], tris[o + 5], tris[o + 6], tris[o + 7]];
+        const fan = (to, poly) => { for (let k = 1; k + 1 < poly.length; k++) to.push(...poly[0], ...poly[k], ...poly[k + 1]); };
+        for (let t = 0; t < tris.length; t += 24) {
+            let before = 0, behind = 0;
+            for (let k = 0; k < 3; k++) { const o = t + k * 8, s = tris[o] * nx + tris[o + 1] * ny + tris[o + 2] * nz - d; side[k] = s > EPS ? s : s < -EPS ? s : 0; if (side[k] > 0) before++; else if (side[k] < 0) behind++; }
+            if (!behind) { for (let k = 0; k < 24; k++) front.push(tris[t + k]); continue; }
+            if (!before) { for (let k = 0; k < 24; k++) back.push(tris[t + k]); continue; }
+            const f = [], b = [], on = [];
+            for (let k = 0; k < 3; k++) {
+                const a = corner(t + k * 8), sa = side[k], sc = side[(k + 1) % 3];
+                if (sa >= 0) f.push(a);
+                if (sa <= 0) b.push(a);
+                if (sa === 0) on.push(a);
+                if (sa * sc < 0) {
+                    const c = corner(t + ((k + 1) % 3) * 8), u = sa / (sa - sc), v = a.map((q, i) => q + (c[i] - q) * u);
+                    f.push(v); b.push(v); on.push(v);
+                }
+            }
+            fan(front, f); fan(back, b);
+            if (on.length === 2) cutEdges.push(on[0], on[1]);
+        }
+        if (cutEdges.length >= 6 && front.length && back.length) {
+            const mid = [0, 0, 0, 0, 0, 0, 0, 0];
+            for (const v of cutEdges) for (let i = 0; i < 8; i++) mid[i] += v[i] / cutEdges.length;
+            const length = Math.hypot(nx, ny, nz) || 1;
+            const face = (to, sx, sy, sz) => {
+                sx /= length; sy /= length; sz /= length;
+                for (let k = 0; k < cutEdges.length; k += 2) {
+                    let a = cutEdges[k], b = cutEdges[k + 1];
+                    const ux = a[0] - mid[0], uy = a[1] - mid[1], uz = a[2] - mid[2], vx = b[0] - mid[0], vy = b[1] - mid[1], vz = b[2] - mid[2];
+                    const wx = uy * vz - uz * vy, wy = uz * vx - ux * vz, wz = ux * vy - uy * vx, facing = wx * sx + wy * sy + wz * sz;
+                    if (Math.abs(facing) < 1e-9) continue;
+                    if (facing < 0) { const s = a; a = b; b = s; }
+                    for (const v of [mid, a, b]) to.push(v[0], v[1], v[2], sx, sy, sz, v[6], v[7]);
+                }
+            };
+            face(front, -nx, -ny, -nz); face(back, nx, ny, nz);
+        }
+        return [front, back];
+    };
+    const boundsOf = tris => {
+        const b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+        for (let o = 0; o < tris.length; o += 8) for (let k = 0; k < 3; k++) { const v = tris[o + k]; if (v < b[k]) b[k] = v; if (v > b[k + 3]) b[k + 3] = v; }
+        return b;
+    };
+    // Break loose triangles into chunks no longer than size, at most `most` of them: the
+    // longest chunk is cut again across its length, a little off the middle and a little
+    // askew, so no two chunks are alike and none is a brick.
+    EngineFx.chunks = (tris, size, most, seed) => {
+        const list = [{ tris, b: boundsOf(tris), depth: 0 }];
+        let turn = 0;
+        while (list.length < most) {
+            let pick = -1, longest = size;
+            for (let i = 0; i < list.length; i++) { const b = list[i].b, e = Math.max(b[3] - b[0], b[4] - b[1], b[5] - b[2]); if (e > longest && list[i].depth < 6) { longest = e; pick = i; } }
+            if (pick < 0) break;
+            const it = list[pick], b = it.b, ext = [b[3] - b[0], b[4] - b[1], b[5] - b[2]], axis = ext[0] >= ext[1] && ext[0] >= ext[2] ? 0 : ext[1] >= ext[2] ? 1 : 2;
+            const n = [0, 0, 0]; turn++;
+            for (let k = 0; k < 3; k++) n[k] = k === axis ? 1 : (rnd(seed, turn * 7 + k) - 0.5) * 0.7;
+            const l = Math.hypot(n[0], n[1], n[2]); n[0] /= l; n[1] /= l; n[2] /= l;
+            const at = [0, 1, 2].map(k => (b[k] + b[k + 3]) / 2 + (k === axis ? (rnd(seed, turn * 7 + 4) - 0.5) * 0.3 * ext[k] : 0));
+            const [f, k2] = EngineFx.cutTriangles(it.tris, n[0], n[1], n[2], n[0] * at[0] + n[1] * at[1] + n[2] * at[2]);
+            if (!f.length || !k2.length) { it.depth = 99; continue; }      // the plane missed it: leave it whole
+            list.splice(pick, 1, { tris: f, b: boundsOf(f), depth: it.depth + 1 }, { tris: k2, b: boundsOf(k2), depth: it.depth + 1 });
+        }
+        return list.map(it => it.tris);
+    };
+    // The chunks of a building and how each will fall. parts: EngineBuildings.parts();
+    // meshOf(kind, args): the part's mesh. A piece: its mesh in the building's own space,
+    // the part it came from, where its middle is (c), and its fall.
+    EngineFx.collapse = (parts, seed, meshOf) => {
+        const solid = parts.filter(p => !p.blend && p.tex !== 'shadow').map((p, i) => {
+            const tris = EngineFx.looseTriangles(meshOf(p.kind, p.args), p.m), b = boundsOf(tris);
+            return { p, i, tris, b, volume: Math.max(0.001, (b[3] - b[0]) * (b[4] - b[1]) * (b[5] - b[2])) };
+        });
+        if (!solid.length) return [];
+        // How high the building stands, going by its large parts (a flagpole does not count).
+        // What begins in its upper half is roof, or an upper floor, which comes down the same
+        // way; what begins below is wall.
+        const bySize = solid.slice().sort((a, b) => b.volume - a.volume);
+        let height = 0;
+        for (const s of bySize) if (s.volume >= bySize[0].volume * 0.08) height = Math.max(height, s.b[4]);
+        const top = Math.max(0.5, height * 0.55);
+        let reach = 0.5;
+        for (const s of solid) reach = Math.max(reach, Math.abs(s.b[0]), Math.abs(s.b[3]), Math.abs(s.b[2]), Math.abs(s.b[5]));
+        let spare = Math.max(0, EngineFx.BREAK_MAX_PIECES - solid.length);
+        const pieces = [];
+        for (const s of bySize) {
+            const high = s.b[1] >= height * 0.5;
+            const made = EngineFx.chunks(s.tris, high ? EngineFx.CHUNK.roof : EngineFx.CHUNK.wall, 1 + Math.min(spare, high ? 12 : 16), seed + s.i * 31);
+            spare -= made.length - 1;
+            for (const tris of made) pieces.push({ s, tris, high });
+        }
+        return pieces.map(({ s, tris, high }, i) => {
+            const n = tris.length / 8, positions = new Array(n * 3), normals = new Array(n * 3), uvs = new Array(n * 2), indices = new Array(n);
+            let cx = 0, cy = 0, cz = 0;
+            for (let k = 0; k < n; k++) {
+                const o = k * 8;
+                positions[k * 3] = tris[o]; positions[k * 3 + 1] = tris[o + 1]; positions[k * 3 + 2] = tris[o + 2];
+                normals[k * 3] = tris[o + 3]; normals[k * 3 + 1] = tris[o + 4]; normals[k * 3 + 2] = tris[o + 5];
+                uvs[k * 2] = tris[o + 6]; uvs[k * 2 + 1] = tris[o + 7]; indices[k] = k;
+                cx += tris[o] / n; cy += tris[o + 1] / n; cz += tris[o + 2] / n;
+            }
+            const r = j => rnd(seed, i * 13 + j + 500), dist = Math.hypot(cx, cz), out = Math.min(1, dist / reach);
+            // Which way is inward: toward the building's middle; for what stands in the middle, any way.
+            const a = dist > 0.25 ? Math.atan2(-cz, -cx) : r(0) * Math.PI * 2, ix = Math.cos(a), iz = Math.sin(a);
+            let delay, rest, go, side, tip, ax, az, yaw;
+            if (high) {
+                // The roof: held a moment, then down from the middle outward, each chunk turning its own
+                // way. (Not held long: over a tall tower a roof that waits hangs in the air above a heap.)
+                delay = 0.10 + r(1) * 0.16 + 0.12 * out;
+                rest = 0.45 + r(2) * 0.50 + 0.45 * (1 - out);     // on top of the heap, not under it
+                go = dist * r(3) * 0.25; side = (r(4) - 0.5) * 0.7;
+                const t = r(5) * Math.PI * 2; ax = Math.cos(t); az = Math.sin(t);
+                tip = (r(6) - 0.5) * 1.6; yaw = (r(7) - 0.5) * 1.0;
+            } else {
+                // A wall: its top goes first; every chunk tips inward (its top toward the middle) and falls there.
+                delay = 0.04 + r(1) * 0.16 + 0.30 * (1 - Math.min(1, cy / top));
+                rest = 0.12 + r(2) * 0.30 + 0.35 * (1 - out);
+                go = dist * (0.25 + r(3) * 0.40); side = (r(4) - 0.5) * 0.6;
+                ax = iz; az = -ix;
+                tip = 1.0 + r(6) * 0.7; yaw = (r(7) - 0.5) * 0.8;
+            }
+            // A large chunk of wall would stand out of the heap like a tooth. It comes to rest
+            // lower, the larger it is, most of it in the ground: what shows of it is rubble of the
+            // size of the rest, and the heap stays low enough for the roof to lie on top of it.
+            if (!high) {
+                let reachOut = 0;
+                for (let k = 0; k < n; k++) reachOut = Math.max(reachOut, Math.hypot(positions[k * 3] - cx, positions[k * 3 + 1] - cy, positions[k * 3 + 2] - cz));
+                rest = Math.min(rest, 1.25 - reachOut);
+            }
+            rest = Math.min(cy, rest);
+            const dur = Math.max(high ? 0.4 : 0.5, Math.sqrt(2 * (cy - rest) / 9)) * (1 + r(8) * 0.15);
+            return { p: s.p, mesh: { positions, normals, uvs, indices }, high, c: [cx, cy, cz], delay, dur, rest,
+                mx: ix * go - iz * side, mz: iz * go + ix * side, ax, az, tip, yaw };
+        });
+    };
+    // Where a piece is t seconds after the building fell: a matrix in the building's own
+    // space, written into out (sixteen numbers). It falls as things fall, faster and faster,
+    // tips as it goes, lands and lies.
+    EngineFx.collapseMatrix = (piece, t, out) => {
+        const tt = Math.min(1, Math.max(0, (t - piece.delay) / piece.dur)), fall = tt * tt;
+        const [cx, cy, cz] = piece.c, x = cx + piece.mx * tt, y = cy - (cy - piece.rest) * fall, z = cz + piece.mz * tt;
+        // Turned about a level axis (ax, 0, az) by the tip, then about the upright by the yaw.
+        const th = piece.tip * tt * Math.sqrt(tt), c = Math.cos(th), s = Math.sin(th), k = 1 - c, ax = piece.ax, az = piece.az;
+        const r00 = c + ax * ax * k, r01 = -az * s, r02 = ax * az * k, r10 = az * s, r11 = c, r12 = -ax * s, r20 = ax * az * k, r21 = ax * s, r22 = c + az * az * k;
+        const yw = piece.yaw * tt, yc = Math.cos(yw), ys = Math.sin(yw);
+        // R = Ry(yaw) * Raxis(tip); rows of Ry: [yc 0 ys; 0 1 0; -ys 0 yc]
+        const m00 = yc * r00 + ys * r20, m01 = yc * r01 + ys * r21, m02 = yc * r02 + ys * r22;
+        const m20 = -ys * r00 + yc * r20, m21 = -ys * r01 + yc * r21, m22 = -ys * r02 + yc * r22;
+        out[0] = m00; out[1] = r10; out[2] = m20; out[3] = 0;
+        out[4] = m01; out[5] = r11; out[6] = m21; out[7] = 0;
+        out[8] = m02; out[9] = r12; out[10] = m22; out[11] = 0;
+        out[12] = x - (m00 * cx + m01 * cy + m02 * cz); out[13] = y - (r10 * cx + r11 * cy + r12 * cz); out[14] = z - (m20 * cx + m21 * cy + m22 * cz); out[15] = 1;
+        return out;
+    };
+    // How much of the heap shows: all of it, then fading at the end.
+    EngineFx.breakFade = t => Math.max(0, Math.min(1, (EngineFx.BREAK_SECONDS - t) / EngineFx.BREAK_FADE));
+    // The dust of a collapse: when the walls go, when the roof lands, and as it settles.
+    // Slow pale clouds that rise from inside the footprint and hang.
+    EngineFx.BREAK_DUST = [0.2, 0.75, 1.2];
+    EngineFx.rubbleDust = (P, x, z, ex, ez, n) => {
+        for (let i = 0; i < n; i++) P.emit({ x: x + rand(-ex, ex), y: rand(0.3, 1.2), z: z + rand(-ez, ez), vx: rand(-0.7, 0.7), vy: rand(0.5, 1.4), vz: rand(-0.7, 0.7),
+            life: rand(1.2, 2.0), size: rand(1.5, 2.3), grow: 1.5, tint: [0.80, 0.76, 0.68], alpha: 0.42, drag: 1 });
+    };
 
     window.EngineFx = EngineFx;
 })();
