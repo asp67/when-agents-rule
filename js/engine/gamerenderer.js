@@ -3805,9 +3805,16 @@
             // reference, which is safe -- the frame's lists are not changed while drawing.
             const U = this.prog.uniforms, NO_CLOTH = this._noCloth || (this._noCloth = [0, 0, 0, 0]);
             const NO_LIGHTS = this._noLocalLights || (this._noLocalLights = new Float32Array(12));
+            // The round shadow disc under a unit, a tree or a building is the shadow of Simple
+            // lighting and of the far view. Where real shadows are cast it used to stay at 55 %
+            // on top of them (asp67, 22 November 2026: "are the simple shadow circles not removed
+            // when switching to cinematic?"). It now fades out as the real shadows fade in, and
+            // once it is gone it is not drawn at all (EngineRenderer.DISC_UNDER_SHADOW).
+            const discShow = Math.max(0, 1 - this._shadowStrength * EngineRenderer.DISC_UNDER_SHADOW), disc = this.tex.shadow;
             const draw = (list, unlit) => {
                 let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit, bones, mist, instanced;
                 for (const obj of list) {
+                    if (discShow <= 0 && obj.tex === disc) continue;
                     // An instanced mesh (the grass): the shader places each drawing by its list.
                     // (1: sown on the ground, the grass. 2: particles, squares facing the camera.)
                     const inst = obj.buf.instance ? (obj.buf.stride === 8 ? 2 : 1) : 0;
@@ -3835,7 +3842,7 @@
                     if (m !== mat) { gl.uniform1f(U.uMaterial, m); mat = m; }
                     const t = obj.tint || this.WHITE;
                     if (t !== tint) { gl.uniform3fv(U.uTint, t); tint = t; }
-                    const a = (obj.alpha == null ? 1 : obj.alpha) * (obj.tex === this.tex.shadow ? 1-this._shadowStrength*.45 : 1);
+                    const a = (obj.alpha == null ? 1 : obj.alpha) * (obj.tex === disc ? discShow : 1);
                     if (a !== alpha) { gl.uniform1f(U.uAlpha, a); alpha = a; }
                     const ux = obj.uvOff ? obj.uvOff[0] : 0, uy = obj.uvOff ? obj.uvOff[1] : 0;
                     if (ux !== uvx || uy !== uvy) { gl.uniform2f(U.uUvOffset, ux, uy); uvx = ux; uvy = uy; }
@@ -3990,6 +3997,10 @@
     // The bare soil of each land: how dark against the palette's soil, and how far worn
     // ground goes toward it.
     EngineRenderer.WORN = { summer: [0.92, 0.85], desert: [0.84, 0.55], winter: [0.9, 0.5] };
+    // How much of a round shadow disc the real shadows take away where they are at full
+    // strength: all of it. (0.45 until build 1229, which left the disc at 55 % under them.) The
+    // real shadows fade out between a view height of 100 and 160, and the disc comes back with it.
+    EngineRenderer.DISC_UNDER_SHADOW = 1;
     // How much of that is shown. asp67, 22 November 2026: "the dirt paths the units leave behind
     // are too dominant, can we make them 50% transparent ... so that they match into the scene
     // more?" So a path is half ground and half soil at its most worn, in every land. What is
