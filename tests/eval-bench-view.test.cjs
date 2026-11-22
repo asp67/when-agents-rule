@@ -122,29 +122,38 @@ test('D3: a step never shows as done unless a recorded successful order backs it
     assert.match(tracker([decision('a', 10, {})]), /bench\.noPlan/);
 });
 
-test('D3: two seats\' plans side by side, and a third pin lets the oldest go', () => {
-    const { u, ledger, els } = page();
-    for (const id of ['a', 'b']) ledger.addLine(decision(id, 10, { plan: ['Build a tower'] }));
-    ledger.addLine(JSON.stringify({ turn: 1, playerId: 'c', name: 'Seat c', seat: 2, parsed: { commands: [], plan: ['Scout'] }, state: { clock: { matchSeconds: 10 } } }));
-    u.toggleBenchView(true);
-    const plans = () => (els.benchLeft.innerHTML.match(/class="bp-seat"/g) || []).length;
-    // Until someone picks: the first two seats that have a plan, so a two-seat match shows both at once.
-    assert.equal(plans(), 2);
-    assert.match(els.benchLeft.innerHTML, /Seat a[\s\S]*Seat b/);
-    assert.doesNotMatch(els.benchLeft.innerHTML, /Seat c/);
-    // A pick starts from what is shown: a third lets the oldest go, and a shown seat picked again is taken away.
-    u.benchPin('c');
-    assert.deepEqual([plans(), u._benchSeats.join()], [2, 'b,c']);
-    u.benchPin('b');
-    assert.deepEqual([plans(), u._benchSeats.join()], [1, 'c']);
-    u.benchPin('c');                                                     // nothing picked any more: the first two again
-    assert.deepEqual([plans(), u._benchSeats.join()], [2, '']);
-    // One seat with a plan and one without: the one with it, alone.
-    const solo = page();
-    solo.ledger.addLine(decision('a', 10, { orders: [['train_unit', { unitType: 'militia' }]] }));
-    solo.ledger.addLine(decision('b', 10, { plan: ['Build a tower'] }));
-    solo.u.toggleBenchView(true);
-    assert.deepEqual([(solo.els.benchLeft.innerHTML.match(/class="bp-seat"/g) || []).length, /Seat b/.test(solo.els.benchLeft.innerHTML)], [1, true]);
+// Build 1230 (asp67, 22 November 2026, when a third seat's plan was missing from the panel: "make the bench plan card a
+// 2x2 grid so with 2 players they show side by side, with 4 a 2x2 matrix"). Until then two seats were shown and a
+// third had to be picked on the matrix, which the live view no longer has.
+test('D3: every seat\'s plan is shown, two beside each other', () => {
+    const wide = [];
+    const fill = n => {
+        const p = page(), { u, ledger, els } = p;
+        els.benchLeft.classList = { toggle: (c, on) => wide.push(c + ' ' + on) };
+        ['a', 'b', 'c', 'd'].slice(0, n).forEach((id, i) => ledger.addLine(JSON.stringify({ turn: 1, playerId: id, name: 'Seat ' + id, seat: i,
+            parsed: { commands: [], plan: id === 'c' ? undefined : ['Build a tower'] }, state: { clock: { matchSeconds: 10 } } })));
+        u.toggleBenchView(true);
+        return els.benchLeft.innerHTML;
+    };
+    const plans = html => [...html.matchAll(/<section class="bp-seat"[^>]*><h4><span>([^<]*)<\/span>/g)].map(m => m[1]);
+    // Four seats: all four, in seat order, in a grid two wide; the one without a plan says so in its place.
+    const four = fill(4);
+    assert.deepEqual(plans(four), ['Seat a', 'Seat b', 'Seat c', 'Seat d']);
+    assert.match(four, /^<div class="bench-head">bench\.plan<\/div><div class="bp-grid" style="--n:2"><section class="bp-seat"/);
+    assert.match(four, /<span>Seat c<\/span><\/h4><p class="bench-none">bench\.noPlan<\/p><\/section>/);
+    assert.match(four, /<\/section><\/div><div class="bench-head bench-clockhead">/, 'the threats stand under the grid, over its whole width');
+    // Three: the third is there too (it was the one asp67 missed). Two: side by side. One: a single column, and the panel keeps its width.
+    assert.deepEqual(plans(fill(3)), ['Seat a', 'Seat b', 'Seat c']);
+    assert.match(fill(2), /<div class="bp-grid" style="--n:2">/);
+    assert.match(fill(1), /<div class="bp-grid" style="--n:1">/);
+    assert.deepEqual(wide.slice(-1), ['is-wide false']);
+    assert.ok(wide.includes('is-wide true'));
+    // Nothing is picked any more: the matrix's heads are not buttons.
+    const src = fs.readFileSync(path.join(root, 'js/eval/bench-view.js'), 'utf8');
+    assert.doesNotMatch(src, /benchPin|_benchSeats|_benchShown|is-pinned/);
+    const css = fs.readFileSync(path.join(root, 'css/styles.css'), 'utf8');
+    assert.match(css, /\.bp-grid \{ display: grid; grid-template-columns: repeat\(var\(--n, 1\), minmax\(0, 1fr\)\);/);
+    assert.match(css, /\.bench-left\.is-wide \{ width: min\(640px, calc\(100vw \/ var\(--ui-scale, 1\) - 354px - 344px - 328px - 28px\)\); \}/);
 });
 
 test('D4: a threat\'s clock starts when the seat was shown it, counts its decisions, and closes with the answer and the outcome', () => {

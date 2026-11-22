@@ -4238,7 +4238,7 @@ class UIManager {
         this.refreshRaceChart();
         this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateRaceChart(); }, 1000));
         if (this.refreshBenchView) {
-            this._benchSig = null; this._benchSeats = null; this._benchEvidence = null;
+            this._benchSig = null; this._benchEvidence = null;
             this.refreshBenchView();
             this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateBenchView(); }, 1500));
             this._cmp = null;

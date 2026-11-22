@@ -181,17 +181,6 @@
         this.updateSpectatorPlayerList();
         if (this.tvJumpTo) this.tvJumpTo(turn);
     };
-    // Up to two seats' plans side by side; picking a third lets the oldest go. Until someone
-    // picks, the first two seats that have a plan are shown, and a pick starts from those.
-    P.benchPin = function (id) {
-        if (!this._benchSeats || !this._benchSeats.length) this._benchSeats = (this._benchShown || []).slice();
-        const pins = this._benchSeats;
-        const at = pins.indexOf(id);
-        if (at >= 0) pins.splice(at, 1); else { pins.push(id); if (pins.length > 2) pins.shift(); }
-        this._benchSig = null;
-        this.updateBenchView();
-        this.updateSummaryProfile();
-    };
     // A decision named in an evidence list, opened where it can be read. While a match
     // runs that is the transcript panel; from the results card over a running match the
     // card closes first; after the end the transcript opens in the analyzer at that seat's
@@ -228,7 +217,7 @@
         el.style.display = has ? '' : 'none';
         if (!has) { if (el.innerHTML) el.innerHTML = ''; this._sumProfileSig = null; return; }
         const ev = this._benchEvidence, link = this.benchLinkKey();
-        const sig = [ledger.lines + '.' + ledger.rev, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : '', link, this._shareAxis || ''].join(':');
+        const sig = [ledger.lines + '.' + ledger.rev, typeof getUiLang === 'function' ? getUiLang() : '', ev ? ev.key + ev.id : '', link, this._shareAxis || ''].join(':');
         if (sig === this._sumProfileSig) return;
         this._sumProfileSig = sig;
         // Under the matrix: the way to the board with the graphs over the match (build
@@ -259,12 +248,15 @@
         }
         if (panels) this.benchPlace();
         const ledger = this.benchLedger(), link = this.benchLinkKey();
-        const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), open, panels, link].join(':');
+        const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', open, panels, link].join(':');
         if (sig === this._benchSig) return;
         this._benchSig = sig;
         // The scores over the match, once for the mini card and the full size alike.
         const data = this.benchSeries(ledger);
         if (panels) {
+            // Two seats or more: the plan panel is as wide as two plans beside each other.
+            const many = !!ledger && ledger.profile().seats.filter(s => s.decisions > 0).length > 1;
+            if (left.classList && left.classList.toggle) left.classList.toggle('is-wide', many);
             left.innerHTML = this.benchHtml(ledger, { link, matrix: false }).left;
             right.innerHTML = this.benchMiniHtml(ledger, data);
         }
@@ -646,13 +638,6 @@
         const dot = s => this.teamDotHtml ? this.teamDotHtml(s.seat, 10) : '';
         const label = s => esc(s.name || s.model || s.id);
         const open = (s, turn) => turn == null || !link ? '' : ` onclick="event.stopPropagation(); game.ui.benchOpenTurn('${esc(s.id)}', ${Number(turn)})" title="${esc(t(link))}"`;
-        let pins = (this._benchSeats || []).filter(id => seats.some(s => s.id === id));
-        if (!pins.length) {
-            pins = seats.filter(s => s.planning.standing).slice(0, 2).map(s => s.id);
-            if (!pins.length) pins = [seats[0].id];
-        }
-        this._benchShown = pins;
-
         const seatOf = id => seats.find(s => s.id === id);
         let right = '';
         // ---- the matrix ------------------------------------------------------
@@ -690,7 +675,7 @@
         }).join('');
         right = `<div class="bench-head">${esc(t('bench.matrix'))}<span>${esc(t('eval.provisional'))}</span></div>`
             + `<table class="bm"><thead><tr><th></th>` + seats.map(s =>
-                `<th scope="col" class="bm-seat${pins.includes(s.id) ? ' is-pinned' : ''}" style="--civ:${esc(ink(s))}" onclick="game.ui.benchPin('${esc(s.id)}')" title="${esc(t('bench.pin'))}">${dot(s)}<span>${label(s)}</span></th>`).join('')
+                `<th scope="col" class="bm-seat" style="--civ:${esc(ink(s))}">${dot(s)}<span>${label(s)}</span></th>`).join('')
             + `</tr></thead><tbody>${rows}<tr class="bm-indexrow"><th scope="row">${esc(t('eval.index'))}</th>${index}</tr>`
             + `<tr class="bm-costrow"><th scope="row">${esc(t('bench.range'))}<small>${esc(t('bench.rangeUnit'))}</small></th>${range}</tr>`
             + `<tr class="bm-costrow"><th scope="row">${esc(t('bench.eff'))}</th>${cost}</tr></tbody></table>`;
@@ -720,8 +705,12 @@
         }
 
         // ---- the plan tracker ------------------------------------------------
-        let left = `<div class="bench-head">${esc(t('bench.plan'))}</div>` + pins.map(id => {
-            const s = seatOf(id), pl = s.planning, fl = s.follow;
+        // Every seat's plan, two beside each other: two seats stand side by side, four as two
+        // rows of two (asp67, 22 November 2026, when a third seat's plan was not shown: "make
+        // the bench plan card a 2x2 grid"). Until build 1230 it showed two seats that had to
+        // be picked on the matrix, which the live view no longer has.
+        let left = `<div class="bench-head">${esc(t('bench.plan'))}</div><div class="bp-grid" style="--n:${Math.min(2, seats.length)}">` + seats.map(s => {
+            const pl = s.planning, fl = s.follow;
             const head = `<h4>${dot(s)}<span>${label(s)}</span>`;
             if (!pl.standing) return `<section class="bp-seat" style="--civ:${esc(ink(s))}">${head}</h4><p class="bench-none">${esc(t('bench.noPlan'))}</p></section>`;
             const steps = (fl.standing || pl.standing.steps.map(x => ({ text: x.text, state: x.checkable ? 'pending' : 'uncheckable', after: null })));
@@ -734,7 +723,7 @@
                 + `<ol class="bp-steps">` + steps.map(x => `<li class="is-${x.state}" title="${esc(t('bench.st.' + x.state))}"><i>${GLYPH[x.state]}</i><span>${esc(x.text)}</span>`
                     + (x.state === 'acted' && x.after ? `<small>+${x.after}</small>` : (x.state === 'begun' || x.state === 'part') ? `<small>${x.met}/${x.of}</small>` : '') + '</li>').join('') + '</ol>'
                 + `<div class="bp-ribbon" title="${esc(t('bench.ribbon', { n: pl.history.length }))}">${ticks}</div></section>`;
-        }).join('');
+        }).join('') + '</div>';
 
         // ---- the response clock ----------------------------------------------
         const threats = [];

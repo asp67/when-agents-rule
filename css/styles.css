@@ -2733,8 +2733,9 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bb-fig .is-lead { font-weight: 700; color: #f2c46a; }
 .bb-fig.is-index .bb-lab { font-weight: 700; color: #ddd3b4; }
 .bb-fig.is-index .bb-col { font-size: 1.6em; font-weight: 700; line-height: 1.1; color: #ddd3b4; }
-.bb-index .bb-col { display: flex; align-items: baseline; justify-content: center; gap: 5px; overflow: hidden; }
-.bb-index b { font-size: 1.7em; line-height: 1.05; color: #ddd3b4; }
+/* On a narrow card the tokens go under the Index; the Index itself is never broken in two. */
+.bb-index .bb-col { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 0 5px; overflow: hidden; }
+.bb-index b { flex: none; font-size: 1.7em; line-height: 1.05; color: #ddd3b4; }
 .bb-index small { white-space: nowrap; color: #aab0bd; }
 /* At full size: an overlay over the map that holds the grid and nothing else. */
 .bench-full { position: fixed; inset: 0; z-index: 1500; display: flex; align-items: center; justify-content: center; background: rgba(8, 10, 8, 0.72); zoom: var(--ui-scale, 1); }
@@ -2771,13 +2772,18 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
    until it is closed. */
 #transcriptViewer { z-index: 1001; }
 @media (min-width: 1800px) { body.tv-open:not(.broadcast-mode) .bench-right { right: 778px; } }
+/* With two seats or more the plan panel is two plans wide, as far as the room between the decision log and
+   the comparison card allows (log 354, card 344 + 328, a gap on each side). */
+.bench-left.is-wide { width: min(640px, calc(100vw / var(--ui-scale, 1) - 354px - 344px - 328px - 28px)); }
 body.broadcast-mode .bench-left { left: 16px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 78px) - 150px); }
+body.broadcast-mode .bench-left.is-wide { width: min(640px, calc(100vw / var(--ui-scale, 1) - 16px - 344px - 16px - 28px)); }
 body.broadcast-mode .bench-right { right: 16px; }
 body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 /* A window too narrow for log, two panels and leaderboard side by side: the panels take
    the outer slots over the log and the leaderboard rather than each other. */
 @media (max-width: 1360px) {
     body:not(.broadcast-mode) .bench-left { left: 14px; }
+    body:not(.broadcast-mode) .bench-left.is-wide { width: min(640px, calc(100vw / var(--ui-scale, 1) - 14px - 344px - 16px - 28px)); }
     body:not(.broadcast-mode) .bench-right { right: 16px; }
     /* ...and lie over them while Bench is on: under them they could not be seen at all. */
     body:not(.broadcast-mode) .bench-panel { z-index: 1002; }
@@ -2791,9 +2797,8 @@ body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 .bm th[scope="row"] { width: 86px; text-align: left; font-weight: 500; color: #b9c4d2; padding: 5px 4px 5px 0; }
 .bm thead th { padding: 0 3px 5px; font-weight: 600; }
 /* A seat's name in full, on up to three short lines: a column is about sixty pixels wide. */
-.bm-seat { cursor: pointer; border-bottom: 2px solid transparent; text-align: center; vertical-align: top;   /* badges in one line, whether a name wraps or not */ font-size: 0.82em; line-height: 1.15; overflow-wrap: anywhere; }
+.bm-seat { border-bottom: 2px solid var(--civ, #dec594); text-align: center; vertical-align: top;   /* badges in one line, whether a name wraps or not */ font-size: 0.82em; line-height: 1.15; overflow-wrap: anywhere; }
 .bm-seat span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
-.bm-seat.is-pinned { border-bottom-color: var(--civ, #dec594); }
 .bm-cell, .bm-cost { padding: 4px 3px; text-align: center; vertical-align: top; border-top: 1px solid rgba(255, 255, 255, 0.06); }
 .bm-cell { cursor: pointer; }
 .bm-cell:hover, .bm-cell.is-open { background: rgba(255, 255, 255, 0.06); }
@@ -2821,7 +2826,9 @@ body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 .bench-evidence li:hover { background: rgba(255, 255, 255, 0.07); }
 .be-when { display: inline-block; min-width: 5.6em; color: #8d97a8; font-variant-numeric: tabular-nums; }
 /* the plan tracker */
-.bp-seat { margin: 0 0 10px; padding-left: 8px; border-left: 3px solid var(--civ, #dec594); }
+/* Every seat's plan, two beside each other (build 1230): two seats side by side, four as two rows of two. */
+.bp-grid { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: 12px 14px; align-items: start; }
+.bp-seat { min-width: 0; margin: 0; padding-left: 8px; border-left: 3px solid var(--civ, #dec594); }
 .bp-seat h4 { display: flex; align-items: center; gap: 5px; margin: 0 0 3px; font-size: 1em; }
 .bp-seat h4 span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bp-seat h4 em { font-style: normal; font-weight: 400; font-size: 0.86em; color: #b9c4d2; white-space: nowrap; }
