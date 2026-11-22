@@ -219,7 +219,11 @@ class UIManager {
             intent: saved.intent !== false,
             // UI size (the graphics card at the minimap): the HUD at 100 / 85 / 72 %, for
             // small screens where it crowds the map.
-            uiScale: ['regular', 'medium', 'small'].includes(saved.uiScale) ? saved.uiScale : 'regular',
+            // 'auto' (build 1220): as large as the window allows, which is the regular size
+            // on a large screen. Whoever picked a size keeps it; a saved 'regular' that
+            // nobody picked was only the old default, and follows the window now.
+            uiScale: ['auto', 'medium', 'small'].includes(saved.uiScale) || (saved.uiScale === 'regular' && saved.uiScalePicked === true) ? saved.uiScale : 'auto',
+            uiScalePicked: saved.uiScalePicked === true,
             // Broadcast mode is how a watched match opens (b1011); analyze mode -- the
             // decisions log, the leaderboard, the controls -- is a click away, and the
             // last choice is kept.
@@ -238,16 +242,41 @@ class UIManager {
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
+    // The window the regular size is made for, and the least the HUD is ever shrunk to.
+    // On a smaller window 'auto' shrinks the HUD by the same share, so that what fits at
+    // 1600 x 900 fits there too: 0.85 at 1366 x 768, 0.8 at 1280 x 720.
+    static get UI_FIT() { return { width: 1600, height: 900, least: 0.6 }; }
+    static uiFit(width, height) {
+        const F = UIManager.UI_FIT;
+        if (!(width > 0) || !(height > 0)) return 1;
+        return Math.max(F.least, Math.min(1, Math.round(100 * Math.min(width / F.width, height / F.height)) / 100));
+    }
+    // The size the HUD is drawn at, as a number: the chosen step, or what the window allows.
+    uiScaleValue() {
+        const p = this.viewPreferences();
+        if (p.uiScale !== 'auto') return UIManager.UI_SCALES[p.uiScale] || 1;
+        return typeof window !== 'undefined' ? UIManager.uiFit(window.innerWidth, window.innerHeight) : 1;
+    }
+    // With 'auto' the size follows the window while it is being resized, a moment after it stops.
+    watchWindowForUiFit() {
+        if (this._uiFitWatch || typeof window === 'undefined' || !window.addEventListener) return;
+        this._uiFitWatch = () => {
+            clearTimeout(this._uiFitTimer);
+            this._uiFitTimer = setTimeout(() => { if (this.viewPreferences().uiScale === 'auto') this.applyViewPreferences(); }, 150);
+        };
+        window.addEventListener('resize', this._uiFitWatch);
+    }
     // A screen position given to a panel that is itself zoomed by the UI size (b1110):
     // its "top" is counted in its own shrunken pixels, so a measured screen offset is
     // divided back out -- or at Medium/Small the panel lands too high, over what it
     // was placed below.
     zoomedPx(px) {
-        return px / (UIManager.UI_SCALES[this.viewPreferences().uiScale] || 1);
+        return px / this.uiScaleValue();
     }
     setUiScale(value) {
-        if (!UIManager.UI_SCALES[value]) return;
+        if (value !== 'auto' && !UIManager.UI_SCALES[value]) return;
         this.viewPreferences().uiScale = value;
+        this.viewPreferences().uiScalePicked = true;
         this.saveViewPreferences();
         this.applyViewPreferences();
         const sel = document.querySelectorAll('#cameraControls .camera-popover select')[2];
@@ -262,7 +291,8 @@ class UIManager {
         const p = this.viewPreferences();
         document.body.dataset.reading = p.text;
         const root = document.documentElement;
-        if (root && root.style) root.style.setProperty('--ui-scale', String(UIManager.UI_SCALES[p.uiScale] || 1));
+        if (root && root.style) root.style.setProperty('--ui-scale', String(this.uiScaleValue()));
+        this.watchWindowForUiFit();
         const body = document.getElementById('anBody');
         if (body) {
             body.dataset.layout = p.layout;
@@ -402,7 +432,7 @@ class UIManager {
                 <div class="camera-popover"><div class="camera-secondary">${(watching?['reset','turnLeft','turnRight']:['pan','reset','turnLeft','turnRight']).map(button).join('')}</div>
                 <label title="${esc(t('art.qualityTip'))}">${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['auto','cinematic','balanced','low'].map(k=>`<option value="${k}">${esc(k==='auto'&&r0.qualityChoice==='auto'?t('art.autoNow',{tier:t('art.'+r0.graphicsQuality)}):t('art.'+k))}</option>`).join('')}</select></label>
                 <label title="${esc(t('art.lightTip'))}">${esc(t('art.light'))}<select onchange="game.renderer.setVisualStyle ? game.renderer.setVisualStyle(this.value) : (game.renderer.visualStyle=this.value)"><option value="film">${esc(t('art.film'))}</option><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label>
-                <label title="${esc(t('art.uiSizeTip'))}">${esc(t('art.uiSize'))}<select onchange="game.ui.setUiScale(this.value)">${['regular','medium','small'].map(k=>`<option value="${k}">${esc(t('art.ui_'+k))}</option>`).join('')}</select></label></div></details>`;
+                <label title="${esc(t('art.uiSizeTip'))}">${esc(t('art.uiSize'))}<select onchange="game.ui.setUiScale(this.value)">${['auto','regular','medium','small'].map(k=>`<option value="${k}">${esc(t('art.ui_'+k))}</option>`).join('')}</select></label></div></details>`;
         if(wasOpen) box.querySelector('details').open=true;
         box.querySelector('select').value = r0.qualityChoice || r0.graphicsQuality || 'balanced';
         box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
