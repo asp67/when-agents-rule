@@ -30,7 +30,7 @@
         // 'v2' (asp67's first real match on the Bench view, 21 Nov 2026): a plan step is no
         // longer called dropped ten decisions after it was stated. It stays open while it
         // stands in the plan, and one carried out late is carried out.
-        SCALE: 'v2',
+        SCALE: 'v3',
         // What the Index is the mean of. 'plan' is Planning as far as it was followed.
         INDEX_PARTS: ['grounding', 'plan', 'tactical', 'strategy'],
         // A mistake made again inside this many decisions counts as repeated.
@@ -574,11 +574,17 @@
         // Does it do what its plan says? (step C3)
         //
         // Every NEW step that names something checkable is followed from the decision
-        // that stated it. It is acted on when a command that worked carries out one of
-        // its commitments within FOLLOW_WINDOW decisions, dropped when the window closes
-        // without one, and pending while the window is still open. A step carried out
-        // later, while it still stood in the plan, is counted as late: it stays dropped
-        // for the score, and is reported so the window can be argued with.
+        // that stated it. A step can commit to several things ("find and destroy their
+        // Town Center": to look, and to attack). Each is carried out by an order that
+        // worked, within FOLLOW_WINDOW decisions or at any later time while the step
+        // still stands in the plan.
+        //
+        // The step is carried out ('acted') when ALL it commits to is. Until v3 the first
+        // of them was enough: a seat that sent one scout was credited with "find and
+        // destroy", and a plan read 4 of 4 three minutes into a match (asp67, 22 November
+        // 2026). While it is open a step with something behind it is 'begun'; one that is
+        // settled -- taken out of the plan, or the match over -- with only some of it
+        // done is carried out 'in part' and counts for that share.
         _follow(seat, history, final = false) {
             const turns = seat.turns, vocab = seat.vocab, W = WarEval.FOLLOW_WINDOW, last = turns.length - 1;
             const judged = turns.some(t => t.cmds.some(c => c.ok != null));
@@ -589,7 +595,7 @@
                 let until = turns.length;
                 for (let j = hi + 1; j < history.length; j++)
                     if (!history[j].steps.some(x => plain(x.text) === plain(s.text))) { until = history[j].decision - 1; break; }
-                tracked.push({ key: plain(s.text), text: s.text, at: h.decision - 1, until, checks: s.checks, met: new Set(), acted: null, late: null, by: null });
+                tracked.push({ key: plain(s.text), text: s.text, at: h.decision - 1, until, checks: s.checks, met: new Set(), acted: null, full: null, by: null, parts: [] });
             }));
             let served = 0, underPlan = 0, hi = -1;
             turns.forEach((t, i) => {
@@ -610,9 +616,16 @@
                         // any later time while the step still stood in it. A long-term step (an
                         // age, a raid once an army exists) takes as long as it takes.
                         if (i - s.at <= W || i < s.until) {
-                            // The order that first carried the step out: which, when, and where it pointed.
-                            if (s.acted == null) { s.acted = i - s.at; s.by = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, action: c.action, name: c.name, x: c.x, z: c.z }; }
-                            s.met.add(hit);
+                            // An order may carry out a commitment that is already met (a second
+                            // barracks): look for one of this step's that is not.
+                            const fresh = s.checks.findIndex((k, n) => !s.met.has(n) && serves(c, k, vocab));
+                            if (fresh < 0) continue;
+                            // The order that carried this part out: which, when, and where it pointed.
+                            const by = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, action: c.action, name: c.name, x: c.x, z: c.z };
+                            if (s.acted == null) { s.acted = i - s.at; s.by = by; }
+                            s.met.add(fresh);
+                            s.parts.push({ by, met: s.met.size });
+                            if (s.met.size === s.checks.length) s.full = i - s.at;
                         }
                     }
                 }
@@ -621,42 +634,53 @@
             // when the seat took it out of its plan with no order behind it, or the match
             // ended with it undone. (Until v2 a step was dropped ten decisions after it was
             // stated, which struck out an age-up or a raid long before either was possible.)
-            const state = s => s.acted != null ? 'acted' : final ? 'dropped' : (last - s.at < W || s.until >= turns.length) ? 'pending' : 'dropped';
-            const count = { acted: 0, dropped: 0, pending: 0 };
+            const state = s => {
+                if (s.met.size === s.checks.length) return 'acted';
+                const open = !final && (last - s.at < W || s.until >= turns.length);
+                return open ? (s.met.size ? 'begun' : 'pending') : (s.met.size ? 'part' : 'dropped');
+            };
+            const count = { acted: 0, part: 0, dropped: 0, pending: 0, begun: 0 };
             for (const s of tracked) count[state(s)]++;
+            const settled = tracked.filter(s => ['acted', 'part', 'dropped'].includes(state(s)));
             // Carried out, but more than the window after it was stated: reported, and counted as carried out.
-            count.late = tracked.filter(s => s.acted != null && s.acted > W).length;
-            const closed = count.acted + count.dropped;
-            const waits = tracked.filter(s => s.acted != null).map(s => s.acted);
-            const commitments = sum(tracked.filter(s => state(s) !== 'pending').map(s => s.checks.length));
-            const met = sum(tracked.filter(s => state(s) !== 'pending').map(s => s.met.size));
+            count.late = tracked.filter(s => s.full != null && s.full > W).length;
+            const closed = settled.length;
+            // A settled step counts for the share of what it committed to that was carried out.
+            const credit = sum(settled.map(s => s.met.size / s.checks.length));
+            const waits = tracked.filter(s => s.full != null).map(s => s.full);
+            const commitments = sum(settled.map(s => s.checks.length));
+            const met = sum(settled.map(s => s.met.size));
             const standing = history.length ? history[history.length - 1] : null;
             const byKey = new Map(tracked.map(s => [s.key, s]));       // the first statement of a step is the one followed
             for (const s of tracked) if (!byKey.has(s.key)) byKey.set(s.key, s);
-            if (!judged) return { steps: tracked.length, acted: null, dropped: null, late: null, pending: null, rate: null, decisionsToAct: null,
+            if (!judged) return { steps: tracked.length, acted: null, part: null, dropped: null, late: null, pending: null, begun: null, rate: null, decisionsToAct: null,
                 commitments: null, commitmentsMet: null, ordersUnderPlan: null, ordersServing: null, servingRate: null, standing: null, judged, score: null };
             return {
-                steps: tracked.length, acted: count.acted, dropped: count.dropped, late: count.late, pending: count.pending,
-                rate: closed ? count.acted / closed : null,
+                // pending: every step still open; begun: those of them with something carried out.
+                steps: tracked.length, acted: count.acted, part: count.part, dropped: count.dropped, late: count.late,
+                pending: count.pending + count.begun, begun: count.begun,
+                rate: closed ? credit / closed : null,
                 decisionsToAct: waits.length ? quantile(waits, 0.5) : null,
                 // A step can commit to several things; this is how many of them were carried out.
                 commitments, commitmentsMet: met,
                 // Of the orders a plan can be about, given under a standing plan: how many carried out one of its steps.
                 ordersUnderPlan: underPlan, ordersServing: served, servingRate: underPlan ? served / underPlan : null,
-                // Every step that was acted on, with the order that did it (the marks in the world).
-                done: tracked.filter(s => s.by).map(s => ({ text: s.text, stated: s.at + 1, decision: s.by.decision, turn: s.by.turn, sec: s.by.sec,
-                    by: { n: s.by.n, action: s.by.action, name: s.by.name, x: s.by.x, z: s.by.z } })),
+                // Every part of a step that was carried out, with the order that did it (the
+                // marks in the world): "met" of the step's "of" commitments stood done after it.
+                done: [].concat(...tracked.map(s => s.parts.map(p => ({ text: s.text, stated: s.at + 1, decision: p.by.decision, turn: p.by.turn, sec: p.by.sec,
+                    met: p.met, of: s.checks.length, by: { n: p.by.n, action: p.by.action, name: p.by.name, x: p.by.x, z: p.by.z } })))),
                 // The standing plan, step by step, for the page.
                 standing: standing ? standing.steps.map(s => {
                     const f = s.checks.length ? byKey.get(plain(s.text)) : null;
-                    return { text: s.text, state: !s.checks.length ? 'uncheckable' : f ? state(f) : 'pending', after: f && f.acted != null ? f.acted : null };
+                    return { text: s.text, state: !s.checks.length ? 'uncheckable' : f ? state(f) : 'pending', after: f && f.full != null ? f.full : null,
+                        met: f ? f.met.size : 0, of: s.checks.length };
                 }) : null,
                 judged,
                 // The share of settled steps that were carried out. No plan, or a plan with
                 // nothing checkable in it, earns nothing: 0. Nothing settled yet, or a file
                 // that records no outcomes, is a dash.
                 score: !turns.length || !judged ? null : !history.length ? 0
-                    : !tracked.length ? (last >= W ? 0 : null) : closed ? Math.round(1000 * count.acted / closed) / 10 : null
+                    : !tracked.length ? (last >= W ? 0 : null) : closed ? Math.round(1000 * credit / closed) / 10 : null
             };
         }
 

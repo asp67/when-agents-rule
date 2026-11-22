@@ -5,9 +5,10 @@ scored parts, a row of facts about the range a seat used, and the cost of a deci
 them. Everything is read from the match transcript and nothing else, so a recorded match
 can be scored again at any time and gives the numbers the page showed while it ran.
 
-**Status: scale `v2`, provisional.** The definitions below are built and tested, and the
+**Status: scale `v3`, provisional.** The definitions below are built and tested, and the
 scores have been checked against anchor seats (see [Anchors](#anchors)). That check changed
-two things (`v1`); the first real match watched with the Bench view changed a third (`v2`).
+two things (`v1`); the first real match watched with the Bench view changed a third (`v2`),
+and a match watched on 22 November a fourth (`v3`).
 Read the bars and what they rest on. Do not quote a single number as a result.
 
 ## Where to read it
@@ -32,7 +33,7 @@ scoring a match differently never changes what a match is.
 |---|---|---|---|
 | **Grounding** | Were its commands valid when it issued them? | Commands that worked, of those that worked or were refused for a reason its state had shown. A `wait` is left out. | 90 % valid is 0, 100 % is 100, straight line between. |
 | **Planning** | Does it hold a live, concrete plan? | Share of decisions under a stated plan; share of plan steps that name something checkable; share of shocks (attacked, heavy losses, a rival Wonder) followed by a changed plan within three decisions. | The mean of the three. No shock: the first counts twice. Never stated a plan: 0. |
-| **Follow-through** | Does it do what its plan says? | Of the new, checkable plan steps that are settled: those an order that worked carried out, within ten decisions of being stated or later while the step still stood in the plan. | The share carried out. No plan: 0. |
+| **Follow-through** | Does it do what its plan says? | Of the new, checkable plan steps that are settled: those whose every commitment an order that worked carried out, within ten decisions of being stated or later while the step still stood in the plan. A step can commit to several things ("find and destroy their Town Center": to look, and to attack). | The share carried out; a settled step with only part of it done counts for that part. No plan: 0. |
 | **Tactical** | Shown a threat, is its next order aimed at it? | Attacks on its own things and rival Wonders, from the decision whose state first showed them. An answer is an order that worked and is aimed there: an attack or march to it, the threatened units moved out, a tower or repair on the spot. | The share answered in the same or the next decision; for a rival Wonder, within three. |
 | **Strategy** | Does its play turn into winning? | Placement; its share of all power over the match against an even split; the share of battle losses that were the other side's. | The mean of the three. Half again an even share is full marks. |
 
@@ -109,8 +110,8 @@ seats is paying for something other than playing.
 | random-valid | One to three commands a round, built only from names and places its state shows. |
 
 Twelve matches, 40 minutes each, a decision every 30 seconds, three map seeds, core hash
-`d13976c3e047f6dd`, 21 November 2026, on scale `v2` (the same as on `v1`: no anchor carries a
-plan step out):
+`d13976c3e047f6dd`, 21 November 2026, on scale `v2` (the same as on `v1` and on `v3`: no
+anchor carries a plan step out):
 
 | Anchor | Grounding | Planning | Follow-through | Tactical | Strategy | Index |
 |---|---:|---:|---:|---:|---:|---:|
@@ -190,6 +191,41 @@ with no order behind it, or when the match ends with it undone.
 A score goes up where steps were carried out late (GPT 6.1, Hermes) and down where steps
 were still open when the match ended and now count as undone (the two Qwen seats).
 
+### What a match on 22 November changed
+
+Until `v3` a plan step counted as carried out with the first thing it commits to. Three
+minutes into a match of 22 November a seat in the Stone Age was shown four of four steps
+carried out, among them "Find and destroy the Egyptian rival's town center and military
+buildings": it had sent one scout. "Advance to neolithic age, then build barracks/archery
+range and train an army" was ticked for the barracks. On `v3` a step is carried out when
+everything it commits to is. Until then it is **begun**, and open. A step that is settled
+with only part of it done, because the seat took it out of its plan or the match ended, is
+carried out **in part** and counts for that part: one of three commitments is a third. The
+plan panel shows a begun step with how much of it is done, the marks in the world tick a
+step only when it is whole, and "decisions until carried out" now counts to the last
+commitment, not the first.
+
+What a commitment needs is unchanged: an order of the right kind that worked. "Destroy
+their Town Center" is carried out by an attack order, not by the Town Center falling. The
+part measures whether a seat does what it says, and what came of it is Strategy.
+
+| Seat (match) | Follow-through v2 | v3 | Index v2 | v3 |
+|---|---:|---:|---:|---:|
+| GPT 6.1 Sol (5 Oct) | 64.3 | 53.6 | 43.8 | 41.7 |
+| Claude Sonnet 5.5 (5 Oct) | 75.8 | 75.8 | 69.2 | 69.2 |
+| DeepSeek V4.1 Flash (5 Oct) | 75.7 | 68.2 | 63.0 | 61.5 |
+| GLM 5.3 Flash (5 Oct) | 89.1 | 83.9 | 75.8 | 75.0 |
+| Qwen3.8 Flash-Next NVFP4 (17 Oct) | 72.0 | 67.6 | 52.6 | 51.7 |
+| Qwen3.8 Flash-Next Q2_0 (17 Oct) | 76.2 | 64.3 | 46.5 | 43.9 |
+| Gemini 4 Argon (17 Oct) | 94.1 | 91.8 | 87.2 | 86.7 |
+| pi (7 Nov) | 66.7 | 54.2 | 30.8 | 26.7 |
+| Hermes (7 Nov) | 100 | 100 | 89.3 | 89.3 |
+
+Over the 38 seats of the shipped matches that stated checkable steps, Follow-through goes
+down by 4.8 points at the median and by 12.9 at most; four seats are unchanged. The Index
+goes down by 0.9 at the median and 4.1 at most. No score goes up: the rule only takes
+away credit for steps that were begun and not finished.
+
 Still open: a seat that repeats one real, safe command (assign a worker to food, every
 round) is valid every time and keeps Grounding 100. Its other bars show what it is. No
 anchor for it has been run.
@@ -243,7 +279,7 @@ What the shipped matches say, 21 November 2026: of 20 matches, ten sets of condi
 more than one result. Only one of them compares two models over more than one match:
 Hermes and pi met three times, Hermes placed first three times, and is ahead on Strategy
 (86.0, between 75.7 and 96.3, against 23.5) and on Follow-through (every step carried out in
-all three, against 73.9). On the Index, 79.5 against 30.6, it is not: three matches leave
+all three, against 65.5). On the Index, 79.5 against 28.6, it is not: three matches leave
 the intervals touching. Fourteen seats stand alone under their
 conditions, and 26 are from matches before conditions were recorded.
 

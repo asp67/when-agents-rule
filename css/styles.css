@@ -2736,6 +2736,7 @@ body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 .bp-steps li span { flex: 1; min-width: 0; }
 .bp-steps li small { flex: none; color: #8d97a8; font-variant-numeric: tabular-nums; }
 .bp-steps .is-acted i { color: #63b9a7; } .bp-steps .is-acted span { color: #cfe6df; }
+.bp-steps .is-begun i, .bp-steps .is-part i { color: #e2b455; } .bp-steps .is-part span { color: #a8a39a; }
 .bp-steps .is-dropped i { color: #f0a080; } .bp-steps .is-dropped span { color: #a8a39a; text-decoration: line-through; text-decoration-color: rgba(240, 160, 128, 0.5); }
 .bp-steps .is-late i { color: #e9c46a; }
 .bp-steps .is-uncheckable span, .bp-steps .is-uncheckable i { color: #7f8a99; }

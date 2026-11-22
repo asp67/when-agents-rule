@@ -65,7 +65,7 @@ test('D2: the matrix shows the command-line scorer\'s values at match end', asyn
     // Under the scored rows: their Index as the scorer prints it, then the range used, then the cost.
     const index = [...right.matchAll(/class="bm-index"[^>]*><b>([^<]*)<\/b><small>bench\.indexOf\{&quot;n&quot;:(\d)\}/g)].map(m => m[1] + '/' + m[2]);
     assert.deepEqual(index, scored.seats.map(s => Math.round(s.index.value) + '/' + s.index.of));
-    assert.deepEqual(index, ['44/4', '69/4', '63/4', '76/4']);
+    assert.deepEqual(index, ['42/4', '69/4', '62/4', '75/4']);   // scale v3: a step begun and not finished is no longer a step carried out
     assert.match(right, /bench\.range<small>bench\.rangeUnit<\/small><\/th>.*<b>11 · 10 · 13<\/b><\/td>/s);
     assert.match(right, /bench\.rangeTip\{&quot;units&quot;:&quot;archer, cavalry, champion/);
     assert.ok(right.indexOf('bm-indexrow') < right.indexOf('bench.range<') && right.indexOf('bench.range<') < right.indexOf('bench.eff<'));
@@ -384,4 +384,30 @@ test('D7: one comparison at a time, in broadcast mode only, and never while a ca
     assert.match(src, /icon\('broadcastCompare'[^\n]+toggleCompare\(\)/);
     assert.match(src, /on\('broadcastCompare', [^\n]+compareOn\(\)\);/);
     assert.match(src, /getElementById\('chronicleCaption'\)\?\.remove\(\);\r?\n\s+document\.getElementById\('compareStrip'\)\?\.remove\(\);/);
+});
+
+// Scale v3 (22 November 2026): asp67's match showed "4 of 4 acted on" three minutes in, with
+// a tick on "Find and destroy the Egyptian rival's town center" for one scout sent.
+test('D3: a step that commits to several things is begun with the first of them and done with the last', () => {
+    const tracker = lines => { const { u, ledger } = page(); lines.forEach(l => ledger.addLine(l)); return u.benchHtml(ledger).left; };
+    const steps = html => [...html.matchAll(/<li class="is-(\w+)"[^>]*><i>.<\/i><span>([^<]*)<\/span>/g)].map(m => m[2] + ': ' + m[1]);
+    const plan = ['Find and destroy the Maya town center', 'Train militia'];
+    const scout = [decision('a', 10, { plan }), decision('a', 20, { turn: 2, orders: [['explore', {}]] })];
+    const scouted = tracker(scout);
+    assert.deepEqual(steps(scouted), ['Find and destroy the Maya town center: begun', 'Train militia: pending']);
+    assert.match(scouted, /<li class="is-begun" title="bench\.st\.begun"><i>◐<\/i><span>Find and destroy the Maya town center<\/span><small>1\/2<\/small><\/li>/);
+    assert.doesNotMatch(scouted, /is-acted/);
+    assert.doesNotMatch(scouted, /bench\.acted/, 'nothing is settled yet, so nothing is counted as carried out');
+    // The attack is ordered: now the step is carried out, two decisions after it was stated.
+    const struck = tracker(scout.concat(decision('a', 30, { turn: 3, orders: [['attack_target', { targetX: 300, targetZ: 300 }]] })));
+    assert.deepEqual(steps(struck), ['Find and destroy the Maya town center: acted', 'Train militia: pending']);
+    assert.match(struck, /<i>✓<\/i><span>Find and destroy the Maya town center<\/span><small>\+2<\/small>/);
+    assert.match(struck, /bench\.acted\{&quot;acted&quot;:1,&quot;closed&quot;:1\}/);
+    // The words for the two new states exist in every language, and the mark's.
+    const context = vm.createContext({ window: {}, navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} },
+        document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {} } });
+    vm.runInContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8') + ';this.I = I18N;', context);
+    for (const lang of ['en', 'de', 'es', 'zh']) for (const k of ['bench.st.begun', 'bench.st.part', 'mark.stepPart'])
+        assert.ok(k in context.I[lang] && context.I[lang][k].length > 3, lang + ' lacks ' + k);
+    for (const lang of ['en', 'de', 'es', 'zh']) assert.match(context.I[lang]['eval.followTip'], /\{part\}/, lang);
 });

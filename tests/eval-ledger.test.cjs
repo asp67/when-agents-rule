@@ -48,7 +48,7 @@ for (const [file, want] of Object.entries(PINNED)) {
     test('the profile of ' + file.slice(0, 10) + ' (' + want.length + ' seats) is what it was', async () => {
         const p = await profileFile(sample(file));
         assert.deepEqual(p.seats.map(row), want);
-        assert.equal(p.kind, 'war-eval/1'); assert.equal(p.scale, 'v2'); assert.equal(p.unreadable, 0);
+        assert.equal(p.kind, 'war-eval/1'); assert.equal(p.scale, 'v3'); assert.equal(p.unreadable, 0);
         // valid = ok of ok + avoidable + invalid with the waits left out, and the score is the mapping of it.
         for (const s of p.seats) {
             const g = s.grounding;
@@ -371,35 +371,37 @@ test('the profile is worked out again when a line has arrived, and not before', 
 });
 
 // ---- follow-through (step C3) ------------------------------------------------------------
-// name, score, new checkable steps followed, acted on, dropped (not within ten decisions),
-// of which carried out later while still in the plan, still pending, median decisions to
-// act, commitments carried out, commitments made, orders serving the plan, orders a plan
-// can be about that were given under one.
+// name, score, new checkable steps followed, carried out (all they commit to), carried out
+// in part, dropped, of those carried out how many later than ten decisions, still open,
+// median decisions until carried out, commitments carried out, commitments made, orders
+// serving the plan, orders a plan can be about that were given under one.
+// Scale v3: until then a step counted as carried out with the first thing it commits to.
 const FOLLOW = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 64.3, 14, 9, 5, 3, 0, 4, 10, 19, 45, 58],
-        ['O claude-sonnet-5.5', 75.8, 33, 25, 8, 0, 0, 0, 27, 35, 133, 158],
-        ['O deepseek-v4.1-flash', 75.7, 177, 134, 43, 1, 0, 0, 190, 271, 172, 252],
-        ['DGX GLM5.3 Flash', 89.1, 64, 57, 7, 0, 0, 1, 77, 93, 125, 231],
+        ['O gpt-6.1-sol', 53.6, 14, 6, 3, 5, 2, 0, 8.5, 10, 19, 45, 58],
+        ['O claude-sonnet-5.5', 75.8, 33, 25, 0, 8, 0, 0, 0, 27, 35, 133, 158],
+        ['O deepseek-v4.1-flash', 68.2, 177, 104, 30, 43, 2, 0, 1, 190, 271, 172, 252],
+        ['DGX GLM5.3 Flash', 83.9, 64, 50, 7, 7, 1, 0, 1, 77, 93, 125, 231],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 72, 132, 95, 37, 0, 0, 1, 130, 191, 83, 125],
-        ['RTX qwen3.8 flash next Q2_0', 76.2, 84, 64, 20, 1, 0, 1, 84, 131, 66, 87],
-        ['O gemini-4-argon', 94.1, 51, 48, 3, 1, 0, 0, 74, 82, 164, 185],
+        ['DGX Qwen3.8 flash next nvfp4', 67.6, 132, 84, 11, 37, 0, 0, 2, 130, 191, 83, 125],
+        ['RTX qwen3.8 flash next Q2_0', 64.3, 84, 45, 19, 20, 0, 0, 2, 84, 131, 66, 87],
+        ['O gemini-4-argon', 91.8, 51, 45, 3, 3, 1, 0, 1, 74, 82, 164, 185],
     ],
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 66.7, 6, 4, 2, 0, 0, 2, 8, 14, 34, 38],
-        ['HERMES MCP', 100, 6, 6, 0, 3, 0, 10, 11, 11, 60, 87],
+        ['pi MCP', 54.2, 6, 3, 1, 2, 1, 0, 6, 8, 14, 34, 38],
+        ['HERMES MCP', 100, 6, 6, 0, 0, 5, 0, 21.5, 11, 11, 60, 87],
     ],
 };
 for (const [file, want] of Object.entries(FOLLOW)) {
     test('follow-through on ' + file.slice(0, 10) + ' is what it was', async () => {
         const p = await profileFile(sample(file));
-        assert.deepEqual(p.seats.map(s => { const h = s.follow; return [s.name, h.score, h.steps, h.acted, h.dropped, h.late, h.pending, h.decisionsToAct,
+        assert.deepEqual(p.seats.map(s => { const h = s.follow; return [s.name, h.score, h.steps, h.acted, h.part, h.dropped, h.late, h.pending, h.decisionsToAct,
             h.commitmentsMet, h.commitments, h.ordersServing, h.ordersUnderPlan]; }), want);
         for (const s of p.seats) {
             const h = s.follow;
-            assert.equal(h.acted + h.dropped + h.pending, h.steps, s.name);
+            assert.equal(h.acted + h.part + h.dropped + h.pending, h.steps, s.name);
+            assert.equal(h.begun, 0, s.name + ': a finished match leaves nothing begun');
             assert.ok(h.late <= h.acted && h.pending === 0 && h.commitmentsMet <= h.commitments && h.ordersServing <= h.ordersUnderPlan, s.name);
             assert.equal(h.steps, s.planning.concrete, s.name + ': every new checkable step is followed, and only those');
         }
@@ -490,9 +492,32 @@ test('a step is dropped when the seat takes it out of its plan, not when ten dec
     assert.deepEqual([kept.steps, kept.acted, kept.late, kept.standing[0].state], [3, 1, 1, 'acted']);
 });
 
-test('several commitments in one step: acted on with the first, and counted one by one', () => {
-    const f = follow([move(['Train militia and archers, then build a tower'], [['train_unit', 'archer']]), ...idle(10)]);
-    assert.deepEqual([f.acted, f.commitments, f.commitmentsMet], [1, 3, 1]);
+// Scale v3. Until then the first commitment was enough ("acted on with the first"), and a
+// seat that had sent one scout was shown a tick on "find and destroy their Town Center".
+test('several commitments in one step: carried out when all of them are, begun until then, in part if it ends there', () => {
+    const step = 'Train militia and archers, then build a tower';
+    // One of three done, and the step still stands in the plan: begun, open, and not yet in the score.
+    const begun = follow([move([step], [['train_unit', 'archer']]), ...idle(10)]);
+    assert.deepEqual([begun.acted, begun.part, begun.begun, begun.pending, begun.dropped, begun.score], [0, 0, 1, 1, 0, null]);
+    assert.deepEqual(begun.standing[0], { text: step, state: 'begun', after: null, met: 1, of: 3 });
+    assert.deepEqual(begun.done.map(d => [d.by.action, d.by.name, d.met, d.of]), [['train_unit', 'archer', 1, 3]]);
+    // An order for something already done carries out nothing new.
+    const again = follow([move([step], [['train_unit', 'archer']]), move(null, [['train_unit', 'archer']]), ...idle(9)]);
+    assert.deepEqual([again.begun, again.done.length, again.standing[0].met], [1, 1, 1]);
+    // All three: carried out, with the decisions it took to get there.
+    const all = follow([move([step], [['train_unit', 'archer']]), ...idle(2), move(null, [['train_unit', 'militia']]), move(null, [['build_structure', 'tower']]), ...idle(6)]);
+    assert.deepEqual([all.acted, all.part, all.begun, all.pending, all.score, all.decisionsToAct, all.commitments, all.commitmentsMet], [1, 0, 0, 0, 100, 4, 3, 3]);
+    assert.deepEqual(all.standing[0], { text: step, state: 'acted', after: 4, met: 3, of: 3 });
+    assert.deepEqual(all.done.map(d => d.met), [1, 2, 3]);
+    // Taken out of the plan with one of three done: in part, and it counts for a third.
+    const part = follow([move([step], [['train_unit', 'archer']]), ...idle(2), move(['Stay flexible']), ...idle(12)]);
+    assert.deepEqual([part.acted, part.part, part.dropped, part.begun, part.pending, part.score, part.commitments, part.commitmentsMet], [0, 1, 0, 0, 0, 33.3, 3, 1]);
+    // And nothing of it done: dropped, as before.
+    const none = follow([move([step]), ...idle(2), move(['Stay flexible']), ...idle(12)]);
+    assert.deepEqual([none.part, none.dropped, none.score], [0, 1, 0]);
+    // A step that commits to one thing is carried out by it, as it always was.
+    const one = follow([move(['Build a tower'], [['build_structure', 'tower']]), ...idle(10)]);
+    assert.deepEqual([one.acted, one.score, one.standing[0].state, one.standing[0].of], [1, 100, 'acted', 1]);
 });
 
 test('orders that serve the plan are counted only among orders a plan can be about, given under one', () => {
@@ -640,19 +665,19 @@ test('a seat that was never shown a threat has no tactical score, and a file wit
 // and how many parts it is the mean of.
 const STRATEGY = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 11.4, 17.1, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 43.8, 4],
+        ['O gpt-6.1-sol', 11.4, 17.1, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 41.7, 4],
         ['O claude-sonnet-5.5', 71.7, 74.3, 2, 0.376, 0.721, 3493, false, 36, 136, 144, '412/812/1342', 3, 6, 4, 9, 69.2, 4],
-        ['O deepseek-v4.1-flash', 52.7, 62.4, 3, 0.252, 0.184, null, null, 48, 205, 151, '372/1147/2037', 10, 9, 13, 9, 63, 4],
-        ['DGX GLM5.3 Flash', 77.2, 65.9, 1, 0.288, 0.107, null, null, 44, 99, 81, '372/1147/2493', 11, 10, 13, 10, 75.8, 4],
+        ['O deepseek-v4.1-flash', 52.7, 62.4, 3, 0.252, 0.184, null, null, 48, 205, 151, '372/1147/2037', 10, 9, 13, 9, 61.5, 4],
+        ['DGX GLM5.3 Flash', 77.2, 65.9, 1, 0.288, 0.107, null, null, 44, 99, 81, '372/1147/2493', 11, 10, 13, 10, 75, 4],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 37.7, 56.6, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 52.6, 4],
-        ['RTX qwen3.8 flash next Q2_0', 34.1, 26.2, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 46.5, 4],
-        ['O gemini-4-argon', 84.8, 77.3, 1, 0.413, 0.358, 3558, true, 21, 138, 54, '622/1112/1687', 6, 6, 12, 9, 87.2, 4],
+        ['DGX Qwen3.8 flash next nvfp4', 37.7, 56.6, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 51.7, 4],
+        ['RTX qwen3.8 flash next Q2_0', 34.1, 26.2, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 43.9, 4],
+        ['O gemini-4-argon', 84.8, 77.3, 1, 0.413, 0.358, 3558, true, 21, 138, 54, '622/1112/1687', 6, 6, 12, 9, 86.7, 4],
     ],
     // Neither MCP seat has a tactical score here: three parts, not four.
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 25.8, 38.7, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 30.8, 3],
+        ['pi MCP', 25.8, 38.7, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 26.7, 3],
         ['HERMES MCP', 85.3, 78, 1, 0.727, 0.993, 410, true, 7, 13, 9, '255/710', 4, 6, 5, 7, 89.3, 3],
     ],
 };
@@ -820,9 +845,9 @@ test('the command-line report prints strategy, the range and the Index beside th
     assert.match(text, /O gemini-4-argon +85 +1 of 3 +41\.3 % +33\.3 % +35\.8 % +from 59:18, won +21 +138 : 54 +neolithic 10:22, bronze 18:32, iron 28:07/);
     assert.match(text, /RANGE USED +unit types +buildings +technologies +kinds of order\n.*\n.*\nO gemini-4-argon +6 +6 +12 +9/);
     assert.match(text, /INDEX +mean +of +grounding +plan as followed +tactical +strategy/);
-    assert.match(text, /O gemini-4-argon +87\.2 +4 parts +100 +89 +\d+ +85/);
+    assert.match(text, /O gemini-4-argon +86\.7 +4 parts +100 +87 +\d+ +85/);
     assert.match(text, /GROUNDING +score +valid +ok +of which waits +avoidable/);
-    assert.match(text, /Score scale v2: provisional\. valid = ok of ok \+ avoidable \+ invalid, with waits left out/);
+    assert.match(text, /Score scale v3: provisional\. valid = ok of ok \+ avoidable \+ invalid, with waits left out/);
     assert.match(text, /One match is one sample/);
 });
 
@@ -872,9 +897,9 @@ test('the profile a results line carries is the profile its own file gives', asy
     const file = path.join(require('node:os').tmpdir(), 'war-d8-' + process.pid + '.jsonl');
     try {
         fs.writeFileSync(file, text);
-        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v2: scored again here, it is the same\./);
+        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v3: scored again here, it is the same\./);
         fs.writeFileSync(file, text.replace('"waits":3', '"waits":2'));
-        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v2: scored again here on scale v2, it differs\./);
+        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v3: scored again here on scale v3, it differs\./);
     } finally { fs.rmSync(file, { force: true }); }
     // A file without one says nothing about it.
     assert.doesNotMatch(report('x.jsonl', await profileFile(sample('2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl'))), /carries its own profile/);
@@ -884,5 +909,5 @@ test('a seat no model decided for is not in the exported profile', () => {
     const l = WarEval.createLedger();
     [seatsLine, move(['Build a tower'], [['build_structure', 'tower']]), timelineOf([tick(5, 100, 500)]), resultsOf('b')].forEach(x => l.addLine(x));
     const p = l.profile(), pub = WarEval.publicProfile(p);
-    assert.deepEqual([p.seats.length, pub.seats.length, pub.seats[0].id, pub.kind, pub.scale, p.recorded], [2, 1, 'a', 'war-eval/1', 'v2', null]);
+    assert.deepEqual([p.seats.length, pub.seats.length, pub.seats[0].id, pub.kind, pub.scale, p.recorded], [2, 1, 'a', 'war-eval/1', 'v3', null]);
 });

@@ -40,10 +40,11 @@ class EvalMarks {
         const fresh = [];
         for (const s of (profile && profile.seats) || []) {
             for (const d of (s.follow && s.follow.done) || []) {
-                const key = 'step|' + s.id + '|' + d.decision + '|' + d.text;
+                const key = 'step|' + s.id + '|' + d.decision + '|' + d.text + '|' + (d.met || 1);
                 if (this.seen.has(key)) continue;
                 this.seen.add(key);
-                fresh.push({ kind: 'step', id: s.id, seat: s.seat, text: EvalMarks.short(d.text), by: d.by });
+                // met of: how much of what the step commits to stands done with this order (all of it = the step is carried out).
+                fresh.push({ kind: 'step', id: s.id, seat: s.seat, text: EvalMarks.short(d.text), by: d.by, met: d.met || 1, of: d.of || 1 });
             }
             for (const e of (s.tactical && s.tactical.list) || []) {
                 if (!e.answer || !e.at) continue;

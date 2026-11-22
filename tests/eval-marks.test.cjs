@@ -27,8 +27,8 @@ test('the ledger says which order carried a plan step out, and where it pointed'
         decision(5, { orders: [['build_structure', { buildingType: 'tower', targetX: 300, targetZ: 300 }]] })]);     // a second tower is not the step again
     const f = p.seats[0].follow;
     assert.deepEqual(plainOf(f.done), [
-        { text: 'Build a tower by the gate', stated: 1, decision: 3, turn: 3, sec: 90, by: { n: 2, action: 'build_structure', name: 'tower', x: 124, z: 82 } },
-        { text: 'Train militia', stated: 1, decision: 4, turn: 4, sec: 120, by: { n: 1, action: 'train_unit', name: 'militia', x: null, z: null } }]);
+        { text: 'Build a tower by the gate', stated: 1, decision: 3, turn: 3, sec: 90, met: 1, of: 1, by: { n: 2, action: 'build_structure', name: 'tower', x: 124, z: 82 } },
+        { text: 'Train militia', stated: 1, decision: 4, turn: 4, sec: 120, met: 1, of: 1, by: { n: 1, action: 'train_unit', name: 'militia', x: null, z: null } }]);
     assert.deepEqual([f.acted, f.done.length], [2, 2]);
     // The list is for the page: an exported profile carries the numbers, not this.
     assert.equal(WarEval.publicProfile(p).seats[0].follow.done, undefined);
@@ -189,4 +189,23 @@ test('mark labels stand under their point and under one another, never on top of
     // The two steps at one building share one tick; the building beside it has its own.
     assert.equal(count(svg, 'eval-tick'), 2);
     assert.deepEqual(texts(svg).slice(0, 2), ['mark.step Train villagers without a pause', 'mark.step Research house']);
+});
+
+// Scale v3: the tick is for a step that is carried out, all of it.
+test('an order that does part of a step is marked as that, and the order that completes it gets the tick', () => {
+    const l = WarEval.createLedger(), M = new EvalMarks(), step = 'Find and destroy the Maya town center';
+    l.addLine(decision(1, { plan: [step], orders: [['assign_workers']] }));
+    M.poll(l.profile(), 1000);
+    l.addLine(decision(2, { orders: [['explore', {}]] }));
+    assert.equal(M.poll(l.profile(), 2000), 1);
+    assert.deepEqual(plainOf(M.marks.map(m => [m.kind, m.text, m.by.action, m.met, m.of])), [['step', EvalMarks.short(step), 'explore', 1, 2]]);
+    l.addLine(decision(3, { orders: [['attack_target', { targetX: 300, targetZ: 310 }]] }));
+    assert.equal(M.poll(l.profile(), 3000), 1);
+    assert.deepEqual(plainOf(M.marks.map(m => [m.by.action, m.met, m.of])), [['explore', 1, 2], ['attack_target', 2, 2]]);
+    assert.equal(M.poll(l.profile(), 4000), 0, 'each part once');
+    // As drawn: a tick only for the whole step, and the part named as a part.
+    const ui = require('node:fs').readFileSync(path.join(root, 'js/ui.js'), 'utf8');
+    assert.match(ui, /const whole = !\(m\.of > 1\) \|\| m\.met >= m\.of;/);
+    assert.match(ui, /if \(whole && !ticks\.some\(/);
+    assert.match(ui, /whole \? t\('mark\.step'\) : t\('mark\.stepPart', \{ met: m\.met, of: m\.of \}\)/);
 });

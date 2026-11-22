@@ -22,7 +22,9 @@
     const TREND_SEC = 600;
     const clock = sec => sec == null ? '–' : Math.floor(sec / 60) + ':' + String(Math.floor(sec) % 60).padStart(2, '0');
     const share = v => v == null ? '–' : (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + ' %';
-    const GLYPH = { acted: '✓', pending: '○', dropped: '✕', uncheckable: '·' };
+    // begun: part of what the step commits to is carried out and the step is still open;
+    // part: it was settled with only part of it done.
+    const GLYPH = { acted: '✓', begun: '◐', part: '◐', pending: '○', dropped: '✕', uncheckable: '·' };
     // The raw measure under a score, with the count it rests on.
     const rawOf = (key, s) => {
         const g = s.grounding, pl = s.planning, fl = s.follow, ta = s.tactical;
@@ -40,7 +42,7 @@
     const COMPARE = { showMs: 9000, quietMs: 3000, handful: 5, samples: 60 };
     const chances = (key, s) => key === 'grounding' ? (s.grounding.rated || 0)
         : key === 'planning' ? (s.decisions || 0)
-        : key === 'follow' ? (s.follow.judged ? (s.follow.acted || 0) + (s.follow.dropped || 0) : 0)
+        : key === 'follow' ? (s.follow.judged ? (s.follow.acted || 0) + (s.follow.part || 0) + (s.follow.dropped || 0) : 0)
         : key === 'tactical' ? (s.tactical.judged ? s.tactical.episodes + s.tactical.wonders : 0)
         : (s.strategy.samples || 0);
 
@@ -325,14 +327,14 @@
             const head = `<h4>${dot(s)}<span>${label(s)}</span>`;
             if (!pl.standing) return `<section class="bp-seat" style="--civ:${esc(ink(s))}">${head}</h4><p class="bench-none">${esc(t('bench.noPlan'))}</p></section>`;
             const steps = (fl.standing || pl.standing.steps.map(x => ({ text: x.text, state: x.checkable ? 'pending' : 'uncheckable', after: null })));
-            const closed = fl.judged ? fl.acted + fl.dropped : null;
+            const closed = fl.judged ? fl.acted + (fl.part || 0) + fl.dropped : null;
             // Where on the match's clock the plan was changed.
             const ticks = pl.history.map(h => h.sec != null && now > 0 ? `<i style="left:${Math.min(100, 100 * h.sec / now).toFixed(1)}%"></i>` : '').join('');
             return `<section class="bp-seat" style="--civ:${esc(ink(s))}">${head}${closed ? `<em>${esc(t('bench.acted', { acted: fl.acted, closed }))}</em>` : ''}</h4>`
                 + (pl.standing.objective ? `<p class="bp-objective">${esc(pl.standing.objective)}</p>` : '')
                 + `<p class="bp-age"${open(s, pl.standing.turn)}>${esc(t('bench.planAge', { time: clock(pl.standing.sec), n: s.decisions - pl.standing.since }))}</p>`
                 + `<ol class="bp-steps">` + steps.map(x => `<li class="is-${x.state}" title="${esc(t('bench.st.' + x.state))}"><i>${GLYPH[x.state]}</i><span>${esc(x.text)}</span>`
-                    + (x.state === 'acted' && x.after ? `<small>+${x.after}</small>` : '') + '</li>').join('') + '</ol>'
+                    + (x.state === 'acted' && x.after ? `<small>+${x.after}</small>` : (x.state === 'begun' || x.state === 'part') ? `<small>${x.met}/${x.of}</small>` : '') + '</li>').join('') + '</ol>'
                 + `<div class="bp-ribbon" title="${esc(t('bench.ribbon', { n: pl.history.length }))}">${ticks}</div></section>`;
         }).join('');
 

@@ -1,10 +1,10 @@
 {
  "kind": "war-season-entries/1",
- "scale": "v2",
+ "scale": "v3",
  "entries": [
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20260726-204805",
    "at": 1785091686017,
    "build": null,
@@ -106,7 +106,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20260809-223447",
    "at": 1786307687283,
    "build": null,
@@ -236,7 +236,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20260811-222813",
    "at": 1786480093550,
    "build": null,
@@ -338,7 +338,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20260817-195216",
    "at": 1786989136337,
    "build": null,
@@ -468,7 +468,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20260826-200238",
    "at": 1787767358862,
    "build": null,
@@ -598,7 +598,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20260907-120324",
    "at": 1788775405443,
    "build": null,
@@ -728,7 +728,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20260909-211941",
    "at": 1788981581877,
    "build": null,
@@ -858,7 +858,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261001-200050",
    "at": 1790877651214,
    "build": 1023,
@@ -888,10 +888,10 @@
      "scores": {
       "grounding": 44.1,
       "planning": 62.5,
-      "follow": 82.4,
+      "follow": 78.4,
       "tactical": 40,
       "strategy": 92.2,
-      "index": 57
+      "index": 56.3
      },
      "counts": {
       "rated": 447,
@@ -916,10 +916,10 @@
      "scores": {
       "grounding": 59.5,
       "planning": 89.1,
-      "follow": 59.7,
+      "follow": 54.5,
       "tactical": 0,
       "strategy": 7.5,
-      "index": 30.1
+      "index": 28.9
      },
      "counts": {
       "rated": 74,
@@ -944,10 +944,10 @@
      "scores": {
       "grounding": 73,
       "planning": 90.3,
-      "follow": 87,
+      "follow": 83.5,
       "tactical": 100,
       "strategy": 54.9,
-      "index": 76.6
+      "index": 75.8
      },
      "counts": {
       "rated": 185,
@@ -988,7 +988,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261003-234407",
    "at": 1791063847444,
    "build": 1049,
@@ -1018,10 +1018,10 @@
      "scores": {
       "grounding": 0,
       "planning": 75,
-      "follow": 64.4,
+      "follow": 61.3,
       "tactical": 75,
       "strategy": 93,
-      "index": 54.1
+      "index": 53.5
      },
      "counts": {
       "rated": 392,
@@ -1046,10 +1046,10 @@
      "scores": {
       "grounding": 44.4,
       "planning": 84.3,
-      "follow": 78.9,
+      "follow": 76.9,
       "tactical": 50,
       "strategy": 17.1,
-      "index": 44.5
+      "index": 44.1
      },
      "counts": {
       "rated": 252,
@@ -1074,10 +1074,10 @@
      "scores": {
       "grounding": 74.2,
       "planning": 67.9,
-      "follow": 78.4,
+      "follow": 66.8,
       "tactical": 50,
       "strategy": 39.2,
-      "index": 54.2
+      "index": 52.2
      },
      "counts": {
       "rated": 155,
@@ -1102,10 +1102,10 @@
      "scores": {
       "grounding": 88.4,
       "planning": 83.6,
-      "follow": 78.1,
+      "follow": 72.5,
       "tactical": 75,
       "strategy": 67,
-      "index": 73.9
+      "index": 72.8
      },
      "counts": {
       "rated": 259,
@@ -1118,7 +1118,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261004-120750",
    "at": 1791108470470,
    "build": 1053,
@@ -1148,10 +1148,10 @@
      "scores": {
       "grounding": 0,
       "planning": 61.4,
-      "follow": 74.3,
+      "follow": 70.5,
       "tactical": 33.3,
       "strategy": 55.2,
-      "index": 33.5
+      "index": 33
      },
      "counts": {
       "rated": 236,
@@ -1176,10 +1176,10 @@
      "scores": {
       "grounding": 0,
       "planning": 92,
-      "follow": 54.5,
+      "follow": 50.4,
       "tactical": 0,
       "strategy": 19.2,
-      "index": 17.3
+      "index": 16.4
      },
      "counts": {
       "rated": 63,
@@ -1204,10 +1204,10 @@
      "scores": {
       "grounding": 47.8,
       "planning": 89.3,
-      "follow": 41.2,
+      "follow": 33.8,
       "tactical": 0,
       "strategy": 26,
-      "index": 27.7
+      "index": 26
      },
      "counts": {
       "rated": 115,
@@ -1232,10 +1232,10 @@
      "scores": {
       "grounding": 76.3,
       "planning": 64.9,
-      "follow": 76,
+      "follow": 72.5,
       "tactical": 75,
       "strategy": 92.3,
-      "index": 73.2
+      "index": 72.7
      },
      "counts": {
       "rated": 506,
@@ -1248,7 +1248,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261005-194200",
    "at": 1791222121908,
    "build": 1054,
@@ -1278,10 +1278,10 @@
      "scores": {
       "grounding": 61.5,
       "planning": 81.5,
-      "follow": 64.3,
+      "follow": 53.6,
       "tactical": 50,
       "strategy": 11.4,
-      "index": 43.8
+      "index": 41.7
      },
      "counts": {
       "rated": 78,
@@ -1334,10 +1334,10 @@
      "scores": {
       "grounding": 69.9,
       "planning": 83,
-      "follow": 75.7,
+      "follow": 68.2,
       "tactical": 66.7,
       "strategy": 52.7,
-      "index": 63
+      "index": 61.5
      },
      "counts": {
       "rated": 365,
@@ -1362,10 +1362,10 @@
      "scores": {
       "grounding": 66.3,
       "planning": 67.1,
-      "follow": 89.1,
+      "follow": 83.9,
       "tactical": 100,
       "strategy": 77.2,
-      "index": 75.8
+      "index": 75
      },
      "counts": {
       "rated": 326,
@@ -1378,7 +1378,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261008-115009",
    "at": 1791453010326,
    "build": 1080,
@@ -1408,10 +1408,10 @@
      "scores": {
       "grounding": 100,
       "planning": 65.9,
-      "follow": 73.3,
+      "follow": 66.7,
       "tactical": 0,
       "strategy": 39.1,
-      "index": 46.9
+      "index": 45.8
      },
      "counts": {
       "rated": 156,
@@ -1436,10 +1436,10 @@
      "scores": {
       "grounding": 83.1,
       "planning": 86.6,
-      "follow": 60.5,
+      "follow": 55.7,
       "tactical": 50,
       "strategy": 11.5,
-      "index": 49.3
+      "index": 48.2
      },
      "counts": {
       "rated": 177,
@@ -1464,10 +1464,10 @@
      "scores": {
       "grounding": 96.6,
       "planning": 89.2,
-      "follow": 88.8,
+      "follow": 86.4,
       "tactical": 100,
       "strategy": 95.2,
-      "index": 92.8
+      "index": 92.2
      },
      "counts": {
       "rated": 293,
@@ -1492,10 +1492,10 @@
      "scores": {
       "grounding": 0,
       "planning": 66.9,
-      "follow": 73.7,
+      "follow": 62.3,
       "tactical": 66.7,
       "strategy": 31.8,
-      "index": 37
+      "index": 35.1
      },
      "counts": {
       "rated": 236,
@@ -1508,7 +1508,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261008-104823",
    "at": 1791449303421,
    "build": 1080,
@@ -1538,10 +1538,10 @@
      "scores": {
       "grounding": 79.9,
       "planning": 56.9,
-      "follow": 78.8,
+      "follow": 74.2,
       "tactical": 60,
       "strategy": 97.2,
-      "index": 70.5
+      "index": 69.8
      },
      "counts": {
       "rated": 348,
@@ -1566,10 +1566,10 @@
      "scores": {
       "grounding": 48.5,
       "planning": 91,
-      "follow": 59.2,
+      "follow": 50.7,
       "tactical": 0,
       "strategy": 10.8,
-      "index": 28.3
+      "index": 26.4
      },
      "counts": {
       "rated": 97,
@@ -1582,7 +1582,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261008-111302",
    "at": 1791450783773,
    "build": 1080,
@@ -1612,10 +1612,10 @@
      "scores": {
       "grounding": 93.5,
       "planning": 52.5,
-      "follow": 81,
+      "follow": 79.3,
       "tactical": 57.1,
       "strategy": 92,
-      "index": 71.3
+      "index": 71.1
      },
      "counts": {
       "rated": 616,
@@ -1640,10 +1640,10 @@
      "scores": {
       "grounding": 87.3,
       "planning": 83.7,
-      "follow": 61.1,
+      "follow": 49.7,
       "tactical": 40,
       "strategy": 16.1,
-      "index": 48.6
+      "index": 46.3
      },
      "counts": {
       "rated": 158,
@@ -1656,7 +1656,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261015-194436",
    "at": 1792086277193,
    "build": 1100,
@@ -1686,10 +1686,10 @@
      "scores": {
       "grounding": 64.6,
       "planning": 69.4,
-      "follow": 81.3,
+      "follow": 71.9,
       "tactical": 33.3,
       "strategy": 82.9,
-      "index": 59.3
+      "index": 57.7
      },
      "counts": {
       "rated": 226,
@@ -1714,10 +1714,10 @@
      "scores": {
       "grounding": 9.1,
       "planning": 85.3,
-      "follow": 68.2,
+      "follow": 59.4,
       "tactical": 40,
       "strategy": 15.1,
-      "index": 30.6
+      "index": 28.7
      },
      "counts": {
       "rated": 154,
@@ -1742,10 +1742,10 @@
      "scores": {
       "grounding": 100,
       "planning": 94.2,
-      "follow": 100,
+      "follow": 87.1,
       "tactical": 33.3,
       "strategy": 63.7,
-      "index": 72.8
+      "index": 69.8
      },
      "counts": {
       "rated": 219,
@@ -1758,7 +1758,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261017-105426",
    "at": 1792227266921,
    "build": 1103,
@@ -1788,10 +1788,10 @@
      "scores": {
       "grounding": 47.1,
       "planning": 81.7,
-      "follow": 72,
+      "follow": 67.6,
       "tactical": 66.7,
       "strategy": 37.7,
-      "index": 52.6
+      "index": 51.7
      },
      "counts": {
       "rated": 227,
@@ -1816,10 +1816,10 @@
      "scores": {
       "grounding": 85.6,
       "planning": 87.1,
-      "follow": 76.2,
+      "follow": 64.3,
       "tactical": 0,
       "strategy": 34.1,
-      "index": 46.5
+      "index": 43.9
      },
      "counts": {
       "rated": 139,
@@ -1844,10 +1844,10 @@
      "scores": {
       "grounding": 100,
       "planning": 94.5,
-      "follow": 94.1,
+      "follow": 91.8,
       "tactical": 75,
       "strategy": 84.8,
-      "index": 87.2
+      "index": 86.7
      },
      "counts": {
       "rated": 228,
@@ -1860,7 +1860,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261028-204554",
    "at": 1793216755012,
    "build": 1139,
@@ -1890,10 +1890,10 @@
      "scores": {
       "grounding": 61.9,
       "planning": 80.3,
-      "follow": 93.3,
+      "follow": 86.7,
       "tactical": 50,
       "strategy": 17.4,
-      "index": 51.1
+      "index": 49.7
      },
      "counts": {
       "rated": 210,
@@ -1918,10 +1918,10 @@
      "scores": {
       "grounding": 80,
       "planning": 53.3,
-      "follow": 73.3,
+      "follow": 70,
       "tactical": 100,
       "strategy": 94.6,
-      "index": 78.4
+      "index": 78
      },
      "counts": {
       "rated": 200,
@@ -1946,10 +1946,10 @@
      "scores": {
       "grounding": 94.8,
       "planning": 36.6,
-      "follow": 50,
+      "follow": 37.5,
       "tactical": 100,
       "strategy": 48.5,
-      "index": 65.4
+      "index": 64.3
      },
      "counts": {
       "rated": 192,
@@ -1962,7 +1962,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261107-165308",
    "at": 1794066788947,
    "build": 1147,
@@ -1992,10 +1992,10 @@
      "scores": {
       "grounding": 0,
       "planning": 100,
-      "follow": 66.7,
+      "follow": 54.2,
       "tactical": null,
       "strategy": 25.8,
-      "index": 30.8
+      "index": 26.7
      },
      "counts": {
       "rated": 55,
@@ -2036,7 +2036,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261107-163435",
    "at": 1794065675176,
    "build": 1147,
@@ -2066,10 +2066,10 @@
      "scores": {
       "grounding": 54,
       "planning": 61.1,
-      "follow": 80,
+      "follow": 76.7,
       "tactical": 20,
       "strategy": 28.9,
-      "index": 38
+      "index": 37.5
      },
      "counts": {
       "rated": 87,
@@ -2110,7 +2110,7 @@
   },
   {
    "v": 1,
-   "scale": "v2",
+   "scale": "v3",
    "matchId": "match-20261107-170708",
    "at": 1794067628620,
    "build": 1147,
@@ -2140,10 +2140,10 @@
      "scores": {
       "grounding": 0,
       "planning": 57.6,
-      "follow": 75,
+      "follow": 65.6,
       "tactical": 33.3,
       "strategy": 15.7,
-      "index": 23.1
+      "index": 21.7
      },
      "counts": {
       "rated": 128,

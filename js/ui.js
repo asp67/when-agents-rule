@@ -3283,12 +3283,15 @@ class UIManager {
         for (const m of items) {
             const mg = el('g', { opacity: m.opacity.toFixed(2), class: 'eval-mark eval-' + m.kind });
             if (m.kind === 'step') {
-                if (!ticks.some(q => Math.abs(q.x - m.x) < 8 && Math.abs(q.y - m.y) < 8)) {
+                // The tick is for a step that is carried out: all it commits to. An order that
+                // did part of one is named as that, without a tick (scale v3).
+                const whole = !(m.of > 1) || m.met >= m.of;
+                if (whole && !ticks.some(q => Math.abs(q.x - m.x) < 8 && Math.abs(q.y - m.y) < 8)) {
                     ticks.push({ x: m.x, y: m.y });
                     el('circle', { cx: m.x.toFixed(1), cy: (m.y + 20).toFixed(1), r: 11, class: 'eval-tick', stroke: ink(m.id) }, mg);
                     el('path', { d: `M${(m.x - 5).toFixed(1)} ${(m.y + 20).toFixed(1)} l3.5 4 l6.5 -8`, class: 'eval-tick-mark' }, mg);
                 }
-                plate(mg, m.x, m.y + 36, [{ text: t('mark.step') + ' ' }, { text: m.text, fill: '#ffffff' }], 'is-step');
+                plate(mg, m.x, m.y + 36, [{ text: (whole ? t('mark.step') : t('mark.stepPart', { met: m.met, of: m.of })) + ' ' }, { text: m.text, fill: '#ffffff' }], 'is-step');
             } else if (m.kind === 'answer') {
                 if (m.from) {
                     const dx = m.x - m.from.x, dy = m.y - m.from.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
@@ -5497,7 +5500,7 @@ class UIManager {
                 : t('eval.planningTip', { statements: pl.statements, revisions: pl.revisions, first: clock(pl.firstAt.sec),
                     coverage: share(pl.coverage), concrete: pl.concrete, steps: pl.steps, revised: pl.shocks.revised, shocks: pl.shocks.n }),
             follow: !fl ? '' : !fl.judged ? t('eval.groundingNone') : !pl.statements ? t('eval.planningNone', { n: p.decisions })
-                : t('eval.followTip', { acted: fl.acted, closed: fl.acted + fl.dropped, late: fl.late, pending: fl.pending,
+                : t('eval.followTip', { acted: fl.acted, part: fl.part || 0, closed: fl.acted + (fl.part || 0) + fl.dropped, late: fl.late, pending: fl.pending,
                     wait: fl.decisionsToAct == null ? '–' : fl.decisionsToAct, serving: fl.ordersServing, orders: fl.ordersUnderPlan }),
             tactical: !ta ? '' : !ta.judged ? t('eval.groundingNone') : !chances ? t('eval.tacticalNone')
                 : t('eval.tacticalTip', { atOnce: ta.atOnce, episodes: ta.episodes, answered: ta.answered, lost: ta.lost,

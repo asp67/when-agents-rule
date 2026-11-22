@@ -58,8 +58,8 @@ function report(file, p) {
             g.firstAt ? clock(g.firstAt.sec) + ' (decision ' + g.firstAt.decision + ')' : 'never', pct(g.coverage),
             g.steps ? g.concrete + ' of ' + g.steps : '-', g.shocks.n ? g.shocks.revised + ' of ' + g.shocks.n : 'no shock']; }))));
     const of = (a, b) => a == null ? '-' : a + ' of ' + b;
-    out.push('', table([['FOLLOW-THROUGH', 'score', 'steps followed', 'acted on', 'of which late', 'dropped', 'open', 'decisions to act', 'commitments met', 'orders serving the plan']].concat(
-        p.seats.map(s => { const h = s.follow; return [name(s), fix(h.score, 0), h.steps, fix(h.acted), fix(h.late), fix(h.dropped), fix(h.pending),
+    out.push('', table([['FOLLOW-THROUGH', 'score', 'steps followed', 'carried out', 'of which late', 'in part', 'dropped', 'open', 'decisions to act', 'commitments met', 'orders serving the plan']].concat(
+        p.seats.map(s => { const h = s.follow; return [name(s), fix(h.score, 0), h.steps, fix(h.acted), fix(h.late), fix(h.part), fix(h.dropped), fix(h.pending),
             fix(h.decisionsToAct, 1), of(h.commitmentsMet, h.commitments), of(h.ordersServing, h.ordersUnderPlan)]; }))));
     const r = WarEval.READER.heldOut;
     out.push('', 'A step is followed if it is new and names something checkable; acted on means an order that worked carried it out, within '
