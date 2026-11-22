@@ -600,22 +600,59 @@
         }
         return [...groups.values()].map(group=>{
             const mesh=window.EngineMesh.mergeParts(group.parts);
-            if(group.badgePaint){
-                let offset=0;
-                for(const part of group.parts){
-                const {y,width}=part.badgePaint;
-                const count=window.EngineMesh[part.kind](...part.args).positions.length/3;
-                // Project onto both sides of the actual torso surface. No overlay,
-                // depth offset, floating cap or additional transparency pass.
-                for(let i=offset;i<offset+count;i++){
-                    mesh.uvs[i*2]=.5+mesh.positions[i*3]/width;
-                    mesh.uvs[i*2+1]=.5+(y-mesh.positions[i*3+1])/width;
-                }
-                offset+=count;
-                }
-            }
+            if(group.badgePaint) paintBadge(mesh,group.parts);
             return {...group,mesh};
         });
+    };
+    // The badge printed into the fabric: its picture is projected onto both sides of the
+    // actual torso surface. No overlay, depth offset, floating cap or additional
+    // transparency pass.
+    const paintBadge = (mesh,list) => {
+        let offset=0;
+        for(const part of list){
+            const {y,width}=part.badgePaint;
+            const count=window.EngineMesh[part.kind](...part.args).positions.length/3;
+            for(let i=offset;i<offset+count;i++){
+                mesh.uvs[i*2]=.5+mesh.positions[i*3]/width;
+                mesh.uvs[i*2+1]=.5+(y-mesh.positions[i*3+1])/width;
+            }
+            offset+=count;
+        }
+    };
+
+    // The same batches with the bones in the vertices (overhaul step A4). A unit was a
+    // draw per material AND bone, sixteen to twenty of them and up to thirty-six on
+    // horseback, so that an arm could swing; here every vertex carries the number of the
+    // bone it hangs on, the shader moves it, and a unit is a draw per material: nine or
+    // ten. Bone 0 is "none"; the names of the others come back in order. \`caster\` is
+    // every solid part in one mesh, for the shadow pass, which has no materials.
+    EngineUnits.MAX_BONES = 12;
+    EngineUnits.skinned = parts => {
+        const names=[];
+        const boneOf=name=>{ if(!name)return 0; let i=names.indexOf(name); if(i<0){names.push(name);i=names.length-1;} return i+1; };
+        const countOf=p=>window.EngineMesh[p.kind](...p.args).positions.length/3;
+        const withBones=(mesh,list)=>{
+            const bones=new Float32Array(mesh.positions.length/3);
+            let offset=0;
+            for(const p of list){ const n=countOf(p); bones.fill(boneOf(p.bone),offset,offset+n); offset+=n; }
+            mesh.bones=bones;
+            return mesh;
+        };
+        const groups=new Map();
+        for(const p of parts) {
+            const key=JSON.stringify([p.tex,p.team,p.accent,p.blend,!!p.badgePaint]);
+            if(!groups.has(key)) groups.set(key,{...p,bone:null,parts:[]});
+            groups.get(key).parts.push(p);
+        }
+        const batches=[...groups.values()].map(group=>{
+            const mesh=withBones(window.EngineMesh.mergeParts(group.parts),group.parts);
+            if(group.badgePaint) paintBadge(mesh,group.parts);
+            return {...group,mesh};
+        });
+        const solid=parts.filter(p=>!p.blend);
+        const caster=solid.length?withBones(window.EngineMesh.mergeParts(solid),solid):null;
+        if(names.length>EngineUnits.MAX_BONES) throw new Error('A unit model has '+names.length+' bones; the shader holds '+EngineUnits.MAX_BONES);
+        return {batches,bones:names,caster};
     };
 
     // Small belt lantern on the worker's right hip (-X), opposite the axe.

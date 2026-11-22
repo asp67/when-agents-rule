@@ -87,7 +87,13 @@
     EngineAtmosphere.vertex = `
         attribute vec3 aPosition, aNormal;
         attribute vec2 aUv;
+        attribute float aBone;
         uniform mat4 uProj, uView, uModel, uLightMatrix;
+        // A unit's limbs (overhaul step A4): each vertex names the bone it hangs on and is
+        // moved by that bone's matrix before the unit's own. Bone 0 is none. uSkin says
+        // whether the mesh being drawn has bones at all.
+        uniform mat4 uBones[13];
+        uniform float uSkin;
         uniform vec2 uUvOffset;
         uniform mediump float uGrassTime, uVegetation;
         uniform vec4 uCloth;
@@ -98,7 +104,14 @@
         varying float vDepth;
         varying vec4 vShadow;
         void main() {
-            vec4 world = uModel * vec4(aPosition, 1.0);
+            vec4 local = vec4(aPosition, 1.0);
+            vec3 normal = aNormal;
+            if (uSkin > 0.5) {
+                mat4 bone = uBones[int(aBone + 0.5)];
+                local = bone * local;
+                normal = mat3(bone) * normal;      // a bone turns about a pivot: no scale to undo
+            }
+            vec4 world = uModel * local;
             // Pole edge stays pinned; the ownership badge follows the same fold.
             if(dot(uCloth.zw,uCloth.zw)>.5){
                 float along=max(0.0,dot(world.xz-uCloth.xy,uCloth.zw));
@@ -115,7 +128,7 @@
             // Inverse-transpose for orthogonal TRS columns, including nonuniform scale.
             mat3 basis = mat3(uModel);
             vec3 scale2 = vec3(dot(basis[0],basis[0]), dot(basis[1],basis[1]), dot(basis[2],basis[2]));
-            vNormal = basis * (aNormal / max(scale2, vec3(0.00001)));
+            vNormal = basis * (normal / max(scale2, vec3(0.00001)));
             vWorld = world.xyz;
             vUv = aUv + uUvOffset;
             vec4 vp = uView * world;
@@ -368,8 +381,15 @@
         }`;
     EngineAtmosphere.shadowVertex = `
         attribute vec3 aPosition;
+        attribute float aBone;
         uniform mat4 uLightMatrix, uModel;
-        void main() { gl_Position = uLightMatrix*uModel*vec4(aPosition,1.0); }`;
+        uniform mat4 uBones[13];
+        uniform float uSkin;
+        void main() {
+            vec4 local = vec4(aPosition,1.0);
+            if (uSkin > 0.5) local = uBones[int(aBone + 0.5)] * local;
+            gl_Position = uLightMatrix*uModel*local;
+        }`;
     EngineAtmosphere.shadowFragment = `
         #ifdef GL_FRAGMENT_PRECISION_HIGH
         precision highp float;

@@ -132,5 +132,30 @@ That is the whole of steps A1 to A4 so far against the build before them: the lo
 and the diet together leave Low and Balanced where they were and make High faster. The
 page's time building a frame went from 0.4, 0.5 and 1.8 ms to 0.3, 0.4 and 1.6.
 
-Still to come in this step of the plan: units (some nineteen draws each, twice with
-shadows), which is where a late game with armies in view spends its calls.
+**Step 3, build 1182: units.** A unit was a draw per material and bone, sixteen to twenty
+of them and up to thirty-six on horseback, so that an arm could swing, and each again in
+the shadow pass. Now every vertex carries the number of the bone it hangs on and the
+shader moves it: a unit is a draw per material, nine to fourteen, and its shadow is one
+draw. Nothing about how a unit looks or moves changes; the far model, the death pose and
+the trebuchet's arm go the same way.
+
+The benchmark's own shots have few units close by, so a view with an army in it was
+measured as well: the benchmark's scene with three more of every unit beside it (628
+units), the camera where they stand thickest, High, 150 frames each, build 1173 against
+build 1182:
+
+| | draw calls a frame | | ms a frame, median | | |
+| --- | --- | --- | --- | --- | --- |
+| | 1173 | 1182 | 1173 | 1182 | |
+| 200 units in view (half-height 45) | 9516 | 4328 | 14.4 | 8.1 | -44 % |
+| 256 units in view (half-height 90) | 11954 | 5503 | 17.3 | 9.9 | -43 % |
+
+And the benchmark itself, one run each taken in turn: draw calls on Low 627 to 565, on
+Balanced 1179 to 875, on High 1860 to 1321; a frame on High 6.88 to 6.16 ms.
+
+The plan's target was under 900 draw calls with 400 units in view. This is not there: a
+unit is still about eleven calls with its shadow, because each of its materials has its
+own texture. Getting further means one texture for a unit's plain materials at the
+distances where their grain cannot be seen (the far model already does this from the
+whole-map height), which changes how units look at middle distance and so is a step to
+look at, not only to measure.

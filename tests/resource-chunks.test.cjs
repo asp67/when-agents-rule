@@ -103,7 +103,8 @@ test('a unit seen from far away is one still mesh per material, with every verte
     Object.assign(r, { gl: fakeGl([]) });
     r.tex = new Proxy({}, { get: (o, k) => (o[k] = o[k] || { name: k, _avg: [120, 90, 60] }) });
     const batches = W.EngineUnits.batches(W.EngineUnits.parts('infantry', { civ: 'greek', unit: 'hoplite', badge: null, variant: 0, coat: 0 }));
-    r._unitModels = new Map([['k', batches.map(p => ({ mesh: p.mesh, texName: p.tex, team: p.team, accent: p.accent, bone: p.bone, blend: p.blend, badgePaint: p.badgePaint }))]]);
+    // A unit model keeps its parts batched per bone in memory for this (build 1182): what is drawn near is skinned.
+    r._unitModels = new Map([['k', { cpu: batches.map(p => ({ mesh: p.mesh, texName: p.tex, team: p.team, accent: p.accent, bone: p.bone, blend: p.blend, badgePaint: p.badgePaint })) }]]);
     const far = r._unitFarModel('k', 'infantry');
     assert.ok(batches.length >= 8, `${batches.length} near`);
     assert.ok(far.length <= 5, `${far.length} far: ${far.map(f => f.palette ? 'palette' : f.texName)}`);

@@ -23,7 +23,7 @@ function fakeGL(complete=true) {
     const gl={calls,FRAMEBUFFER_COMPLETE:123,FRAMEBUFFER:1,TEXTURE_2D:2,RENDERBUFFER:3,DITHER:4,
         isEnabled:()=>true,createTexture:()=>({texture:++id}),createRenderbuffer:()=>({depth:++id}),createFramebuffer:()=>({fb:++id}),
         checkFramebufferStatus:()=>complete?123:0};
-    for(const name of ['bindTexture','texImage2D','texParameteri','bindRenderbuffer','renderbufferStorage','bindFramebuffer','framebufferTexture2D','framebufferRenderbuffer','deleteTexture','deleteRenderbuffer','deleteFramebuffer','viewport','clearColor','clear','useProgram','uniformMatrix4fv','enable','disable','polygonOffset']) gl[name]=(...args)=>calls.push([name,...args]);
+    for(const name of ['uniform1f','bindTexture','texImage2D','texParameteri','bindRenderbuffer','renderbufferStorage','bindFramebuffer','framebufferTexture2D','framebufferRenderbuffer','deleteTexture','deleteRenderbuffer','deleteFramebuffer','viewport','clearColor','clear','useProgram','uniformMatrix4fv','enable','disable','polygonOffset']) gl[name]=(...args)=>calls.push([name,...args]);
     return gl;
 }
 test('coastal water mask leaves the entire playable square as land',()=>{

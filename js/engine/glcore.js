@@ -61,6 +61,10 @@
         const prog = gl.createProgram();
         gl.attachShader(prog, make(gl.VERTEX_SHADER, vsSource));
         gl.attachShader(prog, make(gl.FRAGMENT_SHADER, fsSource));
+        // The position is attribute 0, which is always an array. Left to the linker, an
+        // attribute that is often a constant (a mesh's bone number, for a mesh without
+        // bones) could land there, and a constant at 0 is slow on desktop drivers.
+        gl.bindAttribLocation(prog, 0, 'aPosition');
         gl.linkProgram(prog);
         if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
             throw new Error('Program link failed: ' + gl.getProgramInfoLog(prog));
@@ -95,6 +99,8 @@
             position: buf(gl.ARRAY_BUFFER, new Float32Array(mesh.positions)),
             normal: buf(gl.ARRAY_BUFFER, new Float32Array(mesh.normals)),
             uv: buf(gl.ARRAY_BUFFER, new Float32Array(mesh.uvs)),
+            // The number of the bone each vertex hangs on: only a unit's skinned mesh has it.
+            bone: mesh.bones ? buf(gl.ARRAY_BUFFER, new Float32Array(mesh.bones)) : null,
             index: buf(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(mesh.indices)),
             count: mesh.indices.length
         };
@@ -144,7 +150,7 @@
         if (!buffers) return;
         const vao = GLCore.vaoOf(gl);
         if (buffers.arrays) { if (vao) for (const a of buffers.arrays.values()) vao.remove(a); buffers.arrays = null; }
-        for (const k of ['position', 'normal', 'uv', 'index']) if (buffers[k]) gl.deleteBuffer(buffers[k]);
+        for (const k of ['position', 'normal', 'uv', 'bone', 'index']) if (buffers[k]) gl.deleteBuffer(buffers[k]);
     };
 
     // Points the program's attributes at a mesh's buffers.
@@ -161,6 +167,13 @@
             gl.bindBuffer(gl.ARRAY_BUFFER, buffers.uv);
             gl.enableVertexAttribArray(program.attribs.aUv);
             gl.vertexAttribPointer(program.attribs.aUv, 2, gl.FLOAT, false, 0, 0);
+        }
+        if (program.attribs.aBone !== undefined) {
+            if (buffers.bone) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffers.bone);
+                gl.enableVertexAttribArray(program.attribs.aBone);
+                gl.vertexAttribPointer(program.attribs.aBone, 1, gl.FLOAT, false, 0, 0);
+            } else gl.disableVertexAttribArray(program.attribs.aBone);   // bone 0 for every vertex: none
         }
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
     };

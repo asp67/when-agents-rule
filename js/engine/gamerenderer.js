@@ -273,14 +273,20 @@
             gl.uniformMatrix4fv(this.shadowProg.uniforms.uLightMatrix,false,this._lightMatrix);
             // Receiver-plane comparisons provide the bias for the packed map.
             // Only geometry already admitted by the visibility/fog pass can cast.
+            const S = this.shadowProg.uniforms;
+            gl.uniform1f(S.uSkin, 0);
             for (const obj of this._dl.opaque) {
                 if (obj === this._ground || obj === this._sea || obj.noShadow) continue;
-                gl.uniformMatrix4fv(this.shadowProg.uniforms.uModel,false,obj.model);
+                gl.uniformMatrix4fv(S.uModel,false,obj.model);
                 GLCore.drawMesh(gl,this.shadowProg,obj.buf);
             }
-            // A shadow has no material: a building casts as one shape, not batch by batch.
+            // A shadow has no material: a building casts as one shape, not batch by batch,
+            // and so does a unit, its limbs moved by the same bones as in the picture.
+            let skinned = false;
             for (const obj of this._dl.casters || []) {
-                gl.uniformMatrix4fv(this.shadowProg.uniforms.uModel,false,obj.model);
+                if (obj.bones) gl.uniformMatrix4fv(S.uBones, false, obj.bones);
+                if (!!obj.bones !== skinned) { skinned = !!obj.bones; gl.uniform1f(S.uSkin, skinned ? 1 : 0); }
+                gl.uniformMatrix4fv(S.uModel,false,obj.model);
                 GLCore.drawMesh(gl,this.shadowProg,obj.buf);
             }
             gl.bindFramebuffer(gl.FRAMEBUFFER,null);
@@ -1245,26 +1251,43 @@
                 coat:engineType==='cavalry'&&EngineUnits.coatVariant?EngineUnits.coatVariant(unit._appearanceId ?? unit.handle ?? unit.id ?? ''):0};
             const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge,options.variant,options.coat]);
             if(!this._unitModels) this._unitModels=new Map();
-            if(!this._unitModels.has(modelKey)) {
-                const batches=EngineUnits.batches(EngineUnits.parts(engineType,options));
-                this._unitModels.set(modelKey,batches.map(p=>({
-                    buf:GLCore.createMeshBuffers(this.gl,p.mesh), mesh:p.mesh, texName:p.tex,
-                    team:p.team,accent:p.accent,bone:p.bone,blend:p.blend,badgePaint:p.badgePaint
-                })));
-            }
-            const makeEntries=model=>model.map(p=>({
+            if(!this._unitModels.has(modelKey)) this._unitModels.set(modelKey,this._unitModel(EngineUnits.parts(engineType,options)));
+            const model=this._unitModels.get(modelKey);
+            const makeEntries=(list,skin)=>list.map(p=>({
                 buf:p.buf,tex:p.palette?this._unitPalette().tex:p.badgePaint?this._flagTexture(unit.seat,tint,true):this.tex[p.texName],
                 tint:p.badgePaint?this.WHITE:(p.accent?badge[p.accent]:(p.team?tint:this.WHITE)),
-                base:M().identity(),bone:p.bone,blend:p.blend,model:M().identity()
+                base:M().identity(),bone:p.bone,blend:p.blend,model:M().identity(),skin
             }));
-            const entries=makeEntries(this._unitModels.get(modelKey));
-            unit._engine = { type: engineType, entries, phase: (this.units.length * 1.37) % 6.28,
-                far: () => makeEntries(this._unitFarModel(modelKey, engineType)) };
+            unit._engine = Object.assign(this._unitRig(model), { type: engineType, entries: makeEntries(model.skin,true), phase: (this.units.length * 1.37) % 6.28,
+                far: () => makeEntries(this._unitFarModel(modelKey, engineType),false) });
             // inert THREE-shaped handles for game.js/fogofwar.js property pokes
             unit.mesh = { visible: true, position: { set: () => {}, x: 0, y: 0, z: 0 }, rotation: { z: 0 } };
             unit.healthBar = { material: { color: { setHex: () => {} } } };
             unit.body = { material: { emissive: { setHex: () => {} } } };
             unit.baseY = 0;
+        }
+
+        // A unit's model on the card (overhaul step A4). skin: a mesh per material, the bones
+        // in its vertices (EngineUnits.skinned); caster: every solid part in one mesh, for
+        // the shadow pass; bones: the names of the bones, in the order their numbers were
+        // given; cpu: the same parts batched per bone and kept in memory, which is what the
+        // far model is merged from at rest.
+        _unitModel(parts) {
+            const built = EngineUnits.skinned(parts);
+            return {
+                skin: built.batches.map(p => ({ buf: GLCore.createMeshBuffers(this.gl, p.mesh), texName: p.tex,
+                    team: p.team, accent: p.accent, bone: null, blend: p.blend, badgePaint: p.badgePaint })),
+                caster: built.caster ? GLCore.createMeshBuffers(this.gl, built.caster) : null,
+                bones: built.bones,
+                cpu: EngineUnits.batches(parts).map(p => ({ mesh: p.mesh, texName: p.tex, team: p.team, accent: p.accent, bone: p.bone, blend: p.blend, badgePaint: p.badgePaint }))
+            };
+        }
+        // What one unit of that model carries: its bones' matrices (number 0, "none", stays
+        // the identity) and the one entry it casts its shadow with.
+        _unitRig(model) {
+            const boneMats = new Float32Array(16 * (EngineUnits.MAX_BONES + 1)), one = M().identity();
+            for (let i = 0; i <= EngineUnits.MAX_BONES; i++) boneMats.set(one, i * 16);
+            return { boneNames: model.bones, boneMats, caster: model.caster ? { buf: model.caster, model: one, bones: boneMats } : null };
         }
 
         // A trebuchet on wheels (b1110): its engine's building model, with its flag on the
@@ -1283,16 +1306,16 @@
                 const lift = 0.35 * k;
                 parts.push({ kind: 'cylinder', args: [0.07, 0.09, 2.6, 5], tex: 'bark', m: at(-1.0 * k, 1.3 + lift, 2.6 * k * 0.85) });
                 parts.push({ kind: 'box', args: [0.04, 0.5, 0.8], tex: 'cloth', team: true, m: at(-1.0 * k, 2.25 + lift, 2.6 * k * 0.85 + 0.42) });
-                this._unitModels.set(key, EngineUnits.batches(parts).map(p => ({
-                    buf: GLCore.createMeshBuffers(this.gl, p.mesh), mesh: p.mesh, texName: p.tex, team: p.team, blend: p.blend, bone: p.bone || null })));
+                this._unitModels.set(key, this._unitModel(parts));
             }
-            const entries = this._unitModels.get(key).map(p => ({
+            const model = this._unitModels.get(key);
+            const entries = model.skin.map(p => ({
                 buf: p.buf, tex: this.tex[p.texName], tint: p.team ? tint : this.WHITE,
-                base: M().identity(), bone: p.bone, blend: p.blend, model: M().identity() }));
+                base: M().identity(), bone: null, blend: p.blend, model: M().identity(), skin: true }));
             // The arm turns about the axle: 3.95 model units up (axle 3.6 + 0.35 on wheels),
             // scaled like the rest of the engine.
-            unit._engine = { type: 'siege', static: true, entries, phase: 0, far: () => entries,
-                pivotY: 3.95 * (adv ? 1.25 : 1) * BSCALE };
+            unit._engine = Object.assign(this._unitRig(model), { type: 'siege', static: true, entries, phase: 0, far: () => entries,
+                pivotY: 3.95 * (adv ? 1.25 : 1) * BSCALE });
             unit.mesh = { visible: true, position: { set: () => {}, x: 0, y: 0, z: 0 }, rotation: { z: 0 } };
             unit.healthBar = { material: { color: { setHex: () => {} } } };
             unit.body = { material: { emissive: { setHex: () => {} } } };
@@ -1329,7 +1352,7 @@
         _unitFarModel(modelKey, engineType) {
             if (!this._unitFar) this._unitFar = new Map();
             if (this._unitFar.has(modelKey)) return this._unitFar.get(modelKey);
-            const model = this._unitModels.get(modelKey);
+            const model = this._unitModels.get(modelKey).cpu;
             const rest = { ...EngineUnits.pose(engineType, 'idle', 0, 0, { strike: null, stride: 0 }).mats };
             if (model.some(p => p.bone === 'parrot') && EngineUnits.parrotPose) Object.assign(rest, EngineUnits.parrotPose(0, 0, 0));
             // The plainly textured parts -- skin, hair, leather, iron, feathers -- share ONE
@@ -1649,8 +1672,10 @@
         _ghostFrom(entity, kind) {
             const eb = entity._engine;
             if (!eb) return;
+            // A unit falls in the pose it had: its bones' matrices are copied, once for all its batches.
+            const pose = eb.boneMats ? eb.boneMats.slice() : null;
             const entries = (eb.drawn || eb.entries || eb.opaque || []).map(e => ({
-                buf: e.buf, tex: e.tex, tint: e.tint, model: e.model
+                buf: e.buf, tex: e.tex, tint: e.tint, model: e.model, bones: e.bones ? pose : null
             }));
             this._ghosts.push({ entries, px: entity.x, pz: entity.z, kind, t: 0, dur: kind === 'unit' ? 0.9 : 1.25 });
         }
@@ -2585,7 +2610,7 @@
                     stride: still ? 0 : ue.stride });
                 // The Maya spotter's parrot (b1065): up and circling while its spotter
                 // walks, back on the shoulder when it stands -- about a second each way.
-                if (ue.hasParrot === undefined) ue.hasParrot = ue.entries.some(e => e.bone === 'parrot');
+                if (ue.hasParrot === undefined) ue.hasParrot = !!(ue.boneNames && ue.boneNames.includes('parrot'));
                 if (ue.hasParrot) {
                     const want = !still && u.isMoving ? 1 : 0, lift = ue.parrotLift ?? want;
                     ue.parrotLift = want > lift ? Math.min(want, lift + udt * 0.9) : Math.max(want, lift - udt * 0.9);
@@ -2619,18 +2644,28 @@
                 }
                 const parts = this._halfH > EngineRenderer.FAR_UNIT_HALF_H ? (ue.farEntries || (ue.farEntries = ue.far())) : ue.entries;
                 ue.drawn = parts;
+                // The pose, as the matrices the shader moves the limbs by (overhaul step A4):
+                // one per bone of this unit's model, in the model's order, after "none".
+                const bones = ue.boneMats, names = ue.boneNames;
+                if (bones) for (let k = 0; k < names.length; k++) bones.set(pose.mats[names[k]] || this._one || (this._one = m3.identity()), (k + 1) * 16);
+                const solid = !(u._fade != null && u._fade < 1);
+                if (solid && ue.caster && parts === ue.entries) { ue.caster.model = world; dl.casters.push(ue.caster); }
                 for (const e of parts) {
-                    const local = e.bone && pose.mats[e.bone] ? m3.multiply(pose.mats[e.bone], e.base) : e.base;
-                    const model = m3.multiply(e.blend ? flat : world, local);
+                    // A skinned batch holds every limb and is moved as a whole; the far model's
+                    // parts were merged at rest and have no bones.
+                    const rigged = e.skin ? bones : null;
+                    const model = rigged ? (e.blend ? flat : world) : m3.multiply(e.blend ? flat : world, e.base);
                     e.model = model; // keep the composed matrix — death ghosts snapshot it
+                    e.bones = rigged;
                     // A faded entity goes through the BLENDED pass whatever its part says,
                     // because alpha in the opaque pass has nothing to blend against. `_fade`
                     // is persistent, unlike a death ghost: the analyzer uses it for a
                     // position it remembers but cannot currently see.
-                    if (u._fade != null && u._fade < 1) {
-                        dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model, alpha: u._fade });
-                    } else if (e.blend) dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model });
-                    else dl.opaque.push({ buf: e.buf, tex: e.tex, tint: flash ? FLASH : e.tint, model, localLights:workerLights });
+                    if (!solid) {
+                        dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model, alpha: u._fade, bones: rigged });
+                    } else if (e.blend) dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model, bones: rigged });
+                    // noShadow: a rigged unit casts as one shape (its caster, above), not batch by batch.
+                    else dl.opaque.push({ buf: e.buf, tex: e.tex, tint: flash ? FLASH : e.tint, model, localLights:workerLights, bones: rigged, noShadow: !!rigged });
                 }
                 if (u.selected) {
                     // Deliberately the same shape as the building ring above: same texture,
@@ -2685,7 +2720,7 @@
                         m3.multiply(m3.scaling(1 - 0.2 * k, Math.max(0.06, 1 - k), 1 - 0.2 * k), m3.translation(-g.px, 0, -g.pz)));
                 }
                 for (const e of g.entries) {
-                    dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, alpha: 1 - k, model: m3.multiply(A, e.model) });
+                    dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, alpha: 1 - k, model: m3.multiply(A, e.model), bones: e.bones || null });
                 }
             }
 
@@ -3106,8 +3141,17 @@
             const U = this.prog.uniforms, NO_CLOTH = this._noCloth || (this._noCloth = [0, 0, 0, 0]);
             const NO_LIGHTS = this._noLocalLights || (this._noLocalLights = new Float32Array(12));
             const draw = (list, unlit) => {
-                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit;
+                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit, bones;
                 for (const obj of list) {
+                    // A unit's bones: sent when they change, and the shader told whether the
+                    // mesh has any (uSkin). Batches of one unit follow each other, so a unit
+                    // sends its bones once.
+                    const b = obj.bones || null;
+                    if (b !== bones) {
+                        if (b) gl.uniformMatrix4fv(U.uBones, false, b);
+                        if (!!b !== !!bones || bones === undefined) gl.uniform1f(U.uSkin, b ? 1 : 0);
+                        bones = b;
+                    }
                     // The blended pass is drawn unlit (smoke, flames, rings, glass); an entry
                     // that is part of the ground says so and takes the ground's light.
                     const ul = obj.lit ? 0 : unlit;
