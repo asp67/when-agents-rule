@@ -569,6 +569,28 @@
         return c;
     };
 
+    // Bronze (build 1213): the iron sheet in a polished bronze's colour. What a unit of
+    // the ages before iron wears and carries wherever its model says metal.
+    TexGen.bronze = (seed = 17, size = 64) => {
+        const rand = TexGen.rng(seed);
+        const c = canvas(size), ctx = c.getContext('2d');
+        noisyFill(ctx, size, [196, 140, 66], [
+            { noise: TexGen.valueNoise(size, 10, rand), amp: 12 }
+        ]);
+        for (let i = 0; i < 40; i++) {
+            const y = rand() * size;
+            const light = rand() < 0.4;
+            ctx.fillStyle = light ? 'rgba(255,232,180,0.20)' : 'rgba(90,52,18,0.16)';
+            ctx.fillRect(0, y, size, 0.9);
+        }
+        const g = ctx.createLinearGradient(0, 0, 0, size);
+        g.addColorStop(0, 'rgba(255,238,196,0.20)');
+        g.addColorStop(1, 'rgba(70,36,10,0.24)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, size, size);
+        return c;
+    };
+
     // Solid: flat color swatch — health-bar quads and other tinted UI geometry.
     // Optional alpha (0..255) makes it a translucent ghost (building previews).
     TexGen.solid = (r = 255, g = 255, b = 255, a = 255) => {

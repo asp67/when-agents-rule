@@ -584,6 +584,11 @@
         if (o.tier == null) o.tier = TIER[o.unit] || (type === 'ranged' ? 1 : 2);
         const b = builders[type];
         const parts=b ? b(o) : [];
+        // The metal of its age (build 1213, asp67): a unit of the ages before iron wears
+        // and carries bronze wherever its model says metal, a unit of the Iron Age iron.
+        // The shapes are the same; the colour of the metal tells the two apart from any
+        // height. Left out, the metal is iron, as it always was.
+        if (o.metal === 'bronze') for (const p of parts) if (p.tex === 'iron') p.tex = 'bronze';
         if (o.unit === 'scout' || o.unit === 'spotter') parrot(parts);   // 'spotter' until b1077
         if(o.badge)for(const p of parts)if(p.capePaint)p.badgePaint=p.capePaint;
         return parts;

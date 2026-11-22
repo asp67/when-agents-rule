@@ -368,6 +368,7 @@
                 featherBlue: T(TexGen.solid(38,84,204)),     // its flight feathers, plumes (b1068)
                 leather: T(TexGen.leather(177)),
                 iron: T(TexGen.iron(188)),
+                bronze: T(TexGen.bronze(189)),   // the metal of a unit before the Iron Age (build 1213)
                 white: T(TexGen.solid(), { clamp: true }),
                 ghost: T(TexGen.solid(255, 255, 255, 115), { clamp: true }),
                 ring: T(TexGen.ring(), { clamp: true }),
@@ -1723,11 +1724,16 @@
             const tint = this._tintOf(window.WarIdentity ? WarIdentity.color(unit.owner, unit.civilization, unit.seat, unit.color) : unit.color);
             const bdef = (typeof getTeamBadge === 'function') ? getTeamBadge(unit.seat) : null;
             const badge = this._badgeTints(unit.seat, tint);
-            const options={civ:unit.civilization,unit:unit.type,badge:bdef?bdef.shape:null,
+            // Its metal by its age (build 1213): the age the unit belongs to is the rules'
+            // own (its definition's tier), only read here. A worker's tool stays iron: a
+            // worker is of no age and is never drawn anew when its people advance.
+            const def = unit.type !== 'worker' && typeof getUnitDefFor === 'function' ? getUnitDefFor(unit.civilization, unit.type) : null;
+            const metal = def && def.tier && def.tier !== 'iron' ? 'bronze' : 'iron';
+            const options={civ:unit.civilization,unit:unit.type,metal,badge:bdef?bdef.shape:null,
                 variant:EngineUnits.appearanceVariant(unit.civilization,unit._appearanceId ?? unit.handle ?? unit.id ?? ''),
                 // A rider's horse gets its own coat (b1072), from the same stable identity.
                 coat:engineType==='cavalry'&&EngineUnits.coatVariant?EngineUnits.coatVariant(unit._appearanceId ?? unit.handle ?? unit.id ?? ''):0};
-            const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge,options.variant,options.coat]);
+            const modelKey=JSON.stringify([engineType,options.civ,options.unit,options.badge,options.variant,options.coat,metal]);
             if(!this._unitModels) this._unitModels=new Map();
             if(!this._unitModels.has(modelKey)) this._unitModels.set(modelKey,this._unitModel(EngineUnits.parts(engineType,options)));
             const model=this._unitModels.get(modelKey);
@@ -3815,7 +3821,7 @@
                     const v = obj.vegetation ? 1 : 0;
                     if (v !== veg) { gl.uniform1f(U.uVegetation, v); veg = v; }
                     if (obj.tex !== tex) { gl.bindTexture(gl.TEXTURE_2D, obj.tex); tex = obj.tex; }
-                    const metal = obj.tex === this.tex.gold || obj.tex === this.tex.iron;
+                    const metal = obj.tex === this.tex.gold || obj.tex === this.tex.iron || obj.tex === this.tex.bronze;
                     const m = obj.material || (metal ? 3 : 0);
                     if (m !== mat) { gl.uniform1f(U.uMaterial, m); mat = m; }
                     const t = obj.tint || this.WHITE;
