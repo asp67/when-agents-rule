@@ -179,8 +179,6 @@
             p[j + 15] = (o.additive ? 1 : 0) + (o.drag ? 2 : 0);
             return true;
         }
-        // A light for this frame: one square added to the scene (a torch's flame, its glow).
-        flare(x, y, z, size, tint, alpha) { this.passing.push(x, y, z, size, tint[0], tint[1], tint[2], alpha, 1); }
         clear() { this.n = 0; this.counts[0] = this.counts[1] = 0; this.passing.length = 0; }
         update(dt) {
             if (!(dt > 0)) return;
@@ -228,6 +226,8 @@
         entries(r, quad, fm, bb) {
             if (!this.n && !this.passing.length) return NONE;
             const c = this.fill(), out = [], gl = r.gl, tex = r.tex.mote || r.tex.white;
+            // What is laid over takes the hour's light; what glows (sparks, flames) does not.
+            const light = r._flatLight || null;
             const instanced = typeof GLCore !== 'undefined' && typeof GLCore.instancingOf === 'function' && GLCore.instancingOf(gl);
             for (let which = 0; which < 2; which++) {
                 if (!c[which]) continue;
@@ -237,10 +237,11 @@
                     else GLCore.setInstances(gl, this.bufs[which], data);
                     const e = this.ents[which];
                     e.tex = tex; e.model = r._identity || (r._identity = window.M3D.identity());
+                    e.tint = which === 0 && light ? light : null;
                     out.push(e);
                 } else for (let i = 0; i < c[which]; i++) {
-                    const o = i * 8, s = data[o + 3];
-                    out.push({ buf: quad, tex, tint: [data[o + 4], data[o + 5], data[o + 6]], alpha: data[o + 7], additive: which === 1,
+                    const o = i * 8, s = data[o + 3], l = which === 0 && light ? light : WHITE;
+                    out.push({ buf: quad, tex, tint: [data[o + 4] * l[0], data[o + 5] * l[1], data[o + 6] * l[2]], alpha: data[o + 7], additive: which === 1,
                         model: fm.multiply(fm.multiply(fm.translation(data[o], data[o + 1], data[o + 2]), bb), fm.scaling(s, s, 1)) });
                 }
             }
@@ -254,6 +255,18 @@
 
     // What a tier draws of the new effects: Low the dust bursts it always had, Balanced and
     // High the rest. A viewer who asked for less motion gets the bursts only.
+    // Dust, chips and the streak behind an arrow are drawn unlit, as their own colour: right
+    // at noon, a glow in the dark. This is what flat open ground gets of the light at this
+    // hour against noon, as the display shows it (the shader's square root, then the hour's
+    // grade), so that what hangs over the ground darkens and warms with the ground.
+    // now, noon: EngineAtmosphere.lighting() of the two hours; up: how high the light stands.
+    EngineFx.flatLight = (now, nowUp, noon, noonUp, out = [1, 1, 1]) => {
+        for (let i = 0; i < 3; i++) {
+            const a = now.fillHigh[i] + now.key[i] * Math.max(0, nowUp), b = noon.fillHigh[i] + noon.key[i] * Math.max(0, noonUp);
+            out[i] = Math.min(1.1, Math.sqrt(Math.max(0, a) / Math.max(b, 1e-4)) * now.grade[i]);
+        }
+        return out;
+    };
     EngineFx.level = (quality, still) => still ? 0 : quality === 'cinematic' ? 2 : quality === 'balanced' ? 1 : 0;
 
     // A burst of dust: what a death or a fallen building always raised, as soft motes now.
@@ -309,10 +322,11 @@
     // (Paler than the ground it rises from, or it would not show against it.)
     EngineFx.GROUND_DUST = { summer: [[0.84, 0.77, 0.62], 0.62], desert: [[0.98, 0.92, 0.76], 0.70], winter: [[1, 1, 1], 0.65] };
     EngineFx.DUST_EVERY = { infantry: 1.6, ranged: 1.6, priest: 1.6, cavalry: 0.8, worker: 3.2, engine: 0.8 };
-    EngineFx.TORCH_NIGHT = 0.35;      // how much of the night there must be before torches are lit
-    EngineFx.TORCH_HAND = [0.36, 2.0, 0.14];
-    // o: moved (units this frame), tSec, level (1 Balanced, 2 High), theme, night (0 to 1),
-    // world (the unit's matrix), far (drawn as its far model: too small for a torch or chips),
+    // How large a puff is against what build 1207 raised: seen in a real match, an army's
+    // dust stood over it as a pale cloud and hid the men (asp67: half the size, or a quarter).
+    EngineFx.MARCH_DUST = 0.4;
+    // o: moved (units this frame), tSec, level (1 Balanced, 2 High), theme,
+    // world (the unit's matrix), far (drawn as its far model: too small for chips),
     // marching (how many units were on the move last frame).
     //
     // The more that march together, the fewer puffs each one leaves (one in 1 + marching / 12):
@@ -327,25 +341,7 @@
                 ue.dustWalk = 0;
                 const [tint, alpha] = EngineFx.GROUND_DUST[o.theme] || EngineFx.GROUND_DUST.summer;
                 P.emit({ x: u.x + rand(-0.3, 0.3), y: 0.15, z: u.z + rand(-0.3, 0.3), vx: rand(-0.3, 0.3), vy: rand(0.35, 0.8), vz: rand(-0.3, 0.3),
-                    life: rand(1.0, 1.7), size: kind === 'engine' ? 3.4 : kind === 'cavalry' ? 2.8 : 2.2, grow: 2.3, tint, alpha, drag: 1 });
-            }
-        }
-        // Torches: at night one soldier in three carries one (which, by the unit: the same
-        // man every night). A flame over the hand, a glow about the bearer, now and then an
-        // ember. The flame is drawn, not lit: it throws no light on the ground or the men.
-        ue.torchLit = 0;
-        if (o.night > EngineFx.TORCH_NIGHT && !o.far && !ue.static && ue.type !== 'worker' && ue.type !== 'priest') {
-            if (ue.torch === undefined) ue.torch = Math.floor((ue.phase || 0) * 1000) % 3 === 0;
-            if (ue.torch) {
-                const w = o.world, [lx, ly, lz] = EngineFx.TORCH_HAND;
-                const x = w[0] * lx + w[8] * lz + w[12], y = ly + w[13], z = w[2] * lx + w[10] * lz + w[14];
-                const k = Math.min(1, (o.night - EngineFx.TORCH_NIGHT) / 0.25), ph = (ue.phase || 0);
-                const f = 1 + 0.16 * Math.sin(o.tSec * 11 + ph * 7) + 0.08 * Math.sin(o.tSec * 17 + ph * 3);
-                P.flare(x, y + 0.22, z, 1.15 * f, [1, 0.42, 0.08], 0.9 * k);
-                P.flare(x, y + 0.14, z, 0.55 * f, [1, 0.85, 0.40], 0.95 * k);
-                P.flare(x, y - 0.5, z, 5.5, [1, 0.45, 0.12], 0.09 * k);
-                if (Math.random() < 0.04) P.emit({ x, y: y + 0.3, z, vx: rand(-0.4, 0.4), vy: rand(0.8, 1.6), vz: rand(-0.4, 0.4), life: rand(0.5, 0.9), size: 0.3, grow: 0.3, tint: [1, 0.6, 0.2], alpha: 0.9, additive: true });
-                ue.torchLit = k;
+                    life: rand(1.0, 1.7), size: (kind === 'engine' ? 3.4 : kind === 'cavalry' ? 2.8 : 2.2) * EngineFx.MARCH_DUST, grow: 2.3 * EngineFx.MARCH_DUST, tint, alpha, drag: 1 });
             }
         }
         // Chips: a worker's tool comes down once in a swing (EngineUnits.pose, 'harvest': the
@@ -401,69 +397,6 @@
     };
     // How much of the pieces shows: all of them, then fading over the last third.
     EngineFx.breakFade = t => Math.max(0, Math.min(1, (EngineFx.BREAK_SECONDS - t) / (EngineFx.BREAK_SECONDS * 0.33)));
-
-    // ---- birds over quiet land (overhaul step A9, build 1208) ---------------------------------
-    // A few small flocks circle where nothing is going on: no unit and no building the
-    // viewer can see within reach, on ground that has been explored. When someone comes
-    // they scatter and are gone, and gather again over another quiet place. They go by
-    // what the picture shows, never by what the fog hides: a flock tells nothing about a
-    // hidden army. Where they circle is laid by the map's seed; how they fly, by the clock.
-    EngineFx.BIRD_REACH = 30;
-    EngineFx.birdMesh = () => {
-        // Two wings raised to a shallow V and a sliver of a body, seen from both sides.
-        const tris = [[[0, 0, 0.2], [-0.62, 0.2, -0.1], [0, 0, -0.16]], [[0, 0, 0.2], [0, 0, -0.16], [0.62, 0.2, -0.1]],
-            [[0, 0, 0.42], [-0.05, 0, 0], [0.05, 0, 0]], [[0, 0, -0.38], [0.06, 0, 0], [-0.06, 0, 0]]];
-        const out = { positions: [], normals: [], uvs: [], indices: [] };
-        for (const tri of tris) for (const side of [1, -1]) {
-            const base = out.positions.length / 3;
-            for (const v of tri) { out.positions.push(...v); out.normals.push(0, side, 0); out.uvs.push(0.5, 0.5); }
-            out.indices.push(base, base + (side === 1 ? 1 : 2), base + (side === 1 ? 2 : 1));
-        }
-        return out;
-    };
-    class Birds {
-        constructor(seed, half = 300) {
-            this.homes = [];
-            for (let i = 0; i < 12; i++) this.homes.push([(rnd(seed, i * 2 + 300) * 2 - 1) * half, (rnd(seed, i * 2 + 301) * 2 - 1) * half]);
-            this.flocks = [];
-            this.next = 0;
-        }
-        // level: 1 two flocks, 2 three. quiet(x, z): whether a place is quiet and explored.
-        // Returns the birds to draw: { x, y, z, heading, flap, size }.
-        frame(t, dt, level, quiet) {
-            const want = level > 1 ? 3 : 2, out = [];
-            while (this.flocks.length < want) this.flocks.push({ home: -1, k: 0, staying: false, checked: -99, n: 4 + (this.flocks.length * 2) % 3, turn: this.flocks.length % 2 ? -1 : 1 });
-            this.flocks.length = want;
-            this.flocks.forEach((f, fi) => {
-                if (t - f.checked > 1.5 || t < f.checked) {
-                    f.checked = t;
-                    if (f.home >= 0) f.staying = quiet(this.homes[f.home][0], this.homes[f.home][1]);
-                    // Gone: look for the next quiet place that no other flock has.
-                    if (f.k <= 0 && !f.staying) for (let tries = 0; tries < this.homes.length; tries++) {
-                        const h = this.next++ % this.homes.length;
-                        if (this.flocks.some(o => o !== f && o.home === h)) continue;
-                        if (quiet(this.homes[h][0], this.homes[h][1])) { f.home = h; f.staying = true; break; }
-                    }
-                }
-                f.k = Math.max(0, Math.min(1, f.k + (f.staying ? 0.4 : -0.9) * Math.max(0, dt || 0)));
-                if (f.home < 0 || f.k <= 0.02) return;
-                const [hx, hz] = this.homes[f.home];
-                const cx = hx + 10 * Math.sin(t * 0.05 + fi * 2.1), cz = hz + 10 * Math.cos(t * 0.037 + fi * 1.3);
-                for (let i = 0; i < f.n; i++) {
-                    const ang = f.turn * t * 0.45 + i * (Math.PI * 2 / f.n) + 0.4 * Math.sin(t * 0.3 + i * 1.9);
-                    // Coming and going they are far out and high, and small with the distance.
-                    const R = 5 + 1.6 * Math.sin(t * 0.4 + i * 1.7) + (1 - f.k) * 34;
-                    out.push({ x: cx + Math.cos(ang) * R, z: cz + Math.sin(ang) * R, y: 9 + 1.2 * Math.sin(t * 0.6 + i * 2) + (1 - f.k) * 7,
-                        heading: Math.atan2(-Math.sin(ang) * f.turn, Math.cos(ang) * f.turn) + Math.PI / 2,
-                        // A few beats, then a glide.
-                        flap: Math.sin(t * 8.5 + i * 1.3) * (0.35 + 0.65 * Math.max(0, Math.sin(t * 0.9 + i * 2.6))),
-                        size: 0.75 * Math.min(1, f.k * 2.5) });
-                }
-            });
-            return out;
-        }
-    }
-    EngineFx.Birds = Birds;
 
     window.EngineFx = EngineFx;
 })();

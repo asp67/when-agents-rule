@@ -225,25 +225,25 @@ test('dust under marching feet: a puff for every stretch walked, more for a ride
         const [tint, alpha] = F.GROUND_DUST[theme];
         assert.ok(Math.abs(Q.lists[0][4] - tint[0]) < 1e-6 && alpha > 0.5 && tint.every(v => v > 0.6), theme);
     }
+    // Build 1209: a puff is two fifths of what build 1207 raised. Seen in a real match, an
+    // army's dust stood over it as a pale cloud (asp67: half the size, or a quarter).
+    assert.equal(F.MARCH_DUST, 0.4);
+    const size = kind => { const P = new F.Particles(4), u = { x: 0, z: 0, isMoving: true }, ue = { type: kind === 'engine' ? 'infantry' : kind, static: kind === 'engine' };
+        for (let i = 0; i < 40 && !P.n; i++) F.unitMotion(P, u, ue, { moved: 0.2, tSec: 0, level: 2, theme: 'summer', world: ONE }); P.fill(); return P.lists[0][3]; };
+    assert.ok(size('infantry') > 0.8 && size('infantry') < 1.0, 'a walker: ' + size('infantry'));
+    assert.ok(size('cavalry') > size('infantry') && size('engine') > size('cavalry') && size('engine') < 1.5);
 });
 
-test('torches: at night one soldier in three carries a flame and a glow; never a worker, a priest or an engine', () => {
+// Build 1209: asp67 saw the birds and the soldiers' torches in a match and had both removed.
+test('no birds and no torches: nothing of either is left in the effects or the renderer', () => {
     const { F } = fx();
-    const at = (type, phase, night, extra) => { const P = new F.Particles(16), ue = Object.assign({ type, phase }, extra); F.unitMotion(P, { x: 5, z: 7, isMoving: false }, ue, { moved: 0, tSec: 1, level: 1, theme: 'summer', night, world: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 5, 0, 7, 1], far: !!(extra && extra.far) }); return { P, ue }; };
-    const lit = at('infantry', 0.003, 0.9);
-    assert.equal(lit.ue.torchLit, 1);
-    assert.equal(lit.P.passing.length, 27, 'a flame, its core and a glow about the bearer: three squares, for this frame only');
-    assert.ok(lit.P.passing.filter((_, i) => i % 9 === 8).every(v => v === 1), 'all three are added as light');
-    const [hx, hy, hz] = F.TORCH_HAND;
-    assert.ok(Math.abs(lit.P.passing[0] - (5 + hx)) < 1e-6 && Math.abs(lit.P.passing[2] - (7 + hz)) < 1e-6 && lit.P.passing[1] > hy, 'over the hand');
-    assert.equal(at('infantry', 0.003, 0.2).ue.torchLit, 0, 'not before night has come');
-    assert.ok(at('infantry', 0.003, 0.45).ue.torchLit < 1, 'lit gradually as it falls');
-    assert.equal(at('infantry', 0.001, 0.9).P.passing.length, 0, 'two in three carry none');
-    for (const type of ['worker', 'priest']) assert.equal(at(type, 0.003, 0.9).P.passing.length, 0, type);
-    assert.equal(at('infantry', 0.003, 0.9, { static: true }).P.passing.length, 0, 'an engine');
-    // One in three, whichever way the units are numbered.
-    let bearers = 0; for (let i = 0; i < 300; i++) if (at('infantry', (i * 1.37) % 6.28, 0.9).ue.torchLit) bearers++;
-    assert.ok(bearers > 70 && bearers < 130, bearers + ' of 300');
+    for (const name of ['Birds', 'birdMesh', 'BIRD_REACH', 'TORCH_NIGHT', 'TORCH_HAND']) assert.equal(F[name], undefined, name);
+    assert.equal(new F.Particles(2).flare, undefined);
+    // A soldier at night adds nothing to the picture by standing there.
+    const P = new F.Particles(8), ue = { type: 'infantry', phase: 0.003 };
+    F.unitMotion(P, { x: 5, z: 7, isMoving: false }, ue, { moved: 0, tSec: 1, level: 2, theme: 'summer', world: ONE, far: false });
+    assert.equal(P.n, 0); assert.equal(P.passing.length, 0); assert.equal(ue.torch, undefined);
+    for (const f of ['js/engine/fx.js', 'js/engine/gamerenderer.js']) assert.doesNotMatch(read(f), /torchLit|TORCH_|ue.torch|Birds|birdMesh|BIRD_/, f);
 });
 
 test('chips: once a swing a worker\'s tool throws up what it strikes', () => {
@@ -264,10 +264,47 @@ test('chips: once a swing a worker\'s tool throws up what it strikes', () => {
     const P = new F.Particles(8); F.chips(P, 'wood', 3, 0.75, 4); assert.ok(P.p[0] === 3 && P.p[2] === 4);
 });
 
-test('the renderer asks once a frame for a unit that is seen whole, and draws the torch\'s shaft from close by', () => {
+test('the renderer asks once a frame for a unit that is seen whole', () => {
     const r = read('js/engine/gamerenderer.js');
     assert.match(r, /if \(fxP && !inset && !still && !\(u\._fade != null && u\._fade < 1\)\) \{/);
-    assert.match(r, /EngineFx\.unitMotion\(fxP, u, ue, \{ moved, tSec, level: fxLevel, theme: this\._theme, night: lampNight, world, far, marching \}\);/);
-    assert.match(r, /if \(ue\.torchLit > 0 && this\._halfH <= EngineRenderer\.MID_UNIT_HALF_H\) \{/);
+    assert.match(r, /EngineFx\.unitMotion\(fxP, u, ue, \{ moved, tSec, level: fxLevel, theme: this\._theme, world, far, marching \}\);/);
     assert.match(r, /if \(!inset\) this\._marching = onTheMove;/);
+});
+
+// Build 1209, found in the first real match: marching dust glowed at night.
+test('dust and chips take the hour\'s light; sparks and flames keep their own', () => {
+    const scope = { window: {}, console }; scope.window.window = scope.window; vm.createContext(scope);
+    for (const f of ['js/simulation/rng.js', 'js/simulation/math.js', 'js/engine/math3d.js', 'js/engine/atmosphere.js', 'js/engine/fx.js']) vm.runInContext(read(f), scope);
+    const A = scope.window.EngineAtmosphere, F = scope.window.EngineFx;
+    const sun = [1, 0.96, 0.88], sky = [0.62, 0.78, 0.92], rest = [0.45, 0.72, 0.53].map(v => v / Math.hypot(0.45, 0.72, 0.53));
+    const noon = A.lighting(0, sun, sky, 'summer', 1);
+    const at = seconds => { const d = A.sunDirection(rest, A.sunPhase(seconds, 'summer')), L = A.lighting(seconds, sun, sky, 'summer', rest[1] / d[1]); return { night: L.night, light: F.flatLight(L, d[1], noon, rest[1]) }; };
+    assert.ok(at(0).light.every(v => Math.abs(v - 1) < 1e-6), 'at noon dust is the colour it was given');
+    const dark = [260, 300, 360, 420].map(at);
+    assert.ok(dark.every(d => d.night === 1));
+    for (const d of dark) {
+        assert.ok(d.light[0] > 0.25 && d.light[0] < 0.5, 'at night less than half the red: ' + d.light[0]);
+        assert.ok(d.light[2] > d.light[1] && d.light[1] > d.light[0], 'and bluer, as the ground is');
+    }
+    // Never brighter than a little over noon, never black, at any hour of the day.
+    for (let s = 0; s < 720; s += 10) assert.ok(at(s).light.every(v => v > 0.2 && v <= 1.1), 'hour ' + s);
+    // It fills the list it is given: nothing is made anew each picture.
+    const keep = [0, 0, 0], d = A.sunDirection(rest, A.sunPhase(300, 'summer'));
+    assert.equal(F.flatLight(A.lighting(300, sun, sky, 'summer', rest[1] / d[1]), d[1], noon, rest[1], keep), keep);
+    assert.ok(keep[0] > 0 && keep[0] < 0.5);
+
+    // The list that is laid over wears it as its tint; the list that is added as light does not.
+    const quad = { quad: true }, fm = { multiply: (a, b) => [a, b], translation: (...a) => a, scaling: (...a) => a };
+    const night = [0.36, 0.45, 0.68], r = { gl: {}, tex: { mote: {} }, _identity: 'one', _flatLight: night };
+    const { F: G } = fx(true), P = new G.Particles(8);
+    P.emit({ x: 0, y: 1, z: 0, life: 1 }); P.emit({ x: 0, y: 1, z: 0, life: 1, additive: true }); P.update(0.1);
+    const [over, glow] = P.entries(r, quad, fm, 'bb');
+    assert.equal(over.tint, night); assert.equal(glow.tint, null);
+    r._flatLight = null; assert.equal(P.entries(r, quad, fm, 'bb')[0].tint, null, 'a renderer that has not solved the light yet draws them as they are');
+    const old = fx(false), Q = new old.F.Particles(8);
+    Q.emit({ x: 0, y: 1, z: 0, life: 1, tint: [0.5, 0.5, 0.5] }); Q.emit({ x: 0, y: 1, z: 0, life: 1, additive: true, tint: [0.5, 0.5, 0.5] }); Q.update(0.1);
+    const each = Q.entries({ gl: {}, tex: { mote: {} }, _flatLight: night }, quad, fm, 'bb');
+    assert.ok(Math.abs(each[0].tint[0] - 0.18) < 1e-6 && Math.abs(each[0].tint[2] - 0.34) < 1e-6 && each[1].tint[0] === 0.5);
+    const src = read('js/engine/gamerenderer.js');
+    assert.match(src, /this\._flatLight = EngineFx\.flatLight\(atmosphere, this\.sunDir\[1\], this\._noonLight\.light, rest\[1\], this\._flatLight \|\| \[1, 1, 1\]\);/);
 });

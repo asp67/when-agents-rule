@@ -3157,19 +3157,13 @@
                 const world = m3.multiplyInto(ue.mWorld || (ue.mWorld = new Float32Array(16)), fm.translation(u.x, pose.bob, u.z), spin);
                 const flat = m3.multiplyInto(ue.mFlat || (ue.mFlat = new Float32Array(16)), fm.translation(u.x, 0, u.z), spin);
                 const flash = u._flashUntil && now < u._flashUntil;
-                // What the unit raises and carries (overhaul step A9): dust under its feet, a
-                // torch at night, chips where a worker strikes. Once a frame (the main
-                // picture), for a unit that is seen whole and is not a held moment of a replay.
+                // What the unit raises (overhaul step A9): dust under its feet, chips where a
+                // worker strikes. Once a frame (the main picture), for a unit that is seen
+                // whole and is not a held moment of a replay.
                 if (fxP && !inset && !still && !(u._fade != null && u._fade < 1)) {
                     const far = this._halfH > EngineRenderer.FAR_UNIT_HALF_H;
                     if (u.isMoving) onTheMove++;
-                    EngineFx.unitMotion(fxP, u, ue, { moved, tSec, level: fxLevel, theme: this._theme, night: lampNight, world, far, marching });
-                    // The torch's shaft, from close by: the flame alone would hang in the air.
-                    if (ue.torchLit > 0 && this._halfH <= EngineRenderer.MID_UNIT_HALF_H) {
-                        const [lx, ly, lz] = EngineFx.TORCH_HAND;
-                        dl.opaque.push({ buf: this._buf('box', [1, 1, 1]), tex: this.tex.bark, tint: this.WHITE, noShadow: true,
-                            model: fm.multiply(world, fm.multiply(fm.translation(lx, ly - 0.45, lz), fm.scaling(0.06, 0.95, 0.06))) });
-                    }
+                    EngineFx.unitMotion(fxP, u, ue, { moved, tSec, level: fxLevel, theme: this._theme, world, far, marching });
                 }
                 let workerLights=null;
                 const lampFade=lightDetailFade(Math.hypot(u.x-this.cameraTarget.x,u.z-this.cameraTarget.z),this._halfH);
@@ -3282,30 +3276,6 @@
                         if (fade < 1) dl.blended.push({ buf: piece.entry.buf, tex: piece.entry.tex, tint: piece.entry.tint, alpha: fade, model });
                         else dl.opaque.push({ buf: piece.entry.buf, tex: piece.entry.tex, tint: piece.entry.tint, model });
                     }
-                }
-            }
-
-            // Birds over quiet land (overhaul step A9): a few flocks where nothing the viewer
-            // can see is going on. Not in the second picture, and not from so high that a
-            // bird is under a pixel.
-            if (fxLevel > 0 && !inset && this._halfH < 140 && this.terrain && typeof EngineFx !== 'undefined' && EngineFx.Birds) {
-                if (!this._birds || this._birdSeed !== this.terrain.seed) {
-                    this._birdSeed = this.terrain.seed;
-                    this._birds = new EngineFx.Birds(EngineFx.seedOf(this.terrain.seed), Math.min(300, (this.terrain.size || 800) / 2 - 90));
-                }
-                const fow = this._fow(), seen = typeof EngineGrass !== 'undefined' ? EngineGrass.visibleRect : null, reach = EngineFx.BIRD_REACH * EngineFx.BIRD_REACH;
-                const shown = (e, kind) => e.health > 0 && !(e.mesh && e.mesh.visible === false) && !(this.entityHidden && this.entityHidden(e, kind));
-                const quiet = (x, z) => {
-                    if (seen && fow && !seen(fow, x, z, 8, 8, true)) return false;
-                    for (const b of this.buildings) if (shown(b, 'building') && (b.x - x) ** 2 + (b.z - z) ** 2 < reach) return false;
-                    for (const u of this.units) if (shown(u, 'unit') && (u.x - x) ** 2 + (u.z - z) ** 2 < reach) return false;
-                    return true;
-                };
-                const birdBuf = this._birdBuf || (this._birdBuf = GLCore.createMeshBuffers(this.gl, EngineFx.birdMesh()));
-                for (const b of this._birds.frame(tSec, dt, fxLevel, quiet)) {
-                    if (this._cull(b.x, b.z, 2)) continue;
-                    dl.opaque.push({ buf: birdBuf, tex: this.tex.white, tint: EngineRenderer.BIRD_TINT, noShadow: true,
-                        model: fm.multiply(fm.multiply(fm.translation(b.x, b.y, b.z), fm.rotationY(b.heading)), fm.scaling(b.size, b.size * b.flap, b.size)) });
                 }
             }
 
@@ -3638,6 +3608,14 @@
                 this.movingSun ? rest[1] / this.sunDir[1] : 1);
             this._sun = atmosphere.sun;
             this._sky = atmosphere.sky;
+            // What open ground gets of the light against noon: dust and chips are drawn
+            // unlit and would glow at night without it (EngineFx.flatLight).
+            if (typeof EngineFx !== 'undefined' && EngineFx.flatLight) {
+                if (!this._noonLight || this._noonLight.theme !== this._theme || this._noonLight.sun !== this._daySun) {
+                    this._noonLight = { theme: this._theme, sun: this._daySun, light: window.EngineAtmosphere.lighting(0, this._daySun, this._daySky, this._theme, 1) };
+                }
+                this._flatLight = EngineFx.flatLight(atmosphere, this.sunDir[1], this._noonLight.light, rest[1], this._flatLight || [1, 1, 1]);
+            }
             // Draw between the last two simulation steps (see beginSimStep). The frame's
             // geometry is built from unit positions in _assembleFrame and nowhere after,
             // so the smoothed positions exist only for that call, and the true ones are
@@ -3927,8 +3905,6 @@
         desert: { share: 0.3, tint: EngineRenderer.TREE_LOOK.acacia.foliage } };
     // A slow field over the map, 0 to 1, the same for the same place: value noise on a
     // lattice of 70 units, so a stand of one kind is a few dozen trees across.
-    // A bird against the ground: dark, a touch warm.
-    EngineRenderer.BIRD_TINT = [0.17, 0.16, 0.15];
     // The desert's stones: rust and sand, for its single pebbles and its beds of them.
     EngineRenderer.DESERT_STONE = [[0.82, 0.6, 0.42], [0.9, 0.8, 0.62]];
     EngineRenderer.standField = (x, z) => {

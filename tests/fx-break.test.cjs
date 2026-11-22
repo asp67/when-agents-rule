@@ -1,5 +1,5 @@
 // Overhaul step A9, third slice (build 1208): a building that falls breaks into its own
-// parts, and birds circle over quiet land.
+// parts. (The birds of that build were removed in build 1209.)
 const test = require('node:test'), assert = require('node:assert/strict');
 const vm = require('node:vm'), fs = require('node:fs'), path = require('node:path');
 const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
@@ -70,64 +70,6 @@ test('the renderer breaks a building apart where the tier has effects, and lets 
     assert.match(src, /this\._ghosts = \[\];\s+this\._breaks = \[\];/);
 });
 
-test('birds gather over quiet places, scatter when someone comes, and gather again elsewhere', () => {
-    const { F } = engine();
-    const birds = new F.Birds(1234, 300);
-    assert.equal(birds.homes.length, 12);
-    assert.ok(birds.homes.every(([x, z]) => Math.abs(x) <= 300 && Math.abs(z) <= 300));
-    assert.deepEqual(birds.homes, new F.Birds(1234, 300).homes, 'laid by the map\'s seed');
-    let loud = new Set(), asked = 0;
-    const quiet = (x, z) => { asked++; return !loud.has(x + ',' + z); };
-    let t = 0, out = [];
-    const run = (seconds, level = 2) => { for (let i = 0; i < seconds * 10; i++) { t += 0.1; out = birds.frame(t, 0.1, level, quiet); } };
-    run(6);
-    assert.equal(birds.flocks.length, 3);
-    assert.ok(birds.flocks.every(f => f.k === 1 && f.staying && f.home >= 0));
-    assert.equal(new Set(birds.flocks.map(f => f.home)).size, 3, 'each flock over a place of its own');
-    assert.equal(out.length, birds.flocks.reduce((n, f) => n + f.n, 0));
-    for (const b of out) {
-        assert.ok([b.x, b.y, b.z, b.heading, b.flap, b.size].every(Number.isFinite));
-        assert.ok(b.y > 7 && b.y < 12, 'above the roofs and the trees: ' + b.y);
-        assert.ok(Math.abs(b.flap) <= 1 && b.size > 0.5 && b.size < 1);
-    }
-    // The place is asked about every second and a half, not every frame.
-    asked = 0; run(6);
-    assert.ok(asked >= 3 * 3 && asked <= 3 * 5, asked + ' questions in six seconds for three flocks');
-    // Someone comes to the first flock's place: it is gone within a few seconds, and gathers over another.
-    const first = birds.flocks[0], was = first.home;
-    loud.add(birds.homes[was].join(','));
-    run(3);
-    assert.ok(first.k === 0 || first.home !== was, 'scattered');
-    run(8);
-    assert.ok(first.home !== was && first.k === 1, 'and gathered again elsewhere');
-    assert.equal(new Set(birds.flocks.map(f => f.home)).size, 3);
-    // Nowhere is quiet: no birds at all.
-    for (const h of birds.homes) loud.add(h.join(','));
-    run(6);
-    assert.equal(out.length, 0);
-    // Balanced has two flocks.
-    const two = new F.Birds(1234, 300); let u = 0;
-    for (let i = 0; i < 60; i++) { u += 0.1; two.frame(u, 0.1, 1, () => true); }
-    assert.equal(two.flocks.length, 2);
-});
-
-test('a bird is two raised wings and a sliver of a body, seen from both sides', () => {
-    const { F, W } = engine(), m = F.birdMesh();
-    assert.equal(m.indices.length / 3, 8);
-    assert.ok(m.positions.every(Number.isFinite) && m.positions.length / 3 === m.indices.length);
-    const xs = m.positions.filter((_, i) => i % 3 === 0), ys = m.positions.filter((_, i) => i % 3 === 1);
-    assert.ok(Math.max(...xs) > 0.5 && Math.min(...xs) < -0.5 && Math.max(...ys) > 0.1 && Math.min(...ys) === 0, 'wing tips out and up');
-    assert.equal(m.normals.filter((_, i) => i % 3 === 1).filter(v => v === 1).length, m.normals.filter((_, i) => i % 3 === 1).filter(v => v === -1).length, 'as much of it faces up as down');
-});
-
-test('birds go by what the picture shows, never by what the fog hides', () => {
-    const src = read('js/engine/gamerenderer.js');
-    // A unit or a building counts only if it is drawn for this viewer: the same test the frame draws by.
-    assert.match(src, /const shown = \(e, kind\) => e\.health > 0 && !\(e\.mesh && e\.mesh\.visible === false\) && !\(this\.entityHidden && this\.entityHidden\(e, kind\)\);/);
-    assert.match(src, /if \(seen && fow && !seen\(fow, x, z, 8, 8, true\)\) return false;/);
-    assert.match(src, /for \(const u of this\.units\) if \(shown\(u, 'unit'\) && \(u\.x - x\) \*\* 2 \+ \(u\.z - z\) \*\* 2 < reach\) return false;/);
-    assert.match(src, /if \(fxLevel > 0 && !inset && this\._halfH < 140 && this\.terrain && typeof EngineFx !== 'undefined' && EngineFx\.Birds\) \{/);
-    assert.match(src, /noShadow: true,\s+model: fm\.multiply\(fm\.multiply\(fm\.translation\(b\.x, b\.y, b\.z\), fm\.rotationY\(b\.heading\)\), fm\.scaling\(b\.size, b\.size \* b\.flap, b\.size\)\) \}\);/);
-    // No rule file knows of any of it.
-    for (const f of ['js/game.js', 'js/units.js', 'js/buildings.js', 'js/ai.js']) assert.doesNotMatch(read(f), /EngineFx\.(Birds|shatter|unitMotion|Particles)/, f);
+test('no rule file knows of the effects', () => {
+    for (const f of ['js/game.js', 'js/units.js', 'js/buildings.js', 'js/ai.js']) assert.doesNotMatch(read(f), /EngineFx\.(shatter|unitMotion|Particles)/, f);
 });
