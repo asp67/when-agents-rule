@@ -304,8 +304,10 @@ health bars and banners that follow are drawn at the canvas's own size.
 
 **Focus.** `renderer.tiltShift` blurs a close-up toward the top and bottom of the
 picture, full from a camera half-height of 14 down and gone from 28 up
-(`EngineRenderer.FOCUS`), on High only. It is built and switched off: a look to be
-decided by eye, not by a number.
+(`EngineRenderer.FOCUS`), on High only. It was built switched off, shown to asp67 as
+stills, and switched on in build 1190; `renderer.tiltShift = false` leaves every picture
+sharp. A close-up on High therefore goes through the target now, at the cost in the
+table below.
 
 Checked in the page, 1920x1080, High. The same frozen frame drawn straight and through
 the target at full size: 4 pixels of two million differ by more than 4 of 255, the

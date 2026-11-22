@@ -131,7 +131,7 @@ test('what the governor takes off the resolution comes off the scene where there
     assert.deepEqual([r._pickScale(), r.sceneScale], [1.25, 1]);
     // Focus: only when switched on, only on High, all of it on a close-up and none from where a town is seen whole.
     const F = R.FOCUS, at = h => { r._halfH = h; return r._focusAmount(); };
-    assert.equal(at(10), 0, 'off until asked for');
+    assert.equal(at(10), 0, 'not without the switch');
     r.tiltShift = true;
     assert.deepEqual([at(F.near - 2), at((F.near + F.far) / 2), at(F.far), at(90)], [1, 0.5, 0, 0]);
     r.graphicsQuality = 'balanced';
@@ -153,6 +153,6 @@ test('the frame: a picture of its own only when one is wanted, never for the sec
     assert.match(body, /focus: own\.focus > 0 \? \[F\.line, F\.band, F\.blur \* own\.focus \* own\.sh \/ 1080\] : null/);
     assert.match(body, /_bloom\.apply\(this\.PW \|\| this\.W, this\.PH \|\| this\.H, 0\.22 \+ 0\.3 \* atmosphere\.night, own \? this\._postFx\.scene : null\)/);
     assert.match(s, /if \(this\._postFailed\) \{ this\._postFailed = false; this\._sizeCanvas\(\); \}/);
-    // Nothing is switched on that changes a picture drawn at full size.
-    assert.match(s, /this\.postUpscale = true;\s+this\.tiltShift = false;\s+this\.postAlways = false;/);
+    // Focus is on (build 1190, switched on from stills); the measuring switch is not.
+    assert.match(s, /this\.postUpscale = true;\s+this\.tiltShift = true;\s+this\.postAlways = false;/);
 });

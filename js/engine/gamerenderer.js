@@ -183,9 +183,9 @@
             // postUpscale: what the quality governor takes off the resolution is taken off
             // the scene, which is then sharpened up to a canvas that keeps its size; false
             // shrinks the canvas instead, as before. tiltShift: a close-up blurs toward the
-            // top and bottom of the picture; off until asked for.
+            // top and bottom of the picture (on since build 1190; false leaves every picture sharp).
             this.postUpscale = true;
-            this.tiltShift = false;
+            this.tiltShift = true;
             this.postAlways = false;          // for measuring: the scene in its own picture even at full size
             this.sceneScale = 1;              // scene pixels per drawing-buffer pixel
             this._frameNo = 0;                // which frame this is, so nothing is moved twice in one
