@@ -15,7 +15,7 @@ const SAMPLE = path.join(root, 'samples/2026-10-05_gpt6.1-sol-claude-sonnet5.5-d
 function page() {
     const els = {}, store = {}, body = new Set(), keys = [], vars = {};
     const el = id => els[id] || (els[id] = { id, style: {}, innerHTML: '', classList: { toggle() {} }, setAttribute() {} });
-    ['benchLeft', 'benchMatrix', 'benchBtn'].forEach(el);
+    ['benchLeft', 'benchMatrix', 'benchFull', 'benchBtn'].forEach(el);
     const context = vm.createContext({ console, Date, WarEval, t: (k, v) => k + (v ? JSON.stringify(v) : ''), getUiLang: () => 'en',
         OpenAIAIManager: { MAX_COMMANDS_PER_TURN: 3 },
         localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
@@ -89,7 +89,8 @@ test('D2: every string of the Bench view is keyed in all four languages', () => 
     for (const k of ['bench.leadWon', 'bench.leadLost', 'eval.index', 'eval.indexTip', 'eval.waits', 'eval.groundingWaits', 'sum.openAnalyzer', 'sum.legacy', 'eval.strategyPlaced', 'eval.strategyTip', 'eval.strategyLive', 'eval.strategyNone', 'age.neolithic', 'age.bronze', 'age.iron']) keys.add(k);
     for (const dim of WarEval.SCORED) keys.add('bench.cmp.' + dim);
     keys.add('spec.compareTitle');
-    keys.delete('bench.st.'); keys.delete('eval.'); keys.delete('bench.cmp.');   // the prefixes those are built from
+    for (const dim of WarEval.SCORED) keys.add('bench.b.' + dim);            // the parts' letters on the mini card (build 1222)
+    keys.delete('bench.st.'); keys.delete('eval.'); keys.delete('bench.cmp.'); keys.delete('bench.b.');   // the prefixes those are built from
     assert.ok(keys.size >= 30, 'only ' + keys.size + ' keys found: did the pattern change?');
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of keys) assert.ok(k in context.I[lang], lang + ' lacks ' + k);
     // No sentence is written into the markup itself.
@@ -177,12 +178,17 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.equal(u.benchOn(), true);
     ledger.addLine(decision('a', 10, { plan: ['Build a tower'], orders: [['train_unit', { unitType: 'militia' }, 'avoidable']] }));
     u.updateBenchView();
-    const first = els.benchMatrix.innerHTML;
+    // On screen is the mini card (build 1222); the matrix lives in the full-size view, which a click on the card opens.
+    assert.match(els.benchMatrix.innerHTML, /class="bc-list"[^>]*onclick="game\.ui\.toggleBenchFull\(true\)"/);
+    assert.deepEqual([cells(els.benchMatrix.innerHTML).length, els.benchFull.innerHTML, els.benchFull.style.display], [0, '', 'none']);
+    u.toggleBenchFull(true);
+    assert.equal(els.benchFull.style.display, '');
+    const first = els.benchFull.innerHTML;
     assert.deepEqual(cells(first), ['0', '100', '–', '–', '–']);          // one refused order of one; a plan of one checkable step; nothing closed; no threat; no power reading
     // A new reading on the timeline redraws it too: the strategy row lives on it.
     u.game._timeline = { samples: [{ t: 5, p: { a: { pw: 300 }, b: { pw: 300 } } }], ages: [] };
     u.updateBenchView();
-    assert.deepEqual(cells(els.benchMatrix.innerHTML), ['0', '100', '–', '–', '67']);
+    assert.deepEqual(cells(els.benchFull.innerHTML), ['0', '100', '–', '–', '67']);
     els.benchMatrix.innerHTML = 'untouched';
     u.updateBenchView();
     assert.equal(els.benchMatrix.innerHTML, 'untouched');
@@ -191,11 +197,16 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.notEqual(els.benchMatrix.innerHTML, 'untouched');
     // A cell opens the decisions behind it, and each of those opens in the transcript.
     u.benchShowEvidence('grounding', 'a');
-    assert.match(els.benchMatrix.innerHTML, /bench-evidence.*benchOpenTurn\('a', 1\)" title="bench\.open".*#1 0:10<\/span> c</s);
+    assert.match(els.benchFull.innerHTML, /bench-evidence.*benchOpenTurn\('a', 1\)" title="bench\.open".*#1 0:10<\/span> c</s);
     u.benchOpenTurn('a', 1);
     assert.deepEqual([u._transcriptFor, u._tvPinned, opened.join()], ['a', 1, '1']);
     u.benchShowEvidence('grounding', 'a');                              // the same cell again closes it
-    assert.doesNotMatch(els.benchMatrix.innerHTML, /bench-evidence/);
+    assert.doesNotMatch(els.benchFull.innerHTML, /bench-evidence/);
+    // Escape, or its button, closes the full size; the mini card stays.
+    assert.equal(keys.length, 2);
+    keys[1]({ key: 'Escape' });
+    assert.deepEqual([u._benchFull, els.benchFull.style.display, els.benchFull.innerHTML], [false, 'none', '']);
+    assert.match(els.benchMatrix.innerHTML, /bc-seat/);
     press('B');
     assert.deepEqual([u.benchOn(), body.has('bench-view'), els.benchLeft.style.display], [false, false, 'none']);
 });

@@ -838,16 +838,30 @@
         // knowledge: it is profileAt() asked many times, so a reader who scores the file
         // arrives at the same rows, and a file from before this build has them worked out
         // on reading. It does not depend on the results line, which is written with it.
-        history(every = WarEval.HISTORY_SEC) {
+        history(every = WarEval.HISTORY_SEC) { return this._history(every, null); }
+        // The timeline's readings, every five seconds: from the file's own line once it is
+        // there, and until then as the page has shown them to the ledger (preview).
+        power() { const tl = this.timeline || this._preview; return (tl && tl.samples) || []; }
+        // The same for a match still being played, asked again at every decision (the
+        // comparison board's graphs, build 1222). A sample is kept once it can no longer
+        // change, and only the newest are worked out again. It can change for a while: a
+        // seat's record carries the second its state was built at and arrives when the
+        // seat has answered, which a slow one does minutes later. `settle` is how long.
+        liveHistory(every = WarEval.HISTORY_SEC, settle = 600) {
+            const key = every + ':' + settle;
+            if (!this._live || this._live.key !== key) this._live = { key, at: new Map() };
+            return this._history(every, this._live.at, settle);
+        }
+        _history(every, kept, settle = 0) {
             const seats = [...this.seats.values()].filter(s => s.turns.length);
             let end = 0;
             for (const s of seats) for (const t of s.turns) if (t.sec != null && t.sec > end) end = t.sec;
-            const tl = this.timeline && this.timeline.samples;
-            if (tl && tl.length && num(tl[tl.length - 1].t) > end) end = num(tl[tl.length - 1].t);
+            const tl = this.power();
+            if (tl.length && num(tl[tl.length - 1].t) > end) end = num(tl[tl.length - 1].t);
             const times = [];
             for (let t = every; t < end; t += every) times.push(t);
             if (end > 0) times.push(end);
-            const samples = times.map(t => {
+            const sample = t => {
                 const v = {};
                 for (const p of this.profileAt(t).seats) {
                     if (!p.decisions) continue;
@@ -857,6 +871,14 @@
                         sum(turns.map(x => x.prompt || 0)), sum(turns.map(x => x.completion || 0)), sum(turns.map(x => x.latencyMs || 0))];
                 }
                 return { t, v };
+            };
+            const samples = times.map(t => {
+                if (!kept) return sample(t);
+                const settled = t % every === 0 && t < end - settle;
+                if (settled && kept.has(t)) return kept.get(t);
+                const s = sample(t);
+                if (settled) kept.set(t, s);
+                return s;
             });
             return { type: 'scores', kind: 'war-eval/' + WarEval.VERSION, scale: WarEval.SCALE, everySec: every, fields: WarEval.HISTORY_FIELDS.slice(),
                 seats: seats.map(s => ({ id: s.id, seat: s.seat, civ: s.civ, name: s.name, model: s.model })), samples };
