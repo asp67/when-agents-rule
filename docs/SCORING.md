@@ -260,6 +260,16 @@ it and every other model in the group have at least two matches and its interval
 none of theirs. Otherwise the table says "not separated yet". A single match never makes
 a leader.
 
+**A mean is never shown without its spread** (build 1225). Under the interval stand the
+lowest, the median and the highest match, every match is a tick on the cell's track, and a
+column lists the model's place in every match, oldest first. Nothing is picked: a mean of
+60 made of 40, 45 and 95 shows as exactly that.
+
+**Who played is said** (build 1225). A row is tagged *Raw model* (the model's own answers
+through the game's request loop) or *Agent harness* (an agent framework over MCP with the
+model inside it), from the `settings` of the match's first line. A table that holds both
+says so: a harness brings its own memory, tool loop and retries, which no transcript sees.
+
 Beside the means:
 
 - **Head to head.** How often two models met, and who placed above whom.
@@ -335,6 +345,79 @@ file again gives the same rows, and for a file from before build 1221 the rows a
 on reading (`ledger.history()`). The last sample is the profile as it stood at the last
 second, before the placement was known; the final profile, which knows the placement, is
 the one in the `results` line. The two can differ in Strategy and so in the Index.
+
+## The comparison board
+
+The Bench view's panel shows a mini card: a row a model with three sections, and a click
+opens the board at full size (builds 1222 to 1226). The full size also opens from the
+results screen (the button under the report card) and in the transcript analyzer
+(*Comparison*, in its bar), where it reads the loaded file. Nothing on the board is a new
+score. It lays out what the ledger already holds.
+
+**Three sections a model.**
+
+- *Gameplay score*: its power over the match with the other seats' behind it, its rank by
+  power and its share of all power.
+- *Model performance and cost*: the Index and its five parts over the match (the `scores`
+  line above), and under it tokens and thinking time so far.
+- *Score summary*: the Index and every part as they stand, with what each rests on.
+
+**Cost and time per task.** Beside the Index stand what it cost: all tokens (prompt plus
+completion), the time spent waiting for answers, and two ratios, Index points a million
+tokens and Index points a minute of thinking. A seat whose harness reports no usage has no
+tokens and no ratio, which is not a zero.
+
+**Discipline.**
+
+| Figure | What it is |
+| --- | --- |
+| Orders that could not be called | judged orders with the verdict `invalid`, as a share |
+| Orders refused for a shown reason | judged orders with the verdict `avoidable`, as a share |
+| Mistakes not made again | 1 minus the share of mistakes repeated within the next two decisions |
+| Requests lost | requests that failed or were cancelled, and rounds missed |
+
+**The decision inspector** (`Ledger.trace`). Under a model's sections the board marks the
+decisions to go and read, on the match's clock and as a list; a click opens one in the
+transcript. Five kinds:
+
+| Kind | What the record shows |
+| --- | --- |
+| Loop | the same order refused for the same reason in three or more decisions in a row; one mark at the first, carrying the run |
+| Constraint ignored | an order refused on a limit the state had shown: the price, the population limit, a building not built |
+| Lost awareness | an order at something that is not there or cannot be meant: a target out of sight, a tile off the map, a name that does not exist |
+| Threat unanswered | an attack on its own town, or a rival Wonder, shown to it and not answered inside the response window |
+| Refused | an order refused with no reason code on record |
+
+Which refusal is a constraint and which a reference to something that is not there is the
+Bench's own taxonomy (`WarBench.classify` in js/bench-core.js), which a test keeps complete
+against the harness's codes. Three decisions is `WarEval.LOOP_MIN`: among the shipped
+samples such runs are 3, 4, 4, 6, 19 and 20 decisions long. The inspector scores nothing.
+
+**Raw model or harness** (`harness` in a seat's profile, not in the profile a file
+carries). Beside a seat's name stands who plays it, and in its summary what the game's own
+harness did for it, from lines the transcript already writes:
+
+- answers with no tool call, whose orders the harness read out of the text (`answeredVia`);
+- requests the harness adapted (`adaptation` lines, by kind: a parameter or the tools left
+  out after the endpoint refused them, the context shrunk, earlier turns dropped);
+- a human's interventions (`intervention` lines: advice, a seat paused and resumed).
+
+A file older than transcript schema 2 does not record the last two, and the board says "not
+recorded" rather than 0. What an agent framework does inside itself is in no transcript.
+
+**Charts to share** (js/eval/share.js). One SVG of 1600 x 900 that stands by itself, saved
+as it is or as a PNG. For a match: the Index against speed or against tokens a decision, a
+point a model, and beside it where on the map each seat sent its orders. For a season group
+(Season page): the mean Index with a whisker from the lowest match to the highest, or the
+share of matches placed first, against the median time a decision took. A round point is a
+raw model, a diamond an agent harness. A seat with no value on an axis is named under the
+plot and not placed at zero.
+
+One rule of its own: an agent harness whose median turn ends in under a second has no
+speed on the chart (`WarShare.HARNESS_MIN_MS`). The game can only time "state handed over"
+to "turn ended" for a harness, and one that keeps working between its turns ends them in
+milliseconds: in the shipped samples one has a median of 13 ms beside answers of 100 s.
+That is not a thinking time, and it must not read as the fastest model.
 
 ## The match heuristic
 
