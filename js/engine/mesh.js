@@ -321,7 +321,7 @@
     };
 
     // Seasonal resource trees: a few reusable variants, batched by material.
-    // Styles: pine, fir and bare (winter); desert (an acacia), palm and thorn (desert);
+    // Styles: pine, tallpine and bare (winter); desert (an acacia), palm and thorn (desert);
     // cypress and olive (summer, beside the oak the renderer builds from a trunk, two
     // forks and one fine crown). Overhaul step A5: three kinds a land.
     EngineMesh.seasonalTree = (style, variant = 0, material = 'bark') => {
@@ -338,14 +338,17 @@
             const forward=m.cross(right,up),mid=a.map((v,i)=>(v+b[i])/2);
             parts.push({kind:'cylinder',args:[r1,r0,length,6],m:[...right,0,...up,0,...forward,0,...mid,1]});
         };
-        if(style==='pine'||style==='fir') {
-            // The fir: taller, half as wide again as it is narrow, six skirts instead of four.
-            const fir=style==='fir',tiers=fir?6:4;
-            const height=fir?6.7+variant*.3:5.1+variant*.38,width=fir?1.0+(variant%3)*.1:1.6+(variant%3)*.18;
-            branch([0,0,0],[0,height*.79,0],fir?.24:.29,.045);
+        if(style==='pine'||style==='tallpine') {
+            // The tall pine: a fifth taller than the pine and a fifth slimmer, five skirts
+            // instead of four. Its skirts sit almost square on the trunk: the sideways shift
+            // that gives the broad pine its uneven outline made a slim tree look crooked
+            // (the first version of this kind, a thin fir, did; asp67, 22 November).
+            const tall=style==='tallpine',tiers=tall?5:4;
+            const height=tall?6.2+variant*.32:5.1+variant*.38,width=tall?1.3+(variant%3)*.12:1.6+(variant%3)*.18;
+            branch([0,0,0],[0,height*.79,0],tall?.27:.29,.045);
             for(let tier=0;tier<tiers;tier++) {
-                const y=1.65+tier*(height-2)/tiers,r=width*(1-tier*(fir?.13:.21)),h=(fir?1.7:1.9)-tier*(fir?.11:.18);
-                const ox=Math.sin(tier*2+variant)*.15,oz=Math.cos(tier*2.7+variant)*.12;
+                const y=1.65+tier*(height-2)/tiers,r=width*(1-tier*(tall?.17:.21)),h=1.9-tier*(tall?.15:.18);
+                const shift=tall?.25:1,ox=Math.sin(tier*2+variant)*.15*shift,oz=Math.cos(tier*2.7+variant)*.12*shift;
                 add('pineBough',[tier+variant],'foliage',[ox,y,oz],[r,h,r*.87]);
                 // Snow rests on upper boughs, leaving dark needles visible below.
                 add('pineBough',[tier+variant],'snow',[ox+.03,y+h*.19+.035,oz],[r*.64,h*.64,r*.87*.64]);

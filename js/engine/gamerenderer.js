@@ -3550,16 +3550,16 @@
     // lies on it, and how wide the soft shadow at its foot is against an oak's.
     // A chunk of forest is a draw per texture and tint, so the kinds of a land share
     // tints where a tint of their own would hardly be seen: the olive has the oak's, the
-    // fir the pine's, the thorn the acacia's. Only the cypress and the palm, whose colour
+    // tall pine the pine's, the thorn the acacia's. Only the cypress and the palm, whose colour
     // is half of what they are, have their own: one draw more per chunk in two lands,
     // none in the third.
-    EngineRenderer.TREES = { summer: ['oak', 'olive', 'cypress'], winter: ['pine', 'fir', 'bare'], desert: ['acacia', 'palm', 'thorn'] };
+    EngineRenderer.TREES = { summer: ['oak', 'olive', 'cypress'], winter: ['pine', 'tallPine', 'bare'], desert: ['acacia', 'palm', 'thorn'] };
     EngineRenderer.TREE_LOOK = {
         oak: { shade: 1 },
         olive: { style: 'olive', foliage: true, shade: 0.85 },
         cypress: { style: 'cypress', foliage: [0.6, 0.76, 0.62], shade: 0.55 },
         pine: { style: 'pine', foliage: [0.82, 0.94, 1], snow: true, shade: 1 },
-        fir: { style: 'fir', foliage: [0.82, 0.94, 1], snow: true, shade: 0.7 },
+        tallPine: { style: 'tallpine', foliage: [0.82, 0.94, 1], snow: true, shade: 0.85 },
         bare: { style: 'bare', shade: 0.8 },
         acacia: { style: 'desert', foliage: [0.78, 0.78, 0.66], shade: 1 },
         palm: { style: 'palm', foliage: [0.74, 0.92, 0.62], shade: 0.7 },

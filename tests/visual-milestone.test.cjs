@@ -406,7 +406,7 @@ test('packed shadow writes disable dithering and restore its previous state',()=
 
 test('seasonal trees have finite outward geometry, varied silhouettes and bounded material batches',()=>{
  const s=context();
- for(const style of ['pine','bare','desert','fir','cypress','olive','palm','thorn'])for(let v=0;v<4;v++)for(const mat of ['bark','foliage','snow']){
+ for(const style of ['pine','bare','desert','tallpine','cypress','olive','palm','thorn'])for(let v=0;v<4;v++)for(const mat of ['bark','foliage','snow']){
   const mesh=s.EngineMesh.seasonalTree(style,v,mat);
   assert.ok(mesh.positions.every(Number.isFinite));assert.ok(mesh.normals.every(Number.isFinite));
   assert.equal(s.EngineMesh.auditWinding(mesh),0,style+'/'+v+'/'+mat);

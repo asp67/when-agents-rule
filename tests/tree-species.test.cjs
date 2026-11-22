@@ -89,12 +89,21 @@ test('every kind is drawn as itself: its style, its tint, snow where it lies, a 
         }
         assert.ok(corners > 100 && corners <= 2600, kind + ': ' + corners + ' corners');
     }
-    // The kinds can be told apart by their outline: the cypress and the fir are the tall narrow ones.
+    // The kinds can be told apart by their outline: the cypress is the tall narrow one, the tall pine a pine that is taller.
     const top = (style, mat = 'foliage') => { const m = W.EngineMesh.seasonalTree(style, 1, mat); let y = 0, reach = 0;
         for (let i = 0; i < m.positions.length; i += 3) { y = Math.max(y, m.positions[i + 1]); reach = Math.max(reach, Math.hypot(m.positions[i], m.positions[i + 2])); } return [y, reach]; };
-    const [cy, cr] = top('cypress'), [oy, or] = top('olive'), [fy, fr] = top('fir'), [py, pr] = top('pine'), [ty, tr] = top('thorn'), [ay] = top('desert'), [ly, lr] = top('palm');
+    const [cy, cr] = top('cypress'), [oy, or] = top('olive'), [fy, fr] = top('tallpine'), [py, pr] = top('pine'), [ty, tr] = top('thorn'), [ay] = top('desert'), [ly, lr] = top('palm');
     assert.ok(cy > 6 && cr < 1 && oy < 3.6 && or > 1.6, 'cypress tall and slim, olive low and broad');
-    assert.ok(fy > py + 1 && fr < pr * 0.75, 'the fir taller and slimmer than the pine');
+    assert.ok(fy > py + 0.8 && fr < pr * 0.9 && fr > pr * 0.7, 'the tall pine taller and a little slimmer than the pine, not a pole');
+    // ...and straight: its skirts sit almost square on the trunk. (The thin fir that stood here first looked crooked.)
+    for (let v = 0; v < 4; v++) {
+        const m = W.EngineMesh.seasonalTree('tallpine', v, 'foliage'), n = m.positions.length / 3 / 5;
+        for (let tier = 0; tier < 5; tier++) {
+            let sx = 0, sz = 0;
+            for (let i = tier * n; i < (tier + 1) * n; i++) { sx += m.positions[i * 3]; sz += m.positions[i * 3 + 2]; }
+            assert.ok(Math.hypot(sx / n, sz / n) < 0.07, 'variant ' + v + ', skirt ' + tier + ': ' + Math.hypot(sx / n, sz / n).toFixed(3) + ' off the trunk');
+        }
+    }
     assert.ok(ty < ay && ly > ay && lr > 2.5 && tr > 1.5, 'the thorn low and flat, the palm tall with long fronds');
     // The coarse crown is the same shape with a third of the corners; the fine one is as it was.
     assert.equal(W.EngineMesh.canopy(1).positions.length / 3, 25 * 17);
