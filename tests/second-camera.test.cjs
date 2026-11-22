@@ -42,6 +42,7 @@ test('it stays on its fight while that is fought, lingers when it ends, and step
     // The main picture cuts to the same fight: the second one has nothing to add, and goes sooner.
     cam = open();
     assert.ok(C.TAKEN_MS < C.LINGER_MS);
+    assert.equal(C.LINGER_MS, 3000, 'three seconds on the ground where it was fought (build 1218)');
     assert.equal(keyOf(cam.update(t0 + C.TAKEN_MS - 1, [fight('f2', true)])), 'f2');
     assert.equal(cam.update(t0 + C.TAKEN_MS, [fight('f2', true)]), null);
     // A flicker at the frame's edge inside that time changes nothing.

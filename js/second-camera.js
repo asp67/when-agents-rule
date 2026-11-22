@@ -57,7 +57,11 @@
         static halfFor(r) { return Math.max(11, Math.min(40, (r || 0) * 1.3 + 7)); }
     }
     SecondCamera.APPEAR_MS = 1200;   // a fight is unseen this long before the picture opens
-    SecondCamera.LINGER_MS = 1500;   // the picture stays this long after the last of the fight
+    // The picture stays this long after the last of the fight. A fight is over at the blow
+    // that fells the last of one side, so at a second and a half the picture was gone
+    // while the viewer still watched the body fall (asp67, 22 November 2026: three seconds,
+    // "to give the viewer closure before the screen closes").
+    SecondCamera.LINGER_MS = 3000;
     SecondCamera.TAKEN_MS = 600;     // ...and this long once the main picture shows the same fight
     SecondCamera.EASE = 3;           // how fast the camera closes on where the fight is, per second
     SecondCamera.YAW = Math.PI / 4;  // the play camera's bearing, so the small picture has the map's north
