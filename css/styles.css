@@ -3556,3 +3556,9 @@ body.race-view .second-cam { bottom: calc(var(--mm-bottom) + 212px); }
 .mcp-as-late { border-left: 3px solid rgba(224,180,60,0.6); padding-left: 8px; }
 .mcp-arena-note { margin: 10px 0 4px; padding: 10px 14px; border-left: 3px solid rgba(224,180,60,0.6); background: rgba(224,180,60,0.06); border-radius: 6px; color: #cdd6e8; font-size: 0.9em; line-height: 1.45; }
 .mcp-arena-note ol { margin: 6px 0 0 18px; padding: 0; }
+/* Whether the MCP server is running: a line of its own above the steps. */
+.mcp-hub-line { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-weight: 600; }
+.mcp-hub-line .seat-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: #e0566a; }
+.mcp-hub-line.ok { color: #9fd08a; }
+.mcp-hub-line.ok .seat-dot { background: #63c26b; }
+.mcp-hub-line.err { color: #ffb0bb; }

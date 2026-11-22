@@ -241,16 +241,61 @@
             const models = this._arenaConfig ? this._arenaConfig.models || [] : [];
             const mcp = this._setupMode !== 'campaign' && this.setupSlots().slice(0, this.setupSlotCount())
                 .some(s => s.control !== 'ki' && (models.find(m => m.id === s.control) || {}).provider === 'mcp');
-            if (!mcp) { if (note) note.remove(); return; }
+            if (!mcp) { if (note) note.remove(); this._mcpNoteSig = null; return; }
             if (!note) {
                 note = document.createElement('div');
                 note.id = 'mcpArenaNote';
                 note.className = 'mcp-arena-note';
                 list.insertAdjacentElement('afterend', note);
+                this._mcpNoteSig = null;
             }
+            // Drawn anew only when what it says has changed: it holds a button to copy from.
+            const hubs = this.mcpSetupHubs(), sig = JSON.stringify([hubs, this.mcpShell(), typeof getUiLang === 'function' ? getUiLang() : '']);
+            if (sig === this._mcpNoteSig) return;
+            this._mcpNoteSig = sig;
             const e = s => this.escapeHtml(String(s == null ? '' : s));
-            note.innerHTML = `<strong>${e(t('mcp.note.title'))}</strong><ol>`
+            note.innerHTML = this.mcpHubLinesHtml(hubs) + `<strong>${e(t('mcp.note.title'))}</strong><ol>`
                 + ['mcp.note.s1', 'mcp.note.s2', 'mcp.note.s3'].map(k => `<li>${e(t(k))}</li>`).join('') + '</ol>';
+        },
+        // Is the MCP server running? (asp67, 22 November 2026: "On game setup, check if mcp
+        // server is up and running".) The page has always kept a line open to the hub and
+        // tried again every two seconds, but all it showed of that was a seat's red dot
+        // reading "hub not running", among the dots that mean a harness has not joined
+        // yet. Now the setup says it in a line of its own, above the steps: running, and
+        // which version, or not running, with the command that starts it.
+        // Every hub the chosen seats play over: its address, whether it answers, its version.
+        mcpSetupHubs() {
+            if (typeof WarMcpLink !== 'function' || this._setupMode === 'campaign') return [];
+            const models = this._arenaConfig ? this._arenaConfig.models || [] : [], seen = new Map();
+            for (const slot of this.setupSlots().slice(0, this.setupSlotCount())) {
+                const m = slot.control !== 'ki' && models.find(x => x.id === slot.control);
+                if (!m || m.provider !== 'mcp') continue;
+                const url = this.mcpHub(m);
+                if (seen.has(url)) continue;
+                const link = WarMcpLink.shared(url), up = !!link.hubUp;
+                this._mcpHubVersion = this._mcpHubVersion || new Map();
+                if (!up) this._mcpHubVersion.delete(url);
+                else if (!this._mcpHubVersion.has(url)) this.mcpAskHubVersion(url);
+                seen.set(url, { url, up, version: (up && this._mcpHubVersion.get(url)) || '' });
+            }
+            return [...seen.values()];
+        },
+        // The hub says which version it is on its status page; asked once each time it comes up.
+        mcpAskHubVersion(url) {
+            this._mcpHubVersion.set(url, '');
+            if (typeof fetch !== 'function') return;
+            fetch(url + '/status', { cache: 'no-store' }).then(r => r.json()).then(s => {
+                if (!s || !s.version || !this._mcpHubVersion.has(url)) return;
+                this._mcpHubVersion.set(url, String(s.version));
+                this.renderMcpArenaNote();
+            }).catch(() => { /* the line to the hub says whether it is up; this is only its version */ });
+        },
+        mcpHubLinesHtml(hubs) {
+            const e = s => this.escapeHtml(String(s == null ? '' : s));
+            return hubs.map(h => h.up
+                ? `<p class="mcp-hub-line ok"><span class="seat-dot"></span>${e(t(h.version ? 'mcp.note.hubUpV' : 'mcp.note.hubUp', { url: h.url, v: h.version }))}</p>`
+                : `<p class="mcp-hub-line err"><span class="seat-dot"></span>${e(t(this.mcpOriginNeedsAllow(this.mcpPageOrigin()) ? 'mcp.note.hubDownOrigin' : 'mcp.note.hubDown', { url: h.url }))}</p>`
+                    + this.mcpCode(this.mcpStartCommand(this.mcpShell())) + `<p class="arena-hint">${e(t('mcp.note.hubRetry'))}</p>`).join('');
         },
 
         // ---- the setup assistant (asp67, 27 Oct) --------------------------------------
@@ -549,6 +594,7 @@
                 const el = document.getElementById('seatReady' + i);
                 if (el) el.outerHTML = this.seatReadyHtml(slot, i);
             });
+            this.renderMcpArenaNote();        // its line about the hub follows the hub
             const btn = document.getElementById('setupStartBtn');
             if (btn && this._setupMode !== 'campaign') {
                 const blocked = this.arenaStartBlocked();
