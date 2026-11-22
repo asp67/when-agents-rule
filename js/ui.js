@@ -232,7 +232,9 @@ class UIManager {
             // The comparison lower third of broadcast mode (overhaul step D7): the same rule.
             compare: saved.compare === true,
             // The second camera (overhaul step B3): the same rule.
-            second: saved.second === true
+            second: saved.second === true,
+            // The seat cards in the order of their power, as always, or of their Index (step D1).
+            lbSort: saved.lbSort === 'index' ? 'index' : 'power'
         };
     }
     static get UI_SCALES() { return { regular: 1, medium: 0.85, small: 0.72 }; }
@@ -4408,7 +4410,46 @@ class UIManager {
         }
         return index;
     }
-    logTags(entry, index) {
+    // What the scorer found an order to be good for (overhaul step D6): the step of the
+    // standing plan it carried out, and the threat it answered. By seat, turn, action and
+    // the order's place among the turn's orders of that action, which is how a card and a
+    // line of the transcript are known to be the same order.
+    logEvidenceIndex(log) {
+        const seats = this.evalSeats(), found = new Map();
+        if (!seats) return found;
+        const key = (id, turn, action, k) => id + '|' + turn + '|' + action + '|' + k;
+        const mark = new Map();
+        for (const id in seats) {
+            const p = seats[id];
+            for (const s of (p.follow && p.follow.serving) || []) mark.set(key(id, s.turn, s.action, s.k), { step: s.step, of: s.of });
+            for (const e of (p.tactical && p.tactical.list) || []) if (e.answer) {
+                const k = key(id, e.answer.turn, e.answer.action, e.answer.k);
+                mark.set(k, Object.assign(mark.get(k) || {}, { threat: e.kind, after: e.answeredAfter }));
+            }
+        }
+        if (!mark.size) return found;
+        // The log is newest first; a card's place among its turn's cards is counted oldest first.
+        const seen = new Map();
+        for (let i = log.length - 1; i >= 0; i--) {
+            const e = log[i];
+            if (!e || e.isAdvice || e.isControl || e.action === 'plan_only' || e.move == null) continue;
+            const at = e.playerId + '|' + e.move + '|' + e.action, k = (seen.get(at) || 0) + 1;
+            seen.set(at, k);
+            const m = mark.get(at + '|' + k);
+            if (m) found.set(e, m);
+        }
+        return found;
+    }
+    logTags(entry, index, evidence) {
+        const base = this.logVerdictTags(entry, index), found = evidence && evidence.get(entry);
+        if (!found) return base;
+        const tags = base.slice();
+        if (found.step) tags.push({ kind: 'serves', group: 'serves', label: t('log.tagServes', { n: found.step }), tip: t('log.tagServesTip', { n: found.step, of: found.of }) });
+        if (found.threat) tags.push({ kind: 'answers', group: 'answers', label: t('log.tagAnswers'),
+            tip: t(found.threat === 'wonder' ? 'log.tagAnswersWonderTip' : 'log.tagAnswersTip', { n: (found.after || 0) + 1 }) });
+        return tags;
+    }
+    logVerdictTags(entry, index) {
         if (entry && entry.action === 'plan_only') return [{ kind: 'plan', group: 'plan', label: t('log.tagPlan'), tip: t('log.tagPlanTip') }];
         const v = this.logVerdict(entry);
         if (!v || v.verdict === 'ok') return [];
@@ -4437,7 +4478,7 @@ class UIManager {
         const sig = [...on].sort().join(',') + '#' + getUiLang();
         if (sig === this._logTagChipSig) return;
         this._logTagChipSig = sig;
-        el.innerHTML = [['mistake', 'log.chipMistakes'], ['timing', 'log.chipTiming'], ['plan', 'log.chipPlan']].map(([group, key]) =>
+        el.innerHTML = [['mistake', 'log.chipMistakes'], ['timing', 'log.chipTiming'], ['plan', 'log.chipPlan'], ['serves', 'log.chipServes'], ['answers', 'log.chipAnswers']].map(([group, key]) =>
             `<button class="ai-log-chip ai-log-tagchip is-${group}${on.has(group) ? ' is-on' : ''}" onclick="game.ui.setLogTagFilter('${group}')"`
             + ` aria-pressed="${on.has(group)}" title="${this.escapeHtml(t('log.chipTip'))}">${this.escapeHtml(t(key))}</button>`).join('');
     }
@@ -5063,10 +5104,10 @@ class UIManager {
         // filters have run — so a search reaches the entire history, not just the
         // 160 entries that would have been rendered anyway.
         const view = [];
-        const mistakes = this.logMistakeIndex(log);
+        const mistakes = this.logMistakeIndex(log), evidence = this.logEvidenceIndex(log);
         for (const entry of compact ? this.compactDecisionEntries(log) : log) {
             if (f.players.size && !f.players.has(entry.playerId)) continue;
-            const tags = this.logTags(entry, mistakes);
+            const tags = this.logTags(entry, mistakes, evidence);
             if (f.tags.size && !tags.some(x => f.tags.has(x.group))) continue;
             const pp = entry.params || {};
             const actionLabel = entry.isAdvice ? t('log.advice')
@@ -5341,8 +5382,13 @@ class UIManager {
                 profile: isLLM && profiles ? profiles[ai.id] : null, score: this.spectatorPowerScore(ai) };
         });
 
-        // Sort: alive first, then by score desc
-        rows.sort((a, b) => (b.alive - a.alive) || (b.score - a.score));
+        // Sort: alive first, then by power, or by the Index where the viewer asked for that
+        // (overhaul step D1). A seat without an Index, a rule-based one or one that has not
+        // decided yet, comes after those that have one, in the order of its power.
+        const byIndex = this.lbSort() === 'index';
+        const indexOf = r => (r.profile && r.profile.index && r.profile.index.value != null ? r.profile.index.value : -1);
+        rows.sort((a, b) => (b.alive - a.alive) || (byIndex ? indexOf(b) - indexOf(a) : 0) || (b.score - a.score));
+        this.renderLbSort(rows.some(r => indexOf(r) >= 0));
         const maxScore = Math.max(1, ...rows.filter(r => r.alive).map(r => r.score));
 
         const countEl = document.getElementById('lbCount');
@@ -5514,6 +5560,39 @@ class UIManager {
         };
     }
 
+    // Which way the seat cards are ordered: by power, as always, or by the Index.
+    lbSort() { return this.viewPreferences().lbSort === 'index' ? 'index' : 'power'; }
+    setLbSort(sort) {
+        this.viewPreferences().lbSort = sort === 'index' ? 'index' : 'power';
+        this.saveViewPreferences();
+        this._lbSortSig = null;
+        this.updateSpectatorPlayerList();
+    }
+    // The switch sits in the list's header and is drawn only when it changes. Without a
+    // seat that has an Index there is nothing to sort by, and no switch.
+    renderLbSort(any) {
+        const el = document.getElementById('lbSort');
+        if (!el) return;
+        const sort = this.lbSort(), sig = [any, sort, getUiLang()].join(':');
+        if (sig === this._lbSortSig) return;
+        this._lbSortSig = sig;
+        el.style.display = any ? '' : 'none';
+        el.innerHTML = [['power', 'spec.sortPower'], ['index', 'spec.sortIndex']].map(([key, label]) =>
+            `<button class="lb-sort-btn${sort === key ? ' is-on' : ''}" aria-pressed="${sort === key}" title="${this.escapeHtml(t('spec.sortTip'))}"`
+            + ` onclick="event.stopPropagation(); game.ui.setLbSort('${key}')">${this.escapeHtml(t(label))}</button>`).join('');
+    }
+    // The standing plan as a line of segments, a step each: carried out, begun, still
+    // open, given up; a step that names nothing checkable is a thin one. With the count.
+    planProgressHtml(p) {
+        const steps = p && p.follow && p.follow.standing;
+        if (!steps || !steps.length) return '';
+        const esc = s => this.escapeHtml(String(s));
+        const checkable = steps.filter(s => s.state !== 'uncheckable'), done = checkable.filter(s => s.state === 'acted').length;
+        const seg = (s, i) => `<i class="lb-plan-seg is-${s.state}" title="${esc(t('eval.planStepTip', { n: i + 1, text: s.text, state: t('eval.planState.' + s.state), met: s.met, of: s.of }))}"></i>`;
+        return `<div class="lb-plan" title="${esc(t('eval.planLineTip'))}"><span class="lb-plan-name">${esc(t('eval.planLine'))}</span>`
+            + `<span class="lb-plan-track">${steps.map(seg).join('')}</span><b>${done}/${checkable.length}</b></div>`;
+    }
+
     seatProfileHtml(p) {
         if (!p || !p.decisions) return '';
         const esc = s => this.escapeHtml(String(s)), tips = this.evalTips(p);
@@ -5527,7 +5606,7 @@ class UIManager {
         // The Index sits with the bars it is the mean of, and nowhere by itself.
         const index = p.index && p.index.value != null
             ? `<span class="lb-dim lb-index" title="${esc(tips.index + ' ' + t('eval.provisional'))}"><span class="lb-dim-name">${esc(t('eval.index'))}</span><span class="lb-dim-track"></span><b>${Math.round(p.index.value)}</b></span>` : '';
-        return `<div class="lb-profile">${WarEval.SCORED.filter(k => p[k]).map(bar).join('')}${index}</div>`;
+        return `<div class="lb-profile">${WarEval.SCORED.filter(k => p[k]).map(bar).join('')}${index}</div>${this.planProgressHtml(p)}`;
     }
 
     // ---- Leaderboard achievement flyout --------------------------------------

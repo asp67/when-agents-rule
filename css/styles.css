@@ -1312,6 +1312,9 @@ body.spectator-mode #unitInfo.spectator-card {
 .log-tag.is-again { color: #1b1508; background: #e0b24e; border-color: #e0b24e; }
 .log-tag.is-timing { color: #a9b6cc; border-color: rgba(169, 182, 204, 0.45); }
 .log-tag.is-plan { color: #7fd0bd; border-color: rgba(99, 185, 167, 0.55); }
+/* An order that carried out a step of the plan, and one that answered a threat (step D6). */
+.log-tag.is-serves { color: #9fd08a; border-color: rgba(140, 196, 118, 0.55); }
+.log-tag.is-answers { color: #8fbdf0; border-color: rgba(120, 170, 232, 0.55); }
 .ai-log-tagchip { font-size: 0.68em; }
 
 /* Rejected-action marker + reason in the decision log */
@@ -3336,6 +3339,22 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .lb-index .lb-dim-track { background: none; }
 .lb-index b { color: #ddd3b4; }
 .lb-list.collapsed .lb-profile { display: none; }
+/* The standing plan as a line of segments, a step each (step D1). */
+.lb-plan { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: 0.72em; color: #a9b0bf; }
+.lb-plan-name { flex: none; }
+.lb-plan-track { flex: 1; display: flex; gap: 2px; min-width: 0; }
+.lb-plan-seg { flex: 1; height: 5px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
+.lb-plan-seg.is-acted { background: #9fd08a; }
+.lb-plan-seg.is-begun, .lb-plan-seg.is-part { background: linear-gradient(90deg, #9fd08a 50%, rgba(255, 255, 255, 0.14) 50%); }
+.lb-plan-seg.is-dropped { background: rgba(255, 133, 151, 0.55); }
+.lb-plan-seg.is-uncheckable { height: 2px; align-self: center; }
+.lb-plan b { flex: none; color: #d6dbe6; font-weight: 600; }
+.lb-list.collapsed .lb-plan { display: none; }
+/* Order the cards by power or by the Index: two small buttons in the list's header. */
+.lb-sort { display: inline-flex; gap: 2px; margin-right: 8px; }
+.lb-sort-btn { font: inherit; font-size: 0.68em; padding: 1px 6px; border-radius: 9px; cursor: pointer;
+    color: #a9b0bf; background: transparent; border: 1px solid rgba(255, 255, 255, 0.18); }
+.lb-sort-btn.is-on { color: #1b1508; background: #ddd3b4; border-color: #ddd3b4; }
 .intent-bubble .intent-refused { color: #9c2412; font-weight: bold; }
 
 /* Broadcast mode (review #11): the operator's furniture goes, a scoreboard and lower

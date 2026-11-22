@@ -41,7 +41,7 @@ test('the ledger says which order answered a threat, and where the threat was', 
         decision(6, { attack: [{ kind: 'unit', type: 'worker', x: 50, z: 60 }], orders: [['assign_workers']] })]);
     const list = plainOf(p.seats[0].tactical.list);
     // The raid: where the attacker stood when the seat was shown it, and the attack that answered one decision later.
-    assert.deepEqual([list[0].kind, list[0].at, list[0].answer], ['attack', { x: 108, z: 102 }, { decision: 3, turn: 3, sec: 90, n: 2, action: 'attack_target', x: 105, z: 100 }]);
+    assert.deepEqual([list[0].kind, list[0].at, list[0].answer], ['attack', { x: 108, z: 102 }, { decision: 3, turn: 3, sec: 90, n: 2, k: 1, action: 'attack_target', x: 105, z: 100 }]);   // k: the first attack of its turn (build 1215)
     // The rival Wonder, attacked by its id in the decision that showed it.
     assert.deepEqual([list[1].kind, list[1].at, list[1].answer.decision, list[1].answer.action], ['wonder', { x: 400, z: 420 }, 5, 'attack_target']);
     // A worker struck with no attacker in sight, and no answer: the place is the worker's, and there is no answering order.

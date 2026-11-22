@@ -136,6 +136,14 @@
         return false;
     }
     // Does this command carry out that commitment of a plan step?
+    // Which of a turn's orders of its own action an order is: the second train_unit of the
+    // turn is 2. A decision card knows its seat, its turn and its action, and its place
+    // among the cards of that turn; this is the same count from the transcript's side.
+    function nthOfItsKind(cmds, at) {
+        let n = 0;
+        for (let i = 0; i <= at; i++) if (cmds[i].action === cmds[at].action) n++;
+        return n;
+    }
     function serves(cmd, check, vocab) {
         switch (check.kind) {
             case 'train': return cmd.action === 'train_unit' && cmd.name === check.name;
@@ -350,7 +358,7 @@
     // The profile as an export carries it (step D8): every seat a model decided for, every
     // number, and none of the long lists behind them (each mistake, each plan change, each
     // threat). All of it can be worked out again from the transcript it travels in.
-    const LONG = { grounding: ['errors'], planning: ['history', 'standing'], follow: ['standing', 'done'], tactical: ['list'] };
+    const LONG = { grounding: ['errors'], planning: ['history', 'standing'], follow: ['standing', 'done', 'serving'], tactical: ['list'] };
     WarEval.publicProfile = p => ({ kind: p.kind, scale: p.scale, seats: p.seats.filter(s => s.decisions > 0).map(s => {
         const out = { id: s.id, seat: s.seat, civ: s.civ, name: s.name, model: s.model, decisions: s.decisions, index: s.index };
         for (const k of ['grounding', 'planning', 'follow', 'tactical', 'strategy', 'versatility', 'efficiency']) {
@@ -598,6 +606,9 @@
                 tracked.push({ key: plain(s.text), text: s.text, at: h.decision - 1, until, checks: s.checks, met: new Set(), acted: null, full: null, by: null, parts: [] });
             }));
             let served = 0, underPlan = 0, hi = -1;
+            // Every order that carried out a step of the plan that stood then, for the
+            // decision cards (step D6): which decision, which order of it, which step.
+            const serving = [];
             turns.forEach((t, i) => {
                 while (hi + 1 < history.length && history[hi + 1].decision - 1 <= i) hi++;
                 const standing = hi >= 0 ? history[hi] : null;
@@ -606,7 +617,11 @@
                     if (c.ok !== true) continue;
                     if (standing && aboutPlan(c)) {
                         underPlan++;
-                        if (standing.steps.some(s => s.checks.some(k => serves(c, k, vocab)))) served++;
+                        const step = standing.steps.findIndex(s => s.checks.some(k => serves(c, k, vocab)));
+                        if (step >= 0) {
+                            served++;
+                            serving.push({ decision: i + 1, turn: t.turn, n: ci + 1, k: nthOfItsKind(t.cmds, ci), action: c.action, step: step + 1, of: standing.steps.length });
+                        }
                     }
                     for (const s of tracked) {
                         if (s.at > i || (s.acted != null && s.met.size === s.checks.length)) continue;
@@ -665,6 +680,10 @@
                 commitments, commitmentsMet: met,
                 // Of the orders a plan can be about, given under a standing plan: how many carried out one of its steps.
                 ordersUnderPlan: underPlan, ordersServing: served, servingRate: underPlan ? served / underPlan : null,
+                // Those orders, one by one: decision and turn, the order's place among the
+                // turn's orders (n) and among those of its own action (k), and the step of the
+                // plan standing then that it carried out. Evidence only: no score reads it.
+                serving,
                 // Every part of a step that was carried out, with the order that did it (the
                 // marks in the world): "met" of the step's "of" commitments stood done after it.
                 done: [].concat(...tracked.map(s => s.parts.map(p => ({ text: s.text, stated: s.at + 1, decision: p.by.decision, turn: p.by.turn, sec: p.by.sec,
@@ -723,7 +742,7 @@
                     const ci = t.cmds.findIndex(c => answers(c, e, R));
                     if (ci < 0) continue;
                     e.answeredAfter = after;
-                    e.answer = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, action: t.cmds[ci].action, x: t.cmds[ci].x, z: t.cmds[ci].z };
+                    e.answer = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, k: nthOfItsKind(t.cmds, ci), action: t.cmds[ci].action, x: t.cmds[ci].x, z: t.cmds[ci].z };
                 }
             });
             // A rival Wonder, from the decision that first showed it.
@@ -739,7 +758,7 @@
                     const ci = t.cmds.findIndex(c => c.ok === true && c.action === 'attack_target' && (c.target === w.id || near(c, w, R)));
                     if (ci < 0) continue;
                     w.answeredAfter = after;
-                    w.answer = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, action: 'attack_target', x: t.cmds[ci].x, z: t.cmds[ci].z };
+                    w.answer = { decision: i + 1, turn: t.turn, sec: t.sec, n: ci + 1, k: nthOfItsKind(t.cmds, ci), action: 'attack_target', x: t.cmds[ci].x, z: t.cmds[ci].z };
                 }
             });
             const answered = episodes.filter(e => e.answeredAfter != null), atOnce = answered.filter(e => e.answeredAfter <= 1);
