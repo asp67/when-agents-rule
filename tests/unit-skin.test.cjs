@@ -190,8 +190,8 @@ test('a unit\'s bones are sent to the card once, whatever the number of its batc
     assert.deepEqual(sent, ['skin 0', 'bones A', 'skin 1', 'bones B', 'skin 0']);
 });
 
-// ---- a candidate, off by default: one shared texture at middle distance ---------------------
-test('at middle distance a unit\'s plain materials can share one texture: merged with their bones, switched off until judged', () => {
+// ---- one shared texture at middle distance (built off in 1183, on since 1184) ---------------
+test('at middle distance a unit\'s plain materials share one texture: merged with their bones, and it can be switched off', () => {
     const { r, W, walker, model, m3, frame } = rig(), ue = walker._engine;
     r.gl = new Proxy({}, { get: (t, k) => typeof k === 'string' && /^[A-Z][A-Z0-9_]*$/.test(k) ? k : () => ({}) });
     r.tex = new Proxy({}, { get: (o, k) => (o[k] = o[k] || { name: k, _avg: [120, 90, 60] }) });
@@ -220,7 +220,8 @@ test('at middle distance a unit\'s plain materials can share one texture: merged
     const MID = W.EngineRenderer.MID_UNIT_HALF_H, FAR = W.EngineRenderer.FAR_UNIT_HALF_H;
     assert.ok(MID > 20 && MID < FAR);
     r._halfH = MID + 20;
-    assert.equal(drawn(), 'near', 'off: as it was');
+    r.unitPalette = false;
+    assert.equal(drawn(), 'near', 'off: every material its own texture, as it was');
     r.unitPalette = true;
     assert.equal(drawn(), 'mid');
     assert.ok(r._dl.opaque.filter(e => e.bones === ue.boneMats).length === mid.filter(p => !p.blend).length && r._dl.casters.length === 1, 'it still walks, and still casts');
@@ -231,6 +232,6 @@ test('at middle distance a unit\'s plain materials can share one texture: merged
     // A trebuchet on wheels has no such model and is drawn as it is.
     delete ue.mid; r._halfH = MID + 20;
     assert.equal(drawn(), 'near');
-    // Off unless someone turns it on.
-    assert.match(src('gamerenderer'), /this\.unitPalette = false;/);
+    // On since asp67 saw it side by side with what was (22 Nov 2026).
+    assert.match(src('gamerenderer'), /this\.unitPalette = true;/);
 });

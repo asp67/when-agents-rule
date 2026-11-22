@@ -174,9 +174,11 @@
             // A second picture of the same world at the same moment (js/second-camera.js):
             // someone names a place and a 2-D canvas to put it in. Null: one picture.
             this.secondView = null;
-            // A candidate, off until asp67 has judged it (overhaul step A4): from
-            // MID_UNIT_HALF_H up, a unit's plain materials share one flat-colour texture.
-            this.unitPalette = false;
+            // From MID_UNIT_HALF_H up, a unit's plain materials share one flat-colour texture
+            // (overhaul step A4). Built switched off in build 1183 and switched on in 1184,
+            // after asp67 had seen it side by side with what was. False: every material its
+            // own texture at every distance, as before.
+            this.unitPalette = true;
             this._frameNo = 0;                // which frame this is, so nothing is moved twice in one
             this._fogCanvas = null;
             // Per-frame lists. casters: what is drawn into the shadow map only (a building's
@@ -1287,7 +1289,7 @@
                 cpu: EngineUnits.batches(parts).map(p => ({ mesh: p.mesh, texName: p.tex, team: p.team, accent: p.accent, bone: p.bone, blend: p.blend, badgePaint: p.badgePaint }))
             };
         }
-        // A unit at middle distance (a candidate, see unitPalette). Up close each of a unit's
+        // A unit at middle distance (see unitPalette). Up close each of a unit's
         // materials has its own texture, and so its own draw: skin, hair, leather, iron,
         // wood. From a little way off their grain cannot be seen, only their colour. Here
         // those plain materials are merged into ONE mesh that reads each part's average

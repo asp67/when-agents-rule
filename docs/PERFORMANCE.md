@@ -160,13 +160,12 @@ distances where their grain cannot be seen (the far model already does this from
 whole-map height), which changes how units look at middle distance and so is a step to
 look at, not only to measure.
 
-**A candidate, build 1183, switched off: one shared texture at middle distance.** From a
+**Step 4, builds 1183 and 1184: one shared texture at middle distance.** From a
 camera half-height of 30 up (`EngineRenderer.MID_UNIT_HALF_H`), a unit's plain materials
 (skin, hair, leather, iron, wood) can be drawn as one mesh that reads each part's average
 colour from the palette texture, with the bones kept: a unit is then four or five draws
-instead of eleven. It is built behind `renderer.unitPalette`, which is false, so nothing
-changes until it has been looked at (side-by-side stills at half-heights 35, 60 and 100
-were made for that). The same army view as above, own textures
+instead of eleven. It was built switched off (`renderer.unitPalette`) in build 1183, shown to asp67 as
+side-by-side stills at half-heights 35, 60 and 100, and switched on in build 1184. The same army view as above, own textures
 against the shared one, two runs each taken in turn on build 1183:
 
 | | draw calls a frame | | ms a frame, median | | |
