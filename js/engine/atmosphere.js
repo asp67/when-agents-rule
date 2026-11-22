@@ -335,8 +335,12 @@
             vec3 n = normalize(vNormal);
             vec3 eye = normalize(uEye-vWorld);
             float groundCover = 1.0, relief = 1.0;
-            float water = uMaterial > 1.5 && uMaterial < 2.5 ? 1.0
-                : (uMaterial > 0.5 && uMaterial < 1.5 ? texture2D(uCoast,vUv).r : 0.0);
+            // The coast's map: how much of the point is water, how far out it lies, and how
+            // wet the sand is above the waterline (TexGen.coastMask). The open sea beyond
+            // the ground's rim is all water, and deep.
+            vec3 coast = uMaterial > 1.5 && uMaterial < 2.5 ? vec3(1.0)
+                : (uMaterial > 0.5 && uMaterial < 1.5 ? texture2D(uCoast,vUv).rgb : vec3(0.0));
+            float water = coast.r;
             if (uMaterial > 0.5 && uMaterial < 1.5) {
                 // Mipmapped detail lives in world metres, so close-up ground no
                 // longer magnifies a single map texel into a smooth colour blob.
@@ -396,6 +400,15 @@
             // curve). The key light is the sun or the moon; the fill comes from the sky
             // above and, warmer and weaker, from the lit ground below.
             vec3 albedo = base*base;
+            // Wet sand (overhaul step A7): above the waterline the beach is darker where the
+            // last wave reached, and that line moves up and down the beach with the swash,
+            // unevenly along it. A little of the sky lies on it.
+            float wetSand = 0.0, swash = 0.5;
+            if (uMaterial > 0.5 && uMaterial < 1.5 && coast.b > 0.0 && water < 0.99) {
+                swash = 0.5 + 0.5*sin(uTime*0.6 + waveField(vWorld.xz*0.07).x*6.2832);
+                wetSand = smoothstep(0.34 - 0.24*swash, 0.80, coast.b)*(1.0-water);
+                albedo *= 1.0 - 0.33*wetSand;
+            }
             // Contact shading (uOcclMap: one over the map's span, then the strength). The
             // ground and the grass darken by what stands on them (read above). Things that stand
             // darken toward their own foot. The fill is taken in full and the key light
@@ -410,7 +423,7 @@
                 }
             }
             vec3 light = mix(uFillLow,uFillHigh,n.y*0.5+0.5)*contact + uKey*sun*relief*visibility(n)*mix(1.0,contact,0.75);
-            vec3 col = albedo*light;
+            vec3 col = albedo*light + uSky*uSky*wetSand*0.07;
             // Sky light along an edge turned away from the eye, on things that stand:
             // it is what lifts a figure off the ground at night.
             if (uMaterial < 0.5 || uMaterial > 2.5) {
@@ -449,14 +462,49 @@
                 vec2 grad=swell.yz*0.13 + vec2(dot(turn[0],chop.yz),dot(turn[1],chop.yz))*0.075*detail;
                 vec3 wn=normalize(vec3(-grad.x,1.0,-grad.y));
                 float fresnel=0.035+0.965*pow(1.0-max(dot(eye,wn),0.0),5.0);
-                float glint=pow(max(dot(wn,normalize(eye+uSunDir)),0.0),48.0);
-                vec3 sea=mix(base*vec3(0.72,0.96,1.02)*mix(vec3(1.0),vec3(0.38,0.48,0.65),uNight),uSky*0.72,fresnel*0.8);
-                sea += uSunColor*glint*0.42;
+                float towardSun=max(dot(wn,normalize(eye+uSunDir)),0.0);
+                float glint=pow(towardSun,48.0);
+                // The shallows (overhaul step A7): for the first stretch out from the beach
+                // the water is clear over pale sand -- lighter, greener, mirroring less of
+                // the sky -- and the light the ripples gather plays on the bottom.
+                float shallow=1.0-smoothstep(0.0,0.42,coast.g);
+                shallow*=shallow;
+                vec3 body=base*vec3(0.72,0.96,1.02);
+                body=mix(body,body*vec3(1.24,1.30,1.10)+vec3(0.015,0.035,0.025),shallow);
+                float caustic=waveField(p*0.46).x*waveField(turn*p*0.39+vec2(3.1,7.7)).x;
+                body*=1.0+0.55*shallow*detail*smoothstep(0.28,0.52,caustic);
+                vec3 sea=mix(body*mix(vec3(1.0),vec3(0.38,0.48,0.65),uNight),uSky*0.72,fresnel*0.8*(1.0-0.5*shallow));
+                // The sun on the sea: the tight glint it always had, and with it glitter --
+                // a finer set of ripples whose facets flash where they happen to mirror the
+                // sun to the eye, twinkling as they pass. Both show only when the camera
+                // looks toward the sun, at about the sun's own height. (The camera sees
+                // every point of the sea from almost the same direction, so the glitter
+                // lies on all the water in view, not in a path narrowing to the horizon.)
+                vec3 fine=waveField(turn*p*0.83+vec2(5.3,1.7));
+                vec2 facet=grad+vec2(dot(turn[0],fine.yz),dot(turn[1],fine.yz))*0.22*detail;
+                float flash=pow(max(dot(normalize(vec3(-facet.x,1.0,-facet.y)),normalize(eye+uSunDir)),0.0),160.0);
+                float twinkle=0.30+0.70*smoothstep(0.45,0.80,waveField(p*2.7+vec2(uTime*0.6,0.0)).x);
+                sea += uSunColor*(glint*0.42 + flash*twinkle*detail*0.85);
                 sea *= 0.98+swell.x*0.04;
                 // The sea keeps the look it was tuned to: its own shoulder, then into
                 // linear with the rest.
                 sea = sea/(vec3(1.0)+sea*0.16)*1.12;
                 col = mix(col,sea*sea,water);
+                // Foam (overhaul step A7): bands that roll in toward the beach over the last
+                // fifteen units, about six apart and a little under a unit a second, ragged
+                // and bent by a slow wave along the shore; and a line of it where the water
+                // lies on the sand, coming and going with the swash. It is lit like
+                // anything white: by the sky and the key light.
+                float off=coast.g*60.0;
+                float nearShore=1.0-smoothstep(3.0,15.0,off);
+                if (nearShore > 0.0) {
+                    float roll=off*1.1+uTime*0.9+waveField(vWorld.xz*0.045).x*5.0+waveField(vWorld.xz*0.23+vec2(4.0,9.0)).x*2.2;
+                    float crest=smoothstep(0.74,0.98,0.5+0.5*sin(roll));
+                    float ragged=smoothstep(0.22,0.78,waveField(vWorld.xz*0.33+vec2(uTime*0.07,0.0)).x);
+                    float lap=smoothstep(0.03,0.10,water)*(1.0-smoothstep(0.10,0.24,water))*(0.40+0.60*swash);
+                    float foam=clamp(crest*ragged*nearShore*smoothstep(0.02,0.20,water)+lap*(0.55+0.45*ragged),0.0,1.0);
+                    col=mix(col,(uFillHigh*0.85+uKey*0.70)*0.80,foam*0.82);
+                }
             }
             // The shoulder works on the brightest channel and scales the colour by it, so
             // bright plaster and lit sand roll off without losing their hue. Then back to

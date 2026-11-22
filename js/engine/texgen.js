@@ -736,15 +736,27 @@
     };
 
     // A separate mask preserves full colour precision in the terrain canvas.
+    // How far out the sea is "deep" to the shader, and how far up the beach the sand is wet.
+    TexGen.SHORE_DEEP = 60;
+    TexGen.SHORE_WET = 6;
     TexGen.coastMask = (size = 512) => {
         const c=canvas(size), ctx=c.getContext('2d'), img=ctx.createImageData(size,size);
         const coast=TexGen.coastSampler(TexGen.TERRAIN_SEED);
         for (let y=0;y<size;y++) for (let x=0;x<size;x++) {
             const u=x/size,v=y/size;
             const dist=Math.max(Math.abs((u-.5)*TexGen.TERRAIN_WORLD),Math.abs((v-.5)*TexGen.TERRAIN_WORLD))+coast(u,v);
-            const value=Math.round(255*Math.max(0,Math.min(1,(dist-TexGen.TERRAIN_LAND-3)/10)));
+            // Red: how much of a point is water, from none at the waterline (three units
+            // beyond the land's line) to all of it ten units out. It is what it always was.
+            const off=dist-TexGen.TERRAIN_LAND-3;
+            const value=Math.round(255*Math.max(0,Math.min(1,off/10)));
             const i=(y*size+x)*4;
-            img.data[i]=img.data[i+1]=img.data[i+2]=value; img.data[i+3]=255;
+            img.data[i]=value;
+            // Green and blue (overhaul step A7), for the shader's shore: how far out a point
+            // lies, to TexGen.SHORE_DEEP units, and how wet the sand is above the waterline,
+            // from soaked at the water to dry TexGen.SHORE_WET units up the beach.
+            img.data[i+1]=Math.round(255*Math.max(0,Math.min(1,off/TexGen.SHORE_DEEP)));
+            img.data[i+2]=Math.round(255*Math.max(0,Math.min(1,1+off/TexGen.SHORE_WET)));
+            img.data[i+3]=255;
         }
         ctx.putImageData(img,0,0); return c;
     };

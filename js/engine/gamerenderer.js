@@ -1030,7 +1030,9 @@
                 if (rng() > R.perStep) continue;
                 const t = ((i + rng()) / n) * 4, u = ((t % 4) + 4) % 4, side = Math.min(3, Math.floor(u)), s = u - side;
                 const p = side === 0 ? [1, s * 2 - 1] : side === 1 ? [1 - s * 2, 1] : side === 2 ? [-1, 1 - s * 2] : [s * 2 - 1, -1];
-                const r = radiusAt(p[0], p[1], LAND - 1.5 + rng() * 4), x = r * p[0], z = r * p[1];
+                // The waterline is three units beyond the land's line (TexGen.coastMask): from a
+                // little above it to five units into the shallows.
+                const r = radiusAt(p[0], p[1], LAND + 2 + rng() * 6), x = r * p[0], z = r * p[1];
                 const stalks = 10 + ((rng() * 7) | 0), parts = [];
                 for (let j = 0; j < stalks; j++) {
                     const a = rng() * 6.283, d = Math.sqrt(rng()) * 1.0, h = 1.2 + rng() * 1.0, lean = (rng() - 0.5) * 0.3, turn = rng() * 6.283;
@@ -2842,7 +2844,9 @@
             if (this._ground) dl.opaque.push(this._ground);
 
             // shoreline foam: pulse (old sea rhythm: sin(t/1100ms)) + slow drift
-            if (this._foam) {
+            // Since build 1205 the foam is the water's own, drawn by its shader and moving
+            // (overhaul step A7). The ribbon is kept for Simple lighting, which has none of that.
+            if (this._foam && this.visualStyle === 'classic') {
                 const pulse = 0.34 + 0.14 * Math.sin(tSec * 0.91);
                 const drift = (tSec * 0.012) % 1;
                 for (const f of this._foam) {
