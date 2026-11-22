@@ -691,8 +691,11 @@
         if (p < 0.82) { const k = (p - 0.12) / 0.7; return -0.35 - 1.1 * k * k; }
         return -1.45 + (0.2 + 1.45) * ((p - 0.82) / 0.18);
     };
+    // opts.m3: the matrix makers to use. The renderer passes its frame's scratch row
+    // (M3D.scratch), since it copies a pose into the unit's bones at once; anyone who
+    // keeps a pose leaves it out and gets matrices of its own.
     EngineUnits.pose = (type, anim, t, phase = 0, opts = {}) => {
-        const m3 = M();
+        const m3 = opts.m3 || M();
         const P = PIVOTS[type] || {};
         const mats = {};
         let bob = 0;

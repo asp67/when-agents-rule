@@ -251,3 +251,40 @@ explored the square costs more than they did: four draws for one bush instead of
 
 Left of the diet: a building's pole and runner, the units at four or five draws, and
 the matrices a frame allocates anew.
+
+**Step 7, build 1187: a frame's matrices come from a row that is used again.** Counted
+first: a frame with 200 units in view made some 5,200 matrices (a unit's place, its
+pose, its ring and bar, every glow and mote) and threw them all away after the draw.
+`M3D.scratch()` gives the same makers as the matrix library, but each result is the next
+of a row of matrices that starts over with every frame; the row grows in blocks of 1,024
+to the busiest frame and then stands (4,427 in that view).
+
+A scratch matrix is only good for its frame, so what is kept longer is not made of it.
+Where a unit stands is written into storage the unit owns (`ue.mWorld`, `ue.mFlat`, an
+unrigged part's `mOwn`), because its batches point at it and its ghost falls from it. A
+flag, a rising shell and the damage rings are made as before. A pose is scratch when
+the renderer asks for it (`opts.m3`), since it is copied into the unit's bones at once.
+
+Checked in the page: the same frozen frame built with and without the row gives the
+same 3,456 matrices, bit for bit, and after it nothing outside the frame's lists holds a
+scratch matrix (87,000 objects walked, with ghosts falling; the search does find the
+536 in the lists).
+
+What it buys on this machine, the army view, four runs of each taken in turn in one
+page:
+
+| | unpooled | pooled |
+| --- | --- | --- |
+| building the frame's lists, ms | 0.97 to 1.33 | 0.83 to 0.89 |
+| a frame, median ms | 4.6 to 4.9 | 4.5 to 5.0 |
+
+About a fifth off the page's own part of a frame, 0.2 ms, which the whole frame does
+not show on this card. The benchmark, one run: Low 1.95 to 1.83 ms, Balanced 2.03 to
+1.92, High 5.77 to 5.57, which is inside what two runs differ by. The slow frames of the
+benchmark (p99 of 14 ms on High against a median of 4) were suspected of being garbage
+collection and are not: they are the same before and after, and belong to the shots
+that draw more.
+
+Short of the plan's "a frame allocates nothing": the matrices are no longer allocated,
+the entries of the draw lists still are (an object each, and a tint for some), and by
+the browser's coarse count they are the larger part of what a frame leaves behind.

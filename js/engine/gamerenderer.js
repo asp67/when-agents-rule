@@ -2470,6 +2470,11 @@
         _assembleFrame(tSec, dt, bb) {
             this._refreshIdentity();
             const m3 = M();
+            // fm: this frame's scratch matrices (M3D.scratch), for what goes into the draw
+            // lists and is gone after the draw. m3 still makes the ones that are kept: a
+            // flag's and a shell's (a falling building's ghost holds on to them), the
+            // damage rings'. A unit's own are written into storage the unit keeps.
+            const fm = this._fm || (this._fm = m3.scratch());
             const dl = this._dl;
             dl.opaque.length = 0; dl.blended.length = 0; dl.bars.length = 0;
             (dl.casters || (dl.casters = [])).length = 0;
@@ -2483,12 +2488,12 @@
             const quad = this._buf('quad', [1, 1]);
             const ringBuf = this._buf('disc', [1, 22]);
             const pushBar = (x, y, z, w, pct, tint) => {
-                const anchor = m3.multiply(m3.translation(x, y, z), bb);
-                dl.bars.push({ buf: quad, tex: this.tex.white, tint: [0.06, 0.07, 0.09], model: m3.multiply(anchor, m3.scaling(w, 0.22, 1)) });
+                const anchor = fm.multiply(fm.translation(x, y, z), bb);
+                dl.bars.push({ buf: quad, tex: this.tex.white, tint: [0.06, 0.07, 0.09], model: fm.multiply(anchor, fm.scaling(w, 0.22, 1)) });
                 const fw = (w - 0.08) * Math.max(0.02, Math.min(1, pct));
                 dl.bars.push({
                     buf: quad, tex: this.tex.white, tint,
-                    model: m3.multiply(anchor, m3.multiply(m3.translation(-((w - 0.08) - fw) / 2, 0, 0.01), m3.scaling(fw, 0.14, 1)))
+                    model: fm.multiply(anchor, fm.multiply(fm.translation(-((w - 0.08) - fw) / 2, 0, 0.01), fm.scaling(fw, 0.14, 1)))
                 });
             };
 
@@ -2552,9 +2557,9 @@
                     if (this._cull(w.x, w.z, 40)) continue;
                     const r = this._reducedMotion ? 10 : 4 + 38 * Math.sqrt(k);
                     dl.blended.push({ buf: ringBuf, tex: this.tex.mote, tint: [1, 0.82, 0.4], alpha: 0.55 * fade, additive: true,
-                        model: m3.multiply(m3.translation(w.x, 0.08, w.z), m3.scaling(r, 1, r)) });
+                        model: fm.multiply(fm.translation(w.x, 0.08, w.z), fm.scaling(r, 1, r)) });
                     dl.blended.push({ buf: ringBuf, tex: this.tex.mote, tint: w.tint, alpha: 0.35 * fade, additive: true,
-                        model: m3.multiply(m3.translation(w.x, 0.1, w.z), m3.scaling(r * 0.6, 1, r * 0.6)) });
+                        model: fm.multiply(fm.translation(w.x, 0.1, w.z), fm.scaling(r * 0.6, 1, r * 0.6)) });
                 }
             }
             if (this.visualStyle === 'film' && this._rubble.length) {
@@ -2598,7 +2603,7 @@
                             dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.20,additive:true,model:lamp.pool});
                             for(const [w,h,tint,alpha] of [[.65,.75,[1,.35,.045],.3],[.15,lamp.early?.34:.16,[1,.76,.28],.95]])
                                 dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,
-                                    model:m3.multiply(m3.multiply(m3.translation(x,y,z),bb),m3.scaling(w,h*flicker,1))});
+                                    model:fm.multiply(fm.multiply(fm.translation(x,y,z),bb),fm.scaling(w,h*flicker,1))});
                         }
                         }
                         // Alpha fade shares the existing blended pass near the limit. From the
@@ -2614,9 +2619,9 @@
                             const [x,y,z]=eb.fire,phase=ambientTime+b.x*.17+b.z*.11;
                             addLight(x,y+.55,z,3*detailFade);
                             dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.38,.07],alpha:.4*detailFade,additive:true,
-                                model:m3.multiply(m3.translation(x,.04,z),m3.scaling(2.4,1,2.4))});
+                                model:fm.multiply(fm.translation(x,.04,z),fm.scaling(2.4,1,2.4))});
                             const mote=(px,py,pz,w,h,tint,alpha,emission=0)=>dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*detailFade*(emission||1),additive:!!emission,
-                                model:m3.multiply(m3.multiply(m3.translation(px,py,pz),bb),m3.scaling(w,h,1))});
+                                model:fm.multiply(fm.multiply(fm.translation(px,py,pz),bb),fm.scaling(w,h,1))});
                             for(let i=0;i<3;i++){
                                 const age=((phase*.18+i/3)%1+1)%1;
                                 mote(x+age*.65,y+.5+age*2.8,z+age*.25,.45+age*.8,.6+age*.9,[.43,.44,.45],Math.sin(age*Math.PI)*.18);
@@ -2665,21 +2670,21 @@
                 if (b.selected || (this.game && this.game.selectedBuilding === b)) {
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: EngineRenderer.SELECT_TINT,
-                        model: m3.multiply(m3.translation(b.x, 0.1, b.z), m3.scaling(b.isWonder ? 9 : 6, 1, b.isWonder ? 9 : 6))
+                        model: fm.multiply(fm.translation(b.x, 0.1, b.z), fm.scaling(b.isWonder ? 9 : 6, 1, b.isWonder ? 9 : 6))
                     });
                 }
                 if (b.isWonder && !b.underConstruction) { // pulsing claim ring
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: this._tintOf(b.color),
                         alpha: 0.35 + 0.25 * Math.sin(tSec * 2),
-                        model: m3.multiply(m3.translation(b.x, 0.12, b.z), m3.scaling(8.4 * WONDER_SCALE, 1, 8.4 * WONDER_SCALE))
+                        model: fm.multiply(fm.translation(b.x, 0.12, b.z), fm.scaling(8.4 * WONDER_SCALE, 1, 8.4 * WONDER_SCALE))
                     });
                 }
                 if (b.type === 'town_center' && !b.underConstruction) {
                     const bt = this._bannerFor(b);
                     if (bt) dl.bars.push({
                         buf: quad, tex: bt, tint: this.WHITE,
-                        model: m3.multiply(m3.multiply(m3.translation(b.x, by + 2.4, b.z), bb), m3.scaling(7.5, 1.9, 1))
+                        model: fm.multiply(fm.multiply(fm.translation(b.x, by + 2.4, b.z), bb), fm.scaling(7.5, 1.9, 1))
                     });
                 }
             }
@@ -2758,7 +2763,7 @@
                 const still = !!this.replayMode && !this.resimPlaying;   // the re-simulated replay moves, so it animates
                 const pose = ue.static ? { mats: this._siegePose(u, ue), bob: 0 } : EngineUnits.pose(ue.type, anim, still ? 0 : tSec, ue.phase, {
                     strike: fighting ? (still ? 0.5 : ((u.attackTimer || 0) / 1000) % 1) : null,
-                    stride: still ? 0 : ue.stride });
+                    stride: still ? 0 : ue.stride, m3: fm });
                 // The Maya spotter's parrot (b1065): up and circling while its spotter
                 // walks, back on the shoulder when it stands -- about a second each way.
                 if (ue.hasParrot === undefined) ue.hasParrot = !!(ue.boneNames && ue.boneNames.includes('parrot'));
@@ -2767,9 +2772,9 @@
                     ue.parrotLift = want > lift ? Math.min(want, lift + udt * 0.9) : Math.max(want, lift - udt * 0.9);
                     Object.assign(pose.mats, EngineUnits.parrotPose(ue.parrotLift, still ? 0 : tSec, ue.phase));
                 }
-                const spin = m3.rotationY(dir);
-                const world = m3.multiply(m3.translation(u.x, pose.bob, u.z), spin);
-                const flat = m3.multiply(m3.translation(u.x, 0, u.z), spin);
+                const spin = fm.rotationY(dir);
+                const world = m3.multiplyInto(ue.mWorld || (ue.mWorld = new Float32Array(16)), fm.translation(u.x, pose.bob, u.z), spin);
+                const flat = m3.multiplyInto(ue.mFlat || (ue.mFlat = new Float32Array(16)), fm.translation(u.x, 0, u.z), spin);
                 const flash = u._flashUntil && now < u._flashUntil;
                 let workerLights=null;
                 const lampFade=lightDetailFade(Math.hypot(u.x-this.cameraTarget.x,u.z-this.cameraTarget.z),this._halfH);
@@ -2798,9 +2803,9 @@
                         else (lampFade===1?dl.opaque:dl.blended).push(lampFade===1?e:{...e,alpha:lampFade});
                     }
                     if(strength>0){
-                        dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.18,additive:true,model:m3.multiply(m3.translation(x,.035,z),m3.scaling(1.6,1,1.6))});
+                        dl.blended.push({buf:ringBuf,tex:this.tex.mote,tint:[1,.47,.10],alpha:strength*.18,additive:true,model:fm.multiply(fm.translation(x,.035,z),fm.scaling(1.6,1,1.6))});
                         for(const [w,h,tint,alpha]of(lampFar?[[.40,.46,[1,.38,.06],.28]]:[[.40,.46,[1,.38,.06],.28],[.09,.14,[1,.80,.38],.9]]))
-                            dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,model:m3.multiply(m3.multiply(m3.translation(x,y+.015,z),bb),m3.scaling(w,h,1))});
+                            dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,model:fm.multiply(fm.multiply(fm.translation(x,y+.015,z),bb),fm.scaling(w,h,1))});
                     }
                 }
                 const parts = this._halfH > EngineRenderer.FAR_UNIT_HALF_H ? (ue.farEntries || (ue.farEntries = ue.far()))
@@ -2817,7 +2822,7 @@
                     // A skinned batch holds every limb and is moved as a whole; the far model's
                     // parts were merged at rest and have no bones.
                     const rigged = e.skin ? bones : null;
-                    const model = rigged ? (e.blend ? flat : world) : m3.multiply(e.blend ? flat : world, e.base);
+                    const model = rigged ? (e.blend ? flat : world) : m3.multiplyInto(e.mOwn || (e.mOwn = new Float32Array(16)), e.blend ? flat : world, e.base);
                     e.model = model; // keep the composed matrix — death ghosts snapshot it
                     e.bones = rigged;
                     // A faded entity goes through the BLENDED pass whatever its part says,
@@ -2841,13 +2846,13 @@
                     const r = ue.type === 'siege' ? 3.2 : ue.type === 'cavalry' ? 1.5 : 1.05;
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: EngineRenderer.SELECT_TINT,
-                        model: m3.multiply(m3.translation(u.x, 0.08, u.z), m3.scaling(r, 1, r))
+                        model: fm.multiply(fm.translation(u.x, 0.08, u.z), fm.scaling(r, 1, r))
                     });
                 }
                 if (ue.type === 'priest') { // golden halo
                     dl.blended.push({
                         buf: ringBuf, tex: this.tex.ring, tint: [1, 0.85, 0.25], alpha: 0.9,
-                        model: m3.multiply(m3.translation(u.x, 1.95 + pose.bob, u.z), m3.scaling(0.42, 1, 0.42))
+                        model: fm.multiply(fm.translation(u.x, 1.95 + pose.bob, u.z), fm.scaling(0.42, 1, 0.42))
                     });
                 }
                 if (u.carryingResource && u.carryingResourceType) { // carried-goods diamond
@@ -2857,9 +2862,9 @@
                     }[u.carryingResourceType] || this.WHITE;
                     dl.bars.push({
                         buf: quad, tex: this.tex.white, tint: cc,
-                        model: m3.multiply(
-                            m3.multiply(m3.translation(u.x, 2.3 + Math.sin(tSec * 3 + ue.phase) * 0.07, u.z), bb),
-                            m3.multiply(m3.rotationZ(Math.PI / 4), m3.scaling(0.4, 0.4, 1)))
+                        model: fm.multiply(
+                            fm.multiply(fm.translation(u.x, 2.3 + Math.sin(tSec * 3 + ue.phase) * 0.07, u.z), bb),
+                            fm.multiply(fm.rotationZ(Math.PI / 4), fm.scaling(0.4, 0.4, 1)))
                     });
                 }
                 const hpct = u.health / u.maxHealth;
@@ -2876,14 +2881,14 @@
                 if (k >= 1) { this._ghosts.splice(i, 1); continue; }
                 let A;
                 if (g.kind === 'unit') {
-                    A = m3.multiply(m3.translation(g.px, -0.6 * k, g.pz),
-                        m3.multiply(m3.rotationX(k * 1.2), m3.multiply(m3.scaling(1 - 0.3 * k, 1 - 0.3 * k, 1 - 0.3 * k), m3.translation(-g.px, 0, -g.pz))));
+                    A = fm.multiply(fm.translation(g.px, -0.6 * k, g.pz),
+                        fm.multiply(fm.rotationX(k * 1.2), fm.multiply(fm.scaling(1 - 0.3 * k, 1 - 0.3 * k, 1 - 0.3 * k), fm.translation(-g.px, 0, -g.pz))));
                 } else {
-                    A = m3.multiply(m3.translation(g.px, -0.9 * k, g.pz),
-                        m3.multiply(m3.scaling(1 - 0.2 * k, Math.max(0.06, 1 - k), 1 - 0.2 * k), m3.translation(-g.px, 0, -g.pz)));
+                    A = fm.multiply(fm.translation(g.px, -0.9 * k, g.pz),
+                        fm.multiply(fm.scaling(1 - 0.2 * k, Math.max(0.06, 1 - k), 1 - 0.2 * k), fm.translation(-g.px, 0, -g.pz)));
                 }
                 for (const e of g.entries) {
-                    dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, alpha: 1 - k, model: m3.multiply(A, e.model), bones: e.bones || null });
+                    dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, alpha: 1 - k, model: fm.multiply(A, e.model), bones: e.bones || null });
                 }
             }
 
@@ -2902,9 +2907,9 @@
                     d.vel[j + 1] -= 7 * dt; // gravity
                     dl.blended.push({
                         buf: quad, tex: this.tex.white, tint: d.tint, alpha: a,
-                        model: m3.multiply(
-                            m3.multiply(m3.translation(d.pos[j], Math.max(0.12, d.pos[j + 1]), d.pos[j + 2]), bb),
-                            m3.scaling(0.55, 0.55, 1))
+                        model: fm.multiply(
+                            fm.multiply(fm.translation(d.pos[j], Math.max(0.12, d.pos[j + 1]), d.pos[j + 2]), bb),
+                            fm.scaling(0.55, 0.55, 1))
                     });
                 }
             }
@@ -2930,13 +2935,13 @@
                 if (p.round) {
                     // The boulder tumbles as it flies.
                     dl.opaque.push({ buf: this._buf('sphere', [1, 10, 8]), tex: this.tex.rock || this.tex.white, tint: p.tint,
-                        model: m3.multiply(m3.translation(x, y, z), m3.multiply(m3.rotationX(k * 9), m3.scaling(p.scale, p.scale * 0.9, p.scale))) });
+                        model: fm.multiply(fm.translation(x, y, z), fm.multiply(fm.rotationX(k * 9), fm.scaling(p.scale, p.scale * 0.9, p.scale))) });
                     continue;
                 }
                 dl.opaque.push({
                     buf: this._buf('box', [1, 1, 1]), tex: this.tex.white, tint: p.tint,
-                    model: m3.multiply(m3.translation(x, y, z),
-                        m3.multiply(m3.rotationY(yaw), m3.scaling(p.scale, p.scale, 1.2)))
+                    model: fm.multiply(fm.translation(x, y, z),
+                        fm.multiply(fm.rotationY(yaw), fm.scaling(p.scale, p.scale, 1.2)))
                 });
                 if (p.fire) {
                     // A small flame at the tip, and its light: orange body, yellow core.
@@ -2944,7 +2949,7 @@
                     const f = this._reducedMotion ? 1 : 1 + 0.2 * Math.sin(now * 0.04 + p.sx);
                     for (const [w, tint, alpha] of [[0.42 * f, [1, 0.42, 0.08], 0.85], [0.2 * f, [1, 0.86, 0.42], 0.95]])
                         dl.blended.push({ buf: quad, tex: this.tex.mote, tint, alpha, additive: true,
-                            model: m3.multiply(m3.multiply(m3.translation(tx, y + 0.04, tz), bb), m3.scaling(w, w * 1.25, 1)) });
+                            model: fm.multiply(fm.multiply(fm.translation(tx, y + 0.04, tz), bb), fm.scaling(w, w * 1.25, 1)) });
                 }
             }
 
@@ -2955,12 +2960,12 @@
             if (marks && marks.length) {
                 const bar = this._buf('box', [1, 1, 1]);
                 const flat = (x, z, yaw, len, wid, tint, alpha) => dl.blended.push({ buf: bar, tex: this.tex.white, tint, alpha,
-                    model: m3.multiply(m3.translation(x, 0.12, z), m3.multiply(m3.rotationY(yaw), m3.scaling(wid, 0.02, len))) });
+                    model: fm.multiply(fm.translation(x, 0.12, z), fm.multiply(fm.rotationY(yaw), fm.scaling(wid, 0.02, len))) });
                 for (const mk of marks) {
                     const tint = this._tintOf(parseInt(String(mk.color).slice(1), 16));
                     const r = mk.marker ? 5 : 2.4, to = mk.to;
                     dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint, alpha: mk.alpha,
-                        model: m3.multiply(m3.translation(to.x, 0.14, to.z), m3.scaling(r, 1, r)) });
+                        model: fm.multiply(fm.translation(to.x, 0.14, to.z), fm.scaling(r, 1, r)) });
                     if (mk.refused) for (const yaw of [Math.PI / 4, -Math.PI / 4]) flat(to.x, to.z, yaw, r * 1.3, 0.3, tint, mk.alpha);
                     if (!mk.from) continue;
                     const dx = to.x - mk.from.x, dz = to.z - mk.from.z, dist = Math.hypot(dx, dz);
@@ -2991,7 +2996,7 @@
             else if (node) {
                 const rim = { stone: 2.1, gold: 1.9, food: 1.45, wood: 0.9 }[node.type] || 1.2, r = Math.max(2.4, rim + 1.3);
                 dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint: EngineRenderer.SELECT_TINT, alpha: 0.95,
-                    model: m3.multiply(m3.translation(node.x, 0.15, node.z), m3.scaling(r, 1, r)) });
+                    model: fm.multiply(fm.translation(node.x, 0.15, node.z), fm.scaling(r, 1, r)) });
             }
 
             // Damage pings (a unit or building hit), drawn after the fog so they show through
@@ -3022,7 +3027,7 @@
                 dl.blended.push({
                     buf: this._buf('box', [1, 1, 1]), tex: this.tex.ghost,
                     tint: bp.valid ? [0.25, 1, 0.35] : [1, 0.25, 0.2],
-                    model: m3.multiply(m3.translation(bp.x, (bp.big ? 4 : 1.5), bp.z), m3.scaling(s, bp.big ? 8 : 3, s))
+                    model: fm.multiply(fm.translation(bp.x, (bp.big ? 4 : 1.5), bp.z), fm.scaling(s, bp.big ? 8 : 3, s))
                 });
             }
         }
@@ -3155,6 +3160,7 @@
         // One frame, drawn now. animate() calls it once per display refresh.
         renderFrame() {
             const now = performance.now();
+            if (this._fm) this._fm.reset();   // last frame's scratch matrices are free again
             if (this.perf) this.perf.frameBegin(now);
             const deltaTime = Math.min(0.1, (now - this._lastTime) / 1000);
             this._lastTime = now;
