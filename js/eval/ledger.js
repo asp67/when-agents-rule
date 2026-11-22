@@ -434,6 +434,7 @@
                     promptVersion: o.promptVersion || null };
                 // 'war-transcript/2' and later record adaptations and interventions; in an older file their absence says nothing.
                 this.schema = o.schema != null ? String(o.schema) : null;
+                this.mapSize = num(o.mapSize);       // the map's side, for the order map (build 1226)
                 for (const p of o.players || []) if (p && p.id) this._seat({ playerId: p.id, seat: p.seat, civ: p.civ, model: p.model, name: p.name, settings: p.settings });
                 return;
             }
@@ -895,6 +896,17 @@
             const counts = { loop: 0, constraint: 0, awareness: 0, threat: 0, refused: 0 };
             for (const m of marks) counts[m.kind]++;
             return { id, decisions: seat.turns.length, judged: seat.turns.some(t => t.outcomes), marks, counts };
+        }
+
+        // Where a seat sent its orders (build 1226): every order that named a place or a
+        // target the state had placed, except the refused ones. For the order map of a
+        // chart to share; nothing is scored from it.
+        orders(id) {
+            const seat = this.seats.get(id);
+            if (!seat) return null;
+            const out = [];
+            for (const t of seat.turns) for (const c of t.cmds) if (c.x != null && c.z != null && c.ok !== false) out.push({ x: c.x, z: c.z, sec: t.sec, action: c.action });
+            return out;
         }
 
         // ---- raw model or harness (build 1224) ---------------------------------------

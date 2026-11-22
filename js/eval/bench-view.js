@@ -258,7 +258,7 @@
         if (panels) this.benchPlace();
         const ledger = this.benchLedger(), ev = this._benchEvidence, link = this.benchLinkKey();
         const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : '',
-            open, panels, link].join(':');
+            open, panels, link, this._shareAxis || ''].join(':');
         if (sig === this._benchSig) return;
         this._benchSig = sig;
         const view = this.benchHtml(ledger, { link });
@@ -446,7 +446,85 @@
                 + `<table>${summary}</table><p class="bf-note">${esc(t('bench.b.decisions', { n: s.decisions }))}</p>${this.benchHarnessHtml(s)}</div></div>`
                 + this.benchTraceHtml(ledger, s, data.end) + '</section>';
         }).join('');
-        return `<div class="bf-box" onclick="event.stopPropagation()">${head}<div class="bf-body">${legend}${cards}<div class="bf-matrix">${matrixHtml || ''}</div></div></div>`;
+        return `<div class="bf-box" onclick="event.stopPropagation()">${head}<div class="bf-body">${legend}${cards}${this.benchShareHtml(ledger)}<div class="bf-matrix">${matrixHtml || ''}</div></div></div>`;
+    };
+
+    // ---- a chart to share (build 1226) ----------------------------------------------
+    // The match as one picture (js/eval/share.js): the Index against what it cost, a point
+    // a model, and where on the map each sent its orders. Saved as PNG or SVG.
+    const SOURCE = 'When Agents Rule · github.com/asp67/when-agents-rule';
+    P.benchShareSpec = function (ledger, axis = this._shareAxis || 'speed') {
+        const profile = ledger ? ledger.profile() : null, seats = profile ? profile.seats.filter(s => s.decisions > 0) : [];
+        if (!seats.length) return null;
+        const ink = s => this.legibleColor ? this.legibleColor(this.identityHex ? this.identityHex(s.id, s.civ, s.seat) : '#cccccc') : '#cccccc';
+        const name = s => s.name || s.model || s.id;
+        const cost = s => {
+            const e = s.efficiency;
+            if (axis === 'tokens') return e.tokens ? (e.tokens.promptTotal + e.tokens.completionTotal) / s.decisions / 1000 : null;
+            return e.latencyMs ? WarShare.speedOf(e.latencyMs.median, !!(s.harness && s.harness.external)) : null;
+        };
+        const m = ledger.match || {}, end = ledger.lastSec || 0;
+        return {
+            title: seats.map(name).join(' · '),
+            sub: [m.matchId, m.build != null ? t('share.build', { n: m.build }) : '', end ? clock(end) : '', m.promptVersion].filter(Boolean).join(' · '),
+            x: t(axis === 'tokens' ? 'share.xTokens' : 'share.xSpeed'), y: t('share.yIndex'), yTop: 100,
+            points: seats.map(s => ({ name: name(s), x: cost(s), y: s.index.value, ink: ink(s), harness: !!(s.harness && s.harness.external),
+                note: s.index.value == null ? '' : String(Math.round(s.index.value)) })),
+            heat: ledger.mapSize && typeof ledger.orders === 'function' ? { title: t('share.heat'), none: t('share.heatNone'),
+                seats: seats.map(s => ({ name: name(s), ink: ink(s), grid: WarShare.grid(ledger.orders(s.id), ledger.mapSize) })) } : null,
+            legend: { raw: t('bench.h.raw'), harness: t('bench.h.harness') }, notShown: t('share.notShown'), empty: t('share.empty'),
+            foot: [SOURCE, t('share.foot', { scale: profile.scale || '?' })]
+        };
+    };
+    P.benchShareHtml = function (ledger) {
+        if (typeof WarShare === 'undefined') return '';
+        const esc = x => this.escapeHtml(String(x == null ? '' : x)), axis = this._shareAxis || 'speed', spec = this.benchShareSpec(ledger, axis);
+        if (!spec) return '';
+        const pick = (k, label) => `<button type="button" class="bs-btn${axis === k ? ' is-on' : ''}" onclick="game.ui.benchShareAxis('${k}')">${esc(t(label))}</button>`;
+        return `<div class="bf-share"><h4>${esc(t('share.title'))}<small>${esc(t('share.tip'))}</small></h4><div class="bs-bar">`
+            + pick('speed', 'share.speed') + pick('tokens', 'share.tokens') + '<span></span>'
+            + `<button type="button" class="bs-btn" onclick="game.ui.benchShareSave('png')">${esc(t('share.png'))}</button>`
+            + `<button type="button" class="bs-btn" onclick="game.ui.benchShareSave('svg')">${esc(t('share.svg'))}</button></div>`
+            + `<div class="bs-pic">${WarShare.card(spec)}</div></div>`;
+    };
+    P.benchShareAxis = function (axis) {
+        this._shareAxis = axis === 'tokens' ? 'tokens' : 'speed';
+        this._benchSig = null;
+        this.updateBenchView();
+    };
+    P.benchShareSave = function (kind) {
+        const ledger = this.benchLedger(), spec = this.benchShareSpec(ledger);
+        if (!spec) return Promise.resolve(false);
+        const id = (ledger.match && ledger.match.matchId) || 'match';
+        return this.shareSave(WarShare.card(spec), id + '-' + (this._shareAxis || 'speed'), kind);
+    };
+    // A picture as a file: the SVG as it is, or drawn on a canvas and saved as a PNG of
+    // the same 1600 x 900. Used by the board and by the Season page.
+    P.sharePng = function (svg) {
+        return new Promise((resolve, reject) => {
+            const img = new Image(), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+            img.onload = () => {
+                const c = document.createElement('canvas');
+                c.width = WarShare.W; c.height = WarShare.H;
+                c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+                URL.revokeObjectURL(url);
+                c.toBlob(b => b ? resolve(b) : reject(new Error('no image')), 'image/png');
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('the chart could not be drawn')); };
+            img.src = url;
+        });
+    };
+    P.shareSave = function (svg, name, kind = 'png') {
+        const put = (blob, ext) => {
+            const a = document.createElement('a'), url = URL.createObjectURL(blob);
+            a.href = url; a.download = String(name).replace(/[^\w.-]+/g, '_') + '.' + ext;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 4000);
+            return true;
+        };
+        if (kind === 'svg') return Promise.resolve(put(new Blob([svg], { type: 'image/svg+xml' }), 'svg'));
+        return this.sharePng(svg).then(blob => put(blob, 'png'))
+            .catch(e => { console.warn('[share] no picture', e); if (this.showErrorMessage) this.showErrorMessage(t('share.failed')); return false; });
     };
 
     // ---- raw model or harness (build 1224) -----------------------------------------

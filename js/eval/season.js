@@ -173,8 +173,9 @@
             for (const m of played) for (const s of m.all) {
                 const k = modelKey(s);
                 let row = models.get(k);
-                if (!row) models.set(k, row = { key: k, name: s.name, model: s.model, via: null, values: {}, matches: 0, firsts: 0, ranks: [] });
+                if (!row) models.set(k, row = { key: k, name: s.name, model: s.model, via: null, values: {}, matches: 0, firsts: 0, ranks: [], lat: [] });
                 row.matches++;
+                if (typeof s.latencyMs === 'number' && isFinite(s.latencyMs)) row.lat.push(s.latencyMs);
                 if (row.via == null && s.via) row.via = s.via;
                 if (s.rank === 1) row.firsts++;
                 if (s.rank != null) row.ranks.push({ rank: s.rank, of: s.of == null ? null : s.of });
@@ -183,6 +184,8 @@
             const rows = [...models.values()].map(r => ({ key: r.key, name: r.name, model: r.model, via: r.via, matches: r.matches, firsts: r.firsts,
                 // Every placement, oldest first: "first place twice" beside the two matches it finished last in.
                 places: r.ranks,
+                // How long a decision took: the median over its matches of each match's median (build 1226).
+                latencyMs: r.lat.length ? spread(r.lat).median : null,
                 parts: Object.fromEntries(PARTS.map(p => [p, interval(r.values[p] || [])])),
                 spread: Object.fromEntries(PARTS.map(p => [p, spread(r.values[p] || [])])) }));
             rows.sort((a, b) => (b.parts.index.mean == null ? -1 : b.parts.index.mean) - (a.parts.index.mean == null ? -1 : a.parts.index.mean) || String(a.name).localeCompare(String(b.name)));

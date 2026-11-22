@@ -20,6 +20,8 @@ class SeasonPage {
         this.samples = null;        // the shipped entries, once fetched
         this.showSamples = true;
         this.note = '';
+        this.shareOpen = {};        // which groups have their chart open, and
+        this.shareY = 'index';      // what stands on its upright axis: the Index, or first places
     }
 
     static get STORE() { return 'war.season.v1'; }
@@ -141,8 +143,51 @@ class SeasonPage {
             <p class="season-verdict">${this.esc(verdict)}</p>${mixed}
             ${h2h ? `<h4>${this.esc(t('season.headToHead'))}</h4><ul class="season-list">${h2h}</ul>` : ''}
             ${swaps ? `<h4>${this.esc(t('season.swaps'))}</h4><ul class="season-list">${swaps}</ul>` : ''}
+            ${this.share(g)}
         </section>`;
     }
+    // ---- a chart to share (build 1226) ----------------------------------------------
+    // A group as one picture (js/eval/share.js): a point a model, how fast it decides to
+    // the right, its mean Index upward with a whisker from its lowest match to its highest;
+    // or the share of its matches it placed first in.
+    static get INKS() { return ['#5cc8ff', '#ffb454', '#9fd08a', '#ff6b6b', '#c59cf0', '#f2e06a', '#7fd0bd', '#e89ac0']; }
+    shareSpec(g, y = this.shareY) {
+        const wins = y === 'wins', count = n => n === 1 ? t('share.oneMatch') : t('share.matches', { n });
+        return {
+            title: t('share.seasonTitle'),
+            sub: [t('season.conditions') + ' ' + g.id, g.protocol, count(g.matches), g.builds.length ? t('share.build', { n: g.builds.join(', ') }) : ''].filter(Boolean).join(' · '),
+            x: t('share.xSpeed'), y: t(wins ? 'share.yWins' : 'share.yIndexMean'), yTop: 100,
+            points: g.models.map((m, i) => {
+                const idx = m.parts.index, sp = m.spread ? m.spread.index : null;
+                return { name: m.name || m.model || '?', x: WarShare.speedOf(m.latencyMs, String(m.via || '').startsWith('harness')),
+                    y: wins ? (m.matches ? Math.round(1000 * m.firsts / m.matches) / 10 : null) : idx.mean,
+                    lo: wins || !sp || sp.n < 2 ? null : sp.min, hi: wins || !sp || sp.n < 2 ? null : sp.max,
+                    ink: SeasonPage.INKS[i % SeasonPage.INKS.length], harness: String(m.via || '').startsWith('harness'),
+                    note: wins ? m.firsts + '/' + m.matches : count(m.matches) };
+            }),
+            heat: null, legend: { raw: t('bench.h.raw'), harness: t('bench.h.harness'), whisker: t('share.whisker') },
+            notShown: t('share.notShown'), empty: t('share.empty'),
+            foot: ['When Agents Rule · github.com/asp67/when-agents-rule', t('share.footSeason', { scale: g.scale || '?' })]
+        };
+    }
+    share(g) {
+        if (typeof WarShare === 'undefined' || g.models.length < 2) return '';
+        const key = g.id + '/' + g.scale, id = this.esc(String(key).replace(/['\\]/g, '')), open = !!this.shareOpen[key];
+        const pick = (k, label) => `<button type="button" class="bs-btn${this.shareY === k ? ' is-on' : ''}" onclick="game.ui.seasonPage().setShareY('${k}')">${this.esc(t(label))}</button>`;
+        return `<details class="season-share"${open ? ' open' : ''} ontoggle="game.ui.seasonPage().shareToggle('${id}', this.open)"><summary>${this.esc(t('share.title'))}</summary>`
+            + (open ? `<div class="bs-bar">${pick('index', 'share.byIndex')}${pick('wins', 'share.byWins')}<span></span>`
+                + `<button type="button" class="bs-btn" onclick="game.ui.seasonPage().shareSave('${id}', 'png')">${this.esc(t('share.png'))}</button>`
+                + `<button type="button" class="bs-btn" onclick="game.ui.seasonPage().shareSave('${id}', 'svg')">${this.esc(t('share.svg'))}</button></div>`
+                + `<div class="bs-pic">${WarShare.card(this.shareSpec(g))}</div>` : '') + '</details>';
+    }
+    shareToggle(key, open) { if (!!this.shareOpen[key] === !!open) return; this.shareOpen[key] = !!open; this.render(); }
+    setShareY(y) { this.shareY = y === 'wins' ? 'wins' : 'index'; this.render(); }
+    shareSave(key, kind) {
+        const g = WarSeason.table(this.entries()).groups.find(x => x.id + '/' + x.scale === key);
+        if (!g) return Promise.resolve(false);
+        return this.ui.shareSave(WarShare.card(this.shareSpec(g)), 'season-' + g.id + '-' + this.shareY, kind);
+    }
+
     // Seats that stand alone, or whose conditions are unknown: listed, never added up.
     loose(key, rows, withCond) {
         if (!rows.length) return '';
