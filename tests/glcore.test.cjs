@@ -114,7 +114,8 @@ test('without vertex arrays a mesh is pointed at for every draw, as it always wa
 
 test('buffers that are freed are freed through the helper, so their arrays go too', () => {
     assert.match(read('js/engine/gamerenderer.js'), /for \(const c of this\._resChunks\.list\) for \(const g of c\.groups \|\| \[\]\) GLCore\.deleteMeshBuffers\(gl, g\.buf\);/);
-    assert.match(read('js/engine/grass.js'), /for \(const batch of tile\.batches\) GLCore\.deleteMeshBuffers\(this\.renderer\.gl, batch\.buf\);/);
+    // A grass tile is a list of instances since build 1202 (and one of pebbles where it has any).
+    assert.match(read('js/engine/grass.js'), /GLCore\.deleteMeshBuffers\(this\.renderer\.gl, tile\.tufts\);\s+if \(tile\.stones\) GLCore\.deleteMeshBuffers\(this\.renderer\.gl, tile\.stones\);/);
     // Nothing in the engine frees a mesh's buffers one by one any more.
     for (const f of ['js/engine/gamerenderer.js', 'js/engine/grass.js', 'js/engine/bloom.js', 'js/engine/fx.js', 'js/engine/occlusion.js'])
         assert.doesNotMatch(read(f), /deleteBuffer\(/, f);

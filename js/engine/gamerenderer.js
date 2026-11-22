@@ -251,7 +251,8 @@
             if (!Object.prototype.hasOwnProperty.call(sizes,value)) value = 'balanced';
             if (this.graphicsQuality === value) return;
             this.graphicsQuality = value;
-            if (value !== 'cinematic' && this._grass) { this._grass.dispose(); this._grass = null; }
+            // A tier sows its own grass (how much, with pebbles or without): begin afresh.
+            if (this._grass) { this._grass.dispose(); this._grass = null; }
             EngineAtmosphere.disposeShadowTarget(this.gl,this._shadowTarget);
             this._shadowTarget = sizes[value] ? EngineAtmosphere.createShadowTarget(this.gl,sizes[value]) : null;
             if (this.canvas) this._sizeCanvas();      // each tier has its own resolution ceiling
@@ -2676,7 +2677,8 @@
             // ambient shrubbery/flowers/pebbles — skipped when zoomed far out
             // Not in the second picture: the tufts are built around one camera, and two would
             // have them built and thrown away every frame.
-            if (!inset && this.graphicsQuality === 'cinematic' && typeof EngineGrass !== 'undefined') {
+            // On every tier that has grass (EngineGrass.TIERS): High, and since build 1202 the default tier.
+            if (!inset && typeof EngineGrass !== 'undefined' && EngineGrass.TIERS[this.graphicsQuality]) {
                 if (!this._grass) this._grass = new EngineGrass.Grass(this);
                 const grassStart = performance.now();
                 dl.opaque.push(...this._grass.frame());
@@ -3486,6 +3488,7 @@
             // bloom on near-white ground. These gains bring noon ground to about 0.88.
             gl.uniform1f(this.prog.uniforms.uGroundGain,this._theme === 'winter' ? 0.89 : (this._theme === 'desert' ? 0.91 : 1));
             gl.uniform4fv(this.prog.uniforms.uGroundCover,this._groundCover || [0,0,0,0]);
+            gl.uniform1f(this.prog.uniforms.uInstanceWorld, TexGen.TERRAIN_WORLD);
             gl.activeTexture(gl.TEXTURE0);
 
             // Each draw sets only what differs from the one before it (b1082): most of a
@@ -3495,8 +3498,11 @@
             const U = this.prog.uniforms, NO_CLOTH = this._noCloth || (this._noCloth = [0, 0, 0, 0]);
             const NO_LIGHTS = this._noLocalLights || (this._noLocalLights = new Float32Array(12));
             const draw = (list, unlit) => {
-                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit, bones, mist;
+                let veg, tex, mat, tint, alpha, uvx, uvy, cloth, lights, lit, bones, mist, instanced;
                 for (const obj of list) {
+                    // An instanced mesh (the grass): the shader places each drawing by its list.
+                    const inst = obj.buf.instance ? 1 : 0;
+                    if (inst !== instanced) { gl.uniform1f(U.uInstanced, inst); instanced = inst; }
                     // A unit's bones: sent when they change, and the shader told whether the
                     // mesh has any (uSkin). Batches of one unit follow each other, so a unit
                     // sends its bones once.

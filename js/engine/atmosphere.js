@@ -129,6 +129,13 @@
         attribute vec3 aPosition, aNormal;
         attribute vec2 aUv;
         attribute float aBone;
+        // An instanced mesh (the grass, overhaul step A6): the same tuft drawn once for each
+        // entry of a list, and this is the entry: x, z, and its size times the cosine and
+        // the sine of its turn (no angle to work out for each corner). uInstanced says
+        // whether the mesh being drawn has such a list; uInstanceWorld is the width of the
+        // ground's colour map, which a tuft takes its colour from where it stands.
+        attribute vec4 aInstance;
+        uniform float uInstanced, uInstanceWorld;
         uniform mat4 uProj, uView, uModel, uLightMatrix;
         // A unit's limbs (overhaul step A4): each vertex names the bone it hangs on and is
         // moved by that bone's matrix before the unit's own. Bone 0 is none. uSkin says
@@ -152,6 +159,20 @@
                 local = bone * local;
                 normal = mat3(bone) * normal;      // a bone turns about a pivot: no scale to undo
             }
+            bool stone = aUv.x < -0.5;
+            float stoneShade = 0.0;
+            if (uInstanced > 0.5) {
+                // A pebble is the pebble mesh at the entry's size. A tuft keeps its base and
+                // is stretched from there: its tips move up and out by the entry's height.
+                vec3 p = local.xyz;
+                float size = length(aInstance.zw);
+                if (stone) p *= size;
+                else if (p.y > 0.1) { p.y *= size; p.xz *= size; }
+                float c = aInstance.z / size, s = aInstance.w / size;
+                local.xyz = vec3(c*p.x + s*p.z + aInstance.x, p.y, c*p.z - s*p.x + aInstance.y);
+                normal = vec3(c*normal.x + s*normal.z, normal.y, c*normal.z - s*normal.x);
+                stoneShade = fract(sin(dot(aInstance.xy, vec2(12.9898, 78.233))) * 43758.5453);
+            }
             vec4 world = uModel * local;
             // Pole edge stays pinned; the ownership badge follows the same fold.
             if(dot(uCloth.zw,uCloth.zw)>.5){
@@ -159,8 +180,8 @@
                 float fold=sin(along*7.0-uClothTime*2.0)*along*.09;
                 world.xz+=vec2(-uCloth.w,uCloth.z)*fold;
             }
-            vPebble = aUv.x < -0.5 ? 1.0 : 0.0;
-            vGrassTip = clamp((aPosition.y-0.018) / 0.562, 0.0, 1.0);
+            vPebble = stone ? 1.0 : 0.0;
+            vGrassTip = clamp(((uInstanced > 0.5 ? local.y : aPosition.y)-0.018) / 0.562, 0.0, 1.0);
             if (uVegetation > 0.5 && vPebble < 0.5) {
                 float gust = sin(world.x*0.17 + world.z*0.11 + uGrassTime*1.3)
                     + 0.45*sin(world.x*0.37 - world.z*0.23 + uGrassTime*2.1);
@@ -172,6 +193,8 @@
             vNormal = basis * (normal / max(scale2, vec3(0.00001)));
             vWorld = world.xyz;
             vUv = aUv + uUvOffset;
+            // A tuft is the colour of the ground it stands on; a pebble has a shade of its own.
+            if (uInstanced > 0.5) vUv = stone ? vec2(-1.0, stoneShade) : local.xz / uInstanceWorld + 0.5;
             vec4 vp = uView * world;
             vDepth = -vp.z;
             vShadow = uLightMatrix * world;

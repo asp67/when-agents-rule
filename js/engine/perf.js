@@ -108,10 +108,20 @@
                     self._draws++; self._tris += tris(mode, count);
                     return da.call(gl, mode, first, count);
                 };
+                // An instanced draw (the grass, b1202) is one call and its triangles times
+                // the number of instances. (WebGL 1 draws them through an extension's own
+                // object: those are not counted.)
+                const di = typeof gl.drawElementsInstanced === 'function' ? gl.drawElementsInstanced : null;
+                const ownI = Object.prototype.hasOwnProperty.call(gl, 'drawElementsInstanced');
+                if (di) gl.drawElementsInstanced = function (mode, count, type, offset, n) {
+                    self._draws++; self._tris += tris(mode, count) * n;
+                    return di.call(gl, mode, count, type, offset, n);
+                };
                 // Back to the context's own methods, not to a copy of them.
                 this._unwrap = () => {
                     if (own) { gl.drawElements = de; gl.drawArrays = da; }
                     else { delete gl.drawElements; delete gl.drawArrays; }
+                    if (di) { if (ownI) gl.drawElementsInstanced = di; else delete gl.drawElementsInstanced; }
                 };
             } else if (this._unwrap) { this._unwrap(); this._unwrap = null; }
             this.setGpuTiming(on, 'detail');

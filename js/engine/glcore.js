@@ -48,6 +48,39 @@
         return (gl._warVao = v);
     };
 
+    // Instancing: one mesh drawn many times in one call, each time with the next entry of a
+    // list (overhaul step A6: the grass). Part of WebGL 2, an extension in WebGL 1; null
+    // where neither is there, and then nothing instanced is drawn.
+    GLCore.instancingOf = gl => {
+        if (gl._warInstancing !== undefined) return gl._warInstancing;
+        let v = null;
+        if (typeof gl.drawElementsInstanced === 'function') {
+            v = { divisor: (at, n) => gl.vertexAttribDivisor(at, n), draw: (count, n) => gl.drawElementsInstanced(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, 0, n) };
+        } else {
+            const ext = typeof gl.getExtension === 'function' ? gl.getExtension('ANGLE_instanced_arrays') : null;
+            if (ext) v = { divisor: (at, n) => ext.vertexAttribDivisorANGLE(at, n), draw: (count, n) => ext.drawElementsInstancedANGLE(gl.TRIANGLES, count, gl.UNSIGNED_SHORT, 0, n) };
+        }
+        return (gl._warInstancing = v);
+    };
+
+    // A list of places for a mesh that is already on the card: four numbers an entry
+    // (what they mean is the shader's business: aInstance). The result is drawn like any
+    // mesh; it shares the mesh's buffers and owns only its list. `instances` is how many
+    // entries a draw takes, from the start of the list: set it lower to draw fewer.
+    GLCore.createInstances = (gl, mesh, data) => {
+        const instance = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, instance);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+        return { position: mesh.position, normal: mesh.normal, uv: mesh.uv, bone: null, index: mesh.index, count: mesh.count,
+            shared: true, instance, instances: data.length / 4, capacity: data.length / 4 };
+    };
+    // The same list, longer or changed: sent whole again.
+    GLCore.setInstances = (gl, buffers, data) => {
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.instance);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+        buffers.instances = buffers.capacity = data.length / 4;
+    };
+
     GLCore.compileProgram = (gl, vsSource, fsSource) => {
         const make = (type, src) => {
             const sh = gl.createShader(type);
@@ -145,7 +178,11 @@
     // drawn by hand afterwards (the bloom's quad) can write into a mesh's array.
     GLCore.drawMesh = (gl, program, buffers) => {
         const vao = GLCore.vaoOf(gl);
-        if (!vao) { GLCore.pointMesh(gl, program, buffers); gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0); return; }
+        // An instanced mesh is drawn once for each of the first `instances` entries of its list.
+        const inst = buffers.instance ? GLCore.instancingOf(gl) : null;
+        if (buffers.instance && (!inst || !(buffers.instances > 0))) return;
+        const go = () => { if (inst) inst.draw(buffers.count, Math.min(buffers.instances, buffers.capacity)); else gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0); };
+        if (!vao) { GLCore.pointMesh(gl, program, buffers); go(); return; }
         let array = buffers.arrays && buffers.arrays.get(program);
         if (array) vao.bind(array);
         else {
@@ -154,7 +191,7 @@
             vao.bind(array);
             GLCore.pointMesh(gl, program, buffers);      // kept by the array, the index buffer included
         }
-        gl.drawElements(gl.TRIANGLES, buffers.count, gl.UNSIGNED_SHORT, 0);
+        go();
         vao.bind(null);
     };
 
@@ -163,7 +200,8 @@
         if (!buffers) return;
         const vao = GLCore.vaoOf(gl);
         if (buffers.arrays) { if (vao) for (const a of buffers.arrays.values()) vao.remove(a); buffers.arrays = null; }
-        for (const k of ['position', 'normal', 'uv', 'bone', 'index']) if (buffers[k]) gl.deleteBuffer(buffers[k]);
+        // A list of instances owns its list only: the mesh it places belongs to whoever made it.
+        for (const k of buffers.shared ? ['instance'] : ['position', 'normal', 'uv', 'bone', 'index']) if (buffers[k]) gl.deleteBuffer(buffers[k]);
     };
 
     // Points the program's attributes at a mesh's buffers.
@@ -187,6 +225,18 @@
                 gl.enableVertexAttribArray(program.attribs.aBone);
                 gl.vertexAttribPointer(program.attribs.aBone, 1, gl.FLOAT, false, 0, 0);
             } else gl.disableVertexAttribArray(program.attribs.aBone);   // bone 0 for every vertex: none
+        }
+        // The list of an instanced mesh: one entry a drawing, not one a corner. A mesh
+        // without one says so too -- where there are no vertex arrays the setting is the
+        // context's, and would be left over from the grass.
+        if (program.attribs.aInstance !== undefined) {
+            const inst = GLCore.instancingOf(gl), at = program.attribs.aInstance;
+            if (buffers.instance && inst) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, buffers.instance);
+                gl.enableVertexAttribArray(at);
+                gl.vertexAttribPointer(at, 4, gl.FLOAT, false, 0, 0);
+                inst.divisor(at, 1);
+            } else { gl.disableVertexAttribArray(at); if (inst) inst.divisor(at, 0); }
         }
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.index);
     };

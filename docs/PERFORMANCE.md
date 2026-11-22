@@ -336,3 +336,41 @@ integrated card is not known: this machine never governs down, and the office ma
 are unmeasured.
 
 Not changed: when the governor steps, and by how much. Only how a step is drawn.
+
+## Instanced grass (overhaul step A6, build 1202)
+
+Grass was the largest single thing High drew, and no other tier drew any: a tile was its
+own mesh, and a camera cut meant building and uploading up to a megabyte a tile. Since
+build 1202 a tile is a list of places for one shared tuft (four numbers a tuft), drawn
+instanced. The same change gave Balanced grass.
+
+Measured in the showcase town (Greek, summer, noon), 1600 x 900, frames drawn by hand and
+timed until a pixel was read back (so page and card together; the read-back itself costs
+a millisecond or more in every row). Before is build 1201.
+
+| tier, view (camera half-height) | frame before | after | draw calls before | after | grass draws before | after |
+| --- | --- | --- | --- | --- | --- | --- |
+| High, close (9) | 7.6 ms | 5.1 ms | 394 | 344 | 114 | 64 |
+| High, near (22) | 9.2 ms | 8.5 ms | 722 | 633 | 196 | 108 |
+| High, mid (32) | 9.1 ms | 8.3 ms | 697 | 594 | 232 | 129 |
+| High, town (45) | 9.1 ms | 8.0 ms | 746 | 624 | 264 | 141 |
+| Balanced, close (9) | 1.4 ms | 1.9 ms | 218 | 255 | 0 | 37 |
+| Balanced, near (22) | 1.8 ms | 2.7 ms | 395 | 447 | 0 | 52 |
+| Balanced, mid (32) | 1.6 ms | 2.2 ms | 329 | 381 | 0 | 52 |
+| Balanced, town (45) | 2.3 ms | 2.1 ms | 347 | 399 | 0 | 52 |
+
+The page's own share of a High frame about halved (near: 1.3 ms to 0.7 ms), most of it
+from a second change in the same build: every tile in view was held against every
+building and every resource site every frame to see whether its grass must be sown
+again. Now a number is made of the town each frame and the tiles are looked at only
+when it differs.
+
+Balanced draws about 9,000 to 10,000 tufts (110,000 triangles) where High draws 48,000
+to 87,000. What that costs an integrated card is not known: this machine has a fast one,
+and the office machines are unmeasured. The governor steps down from Balanced to Low as
+before if it does not hold the frame rate, and Low has no grass.
+
+The frame meter counts an instanced draw as one draw and its triangles times its
+instances (`?perf=1`). The card's own timer was not usable for this comparison: it
+reported 8.6 ms for one view that the read-back timed at 8.5 ms for the whole frame,
+and 1.0 ms for the same view a run later.
