@@ -9,7 +9,7 @@ const fs = require('node:fs'), vm = require('node:vm'), path = require('node:pat
 const root = path.resolve(__dirname, '..');
 const ctx = vm.createContext({ Math, console });
 vm.runInContext('globalThis.window = globalThis', ctx);
-for (const f of ['js/simulation/rng.js', 'js/simulation/math.js', 'js/engine/texgen.js', 'js/terrain.js'])
+for (const f of ['js/simulation/rng.js', 'js/simulation/math.js', 'js/simulation/island.js', 'js/terrain.js'])
     vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f });
 const Terrain = vm.runInContext('TerrainManager', ctx);
 

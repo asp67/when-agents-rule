@@ -28,21 +28,21 @@ const DIFFICULTY_MODS = {
 const COAST_LIMIT_N = 1024;
 // A few units inland of the waterline — the surf's inner edge sits at LAND+3 — so
 // units stop on sand rather than paddling in the shallows.
-// Kept ~4 units inside TexGen.TERRAIN_LAND so units stop on sand rather than in the
+// Kept ~4 units inside WarIsland.TERRAIN_LAND so units stop on sand rather than in the
 // shallows. Both moved together: at 396 the walkable limit ran 383.7 to 408.3, so the
 // corners of the play square were water and a model could be handed a tile, or a build
 // site, that no unit could reach. At 413 the minimum clears 400 and every point of the
 // 800x800 map is land -- which is what the state has been claiming all along.
-// Since b1057 it follows the island (TexGen.setMapSize): 4 inside the shore, 413 on
+// Since b1057 it follows the island (WarIsland.setMapSize): 4 inside the shore, 413 on
 // the 800 map, and the table is rebuilt when the island changes size.
-const coastWalkDist = () => TexGen.TERRAIN_LAND - 4;
+const coastWalkDist = () => WarIsland.TERRAIN_LAND - 4;
 let COAST_LIMIT = null, COAST_LIMIT_WORLD = null;
 
 function coastLimitTable() {
-    if (COAST_LIMIT && COAST_LIMIT_WORLD === TexGen.TERRAIN_WORLD) return COAST_LIMIT;
+    if (COAST_LIMIT && COAST_LIMIT_WORLD === WarIsland.TERRAIN_WORLD) return COAST_LIMIT;
     const COAST_WALK_DIST = coastWalkDist();
-    const wob = TexGen.coastSampler(TexGen.TERRAIN_SEED);
-    const W = TexGen.TERRAIN_WORLD;
+    const wob = WarIsland.coastSampler(WarIsland.TERRAIN_SEED);
+    const W = WarIsland.TERRAIN_WORLD;
     const lim = new Float32Array(COAST_LIMIT_N + 1);
     for (let i = 0; i <= COAST_LIMIT_N; i++) {
         const t = (i / COAST_LIMIT_N) * 4, side = Math.min(3, Math.floor(t)), s = t - side;
@@ -50,8 +50,8 @@ function coastLimitTable() {
             : side === 2 ? [-1, 1 - s * 2] : [s * 2 - 1, -1];
         // The same bisection the surf ribbon uses: dist(r) = r + wobble(r) is
         // strictly increasing, so this lands exactly where iteration only crept.
-        let lo = COAST_WALK_DIST - TexGen.COAST_WOBBLE;
-        let hi = COAST_WALK_DIST + TexGen.COAST_WOBBLE;
+        let lo = COAST_WALK_DIST - WarIsland.COAST_WOBBLE;
+        let hi = COAST_WALK_DIST + WarIsland.COAST_WOBBLE;
         for (let k = 0; k < 18; k++) {
             const mid = (lo + hi) / 2;
             const d = mid + wob((mid * p[0]) / W + 0.5, (mid * p[1]) / W + 0.5);

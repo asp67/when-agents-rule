@@ -8,6 +8,7 @@ const src = f => fs.readFileSync(path.join(__dirname, '../js/engine/' + f + '.js
 
 function load() {
     const scope = { window: {}, console }; scope.window.window = scope.window; vm.createContext(scope);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/simulation/island.js'), 'utf8'), scope);   // the island the painters read (build 1188)
     for (const f of ['math3d', 'mesh', 'texgen', 'buildings', 'units']) vm.runInContext(src(f), scope);
     // A buffer is its own data, so writes into it can be read back.
     // The engine's own mesh helpers, with only the upload stood in for.

@@ -11,17 +11,21 @@
 //   rules    code that decides what happens in a match: the fingerprint's coreHash
 //   harness  the model harness: what models are told and how their commands run
 //   vm       everything a bare VM loads to run a match, in a working order
+//
+// Not among them since build 1188: the texture painters (js/engine/texgen.js) and the
+// fog's picture (js/fog-display.js). They decide nothing. The one thing the rules took
+// from the painters, where the island's shore runs, is js/simulation/island.js.
 // ---------------------------------------------------------------------------
 var WarManifest = Object.freeze({
     rules: Object.freeze([
-        'js/simulation/rng.js', 'js/simulation/math.js', 'js/engine/texgen.js',
+        'js/simulation/rng.js', 'js/simulation/math.js', 'js/simulation/island.js',
         'js/civilizations.js', 'js/buildings.js', 'js/units.js', 'js/resources.js',
         'js/terrain.js', 'js/fogofwar.js', 'js/simulation/position-rules.js',
         'js/ai.js', 'js/game.js', 'js/standing-orders.js',
     ]),
     harness: 'js/openai-ai.js',
     vm: Object.freeze([
-        'js/simulation/rng.js', 'js/simulation/math.js', 'js/engine/texgen.js',
+        'js/simulation/rng.js', 'js/simulation/math.js', 'js/simulation/island.js',
         'js/civilizations.js', 'js/buildings.js', 'js/units.js', 'js/resources.js',
         'js/terrain.js', 'js/fogofwar.js', 'js/simulation/position-rules.js', 'js/ai.js',
         'js/sha256.js', 'js/conditions.js', 'js/openai-ai.js',

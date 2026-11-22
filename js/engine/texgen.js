@@ -1,3 +1,7 @@
+// Presentation, not rules (build 1188): this file is outside the rules hash, so a
+// texture can be repainted without splitting comparable results. What the rules need
+// from it -- the island's size and shore -- lives in js/simulation/island.js.
+//
 // TexGen — procedural material painters. Every texture in the engine is DRAWN
 // here into an offscreen canvas at load time (seeded, so reproducible): no
 // image assets, no downloads, nothing to license. This is where the classic
@@ -16,24 +20,10 @@
         return c;
     };
 
-    // Wrapped-bilinear noise SAMPLER in [0,1]: query by (u, v) in [0,1) without
-    // precomputing a full-resolution array — the terrain mega-texture samples
-    // millions of pixels, so per-pixel lattice lookups beat 16MB temporaries.
-    TexGen.noiseSampler = (cells, rand) => {
-        const lat = new Float32Array(cells * cells);
-        for (let i = 0; i < lat.length; i++) lat[i] = rand();
-        return (u, v) => {
-            const gx = ((u % 1) + 1) % 1 * cells, gy = ((v % 1) + 1) % 1 * cells;
-            const x0 = Math.floor(gx), y0 = Math.floor(gy);
-            const fx = gx - x0, fy = gy - y0;
-            const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-            const i00 = lat[(y0 % cells) * cells + (x0 % cells)];
-            const i10 = lat[(y0 % cells) * cells + ((x0 + 1) % cells)];
-            const i01 = lat[((y0 + 1) % cells) * cells + (x0 % cells)];
-            const i11 = lat[((y0 + 1) % cells) * cells + ((x0 + 1) % cells)];
-            return (i00 * (1 - sx) + i10 * sx) * (1 - sy) + (i01 * (1 - sx) + i11 * sx) * sy;
-        };
-    };
+    // Wrapped-bilinear noise SAMPLER in [0,1]: the island's own (js/simulation/island.js),
+    // which the coast is made of. The terrain mega-texture samples millions of pixels
+    // through it, so per-pixel lattice lookups beat 16MB temporaries.
+    TexGen.noiseSampler = (cells, rand) => WarIsland.noiseSampler(cells, rand);
 
     // Tileable value noise in [0,1]: a coarse random lattice sampled with
     // bilinear interpolation and wrapped indices (so textures repeat cleanly).
@@ -691,44 +681,16 @@
 
     // The coastline is a wobbled square: chebyshev distance from the centre plus a
     // noise offset. The mega-texture PAINTS that line and the shoreline foam has to
-    // FOLLOW it, so both read the wobble from here. They used to disagree — the surf
-    // sat on a fixed radius while the painted coast wandered +/-13 units around it,
-    // which is why the waves ran up the beach in places and out to sea in others.
-    TexGen.COAST_CELLS = 24;
-    TexGen.COAST_WOBBLE = 26;
-    // The island's dimensions live with the thing that DRAWS the coast, because
-    // everything that needs to agree about where land ends reads them from here:
-    // the renderer's ground plane and surf ribbon, and the terrain's walkability.
-    TexGen.TERRAIN_SEED = 12345;
-    TexGen.TERRAIN_WORLD = 1000;
-    // 400 put the waterline THROUGH the play square: with COAST_WOBBLE the shore ran
-    // between 387 and 413, so parts of an 800x800 map were sea. 33 of the 1764
-    // exploration cells sat in water across 14 of the 49 tiles, none of which could
-    // ever read 100% -- and one match spent 91 scouts on a tile it could not finish.
-    // 417 puts the whole square ashore with the wobble's 13 to spare.
-    TexGen.TERRAIN_LAND = 417;
-    // The map a match is played on (b1057): 800 (7x7 tiles) or 1200 (11x11). The island
-    // scales with it -- world = 1.25 x map, shore = map/2 + 17 -- and the coast's noise
-    // gets proportionally more cells, so the shoreline keeps its ~42-unit wobble instead
-    // of stretching. At 800 every value is the one above, so the standard map is
-    // unchanged to the pixel. Set by the game before the map is generated, and by the
-    // analyzer from a transcript's header.
-    TexGen.MAP_SIZE = 800;
-    TexGen.setMapSize = (size) => {
-        const s = size > 0 ? size : 800;
-        TexGen.MAP_SIZE = s;
-        TexGen.TERRAIN_WORLD = s * 1.25;
-        TexGen.TERRAIN_LAND = s / 2 + 17;
-        TexGen.COAST_CELLS = Math.round(24 * TexGen.TERRAIN_WORLD / 1000);
-    };
-    TexGen.coastNoise = (rand) => TexGen.noiseSampler(TexGen.COAST_CELLS, rand);
-    // Standalone version for callers outside the texture bake. Inside TexGen.terrain
-    // the coast sampler is the FIRST one drawn from the seeded stream, so drawing it
-    // first from the same seed here reproduces that lattice exactly.
-    TexGen.coastSampler = (seed) => {
-        const n = TexGen.coastNoise(TexGen.rng(seed || 7));
-        return (u, v) => (n(u, v) - 0.5) * TexGen.COAST_WOBBLE;
-    };
+    // FOLLOW it, and a unit has to stop at it, so all three read it from one place:
+    // the island (js/simulation/island.js), which is a rule file. This file is not
+    // (build 1188): what is painted here can change without touching the rules.
+    // The names below are the island's, kept for everything that draws -- they follow
+    // WarIsland.setMapSize, and setting one sets the island's.
+    for (const k of ['COAST_CELLS', 'COAST_WOBBLE', 'TERRAIN_SEED', 'TERRAIN_WORLD', 'TERRAIN_LAND', 'MAP_SIZE'])
+        Object.defineProperty(TexGen, k, { enumerable: true, get: () => WarIsland[k], set: v => { WarIsland[k] = v; } });
+    TexGen.setMapSize = (size) => WarIsland.setMapSize(size);
+    TexGen.coastNoise = (rand) => WarIsland.coastNoise(rand);
+    TexGen.coastSampler = (seed) => WarIsland.coastSampler(seed);
 
     // Open water beyond the map. The mega-texture ends at the ground plane's rim, and
     // past it the frame was a single flat colour — the sea's DETAIL stopped even once

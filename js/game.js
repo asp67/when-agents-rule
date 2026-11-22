@@ -918,10 +918,10 @@ class Game {
     // a replay names its size, and older transcripts were all 800.
     static get DEFAULT_MAP_SIZE() { return 1200; }
     // Size the world for a match, before its map is generated or its fog is made:
-    // the island (TexGen), the terrain's size and tile grid, and the exploration grid.
+    // the island (WarIsland), the terrain's size and tile grid, and the exploration grid.
     applyMapSize(value) {
         const size = Game.mapSizeOf(value), p = Game.MAP_SIZES[size];
-        if (typeof TexGen !== 'undefined' && TexGen.setMapSize) TexGen.setMapSize(size);
+        WarIsland.setMapSize(size);
         this.terrain.size = size;
         this.terrain.numTiles = size / this.terrain.gridSize;
         this.terrain.tiles = p.tiles;

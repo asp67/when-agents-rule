@@ -15,6 +15,7 @@ function world() {
     const context = vm.createContext({ console, Math, Float32Array, Uint8Array, Uint8ClampedArray, Map, Set,
         document: { createElement: () => ({ width: 0, height: 0, getContext: ctx2d }) } });
     vm.runInContext(read('js/fogofwar.js') + '\nthis.Fog = FogOfWarManager;', context);
+    vm.runInContext(read('js/fog-display.js'), context);   // how the fog looks (build 1188): not a rule file
     vm.runInContext('var Game = { hiddenSite: b => !!b.unstartedSite };', context);
     vm.runInContext(read('js/seat-view.js') + '\nthis.View = SeatView;', context);
     // A 40 x 40 map in 2-unit cells. Seat 0 sees the west half now (2), has seen a strip beyond it (1), and nothing of the east.
@@ -172,6 +173,7 @@ test('while it is on, the view follows the minimap\'s knob and refreshes with th
 test('nothing but the picture changes: the rules files are untouched, and every fog read in the renderer goes through one place', () => {
     const manifest = require(path.join(root, 'js/manifest.js'));
     assert.equal(manifest.rules.includes('js/fogofwar.js'), true);
+    assert.equal(manifest.rules.includes('js/fog-display.js'), false);
     assert.equal(manifest.rules.concat(manifest.harness).some(f => /seat-view/.test(f)), false);
     const view = read('js/seat-view.js').replace(/\/\/.*$/gm, '');
     assert.doesNotMatch(view, /FogOfWarManager\.prototype\.\w+\s*=/);               // it inherits the manager's methods and replaces none

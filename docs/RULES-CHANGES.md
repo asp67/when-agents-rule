@@ -6,6 +6,23 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1188: the art is out of the rule files (22 November 2026)
+
+**The rules hash moves, once; no rule changed.** The contract fingerprint hashes the files that decide what happens in a match (`js/manifest.js`). Two of them also held art. `js/engine/texgen.js` paints every texture, and was a rule file because it also held the island's size and where its shore runs. `js/fogofwar.js` holds what has been seen, and also drew the fog's picture. So repainting a roof, or softening the fog's edge, would have marked every earlier match as not comparable. Overhaul step A0 separates them before the look of the game is worked on.
+
+**Now:**
+- `js/simulation/island.js` (`WarIsland`) is a rule file: the map's size, the island's dimensions, and the coast's wobble, moved as they were. `js/terrain.js` and `js/game.js` read the island from it.
+- `js/engine/texgen.js` is no longer a rule file. It paints, and reads the island from `WarIsland`, so the painted coast, the surf and the line a unit stops at are still one line.
+- `js/fog-display.js` is new and not a rule file: the fog's colours, soft edge and canvases. `js/fogofwar.js` keeps the grid, who reveals it and what it hides; where the display is not loaded (a bare VM, a replay worker) the fog is kept the same and never drawn.
+- The rules hash goes from `d13976c3e047f6dd` to `d0304003cd0c489c`. The harness hash is unchanged (`190f02de13942527`). By the fingerprint's rule, matches recorded from this build on are not comparable with earlier ones, although the game they play is the same; this is the one move the split costs, and later changes to textures or to the fog's picture will not move it again.
+
+**What shows that nothing a match does changed:**
+- The golden traces in `tests/sim/` were not re-recorded and pass: the opening economy, the 40 against 40 and the Wonder siege run to the same state at every checkpoint.
+- Sixteen fingerprints taken on build 1187 and again on 1188 are identical: the island's dimensions, 4,096 samples of the coast, the table of where units may walk, and five generated maps, each on the 800 and the 1200 map. `tests/art-out-of-rules.test.cjs` pins twelve of them; `tests/rng.test.cjs` kept its three.
+- **Tests:** `tests/art-out-of-rules.test.cjs` (the list of rule files, no rule file reads the painters or draws, the fog with and without its picture; fails on b1187).
+
+After this build is pushed, `node tools/rules-checkpoints.cjs` adds the new version to `rules/checkpoints.json`, as after any rules change.
+
 ## Build 1148: what a model reads says "center", as its ids do (8 November 2026)
 
 **Harness change; the harness hash moves.** In asp67's matches of 7 November DeepSeek V4.1 Flash wrote "Town Centre" in 21 reasons and all three closing statements. Nothing of ours says that: building ids, names and messages say `town_center` and "Town Center", and across all 324 recorded matches no model ever sent a `town_centre` id. But two pieces of model-facing text did use the British spelling: the `move_units` tile description ("the units go to the centre of that tile") and the move's result ("(centre of tile C5)").

@@ -127,7 +127,7 @@ function context(ratio = 1) {
         TexGen: { TERRAIN_WORLD: 1000, TERRAIN_LAND: 417, TERRAIN_SEED: 12345 },
         document: { createElement: () => ({ getContext: () => ({}) }) } };
     vm.createContext(scope);
-    for (const f of ['simulation/rng', 'simulation/math', 'engine/math3d', 'engine/mesh', 'engine/texgen', 'engine/atmosphere',
+    for (const f of ['simulation/rng', 'simulation/math', 'simulation/island', 'engine/math3d', 'engine/mesh', 'engine/texgen', 'engine/atmosphere',
         'engine/units', 'engine/buildings', 'engine/perf', 'engine/gamerenderer']) {
         vm.runInContext(fs.readFileSync(path.join(root, 'js', f + '.js'), 'utf8'), scope);
         Object.assign(scope, scope.window);

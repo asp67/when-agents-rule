@@ -7,6 +7,7 @@ const src = f => fs.readFileSync(path.join(__dirname, '../js/engine/' + f + '.js
 
 function load() {
     const scope = { window: {}, console, performance: { now: () => 1000 } }; scope.window.window = scope.window; vm.createContext(scope);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../js/simulation/island.js'), 'utf8'), scope);   // the island the painters read (build 1188)
     for (const f of ['math3d', 'mesh', 'texgen', 'buildings', 'units', 'atmosphere']) vm.runInContext(src(f), scope);
     let made = 0;
     scope.window.GLCore = { createMeshBuffers: (gl, mesh) => ({ id: ++made, mesh }), createShadowBuffers: (gl, mesh) => ({ id: ++made, mesh, shadowOnly: true }),

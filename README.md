@@ -387,6 +387,8 @@ js/
 ├── i18n.js             # 4-language UI dictionary + game-content translations
 ├── civilizations.js    # civs, units, buildings, tech trees
 ├── buildings.js / units.js / resources.js / terrain.js / fogofwar.js / input.js
+├── simulation/island.js # the island's size and shore: a rule file (the texture painters in engine/texgen.js are not)
+├── fog-display.js      # how the fog of war looks; fogofwar.js keeps what has been seen
 tools/mcp/              # the MCP hub and the tool list it serves
 tools/bench/            # headless realm, replays and the benchmark runner
 tools/eval/             # war-eval.cjs: the evaluation profile of a recorded match; season.cjs: the season table of many; anchors.cjs: seats that cannot play, scored the same way (docs/SCORING.md)

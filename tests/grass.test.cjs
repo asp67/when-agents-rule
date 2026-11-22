@@ -9,7 +9,7 @@ function setup(){
     vm.createContext(scope);
     // The engine's own mesh helpers (how buffers are given back, since build 1179), with only the upload stood in for.
     {const upload=scope.GLCore.createMeshBuffers;vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/glcore.js'),'utf8'),scope);scope.GLCore=Object.assign(scope.window.GLCore,{createMeshBuffers:upload});}
-    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/island.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
     scope.TexGen=scope.window.TexGen;
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/grass.js'),'utf8'),scope);
     const renderer={gl:{deleteBuffer:b=>deleted.push(b)},graphicsQuality:'cinematic',_halfH:25,
@@ -65,7 +65,7 @@ test('clutter stays on explored terrain after units leave, but never on unexplor
 });
 test('grass shader mask reveals both explored and currently visible cells',()=>{
     const scope={window:{}};vm.createContext(scope);
-    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
+    vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/rng.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/math.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/simulation/island.js'),'utf8'),scope);vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/texgen.js'),'utf8'),scope);
     scope.TexGen=scope.window.TexGen;
     vm.runInContext(fs.readFileSync(path.join(__dirname,'../js/engine/gamerenderer.js'),'utf8'),scope);
     const r=Object.create(scope.window.EngineRenderer.prototype),uploads=[];
