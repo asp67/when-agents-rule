@@ -1339,6 +1339,40 @@
             maya:{wall:[1.14,1.10,.98],roof:[1.02,.92,.70],accent:[.05,.58,.42],hide:[1.25,1.10,.90]}
         }[options.civ];
         const tier=TIER[options.age] || 0,details=[];
+        // Where a part reaches, in the building's own space: [lowX, lowY, lowZ, highX, highY, highZ].
+        // Asked before a window is set into a wall, so none is painted where something
+        // already sits: a balcony, a door, shutters the building brought itself.
+        const reachOf=p=>{
+            let P;
+            if(p.kind==='box'){
+                const [w,h,d]=p.args;P=[];
+                for(const sx of [-1,1])for(const sy of [-1,1])for(const sz of [-1,1])P.push(sx*w/2,sy*h/2,sz*d/2);
+            } else if(typeof window!=='undefined' && window.EngineMesh && window.EngineMesh[p.kind]) P=window.EngineMesh[p.kind](...p.args).positions;
+            else return null;
+            const m=p.m,b=[Infinity,Infinity,Infinity,-Infinity,-Infinity,-Infinity];
+            for(let i=0;i<P.length;i+=3)for(let k=0;k<3;k++){
+                const v=m[k]*P[i]+m[4+k]*P[i+1]+m[8+k]*P[i+2]+m[12+k];
+                if(v<b[k])b[k]=v;if(v>b[k+3])b[k+3]=v;
+            }
+            return b;
+        };
+        let reaches=null;
+        // Is the space before a wall free? at: the middle of the space in the wall's own
+        // space, half: half its size. Whatever stands on the ground in front counts too.
+        const free=(wall,at,half)=>{
+            if(!reaches)reaches=parts.map(q=>(q.blend||q.tex==='shadow'||q.visualOnly)?null:reachOf(q));
+            const probe=reachOf({kind:'box',args:half.map(v=>v*2),m:M().multiply(wall.m,M().translation(at[0],at[1],at[2]))});
+            const own=reaches[parts.indexOf(wall)];
+            for(let i=0;i<parts.length;i++){
+                const r=reaches[i];
+                if(!r||parts[i]===wall)continue;
+                // What goes all the way round the wall is not in the way of a window: a
+                // belt of logs, a footing, the eaves of the roof.
+                if(own&&r[0]<=own[0]&&r[3]>=own[3]&&r[2]<=own[2]&&r[5]>=own[5])continue;
+                if(r[0]<probe[3]&&r[3]>probe[0]&&r[1]<probe[4]&&r[4]>probe[1]&&r[2]<probe[5]&&r[5]>probe[2])return false;
+            }
+            return true;
+        };
         if(palette)for(const p of parts){
             if(!p.team && !p.tint){
                 if(['plaster','masonry','limestone'].includes(p.tex))p.tint=palette.wall;
@@ -1358,11 +1392,33 @@
                 const [w,h,d]=p.args;
                 const ornament=(args,tex,x,y,z,tint)=>details.push({kind:'box',args,tex,tint,
                     m:M().multiply(p.m,M().translation(x,y,z)),visualOnly:true});
+                // Trims on the building itself (build 1214, the open part of overhaul step
+                // A5; asp67 saw it on one house first). The band and the shuttered windows
+                // were painted on the front and the back only, so every building had two
+                // blank walls. They go round all four now; each window sits on a sill of
+                // the wall's stone; and a wall of two floors has a row of windows to each
+                // floor, where it had one row across its middle, behind whatever hangs
+                // there (EngineBuildings.WINDOWS). A window is left out where something
+                // already sits on its spot. The Greeks keep their own windows (below).
+                // A Wonder is a monument, not a house: it keeps what it had, as it had it.
+                const monument=EngineBuildings.MONUMENTS.includes(type);
+                const W=EngineBuildings.WINDOWS, rows=h>=W.twoFloors&&!monument?[-h*W.lower,h*W.upper]:[W.row];
+                // The sill is of what the wall is of: stone under a stone wall, a plank under a timber one.
+                const dark=[.15,.13,.11], timber=p.tex==='wood', sill=timber?[.80,.76,.70]:palette.wall.map(v=>v*.86);
+                // across: along the wall; out: 0 the front and back (the wall faces z), 1 the sides (it faces x).
+                const window_=(across,y,side,out)=>{
+                    const off=(out?w:d)/2, place=(a,b,c)=>out?[side*c,b,a]:[a,b,side*c], size=(a,b,c)=>out?[c,b,a]:[a,b,c];
+                    if(!monument&&!free(p,place(across,y-.05,off+.25),size(.38,.46,.22)))return;
+                    ornament(size(.58,.70,.065),'white',...place(across,y,off+.03),dark);
+                    for(const o of [-.19,0,.19])ornament(size(.045,.7,.085),'wood',...place(across+o,y,off+.075),palette.wall);
+                    if(!monument)ornament(size(.76,.10,.17),timber?'wood':'white',...place(across,y-.42,off+.06),sill);
+                };
                 for(const side of [-1,1]){
                     ornament([w*.94,.16,.065],'white',0,h*.34,side*(d/2+.025),palette.accent);
-                    if(options.civ!=='greek')for(const x of [-w*.29,w*.29]){
-                        ornament([.58,.70,.065],'white',x,.02,side*(d/2+.03),[.15,.13,.11]);
-                        for(const offset of [-.19,0,.19])ornament([.045,.7,.085],'wood',x+offset,.02,side*(d/2+.075),palette.wall);
+                    if(!monument)ornament([.065,.16,d*.94],'white',side*(w/2+.025),h*.34,0,palette.accent);
+                    if(options.civ!=='greek')for(const y of rows){
+                        for(const x of [-w*.29,w*.29])window_(x,y,side,0);
+                        if(!monument)for(const z of d>3?[-d*.27,d*.27]:[0])window_(z,y,side,1);
                     }
                 }
             }
@@ -1392,6 +1448,15 @@
                         m:M().multiply(p.m,M().translation(side*p.args[0]*.30,.12,p.args[2]/2+.015)),visualOnly:true});
                     ornaments.push({kind:'box',args:[.78,.12,.16],tex:'limestone',
                         m:M().multiply(p.m,M().translation(side*p.args[0]*.30,-.34,p.args[2]/2+.04)),visualOnly:true});
+                    // The same shutter and sill on the two side walls (build 1214), where
+                    // nothing stands against them: an outside stair, a lean-to.
+                    const x=side*(p.args[0]/2);
+                    if (!EngineBuildings.MONUMENTS.includes(type) && free(p,[x+side*.25,.07,0],[.22,.50,.42])) {
+                        ornaments.push({kind:'box',args:[.06,.82,.60],tex:'wood',
+                            m:M().multiply(p.m,M().translation(x+side*.015,.12,0)),visualOnly:true});
+                        ornaments.push({kind:'box',args:[.16,.12,.78],tex:'limestone',
+                            m:M().multiply(p.m,M().translation(x+side*.04,-.34,0)),visualOnly:true});
+                    }
                 }
             }
             if (p.kind === 'prism' && (p.tex === 'limestone' || p.tex === 'rooftile')) {
@@ -1409,6 +1474,13 @@
         }
         return parts.concat(ornaments);
     };
+
+    // Windows in a wall (build 1214). A wall at least twoFloors high has a row of windows to
+    // each floor, their middles lower and upper of its height below and above its own
+    // middle; a lower wall has one row, a touch above its middle (row), as it always had.
+    EngineBuildings.WINDOWS = { twoFloors: 3.6, lower: 0.225, upper: 0.20, row: 0.02 };
+    // The Wonders: monuments, which the trims of build 1214 leave as they were.
+    EngineBuildings.MONUMENTS = ['wonder', 'pyramid', 'akropolis', 'firetemple', 'shrine', 'colosseum', 'longhall', 'el_castillo'];
 
     // Generic construction site sized to a footprint: plinth, a unit-height
     // shell box the RENDERER scales to h·progress (part index 2 — the growth
