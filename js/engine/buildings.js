@@ -1429,115 +1429,474 @@
     };
 
     // Optional courtyard dressing, deliberately separate from collision bounds.
-    // The Greek yard (overhaul step A5): what stands beside each kind of building and says
-    // what it is for. Until build 1199 only a house and a Town Center had anything outside
-    // (two jars and a hearth); a barracks, an archery range, an academy, a temple, a tower
-    // and a farm stood bare on the grass. The Greeks are the first civilization done; the
-    // others keep what they had until theirs is drawn.
+    // The yard (overhaul step A5): what stands beside each kind of building and says what
+    // it is for, and whose it is. Until build 1199 only a house and a Town Center had
+    // anything outside (two jars and a hearth); a barracks, an archery range, an academy,
+    // a temple, a tower and a farm stood bare on the grass, and looked the same in every
+    // civilization. The Greeks came first (b1199), the other six in b1200.
     //
     // Everything stands at the building's front left corner: left of the wall, and so far
     // forward that the building does not hide it. The picture is always taken from the
     // front right, so what stands beside the left wall further back is behind the house
-    // (the first version of this yard was, and nothing of it could be seen). That corner
-    // is clear of the door, the runner before it and the flag at the front right. It is
-    // dressing: merged per material, drawn on High only and only from close by, and no
-    // part of the footprint -- a unit can walk through it. Materials are kept to the few
-    // the yard already had (bark, wood, thatch, stone, plaster, iron, the jars' clay):
-    // every other one would be one more draw for each building in view.
-    const greekYard = (parts, type, foot) => {
-        // wall: the left wall's plane; front: the front wall's. A thing d left of the wall
-        // shows from the front right when it stands further forward than front - d.
-        const wall = -foot.ex, front = foot.ez, half = Math.PI / 2, clay = [.68, .33, .20];
+    // (the first version of this yard was, and nothing of it could be seen), and of two
+    // things the one that stands as far left as it stands back is behind the other. That
+    // corner is clear of the door, the runner before it and the flag at the front right.
+    // It is dressing: merged per material, drawn on High only and only from close by, and
+    // no part of the footprint -- a unit can walk through it. Materials and tints are kept
+    // few: every one is one more draw for each building in view.
+    //
+    // yardKit: the pieces the yards are put together from. at(u, v) is a place u left of
+    // the left wall and v forward of the front wall; a thing there shows when u + v > 0.
+    const yardKit = (parts, foot) => {
+        const wall = -foot.ex, front = foot.ez, half = Math.PI / 2;
         const P = (kind, args, tex, t) => part(parts, kind, args, tex, t);
-        // Firewood: six logs, three, two and one, their ends to the viewer.
-        const logs = (x, z) => { for (let i = 0; i < 6; i++) { const up = i > 4 ? 2 : i > 2 ? 1 : 0, k = i - [0, 3, 5][up];
-            P('cylinder', [.14, .14, 1.15, 7], 'bark', { x: x + (k - (2 - up) / 2) * .29, y: .14 + up * .25, z, rx: half }); } };
-        if (type === 'house') logs(wall - .9, front + .75);
-        else if (type === 'town_center') {
-            // A market stall under an awning that slopes down to the front: a table, three
-            // small jars and a crate on it.
-            const sx = wall - 1.5, sz = front + .1;
-            for (const [dx, dz] of [[-.8, -.6], [.8, -.6], [-.8, .6], [.8, .6]]) { const h = dz > 0 ? 1.55 : 1.85; P('cylinder', [.045, .05, h, 6], 'bark', { x: sx + dx, y: h / 2, z: sz + dz }); }
-            P('box', [1.9, .04, 1.5], 'awning', { x: sx, y: 1.72, z: sz, rx: .2 });
-            P('box', [1.5, .07, .7], 'wood', { x: sx, y: .78, z: sz });
-            for (const [dx, dz] of [[-.65, -.28], [.65, -.28], [-.65, .28], [.65, .28]]) P('box', [.07, .76, .07], 'wood', { x: sx + dx, y: .38, z: sz + dz });
-            for (let i = 0; i < 3; i++) P('cylinder', [.11, .08, .22, 8], 'white', { x: sx - .45 + i * .3, y: .925, z: sz + .12, tint: clay });
-            P('box', [.34, .26, .34], 'wood', { x: sx + .45, y: .945, z: sz - .1, ry: .3 });
-            // A handcart to its left: a bed with side boards on two wheels, its shafts resting on the ground.
-            // (Out in front of the stall, not behind it: seen from the front right, what stands
-            // two units further left and one back is exactly behind the awning.)
-            const cx = wall - 3.5, cz = front + 1.6;
-            P('box', [1.3, .1, .75], 'wood', { x: cx, y: .55, z: cz });
+        // fx, fz: beside a farm's far corner. A farm is a flat field and hides nothing.
+        const k = { P, half, wall, front, fx: wall - 1.0, fz: -foot.ez * .6 };
+        k.at = (u, v) => [wall - u, front + v];
+        // Six logs, three, two and one, their ends to the viewer: firewood, or rice bales.
+        k.logs = (x, z, r = .14, len = 1.15, tex = 'bark') => { for (let i = 0; i < 6; i++) { const up = i > 4 ? 2 : i > 2 ? 1 : 0, c = i - [0, 3, 5][up];
+            P('cylinder', [r, r, len, 7], tex, { x: x + (c - (2 - up) / 2) * r * (29 / 14), y: r + up * r * (25 / 14), z, rx: half }); } };
+        // A heap of five stones to throw, running left from x.
+        k.heap = (x, z) => { for (let i = 0; i < 5; i++) { const up = i > 2 ? 1 : 0, c = up ? i - 3 : i;
+            P('sphere', [.2, 6, 4], 'rock', { x: x - c * .37 - up * .18, y: .17 + up * .3, z: z + up * .1 + (c % 2) * .08 }); } };
+        k.jar = (x, z, h, tint) => { P('cylinder', [.3 * h, .21 * h, h * .65, 8], 'white', { x, y: h * .325, z, tint });
+            P('cylinder', [.15 * h, .3 * h, h * .35, 8], 'white', { x, y: h * .825, z, tint }); };
+        // Three small pots on a stall's table.
+        k.pots = (x, z, tint) => { for (let i = 0; i < 3; i++) P('cylinder', [.11, .08, .22, 8], 'white', { x: x - .45 + i * .3, y: .925, z: z + .12, tint }); };
+        // n pointed jars standing in a wooden frame.
+        k.amphorae = (x, z, n, tint) => {
+            for (const dz of [-.2, .2]) P('box', [n * .4 + .1, .06, .06], 'wood', { x, y: .3, z: z + dz });
+            for (let i = 0; i < n; i++) { const ax = x + (i - (n - 1) / 2) * .4;
+                P('cylinder', [.17, .04, .6, 8], 'white', { x: ax, y: .34, z, tint });
+                P('cylinder', [.06, .17, .16, 8], 'white', { x: ax, y: .72, z, tint });
+                P('cylinder', [.075, .06, .14, 8], 'white', { x: ax, y: .87, z, tint }); }
+        };
+        // A barrel with two hoops, standing, or lying with its ends to the viewer.
+        k.barrel = (x, z, h = .8, lying = false, y0 = 0) => { const r = h * .34;
+            P('cylinder', [r, r, h, 10], 'wood', lying ? { x, y: y0 + r, z, rx: half } : { x, y: y0 + h / 2, z });
+            for (const s of [-.3, .3]) P('cylinder', [r * 1.06, r * 1.06, .06, 10], 'bark', lying ? { x, y: y0 + r, z: z + s * h, rx: half } : { x, y: y0 + h / 2 + s * h, z }); };
+        k.basket = (x, z, fill, r = .26) => { P('cylinder', [r, r * .72, .32, 9], 'thatch', { x, y: .16, z });
+            if (fill) P('sphere', [r * .9, 7, 4], 'white', { x, y: .3, z, sy: .45, tint: fill }); };
+        // A market stall: four poles, a roof that slopes down to the front, a table.
+        k.stall = (x, z, roof, tint) => {
+            for (const [dx, dz] of [[-.8, -.6], [.8, -.6], [-.8, .6], [.8, .6]]) { const h = dz > 0 ? 1.55 : 1.85; P('cylinder', [.045, .05, h, 6], 'bark', { x: x + dx, y: h / 2, z: z + dz }); }
+            P('box', [1.9, .04, 1.5], roof, { x, y: 1.72, z, rx: .2, tint });
+            P('box', [1.5, .07, .7], 'wood', { x, y: .78, z });
+            for (const [dx, dz] of [[-.65, -.28], [.65, -.28], [-.65, .28], [.65, .28]]) P('box', [.07, .76, .07], 'wood', { x: x + dx, y: .38, z: z + dz });
+        };
+        // A handcart: a bed with side boards on two wheels, its shafts resting on the ground.
+        k.cart = (x, z) => {
+            P('box', [1.3, .1, .75], 'wood', { x, y: .55, z });
             for (const side of [-1, 1]) {
-                P('cylinder', [.36, .36, .07, 12], 'wood', { x: cx + .1, y: .36, z: cz + side * .44, rx: half });
-                P('box', [1.3, .2, .05], 'wood', { x: cx, y: .7, z: cz + side * .35 });
-                P('box', [1.0, .05, .05], 'wood', { x: cx + 1.1, y: .42, z: cz + side * .3, rz: -.26 });
+                P('cylinder', [.36, .36, .07, 12], 'wood', { x: x + .1, y: .36, z: z + side * .44, rx: half });
+                P('box', [1.3, .2, .05], 'wood', { x, y: .7, z: z + side * .35 });
+                P('box', [1.0, .05, .05], 'wood', { x: x + 1.1, y: .42, z: z + side * .3, rz: -.26 });
             }
-        } else if (type === 'barracks') {
-            // A rack of four spears, two round shields against the front wall, and a straw man on a stake.
-            const rx = wall - 1.0, rz = front + .25;
-            for (const side of [-1, 1]) P('cylinder', [.05, .06, 1.25, 6], 'bark', { x: rx + side * .75, y: .625, z: rz });
-            P('cylinder', [.04, .04, 1.6, 6], 'bark', { x: rx, y: 1.15, z: rz, rz: half });
-            for (let i = 0; i < 4; i++) {
-                const x = rx - .5 + i * .33;
-                // Leaning back onto the rail from in front of it, the point up.
-                P('cylinder', [.02, .02, 1.9, 5], 'wood', { x, y: .93, z: rz + .28, rx: -.3 });
-                P('cylinder', [0, .035, .2, 5], 'iron', { x, y: .93 + 1.05 * .9553, z: rz + .28 - 1.05 * .2955, rx: -.3 });
+        };
+        // A sledge: two runners and two cross bars. What it carries is the caller's.
+        k.sledge = (x, z) => { for (const s of [-1, 1]) { P('box', [1.7, .1, .1], 'wood', { x, y: .05, z: z + s * .3 }); P('box', [.08, .08, .75], 'wood', { x: x + s * .55, y: .14, z }); } };
+        // A rack of four spears leaning back onto its rail from in front of it, points up.
+        k.rack = (x, z, tip = 'iron') => {
+            for (const side of [-1, 1]) P('cylinder', [.05, .06, 1.25, 6], 'bark', { x: x + side * .75, y: .625, z });
+            P('cylinder', [.04, .04, 1.6, 6], 'bark', { x, y: 1.15, z, rz: half });
+            for (let i = 0; i < 4; i++) { const sx = x - .5 + i * .33;
+                P('cylinder', [.02, .02, 1.9, 5], 'wood', { x: sx, y: .93, z: z + .28, rx: -.3 });
+                P('cylinder', [0, .035, .2, 5], tip, { x: sx, y: .93 + 1.05 * .9553, z: z + .28 - 1.05 * .2955, rx: -.3 }); }
+        };
+        // A round shield standing on its rim, leaning back, a boss in its middle.
+        k.shield = (x, z, tex, tint, boss = 'iron', r = .36) => { P('cylinder', [r, r, .05, 12], tex, { x, y: r, z, rx: half - .28, tint });
+            P('sphere', [.09, 6, 4], boss, { x, y: r + .01, z: z + .05 }); };
+        // A tall shield leaning back: a board, rounded at the top or with a boss.
+        k.tall = (x, z, w, h, tex, tint, top) => { P('box', [w, h, .06], tex, { x, y: h * .48, z, rx: -.28, tint });
+            if (top === 'round') P('cylinder', [w / 2, w / 2, .06, 10], tex, { x, y: h * .96, z: z - h * .138, rx: half - .28, tint });
+            if (top === 'boss') P('sphere', [.1, 6, 4], 'iron', { x, y: h * .48, z: z + .06 }); };
+        // A straw man on a stake.
+        k.dummy = (x, z) => { P('cylinder', [.05, .06, 1.5, 6], 'bark', { x, y: .75, z }); P('cylinder', [.035, .035, .9, 6], 'bark', { x, y: 1.18, z, rz: half });
+            P('cylinder', [.17, .2, .62, 8], 'thatch', { x, y: .95, z }); P('sphere', [.15, 7, 5], 'thatch', { x, y: 1.45, z }); };
+        // A target on three legs, facing the front: a drum of straw (or of wood) with a pale
+        // ring and a red centre.
+        k.butt = (x, z, tex = 'thatch') => { const lean = half - .12;
+            for (const a of [.5, 2.6, 4.7]) P('cylinder', [.03, .035, 1.3, 5], 'bark', { x: x + Math.cos(a) * .24, y: .62, z: z - .2 + Math.sin(a) * .2, rx: Math.sin(a) * .2 + .1, rz: -Math.cos(a) * .2 });
+            P('cylinder', [.46, .46, .2, 14], tex, { x, y: 1.0, z, rx: lean });
+            P('cylinder', [.3, .3, .02, 12], 'white', { x, y: 1.0 + .11 * .12, z: z + .11 * .993, rx: lean, tint: [.85, .82, .72] });
+            P('cylinder', [.12, .12, .02, 10], 'white', { x, y: 1.0 + .125 * .12, z: z + .125 * .993, rx: lean, tint: [.68, .33, .20] }); };
+        // Three arrows standing in something, their heads down, from height y0.
+        k.arrows = (x, z, y0) => { for (const [dx, dz] of [[-.07, 0], [.06, .05], [0, -.07]]) P('cylinder', [.012, .012, .75, 4], 'wood', { x: x + dx, y: y0 + .3, z: z + dz, rz: -dx * 2, rx: dz * 2 }); };
+        k.quiver = (x, z) => { P('cylinder', [.2, .16, .5, 8], 'thatch', { x, y: .25, z }); k.arrows(x, z, .3); };
+        k.bench = (x, z, tex = 'rock') => { for (const side of [-1, 1]) P('box', [.3, .36, .45], tex, { x: x + side * .5, y: .18, z }); P('box', [1.45, .1, .5], tex, { x, y: .41, z }); };
+        // A bronze bowl on three legs.
+        k.tripod = (x, z) => { for (const a of [0, 2.094, 4.189]) P('cylinder', [.02, .025, .9, 5], 'iron', { x: x + Math.cos(a) * .13, y: .44, z: z + Math.sin(a) * .13, rx: -Math.sin(a) * .15, rz: Math.cos(a) * .15 });
+            P('cylinder', [.2, .1, .14, 10], 'iron', { x, y: .95, z }); };
+        k.haystack = (x, z) => { P('cylinder', [.03, .03, 1.7, 5], 'bark', { x, y: .85, z }); P('cylinder', [.14, .8, 1.25, 10], 'thatch', { x, y: .625, z }); };
+        k.sundial = (x, z) => { P('cylinder', [.14, .17, .8, 8], 'plaster', { x, y: .4, z }); P('cylinder', [.26, .26, .04, 12], 'rock', { x, y: .84, z, rx: .35 }); };
+        // A standing stone slab on a base, with a cap (a stela) or a point (a rune stone).
+        k.slab = (x, z, tex, w, h, top) => { P('box', [w + .16, .14, .4], tex, { x, y: .07, z }); P('box', [w, h, .2], tex, { x, y: .14 + h / 2, z });
+            if (top === 'cap') P('box', [w + .08, .1, .26], tex, { x, y: .19 + h, z });
+            if (top === 'round') P('cylinder', [w / 2, w / 2, .2, 12], tex, { x, y: .14 + h, z, rx: half });
+            if (top === 'point') P('pyramid', [w, .2, .4], tex, { x, y: .14 + h, z }); };
+        // A stone lantern: foot, shaft, table, light box and roof.
+        k.lantern = (x, z) => { P('cylinder', [.2, .27, .14, 8], 'rock', { x, y: .07, z }); P('cylinder', [.09, .11, .6, 8], 'rock', { x, y: .44, z });
+            P('box', [.4, .07, .4], 'rock', { x, y: .775, z }); P('box', [.26, .26, .26], 'rock', { x, y: .94, z }); P('pyramid', [.56, .56, .24], 'rock', { x, y: 1.07, z }); };
+        // A small pointed tree in a glazed pot.
+        k.pot = (x, z, tint) => { P('cylinder', [.24, .18, .34, 8], 'white', { x, y: .17, z, tint }); P('cylinder', [0, .24, 1.15, 8], 'foliage', { x, y: .915, z }); };
+        // An axe: a handle and an iron head, struck into something at (x, y, z).
+        k.axe = (x, y, z) => { P('cylinder', [.02, .022, .6, 5], 'wood', { x: x - .14, y: y + .24, z, rz: .5 }); P('box', [.18, .12, .03], 'iron', { x: x + .02, y: y + .04, z, rz: .5 }); };
+        // Two posts and a rail between them, along x.
+        k.rail = (x, z, len, h) => { for (const s of [-1, 1]) P('cylinder', [.04, .05, h, 6], 'bark', { x: x + s * len / 2, y: h / 2, z }); P('cylinder', [.03, .03, len + .1, 6], 'bark', { x, y: h - .06, z, rz: half }); };
+        return k;
+    };
+
+    const CLAY = [.68, .33, .20], RED = [.60, .12, .10], PALE = [.85, .82, .72];
+    const YARDS = {
+        greek: (k, type) => {
+            const { P, at, half, wall, front } = k;
+            if (type === 'house') k.logs(...at(.9, .75));
+            else if (type === 'town_center') {
+                // A market stall under a striped awning with three small jars and a crate, and a
+                // handcart to its left (out in front of the stall, not behind it).
+                const [x, z] = at(1.5, .1);
+                k.stall(x, z, 'awning'); k.pots(x, z, CLAY);
+                P('box', [.34, .26, .34], 'wood', { x: x + .45, y: .945, z: z - .1, ry: .3 });
+                k.cart(...at(3.5, 1.6));
+            } else if (type === 'barracks') {
+                // A rack of four spears, two round shields, and a straw man on a stake.
+                k.rack(...at(1.0, .25)); k.shield(...at(1.75, 1.15), 'wood'); k.shield(...at(2.55, 1.15), 'wood'); k.dummy(...at(2.9, -.4));
+            } else if (type === 'archery_range') { k.butt(...at(1.1, .3)); k.butt(...at(2.6, -.6)); }
+            else if (type === 'academy') {
+                // A stone bench, a fallen column in two drums with its capital, and a sundial.
+                k.bench(...at(1.1, .5));
+                P('cylinder', [.2, .2, .6, 10], 'plaster', { x: wall - 2.6, y: .2, z: front - .5, rz: half });
+                P('cylinder', [.2, .2, .5, 10], 'plaster', { x: wall - 3.3, y: .2, z: front - .25, ry: .4, rz: half });
+                P('box', [.5, .14, .5], 'plaster', { x: wall - 2.2, y: .07, z: front - 1.1, ry: .5 });
+                k.sundial(...at(2.6, 1.3));
+            } else if (type === 'temple') {
+                // An altar of two blocks, and two bronze bowls on three legs.
+                const [x, z] = at(1.3, .6);
+                P('box', [1.0, .6, .7], 'plaster', { x, y: .3, z }); P('box', [1.15, .1, .85], 'plaster', { x, y: .65, z });
+                k.tripod(...at(.7, -.4)); k.tripod(...at(2.6, .1));
+            } else if (type === 'tower') { k.logs(...at(.8, .7)); k.heap(...at(1.6, -.2)); }
+            else if (type === 'farm') k.haystack(k.fx, k.fz);
+        },
+
+        // Egypt: mud brick, big ochre jars, a stone on a sledge, a water lift at the field.
+        egyptian: (k, type) => {
+            const { P, at, half } = k, ochre = [.75, .58, .35], copper = [.72, .42, .22];
+            if (type === 'house') {
+                // Mud bricks stacked to dry, and a water jar.
+                const [x, z] = at(1.1, .8);
+                for (let i = 0; i < 7; i++) { const row = i < 3 ? 0 : i < 6 ? 1 : 2, c = i - row * 3;
+                    P('box', [.46, .17, .3], 'white', { x: x + (row === 2 ? 0 : (c - 1) * .5) + (row % 2) * .1, y: .085 + row * .18, z, ry: row === 2 ? .5 : 0, tint: ochre }); }
+                k.jar(...at(2.3, .5), .8, ochre);
+            } else if (type === 'town_center') {
+                // A stall under plain linen, two storage jars, and a block of stone on a sledge.
+                const [x, z] = at(1.5, .1);
+                k.stall(x, z, 'plaster'); k.pots(x, z, ochre);
+                k.jar(...at(2.9, .9), 1.0, ochre); k.jar(...at(3.5, .5), .75, ochre);
+                const [sx, sz] = at(3.7, 2.0);
+                k.sledge(sx, sz); P('box', [.95, .6, .6], 'limestone', { x: sx, y: .48, z: sz });
+            } else if (type === 'barracks') {
+                // Spears, two tall hide shields with rounded tops, a straw man.
+                k.rack(...at(1.0, .25)); k.tall(...at(1.75, 1.15), .52, .9, 'leather', null, 'round'); k.tall(...at(2.55, 1.15), .52, .9, 'leather', null, 'round'); k.dummy(...at(2.9, -.4));
+            } else if (type === 'archery_range') {
+                // The target of the kings: a copper ingot on a post, two arrows in it.
+                for (const [x, z] of [at(1.1, .3), at(2.6, -.6)]) {
+                    P('cylinder', [.05, .06, 1.3, 6], 'bark', { x, y: .65, z });
+                    P('box', [.7, .5, .06], 'white', { x, y: 1.2, z: z + .06, tint: copper });
+                    for (const dx of [-.14, .1]) P('cylinder', [.012, .012, .5, 4], 'wood', { x: x + dx, y: 1.22 + dx * .5, z: z + .32, rx: half });
+                }
+            } else if (type === 'academy') {
+                // A scribe's place: a reed mat, a low table with two rolls, and a stela.
+                const [x, z] = at(1.4, .8);
+                P('box', [1.5, .03, 1.0], 'thatch', { x, y: .02, z });
+                P('box', [.7, .22, .4], 'wood', { x, y: .14, z });
+                for (const dz of [-.08, .08]) P('cylinder', [.04, .04, .42, 6], 'plaster', { x: x + dz, y: .29, z: z + dz, rz: half });
+                k.jar(x - .52, z + .28, .45, ochre);
+                k.slab(...at(3.0, .3), 'limestone', .56, 1.25, 'round');
+            } else if (type === 'temple') {
+                // An offering table with bread and a jar, and two standards with the sun's disc.
+                const [x, z] = at(1.3, .7);
+                for (const s of [-1, 1]) P('box', [.14, .5, .5], 'limestone', { x: x + s * .4, y: .25, z });
+                P('box', [1.1, .1, .6], 'limestone', { x, y: .55, z });
+                for (const dx of [-.3, .05]) P('sphere', [.11, 7, 4], 'white', { x: x + dx, y: .66, z, sy: .6, tint: ochre });
+                for (const [px, pz] of [at(2.8, .2), at(2.2, 2.0)]) { P('cylinder', [.03, .035, 2.0, 6], 'bark', { x: px, y: 1.0, z: pz }); P('cylinder', [.3, .3, .04, 14], 'white', { x: px, y: 2.15, z: pz, rx: half, tint: [.95, .74, .20] }); }
+            } else if (type === 'tower') { k.logs(...at(.8, .7)); k.heap(...at(1.6, -.2)); k.jar(...at(2.5, 1.3), .7, ochre); k.jar(...at(3.0, 1.1), .55, ochre); }
+            else if (type === 'farm') {
+                // A water lift: a long pole on a frame, a bucket on a rope at its long end over
+                // the field, a ball of mud at its short one.
+                const x = k.fx, z = k.fz, dx = Math.sin(1.17), dy = Math.cos(1.17);
+                for (const s of [-1, 1]) P('cylinder', [.05, .06, 1.7, 6], 'bark', { x, y: .85, z: z + s * .2 });
+                P('cylinder', [.03, .03, .5, 5], 'bark', { x, y: 1.6, z, rx: half });
+                P('cylinder', [.035, .05, 2.8, 6], 'bark', { x: x + .5 * dx, y: 1.63 + .5 * dy, z, rz: -1.17 });
+                P('sphere', [.22, 7, 5], 'white', { x: x - .9 * dx, y: 1.63 - .9 * dy, z, tint: ochre });
+                P('cylinder', [.012, .012, 1.4, 4], 'bark', { x: x + 1.9 * dx, y: 1.63 + 1.9 * dy - .7, z });
+                P('cylinder', [.13, .1, .22, 8], 'leather', { x: x + 1.9 * dx, y: 1.63 + 1.9 * dy - 1.5, z });
             }
-            for (let i = 0; i < 2; i++) {
-                const x = wall + .15 - i * .8;
-                P('cylinder', [.36, .36, .05, 12], 'wood', { x: x - 1.9, y: .36, z: front + 1.15, rx: half - .28 });
-                P('sphere', [.09, 6, 4], 'iron', { x: x - 1.9, y: .37, z: front + 1.2 });
+        },
+
+        // Persia: carpets, turquoise glaze, wicker shields, a garden pool, a fire on its altar.
+        persian: (k, type) => {
+            const { P, at, half } = k, turq = [.25, .58, .60], crimson = [.62, .14, .16];
+            if (type === 'house') {
+                // A carpet hung over a rail to air.
+                const [x, z] = at(1.2, .8);
+                k.rail(x, z, 1.3, 1.3);
+                P('box', [1.1, .85, .04], 'cloth', { x, y: .8, z, tint: crimson });
+                for (const y of [.55, 1.05]) P('box', [1.1, .08, .05], 'white', { x, y, z, tint: turq });
+            } else if (type === 'town_center') {
+                // A bazaar stall with rolled carpets, a carpet spread before it, two glazed jars, a cart.
+                const [x, z] = at(1.5, .1);
+                k.stall(x, z, 'awning');
+                for (const [dy, dz] of [[0, -.12], [0, .1], [.16, -.01]]) P('cylinder', [.09, .09, .7, 7], 'cloth', { x, y: .905 + dy, z: z + dz, rz: half, tint: crimson });
+                const [cx, cz] = at(1.5, 1.7);
+                P('box', [1.3, .03, .9], 'cloth', { x: cx, y: .02, z: cz, tint: crimson }); P('box', [.9, .035, .5], 'white', { x: cx, y: .022, z: cz, tint: turq });
+                k.jar(...at(3.0, .8), 1.0, turq); k.jar(...at(3.6, .4), .75, turq);
+                k.cart(...at(4.3, 1.5));
+            } else if (type === 'barracks') {
+                // Spears, a row of three tall wicker shields against a rail, a straw man.
+                k.rack(...at(1.0, .25));
+                const [x, z] = at(2.5, 1.0);
+                k.rail(x, z, 1.9, .85);
+                for (const dx of [-.6, 0, .6]) k.tall(x + dx, z + .26, .5, 1.05, 'thatch');
+                k.dummy(...at(3.1, -.6));
+            } else if (type === 'archery_range') { k.butt(...at(1.1, .3)); k.butt(...at(2.6, -.6)); k.quiver(...at(1.0, 1.6)); }
+            else if (type === 'academy') {
+                // A garden: a pool of water in a stone rim, two small cypresses in glazed pots, a bench.
+                const [x, z] = at(2.4, 1.1);
+                P('cylinder', [.75, .8, .16, 8], 'rock', { x, y: .08, z }); P('disc', [.64, 8], 'white', { x, y: .165, z, tint: turq });
+                k.pot(...at(.9, .5), turq); k.pot(...at(3.6, .1), turq);
+                k.bench(...at(1.1, 2.3));
+            } else if (type === 'temple') {
+                // The fire: a stepped altar of stone with a bowl, the flame in it, between two cypresses.
+                const [x, z] = at(1.8, .9);
+                P('box', [1.2, .14, 1.2], 'rock', { x, y: .07, z }); P('box', [.9, .14, .9], 'rock', { x, y: .21, z });
+                P('box', [.45, .55, .45], 'rock', { x, y: .555, z }); P('box', [.7, .1, .7], 'rock', { x, y: .88, z });
+                P('cylinder', [.26, .16, .12, 10], 'iron', { x, y: .99, z });
+                k.pot(...at(.6, .3), turq); k.pot(...at(3.4, 1.3), turq);
+                return [x, .9, z];
+            } else if (type === 'tower') { k.logs(...at(.8, .7)); k.heap(...at(1.6, -.2)); k.jar(...at(2.5, 1.3), .7, turq); }
+            else if (type === 'farm') {
+                // A haystack, and three sacks of grain.
+                k.haystack(k.fx, k.fz);
+                for (const [dx, dy, dz] of [[.1, .19, 1.15], [-.35, .19, 1.3], [-.12, .5, 1.22]]) P('sphere', [.25, 7, 5], 'leather', { x: k.fx + dx, y: dy, z: k.fz + dz, sy: .78 });
             }
-            const px = wall - 2.9, pz = front - .4;
-            P('cylinder', [.05, .06, 1.5, 6], 'bark', { x: px, y: .75, z: pz });
-            P('cylinder', [.035, .035, .9, 6], 'bark', { x: px, y: 1.18, z: pz, rz: half });
-            P('cylinder', [.17, .2, .62, 8], 'thatch', { x: px, y: .95, z: pz });
-            P('sphere', [.15, 7, 5], 'thatch', { x: px, y: 1.45, z: pz });
-        } else if (type === 'archery_range') {
-            // Two straw butts on three legs each, facing the front, a pale ring and a red centre on each.
-            for (let i = 0; i < 2; i++) {
-                const tx = wall - 1.1 - i * 1.5, tz = front + .3 - i * .9, lean = half - .12;
-                for (const a of [.5, 2.6, 4.7]) P('cylinder', [.03, .035, 1.3, 5], 'bark', { x: tx + Math.cos(a) * .24, y: .62, z: tz - .2 + Math.sin(a) * .2, rx: Math.sin(a) * .2 + .1, rz: -Math.cos(a) * .2 });
-                P('cylinder', [.46, .46, .2, 14], 'thatch', { x: tx, y: 1.0, z: tz, rx: lean });
-                P('cylinder', [.3, .3, .02, 12], 'white', { x: tx, y: 1.0 + .11 * .12, z: tz + .11 * .993, rx: lean, tint: [.85, .82, .72] });
-                P('cylinder', [.12, .12, .02, 10], 'white', { x: tx, y: 1.0 + .125 * .12, z: tz + .125 * .993, rx: lean, tint: clay });
+        },
+
+        // Yamato: rice bales, a roofed woodpile, stone lanterns, a rock garden, a drum.
+        yamato: (k, type) => {
+            const { P, at, half } = k, paper = [.90, .88, .80], indigo = [.16, .22, .42], ink = [.10, .10, .11];
+            if (type === 'house') {
+                // Firewood under a little thatched roof.
+                const [x, z] = at(1.1, .8);
+                k.logs(x, z);
+                for (const [dx, dz, h] of [[-.65, -.5, 1.3], [.65, -.5, 1.3], [-.65, .55, 1.05], [.65, .55, 1.05]]) P('cylinder', [.045, .05, h, 6], 'bark', { x: x + dx, y: h / 2, z: z + dz });
+                P('box', [1.6, .07, 1.5], 'thatch', { x, y: 1.22, z, rx: .22 });
+            } else if (type === 'town_center') {
+                // Rice in straw bales, a stall under indigo cloth with two tubs, and a handcart.
+                k.logs(...at(1.4, .9), .24, .75, 'thatch');
+                const [x, z] = at(3.1, .0);
+                k.stall(x, z, 'cloth', indigo);
+                for (const dx of [-.4, .2]) P('cylinder', [.14, .12, .22, 8], 'wood', { x: x + dx, y: .925, z });
+                k.cart(...at(3.7, 2.3));
+            } else if (type === 'barracks') {
+                // Spears, two posts bound with straw to strike at, a straw man.
+                k.rack(...at(1.0, .25));
+                for (const [x, z] of [at(1.9, 1.3), at(2.8, 1.0)]) { P('cylinder', [.06, .07, 1.25, 6], 'bark', { x, y: .625, z }); P('cylinder', [.12, .12, .45, 8], 'thatch', { x, y: .98, z }); }
+                k.dummy(...at(3.1, -.6));
+            } else if (type === 'archery_range') {
+                // A bank of sand with three paper targets on its slope, and a tub of arrows.
+                const [x, z] = at(2.3, -.1), lean = half - .41;
+                P('frustum', [2.8, 1.1, 2.4, .3, .85], 'white', { x, y: 0, z, tint: [.66, .57, .40] });
+                // Three of them: two read as a pair of eyes.
+                for (const dx of [-.82, 0, .82]) for (const [r, tint, out] of [[.23, paper, 0], [.16, ink, .012], [.08, paper, .024]])
+                    P('cylinder', [r, r, .02, 12], 'white', { x: x + dx, y: .43 + out * .4, z: z + .39 + out, rx: lean, tint });
+                k.quiver(...at(1.0, 1.6));
+            } else if (type === 'academy') {
+                // A garden of three rocks on raked gravel, and a stone lantern.
+                const [x, z] = at(2.5, 1.1);
+                P('disc', [1.35, 14], 'white', { x, y: .03, z, tint: [.80, .78, .72] });
+                for (const [dx, dz, s, v] of [[-.3, -.2, .55, 0], [.5, .25, .36, 1], [-.1, .6, .24, 2]]) P('crag', [v], 'rock', { x: x + dx, y: .36 * s, z: z + dz, sx: s, sy: s, sz: s });
+                k.lantern(...at(.9, .5));
+            } else if (type === 'temple') {
+                // Two stone lanterns, and the box the offerings are thrown into.
+                k.lantern(...at(.8, .6)); k.lantern(...at(3.3, .4));
+                const [x, z] = at(2.0, 1.5);
+                P('box', [.9, .5, .5], 'wood', { x, y: .25, z }); P('box', [.98, .06, .58], 'bark', { x, y: .53, z });
+            } else if (type === 'tower') {
+                // The drum that calls the alarm, on its stand, and firewood.
+                const [x, z] = at(1.7, .7);
+                for (const s of [-1, 1]) P('box', [.08, .7, .7], 'wood', { x: x + s * .25, y: .35, z });
+                P('cylinder', [.42, .42, .62, 12], 'wood', { x, y: .98, z, rz: half });
+                for (const s of [-1, 1]) P('cylinder', [.4, .4, .02, 12], 'white', { x: x + s * .32, y: .98, z, rz: half, tint: paper });
+                k.logs(...at(3.3, .2));
+            } else if (type === 'farm') {
+                // Rice straw hung on a rack to dry.
+                const x = k.fx, z = k.fz;
+                for (const s of [-1, 1]) P('cylinder', [.04, .05, 1.3, 6], 'bark', { x, y: .65, z: z + s * .95 });
+                P('cylinder', [.03, .03, 2.0, 6], 'bark', { x, y: 1.22, z, rx: half });
+                for (let i = 0; i < 5; i++) P('box', [.16, .62, .26], 'thatch', { x, y: .88, z: z - .68 + i * .34 });
             }
-        } else if (type === 'academy') {
-            // A stone bench, a fallen column in two drums with its capital, and a sundial on a short pillar.
-            const bx = wall - 1.1, bz = front + .5;
-            for (const side of [-1, 1]) P('box', [.3, .36, .45], 'rock', { x: bx + side * .5, y: .18, z: bz });
-            P('box', [1.45, .1, .5], 'rock', { x: bx, y: .41, z: bz });
-            P('cylinder', [.2, .2, .6, 10], 'plaster', { x: wall - 2.6, y: .2, z: front - .5, rz: half });
-            P('cylinder', [.2, .2, .5, 10], 'plaster', { x: wall - 3.3, y: .2, z: front - .25, ry: .4, rz: half });
-            P('box', [.5, .14, .5], 'plaster', { x: wall - 2.2, y: .07, z: front - 1.1, ry: .5 });
-            P('cylinder', [.14, .17, .8, 8], 'plaster', { x: wall - 2.6, y: .4, z: front + 1.3 });
-            P('cylinder', [.26, .26, .04, 12], 'rock', { x: wall - 2.6, y: .84, z: front + 1.3, rx: .35 });
-        } else if (type === 'temple') {
-            // An altar of two blocks, and two bronze bowls on three legs.
-            const ax = wall - 1.3, az = front + .6;
-            P('box', [1.0, .6, .7], 'plaster', { x: ax, y: .3, z: az });
-            P('box', [1.15, .1, .85], 'plaster', { x: ax, y: .65, z: az });
-            for (const [tx, tz] of [[wall - .7, front - .4], [wall - 2.6, front + .1]]) {
-                for (const a of [0, 2.094, 4.189]) P('cylinder', [.02, .025, .9, 5], 'iron', { x: tx + Math.cos(a) * .13, y: .44, z: tz + Math.sin(a) * .13, rx: -Math.sin(a) * .15, rz: Math.cos(a) * .15 });
-                P('cylinder', [.2, .1, .14, 10], 'iron', { x: tx, y: .95, z: tz });
+        },
+
+        // Rome: jars of oil and wine in their frames, tall red shields, a bust, a statue.
+        roman: (k, type) => {
+            const { P, at } = k;
+            if (type === 'house') k.amphorae(...at(1.1, .8), 3, CLAY);
+            else if (type === 'town_center') {
+                // A stall, a milestone, and a handcart with two barrels on it.
+                const [x, z] = at(1.5, .1);
+                k.stall(x, z, 'awning'); k.pots(x, z, CLAY);
+                P('box', [.34, .26, .34], 'wood', { x: x + .45, y: .945, z: z - .1, ry: .3 });
+                const [mx, mz] = at(2.9, 1.0);
+                P('box', [.5, .12, .5], 'plaster', { x: mx, y: .06, z: mz }); P('cylinder', [.16, .19, 1.0, 10], 'plaster', { x: mx, y: .62, z: mz });
+                const [cx, cz] = at(4.0, 1.9);
+                k.cart(cx, cz); k.barrel(cx - .32, cz, .6, true, .6); k.barrel(cx + .22, cz, .6, true, .6);
+            } else if (type === 'barracks') {
+                // Javelins, two tall red shields, and the post the recruits hack at.
+                k.rack(...at(1.0, .25)); k.tall(...at(1.75, 1.15), .55, 1.0, 'white', RED, 'boss'); k.tall(...at(2.55, 1.15), .55, 1.0, 'white', RED, 'boss');
+                const [x, z] = at(3.0, -.5);
+                P('cylinder', [.1, .13, 1.6, 8], 'bark', { x, y: .8, z });
+            } else if (type === 'archery_range') {
+                k.butt(...at(1.1, .3)); k.butt(...at(2.6, -.6));
+                const [x, z] = at(1.0, 1.6);
+                k.barrel(x, z, .6); k.arrows(x, z, .45);
+            } else if (type === 'academy') {
+                // A stone bench, a bust on its pillar, a sundial.
+                k.bench(...at(1.1, .5));
+                const [x, z] = at(2.8, .2);
+                P('box', [.36, 1.05, .36], 'plaster', { x, y: .525, z }); P('box', [.36, .16, .22], 'plaster', { x, y: 1.13, z }); P('sphere', [.14, 8, 6], 'plaster', { x, y: 1.34, z });
+                k.sundial(...at(2.3, 1.9));
+            } else if (type === 'temple') {
+                // An altar, a statue on its plinth, and a bronze bowl on three legs.
+                const [x, z] = at(1.3, .6);
+                P('box', [1.0, .6, .7], 'plaster', { x, y: .3, z }); P('box', [1.15, .1, .85], 'plaster', { x, y: .65, z });
+                const [sx, sz] = at(2.9, .1);
+                P('box', [.6, .5, .6], 'limestone', { x: sx, y: .25, z: sz }); P('cylinder', [.13, .21, .95, 8], 'limestone', { x: sx, y: .975, z: sz }); P('sphere', [.13, 8, 6], 'limestone', { x: sx, y: 1.57, z: sz });
+                k.tripod(...at(2.3, 1.9));
+            } else if (type === 'tower') { k.logs(...at(.8, .7)); k.heap(...at(1.6, -.2)); }
+            else if (type === 'farm') { k.haystack(k.fx, k.fz); k.amphorae(k.fx - .1, k.fz + 1.3, 2, CLAY); }
+        },
+
+        // The Maya: maize in baskets, a grinding stone, feathers, a stela with its altar, a crib.
+        maya: (k, type) => {
+            const { P, at, half } = k, maize = [.85, .68, .20];
+            if (type === 'house') {
+                // The grinding stone with its roller, and baskets of maize and cacao.
+                const [x, z] = at(1.0, .8);
+                P('box', [.4, .14, .28], 'rock', { x, y: .07, z }); P('box', [.58, .1, .34], 'rock', { x, y: .2, z, rz: .12 });
+                P('cylinder', [.05, .05, .32, 6], 'rock', { x, y: .3, z, rx: half });
+                k.basket(...at(1.9, 1.0), maize); k.basket(...at(2.4, .4), CLAY, .22);
+            } else if (type === 'town_center') {
+                // The market: a shade of palm thatch over a table of heaps, and a mat on the
+                // ground with baskets, a jar and quetzal feathers.
+                const [x, z] = at(1.5, .1);
+                k.stall(x, z, 'thatch');
+                for (const [dx, tint] of [[-.45, maize], [0, CLAY], [.45, maize]]) P('sphere', [.14, 7, 4], 'white', { x: x + dx, y: .84, z, sy: .6, tint });
+                const [mx, mz] = at(3.4, 1.3);
+                P('box', [1.5, .03, 1.1], 'thatch', { x: mx, y: .02, z: mz });
+                k.basket(mx - .4, mz + .2, maize); k.basket(mx + .35, mz + .25, CLAY, .22);
+                k.jar(mx, mz - .3, .6, CLAY);
+                for (const [dx, dz] of [[-.07, 0], [.06, .05], [0, -.07]]) P('cylinder', [.015, .03, .7, 4], 'featherGreen', { x: mx + dx * 1.6, y: .9, z: mz - .3 + dz * 1.6, rz: -dx * 3, rx: dz * 3 });
+            } else if (type === 'barracks') {
+                // Spears tipped with stone, two hide shields with a red feather boss, a straw man.
+                k.rack(...at(1.0, .25), 'rock'); k.shield(...at(1.75, 1.15), 'leather', null, 'feather'); k.shield(...at(2.55, 1.15), 'leather', null, 'feather'); k.dummy(...at(2.9, -.4));
+            } else if (type === 'archery_range') {
+                // Two hides stretched on frames, a red mark on each.
+                for (const [x, z] of [at(1.1, .3), at(2.6, -.6)]) {
+                    for (const s of [-1, 1]) P('cylinder', [.03, .035, 1.5, 5], 'bark', { x: x + s * .42, y: .75, z });
+                    P('cylinder', [.025, .025, .95, 5], 'bark', { x, y: 1.42, z, rz: half });
+                    P('box', [.72, .8, .04], 'leather', { x, y: .92, z });
+                    P('cylinder', [.14, .14, .02, 10], 'white', { x, y: .92, z: z + .03, rx: half, tint: CLAY });
+                }
+            } else if (type === 'academy') {
+                // A stela, the round altar before it, and a stone bench.
+                k.slab(...at(2.7, .3), 'limestone', .6, 1.6, 'cap');
+                const [x, z] = at(2.2, 1.6);
+                P('cylinder', [.5, .52, .3, 12], 'limestone', { x, y: .15, z });
+                k.bench(...at(1.1, .5));
+            } else if (type === 'temple') {
+                // Two incense burners on stone drums, and a small stela.
+                for (const [x, z] of [at(.9, .7), at(2.8, .2)]) { P('cylinder', [.3, .34, .4, 8], 'rock', { x, y: .2, z }); P('cylinder', [.22, .14, .36, 8], 'white', { x, y: .58, z, tint: CLAY }); P('sphere', [.1, 6, 4], 'white', { x, y: .8, z, tint: CLAY }); }
+                k.slab(...at(2.2, 1.9), 'limestone', .45, 1.0, 'cap');
+            } else if (type === 'tower') { k.logs(...at(.8, .7)); k.heap(...at(1.6, -.2)); }
+            else if (type === 'farm') {
+                // The maize crib: a thatched store on four posts, and a basket of cobs.
+                const x = k.fx - .15, z = k.fz;
+                for (const [dx, dz] of [[-.4, -.4], [.4, -.4], [-.4, .4], [.4, .4]]) P('cylinder', [.05, .06, .8, 6], 'bark', { x: x + dx, y: .4, z: z + dz });
+                P('box', [1.05, .07, 1.05], 'wood', { x, y: .835, z }); P('box', [.9, .55, .9], 'wood', { x, y: 1.14, z });
+                P('pyramid', [1.4, 1.4, .65], 'thatch', { x, y: 1.41, z });
+                k.basket(x - .1, z + 1.25, maize);
             }
-        } else if (type === 'tower') {
-            // Firewood for the watch, and a heap of stones to throw.
-            logs(wall - .8, front + .7);
-            for (let i = 0; i < 5; i++) { const up = i > 2 ? 1 : 0, k = up ? i - 3 : i;
-                P('sphere', [.2, 6, 4], 'rock', { x: wall - 1.6 - k * .37 - up * .18, y: .17 + up * .3, z: front - .2 + up * .1 + (k % 2) * .08 }); }
-        } else if (type === 'farm') {
-            // A haystack round its pole, at the field's far corner.
-            P('cylinder', [.03, .03, 1.7, 5], 'bark', { x: wall - 1.0, y: .85, z: -foot.ez * .6 });
-            P('cylinder', [.14, .8, 1.25, 10], 'thatch', { x: wall - 1.0, y: .625, z: -foot.ez * .6 });
+        },
+
+        // The Vikings: stockfish on a rack, painted shields in a row, a rune stone, a beacon.
+        viking: (k, type) => {
+            const { P, at, half } = k;
+            if (type === 'house') {
+                // Firewood, the chopping block with the axe in it, and fish drying on a rack.
+                k.logs(...at(.9, .75));
+                const [bx, bz] = at(1.9, 1.3);
+                P('cylinder', [.26, .28, .42, 9], 'bark', { x: bx, y: .21, z: bz }); k.axe(bx, .42, bz);
+                const [x, z] = at(3.1, .3);
+                k.rail(x, z, 1.4, 1.4);
+                for (let i = 0; i < 5; i++) P('box', [.08, .36, .03], 'leather', { x: x - .5 + i * .25, y: 1.12, z });
+            } else if (type === 'town_center') {
+                // A stall under hides with furs on it, two barrels, and a sledge with a chest.
+                const [x, z] = at(1.5, .1);
+                k.stall(x, z, 'leather');
+                for (const dx of [-.35, .3]) P('sphere', [.22, 7, 4], 'leather', { x: x + dx, y: .85, z, sy: .35 });
+                k.barrel(...at(2.9, .9), .85); k.barrel(...at(3.5, .5), .7);
+                const [sx, sz] = at(3.7, 2.0);
+                k.sledge(sx, sz); P('box', [.8, .45, .5], 'wood', { x: sx, y: .4, z: sz }); P('box', [.84, .06, .54], 'iron', { x: sx, y: .52, z: sz });
+            } else if (type === 'barracks') {
+                // Spears, four painted round shields in a row along a rail, a straw man.
+                k.rack(...at(1.0, .25));
+                const [x, z] = at(2.6, 1.0);
+                k.rail(x, z, 2.1, .75);
+                for (let i = 0; i < 4; i++) k.shield(x - .78 + i * .52, z + .2, 'white', i % 2 ? PALE : RED, 'iron', .3);
+                k.dummy(...at(3.2, -.7));
+            } else if (type === 'archery_range') {
+                // A straw butt, and a round of wood to throw the axe at, an axe in it.
+                k.butt(...at(2.6, -.6));
+                const [x, z] = at(1.1, .3);
+                k.butt(x, z, 'wood');
+                P('cylinder', [.02, .022, .6, 5], 'wood', { x: x + .15, y: 1.22, z: z + .4, rx: 1.0 }); P('box', [.03, .12, .18], 'iron', { x: x + .15, y: 1.07, z: z + .17 });
+            } else if (type === 'academy') {
+                // A rune stone, its bands painted red, a log to sit on, and a ring of stones.
+                const [x, z] = at(2.7, .3);
+                k.slab(x, z, 'rock', .7, 1.3, 'point');
+                for (const dx of [-.2, .2]) P('box', [.07, 1.0, .02], 'white', { x: x + dx, y: .8, z: z + .105, tint: RED });
+                const [lx, lz] = at(1.1, .5);
+                P('cylinder', [.2, .2, 1.4, 8], 'bark', { x: lx, y: .42, z: lz, rz: half });
+                for (const s of [-1, 1]) P('cylinder', [.18, .2, .26, 8], 'bark', { x: lx + s * .45, y: .13, z: lz });
+                const [rx, rz] = at(2.3, 2.0);
+                for (let i = 0; i < 6; i++) P('sphere', [.16, 6, 4], 'rock', { x: rx + Math.cos(i * 1.047) * .7, y: .12, z: rz + Math.sin(i * 1.047) * .7 });
+            } else if (type === 'temple') {
+                // Two carved posts, and a slab of rock on two stones with a bowl on it.
+                for (const [x, z] of [at(.9, .7), at(2.8, .2)]) { P('cylinder', [.13, .17, 1.6, 8], 'bark', { x, y: .8, z }); P('sphere', [.19, 8, 6], 'bark', { x, y: 1.7, z }); }
+                const [x, z] = at(2.2, 1.9);
+                for (const s of [-1, 1]) P('sphere', [.22, 6, 4], 'rock', { x: x + s * .3, y: .18, z });
+                P('box', [1.0, .12, .65], 'rock', { x, y: .43, z }); P('cylinder', [.2, .12, .12, 10], 'iron', { x, y: .55, z });
+            } else if (type === 'tower') {
+                // The beacon: an iron basket on a pole. Firewood for it, and stones to throw.
+                const [x, z] = at(2.0, 1.0);
+                P('cylinder', [.05, .07, 2.1, 6], 'bark', { x, y: 1.05, z }); P('cylinder', [.28, .16, .32, 8], 'iron', { x, y: 2.2, z });
+                k.logs(...at(.8, .7)); k.heap(...at(1.6, -.2));
+            } else if (type === 'farm') {
+                // Hay hung to dry on a fence of three posts and two rails.
+                const x = k.fx, z = k.fz;
+                for (const dz of [-.95, 0, .95]) P('cylinder', [.04, .05, 1.4, 6], 'bark', { x, y: .7, z: z + dz });
+                for (const y of [.7, 1.28]) P('cylinder', [.025, .025, 2.0, 5], 'bark', { x, y, z, rx: half });
+                for (const [y, dz] of [[1.08, -.47], [1.08, .47], [.5, 0]]) P('box', [.22, .5, .8], 'thatch', { x, y, z: z + dz });
+            }
         }
     };
+    EngineBuildings.YARD_CIVS = Object.keys(YARDS);
 
     EngineBuildings.settlement = (type, civ, foot) => {
         const parts=[];
-        if (civ === 'greek') greekYard(parts, type, foot);
-        if (!['town_center','house','market'].includes(type)) return {parts};
+        // A yard may have a fire of its own (the Persian temple's): it burns like a hearth.
+        const yardFire = YARDS[civ] ? YARDS[civ](yardKit(parts, foot), type) : null;
+        if (!['town_center','house','market'].includes(type)) return yardFire ? {parts, fire: yardFire} : {parts};
         const x=-foot.ex-1.7,z=foot.ez*.35;
         const jarTint=civ==='persian'?[.25,.58,.60]:civ==='egyptian'?[.75,.58,.35]:[.68,.33,.20];
         for(let i=0;i<2;i++) {
@@ -1548,7 +1907,7 @@
             } else {
                 part(parts,'cylinder',[.24,.17,h*.65,8],'white',{x:px,y:h*.325,z:pz,tint:jarTint});
                 part(parts,'cylinder',[.12,.24,h*.35,8],'white',{x:px,y:h*.825,z:pz,tint:jarTint});
-                part(parts,'disc',[.10,8],'white',{x:px,y:h+.006,z:pz,tint:[.13,.10,.075]});
+                part(parts,'disc',[.10,8],'white',{x:px,y:h+.006,z:pz,tint:[.10,.07,.055]});
             }
         }
         if(type==='market')return {parts};
