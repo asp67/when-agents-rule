@@ -65,17 +65,46 @@
         const A=EngineAtmosphere.AIR, n=day.night, lift=A.lift+(A.nightLift-A.lift)*n;
         return [0,1,2].map(i=>day.sky[i]+(A.tone[i]-day.sky[i])*lift).concat(A.amount+(A.nightAmount-A.amount)*n);
     };
+    // Where the light stands by the hour (a candidate, renderer.movingSun). The sun was
+    // never in the picture and never moved, so every shadow lay the same way all day.
+    // It still is not in the picture, but it can travel: swing degrees to either side of
+    // where it has always stood, which it passes at noon, and down to low degrees above
+    // the horizon at the day's two ends. The moon travels the same way back by night, so
+    // the light never jumps: at dusk and at dawn it stands still while one hands over to
+    // the other. low is kept well up, or shadows would run out of the shadow map.
+    // comp: how far the key light is raised as the light sinks, so that open ground does
+    // not go dark with it (0 = not at all, 1 = flat ground keeps its noon brightness).
+    EngineAtmosphere.SUN = { swing: 52, low: 27, comp: 0.6 };
+    // -1 at the start of the day, 0 at noon, +1 at its end; back to -1 through the night.
+    EngineAtmosphere.sunPhase = (seconds, theme='summer') => {
+        const [day,dusk,night]=EngineAtmosphere.daySchedule(theme);
+        const time=((seconds+day/2)%720+720)%720;
+        if(time<day)return time/day*2-1;
+        if(time<day+dusk)return 1;
+        if(time<day+dusk+night)return 1-(time-day-dusk)/night*2;
+        return -1;
+    };
+    EngineAtmosphere.sunDirection = (rest, phase) => {
+        const S=EngineAtmosphere.SUN, rad=Math.PI/180, length=Math.hypot(rest[0],rest[1],rest[2])||1;
+        const azimuth=Math.atan2(rest[2],rest[0])+phase*S.swing*rad;
+        const high=Math.asin(rest[1]/length), low=Math.min(high,S.low*rad);
+        const elevation=low+(high-low)*Math.cos(phase*Math.PI/2);
+        return [Math.cos(elevation)*Math.cos(azimuth),Math.sin(elevation),Math.cos(elevation)*Math.sin(azimuth)];
+    };
     // daylight() and, from it, what the Atmospheric shader is given: the key light (sun
     // or moon), the fill from above and from below, the grade (gain per channel, then
     // saturation) and the strength of the rim.
-    EngineAtmosphere.lighting = (seconds, sun, sky, theme='summer') => {
+    // lower: how many times lower the light stands than at noon (noon's height over this
+    // hour's), where it moves; left out, it stands where it always has.
+    EngineAtmosphere.lighting = (seconds, sun, sky, theme='summer', lower=1) => {
         const L=EngineAtmosphere.LIGHT, day=EngineAtmosphere.daylight(seconds,sun,sky,theme);
+        const sunk=lower>1?Math.pow(lower,EngineAtmosphere.SUN.comp):1;
         const n=day.night, dusk=4*n*(1-n), ground=L.ground[theme]||L.ground.summer;
         const fillHigh=day.sky.map((v,i)=>v*v*L.fillSky+L.fillFloor+n*L.nightFill[i]);
         const key=day.sun.map((v,i)=>{
             const sunlit=L.skyUp[i]+v*L.sunUp;                           // flat ground in full sun, as it looked
             const byDay=Math.max(0,(sunlit*sunlit-fillHigh[i])/L.sunUp), byNight=v*v*L.moonGain;
-            return (byDay+(byNight-byDay)*n)*(1+dusk*L.duskKey[i]);
+            return (byDay+(byNight-byDay)*n)*(1+dusk*L.duskKey[i])*sunk;
         });
         const fillLow=key.map((v,i)=>v*ground[i]*L.bounce+fillHigh[i]*L.fillLow);
         return { night:n, sun:day.sun, sky:day.sky, key, fillHigh, fillLow, air:EngineAtmosphere.air(day), airRate:EngineAtmosphere.AIR.rate,

@@ -130,6 +130,9 @@
             this.prog = GLCore.compileProgram(this.gl, EngineAtmosphere.vertex, EngineAtmosphere.fragment);
             this.shadowProg = GLCore.compileProgram(this.gl, EngineAtmosphere.shadowVertex, EngineAtmosphere.shadowFragment);
             this.sunDir = M().normalize([-0.65, 0.72, 0.36]);
+            // A candidate, off: the light travels through the day and the shadows with it
+            // (EngineAtmosphere.sunDirection). Off, it stands where it always has.
+            this.movingSun = false;
             // Lighting: 'classic' (Simple), 'cinematic' (Atmospheric) or 'film' (Cinematic:
             // Atmospheric plus bloom, burning buildings and rubble). Remembered per browser.
             let style = null;
@@ -3228,9 +3231,12 @@
             const bb = M().billboard(cam.view);
             this._syncFog();
             this._syncOcclusion();
-            const atmosphere = window.EngineAtmosphere.lighting(
-                this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0),
-                this._daySun, this._daySky, this._theme);
+            const hour = this.game?._showcaseCivilization ? (this.game._showcaseLightSeconds || 0) : (this.game?._environmentSeconds || 0);
+            const rest = this._sunRest || (this._sunRest = this.sunDir);
+            this.sunDir = this.movingSun
+                ? EngineAtmosphere.sunDirection(rest, EngineAtmosphere.sunPhase(hour, this._theme)) : rest;
+            const atmosphere = window.EngineAtmosphere.lighting(hour, this._daySun, this._daySky, this._theme,
+                this.movingSun ? rest[1] / this.sunDir[1] : 1);
             this._sun = atmosphere.sun;
             this._sky = atmosphere.sky;
             // Draw between the last two simulation steps (see beginSimStep). The frame's
