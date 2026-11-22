@@ -355,3 +355,34 @@ test('the frame meter counts an instanced draw as one draw and all its triangles
     meter.setDetail(false);
     assert.equal(gl.drawElementsInstanced,real,'and the context has its own call back');
 });
+
+// ---- gusts (build 1203) -----------------------------------------------------------------
+test('gusts travel across the grass with the wind, and between gusts it flutters as it always did',()=>{
+    const s=read('js/engine/atmosphere.js');
+    // A front is a wave along the wind that moves forward in time, its line bent by a slow wave across it.
+    assert.match(s,/const vec2 wind = vec2\(0\.866, 0\.5\);\s+float along = dot\(world\.xz, wind\), across = dot\(world\.xz, vec2\(-wind\.y, wind\.x\)\);\s+float front = sin\(along\*0\.09 - uGrassTime\*0\.8 \+ 1\.7\*sin\(across\*0\.031 \+ uGrassTime\*0\.1\)\);/);
+    assert.match(s,/vGust = uGust \* smoothstep\(0\.3, 1\.0, front\);/);
+    // In a gust: a lean with the wind and a harder flutter. With no gust (vGust 0) what is left is the flutter of old.
+    assert.match(s,/world\.xz \+= \(vec2\(0\.045,0\.025\)\*flutter\*\(1\.0 \+ 0\.8\*vGust\) \+ wind\*0\.12\*vGust\) \* bend;/);
+    assert.match(s,/float flutter = sin\(world\.x\*0\.17 \+ world\.z\*0\.11 \+ uGrassTime\*1\.3\)\s+\+ 0\.45\*sin\(world\.x\*0\.37 - world\.z\*0\.23 \+ uGrassTime\*2\.1\);/);
+    assert.match(s,/float bend = vGrassTip\*vGrassTip\*uModel\[1\]\[1\];/);
+    // The same phase a moment later is further along the wind: about nine units a second, seventy from front to front.
+    const speed=0.8/0.09,apart=2*Math.PI/0.09;
+    assert.ok(speed>8&&speed<10&&apart>60&&apart<80);
+    const front=(along,t)=>Math.sin(along*0.09-t*0.8);
+    assert.ok(Math.abs(front(30,2)-front(30+speed*3,5))<1e-9);
+    // The clock wraps every twenty pi seconds: every factor of it is a tenth, so nothing jumps then.
+    const factors=[...s.matchAll(/uGrassTime\*([0-9.]+)/g)].map(m=>Number(m[1]));
+    assert.ok(factors.length>=4);
+    for(const f of factors)assert.ok(Math.abs(f*10-Math.round(f*10))<1e-9,'a factor of '+f+' would jump at the wrap');
+    assert.match(read('js/engine/gamerenderer.js'),/gl\.uniform1f\(this\.prog\.uniforms\.uGrassTime,\(now\/1000\)%\(Math\.PI\*20\)\);/);
+    // Bent over, the blades are paler toward the tip; pebbles and everything else are untouched.
+    assert.match(s,/if \(uVegetation > 0\.5\) base \*= mix\(0\.90,1\.06,vGrassTip\) \* \(1\.0 \+ 0\.15\*vGust\*vGrassTip\);/);
+    assert.match(s,/vGust = 0\.0;\s+if \(uVegetation > 0\.5 && vPebble < 0\.5\) \{/);
+    // Both shaders name the varying alike.
+    assert.equal((s.match(/varying mediump float vGust;|varying mediump float vGrassTip, vPebble, vGust;/g)||[]).length,2);
+});
+
+test('a viewer who asked for less motion gets no gusts',()=>{
+    assert.match(read('js/engine/gamerenderer.js'),/gl\.uniform1f\(this\.prog\.uniforms\.uGust,this\._reducedMotion\?0:1\);/);
+});

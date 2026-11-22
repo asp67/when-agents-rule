@@ -3458,6 +3458,8 @@
             // No time reset: the old modulo teleported waves every 68 minutes.
             gl.uniform1f(this.prog.uniforms.uTime,now/1000);
             gl.uniform1f(this.prog.uniforms.uGrassTime,(now/1000)%(Math.PI*20));
+            // Gusts cross the grass (b1203), unless the viewer asked for less motion.
+            gl.uniform1f(this.prog.uniforms.uGust,this._reducedMotion?0:1);
             gl.uniform1f(this.prog.uniforms.uClothTime,(this.game?._environmentSeconds||0)%Math.PI);
             gl.uniform1f(this.prog.uniforms.uClutterFog,this._clutterFogActive?1:0);
             gl.uniform1f(this.prog.uniforms.uClutterMapSize,this._fow()?.mapSize || 800);

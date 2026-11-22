@@ -143,10 +143,10 @@
         uniform mat4 uBones[13];
         uniform float uSkin;
         uniform vec2 uUvOffset;
-        uniform mediump float uGrassTime, uVegetation;
+        uniform mediump float uGrassTime, uVegetation, uGust;
         uniform vec4 uCloth;
         uniform float uClothTime;
-        varying mediump float vGrassTip, vPebble;
+        varying mediump float vGrassTip, vPebble, vGust;
         varying vec3 vNormal, vWorld;
         varying vec2 vUv;
         varying float vDepth;
@@ -182,10 +182,23 @@
             }
             vPebble = stone ? 1.0 : 0.0;
             vGrassTip = clamp(((uInstanced > 0.5 ? local.y : aPosition.y)-0.018) / 0.562, 0.0, 1.0);
+            vGust = 0.0;
             if (uVegetation > 0.5 && vPebble < 0.5) {
-                float gust = sin(world.x*0.17 + world.z*0.11 + uGrassTime*1.3)
+                // Every tuft flutters where it stands, as it always has...
+                float flutter = sin(world.x*0.17 + world.z*0.11 + uGrassTime*1.3)
                     + 0.45*sin(world.x*0.37 - world.z*0.23 + uGrassTime*2.1);
-                world.xz += vec2(0.045,0.025)*gust*vGrassTip*vGrassTip*uModel[1][1];
+                // ...and gusts travel across the field (overhaul step A6): fronts some
+                // seventy units apart, moving with the wind at about nine units a second,
+                // their line bent by a slow wave across it so that no two pass alike. In a
+                // gust the grass leans with the wind and flutters harder; between gusts it
+                // is as it was. (Every factor of the time is a tenth: the clock wraps
+                // every twenty pi seconds, and nothing may jump when it does.)
+                const vec2 wind = vec2(0.866, 0.5);
+                float along = dot(world.xz, wind), across = dot(world.xz, vec2(-wind.y, wind.x));
+                float front = sin(along*0.09 - uGrassTime*0.8 + 1.7*sin(across*0.031 + uGrassTime*0.1));
+                vGust = uGust * smoothstep(0.3, 1.0, front);
+                float bend = vGrassTip*vGrassTip*uModel[1][1];
+                world.xz += (vec2(0.045,0.025)*flutter*(1.0 + 0.8*vGust) + wind*0.12*vGust) * bend;
             }
             // Inverse-transpose for orthogonal TRS columns, including nonuniform scale.
             mat3 basis = mat3(uModel);
@@ -210,6 +223,7 @@
         uniform sampler2D uClutterVisibility;
         uniform float uClutterMapSize, uClutterFog, uPebbleGround, uGrayGravel, uGroundGain;
         uniform mediump float uVegetation;
+        varying mediump float vGust;
         varying mediump float vGrassTip, vPebble;
         uniform vec4 uGroundCover;
         uniform vec3 uSunDir, uSunColor, uAmbient, uTint, uSky, uEye;
@@ -313,7 +327,8 @@
                 t.a = min(1.0, t.a*(1.0 + 0.16*bank));
             }
             vec3 base = t.rgb * uTint;
-            if (uVegetation > 0.5) base *= mix(0.90,1.06,vGrassTip);
+            // Bent over in a gust, the blades show their paler side: the wave one sees cross a field.
+            if (uVegetation > 0.5) base *= mix(0.90,1.06,vGrassTip) * (1.0 + 0.15*vGust*vGrassTip);
             if (uVegetation > 0.5 && vPebble > 0.5) base = mix(
                 mix(vec3(.19,.175,.15),vec3(.32,.30,.265),vUv.y),
                 vec3(mix(.40,.50,vUv.y)),uGrayGravel);
