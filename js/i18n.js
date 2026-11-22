@@ -19,7 +19,7 @@ const I18N = {
     en: {
         'common.play': 'Play',
         'common.tutorial': 'Tutorial',
-        'common.back': 'Back',
+        'common.back': 'Back', 'an.backResults': '← Results',
         'common.toGame': '▶ To the game',
         'common.mainMenu': 'Main menu',
         'common.language': 'Language',
@@ -726,7 +726,7 @@ const I18N = {
     de: {
         'common.play': 'Spielen',
         'common.tutorial': 'Tutorial',
-        'common.back': 'Zurück',
+        'common.back': 'Zurück', 'an.backResults': '← Ergebnisse',
         'common.toGame': '▶ Zum Spiel',
         'common.mainMenu': 'Hauptmenü',
         'common.language': 'Sprache',
@@ -1426,7 +1426,7 @@ const I18N = {
     es: {
         'common.play': 'Jugar',
         'common.tutorial': 'Tutorial',
-        'common.back': 'Volver',
+        'common.back': 'Volver', 'an.backResults': '← Resultados',
         'common.toGame': '▶ Al juego',
         'common.mainMenu': 'Menú principal',
         'common.language': 'Idioma',
@@ -2123,7 +2123,7 @@ const I18N = {
     zh: {
         'common.play': '开始游戏',
         'common.tutorial': '教程',
-        'common.back': '返回',
+        'common.back': '返回', 'an.backResults': '← 结果',
         'common.toGame': '▶ 进入游戏',
         'common.mainMenu': '主菜单',
         'common.language': '语言',

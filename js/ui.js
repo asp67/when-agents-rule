@@ -2616,8 +2616,12 @@ class UIManager {
         let text;
         try { text = await (await rec.exportBlob()).text(); }
         catch (e) { console.warn('[analyzer] export failed', e); this.showErrorMessage(t('an.badFile')); return; }
-        try { await rec.purge(); } catch (e) { /* the copy in memory is what matters now */ }
+        // The stored copy stays: the analyzer's Back leads to the results screen again
+        // (build 1177), where the transcript can still be saved and another moment opened.
+        // It goes when the results screen is left for good, as the notice there says.
         this.anOpen();
+        this._anFromSummary = true;
+        this.anBackLabel();
         this.anStopPlay();
         try { this.analyzer.load(text, name); }
         catch (e) { console.warn('[analyzer] load failed', e); this.showErrorMessage(t('an.badFile')); return; }
@@ -7085,15 +7089,32 @@ class UIManager {
     anOpen() {
         this.anLoadSampleIndex();
         this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
+        this._anFromSummary = false;         // opened from the menu, unless watchInAnalyzer says otherwise
+        this.anBackLabel();
         this.showScreen('analyzeScreen');
         this.anRender();
     }
 
+    // Back leads to where the analyzer was opened from: a match's results screen, when a
+    // moment or a decision was opened from there, else the choice of game mode. From the
+    // results it used to lead to the game modes too, and the results were gone.
     anClose() {
         // In showcase mode there is nowhere to go back TO -- the analyzer is the whole
         // app -- so this is the one exit and it stays shut.
         if (typeof WAR_DEMO_ONLY !== 'undefined' && WAR_DEMO_ONLY) return;
-        this.anStopPlay(); this.anResimStop(false); this.anUnmountStage(); this.showScreen('gameModeScreen');
+        this.anStopPlay(); this.anResimStop(false); this.anUnmountStage();
+        const toResults = !!this._anFromSummary;
+        this._anFromSummary = false;
+        this.anBackLabel();
+        this.showScreen(toResults ? 'arenaSummaryScreen' : 'gameModeScreen');
+    }
+    // The Back button says where it leads.
+    anBackLabel() {
+        const b = document.querySelector('.an-back');
+        if (!b) return;
+        const key = this._anFromSummary ? 'an.backResults' : 'common.back';
+        b.setAttribute('data-i18n', key);
+        b.textContent = t(key);
     }
 
     anLoadFile(input) {
@@ -8965,11 +8986,11 @@ class UIManager {
         this.anApplyFog(sc, terrain);
         this.anRenderPick();
 
-        // One framing per file, before anything else touches the camera. Auto camera is
-        // off by default now, which means nothing else would ever point it anywhere: the
-        // analyzer used to open on the map origin while the match happened three hundred
-        // units away, staring at empty sea. Showing the whole board instead needs no
-        // aiming at all -- the action is already in frame, wherever it is.
+        // One framing per file, before anything else touches the camera: the whole board,
+        // so the action is in frame wherever it is. (The analyzer used to open on the map
+        // origin while the match happened three hundred units away, staring at empty sea.)
+        // The auto camera, on by default since build 1177, then keeps the turn in view at
+        // whatever zoom the reader chooses; during Playback it is the director.
         //
         // Guarded on `rec` because anOpen renders once before any transcript exists, and
         // spending the one framing on that empty frame would leave the real one unframed.

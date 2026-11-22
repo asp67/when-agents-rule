@@ -39,18 +39,19 @@ class TranscriptAnalyzer {
         this.cursor = -1;
         this.mode = 'gathered';  // its own chart mode; the results screen keeps its own
         // What a reader meets on the first frame, before they know anything about the
-        // match. Both of these used to work against that. A single seat's fog blacks out
-        // most of the map for reasons the reader cannot yet infer -- it looks like a
-        // rendering fault rather than like one model's ignorance. And a camera that
-        // re-aims on every step makes the board lurch while they are still working out
-        // what they are looking at.
-        //
-        // So: the whole board, and a camera that stays where it was put. Both are one
-        // chip away once the reader knows enough to want a particular seat's own view,
-        // which is the point at which the fog stops being confusing and starts being
-        // the interesting part.
+        // match. A single seat's fog blacks out most of the map for reasons the reader
+        // cannot yet infer -- it looks like a rendering fault rather than like one
+        // model's ignorance. So: the whole board. A seat's own view is one chip away
+        // once the reader knows enough to want it, which is the point at which the fog
+        // stops being confusing and starts being the interesting part.
         this.union = true;       // the cumulated view; an overview no player ever had
-        this.autoCam = false;    // the camera stays where the reader left it
+        // The auto camera is on from the start (build 1177). It was off, so that the
+        // board would not lurch under a reader still finding their bearings; but the
+        // first frame is the whole map either way, and with the camera left there a
+        // moment opened from the results played out as a few dots somewhere on the
+        // island (asp67, 22 Nov 2026: "an event shown might be missed on the overview").
+        // One chip turns it off for a reader who wants to steer.
+        this.autoCam = true;
         this.fileName = null;
         this.parseErrors = 0;
     }
