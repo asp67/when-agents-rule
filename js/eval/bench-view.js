@@ -157,7 +157,21 @@
         this.updateBenchView();
     };
 
-    P.benchLedger = function () { return this.evalLedger(); };
+    // The ledger the board reads: the running match's, or in the transcript analyzer the
+    // loaded file's (build 1223).
+    P.benchInAnalyzer = function () {
+        const el = typeof document !== 'undefined' ? document.getElementById('analyzeScreen') : null;
+        return !!(el && el.classList && el.classList.contains('active'));
+    };
+    P.benchLedger = function () { return this.benchInAnalyzer() ? (this.analyzer && this.analyzer.ledger) || null : this.evalLedger(); };
+    // What a click on a decision does where the board is shown now, as the key of its
+    // tooltip: null where it can do nothing (the results screen once the transcript is gone).
+    P.benchLinkKey = function () {
+        if (this.benchInAnalyzer()) return 'sum.openAnalyzer';
+        const sum = typeof document !== 'undefined' ? document.getElementById('arenaSummaryScreen') : null;
+        if (!sum || !sum.classList || !sum.classList.contains('active') || sum.classList.contains('snapshot')) return 'bench.open';
+        return this.summaryCanOpen() ? 'sum.openAnalyzer' : null;
+    };
     // A seat's decision in the transcript viewer: where every list in this view leads.
     P.openTranscriptTurn = function (playerId, turn) {
         if (turn == null) return;
@@ -184,6 +198,11 @@
     // decision, which leaves the results screen as the Analyzer button does.
     P.benchOpenTurn = function (playerId, turn) {
         if (turn == null) return;
+        if (this._benchFull) this.toggleBenchFull(false);     // the board at full size steps out of the way
+        if (this.benchInAnalyzer()) {
+            const led = this.benchLedger(), at = led && led.profile().seats.find(s => s.id === playerId);
+            return at && at.seat != null ? this.anApplyMoment({ seat: at.seat + 1, turn }) : undefined;
+        }
         const sum = document.getElementById('arenaSummaryScreen');
         if (!sum || !sum.classList.contains('active')) return this.openTranscriptTurn(playerId, turn);
         if (sum.classList.contains('snapshot')) { this.closeArenaSnapshot(); return this.openTranscriptTurn(playerId, turn); }
@@ -208,12 +227,15 @@
         const has = !!ledger && ledger.profile().seats.some(s => s.decisions > 0);
         el.style.display = has ? '' : 'none';
         if (!has) { if (el.innerHTML) el.innerHTML = ''; this._sumProfileSig = null; return; }
-        const snapshot = sum.classList.contains('snapshot'), ev = this._benchEvidence;
-        const link = snapshot ? 'bench.open' : this.summaryCanOpen() ? 'sum.openAnalyzer' : null;
+        const ev = this._benchEvidence, link = this.benchLinkKey();
         const sig = [ledger.lines + '.' + ledger.rev, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : '', link].join(':');
         if (sig === this._sumProfileSig) return;
         this._sumProfileSig = sig;
-        el.innerHTML = this.benchHtml(ledger, { link }).right + `<p class="summary-profile-note">${this.escapeHtml(t('sum.profileNote'))}</p>`;
+        // Under the matrix: the way to the board at full size, with the graphs over the
+        // match, the cost and the decisions where a model's play went wrong (build 1223).
+        el.innerHTML = this.benchHtml(ledger, { link }).right
+            + `<button type="button" class="summary-board-btn" onclick="game.ui.toggleBenchFull(true)">${this.escapeHtml(t('bench.b.fullBtn'))}</button>`
+            + `<p class="summary-profile-note">${this.escapeHtml(t('sum.profileNote'))}</p>`;
     };
     P.benchShowEvidence = function (key, id) {
         const cur = this._benchEvidence;
@@ -224,20 +246,28 @@
     };
 
     P.updateBenchView = function () {
-        const left = document.getElementById('benchLeft'), right = document.getElementById('benchMatrix');
-        if (!left || !right || !this.benchOn()) return;
-        this.benchPlace();
-        const ledger = this.benchLedger(), ev = this._benchEvidence, full = document.getElementById('benchFull');
-        const open = !!(full && this._benchFull);
+        const left = document.getElementById('benchLeft'), right = document.getElementById('benchMatrix'), full = document.getElementById('benchFull');
+        // The panels belong to a match being watched with the Bench view on. The board at
+        // full size is its own thing: it also opens from the results screen and in the
+        // transcript analyzer (build 1223).
+        const panels = !!(left && right && this.benchOn() && !this.benchInAnalyzer()), open = !!(full && this._benchFull);
+        if (!panels && !open) {
+            if (full && (full.innerHTML || full.style.display !== 'none')) { full.innerHTML = ''; full.style.display = 'none'; }
+            return;
+        }
+        if (panels) this.benchPlace();
+        const ledger = this.benchLedger(), ev = this._benchEvidence, link = this.benchLinkKey();
         const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', (this._benchSeats || []).join(','), ev ? ev.key + ev.id : '',
-            open].join(':');
+            open, panels, link].join(':');
         if (sig === this._benchSig) return;
         this._benchSig = sig;
-        const view = this.benchHtml(ledger);
-        left.innerHTML = view.left;
-        // On screen: the mini card, a row a model, readable at a glance. A click opens the
-        // board at full size, where the matrix with its evidence now lives (build 1222).
-        right.innerHTML = this.benchMiniHtml(ledger);
+        const view = this.benchHtml(ledger, { link });
+        if (panels) {
+            left.innerHTML = view.left;
+            // On screen: the mini card, a row a model, readable at a glance. A click opens the
+            // board at full size, where the matrix with its evidence now lives (build 1222).
+            right.innerHTML = this.benchMiniHtml(ledger);
+        }
         if (full) { full.style.display = open ? '' : 'none'; full.innerHTML = open ? this.benchFullHtml(ledger, view.right) : ''; }
     };
 
@@ -413,11 +443,39 @@
                 + row(t('bench.b.recovery'), pct(c.recovery), t('bench.b.recoveryTip'))
                 + row(t('bench.b.lost'), String(c.lost), t('bench.b.lostTip', { failed: c.failed, cancelled: c.cancelled, missed: c.missed })) + '</dl></div>'
                 + `<div class="bf-sec bf-sum"><h4>${esc(t('bench.b.summaryFull'))}</h4><div class="bf-index"><b>${s.index.value == null ? '–' : Math.round(s.index.value)}</b><span>${esc(t('eval.index'))}</span></div>`
-                + `<table>${summary}</table><p class="bf-note">${esc(t('bench.b.decisions', { n: s.decisions }))}</p></div></div></section>`;
+                + `<table>${summary}</table><p class="bf-note">${esc(t('bench.b.decisions', { n: s.decisions }))}</p></div></div>`
+                + this.benchTraceHtml(ledger, s, data.end) + '</section>';
         }).join('');
         return `<div class="bf-box" onclick="event.stopPropagation()">${head}<div class="bf-body">${legend}${cards}<div class="bf-matrix">${matrixHtml || ''}</div></div></div>`;
     };
 
+    // ---- the decision inspector (build 1223) --------------------------------------
+    // Under a model's three sections: the decisions where its play went wrong, on the
+    // match's clock and as a list, each a way into the transcript at that decision. What
+    // counts as which is the ledger's (Ledger.trace); here it is only laid out.
+    const TRACE_KINDS = ['loop', 'constraint', 'awareness', 'threat', 'refused'];
+    P.benchTraceHtml = function (ledger, s, end) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x));
+        const tr = ledger && typeof ledger.trace === 'function' ? ledger.trace(s.id) : null;
+        if (!tr) return '';
+        const head = `<h4>${esc(t('bench.t.title'))}<small>${esc(t('bench.t.tip'))}</small></h4>`;
+        if (!tr.judged) return `<div class="bf-trace">${head}<p class="bench-none">${esc(t('bench.t.unjudged'))}</p></div>`;
+        if (!tr.marks.length) return `<div class="bf-trace">${head}<p class="bench-none">${esc(t('bench.t.none'))}</p></div>`;
+        const link = this.benchLinkKey();
+        const open = m => m.turn == null || !link ? '' : ` onclick="game.ui.benchOpenTurn('${esc(s.id)}', ${Number(m.turn)})"`;
+        const order = m => String(m.action == null ? '?' : m.action).replace(/_/g, ' ') + (m.code ? ' · ' + m.code : '');
+        const line = m => m.kind === 'threat' ? this.benchThreatLine(m.threat, s)
+            : m.kind === 'loop' ? t(m.open ? 'bench.t.loopOpen' : 'bench.t.loopLine', { order: order(m), n: m.n, upTo: m.upTo })
+            : order(m) + (m.orders > 1 ? ' ×' + m.orders : '');
+        const at = sec => end > 0 && sec != null ? Math.max(0, Math.min(100, 100 * sec / end)) : 0;
+        const chips = TRACE_KINDS.filter(k => tr.counts[k]).map(k => `<span class="bt-chip is-${k}" title="${esc(t('bench.t.' + k + 'Tip'))}"><i></i>${tr.counts[k]} ${esc(t('bench.t.' + k))}</span>`).join('');
+        const strip = tr.marks.map(m => {
+            const left = at(m.sec), width = m.kind === 'loop' ? Math.max(0, at(m.upToSec) - left) : 0;
+            return `<i class="is-${m.kind}" style="left:${left.toFixed(1)}%${width ? ';width:' + width.toFixed(1) + '%' : ''}"${open(m)} title="#${m.turn} ${clock(m.sec)} · ${esc(t('bench.t.' + m.kind))}: ${esc(line(m))}"></i>`;
+        }).join('');
+        const list = tr.marks.map(m => `<li class="is-${m.kind}"${open(m)}${link ? ` title="${esc(t(link))}"` : ''}><span class="be-when">#${m.turn} ${clock(m.sec)}</span><b>${esc(t('bench.t.' + m.kind))}</b><span>${esc(line(m))}</span></li>`).join('');
+        return `<div class="bf-trace">${head}<div class="bt-chips">${chips}</div><div class="bt-strip">${strip}</div><div class="bf-axis"><span>0:00</span><span>${clock(end)}</span></div><ul class="bt-list">${list}</ul></div>`;
+    };
     // The two panels as markup. Apart from the page it is given, it reads nothing but the ledger.
     // `link` is the tooltip key of what a click on a decision does here, or null where it can do nothing.
     P.benchHtml = function (ledger, { link = 'bench.open' } = {}) {

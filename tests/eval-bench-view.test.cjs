@@ -90,7 +90,8 @@ test('D2: every string of the Bench view is keyed in all four languages', () => 
     for (const dim of WarEval.SCORED) keys.add('bench.cmp.' + dim);
     keys.add('spec.compareTitle');
     for (const dim of WarEval.SCORED) keys.add('bench.b.' + dim);            // the parts' letters on the mini card (build 1222)
-    keys.delete('bench.st.'); keys.delete('eval.'); keys.delete('bench.cmp.'); keys.delete('bench.b.');   // the prefixes those are built from
+    for (const kind of ['loop', 'constraint', 'awareness', 'threat', 'refused']) { keys.add('bench.t.' + kind); keys.add('bench.t.' + kind + 'Tip'); }   // the inspector's kinds (build 1223)
+    keys.delete('bench.st.'); keys.delete('eval.'); keys.delete('bench.cmp.'); keys.delete('bench.b.'); keys.delete('bench.t.');   // the prefixes those are built from
     assert.ok(keys.size >= 30, 'only ' + keys.size + ' keys found: did the pattern change?');
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of keys) assert.ok(k in context.I[lang], lang + ' lacks ' + k);
     // No sentence is written into the markup itself.

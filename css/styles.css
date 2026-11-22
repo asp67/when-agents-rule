@@ -2167,6 +2167,8 @@ body.spectator-mode #unitInfo.spectator-card {
 .summary-profile .bm th[scope="row"] { width: 130px; }
 .summary-profile .bench-evidence li { white-space: normal; }
 .summary-profile-note { margin: 10px 0 0; font-size: 0.8em; color: #8a93a8; }
+.summary-board-btn { display: block; margin: 12px 0 0; padding: 6px 14px; border-radius: 5px; border: 1px solid rgba(221, 211, 180, 0.36); background: rgba(221, 211, 180, 0.1); color: #ece5cc; font: inherit; cursor: pointer; }
+.summary-board-btn:hover { background: rgba(221, 211, 180, 0.2); }
 .summary-legacy { max-width: 760px; margin: 4px auto 14px; font-size: 0.85rem; color: #aeb8cc; text-align: left; }
 .summary-legacy > summary { cursor: pointer; color: #8a93a8; }
 .summary-legacy .sum-sound { margin: 8px 0 0; }
@@ -2715,6 +2717,30 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bf-sum td { text-align: right; padding: 1px 0 1px 8px; color: #f1ede0; white-space: nowrap; }
 .bf-sum td:last-child { color: #9aa2b1; }
 .bf-note { margin: 6px 0 0; color: #9aa2b1; }
+/* The decision inspector (build 1223): where a model's play went wrong, on the match's clock and as a list. */
+.bf-trace { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(221, 211, 180, 0.12);
+    --bt-loop: #ff6b6b; --bt-constraint: #ffb454; --bt-awareness: #c59cf0; --bt-threat: #5cc8ff; --bt-refused: #9aa3b2; }
+.bf-trace h4 { display: flex; align-items: baseline; gap: 10px; margin: 0 0 6px; font-size: 0.92em; text-transform: uppercase; letter-spacing: 0.06em; color: #b9b29a; }
+.bf-trace h4 small { text-transform: none; letter-spacing: 0; font-weight: 400; color: #8b93a3; }
+.bt-chips { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 6px; }
+.bt-chip { display: inline-flex; align-items: center; gap: 5px; color: #d7d2c2; }
+.bt-chip i, .bt-list li b::before { content: ''; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: var(--ink); }
+.bt-chip.is-loop, .bt-strip .is-loop, .bt-list .is-loop { --ink: var(--bt-loop); }
+.bt-chip.is-constraint, .bt-strip .is-constraint, .bt-list .is-constraint { --ink: var(--bt-constraint); }
+.bt-chip.is-awareness, .bt-strip .is-awareness, .bt-list .is-awareness { --ink: var(--bt-awareness); }
+.bt-chip.is-threat, .bt-strip .is-threat, .bt-list .is-threat { --ink: var(--bt-threat); }
+.bt-chip.is-refused, .bt-strip .is-refused, .bt-list .is-refused { --ink: var(--bt-refused); }
+.bt-strip { position: relative; height: 22px; border-radius: 3px; background: rgba(255, 255, 255, 0.05); overflow: hidden; }
+.bt-strip i { position: absolute; top: 3px; bottom: 3px; min-width: 3px; margin-left: -1px; border-radius: 1px; background: var(--ink); opacity: 0.85; cursor: pointer; }
+.bt-strip i.is-loop { top: 0; bottom: 0; opacity: 0.55; margin-left: 0; }
+.bt-strip i.is-threat { top: 0; bottom: 11px; }
+.bt-strip i:hover { opacity: 1; outline: 1px solid #fff; }
+.bt-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 9.6em; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 1px 18px; }
+.bt-list li { display: flex; align-items: baseline; gap: 8px; padding: 2px 4px; border-radius: 3px; cursor: pointer; color: #cfcaba; white-space: nowrap; overflow: hidden; }
+.bt-list li:hover { background: rgba(255, 255, 255, 0.07); }
+.bt-list li .be-when { flex: 0 0 5.6em; color: #8b93a3; font-variant-numeric: tabular-nums; }
+.bt-list li b { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; color: var(--ink); font-weight: 600; }
+.bt-list li span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .bf-matrix { margin-top: 4px; padding-top: 10px; border-top: 1px solid rgba(221, 211, 180, 0.16); }
 @media (max-width: 1100px) { .bf-secs { grid-template-columns: 1fr; } }
 /* Beside the decision log (14 + 332) and beside the leaderboard (16 + 304). */

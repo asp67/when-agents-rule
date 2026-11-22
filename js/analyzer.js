@@ -27,6 +27,7 @@ class TranscriptAnalyzer {
         this.results = null;     // type:"results" — absent if the match was interrupted
         this.timeline = null;    // type:"timeline" — ditto
         this.scores = null;      // type:"scores": the scores over the match, where the file carries them
+        this.ledger = null;      // the file read by the evaluation ledger: what the comparison board shows (build 1223)
         this.turns = [];         // every turn, chronological across all seats
         this.markers = [];       // type:"round_missed" and anything else non-turn
         this.inputs = [];        // type:"input" -- what a re-simulation replays (review #9), never a row
@@ -67,10 +68,12 @@ class TranscriptAnalyzer {
         this.reset();
         this.fileName = fileName || null;
         const lines = String(text || '').split(/\r?\n/);
+        if (typeof WarEval !== 'undefined' && WarEval.createLedger) this.ledger = WarEval.createLedger();
         for (const line of lines) {
             if (!line.trim()) continue;
             let o;
             try { o = JSON.parse(line); } catch (e) { this.parseErrors++; continue; }
+            if (this.ledger) this.ledger.add(o);
             if (o.type === 'match') { this.header = o; continue; }
             if (o.type === 'contract') { this.contract = o; continue; }
             if (o.type === 'results') { this.results = o; continue; }

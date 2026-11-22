@@ -33,6 +33,12 @@
         SCALE: 'v3',
         // What the Index is the mean of. 'plan' is Planning as far as it was followed.
         INDEX_PARTS: ['grounding', 'plan', 'tactical', 'strategy'],
+        // The same order refused for the same reason in this many decisions in a row is a
+        // loop (the decision inspector, build 1223). Among the shipped samples such runs
+        // are 3, 4, 4, 6, 19 and 20 decisions long.
+        LOOP_MIN: 3,
+        // The class of a refused order, by the Bench's taxonomy where the page has loaded it.
+        classOf: o => (typeof WarBench !== 'undefined' && WarBench && typeof WarBench.classify === 'function' ? WarBench.classify(o) : null),
         // A mistake made again inside this many decisions counts as repeated.
         REPEAT_WINDOW: 2,
         // A plan step is acted on if a command carries it out within this many decisions.
@@ -819,6 +825,65 @@
                 failedRequests: seat.markers.request_failed || 0,
                 cancelledRequests: seat.markers.request_cancelled || 0
             };
+        }
+
+        // ---- the decision inspector (build 1223) ------------------------------------
+        // asp67's list of 22 November 2026: "Let users see why a model lost - highlight the
+        // exact turn where it entered a loop, ignored a constraint, or lost spatial/context
+        // awareness." What the record shows of each, by decision:
+        //   loop        the same order refused for the same reason in LOOP_MIN decisions
+        //               in a row; the mark stands at the first of them and carries the run
+        //   constraint  an order refused on a gate the state had shown: the price, the
+        //               population limit, a building that is not built
+        //   awareness   an order at something that is not there or cannot be meant: a
+        //               target out of sight, a tile off the map, a name that does not exist
+        //   threat      an attack on its own town, or a rival Wonder, that it was shown and
+        //               did not answer inside the response window
+        //   refused     an order refused with no reason code on record
+        // Which refusal is which is the Bench's own taxonomy (WarBench.classify: constraint
+        // and reference), which a test keeps complete against the harness's codes. Nothing
+        // here is scored: these are the decisions to go and read.
+        trace(id, classOf = WarEval.classOf) {
+            const seat = this.seats.get(id);
+            if (!seat) return null;
+            const kindOf = x => {
+                const c = classOf ? classOf(x) : null;
+                return c === 'constraint' ? 'constraint' : c === 'reference' || x.verdict === 'invalid' ? 'awareness' : 'refused';
+            };
+            // The refused orders of every decision, one entry a kind of order and reason.
+            const per = seat.turns.map(t => {
+                const m = new Map();
+                for (const x of t.outcomes || []) {
+                    if (x.verdict !== 'avoidable' && x.verdict !== 'invalid') continue;
+                    const key = x.action + ':' + x.code, was = m.get(key);
+                    if (was) was.orders++; else m.set(key, { key, action: x.action, code: x.code, verdict: x.verdict, orders: 1 });
+                }
+                return m;
+            });
+            const marks = [], inLoop = per.map(() => new Set());
+            per.forEach((m, i) => {
+                for (const x of m.values()) {
+                    if (inLoop[i].has(x.key)) continue;
+                    let j = i, orders = 0;
+                    while (j < per.length && per[j].has(x.key)) { orders += per[j].get(x.key).orders; j++; }
+                    const t = seat.turns[i], n = j - i;
+                    if (n >= WarEval.LOOP_MIN) {
+                        for (let k = i; k < j; k++) inLoop[k].add(x.key);
+                        const last = seat.turns[j - 1];
+                        marks.push({ kind: 'loop', of: kindOf(x), decision: i + 1, turn: t.turn, sec: t.sec, action: x.action, code: x.code, n, orders,
+                            upTo: last.turn, upToSec: last.sec, open: j === per.length });
+                    } else marks.push({ kind: kindOf(x), decision: i + 1, turn: t.turn, sec: t.sec, action: x.action, code: x.code, orders: x.orders });
+                }
+            });
+            const mine = this.profile().seats.find(x => x.id === id), tac = mine && mine.tactical;
+            if (tac && tac.judged) for (const e of tac.list) {
+                if (e.answeredAfter != null || seat.turns.length - e.decision + 1 < WarEval.RESPONSE_WINDOW) continue;
+                marks.push({ kind: 'threat', decision: e.decision, turn: e.turn, sec: e.sec, threat: e });
+            }
+            marks.sort((a, b) => a.decision - b.decision);
+            const counts = { loop: 0, constraint: 0, awareness: 0, threat: 0, refused: 0 };
+            for (const m of marks) counts[m.kind]++;
+            return { id, decisions: seat.turns.length, judged: seat.turns.some(t => t.outcomes), marks, counts };
         }
 
         // The profile as it stood at an earlier moment of the match: every seat's decisions
