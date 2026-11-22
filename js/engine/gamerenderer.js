@@ -2850,8 +2850,15 @@
             const vx = v[0] * x + v[8] * z + v[12];   // (x, 0, z) — ground point
             const vy = v[1] * x + v[9] * z + v[13];
             const vz = v[2] * x + v[10] * z + v[14];
-            if (vz > -2) return true;                 // at or behind the eye
-            const d = -vz;
+            // Out of the picture only if ALL of it is: the point with its margin about it.
+            // The depth test asked about the point alone (build 1216: asp67 saw workers
+            // in close-up harvesting nothing). Resources are drawn in blocks 64 units
+            // across, asked about by their middle with a margin of some 59; a close-up
+            // stands 20 units from its subject, so the middle of the subject's own block
+            // lay behind the eye more often than not, and the block went with its trees.
+            if (vz - margin > -2) return true;        // all of it at or behind the eye
+            // How far out the picture reaches at the far side of the margin.
+            const d = Math.max(0, -vz) + (vz > -2 - margin ? margin : 0);
             if (Math.abs(vx) > d * c.tanHalf * c.aspect + margin) return true;
             if (vy > d * c.tanHalf + margin) return true;             // above the top edge
             if (vy < -(d * c.tanHalf) - margin - 14) return true;     // below, +14 tall-object headroom
