@@ -193,7 +193,7 @@ test('the new ground is laid with the old scatter, drawn in its chunks, and no r
     const src = read('js/engine/gamerenderer.js');
     assert.match(src, /for \(const p of this\._groundScatter\(terrain, theme, pSeed\)\) props\.push\(p\);\s+for \(const p of this\._shoreReeds\(terrain, theme, pSeed\)\) props\.push\(p\);\s+this\._freePropChunks\(\);\s+this\._props = props;/);
     assert.match(src, /if \(!blend && !en\.noCast\) place\('caster'/);
-    assert.match(src, /mb\.want = mb\.tier <= level && !mb\.built && \(!seen \|\| seen\(fow, mb\.fx, mb\.fz, 3, 3, true\)\);/);
+    assert.match(src, /mb\.want = mb\.tier <= level && !mb\.built && \(!seen \|\| seen\(fow, mb\.fx, mb\.fz, 3, 3, true\) \|\| atShore\(mb\)\);/);   // atShore: build 1211
     const manifest = read('js/manifest.js');
     assert.doesNotMatch(manifest.slice(manifest.indexOf('rules'), manifest.indexOf(']', manifest.indexOf('rules'))), /gamerenderer/);
     for (const f of ['js/terrain.js', 'js/game.js', 'js/units.js', 'js/buildings.js', 'js/simulation/position-rules.js']) assert.doesNotMatch(read(f), /_groundScatter|_shoreReeds|SCATTER\b/, f);

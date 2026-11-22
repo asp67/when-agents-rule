@@ -26,6 +26,28 @@
     // everything past 400 is shoreline and open water.
     FogOfWarManager.EDGE_MARGIN_WORLD = 60;
 
+    // The shore is never under the fog (build 1211). Units keep to the map's square and
+    // resources lie well inside it, so nobody walks the beach: the wet sand, the foam, the
+    // reeds and the rocks of the coast lay under unexplored fog for a whole match and
+    // nobody ever saw them. Measured from the land's line (WarIsland.TERRAIN_LAND, negative
+    // is inland): the fog is whole further in than `whole` units, and gone from `gone`
+    // units outward, which is the last stretch of dry beach and all of the sea.
+    // What the fog HIDES is untouched. A unit or a building at the shore is hidden or shown
+    // by the rules exactly as before; only the mist over the ground is taken away there.
+    FogOfWarManager.SHORE = { whole: -26, gone: -9 };
+    FogOfWarManager.SHORE_PIXELS = 384;   // the shore's picture, laid over the whole fog plane
+    let shoreKey = null, shoreNoise = null;
+    // How much of the fog is taken away at a place in the world: 0 inland, 1 at the shore and beyond.
+    FogOfWarManager.shoreLift = (x, z) => {
+        if (typeof WarIsland === 'undefined' || !WarIsland.coastSampler) return 0;
+        const key = WarIsland.TERRAIN_SEED + ':' + WarIsland.COAST_CELLS + ':' + WarIsland.TERRAIN_WORLD;
+        if (key !== shoreKey) { shoreKey = key; shoreNoise = WarIsland.coastSampler(WarIsland.TERRAIN_SEED); }
+        const world = WarIsland.TERRAIN_WORLD, S = FogOfWarManager.SHORE;
+        const h = Math.max(Math.abs(x), Math.abs(z)) + shoreNoise(x / world + 0.5, z / world + 0.5) - WarIsland.TERRAIN_LAND;
+        const t = Math.max(0, Math.min(1, (h - S.whole) / (S.gone - S.whole)));
+        return t * t * (3 - 2 * t);
+    };
+
     const P = FogOfWarManager.prototype;
 
     P.initDisplay = function () {
@@ -55,6 +77,26 @@
         this.fogDisplayCanvas.width = cells * 4;
         this.fogDisplayCanvas.height = cells * 4;
         this.fogDisplayCtx = this.fogDisplayCanvas.getContext('2d');
+    };
+
+    // The shore as a picture over the fog plane: opaque where the fog is to go. Made once
+    // for an island (the coast follows a fixed seed), not every time the fog is painted.
+    P.shoreCanvas = function () {
+        if (typeof WarIsland === 'undefined' || typeof document === 'undefined' || !this.displayWorldSize) return null;
+        const D = this.displayWorldSize, key = [D, WarIsland.TERRAIN_LAND, WarIsland.TERRAIN_WORLD, WarIsland.COAST_CELLS].join(':');
+        if (this._shoreKey === key) return this._shoreCanvas;
+        this._shoreKey = key; this._shoreCanvas = null;
+        const S = FogOfWarManager.SHORE_PIXELS, c = document.createElement('canvas');
+        c.width = c.height = S;
+        const ctx = c.getContext && c.getContext('2d');
+        if (!ctx || !ctx.createImageData || !ctx.putImageData) return null;
+        const img = ctx.createImageData(S, S);
+        // The same way round as the fog's own grid: a column is x, a row is z.
+        for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+            img.data[(py * S + px) * 4 + 3] = Math.round(255 * FogOfWarManager.shoreLift(((px + 0.5) / S - 0.5) * D, ((py + 0.5) / S - 0.5) * D));
+        }
+        ctx.putImageData(img, 0, 0);
+        return (this._shoreCanvas = c);
     };
 
     P.paintFog = function () {
@@ -155,6 +197,10 @@
         ramp(W, 0, W - m, 0, W - m, 0, m, W);         // right
         ramp(0, 0, 0, m, 0, 0, W, m);                 // top
         ramp(0, W, 0, W - m, 0, W - m, W, m);         // bottom
+        // ...and the fog is taken away along the shore (FogOfWarManager.SHORE), still by
+        // 'destination-out': the shore's picture rubs out what lies under it.
+        const shore = this.shoreCanvas();
+        if (shore) { d.imageSmoothingEnabled = true; d.drawImage(shore, 0, 0, W, W); }
         d.restore();
 
         this.fogDirty = true; // renderer re-uploads the display canvas next frame
@@ -164,5 +210,6 @@
         this.fogDisplayCanvas = null;
         this.fogCanvas = null;
         this._scratchCanvas = null;
+        this._shoreCanvas = null; this._shoreKey = null;
     };
 })();

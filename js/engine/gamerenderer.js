@@ -1184,6 +1184,10 @@
 
         _pushChunked(chunks, CH, dl) {
             const fow = this._fow(), seen = typeof EngineGrass !== 'undefined' ? EngineGrass.visibleRect : null;
+            // The shore is never under the fog (js/fog-display.js, build 1211), so what stands
+            // there is shown though nobody has explored it: reeds, rocks, driftwood.
+            const shore = typeof FogOfWarManager !== 'undefined' && FogOfWarManager.shoreLift ? FogOfWarManager.shoreLift : null;
+            const atShore = mb => mb.shore === undefined ? (mb.shore = !!shore && shore(mb.fx, mb.fz) >= 0.5) : mb.shore;
             const margin = CH * 0.71 + 3;
             // What a tier draws of the scatter (b1204): Low what it always drew, Balanced
             // half of the flowers, beds, tufts and reeds besides, High all of them.
@@ -1201,7 +1205,7 @@
                 }
                 // Shown where all the ground around it is explored, as each was before.
                 let want = 0;
-                for (const mb of c.members) { mb.want = mb.tier <= level && !mb.built && (!seen || seen(fow, mb.fx, mb.fz, 3, 3, true)); if (mb.want) want++; }
+                for (const mb of c.members) { mb.want = mb.tier <= level && !mb.built && (!seen || seen(fow, mb.fx, mb.fz, 3, 3, true) || atShore(mb)); if (mb.want) want++; }
                 if (!want && !c.groups) continue;
                 if (!c.groups) this._buildResourceChunk(c);
                 let shown = 0;
