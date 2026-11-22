@@ -3006,7 +3006,11 @@
             gl.uniform2f(this.prog.uniforms.uOcclMap, occl ? 1 / occl.span : 0, occl ? this._occlStrength() : 0);
             // Broad variation of open ground: how much lighter and darker, and how much the
             // meadow leans toward dry or lush with it. Snow only rolls; it does not turn green.
-            const vary = EngineRenderer.GROUND_VARY[this._theme] || EngineRenderer.GROUND_VARY.summer;
+            // Not on Low: six sines on every piece of ground are what that tier is there to
+            // save (docs/PERFORMANCE.md: Low cost 9 % more a frame after the look steps, and
+            // 5 % more without this one).
+            const vary = this.graphicsQuality === 'low' ? EngineRenderer.GROUND_VARY.none
+                : (EngineRenderer.GROUND_VARY[this._theme] || EngineRenderer.GROUND_VARY.summer);
             gl.uniform2f(this.prog.uniforms.uGroundVary, vary[0], vary[1]);
             gl.uniform4fv(this.prog.uniforms.uSoil, this._soil || [0.5, 0.45, 0.35, 0]);
             gl.uniform3fv(this.prog.uniforms.uSky, this._sky);
@@ -3153,7 +3157,7 @@
     // how many changed tiles of the map are painted in one frame (all 256 at a match's
     // start take eleven frames).
     EngineRenderer.CONTACT = 0.7;
-    EngineRenderer.GROUND_VARY = { summer: [0.11, 1.0], desert: [0.09, 0.3], winter: [0.07, 0.0] };
+    EngineRenderer.GROUND_VARY = { summer: [0.11, 1.0], desert: [0.09, 0.3], winter: [0.07, 0.0], none: [0, 0] };
     // Worn ground. What one pass adds, of 255 (so some twenty workers' passes show and
     // forty make a path); what a death and a fallen building leave; what a new building
     // packs around itself and before its door; and what a standing building is topped up

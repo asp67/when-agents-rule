@@ -58,3 +58,30 @@ For numbers worth comparing:
 To run it on another computer on your network, start the server with
 `node serve.cjs --host 0.0.0.0` and open `http://<this computer's address>:8088/?perf=bench`
 there.
+
+## What the look steps cost (builds 1174 to 1176)
+
+Light and colour, contact shading and lived-in ground (overhaul steps A1 to A3) were built
+before the office machines had been measured. On the development machine (RTX 5080, the
+card 96 % busy with other work, so the absolute numbers are high and only the comparison
+counts), build 1173 against build 1177, three runs each, taken in turn with the tab in front:
+
+| ms per frame, mean of three runs | build 1173 | build 1177 | |
+| --- | --- | --- | --- |
+| Low | 4.19 | 4.58 | +9 % |
+| Balanced | 5.03 | 5.40 | +7 % |
+| High | 11.65 | 11.77 | +1 % |
+
+The time the page spends building a frame did not change (0.5, 0.6 and 2.6 ms); the
+difference is the graphics card's. Draw calls and triangles are the same in both builds.
+On Low about half of it was the broad variation of the ground, six sines on every piece
+of ground: build 1178 leaves that out on Low and came to 4.45 against 4.24 in two further
+runs taken in turn, +5 %. The rest is the new light sum.
+
+Two things this taught about measuring. A run taken while the tab is not in front, or
+while something else is running on the machine, is worthless: the first run of build 1177
+was taken in a background tab during a test run and came out 40 to 68 % slower than the
+run before it. And a difference is only a difference between runs taken in turn on the
+same machine in the same minutes.
+
+What these steps cost on an office machine has not been measured.

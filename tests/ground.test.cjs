@@ -221,7 +221,9 @@ test('the shader: broad variation and relief on open ground, bare soil and thinn
     assert.match(f, /float land=1\.0-water;\s+base\*=1\.0\+land\*uGroundVary\.x\*broad;/);
     assert.match(f, /relief=1\.0-land\*82\.0\*uGroundVary\.x\*dot\(slope,uSunDir\.xz\);/);
     // How strong per land: a meadow leans dry or lush, sand a little, snow only rolls.
-    assert.deepEqual(JSON.parse(JSON.stringify(R.GROUND_VARY)), { summer: [0.11, 1], desert: [0.09, 0.3], winter: [0.07, 0] });
+    assert.deepEqual(JSON.parse(JSON.stringify(R.GROUND_VARY)), { summer: [0.11, 1], desert: [0.09, 0.3], winter: [0.07, 0], none: [0, 0] });
+    // Low keeps the plain ground: the shader skips the waves when the first number is zero.
+    assert.match(src, /const vary = this\.graphicsQuality === 'low' \? EngineRenderer\.GROUND_VARY\.none\s+: \(EngineRenderer\.GROUND_VARY\[this\._theme\] \|\| EngineRenderer\.GROUND_VARY\.summer\);/);
     for (const v of Object.values(R.GROUND_VARY)) assert.ok(v[0] * (wa + wb + wc) <= 0.12, 'never more than an eighth lighter or darker');
     // Worn ground: toward this land's soil, the edge broken by the ground's grain; no grass on it.
     assert.match(f, /float worn=smoothstep\(0\.10,0\.62,ground\.y\+grain\*0\.5\+[^;]+\)\*\(1\.0-water\);\s+base=mix\(base,uSoil\.rgb\*\(0\.94\+grain\*0\.5\),worn\*uSoil\.a\);\s+groundCover\*=1\.0-worn;/);

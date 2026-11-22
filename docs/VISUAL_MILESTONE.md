@@ -38,7 +38,7 @@ Open the chevron beside the minimap:
 | Setting | Behaviour |
 | --- | --- |
 | Auto | Default since build 1150. Measures this computer while it draws and keeps the picture at about 45 frames a second or better: one small step of resolution first, then a lighter tier. Remembers what it found; picking Auto again measures afresh. |
-| Low | Atmospheric lighting and water; no cast-shadow map, no contact shading. One drawn pixel per page pixel. |
+| Low | Atmospheric lighting and water; no cast-shadow map, no contact shading, no worn ground, plain ground without the broad variation. One drawn pixel per page pixel. |
 | Balanced | 1024 × 1024 shadow map. Up to 1.5 device pixels per page pixel on a high-density display. |
 | High | 2048 × 2048 shadow map, grass, lanterns. Up to 2 device pixels per page pixel. Higher GPU cost. |
 | Atmospheric lighting | New light, shadows and water treatment. |
