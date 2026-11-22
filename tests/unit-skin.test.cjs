@@ -189,3 +189,48 @@ test('a unit\'s bones are sent to the card once, whatever the number of its batc
     assert.deepEqual(gl.drawn, ['pole', 'house', 'unit A', 'unit B', 'tower']);
     assert.deepEqual(sent, ['skin 0', 'bones A', 'skin 1', 'bones B', 'skin 0']);
 });
+
+// ---- a candidate, off by default: one shared texture at middle distance ---------------------
+test('at middle distance a unit\'s plain materials can share one texture: merged with their bones, switched off until judged', () => {
+    const { r, W, walker, model, m3, frame } = rig(), ue = walker._engine;
+    r.gl = new Proxy({}, { get: (t, k) => typeof k === 'string' && /^[A-Z][A-Z0-9_]*$/.test(k) ? k : () => ({}) });
+    r.tex = new Proxy({}, { get: (o, k) => (o[k] = o[k] || { name: k, _avg: [120, 90, 60] }) });
+    r._unitModels = new Map([['k', model]]);
+    const mid = r._unitMidModel('k');
+    const plain = model.skin.filter(p => !p.team && !p.accent && !p.blend && !p.badgePaint), kept = model.skin.filter(p => !plain.includes(p));
+    assert.ok(plain.length >= 4, plain.length + ' plain materials: ' + plain.map(p => p.texName));
+    assert.equal(mid.length, kept.length + 1, `${model.skin.length} draws near, ${mid.length} at middle distance`);
+    assert.ok(mid.length <= 6);
+    // The merged batch: every vertex of the plain materials, each still on its bone, each reading its
+    // material's own colour from the palette.
+    const merged = mid[0].buf.mesh, corners = plain.reduce((n, p) => n + model.meshes[model.skin.indexOf(p)].positions.length / 3, 0);
+    assert.deepEqual([mid[0].palette, merged.positions.length / 3, merged.bones.length], [true, corners, corners]);
+    const bonesWere = Array.from(plain).flatMap(p => Array.from(model.meshes[model.skin.indexOf(p)].bones));   // Array.from: these lists live in the engine's realm
+    assert.deepEqual(Array.from(merged.bones), bonesWere);
+    const slots = new Set(); for (let i = 0; i < merged.uvs.length; i += 2) { slots.add(merged.uvs[i]); assert.equal(merged.uvs[i + 1], 0.5); }
+    assert.equal(slots.size, new Set(plain.map(p => p.texName)).size, 'a colour per material');
+    // What the seat tints, the badge and the blob under the feet are the same batches as up close.
+    assert.ok(mid.length - 1 === kept.length && kept.every((p, i) => mid[i + 1] === p));
+    assert.equal(r._unitMidModel('k'), mid, 'built once per model');
+
+    // In the frame: only where the switch is on, only between the two heights.
+    const wrap = list => list.map(p => ({ buf: p.buf, tex: {}, tint: r.WHITE, base: m3.identity(), bone: null, blend: p.blend, model: m3.identity(), skin: true }));
+    ue.mid = () => wrap(mid);
+    const drawn = () => { frame(); return ue.drawn === ue.entries ? 'near' : ue.drawn === ue.midEntries ? 'mid' : 'far'; };
+    const MID = W.EngineRenderer.MID_UNIT_HALF_H, FAR = W.EngineRenderer.FAR_UNIT_HALF_H;
+    assert.ok(MID > 20 && MID < FAR);
+    r._halfH = MID + 20;
+    assert.equal(drawn(), 'near', 'off: as it was');
+    r.unitPalette = true;
+    assert.equal(drawn(), 'mid');
+    assert.ok(r._dl.opaque.filter(e => e.bones === ue.boneMats).length === mid.filter(p => !p.blend).length && r._dl.casters.length === 1, 'it still walks, and still casts');
+    r._halfH = MID - 1;
+    assert.equal(drawn(), 'near', 'up close every material has its own texture');
+    r._halfH = FAR + 50;
+    assert.equal(drawn(), 'far');
+    // A trebuchet on wheels has no such model and is drawn as it is.
+    delete ue.mid; r._halfH = MID + 20;
+    assert.equal(drawn(), 'near');
+    // Off unless someone turns it on.
+    assert.match(src('gamerenderer'), /this\.unitPalette = false;/);
+});

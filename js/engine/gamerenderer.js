@@ -174,6 +174,9 @@
             // A second picture of the same world at the same moment (js/second-camera.js):
             // someone names a place and a 2-D canvas to put it in. Null: one picture.
             this.secondView = null;
+            // A candidate, off until asp67 has judged it (overhaul step A4): from
+            // MID_UNIT_HALF_H up, a unit's plain materials share one flat-colour texture.
+            this.unitPalette = false;
             this._frameNo = 0;                // which frame this is, so nothing is moved twice in one
             this._fogCanvas = null;
             // Per-frame lists. casters: what is drawn into the shadow map only (a building's
@@ -1259,7 +1262,8 @@
                 base:M().identity(),bone:p.bone,blend:p.blend,model:M().identity(),skin
             }));
             unit._engine = Object.assign(this._unitRig(model), { type: engineType, entries: makeEntries(model.skin,true), phase: (this.units.length * 1.37) % 6.28,
-                far: () => makeEntries(this._unitFarModel(modelKey, engineType),false) });
+                far: () => makeEntries(this._unitFarModel(modelKey, engineType),false),
+                mid: () => makeEntries(this._unitMidModel(modelKey),true) });
             // inert THREE-shaped handles for game.js/fogofwar.js property pokes
             unit.mesh = { visible: true, position: { set: () => {}, x: 0, y: 0, z: 0 }, rotation: { z: 0 } };
             unit.healthBar = { material: { color: { setHex: () => {} } } };
@@ -1277,11 +1281,47 @@
             return {
                 skin: built.batches.map(p => ({ buf: GLCore.createMeshBuffers(this.gl, p.mesh), texName: p.tex,
                     team: p.team, accent: p.accent, bone: null, blend: p.blend, badgePaint: p.badgePaint })),
+                meshes: built.batches.map(p => p.mesh),      // the same batches in memory: the middle-distance model is merged from them
                 caster: built.caster ? GLCore.createMeshBuffers(this.gl, built.caster) : null,
                 bones: built.bones,
                 cpu: EngineUnits.batches(parts).map(p => ({ mesh: p.mesh, texName: p.tex, team: p.team, accent: p.accent, bone: p.bone, blend: p.blend, badgePaint: p.badgePaint }))
             };
         }
+        // A unit at middle distance (a candidate, see unitPalette). Up close each of a unit's
+        // materials has its own texture, and so its own draw: skin, hair, leather, iron,
+        // wood. From a little way off their grain cannot be seen, only their colour. Here
+        // those plain materials are merged into ONE mesh that reads each part's average
+        // colour from the palette texture, as the far model does from the whole-map height,
+        // but with the bones kept, so the unit still walks and strikes. What the seat's
+        // colour tints, the badge and the blob under its feet keep their own draws.
+        _unitMidModel(modelKey) {
+            if (!this._unitMid) this._unitMid = new Map();
+            if (this._unitMid.has(modelKey)) return this._unitMid.get(modelKey);
+            const model = this._unitModels.get(modelKey), plain = [], kept = [];
+            model.skin.forEach((p, i) => {
+                const slot = (!p.team && !p.accent && !p.blend && !p.badgePaint) ? this._paletteSlot(p.texName) : null;
+                if (slot == null) kept.push(p); else plain.push({ batch: p, mesh: model.meshes[i], slot });
+            });
+            const corners = plain.reduce((n, q) => n + q.mesh.positions.length / 3, 0);
+            let out;
+            if (plain.length < 2 || corners > 65535) out = model.skin;       // nothing to gain, or too large for one mesh
+            else {
+                const merged = EngineMesh.mergeMeshes(plain.map(q => {
+                    const uvs = new Float32Array(q.mesh.positions.length / 3 * 2), u = (q.slot + 0.5) / EngineRenderer.PALETTE_SLOTS;
+                    for (let i = 0; i < uvs.length; i += 2) { uvs[i] = u; uvs[i + 1] = 0.5; }
+                    return { mesh: { positions: q.mesh.positions, normals: q.mesh.normals, indices: q.mesh.indices, uvs }, m: M().identity() };
+                }));
+                const bones = new Float32Array(corners);
+                let at = 0;
+                for (const q of plain) { bones.set(q.mesh.bones, at); at += q.mesh.bones.length; }
+                merged.bones = bones;
+                this._unitPalette();
+                out = [{ buf: GLCore.createMeshBuffers(this.gl, merged), texName: null, team: false, accent: null, bone: null, blend: false, badgePaint: null, palette: true }].concat(kept);
+            }
+            this._unitMid.set(modelKey, out);
+            return out;
+        }
+
         // What one unit of that model carries: its bones' matrices (number 0, "none", stays
         // the identity) and the one entry it casts its shadow with.
         _unitRig(model) {
@@ -2642,14 +2682,16 @@
                             dl.blended.push({buf:quad,tex:this.tex.mote,tint,alpha:alpha*strength,additive:true,model:m3.multiply(m3.multiply(m3.translation(x,y+.015,z),bb),m3.scaling(w,h,1))});
                     }
                 }
-                const parts = this._halfH > EngineRenderer.FAR_UNIT_HALF_H ? (ue.farEntries || (ue.farEntries = ue.far())) : ue.entries;
+                const parts = this._halfH > EngineRenderer.FAR_UNIT_HALF_H ? (ue.farEntries || (ue.farEntries = ue.far()))
+                    : (this.unitPalette && ue.mid && this._halfH > EngineRenderer.MID_UNIT_HALF_H) ? (ue.midEntries || (ue.midEntries = ue.mid()))
+                    : ue.entries;
                 ue.drawn = parts;
                 // The pose, as the matrices the shader moves the limbs by (overhaul step A4):
                 // one per bone of this unit's model, in the model's order, after "none".
                 const bones = ue.boneMats, names = ue.boneNames;
                 if (bones) for (let k = 0; k < names.length; k++) bones.set(pose.mats[names[k]] || this._one || (this._one = m3.identity()), (k + 1) * 16);
                 const solid = !(u._fade != null && u._fade < 1);
-                if (solid && ue.caster && parts === ue.entries) { ue.caster.model = world; dl.casters.push(ue.caster); }
+                if (solid && ue.caster && parts.length && parts[0].skin) { ue.caster.model = world; dl.casters.push(ue.caster); }
                 for (const e of parts) {
                     // A skinned batch holds every limb and is moved as a whole; the far model's
                     // parts were merged at rest and have no bones.
@@ -3246,6 +3288,9 @@
     // Contact shading: how much light the ground loses right under a wall or a crown, and
     // how many changed tiles of the map are painted in one frame (all 256 at a match's
     // start take eleven frames).
+    // From this camera half-height up a unit is drawn from its middle-distance model, where
+    // unitPalette is on. At 30 a soldier stands some seventy pixels tall on a 1080-line screen.
+    EngineRenderer.MID_UNIT_HALF_H = 30;
     EngineRenderer.CONTACT = 0.7;
     EngineRenderer.GROUND_VARY = { summer: [0.11, 1.0], desert: [0.09, 0.3], winter: [0.07, 0.0], none: [0, 0] };
     // Worn ground. What one pass adds, of 255 (so some twenty workers' passes show and

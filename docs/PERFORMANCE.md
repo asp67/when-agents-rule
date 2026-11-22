@@ -159,3 +159,21 @@ own texture. Getting further means one texture for a unit's plain materials at t
 distances where their grain cannot be seen (the far model already does this from the
 whole-map height), which changes how units look at middle distance and so is a step to
 look at, not only to measure.
+
+**A candidate, build 1183, switched off: one shared texture at middle distance.** From a
+camera half-height of 30 up (`EngineRenderer.MID_UNIT_HALF_H`), a unit's plain materials
+(skin, hair, leather, iron, wood) can be drawn as one mesh that reads each part's average
+colour from the palette texture, with the bones kept: a unit is then four or five draws
+instead of eleven. It is built behind `renderer.unitPalette`, which is false, so nothing
+changes until it has been looked at (side-by-side stills at half-heights 35, 60 and 100
+were made for that). The same army view as above, own textures
+against the shared one, two runs each taken in turn on build 1183:
+
+| | draw calls a frame | | ms a frame, median | | |
+| --- | --- | --- | --- | --- | --- |
+| | own | shared | own | shared | |
+| 200 units in view (half-height 45) | 4330 | 3129 | 8.1 | 5.5 | -33 % |
+| 256 units in view (half-height 90) | 5503 | 3855 | 10.1 | 6.7 | -34 % |
+
+With it, 200 units are about a thousand of those calls; the other two thousand are the
+town around them, which is where the diet would have to go on.
