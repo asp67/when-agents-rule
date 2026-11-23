@@ -131,9 +131,20 @@ class MatchChronicle {
                     const took = new Set((b.hit && b.hit[id]) || []);
                     Object.values(s.involved || {}).forEach(t => (t.ids || []).forEach(x => took.add(x)));
                     const involved = took.size;
-                    const l = Object.values(s.lost || {}).reduce((a, n) => a + n, 0);
+                    const ai = ais.find(a => a.id === id);
+                    const civ = ai ? ai.civilization : null;
+                    let l = 0, lostValue = 0;
+                    Object.entries(s.lost || {}).forEach(([type, n]) => {
+                        const count = n || 0;
+                        l += count;
+                        const def = (typeof getUnitDefFor === 'function' && civ) ? getUnitDefFor(civ, type)
+                            : (typeof UNIT_DEFS !== 'undefined' && UNIT_DEFS) ? UNIT_DEFS[type] : null;
+                        const c = def && def.cost;
+                        const unitCost = c ? (c.food || 0) + (c.wood || 0) + (c.stone || 0) + (c.gold || 0) : 80;
+                        lostValue += count * unitCost;
+                    });
                     lost += l;
-                    tally[id] = { involved, lost: l };
+                    tally[id] = { involved, lost: l, lostValue };
                 });
                 this.emit('battle', { seats: sides, x: Math.round(b.x), z: Math.round(b.z), sides: tally,
                     seconds: Math.round((b.lastAt - b.startedAt) / 1000) }, lost >= 10 ? 3 : lost >= 3 ? 2 : 1);

@@ -91,7 +91,7 @@ Most quick LLM demos reward a single clever answer. A full match rewards the thi
 - **🛰️ Live spectator dashboard** — ranked leaderboard, streaming **decision log** (every move plus the model's stated reason, rejections flagged), per-model **advice chat**, and pause per model.
 - **📺 Broadcast mode** — for a stream or a recording: the operator's panels make way for a scoreboard, captions of what each model just ordered and why, and a held Wonder's countdown in its seat's colour. **Esc** or one click brings the controls back. Nothing about the match changes.
 - **🎯 Intent and 🎬 auto camera** — floating cards show each model's latest orders and reasons where they point; the auto camera follows the fighting.
-- **📈 Bench view** — on top of either mode (key **B**): every model's plan with its steps ticked off as they are carried out, the threats it was shown and how it answered, and a **comparison card** that opens the models side by side. See [How a model is scored](#-how-a-model-is-scored).
+- **📈 Bench view** — on top of either mode (key **B**): a compact **comparison card** on the right showing a 2-line WAR / Dominance sparkline, 5-pillar equalizer bars (`G M S T D`), and situational batching (`3/2/1/J/P`); click it for the full side-by-side **Comparison Board** with duration-invariant cost, bandwidth, drift, and an interactive timeline inspector. See [How a model is scored](#-how-a-model-is-scored).
 - **📊 End-of-match evaluation** — a **report card** with each model seat's evaluation profile, a **chart to share**, the heaviest moments of the match with the decision behind each, and per seat: latency, tokens, error breakdown, behaviour tags and its **final word** on the match.
 - **🗓️ Season table** — a model's profiles added up over matches, only under the same declared conditions, with every match's value shown beside the mean.
 - **📄 Exports** — the evaluation as `results_<datetime>.md`, and the full **transcript** as JSONL: every state sent, every reply, every harness answer, with the results and the economy timeline at the end.
@@ -224,7 +224,7 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 </div>
 
-**Overlays** go on top of either mode, each off until you ask for it: the **Bench view** (**B**), the **race chart** of power over time (**R**), the **model's view**, the world as one seat knows it with its own fog (**V**), a **second camera** on a fight the main picture is not showing (**I**), and in broadcast mode a strip that compares the models on one part of the profile at a time (**C**).
+**Overlays** go on top of either mode, each off until you ask for it: the **Bench view** (**B**), the **race chart** of power over time (**R**), the **model's view**, the world as one seat knows it with its own fog (**V**), a **second camera** on a fight the main picture is not showing (**I**), and in broadcast mode a comparison lower-third strip rotating through the five Scale `v4` pillars plus **Action Bandwidth** and **Long-Horizon Drift** (**C**).
 
 ## 🔧 Tool calls, and which stack served them
 
@@ -291,35 +291,44 @@ Nothing is interpolated between snapshots: every frame is a moment the file actu
 
 ## 🧮 How a model is scored
 
-The **evaluation profile** scores how a model seat played, from the transcript alone:
+The **evaluation profile (Scale `v4`)** scores five deterministic, transcript-only pillars combined into a fixed-weight **WAR Score (`0–100`)**. Programmatic grading of free-form plan prose is omitted (`plan` stays purely qualitative), and runtime cost/drift sit beside WAR Score rather than distorting capability:
 
-| Part | What it asks |
-| --- | --- |
-| **Grounding** | Were its orders valid when it gave them? |
-| **Planning** | Does it keep a live, concrete plan? |
-| **Follow-through** | Does it carry out what its plan says? |
-| **Tactical** | Shown a threat, does it answer at once? |
-| **Strategy** | Did its play turn into power and a win? |
+| Pillar | Weight | What it measures |
+| --- | :---: | --- |
+| **Grounding** (`G`) | **20 %** | Severity-weighted command validity (`1.0×` constraint, `2.5×` reference hallucination, `1.5×` repeat inside 2 decisions) with Bayesian smoothing (`K = 8`), excluding `wait` (wait-only scores `0`). |
+| **Macro & Agency** (`M`) | **25 %** | Scaled economy/tech/age milestones, operational hygiene (idle workers, pop-caps, non-banking float), situational 3-command batching (`openFronts`), and `passive` vs `justified` waits, gated by active development (`activityGate`). |
+| **Spatial & Fog** (`S`) | **15 %** | Map exploration progress, post-4-minute rival discovery, and grounding accuracy on coordinate/target commands. |
+| **Tactical & Combat** (`T`) | **15 %** | Value-weighted battle exchange (`lostValue` + razed buildings, fair multi-way splits) and response speed to home-radius threats and rival Wonders (`assign_workers` counts for worker raids). |
+| **Dominance** (`D`) | **25 %** | Time-weighted Bradley-Terry power trajectory dominance (more weight on mid/late-game standings, elimination-proof) blended `75/25` with final match placement. |
 
-The **Index** is the mean of Grounding, the plan as far as it was followed, Tactical and Strategy. One match is one sample.
+- **Side diagnostics (never inside WAR Score):** **Action Bandwidth** (`3/2/1/Justified/Passive` distribution & parallelization `@2+ open fronts`), **Duration-Invariant Cognitive Cost** (`median/p90` latency, `tokens/decision`, `output tok / valid order`, `valid orders / think-min`, `WAR / 10k tok-dec`), and **Long-Horizon Context Drift** (first-half vs. second-half error delta, idle-worker delta, and latency ratio after 16+ decisions).
+- **Warmup guard:** Early snapshots (`< 5 min` and `< 15` rated commands) are badged `Early` (`warmup`) and never highlight a premature leader.
 
 <div align="center">
 
-| The comparison board | The report card |
-|:---:|:---:|
-| <img src="Screenshots/ComparisonBoard.png" alt="The comparison board: three models side by side, their five scores over the match on top, seconds, tokens and refused orders per decision in the middle, a summary table below" width="560"> | <img src="Screenshots/ReportCard.png" alt="The report card on the results screen: the profile of three models as a matrix, and under it the chart to share with the Index against tokens per decision and a map of where each model sent its orders" width="300"> |
+<img src="Screenshots/ComparisonBoard.png" alt="Scale v4 Comparison Board comparing two raw models (DeepSeek V4.1, GLM-5.3-Flash) against two MCP agent harnesses (Claude Code, Antigravity) across the 5 capability curves, performance rates, WAR Score, bandwidth, duration-invariant cost and drift" width="840">
 
-<sub><i>The same match, 33 minutes in and at its end. Left: the models side by side. Right: the report card with the chart to share.</i></sub>
+<br>
+
+<sub><i><b>Comparison Board (Scale v4):</b> Two raw library models (DGX DeepSeek V4.1, O GLM-5.3-Flash) facing two MCP agent harnesses (Claude Code · Sonnet 5.5, Antigravity · Gemini 3.8 Flash) in a live real-time match — showing five capability curves, refusal/hallucination markers on the timeline, rolling rate telemetry, WAR Score, situational batching bandwidth, duration-invariant cognitive cost, and early-to-late drift side by side.</i></sub>
+
+<br><br>
+
+<img src="Screenshots/BenchBroadcast.jpg" alt="Full live Broadcast Mode with Scale v4 overlays: mini Comparison card top-right, full Comparison Board center, Bradley-Terry Strategy lower-third bottom-left, Race chart and minimap bottom-right" width="840">
+
+<br>
+
+<sub><i><b>Live Broadcast Mode (build 1233):</b> The compact Comparison mini card sits top-right beside the scoreboard (2-line WAR/Dominance sparkline, 5 equalizer bars, batching strip), the Broadcast Compare lower-third cycles bottom-left, the power/plan race chart and minimap sit bottom-right, and clicking the mini card opens the full Comparison Board.</i></sub>
 
 </div>
 
-- **During a match** the Bench view (key **B**) shows a comparison card; a click opens the **board**, the models side by side: their five scores over the match with the decisions that went wrong marked on the clock (a loop on a refused order, a limit ignored, an order at something that is not there, a threat left alone), then seconds per decision, tokens per decision and the share of orders refused, then one summary table with cost and discipline. Every seat is tagged **raw model** or **agent harness**.
-- **After it** the results screen carries the **report card**: every number opens the decisions behind it, and a **chart to share** puts the match into one picture (PNG or SVG). The exported transcript carries the profile and the scores every 30 seconds of the match, so a file can be read back the same way in [Analyze Transcript](#-analyze-transcript).
-- **Across matches** the **Season table** (main menu) adds a model's profiles up, only under the same declared conditions. A mean stands with its interval and with the lowest, the median and the highest match, and nothing is called ahead on one match.
+- **During a match** the Bench view (key **B**) opens the compact comparison card on the right; clicking it opens the **Comparison Board** with the five capabilities + dashed WAR Score line, inspector ticks (loops, awareness misses, constraint slips, passive stalls, unanswered threats), rolling rate charts, action bandwidth, duration-invariant cost, long-horizon drift, and **RAW MODEL** / **AGENT HARNESS** tags.
+- **After it** the results screen carries the **report card**: every metric opens the underlying transcript turns, and a downloadable **Pareto scatter chart** (default axis: `Output tokens per valid order` vs. `WAR Score`, with an efficiency sweet-spot quadrant and spatial order heatmaps; PNG or SVG). Transcript exports embed 17-field 30-second score history alongside `publicProfile`.
+- **Across matches** the **Season table** adds a model's profiles up only under matching conditions and scale, showing mean intervals and min/median/max per seat, calibrated against five deterministic baseline anchors in [docs/SCORING.md](docs/SCORING.md).
 
-The profile is provisional. What each part measures, how it was checked against seats that cannot play, and what is still wrong with it are in [docs/SCORING.md](docs/SCORING.md).
+The profile is provisional. Full formulas, anchor scores and caveats are documented in [docs/SCORING.md](docs/SCORING.md).
 
-The results also list latency, tokens, commands per turn and a full error breakdown. Costs the harness caused (a rate limit, a round deadline, a pause) are counted but kept out of the model's reliability. The older 0–100 **match heuristic** is still there, folded away as legacy: it summarizes one match and is not a capability score.
+Results exports also keep full raw latency, token and error breakdowns. Harness faults and contended commands never penalize a model's Grounding rate, and the older 0–100 **match heuristic** remains tucked away as legacy context.
 
 ## 🛠️ How it works
 

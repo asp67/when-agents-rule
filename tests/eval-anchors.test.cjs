@@ -1,7 +1,5 @@
-// The anchor seats (overhaul step C6): tools/eval/anchors.cjs plays seats that cannot
-// play against the rule-based brain and scores them with the ledger a model is scored
-// with. Held here, on matches of a few minutes: that each anchor is what it says it is,
-// and that its decisions arrive at the ledger as a model's would.
+// The anchor seats (Scale v4): tools/eval/anchors.cjs plays deterministic baseline policies
+// against the rule-based brain and scores them with the same WarEval ledger a model uses.
 const test = require('node:test'), assert = require('node:assert/strict');
 const path = require('node:path');
 const root = path.resolve(__dirname, '..');
@@ -12,33 +10,40 @@ const played = {};
 const play = async anchor => played[anchor] || (played[anchor] = await playOne({ anchor, seed: 'anchor-1', minutes: 3, roundSec: 30, civs: ['greek', 'persian'] }));
 const seatOf = r => WarEval.profileOf(r.text).seats.find(s => s.name === r.anchor);
 
-test('a seat that does nothing has nothing to be judged on, and is still in the match', async () => {
+test('a seat that does nothing scores near zero and is still ranked in the match', async () => {
     const r = await play('do-nothing'), s = seatOf(r);
-    assert.deepEqual([r.rounds, s.decisions, s.grounding.judged, s.grounding.score, s.planning.score], [6, 6, 0, null, 0]);
-    // The match's own sampler wrote its power down every five seconds, and the results rank it.
+    assert.deepEqual([r.rounds, s.decisions, s.grounding.judged, s.grounding.score, s.macro.score], [6, 6, 0, 0, 0]);
     assert.ok(s.strategy.samples >= 30 && s.strategy.powerShare > 0 && s.strategy.powerShare < 0.5);
     assert.deepEqual([s.strategy.final, s.strategy.rank, s.strategy.of], [true, 2, 2]);
-    // The rule-based seat is in the profile with a strategy row and nothing else to score.
+    assert.ok(s.index.value < 10, 'do-nothing WAR Score ' + s.index.value);
     const rival = WarEval.profileOf(r.text).seats.find(x => x.name === 'rule-based');
     assert.deepEqual([rival.decisions, rival.strategy.rank, rival.index.value], [0, 1, null]);
 });
 
-test('a seat that only waits has nothing to be rated on: a wait can never be refused', async () => {
+test('a seat that only waits has zero rated commands and cannot farm Grounding or WAR Score', async () => {
     const s = seatOf(await play('wait-only'));
-    assert.deepEqual([s.grounding.judged, s.grounding.ok, s.grounding.waits, s.grounding.rated, s.grounding.score], [6, 6, 6, 0, null]);
-    assert.deepEqual([s.planning.score, Array.from(s.versatility.orders)], [0, ['wait']]);
-    // What is left to it is a plan it never stated and its place in the match.
-    assert.deepEqual([s.index.of, s.index.plan], [2, 0]);
-    assert.ok(s.index.value < 15, 'Index ' + s.index.value);
+    assert.deepEqual([s.grounding.judged, s.grounding.ok, s.grounding.waits, s.grounding.rated, s.grounding.score], [6, 6, 6, 0, 0]);
+    assert.deepEqual([s.macro.score, Array.from(s.versatility.orders)], [0, ['wait']]);
+    assert.equal(s.index.of, 5);
+    assert.ok(s.index.value < 10, 'wait-only WAR Score ' + s.index.value);
 });
 
-test('a seat that states a plan and never acts has a plan and no follow-through', async () => {
+test('a seat that states a plan and only waits scores like wait-only (no free plan credit)', async () => {
     const s = seatOf(await play('plan-only'));
-    assert.deepEqual([s.planning.statements, s.planning.steps, s.planning.concrete, s.planning.coverage], [1, 5, 5, 1]);
-    // The match is over and none of its five steps was carried out: all dropped, however short the match was.
-    assert.deepEqual([s.follow.steps, s.follow.acted, s.follow.pending, s.follow.dropped, s.follow.score], [5, 0, 0, 5, 0]);
-    // So its plan counts for nothing in its Index, and its waits give it no Grounding.
-    assert.deepEqual([s.grounding.score, s.index.plan, s.index.of], [null, 0, 2]);
+    assert.equal(s.plan.statements, 1);
+    assert.equal(s.plan.standing.steps.length, 5);
+    assert.deepEqual([s.grounding.score, s.macro.score, s.index.of], [0, 0, 5]);
+    assert.ok(s.index.value < 10, 'plan-only WAR Score ' + s.index.value);
+});
+
+test('safe-spam (valid assign_workers cycling) cannot game Macro, Spatial, or Tactical', async () => {
+    const s = seatOf(await play('safe-spam'));
+    assert.equal(s.grounding.rated, 6);
+    assert.equal(s.grounding.score, 100);
+    assert.equal(s.macro.score, 0, 'safe worker shuffling earns 0 Macro');
+    assert.ok(s.spatial.score <= 15, 'no exploration beyond starting Town Center fog: ' + s.spatial.score);
+    assert.ok(s.tactical.score <= 5, 'zero activity gate keeps neutral tactical at 0: ' + s.tactical.score);
+    assert.ok(s.index.value < 25, 'safe-spam WAR Score ' + s.index.value);
 });
 
 test('random-valid names only what its state shows: refused for the world\'s reasons, never invalid', async () => {
@@ -46,38 +51,38 @@ test('random-valid names only what its state shows: refused for the world\'s rea
     assert.ok(s.grounding.judged >= 6, 'only ' + s.grounding.judged + ' commands judged');
     assert.equal(s.grounding.invalid, 0);
     assert.ok(s.grounding.avoidable > 0, 'a random seat that is never refused is not random');
-    assert.deepEqual([s.planning.score, s.follow.score], [0, 0]);
-    // The same seed plays the same match.
+    assert.ok(s.index.value < 35, 'random-valid WAR Score ' + s.index.value);
     const again = await playOne({ anchor: 'random-valid', seed: 'anchor-1', minutes: 3, roundSec: 30, civs: ['greek', 'persian'] });
     assert.equal(again.text, r.text);
 });
 
-test('the summary is one row per anchor, averaged over its matches, in the scorer\'s own parts', async () => {
+test('the summary is one row per anchor, averaged over its matches, in WarEval.SCORED', async () => {
     const matches = [];
     for (const a of ANCHORS) matches.push(await play(a));
     const sum = summarize(matches);
-    assert.deepEqual(Object.keys(sum), ['do-nothing', 'wait-only', 'plan-only', 'random-valid']);
+    assert.deepEqual(Object.keys(sum), ['do-nothing', 'wait-only', 'plan-only', 'safe-spam', 'random-valid']);
     for (const a of ANCHORS) {
         assert.equal(sum[a].matches, 1);
         assert.equal(sum[a].index, seatOf(played[a]).index.value);
         for (const k of WarEval.SCORED) assert.equal(sum[a][k], seatOf(played[a])[k].score, a + ' ' + k);
     }
     const text = report(sum);
-    assert.match(text, /ANCHOR +matches +decisions +commands rated +valid +eliminated +grounding +planning +follow +tactical +strategy +Index +of parts/);
-    assert.match(text, /do-nothing +1 +6 +0 +- +0 +- +0/);
+    assert.match(text, /^ANCHOR +matches +decisions +commands rated +valid +eliminated +grounding +macro +spatial +tactical +strategy +WAR Score +of parts/);
+    assert.match(text, /safe-spam +1 +6 +6 +100\.0 %/);
 });
 
-test('the scoring document quotes what the code holds', () => {
+test('docs/SCORING.md matches WarEval constants and documents all Scale v4 anchors and pillars', () => {
     const fs = require('node:fs');
     const doc = fs.readFileSync(path.join(root, 'docs/SCORING.md'), 'utf8').replace(/\s+/g, ' ');
-    const r = WarEval.READER.heldOut, pct = v => (v * 100).toFixed(1) + ' %';
-    assert.ok(doc.includes(`On the ${r.steps} it was never adjusted against, ${pct(r.precision)} of what it reports is in the step, and it finds ${pct(r.recall)} of what is`));
-    assert.ok(doc.includes(`against ${WarEval.READER.steps} plan steps`));
     assert.ok(doc.includes('Scale `' + WarEval.SCALE + '`') || doc.includes('scale `' + WarEval.SCALE + '`'));
-    assert.deepEqual([WarEval.FOLLOW_WINDOW, WarEval.RESPONSE_WINDOW, WarEval.LEAD_FACTOR, WarEval.LEAD_SECONDS], [10, 3, 1.25, 300]);
-    for (const said of ['within ten decisions', 'within three decisions', 'a quarter more power than the next seat, held five minutes']) assert.ok(doc.includes(said), said);
-    // Every anchor the tool plays is in the document's table, and every scored part has its row.
-    for (const a of ANCHORS) assert.ok(doc.includes('| ' + a + ' |'), a);
-    for (const part of ['**Grounding**', '**Planning**', '**Follow-through**', '**Tactical**', '**Strategy**']) assert.ok(doc.includes('| ' + part + ' |'), part);
+    assert.deepEqual([WarEval.RESPONSE_WINDOW, WarEval.RESPONSE_RADIUS, WarEval.HOME_RADIUS, WarEval.LEAD_FACTOR, WarEval.LEAD_SECONDS], [3, 50, 110, 1.25, 300]);
+    assert.deepEqual(WarEval.WEIGHTS, { grounding: 0.20, macro: 0.25, spatial: 0.15, tactical: 0.15, strategy: 0.25 });
+    for (const sym of ['RESPONSE_WINDOW = 3', 'RESPONSE_RADIUS = 50', 'HOME_RADIUS = 110', 'WARMUP_SEC', 'DRIFT_MIN_DECISIONS = 16']) {
+        assert.ok(doc.includes(sym), 'SCORING.md missing ' + sym);
+    }
+    for (const a of ANCHORS) assert.ok(doc.includes('| `' + a + '` |'), 'SCORING.md missing anchor ' + a);
+    for (const part of ['**Grounding**', '**Macro & Agency**', '**Spatial & Fog**', '**Tactical & Combat**', '**Dominance**']) {
+        assert.ok(doc.includes('| ' + part + ' |'), 'SCORING.md missing pillar ' + part);
+    }
     assert.equal(WarEval.SCORED.length, 5);
 });

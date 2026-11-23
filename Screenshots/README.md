@@ -50,6 +50,15 @@ the episode's OBS recording; the matches themselves are in `samples/`.
 | WinterTown.jpg | Episode 9, OBS 0:50:14 | GLM 5.3's Egyptian town in a winter match, with its notes |
 | ArcherRaid.jpg | Episode 10, OBS 0:25:42 | DeepSeek V4.1's Yamato archers raze GLM 5.3's Egyptian base |
 
+## Scale v4 comparison board (build 1233)
+
+Two captures from a live four-seat match on 23 November 2026 (`DGX DeepSeek V4.1` and `O glm-5.3-flash` as raw library models vs. `Claude Code` running `Sonnet 5.5` and `Antigravity` running `Gemini 3.8 Flash` over MCP) after deploying Scale `v4` and removing the left plan drawer.
+
+| Asset | Source | Content |
+| --- | --- | --- |
+| ComparisonBoard.png | Screenshot, 23 Nov 22:01 (1276 x 848) | Full Scale `v4` Comparison Board (`15:47`): 5 capability curves + WAR Score, timeline markers, rolling rates, bandwidth, duration-invariant cost, drift and raw vs. harness tags; replaced the build 1228 capture |
+| BenchBroadcast.jpg | Screenshot, 23 Nov 22:01 (1920 x 1093 JPEG from 2287 x 1302 PNG) | Live Broadcast Mode (`15:57`) showing the Comparison Board, top-right mini card, bottom-left Strategy Bradley-Terry comparison strip, and bottom-right Race chart + minimap |
+
 ## Overlays and scoring (build 1228)
 
 Four Windows screenshots of the game window during and after a live three-model arena match

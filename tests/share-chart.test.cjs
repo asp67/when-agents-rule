@@ -137,16 +137,19 @@ test('the board: the match as a picture, against speed or tokens, with the order
     const idx = id => ledger.profile().seats.find(s => s.id === id).index.value;
     // Seat a: four seconds a decision. Seat b is a harness that ended its turns in 12 ms: no speed, so it is named under the plot.
     assert.deepEqual(plain(speed.points.map(p => [p.name, p.x, p.y, p.harness])), [['Seat a', 4, idx('a'), false], ['Seat b', null, idx('b'), true]]);
-    assert.deepEqual([speed.legend.raw, speed.legend.harness, speed.foot[1]], ['bench.h.raw', 'bench.h.harness', 'share.foot{"scale":"v3"}']);
+    assert.deepEqual([speed.legend.raw, speed.legend.harness, speed.foot[1]], ['bench.h.raw', 'bench.h.harness', 'share.foot{"scale":"v4"}']);
     assert.match(speed.foot[0], /^When Agents Rule · github\.com\//);
+    // Default X-axis is output tokens per valid order, with Pareto sweet-spot quadrant highlighted.
+    const outSpec = u.benchShareSpec(ledger);
+    assert.equal(outSpec.x, 'share.xOutPerOk');
+    assert.equal(outSpec.sweetSpot, true);
     // Against tokens: ten thousand a decision for seat a; seat b's harness reports none.
     assert.deepEqual(plain(u.benchShareSpec(ledger, 'tokens').points.map(p => p.x)), [10, null]);
     assert.equal(u.benchShareSpec(ledger, 'tokens').x, 'share.xTokens');
     // The order map: a seat a square; seat a's seven placed orders, four of them in one corner.
     assert.deepEqual(speed.heat.seats.map(s => [s.name, s.grid.placed, s.grid.most]), [['Seat a', 7, 4], ['Seat b', 2, 2]]);
     assert.equal(u.benchShareSpec(WarEval.createLedger()), null);
-    // It sums a match up, so it stands on the results screen under the report card, with its buttons (build 1227:
-    // "share is for the game summary, not the live comparison"). The board at full size does not carry it.
+    // It sums a match up, so it stands on the results screen under the report card, with its buttons.
     u.toggleBenchFull(true);
     assert.doesNotMatch(els.benchFull.innerHTML, /bf-share|<svg xmlns/);
     u.toggleBenchFull(false);
@@ -154,7 +157,8 @@ test('the board: the match as a picture, against speed or tokens, with the order
     els.summaryProfile = { style: {}, innerHTML: '' };
     u.updateSummaryProfile();
     const html = els.summaryProfile.innerHTML;
-    assert.match(html, /<p class="summary-profile-note">sum\.profileNote<\/p><div class="bf-share"><h4>share\.title<small>share\.tip<\/small><\/h4><div class="bs-bar"><button type="button" class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('speed'\)">share\.speed<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareAxis\('tokens'\)">share\.tokens<\/button><span><\/span><button type="button" class="bs-btn" onclick="game\.ui\.benchShareSave\('png'\)">share\.png<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareSave\('svg'\)">share\.svg<\/button><\/div><div class="bs-pic"><svg xmlns/);
+    assert.match(html, /<p class="summary-profile-note">sum\.profileNote<\/p><div class="bf-share"><h4>share\.title<small>share\.tip<\/small><\/h4><div class="bs-bar"><button type="button" class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('outPerOk'\)">share\.outPerOk<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareAxis\('speed'\)">share\.speed<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareAxis\('tokens'\)">share\.tokens<\/button><span><\/span><button type="button" class="bs-btn" onclick="game\.ui\.benchShareSave\('png'\)">share\.png<\/button><button type="button" class="bs-btn" onclick="game\.ui\.benchShareSave\('svg'\)">share\.svg<\/button><\/div><div class="bs-pic"><svg xmlns/);
+    assert.match(html, /class="sweet-spot"/);
     assert.match(html, /<\/svg><\/div><\/div>$/);
     assert.match(html, />share\.notShown Seat b<\/text>/);
     u.benchShareAxis('tokens');
@@ -178,8 +182,8 @@ function season() {
     return { Page: context.Page, p: new context.Page(ui), els, saved };
 }
 let serial = 0;
-const flat = v => ({ grounding: v, planning: v, follow: v, tactical: v, strategy: v, index: v });
-const match = seats => ({ v: 1, scale: 'v3', matchId: 'm' + (++serial), at: 1795000000000 + serial * 60000, build: 1226, duration: '12:00', mapSeed: 's' + serial, layout: 'greek,persian', players: seats.length, source: 'played',
+const flat = v => ({ grounding: v, macro: v, spatial: v, tactical: v, strategy: v, index: v });
+const match = seats => ({ v: 1, scale: 'v4', matchId: 'm' + (++serial), at: 1795000000000 + serial * 60000, build: 1226, duration: '12:00', mapSeed: 's' + serial, layout: 'greek,persian', players: seats.length, source: 'played',
     seats: seats.map(([name, seat, rank, v, lat, via]) => ({ id: name + seat, seat, name, model: name + '-model', rank, of: seats.length, winner: rank === 1, via: via || 'raw',
         cond: 'cond-a', protocol: 'turn-based', core: 'core', scores: flat(v), latencyMs: lat })) });
 
@@ -199,8 +203,8 @@ test('the Season page: a group as a picture, the mean Index with its lowest and 
     assert.equal(p.shareSpec(g, 'wins').y, 'share.yWins');
     // On the page it is folded away until asked for, and then carries its picture and its buttons.
     p.render();
-    assert.match(els.seasonBody.innerHTML, /<details class="season-share" ontoggle="game\.ui\.seasonPage\(\)\.shareToggle\('cond-a\/v3', this\.open\)"><summary>share\.title<\/summary><\/details>/);
-    p.shareToggle('cond-a/v3', true);
+    assert.match(els.seasonBody.innerHTML, /<details class="season-share" ontoggle="game\.ui\.seasonPage\(\)\.shareToggle\('cond-a\/v4', this\.open\)"><summary>share\.title<\/summary><\/details>/);
+    p.shareToggle('cond-a/v4', true);
     assert.match(els.seasonBody.innerHTML, /<details class="season-share" open [^>]*><summary>share\.title<\/summary><div class="bs-bar"><button type="button" class="bs-btn is-on" onclick="game\.ui\.seasonPage\(\)\.setShareY\('index'\)">share\.byIndex<\/button>/);
     assert.match(els.seasonBody.innerHTML, /<div class="bs-pic"><svg xmlns.*class="whisker".*<\/svg><\/div><\/details>/s);
     p.setShareY('wins');
@@ -216,7 +220,7 @@ test('the Season page: a group as a picture, the mean Index with its lowest and 
     one.Page.keep(match([['Alpha', 0, 1, 90, 4000]])); one.Page.keep(match([['Alpha', 0, 1, 80, 4000]]));
     one.p.samples = []; one.p.render();
     assert.doesNotMatch(one.els.seasonBody.innerHTML, /season-share/);
-    return p.shareSave('cond-a/v3', 'png').then(() => assert.deepEqual(saved, [['<svg', 'season-cond-a-wins', 'png']]));
+    return p.shareSave('cond-a/v4', 'png').then(() => assert.deepEqual(saved, [['<svg', 'season-cond-a-wins', 'png']]));
 });
 
 test('every word of the pictures is keyed in all four languages, and the page loads the module', () => {

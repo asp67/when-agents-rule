@@ -2683,9 +2683,9 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
    stand side by side. Top to bottom: gameplay, model performance, summary. The mini card is the same grid
    without its label column. */
 .bb { --lab: 232px; display: flex; flex-direction: column; gap: 3px; min-width: 0;
-    --bt-loop: #ff6b6b; --bt-constraint: #ffb454; --bt-awareness: #c59cf0; --bt-threat: #5cc8ff; --bt-refused: #9aa3b2; }
+    --bt-loop: #ff6b6b; --bt-constraint: #ffb454; --bt-awareness: #c59cf0; --bt-passive: #f87171; --bt-threat: #5cc8ff; --bt-refused: #9aa3b2; }
 .bb-row { display: grid; grid-template-columns: var(--lab) repeat(var(--n, 1), minmax(0, 1fr)); gap: 0 12px; align-items: stretch; }
-.bb.is-mini { cursor: pointer; gap: 2px; }
+.bb.is-mini { cursor: pointer; gap: 3px; }
 .bb.is-mini .bb-row { grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: 0 6px; }
 .bb-lab { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 2px; color: #aab0bd; }
 .bb-lab b { color: #d7d2c2; font-weight: 600; }
@@ -2702,8 +2702,28 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bg-chart { display: block; width: 100%; background: rgba(0, 0, 0, 0.25); border-radius: 2px; }
 .bg-chart.bb-game { height: 108px; }
 .bg-chart.bb-rate { height: 38px; }
-.bb.is-mini .bg-chart.bb-game { height: 44px; }
+.bb.is-mini .bg-chart.bb-game { height: 36px; }
 .bb.is-mini .bg-chart.bb-rate { height: 26px; }
+/* Live mini-card 5-pillar equalizer bars (G M S T D) & compact batching footer. */
+.bb-eqrow { margin-top: 2px; }
+.bb-eq { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; padding: 2px 0 0; align-items: end; }
+.bb-eq-bar { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; font-size: 0.68em; line-height: 1; overflow-wrap: normal; }
+.bb-eq-bar b { font-size: 0.84em; font-weight: 600; letter-spacing: -0.05em; white-space: nowrap; overflow-wrap: normal; color: #e2e8f0; font-variant-numeric: tabular-nums; }
+.bb-eq-bar i { display: flex; align-items: flex-end; width: 6px; height: 20px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.bb-eq-bar i u { display: block; width: 100%; border-radius: 2px; }
+.bb-eq-bar small { color: #8d97a8; font-size: 0.88em; white-space: nowrap; overflow-wrap: normal; }
+.bb-mini-foot { display: flex; flex-direction: column; align-items: stretch; gap: 2px; margin-top: 2px; }
+.bb-mini-foot span:last-child { text-align: center; font-size: 0.68em; color: #9aa2b1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+/* Situational batching stacked micro-bar [3|2|1|J|P]. */
+.bb-batch { display: flex; align-items: stretch; width: 100%; height: 7px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
+.bb-batch.is-compact { height: 5px; }
+.bb-batch-seg { display: block; height: 100%; flex: 0 0 auto; }
+.bb-batch-seg.is-c3 { background: #4ecdc4; }
+.bb-batch-seg.is-c2 { background: #60a5fa; }
+.bb-batch-seg.is-c1 { background: #9ca3af; }
+.bb-batch-seg.is-j0 { background: #4b5563; }
+.bb-batch-seg.is-p0 { background: #f87171; }
+.bb-sub { display: block; font-size: 0.78em; color: #9aa2b1; }
 .bb-now { position: absolute; top: 2px; right: 5px; font-size: 0.9em; font-weight: 600; color: #f1ede0; font-variant-numeric: tabular-nums; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; }
 .bb.is-mini .bb-now { top: 0; right: 2px; font-size: 0.82em; }
 .bb-keys { display: flex; flex-direction: column; gap: 1px; font-size: 0.92em; }
@@ -2718,11 +2738,12 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bb .is-loop { --ink: var(--bt-loop); }
 .bb .is-constraint { --ink: var(--bt-constraint); }
 .bb .is-awareness { --ink: var(--bt-awareness); }
+.bb .is-passive { --ink: var(--bt-passive); }
 .bb .is-threat { --ink: var(--bt-threat); }
 .bb .is-refused { --ink: var(--bt-refused); }
 .bt-strip { position: relative; width: 100%; height: 14px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, 0.05); }
 .bt-strip i { position: absolute; top: 2px; bottom: 2px; min-width: 3px; margin-left: -1px; border-radius: 1px; background: var(--ink); opacity: 0.9; cursor: pointer; }
-.bt-strip i.is-loop { top: 0; bottom: 0; margin-left: 0; opacity: 0.55; }
+.bt-strip i.is-loop, .bt-strip i.is-passive { top: 0; bottom: 0; margin-left: 0; opacity: 0.55; }
 .bt-strip i:hover { opacity: 1; outline: 1px solid #fff; }
 /* The summary: a row a figure, a column a model. */
 .bb-fig { line-height: 1.27; border-bottom: 1px dotted rgba(255, 255, 255, 0.07); }
@@ -2741,10 +2762,12 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bench-full { position: fixed; inset: 0; z-index: 1500; display: flex; align-items: center; justify-content: center; background: rgba(8, 10, 8, 0.72); zoom: var(--ui-scale, 1); }
 .bf-box { width: min(1500px, 97%); max-height: 97%; display: flex; flex-direction: column; background: rgba(25, 30, 25, 0.98);
     border: 1px solid rgba(221, 211, 180, 0.3); border-radius: 6px; color: #e0e0e0; font-size: 0.86em; }
-.bf-head { display: flex; align-items: baseline; gap: 12px; padding: 5px 14px; border-bottom: 1px solid rgba(221, 211, 180, 0.16); }
-.bf-head b { font-size: 1.25em; color: #ddd3b4; }
-.bf-head span { color: #9aa2b1; flex: 1; }
-.bf-close { font: inherit; color: #e0e0e0; background: transparent; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; padding: 2px 9px; cursor: pointer; }
+.bf-head { display: flex; align-items: center; gap: 8px; padding: 5px 14px; border-bottom: 1px solid rgba(221, 211, 180, 0.16); }
+.bf-head b { font-size: 1.25em; color: #ddd3b4; margin-right: 4px; }
+.bf-head span { color: #9aa2b1; }
+.bf-pill { padding: 1px 8px; border-radius: 10px; font-size: 0.78em; font-weight: 600; color: #c9cfdb; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14); }
+.bf-pill.is-warmup, .bf-warmup { color: #fbbf24; border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.1); }
+.bf-close { margin-left: auto; font: inherit; color: #e0e0e0; background: transparent; border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 4px; padding: 2px 9px; cursor: pointer; }
 .bf-body { overflow: auto; padding: 2px 14px 8px; scrollbar-width: thin; }
 /* A chart to share (build 1226): the picture as it will be saved, and the buttons that save it. */
 .bf-share { margin: 4px 0 12px; padding: 10px 12px 12px; border: 1px solid rgba(221, 211, 180, 0.14); border-radius: 5px; background: rgba(255, 255, 255, 0.03); }
@@ -2764,33 +2787,23 @@ body.broadcast-mode.race-view .broadcast-compare { max-width: min(980px, calc(10
 .bf-kind { flex: 0 0 auto; margin-left: 4px; padding: 1px 7px; border-radius: 9px; font-size: 0.72em; font-style: normal; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap; cursor: help; }
 .bf-kind.is-raw { color: #9fd9c8; border: 1px solid rgba(127, 208, 189, 0.5); }
 .bf-kind.is-harness { color: #1a1408; background: #f2c46a; border: 1px solid #f2c46a; }
-/* Beside the decision log (14 + 332) and beside the leaderboard (16 + 304). */
-.bench-left { left: 354px; width: 332px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 92px) - 14px); }
+/* Beside the leaderboard (16 + 304). */
 .bench-right { right: 328px; width: 344px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 92px) - 312px); }
 /* The transcript panel opens beside the leaderboard too (right: 330px, 440 wide). Where
    there is room the matrix steps aside; where there is not, the transcript lies over it
    until it is closed. */
 #transcriptViewer { z-index: 1001; }
 @media (min-width: 1800px) { body.tv-open:not(.broadcast-mode) .bench-right { right: 778px; } }
-/* With two seats or more the plan panel is two plans wide, as far as the room between the decision log and
-   the comparison card allows (log 354, card 344 + 328, a gap on each side). */
-.bench-left.is-wide { width: min(640px, calc(100vw / var(--ui-scale, 1) - 354px - 344px - 328px - 28px)); }
-body.broadcast-mode .bench-left { left: 16px; max-height: calc(100vh / var(--ui-scale, 1) - var(--bench-top, 78px) - 150px); }
-body.broadcast-mode .bench-left.is-wide { width: min(640px, calc(100vw / var(--ui-scale, 1) - 16px - 344px - 16px - 28px)); }
 body.broadcast-mode .bench-right { right: 16px; }
 body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
-/* A window too narrow for log, two panels and leaderboard side by side: the panels take
-   the outer slots over the log and the leaderboard rather than each other. */
+/* A window too narrow for comparison card and leaderboard side by side: the card lies over
+   the leaderboard while Bench is on so it remains legible. */
 @media (max-width: 1360px) {
-    body:not(.broadcast-mode) .bench-left { left: 14px; }
-    body:not(.broadcast-mode) .bench-left.is-wide { width: min(640px, calc(100vw / var(--ui-scale, 1) - 14px - 344px - 16px - 28px)); }
     body:not(.broadcast-mode) .bench-right { right: 16px; }
-    /* ...and lie over them while Bench is on: under them they could not be seen at all. */
     body:not(.broadcast-mode) .bench-panel { z-index: 1002; }
 }
 .bench-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 0 6px; font-weight: 700; color: #dec594; letter-spacing: 0.2px; }
 .bench-head span { font-weight: 400; font-size: 0.82em; color: #8d97a8; }
-.bench-clockhead { margin-top: 12px; padding-top: 9px; border-top: 1px solid rgba(221, 211, 180, 0.14); }
 .bench-none { margin: 6px 0; color: #8d97a8; }
 /* the matrix */
 .bm { width: 100%; border-collapse: collapse; table-layout: fixed; }
@@ -2825,35 +2838,7 @@ body.broadcast-mode .bench-panel { top: var(--bench-top, 78px); }
 .bench-evidence li { padding: 2px 3px; border-radius: 3px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bench-evidence li:hover { background: rgba(255, 255, 255, 0.07); }
 .be-when { display: inline-block; min-width: 5.6em; color: #8d97a8; font-variant-numeric: tabular-nums; }
-/* the plan tracker */
-/* Every seat's plan, two beside each other (build 1230): two seats side by side, four as two rows of two. */
-.bp-grid { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); gap: 12px 14px; align-items: start; }
-.bp-seat { min-width: 0; margin: 0; padding-left: 8px; border-left: 3px solid var(--civ, #dec594); }
-.bp-seat h4 { display: flex; align-items: center; gap: 5px; margin: 0 0 3px; font-size: 1em; }
-.bp-seat h4 span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bp-seat h4 em { font-style: normal; font-weight: 400; font-size: 0.86em; color: #b9c4d2; white-space: nowrap; }
-.bp-objective { margin: 0 0 2px; color: #e9dfc8; }
-.bp-age { margin: 0 0 5px; font-size: 0.86em; color: #8d97a8; cursor: pointer; }
-.bp-steps { list-style: none; margin: 0; padding: 0; }
-.bp-steps li { display: flex; gap: 6px; padding: 1px 0; line-height: 1.35; }
-.bp-steps li i { flex: none; width: 1em; text-align: center; font-style: normal; }
-.bp-steps li span { flex: 1; min-width: 0; }
-.bp-steps li small { flex: none; color: #8d97a8; font-variant-numeric: tabular-nums; }
-.bp-steps .is-acted i { color: #63b9a7; } .bp-steps .is-acted span { color: #cfe6df; }
-.bp-steps .is-begun i, .bp-steps .is-part i { color: #e2b455; } .bp-steps .is-part span { color: #a8a39a; }
-.bp-steps .is-dropped i { color: #f0a080; } .bp-steps .is-dropped span { color: #a8a39a; text-decoration: line-through; text-decoration-color: rgba(240, 160, 128, 0.5); }
-.bp-steps .is-late i { color: #e9c46a; }
-.bp-steps .is-uncheckable span, .bp-steps .is-uncheckable i { color: #7f8a99; }
-.bp-ribbon { position: relative; height: 9px; margin: 6px 0 0; border-bottom: 1px solid rgba(255, 255, 255, 0.18); }
-.bp-ribbon i { position: absolute; bottom: 0; width: 2px; height: 8px; margin-left: -1px; background: var(--civ, #dec594); }
-/* the response clock */
-.bc-card { display: flex; align-items: baseline; gap: 6px; margin: 0 0 4px; padding: 4px 6px; border-left: 3px solid var(--civ, #dec594); border-radius: 0 3px 3px 0; background: rgba(255, 255, 255, 0.04); cursor: pointer; }
-.bc-card:hover { background: rgba(255, 255, 255, 0.08); }
-.bc-time { flex: none; color: #8d97a8; font-variant-numeric: tabular-nums; }
-.bc-line { flex: 1; min-width: 0; line-height: 1.35; }
-.bc-card.is-missed { background: rgba(240, 160, 128, 0.1); }
-.bc-card.is-waiting { background: rgba(233, 196, 106, 0.13); }
-@media (max-width: 1100px) { .bench-right { width: 300px; } .bench-left { width: 280px; } }
+@media (max-width: 1100px) { .bench-right { width: 300px; } }
 /* Never wider than the room between the left edge and the minimap. */
 @media (max-width: 1100px) { .race-chart { width: min(300px, calc(100vw - var(--mm-edge) - var(--mm-canvas) - var(--mm-gut) - 44px - 16px)); } }
 
@@ -3427,30 +3412,28 @@ body[data-reading="compact"] { --text-reading:.8125rem; --text-detail:.75rem; }
 .intent-bubble .intent-call { font-weight: 600; white-space: nowrap; margin-left: 2px; }
 .lb-objective { font-size: 0.72em; color: #cfd8e3; margin: 2px 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lb-list.collapsed .lb-objective { display: none; }
-/* The evaluation profile on a seat card (overhaul step D1): one small bar per part of
-   the profile that exists. Two columns, so six bars will be three rows. */
-.lb-profile { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; margin: 2px 0 4px; }
-.lb-dim { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 0.68em; color: #aebccc; }
-.lb-dim-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lb-dim-track { flex: 1 1 20px; min-width: 16px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+/* The evaluation profile on a seat card (Scale v4): horizontal 5-pillar strip + WAR badge + agency footer. */
+.lb-profile { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)) auto; align-items: end; gap: 4px; margin: 3px 0 2px; }
+.lb-dim { display: flex; flex-direction: column; align-items: stretch; gap: 1px; min-width: 0; font-size: 0.65em; color: #aebccc; }
+.lb-dim-name { text-align: center; font-size: 0.9em; color: #8fa0b3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-dim-track { width: 100%; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
 .lb-dim-track i { display: block; height: 100%; border-radius: 2px; background: #63b9a7; transition: width 0.6s cubic-bezier(.2,.7,.3,1); }
-.lb-dim b { min-width: 1.5em; text-align: right; color: #fff; font-variant-numeric: tabular-nums; }
+.lb-dim.is-grounding .lb-dim-track i { background: #4ecdc4; }
+.lb-dim.is-macro .lb-dim-track i { background: #60a5fa; }
+.lb-dim.is-spatial .lb-dim-track i { background: #a78bfa; }
+.lb-dim.is-tactical .lb-dim-track i { background: #f59e0b; }
+.lb-dim.is-strategy .lb-dim-track i { background: #ec4899; }
+.lb-dim b { text-align: center; color: #fff; font-variant-numeric: tabular-nums; line-height: 1.05; }
 .lb-dim.is-empty b { color: #7f8a99; }
-.lb-index { color: #ddd3b4; }
-.lb-index .lb-dim-track { background: none; }
-.lb-index b { color: #ddd3b4; }
-.lb-list.collapsed .lb-profile { display: none; }
-/* The standing plan as a line of segments, a step each (step D1). */
-.lb-plan { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: 0.72em; color: #a9b0bf; }
-.lb-plan-name { flex: none; }
-.lb-plan-track { flex: 1; display: flex; gap: 2px; min-width: 0; }
-.lb-plan-seg { flex: 1; height: 5px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
-.lb-plan-seg.is-acted { background: #9fd08a; }
-.lb-plan-seg.is-begun, .lb-plan-seg.is-part { background: linear-gradient(90deg, #9fd08a 50%, rgba(255, 255, 255, 0.14) 50%); }
-.lb-plan-seg.is-dropped { background: rgba(255, 133, 151, 0.55); }
-.lb-plan-seg.is-uncheckable { height: 2px; align-self: center; }
-.lb-plan b { flex: none; color: #d6dbe6; font-weight: 600; }
-.lb-list.collapsed .lb-plan { display: none; }
+.lb-index { padding-left: 4px; border-left: 1px solid rgba(221, 211, 180, 0.22); align-items: center; justify-content: center; color: #ddd3b4; }
+.lb-index .lb-dim-name { color: #ddd3b4; font-weight: 600; }
+.lb-index b { font-size: 1.3em; color: #ddd3b4; }
+.lb-index.is-warmup b { color: #fbbf24; }
+.lb-index small { font-size: 0.8em; color: #fbbf24; line-height: 1; }
+.lb-foot { display: flex; align-items: center; gap: 6px; margin: 2px 0 3px; font-size: 0.65em; color: #8d97a8; font-variant-numeric: tabular-nums; }
+.lb-foot .bb-batch { flex: 0 0 54px; }
+.lb-foot span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-list.collapsed .lb-profile, .lb-list.collapsed .lb-foot { display: none; }
 /* Order the cards by power or by the Index: two small buttons in the list's header. */
 .lb-sort { display: inline-flex; gap: 2px; margin-right: 8px; }
 .lb-sort-btn { font: inherit; font-size: 0.68em; padding: 1px 6px; border-radius: 9px; cursor: pointer;

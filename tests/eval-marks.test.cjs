@@ -18,54 +18,45 @@ const raid = [{ kind: 'building', type: 'barracks', x: 100, z: 100, attackerAt: 
 const profileOf = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile(); };
 const plainOf = v => JSON.parse(JSON.stringify(v));
 
-test('the ledger says which order carried a plan step out, and where it pointed', () => {
-    const p = profileOf([
-        decision(1, { plan: ['Build a tower by the gate', 'Train militia'], orders: [['assign_workers']] }),
-        decision(2, { orders: [['build_structure', { buildingType: 'tower', targetX: 120, targetZ: 80 }, 'avoidable']] }),   // refused: carries nothing out
-        decision(3, { orders: [['assign_workers'], ['build_structure', { buildingType: 'tower', targetX: 124, targetZ: 82 }]] }),
-        decision(4, { orders: [['train_unit', { unitType: 'militia' }]] }),
-        decision(5, { orders: [['build_structure', { buildingType: 'tower', targetX: 300, targetZ: 300 }]] })]);     // a second tower is not the step again
-    const f = p.seats[0].follow;
-    assert.deepEqual(plainOf(f.done), [
-        { text: 'Build a tower by the gate', stated: 1, decision: 3, turn: 3, sec: 90, met: 1, of: 1, by: { n: 2, action: 'build_structure', name: 'tower', x: 124, z: 82 } },
-        { text: 'Train militia', stated: 1, decision: 4, turn: 4, sec: 120, met: 1, of: 1, by: { n: 1, action: 'train_unit', name: 'militia', x: null, z: null } }]);
-    assert.deepEqual([f.acted, f.done.length], [2, 2]);
-    // The list is for the page: an exported profile carries the numbers, not this.
-    assert.equal(WarEval.publicProfile(p).seats[0].follow.done, undefined);
-});
-
 test('the ledger says which order answered a threat, and where the threat was', () => {
-    const p = profileOf([decision(1, { orders: [['assign_workers']] }), decision(2, { attack: raid, orders: [['train_unit', { unitType: 'militia' }]] }),
-        decision(3, { attack: raid, orders: [['assign_workers'], ['attack_target', { targetX: 105, targetZ: 100 }]] }), decision(4, { orders: [['assign_workers']] }),
+    const p = profileOf([
+        decision(1, { orders: [['assign_workers']] }),
+        decision(2, { attack: raid, orders: [['train_unit', { unitType: 'militia' }]] }),
+        decision(3, { attack: raid, orders: [['assign_workers'], ['attack_target', { targetX: 105, targetZ: 100 }]] }),
+        decision(4, { orders: [['assign_workers']] }),
         decision(5, { wonders: [{ id: 'w1', x: 400, z: 420, owner: 'maya-2' }], orders: [['attack_target', { targetId: 'w1' }]] }),
-        decision(6, { attack: [{ kind: 'unit', type: 'worker', x: 50, z: 60 }], orders: [['assign_workers']] })]);
+        decision(6, { attack: [{ kind: 'unit', type: 'worker', x: 50, z: 60 }], orders: [['assign_workers']] }),
+        decision(7, { orders: [['wait']] }),
+        decision(8, { attack: [{ kind: 'unit', type: 'worker', x: 90, z: 95 }], orders: [['wait']] })
+    ]);
     const list = plainOf(p.seats[0].tactical.list);
     // The raid: where the attacker stood when the seat was shown it, and the attack that answered one decision later.
-    assert.deepEqual([list[0].kind, list[0].at, list[0].answer], ['attack', { x: 108, z: 102 }, { decision: 3, turn: 3, sec: 90, n: 2, k: 1, action: 'attack_target', x: 105, z: 100 }]);   // k: the first attack of its turn (build 1215)
+    assert.deepEqual([list[0].kind, list[0].at, list[0].answer], ['attack', { x: 108, z: 102 }, { decision: 3, turn: 3, sec: 90, n: 2, k: 1, action: 'attack_target', x: 105, z: 100 }]);
     // The rival Wonder, attacked by its id in the decision that showed it.
     assert.deepEqual([list[1].kind, list[1].at, list[1].answer.decision, list[1].answer.action], ['wonder', { x: 400, z: 420 }, 5, 'attack_target']);
-    // A worker struck with no attacker in sight, and no answer: the place is the worker's, and there is no answering order.
-    assert.deepEqual([list[2].at, list[2].answer, list[2].answeredAfter], [{ x: 50, z: 60 }, null, null]);
+    // Scale v4: assign_workers answers a raid on a worker, whereas waiting leaves the raid unanswered.
+    assert.deepEqual([list[2].at, list[2].answer.action, list[2].answeredAfter], [{ x: 50, z: 60 }, 'assign_workers', 0]);
+    assert.deepEqual([list[3].at, list[3].answer, list[3].answeredAfter], [{ x: 90, z: 95 }, null, null]);
 });
 
-test('a mark appears when the ledger reports the fact, once, and a first look only takes stock', () => {
+test('a mark appears when the ledger reports a threat answer, once, and a first look only takes stock', () => {
     const l = WarEval.createLedger(), M = new EvalMarks();
     l.addLine(decision(1, { plan: ['Build a tower'], orders: [['build_structure', { buildingType: 'tower', targetX: 120, targetZ: 80 }]] }));
     // The page opens on a match already under way: what happened before is not replayed as marks.
     assert.deepEqual([M.poll(l.profile(), 1000), M.marks.length], [0, 0]);
-    l.addLine(decision(2, { plan: ['Build a tower', 'Train militia'], attack: raid, orders: [['train_unit', { unitType: 'militia' }], ['attack_target', { targetX: 105, targetZ: 100 }]] }));
-    assert.equal(M.poll(l.profile(), 2000), 2);
-    assert.deepEqual(plainOf(M.marks.map(m => [m.kind, m.id, m.text || null, m.by.action, m.born, m.life])),
-        [['step', 'a', 'Train militia', 'train_unit', 2000, 8000], ['answer', 'a', null, 'attack_target', 2400, 8000]]);      // one after the other, to be read
-    assert.deepEqual(plainOf([M.marks[1].to, M.marks[1].what, M.marks[1].wonder]), [{ x: 108, z: 102 }, ['barracks'], false]);
+    l.addLine(decision(2, { attack: raid, orders: [['train_unit', { unitType: 'militia' }], ['attack_target', { targetX: 105, targetZ: 100 }]] }));
+    assert.equal(M.poll(l.profile(), 2000), 1);
+    assert.deepEqual(plainOf(M.marks.map(m => [m.kind, m.id, m.by.action, m.born, m.life])),
+        [['answer', 'a', 'attack_target', 2000, 8000]]);
+    assert.deepEqual(plainOf([M.marks[0].to, M.marks[0].what, M.marks[0].wonder]), [{ x: 108, z: 102 }, ['barracks'], false]);
     // Looked at again, nothing is new; when their time is up they are gone.
-    assert.deepEqual([M.poll(l.profile(), 3000), M.marks.length], [0, 2]);
-    assert.deepEqual([M.poll(l.profile(), 10100), M.marks.length], [0, 1]);
-    assert.deepEqual([M.poll(l.profile(), 10500), M.marks.length], [0, 0]);
-    // A long step is cut to fit a plate; a short one is the model's words.
+    assert.deepEqual([M.poll(l.profile(), 3000), M.marks.length], [0, 1]);
+    assert.deepEqual([M.poll(l.profile(), 10100), M.marks.length], [0, 0]);
+    // EvalMarks.short still normalizes whitespace and truncates cleanly.
     assert.equal(EvalMarks.short('Build   a tower\nby the gate'), 'Build a tower by the gate');
     assert.equal(EvalMarks.short('x'.repeat(80)).length, 46);
     assert.ok(EvalMarks.short('x'.repeat(80)).endsWith('…'));
+    assert.equal(WarEval.publicProfile(l.profile()).seats[0].tactical.list, undefined);
 });
 
 test('a battle plate needs two sides and a loss; marks hold, fade and are placed by the page', () => {
@@ -157,7 +148,7 @@ test('the marks are part of the story layer: the Intent switch hides them, and t
     assert.match(src, /const ledger = !document\.hidden && this\.intentOn\(\) \? this\.evalLedger\(\) : null;\s+if \(ledger\) this\.evalMarks\.poll\(ledger\.profile\(\)\);/);
     assert.match(src, /if \(this\.evalMarks && this\.intentOn\(\)\) this\.evalMarks\.battle\(e\);/);
     // Bubbles keep off the Bench panels, the race chart and the comparison strip as they keep off the other panels.
-    assert.match(src, /'unitInfo', 'benchLeft', 'benchMatrix', 'raceChart', 'compareStrip'\]/);
+    assert.match(src, /'unitInfo', 'benchMatrix', 'raceChart', 'compareStrip'\]/);
     assert.ok(html.includes('src="js/eval/marks.js?'), 'the marks file is loaded by the page');
     const context = vm.createContext({ window: {}, navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} },
         document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {} } });
@@ -189,23 +180,4 @@ test('mark labels stand under their point and under one another, never on top of
     // The two steps at one building share one tick; the building beside it has its own.
     assert.equal(count(svg, 'eval-tick'), 2);
     assert.deepEqual(texts(svg).slice(0, 2), ['mark.step Train villagers without a pause', 'mark.step Research house']);
-});
-
-// Scale v3: the tick is for a step that is carried out, all of it.
-test('an order that does part of a step is marked as that, and the order that completes it gets the tick', () => {
-    const l = WarEval.createLedger(), M = new EvalMarks(), step = 'Find and destroy the Maya town center';
-    l.addLine(decision(1, { plan: [step], orders: [['assign_workers']] }));
-    M.poll(l.profile(), 1000);
-    l.addLine(decision(2, { orders: [['explore', {}]] }));
-    assert.equal(M.poll(l.profile(), 2000), 1);
-    assert.deepEqual(plainOf(M.marks.map(m => [m.kind, m.text, m.by.action, m.met, m.of])), [['step', EvalMarks.short(step), 'explore', 1, 2]]);
-    l.addLine(decision(3, { orders: [['attack_target', { targetX: 300, targetZ: 310 }]] }));
-    assert.equal(M.poll(l.profile(), 3000), 1);
-    assert.deepEqual(plainOf(M.marks.map(m => [m.by.action, m.met, m.of])), [['explore', 1, 2], ['attack_target', 2, 2]]);
-    assert.equal(M.poll(l.profile(), 4000), 0, 'each part once');
-    // As drawn: a tick only for the whole step, and the part named as a part.
-    const ui = require('node:fs').readFileSync(path.join(root, 'js/ui.js'), 'utf8');
-    assert.match(ui, /const whole = !\(m\.of > 1\) \|\| m\.met >= m\.of;/);
-    assert.match(ui, /if \(whole && !ticks\.some\(/);
-    assert.match(ui, /whole \? t\('mark\.step'\) : t\('mark\.stepPart', \{ met: m\.met, of: m\.of \}\)/);
 });

@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Anchor seats for the evaluation profile (overhaul step C6; zero dependencies, Node 18+).
+// Anchor seats for the evaluation profile (Scale v4; zero dependencies, Node 18+).
 //
-// What do the scorers give a seat that cannot play? Four such seats, each alone against
+// What do the scorers give a seat that cannot play? Five such seats, each alone against
 // the rule-based brain on the arena's own start path, in the reference realm:
 //   do-nothing    answers every round with no command at all
 //   wait-only     one `wait` a round: always valid, never anything else
 //   plan-only     states one concrete plan in its first round, then only waits
+//   safe-spam     cycles `assign_workers` food<->wood every round (100% valid, zero growth)
 //   random-valid  one to three commands a round, built only from names and places its
 //                 state shows (WAR Bench's baseline, js/bench-core.js)
 // Their decisions are written as transcript lines and read by the same ledger that
@@ -25,7 +26,7 @@ const crypto = require('node:crypto'), { fork } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..', '..');
 const WarEval = require(path.join(ROOT, 'js/eval/ledger.js'));
 
-const ANCHORS = ['do-nothing', 'wait-only', 'plan-only', 'random-valid'];
+const ANCHORS = ['do-nothing', 'wait-only', 'plan-only', 'safe-spam', 'random-valid'];
 const PLAN = { objective: 'Grow the economy, then defend the town',
     plan: ['Train workers', 'Build a house', 'Build a barracks', 'Train militia', 'Build a tower by the town center'] };
 
@@ -55,6 +56,15 @@ function policyFor(anchor, key, W) {
     if (anchor === 'do-nothing') return () => ({ commands: [] });
     if (anchor === 'wait-only') return () => ({ commands: [{ action: 'wait', params: {} }] });
     if (anchor === 'plan-only') return ({ round }) => Object.assign({ commands: [{ action: 'wait', params: {} }] }, round === 1 ? PLAN : null);
+    if (anchor === 'safe-spam') {
+        return ({ round, state }) => {
+            const w = (state && state.workers) || {};
+            if ((w.idle || 0) > 0) return { commands: [{ action: 'assign_workers', params: { resourceType: round % 2 ? 'food' : 'wood', count: 1 } }] };
+            const from = (w.food || 0) >= (w.wood || 0) ? 'food' : 'wood';
+            const to = from === 'food' ? 'wood' : 'food';
+            return { commands: [{ action: 'assign_workers', params: { from, resourceType: to, count: 1 } }] };
+        };
+    }
     if (anchor === 'random-valid') { const p = W.randomValidPolicy(key); return turn => ({ commands: p(turn) }); }
     throw new Error('unknown anchor ' + anchor);
 }
@@ -126,7 +136,7 @@ function table(rows) {
     return rows.map(r => r.map((v, c) => c === 0 ? String(v).padEnd(width[c]) : String(v).padStart(width[c])).join('  ')).join('\n');
 }
 function report(summary) {
-    return table([['ANCHOR', 'matches', 'decisions', 'commands rated', 'valid', 'eliminated'].concat(WarEval.SCORED, ['Index', 'of parts'])].concat(
+    return table([['ANCHOR', 'matches', 'decisions', 'commands rated', 'valid', 'eliminated'].concat(WarEval.SCORED, ['WAR Score', 'of parts'])].concat(
         Object.entries(summary).map(([a, r]) => [a, r.matches, fix(r.decisions), fix(r.commands), r.valid == null ? '-' : (r.valid * 100).toFixed(1) + ' %', r.eliminated]
             .concat(WarEval.SCORED.map(k => fix(r[k])), [fix(r.index, 1), fix(r.parts, 1)]))));
 }

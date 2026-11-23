@@ -24,7 +24,7 @@ const plain = v => JSON.parse(JSON.stringify(v));
 function page() {
     const els = {}, store = {}, body = new Set(), keys = [], timers = [];
     const el = id => els[id] || (els[id] = { id, style: {}, innerHTML: '', classList: { toggle() {} }, setAttribute() {} });
-    ['benchLeft', 'benchMatrix', 'benchFull', 'benchBtn'].forEach(el);
+    ['benchMatrix', 'benchFull', 'benchBtn'].forEach(el);
     const context = vm.createContext({ console, Date, WarEval, WarShare, t: (k, v) => k + (v ? JSON.stringify(v) : ''), getUiLang: () => 'en',
         OpenAIAIManager: { MAX_COMMANDS_PER_TURN: 3 }, setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
         localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
@@ -109,10 +109,10 @@ test('the scores of a running match never hold the game up: a budget, the newest
     let rounds = 0;
     while (p.timers.length && rounds++ < 50) p.timers.shift().fn();
     assert.deepEqual([rounds, p.ledger._live.pending, p.timers.length], [18, 0, 0]);
-    // Scoring the match is cheap enough to do so: a step of a plan is read once, not at every profile.
+    // Scoring the match is cheap enough to do so: Scale v4 drops heuristic step scanning completely.
     const src = fs.readFileSync(path.join(root, 'js/eval/ledger.js'), 'utf8');
-    assert.match(src, /checks: checksOf\(text\)/);
-    assert.doesNotMatch(src, /settle = 600/);
+    assert.match(src, /SCALE: 'v4'/);
+    assert.doesNotMatch(src, /checksOf|settle = 600/);
 });
 
 test('behind the live panels nothing is scored that is not shown', () => {
@@ -120,7 +120,7 @@ test('behind the live panels nothing is scored that is not shown', () => {
     const asked = [], html = u.benchHtml.bind(u);
     u.benchHtml = (l, o) => { asked.push(o); return html(l, o); };
     u.toggleBenchView(true);
-    assert.deepEqual(asked.map(o => o.matrix), [false], 'the plan tracker without the matrix');
+    assert.equal(asked.length, 0, 'the live mini card renders without invoking the results matrix');
     // The matrix's trend compares with the profile ten minutes ago: a scoring of its own, only where the matrix is shown.
     ledger.addLine(decision('a', 900, { turn: 11, orders: [militia] }));
     const calls = counted(ledger);
@@ -161,53 +161,64 @@ test('at full size the models stand side by side, and the sections run gameplay,
     const { u, els, ledger } = match();
     u.toggleBenchFull(true);
     const html = els.benchFull.innerHTML;
-    assert.match(html, /^<div class="bf-box" onclick="event\.stopPropagation\(\)"><div class="bf-head"><b>bench\.matrix<\/b><span>eval\.provisional<\/span><button type="button" class="bf-close" onclick="game\.ui\.toggleBenchFull\(false\)"[^>]*>✕<\/button><\/div><div class="bf-body"><div class="bb" style="--n:2">/);
+    assert.match(html, /^<div class="bf-box" onclick="event\.stopPropagation\(\)"><div class="bf-head"><b>bench\.matrix<\/b><span class="bf-pill">bench\.mode\.realtime<\/span><span class="bf-pill">v4<\/span><button type="button" class="bf-close" onclick="game\.ui\.toggleBenchFull\(false\)"[^>]*>✕<\/button><\/div><div class="bf-body"><div class="bb" style="--n:2">/);
     // A column a model: every row holds one cell a model, behind one label.
     const rows = rowsOf(html);
-    assert.ok(rows.length >= 20, rows.length + ' rows');
+    assert.ok(rows.length >= 25, rows.length + ' rows');
     for (const r of rows) assert.deepEqual([(r.html.match(/<div class="bb-lab">/g) || []).length, colsOf(r.html).length], [1, 2], r.cls);
     assert.deepEqual(colsOf(rows[0].html).map(c => c.replace(/<[^>]+>/g, '')), ['Seat a', 'Seat b']);
     // The three sections, in asp67's order.
     assert.deepEqual([...html.matchAll(/<div class="bb-sec">([^<]*)<\/div>/g)].map(m => m[1]), ['bench.b.gameFull', 'bench.b.modelFull', 'bench.b.summaryFull']);
     const [, game, model, summary] = html.split('<div class="bb-sec">');
 
-    // Gameplay: ONE graph a model with the five scores over the match, each in its own colour. No power, no Index line.
+    // Gameplay: ONE graph a model with the 5 Scale v4 pillars + dashed WAR Score line.
     const graphs = [...game.matchAll(/<svg class="bg-chart bb-game"[^>]*>(.*?)<\/svg>/g)].map(m => m[1]);
     assert.equal(graphs.length, 2);
     const inks = g => [...g.matchAll(/stroke="(#[0-9a-f]{6})"/g)].map(m => m[1]);
     const [a, b] = ledger.profile().seats;
-    const scored = s => WarEval.SCORED.filter(k => s[k].score != null).map(k => ({ grounding: '#7fd0bd', planning: '#8fbdf0', follow: '#9fd08a', tactical: '#f2c46a', strategy: '#e89ac0' })[k]);
-    assert.deepEqual(inks(graphs[0]), scored(a), 'a line for every part seat a has a score in');
-    assert.deepEqual(inks(graphs[1]), scored(b));
-    assert.ok(inks(graphs[0]).length >= 3);
-    assert.match(game, /<span class="bb-keys">(<span><i style="background:#[0-9a-f]{6}"><\/i>eval\.(grounding|planning|follow|tactical|strategy)<\/span>){5}<\/span>/);
-    assert.doesNotMatch(html, /bench\.b\.power|bench\.b\.rank|bench\.b\.share|stroke="#ddd3b4"/, 'the power graph is the Race chart’s, and the Index is a figure of the summary');
+    const partInks = WarEval.SCORED.filter(k => a[k].score != null).map(k => ({ grounding: '#4ecdc4', macro: '#60a5fa', spatial: '#a78bfa', tactical: '#f59e0b', strategy: '#ec4899' })[k]);
+    assert.deepEqual(inks(graphs[0]), partInks.concat('#ddd3b4'));
+    assert.deepEqual(inks(graphs[1]), WarEval.SCORED.filter(k => b[k].score != null).map(k => ({ grounding: '#4ecdc4', macro: '#60a5fa', spatial: '#a78bfa', tactical: '#f59e0b', strategy: '#ec4899' })[k]).concat('#ddd3b4'));
+    assert.match(graphs[0], /stroke="#ddd3b4" stroke-width="2\.2" stroke-dasharray="4,2"/);
+    assert.match(game, /<span class="bb-keys"><span><i style="background:#ddd3b4"><\/i>eval\.index<\/span>(<span><i style="background:#[0-9a-f]{6}"><\/i>eval\.(grounding|macro|spatial|tactical|strategy)<\/span>){5}<\/span>/);
+    assert.doesNotMatch(html, /bench\.b\.power|bench\.b\.rank|bench\.b\.share/);
     // The clock under it: the whole match.
     assert.match(game, /<div class="bb-row bb-axis">.*?<span>0:00<\/span><span>10:00<\/span>/s);
 
-    // Model performance: three rates over time, each on ONE scale for both models, with the latest value in words.
+    // Model performance: three rates over time, each on ONE 1-2-5-10 scale for both models, with the latest value in words.
     const rates = [...model.matchAll(/<div class="bb-row bb-graph"><div class="bb-lab"><b title="bench\.b\.rateTip">([^<]*)<\/b><small>([^<]*)<\/small><\/div>(.*?)(?=<div class="bb-row)/gs)];
-    assert.deepEqual(rates.map(m => m[1] + ' | ' + m[2]), ['bench.b.secPer | 0 – 30 s', 'bench.b.tokPer | 0 – 50k', 'bench.b.refusedNow | 0 – 80 %']);   // at 6:00 two of seat a's last three orders had been refused: 66.7 %, so the scale ends at 80
+    assert.deepEqual(rates.map(m => m[1] + ' | ' + m[2]), ['bench.b.secPer | 0 – 50 s', 'bench.b.tokPer | 0 – 50k', 'bench.b.refusedNow | 0 – 100 %']);
     const nows = rates.map(m => [...m[3].matchAll(/<b class="bb-now">([^<]*)<\/b>/g)].map(x => x[1]));
     assert.deepEqual(nows, [['4.0 s', '30 s'], ['9k', '42k'], ['33 %', '0 %']]);
-    // Four seconds on a scale to thirty is low in the graph (38 high: 37 - 4/30 x 36 = 32.2); thirty is at its top.
+    // Four seconds on a scale to fifty (38 high: 37 - 4/50 x 36 = 34.1); thirty seconds (37 - 30/50 x 36 = 15.4).
     const secs = [...rates[0][3].matchAll(/<svg class="bg-chart bb-rate"[^>]*><path d="([^"]*)"/g)].map(m => m[1]);
-    assert.match(secs[0], / 32\.2$/);
-    assert.match(secs[1], / 1\.0$/);
+    assert.match(secs[0], / 34\.1$/);
+    assert.match(secs[1], / 15\.4$/);
 
-    // Summary: one table, a row a figure.
+    // Summary: one table with Scale v4 pillars, action bandwidth, duration-invariant cost, drift, and discipline.
     const fig = figures(html);
-    assert.deepEqual(Object.keys(fig), ['eval.index', 'eval.grounding', 'eval.planning', 'eval.follow', 'eval.tactical', 'eval.strategy',
-        'bench.b.tokens', 'bench.b.thinking', 'bench.b.perMTok', 'bench.b.perMin', 'bench.b.invalid', 'bench.b.refused', 'bench.b.recovery', 'bench.t.loops', 'bench.b.lost', 'bench.h.help']);
-    assert.deepEqual(fig['eval.index'], [String(Math.round(a.index.value)), String(Math.round(b.index.value))]);
-    assert.deepEqual(fig['eval.tactical'], ['–', '–']);
-    assert.deepEqual([fig['bench.b.tokens'], fig['bench.b.thinking']], [['93k', '210k'], ['40 s', '3 min']]);
-    assert.deepEqual([fig['bench.b.invalid'], fig['bench.b.refused'], fig['bench.b.recovery'], fig['bench.t.loops'], fig['bench.b.lost']],
+    assert.deepEqual(Object.keys(fig), ['eval.index', 'eval.grounding', 'eval.macro', 'eval.spatial', 'eval.tactical', 'eval.strategy',
+        'bench.b.batchDist', 'bench.b.parallel', 'bench.b.passiveWaits',
+        'bench.b.latency', 'bench.b.tokPerDec', 'bench.b.outPerOk', 'bench.b.okPerMin', 'bench.b.scorePer10k',
+        'bench.b.errDrift', 'bench.b.idleDrift', 'bench.b.latRatio',
+        'bench.b.hallucinations', 'bench.b.constraints', 'bench.b.recovery', 'bench.t.loops', 'bench.b.lost', 'bench.h.help']);
+    assert.match(fig['eval.index'][0], new RegExp('^' + a.index.value.toFixed(1)));
+    assert.match(fig['eval.tactical'][0], /^50/);                      // no combat, activityGate = 1
+    assert.deepEqual([fig['bench.b.tokPerDec'], fig['bench.b.outPerOk']], [['9k (9k·300)', '42k (40k·2k)'], ['429', '2000']]);
+    assert.deepEqual([fig['bench.b.hallucinations'], fig['bench.b.constraints'], fig['bench.b.recovery'], fig['bench.t.loops'], fig['bench.b.lost']],
         [['10.0 %', '0 %'], ['20.0 %', '0 %'], ['66.7 %', '–'], ['0', '0'], ['0', '0']]);
-    // The better of a row stands out: the cheaper Index, the fewer refusals. Where both are level, nobody does.
-    assert.match(summary, /bench\.b\.perMTok<\/div><div class="bb-col"[^>]*><span class="is-lead"/);
-    assert.match(summary, /bench\.b\.refused<\/div><div class="bb-col"[^>]*><span title="[^"]*">20\.0 %<\/span><\/div><div class="bb-col"[^>]*><span class="is-lead"/);
+    // The better of a row stands out: lower tok/dec, fewer constraint errors. Equal loops highlight nobody.
+    assert.match(summary, /bench\.b\.tokPerDec<\/div><div class="bb-col"[^>]*><span class="is-lead"/);
+    assert.match(summary, /bench\.b\.constraints<\/div><div class="bb-col"[^>]*><span title="[^"]*">20\.0 %<\/span><\/div><div class="bb-col"[^>]*><span class="is-lead"/);
     assert.doesNotMatch(summary.split('bench.t.loops')[1].split('bench.b.lost')[0], /is-lead/);
+
+    // Warmup (< 5m && < 15 rated): pill appears and .is-lead highlights are suppressed.
+    const warm = page();
+    warm.ledger.addLine(decision('a', 60, { turn: 1, orders: [militia] }));
+    warm.ledger.addLine(decision('b', 60, { turn: 1, orders: [refused('cannotAfford')] }));
+    warm.u.toggleBenchFull(true);
+    assert.match(warm.els.benchFull.innerHTML, /<span class="bf-pill is-warmup">bench\.warmup<\/span>/);
+    assert.doesNotMatch(warm.els.benchFull.innerHTML, /class="is-lead"/);
 
     // What is NOT on the board: the old matrix, the long list of the inspector, the chart to share.
     assert.doesNotMatch(html, /class="bm"|bm-cell|bench-evidence|bt-list|bf-share|<svg xmlns|bf-seat|bf-matrix/);
@@ -221,17 +232,18 @@ test('the mini card: the same columns without the labels, a graph a section, and
     const { u, els, ledger, keys } = match();
     u.toggleBenchView(true);
     const html = els.benchMatrix.innerHTML;
-    assert.match(html, /^<div class="bench-head">bench\.matrix<span>bench\.b\.open<\/span><\/div><div class="bb is-mini" style="--n:2" role="button" tabindex="0" title="bench\.b\.openTip" onclick="game\.ui\.toggleBenchFull\(true\)">/);
-    assert.doesNotMatch(html, /bb-lab/, 'no label column: the section names stand over the rows');
+    assert.match(html, /^<div class="bench-head">bench\.matrix<span>bench\.mode\.realtimeShort · bench\.b\.open<\/span><\/div><div class="bb is-mini" style="--n:2" role="button" tabindex="0" title="bench\.b\.openTip" onclick="game\.ui\.toggleBenchFull\(true\)">/);
+    assert.doesNotMatch(html, /bb-lab|bb-sec/, 'no label column or section bands in the compact mini card');
     const rows = rowsOf(html);
-    assert.deepEqual(rows.map(r => r.cls + ' ' + colsOf(r.html).length), ['bb-head 2', 'bb-graph 2', 'bb-graph 2', 'bb-index 2']);
-    assert.deepEqual([...html.matchAll(/<div class="bb-sec">([^<]*)<\/div>/g)].map(m => m[1]), ['bench.b.game', 'bench.b.model', 'bench.b.summary']);
-    // Gameplay: the five scores. Performance: seconds a decision, on one scale. Summary: the Index, and the tokens it took.
+    assert.deepEqual(rows.map(r => r.cls + ' ' + colsOf(r.html).length), ['bb-head 2', 'bb-graph 2', 'bb-eqrow 2', 'bb-index 2', 'bb-footrow 2']);
+    // Gameplay: 2-line sparkline (WAR solid + Dom dashed), 5 equalizer bars per seat, WAR badge, batching footer.
     assert.equal((html.match(/<svg class="bg-chart bb-game"/g) || []).length, 2);
-    assert.equal((html.match(/<svg class="bg-chart bb-rate"/g) || []).length, 2);
-    assert.deepEqual([...html.matchAll(/<b class="bb-now">([^<]*)<\/b>/g)].map(m => m[1]), ['4.0 s', '30 s']);
+    assert.match(html, /stroke="#ec4899"[^>]*stroke-dasharray="3,2"/);
+    assert.equal((html.match(/class="bb-eq-bar"/g) || []).length, 10);
+    assert.equal((html.match(/class="bb-mini-foot"/g) || []).length, 2);
+    assert.equal((html.match(/class="bb-batch is-compact"/g) || []).length, 2);
     const [a, b] = ledger.profile().seats;
-    assert.deepEqual(colsOf(rows[3].html), [`<b>${Math.round(a.index.value)}</b><small>93k tok</small>`, `<b>${Math.round(b.index.value)}</b><small>210k tok</small>`]);
+    assert.deepEqual(colsOf(rows[3].html), [`<b>${Math.round(a.index.value)}</b><small>eval.indexShort</small>`, `<b>${Math.round(b.index.value)}</b><small>eval.indexShort</small>`]);
     assert.doesNotMatch(html, /bm-cell|bt-strip|bf-kind/);
     // Nothing decided yet: it says so, and there is nothing to open.
     const empty = page();
@@ -271,16 +283,21 @@ test('what a seat’s play cost, the score for that cost, and its discipline', (
     // Ten decisions of 9000 + 300 tokens and four seconds each; five of 40000 + 2000 and thirty seconds.
     assert.deepEqual([ca.tokens, ca.promptTokens, ca.completionTokens, ca.thinkingMs], [93000, 90000, 3000, 40000]);
     assert.deepEqual([cb.tokens, cb.thinkingMs], [210000, 150000]);
-    // The score for what it cost: Index points a million tokens, and a minute of thinking.
-    assert.ok(Math.abs(ca.perMTok - a.index.value / 0.093) < 1e-9 && Math.abs(ca.perMin - a.index.value / (40 / 60)) < 1e-9);
-    assert.ok(cb.perMTok < ca.perMTok && cb.perMin < ca.perMin, 'the dear and slow seat scores less for its cost');
-    // Discipline: of ten judged orders one could not be called and two were refused for a shown reason; of three mistakes one was made again.
-    assert.deepEqual([ca.invalidRate, ca.refusedRate], [0.1, 0.2]);
+    // Duration-invariant cost metrics: tokens/decision, output tokens per valid order, effective ok/think-min, score per 10k tok/dec.
+    assert.deepEqual([ca.tokPerDec, ca.promptPerDec, ca.outPerDec], [9300, 9000, 300]);
+    assert.ok(Math.abs(ca.outPerOk - 3000 / 7) < 1e-9);
+    assert.ok(Math.abs(ca.okPerMin - 7 / (40 / 60)) < 1e-9);
+    assert.ok(Math.abs(ca.scorePer10k - a.index.value / 0.93) < 1e-9);
+    assert.deepEqual([cb.tokPerDec, cb.outPerOk, cb.okPerMin], [42000, 2000, 2]);
+    assert.ok(cb.scorePer10k < ca.scorePer10k && cb.okPerMin < ca.okPerMin, 'the dear and slow seat scores less for its cognitive budget');
+    // Discipline: of ten judged orders one was a hallucination (reference) and two were constraint refusals; of three mistakes one repeated.
+    assert.deepEqual([ca.hallucinationRate, ca.constraintRate, ca.invalidRate, ca.refusedRate], [0.1, 0.2, 0.1, 0.2]);
     assert.ok(Math.abs(ca.recovery - 2 / 3) < 1e-9);
     assert.deepEqual([cb.invalidRate, cb.refusedRate, cb.recovery, cb.lost], [0, 0, null, 0], 'no mistake: nothing to recover from');
-    // A seat whose harness reports no usage has no tokens and no score for them, which is not a zero.
+    // A seat whose harness reports no usage has null token-derived ratios, never zero.
     const none = Object.assign({}, a, { efficiency: Object.assign({}, a.efficiency, { tokens: null }) });
-    assert.deepEqual([u.benchCost(none).tokens, u.benchCost(none).perMTok], [null, null]);
+    const cNone = u.benchCost(none);
+    assert.deepEqual([cNone.tokens, cNone.tokPerDec, cNone.outPerOk, cNone.scorePer10k], [null, null, null, null]);
 });
 
 // ---- the decision inspector (build 1223) ---------------------------------------------------
@@ -310,7 +327,7 @@ test('the inspector: the decision a loop began at, the constraints ignored, the 
     assert.deepEqual(plain(tr.marks.map(m => [m.kind, m.turn, m.code || null])), [
         ['constraint', 2, 'cannotAfford'], ['awareness', 3, 'targetOutOfSight'], ['loop', 5, 'populationLimit'],
         ['awareness', 9, 'notACommand'], ['refused', 10, null], ['threat', 11, null]]);
-    assert.deepEqual(plain(tr.counts), { loop: 1, constraint: 1, awareness: 2, threat: 1, refused: 1 });
+    assert.deepEqual(plain(tr.counts), { loop: 1, constraint: 1, awareness: 2, passive: 0, threat: 1, refused: 1 });
     // The loop is one mark at its first decision and carries the run: four decisions, five orders, to decision 8.
     const loop = tr.marks[2];
     assert.deepEqual([loop.of, loop.decision, loop.sec, loop.n, loop.orders, loop.upTo, loop.upToSec, loop.open], ['constraint', 5, 300, 4, 5, 8, 480, false]);
@@ -322,6 +339,19 @@ test('the inspector: the decision a loop began at, the constraints ignored, the 
     short.addLine(decision('a', 300, { turn: 5, orders: [refused('cannotAfford')] }));
     assert.deepEqual(plain(short.trace('a', WarBench.classify).marks.map(m => [m.kind, m.turn, m.n, m.open])), [['loop', 3, 3, true]]);
     assert.equal(WarEval.LOOP_MIN, 3);
+    // Three consecutive passive waits with idle workers emit a passive stall span mark.
+    const stallPage = page(), stall = stallPage.ledger;
+    for (let n = 1; n <= 3; n++) {
+        const l = JSON.parse(decision('a', n * 60, { turn: n, orders: [['wait', {}, 'ok']] }));
+        l.state.workers = { total: 4, idle: 2 };
+        stall.addLine(JSON.stringify(l));
+    }
+    const stallTrace = stall.trace('a', WarBench.classify);
+    assert.deepEqual(plain(stallTrace.marks.map(m => [m.kind, m.decision, m.n, m.open, m.upToSec])), [['passive', 1, 3, true, 180]]);
+    assert.equal(stallTrace.counts.passive, 1);
+    stallPage.u.toggleBenchFull(true);
+    assert.match(stallPage.els.benchFull.innerHTML, /<i class="is-passive" style="left:33\.3%;width:66\.7%"/);
+    assert.match(stallPage.els.benchFull.innerHTML, /<span class="is-passive" title="bench\.t\.passiveTip"><i><\/i>bench\.t\.passive<\/span>/);
     // The same order refused for another reason, or another order for the same, breaks a run.
     const mixed = page().ledger;
     ['cannotAfford', 'populationLimit', 'cannotAfford'].forEach((c, i) => mixed.addLine(decision('a', (i + 1) * 60, { turn: i + 1, orders: [refused(c)] })));
@@ -338,35 +368,37 @@ test('the inspector: the decision a loop began at, the constraints ignored, the 
 
 test('the inspector on the board: marks on the match’s clock under the gameplay graph, each a way into the transcript', () => {
     const { u, els } = troubled();
+    const origClassOf = WarEval.classOf;
     WarEval.classOf = WarBench.classify;                // what the page has once bench-core.js is loaded
-    u.toggleBenchFull(true);
-    const html = els.benchFull.innerHTML, game = html.split('<div class="bb-sec">')[1];
-    // The strip stands right under the graphs, a model a strip, with what the colours mean beside the clock.
-    assert.match(game, /<\/svg><\/div><\/div><div class="bb-row bb-marks"><div class="bb-lab"><b title="bench\.t\.tip">bench\.t\.title<\/b><\/div>/);
-    const strips = [...game.matchAll(/<div class="bt-strip[^"]*"(?: title="([^"]*)")?>(.*?)<\/div>/g)];
-    assert.equal(strips.length, 2);
-    // The match is 14 minutes; the loop spans decisions 5 to 8, every other mark stands at its second.
-    assert.deepEqual([...strips[0][2].matchAll(/<i class="is-(\w+)" style="left:([\d.]+)%(?:;width:([\d.]+)%)?" onclick="event\.stopPropagation\(\); game\.ui\.benchOpenTurn\('a', (\d+)\)" title="#\d+ [\d:]+ · bench\.t\.\w+: [^"]*">/g)]
-        .map(m => [m[1], m[2], m[3] || '', m[4]].join(' ')),
-        ['constraint 14.3  2', 'awareness 21.4  3', 'loop 35.7 21.4 5', 'awareness 64.3  9', 'refused 71.4  10', 'threat 78.6  11']);
-    assert.match(strips[0][2], /title="#5 5:00 · bench\.t\.loop: bench\.t\.loopLine\{&quot;order&quot;:&quot;train unit · populationLimit&quot;,&quot;n&quot;:4,&quot;upTo&quot;:8\}"/);
-    assert.deepEqual([strips[1][1], strips[1][2]], ['bench.t.none', ''], 'a clean seat: an empty strip that says so');
-    assert.deepEqual([...game.matchAll(/<span class="is-(\w+)" title="bench\.t\.\w+Tip"><i><\/i>bench\.t\.\w+<\/span>/g)].map(m => m[1]), ['loop', 'constraint', 'awareness', 'threat', 'refused']);
-    // The count of loops is a figure of the summary.
-    assert.deepEqual(figures(html)['bench.t.loops'], ['1', '0']);
-    // A click on a mark closes the board and opens that decision in the transcript.
-    const opened = [];
-    u.openTranscriptTurn = (id, turn) => opened.push(id + ' ' + turn);
-    u.benchOpenTurn('a', 5);
-    assert.deepEqual([opened, u._benchFull, els.benchFull.style.display], [['a 5'], false, 'none']);
-    // An old transcript: the strip says what is not recorded, and there is no count of loops.
-    const old = page();
-    const bare = JSON.parse(decision('a', 60, { turn: 1, orders: [militia] })); delete bare.outcomes;
-    old.ledger.addLine(JSON.stringify(bare));
-    old.u.toggleBenchFull(true);
-    assert.match(old.els.benchFull.innerHTML, /<div class="bt-strip is-none" title="bench\.t\.unjudged"><\/div>/);
-    assert.deepEqual(figures(old.els.benchFull.innerHTML)['bench.t.loops'], ['–']);
-    WarEval.classOf = () => null;
+    try {
+        u.toggleBenchFull(true);
+        const html = els.benchFull.innerHTML, game = html.split('<div class="bb-sec">')[1];
+        // The strip stands right under the graphs, a model a strip, with what the colours mean beside the clock.
+        assert.match(game, /<\/svg><\/div><\/div><div class="bb-row bb-marks"><div class="bb-lab"><b title="bench\.t\.tip">bench\.t\.title<\/b><\/div>/);
+        const strips = [...game.matchAll(/<div class="bt-strip[^"]*"(?: title="([^"]*)")?>(.*?)<\/div>/g)];
+        assert.equal(strips.length, 2);
+        // The match is 14 minutes; the loop spans decisions 5 to 8, every other mark stands at its second.
+        assert.deepEqual([...strips[0][2].matchAll(/<i class="is-(\w+)" style="left:([\d.]+)%(?:;width:([\d.]+)%)?" onclick="event\.stopPropagation\(\); game\.ui\.benchOpenTurn\('a', (\d+)\)" title="#\d+ [\d:]+ · bench\.t\.\w+: [^"]*">/g)]
+            .map(m => [m[1], m[2], m[3] || '', m[4]].join(' ')),
+            ['constraint 14.3  2', 'awareness 21.4  3', 'loop 35.7 21.4 5', 'awareness 64.3  9', 'refused 71.4  10', 'threat 78.6  11']);
+        assert.match(strips[0][2], /title="#5 5:00 · bench\.t\.loop: bench\.t\.loopLine\{&quot;order&quot;:&quot;train unit · populationLimit&quot;,&quot;n&quot;:4,&quot;upTo&quot;:8\}"/);
+        assert.deepEqual([strips[1][1], strips[1][2]], ['bench.t.none', ''], 'a clean seat: an empty strip that says so');
+        assert.deepEqual([...game.matchAll(/<span class="is-(\w+)" title="bench\.t\.\w+Tip"><i><\/i>bench\.t\.\w+<\/span>/g)].map(m => m[1]), ['loop', 'awareness', 'constraint', 'threat', 'refused']);
+        // The count of loops is a figure of the summary.
+        assert.deepEqual(figures(html)['bench.t.loops'], ['1', '0']);
+        // A click on a mark closes the board and opens that decision in the transcript.
+        const opened = [];
+        u.openTranscriptTurn = (id, turn) => opened.push(id + ' ' + turn);
+        u.benchOpenTurn('a', 5);
+        assert.deepEqual([opened, u._benchFull, els.benchFull.style.display], [['a 5'], false, 'none']);
+        // An old transcript: the strip says what is not recorded, and there is no count of loops.
+        const old = page();
+        const bare = JSON.parse(decision('a', 60, { turn: 1, orders: [militia] })); delete bare.outcomes;
+        old.ledger.addLine(JSON.stringify(bare));
+        old.u.toggleBenchFull(true);
+        assert.match(old.els.benchFull.innerHTML, /<div class="bt-strip is-none" title="bench\.t\.unjudged"><\/div>/);
+        assert.deepEqual(figures(old.els.benchFull.innerHTML)['bench.t.loops'], ['–']);
+    } finally { WarEval.classOf = origClassOf; }
 });
 
 // ---- raw model or harness (build 1224) -----------------------------------------------------
@@ -434,64 +466,67 @@ test('raw model or harness on the board: a tag beside the name, and one row of t
 // ---- where the board opens, and where the chart to share stands -----------------------------
 test('the board opens without the Bench panels: from the results screen and in the transcript analyzer', () => {
     const p = troubled(), { u, els, store } = p;
+    const origClassOf = WarEval.classOf;
     WarEval.classOf = WarBench.classify;
-    assert.equal(u.benchOn(), false);
-    // The results screen: the report card carries the matrix as before, the way to the board, and the chart to share.
-    const sum = { classList: { contains: c => c === 'active' }, style: {} }, card = { style: {}, innerHTML: '' };
-    els.arenaSummaryScreen = sum; els.summaryProfile = card;
-    u.game.openAIAIManager.transcripts.hasData = () => true;
-    u.updateSummaryProfile();
-    assert.match(card.innerHTML, /<table class="bm">.*<button type="button" class="summary-board-btn" onclick="game\.ui\.toggleBenchFull\(true\)">bench\.b\.fullBtn<\/button><p class="summary-profile-note">sum\.profileNote<\/p><div class="bf-share"><h4>share\.title/s);
-    assert.match(card.innerHTML, /<div class="bs-pic"><svg xmlns.*<\/svg><\/div><\/div>$/s, 'the picture that sums the match up, with its buttons');
-    assert.match(card.innerHTML, /class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('speed'\)"/);
-    // The other axis is drawn on the card, where the picture is.
-    u.benchShareAxis('tokens');
-    assert.match(card.innerHTML, /class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('tokens'\)"/);
-    assert.match(card.innerHTML, />share\.xTokens<\/text>/);
-    u.toggleBenchFull(true);
-    assert.equal(els.benchFull.style.display, '');
-    assert.match(els.benchFull.innerHTML, /<div class="bb" style="--n:2">/);
-    assert.doesNotMatch(els.benchFull.innerHTML, /bf-share|<svg xmlns/, 'the chart to share is not on the board');
-    assert.equal(els.benchMatrix.innerHTML, '', 'the panels stay as they were: off');
-    // After the end a decision opens in the analyzer; once the transcript is gone a mark is only a mark.
-    assert.match(els.benchFull.innerHTML, /<i class="is-loop" style="[^"]*" onclick="event\.stopPropagation\(\); game\.ui\.benchOpenTurn\('a', 5\)"/);
-    const went = [];
-    u.watchInAnalyzer = () => Promise.resolve(); u.anApplyMoment = m => went.push(m);
-    return u.benchOpenTurn('a', 5).then(() => {
-        assert.deepEqual([plain(went), u._benchFull, els.benchFull.innerHTML], [[{ seat: 1, turn: 5 }], false, '']);
-        u.game.openAIAIManager.transcripts.hasData = () => false;
+    try {
+        assert.equal(u.benchOn(), false);
+        // The results screen: the report card carries the matrix as before, the way to the board, and the chart to share.
+        const sum = { classList: { contains: c => c === 'active' }, style: {} }, card = { style: {}, innerHTML: '' };
+        els.arenaSummaryScreen = sum; els.summaryProfile = card;
+        u.game.openAIAIManager.transcripts.hasData = () => true;
+        u.updateSummaryProfile();
+        assert.match(card.innerHTML, /<table class="bm">.*<button type="button" class="summary-board-btn" onclick="game\.ui\.toggleBenchFull\(true\)">bench\.b\.fullBtn<\/button><p class="summary-profile-note">sum\.profileNote<\/p><div class="bf-share"><h4>share\.title/s);
+        assert.match(card.innerHTML, /<div class="bs-pic"><svg xmlns.*<\/svg><\/div><\/div>$/s, 'the picture that sums the match up, with its buttons');
+        assert.match(card.innerHTML, /class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('outPerOk'\)"/);
+        assert.match(card.innerHTML, /<rect class="sweet-spot"/);
+        // Another axis is drawn on the card, where the picture is.
+        u.benchShareAxis('tokens');
+        assert.match(card.innerHTML, /class="bs-btn is-on" onclick="game\.ui\.benchShareAxis\('tokens'\)"/);
+        assert.match(card.innerHTML, />share\.xTokens<\/text>/);
         u.toggleBenchFull(true);
-        assert.match(els.benchFull.innerHTML, /<i class="is-loop" style="[^"]*" title="#5 5:00/);
-        assert.doesNotMatch(els.benchFull.innerHTML, /benchOpenTurn/);
-        u.toggleBenchFull(false);
+        assert.equal(els.benchFull.style.display, '');
+        assert.match(els.benchFull.innerHTML, /<div class="bb" style="--n:2">/);
+        assert.doesNotMatch(els.benchFull.innerHTML, /bf-share|<svg xmlns/, 'the chart to share is not on the board');
+        assert.equal(els.benchMatrix.innerHTML, '', 'the panels stay as they were: off');
+        // After the end a decision opens in the analyzer; once the transcript is gone a mark is only a mark.
+        assert.match(els.benchFull.innerHTML, /<i class="is-loop" style="[^"]*" onclick="event\.stopPropagation\(\); game\.ui\.benchOpenTurn\('a', 5\)"/);
+        const went = [];
+        u.watchInAnalyzer = () => Promise.resolve(); u.anApplyMoment = m => went.push(m);
+        return u.benchOpenTurn('a', 5).then(() => {
+            assert.deepEqual([plain(went), u._benchFull, els.benchFull.innerHTML], [[{ seat: 1, turn: 5 }], false, '']);
+            u.game.openAIAIManager.transcripts.hasData = () => false;
+            u.toggleBenchFull(true);
+            assert.match(els.benchFull.innerHTML, /<i class="is-loop" style="[^"]*" title="#5 5:00/);
+            assert.doesNotMatch(els.benchFull.innerHTML, /benchOpenTurn/);
+            u.toggleBenchFull(false);
 
-        // The transcript analyzer: the board reads the loaded file's own ledger, and a decision opens there.
-        delete els.arenaSummaryScreen;
-        els.analyzeScreen = { classList: { contains: c => c === 'active' } };
-        const file = WarEval.createLedger();
-        for (let n = 1; n <= 5; n++) file.addLine(decision('b', n * 60, { turn: n, orders: [refused('cannotAfford')] }));
-        u.analyzer = { ledger: file };
-        assert.equal(u.benchLedger(), file);
-        u.toggleBenchFull(true);
-        const html = els.benchFull.innerHTML;
-        assert.match(html, /<div class="bb" style="--n:1">/, 'the file holds one seat, the match behind it two');
-        assert.equal((html.match(/<i class="is-loop"/g) || []).length, 1);
-        went.length = 0;
-        u.benchOpenTurn('b', 1);
-        assert.deepEqual([plain(went), u._benchFull], [[{ seat: 2, turn: 1 }], false]);
-        // The Bench panels are a match's: in the analyzer they stay away even when the view is switched on.
-        store.x = 1; u.viewPreferences().bench = true;
-        els.benchMatrix.innerHTML = '';
-        u.updateBenchView();
-        assert.equal(els.benchMatrix.innerHTML, '');
-        WarEval.classOf = () => null;
-        const page_ = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
-        assert.match(page_, /<button class="sb-end an-board" onclick="game\.ui\.toggleBenchFull\(true\)" data-i18n="bench\.matrix" data-i18n-title="bench\.b\.fullBtn">/);
-        // The analyzer reads every line of a file into a ledger of its own.
-        const an = fs.readFileSync(path.join(root, 'js/analyzer.js'), 'utf8');
-        assert.match(an, /this\.ledger = WarEval\.createLedger\(\);/);
-        assert.match(an, /if \(this\.ledger\) this\.ledger\.add\(o\);/);
-    });
+            // The transcript analyzer: the board reads the loaded file's own ledger, and a decision opens there.
+            delete els.arenaSummaryScreen;
+            els.analyzeScreen = { classList: { contains: c => c === 'active' } };
+            const file = WarEval.createLedger();
+            for (let n = 1; n <= 5; n++) file.addLine(decision('b', n * 60, { turn: n, orders: [refused('cannotAfford')] }));
+            u.analyzer = { ledger: file };
+            assert.equal(u.benchLedger(), file);
+            u.toggleBenchFull(true);
+            const html = els.benchFull.innerHTML;
+            assert.match(html, /<div class="bb" style="--n:1">/, 'the file holds one seat, the match behind it two');
+            assert.equal((html.match(/<i class="is-loop"/g) || []).length, 1);
+            went.length = 0;
+            u.benchOpenTurn('b', 1);
+            assert.deepEqual([plain(went), u._benchFull], [[{ seat: 2, turn: 1 }], false]);
+            // The Bench panels are a match's: in the analyzer they stay away even when the view is switched on.
+            store.x = 1; u.viewPreferences().bench = true;
+            els.benchMatrix.innerHTML = '';
+            u.updateBenchView();
+            assert.equal(els.benchMatrix.innerHTML, '');
+            const page_ = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+            assert.match(page_, /<button class="sb-end an-board" onclick="game\.ui\.toggleBenchFull\(true\)" data-i18n="bench\.matrix" data-i18n-title="bench\.b\.fullBtn">/);
+            // The analyzer reads every line of a file into a ledger of its own.
+            const an = fs.readFileSync(path.join(root, 'js/analyzer.js'), 'utf8');
+            assert.match(an, /this\.ledger = WarEval\.createLedger\(\);/);
+            assert.match(an, /if \(this\.ledger\) this\.ledger\.add\(o\);/);
+        }).finally(() => { WarEval.classOf = origClassOf; });
+    } catch (e) { WarEval.classOf = origClassOf; throw e; }
 });
 
 test('two things asp67 saw beside the board: a plan wraps inside its panel, and a seat card’s flyout lies on top', () => {
@@ -499,6 +534,8 @@ test('two things asp67 saw beside the board: a plan wraps inside its panel, and 
     const rule = sel => { const m = css.match(new RegExp('(?:^|\\n)' + sel.replace(/[.\-]/g, '\\$&') + ' \\{([^}]*)\\}')); return m ? m[1] : ''; };
     // A long word in a plan step (names joined by slashes) gave the plan panel a sideways scroll bar.
     assert.match(rule('.bench-panel'), /overflow-x: hidden; overflow-wrap: anywhere;/);
+    // 3-digit equalizer values (e.g. 100) must not wrap under .bench-panel's overflow-wrap: anywhere.
+    assert.match(rule('.bb-eq-bar b'), /white-space:\s*nowrap;[\s\S]*overflow-wrap:\s*normal;/);
     // The comparison card lay over the flyout of a model's score card.
     const z = sel => Number((rule(sel).match(/z-index: (\d+)/) || [])[1]);
     assert.ok(z('.lb-flyout') > z('.bench-panel') && z('.lb-flyout') > 1002, 'above the panels, also where they are raised on a narrow window');

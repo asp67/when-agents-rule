@@ -42,56 +42,43 @@ test('the card reads the ledger of the match being recorded, by seat', () => {
     assert.equal(seats.a.grounding.ok, 39);
 });
 
-test('a seat card shows one bar per part of the profile, with what it rests on', () => {
+test('a seat card shows a compact horizontal 5-pillar strip, WAR badge, and agency footer', () => {
     const u = ui(), seats = (u.game = { openAIAIManager: { transcripts: { ledger: ledger() } } }, u.evalSeats());
     const html = u.seatProfileHtml(seats.a);
-    assert.equal((html.match(/class="lb-dim"/g) || []).length, 2);
-    // And a fourth, empty: this seat was never shown a threat, which is a dash and not a zero.
-    assert.match(html, /lb-dim is-empty" title="eval\.tacticalNone eval\.provisional">.*eval\.tactical<\/span>.*<b>–<\/b>/);
-    // Its one checkable step, "Build a tower", has not been carried out in 38 decisions and still stands in its plan:
-    // open, not dropped, so there is nothing settled to score yet. A dash, and the tooltip says one is open.
-    assert.match(html, /eval\.follow<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>–<\/b>/);
-    assert.match(html, /eval\.followTip\{&quot;acted&quot;:0,&quot;part&quot;:0,&quot;closed&quot;:0,&quot;late&quot;:0,&quot;pending&quot;:1,&quot;wait&quot;:&quot;–&quot;,&quot;serving&quot;:0,&quot;orders&quot;:0\}/);
-    // 39 of 40 valid is 97.5 %: a quarter of the way to zero on the v0 scale, so 75.
-    assert.match(html, /eval\.grounding<\/span><span class="lb-dim-track"><i style="width:75%"><\/i><\/span><b>75<\/b>/);
-    assert.match(html, /eval\.groundingTip\{&quot;ok&quot;:39,&quot;judged&quot;:40,&quot;pct&quot;:&quot;97\.5 %&quot;,&quot;contended&quot;:0\}/);
-    assert.match(html, /eval\.mistakes\{&quot;code&quot;:&quot;cannotAfford&quot;,&quot;n&quot;:1,&quot;repeated&quot;:0\}/);
-    // One plan from the first decision, one of its two steps checkable, no shock: (1 + 0.5 + 1) / 3.
-    assert.match(html, /eval\.planning<\/span><span class="lb-dim-track"><i style="width:83%"><\/i><\/span><b>83<\/b>/);
-    assert.match(html, /eval\.planningTip\{&quot;statements&quot;:1,&quot;revisions&quot;:1,&quot;first&quot;:&quot;1:15&quot;/);
-    // Strategy has nothing to read yet: no power reading has been shown to the ledger.
-    assert.match(html, /lb-dim is-empty" title="eval\.strategyNone eval\.provisional">.*eval\.strategy<\/span>.*<b>–<\/b>/);
-    // The Index sits with the bars. Whether its plan is followed is still open, so the plan
-    // is left out of it for now: Grounding alone, and it says of how many parts.
-    assert.match(html, /class="lb-dim lb-index" title="eval\.indexTip\{&quot;n&quot;:1,&quot;parts&quot;:4,&quot;plan&quot;:&quot;–&quot;\} eval\.provisional">.*eval\.index<\/span>.*<b>75<\/b>/);
-    assert.ok(html.indexOf('lb-index') > html.indexOf('eval.strategy<'), 'the Index comes after the bars');
-    assert.equal((html.match(/eval\.provisional/g) || []).length, 6);
+    assert.equal((html.match(/class="lb-dim is-/g) || []).length, 5);
+    assert.match(html, /class="lb-dim is-strategy is-empty" title="eval\.strategyNone">.*eval\.short\.strategy<\/span>.*<b>–<\/b>/);
+    // 39/40 ok (1 constraint error) -> Bayesian smoothed Grounding = 91.
+    assert.match(html, /is-grounding" title="eval\.groundingTip\{&quot;ok&quot;:39,&quot;judged&quot;:40,&quot;pct&quot;:&quot;97\.5 %&quot;,&quot;contended&quot;:0\} eval\.mistakes\{&quot;code&quot;:&quot;cannotAfford&quot;,&quot;n&quot;:1,&quot;repeated&quot;:0\}">.*eval\.short\.grounding<\/span><span class="lb-dim-track"><i style="width:91%"><\/i><\/span><b>91<\/b>/);
+    assert.match(html, /is-macro".*eval\.short\.macro<\/span>/);
+    assert.match(html, /is-spatial".*eval\.short\.spatial<\/span>/);
+    assert.match(html, /is-tactical" title="eval\.tacticalNone">.*eval\.short\.tactical<\/span>/);
+    // WAR Score badge sits after the 5 pillar columns (no Early label once >= 15 rated commands).
+    assert.match(html, /class="lb-dim lb-index" title="eval\.indexTip\{&quot;n&quot;:4,&quot;parts&quot;:5\}">.*eval\.indexShort<\/span><b>/);
+    assert.doesNotMatch(html, /bench\.early/);
+    assert.match(html, /class="lb-foot"><span class="bb-batch is-compact"/);
+    assert.ok(html.indexOf('lb-index') > html.indexOf('eval.short.strategy<'));
 });
 
-test('the strategy bar reads the timeline as it stands, and says the placement is still to come', () => {
+test('the strategy bar reads the timeline as it stands, and blends placement at the end', () => {
     const l = ledger(), u = ui();
     const tick = (t, a, b) => ({ t, p: { a: { pw: a }, b: { pw: b }, c: { pw: 0 } } });
     u.game = { openAIAIManager: { transcripts: { ledger: l } }, _timeline: { samples: [tick(5, 600, 400), tick(10, 600, 400)], ages: [] } };
     let html = u.seatProfileHtml(u.evalSeats().a);
-    // 60 % of all power among three seats: 0.6 x 3 / 1.5, capped at full marks.
-    assert.match(html, /eval\.strategy<\/span><span class="lb-dim-track"><i style="width:100%"><\/i><\/span><b>100<\/b>/);
-    assert.match(html, /title="eval\.strategyTip\{&quot;share&quot;:&quot;60\.0 %&quot;,&quot;even&quot;:&quot;33\.3 %&quot;,&quot;lead&quot;:&quot;100 %&quot;,&quot;destroyed&quot;:0,&quot;lost&quot;:0\} eval\.strategyLive eval\.provisional"/);
-    // At the end the file's own lines take over, and the tooltip leads with the placement.
+    assert.match(html, /eval\.short\.strategy<\/span><span class="lb-dim-track"><i style="width:74%"><\/i><\/span><b>74<\/b>/);
+    assert.match(html, /title="eval\.strategyTip\{&quot;dom&quot;:74,&quot;share&quot;:&quot;60\.0 %&quot;,&quot;even&quot;:&quot;33\.3 %&quot;,&quot;lead&quot;:&quot;100 %&quot;,&quot;destroyed&quot;:0,&quot;lost&quot;:0\} eval\.strategyLive"/);
+    // At the end the file's own lines take over, blending 75% trajDom + 25% placement (rank 2 of 3 = 50 -> 68).
     l.addLine(JSON.stringify({ type: 'results', ranking: [{ playerId: 'b', rank: 1, isWinner: true }, { playerId: 'a', rank: 2 }, { playerId: 'c', rank: 3 }] }));
     l.addLine(JSON.stringify({ type: 'timeline', samples: u.game._timeline.samples, ages: [] }));
     html = u.seatProfileHtml(u.evalSeats().a);
-    assert.match(html, /title="eval\.strategyPlaced\{&quot;rank&quot;:2,&quot;of&quot;:3\} eval\.strategyTip\{[^}]*\} eval\.provisional"/);
-    assert.match(html, /eval\.strategy<\/span><span class="lb-dim-track"><i style="width:75%"><\/i><\/span><b>75<\/b>/);   // (0.5 + 1) / 2
+    assert.match(html, /title="eval\.strategyPlaced\{&quot;rank&quot;:2,&quot;of&quot;:3\} eval\.strategyTip\{[^}]*\}"/);
+    assert.match(html, /eval\.short\.strategy<\/span><span class="lb-dim-track"><i style="width:68%"><\/i><\/span><b>68<\/b>/);
 });
 
-test('nothing judged is a dash and no plan is a zero, and neither is hidden', () => {
+test('zero rated actions and warmup badges show clearly; no decisions shows nothing', () => {
     const u = ui(), seats = (u.game = { openAIAIManager: { transcripts: { ledger: ledger() } } }, u.evalSeats());
-    const html = u.seatProfileHtml(seats.b);                 // one contended command, no plan
-    assert.match(html, /lb-dim is-empty" title="eval\.groundingNone eval\.provisional"/);
-    assert.match(html, /eval\.grounding<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>–<\/b>/);
-    assert.match(html, /title="eval\.planningNone\{&quot;n&quot;:1\} eval\.provisional"/);
-    assert.match(html, /eval\.planning<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>0<\/b>/);
-    // A seat that has only waited is told so: its waits are counted and there is nothing to rate.
+    const html = u.seatProfileHtml(seats.b);                 // 1 contended command -> rated=0, warmup=true
+    assert.match(html, /is-grounding" title="eval\.groundingNone">.*eval\.short\.grounding<\/span><span class="lb-dim-track"><i style="width:0%"><\/i><\/span><b>0<\/b>/);
+    assert.match(html, /lb-dim lb-index is-warmup"[^>]*>.*<small>bench\.early<\/small>/);
     const w = WarEval.createLedger();
     for (let i = 0; i < 3; i++) w.addLine(JSON.stringify({ turn: 1, playerId: 'w', parsed: { commands: [{ action: 'wait' }] }, outcomes: [{ n: 1, action: 'wait', code: 'waited', verdict: 'ok' }] }));
     w.addLine(JSON.stringify({ turn: 1, playerId: 'w', parsed: { commands: [{ action: 'x' }, { action: 'wait' }] },
@@ -100,8 +87,7 @@ test('nothing judged is a dash and no plan is a zero, and neither is hidden', ()
     assert.match(waited, /eval\.groundingTip\{&quot;ok&quot;:1,&quot;judged&quot;:1,&quot;pct&quot;:&quot;100 %&quot;,&quot;contended&quot;:0\} eval\.waits\{&quot;n&quot;:4\}/);
     const only = WarEval.createLedger();
     only.addLine(JSON.stringify({ turn: 1, playerId: 'w', parsed: { commands: [{ action: 'wait' }] }, outcomes: [{ n: 1, action: 'wait', code: 'waited', verdict: 'ok' }] }));
-    assert.match(u.seatProfileHtml(only.profile().seats[0]), /lb-dim is-empty" title="eval\.groundingWaits\{&quot;n&quot;:1\} eval\.provisional">.*eval\.grounding<\/span>.*<b>–<\/b>/);
-    // A seat that has not decided anything yet gets no bars at all.
+    assert.match(u.seatProfileHtml(only.profile().seats[0]), /is-grounding" title="eval\.groundingWaits\{&quot;n&quot;:1\}">.*eval\.short\.grounding<\/span>.*<b>0<\/b>/);
     assert.equal(u.seatProfileHtml(seats.c), '');
     assert.equal(u.seatProfileHtml(null), '');
 });
@@ -283,10 +269,9 @@ test('the saved results carry the profile as a table, and name the heuristic as 
     l.addLine(JSON.stringify({ type: 'results', ranking: [{ playerId: 'a', rank: 1, isWinner: true }, { playerId: 'b', rank: 2 }, { playerId: 'c', rank: 3 }] }));
     const profile = WarEval.publicProfile(l.profile());
     const md = u.buildResultsMarkdown({ reports: [], reason: 'timeout', durStr: '10:00', playerCount: 3, profile });
-    assert.match(md, /## Evaluation profile\n\nScale v3, provisional\. One match is one sample/);
-    assert.match(md, /\| Seat \| Grounding \| Planning \| Follow-through \| Tactical \| Strategy \| Index \|/);
-    // Seat a: 39 of 40 valid; one plan; its one step dropped; no threat; 60 % of the power and first place.
-    assert.match(md, /\| Seat a \| 75 \(97\.5 % of 40\) \| 83 \(1 stated, 1 changed\) \| 0 \(0 of 1 steps\) \| – \(no threat shown\) \| 100 \(60\.0 % of power, placed 1\) \| 58\.3 \(3 of 4 parts\) \|/);
+    assert.match(md, /## Evaluation profile\n\nScale v4\. One match is one sample/);
+    assert.match(md, /\| Seat \| Grounding \(20%\) \| Macro & Agency \(25%\) \| Spatial \(15%\) \| Tactical \(15%\) \| Dominance \(25%\) \| WAR Score \|/);
+    assert.match(md, /\| Seat a \| 91 \(97\.5 % of 40\) \| 0 \(– bw, 0 passive waits\) \| 0 \(– map, 0\/0 opp\) \| 0 \(no combat\) \| 80 \(74 dom, placed 1\) \| 38\.3 \|/);
     assert.ok(md.indexOf('## Evaluation profile') < md.indexOf('## Ranking'));
     // Without a profile (no model seat, or nothing recorded) the file is what it always was.
     assert.doesNotMatch(u.buildResultsMarkdown({ reports: [], reason: 'timeout', durStr: '10:00', playerCount: 2 }), /Evaluation profile/);
@@ -320,9 +305,9 @@ test('the race chart is an overlay of either mode: its switch works in broadcast
     assert.doesNotMatch(css, /\.race-chart\s*\{[^}]*display:\s*none/);
     assert.match(css, /@media \(max-width: 1100px\) \{ \.race-chart \{ width: min\(300px, calc\(100vw - /);
     assert.doesNotMatch(css, /body\.bench-view[^{]*#(aiDecisionLog|spectatorLeaderboard)[^{]*\{\s*display:\s*none/);
-    assert.match(css, /\.bench-left \{ left: 354px;/);                   // beside the decision log, not over it
+    assert.doesNotMatch(css, /\.bench-left\b/);
     assert.match(css, /\.bench-right \{ right: 328px;/);                 // beside the leaderboard
-    assert.match(css, /body\.broadcast-mode \.bench-left \{ left: 16px;/);
+    assert.match(css, /body\.broadcast-mode \.bench-right \{ right: 16px;/);
     // The broadcast board carries an icon for each beside its others, lit while on.
     const src = fs.readFileSync(path.join(root, 'js/ui.js'), 'utf8');
     assert.match(src, /icon\('broadcastBench'[^\n]+toggleBenchView\(\)/);

@@ -18,21 +18,21 @@ const samples = fs.readdirSync(path.join(root, 'samples')).filter(f => f.endsWit
 // requests, most frequent mistake.
 const PINNED = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 87, 78, 3, 0, 1, 1, 0, 61.5, 4816, 6249, 19332, 93, 103, 0.954, 4, 0, 0, 'notDiscovered'],
-        ['O claude-sonnet-5.5', 128, 349, 2, 0, 5, 1, 0, 94.3, 6472, 10569, 72032, 563, 238, 2.789, 0, 0, 0, 'commandLimit'],
-        ['O deepseek-v4.1-flash', 128, 354, 11, 0, 4, 2, 2, 69.9, 8974, 21991, 57415, 1804.5, 801, 2.898, 1, 0, 0, 'noTCWorkers'],
-        ['DGX GLM5.3 Flash', 126, 321, 11, 0, 2, 0, 0, 66.3, 41543, 73085, 42176, 744.5, 320, 2.651, 0, 1, 1, 'populationLimit'],
+        ['O gpt-6.1-sol', 87, 78, 3, 0, 1, 1, 0, 85.5, 4816, 6249, 19332, 93, 107, 0.954, 4, 0, 0, 'notDiscovered'],
+        ['O claude-sonnet-5.5', 128, 349, 2, 0, 5, 1, 0, 97.5, 6472, 10569, 72032, 563, 239, 2.789, 0, 0, 0, 'commandLimit'],
+        ['O deepseek-v4.1-flash', 128, 354, 11, 0, 4, 2, 2, 84.5, 8974, 21991, 57415, 1804.5, 801, 2.898, 1, 0, 0, 'noTCWorkers'],
+        ['DGX GLM5.3 Flash', 126, 321, 11, 0, 2, 0, 0, 86.2, 41543, 73085, 42176, 744.5, 326, 2.651, 0, 1, 1, 'populationLimit'],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 82, 215, 12, 0, 2, 0, 2, 47.1, 36289, 74921, 8140, 1500.5, 654, 2.793, 0, 2, 0, 'assignFromEmpty'],
-        ['RTX qwen3.8 flash next Q2_0', 52, 137, 2, 0, 1, 0, 0, 85.6, 30982, 45172, 12656.5, 1761.5, 706, 2.692, 0, 0, 0, 'unitBuildingNotBuilt'],
-        ['O gemini-4-argon', 84, 229, 0, 0, 8, 0, 0, 100, 8635, 19633, 34700.5, 264, 139, 2.821, 0, 0, 0, null],
+        ['DGX Qwen3.8 flash next nvfp4', 82, 215, 12, 0, 2, 0, 2, 72.9, 36289, 74921, 8140, 1500.5, 654, 2.793, 0, 2, 0, 'assignFromEmpty'],
+        ['RTX qwen3.8 flash next Q2_0', 52, 137, 2, 0, 1, 0, 0, 94.1, 30982, 45172, 12656.5, 1761.5, 706, 2.692, 0, 0, 0, 'unitBuildingNotBuilt'],
+        ['O gemini-4-argon', 84, 229, 0, 0, 8, 0, 0, 100, 8635, 19633, 34700.5, 264, 140, 2.821, 0, 0, 0, null],
     ],
     // Two MCP seats: their harnesses report no token usage, and that reads as "not
     // reported", never as zero.
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 40, 56, 6, 0, 5, 1, 5, 0, 13, 22, null, null, null, 1.7, 0, 0, 0, 'noTCWorkers'],
-        ['HERMES MCP', 39, 108, 1, 0, 2, 0, 0, 90.8, 4952, 18946, null, null, null, 2.846, 0, 0, 1, 'populationLimit'],
+        ['pi MCP', 40, 56, 6, 0, 5, 1, 5, 38.1, 13, 22, null, null, null, 1.7, 0, 0, 0, 'noTCWorkers'],
+        ['HERMES MCP', 39, 108, 1, 0, 2, 0, 0, 96.2, 4952, 18946, null, null, null, 2.846, 0, 0, 1, 'populationLimit'],
     ],
 };
 const row = s => {
@@ -48,14 +48,15 @@ for (const [file, want] of Object.entries(PINNED)) {
     test('the profile of ' + file.slice(0, 10) + ' (' + want.length + ' seats) is what it was', async () => {
         const p = await profileFile(sample(file));
         assert.deepEqual(p.seats.map(row), want);
-        assert.equal(p.kind, 'war-eval/1'); assert.equal(p.scale, 'v3'); assert.equal(p.unreadable, 0);
-        // valid = ok of ok + avoidable + invalid with the waits left out, and the score is the mapping of it.
+        assert.equal(p.kind, 'war-eval/1'); assert.equal(p.scale, 'v4'); assert.equal(p.unreadable, 0);
+        // Scale v4 severity-weighted Bayesian Grounding: 100 * exp(-4.5 * (1.0*constraint + 2.5*reference + 1.5*repeated) / (rated + 8)).
         for (const s of p.seats) {
             const g = s.grounding;
             assert.equal(g.judged, g.ok + g.avoidable + g.invalid);
             assert.equal(g.rated, g.judged - g.waits);
             assert.equal(g.rate, (g.ok - g.waits) / g.rated);
-            assert.equal(g.score, Math.round(1000 * Math.max(0, 1 - (1 - g.rate) * 10)) / 10);
+            const w = 1.0 * g.constraint + 2.5 * g.reference + 1.5 * g.repeated;
+            assert.equal(g.score, Math.round(1000 * Math.exp(-4.5 * w / (g.rated + 8))) / 10);
         }
     });
 }
@@ -134,11 +135,11 @@ test('a match in progress and its exported file give the same profile', async ()
     assert.equal(a.efficiency.latencyMs.n, 26);                       // the NaN ones are not latencies
     assert.deepEqual([b.grounding.ok, b.grounding.avoidable, b.grounding.repeated, b.efficiency.tokens], [54, 6, 0, null]);
     assert.equal(live.match.build, 1151);
-    // Planning travels the same road: a's two statements, the attack at decision 20
-    // answered at 21, and b, who was attacked too and never stated anything.
-    assert.deepEqual([a.planning.statements, a.planning.revisions, a.planning.steps, a.planning.concrete], [2, 2, 5, 4]);
-    assert.deepEqual([a.planning.shocks.n, a.planning.shocks.revised, a.planning.standing.objective], [1, 1, 'Boom, then strike']);
-    assert.deepEqual([b.planning.statements, b.planning.score, b.planning.shocks.n, b.planning.standing], [0, 0, 1, null]);
+    // Qualitative plan container travels identically without heuristic grading: a's two statements, b's none.
+    assert.deepEqual([a.plan.statements, a.plan.revisions, a.plan.firstAt, JSON.parse(JSON.stringify(a.plan.standing))],
+        [2, 1, 1, { objective: null, steps: ['Build a tower', 'Attack the persians'] }]);
+    assert.deepEqual([b.plan.statements, b.plan.revisions, b.plan.firstAt, b.plan.standing], [0, 0, null, null]);
+    assert.equal('score' in a.plan, false);
     // The next match starts a fresh ledger.
     await rec.begin('match-y', [], {});
     assert.equal(rec.ledger.profile().seats.length, 0);
@@ -165,12 +166,12 @@ test('a wait can never be refused, so it is counted and left out of the rate', (
     const wait = (verdict = 'ok') => ({ n: 1, action: 'wait', code: 'waited', verdict });
     const line = outcomes => JSON.stringify({ turn: 1, playerId: 'a', parsed: { commands: outcomes.map(o => ({ action: o.action })) }, outcomes });
     const act = (verdict, code = 'c') => ({ n: 1, action: 'train_unit', code, verdict });
-    // 18 orders that worked, 2 refused, and 20 waits: 90 % valid, not 95 %.
+    // 18 orders that worked, 2 constraint refusals, and 20 waits: 90 % valid over 20 rated, Bayesian K=8 score = 72.5.
     let g = grounding([line(Array.from({ length: 18 }, () => act('ok')).concat([act('avoidable', 'cannotAfford'), act('avoidable', 'cannotAfford')], Array.from({ length: 20 }, () => wait())))]);
-    assert.deepEqual([g.judged, g.ok, g.waits, g.rated, g.rate, g.score], [40, 38, 20, 20, 0.9, 0]);
-    // Only waits: counted as the harness counts them, and nothing to rate. A dash, not 100.
+    assert.deepEqual([g.judged, g.ok, g.waits, g.rated, g.rate, g.score], [40, 38, 20, 20, 0.9, 72.5]);
+    // Only waits: zero rated commands -> score is 0 (wait-farming yields 0, never 100 or null).
     g = grounding([line([wait()]), line([wait()]), line([wait()])]);
-    assert.deepEqual([g.judged, g.ok, g.waits, g.rated, g.rate, g.score], [3, 3, 3, 0, null, null]);
+    assert.deepEqual([g.judged, g.ok, g.waits, g.rated, g.rate, g.score], [3, 3, 3, 0, null, 0]);
     // A wait that was refused is a mistake like any other.
     g = grounding([line([wait('invalid'), act('ok')])]);
     assert.deepEqual([g.waits, g.rated, g.invalid, g.rate], [0, 2, 1, 0.5]);
@@ -178,12 +179,20 @@ test('a wait can never be refused, so it is counted and left out of the rate', (
     for (const f of samples) for (const s of WarEval.profileOf(fs.readFileSync(sample(f), 'utf8')).seats) assert.ok(s.grounding.waits <= s.grounding.ok, f);
 });
 
-test('contended commands and the harness\'s own failures leave both sides of the rate', () => {
+test('contended commands and the harness\'s own failures leave both sides of the rate; severity and K=8 weight errors', () => {
     const g = grounding([turnLine('a', [['ok', 'k'], ['ok', 'k'], ['contended', 'trainerBusy'], ['harnessFault', 'executionFailed'], ['avoidable', 'cannotAfford']])]);
     assert.deepEqual([g.judged, g.ok, g.avoidable, g.contended, g.harnessFault], [3, 2, 1, 1, 1]);
     assert.equal(g.rate, 2 / 3);
-    assert.equal(g.score, 0);                               // a third refused: far past one in ten
+    assert.equal(g.score, 66.4);                            // 1 constraint in 3 rated with K=8 Bayesian smoothing
     assert.equal(grounding([turnLine('a', [['ok', 'k'], ['contended', 'trainerBusy']])]).score, 100);
+    // Reference errors (2.5x) hurt more than constraint errors (1.0x), and repeats add +1.5x.
+    const refErr = grounding([turnLine('a', [['ok', 'k'], ['invalid', 'targetNotFound']])]);
+    const conErr = grounding([turnLine('a', [['ok', 'k'], ['avoidable', 'cannotAfford']])]);
+    assert.equal(conErr.score, 63.8);
+    assert.ok(refErr.score < conErr.score, '2.5x reference penalty < 1.0x constraint penalty');
+    const singleRef = grounding([turnLine('a', [['invalid', 'targetNotFound'], ['ok', 'k'], ['ok', 'k']]), turnLine('a', [['ok', 'k'], ['ok', 'k']])]);
+    const repCon = grounding([turnLine('a', [['avoidable', 'cannotAfford']]), turnLine('a', [['avoidable', 'cannotAfford']])]);
+    assert.ok(singleRef.reference === 1 && repCon.repeated === 1);
 });
 
 test('a mistake counts as repeated when the same one was made in the last two decisions', () => {
@@ -226,7 +235,7 @@ test('lines that are not a seat\'s decisions are not counted as one', () => {
     assert.deepEqual(p.seats.map(s => [s.id, s.seat, s.decisions]), [['b', 0, 0], ['a', 1, 0]]);   // in seat order
     assert.equal(p.unreadable, 1);
     assert.deepEqual([p.seats[1].efficiency.failedRequests, p.seats[1].efficiency.commandsPerDecision, p.seats[1].efficiency.latencyMs], [1, null, null]);
-    assert.deepEqual(p.match, { matchId: 'm', build: 7, promptVersion: null });
+    assert.deepEqual(p.match, { matchId: 'm', build: 7, promptVersion: null, turnBased: false, lockstepSliceMs: null, roundTimeoutMs: null, mode: 'realtime', maxCommands: 3 });
 });
 
 test('the command-line report says so when a file predates recorded outcomes', async () => {
@@ -236,40 +245,123 @@ test('the command-line report says so when a file predates recorded outcomes', a
     assert.match(text, /build not recorded/);
     const mcp = report('x.jsonl', await profileFile(sample('2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl')));
     assert.match(mcp, /not reported/);
-    assert.match(mcp, /pi MCP +0 +89\.1 % +56 +7 /);            // seven of its 56 were waits
+    assert.match(mcp, /pi MCP +38\.1 +89\.1 % +49 +7 /);           // seven of its 56 were waits
     assert.doesNotMatch(mcp, /recorded from build 1023/);
 });
 
-// ---- planning (step C2) ------------------------------------------------------------------
-// name, score, plan statements, of which changed the plan, decision of the first plan,
-// share of decisions under a plan, new steps, of which checkable, shocks, of which were
-// followed by a changed plan within three decisions, steps of the plan standing at the end.
-const PLANNING = {
+// ---- Macro & Agency, Spatial, Qualitative Plan (Scale v4) -------------------------------
+const MACRO = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 81.5, 4, 4, 1, 1, 18, 14, 3, 2, 4],
-        ['O claude-sonnet-5.5', 58.3, 9, 9, 58, 0.555, 53, 33, 7, 4, 5],
-        ['O deepseek-v4.1-flash', 83, 53, 53, 1, 1, 361, 177, 9, 9, 3],
-        ['DGX GLM5.3 Flash', 67.1, 17, 17, 2, 0.992, 93, 64, 6, 2, 6],
+        ['O gpt-6.1-sol', 52.6, 39.7, 71.8, 50.6, 0.34, 0, 7, 0, 11, 13, 8, 5, 1],
+        ['O claude-sonnet-5.5', 85.1, 90, 69.3, 94.3, 0.906, 0.93, 0, 0, 51, 60, 28, 4, 3],
+        ['O deepseek-v4.1-flash', 86.9, 100, 63.4, 93, 0.902, 0.962, 1, 0, 27, 63, 21, 13, 3],
+        ['DGX GLM5.3 Flash', 88.4, 100, 75.1, 86.2, 0.857, 0.882, 5, 0, 23, 75, 25, 13, 3],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 81.7, 31, 31, 1, 1, 292, 132, 6, 6, 10],
-        ['RTX qwen3.8 flash next Q2_0', 87.1, 19, 19, 1, 1, 137, 84, 2, 2, 8],
-        ['O gemini-4-argon', 94.5, 17, 17, 1, 1, 61, 51, 6, 6, 2],
+        ['DGX Qwen3.8 flash next nvfp4', 85.1, 91.1, 67.3, 95, 0.916, 0.915, 0, 0, 18, 35, 18, 14, 3],
+        ['RTX qwen3.8 flash next Q2_0', 87.3, 87.8, 81.7, 92, 0.867, 0.933, 0, 0, 18, 40, 17, 11, 2],
+        ['O gemini-4-argon', 91.6, 100, 77.9, 94, 0.927, 0.952, 1, 0, 20, 51, 16, 12, 3],
     ],
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 100, 1, 1, 1, 1, 6, 6, 0, 0, 6],
-        ['HERMES MCP', 91.7, 1, 1, 1, 1, 8, 6, 0, 0, 8],
+        ['pi MCP', 72.8, 90.6, 65.9, 55.8, 0.5, 0.125, 5, 2, 14, 14, 9, 6, 1],
+        ['HERMES MCP', 93.8, 100, 80.7, 98.5, 0.975, 1, 0, 0, 20, 40, 15, 5, 2],
     ],
 };
-for (const [file, want] of Object.entries(PLANNING)) {
-    test('planning on ' + file.slice(0, 10) + ' is what it was', async () => {
+for (const [file, want] of Object.entries(MACRO)) {
+    test('macro and situational batching on ' + file.slice(0, 10) + ' are what they were', async () => {
         const p = await profileFile(sample(file));
-        assert.deepEqual(p.seats.map(s => { const g = s.planning; return [s.name, g.score, g.statements, g.revisions, g.firstAt && g.firstAt.decision,
-            +g.coverage.toFixed(3), g.steps, g.concrete, g.shocks.n, g.shocks.revised, g.standing ? g.standing.steps.length : null]; }), want);
+        assert.deepEqual(p.seats.map(s => { const m = s.macro; return [s.name, m.score, m.devScore, m.opsScore, m.agencyScore,
+            m.bwUtil == null ? null : +m.bwUtil.toFixed(3), m.parallelRate == null ? null : +m.parallelRate.toFixed(3),
+            m.passiveWaits, m.justifiedWaits, m.maxWorkers, m.maxPop, m.maxBuildings, m.maxTechs, m.ages]; }), want);
     });
 }
 
-test('plan statements equal the plan calls in every shipped file', () => {
+const SPATIAL = {
+    '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
+        ['O gpt-6.1-sol', 77.1, 34.9, 3, 3, 41, 1],
+        ['O claude-sonnet-5.5', 90.3, 45.6, 3, 3, 121, 0],
+        ['O deepseek-v4.1-flash', 88.6, 44, 3, 3, 109, 0],
+        ['DGX GLM5.3 Flash', 76.1, 31.9, 3, 3, 104, 0],
+    ],
+    '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
+        ['DGX Qwen3.8 flash next nvfp4', 56.3, 14.2, 2, 2, 66, 1],
+        ['RTX qwen3.8 flash next Q2_0', 59.5, 15.2, 2, 2, 37, 0],
+        ['O gemini-4-argon', 100, 57.9, 2, 2, 86, 0],
+    ],
+    '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
+        ['pi MCP', 66.8, 10.2, 1, 1, 19, 0],
+        ['HERMES MCP', 69.6, 10.9, 1, 1, 34, 0],
+    ],
+};
+for (const [file, want] of Object.entries(SPATIAL)) {
+    test('spatial and fog reasoning on ' + file.slice(0, 10) + ' are what they were', async () => {
+        const p = await profileFile(sample(file));
+        assert.deepEqual(p.seats.map(s => { const sp = s.spatial; return [s.name, sp.score, sp.maxExplored == null ? null : +sp.maxExplored.toFixed(1), sp.discovered, sp.opponents, sp.spatialOrders, sp.spatialErrors]; }), want);
+    });
+}
+
+test('macro openFronts measures situational 3/turn batching, deduplicates assign_workers, separates passive waits, and gates zero dev', () => {
+    const macroOf = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile().seats[0].macro; };
+    const open3State = (sec = 120) => ({
+        clock: { matchSeconds: sec },
+        workers: { total: 6, idle: 2 },
+        population: { used: 10, capacityNow: 15, capacityCeiling: 100 },
+        resources: { food: 400, wood: 400, stone: 100, gold: 100 },
+        friendlyBuildings: [{ type: 'town_center', x: 0, z: 0, state: 'complete', busy: false }],
+        units: { trainable: { town_center: { stone: [{ id: 'worker' }] } } },
+        research: { researched: ['house'], available: [{ id: 'farm', canAfford: true }] },
+        epoch: { current: 'stone', nextEpochCost: { food: 800, wood: 800, stone: 400, gold: 0 } }
+    });
+    const cmdLine = (cmds, state, outcomes) => JSON.stringify({
+        turn: 1, playerId: 'a',
+        parsed: { commands: cmds.map(a => ({ action: a, params: {} })) },
+        outcomes: outcomes || cmds.map((a, i) => ({ n: i + 1, action: a, code: 'k', verdict: 'ok' })),
+        state
+    });
+    // 3 open fronts (idle workers + available tech + idle trainer): 3 distinct valid commands earn full bandwidth vs 1/3 for 1 command.
+    const batched = macroOf([cmdLine(['assign_workers', 'train_unit', 'research_tech'], open3State())]);
+    const single = macroOf([cmdLine(['train_unit'], open3State())]);
+    assert.deepEqual([batched.bwUtil, batched.parallelRate, batched.batch.three], [1, 1, 1]);
+    assert.deepEqual([+single.bwUtil.toFixed(3), single.parallelRate, single.batch.one], [0.333, 0, 1]);
+    // Spamming assign_workers three times in one turn deduplicates to 1 productive operation.
+    const spamAssign = macroOf([cmdLine(['assign_workers', 'assign_workers', 'assign_workers'], open3State())]);
+    assert.deepEqual([+spamAssign.bwUtil.toFixed(3), spamAssign.parallelRate], [0.333, 0]);
+    // Wait when openFronts >= 1 is passiveWait; wait when openFronts === 0 is justifiedWait.
+    const calmState = { clock: { matchSeconds: 120 }, workers: { total: 6, idle: 0 }, population: { used: 6, capacityNow: 15, capacityCeiling: 100 }, resources: { food: 50, wood: 50, stone: 0, gold: 0 } };
+    const passiveWait = macroOf([cmdLine(['wait'], open3State())]);
+    const justifiedWait = macroOf([cmdLine(['wait'], calmState)]);
+    assert.deepEqual([passiveWait.passiveWaits, passiveWait.justifiedWaits], [1, 0]);
+    assert.deepEqual([justifiedWait.passiveWaits, justifiedWait.justifiedWaits], [0, 1]);
+    assert.ok(justifiedWait.agencyScore > passiveWait.agencyScore);
+    // Starting baseline (3 workers, 3 pop, 1 bld, 0 tech, 0 age) has devScore = 0 -> activityGate = 0 -> macro.score = 0.
+    const baseline = { clock: { matchSeconds: 120 }, workers: { total: 3, idle: 0 }, population: { used: 3, capacityNow: 10, capacityCeiling: 100 }, friendlyBuildings: [{ type: 'town_center', x: 0, z: 0 }] };
+    const zeroDev = macroOf([cmdLine(['assign_workers'], baseline)]);
+    assert.deepEqual([zeroDev.devScore, zeroDev.activityGate, zeroDev.score], [0, 0, 0]);
+});
+
+test('spatial rewards exploration, post-4m rival discovery, and clean spatial commands', () => {
+    const spOf = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile().seats[0].spatial; };
+    const spTurn = (sec, explored, opps, cmds) => JSON.stringify({
+        turn: 1, playerId: 'a',
+        parsed: { commands: cmds.map(([a]) => ({ action: a, params: {} })) },
+        outcomes: cmds.map(([a, v, code], i) => ({ n: i + 1, action: a, code: code || 'k', verdict: v || 'ok' })),
+        state: {
+            clock: { matchSeconds: sec },
+            map: { exploration: [[explored, explored]] },
+            gameStats: { opponents: opps.map((d, i) => ({ id: 'r' + i, discovered: d })) }
+        }
+    });
+    // Early (<= 4m): discovery weight is 0, clean scout scores strongly. Late (16m): missing discovery pulls score down.
+    const earlyClean = spOf([spTurn(180, 12, [false, false], [['explore', 'ok']])]);
+    const lateMissed = spOf([spTurn(960, 25, [false, false], [['explore', 'ok']])]);
+    const lateFound = spOf([spTurn(960, 25, [true, true], [['explore', 'ok']])]);
+    const lateErrs = spOf([spTurn(960, 25, [true, true], [['attack_target', 'invalid', 'targetOutOfSight'], ['move_units', 'avoidable', 'offMap']])]);
+    assert.ok(earlyClean.discScore === 0 && earlyClean.expScore > 90);
+    assert.ok(lateFound.score > lateMissed.score && lateFound.score > lateErrs.score);
+    assert.deepEqual([lateErrs.spatialOrders, lateErrs.spatialErrors], [2, 2]);
+});
+
+test('plan statements equal the plan calls in every shipped file, cleanly deduplicated without scoring', () => {
     let seats = 0;
     for (const file of samples) {
         const text = fs.readFileSync(sample(file), 'utf8'), calls = {};
@@ -279,10 +371,10 @@ test('plan statements equal the plan calls in every shipped file', () => {
             if ((Array.isArray(q.plan) && q.plan.length) || (typeof q.objective === 'string' && q.objective.trim())) calls[o.playerId] = (calls[o.playerId] || 0) + 1;
         }
         for (const s of WarEval.profileOf(text).seats) {
-            const g = s.planning;
+            const g = s.plan;
             assert.equal(g.statements, calls[s.id] || 0, file + ' ' + s.name);
-            assert.ok(g.revisions <= g.statements && g.history.length === g.revisions, file + ' ' + s.name);
-            assert.equal(g.score === 0, g.statements === 0 && s.decisions > 0, file + ' ' + s.name + ': 0 means no plan, and only that');
+            assert.equal('score' in g, false, file + ' ' + s.name);
+            assert.equal(g.statements ? g.revisions : 0, g.history.length ? g.history.length - 1 : 0, file + ' ' + s.name);
             seats++;
         }
     }
@@ -290,72 +382,17 @@ test('plan statements equal the plan calls in every shipped file', () => {
 });
 
 const planTurn = (parsed, state, playerId = 'a') => JSON.stringify({ turn: 1, playerId, parsed: Object.assign({ commands: [] }, parsed),
-    state: Object.assign({ population: { used: 20 }, threats: { underAttack: [], enemyWonders: [] },
-        units: { trainable: { barracks: { stone: [{ id: 'militia', cost: { food: 50 } }] } }, blocked: { stable: { bronze: [{ id: 'horse_archer' }] } } },
-        buildings: { buildable: [{ type: 'tower' }], blocked: [{ type: 'archery_range' }] },
-        research: { researched: ['house'], available: [{ id: 'farm' }, { id: 'archery_range' }] },
-        gameStats: { opponents: [{ id: 'maya-2', civilization: 'maya' }] } }, state) });
-const planning = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile().seats[0].planning; };
-const quiet = planTurn({}), attacked = planTurn({}, { threats: { underAttack: [{ type: 'house' }], enemyWonders: [] } });
+    state: Object.assign({ population: { used: 20 }, threats: { underAttack: [], enemyWonders: [] } }, state) });
+const planOf = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile().seats[0].plan; };
+const quiet = planTurn({});
 
-test('a seat that never states a plan has none: 0, not a gap and not an average', () => {
-    const g = planning([quiet, quiet, quiet]);
-    assert.deepEqual([g.score, g.statements, g.revisions, g.firstAt, g.coverage, g.concreteRate, g.standing], [0, 0, 0, null, 0, null, null]);
-    const none = WarEval.createLedger();
-    none.addLine(JSON.stringify({ type: 'match', players: [{ id: 'a', seat: 0 }] }));
-    assert.equal(none.profile().seats[0].planning.score, null);          // no decision at all: nothing to say
-});
-
-test('a plan stands from the decision that states it, and saying it again changes nothing', () => {
-    const plan = { objective: 'Hold the hill', plan: ['Build a tower', 'Train militia'] };
-    const g = planning([quiet, planTurn(plan), quiet, planTurn(plan), planTurn({ objective: 'hold  the HILL' })]);
-    assert.deepEqual([g.statements, g.revisions, g.coverage, g.firstAt.decision], [3, 1, 0.8, 2]);
-    assert.deepEqual([g.steps, g.concrete, g.concreteRate], [2, 2, 1]);
-    // A statement with one half keeps the other as it stood.
-    const half = planning([planTurn(plan), planTurn({ objective: 'Take the coast' }), planTurn({ plan: ['Build a tower', 'Scout north'] })]);
-    assert.equal(half.revisions, 3);
-    assert.deepEqual([half.standing.objective, half.standing.steps.map(s => s.text), half.standing.since], ['Take the coast', ['Build a tower', 'Scout north'], 3]);
-    assert.equal(half.steps, 3);                                         // "Build a tower" is counted once: it was not new again
-    assert.deepEqual(half.history.map(h => h.steps), [2, 2, 2]);
-});
-
-test('a step is checkable when it names something the seat was shown, or a kind of move', () => {
-    const steps = ['Train militia', 'Get horse archers', 'Build two towers', 'Research farm', 'Reach the bronze age', 'Start the wonder',
-        'Add villagers', 'Raid the Maya', 'Scout the east', 'Stay flexible', 'Train legionaries', 'Build an Archery Range'];
-    const g = planning([planTurn({ plan: steps })]);
-    assert.deepEqual(g.standing.steps.filter(s => !s.checkable).map(s => s.text), ['Stay flexible', 'Train legionaries']);   // a unit it was never shown
-    assert.deepEqual([g.steps, g.concrete], [12, 10]);
-    // The same step is checkable for a seat whose state did list that unit.
-    const shown = planning([planTurn({ plan: ['Train legionaries'] }, { units: { trainable: { barracks: { iron: [{ id: 'legionary' }] } } } })]);
-    assert.equal(shown.concrete, 1);
-    // The early flat lists are read as well.
-    const early = planning([JSON.stringify({ turn: 1, playerId: 'a', parsed: { plan: ['Train a warrior', 'Build a house'], action: 'wait' },
-        state: { trainableUnits: { barracks: { bronze: [{ id: 'warrior' }] } }, buildableStructures: [{ type: 'house' }], resources: { population: 5 } } })]);
-    assert.equal(early.concrete, 2);
-});
-
-test('a shock is what the state showed, and a changed plan within three decisions answers it', () => {
-    const fresh = n => planTurn({ plan: ['Build a tower', 'Plan ' + n] });
-    const at = (lines, k) => planning(lines).shocks[k];
-    // Attacked at decision 2, plan changed at 5: three decisions on, still an answer.
-    assert.deepEqual([at([fresh(1), attacked, quiet, quiet, fresh(2)], 'n'), at([fresh(1), attacked, quiet, quiet, fresh(2)], 'revised')], [1, 1]);
-    assert.equal(at([fresh(1), attacked, quiet, quiet, quiet, fresh(2)], 'revised'), 0);       // four on: too late
-    // The reply to the very state that showed the attack counts.
-    assert.equal(at([fresh(1), planTurn({ plan: ['Build a tower', 'Defend'] }, { threats: { underAttack: [{ type: 'house' }], enemyWonders: [] } })], 'revised'), 1);
-    // Saying the same plan again is not a revision.
-    assert.equal(at([fresh(1), attacked, fresh(1)], 'revised'), 0);
-    // One attack is one shock, however long it lasts; a second one after a pause is another.
-    assert.equal(at([attacked, attacked, attacked, quiet, attacked], 'attacked'), 2);
-    // A new enemy Wonder once, and a quarter of the people gone between two decisions.
-    const wonder = planTurn({}, { threats: { underAttack: [], enemyWonders: [{ id: 'w1' }] } });
-    assert.equal(at([quiet, wonder, wonder], 'wonder'), 1);
-    const people = n => planTurn({}, { population: { used: n } });
-    assert.equal(at([people(20), people(15)], 'losses'), 1);
-    assert.equal(at([people(20), people(16)], 'losses'), 0);
-    assert.equal(at([people(10), people(4)], 'losses'), 0);              // too few to call it a shock
-    // No shock: the third part of the score falls back to coverage.
-    assert.equal(planning([planTurn({ plan: ['Build a tower'] }), quiet]).score, 100);
-    assert.equal(planning([planTurn({ plan: ['Build a tower'] }), attacked, quiet, quiet, quiet, quiet]).score, 66.7);
+test('qualitative plan stores standing plan and counts revisions without grading prose', () => {
+    const empty = planOf([quiet, quiet]);
+    assert.deepEqual([empty.statements, empty.revisions, empty.firstAt, empty.standing], [0, 0, null, null]);
+    const p1 = { objective: 'Hold', plan: ['Build tower', 'Train militia'] };
+    const p2 = { objective: 'Hold', plan: ['Build tower', 'Attack'] };
+    const res = planOf([quiet, planTurn(p1), planTurn(p1), planTurn(p2)]);
+    assert.deepEqual([res.statements, res.revisions, res.firstAt, res.standing], [3, 1, 2, { objective: 'Hold', steps: ['Build tower', 'Attack'] }]);
 });
 
 test('the profile is worked out again when a line has arrived, and not before', () => {
@@ -365,225 +402,60 @@ test('the profile is worked out again when a line has arrived, and not before', 
     assert.equal(l.profile(), first);
     l.addLine(planTurn({ plan: ['Build a tower'] }));
     assert.notEqual(l.profile(), first);
-    assert.equal(l.profile().seats[0].planning.statements, 1);
+    assert.equal(l.profile().seats[0].plan.statements, 1);
     l.addLine('{not json');
     assert.equal(l.profile().unreadable, 1);
 });
 
-// ---- follow-through (step C3) ------------------------------------------------------------
-// name, score, new checkable steps followed, carried out (all they commit to), carried out
-// in part, dropped, of those carried out how many later than ten decisions, still open,
-// median decisions until carried out, commitments carried out, commitments made, orders
-// serving the plan, orders a plan can be about that were given under one.
-// Scale v3: until then a step counted as carried out with the first thing it commits to.
-const FOLLOW = {
-    '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 53.6, 14, 6, 3, 5, 2, 0, 8.5, 10, 19, 45, 58],
-        ['O claude-sonnet-5.5', 75.8, 33, 25, 0, 8, 0, 0, 0, 27, 35, 133, 158],
-        ['O deepseek-v4.1-flash', 68.2, 177, 104, 30, 43, 2, 0, 1, 190, 271, 172, 252],
-        ['DGX GLM5.3 Flash', 83.9, 64, 50, 7, 7, 1, 0, 1, 77, 93, 125, 231],
-    ],
-    '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 67.6, 132, 84, 11, 37, 0, 0, 2, 130, 191, 83, 125],
-        ['RTX qwen3.8 flash next Q2_0', 64.3, 84, 45, 19, 20, 0, 0, 2, 84, 131, 66, 87],
-        ['O gemini-4-argon', 91.8, 51, 45, 3, 3, 1, 0, 1, 74, 82, 164, 185],
-    ],
-    '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 54.2, 6, 3, 1, 2, 1, 0, 6, 8, 14, 34, 38],
-        ['HERMES MCP', 100, 6, 6, 0, 0, 5, 0, 21.5, 11, 11, 60, 87],
-    ],
-};
-for (const [file, want] of Object.entries(FOLLOW)) {
-    test('follow-through on ' + file.slice(0, 10) + ' is what it was', async () => {
-        const p = await profileFile(sample(file));
-        assert.deepEqual(p.seats.map(s => { const h = s.follow; return [s.name, h.score, h.steps, h.acted, h.part, h.dropped, h.late, h.pending, h.decisionsToAct,
-            h.commitmentsMet, h.commitments, h.ordersServing, h.ordersUnderPlan]; }), want);
-        for (const s of p.seats) {
-            const h = s.follow;
-            assert.equal(h.acted + h.part + h.dropped + h.pending, h.steps, s.name);
-            assert.equal(h.begun, 0, s.name + ': a finished match leaves nothing begun');
-            assert.ok(h.late <= h.acted && h.pending === 0 && h.commitmentsMet <= h.commitments && h.ordersServing <= h.ordersUnderPlan, s.name);
-            assert.equal(h.steps, s.planning.concrete, s.name + ': every new checkable step is followed, and only those');
-        }
-    });
-}
-
-// One decision: what it planned, what it ordered and whether each order worked.
-const move = (plan, orders) => JSON.stringify({ turn: 1, playerId: 'a',
-    parsed: Object.assign({ commands: (orders || []).map(([action, name]) => ({ action, params: action === 'train_unit' ? { unitType: name } : action === 'build_structure' ? { buildingType: name }
-        : action === 'research_tech' ? { techId: name } : action === 'move_units' ? { mode: name } : {} })) }, plan ? { plan } : null),
-    outcomes: (orders || []).map(([action, , verdict], i) => ({ n: i + 1, action, code: 'c', verdict: verdict || 'ok' })),
-    state: { population: { used: 20 }, threats: { underAttack: [], enemyWonders: [] },
-        units: { trainable: { barracks: { stone: [{ id: 'militia' }, { id: 'archer' }] } } },
-        buildings: { buildable: [{ type: 'tower' }, { type: 'barracks' }, { type: 'wonder', builtAs: 'akropolis', isWonder: true }] },
-        research: { available: [{ id: 'longbow' }, { id: 'barracks' }] }, gameStats: { opponents: [{ id: 'maya-2', civilization: 'maya' }] } } });
-const follow = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile().seats[0].follow; };
-const idle = n => Array.from({ length: n }, () => move(null, [['assign_workers']]));
-
-// The match is over: what still stands in a plan undone is then dropped.
-const over = JSON.stringify({ type: 'results', ranking: [{ playerId: 'a', rank: 1 }] });
-
-test('a step is acted on when an order that worked carries it out, however long that took while it stood in the plan', () => {
-    const lines = [move(['Train militia', 'Build a tower', 'Stay flexible']), ...idle(3), move(null, [['train_unit', 'militia']]), ...idle(8)];
-    const f = follow(lines);
-    // "Stay flexible" is not followed at all. The tower still stands in the plan twelve decisions on: open, not dropped.
-    assert.deepEqual([f.steps, f.acted, f.dropped, f.pending, f.late], [2, 1, 0, 1, 0]);
-    assert.deepEqual([f.rate, f.score, f.decisionsToAct], [1, 100, 4]);
-    assert.deepEqual(f.standing.map(s => s.state), ['acted', 'pending', 'uncheckable']);
-    assert.equal(f.standing[0].after, 4);
-    // The match ends with the tower unbuilt: now it is dropped.
-    const end = follow(lines.concat([over]));
-    assert.deepEqual([end.acted, end.dropped, end.pending, end.score], [1, 1, 0, 50]);
-    assert.deepEqual(end.standing.map(s => s.state), ['acted', 'dropped', 'uncheckable']);
-    // The order in the very reply that states the plan counts. So does one twenty decisions later: a long-term step, carried out late.
-    assert.equal(follow([move(['Train militia'], [['train_unit', 'militia']])]).decisionsToAct, 0);
-    const slow = follow([move(['Train militia']), ...idle(20), move(null, [['train_unit', 'militia']])]);
-    assert.deepEqual([slow.acted, slow.late, slow.dropped, slow.decisionsToAct, slow.score], [1, 1, 0, 21, 100]);
-});
-
-test('an order that was refused carries nothing out, and neither does the wrong one', () => {
-    const refused = follow([move(['Train militia'], [['train_unit', 'militia', 'avoidable']]), ...idle(10), over]);
-    assert.deepEqual([refused.acted, refused.dropped, refused.score], [0, 1, 0]);
-    const wrong = follow([move(['Train militia'], [['train_unit', 'archer']]), ...idle(10), over]);
-    assert.deepEqual([wrong.acted, wrong.dropped], [0, 1]);
-    const contended = follow([move(['Train militia'], [['train_unit', 'militia', 'contended']]), ...idle(10)]);
-    assert.equal(contended.acted, 0);                    // it did not happen, whoever is to blame
-});
-
-test('each kind of commitment has the orders that carry it out', () => {
-    const one = (step, order) => follow([move([step], [order])]).acted;
-    assert.equal(one('Build a tower', ['build_structure', 'tower']), 1);
-    assert.equal(one('Build a barracks', ['research_tech', 'barracks']), 1);     // unlocking it is the first half of building it
-    assert.equal(one('Research longbow', ['research_tech', 'longbow']), 1);
-    assert.equal(one('Research longbow', ['research_tech', 'barracks']), 0);
-    assert.equal(one('Advance to the bronze age', ['upgrade_age']), 1);
-    assert.equal(one('Build the Akropolis', ['build_structure', 'wonder']), 1);
-    assert.equal(one('Build the Akropolis', ['build_structure', 'tower']), 0);
-    assert.equal(one('Attack the Maya', ['attack_target']), 1);
-    assert.equal(one('Scout the east', ['explore']), 1);
-    assert.equal(one('Scout the east', ['move_units', 'scout']), 1);              // scouting is ordered two ways
-    assert.equal(one('Scout the east', ['move_units', 'march']), 0);
-});
-
-test('a step still open is pending, not dropped, and too early is a dash', () => {
-    const f = follow([move(['Train militia', 'Build a tower'], [['train_unit', 'militia']]), ...idle(4)]);
-    assert.deepEqual([f.acted, f.dropped, f.pending, f.score], [1, 0, 1, 100]);
-    assert.deepEqual(f.standing.map(s => s.state), ['acted', 'pending']);
-    const early = follow([move(['Train militia']), ...idle(4)]);
-    assert.deepEqual([early.pending, early.rate, early.score], [1, null, null]);
-});
-
-test('a step is dropped when the seat takes it out of its plan, not when ten decisions have passed', () => {
-    // Carried out fourteen decisions on, still in the plan: carried out, and noted as late. The other still stands: open.
-    const late = follow([move(['Build the Akropolis', 'Train militia']), ...idle(14), move(null, [['build_structure', 'wonder']])]);
-    assert.deepEqual([late.acted, late.dropped, late.late, late.pending], [1, 0, 1, 1]);
-    assert.deepEqual(late.standing.map(s => s.state), ['acted', 'pending']);
-    // Taken out of the plan, and built long after: that is not following the plan. The new plan's own step stands open.
-    const left = follow([move(['Build the Akropolis']), ...idle(5), move(['Train archers']), ...idle(8), move(null, [['build_structure', 'wonder']]), ...idle(10)]);
-    assert.deepEqual([left.acted, left.dropped, left.pending], [0, 1, 1]);
-    // Taken out of the plan and carried out within ten decisions all the same: carried out. A reworded plan does not cost the steps it was already acting on.
-    const quick = follow([move(['Build the Akropolis']), ...idle(2), move(['Train archers']), ...idle(2), move(null, [['build_structure', 'wonder']])]);
-    assert.deepEqual([quick.acted, quick.dropped], [1, 0]);
-    // And one just taken out is not dropped at once: it has the ten decisions every step has.
-    const fresh = follow([move(['Build the Akropolis']), ...idle(2), move(['Train archers']), ...idle(2)]);
-    assert.deepEqual([fresh.dropped, fresh.pending], [0, 2]);
-    // A step repeated in a changed plan is followed from where it was first stated.
-    const kept = follow([move(['Train militia', 'Build a tower']), ...idle(5), move(['Train militia', 'Scout the east']), ...idle(5), move(null, [['train_unit', 'militia']])]);
-    assert.deepEqual([kept.steps, kept.acted, kept.late, kept.standing[0].state], [3, 1, 1, 'acted']);
-});
-
-// Scale v3. Until then the first commitment was enough ("acted on with the first"), and a
-// seat that had sent one scout was shown a tick on "find and destroy their Town Center".
-test('several commitments in one step: carried out when all of them are, begun until then, in part if it ends there', () => {
-    const step = 'Train militia and archers, then build a tower';
-    // One of three done, and the step still stands in the plan: begun, open, and not yet in the score.
-    const begun = follow([move([step], [['train_unit', 'archer']]), ...idle(10)]);
-    assert.deepEqual([begun.acted, begun.part, begun.begun, begun.pending, begun.dropped, begun.score], [0, 0, 1, 1, 0, null]);
-    assert.deepEqual(begun.standing[0], { text: step, state: 'begun', after: null, met: 1, of: 3 });
-    assert.deepEqual(begun.done.map(d => [d.by.action, d.by.name, d.met, d.of]), [['train_unit', 'archer', 1, 3]]);
-    // An order for something already done carries out nothing new.
-    const again = follow([move([step], [['train_unit', 'archer']]), move(null, [['train_unit', 'archer']]), ...idle(9)]);
-    assert.deepEqual([again.begun, again.done.length, again.standing[0].met], [1, 1, 1]);
-    // All three: carried out, with the decisions it took to get there.
-    const all = follow([move([step], [['train_unit', 'archer']]), ...idle(2), move(null, [['train_unit', 'militia']]), move(null, [['build_structure', 'tower']]), ...idle(6)]);
-    assert.deepEqual([all.acted, all.part, all.begun, all.pending, all.score, all.decisionsToAct, all.commitments, all.commitmentsMet], [1, 0, 0, 0, 100, 4, 3, 3]);
-    assert.deepEqual(all.standing[0], { text: step, state: 'acted', after: 4, met: 3, of: 3 });
-    assert.deepEqual(all.done.map(d => d.met), [1, 2, 3]);
-    // Taken out of the plan with one of three done: in part, and it counts for a third.
-    const part = follow([move([step], [['train_unit', 'archer']]), ...idle(2), move(['Stay flexible']), ...idle(12)]);
-    assert.deepEqual([part.acted, part.part, part.dropped, part.begun, part.pending, part.score, part.commitments, part.commitmentsMet], [0, 1, 0, 0, 0, 33.3, 3, 1]);
-    // And nothing of it done: dropped, as before.
-    const none = follow([move([step]), ...idle(2), move(['Stay flexible']), ...idle(12)]);
-    assert.deepEqual([none.part, none.dropped, none.score], [0, 1, 0]);
-    // A step that commits to one thing is carried out by it, as it always was.
-    const one = follow([move(['Build a tower'], [['build_structure', 'tower']]), ...idle(10)]);
-    assert.deepEqual([one.acted, one.score, one.standing[0].state, one.standing[0].of], [1, 100, 'acted', 1]);
-});
-
-test('orders that serve the plan are counted only among orders a plan can be about, given under one', () => {
-    const f = follow([move(null, [['train_unit', 'archer']]),                     // before any plan: not counted
-        move(['Train militia'], [['train_unit', 'militia'], ['train_unit', 'archer'], ['assign_workers'], ['train_unit', 'militia', 'avoidable']])]);
-    assert.deepEqual([f.ordersUnderPlan, f.ordersServing, f.servingRate], [2, 1, 0.5]);
-});
-
-test('no plan, or a plan with nothing checkable in it, earns nothing', () => {
-    assert.equal(follow(idle(12)).score, 0);
-    assert.equal(follow([move(['Stay flexible', 'Play well']), ...idle(12)]).score, 0);
-    assert.equal(follow([move(['Stay flexible'])]).score, null);                  // ten decisions have not passed: it may still say something
-    // A file that records no outcomes cannot say what was carried out: nothing is counted.
-    const old = follow([JSON.stringify({ turn: 1, playerId: 'a', parsed: { plan: ['Train militia'], commands: [{ action: 'train_unit', params: { unitType: 'militia' } }] },
-        state: { units: { trainable: { barracks: { stone: [{ id: 'militia' }] } } } } })]);
-    assert.deepEqual([old.judged, old.score, old.acted, old.steps], [false, null, null, 1]);
-});
-
-// ---- tactical response (step C4) ---------------------------------------------------------
-// name, score, attack episodes, answered inside the window, of which at once, median
-// decisions to answer, episodes that cost a building, episodes held, episodes the state
-// called undefended, rival Wonders sighted, of which attacked.
+// ---- Tactical & Combat (Scale v4) ---------------------------------------------------------
 const TACTICAL = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 50, 1, 1, 1, 0, 1, 0, 1, 1, 0],
-        ['O claude-sonnet-5.5', 66.7, 5, 3, 3, 0, 2, 3, 1, 1, 1],
-        ['O deepseek-v4.1-flash', 66.7, 4, 2, 2, 0, 2, 2, 2, 2, 2],
-        ['DGX GLM5.3 Flash', 100, 2, 2, 2, 0, 1, 1, 1, 1, 1],
+        ['O gpt-6.1-sol', 27.8, 1, 1, 1, 0, 1, 0, 1, 1, 0, 12, 3, 23, 0, 7],
+        ['O claude-sonnet-5.5', 50.3, 3, 1, 1, 1, 2, 1, 1, 1, 1, 36, 127, 144, 35, 7],
+        ['O deepseek-v4.1-flash', 60.3, 3, 2, 2, 0, 2, 1, 2, 2, 2, 48, 192, 151, 29, 34],
+        ['DGX GLM5.3 Flash', 55.1, 2, 2, 2, 0, 1, 1, 1, 1, 1, 44, 77, 81, 7, 23],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 66.7, 3, 2, 2, 0, 1, 2, 1, 0, 0],
-        ['RTX qwen3.8 flash next Q2_0', 0, 1, 0, 0, null, 1, 0, 1, 0, 0],
-        ['O gemini-4-argon', 75, 3, 2, 2, 0, 0, 3, 0, 1, 1],
+        ['DGX Qwen3.8 flash next nvfp4', 39.2, 3, 2, 2, 0, 1, 2, 1, 0, 0, 16, 48, 79, 0, 28],
+        ['RTX qwen3.8 flash next Q2_0', 20.4, 1, 0, 0, null, 1, 0, 1, 0, 0, 7, 7, 60, 0, 17],
+        ['O gemini-4-argon', 72.8, 0, 0, 0, null, 0, 0, 0, 1, 1, 21, 138, 54, 45, 0],
     ],
-    // Twelve minutes in which neither seat was ever shown a threat: a dash, not a zero.
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', null, 0, 0, 0, null, 0, 0, 0, 0, 0],
-        ['HERMES MCP', null, 0, 0, 0, null, 0, 0, 0, 0, 0],
+        ['pi MCP', 41, 0, 0, 0, null, 0, 0, 0, 0, 0, 7, 9, 13, 0, 3],
+        ['HERMES MCP', 59, 0, 0, 0, null, 0, 0, 0, 0, 0, 7, 13, 9, 3, 0],
     ],
 };
 for (const [file, want] of Object.entries(TACTICAL)) {
-    test('tactical response on ' + file.slice(0, 10) + ' is what it was', async () => {
+    test('tactical and combat on ' + file.slice(0, 10) + ' is what it was', async () => {
         const p = await profileFile(sample(file));
-        assert.deepEqual(p.seats.map(s => { const g = s.tactical; return [s.name, g.score, g.episodes, g.answered, g.atOnce, g.decisionsToAnswer, g.lost, g.held, g.undefended, g.wonders, g.wonderAnswered]; }), want);
+        assert.deepEqual(p.seats.map(s => { const g = s.tactical; return [s.name, g.score, g.episodes, g.answered, g.atOnce, g.decisionsToAnswer, g.lost, g.held, g.undefended, g.wonders, g.wonderAnswered, g.battles, g.destroyed, g.unitsLost, g.bldRazed, g.bldLost]; }), want);
     });
 }
 
-test('every episode opens at a state that showed the threat, after one that did not', () => {
+test('every episode opens at a state that showed a home threat, after one that did not', () => {
+    const isHome = (u, blds) => u && typeof u.x === 'number' && typeof u.z === 'number'
+        && (u.kind === 'building' || u.type === 'worker'
+            || blds.some(b => b && typeof b.x === 'number' && typeof b.z === 'number' && Math.hypot(u.x - b.x, u.z - b.z) <= WarEval.HOME_RADIUS));
     let episodes = 0;
     for (const file of samples) {
         const text = fs.readFileSync(sample(file), 'utf8'), byTurn = new Map();
         for (const l of text.split('\n')) {
             if (!l || l.startsWith('{"type"')) continue;
             const o = JSON.parse(l), th = (o.state && o.state.threats) || {};
-            byTurn.set(o.playerId + '|' + o.turn, { attacked: (th.underAttack || []).length > 0, wonders: (th.enemyWonders || []).map(w => String(w.id)), sec: o.state && o.state.clock && o.state.clock.matchSeconds });
+            const blds = (o.state && o.state.friendlyBuildings) || [];
+            const homeAttacked = Array.isArray(th.underAttack) && th.underAttack.some(u => isHome(u, blds));
+            byTurn.set(o.playerId + '|' + o.turn, { attacked: homeAttacked, wonders: (th.enemyWonders || []).map(w => String(w.id)), sec: o.state && o.state.clock && o.state.clock.matchSeconds });
         }
         for (const s of WarEval.profileOf(text).seats) for (const e of s.tactical.list) {
             const at = byTurn.get(s.id + '|' + e.turn), before = byTurn.get(s.id + '|' + (e.turn - 1));
             assert.ok(at, file + ' ' + s.name + ' turn ' + e.turn);
             assert.equal(at.sec, e.sec, file + ': the episode carries the moment of its first sighting');
-            if (e.kind === 'attack') { assert.equal(at.attacked, true, file + ' ' + s.name); if (before) assert.equal(before.attacked, false, file + ' ' + s.name + ': it had not been shown before'); }
+            if (e.kind === 'attack') { assert.equal(at.attacked, true, file + ' ' + s.name); if (before) assert.equal(before.attacked, false, file + ' ' + s.name + ': no prior home threat'); }
             else assert.ok(at.wonders.length > 0 && !(before && before.wonders.length === at.wonders.length && before.wonders.every(w => at.wonders.includes(w))), file + ' ' + s.name + ': a Wonder it had not been shown');
             episodes++;
         }
     }
-    assert.ok(episodes >= 100, 'only ' + episodes + ' episodes in the shipped matches');
+    assert.ok(episodes >= 70, 'only ' + episodes + ' episodes in the shipped matches');
 });
 
 // One decision: what the state showed under attack, and what was ordered.
@@ -597,12 +469,14 @@ const scene = (attack, orders, more) => JSON.stringify({ turn: 1, playerId: 'a',
         enemyUnits: [{ id: 'e1', type: 'archer', x: 110, z: 104, owner: 'maya-2' }] }, more) });
 const raid = [{ kind: 'building', type: 'barracks', x: 100, z: 100, healthPct: 60, attackerAt: { x: 110, z: 104, owner: 'maya-2' } }];
 const workerRaid = [{ kind: 'unit', type: 'worker', x: 102, z: 98, healthPct: 50, attackerAt: { x: 110, z: 104, owner: 'maya-2' } }];
+const farSkirmish = [{ kind: 'unit', type: 'militia', x: 350, z: 350, healthPct: 50, attackerAt: { x: 355, z: 350, owner: 'maya-2' } }];
+const nearArmyRaid = [{ kind: 'unit', type: 'militia', x: 160, z: 100, healthPct: 50, attackerAt: { x: 165, z: 100, owner: 'maya-2' } }];
 const tactical = lines => { const l = WarEval.createLedger(); lines.forEach(x => l.addLine(x)); return l.profile().seats[0].tactical; };
 const calm = scene(null, [{ action: 'train_unit', unitType: 'worker' }]);
 
-test('an order aimed at the threat answers it; training more soldiers does not', () => {
+test('an order aimed at the threat answers it, HOME_RADIUS filters skirmishes, and assign_workers answers worker raids', () => {
     const one = order => tactical([calm, scene(raid, [order]), calm]);
-    assert.deepEqual([one({ action: 'attack_target', targetX: 108, targetZ: 100 }).answered, one({ action: 'attack_target', targetX: 108, targetZ: 100 }).score], [1, 100]);
+    assert.deepEqual([one({ action: 'attack_target', targetX: 108, targetZ: 100 }).answered, one({ action: 'attack_target', targetX: 108, targetZ: 100 }).score], [1, 54.4]);
     assert.equal(one({ action: 'attack_target', targetId: 'e1' }).answered, 1);          // a target named by its id points where the state showed it
     assert.equal(one({ action: 'attack_target', targetX: -300, targetZ: -300 }).answered, 0);   // an attack somewhere else is not an answer
     assert.equal(one({ action: 'move_units', targetX: 95, targetZ: 105, units: { militia: 4 } }).answered, 1);
@@ -610,9 +484,14 @@ test('an order aimed at the threat answers it; training more soldiers does not',
     assert.equal(one({ action: 'build_structure', buildingType: 'tower', targetX: 104, targetZ: 96 }).answered, 1);
     assert.equal(one({ action: 'build_structure', buildingType: 'house', targetX: 104, targetZ: 96 }).answered, 0);
     assert.equal(one({ action: 'repair_building', targetX: 100, targetZ: 100 }).answered, 1);
+    assert.equal(one({ action: 'assign_workers' }).answered, 0);                         // assign_workers alone does not answer a building raid
     assert.equal(one({ action: 'train_unit', unitType: 'militia' }).answered, 0);
-    assert.deepEqual([one({ action: 'train_unit', unitType: 'militia' }).unanswered, one({ action: 'train_unit', unitType: 'militia' }).score], [1, 0]);
-    assert.equal(one({ action: 'attack_target', targetX: 108, targetZ: 100, verdict: 'avoidable' }).answered, 0);   // an order that was refused answered nothing
+    assert.deepEqual([one({ action: 'train_unit', unitType: 'militia' }).unanswered, one({ action: 'train_unit', unitType: 'militia' }).score], [1, 45.6]);
+    assert.equal(one({ action: 'attack_target', targetX: 108, targetZ: 100, verdict: 'avoidable' }).answered, 0);
+    // Worker raid is answered by assign_workers; far skirmish > HOME_RADIUS (110) does not open an episode.
+    assert.deepEqual([tactical([calm, scene(workerRaid, [{ action: 'assign_workers' }]), calm]).answered,
+        tactical([calm, scene(farSkirmish, []), calm]).episodes,
+        tactical([calm, scene(nearArmyRaid, []), calm]).episodes], [1, 0, 1]);
 });
 
 test('pulling the threatened people out protects them, wherever they are sent', () => {
@@ -625,66 +504,70 @@ test('pulling the threatened people out protects them, wherever they are sent', 
 test('at once is the decision that was shown the threat or the next; the window is three', () => {
     const answer = scene(null, [{ action: 'attack_target', targetX: 108, targetZ: 100 }]);
     const after = n => tactical([calm, scene(raid, []), ...Array.from({ length: n - 1 }, () => calm), ...(n ? [answer] : []), calm]);
-    assert.deepEqual([after(1).answered, after(1).atOnce, after(1).score], [1, 1, 100]);   // the raid had left the state: still aimed at where it was
-    assert.deepEqual([after(2).answered, after(2).atOnce, after(2).score, after(2).decisionsToAnswer], [1, 0, 0, 2]);
+    assert.deepEqual([after(1).answered, after(1).atOnce, after(1).score], [1, 1, 54.4]);
+    assert.deepEqual([after(2).answered, after(2).atOnce, after(2).score, after(2).decisionsToAnswer], [1, 0, 45.6, 2]);
     assert.deepEqual([after(3).answered, after(3).unanswered], [0, 1]);
 });
 
-test('one attack is one episode however long it lasts, and what it cost is reported beside the answer', () => {
+test('one attack is one episode however long it lasts, and value-weighted combat + razings + 3-way splits score tactical exchange', () => {
     const gone = { friendlyBuildings: [{ type: 'town_center', x: 0, z: 0 }] };
     const t = tactical([calm, scene(raid, []), scene(raid, []), scene(null, [], gone), calm, scene(workerRaid, [{ action: 'attack_target', targetId: 'e1' }]), calm]);
     assert.deepEqual([t.episodes, t.answered, t.lost, t.held, t.score], [2, 1, 1, 1, 50]);
     assert.deepEqual(t.list.map(e => [e.kind, e.decision, e.sec, e.decisions, e.outcome, e.what.join(), e.by, e.answeredAfter]),
         [['attack', 2, 100, 2, 'lost', 'barracks', 'maya-2', null], ['attack', 6, 100, 1, 'held', 'worker', 'maya-2', 0]]);
-    // A match that ends with the attack still on: neither held nor lost.
     assert.equal(tactical([calm, scene(raid, [])]).list[0].outcome, 'open');
     assert.equal(tactical([calm, scene([Object.assign({ noDefenders: true }, raid[0])], [])]).undefended, 1);
+    // 3-way battle with lostValue + Town Center razing (600) by seat a: splits enemy losses by 2, values expensive losses higher.
+    const l = WarEval.createLedger();
+    l.addLine(calm);
+    l.addLine(JSON.stringify({ type: 'chronicle', kind: 'battle', t: 120, sides: { a: { lost: 1, lostValue: 100 }, b: { lost: 2, lostValue: 200 }, c: { lost: 2, lostValue: 600 } } }));
+    l.addLine(JSON.stringify({ type: 'chronicle', kind: 'town-center-lost', t: 130, by: 'a', seats: ['b'] }));
+    const res = l.profile().seats[0].tactical;
+    assert.deepEqual([res.battles, res.destroyed, res.unitsLost, res.bldRazed, res.bldLost, res.valueWeighted], [1, 2, 1, 1, 0, true]);
+    assert.ok(res.exchange > 0.9 && res.exchangeScore > 73 && res.score > 65);
 });
 
 test('a rival Wonder is a threat from the decision that first showed it, answered by an attack on it', () => {
     const wonder = { threats: { underAttack: [], enemyWonders: [{ id: 'w1', type: 'pyramid', x: 300, z: 300, owner: 'maya-2' }] } };
     const hit = tactical([calm, scene(null, [], wonder), scene(null, [{ action: 'attack_target', targetId: 'w1' }], wonder), scene(null, [], wonder)]);
-    assert.deepEqual([hit.wonders, hit.wonderAnswered, hit.episodes, hit.score], [1, 1, 0, 100]);
+    assert.deepEqual([hit.wonders, hit.wonderAnswered, hit.episodes, hit.score], [1, 1, 0, 54.4]);
     assert.equal(tactical([calm, scene(null, [{ action: 'attack_target', targetX: 310, targetZ: 290 }], wonder)]).wonderAnswered, 1);
     assert.equal(tactical([calm, scene(null, [{ action: 'attack_target', targetX: 0, targetZ: 0 }], wonder), calm, calm]).wonderAnswered, 0);
-    assert.equal(tactical([calm, scene(null, [], wonder), calm, calm, scene(null, [{ action: 'attack_target', targetId: 'w1' }], wonder)]).score, 0);   // the fourth decision is too late
+    assert.equal(tactical([calm, scene(null, [], wonder), calm, calm, scene(null, [{ action: 'attack_target', targetId: 'w1' }], wonder)]).score, 45.6);
 });
 
-test('a seat that was never shown a threat has no tactical score, and a file without outcomes is not judged', () => {
+test('peaceful tactical falls back to 50 * activityGate, and unjudged transcripts use exchangeScore', () => {
     const none = tactical([calm, calm, calm]);
-    assert.deepEqual([none.episodes, none.wonders, none.score, none.list.length], [0, 0, null, 0]);
+    assert.deepEqual([none.episodes, none.wonders, none.score, none.list.length], [0, 0, 50, 0]);
+    const idleCalm = tactical([scene(null, [], { population: { used: 3 }, friendlyBuildings: [{ type: 'town_center', x: 0, z: 0 }] })]);
+    assert.equal(idleCalm.score, 0);
     const old = tactical([JSON.stringify({ turn: 1, playerId: 'a', parsed: { commands: [{ action: 'attack_target', params: { targetX: 108, targetZ: 100 } }] },
-        state: { threats: { underAttack: raid, enemyWonders: [] } } })]);
-    assert.deepEqual([old.judged, old.episodes, old.answered, old.score], [false, 1, null, null]);
+        state: { population: { used: 20 }, threats: { underAttack: raid, enemyWonders: [] } } })]);
+    assert.deepEqual([old.judged, old.episodes, old.answered, old.score], [false, 1, null, 50]);
 });
 
-// ---- Strategy, the range used and the Index (overhaul steps C5 and C6) ------
-// name, score, the score without the placement, rank, share of power, share of the
-// time ahead, clear lead from (s), converted, battles, destroyed, lost, ages reached at
-// (s), unit types, buildings, technologies and kinds of order used with success, Index
-// and how many parts it is the mean of.
+// ---- Dominance (Strategy), Versatility, WAR Score, Drift & Warmup (Scale v4) ----
 const STRATEGY = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 11.4, 17.1, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 41.7, 4],
-        ['O claude-sonnet-5.5', 71.7, 74.3, 2, 0.376, 0.721, 3493, false, 36, 136, 144, '412/812/1342', 3, 6, 4, 9, 69.2, 4],
-        ['O deepseek-v4.1-flash', 52.7, 62.4, 3, 0.252, 0.184, null, null, 48, 205, 151, '372/1147/2037', 10, 9, 13, 9, 61.5, 4],
-        ['DGX GLM5.3 Flash', 77.2, 65.9, 1, 0.288, 0.107, null, null, 44, 99, 81, '372/1147/2493', 11, 10, 13, 10, 75, 4],
+        ['O gpt-6.1-sol', 5.9, 7.8, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 47.5, 5],
+        ['O claude-sonnet-5.5', 64, 63.1, 2, 0.376, 0.721, 3493, false, 36, 127, 144, '412/812/1342', 3, 6, 4, 9, 77.9, 5],
+        ['O deepseek-v4.1-flash', 35.9, 36.7, 3, 0.252, 0.184, null, null, 48, 192, 151, '372/1147/2037', 10, 9, 13, 9, 69.9, 5],
+        ['DGX GLM5.3 Flash', 60.9, 47.9, 1, 0.288, 0.107, null, null, 44, 77, 81, '372/1147/2493', 11, 10, 13, 10, 74.2, 5],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 37.7, 56.6, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 51.7, 4],
-        ['RTX qwen3.8 flash next Q2_0', 34.1, 26.2, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 43.9, 4],
-        ['O gemini-4-argon', 84.8, 77.3, 1, 0.413, 0.358, 3558, true, 21, 138, 54, '622/1112/1687', 6, 6, 12, 9, 86.7, 4],
+        ['DGX Qwen3.8 flash next nvfp4', 35.6, 47.5, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 59.1, 5],
+        ['RTX qwen3.8 flash next Q2_0', 27.3, 19.7, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 59.5, 5],
+        ['O gemini-4-argon', 71.3, 61.7, 1, 0.413, 0.358, 3558, true, 21, 138, 54, '622/1112/1687', 6, 6, 12, 9, 86.6, 5],
     ],
-    // Neither MCP seat has a tactical score here: three parts, not four.
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 25.8, 38.7, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 26.7, 3],
-        ['HERMES MCP', 85.3, 78, 1, 0.727, 0.993, 410, true, 7, 13, 9, '255/710', 4, 6, 5, 7, 89.3, 3],
+        ['pi MCP', 13, 17.3, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 45.2, 5],
+        ['HERMES MCP', 87, 82.7, 1, 0.727, 0.993, 410, true, 7, 13, 9, '255/710', 4, 6, 5, 7, 83.7, 5],
     ],
 };
 for (const [file, want] of Object.entries(STRATEGY)) {
-    test('strategy, range and Index on ' + file.slice(0, 10) + ' are what they were', async () => {
+    test('strategy, range and WAR Score on ' + file.slice(0, 10) + ' are what they were', async () => {
         const p = await profileFile(sample(file));
-        assert.deepEqual(p.seats.map(s => { const g = s.strategy, v = s.versatility; return [s.name, g.score, g.running, g.rank, +g.powerShare.toFixed(3), +g.leadShare.toFixed(3),
+        assert.deepEqual(p.seats.map(s => { const g = s.strategy, v = s.versatility; return [s.name, g.score, g.trajDom, g.rank, +g.powerShare.toFixed(3), +g.leadShare.toFixed(3),
             g.clearLeadAt, g.converted, g.battles, g.destroyed, g.lost, g.ages.map(a => a.sec).join('/'), v.units.length, v.buildings.length, v.techs.length, v.orders.length,
             s.index.value, s.index.of]; }), want);
         for (const s of p.seats) assert.equal(s.versatility.score, null);
@@ -704,53 +587,49 @@ test('strategy reads the match\'s own record: its placement, its power score, it
             assert.deepEqual([g.final, g.rank, g.of, g.winner], [true, row.rank, results.ranking.length, !!row.isWinner], f + ' ' + s.name);
             assert.ok(g.powerShare > 0 && g.powerShare < 1 && g.score >= 0 && g.score <= 100, f + ' ' + s.name);
         }
-        // Every seat's share of all power: together they are all of it. (A seat with no
-        // decisions is not in the profile, so only where every seat is.)
         if (p.seats.length === results.ranking.length) assert.ok(Math.abs(p.seats.reduce((a, s) => a + s.strategy.powerShare, 0) - 1) < 1e-9, f);
-        // A battle's losses are counted once on each side of it.
         const battles = lines.filter(o => o.type === 'chronicle' && o.kind === 'battle');
         for (const s of p.seats) assert.equal(s.strategy.lost, battles.reduce((a, b) => a + ((b.sides[s.id] || {}).lost || 0), 0), f + ' ' + s.name);
     }
     assert.ok(files >= 15, 'only ' + files + ' files with results and a timeline');
 });
 
-// A two-seat match on paper: a's decisions, and what the match wrote about itself.
+// Two-seat synthetic match helpers
+const orderTurn = (orders, extra) => JSON.stringify(Object.assign({ turn: 1, playerId: 'a',
+    parsed: Object.assign({ commands: (orders || []).map(([action, name]) => ({ action, params: action === 'train_unit' ? { unitType: name } : action === 'build_structure' ? { buildingType: name } : action === 'research_tech' ? { techId: name } : {} })) }, extra && extra.plan ? { plan: extra.plan } : null),
+    outcomes: (orders || []).map(([action, , verdict], i) => ({ n: i + 1, action, code: 'c', verdict: verdict || 'ok' })),
+    state: Object.assign({ clock: { matchSeconds: 60 }, population: { used: 20 }, threats: { underAttack: [], enemyWonders: [] } }, extra && extra.state) }, extra && extra.raw));
+const over = JSON.stringify({ type: 'results', ranking: [{ playerId: 'a', rank: 1 }] });
 const seatsLine = JSON.stringify({ type: 'match', players: [{ id: 'a', seat: 0 }, { id: 'b', seat: 1 }] });
 const tick = (t, a, b) => ({ t, p: { a: { pw: a, al: 1 }, b: { pw: b, al: 1 } } });
 const timelineOf = (samples, ages) => JSON.stringify({ type: 'timeline', samples, ages: ages || [] });
 const resultsOf = winner => JSON.stringify({ type: 'results', ranking: [{ playerId: winner, rank: 1, isWinner: true }, { playerId: winner === 'a' ? 'b' : 'a', rank: 2, isWinner: false }] });
 const battle = (t, a, b) => JSON.stringify({ type: 'chronicle', kind: 'battle', t, sides: { a: { involved: 9, lost: a }, b: { involved: 9, lost: b } } });
-const strategyOf = lines => { const l = WarEval.createLedger(); [seatsLine, move(null, [['assign_workers']])].concat(lines).forEach(x => l.addLine(x)); return l.profile().seats.find(s => s.id === 'a').strategy; };
+const strategyOf = lines => { const l = WarEval.createLedger(); [seatsLine, orderTurn([['assign_workers']])].concat(lines).forEach(x => l.addLine(x)); return l.profile().seats.find(s => s.id === 'a').strategy; };
 
-test('strategy is the mean of placement, share of power against an even split, and the exchange in battles', () => {
-    // Even power, no battle, won: placement 1, power (0.5 x 2 / 1.5) = two thirds.
+test('strategy uses time-weighted Bradley-Terry dominance (50 at tie) blended 75/25 with final placement', () => {
     const even = Array.from({ length: 10 }, (_, i) => tick(i * 5, 500, 500));
     let g = strategyOf([timelineOf(even), resultsOf('a')]);
-    assert.deepEqual([g.placement, g.powerShare, g.evenShare, g.exchange, g.score, g.running], [1, 0.5, 0.5, null, 83.3, 66.7]);
-    // The same match lost: only the placement moves.
+    assert.deepEqual([g.placement, g.powerShare, g.evenShare, g.trajDom, g.score, g.running], [1, 0.5, 0.5, 50, 62.5, 50]);
     g = strategyOf([timelineOf(even), resultsOf('b')]);
-    assert.deepEqual([g.placement, g.score, g.running, g.winner], [0, 33.3, 66.7, false]);
-    // Three quarters of all power is half again an even split: full marks, and no more than that.
+    assert.deepEqual([g.placement, g.trajDom, g.score, g.winner], [0, 50, 37.5, false]);
+    // 900 vs 300 gives 1/(1+(1/3)^1.5) = 83.9% dominance; winner placement = 100 -> 0.75*83.9 + 25 = 87.9.
     g = strategyOf([timelineOf(even.map(x => tick(x.t, 900, 300))), resultsOf('a')]);
-    assert.deepEqual([g.powerShare, g.leadShare, g.score], [0.75, 1, 100]);
-    // Battles: it destroyed 6 and lost 2, so three quarters of the losses were the other side's.
-    g = strategyOf([battle(20, 1, 4), battle(30, 1, 2), timelineOf(even), resultsOf('a')]);
-    assert.deepEqual([g.battles, g.destroyed, g.lost, g.exchange, g.score], [2, 6, 2, 0.75, 80.6]);
-    // A battle it was not in is not its battle.
-    g = strategyOf([JSON.stringify({ type: 'chronicle', kind: 'battle', t: 5, sides: { b: { lost: 3 }, c: { lost: 1 } } }), timelineOf(even)]);
-    assert.deepEqual([g.battles, g.exchange], [0, null]);
+    assert.deepEqual([g.powerShare, g.leadShare, g.trajDom, g.score], [0.75, 1, 83.9, 87.9]);
+    // Late power advantage at t=900 carries higher weight w = 1 + t/300 than early advantage at t=0.
+    const lateLead = strategyOf([timelineOf([tick(0, 200, 800), tick(900, 800, 200)])]);
+    const earlyLead = strategyOf([timelineOf([tick(0, 800, 200), tick(900, 200, 800)])]);
+    assert.ok(lateLead.trajDom > 65 && earlyLead.trajDom < 35);
 });
 
 test('a clear lead is a quarter more power than the next seat, held five minutes, and it is said whether it was won', () => {
     const run = (from, to, a, b) => { const out = []; for (let t = from; t < to; t += 5) out.push(tick(t, a, b)); return out; };
-    // 1.25 times for 4:55 is not one; for five minutes it is, from the reading that completes them.
     let g = strategyOf([timelineOf(run(0, 100, 500, 500).concat(run(100, 395, 625, 500), run(395, 600, 500, 500))), resultsOf('a')]);
     assert.deepEqual([g.clearLeadAt, g.converted], [null, null]);
     g = strategyOf([timelineOf(run(0, 100, 500, 500).concat(run(100, 400, 625, 500), run(400, 600, 500, 500))), resultsOf('a')]);
     assert.deepEqual([g.clearLeadAt, g.converted], [395, true]);
     g = strategyOf([timelineOf(run(0, 100, 500, 500).concat(run(100, 400, 625, 500), run(400, 600, 100, 500))), resultsOf('b')]);
     assert.deepEqual([g.clearLeadAt, g.converted], [395, false]);
-    // A fifth more is ahead, and counted as time ahead, but it is not a clear lead.
     g = strategyOf([timelineOf(run(0, 600, 600, 500)), resultsOf('a')]);
     assert.deepEqual([g.leadShare, g.clearLeadAt], [1, null]);
     assert.deepEqual([WarEval.LEAD_FACTOR, WarEval.LEAD_SECONDS], [1.25, 300]);
@@ -758,24 +637,23 @@ test('a clear lead is a quarter more power than the next seat, held five minutes
 
 test('a running match has no placement yet, and the timeline shown to it gives way to the line in the file', () => {
     const l = WarEval.createLedger();
-    [seatsLine, move(null, [['assign_workers']]), battle(20, 1, 3)].forEach(x => l.addLine(x));
-    assert.deepEqual([l.profile().seats[0].strategy.samples, l.profile().seats[0].strategy.exchange], [0, 0.75]);
+    [seatsLine, orderTurn([['assign_workers']]), battle(20, 1, 3)].forEach(x => l.addLine(x));
+    assert.deepEqual([l.profile().seats[0].strategy.samples, l.profile().seats[0].tactical.battles], [0, 1]);
     const live = { samples: [tick(5, 600, 400), tick(10, 600, 400)], ages: [{ t: 8, id: 'a', age: 'neolithic' }] };
     l.preview(live);
     let g = l.profile().seats[0].strategy;
-    assert.deepEqual(JSON.parse(JSON.stringify([g.final, g.rank, g.placement, g.samples, g.powerShare, g.score, g.running, g.ages])), [false, null, null, 2, 0.6, 77.5, 77.5, [{ age: 'neolithic', sec: 8 }]]);
-    // Shown the same timeline again, nothing is worked out again; with a new reading it is.
+    assert.deepEqual(JSON.parse(JSON.stringify([g.final, g.rank, g.placement, g.samples, g.powerShare, g.score, g.running, g.ages])),
+        [false, null, null, 2, 0.6, 64.8, 64.8, [{ age: 'neolithic', sec: 8 }]]);
     const before = l.profile();
     l.preview(live);
     assert.equal(l.profile(), before);
     live.samples.push(tick(15, 200, 800));
     l.preview(live);
     assert.equal(l.profile().seats[0].strategy.samples, 3);
-    // The file's own lines are the last word, and what the page showed then equals the file.
     l.addLine(resultsOf('a')); l.addLine(timelineOf(live.samples, live.ages));
-    live.samples.push(tick(20, 0, 1000)); l.preview(live);               // too late: not in the file
+    live.samples.push(tick(20, 0, 1000)); l.preview(live);
     const fromFile = WarEval.createLedger();
-    [seatsLine, move(null, [['assign_workers']]), battle(20, 1, 3), resultsOf('a'), timelineOf(live.samples.slice(0, 3), live.ages)].forEach(x => fromFile.addLine(x));
+    [seatsLine, orderTurn([['assign_workers']]), battle(20, 1, 3), resultsOf('a'), timelineOf(live.samples.slice(0, 3), live.ages)].forEach(x => fromFile.addLine(x));
     assert.deepEqual(l.profile(), fromFile.profile());
     assert.deepEqual([l.profile().seats[0].strategy.final, l.profile().seats[0].strategy.samples], [true, 3]);
     assert.doesNotThrow(() => { WarEval.createLedger().preview(null); WarEval.createLedger().preview({}); });
@@ -783,72 +661,91 @@ test('a running match has no placement yet, and the timeline shown to it gives w
 
 test('the profile as it stood at a second reads the timeline and the battles up to it, without the placement', () => {
     const l = WarEval.createLedger();
-    [seatsLine, JSON.stringify(Object.assign(JSON.parse(move(null, [['assign_workers']])), { state: { clock: { matchSeconds: 10 } } })),
+    [seatsLine, orderTurn([['assign_workers']], { state: { clock: { matchSeconds: 10 } } }),
         battle(20, 0, 4), battle(300, 6, 0), timelineOf([tick(5, 500, 500), tick(10, 500, 500), tick(400, 100, 900)], [{ t: 8, id: 'a', age: 'neolithic' }, { t: 350, id: 'a', age: 'bronze' }]), resultsOf('b')].forEach(x => l.addLine(x));
-    const then = l.profileAt(100).seats[0].strategy, now = l.profile().seats[0].strategy;
-    assert.deepEqual([then.final, then.placement, then.samples, then.battles, then.exchange, then.ages.length], [false, null, 2, 1, 1, 1]);
-    assert.deepEqual([now.final, now.placement, now.samples, now.battles, now.exchange, now.ages.length], [true, 0, 3, 2, 0.4, 2]);
-    assert.equal(then.score, then.running);
+    const then = l.profileAt(100).seats[0], now = l.profile().seats[0];
+    assert.deepEqual([then.strategy.final, then.strategy.placement, then.strategy.samples, then.tactical.battles, then.strategy.ages.length], [false, null, 2, 1, 1]);
+    assert.deepEqual([now.strategy.final, now.strategy.placement, now.strategy.samples, now.tactical.battles, now.strategy.ages.length], [true, 0, 3, 2, 2]);
+    assert.equal(then.strategy.score, then.strategy.running);
 });
 
 test('the range used is what worked, as facts and without a score', () => {
     const l = WarEval.createLedger();
-    [move(null, [['train_unit', 'worker'], ['train_unit', 'militia'], ['train_unit', 'archer', 'avoidable']]),
-        move(null, [['build_structure', 'tower'], ['research_tech', 'longbow'], ['train_unit', 'militia']]),
-        move(null, [['build_structure', 'barracks', 'contended'], ['attack_target']])].forEach(x => l.addLine(x));
+    [orderTurn([['train_unit', 'worker'], ['train_unit', 'militia'], ['train_unit', 'archer', 'avoidable']]),
+        orderTurn([['build_structure', 'tower'], ['research_tech', 'longbow'], ['train_unit', 'militia']]),
+        orderTurn([['build_structure', 'barracks', 'contended'], ['attack_target']])].forEach(x => l.addLine(x));
     const v = l.profile().seats[0].versatility;
-    // The archer was refused and the barracks came to nothing; a worker is not an army.
     assert.deepEqual(JSON.parse(JSON.stringify(v)), { units: ['militia'], buildings: ['tower'], techs: ['longbow'], orders: ['attack_target', 'build_structure', 'research_tech', 'train_unit'], score: null });
 });
 
-test('the Index is the mean of four parts, and a plan counts in it as far as it was followed', () => {
-    assert.deepEqual(Array.from(WarEval.SCORED), ['grounding', 'planning', 'follow', 'tactical', 'strategy']);
-    assert.deepEqual(Array.from(WarEval.INDEX_PARTS), ['grounding', 'plan', 'tactical', 'strategy']);
-    const index = s => JSON.parse(JSON.stringify(s.index));
+test('WAR Score uses fixed Scale v4 weights (20/25/15/15/25), denies wait-only farming, and gates idle seats', () => {
+    assert.deepEqual(Array.from(WarEval.SCORED), ['grounding', 'macro', 'spatial', 'tactical', 'strategy']);
+    assert.deepEqual(Array.from(WarEval.INDEX_PARTS), ['grounding', 'macro', 'spatial', 'tactical', 'strategy']);
+    assert.deepEqual(WarEval.WEIGHTS, { grounding: 0.20, macro: 0.25, spatial: 0.15, tactical: 0.15, strategy: 0.25 });
     const l = WarEval.createLedger();
-    [seatsLine, move(['Build a tower'], [['build_structure', 'tower']])].forEach(x => l.addLine(x));
+    [seatsLine, orderTurn([['build_structure', 'tower']], { plan: ['Build a tower'], state: { population: { used: 3 } } })].forEach(x => l.addLine(x));
     let s = l.profile().seats[0];
-    // Grounding 100; a plan of one step, carried out: 100 x 100. Never shown a threat, no power reading: two parts.
-    assert.deepEqual([s.grounding.score, s.planning.score, s.follow.score, s.tactical.score, s.strategy.score], [100, 100, 100, null, null]);
-    assert.deepEqual(index(s), { value: 100, of: 2, parts: 4, plan: 100 });
+    assert.equal(s.index.parts, 5);
+    assert.equal(s.index.of, 4);                                       // no strategy sample yet
     l.addLine(timelineOf([tick(5, 100, 500)])); l.addLine(resultsOf('b'));
     s = l.profile().seats.find(x => x.id === 'a');
-    assert.deepEqual([s.strategy.score, s.index.value, s.index.of], [11.1, 70.4, 3]);
-    // The plan-only anchor on paper: one concrete plan, then only waits, for longer than
-    // the window a step is followed. Planning is full, follow-through is nothing, and
-    // the Index has nothing to show for either. The waits leave it no Grounding.
+    assert.equal(s.index.of, 5);
+    // Plan + wait-only talker earns 0 grounding, 0 macro, 0 tactical -> near-zero WAR Score.
     const talker = WarEval.createLedger();
-    [seatsLine, move(['Build a tower', 'Train militia'], [['wait']])].concat(Array.from({ length: 12 }, () => move(null, [['wait']])), [over]).forEach(x => talker.addLine(x));   // and the match ends
-    s = talker.profile().seats[0];
-    assert.deepEqual([s.grounding.score, s.planning.score, s.follow.score], [null, 100, 0]);
-    assert.deepEqual(index(s), { value: 0, of: 1, parts: 4, plan: 0 });
-    // A plan too young to have been followed or dropped is left out, not counted as nothing.
-    const young = WarEval.createLedger();
-    [seatsLine, move(['Build a tower'], [['train_unit', 'worker']])].forEach(x => young.addLine(x));
-    s = young.profile().seats[0];
-    assert.deepEqual([s.planning.score, s.follow.score], [100, null]);
-    assert.deepEqual(index(s), { value: 100, of: 1, parts: 4, plan: null });
-    // A file without outcomes leaves one part that can be read: it decided and stated no
-    // plan. The Index says how few parts it stands on.
-    const none = WarEval.createLedger();
-    none.addLine(JSON.stringify({ turn: 1, playerId: 'z', parsed: { commands: [{ action: 'wait' }] } }));
-    assert.deepEqual(index(none.profile().seats[0]), { value: 0, of: 1, parts: 4, plan: 0 });
-    // A seat no model decided for is in the match and on the timeline, and has no Index.
+    [seatsLine, orderTurn([['wait']], { plan: ['Build a tower', 'Train militia'], state: { population: { used: 3 }, workers: { total: 3, idle: 3 } } })]
+        .concat(Array.from({ length: 12 }, () => orderTurn([['wait']], { state: { population: { used: 3 }, workers: { total: 3, idle: 3 } } })), [over])
+        .forEach(x => talker.addLine(x));
+    const ts = talker.profile().seats[0];
+    assert.deepEqual([ts.grounding.score, ts.macro.score, ts.tactical.score], [0, 0, 0]);
+    assert.ok(ts.index.value < 5);
+    // A seat no model decided for has no WAR Score.
     const other = l.profile().seats.find(x => x.id === 'b');
-    assert.deepEqual([other.decisions, other.strategy.rank, other.strategy.score, other.index.value, other.index.of], [0, 1, 100, null, 0]);
+    assert.deepEqual([other.decisions, other.strategy.rank, other.strategy.score, other.index.value, other.index.of], [0, 1, 93.9, null, 0]);
 });
 
-test('the command-line report prints strategy, the range and the Index beside the parts', async () => {
+test('drift activates at 16+ decisions and warmup protects early snapshots', () => {
+    const l = WarEval.createLedger();
+    for (let i = 1; i <= 14; i++) {
+        l.addLine(JSON.stringify({ turn: i, playerId: 'a', latencyMs: 1000,
+            tokens: { prompt: 5000, completion: 100 },
+            parsed: { commands: [{ action: 'train_unit', params: {} }] },
+            outcomes: [{ n: 1, action: 'train_unit', code: 'k', verdict: i <= 8 ? 'ok' : 'avoidable' }],
+            state: { clock: { matchSeconds: i * 10 }, workers: { total: 4, idle: i <= 8 ? 0 : 2 }, population: { used: 6 } } }));
+    }
+    let s = l.profile().seats[0];
+    assert.equal(s.drift, null);                                        // 14 < DRIFT_MIN_DECISIONS (16)
+    assert.equal(s.warmup, true);                                       // sec=140 < 300 && rated=14 < 15 -> warmup holds
+    l.addLine(JSON.stringify({ turn: 15, playerId: 'a', latencyMs: 1000,
+        tokens: { prompt: 5000, completion: 100 },
+        parsed: { commands: [{ action: 'train_unit', params: {} }] },
+        outcomes: [{ n: 1, action: 'train_unit', code: 'k', verdict: 'avoidable' }],
+        state: { clock: { matchSeconds: 150 }, workers: { total: 4, idle: 2 }, population: { used: 6 } } }));
+    assert.equal(l.profile().seats[0].warmup, false);                   // rated === 15 exits warmup even before 300s
+    assert.equal(l.profile().seats[0].drift, null);                     // 15 still < DRIFT_MIN_DECISIONS (16)
+    l.addLine(JSON.stringify({ turn: 16, playerId: 'a', latencyMs: 2000,
+        tokens: { prompt: 12000, completion: 100 },
+        parsed: { commands: [{ action: 'train_unit', params: {} }] },
+        outcomes: [{ n: 1, action: 'train_unit', code: 'k', verdict: 'avoidable' }],
+        state: { clock: { matchSeconds: 160 }, workers: { total: 4, idle: 2 }, population: { used: 6 } } }));
+    s = l.profile().seats[0];
+    assert.equal(s.warmup, false);                                      // rated >= 15 exits warmup even before 300s
+    assert.ok(s.drift && s.drift.decisions === 16);
+    assert.equal(s.drift.errDeltaPp, 100);
+    assert.equal(s.drift.idleDeltaPp, 50);
+    assert.ok(s.drift.latencyRatio >= 1);
+});
+
+test('the command-line report prints Scale v4 tables, Dominance, WAR Score, Cost & Drift', async () => {
     const file = sample('2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl');
     const text = report(file, await profileFile(file));
-    assert.match(text, /STRATEGY +score +placed +share of power +even split +time ahead +clear lead/);
-    assert.match(text, /O gemini-4-argon +85 +1 of 3 +41\.3 % +33\.3 % +35\.8 % +from 59:18, won +21 +138 : 54 +neolithic 10:22, bronze 18:32, iron 28:07/);
+    assert.match(text, /DOMINANCE \(25%\) +score +placed +trajDom +power share +even split +time ahead +clear lead +ages/);
+    assert.match(text, /O gemini-4-argon +71\.3 +1 of 3 +61\.7 +41\.3 % +33\.3 % +35\.8 % +from 59:18, won +neolithic 10:22, bronze 18:32, iron 28:07/);
     assert.match(text, /RANGE USED +unit types +buildings +technologies +kinds of order\n.*\n.*\nO gemini-4-argon +6 +6 +12 +9/);
-    assert.match(text, /INDEX +mean +of +grounding +plan as followed +tactical +strategy/);
-    assert.match(text, /O gemini-4-argon +86\.7 +4 parts +100 +87 +\d+ +85/);
-    assert.match(text, /GROUNDING +score +valid +ok +of which waits +avoidable/);
-    assert.match(text, /Score scale v3: provisional\. valid = ok of ok \+ avoidable \+ invalid, with waits left out/);
-    assert.match(text, /One match is one sample/);
+    assert.match(text, /WAR SCORE +score +warmup +of +grounding +macro +spatial +tactical +dominance/);
+    assert.match(text, /O gemini-4-argon +86\.6 +- +5\/5 +100\.0 +91\.6 +100\.0 +72\.8 +71\.3/);
+    assert.match(text, /COST & DRIFT +decisions +medLat +p90 +tok\/dec +out\/ok +ok\/think-m +errDrift +idleDrift +latRatio/);
+    assert.match(text, /GROUNDING \(20%\) +score +valid +ok +waits +constraint +reference +repeated +contended +unjudged/);
+    assert.match(text, /Score scale v4\. Weights: 20% Grounding \+ 25% Macro & Agency \+ 15% Spatial \+ 15% Tactical \+ 25% Dominance\./);
 });
 
 // ---- the profile in the export (overhaul step D8) ------------------------------------
@@ -883,23 +780,23 @@ test('the profile a results line carries is the profile its own file gives', asy
     const text = (await rec.exportBlob()).text;
     const again = WarEval.profileOf(text);
     assert.ok(WarEval.sameProfile(JSON.parse(JSON.stringify(WarEval.publicProfile(again))), again.recorded));
-    assert.deepEqual(JSON.parse(JSON.stringify(rec.ledger.profile())), JSON.parse(JSON.stringify(again)));     // and the page's own, after the end
-    // It is a profile with something in it: every part of seat a has a score.
+    assert.deepEqual(JSON.parse(JSON.stringify(rec.ledger.profile())), JSON.parse(JSON.stringify(again)));
+    // It is a profile with something in it: every Scale v4 pillar of seat a has a score.
     const a = again.recorded.seats[0];
-    assert.deepEqual([a.name, a.decisions, a.grounding.waits, a.grounding.rated, a.planning.statements, a.tactical.episodes, a.tactical.atOnce], ['Seat A', 14, 3, 11, 1, 1, 1]);
+    assert.deepEqual([a.name, a.decisions, a.grounding.waits, a.grounding.rated, a.plan.statements, a.tactical.episodes, a.tactical.atOnce], ['Seat A', 14, 3, 11, 1, 1, 1]);
     for (const k of WarEval.SCORED) assert.equal(typeof a[k].score, 'number', k);
     assert.equal(typeof a.index.value, 'number');
-    // The long lists stay in the transcript: the export carries the numbers.
-    assert.deepEqual([a.grounding.errors, a.planning.history, a.planning.standing, a.follow.standing, a.tactical.list], [undefined, undefined, undefined, undefined, undefined]);
-    assert.ok(again.seats[0].tactical.list.length === 1 && again.seats[0].planning.history.length === 1);
+    // The long lists and verbose plan text stay in the transcript, not the summary profile.
+    assert.deepEqual([a.grounding.errors, a.plan.history, a.plan.standing, a.tactical.list], [undefined, undefined, undefined, undefined]);
+    assert.ok(again.seats[0].tactical.list.length === 1 && again.seats[0].plan.history.length === 1);
     assert.ok(JSON.stringify(carried).length < 6000, 'the carried profile is ' + JSON.stringify(carried).length + ' characters');
     // The scorer says whether the file agrees with it, and notices a number that was changed.
     const file = path.join(require('node:os').tmpdir(), 'war-d8-' + process.pid + '.jsonl');
     try {
         fs.writeFileSync(file, text);
-        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v3: scored again here, it is the same\./);
+        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v4: scored again here, it is the same\./);
         fs.writeFileSync(file, text.replace('"waits":3', '"waits":2'));
-        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v3: scored again here on scale v3, it differs\./);
+        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v4: scored again here on scale v4, it differs\./);
     } finally { fs.rmSync(file, { force: true }); }
     // A file without one says nothing about it.
     assert.doesNotMatch(report('x.jsonl', await profileFile(sample('2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl'))), /carries its own profile/);
@@ -907,7 +804,7 @@ test('the profile a results line carries is the profile its own file gives', asy
 
 test('a seat no model decided for is not in the exported profile', () => {
     const l = WarEval.createLedger();
-    [seatsLine, move(['Build a tower'], [['build_structure', 'tower']]), timelineOf([tick(5, 100, 500)]), resultsOf('b')].forEach(x => l.addLine(x));
+    [seatsLine, orderTurn([['build_structure', 'tower']], { plan: ['Build a tower'] }), timelineOf([tick(5, 100, 500)]), resultsOf('b')].forEach(x => l.addLine(x));
     const p = l.profile(), pub = WarEval.publicProfile(p);
-    assert.deepEqual([p.seats.length, pub.seats.length, pub.seats[0].id, pub.kind, pub.scale, p.recorded], [2, 1, 'a', 'war-eval/1', 'v3', null]);
+    assert.deepEqual([p.seats.length, pub.seats.length, pub.seats[0].id, pub.kind, pub.scale, p.recorded], [2, 1, 'a', 'war-eval/1', 'v4', null]);
 });

@@ -59,11 +59,15 @@
     // The scatter inside a box. points: [{ name, x, y, ink, harness, lo, hi, note }]; a point
     // without an x or a y cannot be placed and is returned in `left`, to be named under the
     // plot. yTop is the scale's end (100 for a score or a share).
-    function scatter(points, { x0, y0, w, h, xLabel, yLabel, yTop = 100 }) {
+    function scatter(points, { x0, y0, w, h, xLabel, yLabel, yTop = 100, sweetSpot = false }) {
         const on = points.filter(p => p.x != null && isFinite(p.x) && p.y != null && isFinite(p.y)), left = points.filter(p => !on.includes(p));
         const ax = axis(Math.max(0, ...on.map(p => p.x)) * 1.08), ay = axis(yTop);
         const X = v => x0 + (v / ax.top) * w, Y = v => y0 + h - (v / ay.top) * h;
         let s = `<rect x="${x0}" y="${y0}" width="${w}" height="${h}" fill="${INK.panel}" rx="6"/>`;
+        if (sweetSpot && ay.top === 100) {
+            const sw = w * 0.42, sh = h * 0.38;
+            s += `<rect class="sweet-spot" x="${f1(x0 + 4)}" y="${f1(y0 + 4)}" width="${f1(sw - 4)}" height="${f1(sh - 4)}" fill="#4ecdc4" opacity="0.06" stroke="#4ecdc4" stroke-opacity="0.28" stroke-dasharray="6,5" rx="4"/>`;
+        }
         for (const v of ay.ticks) s += `<line x1="${x0}" x2="${x0 + w}" y1="${f1(Y(v))}" y2="${f1(Y(v))}" stroke="${INK.grid}" stroke-width="1"/>`
             + `<text x="${x0 - 14}" y="${f1(Y(v) + 7)}" text-anchor="end" font-size="20" fill="${INK.axis}">${tickText(v)}</text>`;
         for (const v of ax.ticks) s += `<line x1="${f1(X(v))}" x2="${f1(X(v))}" y1="${y0}" y2="${y0 + h}" stroke="${INK.grid}" stroke-width="1"/>`
@@ -135,7 +139,7 @@
     // label for points that could not be placed, foot: [left, right] }.
     function card(spec) {
         const withHeat = !!(spec.heat && spec.heat.seats && spec.heat.seats.length);
-        const plot = scatter(spec.points || [], { x0: 150, y0: 170, w: withHeat ? 850 : 1370, h: 560, xLabel: spec.x, yLabel: spec.y, yTop: spec.yTop || 100 });
+        const plot = scatter(spec.points || [], { x0: 150, y0: 170, w: withHeat ? 850 : 1370, h: 560, xLabel: spec.x, yLabel: spec.y, yTop: spec.yTop || 100, sweetSpot: !!spec.sweetSpot });
         const any = (spec.points || []).length - plot.left.length;
         const L = spec.legend || {}, hasHarness = (spec.points || []).some(p => p.harness), hasRaw = (spec.points || []).some(p => !p.harness), hasWhisker = (spec.points || []).some(p => p.lo != null && p.hi != null && p.hi > p.lo);
         let leg = '', lx = 150;

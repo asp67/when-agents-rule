@@ -15,7 +15,7 @@ const SAMPLE = path.join(root, 'samples/2026-10-05_gpt6.1-sol-claude-sonnet5.5-d
 function page() {
     const els = {}, store = {}, body = new Set(), keys = [], vars = {};
     const el = id => els[id] || (els[id] = { id, style: {}, innerHTML: '', classList: { toggle() {} }, setAttribute() {} });
-    ['benchLeft', 'benchMatrix', 'benchFull', 'benchBtn'].forEach(el);
+    ['benchMatrix', 'benchFull', 'benchBtn'].forEach(el);
     const context = vm.createContext({ console, Date, WarEval, t: (k, v) => k + (v ? JSON.stringify(v) : ''), getUiLang: () => 'en',
         OpenAIAIManager: { MAX_COMMANDS_PER_TURN: 3 },
         localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
@@ -44,35 +44,38 @@ const decision = (id, sec, o = {}) => JSON.stringify({ turn: o.turn || 1, player
         units: { trainable: { barracks: { stone: [{ id: 'militia' }] } } }, buildings: { buildable: [{ type: 'tower' }, { type: 'barracks' }] },
         friendlyBuildings: [{ type: 'barracks', x: 100, z: 100 }], gameStats: { opponents: [{ id: 'maya-2', civilization: 'maya' }] } } });
 const raid = [{ kind: 'building', type: 'barracks', x: 100, z: 100, attackerAt: { x: 108, z: 102, owner: 'maya-2' } }];
-const cells = html => [...html.matchAll(/class="bm-cell[^"]*"[^>]*><b>([^<]*)<\/b>/g)].map(m => m[1]);
+const cells = html => [...html.matchAll(/class="bm-cell[^"]*"[^>]*><div class="bm-top"><b>([^<]*)<\/b>/g)].map(m => m[1]);
 
 test('D2: the matrix shows the command-line scorer\'s values at match end', async () => {
     const { u, ledger } = page();
     for (const line of fs.readFileSync(SAMPLE, 'utf8').split('\n')) ledger.addLine(line);
     const scored = await profileFile(SAMPLE);                       // what tools/eval/war-eval.cjs prints
-    const want = ['grounding', 'planning', 'follow', 'tactical', 'strategy'].flatMap(k => scored.seats.map(s => s[k].score == null ? '–' : String(Math.round(s[k].score))));
+    const want = WarEval.SCORED.flatMap(k => scored.seats.map(s => s[k].score == null ? '–' : String(Math.round(s[k].score))));
     const { right } = u.benchHtml(ledger);
     assert.deepEqual(cells(right), want);
     assert.equal(want.length, 20);
     // Under each score, the raw measure and the count it rests on.
     assert.match(right, /<small>99\.4 % · 350<\/small>/);              // Sonnet: valid commands of those rated (one wait left out)
-    assert.match(right, /<small>25\/33<\/small>/);                     // ...and plan steps acted on
+    assert.match(right, /<small>90\.6 % bw · 0 pw<\/small>/);         // Sonnet: situational batching bandwidth & zero passive waits
+    assert.match(right, /<small>46% · 3\/3<\/small>/);                 // Sonnet: map explored & all 3 rivals discovered
     // The leader of a row is marked, and a cell says how it moved over the last ten minutes.
     assert.equal((right.match(/bm-cell is-lead/g) || []).length, 5);    // one per row: no two seats tie for a lead in this match
-    // Strategy: share of all power and the placement; at match end the placement is a step, so no trend.
-    assert.match(right, /<small>28\.8 % · #1<\/small>/);                // GLM, the winner
+    // Strategy: trajectory dominance and final placement; at match end placement is blended, so no trend arrow.
+    assert.match(right, /<small>48 · #1<\/small>/);                    // GLM, the winner
     assert.doesNotMatch(right.split('eval.strategy<')[1].split('bm-indexrow')[0], /bm-(up|down)/);
-    // Under the scored rows: their Index as the scorer prints it, then the range used, then the cost.
-    const index = [...right.matchAll(/class="bm-index"[^>]*><b>([^<]*)<\/b><small>bench\.indexOf\{&quot;n&quot;:(\d)\}/g)].map(m => m[1] + '/' + m[2]);
+    // Under the scored rows: WAR Score, action batching bar, range used, and duration-invariant cost.
+    const index = [...right.matchAll(/class="bm-index[^"]*"[^>]*><b>([^<]*)<\/b><small>bench\.indexOf\{&quot;n&quot;:(\d)\}/g)].map(m => m[1] + '/' + m[2]);
     assert.deepEqual(index, scored.seats.map(s => Math.round(s.index.value) + '/' + s.index.of));
-    assert.deepEqual(index, ['42/4', '69/4', '62/4', '75/4']);   // scale v3: a step begun and not finished is no longer a step carried out
+    assert.deepEqual(index, ['48/5', '78/5', '70/5', '74/5']);
     assert.match(right, /bench\.range<small>bench\.rangeUnit<\/small><\/th>.*<b>11 · 10 · 13<\/b><\/td>/s);
     assert.match(right, /bench\.rangeTip\{&quot;units&quot;:&quot;archer, cavalry, champion/);
-    assert.ok(right.indexOf('bm-indexrow') < right.indexOf('bench.range<') && right.indexOf('bench.range<') < right.indexOf('bench.eff<'));
+    assert.ok(right.indexOf('bm-indexrow') < right.indexOf('bench.b.batchShort<')
+        && right.indexOf('bench.b.batchShort<') < right.indexOf('bench.range<')
+        && right.indexOf('bench.range<') < right.indexOf('bench.eff<'));
     // The strategy cell opens what the match recorded: the ages, the lead, the battles.
     u.benchShowEvidence('strategy', scored.seats[1].id);                // Sonnet: led clearly from 58:13 and came second
     const ev = u.benchHtml(ledger).right.split('bench-evidence')[1];
-    assert.match(ev, /6:52<\/span> age\.neolithic.*13:32<\/span> age\.bronze.*22:22<\/span> age\.iron.*58:13<\/span> bench\.lead · bench\.leadLost.*bench\.battles\{&quot;n&quot;:36,&quot;destroyed&quot;:136,&quot;lost&quot;:144\}/s);
+    assert.match(ev, /6:52<\/span> age\.neolithic.*13:32<\/span> age\.bronze.*22:22<\/span> age\.iron.*58:13<\/span> bench\.lead · bench\.leadLost.*bench\.battles\{&quot;n&quot;:36,&quot;destroyed&quot;:127,&quot;lost&quot;:144\}/s);
     assert.doesNotMatch(ev, /benchOpenTurn/);
     u.benchShowEvidence('strategy', scored.seats[1].id);
     assert.match(right, /class="bm-(up|down)" title="bench\.trendTip\{&quot;then&quot;:\d+\}">[▲▼]\d+</);
@@ -84,95 +87,68 @@ test('D2: every string of the Bench view is keyed in all four languages', () => 
     vm.runInContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8') + ';this.I = I18N;', context);
     const src = fs.readFileSync(path.join(root, 'js/eval/bench-view.js'), 'utf8') + fs.readFileSync(path.join(root, 'index.html'), 'utf8').split('\n').filter(l => /benchBtn/.test(l)).join('\n');
     const keys = new Set([...src.matchAll(/t\('([a-z]+\.[A-Za-z0-9.]+)'/g)].map(m => m[1]).concat([...src.matchAll(/data-i18n(?:-title)?="([^"]+)"/g)].map(m => m[1])));
-    for (const state of ['acted', 'pending', 'dropped', 'late', 'uncheckable']) keys.add('bench.st.' + state);
-    for (const dim of WarEval.SCORED) keys.add('eval.' + dim);
-    for (const k of ['bench.leadWon', 'bench.leadLost', 'eval.index', 'eval.indexTip', 'eval.waits', 'eval.groundingWaits', 'sum.openAnalyzer', 'sum.legacy', 'eval.strategyPlaced', 'eval.strategyTip', 'eval.strategyLive', 'eval.strategyNone', 'age.neolithic', 'age.bronze', 'age.iron']) keys.add(k);
-    for (const dim of WarEval.SCORED) keys.add('bench.cmp.' + dim);
-    keys.add('spec.compareTitle');
-    for (const dim of WarEval.SCORED) keys.add('bench.b.' + dim);            // the parts' letters on the mini card (build 1222)
-    for (const kind of ['loop', 'constraint', 'awareness', 'threat', 'refused']) { keys.add('bench.t.' + kind); keys.add('bench.t.' + kind + 'Tip'); }   // the inspector's kinds (build 1223)
-    keys.delete('bench.st.'); keys.delete('eval.'); keys.delete('bench.cmp.'); keys.delete('bench.b.'); keys.delete('bench.t.');   // the prefixes those are built from
-    assert.ok(keys.size >= 30, 'only ' + keys.size + ' keys found: did the pattern change?');
+    for (const dim of WarEval.SCORED) {
+        keys.add('eval.' + dim);
+        keys.add('eval.glyph.' + dim);
+        keys.add('bench.cmp.' + dim);
+    }
+    for (const k of ['bandwidth', 'drift']) keys.add('bench.cmp.' + k);
+    for (const kind of ['loop', 'awareness', 'constraint', 'passive', 'threat', 'refused']) {
+        keys.add('bench.t.' + kind);
+        keys.add('bench.t.' + kind + 'Tip');
+    }
+    for (const k of ['bench.mode.lockstep', 'bench.mode.realtime', 'bench.mode.lockstepShort', 'bench.mode.realtimeShort',
+        'bench.warmup', 'bench.warmupShort', 'bench.early', 'bench.leadWon', 'bench.leadLost',
+        'eval.index', 'eval.indexTip', 'eval.indexShort', 'sum.openAnalyzer', 'sum.legacy',
+        'age.neolithic', 'age.bronze', 'age.iron', 'spec.compareTitle']) keys.add(k);
+    for (const prefix of ['eval.', 'eval.glyph.', 'bench.cmp.', 'bench.t.', 'age.']) keys.delete(prefix);
+    assert.ok(keys.size >= 40, 'only ' + keys.size + ' keys found: did the pattern change?');
     for (const lang of ['en', 'de', 'es', 'zh']) for (const k of keys) assert.ok(k in context.I[lang], lang + ' lacks ' + k);
     // No sentence is written into the markup itself.
     assert.doesNotMatch(fs.readFileSync(path.join(root, 'js/eval/bench-view.js'), 'utf8').replace(/\/\/.*$/gm, ''), />[A-Z][a-z]+ [a-z]+ [a-z]+</);
 });
 
-test('D3: a step never shows as done unless a recorded successful order backs it', () => {
-    const tracker = lines => { const { u, ledger } = page(); lines.forEach(l => ledger.addLine(l)); return u.benchHtml(ledger).left; };
-    const steps = html => [...html.matchAll(/<li class="is-(\w+)"[^>]*><i>.<\/i><span>([^<]*)<\/span>/g)].map(m => m[2] + ': ' + m[1]);
-    const plan = ['Train militia', 'Build a tower', 'Stay flexible'];
-    // Ordered, and refused: the step is not done.
-    assert.deepEqual(steps(tracker([decision('a', 10, { plan, orders: [['train_unit', { unitType: 'militia' }, 'avoidable']] })])),
-        ['Train militia: pending', 'Build a tower: pending', 'Stay flexible: uncheckable']);
-    // Another unit trained: not done either.
-    assert.deepEqual(steps(tracker([decision('a', 10, { plan, orders: [['train_unit', { unitType: 'archer' }]] })]))[0], 'Train militia: pending');
-    // The order worked: done, and only that step.
-    const done = tracker([decision('a', 10, { plan }), decision('a', 20, { turn: 2, orders: [['train_unit', { unitType: 'militia' }]] })]);
-    assert.deepEqual(steps(done), ['Train militia: acted', 'Build a tower: pending', 'Stay flexible: uncheckable']);
-    assert.match(done, /<small>\+1<\/small>/);                           // one decision after it was stated
-    assert.match(done, /bench\.planAge\{&quot;time&quot;:&quot;0:10&quot;,&quot;n&quot;:1\}/);
-    assert.match(done, /class="bp-objective">Hold the town</);
-    // A file that records no outcomes cannot back anything: nothing is shown as done.
-    const { u, ledger } = page();
-    ledger.addLine(JSON.stringify({ turn: 1, playerId: 'a', parsed: { plan: ['Train militia'], commands: [{ action: 'train_unit', params: { unitType: 'militia' } }] },
-        state: { clock: { matchSeconds: 5 }, units: { trainable: { barracks: { stone: [{ id: 'militia' }] } } } } }));
-    assert.doesNotMatch(u.benchHtml(ledger).left, /is-acted/);
-    // A seat without a plan says so.
-    assert.match(tracker([decision('a', 10, {})]), /bench\.noPlan/);
-});
-
-// Build 1230 (asp67, 22 November 2026, when a third seat's plan was missing from the panel: "make the bench plan card a
-// 2x2 grid so with 2 players they show side by side, with 4 a 2x2 matrix"). Until then two seats were shown and a
-// third had to be picked on the matrix, which the live view no longer has.
-test('D3: every seat\'s plan is shown, two beside each other', () => {
-    const wide = [];
-    const fill = n => {
-        const p = page(), { u, ledger, els } = p;
-        els.benchLeft.classList = { toggle: (c, on) => wide.push(c + ' ' + on) };
-        ['a', 'b', 'c', 'd'].slice(0, n).forEach((id, i) => ledger.addLine(JSON.stringify({ turn: 1, playerId: id, name: 'Seat ' + id, seat: i,
-            parsed: { commands: [], plan: id === 'c' ? undefined : ['Build a tower'] }, state: { clock: { matchSeconds: 10 } } })));
-        u.toggleBenchView(true);
-        return els.benchLeft.innerHTML;
-    };
-    const plans = html => [...html.matchAll(/<section class="bp-seat"[^>]*><h4><span>([^<]*)<\/span>/g)].map(m => m[1]);
-    // Four seats: all four, in seat order, in a grid two wide; the one without a plan says so in its place.
-    const four = fill(4);
-    assert.deepEqual(plans(four), ['Seat a', 'Seat b', 'Seat c', 'Seat d']);
-    assert.match(four, /^<div class="bench-head">bench\.plan<\/div><div class="bp-grid" style="--n:2"><section class="bp-seat"/);
-    assert.match(four, /<span>Seat c<\/span><\/h4><p class="bench-none">bench\.noPlan<\/p><\/section>/);
-    assert.match(four, /<\/section><\/div><div class="bench-head bench-clockhead">/, 'the threats stand under the grid, over its whole width');
-    // Three: the third is there too (it was the one asp67 missed). Two: side by side. One: a single column, and the panel keeps its width.
-    assert.deepEqual(plans(fill(3)), ['Seat a', 'Seat b', 'Seat c']);
-    assert.match(fill(2), /<div class="bp-grid" style="--n:2">/);
-    assert.match(fill(1), /<div class="bp-grid" style="--n:1">/);
-    assert.deepEqual(wide.slice(-1), ['is-wide false']);
-    assert.ok(wide.includes('is-wide true'));
-    // Nothing is picked any more: the matrix's heads are not buttons.
-    const src = fs.readFileSync(path.join(root, 'js/eval/bench-view.js'), 'utf8');
-    assert.doesNotMatch(src, /benchPin|_benchSeats|_benchShown|is-pinned/);
+test('D3: the left Plan & Threat drawer is removed so Bench shows only the right Comparison card', () => {
+    const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+    const view = fs.readFileSync(path.join(root, 'js/eval/bench-view.js'), 'utf8');
     const css = fs.readFileSync(path.join(root, 'css/styles.css'), 'utf8');
-    assert.match(css, /\.bp-grid \{ display: grid; grid-template-columns: repeat\(var\(--n, 1\), minmax\(0, 1fr\)\);/);
-    assert.match(css, /\.bench-left\.is-wide \{ width: min\(640px, calc\(100vw \/ var\(--ui-scale, 1\) - 354px - 344px - 328px - 28px\)\); \}/);
+    assert.doesNotMatch(html, /benchLeft|bench-left/);
+    assert.doesNotMatch(view, /benchLeft|bp-grid|bp-seat|bench-clockhead|bc-card/);
+    assert.doesNotMatch(css, /\.bench-left\b|\.bp-grid\b|\.bc-card\b/);
+    // Toggling Bench shows only #benchMatrix with the mini card even when a seat stated a plan.
+    const { u, els, ledger } = page();
+    ledger.addLine(decision('a', 10, { plan: ['Build a tower'] }));
+    u.toggleBenchView(true);
+    assert.equal(els.benchMatrix.style.display, '');
+    assert.match(els.benchMatrix.innerHTML, /class="bb is-mini"/);
+    assert.equal(u.benchHtml(ledger).left, undefined);
 });
 
-test('D4: a threat\'s clock starts when the seat was shown it, counts its decisions, and closes with the answer and the outcome', () => {
-    const cards = lines => { const { u, ledger } = page(); lines.forEach(l => ledger.addLine(l)); return [...u.benchHtml(ledger).left.matchAll(/class="bc-card is-(\w+)"[^>]*><span class="bc-time">([^<]*)<\/span><span class="bc-line"><b>[^<]*<\/b> ([^<]*)</g)].map(m => [m[1], m[2], m[3].replace(/&quot;/g, '"')]); };
+test('D4: a threat\'s clock starts when the seat was shown it, counts its decisions, and closes with the answer and the outcome in tactical evidence', () => {
+    const cards = lines => {
+        const { u, ledger } = page();
+        lines.forEach(l => ledger.addLine(l));
+        u.benchShowEvidence('tactical', 'a');
+        const ev = (u.benchHtml(ledger).right.split('bench-evidence')[1]) || '';
+        return [...ev.matchAll(/<span class="be-when">#\d+ ([^<]*)<\/span> ([^<]*)<\/li>/g)].map(m => [m[1], m[2].replace(/&quot;/g, '"')]);
+    };
     const calm = (sec, turn) => decision('a', sec, { turn, orders: [['train_unit', { unitType: 'militia' }]] });
-    // The fight may have begun any time before: the card carries the second of the state that first showed it.
+    // The fight may have begun any time before: tactical evidence carries the second of the state that first showed it.
     const shown = cards([calm(60, 1), decision('a', 100, { turn: 2, attack: raid, orders: [['train_unit', { unitType: 'militia' }]] })]);
-    assert.deepEqual(shown, [['waiting', '1:40', 'barracks bench.by{"who":"maya-2"} · bench.waiting{"k":1,"n":3} · bench.ongoing']]);
+    assert.deepEqual(shown, [['1:40', 'barracks bench.by{"who":"maya-2"} · bench.waiting{"k":1,"n":3} · bench.ongoing']]);
     // The next decision still does not answer: the count goes on.
-    assert.match(cards([calm(60, 1), decision('a', 100, { turn: 2, attack: raid }), decision('a', 130, { turn: 3, attack: raid })])[0][2], /bench\.waiting\{"k":2,"n":3\}/);
+    assert.match(cards([calm(60, 1), decision('a', 100, { turn: 2, attack: raid }), decision('a', 130, { turn: 3, attack: raid })])[0][1], /bench\.waiting\{"k":2,"n":3\}/);
     // Answered at once, and the building held.
     assert.deepEqual(cards([calm(60, 1), decision('a', 100, { turn: 2, attack: raid, orders: [['attack_target', { targetX: 105, targetZ: 100 }]] }), calm(130, 3)])[0],
-        ['answered', '1:40', 'barracks bench.by{"who":"maya-2"} · bench.answered0 · bench.held']);
-    // Answered two decisions on: counted, but not "at once".
-    assert.deepEqual(cards([calm(60, 1), decision('a', 100, { turn: 2, attack: raid }), calm(130, 3), decision('a', 160, { turn: 4, orders: [['attack_target', { targetX: 105, targetZ: 100 }]] })])[0].slice(0, 2), ['slow', '1:40']);
+        ['1:40', 'barracks bench.by{"who":"maya-2"} · bench.answered0 · bench.held']);
+    // Answered two decisions on: counted, and marked slow (answered2).
+    assert.deepEqual(cards([calm(60, 1), decision('a', 100, { turn: 2, attack: raid }), calm(130, 3), decision('a', 160, { turn: 4, orders: [['attack_target', { targetX: 105, targetZ: 100 }]] })])[0],
+        ['1:40', 'barracks bench.by{"who":"maya-2"} · bench.answered2 · bench.held']);
     // Three decisions without an aimed order: no answer, and what it cost.
     const lost = cards([calm(60, 1), decision('a', 100, { turn: 2, attack: raid }), JSON.stringify(Object.assign(JSON.parse(calm(130, 3)), { state: Object.assign(JSON.parse(calm(130, 3)).state, { friendlyBuildings: [] }) })), calm(160, 4), calm(190, 5)]);
-    assert.deepEqual(lost[0], ['missed', '1:40', 'barracks bench.by{"who":"maya-2"} · bench.unanswered · bench.lost{"what":"barracks"}']);
-    assert.match((() => { const { u, ledger } = page(); ledger.addLine(calm(60, 1)); return u.benchHtml(ledger).left; })(), /bench\.noThreat/);
+    assert.deepEqual(lost[0], ['1:40', 'barracks bench.by{"who":"maya-2"} · bench.unanswered · bench.lost{"what":"barracks"}']);
+    const none = page(); none.ledger.addLine(calm(60, 1)); none.u.benchShowEvidence('tactical', 'a');
+    assert.match(none.u.benchHtml(none.ledger).right, /bench-evidence.*bench\.nothing/s);
 });
 
 test('the view is off until asked for, B switches it, and it redraws only when a line has arrived', () => {
@@ -193,11 +169,17 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.match(els.benchMatrix.innerHTML, /<div class="bb is-mini" style="--n:1"[^>]*onclick="game\.ui\.toggleBenchFull\(true\)"/);
     assert.deepEqual([cells(els.benchMatrix.innerHTML).length, els.benchFull.innerHTML, els.benchFull.style.display], [0, '', 'none']);
     const matrix = () => u.benchHtml(ledger).right;
-    assert.deepEqual(cells(matrix()), ['0', '100', '–', '–', '–']);       // one refused order of one; a plan of one checkable step; nothing closed; no threat; no power reading
-    // A new reading on the timeline redraws the panels too: the strategy score lives on it.
+    const expectedCells = () => {
+        const s = ledger.profile().seats[0];
+        return WarEval.SCORED.map(k => s[k].score == null ? '–' : String(Math.round(s[k].score)));
+    };
+    assert.deepEqual(cells(matrix()), ['61', '52', '0', '50', '–']);     // Bayesian K=8 grounding, pop-20 macro dev, 0 spatial, peaceful tactical prior (50*activityGate), no power reading yet
+    assert.deepEqual(cells(matrix()), expectedCells());
+    // A new reading on the timeline redraws the panels too: even power -> Bradley-Terry tie = 50.
     u.game._timeline = { samples: [{ t: 5, p: { a: { pw: 300 }, b: { pw: 300 } } }], ages: [] };
     u.updateBenchView();
-    assert.deepEqual(cells(matrix()), ['0', '100', '–', '–', '67']);
+    assert.deepEqual(cells(matrix()), ['61', '52', '0', '50', '50']);
+    assert.deepEqual(cells(matrix()), expectedCells());
     els.benchMatrix.innerHTML = 'untouched';
     u.updateBenchView();
     assert.equal(els.benchMatrix.innerHTML, 'untouched');
@@ -206,10 +188,14 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.notEqual(els.benchMatrix.innerHTML, 'untouched');
     // A cell opens the decisions behind it, and each of those opens in the transcript.
     u.benchShowEvidence('grounding', 'a');
-    assert.match(matrix(), /bench-evidence.*benchOpenTurn\('a', 1\)" title="bench\.open".*#1 0:10<\/span> c</s);
+    assert.match(matrix(), /bench-evidence.*benchOpenTurn\('a', 1\)" title="bench\.open".*#1 0:10<\/span> c · bench\.b\.constraints<\/li>/s);
     u.benchOpenTurn('a', 1);
     assert.deepEqual([u._transcriptFor, u._tvPinned, opened.join()], ['a', 1, '1']);
-    u.benchShowEvidence('grounding', 'a');                              // the same cell again closes it
+    u.benchShowEvidence('macro', 'a');
+    assert.match(matrix(), /bench-evidence.*bench\.evMacro/s);
+    u.benchShowEvidence('spatial', 'a');
+    assert.match(matrix(), /bench-evidence.*bench\.evSpatial/s);
+    u.benchShowEvidence('spatial', 'a');                               // the same cell again closes it
     assert.doesNotMatch(matrix(), /bench-evidence/);
     // The board at full size holds the grid and no matrix; Escape, or its button, closes it, and the mini card stays.
     u.toggleBenchFull(true);
@@ -221,7 +207,7 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.deepEqual([u._benchFull, els.benchFull.style.display, els.benchFull.innerHTML], [false, 'none', '']);
     assert.match(els.benchMatrix.innerHTML, /bb is-mini/);
     press('B');
-    assert.deepEqual([u.benchOn(), body.has('bench-view'), els.benchLeft.style.display], [false, false, 'none']);
+    assert.deepEqual([u.benchOn(), body.has('bench-view'), els.benchMatrix.style.display], [false, false, 'none']);
 });
 
 test('D8: the results screen shows the same matrix, and a decision opens where it can be read', async () => {
@@ -264,7 +250,7 @@ test('D8: the results screen shows the same matrix, and a decision opens where i
     held = false;
     u.updateSummaryProfile();
     assert.doesNotMatch(els.summaryProfile.innerHTML, /benchOpenTurn/);
-    assert.match(els.summaryProfile.innerHTML, /#1 0:10<\/span> c</);            // the list is still there to read
+    assert.match(els.summaryProfile.innerHTML, /#1 0:10<\/span> c · bench\.b\.constraints<\/li>/); // the list is still there to read
     assert.equal(u.benchOpenTurn('a', 1), undefined);
     assert.equal(calls.length, 3);
 });
@@ -284,7 +270,7 @@ test('the panels are an overlay of either mode: under the mode\'s own top strip,
     // Analyze mode: on, under the bar, and the bar's own panels are not touched.
     press('b');
     assert.deepEqual([u.benchOn(), vars['--bench-top'], body.has('tv-open'), board], [true, '91px', false, 0]);
-    assert.deepEqual([els.benchLeft.style.display, els.benchMatrix.style.display], ['', '']);
+    assert.equal(els.benchMatrix.style.display, '');
     // Into broadcast mode: still on, now under the scoreboard, however tall it is.
     body.add('broadcast-mode');
     u.updateBenchView();
@@ -320,33 +306,44 @@ test('D7: a part is broadcast only when every model seat has had a handful of op
     // One model seat: nothing to compare, whatever it has done.
     work('a', 8).forEach(l => ledger.addLine(l));
     assert.deepEqual(keysOf(u.compareList(ledger.profile())), []);
-    // Two seats, eight commands and eight decisions each: Grounding and Planning. No step
-    // has been closed, no threat was shown and no power reading exists: those stay off air.
+    // Two seats, eight commands and eight decisions each: Grounding, Macro, Spatial, and Bandwidth.
+    // No threat or battle occurred and no power reading exists: Tactical and Strategy stay off air.
     work('b', 8, { plan: ['Build a tower'] }).forEach(l => ledger.addLine(l));
-    assert.deepEqual(seatsOf(u.compareList(ledger.profile())), ['grounding:Seat a=0/8,Seat b=0/8', 'planning:Seat a=0/8,Seat b=100/8']);
-    // Four of something is not a handful: with seat c in the match, only four commands in, Grounding goes.
+    const two = u.compareList(ledger.profile());
+    assert.deepEqual(keysOf(two), ['grounding', 'macro', 'spatial', 'bandwidth']);
+    for (const item of two) for (const s of item.seats) assert.equal(typeof s.n, 'number', item.key);
+    assert.deepEqual(seatsOf(two), [
+        'grounding:Seat a=57/8,Seat b=57/8',
+        'macro:Seat a=52/8,Seat b=52/8',
+        'spatial:Seat a=0/8,Seat b=0/8',
+        'bandwidth:Seat a=52/8,Seat b=52/8'
+    ]);
+    // Four of something is not a handful: with seat c in the match, only four commands in, everything stays off air.
     const few = WarEval.createLedger();
     work('a', 8).concat(work('b', 4)).forEach(l => few.addLine(l));
     assert.deepEqual(keysOf(u.compareList(few.profile())), []);
     // Five minutes of power readings bring Strategy on.
     ledger.preview({ samples: Array.from({ length: 60 }, (_, i) => ({ t: i * 5, p: { a: { pw: 300 }, b: { pw: 500 } } })), ages: [] });
-    assert.deepEqual(keysOf(u.compareList(ledger.profile())), ['grounding', 'planning', 'strategy']);
+    assert.deepEqual(keysOf(u.compareList(ledger.profile())), ['grounding', 'macro', 'spatial', 'strategy', 'bandwidth']);
     ledger.preview({ samples: [{ t: 0, p: { a: { pw: 300 }, b: { pw: 500 } } }], ages: [] });
-    // The 5 October match at its end: four parts for all four seats. GPT 6.1 was shown two threats and GLM 5.3 three, so Tactical is not broadcast.
+    // The 5 October match at its end: all 7 Scale v4 slides qualify (all 4 seats >= 5 rated/battles/60pw/16dec).
     const full = WarEval.createLedger();
     for (const line of fs.readFileSync(SAMPLE, 'utf8').split('\n')) full.addLine(line);
     const list = u.compareList(full.profile());
-    assert.deepEqual(keysOf(list), ['grounding', 'planning', 'follow', 'strategy']);
-    assert.deepEqual(full.profile().seats.map(s => s.tactical.episodes + s.tactical.wonders), [2, 6, 6, 3]);
-    // What is shown is the scorer's number with the count it rests on, and the best seat is marked unless two tie.
+    assert.deepEqual(keysOf(list), ['grounding', 'macro', 'spatial', 'tactical', 'strategy', 'bandwidth', 'drift']);
+    // What is shown is the scorer's number with the count it rests on, and the best seat is marked unless two tie or warmup holds.
     const scored = await profileFile(SAMPLE);
     assert.deepEqual(Array.from(list[0].seats, s => s.name + ' ' + s.score + ' ' + s.n), scored.seats.map(s => s.name + ' ' + s.grounding.score + ' ' + s.grounding.rated));
     const html = u.compareHtml(list[0]);
     assert.match(html, /^<div class="bcmp-head"><b>eval\.grounding<\/b><span>bench\.cmp\.grounding<\/span><em>eval\.provisional<\/em><\/div>/);
     assert.equal((html.match(/class="bcmp-seat/g) || []).length, 4);
-    assert.match(html, /class="bcmp-seat is-lead"[^>]*><span class="bcmp-name">O claude-sonnet-5\.5<\/span><span class="bcmp-val"><b>94<\/b><i class="bcmp-bar"><u style="width:94%"><\/u><\/i><small>99\.4 % · 350<\/small>/);
+    assert.match(html, /class="bcmp-seat is-lead"[^>]*><span class="bcmp-name">O claude-sonnet-5\.5<\/span><span class="bcmp-val"><b>98<\/b><i class="bcmp-bar"><u style="width:98%"><\/u><\/i><small>99\.4 % · 350<\/small>/);
     assert.equal((html.match(/is-lead/g) || []).length, 1);
-    assert.doesNotMatch(u.compareHtml({ key: 'planning', seats: [{ id: 'a', name: 'A', score: 50, raw: '' }, { id: 'b', name: 'B', score: 50, raw: '' }] }), /is-lead/);
+    assert.doesNotMatch(u.compareHtml({ key: 'macro', seats: [{ id: 'a', name: 'A', score: 50, raw: '' }, { id: 'b', name: 'B', score: 50, raw: '' }] }), /is-lead/);
+    // Warmup suppresses the lead highlight and labels the badge accordingly.
+    const warmHtml = u.compareHtml({ key: 'macro', warmup: true, seats: [{ id: 'a', name: 'A', score: 80, raw: '' }, { id: 'b', name: 'B', score: 40, raw: '' }] });
+    assert.doesNotMatch(warmHtml, /is-lead/);
+    assert.match(warmHtml, /<em>bench\.warmupShort<\/em>/);
 });
 
 test('D7: one comparison at a time, in broadcast mode only, and never while a caption is up', () => {
@@ -357,7 +354,12 @@ test('D7: one comparison at a time, in broadcast mode only, and never while a ca
     const work = (id, o) => Array.from({ length: 8 }, (_, i) => decision(id, 10 + i * 10, Object.assign({ turn: i + 1, orders: [['train_unit', { unitType: 'militia' }, 'ok']] }, i ? null : o)));
     work('a', { plan: ['Build a tower'] }).concat(work('b')).forEach(l => ledger.addLine(l));
     u.refreshBenchView();
-    const strip = () => els.compareStrip, shown = () => !!strip() && strip().classList.contains('is-in'), part = () => (/<b>eval\.(\w+)<\/b>/.exec(strip().innerHTML) || [])[1];
+    const strip = () => els.compareStrip, shown = () => !!strip() && strip().classList.contains('is-in');
+    const part = () => {
+        const h = strip().innerHTML;
+        const m = /<b>(?:eval\.(\w+)|bench\.b\.(batchDist|driftTitle))<\/b>/.exec(h);
+        return m && (m[1] || (m[2] === 'batchDist' ? 'bandwidth' : 'drift'));
+    };
     // Off until asked for, and C means nothing outside broadcast mode.
     u.updateCompare(1000);
     press('c');
@@ -376,24 +378,28 @@ test('D7: one comparison at a time, in broadcast mode only, and never while a ca
     u.updateCompare(5000);
     assert.deepEqual([part(), strip().writes], ['grounding', writes]);              // nothing is redrawn while it stands
     u.updateCompare(10000);
-    assert.equal(part(), 'planning');
+    assert.equal(part(), 'macro');
     u.updateCompare(19000);
+    assert.equal(part(), 'spatial');
+    u.updateCompare(28000);
+    assert.equal(part(), 'bandwidth');
+    u.updateCompare(37000);
     assert.equal(part(), 'grounding');
     // A caption comes up: the strip steps aside, stays away three seconds after it, and returns with the next part.
     u._chronicleTimer = 7;
-    u.updateCompare(21000);
+    u.updateCompare(39000);
     assert.equal(shown(), false);
     u._chronicleTimer = null;
-    u.updateCompare(23000);
+    u.updateCompare(41000);
     assert.equal(shown(), false);
-    u.updateCompare(24100);
-    assert.deepEqual([shown(), part()], [true, 'planning']);
+    u.updateCompare(42100);
+    assert.deepEqual([shown(), part()], [true, 'macro']);
     // Leaving broadcast mode takes the strip along; the choice is kept for the next time.
     body.delete('broadcast-mode');
-    u.updateCompare(25000);
+    u.updateCompare(43000);
     assert.deepEqual([strip(), u.compareOn()], [undefined, true]);
     body.add('broadcast-mode');
-    u.updateCompare(26000);
+    u.updateCompare(44000);
     assert.equal(shown(), true);
     press('C');
     assert.deepEqual([u.compareOn(), strip(), board], [false, undefined, 2]);
@@ -408,30 +414,4 @@ test('D7: one comparison at a time, in broadcast mode only, and never while a ca
     assert.match(src, /icon\('broadcastCompare'[^\n]+toggleCompare\(\)/);
     assert.match(src, /on\('broadcastCompare', [^\n]+compareOn\(\)\);/);
     assert.match(src, /getElementById\('chronicleCaption'\)\?\.remove\(\);\r?\n\s+document\.getElementById\('compareStrip'\)\?\.remove\(\);/);
-});
-
-// Scale v3 (22 November 2026): asp67's match showed "4 of 4 acted on" three minutes in, with
-// a tick on "Find and destroy the Egyptian rival's town center" for one scout sent.
-test('D3: a step that commits to several things is begun with the first of them and done with the last', () => {
-    const tracker = lines => { const { u, ledger } = page(); lines.forEach(l => ledger.addLine(l)); return u.benchHtml(ledger).left; };
-    const steps = html => [...html.matchAll(/<li class="is-(\w+)"[^>]*><i>.<\/i><span>([^<]*)<\/span>/g)].map(m => m[2] + ': ' + m[1]);
-    const plan = ['Find and destroy the Maya town center', 'Train militia'];
-    const scout = [decision('a', 10, { plan }), decision('a', 20, { turn: 2, orders: [['explore', {}]] })];
-    const scouted = tracker(scout);
-    assert.deepEqual(steps(scouted), ['Find and destroy the Maya town center: begun', 'Train militia: pending']);
-    assert.match(scouted, /<li class="is-begun" title="bench\.st\.begun"><i>◐<\/i><span>Find and destroy the Maya town center<\/span><small>1\/2<\/small><\/li>/);
-    assert.doesNotMatch(scouted, /is-acted/);
-    assert.doesNotMatch(scouted, /bench\.acted/, 'nothing is settled yet, so nothing is counted as carried out');
-    // The attack is ordered: now the step is carried out, two decisions after it was stated.
-    const struck = tracker(scout.concat(decision('a', 30, { turn: 3, orders: [['attack_target', { targetX: 300, targetZ: 300 }]] })));
-    assert.deepEqual(steps(struck), ['Find and destroy the Maya town center: acted', 'Train militia: pending']);
-    assert.match(struck, /<i>✓<\/i><span>Find and destroy the Maya town center<\/span><small>\+2<\/small>/);
-    assert.match(struck, /bench\.acted\{&quot;acted&quot;:1,&quot;closed&quot;:1\}/);
-    // The words for the two new states exist in every language, and the mark's.
-    const context = vm.createContext({ window: {}, navigator: { language: 'en' }, localStorage: { getItem: () => null, setItem() {} },
-        document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {} } });
-    vm.runInContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8') + ';this.I = I18N;', context);
-    for (const lang of ['en', 'de', 'es', 'zh']) for (const k of ['bench.st.begun', 'bench.st.part', 'mark.stepPart'])
-        assert.ok(k in context.I[lang] && context.I[lang][k].length > 3, lang + ' lacks ' + k);
-    for (const lang of ['en', 'de', 'es', 'zh']) assert.match(context.I[lang]['eval.followTip'], /\{part\}/, lang);
 });

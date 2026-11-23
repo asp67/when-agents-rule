@@ -176,4 +176,5 @@ test('a side that loses what never struck back is counted with it, never "of 0"'
     assert.ok(battle, told.map(e => e.kind).join());
     const side = battle.sides[b.id];
     assert.ok(side.involved >= side.lost, 'lost ' + side.lost + ' of ' + side.involved);
+    assert.ok(typeof side.lostValue === 'number' && side.lostValue > 0, 'battle tally carries resource lostValue');
 });

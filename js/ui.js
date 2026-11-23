@@ -3018,7 +3018,7 @@ class UIManager {
         // it, toward the middle of the view; before stacking, and again after, since
         // stacking can raise a bubble into one.
         const ov = box.getBoundingClientRect();
-        const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo', 'benchLeft', 'benchMatrix', 'raceChart', 'compareStrip']
+        const panels = ['aiDecisionLog', 'spectatorLeaderboard', 'minimap', 'transcriptViewer', 'unitInfo', 'benchMatrix', 'raceChart', 'compareStrip']
             .map(id => document.getElementById(id))
             .filter(el => el && el.offsetParent !== null && el.offsetWidth > 0)
             .map(el => { const q = el.getBoundingClientRect();
@@ -4440,10 +4440,8 @@ class UIManager {
         }
         return index;
     }
-    // What the scorer found an order to be good for (overhaul step D6): the step of the
-    // standing plan it carried out, and the threat it answered. By seat, turn, action and
-    // the order's place among the turn's orders of that action, which is how a card and a
-    // line of the transcript are known to be the same order.
+    // What the scorer found an order to be good for: the home threat or Wonder it answered.
+    // By seat, turn, action and the order's place among the turn's orders of that action.
     logEvidenceIndex(log) {
         const seats = this.evalSeats(), found = new Map();
         if (!seats) return found;
@@ -4451,7 +4449,6 @@ class UIManager {
         const mark = new Map();
         for (const id in seats) {
             const p = seats[id];
-            for (const s of (p.follow && p.follow.serving) || []) mark.set(key(id, s.turn, s.action, s.k), { step: s.step, of: s.of });
             for (const e of (p.tactical && p.tactical.list) || []) if (e.answer) {
                 const k = key(id, e.answer.turn, e.answer.action, e.answer.k);
                 mark.set(k, Object.assign(mark.get(k) || {}, { threat: e.kind, after: e.answeredAfter }));
@@ -4474,7 +4471,6 @@ class UIManager {
         const base = this.logVerdictTags(entry, index), found = evidence && evidence.get(entry);
         if (!found) return base;
         const tags = base.slice();
-        if (found.step) tags.push({ kind: 'serves', group: 'serves', label: t('log.tagServes', { n: found.step }), tip: t('log.tagServesTip', { n: found.step, of: found.of }) });
         if (found.threat) tags.push({ kind: 'answers', group: 'answers', label: t('log.tagAnswers'),
             tip: t(found.threat === 'wonder' ? 'log.tagAnswersWonderTip' : 'log.tagAnswersTip', { n: (found.after || 0) + 1 }) });
         return tags;
@@ -4508,7 +4504,7 @@ class UIManager {
         const sig = [...on].sort().join(',') + '#' + getUiLang();
         if (sig === this._logTagChipSig) return;
         this._logTagChipSig = sig;
-        el.innerHTML = [['mistake', 'log.chipMistakes'], ['timing', 'log.chipTiming'], ['plan', 'log.chipPlan'], ['serves', 'log.chipServes'], ['answers', 'log.chipAnswers']].map(([group, key]) =>
+        el.innerHTML = [['mistake', 'log.chipMistakes'], ['timing', 'log.chipTiming'], ['plan', 'log.chipPlan'], ['answers', 'log.chipAnswers']].map(([group, key]) =>
             `<button class="ai-log-chip ai-log-tagchip is-${group}${on.has(group) ? ' is-on' : ''}" onclick="game.ui.setLogTagFilter('${group}')"`
             + ` aria-pressed="${on.has(group)}" title="${this.escapeHtml(t('log.chipTip'))}">${this.escapeHtml(t(key))}</button>`).join('');
     }
@@ -5521,10 +5517,13 @@ class UIManager {
         if (document.body && document.body.classList) document.body.classList.toggle('race-view', on);
         this.updateRaceChart();
     }
-    // A seat's plan changes as marks on the chart's clock.
+    // A seat's plan revisions as marks on the chart's clock (from unscored qualitative plan.history).
     racePlanMarks() {
         const marks = [], seats = this.evalSeats() || {};
-        for (const id in seats) for (const h of seats[id].planning.history) if (h.sec != null) marks.push({ id, t: h.sec });
+        for (const id in seats) {
+            const hist = seats[id].plan && seats[id].plan.history;
+            for (const h of hist || []) if (h.sec != null) marks.push({ id, t: h.sec });
+        }
         return marks;
     }
     updateRaceChart() {
@@ -5557,40 +5556,54 @@ class UIManager {
         return tr.ledger;
     }
 
-    // One bar per part of the profile that exists: Grounding, Planning, Follow-through, the
-    // others as their steps land. The tooltip carries what the number rests on, so a
-    // bar is never just a bar.
-    // What each part of a seat's profile rests on, in words: the tooltips of the seat
-    // card and of the Bench view's matrix, so the two can never tell different stories.
+    // Five Scale v4 pillars (grounding, macro, spatial, tactical, strategy) plus WAR Score.
+    // Tooltips surface the raw transcript facts behind every bar.
     evalTips(p) {
         const share = v => v == null ? '–' : (v * 100).toFixed(v > 0.9995 || v < 0.0005 ? 0 : 1) + ' %';
-        const clock = sec => sec == null ? '–' : Math.floor(sec / 60) + ':' + String(Math.floor(sec) % 60).padStart(2, '0');
-        const g = p.grounding, pl = p.planning, fl = p.follow, ta = p.tactical, st = p.strategy, top = g.mistakes[0];
-        const chances = ta ? ta.episodes + ta.wonders : 0;
+        const g = p.grounding || {}, m = p.macro || {}, sp = p.spatial || {}, ta = p.tactical, st = p.strategy, top = (g.mistakes || [])[0];
+        const chances = ta ? (ta.episodes || 0) + (ta.wonders || 0) : 0;
+        const okNonWait = g.okNonWait != null ? g.okNonWait : ((g.ok || 0) - (g.waits || 0));
         return {
             grounding: !g.rated ? (g.waits ? t('eval.groundingWaits', { n: g.waits }) : t('eval.groundingNone'))
-                : t('eval.groundingTip', { ok: g.ok - g.waits, judged: g.rated, pct: share(g.rate), contended: g.contended })
+                : t('eval.groundingTip', { ok: okNonWait, judged: g.rated, pct: share(g.rate), contended: g.contended || 0 })
                     + (g.waits ? ' ' + t('eval.waits', { n: g.waits }) : '')
-                    + (top ? ' ' + t('eval.mistakes', { code: top.code, n: top.n, repeated: g.repeated }) : ''),
-            planning: !pl.statements ? t('eval.planningNone', { n: p.decisions })
-                : t('eval.planningTip', { statements: pl.statements, revisions: pl.revisions, first: clock(pl.firstAt.sec),
-                    coverage: share(pl.coverage), concrete: pl.concrete, steps: pl.steps, revised: pl.shocks.revised, shocks: pl.shocks.n }),
-            follow: !fl ? '' : !fl.judged ? t('eval.groundingNone') : !pl.statements ? t('eval.planningNone', { n: p.decisions })
-                : t('eval.followTip', { acted: fl.acted, part: fl.part || 0, closed: fl.acted + (fl.part || 0) + fl.dropped, late: fl.late, pending: fl.pending,
-                    wait: fl.decisionsToAct == null ? '–' : fl.decisionsToAct, serving: fl.ordersServing, orders: fl.ordersUnderPlan }),
-            tactical: !ta ? '' : !ta.judged ? t('eval.groundingNone') : !chances ? t('eval.tacticalNone')
-                : t('eval.tacticalTip', { atOnce: ta.atOnce, episodes: ta.episodes, answered: ta.answered, lost: ta.lost,
-                    wonderAnswered: ta.wonderAnswered, wonders: ta.wonders }),
+                    + (top ? ' ' + t('eval.mistakes', { code: top.code, n: top.n, repeated: g.repeated || 0 }) : ''),
+            macro: m.score == null ? t('eval.groundingNone')
+                : t('eval.macroTip', {
+                    dev: m.devScore == null ? '–' : Math.round(m.devScore),
+                    idle: share(m.avgIdle),
+                    bw: share(m.bwUtil),
+                    waits: m.passiveWaits || 0
+                }),
+            spatial: sp.score == null ? t('eval.groundingNone')
+                : t('eval.spatialTip', {
+                    exp: sp.maxExplored == null ? '–' : Math.round(sp.maxExplored) + '%',
+                    disc: sp.discovered || 0,
+                    opp: sp.opponents || 0,
+                    errs: sp.spatialErrors || 0
+                }),
+            tactical: !ta ? '' : (!ta.judged && !ta.battles) ? t('eval.groundingNone') : (!chances && !ta.battles) ? t('eval.tacticalNone')
+                : t('eval.tacticalTip', {
+                    atOnce: ta.atOnce != null ? ta.atOnce : 0, episodes: ta.episodes || 0,
+                    answered: ta.answered != null ? ta.answered : 0, lost: ta.lost != null ? ta.lost : 0,
+                    wonderAnswered: ta.wonderAnswered != null ? ta.wonderAnswered : 0, wonders: ta.wonders || 0,
+                    battles: ta.battles || 0, destroyed: ta.destroyed != null ? ta.destroyed : 0,
+                    unitsLost: ta.unitsLost != null ? ta.unitsLost : 0
+                }),
             strategy: !st ? '' : !st.samples ? t('eval.strategyNone')
                 : (st.final && st.rank != null ? t('eval.strategyPlaced', { rank: st.rank, of: st.of }) + ' ' : '')
-                    + t('eval.strategyTip', { share: share(st.powerShare), even: share(st.evenShare), lead: share(st.leadShare), destroyed: st.destroyed, lost: st.lost })
+                    + t('eval.strategyTip', {
+                        dom: st.trajDom == null ? '–' : Math.round(st.trajDom),
+                        share: share(st.powerShare), even: share(st.evenShare), lead: share(st.leadShare),
+                        destroyed: st.destroyed, lost: st.lost
+                    })
                     + (st.final ? '' : ' ' + t('eval.strategyLive')),
             index: !p.index || p.index.value == null ? t('eval.groundingNone')
-                : t('eval.indexTip', { n: p.index.of, parts: p.index.parts, plan: p.index.plan == null ? '–' : Math.round(p.index.plan) })
+                : t('eval.indexTip', { n: p.index.of, parts: p.index.parts })
         };
     }
 
-    // Which way the seat cards are ordered: by power, as always, or by the Index.
+    // Which way the seat cards are ordered: by power, as always, or by WAR Score.
     lbSort() { return this.viewPreferences().lbSort === 'index' ? 'index' : 'power'; }
     setLbSort(sort) {
         this.viewPreferences().lbSort = sort === 'index' ? 'index' : 'power';
@@ -5598,8 +5611,6 @@ class UIManager {
         this._lbSortSig = null;
         this.updateSpectatorPlayerList();
     }
-    // The switch sits in the list's header and is drawn only when it changes. Without a
-    // seat that has an Index there is nothing to sort by, and no switch.
     renderLbSort(any) {
         const el = document.getElementById('lbSort');
         if (!el) return;
@@ -5611,32 +5622,39 @@ class UIManager {
             `<button class="lb-sort-btn${sort === key ? ' is-on' : ''}" aria-pressed="${sort === key}" title="${this.escapeHtml(t('spec.sortTip'))}"`
             + ` onclick="event.stopPropagation(); game.ui.setLbSort('${key}')">${this.escapeHtml(t(label))}</button>`).join('');
     }
-    // The standing plan as a line of segments, a step each: carried out, begun, still
-    // open, given up; a step that names nothing checkable is a thin one. With the count.
-    planProgressHtml(p) {
-        const steps = p && p.follow && p.follow.standing;
-        if (!steps || !steps.length) return '';
-        const esc = s => this.escapeHtml(String(s));
-        const checkable = steps.filter(s => s.state !== 'uncheckable'), done = checkable.filter(s => s.state === 'acted').length;
-        const seg = (s, i) => `<i class="lb-plan-seg is-${s.state}" title="${esc(t('eval.planStepTip', { n: i + 1, text: s.text, state: t('eval.planState.' + s.state), met: s.met, of: s.of }))}"></i>`;
-        return `<div class="lb-plan" title="${esc(t('eval.planLineTip'))}"><span class="lb-plan-name">${esc(t('eval.planLine'))}</span>`
-            + `<span class="lb-plan-track">${steps.map(seg).join('')}</span><b>${done}/${checkable.length}</b></div>`;
-    }
 
     seatProfileHtml(p) {
         if (!p || !p.decisions) return '';
         const esc = s => this.escapeHtml(String(s)), tips = this.evalTips(p);
+        const dimsList = (typeof WarEval !== 'undefined' && WarEval.SCORED)
+            ? WarEval.SCORED : ['grounding', 'macro', 'spatial', 'tactical', 'strategy'];
         const bar = key => {
-            const score = p[key].score;
-            return `<span class="lb-dim${score == null ? ' is-empty' : ''}" title="${esc(tips[key] + ' ' + t('eval.provisional'))}">`
-                + `<span class="lb-dim-name">${esc(t('eval.' + key))}</span>`
+            const score = p[key] && p[key].score;
+            return `<span class="lb-dim is-${key}${score == null ? ' is-empty' : ''}" title="${esc(tips[key] || '')}">`
+                + `<span class="lb-dim-name">${esc(t('eval.short.' + key))}</span>`
                 + `<span class="lb-dim-track"><i style="width:${score == null ? 0 : Math.round(score)}%"></i></span>`
                 + `<b>${score == null ? '–' : Math.round(score)}</b></span>`;
         };
-        // The Index sits with the bars it is the mean of, and nowhere by itself.
-        const index = p.index && p.index.value != null
-            ? `<span class="lb-dim lb-index" title="${esc(tips.index + ' ' + t('eval.provisional'))}"><span class="lb-dim-name">${esc(t('eval.index'))}</span><span class="lb-dim-track"></span><b>${Math.round(p.index.value)}</b></span>` : '';
-        return `<div class="lb-profile">${WarEval.SCORED.filter(k => p[k]).map(bar).join('')}${index}</div>${this.planProgressHtml(p)}`;
+        const warVal = p.index && p.index.value != null ? Math.round(p.index.value) : '–';
+        const index = `<span class="lb-dim lb-index${p.warmup ? ' is-warmup' : ''}" title="${esc(tips.index || '')}">`
+            + `<span class="lb-dim-name">${esc(t('eval.indexShort'))}</span>`
+            + `<b>${warVal}</b>`
+            + (p.warmup ? `<small>${esc(t('bench.early'))}</small>` : '')
+            + `</span>`;
+        const m = p.macro || {}, b = m.batch || null, sh = b && b.shares ? b.shares : null;
+        const segs = sh ? [['c3', sh.three], ['c2', sh.two], ['c1', sh.one], ['j0', sh.justified0], ['p0', sh.passive0]]
+            .filter(([, v]) => v > 0)
+            .map(([cls, v]) => `<i class="bb-batch-seg is-${cls}" style="width:${(v * 100).toFixed(1)}%"></i>`).join('') : '';
+        const batchTip = b ? t('bench.batchTip', { c3: b.three, c2: b.two, c1: b.one, j0: b.justified0, p0: b.passive0 }) : '';
+        const batchEl = segs ? `<span class="bb-batch is-compact" title="${esc(batchTip)}">${segs}</span>` : '';
+        const e = p.efficiency || {};
+        const okD = m.okPerDecision == null ? null : m.okPerDecision.toFixed(1) + ' ' + t('bench.unitOkDec');
+        const lat = e.latencyMs && e.latencyMs.median != null
+            ? (e.latencyMs.median >= 1000 ? (e.latencyMs.median / 1000).toFixed(1) + 's' : Math.round(e.latencyMs.median) + 'ms') : null;
+        const outOk = e.outputPerValidOrder == null ? null : Math.round(e.outputPerValidOrder) + ' ' + t('bench.unitOutOk');
+        const meta = [okD, lat, outOk].filter(Boolean).join(' · ');
+        const foot = (batchEl || meta) ? `<div class="lb-foot">${batchEl}${meta ? `<span>${esc(meta)}</span>` : ''}</div>` : '';
+        return `<div class="lb-profile">${dimsList.filter(k => p[k]).map(bar).join('')}${index}</div>${foot}`;
     }
 
     // ---- Leaderboard achievement flyout --------------------------------------
@@ -9591,26 +9609,30 @@ class UIManager {
         L.push(`- **Winner:** ${winner ? `${winner.model} (${winner.civName}, ${winner.isLLM ? 'LLM' : 'rule-based'}) — ${winner.power} pts` : 'none (draw)'}`);
         L.push('');
 
-        // The evaluation profile (overhaul step D8): how each model seat played, as the
-        // transcript of this match scores. The same numbers the results line carries.
+        // The evaluation profile (Scale v4): how each model seat played, as the transcript scores it.
         const prof = summary.profile;
         if (prof && prof.seats && prof.seats.length) {
             const n = v => v == null ? '–' : String(Math.round(v));
             const pc = v => v == null ? '–' : (v * 100).toFixed(1) + ' %';
             L.push(`## Evaluation profile`);
             L.push('');
-            L.push(`Scale ${prof.scale}, provisional. One match is one sample of a model against these opponents on this map. What each part measures: docs/SCORING.md.`);
+            L.push(`Scale ${prof.scale}. One match is one sample of a model against these opponents on this map. Methodology: docs/SCORING.md.`);
             L.push('');
-            L.push(`| Seat | Grounding | Planning | Follow-through | Tactical | Strategy | Index |`);
+            L.push(`| Seat | Grounding (20%) | Macro & Agency (25%) | Spatial (15%) | Tactical (15%) | Dominance (25%) | WAR Score |`);
             L.push(`|---|---:|---:|---:|---:|---:|---:|`);
             for (const s of prof.seats) {
-                const g = s.grounding, pl = s.planning, fl = s.follow, ta = s.tactical, st = s.strategy;
-                L.push(`| ${String(s.name || s.model || s.id).replace(/\|/g, '/')} | ${n(g.score)} (${pc(g.rate)} of ${g.rated}) | ${n(pl.score)} (${pl.statements} stated, ${pl.revisions} changed) | `
-                    + `${n(fl.score)} (${fl.acted == null || !(fl.acted + fl.dropped) ? 'no step closed' : fl.acted + ' of ' + (fl.acted + fl.dropped) + ' steps'}) | ${n(ta.score)} (${ta.atOnce == null || !(ta.episodes + ta.wonders) ? 'no threat shown' : (ta.atOnce + ta.wonderAnswered) + ' of ' + (ta.episodes + ta.wonders) + ' threats'}) | `
-                    + `${n(st.score)} (${pc(st.powerShare)} of power${st.rank != null ? ', placed ' + st.rank : ''}) | ${s.index.value == null ? '–' : s.index.value.toFixed(1)} (${s.index.of} of ${s.index.parts} parts) |`);
+                const g = s.grounding, m = s.macro || {}, sp = s.spatial || {}, ta = s.tactical, st = s.strategy;
+                const thr = (ta.episodes || 0) + (ta.wonders || 0);
+                const tacNote = !thr && !ta.battles ? 'no combat' : `${ta.battles || 0} battles, ${ta.atOnce != null ? (ta.atOnce + (ta.wonderAnswered || 0)) : '–'}/${thr} home raids`;
+                L.push(`| ${String(s.name || s.model || s.id).replace(/\|/g, '/')} | ${n(g.score)} (${pc(g.rate)} of ${g.rated}) | `
+                    + `${n(m.score)} (${pc(m.bwUtil)} bw, ${m.passiveWaits || 0} passive waits) | `
+                    + `${n(sp.score)} (${sp.maxExplored == null ? '–' : Math.round(sp.maxExplored) + '%'} map, ${sp.discovered || 0}/${sp.opponents || 0} opp) | `
+                    + `${n(ta.score)} (${tacNote}) | `
+                    + `${n(st.score)} (${st.trajDom == null ? '–' : st.trajDom.toFixed(0)} dom${st.rank != null ? ', placed ' + st.rank : ''}) | `
+                    + `${s.index.value == null ? '–' : s.index.value.toFixed(1)} |`);
             }
             L.push('');
-            L.push(`The Index is the mean of Grounding, the plan as far as it was followed (Planning × Follow-through), Tactical and Strategy. A dash is a part the match gave no chance for.`);
+            L.push(`WAR Score is the weighted average of Grounding (20%), Macro & Agency (25%), Spatial (15%), Tactical (15%), and Dominance (25%). Cognitive cost and early-to-late drift sit outside the score.`);
             L.push('');
         }
 

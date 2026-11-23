@@ -25,7 +25,7 @@
     else root.WarSeason = api;
 })(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
-    const PARTS = ['grounding', 'planning', 'follow', 'tactical', 'strategy', 'index'];
+    const PARTS = ['grounding', 'macro', 'spatial', 'tactical', 'strategy', 'index'];
     // Two-sided 95 % points of Student's t, by degrees of freedom 1..30; beyond, 1.96.
     const T95 = [12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145, 2.131,
         2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045, 2.042];
@@ -65,6 +65,7 @@
     // What one seat contributes, from its public profile.
     function seatOf(p, { rank, of, winner, cond, protocol, core, via }) {
         const e = p.efficiency || {}, ta = p.tactical || {}, g = p.grounding || {};
+        const m = p.macro || {}, sp = p.spatial || {}, st = p.strategy || {};
         return { id: p.id, seat: p.seat == null ? null : p.seat, civ: p.civ || null, name: p.name || null, model: p.model || null,
             // Who played the seat (build 1225): 'raw' for the model's own answers, 'harness' or
             // 'harness:<name>' for an agent framework over MCP, null where the file does not say.
@@ -72,8 +73,8 @@
             rank: rank == null ? null : rank, of: of == null ? null : of, winner: !!winner,
             cond: cond || null, protocol: protocol || null, core: core || null,
             decisions: p.decisions || 0,
-            scores: { grounding: g.score, planning: p.planning.score, follow: p.follow.score, tactical: ta.score,
-                strategy: p.strategy.score, index: p.index ? p.index.value : null },
+            scores: { grounding: g.score, macro: m.score == null ? null : m.score, spatial: sp.score == null ? null : sp.score,
+                tactical: ta.score, strategy: st.score, index: p.index ? p.index.value : null },
             counts: { rated: g.rated == null ? null : g.rated, threats: (ta.episodes || 0) + (ta.wonders || 0), parts: p.index ? p.index.of : null },
             latencyMs: e.latencyMs ? e.latencyMs.median : null };
     }

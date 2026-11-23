@@ -1,10 +1,10 @@
 {
  "kind": "war-season-entries/1",
- "scale": "v3",
+ "scale": "v4",
  "entries": [
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20260726-204805",
    "at": 1785091686017,
    "build": null,
@@ -34,16 +34,16 @@
      "decisions": 96,
      "scores": {
       "grounding": null,
-      "planning": 87.6,
-      "follow": null,
-      "tactical": null,
-      "strategy": 47.4,
-      "index": 47.4
+      "macro": 47.9,
+      "spatial": 43.2,
+      "tactical": 50,
+      "strategy": 30.9,
+      "index": 42.1
      },
      "counts": {
       "rated": 0,
       "threats": 2,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 13939.5
     },
@@ -63,16 +63,16 @@
      "decisions": 80,
      "scores": {
       "grounding": null,
-      "planning": 89.4,
-      "follow": null,
-      "tactical": null,
-      "strategy": 29.4,
-      "index": 29.4
+      "macro": 78.2,
+      "spatial": 42.7,
+      "tactical": 50,
+      "strategy": 25,
+      "index": 49.6
      },
      "counts": {
       "rated": 0,
-      "threats": 6,
-      "parts": 1
+      "threats": 2,
+      "parts": 4
      },
      "latencyMs": 16424.5
     },
@@ -92,16 +92,16 @@
      "decisions": 95,
      "scores": {
       "grounding": null,
-      "planning": 86.8,
-      "follow": null,
-      "tactical": null,
-      "strategy": 98.2,
-      "index": 98.2
+      "macro": 80.2,
+      "spatial": 95.3,
+      "tactical": 50,
+      "strategy": 77.4,
+      "index": 76.5
      },
      "counts": {
       "rated": 0,
-      "threats": 8,
-      "parts": 1
+      "threats": 7,
+      "parts": 4
      },
      "latencyMs": 17688
     }
@@ -109,7 +109,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20260809-223447",
    "at": 1786307687283,
    "build": null,
@@ -139,16 +139,16 @@
      "decisions": 73,
      "scores": {
       "grounding": null,
-      "planning": 91.9,
-      "follow": null,
-      "tactical": null,
-      "strategy": 11,
-      "index": 11
+      "macro": 74.3,
+      "spatial": 43.8,
+      "tactical": 50,
+      "strategy": 4.7,
+      "index": 42.3
      },
      "counts": {
       "rated": 0,
       "threats": 0,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 10412
     },
@@ -168,16 +168,16 @@
      "decisions": 148,
      "scores": {
       "grounding": null,
-      "planning": 83.3,
-      "follow": null,
-      "tactical": null,
-      "strategy": 55.2,
-      "index": 55.2
+      "macro": 63.9,
+      "spatial": 30,
+      "tactical": 50,
+      "strategy": 27.8,
+      "index": 43.7
      },
      "counts": {
       "rated": 0,
       "threats": 3,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 12542.5
     },
@@ -197,16 +197,16 @@
      "decisions": 38,
      "scores": {
       "grounding": null,
-      "planning": 93.2,
-      "follow": null,
-      "tactical": null,
-      "strategy": 27.9,
-      "index": 27.9
+      "macro": 79.9,
+      "spatial": 57.1,
+      "tactical": 50,
+      "strategy": 13.4,
+      "index": 49.2
      },
      "counts": {
       "rated": 0,
       "threats": 2,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 18953.5
     },
@@ -226,16 +226,16 @@
      "decisions": 231,
      "scores": {
       "grounding": null,
-      "planning": 90.9,
-      "follow": null,
-      "tactical": null,
-      "strategy": 100,
-      "index": 100
+      "macro": 84.8,
+      "spatial": 100,
+      "tactical": 50,
+      "strategy": 92.1,
+      "index": 83.4
      },
      "counts": {
       "rated": 0,
-      "threats": 4,
-      "parts": 1
+      "threats": 0,
+      "parts": 4
      },
      "latencyMs": 5926
     }
@@ -243,7 +243,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20260811-222813",
    "at": 1786480093550,
    "build": null,
@@ -273,16 +273,16 @@
      "decisions": 215,
      "scores": {
       "grounding": null,
-      "planning": 80.9,
-      "follow": null,
-      "tactical": null,
-      "strategy": 39.9,
-      "index": 39.9
+      "macro": 77.9,
+      "spatial": 78.5,
+      "tactical": 50,
+      "strategy": 36.8,
+      "index": 59.9
      },
      "counts": {
       "rated": 0,
-      "threats": 7,
-      "parts": 1
+      "threats": 6,
+      "parts": 4
      },
      "latencyMs": 13336
     },
@@ -302,16 +302,16 @@
      "decisions": 41,
      "scores": {
       "grounding": null,
-      "planning": 84.8,
-      "follow": null,
-      "tactical": null,
-      "strategy": 37.1,
-      "index": 37.1
+      "macro": 75.5,
+      "spatial": 43,
+      "tactical": 50,
+      "strategy": 17.5,
+      "index": 46.5
      },
      "counts": {
       "rated": 0,
       "threats": 0,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 7131
     },
@@ -331,16 +331,16 @@
      "decisions": 215,
      "scores": {
       "grounding": null,
-      "planning": 92.2,
-      "follow": null,
-      "tactical": null,
-      "strategy": 98.1,
-      "index": 98.1
+      "macro": 76.6,
+      "spatial": 100,
+      "tactical": 50,
+      "strategy": 74.4,
+      "index": 75.3
      },
      "counts": {
       "rated": 0,
-      "threats": 10,
-      "parts": 1
+      "threats": 1,
+      "parts": 4
      },
      "latencyMs": 15651
     }
@@ -348,7 +348,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20260817-195216",
    "at": 1786989136337,
    "build": null,
@@ -378,16 +378,16 @@
      "decisions": 85,
      "scores": {
       "grounding": null,
-      "planning": 90,
-      "follow": null,
-      "tactical": null,
-      "strategy": 12.6,
-      "index": 12.6
+      "macro": 70.7,
+      "spatial": 59.7,
+      "tactical": 50,
+      "strategy": 5.3,
+      "index": 44.3
      },
      "counts": {
       "rated": 0,
       "threats": 0,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 13102
     },
@@ -407,16 +407,16 @@
      "decisions": 166,
      "scores": {
       "grounding": null,
-      "planning": 87.9,
-      "follow": null,
-      "tactical": null,
-      "strategy": 64,
-      "index": 64
+      "macro": 55.9,
+      "spatial": 64.3,
+      "tactical": 50,
+      "strategy": 44.1,
+      "index": 52.7
      },
      "counts": {
       "rated": 0,
       "threats": 3,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 9689.5
     },
@@ -436,16 +436,16 @@
      "decisions": 135,
      "scores": {
       "grounding": null,
-      "planning": 74.1,
-      "follow": null,
-      "tactical": null,
-      "strategy": 49.1,
-      "index": 49.1
+      "macro": 75.4,
+      "spatial": 94.1,
+      "tactical": 50,
+      "strategy": 31.7,
+      "index": 60.5
      },
      "counts": {
       "rated": 0,
-      "threats": 2,
-      "parts": 1
+      "threats": 1,
+      "parts": 4
      },
      "latencyMs": 11002
     },
@@ -465,16 +465,16 @@
      "decisions": 158,
      "scores": {
       "grounding": null,
-      "planning": 81.9,
-      "follow": null,
-      "tactical": null,
-      "strategy": 100,
-      "index": 100
+      "macro": 78.7,
+      "spatial": 100,
+      "tactical": 50,
+      "strategy": 77.7,
+      "index": 77
      },
      "counts": {
       "rated": 0,
-      "threats": 2,
-      "parts": 1
+      "threats": 0,
+      "parts": 4
      },
      "latencyMs": 33170.5
     }
@@ -482,7 +482,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20260826-200238",
    "at": 1787767358862,
    "build": null,
@@ -512,16 +512,16 @@
      "decisions": 89,
      "scores": {
       "grounding": null,
-      "planning": 87.3,
-      "follow": null,
-      "tactical": null,
-      "strategy": 41,
-      "index": 41
+      "macro": 72.9,
+      "spatial": 70.3,
+      "tactical": 50,
+      "strategy": 24.2,
+      "index": 52.9
      },
      "counts": {
       "rated": 0,
       "threats": 0,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 69342
     },
@@ -541,16 +541,16 @@
      "decisions": 96,
      "scores": {
       "grounding": null,
-      "planning": 69.1,
-      "follow": null,
-      "tactical": null,
-      "strategy": 66.5,
-      "index": 66.5
+      "macro": 72.2,
+      "spatial": 74.6,
+      "tactical": 50,
+      "strategy": 43.5,
+      "index": 59.5
      },
      "counts": {
       "rated": 0,
       "threats": 4,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 59048
     },
@@ -570,16 +570,16 @@
      "decisions": 102,
      "scores": {
       "grounding": null,
-      "planning": 91,
-      "follow": null,
-      "tactical": null,
-      "strategy": 100,
-      "index": 100
+      "macro": 79.4,
+      "spatial": 99.3,
+      "tactical": 50,
+      "strategy": 77.2,
+      "index": 76.9
      },
      "counts": {
       "rated": 0,
-      "threats": 3,
-      "parts": 1
+      "threats": 2,
+      "parts": 4
      },
      "latencyMs": 16014
     },
@@ -599,16 +599,16 @@
      "decisions": 102,
      "scores": {
       "grounding": null,
-      "planning": 57.2,
-      "follow": null,
-      "tactical": null,
-      "strategy": 24.6,
-      "index": 24.6
+      "macro": 71,
+      "spatial": 66.8,
+      "tactical": 50,
+      "strategy": 19.6,
+      "index": 50.2
      },
      "counts": {
       "rated": 0,
       "threats": 2,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 6693
     }
@@ -616,7 +616,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20260907-120324",
    "at": 1788775405443,
    "build": null,
@@ -646,16 +646,16 @@
      "decisions": 131,
      "scores": {
       "grounding": null,
-      "planning": 91,
-      "follow": null,
-      "tactical": null,
-      "strategy": 55,
-      "index": 55
+      "macro": 90.5,
+      "spatial": 77.8,
+      "tactical": 50,
+      "strategy": 42.6,
+      "index": 65.6
      },
      "counts": {
       "rated": 0,
-      "threats": 8,
-      "parts": 1
+      "threats": 3,
+      "parts": 4
      },
      "latencyMs": 13933
     },
@@ -675,16 +675,16 @@
      "decisions": 131,
      "scores": {
       "grounding": null,
-      "planning": 63.9,
-      "follow": null,
-      "tactical": null,
-      "strategy": 74,
-      "index": 74
+      "macro": 86,
+      "spatial": 85.2,
+      "tactical": 50,
+      "strategy": 53.9,
+      "index": 69.1
      },
      "counts": {
       "rated": 0,
-      "threats": 9,
-      "parts": 1
+      "threats": 8,
+      "parts": 4
      },
      "latencyMs": 20934
     },
@@ -704,16 +704,16 @@
      "decisions": 52,
      "scores": {
       "grounding": null,
-      "planning": 49.4,
-      "follow": null,
-      "tactical": null,
-      "strategy": 11.5,
-      "index": 11.5
+      "macro": 83.4,
+      "spatial": 60.6,
+      "tactical": 50,
+      "strategy": 4.3,
+      "index": 48.1
      },
      "counts": {
       "rated": 0,
-      "threats": 2,
-      "parts": 1
+      "threats": 1,
+      "parts": 4
      },
      "latencyMs": 7121
     },
@@ -733,16 +733,16 @@
      "decisions": 113,
      "scores": {
       "grounding": null,
-      "planning": 59,
-      "follow": null,
-      "tactical": null,
-      "strategy": 92.8,
-      "index": 92.8
+      "macro": 80.8,
+      "spatial": 64.4,
+      "tactical": 50,
+      "strategy": 69.3,
+      "index": 68.4
      },
      "counts": {
       "rated": 0,
       "threats": 6,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 34968
     }
@@ -750,7 +750,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20260909-211941",
    "at": 1788981581877,
    "build": null,
@@ -780,16 +780,16 @@
      "decisions": 279,
      "scores": {
       "grounding": null,
-      "planning": 86.2,
-      "follow": null,
-      "tactical": null,
-      "strategy": 94.5,
-      "index": 94.5
+      "macro": 89.3,
+      "spatial": 77.6,
+      "tactical": 50,
+      "strategy": 68.8,
+      "index": 73.3
      },
      "counts": {
       "rated": 0,
-      "threats": 26,
-      "parts": 1
+      "threats": 9,
+      "parts": 4
      },
      "latencyMs": 13123
     },
@@ -809,16 +809,16 @@
      "decisions": 91,
      "scores": {
       "grounding": null,
-      "planning": 92.8,
-      "follow": null,
-      "tactical": null,
-      "strategy": 55.9,
-      "index": 55.9
+      "macro": 80.8,
+      "spatial": 64.2,
+      "tactical": 50,
+      "strategy": 30.5,
+      "index": 56.2
      },
      "counts": {
       "rated": 0,
-      "threats": 3,
-      "parts": 1
+      "threats": 1,
+      "parts": 4
      },
      "latencyMs": 13230
     },
@@ -838,16 +838,16 @@
      "decisions": 280,
      "scores": {
       "grounding": null,
-      "planning": 58.2,
-      "follow": null,
-      "tactical": null,
-      "strategy": 46.4,
-      "index": 46.4
+      "macro": 82.7,
+      "spatial": 80.8,
+      "tactical": 50,
+      "strategy": 41.3,
+      "index": 63.3
      },
      "counts": {
       "rated": 0,
-      "threats": 27,
-      "parts": 1
+      "threats": 23,
+      "parts": 4
      },
      "latencyMs": 6661
     },
@@ -867,16 +867,16 @@
      "decisions": 73,
      "scores": {
       "grounding": null,
-      "planning": 80.8,
-      "follow": null,
-      "tactical": null,
-      "strategy": 36.6,
-      "index": 36.6
+      "macro": 88.8,
+      "spatial": 67.6,
+      "tactical": 50,
+      "strategy": 21,
+      "index": 56.4
      },
      "counts": {
       "rated": 0,
       "threats": 2,
-      "parts": 1
+      "parts": 4
      },
      "latencyMs": 53598
     }
@@ -884,7 +884,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261001-200050",
    "at": 1790877651214,
    "build": 1023,
@@ -913,17 +913,17 @@
      "core": "727c5aa49a92",
      "decisions": 190,
      "scores": {
-      "grounding": 44.1,
-      "planning": 62.5,
-      "follow": 78.4,
-      "tactical": 40,
-      "strategy": 92.2,
-      "index": 56.3
+      "grounding": 74.7,
+      "macro": 88.6,
+      "spatial": 100,
+      "tactical": 71.4,
+      "strategy": 87.7,
+      "index": 84.7
      },
      "counts": {
       "rated": 447,
-      "threats": 10,
-      "parts": 4
+      "threats": 5,
+      "parts": 5
      },
      "latencyMs": 20627
     },
@@ -942,17 +942,17 @@
      "core": "727c5aa49a92",
      "decisions": 29,
      "scores": {
-      "grounding": 59.5,
-      "planning": 89.1,
-      "follow": 54.5,
-      "tactical": 0,
-      "strategy": 7.5,
-      "index": 28.9
+      "grounding": 78.1,
+      "macro": 86.9,
+      "spatial": 52.4,
+      "tactical": 19.4,
+      "strategy": 2.1,
+      "index": 48.6
      },
      "counts": {
       "rated": 74,
       "threats": 1,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 38055
     },
@@ -971,17 +971,17 @@
      "core": "727c5aa49a92",
      "decisions": 67,
      "scores": {
-      "grounding": 73,
-      "planning": 90.3,
-      "follow": 83.5,
-      "tactical": 100,
-      "strategy": 54.9,
-      "index": 75.8
+      "grounding": 89,
+      "macro": 87.6,
+      "spatial": 51.5,
+      "tactical": 45,
+      "strategy": 40.8,
+      "index": 64.4
      },
      "counts": {
       "rated": 185,
-      "threats": 2,
-      "parts": 4
+      "threats": 1,
+      "parts": 5
      },
      "latencyMs": 54049
     },
@@ -1000,17 +1000,17 @@
      "core": "727c5aa49a92",
      "decisions": 133,
      "scores": {
-      "grounding": 50.6,
-      "planning": 0,
-      "follow": 0,
-      "tactical": 40,
-      "strategy": 34.5,
-      "index": 31.3
+      "grounding": 77.3,
+      "macro": 85,
+      "spatial": 74.1,
+      "tactical": 27.5,
+      "strategy": 19.5,
+      "index": 56.8
      },
      "counts": {
       "rated": 324,
-      "threats": 5,
-      "parts": 4
+      "threats": 3,
+      "parts": 5
      },
      "latencyMs": 24777
     }
@@ -1018,7 +1018,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261003-234407",
    "at": 1791063847444,
    "build": 1049,
@@ -1047,17 +1047,17 @@
      "core": "dc18f44a3e2b",
      "decisions": 274,
      "scores": {
-      "grounding": 0,
-      "planning": 75,
-      "follow": 61.3,
-      "tactical": 75,
-      "strategy": 93,
-      "index": 53.5
+      "grounding": 55.7,
+      "macro": 84.2,
+      "spatial": 77.7,
+      "tactical": 68.6,
+      "strategy": 82,
+      "index": 74.6
      },
      "counts": {
       "rated": 392,
-      "threats": 4,
-      "parts": 4
+      "threats": 3,
+      "parts": 5
      },
      "latencyMs": 13888.5
     },
@@ -1076,17 +1076,17 @@
      "core": "dc18f44a3e2b",
      "decisions": 88,
      "scores": {
-      "grounding": 44.4,
-      "planning": 84.3,
-      "follow": 76.9,
-      "tactical": 50,
-      "strategy": 17.1,
-      "index": 44.1
+      "grounding": 72.6,
+      "macro": 87.2,
+      "spatial": 69.4,
+      "tactical": 34,
+      "strategy": 7.9,
+      "index": 53.8
      },
      "counts": {
       "rated": 252,
-      "threats": 4,
-      "parts": 4
+      "threats": 2,
+      "parts": 5
      },
      "latencyMs": 24136
     },
@@ -1105,17 +1105,17 @@
      "core": "dc18f44a3e2b",
      "decisions": 71,
      "scores": {
-      "grounding": 74.2,
-      "planning": 67.9,
-      "follow": 66.8,
-      "tactical": 50,
-      "strategy": 39.2,
-      "index": 52.2
+      "grounding": 89.5,
+      "macro": 75.1,
+      "spatial": 67.7,
+      "tactical": 50.1,
+      "strategy": 20,
+      "index": 59.3
      },
      "counts": {
       "rated": 155,
-      "threats": 2,
-      "parts": 4
+      "threats": 1,
+      "parts": 5
      },
      "latencyMs": 40757
     },
@@ -1134,17 +1134,17 @@
      "core": "dc18f44a3e2b",
      "decisions": 96,
      "scores": {
-      "grounding": 88.4,
-      "planning": 83.6,
-      "follow": 72.5,
-      "tactical": 75,
-      "strategy": 67,
-      "index": 72.8
+      "grounding": 95.1,
+      "macro": 90.1,
+      "spatial": 63.6,
+      "tactical": 52.4,
+      "strategy": 46.5,
+      "index": 70.6
      },
      "counts": {
       "rated": 259,
-      "threats": 4,
-      "parts": 4
+      "threats": 2,
+      "parts": 5
      },
      "latencyMs": 33234
     }
@@ -1152,7 +1152,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261004-120750",
    "at": 1791108470470,
    "build": 1053,
@@ -1181,17 +1181,17 @@
      "core": "02512ee72c9e",
      "decisions": 160,
      "scores": {
-      "grounding": 0,
-      "planning": 61.4,
-      "follow": 70.5,
-      "tactical": 33.3,
-      "strategy": 55.2,
-      "index": 33
+      "grounding": 29.6,
+      "macro": 70.3,
+      "spatial": 53.3,
+      "tactical": 23.8,
+      "strategy": 43.1,
+      "index": 45.8
      },
      "counts": {
       "rated": 236,
       "threats": 3,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 11549.5
     },
@@ -1210,17 +1210,17 @@
      "core": "02512ee72c9e",
      "decisions": 25,
      "scores": {
-      "grounding": 0,
-      "planning": 92,
-      "follow": 50.4,
-      "tactical": 0,
-      "strategy": 19.2,
-      "index": 16.4
+      "grounding": 46.7,
+      "macro": 64.2,
+      "spatial": 62.7,
+      "tactical": 33.8,
+      "strategy": 2.3,
+      "index": 40.4
      },
      "counts": {
       "rated": 63,
       "threats": 2,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 39385
     },
@@ -1239,17 +1239,17 @@
      "core": "02512ee72c9e",
      "decisions": 52,
      "scores": {
-      "grounding": 47.8,
-      "planning": 89.3,
-      "follow": 33.8,
-      "tactical": 0,
-      "strategy": 26,
-      "index": 26
+      "grounding": 80.3,
+      "macro": 65.8,
+      "spatial": 48.4,
+      "tactical": 27.6,
+      "strategy": 13.2,
+      "index": 47.2
      },
      "counts": {
       "rated": 115,
       "threats": 1,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 25037.5
     },
@@ -1268,17 +1268,17 @@
      "core": "02512ee72c9e",
      "decisions": 318,
      "scores": {
-      "grounding": 76.3,
-      "planning": 64.9,
-      "follow": 72.5,
-      "tactical": 75,
-      "strategy": 92.3,
-      "index": 72.7
+      "grounding": 87.7,
+      "macro": 86.7,
+      "spatial": 99.6,
+      "tactical": 73.4,
+      "strategy": 83.8,
+      "index": 86.1
      },
      "counts": {
       "rated": 506,
-      "threats": 8,
-      "parts": 4
+      "threats": 3,
+      "parts": 5
      },
      "latencyMs": 4073.5
     }
@@ -1286,7 +1286,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261005-194200",
    "at": 1791222121908,
    "build": 1054,
@@ -1315,17 +1315,17 @@
      "core": "fa14e4244183",
      "decisions": 87,
      "scores": {
-      "grounding": 61.5,
-      "planning": 81.5,
-      "follow": 53.6,
-      "tactical": 50,
-      "strategy": 11.4,
-      "index": 41.7
+      "grounding": 85.5,
+      "macro": 52.6,
+      "spatial": 77.1,
+      "tactical": 27.8,
+      "strategy": 5.9,
+      "index": 47.5
      },
      "counts": {
       "rated": 78,
       "threats": 2,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 4816
     },
@@ -1344,17 +1344,17 @@
      "core": "fa14e4244183",
      "decisions": 128,
      "scores": {
-      "grounding": 94.3,
-      "planning": 58.3,
-      "follow": 75.8,
-      "tactical": 66.7,
-      "strategy": 71.7,
-      "index": 69.2
+      "grounding": 97.5,
+      "macro": 85.1,
+      "spatial": 90.3,
+      "tactical": 50.3,
+      "strategy": 64,
+      "index": 77.9
      },
      "counts": {
       "rated": 350,
-      "threats": 6,
-      "parts": 4
+      "threats": 4,
+      "parts": 5
      },
      "latencyMs": 6472
     },
@@ -1373,17 +1373,17 @@
      "core": "fa14e4244183",
      "decisions": 128,
      "scores": {
-      "grounding": 69.9,
-      "planning": 83,
-      "follow": 68.2,
-      "tactical": 66.7,
-      "strategy": 52.7,
-      "index": 61.5
+      "grounding": 84.5,
+      "macro": 86.9,
+      "spatial": 88.6,
+      "tactical": 60.3,
+      "strategy": 35.9,
+      "index": 69.9
      },
      "counts": {
       "rated": 365,
-      "threats": 6,
-      "parts": 4
+      "threats": 5,
+      "parts": 5
      },
      "latencyMs": 8974
     },
@@ -1402,17 +1402,17 @@
      "core": "fa14e4244183",
      "decisions": 126,
      "scores": {
-      "grounding": 66.3,
-      "planning": 67.1,
-      "follow": 83.9,
-      "tactical": 100,
-      "strategy": 77.2,
-      "index": 75
+      "grounding": 86.2,
+      "macro": 88.4,
+      "spatial": 76.1,
+      "tactical": 55.1,
+      "strategy": 60.9,
+      "index": 74.2
      },
      "counts": {
       "rated": 326,
       "threats": 3,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 41542.5
     }
@@ -1420,7 +1420,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261008-115009",
    "at": 1791453010326,
    "build": 1080,
@@ -1450,16 +1450,16 @@
      "decisions": 64,
      "scores": {
       "grounding": 100,
-      "planning": 65.9,
-      "follow": 66.7,
-      "tactical": 0,
-      "strategy": 39.1,
-      "index": 45.8
+      "macro": 87.9,
+      "spatial": 37.7,
+      "tactical": 20.3,
+      "strategy": 24.5,
+      "index": 56.8
      },
      "counts": {
       "rated": 156,
       "threats": 2,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 4516
     },
@@ -1478,17 +1478,17 @@
      "core": "d660ffca6795",
      "decisions": 110,
      "scores": {
-      "grounding": 83.1,
-      "planning": 86.6,
-      "follow": 55.7,
-      "tactical": 50,
-      "strategy": 11.5,
-      "index": 48.2
+      "grounding": 93,
+      "macro": 53.3,
+      "spatial": 33.2,
+      "tactical": 22.7,
+      "strategy": 6.5,
+      "index": 41.9
      },
      "counts": {
       "rated": 177,
       "threats": 4,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 18607
     },
@@ -1507,17 +1507,17 @@
      "core": "d660ffca6795",
      "decisions": 117,
      "scores": {
-      "grounding": 96.6,
-      "planning": 89.2,
-      "follow": 86.4,
-      "tactical": 100,
-      "strategy": 95.2,
-      "index": 92.2
+      "grounding": 96.3,
+      "macro": 85.6,
+      "spatial": 99.4,
+      "tactical": 74.7,
+      "strategy": 90.6,
+      "index": 89.4
      },
      "counts": {
       "rated": 293,
-      "threats": 4,
-      "parts": 4
+      "threats": 0,
+      "parts": 5
      },
      "latencyMs": 20474
     },
@@ -1536,17 +1536,17 @@
      "core": "d660ffca6795",
      "decisions": 117,
      "scores": {
-      "grounding": 0,
-      "planning": 66.9,
-      "follow": 62.3,
-      "tactical": 66.7,
-      "strategy": 31.8,
-      "index": 35.1
+      "grounding": 37.3,
+      "macro": 69.9,
+      "spatial": 45.6,
+      "tactical": 31.4,
+      "strategy": 20,
+      "index": 41.5
      },
      "counts": {
       "rated": 236,
       "threats": 3,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 18051
     }
@@ -1554,7 +1554,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261008-104823",
    "at": 1791449303421,
    "build": 1080,
@@ -1583,17 +1583,17 @@
      "core": "d660ffca6795",
      "decisions": 274,
      "scores": {
-      "grounding": 79.9,
-      "planning": 56.9,
-      "follow": 74.2,
-      "tactical": 60,
-      "strategy": 97.2,
-      "index": 69.8
+      "grounding": 88.1,
+      "macro": 84.3,
+      "spatial": 99.2,
+      "tactical": 75.2,
+      "strategy": 94,
+      "index": 88.4
      },
      "counts": {
       "rated": 348,
-      "threats": 5,
-      "parts": 4
+      "threats": 0,
+      "parts": 5
      },
      "latencyMs": 4253
     },
@@ -1612,17 +1612,17 @@
      "core": "d660ffca6795",
      "decisions": 63,
      "scores": {
-      "grounding": 48.5,
-      "planning": 91,
-      "follow": 50.7,
-      "tactical": 0,
-      "strategy": 10.8,
-      "index": 26.4
+      "grounding": 80.7,
+      "macro": 63.9,
+      "spatial": 51.3,
+      "tactical": 20.5,
+      "strategy": 6,
+      "index": 44.4
      },
      "counts": {
       "rated": 97,
       "threats": 1,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 17797
     }
@@ -1630,7 +1630,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261008-111302",
    "at": 1791450783773,
    "build": 1080,
@@ -1659,17 +1659,17 @@
      "core": "d660ffca6795",
      "decisions": 388,
      "scores": {
-      "grounding": 93.5,
-      "planning": 52.5,
-      "follow": 79.3,
-      "tactical": 57.1,
-      "strategy": 92,
-      "index": 71.1
+      "grounding": 96.1,
+      "macro": 80.8,
+      "spatial": 98.9,
+      "tactical": 74,
+      "strategy": 94,
+      "index": 88.9
      },
      "counts": {
       "rated": 616,
-      "threats": 7,
-      "parts": 4
+      "threats": 1,
+      "parts": 5
      },
      "latencyMs": 4826
     },
@@ -1688,17 +1688,17 @@
      "core": "d660ffca6795",
      "decisions": 114,
      "scores": {
-      "grounding": 87.3,
-      "planning": 83.7,
-      "follow": 49.7,
-      "tactical": 40,
-      "strategy": 16.1,
-      "index": 46.3
+      "grounding": 94.7,
+      "macro": 53.9,
+      "spatial": 62.5,
+      "tactical": 28.2,
+      "strategy": 6,
+      "index": 47.5
      },
      "counts": {
       "rated": 158,
       "threats": 5,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 14884
     }
@@ -1706,7 +1706,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261015-194436",
    "at": 1792086277193,
    "build": 1100,
@@ -1735,17 +1735,17 @@
      "core": "aa01b49f7814",
      "decisions": 82,
      "scores": {
-      "grounding": 64.6,
-      "planning": 69.4,
-      "follow": 71.9,
-      "tactical": 33.3,
-      "strategy": 82.9,
-      "index": 57.7
+      "grounding": 80.9,
+      "macro": 90.2,
+      "spatial": 47,
+      "tactical": 48.4,
+      "strategy": 69.1,
+      "index": 70.3
      },
      "counts": {
       "rated": 226,
       "threats": 3,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 41424
     },
@@ -1764,17 +1764,17 @@
      "core": "aa01b49f7814",
      "decisions": 83,
      "scores": {
-      "grounding": 9.1,
-      "planning": 85.3,
-      "follow": 59.4,
-      "tactical": 40,
-      "strategy": 15.1,
-      "index": 28.7
+      "grounding": 67.8,
+      "macro": 64.1,
+      "spatial": 48.3,
+      "tactical": 21.1,
+      "strategy": 12.9,
+      "index": 43.2
      },
      "counts": {
       "rated": 154,
       "threats": 5,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 30109
     },
@@ -1794,16 +1794,16 @@
      "decisions": 83,
      "scores": {
       "grounding": 100,
-      "planning": 94.2,
-      "follow": 87.1,
-      "tactical": 33.3,
-      "strategy": 63.7,
-      "index": 69.8
+      "macro": 89.8,
+      "spatial": 98.9,
+      "tactical": 59.1,
+      "strategy": 53.5,
+      "index": 79.5
      },
      "counts": {
       "rated": 219,
-      "threats": 3,
-      "parts": 4
+      "threats": 1,
+      "parts": 5
      },
      "latencyMs": 6586
     }
@@ -1811,7 +1811,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261017-105426",
    "at": 1792227266921,
    "build": 1103,
@@ -1840,17 +1840,17 @@
      "core": "fa255d295136",
      "decisions": 82,
      "scores": {
-      "grounding": 47.1,
-      "planning": 81.7,
-      "follow": 67.6,
-      "tactical": 66.7,
-      "strategy": 37.7,
-      "index": 51.7
+      "grounding": 72.9,
+      "macro": 85.1,
+      "spatial": 56.3,
+      "tactical": 39.2,
+      "strategy": 35.6,
+      "index": 59.1
      },
      "counts": {
       "rated": 227,
       "threats": 3,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 36288.5
     },
@@ -1869,17 +1869,17 @@
      "core": "fa255d295136",
      "decisions": 52,
      "scores": {
-      "grounding": 85.6,
-      "planning": 87.1,
-      "follow": 64.3,
-      "tactical": 0,
-      "strategy": 34.1,
-      "index": 43.9
+      "grounding": 94.1,
+      "macro": 87.3,
+      "spatial": 59.5,
+      "tactical": 20.4,
+      "strategy": 27.3,
+      "index": 59.5
      },
      "counts": {
       "rated": 139,
       "threats": 1,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 30981.5
     },
@@ -1899,16 +1899,16 @@
      "decisions": 84,
      "scores": {
       "grounding": 100,
-      "planning": 94.5,
-      "follow": 91.8,
-      "tactical": 75,
-      "strategy": 84.8,
-      "index": 86.7
+      "macro": 91.6,
+      "spatial": 100,
+      "tactical": 72.8,
+      "strategy": 71.3,
+      "index": 86.6
      },
      "counts": {
       "rated": 228,
-      "threats": 4,
-      "parts": 4
+      "threats": 1,
+      "parts": 5
      },
      "latencyMs": 8635
     }
@@ -1916,7 +1916,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261028-204554",
    "at": 1793216755012,
    "build": 1139,
@@ -1945,17 +1945,17 @@
      "core": "c1b548ef8cc6",
      "decisions": 74,
      "scores": {
-      "grounding": 61.9,
-      "planning": 80.3,
-      "follow": 86.7,
-      "tactical": 50,
-      "strategy": 17.4,
-      "index": 49.7
+      "grounding": 82.2,
+      "macro": 85,
+      "spatial": 64.4,
+      "tactical": 23.6,
+      "strategy": 15.5,
+      "index": 54.8
      },
      "counts": {
       "rated": 210,
       "threats": 2,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 26985
     },
@@ -1974,17 +1974,17 @@
      "core": "c1b548ef8cc6",
      "decisions": 75,
      "scores": {
-      "grounding": 80,
-      "planning": 53.3,
-      "follow": 70,
-      "tactical": 100,
-      "strategy": 94.6,
-      "index": 78
+      "grounding": 88.8,
+      "macro": 87.4,
+      "spatial": 59.3,
+      "tactical": 82.6,
+      "strategy": 72.7,
+      "index": 79.1
      },
      "counts": {
       "rated": 200,
       "threats": 1,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 6806
     },
@@ -2003,17 +2003,17 @@
      "core": "c1b548ef8cc6",
      "decisions": 76,
      "scores": {
-      "grounding": 94.8,
-      "planning": 36.6,
-      "follow": 37.5,
-      "tactical": 100,
-      "strategy": 48.5,
-      "index": 64.3
+      "grounding": 94.5,
+      "macro": 81.8,
+      "spatial": 60.3,
+      "tactical": 34,
+      "strategy": 47.9,
+      "index": 65.5
      },
      "counts": {
       "rated": 192,
-      "threats": 5,
-      "parts": 4
+      "threats": 1,
+      "parts": 5
      },
      "latencyMs": 9180.5
     }
@@ -2021,7 +2021,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261107-165308",
    "at": 1794066788947,
    "build": 1147,
@@ -2050,17 +2050,17 @@
      "core": "c1b548ef8cc6",
      "decisions": 40,
      "scores": {
-      "grounding": 0,
-      "planning": 100,
-      "follow": 54.2,
-      "tactical": null,
-      "strategy": 25.8,
-      "index": 26.7
+      "grounding": 38.1,
+      "macro": 72.8,
+      "spatial": 66.8,
+      "tactical": 41,
+      "strategy": 13,
+      "index": 45.2
      },
      "counts": {
       "rated": 55,
       "threats": 0,
-      "parts": 3
+      "parts": 5
      },
      "latencyMs": 12.5
     },
@@ -2079,17 +2079,17 @@
      "core": "c1b548ef8cc6",
      "decisions": 39,
      "scores": {
-      "grounding": 90.8,
-      "planning": 91.7,
-      "follow": 100,
-      "tactical": null,
-      "strategy": 85.3,
-      "index": 89.3
+      "grounding": 96.2,
+      "macro": 93.8,
+      "spatial": 69.6,
+      "tactical": 59,
+      "strategy": 87,
+      "index": 83.7
      },
      "counts": {
       "rated": 109,
       "threats": 0,
-      "parts": 3
+      "parts": 5
      },
      "latencyMs": 4952
     }
@@ -2097,7 +2097,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261107-163435",
    "at": 1794065675176,
    "build": 1147,
@@ -2126,17 +2126,17 @@
      "core": "c1b548ef8cc6",
      "decisions": 44,
      "scores": {
-      "grounding": 54,
-      "planning": 61.1,
-      "follow": 76.7,
-      "tactical": 20,
-      "strategy": 28.9,
-      "index": 37.5
+      "grounding": 82.7,
+      "macro": 77.3,
+      "spatial": 74,
+      "tactical": 34.8,
+      "strategy": 24.4,
+      "index": 58.3
      },
      "counts": {
       "rated": 87,
-      "threats": 5,
-      "parts": 4
+      "threats": 1,
+      "parts": 5
      },
      "latencyMs": 17
     },
@@ -2156,16 +2156,16 @@
      "decisions": 44,
      "scores": {
       "grounding": 100,
-      "planning": 61.9,
-      "follow": 100,
-      "tactical": 100,
-      "strategy": 82.2,
-      "index": 86
+      "macro": 88.3,
+      "spatial": 80.9,
+      "tactical": 67.6,
+      "strategy": 75.6,
+      "index": 83.3
      },
      "counts": {
       "rated": 124,
       "threats": 2,
-      "parts": 4
+      "parts": 5
      },
      "latencyMs": 6077
     }
@@ -2173,7 +2173,7 @@
   },
   {
    "v": 1,
-   "scale": "v3",
+   "scale": "v4",
    "matchId": "match-20261107-170708",
    "at": 1794067628620,
    "build": 1147,
@@ -2202,17 +2202,17 @@
      "core": "c1b548ef8cc6",
      "decisions": 85,
      "scores": {
-      "grounding": 0,
-      "planning": 57.6,
-      "follow": 65.6,
-      "tactical": 33.3,
-      "strategy": 15.7,
-      "index": 21.7
+      "grounding": 3.4,
+      "macro": 55.9,
+      "spatial": 56.5,
+      "tactical": 34.3,
+      "strategy": 4.2,
+      "index": 29.3
      },
      "counts": {
       "rated": 128,
-      "threats": 3,
-      "parts": 4
+      "threats": 2,
+      "parts": 5
      },
      "latencyMs": 13
     },
@@ -2231,17 +2231,17 @@
      "core": "c1b548ef8cc6",
      "decisions": 85,
      "scores": {
-      "grounding": 95.9,
-      "planning": 66.7,
-      "follow": 100,
-      "tactical": 0,
-      "strategy": 90.4,
-      "index": 63.3
+      "grounding": 98.2,
+      "macro": 88.9,
+      "spatial": 100,
+      "tactical": 64.7,
+      "strategy": 95.8,
+      "index": 90.5
      },
      "counts": {
       "rated": 244,
-      "threats": 2,
-      "parts": 4
+      "threats": 0,
+      "parts": 5
      },
      "latencyMs": 8688
     }
