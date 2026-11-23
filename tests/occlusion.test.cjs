@@ -212,8 +212,10 @@ test('no contact shading in Simple lighting or on Low; another map starts anothe
 test('the shader reads the map for the ground and the grass, never under fog, and darkens standing things toward their foot', () => {
     const f = vm.runInContext('EngineAtmosphere.fragment', renderer().context);
     assert.match(f, /uniform sampler2D uOccl;\s+uniform vec2 uOcclMap;/);
-    // One read of the map, for the ground and the grass, and nothing of it under fog.
-    assert.match(f, /bool onGround = \(uMaterial > 0\.5 && uMaterial < 1\.5\) \|\| uVegetation > 0\.5;\s+if \(uOcclMap\.y > 0\.0 && onGround\) \{\s+vec4 standing = texture2D\(uOccl, vWorld\.xz\*uOcclMap\.x \+ 0\.5\);\s+ground = vec2\(standing\.r, standing\.a\);\s+if \(uClutterFog > 0\.5\) ground \*= texture2D\(uClutterVisibility, vWorld\.xz\/uClutterMapSize \+ 0\.5\)\.r;/);
+    // One read of the map, for the ground and the grass, and nothing of it under fog: only where the
+    // ground is explored in full (since build 1231 the fog picture has a middle level, the analyzer's
+    // part-explored squares, on which the grass stands but the map's marks do not show).
+    assert.match(f, /bool onGround = \(uMaterial > 0\.5 && uMaterial < 1\.5\) \|\| uVegetation > 0\.5;\s+if \(uOcclMap\.y > 0\.0 && onGround\) \{\s+vec4 standing = texture2D\(uOccl, vWorld\.xz\*uOcclMap\.x \+ 0\.5\);\s+ground = vec2\(standing\.r, standing\.a\);\s+if \(uClutterFog > 0\.5\) ground \*= step\(0\.99, texture2D\(uClutterVisibility, vWorld\.xz\/uClutterMapSize \+ 0\.5\)\.r\);/);
     assert.equal((f.match(/texture2D\(uOccl/g) || []).length, 1);
     assert.match(f, /if \(onGround\) \{\s+contact = 1\.0 - ground\.x\*uOcclMap\.y;/);
     assert.match(f, /\} else if \(uMaterial < 0\.5\) \{\s+contact = mix\(1\.0 - 0\.55\*uOcclMap\.y, 1\.0, smoothstep\(0\.0, 1\.5, vWorld\.y\)\);/);

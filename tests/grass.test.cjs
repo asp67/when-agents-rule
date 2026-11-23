@@ -84,6 +84,11 @@ test('clutter stays on explored terrain after units leave, but never on unexplor
     assert.equal(G.visibleRect(fow,1,1,3,3,true),true,'decorations remain on explored land');
     fow.fogGrid.fill(0);fow.visibilityVersion++;
     assert.equal(grass.frame().length,0);
+    // Build 1231: the analyzer's graded fog writes how much of a map square was explored, at
+    // most 0.97. Explored is explored: the grass and the decorations stand there too.
+    fow.fogGrid.fill(0.4);fow.visibilityVersion++;
+    assert.ok(grass.frame().length>0,'grass on a square the analyzer knows as partly explored');
+    assert.equal(G.visibleRect(fow,1,1,3,3,true),true,'decorations on it too');
 });
 test('grass shader mask reveals both explored and currently visible cells',()=>{
     const scope={window:{}};vm.createContext(scope);
@@ -98,6 +103,12 @@ test('grass shader mask reveals both explored and currently visible cells',()=>{
     assert.deepEqual(uploads,[[0,255,255,0]]);
     fow.fogGrid[2]=1;fow.visibilityVersion++;r._syncFog();
     assert.deepEqual(uploads[1],[0,255,255,0],'leaving sight does not hide grass fragments');
+    fow.fogGrid.set([0,0.97,0.05,0]);fow.visibilityVersion++;r._syncFog();
+    assert.deepEqual(uploads[2],[0,128,128,0],'the analyzer\'s explored fractions: a level of their own (b1231)');
+    // The grass stands on both explored levels; the ground map's marks only on the full one.
+    const shader=read('js/engine/atmosphere.js');
+    assert.match(shader,/texture2D\(uClutterVisibility,fogUv\)\.r < 0\.25\) discard;/);
+    assert.match(shader,/ground \*= step\(0\.99, texture2D\(uClutterVisibility, vWorld\.xz\/uClutterMapSize \+ 0\.5\)\.r\);/);
 });
 test('the tiles obey upload, draw and cache budgets on both tiers and give back all buffers',()=>{
     const {G,renderer:r,deleted,later}=setup();const grass=new G.Grass(r);

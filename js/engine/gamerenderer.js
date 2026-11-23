@@ -3564,7 +3564,17 @@
             this._clutterFogActive = !!fow?.fogGrid;
             if (this._clutterFogActive && (this._clutterFow!==fow || this._clutterFogVersion!==fow.visibilityVersion)) {
                 const gl=this.gl,n=fow.numTiles,bytes=new Uint8Array(n*n);
-                for(let i=0;i<bytes.length;i++)bytes[i]=fow.fogGrid[i]>=1?255:0;
+                // Three levels (build 1231): 0 unexplored, 128 a fraction, 255 explored or in sight.
+                // The live game knows only 0, 1 and 2, but the transcript analyzer learns just how
+                // much of each map square a seat uncovered and writes that fraction, at most 0.97
+                // (ui.js, graded fog). Held against 1, every such square lost its grass while its
+                // ground showed through the thinned fog: a bare square the size of a map square
+                // (asp67, 23 November 2026: "large rectangular gaps in the ground clutter"). The
+                // grass now stands on both explored levels; what the ground map shows (the dark
+                // spot under a tree, a worn path) only on the full one, the test the rest of the
+                // game makes (FogOfWarManager.isPositionVisible, a rule file), so a tree the
+                // analyzer keeps hidden on a part-explored square leaves no spot behind.
+                for(let i=0;i<bytes.length;i++){const v=fow.fogGrid[i];bytes[i]=v>=1?255:v>0?128:0;}
                 if(!this._clutterVisibilityTex)this._clutterVisibilityTex=gl.createTexture();
                 gl.bindTexture(gl.TEXTURE_2D,this._clutterVisibilityTex);
                 gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);

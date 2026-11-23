@@ -32,13 +32,19 @@
     // and a new tile grows in over GROW_MS instead of popping up at full height.
     const BUILD_MS = 4, CUT_BUILD_MS = 8, CUT_MISSING = 24, GROW_MS = 350;
     const clock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    // Is the ground here explored? Explored is any value above 0, not 1 and up (build 1231). The live game knows
+    // three tiers (0, 1 explored, 2 in sight), but the transcript analyzer only learns how much of
+    // each map square a seat uncovered and writes that fraction, at most 0.97 (ui.js, graded fog).
+    // Held against 1, every explored square nobody was watching lost its grass, flowers and rocks
+    // while its ground showed through the thinned fog: a bare square the size of a map square
+    // (asp67, 23 November 2026: "large rectangular gaps in the ground clutter").
     function visibleRect(fow, x, z, ex, ez, all = false) {
         if (!fow?.fogGrid) return true;
         const half=fow.mapSize/2, step=fow.gridSize, n=fow.numTiles;
         let any=false;
         for(let gz=Math.floor((z-ez+half)/step);gz<=Math.floor((z+ez+half)/step);gz++) {
             for(let gx=Math.floor((x-ex+half)/step);gx<=Math.floor((x+ex+half)/step);gx++) {
-                const visible=gx>=0&&gz>=0&&gx<n&&gz<n&&fow.fogGrid[gz*n+gx]>=1;
+                const visible=gx>=0&&gz>=0&&gx<n&&gz<n&&fow.fogGrid[gz*n+gx]>0;
                 if(all&&!visible)return false;
                 if(visible){if(!all)return true;any=true;}
             }

@@ -313,7 +313,7 @@
             if (uVegetation > 0.5 && uClutterFog > 0.5) {
                 vec2 fogUv = vWorld.xz / uClutterMapSize + 0.5;
                 if (min(fogUv.x,fogUv.y) < 0.0 || max(fogUv.x,fogUv.y) > 1.0
-                    || texture2D(uClutterVisibility,fogUv).r < 0.99) discard;
+                    || texture2D(uClutterVisibility,fogUv).r < 0.25) discard;   // unexplored (b1231: was < 0.99)
             }
             // The top-down map of the ground (EngineOcclusion): what stands on it here and
             // how worn it is. Read by the ground and the grass; nothing under fog, which
@@ -323,7 +323,7 @@
             if (uOcclMap.y > 0.0 && onGround) {
                 vec4 standing = texture2D(uOccl, vWorld.xz*uOcclMap.x + 0.5);
                 ground = vec2(standing.r, standing.a);
-                if (uClutterFog > 0.5) ground *= texture2D(uClutterVisibility, vWorld.xz/uClutterMapSize + 0.5).r;
+                if (uClutterFog > 0.5) ground *= step(0.99, texture2D(uClutterVisibility, vWorld.xz/uClutterMapSize + 0.5).r);
             }
             // Grass does not grow where it is walked on: tuft by tuft it gives out as the
             // ground wears, so a path shows through it.
