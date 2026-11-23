@@ -249,12 +249,19 @@
                 // denser ones by how close the view is as well.
                 const base = tile.counts[0], dense = tile.counts[tile.counts.length - 1] - base;
                 const drawn = Math.floor((base + dense * close) * fade * tier.share);
-                if (!drawn) continue;
+                if (!(fade > 0)) continue;
                 const model = window.M3D.scaling(1,Math.max(.05,fade),1);
-                tile.tufts.instances = drawn;
-                tile.entry.model = model;
-                entries.push(tile.entry);
-                stats.patches++; stats.batches++; stats.tufts += drawn; stats.triangles += drawn * INDICES_PER_TUFT / 3;
+                if (drawn) {
+                    tile.tufts.instances = drawn;
+                    tile.entry.model = model;
+                    entries.push(tile.entry);
+                    stats.patches++; stats.batches++; stats.tufts += drawn; stats.triangles += drawn * INDICES_PER_TUFT / 3;
+                }
+                // The pebbles whether the tile has grass or not (build 1232). Until then a tile
+                // with no tuft to draw was passed over whole, pebbles and all, and the dry ground
+                // (no grass, the most pebbles) lost them tile by tile: bare squares 16 units
+                // across, with pebbles only round their rim where some grass grew (asp67,
+                // 23 November 2026: "rectangular areas of the clutter are missing").
                 if (tile.stones && r._halfH < PEBBLE_HALF_H && close > 0) {
                     tile.stoneEntry.model = model;
                     entries.push(tile.stoneEntry);

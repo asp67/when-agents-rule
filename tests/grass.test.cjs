@@ -90,6 +90,25 @@ test('clutter stays on explored terrain after units leave, but never on unexplor
     assert.ok(grass.frame().length>0,'grass on a square the analyzer knows as partly explored');
     assert.equal(G.visibleRect(fow,1,1,3,3,true),true,'decorations on it too');
 });
+// Build 1232 (asp67, 23 November 2026, from live matches: "rectangular areas of the clutter are missing"):
+// a tile with no tuft to draw was passed over whole, its pebbles too, so dry ground lost them tile by tile.
+test('a dry tile without grass still draws its pebbles',()=>{
+    const {G,renderer:r,later}=setup();const grass=new G.Grass(r);
+    grass.cover=()=>0;                                   // dry everywhere: no tufts, pebbles where the patches allow
+    let entries=[];
+    for(let f=0;f<40;f++){later();entries=grass.frame();}
+    // Near the camera: inside the reach of the pebbles (127.5) and of the 108 nearest tiles, which fade out at their rim.
+    const near=[...grass.cache.entries()].filter(([k])=>{const [tx,tz]=k.split(':').map(Number);return Math.hypot((tx+.5)*G.TILE,(tz+.5)*G.TILE)<60;}).map(([,t])=>t);
+    const dryWithStones=near.filter(t=>t.counts[0]===0&&t.stones);
+    assert.ok(dryWithStones.length>0,'there are tiles with pebbles and no grass');
+    assert.equal(r.grassStats.tufts,0);
+    for(const t of dryWithStones)assert.ok(entries.includes(t.stoneEntry),'their pebbles are drawn');
+    assert.ok(!entries.some(e=>dryWithStones.some(t=>t.entry===e)),'and no empty grass draw is made for them');
+    // Too high up for pebbles: nothing at all.
+    r._halfH=PEBBLE_HIGH(G);later();
+    assert.equal(grass.frame().length,0);
+});
+const PEBBLE_HIGH=G=>G.PEBBLE_HALF_H+5;
 test('grass shader mask reveals both explored and currently visible cells',()=>{
     const scope={window:{}};vm.createContext(scope);
     for(const f of ['js/simulation/rng.js','js/simulation/math.js','js/simulation/island.js','js/engine/texgen.js'])vm.runInContext(read(f),scope);
