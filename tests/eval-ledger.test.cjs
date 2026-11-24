@@ -18,20 +18,20 @@ const samples = fs.readdirSync(path.join(root, 'samples')).filter(f => f.endsWit
 // requests, most frequent mistake.
 const PINNED = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 87, 78, 3, 0, 1, 1, 0, 85.5, 4816, 6249, 19332, 93, 107, 0.954, 4, 0, 0, 'notDiscovered'],
-        ['O claude-sonnet-5.5', 128, 349, 2, 0, 5, 1, 0, 97.5, 6472, 10569, 72032, 563, 239, 2.789, 0, 0, 0, 'commandLimit'],
-        ['O deepseek-v4.1-flash', 128, 354, 11, 0, 4, 2, 2, 84.5, 8974, 21991, 57415, 1804.5, 801, 2.898, 1, 0, 0, 'noTCWorkers'],
-        ['DGX GLM5.3 Flash', 126, 321, 11, 0, 2, 0, 0, 86.2, 41543, 73085, 42176, 744.5, 326, 2.651, 0, 1, 1, 'populationLimit'],
+        ['O gpt-6.1-sol', 87, 78, 2, 0, 2, 1, 0, 90, 4816, 6249, 19332, 93, 107, 0.954, 4, 0, 0, 'notDiscovered'],
+        ['O claude-sonnet-5.5', 128, 349, 1, 0, 6, 1, 0, 98.7, 6472, 10569, 72032, 563, 239, 2.789, 0, 0, 0, 'commandLimit'],
+        ['O deepseek-v4.1-flash', 128, 354, 5, 0, 10, 2, 0, 94.1, 8974, 21991, 57415, 1804.5, 801, 2.898, 1, 0, 0, 'cannotAfford'],
+        ['DGX GLM5.3 Flash', 126, 321, 4, 0, 9, 0, 0, 94.6, 41543, 73085, 42176, 744.5, 326, 2.651, 0, 1, 1, 'commandLimit'],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 82, 215, 12, 0, 2, 0, 2, 72.9, 36289, 74921, 8140, 1500.5, 654, 2.793, 0, 2, 0, 'assignFromEmpty'],
-        ['RTX qwen3.8 flash next Q2_0', 52, 137, 2, 0, 1, 0, 0, 94.1, 30982, 45172, 12656.5, 1761.5, 706, 2.692, 0, 0, 0, 'unitBuildingNotBuilt'],
+        ['DGX Qwen3.8 flash next nvfp4', 82, 215, 8, 0, 6, 0, 0, 83.1, 36289, 74921, 8140, 1500.5, 654, 2.793, 0, 2, 0, 'assignFromEmpty'],
+        ['RTX qwen3.8 flash next Q2_0', 52, 137, 0, 0, 3, 0, 0, 100, 30982, 45172, 12656.5, 1761.5, 706, 2.692, 0, 0, 0, null],
         ['O gemini-4-argon', 84, 229, 0, 0, 8, 0, 0, 100, 8635, 19633, 34700.5, 264, 140, 2.821, 0, 0, 0, null],
     ],
     // Two MCP seats: their harnesses report no token usage, and that reads as "not
     // reported", never as zero.
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 40, 56, 6, 0, 5, 1, 5, 38.1, 13, 22, null, null, null, 1.7, 0, 0, 0, 'noTCWorkers'],
+        ['pi MCP', 40, 56, 8, 0, 3, 1, 6, 30.8, 13, 22, null, null, null, 1.7, 0, 0, 0, 'noTCWorkers'],
         ['HERMES MCP', 39, 108, 1, 0, 2, 0, 0, 96.2, 4952, 18946, null, null, null, 2.846, 0, 0, 1, 'populationLimit'],
     ],
 };
@@ -48,8 +48,8 @@ for (const [file, want] of Object.entries(PINNED)) {
     test('the profile of ' + file.slice(0, 10) + ' (' + want.length + ' seats) is what it was', async () => {
         const p = await profileFile(sample(file));
         assert.deepEqual(p.seats.map(row), want);
-        assert.equal(p.kind, 'war-eval/1'); assert.equal(p.scale, 'v4'); assert.equal(p.unreadable, 0);
-        // Scale v4 severity-weighted Bayesian Grounding: 100 * exp(-4.5 * (1.0*constraint + 2.5*reference + 1.5*repeated) / (rated + 8)).
+        assert.equal(p.kind, 'war-eval/1'); assert.equal(p.scale, 'v4.1'); assert.equal(p.unreadable, 0);
+        // Scale v4.1 severity-weighted Bayesian Grounding: 100 * exp(-4.5 * (1.0*constraint + 2.5*reference + 1.5*repeated) / (rated + 8)).
         for (const s of p.seats) {
             const g = s.grounding;
             assert.equal(g.judged, g.ok + g.avoidable + g.invalid);
@@ -74,8 +74,10 @@ test('the ledger arrives at the harness\'s own counts on every shipped match tha
                 assert.deepEqual([g.rate, g.score, g.ok], [null, null, 0], file + ' ' + s.name);
                 continue;
             }
-            assert.deepEqual([g.ok, g.avoidable, g.invalid, g.contended],
-                [m.succeeded, m.rejected, m.invalidActions, m.contended || 0], file + ' ' + s.name + ': verdicts');
+            // Scale v4.1 snapshot-grounded reconciliation conserves total judged + contended commands:
+            // world-drift stale errors move from avoidable -> contended, and hallucinated handles move back.
+            assert.deepEqual([g.ok, g.invalid, g.avoidable + g.contended],
+                [m.succeeded, m.invalidActions, m.rejected + (m.contended || 0)], file + ' ' + s.name + ': verdicts conserved');
             // The harness counts a request it sent; the ledger a decision that came back.
             assert.equal(s.decisions, m.decisions - (m.roundsMissed || 0), file + ' ' + s.name + ': decisions');
             if (e.tokens) assert.deepEqual([e.tokens.promptTotal, e.tokens.completionTotal], [m.promptTokens, m.completionTokens], file + ' ' + s.name + ': tokens');
@@ -245,25 +247,25 @@ test('the command-line report says so when a file predates recorded outcomes', a
     assert.match(text, /build not recorded/);
     const mcp = report('x.jsonl', await profileFile(sample('2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl')));
     assert.match(mcp, /not reported/);
-    assert.match(mcp, /pi MCP +38\.1 +89\.1 % +49 +7 /);           // seven of its 56 were waits
+    assert.match(mcp, /pi MCP +30\.8 +86\.0 % +49 +7 /);           // seven of its 56 were waits
     assert.doesNotMatch(mcp, /recorded from build 1023/);
 });
 
-// ---- Macro & Agency, Spatial, Qualitative Plan (Scale v4) -------------------------------
+// ---- Macro & Agency, Spatial, Qualitative Plan (Scale v4.1) -----------------------------
 const MACRO = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 52.6, 39.7, 71.8, 50.6, 0.34, 0, 7, 0, 11, 13, 8, 5, 1],
+        ['O gpt-6.1-sol', 54.8, 39.7, 73.8, 56, 0.342, 0, 3, 4, 11, 13, 8, 5, 1],
         ['O claude-sonnet-5.5', 85.1, 90, 69.3, 94.3, 0.906, 0.93, 0, 0, 51, 60, 28, 4, 3],
-        ['O deepseek-v4.1-flash', 86.9, 100, 63.4, 93, 0.902, 0.962, 1, 0, 27, 63, 21, 13, 3],
-        ['DGX GLM5.3 Flash', 88.4, 100, 75.1, 86.2, 0.857, 0.882, 5, 0, 23, 75, 25, 13, 3],
+        ['O deepseek-v4.1-flash', 87.1, 100, 63.8, 93.2, 0.904, 0.962, 1, 0, 27, 63, 21, 13, 3],
+        ['DGX GLM5.3 Flash', 88.7, 100, 76.1, 86.1, 0.855, 0.879, 5, 0, 23, 75, 25, 13, 3],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 85.1, 91.1, 67.3, 95, 0.916, 0.915, 0, 0, 18, 35, 18, 14, 3],
+        ['DGX Qwen3.8 flash next nvfp4', 85.4, 91.1, 67.9, 95.3, 0.922, 0.93, 0, 0, 18, 35, 18, 14, 3],
         ['RTX qwen3.8 flash next Q2_0', 87.3, 87.8, 81.7, 92, 0.867, 0.933, 0, 0, 18, 40, 17, 11, 2],
         ['O gemini-4-argon', 91.6, 100, 77.9, 94, 0.927, 0.952, 1, 0, 20, 51, 16, 12, 3],
     ],
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 72.8, 90.6, 65.9, 55.8, 0.5, 0.125, 5, 2, 14, 14, 9, 6, 1],
+        ['pi MCP', 77.9, 90.6, 82.2, 56.8, 0.516, 0.125, 5, 2, 14, 14, 9, 6, 1],
         ['HERMES MCP', 93.8, 100, 80.7, 98.5, 0.975, 1, 0, 0, 20, 40, 15, 5, 2],
     ],
 };
@@ -546,21 +548,21 @@ test('peaceful tactical falls back to 50 * activityGate, and unjudged transcript
     assert.deepEqual([old.judged, old.episodes, old.answered, old.score], [false, 1, null, 50]);
 });
 
-// ---- Dominance (Strategy), Versatility, WAR Score, Drift & Warmup (Scale v4) ----
+// ---- Dominance (Strategy), Versatility, WAR Score, Drift & Warmup (Scale v4.1) --
 const STRATEGY = {
     '2026-10-05_gpt6.1-sol-claude-sonnet5.5-deepseek-v4.1-glm5.3_99min.jsonl': [
-        ['O gpt-6.1-sol', 5.9, 7.8, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 47.5, 5],
-        ['O claude-sonnet-5.5', 64, 63.1, 2, 0.376, 0.721, 3493, false, 36, 127, 144, '412/812/1342', 3, 6, 4, 9, 77.9, 5],
-        ['O deepseek-v4.1-flash', 35.9, 36.7, 3, 0.252, 0.184, null, null, 48, 192, 151, '372/1147/2037', 10, 9, 13, 9, 69.9, 5],
-        ['DGX GLM5.3 Flash', 60.9, 47.9, 1, 0.288, 0.107, null, null, 44, 77, 81, '372/1147/2493', 11, 10, 13, 10, 74.2, 5],
+        ['O gpt-6.1-sol', 10.8, 14.4, 4, 0.085, 0.006, null, null, 12, 3, 23, '487', 2, 5, 5, 9, 50.1, 5],
+        ['O claude-sonnet-5.5', 64, 63.1, 2, 0.376, 0.721, 3493, false, 36, 127, 144, '412/812/1342', 3, 6, 4, 9, 78.1, 5],
+        ['O deepseek-v4.1-flash', 35.9, 36.7, 3, 0.252, 0.184, null, null, 48, 192, 151, '372/1147/2037', 10, 9, 13, 9, 71.9, 5],
+        ['DGX GLM5.3 Flash', 60.9, 47.9, 1, 0.288, 0.107, null, null, 44, 77, 81, '372/1147/2493', 11, 10, 13, 10, 76, 5],
     ],
     '2026-10-17_gemini-4-argon-qwen3.8-flashnext-q2_0-qwen3.8-flashnext-nvfp4_68min.jsonl': [
-        ['DGX Qwen3.8 flash next nvfp4', 35.6, 47.5, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 59.1, 5],
-        ['RTX qwen3.8 flash next Q2_0', 27.3, 19.7, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 59.5, 5],
+        ['DGX Qwen3.8 flash next nvfp4', 35.6, 47.5, 3, 0.377, 0.616, null, null, 16, 48, 79, '437/1112/1848', 6, 10, 14, 10, 61.2, 5],
+        ['RTX qwen3.8 flash next Q2_0', 39.9, 36.5, 2, 0.21, 0.04, null, null, 7, 7, 60, '667/1612', 7, 9, 11, 8, 63.8, 5],
         ['O gemini-4-argon', 71.3, 61.7, 1, 0.413, 0.358, 3558, true, 21, 138, 54, '622/1112/1687', 6, 6, 12, 9, 86.6, 5],
     ],
     '2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl': [
-        ['pi MCP', 13, 17.3, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 45.2, 5],
+        ['pi MCP', 13, 17.3, 2, 0.273, 0.152, null, null, 7, 9, 13, '470', 1, 4, 6, 7, 45.1, 5],
         ['HERMES MCP', 87, 82.7, 1, 0.727, 0.993, 410, true, 7, 13, 9, '255/710', 4, 6, 5, 7, 83.7, 5],
     ],
 };
@@ -745,7 +747,7 @@ test('the command-line report prints Scale v4 tables, Dominance, WAR Score, Cost
     assert.match(text, /O gemini-4-argon +86\.6 +- +5\/5 +100\.0 +91\.6 +100\.0 +72\.8 +71\.3/);
     assert.match(text, /COST & DRIFT +decisions +medLat +p90 +tok\/dec +out\/ok +ok\/think-m +errDrift +idleDrift +latRatio/);
     assert.match(text, /GROUNDING \(20%\) +score +valid +ok +waits +constraint +reference +repeated +contended +unjudged/);
-    assert.match(text, /Score scale v4\. Weights: 20% Grounding \+ 25% Macro & Agency \+ 15% Spatial \+ 15% Tactical \+ 25% Dominance\./);
+    assert.match(text, /Score scale v4\.1\. Weights: 20% Grounding \+ 25% Macro & Agency \+ 15% Spatial \+ 15% Tactical \+ 25% Dominance\./);
 });
 
 // ---- the profile in the export (overhaul step D8) ------------------------------------
@@ -794,9 +796,9 @@ test('the profile a results line carries is the profile its own file gives', asy
     const file = path.join(require('node:os').tmpdir(), 'war-d8-' + process.pid + '.jsonl');
     try {
         fs.writeFileSync(file, text);
-        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v4: scored again here, it is the same\./);
+        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v4\.1: scored again here, it is the same\./);
         fs.writeFileSync(file, text.replace('"waits":3', '"waits":2'));
-        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v4: scored again here on scale v4, it differs\./);
+        assert.match(report(file, await profileFile(file)), /The file carries its own profile, scale v4\.1: scored again here on scale v4\.1, it differs\./);
     } finally { fs.rmSync(file, { force: true }); }
     // A file without one says nothing about it.
     assert.doesNotMatch(report('x.jsonl', await profileFile(sample('2026-11-07_pi-hy4-hermes-deepseek-v4.1_12min.jsonl'))), /carries its own profile/);
@@ -806,5 +808,5 @@ test('a seat no model decided for is not in the exported profile', () => {
     const l = WarEval.createLedger();
     [seatsLine, orderTurn([['build_structure', 'tower']], { plan: ['Build a tower'] }), timelineOf([tick(5, 100, 500)]), resultsOf('b')].forEach(x => l.addLine(x));
     const p = l.profile(), pub = WarEval.publicProfile(p);
-    assert.deepEqual([p.seats.length, pub.seats.length, pub.seats[0].id, pub.kind, pub.scale, p.recorded], [2, 1, 'a', 'war-eval/1', 'v4', null]);
+    assert.deepEqual([p.seats.length, pub.seats.length, pub.seats[0].id, pub.kind, pub.scale, p.recorded], [2, 1, 'a', 'war-eval/1', 'v4.1', null]);
 });

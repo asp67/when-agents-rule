@@ -151,17 +151,16 @@
         // Step 3: what starts the harness playing.
         mcpKickoff(m) {
             const n = this.mcpServerName(m);
-            return `You are playing a seat in the strategy game WAR through the MCP server ${n}. Your seat code is ${m.mcpToken}. You decide every move yourself.
-`
-                + `First call its join tool with the code ${m.mcpToken}. Then play this loop until wait_for_turn reports that the match is over:
-`
-                + `1. Call wait_for_turn. When it is your turn it returns the game state (the first time also the rules). While it answers "waiting", call it again at once.
-`
-                + `2. Give up to 3 game commands with its game tools (train_unit, build_structure, assign_workers, move_units, attack_target, ...). The plan tool is free.
-`
-                + `3. Call end_turn. Then go back to step 1.
-`
-                + `Do not stop to explain or to ask me anything: keep calling the tools until the match is over.`;
+            const series = typeof this.setupSeriesCount === 'function' ? this.setupSeriesCount() : 1;
+            const until = series > 1
+                ? `wait_for_turn returns matchOver: true after all ${series} matches (between matches wait_for_turn returns roundOver: true with matchOver: false and seriesContinues: true — answer final_word if asked and then IMMEDIATELY call wait_for_turn for the next match; DO NOT STOP between matches)`
+                : 'wait_for_turn reports that the match is over';
+            return `You are playing a seat in the strategy game WAR through the MCP server ${n}. Your seat code is ${m.mcpToken}. You decide every move yourself.\n`
+                + `First call its join tool with the code ${m.mcpToken}. Then play this loop until ${until}:\n`
+                + `1. Call wait_for_turn. When it is your turn it returns the game state (the first time of each match also the rules). While it answers "waiting", call it again at once.\n`
+                + `2. Give up to 3 game commands with its game tools (train_unit, build_structure, assign_workers, move_units, attack_target, ...). The plan tool is free.\n`
+                + `3. Call end_turn. Then go back to step 1.\n`
+                + `Do not stop to explain or to ask me anything: keep calling the tools until ${series > 1 ? 'wait_for_turn returns matchOver: true at the end of the series' : 'the match is over'}.`;
         },
         // What to tell the harness once the seat waits for it. Short: the hub hands every
         // harness the loop itself (its instructions, join's answer), and "play WAR" was all
@@ -170,6 +169,12 @@
         mcpPlayLine(m) {
             const n = this.mcpServerName(m);
             const h = HARNESSES.find(x => x.id === m.harness);
+            const series = typeof this.setupSeriesCount === 'function' ? this.setupSeriesCount() : 1;
+            if (series > 1) {
+                return h && h.goal
+                    ? `/goal play a ${series}-match WAR series with the MCP server ${n}, seat code ${m.mcpToken}: call its join tool with that code, then keep playing all ${series} matches (between matches wait_for_turn returns roundOver with matchOver: false and seriesContinues: true — call final_word if asked and immediately call wait_for_turn for the next match) and stop ONLY when wait_for_turn returns matchOver: true`
+                    : `play a ${series}-match WAR series with the MCP server ${n}, seat code ${m.mcpToken}: call its join tool with that code, keep calling wait_for_turn between matches whenever seriesContinues is true (matchOver will be false between rounds), and stop ONLY when wait_for_turn returns matchOver: true after all ${series} matches`;
+            }
             return h && h.goal
                 ? `/goal play WAR with the MCP server ${n}, seat code ${m.mcpToken}: call its join tool with that code, then keep playing until wait_for_turn reports that the match is over`
                 : `play WAR with the MCP server ${n}, seat code ${m.mcpToken}: call its join tool with that code`;
@@ -561,7 +566,8 @@
                     if (!m.mcpToken) return;
                     const hub = this.mcpHub(m);
                     if (!hubs.has(hub)) hubs.set(hub, []);
-                    if (!hubs.get(hub).some(x => x.token === m.mcpToken)) hubs.get(hub).push({ token: m.mcpToken, seat: i + 1, name: m.name || this.mcpHarnessName(m.harness) });   // a second seat on one entry is refused, not listed
+                    const seriesTotal = typeof this.setupSeriesCount === 'function' ? this.setupSeriesCount() : 1;
+                    if (!hubs.get(hub).some(x => x.token === m.mcpToken)) hubs.get(hub).push({ token: m.mcpToken, seat: i + 1, name: m.name || this.mcpHarnessName(m.harness), seriesTotal });   // a second seat on one entry is refused, not listed
                     return;
                 }
                 const key = this.seatCheckKey(m);

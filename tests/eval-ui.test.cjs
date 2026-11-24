@@ -269,7 +269,7 @@ test('the saved results carry the profile as a table, and name the heuristic as 
     l.addLine(JSON.stringify({ type: 'results', ranking: [{ playerId: 'a', rank: 1, isWinner: true }, { playerId: 'b', rank: 2 }, { playerId: 'c', rank: 3 }] }));
     const profile = WarEval.publicProfile(l.profile());
     const md = u.buildResultsMarkdown({ reports: [], reason: 'timeout', durStr: '10:00', playerCount: 3, profile });
-    assert.match(md, /## Evaluation profile\n\nScale v4\. One match is one sample/);
+    assert.match(md, /## Evaluation profile\n\nScale v4\.1\. One match is one sample/);
     assert.match(md, /\| Seat \| Grounding \(20%\) \| Macro & Agency \(25%\) \| Spatial \(15%\) \| Tactical \(15%\) \| Dominance \(25%\) \| WAR Score \|/);
     assert.match(md, /\| Seat a \| 91 \(97\.5 % of 40\) \| 0 \(– bw, 0 passive waits\) \| 0 \(– map, 0\/0 opp\) \| 0 \(no combat\) \| 80 \(74 dom, placed 1\) \| 38\.3 \|/);
     assert.ok(md.indexOf('## Evaluation profile') < md.indexOf('## Ranking'));

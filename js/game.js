@@ -311,19 +311,19 @@ class Game {
         }
 
         this.spectatorMode = true;
-        // Tempo is per MATCH, not per session. It used to carry over, so a 4x left on
-        // from the last run silently applied to the next one — and speed is not a
-        // cosmetic preference here: it decides how many turns each seat gets inside the
-        // same countdown, which is the thing that decides races. A result whose tempo
-        // was inherited from a match the viewer may not even remember starting is a
-        // result they cannot read. Same for a pause: a new match must not begin frozen.
-        this.setSimSpeed(Game.NORMAL_SIM_SPEED);
-        this.wonderPace = Game.NORMAL_SIM_SPEED;
+        // Carry over the simulation speed chosen in the previous arena match (across series
+        // rounds, rematches, or consecutive arena runs). Never start a new match paused.
+        const validSpeed = v => [1, 1.5, 2, 4].includes(Number(v)) ? Number(v) : null;
+        let savedSpeed = null;
+        try { savedSpeed = typeof localStorage !== 'undefined' ? validSpeed(localStorage.getItem('war.arenaSimSpeed')) : null; } catch (e) { /* private window */ }
+        const carriedSpeed = validSpeed(spec && spec.simSpeed) || validSpeed(this._lastArenaSimSpeed) || savedSpeed || Game.NORMAL_SIM_SPEED;
+        this.setSimSpeed(carriedSpeed);
+        this.wonderPace = carriedSpeed;
         this.pauseState = 'running';
-        // And the speed-up confirmation is documented as "once per match" — it was
-        // stored on the UI and never cleared, so it was really once per session and
-        // every match after the first sped up without a word.
-        if (this.ui) this.ui._simSpeedWarned = false;
+        if (this.ui) {
+            this.ui._simSpeedWarned = (carriedSpeed !== Game.NORMAL_SIM_SPEED);
+            if (typeof this.ui.updateSimSpeedButton === 'function') this.ui.updateSimSpeedButton();
+        }
         this.ui.showScreen('gameScreen');
         this.gameStarted = false;
         // The visible game container can now be measured beneath the overlay.
@@ -374,8 +374,58 @@ class Game {
         // could never be played again — and the transcript recorded null, which answered
         // "did you type a seed" rather than "what map was this". Mint one instead: every
         // match is reproducible and every transcript carries the seed that made it.
-        this.terrain.seed = (spec && spec.seed) || (this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed();
+        const incomingSeries = (spec && spec.series && spec.series.total > 1) ? spec.series : null;
+        const freshSeriesTotal = (!spec && this.ui && typeof this.ui.setupSeriesCount === 'function') ? this.ui.setupSeriesCount() : 1;
+        const lockedSeed = incomingSeries ? incomingSeries.seed
+            : ((spec && spec.seed) || (this.ui.setupSeed && this.ui.setupSeed()) || Game.mintSeed());
+        this.terrain.seed = lockedSeed;
         this.mapSeed = this.terrain.seed;
+        if (incomingSeries) {
+            this.arenaSeries = incomingSeries;
+        } else if (freshSeriesTotal > 1) {
+            const stamped = setup.map((s, i) => Object.assign({}, JSON.parse(JSON.stringify(s)), {
+                seriesKey: typeof UIManager !== 'undefined' && UIManager.seriesKeyOf ? UIManager.seriesKeyOf(s, i) : ('seat:' + i)
+            }));
+            this.arenaSeries = {
+                id: 'series-' + Date.now(),
+                seed: lockedSeed,
+                total: freshSeriesTotal,
+                round: 1,
+                baseSetup: stamped,
+                matches: [],
+                stopped: false,
+                autoAdvance: true
+            };
+            setup.forEach((s, i) => { s.seriesKey = stamped[i].seriesKey; });
+        } else {
+            this.arenaSeries = null;
+        }
+        const badgeEl = typeof document !== 'undefined' ? document.getElementById('arenaSeriesBadge') : null;
+        if (badgeEl) {
+            if (this.arenaSeries) {
+                badgeEl.textContent = typeof t === 'function'
+                    ? t('series.badge', { r: this.arenaSeries.round, n: this.arenaSeries.total })
+                    : `Match ${this.arenaSeries.round} / ${this.arenaSeries.total}`;
+                badgeEl.style.display = '';
+            } else {
+                badgeEl.style.display = 'none';
+                badgeEl.textContent = '';
+            }
+        }
+        // Continuing an MCP series match: notify the hub before turns begin so each
+        // connected harness stays joined and receives fresh Turn 1 rules + new civ.
+        if (incomingSeries && incomingSeries.round > 1 && typeof WarMcpLink === 'function') {
+            setup.forEach((slot, i) => {
+                const c = slot && slot.type === 'llm' ? slot.connection : null;
+                if (!c || c.provider !== 'mcp' || !c.mcpToken) return;
+                try {
+                    const link = WarMcpLink.shared(String(c.endpoint || 'http://127.0.0.1:8765'));
+                    if (typeof link.prepareNextMatch === 'function') {
+                        link.prepareNextMatch(c.mcpToken, i + 1, incomingSeries.round, incomingSeries.total, slot.civ);
+                    }
+                } catch (e) { /* hub unavailable */ }
+            });
+        }
         // WAR Platform's jittered layout and every seat's identical home (b1076, see
         // TerrainManager.arenaSpawns / homeDiscs). Stone and gold follow each seat's
         // offset (scatterShifted), so they stay identical too.
@@ -6761,6 +6811,25 @@ class Game {
         ai.currentAgeUpgrade = null;
     }
 
+    seriesNextOpts() {
+        const s = this.arenaSeries;
+        if (!s || s.stopped || !(s.round < s.total)) return null;
+        return { seriesContinues: true, series: { round: s.round, nextRound: s.round + 1, total: s.total } };
+    }
+
+    finishSeriesMcpSeats() {
+        const s = this.arenaSeries;
+        if (!s || !Array.isArray(s.baseSetup) || typeof WarMcpLink !== 'function') return;
+        for (const slot of s.baseSetup) {
+            const c = slot && slot.type === 'llm' ? slot.connection : null;
+            if (!c || c.provider !== 'mcp' || !c.mcpToken) continue;
+            try {
+                WarMcpLink.shared(String(c.endpoint || 'http://127.0.0.1:8765'))
+                    .over(c.mcpToken, { seriesEndedEarly: true }, { seriesContinues: false });
+            } catch (e) { /* hub gone */ }
+        }
+    }
+
     // Stop the match and hand off to the benchmark summary screen.
     endArena(winnerAi, reason) {
         if (!this.gameStarted) return; // guard against double-trigger
@@ -6782,6 +6851,7 @@ class Game {
         // that swallows it, and the wait card would never appear at all.
         let ended = false;
         let pending = null;
+        const seriesOpts = this.seriesNextOpts();
         if (this.openAIAIManager && this.openAIAIManager.collectFinalWords) {
             try {
                 pending = this.openAIAIManager.collectFinalWords(reason, winnerAi,
@@ -6796,13 +6866,13 @@ class Game {
                         // right there behind it, and the screen could not be dismissed.
                         if (ended) return;
                         if (this.ui.finalWordsProgress) this.ui.finalWordsProgress(done, total);
-                    });
+                    }, seriesOpts);
             } catch (e) { console.warn('[arena] final words failed', e); }
         }
         // Halt the LLM pipeline so finished-match requests stop spending quota and
         // can't spawn late units into the scene behind the summary. The closing
         // questions carry their own abort handle and survive this.
-        if (this.openAIAIManager) this.openAIAIManager.stop();
+        if (this.openAIAIManager) this.openAIAIManager.stop(seriesOpts);
 
         // Guarded: the wait can now end two ways -- the answers arriving, or somebody
         // giving up on them -- and both must not run the ending twice. (`ended` is

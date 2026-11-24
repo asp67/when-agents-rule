@@ -247,7 +247,7 @@ const initShared = async (port, name) => (await shared(port, 'initialize', { pro
 test('the shared address: a session joins a seat by its code, and keeps it', LIMIT, async t => {
     const { p, port } = await startHub(); t.after(() => p.kill());
     const T = 'seat-token-shar0001';
-    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.2');
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.4');
     const pg = await fakePage(port);
     pg.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
     await new Promise(r => setTimeout(r, 50));
@@ -424,5 +424,44 @@ test('the end of a match: the closing message reaches the harness, its final wor
     assert.equal(got.text, 'I scouted too late.');
     const after = JSON.parse(said(await call(port, T, 'wait_for_turn')));
     assert.equal(after.matchOver, true); assert.equal(after.finalMessage, undefined, 'answered once');
+    pg.ws.close();
+});
+
+test('multi-match Arena Series: harness stays joined across matches without re-joining', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-ser00001';
+    const pg = await fakePage(port);
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+
+    // Match 1 of 2 ends with seriesContinues: true -> roundOver: true, matchOver: false (NEVER matchOver: true!)
+    pg.send({ type: 'final', token: T, text: 'Match 1 done.', seriesContinues: true, series: { round: 1, nextRound: 2, total: 2 } });
+    await new Promise(r => setTimeout(r, 50));
+    const end1 = JSON.parse(said(await call(port, T, 'wait_for_turn')));
+    assert.equal(end1.roundOver, true);
+    assert.equal(end1.matchOver, false);
+    assert.equal(end1.seriesContinues, true);
+    assert.match(end1.next, /DO NOT STOP/);
+
+    // Harness gives final_word and is told to call wait_for_turn for Match 2
+    const [fwAns, fwGot] = await Promise.all([call(port, T, 'final_word', { text: 'GG match 1' }), pg.next(m => m.type === 'final_word')]);
+    assert.equal(fwGot.text, 'GG match 1');
+    assert.match(said(fwAns), /Match 2\/2.*DO NOT STOP/);
+
+    // Page starts Match 2 with rotated seat 2 and sends Turn 1 — harness NEVER re-calls join!
+    pg.send({ type: 'series_next', token: T, seat: 2, series: { round: 2, total: 2 } });
+    pg.send({ type: 'turn', token: T, turn: 1, state: 'MATCH 2 STATE', rules: 'MATCH 2 RULES' });
+    await new Promise(r => setTimeout(r, 50));
+    const t2 = said(await call(port, T, 'wait_for_turn'));
+    assert.match(t2, /^IT IS YOUR TURN[\s\S]*MATCH 2 STATE/);
+
+    // Final match (2/2) ends with seriesContinues: false -> harness stops
+    pg.send({ type: 'over', token: T, result: { won: true }, seriesContinues: false });
+    await new Promise(r => setTimeout(r, 50));
+    const end2 = JSON.parse(said(await call(port, T, 'wait_for_turn')));
+    assert.equal(end2.matchOver, true);
+    assert.equal(end2.seriesContinues, undefined);
+    assert.match(end2.next, /Stop playing/);
     pg.ws.close();
 });

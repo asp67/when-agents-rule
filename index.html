@@ -6,7 +6,7 @@
     <title>When Agents Rule</title>
     <link rel="icon" href="favicon.ico?v=793" sizes="16x16 32x32 48x48 64x64 256x256">
     <link rel="icon" href="favicon.svg?v=793" type="image/svg+xml" sizes="any">
-    <link rel="stylesheet" href="css/styles.css?v=1233">
+    <link rel="stylesheet" href="css/styles.css?v=1236">
     <link rel="stylesheet" href="css/antiquity.css?v=1106">
     <!-- ?diag=1 -- the console, on the page.
 
@@ -376,6 +376,7 @@
         <div id="spectatorHUD" class="spectator-hud" style="display:none;">
             <div class="spectator-statusbar">
                 <span class="sb-brand">⚔️ ARENA</span>
+                <span class="sb-series" id="arenaSeriesBadge" style="display:none;"></span>
                 <span class="sb-sep"></span>
                 <span class="sb-clock" id="arenaClock">00:00</span>
                 <span class="sb-sep"></span>
@@ -488,57 +489,56 @@
     <!-- Arena Setup Screen -->
     <div id="arenaSetupScreen" class="screen">
         <div class="arena-setup-content">
-            <h2 id="setupTitle" data-i18n="ar.title">Arena — Konfiguration</h2>
-            <p id="setupSubtitle" class="arena-setup-subtitle" data-i18n="ar.subtitle">Verbinde beliebig viele Modelle und lass 2–4 davon gegeneinander antreten.</p>
-            <button id="quickMatchBtn" class="menu-btn quick-match-btn" onclick="game.ui.quickMatch()" data-i18n="ar.quick" data-i18n-title="ar.quickTip" title="">⚡ Schnelles Spiel</button>
-            <div class="lang-picker lang-picker-inline">
-                <span class="lang-globe">🌐</span>
-                <select class="lang-select" data-i18n-lang onchange="setUiLang(this.value)" aria-label="Language">
-                    <option value="en">English</option>
-                    <option value="de">Deutsch</option>
-                    <option value="es">Español</option>
-                    <option value="zh">中文</option>
-                </select>
-            </div>
-
-            <!-- Section 1: Model library (managed on its own page) -->
-            <div class="arena-section">
-                <div class="arena-section-head">
-                    <span class="arena-step">1</span>
-                    <div>
-                        <h3 data-i18n="ar.step1.h">Modell-Bibliothek</h3>
-                        <p data-i18n="ar.step1.p">Verwalte deine Modell-Verbindungen (Endpoints & Authentifizierung) auf einer eigenen Seite. Sie stehen danach in Schritt 2 zur Auswahl.</p>
+            <div class="setup-topbar">
+                <div class="setup-topbar-title">
+                    <h2 id="setupTitle" data-i18n="ar.title">Arena — Konfiguration</h2>
+                    <p id="setupSubtitle" class="arena-setup-subtitle" data-i18n="ar.subtitle">Verbinde beliebig viele Modelle und lass 2–4 davon gegeneinander antreten.</p>
+                </div>
+                <div class="setup-topbar-actions">
+                    <button id="quickMatchBtn" class="menu-btn quick-match-btn" onclick="game.ui.quickMatch()" data-i18n="ar.quick" data-i18n-title="ar.quickTip" title="">⚡ Schnelles Spiel</button>
+                    <div class="lang-picker lang-picker-inline">
+                        <span class="lang-globe">🌐</span>
+                        <select class="lang-select" data-i18n-lang onchange="setUiLang(this.value)" aria-label="Language">
+                            <option value="en">English</option>
+                            <option value="de">Deutsch</option>
+                            <option value="es">Español</option>
+                            <option value="zh">中文</option>
+                        </select>
                     </div>
                 </div>
-                <div class="lib-summary">
-                    <span id="libSummaryCount" class="lib-summary-count">0 Modelle konfiguriert</span>
+            </div>
+
+            <!-- Section 1: Compact Model Library bar -->
+            <div class="arena-section arena-section-compact">
+                <div class="lib-bar">
+                    <div class="lib-bar-left">
+                        <span class="arena-step">1</span>
+                        <h3 data-i18n="ar.step1.h">Modell-Bibliothek</h3>
+                        <span id="libSummaryCount" class="lib-summary-count">0 Modelle konfiguriert</span>
+                    </div>
                     <button class="lib-open-btn" onclick="game.ui.showModelLibrary()" data-i18n="ar.libOpen">Bibliothek verwalten →</button>
                 </div>
             </div>
 
-            <!-- Section 2: Arena participants -->
+            <!-- Section 2: Match settings + Arena participants -->
             <div class="arena-section">
                 <div class="arena-section-head">
                     <span class="arena-step">2</span>
                     <div>
                         <h3 id="setupStep2H" data-i18n="ar.step2.h">Arena-Teilnehmer</h3>
-                        <p id="setupStep2P" data-i18n="ar.step2.p">Wähle für jeden der vier Plätze eine Zivilisation und ein Modell (oder die regelbasierte KI).</p>
+                        <p id="setupStep2P" data-i18n="ar.step2.p">Wähle für jeden Platz eine Zivilisation und ein Modell (oder die regelbasierte KI).</p>
                     </div>
                 </div>
-                <!-- Setup options: opponent/participant count (both modes) + the
-                     human's civ (Campaign only). -->
-                <div id="campaignSetupRow" class="campaign-setup-row" style="display:none;">
-                    <div class="arena-field f-you" id="playerCivField">
-                        <!-- data-i18n swaps textContent, so it lives on an inner span —
-                             the team-badge chip (seat 0) would be wiped off the label. -->
+                <!-- Compact 2-row Match Settings card (hints live on hover tooltips to keep layout crisp) -->
+                <div id="campaignSetupRow" class="campaign-setup-row is-clean" style="display:none;">
+                    <div class="arena-field f-you" id="playerCivField" data-i18n-title="cmp.youHint">
                         <label><span id="playerCivDot"></span><span data-i18n="cmp.you">Du spielst</span></label>
                         <select id="campaignPlayerCiv" onchange="game.ui.setCampaignPlayerCiv(this.value)"></select>
-                        <p class="arena-hint" data-i18n="cmp.youHint">Deine Zivilisation. Die Gegner bekommen die übrigen.</p>
                     </div>
-                    <div class="arena-field f-count">
+                    <div class="arena-field f-count" data-i18n-title="ar.countHint">
                         <label id="setupCountLabel" data-i18n="cmp.count">Gegner</label>
                         <select id="setupCount" onchange="game.ui.setSetupCount(this.value)"></select>
-                        <p class="arena-hint" id="setupCountHint" data-i18n="ar.countHint">Wie viele Plätze diese Partie hat. Jeder bekommt unten eine Zivilisation und ein Modell.</p>
+                        <span id="setupCountHint" hidden></span>
                     </div>
                     <div class="arena-field f-map">
                         <label data-i18n="ar.fDifficulty">Schwierigkeit</label>
@@ -549,69 +549,82 @@
                         </select>
                         <div class="arena-hint diff-table" id="setupDifficultyTable"></div>
                     </div>
-                    <div class="arena-field f-mapsize">
+                    <div class="arena-field f-mapsize" data-i18n-title="ar.mapSizeHint">
                         <label for="setupMapSize" data-i18n="ar.fMapSize">Kartengröße</label>
                         <select id="setupMapSize" onchange="game.ui.setSetupMapSize(this.value)">
                             <option value="1200" data-i18n="ar.mapLarge" selected>Groß – 1200, 11 × 11 Felder</option>
                             <option value="800" data-i18n="ar.mapStandard">Standard – 800, 7 × 7 Felder</option>
                         </select>
-                        <p class="arena-hint" data-i18n="ar.mapSizeHint">Groß ist der Standard. Mehr Felder derselben Größe, ebenso dicht verteilte Ressourcen; die Startpositionen liegen weiter auseinander, Märsche dauern also länger. Standard ist die 800er-Karte früherer Partien.</p>
                     </div>
-                    <div class="arena-field f-seed">
-                        <label data-i18n="ar.fSeed">Karten-Seed (optional)</label>
-                        <input type="text" id="setupSeed" data-i18n-ph="ar.seedPh" placeholder="zufällig" oninput="game.ui.setSetupSeed(this.value)">
-                        <p class="arena-hint" data-i18n="ar.seedHint">Gleicher Seed, gleiche Karte — für A/B-Vergleiche. Leer = jedes Mal neu.</p>
+                    <div class="arena-field f-series" data-i18n-title="ar.seriesHint">
+                        <label for="setupSeriesCount" data-i18n="ar.fSeries">Serien-Partien</label>
+                        <select id="setupSeriesCount" onchange="game.ui.setSetupSeriesCount(this.value)">
+                            <option value="1" data-i18n="ar.series1" selected>1 – Einzelpartie</option>
+                            <option value="2" data-i18n="ar.series2">2 Partien (Plätze &amp; Zivs rotieren)</option>
+                            <option value="3" data-i18n="ar.series3">3 Partien (Plätze &amp; Zivs rotieren)</option>
+                            <option value="4" data-i18n="ar.series4">4 Partien (volle Rotation)</option>
+                        </select>
                     </div>
+                    <div class="setup-row-divider"></div>
                     <div class="arena-field f-turnbased">
                         <div class="tb-split">
-                            <div class="tb-main">
+                            <div class="tb-main" data-i18n-title="ar.fTurnBasedHint">
                                 <label for="setupTurnBased" data-i18n="ar.fTurnBased">Rundenbasiert</label>
                                 <label class="arena-check">
                                     <input type="checkbox" id="setupTurnBased" onchange="game.ui.setTurnBased(this.checked)">
                                     <span data-i18n="ar.turnBasedOn">aktiv</span>
                                 </label>
-                                <p class="arena-hint" data-i18n="ar.fTurnBasedHint">Alle Modelle lesen im selben Moment denselben Spielstand; sobald die letzte Antwort eintrifft, werden alle Züge gemeinsam ausgeführt. Schnelle Modelle bekommen dadurch nicht mehr Züge — vergleicht Urteil statt Tempo. Das Spiel läuft während des Nachdenkens weiter, eine Runde dauert also so lange wie die langsamste Antwort.</p>
                             </div>
-                            <div class="arena-subfield">
-                                <label for="setupRoundTimeout" data-i18n="ar.fRoundTimeout">Antwortzeit pro Runde (s)</label>
+                            <div class="arena-subfield" data-i18n-title="ar.fRoundTimeoutHint">
+                                <label for="setupRoundTimeout" data-i18n="ar.fRoundTimeout">Antwortzeit (s)</label>
                                 <input type="number" id="setupRoundTimeout" min="10" max="900" step="10" value="90"
                                        onchange="game.ui.commitRoundTimeout(this)">
-                                <p class="arena-hint" data-i18n="ar.fRoundTimeoutHint">Wie lange ein Modell pro Runde antworten darf. Wer überzieht, setzt die Runde aus und wird darüber informiert; der Wert steht als clock.secondsToAnswer im Spielstand, damit Modelle ihre Denkzeit einteilen können. Für langsame lokale Modelle höher setzen.</p>
                             </div>
-                            <div class="arena-subfield">
-                                <label for="setupLockstep" data-i18n="ar.fLockstep">Weltzeit pro Runde (Lockstep)</label>
+                            <div class="arena-subfield" data-i18n-title="ar.fLockstepHint">
+                                <label for="setupLockstep" data-i18n="ar.fLockstep">Lockstep</label>
                                 <select id="setupLockstep" onchange="game.ui.setLockstep(this.value)">
                                     <option value="" data-i18n="ar.lockstepOff">Aus – die Welt läuft weiter</option>
                                     <option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option>
                                     <option value="10000">10 s</option><option value="20000">20 s</option>
                                     <option value="30000">30 s</option><option value="45000">45 s</option><option value="60000">60 s</option>
                                 </select>
-                                <p class="arena-hint" data-i18n="ar.fLockstepHint">Mit Lockstep steht die Welt still, während die Modelle nachdenken. Sind alle Züge da, läuft sie genau so weit weiter und wartet dann auf die nächste Runde – jede Runde umfasst also dieselbe Spielzeit, egal wie lange die Modelle brauchen. Die Tempo-Knöpfe bestimmen dann nur, wie schnell ein Abschnitt abgespielt wird.</p>
                             </div>
                         </div>
+                    </div>
+                    <div class="arena-field f-seed" data-i18n-title="ar.seedHint">
+                        <label for="setupSeed" data-i18n="ar.fSeed">Karten-Seed</label>
+                        <input type="text" id="setupSeed" data-i18n-ph="ar.seedPh" placeholder="zufällig" oninput="game.ui.setSetupSeed(this.value)">
+                    </div>
+                    <div class="arena-field f-autosave" data-i18n-title="ar.autoSaveHint">
+                        <label for="setupAutoSave" data-i18n="ar.fAutoSave">Transkripte</label>
+                        <label class="arena-check">
+                            <input type="checkbox" id="setupAutoSave" checked onchange="game.ui.setAutoSaveTranscripts(this.checked)">
+                            <span data-i18n="ar.autoSaveOn">Auto-Speichern</span>
+                        </label>
                     </div>
                 </div>
                 <div id="arenaSlotsList" class="arena-slots"></div>
             </div>
 
-            <!-- Section 3: System-prompt template (each LLM slot can override it) -->
-            <div class="arena-section">
-                <div class="arena-section-head">
+            <!-- Section 3: Collapsible System-prompt template -->
+            <details class="arena-section arena-prompt-fold">
+                <summary class="arena-prompt-summary">
                     <span class="arena-step">3</span>
-                    <div>
-                        <h3 data-i18n="ar.step3.h">Standard System-Prompt (Vorlage)</h3>
-                        <p data-i18n="ar.step3.p">Vorlage für neue LLM-Spieler. Jeder Spieler kann darunter (Schritt 2) seinen eigenen Prompt erhalten — z.B. aggressiv für das eine, defensiv für das andere Modell. Platzhalter {{civilization}} und {{bonus}} werden je Volk ersetzt.</p>
-                    </div>
-                </div>
-                <div class="tmpl-prompt-bar">
+                    <span class="arena-prompt-title" data-i18n="ar.step3.h">Standard System-Prompt (Vorlage)</span>
                     <span class="slot-prompt-badge" id="tmplPromptBadge" data-i18n-title="ar.tmplEditedTitle" style="display:none">✎ <span data-i18n="ar.tmplEdited">geändert</span></span>
-                    <button class="hdr-add-btn" id="tmplDiffBtn" style="display:none" onclick="game.ui.toggleTemplateDiff()">🔍 Änderungen anzeigen</button>
-                    <button class="hdr-add-btn" id="tmplResetBtn" style="display:none" onclick="game.ui.resetTemplatePrompt()" data-i18n="ar.tmplReset">↺ Standard wiederherstellen</button>
+                    <span class="arena-prompt-caret">▾</span>
+                </summary>
+                <div class="arena-prompt-body">
+                    <p class="arena-prompt-desc" data-i18n="ar.step3.p">Vorlage für neue LLM-Spieler. Jeder Spieler kann darunter (Schritt 2) seinen eigenen Prompt erhalten — z.B. aggressiv für das eine, defensiv für das andere Modell. Platzhalter {{civilization}} und {{bonus}} werden je Volk ersetzt.</p>
+                    <div class="tmpl-prompt-bar">
+                        <button class="hdr-add-btn" id="tmplDiffBtn" style="display:none" onclick="game.ui.toggleTemplateDiff()">🔍 Änderungen anzeigen</button>
+                        <button class="hdr-add-btn" id="tmplResetBtn" style="display:none" onclick="game.ui.resetTemplatePrompt()" data-i18n="ar.tmplReset">↺ Standard wiederherstellen</button>
+                    </div>
+                    <textarea id="arenaSharedPrompt" rows="7" class="arena-prompt-textarea" oninput="game.ui.onTemplatePromptInput(this.value)"></textarea>
+                    <div class="slot-diff" id="tmplDiff" style="display:none"></div>
+                    <button class="hdr-add-btn" style="margin-top:10px" onclick="game.ui.applyTemplateToAllSlots()" data-i18n="ar.applyAll">⇩ Auf alle LLM-Spieler anwenden</button>
                 </div>
-                <textarea id="arenaSharedPrompt" rows="7" class="arena-prompt-textarea" oninput="game.ui.onTemplatePromptInput(this.value)"></textarea>
-                <div class="slot-diff" id="tmplDiff" style="display:none"></div>
-                <button class="hdr-add-btn" style="margin-top:10px" onclick="game.ui.applyTemplateToAllSlots()" data-i18n="ar.applyAll">⇩ Auf alle LLM-Spieler anwenden</button>
-            </div>
+            </details>
 
 
             <div class="arena-setup-buttons">
@@ -687,6 +700,7 @@
                 <h2 data-i18n="sum.title">🏟️ Arena — Modell-Auswertung</h2>
                 <p class="summary-sub" id="summarySub"></p>
             </div>
+            <div id="summarySeries" class="summary-series" style="display:none;"></div>
             <div id="summaryWinner" class="summary-winner"></div>
             <div id="summaryProfile" class="summary-profile" style="display:none;"></div>
             <div id="summaryReel" class="summary-profile summary-reel" style="display:none;"></div>
@@ -750,7 +764,7 @@
     <script src="js/engine/fx.js?v=1210"></script>
     <script src="js/engine/perf.js?v=1202"></script>
     <script src="js/engine/gamerenderer.js?v=1231"></script>
-    <script src="js/i18n.js?v=1233"></script>
+    <script src="js/i18n.js?v=1236"></script>
     <script src="js/civilizations.js?v=1110"></script>
     <script src="js/identity.js?v=962"></script>
     <script src="js/buildings.js?v=1128"></script>
@@ -766,28 +780,28 @@
     <script src="js/bench-core.js?v=1142"></script>
     <script src="js/bench-page.js?v=1106"></script>
     <script src="js/analyzer.js?v=1223"></script>
-    <script src="js/eval/ledger.js?v=1233"></script>
+    <script src="js/eval/ledger.js?v=1236"></script>
     <script src="js/transcript.js?v=1151"></script>
-    <script src="js/mcp-link.js?v=1140"></script>
-    <script src="js/openai-ai.js?v=1148"></script>
+    <script src="js/mcp-link.js?v=1236"></script>
+    <script src="js/openai-ai.js?v=1236"></script>
     <script src="js/input.js?v=1110"></script>
     <script src="js/director.js?v=1212"></script>
     <script src="js/audio.js?v=1039"></script>
     <script src="js/chronicle.js?v=1233"></script>
     <script src="js/intent-layer.js?v=1057"></script>
     <script src="js/strategic-layer.js?v=973"></script>
-    <script src="js/ui.js?v=1233"></script>
-    <script src="js/eval/bench-view.js?v=1233"></script>
+    <script src="js/ui.js?v=1236"></script>
+    <script src="js/eval/bench-view.js?v=1236"></script>
     <script src="js/eval/marks.js?v=1233"></script>
     <script src="js/seat-view.js?v=1167"></script>
     <script src="js/eval/moments.js?v=1168"></script>
     <script src="js/moments-view.js?v=1172"></script>
     <script src="js/second-camera.js?v=1218"></script>
-    <script src="js/eval/season.js?v=1233"></script>
+    <script src="js/eval/season.js?v=1236"></script>
     <script src="js/eval/share.js?v=1233"></script>
     <script src="js/season-page.js?v=1226"></script>
-    <script src="js/mcp-ui.js?v=1219"></script>
-    <script src="js/game.js?v=1233"></script>
+    <script src="js/mcp-ui.js?v=1236"></script>
+    <script src="js/game.js?v=1236"></script>
     <script src="js/boot.js?v=1149"></script>
     <script src="js/standing-orders.js?v=1110"></script>
     <script src="js/showcase.js?v=1110"></script>

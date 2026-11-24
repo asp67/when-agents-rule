@@ -666,6 +666,18 @@ class UIManager {
         // A/B comparisons between models. Empty = a fresh random map every game.
         const seedEl = document.getElementById('setupSeed');
         if (seedEl) seedEl.value = (campaign ? this._campaignConfig.seed : this._arenaConfig.seed) || '';
+        const serEl = document.getElementById('setupSeriesCount');
+        if (serEl) {
+            serEl.value = String(this.setupSeriesCount());
+            const field = serEl.closest('.arena-field');
+            if (field) field.style.display = campaign ? 'none' : '';
+        }
+        const autoSaveEl = document.getElementById('setupAutoSave');
+        if (autoSaveEl) {
+            autoSaveEl.checked = this.autoSaveTranscriptsEnabled();
+            const field = autoSaveEl.closest('.arena-field');
+            if (field) field.style.display = campaign ? 'none' : '';
+        }
         const sizeEl = document.getElementById('setupMapSize');
         if (sizeEl) sizeEl.value = String(this.setupMapSize());
         // Map/difficulty lives on the setup screens (shared global setting).
@@ -770,6 +782,34 @@ class UIManager {
         const cfg = this._setupMode === 'campaign' ? this._campaignConfig : this._arenaConfig;
         const s = cfg && typeof cfg.seed === 'string' ? cfg.seed.trim() : '';
         return s || null;
+    }
+
+    // Multi-match Arena Series count (1..4). Fixed map seed with rotated seats & civs.
+    setupSeriesCount() {
+        if (this._setupMode === 'campaign') return 1;
+        const n = parseInt(this._arenaConfig && this._arenaConfig.seriesCount, 10);
+        return (isFinite(n) && n >= 1 && n <= 4) ? n : 1;
+    }
+    setSetupSeriesCount(v) {
+        if (!this._arenaConfig) return;
+        const n = Math.min(4, Math.max(1, parseInt(v, 10) || 1));
+        this._arenaConfig.seriesCount = n;
+        const el = document.getElementById('setupSeriesCount');
+        if (el && el.value !== String(n)) el.value = String(n);
+        this.saveSetup();
+        // Refresh seat rows so MCP copy-start-prompt buttons immediately reflect single vs N-match series.
+        if (typeof this.renderArenaSlots === 'function') this.renderArenaSlots();
+    }
+
+    // Auto-save every completed arena match's transcript (.jsonl), enabled by default.
+    autoSaveTranscriptsEnabled() {
+        if (this._setupMode === 'campaign') return false;
+        return !(this._arenaConfig && this._arenaConfig.autoSaveTranscripts === false);
+    }
+    setAutoSaveTranscripts(on) {
+        if (!this._arenaConfig) return;
+        this._arenaConfig.autoSaveTranscripts = !!on;
+        this.saveSetup();
     }
 
     setCampaignPlayerCiv(v) { if (this._campaignConfig) { this._campaignConfig.playerCiv = v; this.saveSetup(); } }
@@ -2621,11 +2661,18 @@ class UIManager {
     // model sat where: the season table reads them as a pair and takes the seat out of the
     // difference (js/eval/season.js).
     async rematchArena(swap = false) {
+        this.clearSeriesTimer();
+        if (this.game && this.game.arenaSeries) {
+            this.game.arenaSeries.stopped = true;
+            if (this.game.finishSeriesMcpSeats) this.game.finishSeriesMcpSeats();
+            this.game.arenaSeries = null;
+        }
         const spec = this.game.arenaSpec;
         if (!spec) return this.leaveArenaSummary(false);
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         try { if (rec) await rec.purge(); } catch (e) { /* starting anyway */ }
-        return this.game.startArenaFromSetup(swap ? Object.assign({}, spec, { setup: UIManager.swapModelSeats(spec.setup) }) : spec);
+        const carried = Object.assign({}, spec, { simSpeed: this.game.simSpeed });
+        return this.game.startArenaFromSetup(swap ? Object.assign({}, carried, { setup: UIManager.swapModelSeats(spec.setup) }) : carried);
     }
     // The model seats moved on by one among themselves: with two models, a straight trade.
     // A seat keeps its civilization; a rule-based seat keeps everything.
@@ -2636,6 +2683,34 @@ class UIManager {
         const players = at.map(i => list[i]);
         at.forEach((i, k) => { list[i] = Object.assign({}, players[(k + 1) % at.length], { civ: setup[i].civ }); });
         return list;
+    }
+
+    // Stable participant identifier across rotated seats & civs in a multi-match Arena Series.
+    static seriesKeyOf(entry, baseIdx) {
+        if (entry && entry.seriesKey) return entry.seriesKey;
+        if (entry && entry.type === 'llm') {
+            const c = entry.connection || {};
+            return 'llm:' + (c.mcpToken || c.id || c.name || c.model || baseIdx);
+        }
+        return 'ki:' + ((entry && entry.profile) || 'standard') + ':' + baseIdx;
+    }
+
+    // Rotate ALL participants by `roundIdx` spawn corners on a fixed-seed map.
+    // Each spawn slot keeps its original civilization, so with distinct civs configured
+    // every participant plays a new spawn corner AND a new civilization every match.
+    static rotateSeriesSetup(baseSetup, roundIdx) {
+        const src = Array.isArray(baseSetup) ? baseSetup : [];
+        const k = src.length;
+        if (!k) return [];
+        const r = ((Math.floor(Number(roundIdx) || 0) % k) + k) % k;
+        return src.map((slot, i) => {
+            const from = ((i - r) % k + k) % k;
+            const mover = src[from];
+            return Object.assign({}, JSON.parse(JSON.stringify(mover)), {
+                civ: slot.civ,
+                seriesKey: UIManager.seriesKeyOf(mover, from)
+            });
+        });
     }
 
     // Opens the match that just ended in the transcript analyzer, without a download
@@ -6332,9 +6407,244 @@ class UIManager {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         if (rec && !snapshot) { try { rec.flushAll(); } catch (e) {} }
         this.updateTranscriptOffer(snapshot);
+        if (!snapshot && rec && rec.hasData && rec.hasData() && this.autoSaveTranscriptsEnabled() && this._lastAutoSavedMatchId !== rec.matchId) {
+            this._lastAutoSavedMatchId = rec.matchId;
+            this.downloadTranscripts({ auto: true });
+        }
+        if (!snapshot && this.game && this.game.arenaSeries) {
+            this.recordSeriesMatch(this._lastSummary, rec);
+            this.renderSeriesSummary();
+        } else {
+            const sEl = document.getElementById('summarySeries');
+            if (sEl) { sEl.style.display = 'none'; sEl.innerHTML = ''; }
+            this.clearSeriesTimer();
+        }
         if (this.updateSummaryProfile) this.updateSummaryProfile();
         if (this.updateSummaryReel) this.updateSummaryReel();
         this.renderSummaryChart();
+    }
+
+    // ---- Multi-Match Arena Series summary & flow ----------------------------------
+    clearSeriesTimer() {
+        if (this._seriesTimer) { clearInterval(this._seriesTimer); this._seriesTimer = null; }
+        this._seriesCountdown = null;
+    }
+
+    recordSeriesMatch(summary, rec) {
+        const series = this.game && this.game.arenaSeries;
+        if (!series || !summary) return;
+        const setup = (this.game.arenaSpec && this.game.arenaSpec.setup) || [];
+        const results = this.publicResults(summary);
+        const profile = summary.profile || null;
+        let entry = null;
+        if (profile && typeof WarSeason !== 'undefined') {
+            entry = WarSeason.entryFrom({
+                header: (rec && rec.matchMeta) || { matchId: 'series-r' + series.round, mapSeed: series.seed, players: [] },
+                contract: (this.game.openAIAIManager && this.game.openAIAIManager.contract) || null,
+                results, profile, source: 'series'
+            }, { conditions: typeof WarConditions !== 'undefined' ? WarConditions : null });
+        }
+        const bySeat = new Map();
+        for (const s of (entry && entry.seats) || []) {
+            if (s && s.seat != null) bySeat.set(s.seat, s);
+        }
+        const seats = (summary.reports || []).map((rep, idx) => {
+            const seatIdx = rep.ai && rep.ai.seat != null ? rep.ai.seat : idx;
+            const slot = setup[seatIdx] || {};
+            const sKey = UIManager.seriesKeyOf(slot, seatIdx);
+            const ev = bySeat.get(seatIdx);
+            if (ev) {
+                return Object.assign({}, ev, {
+                    seriesKey: sKey, seat: seatIdx, civ: rep.ai ? rep.ai.civilization : slot.civ,
+                    rank: idx + 1, of: (summary.reports || []).length
+                });
+            }
+            return {
+                seriesKey: sKey, name: rep.model || '?', model: rep.isLLM ? (rep.modelConfig && rep.modelConfig.modelId) || rep.model : 'rule-based',
+                via: rep.isLLM ? 'raw' : 'rule', seat: seatIdx, civ: rep.ai ? rep.ai.civilization : slot.civ,
+                rank: idx + 1, of: (summary.reports || []).length, winner: !!rep.isWinner,
+                scores: { grounding: null, macro: null, spatial: null, tactical: null, strategy: null, index: null }
+            };
+        });
+        series.matches = (series.matches || []).filter(m => m.round !== series.round);
+        series.matches.push({
+            round: series.round,
+            matchId: (rec && rec.matchMeta && rec.matchMeta.matchId) || ('series-' + series.round),
+            duration: summary.durStr || null,
+            outcome: summary.reason || null,
+            seats
+        });
+    }
+
+    seriesMcpStatus(series) {
+        if (!series || !Array.isArray(series.baseSetup) || typeof WarMcpLink !== 'function') return [];
+        const out = [];
+        for (const slot of series.baseSetup) {
+            const c = slot && slot.type === 'llm' ? slot.connection : null;
+            if (!c || c.provider !== 'mcp' || !c.mcpToken) continue;
+            const link = WarMcpLink.shared(String(c.endpoint || 'http://127.0.0.1:8765'));
+            const st = link.status(c.mcpToken);
+            const q = typeof link.quietMs === 'function' ? link.quietMs(c.mcpToken) : null;
+            // Listening if joined and polled within the last 40s (wait_for_turn polls every ~25s)
+            const listening = !!(st.hub && st.joined && (q == null || q < 40000));
+            const nextRound = Math.min(series.total, series.round + 1);
+            const resumePrompt = `Continue playing our WAR series (Match ${nextRound}/${series.total}) with the MCP server war, seat code ${c.mcpToken}: call wait_for_turn now (or join with ${c.mcpToken} first if asked), and keep playing until wait_for_turn returns matchOver: true.`;
+            out.push({ name: c.name || c.mcpToken, token: c.mcpToken, listening, joined: !!st.joined, hub: !!st.hub, quietMs: q, resumePrompt });
+        }
+        return out;
+    }
+
+    renderSeriesSummary() {
+        const el = document.getElementById('summarySeries');
+        const series = this.game && this.game.arenaSeries;
+        if (!el || !series || typeof WarSeason === 'undefined') return;
+        this.clearSeriesTimer();
+        const agg = WarSeason.poolSeries(series.matches || []);
+        const done = series.matches.length;
+        const more = !series.stopped && series.round < series.total;
+        const civNames = this.civNames();
+        const esc = s => this.escapeHtml(String(s == null ? '' : s));
+        const fmt = v => v == null ? '–' : Math.round(v);
+
+        const rows = agg.models.map(m => {
+            const sp = m.spread && m.spread.index;
+            const rng = sp && sp.n >= 2 ? `<small>${Math.round(sp.min)}–${Math.round(sp.max)}</small>` : '';
+            const p = m.pooled || {};
+            const pillars = [p.grounding, p.macro, p.spatial, p.tactical, p.strategy].map(fmt).join(' · ');
+            const places = (m.places || []).map(x => x.rank).join(' · ') || '–';
+            const civs = (m.civs || []).map(c => (civNames[c] || c).slice(0, 3)).join(' · ') || '–';
+            return `<tr>
+                <th scope="row">${esc(m.name)}</th>
+                <td class="sr-war">${fmt(p.index)}${rng}</td>
+                <td class="sr-pillars">${pillars}</td>
+                <td class="sr-pl">${m.plRating}</td>
+                <td>${places}</td>
+                <td>${m.firsts}/${m.matches}</td>
+                <td>${esc(civs)}</td>
+            </tr>`;
+        }).join('');
+
+        const mcpList = more ? this.seriesMcpStatus(series) : [];
+        const quietMcp = mcpList.filter(x => !x.listening);
+        const mcpBar = mcpList.length ? `<div class="series-mcp-bar" id="seriesMcpBar">${mcpList.map(x => {
+            const copy = !x.listening && typeof this.mcpCopyBtn === 'function'
+                ? ' ' + this.mcpCopyBtn(x.resumePrompt, { label: t('series.copyResume'), stop: true }) : '';
+            return `<span class="series-mcp-pill ${x.listening ? 'ok' : 'warn'}"><span class="seat-dot"></span>${esc(x.name)} · ${esc(t(x.listening ? 'series.mcpReady' : 'series.mcpQuiet'))}${copy}</span>`;
+        }).join('')}</div>` : '';
+
+        const titleKey = more ? 'series.title' : 'series.complete';
+        const actions = more
+            ? `<span class="series-countdown" id="seriesCountdown"></span>
+               <button type="button" class="menu-btn" onclick="game.ui.startNextSeriesMatch()">${esc(t('series.nextNow', { next: series.round + 1, n: series.total }))}</button>
+               <button type="button" class="menu-btn back-btn" id="seriesPauseBtn" onclick="game.ui.toggleSeriesAutoPause()">${esc(t(series.autoAdvance ? 'series.pause' : 'series.resume'))}</button>
+               <button type="button" class="menu-btn back-btn" onclick="game.ui.endSeriesEarly()">${esc(t('series.endEarly'))}</button>`
+            : `<button type="button" class="menu-btn" onclick="game.ui.downloadSeriesReport()">${esc(t('series.saveJson'))}</button>`;
+
+        el.innerHTML = `
+            <div class="series-head">
+                <h3>${esc(t(titleKey, { r: done, n: series.total }))}</h3>
+            </div>
+            <p class="series-meta">${esc(t('series.meta', { seed: series.seed }))}</p>
+            <div class="series-table-wrap">
+                <table class="series-table">
+                    <thead><tr>
+                        <th>${esc(t('series.colModel'))}</th>
+                        <th>${esc(t('series.colPooled'))}</th>
+                        <th>${esc(t('series.colPillars'))}</th>
+                        <th>${esc(t('series.colRating'))}</th>
+                        <th>${esc(t('series.colPlaces'))}</th>
+                        <th>${esc(t('series.colFirsts'))}</th>
+                        <th>${esc(t('series.colCivs'))}</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+            ${mcpBar}
+            <div class="series-actions">${actions}</div>`;
+        el.style.display = '';
+
+        if (more && series.autoAdvance) {
+            this._seriesCountdown = 12;
+            const initialQuietKey = quietMcp.map(x => x.token).join(',');
+            const tick = () => {
+                const cd = document.getElementById('seriesCountdown');
+                const nowMcp = this.seriesMcpStatus(series);
+                const nowQuiet = nowMcp.filter(x => !x.listening);
+                const nowKey = nowQuiet.map(x => x.token).join(',');
+                if (nowKey !== initialQuietKey) { this.renderSeriesSummary(); return true; }
+                if (nowQuiet.length > 0) {
+                    if (cd) cd.textContent = t('series.waitingMcp', { seats: nowQuiet.map(x => x.name).join(', ') });
+                    return false;
+                }
+                if (cd) cd.textContent = t('series.autoNext', { next: series.round + 1, n: series.total, s: this._seriesCountdown });
+                return false;
+            };
+            tick();
+            this._seriesTimer = setInterval(() => {
+                const nowQuiet = this.seriesMcpStatus(series).filter(x => !x.listening);
+                if (nowQuiet.length > 0) { tick(); return; }
+                this._seriesCountdown--;
+                if (this._seriesCountdown <= 0) {
+                    this.clearSeriesTimer();
+                    this.startNextSeriesMatch();
+                } else tick();
+            }, 1000);
+        }
+    }
+
+    toggleSeriesAutoPause() {
+        const series = this.game && this.game.arenaSeries;
+        if (!series) return;
+        series.autoAdvance = !series.autoAdvance;
+        this.renderSeriesSummary();
+    }
+
+    endSeriesEarly() {
+        const series = this.game && this.game.arenaSeries;
+        if (!series) return;
+        this.clearSeriesTimer();
+        series.stopped = true;
+        if (this.game.finishSeriesMcpSeats) this.game.finishSeriesMcpSeats();
+        this.renderSeriesSummary();
+    }
+
+    async startNextSeriesMatch() {
+        const series = this.game && this.game.arenaSeries;
+        const spec = this.game && this.game.arenaSpec;
+        if (!series || !spec || series.stopped || series.round >= series.total) return;
+        this.clearSeriesTimer();
+        const nextRound = series.round + 1;
+        const nextSetup = UIManager.rotateSeriesSetup(series.baseSetup, nextRound - 1);
+        const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
+        try { if (rec) await rec.purge(); } catch (e) { /* starting anyway */ }
+        const nextSeries = Object.assign({}, series, { round: nextRound });
+        return this.game.startArenaFromSetup(Object.assign({}, spec, {
+            setup: nextSetup,
+            seed: series.seed,
+            simSpeed: this.game.simSpeed,
+            series: nextSeries
+        }));
+    }
+
+    downloadSeriesReport() {
+        const series = this.game && this.game.arenaSeries;
+        if (!series || typeof WarSeason === 'undefined') return;
+        const payload = {
+            kind: 'war-series-report/1',
+            scale: typeof WarEval !== 'undefined' ? WarEval.SCALE : null,
+            seed: series.seed,
+            totalMatches: series.total,
+            completedMatches: (series.matches || []).length,
+            pooled: WarSeason.poolSeries(series.matches || []),
+            matches: series.matches || []
+        };
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `war-series-${series.seed}-${(series.matches || []).length}of${series.total}.json`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     // ---- In-match transcript viewer ------------------------------------------
@@ -6390,7 +6700,12 @@ class UIManager {
         // Resuming at the speed it was already set to is a real change (paused -> that
         // speed), so the early-out only applies when nothing at all would happen.
         if (mult === cur && !wasPaused) return;
-        const apply = () => { this.game.setSimSpeed(mult); this.updateSimSpeedButton(); };
+        const apply = () => {
+            this.game.setSimSpeed(mult);
+            this.game._lastArenaSimSpeed = this.game.simSpeed;
+            try { if (typeof localStorage !== 'undefined') localStorage.setItem('war.arenaSimSpeed', String(this.game.simSpeed)); } catch (e) { /* private window */ }
+            this.updateSimSpeedButton();
+        };
         if (mult > cur && !this._simSpeedWarned) {
             this._simSpeedWarned = true;
             this.showConfirm(t('spec.simSpeedWarn'), apply, {
@@ -6884,17 +7199,29 @@ class UIManager {
         }
     }
 
-    async downloadTranscripts() {
+    async downloadTranscripts(opts = null) {
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         if (!rec || !rec.hasData()) return;
+        if (typeof document === 'undefined' || !document.body || typeof document.body.appendChild !== 'function'
+            || typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') return;
         try {
             const blob = await rec.exportBlob();
             const a = document.createElement('a');
             const url = URL.createObjectURL(blob);
+            const ser = this.game && this.game.arenaSeries;
+            const roundTag = ser && ser.total > 1 ? `-r${ser.round}of${ser.total}` : '';
+            const filename = `${rec.matchId || 'match'}${roundTag}-transcripts.jsonl`;
             a.href = url;
-            a.download = `${rec.matchId || 'match'}-transcripts.jsonl`;
+            a.download = filename;
             document.body.appendChild(a); a.click(); a.remove();
             setTimeout(() => URL.revokeObjectURL(url), 4000);
+            if (opts && opts.auto) {
+                const note = document.getElementById('summaryTranscriptNote');
+                if (note) {
+                    note.style.display = '';
+                    note.textContent = t('sum.transcriptAutoSaved', { file: filename, turns: rec.turnsRecorded() });
+                }
+            }
         } catch (e) {
             console.warn('[transcript] download failed', e);
         }
@@ -6906,6 +7233,11 @@ class UIManager {
     // as the backstop for the paths that never reach here at all (a crash, a tab
     // closed outright).
     async leaveArenaSummary(toMainMenu) {
+        this.clearSeriesTimer();
+        if (this.game && this.game.arenaSeries && !this.game.arenaSeries.stopped && this.game.arenaSeries.round < this.game.arenaSeries.total) {
+            this.game.arenaSeries.stopped = true;
+            if (this.game.finishSeriesMcpSeats) this.game.finishSeriesMcpSeats();
+        }
         const rec = this.game.openAIAIManager && this.game.openAIAIManager.transcripts;
         try { if (rec) await rec.purge(); } catch (e) { /* leaving anyway */ }
         if (toMainMenu) this.game.reloadToMenu();

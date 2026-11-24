@@ -673,6 +673,160 @@ class OpenAIAIManager {
         if (/Unknown action/i.test(actionResult) || /must be the action NAME as a string/i.test(actionResult)) return 'invalid';
         return OpenAIAIManager.UNFOREWARNED.has(code) ? 'contended' : 'avoidable';
     }
+    // Snapshot-grounded stale-state check: returns true when a command rejected live
+    // was actually valid against the snapshot (`st`) the model received — minus any
+    // resources/pop/entities consumed by earlier commands in the SAME turn (`priorCmds`).
+    // Used both live (so actionsContended / transcript verdicts reflect world drift during
+    // 5–180s think windows) and mirrored identically in WarEval (js/eval/ledger.js).
+    static isStaleAgainstSnapshot(st, action, params, code, priorCmds = [], actionResult = '', requiredBuilding = null) {
+        if (!st || typeof st !== 'object' || !code) return false;
+        const p = params && typeof params === 'object' ? params : {};
+        const prior = Array.isArray(priorCmds) ? priorCmds : [];
+        const fb = Array.isArray(st.friendlyBuildings) ? st.friendlyBuildings : [];
+        const fu = Array.isArray(st.friendlyUnits) ? st.friendlyUnits : [];
+        const eu = Array.isArray(st.enemyUnits) ? st.enemyUnits : [];
+        const eb = Array.isArray(st.enemyBuildings) ? st.enemyBuildings : [];
+        const pop = st.population && typeof st.population === 'object' ? st.population : null;
+        const wk = st.workers && typeof st.workers === 'object' ? st.workers : null;
+
+        const hasFinishedTC = fb.some(b => b && b.type === 'town_center' && (!b.state || b.state === 'complete'));
+        const unitCountByType = {};
+        const unitHandles = new Set();
+        let combatInState = 0;
+        for (const u of fu) {
+            if (!u) continue;
+            const t = String(u.type || '').toLowerCase();
+            if (t) unitCountByType[t] = (unitCountByType[t] || 0) + 1;
+            if (u.id != null) unitHandles.add(String(u.id));
+            if (u.handle != null) unitHandles.add(String(u.handle));
+            if (t !== 'worker' && t !== 'priest' && t !== 'trebuchet') combatInState++;
+        }
+        const totalWorkers = wk && typeof wk.total === 'number' ? wk.total : (unitCountByType.worker || 0);
+
+        switch (code) {
+            case 'populationLimit': {
+                if (!pop || typeof pop.used !== 'number' || typeof pop.capacityNow !== 'number') return false;
+                const priorTrains = prior.filter(c => c && c.action === 'train_unit' && c.ok !== false)
+                    .reduce((s, c) => s + Math.max(1, Number((c.params && c.params.count) || 1) || 1), 0);
+                return (pop.used + priorTrains) < pop.capacityNow;
+            }
+            case 'noTCTrain':
+            case 'noTCWorkers':
+                return hasFinishedTC;
+            case 'unitBuildingNotBuilt': {
+                let req = requiredBuilding;
+                if (!req && actionResult) {
+                    const m = String(actionResult).match(/requires ([a-z_]+), not built/i);
+                    if (m) req = m[1];
+                }
+                if (req && fb.some(b => b && b.type === req)) return true;
+                const ut = p.unitType ? String(p.unitType) : null;
+                if (ut && st.units && Array.isArray(st.units.trainable)) {
+                    if (st.units.trainable.some(x => x && (x === ut || x.id === ut || x.type === ut))) return true;
+                }
+                return false;
+            }
+            case 'buildingUnderConstr': {
+                let req = requiredBuilding;
+                if (!req && actionResult) {
+                    const m = String(actionResult).match(/\[ERROR\]\s*([a-z_]+):\s*still under construction/i);
+                    if (m) req = m[1];
+                }
+                return !!(req && fb.some(b => b && b.type === req && (!b.state || b.state === 'complete')));
+            }
+            case 'nothingToRepair':
+            case 'noDamagedNear': {
+                const damaged = fb.filter(b => b && b.healthPct != null && b.healthPct < 100);
+                if (!damaged.length) return false;
+                if (code === 'nothingToRepair') return true;
+                const tx = Number(p.targetX), tz = Number(p.targetZ);
+                if (Number.isFinite(tx) && Number.isFinite(tz)) {
+                    return damaged.some(b => b.x != null && b.z != null && ((b.x - tx) * (b.x - tx) + (b.z - tz) * (b.z - tz)) <= 3600);
+                }
+                return true;
+            }
+            case 'noMilitaryMove':
+            case 'noMilitaryAttack':
+                return combatInState > 0;
+            case 'moveNoMatch':
+            case 'attackNoMatch': {
+                if (Array.isArray(p.unitIds) && p.unitIds.length) {
+                    return p.unitIds.some(id => unitHandles.has(String(id).replace(/^#/, '')));
+                }
+                if (p.units && typeof p.units === 'object') {
+                    return Object.keys(p.units).some(k => {
+                        const t = String(k).trim().toLowerCase();
+                        return (unitCountByType[t] || 0) > 0 || (t === 'infantry' || t === 'cavalry' || t === 'ranged' ? combatInState > 0 : false);
+                    });
+                }
+                return false;
+            }
+            case 'noUnitExplore': {
+                if (Array.isArray(p.unitIds) && p.unitIds.length) {
+                    return p.unitIds.some(id => unitHandles.has(String(id).replace(/^#/, '')));
+                }
+                const pt = p.unitType ? String(p.unitType).trim().toLowerCase() : null;
+                if (pt) return (unitCountByType[pt] || 0) > 0;
+                return fu.length > 0;
+            }
+            case 'noUnitDelete': {
+                const priorDel = prior.some(c => c && c.action === 'delete_unit' && c.ok !== false);
+                if (priorDel) return false;
+                const ut = String(p.unitType || 'worker').trim().toLowerCase();
+                return (unitCountByType[ut] || 0) > 0;
+            }
+            case 'noBuildingDestroy': {
+                const priorDes = prior.some(c => c && c.action === 'destroy_building' && c.ok !== false);
+                if (priorDes) return false;
+                const bt = p.buildingType ? String(p.buildingType) : null;
+                return !!(bt && fb.some(b => b && b.type === bt));
+            }
+            case 'noWorkersBuild':
+            case 'noWorkersRepair':
+            case 'noWorkersReassign':
+            case 'noWorkersForFarms': {
+                if (totalWorkers <= 0) return false;
+                const free = wk ? ((wk.idle || 0) + (wk.food || 0) + (wk.wood || 0) + (wk.gold || 0) + (wk.stone || 0)) : totalWorkers;
+                if (free <= 0) return false;
+                // Only forgive as world-drift if no earlier command in the same turn already reassigned/consumed workers
+                const priorWorkerCmd = prior.some(c => c && c.ok !== false
+                    && (c.action === 'assign_workers' || c.action === 'build_structure' || c.action === 'repair_building'));
+                return !priorWorkerCmd;
+            }
+            case 'targetNotFound':
+            case 'targetOutOfSight': {
+                const tid = p.targetId != null ? String(p.targetId) : '';
+                if (!tid) return false;
+                if (eu.some(u => u && String(u.id) === tid && u.visible !== false)) return true;
+                if (eb.some(b => b && String(b.id) === tid)) return true;
+                return false;
+            }
+            case 'assignFromEmpty': {
+                const src = p.from || p.source;
+                if (!src || !wk || typeof wk[src] !== 'number' || wk[src] <= 0) return false;
+                const priorFrom = prior.some(c => c && c.action === 'assign_workers' && c.ok !== false);
+                return !priorFrom;
+            }
+            case 'alreadyResearching': {
+                const running = !!(st.research && st.research.current);
+                if (running) return false;
+                const priorRes = prior.some(c => c && c.action === 'research_tech' && c.ok !== false);
+                return !priorRes;
+            }
+            default:
+                return false;
+        }
+    }
+    static hasAnyShownFriendlyHandle(st, unitIds) {
+        if (!st || !Array.isArray(st.friendlyUnits) || !Array.isArray(unitIds) || !unitIds.length) return true;
+        const handles = new Set();
+        for (const u of st.friendlyUnits) {
+            if (!u) continue;
+            if (u.id != null) handles.add(String(u.id));
+            if (u.handle != null) handles.add(String(u.handle));
+        }
+        return unitIds.some(id => handles.has(String(id).replace(/^#/, '')));
+    }
     // The command's outcome as the transcript records it: position, action, code, verdict.
     noteOutcome(controller, entry) {
         (controller._turnOutcomes || (controller._turnOutcomes = [])).push(entry);
@@ -683,6 +837,7 @@ class OpenAIAIManager {
     takeOutcomes(controller) {
         const list = (controller._turnOutcomes || []).map((o, i) => Object.assign({ n: i + 1 }, o));
         controller._turnOutcomes = [];
+        controller._turnPriorCmds = [];
         return list;
     }
 
@@ -3048,6 +3203,10 @@ class OpenAIAIManager {
         controller.seat._idleTaken = 0;
         controller.seat._shownTargetIds = p.shownTargetIds;
         controller.seat._rememberedTargetIds = p.rememberedTargetIds;
+        controller._shownTargetIds = p.shownTargetIds;
+        controller._rememberedTargetIds = p.rememberedTargetIds;
+        controller._shownState = p.shownState || null;
+        controller._turnPriorCmds = [];
         controller._shownBuildings = p.shownBuildings;
         controller._shownResearched = p.shownResearched;
         controller._shownResearching = p.shownResearching;
@@ -4221,6 +4380,7 @@ class OpenAIAIManager {
             threats: threatsObj,
             gameStats: gameStatsObj
         };
+        pending.shownState = state;
         return { state, pending };
     }
 
@@ -6550,6 +6710,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         // Broken tool-call markup in the arguments: not run and not repaired (the harness
         // does not play for the model) -- told, so it sends the commands again. Checked
         // before the argument checks, so WAR and the Platform answer it the same way.
+        const prevActive = this._activeController;
+        this._activeController = controller;
+        try {
         if (OpenAIAIManager.hasRawToolMarkup(params)) {
             this.outcome('log.out.rawToolMarkup', {});
             actionResult = `[ERROR] ${action}: its arguments contain raw tool-call markup (<tool_call>, <arg_key>, <arg_value>), so this call was cut apart: nothing written inside it was run, including any command after the break. Send each command as its own tool call with plain JSON arguments.`;
@@ -6700,7 +6863,23 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             const rejected = actionResult.startsWith('[ERROR]');
             const code = String((this._pendingOutcome && this._pendingOutcome.code) || '')
                 .replace(/^log\.out\./, '');
-            const verdict = OpenAIAIManager.verdictFor(actionResult, code);
+            let verdict = OpenAIAIManager.verdictFor(actionResult, code);
+            let stale = false;
+            const snap = controller._shownState || (controller.seat && controller.seat._shownState) || null;
+            const prior = controller._turnPriorCmds || (controller._turnPriorCmds = []);
+            if (verdict === 'avoidable' && snap) {
+                const reqBld = (code === 'unitBuildingNotBuilt' || code === 'buildingUnderConstr') && params && params.unitType
+                    ? this.requiredBuildingForUnit(params.unitType, ai && ai.civilization) : null;
+                if (OpenAIAIManager.isStaleAgainstSnapshot(snap, action, params || {}, code, prior, actionResult, reqBld)) {
+                    verdict = 'contended';
+                    stale = true;
+                }
+            } else if (verdict === 'contended' && code === 'orderedUnitsGone' && snap
+                && params && Array.isArray(params.unitIds) && params.unitIds.length
+                && !OpenAIAIManager.hasAnyShownFriendlyHandle(snap, params.unitIds)) {
+                verdict = 'avoidable';
+            }
+            prior.push({ action, params: params || {}, ok: verdict === 'ok' });
             if (controller.stats) {
                 const st = controller.stats;
                 if (verdict === 'invalid') st.invalidActions++;
@@ -6708,11 +6887,14 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 else if (verdict === 'avoidable') st.actionsRejected++;
                 else st.actionsSucceeded++;
             }
-            this.noteOutcome(controller, { action, code: code || null, verdict });
+            this.noteOutcome(controller, stale ? { action, code: code || null, verdict, stale: true } : { action, code: code || null, verdict });
             if (rejected) {
                 logEntry.failed = true;
                 logEntry.error = actionResult.replace(/^\[ERROR\]\s*/, '');
             }
+        }
+        } finally {
+            this._activeController = prevActive;
         }
 
         // Store a COMPACT, human-readable record of this decision for the feedback
@@ -6854,15 +7036,26 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         // ("Ägypter"), while ai.civilization is exactly what the model has been reading
         // in you.civilization all match. Model-facing text uses the identifier the model
         // holds — the same reason ownerName answers with the seat id.
+        const seriesOpts = (extra && extra.seriesOpts)
+            || (this.game && typeof this.game.seriesNextOpts === 'function' ? this.game.seriesNextOpts() : null);
+        const cont = !!(seriesOpts && seriesOpts.seriesContinues);
+        const ser = cont && seriesOpts.series ? seriesOpts.series : null;
+        const roundTag = ser ? `MATCH ${ser.round} OF ${ser.total}` : 'THIS MATCH';
+        const nextTag = ser ? `Match ${ser.nextRound || (ser.round + 1)} of ${ser.total}` : 'the next match';
         const who = ai.civilization;
         const head = (kind === 'defeated')
-            ? `THE MATCH IS OVER FOR YOU. You have been defeated as ${who}: nothing you have left can fight, build, or train a unit that could.`
-            : `THE MATCH HAS ENDED. ${extra && extra.won ? `You WON as ${who}.` : `You did not win. ${extra && extra.winner ? `${extra.winner} took it.` : ''}`}`;
-        const ask = [head,
-            'This is the final message you will receive; the game is closing and NOTHING you reply will be executed.',
-            'No action is expected and none will be carried out. There is nothing to play for and nothing to score.',
-            'If you have anything to say about how this went — what you were trying to do, what beat you, what you would',
-            'do differently — say it now, in your own words. Answer however you like.'].join(' ');
+            ? `${cont ? roundTag : 'THE MATCH'} IS OVER FOR YOU. You have been defeated as ${who}: nothing you have left can fight, build, or train a unit that could.`
+            : `${cont ? roundTag : 'THE MATCH'} HAS ENDED. ${extra && extra.won ? `You WON as ${who}.` : `You did not win. ${extra && extra.winner ? `${extra.winner} took it.` : ''}`}`;
+        const ask = cont
+            ? [head,
+                `DO NOT STOP PLAYING: ${nextTag} of this series starts next (with a rotated spawn seat and civilization).`,
+                `No game command from this message will execute for ${roundTag.toLowerCase()}.`,
+                `Briefly share your thoughts on ${roundTag.toLowerCase()} via final_word — what worked, what beat you, what you will adjust — and then immediately call wait_for_turn to play ${nextTag}.`].join(' ')
+            : [head,
+                'This is the final message you will receive; the game is closing and NOTHING you reply will be executed.',
+                'No action is expected and none will be carried out. There is nothing to play for and nothing to score.',
+                'If you have anything to say about how this went — what you were trying to do, what beat you, what you would',
+                'do differently — say it now, in your own words. Answer however you like.'].join(' ');
         const history = this.matchHistoryText(controller, ai);
         // The same context as a turn (b1035): its objective and plan and the rolling
         // history of its own turns, sized to its budget, then the final state, the
@@ -6900,7 +7093,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             if (OpenAIAIManager.resolveProvider(model) === 'mcp') {
                 const last = turns && turns.length ? turns[turns.length - 1] : null;
                 const msg = last && typeof last.content === 'string' ? last.content : JSON.stringify(last ? last.content : '');
-                text = String(await this.mcpLink(model.endpoint).finalWord(model.mcpToken, msg, abort.signal) || '').trim();
+                text = String(await this.mcpLink(model.endpoint).finalWord(model.mcpToken, msg, abort.signal, seriesOpts) || '').trim();
                 if (!text) error = abort.signal.aborted ? 'no answer within ' + Math.round(this.finalWordTimeoutMs() / 1000) + 's' : 'no final word';
             } else {
             const res = await fetch(req.url, {
@@ -6997,7 +7190,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         return list.length;
     }
 
-    collectFinalWords(reason, winnerAi, onProgress) {
+    collectFinalWords(reason, winnerAi, onProgress, seriesOpts = null) {
         const pend = (this.aiControllers || []).filter(c => c && !c._finalWordAsked);
         const total = pend.length;
         let done = 0;
@@ -7009,7 +7202,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         const jobs = pend.map(c => {
             const won = !!(winnerAi && c.aiPlayer === winnerAi);
             const winner = winnerAi ? this.game.ownerName(winnerAi) : null;
-            return this.askFinalWord(c, 'ended', { won, winner, reason })
+            return this.askFinalWord(c, 'ended', { won, winner, reason, seriesOpts })
                 .catch(e => { console.warn('[OpenAIAI] final word failed', e); return null; })
                 .then(v => { done++; tick(); return v; });
         });
@@ -8285,6 +8478,8 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
     }
 
     wasShownTarget(ai, targetId) {
+        const active = this._activeController && this._activeController.aiPlayer === ai ? this._activeController : null;
+        if (active && active._shownTargetIds) return active._shownTargetIds.has(String(targetId));
         const ctrl = this.aiControllers.find(c => c.aiPlayer === ai);
         return !!(ctrl && ctrl._shownTargetIds && ctrl._shownTargetIds.has(String(targetId)));
     }
@@ -10341,7 +10536,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
     // resolution a no-op. Called when a match ends or a new one starts, so the
     // previous match's slow requests can't spend more quota or spawn stray units
     // into the next match's shared scene.
-    stop() {
+    stop(seriesOpts = null) {
         this._stopped = true;
         for (const c of this.aiControllers) {
             this.abortLanes(c, 'match stopped');
@@ -10356,7 +10551,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 const link = (this._mcpLinks && this._mcpLinks.get(base))
                     || (typeof WarMcpLink === 'function' ? WarMcpLink.shared(base) : null);
                 if (link) {
-                    try { link.over(c.model.mcpToken, { defeated: !!c.defeated }); }
+                    try { link.over(c.model.mcpToken, { defeated: !!c.defeated }, seriesOpts); }
                     catch (e) { /* the hub is gone: nothing waits on it */ }
                 }
             }

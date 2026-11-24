@@ -109,9 +109,9 @@ test('the scores of a running match never hold the game up: a budget, the newest
     let rounds = 0;
     while (p.timers.length && rounds++ < 50) p.timers.shift().fn();
     assert.deepEqual([rounds, p.ledger._live.pending, p.timers.length], [18, 0, 0]);
-    // Scoring the match is cheap enough to do so: Scale v4 drops heuristic step scanning completely.
+    // Scoring the match is cheap enough to do so: Scale v4.1 drops heuristic step scanning completely.
     const src = fs.readFileSync(path.join(root, 'js/eval/ledger.js'), 'utf8');
-    assert.match(src, /SCALE: 'v4'/);
+    assert.match(src, /SCALE: 'v4\.1'/);
     assert.doesNotMatch(src, /checksOf|settle = 600/);
 });
 
@@ -161,7 +161,7 @@ test('at full size the models stand side by side, and the sections run gameplay,
     const { u, els, ledger } = match();
     u.toggleBenchFull(true);
     const html = els.benchFull.innerHTML;
-    assert.match(html, /^<div class="bf-box" onclick="event\.stopPropagation\(\)"><div class="bf-head"><b>bench\.matrix<\/b><span class="bf-pill">bench\.mode\.realtime<\/span><span class="bf-pill">v4<\/span><button type="button" class="bf-close" onclick="game\.ui\.toggleBenchFull\(false\)"[^>]*>✕<\/button><\/div><div class="bf-body"><div class="bb" style="--n:2">/);
+    assert.match(html, /^<div class="bf-box" onclick="event\.stopPropagation\(\)"><div class="bf-head"><b>bench\.matrix<\/b><span class="bf-pill">bench\.mode\.realtime<\/span><span class="bf-pill">v4\.1<\/span><button type="button" class="bf-close" onclick="game\.ui\.toggleBenchFull\(false\)"[^>]*>✕<\/button><\/div><div class="bf-body"><div class="bb" style="--n:2">/);
     // A column a model: every row holds one cell a model, behind one label.
     const rows = rowsOf(html);
     assert.ok(rows.length >= 25, rows.length + ' rows');
@@ -314,6 +314,7 @@ function troubled() {
         9: [['conjure', {}, 'invalid', 'notACommand']], 10: [['build_structure', {}, 'avoidable', null]] };
     for (let n = 1; n <= 14; n++) {
         const line = JSON.parse(decision('a', n * 60, { turn: n, orders: orders[n] || [militia] }));
+        if (n >= 5 && n <= 8) line.state.population = { used: 10, capacityNow: 10, capacityCeiling: 100 };
         if (n >= 11 && n <= 12) line.state.threats.underAttack = [{ type: 'barracks', x: 100, z: 100, attackers: [{ type: 'militia', x: 104, z: 100, owner: 'maya-2' }] }];
         ledger.addLine(JSON.stringify(line));
     }
@@ -344,6 +345,7 @@ test('the inspector: the decision a loop began at, the constraints ignored, the 
     for (let n = 1; n <= 3; n++) {
         const l = JSON.parse(decision('a', n * 60, { turn: n, orders: [['wait', {}, 'ok']] }));
         l.state.workers = { total: 4, idle: 2 };
+        l.state.friendlyBuildings = [{ type: 'town_center', state: 'complete', x: 0, z: 0 }];
         stall.addLine(JSON.stringify(l));
     }
     const stallTrace = stall.trace('a', WarBench.classify);

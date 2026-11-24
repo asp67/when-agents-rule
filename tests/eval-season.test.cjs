@@ -122,7 +122,7 @@ test('an entry is what a transcript says: conditions by the one rule, placement 
     const e = WarSeason.entryOf(text, { evaluator: WarEval, conditions: C, source: 'sample', file });
     const lines = text.split('\n').filter(Boolean).map(l => JSON.parse(l));
     const header = lines.find(o => o.type === 'match'), contract = lines.find(o => o.type === 'contract'), results = lines.find(o => o.type === 'results');
-    assert.deepEqual([e.matchId, e.build, e.scale, e.mapSeed, e.layout, e.players, e.source, e.file], [header.matchId, 1147, 'v4', 'rmw6l1lw4lumm', 'greek,persian', 2, 'sample', file]);
+    assert.deepEqual([e.matchId, e.build, e.scale, e.mapSeed, e.layout, e.players, e.source, e.file], [header.matchId, 1147, 'v4.1', 'rmw6l1lw4lumm', 'greek,persian', 2, 'sample', file]);
     const profile = WarEval.profileOf(text);
     for (const s of e.seats) {
         const p = profile.seats.find(x => x.id === s.id), r = results.ranking.find(x => x.playerId === s.id);
@@ -143,16 +143,16 @@ test('the shipped matches: three meetings of two harnesses are a comparison, and
     const t = WarSeason.table(entriesOf(files));
     assert.deepEqual([t.matches, t.groups.length, t.alone.length, t.unrecorded.length], [3, 1, 0, 0]);
     const g = t.groups[0], hermes = row(g, 'HERMES MCP'), pi = row(g, 'pi MCP');
-    assert.deepEqual([g.id, g.protocol, g.builds, g.scale, hermes.matches, hermes.firsts, pi.firsts], ['ba441132b2b0', 'turn-based', [1147], 'v4', 3, 3, 0]);
+    assert.deepEqual([g.id, g.protocol, g.builds, g.scale, hermes.matches, hermes.firsts, pi.firsts], ['ba441132b2b0', 'turn-based', [1147], 'v4.1', 3, 3, 0]);
     // Hermes won all three and is separated on Tactical and Dominance/Strategy; WAR Score intervals still touch across 3 matches.
     assert.deepEqual([g.leaders.strategy === hermes.key, g.leaders.tactical === hermes.key, g.leaders.index, g.leaders.grounding, g.leaders.macro], [true, true, null, null, null]);
-    assert.deepEqual([hermes.parts.index.mean, pi.parts.index.mean, WarSeason.separated(hermes.parts.index, pi.parts.index)], [85.8, 44.3, false]);
+    assert.deepEqual([hermes.parts.index.mean, pi.parts.index.mean, WarSeason.separated(hermes.parts.index, pi.parts.index)], [85.8, 46, false]);
     assert.deepEqual([hermes.parts.tactical.mean, pi.parts.tactical.mean, hermes.parts.strategy.mean, pi.parts.strategy.mean], [63.8, 36.7, 86.1, 13.9]);
     assert.deepEqual(g.headToHead.map(h => [WarSeason.label(h.a), WarSeason.label(h.b), h.met, h.aAhead, h.bAhead]), [['HERMES MCP', 'pi MCP', 3, 3, 0]]);
     assert.deepEqual(g.swaps, []);
     const text = report(t);
     assert.match(text, /3 matches: 1 sets of conditions with something to add up or compare/);
-    assert.match(text, /CONDITIONS ba441132b2b0 +turn-based, build 1147, scale v4, 3 matches/);
+    assert.match(text, /CONDITIONS ba441132b2b0 +turn-based, build 1147, scale v4\.1, 3 matches/);
     assert.match(text, /HERMES MCP +3 +3 .*63\.8 \[52\.9 to 74\.6\] \* +86\.1 \[61\.0 to 100\.0\] \* +85\.8 \[75\.8 to 95\.9\]/);
     assert.match(text, /\* ahead of every other model here: the intervals do not touch\. Elsewhere: not separated yet\./);
     assert.match(text, /HERMES MCP v pi MCP: met 3, HERMES MCP placed above 3, pi MCP 0/);

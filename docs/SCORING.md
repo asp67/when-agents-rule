@@ -1,8 +1,11 @@
-# The evaluation profile (`Scale v4`)
+# The evaluation profile (`Scale v4.1`)
 
 WAR scores a model seat on how it played across five orthogonal RTS dimensions, measured deterministically from the recorded match transcript (`js/eval/ledger.js`) and nothing else. Live on-screen panels and post-match exports read the exact same ledger, so numbers shown during a match never diverge from exported reports or season tables.
 
-**Status: Scale `v4`.** Replaces `v3` (which suffered from a 10× Grounding cliff at 90% validity, offensive-army Tactical false positives, brittle English-regex Planning/Follow-through grading, 67-at-tie / 4-player-inflated Strategy, and duration-biased cumulative token ratios). `v4` introduces fixed weights (`20 / 25 / 15 / 15 / 25`), situational `3/turn` command batching, passive-vs-justified wait detection, home-asset raid filtering, Bradley-Terry dominance trajectories, long-horizon context drift, and duration-invariant cognitive efficiency.
+**Status: Scale `v4.1`.** Builds on `v4` (`20 / 25 / 15 / 15 / 25` fixed weights, situational `3/turn` command batching, passive-vs-justified waits, home-asset raid filtering, Bradley-Terry dominance trajectories, long-horizon context drift, and duration-invariant cognitive efficiency) with three deterministic fairness improvements:
+1. **Snapshot-grounded stale-state reconciliation:** Rejections whose preconditions were valid in the exact `o.state` snapshot the model received (after subtracting earlier commands in the same reply) are classified as `contended` (stale world drift), not penalized as model errors — while intra-turn self-conflicts and hallucinated handles (`orderedUnitsGone` for IDs not in `o.state`) remain `avoidable`.
+2. **Remnant-mode survival & post-elimination Dominance cap:** Cornered seats without a Town Center or production buildings that hide surviving units and call `wait` are not penalized as passive waiters or stranded idle workers, and post-elimination `pw = 0` ticks in Dominance are capped at `POST_ELIM_CAP_SEC = 300` seconds so dying early no longer depends on how long survivors stalemate afterward.
+3. **Fixed-seed rotating Arena Series:** Supports multi-match series (`2–4` matches) on a locked map seed with rotating spawn seats and civilizations, pooled sufficient-statistic pillar aggregation, and deterministic regularized Plackett-Luce ratings (`WarSeason.poolSeries` / `WarSeason.plackettLuce`).
 
 > Always inspect the five pillar bars and their underlying raw facts beside `WAR Score`. One match is one sample against specific opponents on one map; cross-match comparisons belong in the Season Table under matching conditions (`WarConditions`).
 

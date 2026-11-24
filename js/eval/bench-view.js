@@ -598,7 +598,8 @@
         const modeKey = (ledger && ledger.match && ledger.match.mode === 'lockstep') ? 'bench.mode.lockstep' : 'bench.mode.realtime';
         const warmup = seats.some(s => s.warmup);
         const close = `<button type="button" class="bf-close" onclick="game.ui.toggleBenchFull(false)" title="${esc(t('bench.b.close'))}" aria-label="${esc(t('bench.b.close'))}">✕</button>`;
-        const pills = `<span class="bf-pill">${esc(t(modeKey))}</span><span class="bf-pill">v4</span>`
+        const scale = (prof && prof.scale) || (typeof WarEval !== 'undefined' && WarEval.SCALE) || 'v4.1';
+        const pills = `<span class="bf-pill">${esc(t(modeKey))}</span><span class="bf-pill">${esc(scale)}</span>`
             + (warmup ? `<span class="bf-pill is-warmup">${esc(t('bench.warmup'))}</span>` : '');
         return `<div class="bf-box" onclick="event.stopPropagation()"><div class="bf-head"><b>${esc(t('bench.matrix'))}</b>${pills}${close}</div>`
             + `<div class="bf-body">${this.benchBoardHtml(ledger, data, { link })}</div></div>`;

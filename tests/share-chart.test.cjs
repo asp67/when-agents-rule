@@ -137,7 +137,7 @@ test('the board: the match as a picture, against speed or tokens, with the order
     const idx = id => ledger.profile().seats.find(s => s.id === id).index.value;
     // Seat a: four seconds a decision. Seat b is a harness that ended its turns in 12 ms: no speed, so it is named under the plot.
     assert.deepEqual(plain(speed.points.map(p => [p.name, p.x, p.y, p.harness])), [['Seat a', 4, idx('a'), false], ['Seat b', null, idx('b'), true]]);
-    assert.deepEqual([speed.legend.raw, speed.legend.harness, speed.foot[1]], ['bench.h.raw', 'bench.h.harness', 'share.foot{"scale":"v4"}']);
+    assert.deepEqual([speed.legend.raw, speed.legend.harness, speed.foot[1]], ['bench.h.raw', 'bench.h.harness', 'share.foot{"scale":"v4.1"}']);
     assert.match(speed.foot[0], /^When Agents Rule · github\.com\//);
     // Default X-axis is output tokens per valid order, with Pareto sweet-spot quadrant highlighted.
     const outSpec = u.benchShareSpec(ledger);

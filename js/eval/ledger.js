@@ -41,18 +41,29 @@
         'town_center', 'barracks', 'archery_range', 'stable', 'siege_workshop', 'academy', 'temple'
     ]);
 
+    const UNIT_TRAINER_MAP = Object.freeze({
+        worker: 'town_center',
+        militia: 'barracks', warrior: 'barracks', champion: 'barracks',
+        phalanx: 'barracks', hoplite: 'barracks', immortal: 'barracks', berserker: 'barracks', huskarl: 'barracks',
+        scout_cavalry: 'stable', cavalry: 'stable', heavy_cavalry: 'stable', war_chariot: 'stable', horse_carriage: 'stable',
+        archer: 'archery_range', crossbowman: 'archery_range', elite_archer: 'archery_range',
+        engineer: 'academy', trebuchet: 'academy',
+        priest: 'temple'
+    });
+
     const BLD_VALUE = { 'building-lost': 150, 'town-center-lost': 600, 'wonder-lost': 1000 };
     const BLD_COUNT = { 'building-lost': 1, 'town-center-lost': 4, 'wonder-lost': 6 };
 
     const WarEval = {
         VERSION: 1,
-        SCALE: 'v4',
+        SCALE: 'v4.1',
         SCORED: ['grounding', 'macro', 'spatial', 'tactical', 'strategy'],
         INDEX_PARTS: ['grounding', 'macro', 'spatial', 'tactical', 'strategy'],
         WEIGHTS: Object.freeze({ grounding: 0.20, macro: 0.25, spatial: 0.15, tactical: 0.15, strategy: 0.25 }),
         WARMUP_SEC: 300,
         WARMUP_RATED: 15,
         DRIFT_MIN_DECISIONS: 16,
+        POST_ELIM_CAP_SEC: 300,
         LOOP_MIN: 3,
         STALL_MIN: 3,
         REPEAT_WINDOW: 2,
@@ -258,11 +269,20 @@
             : 0;
         const bankingForAge = !!(bankingTarget > 0 && (resTotal == null || resTotal < 1400));
 
+        // Remnant / survival detection: when a seat has lost its Town Center and all production
+        // buildings and cannot immediately rebuild a TC, hiding surviving units and calling wait
+        // is legitimate guerrilla survival — not passive idling.
+        const hasFinishedTC = blds ? blds.some(b => b && b.type === 'town_center' && (!b.state || b.state === 'complete')) : true;
+        const hasProdBld = blds ? blds.some(b => b && (!b.state || b.state === 'complete') && TRAINER_BUILDINGS.has(String(b.type))) : true;
+        const canRebuildTC = !!(workers && workers.total > 0 && res
+            && res.food >= 100 && res.wood >= 100 && res.stone >= 100 && res.gold >= 100);
+        const remnant = (blds != null) && !hasFinishedTC && !hasProdBld && !canRebuildTC;
+
         // Situational open fronts for parallel command batching (0..maxCmds)
         let open = 0;
-        if (workers && workers.idle > 0) open++;
-        if (pop && pop.cap != null && pop.cap < pop.ceiling && pop.used >= pop.cap - 1 && (res ? res.wood : 0) >= 50) open++;
-        if (homeThreat) open++;
+        if (workers && workers.idle > 0 && (hasFinishedTC || canRebuildTC)) open++;
+        if (pop && pop.cap != null && pop.cap > 0 && pop.cap < pop.ceiling && pop.used >= pop.cap - 1 && (res ? res.wood : 0) >= 50) open++;
+        if (homeThreat && !remnant) open++;
         if (canAdvance) open++;
         if (!bankingForAge && st.research && !st.research.current && Array.isArray(st.research.available)) {
             const canTech = st.research.available.some(a => {
@@ -285,8 +305,195 @@
         return {
             workers, pop, resTotal, bankingTarget,
             bldCount: blds ? blds.length : null,
-            techCount, exploredPct, oppsTotal, oppsDiscovered, openFronts
+            techCount, exploredPct, oppsTotal, oppsDiscovered, openFronts,
+            hasFinishedTC, canRebuildTC, remnant
         };
+    }
+
+    // Snapshot-grounded stale-state reconciliation (mirrors OpenAIAIManager.isStaleAgainstSnapshot).
+    // Evaluates each rejected command against the exact `o.state` snapshot the model received minus
+    // any resources/pop/entities consumed by earlier commands in the SAME turn, so world drift during
+    // 5–180s think windows is classified as `contended` (stale) while intra-turn self-conflicts and
+    // genuinely hallucinated handles (`orderedUnitsGone` for IDs never in `o.state`) remain `avoidable`.
+    function rawCommandList(parsed) {
+        if (!parsed || typeof parsed !== 'object') return [];
+        if (Array.isArray(parsed.commands)) return parsed.commands;
+        if (Array.isArray(parsed.actions)) return parsed.actions;
+        return parsed.action ? [parsed] : [];
+    }
+
+    function trainableIncludes(st, unitType) {
+        if (!st || !unitType) return false;
+        const tr = st.units && st.units.trainable ? st.units.trainable : st.trainableUnits;
+        if (!tr) return false;
+        const hit = x => x && (x === unitType || x.id === unitType || x.type === unitType);
+        if (Array.isArray(tr)) return tr.some(hit);
+        if (typeof tr === 'object') {
+            for (const k in tr) {
+                const v = tr[k];
+                if (Array.isArray(v) && v.some(hit)) return true;
+                if (v && typeof v === 'object') {
+                    for (const sub in v) if (Array.isArray(v[sub]) && v[sub].some(hit)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function reconcileOutcomesWithState(st, parsed, outcomes) {
+        if (!outcomes || !outcomes.length || !st || typeof st !== 'object') return outcomes;
+        const rawCmds = rawCommandList(parsed);
+        const hasFb = Array.isArray(st.friendlyBuildings);
+        const hasFu = Array.isArray(st.friendlyUnits);
+        const fb = hasFb ? st.friendlyBuildings : [];
+        const fu = hasFu ? st.friendlyUnits : [];
+        const eu = Array.isArray(st.enemyUnits) ? st.enemyUnits : [];
+        const eb = Array.isArray(st.enemyBuildings) ? st.enemyBuildings : [];
+        const pop = st.population && typeof st.population === 'object' ? st.population : null;
+        const wk = st.workers && typeof st.workers === 'object' ? st.workers : null;
+
+        const hasFinishedTC = hasFb && fb.some(b => b && b.type === 'town_center' && (!b.state || b.state === 'complete'));
+        const unitCountByType = {};
+        const unitHandles = new Set();
+        let combatInState = 0;
+        for (const u of fu) {
+            if (!u) continue;
+            const t = String(u.type || '').toLowerCase();
+            if (t) unitCountByType[t] = (unitCountByType[t] || 0) + 1;
+            if (u.id != null) unitHandles.add(String(u.id));
+            if (u.handle != null) unitHandles.add(String(u.handle));
+            if (t !== 'worker' && t !== 'priest' && t !== 'trebuchet') combatInState++;
+        }
+        const totalWorkers = wk && typeof wk.total === 'number' ? wk.total : (unitCountByType.worker || 0);
+        const damagedBlds = fb.filter(b => b && b.healthPct != null && b.healthPct < 100);
+
+        const prior = [];
+        return outcomes.map((x, idx) => {
+            const cmd = rawCmds[idx] || {};
+            const p = (cmd && cmd.params && typeof cmd.params === 'object') ? cmd.params : (cmd || {});
+            const action = x.action || (cmd && cmd.action ? String(cmd.action) : null);
+            let verdict = x.verdict;
+            let stale = !!x.stale;
+            const code = x.code;
+
+            if (verdict === 'avoidable' && code) {
+                let isStale = false;
+                switch (code) {
+                    case 'populationLimit': {
+                        if (pop && typeof pop.used === 'number' && typeof pop.capacityNow === 'number') {
+                            const priorTrains = prior.filter(c => c.action === 'train_unit' && c.ok !== false)
+                                .reduce((s, c) => s + Math.max(1, Number((c.params && c.params.count) || 1) || 1), 0);
+                            isStale = (pop.used + priorTrains) < pop.capacityNow;
+                        }
+                        break;
+                    }
+                    case 'noTCTrain':
+                    case 'noTCWorkers':
+                        isStale = hasFinishedTC;
+                        break;
+                    case 'unitBuildingNotBuilt': {
+                        const ut = p.unitType ? String(p.unitType) : null;
+                        const mapped = ut ? UNIT_TRAINER_MAP[ut.toLowerCase()] : null;
+                        isStale = !!(ut && (trainableIncludes(st, ut) || (mapped && hasFb && fb.some(b => b && b.type === mapped))));
+                        break;
+                    }
+                    case 'buildingUnderConstr': {
+                        const ut = p.unitType ? String(p.unitType) : null;
+                        const mapped = ut ? UNIT_TRAINER_MAP[ut.toLowerCase()] : null;
+                        isStale = !!(mapped && hasFb && fb.some(b => b && b.type === mapped && (!b.state || b.state === 'complete')));
+                        break;
+                    }
+                    case 'nothingToRepair':
+                    case 'noDamagedNear': {
+                        if (damagedBlds.length > 0) {
+                            if (code === 'nothingToRepair') isStale = true;
+                            else {
+                                const tx = Number(p.targetX), tz = Number(p.targetZ);
+                                isStale = (Number.isFinite(tx) && Number.isFinite(tz))
+                                    ? damagedBlds.some(b => b.x != null && b.z != null && Math.hypot(b.x - tx, b.z - tz) <= 60)
+                                    : true;
+                            }
+                        }
+                        break;
+                    }
+                    case 'noMilitaryMove':
+                    case 'noMilitaryAttack':
+                        isStale = combatInState > 0;
+                        break;
+                    case 'moveNoMatch':
+                    case 'attackNoMatch': {
+                        if (Array.isArray(p.unitIds) && p.unitIds.length) {
+                            isStale = p.unitIds.some(id => unitHandles.has(String(id).replace(/^#/, '')));
+                        } else if (p.units && typeof p.units === 'object') {
+                            isStale = Object.keys(p.units).some(k => {
+                                const t = String(k).trim().toLowerCase();
+                                return (unitCountByType[t] || 0) > 0 || ((t === 'infantry' || t === 'cavalry' || t === 'ranged') && combatInState > 0);
+                            });
+                        }
+                        break;
+                    }
+                    case 'noUnitExplore': {
+                        if (Array.isArray(p.unitIds) && p.unitIds.length) isStale = p.unitIds.some(id => unitHandles.has(String(id).replace(/^#/, '')));
+                        else if (p.unitType) isStale = (unitCountByType[String(p.unitType).trim().toLowerCase()] || 0) > 0;
+                        else isStale = fu.length > 0;
+                        break;
+                    }
+                    case 'noUnitDelete': {
+                        if (!prior.some(c => c.action === 'delete_unit' && c.ok !== false)) {
+                            const ut = String(p.unitType || 'worker').trim().toLowerCase();
+                            isStale = (unitCountByType[ut] || 0) > 0;
+                        }
+                        break;
+                    }
+                    case 'noBuildingDestroy': {
+                        if (!prior.some(c => c.action === 'destroy_building' && c.ok !== false)) {
+                            const bt = p.buildingType ? String(p.buildingType) : null;
+                            isStale = !!(bt && hasFb && fb.some(b => b && b.type === bt));
+                        }
+                        break;
+                    }
+                    case 'noWorkersBuild':
+                    case 'noWorkersRepair':
+                    case 'noWorkersReassign':
+                    case 'noWorkersForFarms': {
+                        const free = wk ? ((wk.idle || 0) + (wk.food || 0) + (wk.wood || 0) + (wk.gold || 0) + (wk.stone || 0)) : totalWorkers;
+                        const priorW = prior.some(c => c.ok !== false && (c.action === 'assign_workers' || c.action === 'build_structure' || c.action === 'repair_building'));
+                        isStale = totalWorkers > 0 && free > 0 && !priorW;
+                        break;
+                    }
+                    case 'targetNotFound':
+                    case 'targetOutOfSight': {
+                        const tid = p.targetId != null ? String(p.targetId) : '';
+                        if (tid) isStale = eu.some(u => u && String(u.id) === tid && u.visible !== false) || eb.some(b => b && String(b.id) === tid);
+                        break;
+                    }
+                    case 'assignFromEmpty': {
+                        const src = p.from || p.source;
+                        const priorF = prior.some(c => c.action === 'assign_workers' && c.ok !== false);
+                        isStale = !!(src && wk && typeof wk[src] === 'number' && wk[src] > 0 && !priorF);
+                        break;
+                    }
+                    case 'alreadyResearching': {
+                        const running = !!(st.research && st.research.current);
+                        const priorR = prior.some(c => c.action === 'research_tech' && c.ok !== false);
+                        isStale = !running && !priorR && st.research != null;
+                        break;
+                    }
+                }
+                if (isStale) {
+                    verdict = 'contended';
+                    stale = true;
+                }
+            } else if (verdict === 'contended' && code === 'orderedUnitsGone' && hasFu
+                && Array.isArray(p.unitIds) && p.unitIds.length
+                && !p.unitIds.some(id => unitHandles.has(String(id).replace(/^#/, '')))) {
+                verdict = 'avoidable';
+                stale = false;
+            }
+
+            prior.push({ action, params: p, ok: verdict === 'ok' });
+            return stale ? { code, action, verdict, stale: true } : { code, action, verdict };
+        });
     }
 
     const timelineOf = o => ({ samples: Array.isArray(o.samples) ? o.samples : [], ages: Array.isArray(o.ages) ? o.ages : [] });
@@ -416,11 +623,13 @@
             const seat = this._seat(o);
             if (clock && num(clock.matchSeconds) != null && clock.matchSeconds > (this.lastSec || 0)) this.lastSec = clock.matchSeconds;
 
-            const outcomes = Array.isArray(o.outcomes) ? o.outcomes.map(x => ({
+            const rawOutcomes = Array.isArray(o.outcomes) ? o.outcomes.map(x => ({
                 code: x && x.code != null ? String(x.code) : null,
                 action: x && x.action != null ? String(x.action) : null,
-                verdict: x && VERDICTS.includes(x.verdict) ? x.verdict : 'unknown'
+                verdict: x && VERDICTS.includes(x.verdict) ? x.verdict : 'unknown',
+                stale: !!(x && x.stale)
             })) : null;
+            const outcomes = reconcileOutcomesWithState(st, o.parsed, rawOutcomes);
 
             const homeThreat = homeThreatOf(threats, st.friendlyBuildings);
             const fallen = [];
@@ -465,7 +674,7 @@
         _grounding(turns) {
             const count = { ok: 0, avoidable: 0, invalid: 0, contended: 0, harnessFault: 0, unknown: 0 };
             const codes = new Map();
-            let unjudged = 0, repeated = 0, waits = 0, constraint = 0, reference = 0;
+            let unjudged = 0, repeated = 0, waits = 0, constraint = 0, reference = 0, stale = 0;
             const before = [], errors = [];
             for (const t of turns) {
                 const mine = [];
@@ -474,6 +683,7 @@
                     unjudged += Math.max(0, t.commands - t.outcomes.length);
                     for (const x of t.outcomes) {
                         count[x.verdict]++;
+                        if (x.stale) stale++;
                         if (x.verdict === 'ok' && x.action === 'wait') waits++;
                         if (x.verdict !== 'avoidable' && x.verdict !== 'invalid') continue;
                         const cls = (x.verdict === 'invalid' || WarEval.classOf(x) === 'reference') ? 'reference' : 'constraint';
@@ -502,7 +712,7 @@
                 : round1(100 * Math.exp(-4.5 * errWeight / (rated + 8)));
             return {
                 judged, waits, rated, ok: count.ok, okNonWait, avoidable: count.avoidable, invalid: count.invalid,
-                contended: count.contended, harnessFault: count.harnessFault, unjudged,
+                contended: count.contended, stale, harnessFault: count.harnessFault, unjudged,
                 constraint, reference, repeated, rate, hallucinationRate, constraintRate,
                 repeatRate, recoveryRate, errors,
                 mistakes: [...codes.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
@@ -526,7 +736,7 @@
 
             const tl = this.timeline || this._preview, id = seat.id;
             const ages = (tl ? tl.ages : []).filter(a => a && a.id === id && (until == null || a.t <= until)).length;
-            let maxTurnSec = 0, maxWorkers = null, maxPop = null, maxBuildings = null, maxTechs = 0;
+            let maxTurnSec = 0, maxEmpireSec = 0, remnantTurns = 0, maxWorkers = null, maxPop = null, maxBuildings = null, maxTechs = 0;
             let idleSum = 0, idleTurns = 0, popStalled = 0, popTurns = 0, floatSum = 0, resTurns = 0;
             let passiveWaits = 0, justifiedWaits = 0, one = 0, two = 0, three = 0;
             let oppSum = 0, prodUsedSum = 0, oppTurns = 0, multiOpp = 0, multiBatched = 0;
@@ -534,20 +744,25 @@
             for (const t of turns) {
                 if (t.sec != null && t.sec > maxTurnSec) maxTurnSec = t.sec;
                 const f = t.facts;
+                if (f.remnant) remnantTurns++;
+                else if (t.sec != null && t.sec > maxEmpireSec) maxEmpireSec = t.sec;
                 if (f.workers) {
                     if (maxWorkers == null || f.workers.total > maxWorkers) maxWorkers = f.workers.total;
-                    if (f.workers.total > 0) { idleSum += clamp01(f.workers.idle / f.workers.total); idleTurns++; }
+                    if (f.workers.total > 0 && (f.hasFinishedTC !== false || f.canRebuildTC)) {
+                        idleSum += clamp01(f.workers.idle / f.workers.total);
+                        idleTurns++;
+                    }
                 }
                 if (f.pop) {
                     if (maxPop == null || f.pop.used > maxPop) maxPop = f.pop.used;
-                    if (f.pop.cap != null) {
+                    if (f.pop.cap != null && f.pop.cap > 0) {
                         popTurns++;
                         if (f.pop.cap < f.pop.ceiling && f.pop.used >= f.pop.cap) popStalled++;
                     }
                 }
                 if (f.bldCount != null && (maxBuildings == null || f.bldCount > maxBuildings)) maxBuildings = f.bldCount;
                 if (f.techCount != null && f.techCount > maxTechs) maxTechs = f.techCount;
-                if (f.resTotal != null) {
+                if (f.resTotal != null && !f.remnant) {
                     const uncapped = !f.pop || f.pop.used < f.pop.ceiling;
                     const cap = f.bankingTarget > 1500 ? Math.min(4500, f.bankingTarget) : 1500;
                     floatSum += uncapped ? clamp01((f.resTotal - cap) / 3500) : 0;
@@ -585,7 +800,11 @@
                 }
             }
 
-            const activeMin = Math.max(1, (maxTurnSec || until || 0) / 60);
+            // Freeze empire development clock while in remnant hiding (with a 10-min anti-gaming floor)
+            const clockSec = remnantTurns > 0
+                ? Math.max(maxEmpireSec, Math.min(maxTurnSec || until || 0, 600))
+                : (maxTurnSec || until || 0);
+            const activeMin = Math.max(1, clockSec / 60);
             const workerTarget = Math.min(20, 4 + 0.6 * activeMin);
             const popTarget = Math.min(45, 5 + 1.3 * activeMin);
             const bldTarget = Math.min(14, 2 + 0.35 * activeMin);
@@ -618,7 +837,8 @@
 
             return {
                 score, devScore: round1(devScore), opsScore: round1(opsScore), agencyScore: round1(agencyScore), activityGate,
-                avgIdle, popStallRate, avgFloatPenalty,
+                avgIdle, popStallRate, avgFloatPenalty, activeMin: round1(activeMin), remnantTurns,
+                idleSum, idleTurns, popStalled, popTurns, floatSum, resTurns, oppSum, prodUsedSum,
                 maxWorkers, maxPop, maxBuildings, maxTechs, ages,
                 bwUtil, parallelRate, passiveWaits, justifiedWaits, passiveWaitRate, justifiedWaitRate,
                 okPerDecision: n && okNonWaitCount != null ? okNonWaitCount / n : null,
@@ -643,10 +863,12 @@
                 score: null, maxExplored: null, discovered: 0, opponents: 0,
                 spatialOrders: 0, spatialErrors: 0, expScore: null, discScore: null, spatialGround: null
             };
-            let maxTurnSec = 0, maxExplored = null, discovered = 0, opponents = 0, spatialOrders = 0, spatialErrors = 0;
+            let maxTurnSec = 0, maxEmpireSec = 0, remnantTurns = 0, maxExplored = null, discovered = 0, opponents = 0, spatialOrders = 0, spatialErrors = 0;
             for (const t of turns) {
                 if (t.sec != null && t.sec > maxTurnSec) maxTurnSec = t.sec;
                 const f = t.facts;
+                if (f.remnant) remnantTurns++;
+                else if (t.sec != null && t.sec > maxEmpireSec) maxEmpireSec = t.sec;
                 if (f.exploredPct != null && (maxExplored == null || f.exploredPct > maxExplored)) maxExplored = f.exploredPct;
                 if (f.oppsDiscovered != null && f.oppsDiscovered > discovered) discovered = f.oppsDiscovered;
                 if (f.oppsTotal != null && f.oppsTotal > opponents) opponents = f.oppsTotal;
@@ -655,7 +877,10 @@
                     if ((x.verdict === 'avoidable' || x.verdict === 'invalid') && SPATIAL_ERROR_CODES.has(x.code)) spatialErrors++;
                 }
             }
-            const activeMin = Math.max(1, (maxTurnSec || until || 0) / 60);
+            const clockSec = remnantTurns > 0
+                ? Math.max(maxEmpireSec, Math.min(maxTurnSec || until || 0, 600))
+                : (maxTurnSec || until || 0);
+            const activeMin = Math.max(1, clockSec / 60);
             const expTarget = Math.min(55, 6 + 1.1 * activeMin);
             const expScore = maxExplored == null ? 0 : 100 * clamp01(Math.max(0, maxExplored - 2) / Math.max(1, expTarget - 2));
             const discWeight = clamp01((activeMin - 4) / 12);
@@ -675,7 +900,7 @@
             const episodes = [];
             let open = null;
             turns.forEach((t, i) => {
-                if (t.homeThreat && !open) {
+                if (t.homeThreat && !open && !(t.facts && t.facts.remnant)) {
                     open = {
                         kind: 'attack', decision: i + 1, turn: t.turn, sec: t.sec, targets: [], attackers: [],
                         by: null, undefended: false, answeredAfter: null, decisions: 0, lost: [], ended: false
@@ -789,6 +1014,7 @@
                 wonders: wonders.length,
                 wonderAnswered: judged ? wonderAnswered.length : null,
                 battles: fought, destroyed, unitsLost, bldRazed, bldLost,
+                destroyedEff: round1(destroyedEff), lostEff: round1(lostEff),
                 exchange, valueWeighted: useVal,
                 homeDefScore: round1(homeDefScore), exchangeScore: round1(exchangeScore),
                 list, judged, score
@@ -796,13 +1022,22 @@
         }
 
         // Pillar 5 (25%): Strategic Dominance — time-weighted Bradley-Terry power dominance + placement.
+        // Post-elimination horizon is capped at POST_ELIM_CAP_SEC (5 min) so an early-eliminated seat's
+        // Dominance is penalized for dying early without depending on how slowly survivors stalemate.
         _strategy(seat, until) {
             const tl = this.timeline || this._preview, id = seat.id;
             const samples = (tl ? tl.samples : []).filter(x => x && x.p && x.p[id] && (until == null || x.t <= until));
+            let lastAliveT = null, aliveSamples = 0;
+            for (const x of samples) {
+                const e = x.p[id];
+                const isAlive = e.al !== undefined ? !!e.al : (e.pw || 0) > 0;
+                if (isAlive) { aliveSamples++; lastAliveT = x.t; }
+            }
             let share = 0, counted = 0, leading = 0, run = 0, clearAt = null, seats = 0, btNum = 0, btDen = 0;
             const step = samples.length > 1 ? Math.max(1, (samples[samples.length - 1].t - samples[0].t) / (samples.length - 1)) : 5;
             for (const x of samples) {
-                const all = Object.keys(x.p), mine = x.p[id].pw || 0;
+                const all = Object.keys(x.p), e = x.p[id], mine = e.pw || 0;
+                const isAlive = e.al !== undefined ? !!e.al : mine > 0;
                 const total = all.reduce((a, k) => a + (x.p[k].pw || 0), 0);
                 const others = all.filter(k => k !== id);
                 const othPws = others.map(k => x.p[k].pw || 0);
@@ -816,10 +1051,12 @@
                     if (clearAt == null && run * step >= WarEval.LEAD_SECONDS) clearAt = x.t;
                 }
                 if (othPws.length > 0) {
+                    if (!isAlive && lastAliveT != null && x.t > lastAliveT + WarEval.POST_ELIM_CAP_SEC) continue;
                     const meanOth = sum(othPws) / othPws.length;
                     const ref = 0.5 * best + 0.5 * meanOth;
                     const dom = (mine === 0 && ref === 0) ? 0.5 : (mine === 0 ? 0 : (ref === 0 ? 1 : 1 / (1 + Math.pow(ref / mine, 1.5))));
-                    const wt = 1 + (x.t || 0) / 300;
+                    const wtT = (!isAlive && lastAliveT != null) ? lastAliveT : (x.t || 0);
+                    const wt = 1 + wtT / 300;
                     btNum += wt * dom;
                     btDen += wt;
                 }

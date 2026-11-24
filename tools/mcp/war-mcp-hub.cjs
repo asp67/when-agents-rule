@@ -23,7 +23,9 @@ const http = require('http'), crypto = require('crypto'), fs = require('fs'), pa
 // 0.3.0: the shared address /mcp -- one per computer, the seat chosen by join's code.
 // 0.3.1: a seat the user paused hears so, and nothing it sends is queued.
 // 0.3.2: the page hears when a turn is handed to the harness ("took").
-const VERSION = '0.3.2';
+// 0.3.3: multi-match Arena Series continuity (seriesContinues / series_next keeps seats joined across matches).
+// 0.3.4: emit roundOver + matchOver:false between series matches so non-/goal harnesses never stop early.
+const VERSION = '0.3.4';
 const PROTOCOLS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -70,7 +72,10 @@ const META_TOOLS = [
       inputSchema: { type: 'object', properties: { code: { type: 'string',
           description: 'Your seat code, as the message that told you to play gave it (it starts with "seat-").' } }, required: [] } },
     { name: 'wait_for_turn', description: 'Wait for your turn. Returns the game state when it is your turn, '
-        + '{"waiting": true} if it is not yet (call again), or {"matchOver": true} when the match has ended. '
+        + '{"waiting": true} if it is not yet (call again), '
+        + '{"roundOver": true, "matchOver": false, "seriesContinues": true} between matches of a multi-match series '
+        + '(DO NOT STOP — call final_word if asked, then immediately call wait_for_turn for the next match), '
+        + 'or {"matchOver": true} ONLY when the entire match or series has ended. '
         + 'Calling it while your turn is open ends that turn.',
       inputSchema: { type: 'object', properties: {}, required: [] } },
     { name: 'end_turn', description: `End your turn. Up to ${GAME.maxCommandsPerTurn} game commands per turn; plan does not count.`,
@@ -176,7 +181,8 @@ function fromPage(msg, pg) {
             for (const p of msg.seats || []) {
                 if (!TOKEN_RE.test(p.token || '')) continue;
                 const s = seat(p.token);
-                Object.assign(s, { listed: true, page: pg, seat: p.seat, name: p.name || '', rules: p.rules || s.rules || '', over: null });
+                Object.assign(s, { listed: true, page: pg, seat: p.seat, name: p.name || '', rules: p.rules || s.rules || '',
+                    seriesTotal: p.seriesTotal > 1 ? p.seriesTotal : (s.seriesTotal || 1), over: null });
                 listed.add(p.token);
                 if (s.seen) toPage({ type: 'harness', token: s.token, connected: true });
                 if (s.joined) toPage({ type: 'join', token: s.token });
@@ -232,22 +238,52 @@ function fromPage(msg, pg) {
             if (!s) return;
             s.over = s.over || { final: true };
             s.final = String(msg.text || '');
+            s.seriesContinues = !!msg.seriesContinues;
+            s.series = msg.series || null;
             s.turn = s.pendingTurn = null;
             for (const w of s.waiters.splice(0)) if (w.alive()) w(textResult(JSON.stringify(overResult(s))));
-            s.joined = false;
-            log(s.token, 'match over: final message sent');
+            if (!s.seriesContinues) s.joined = false;
+            log(s.token, s.seriesContinues ? 'series round over: final message sent (continuing)' : 'match over: final message sent');
             break;
         }
         case 'over': {
             const s = seats.get(msg.token);
             if (!s) return;
             s.over = Object.assign(msg.result || {}, s.final != null ? { final: true } : {});
+            s.seriesContinues = !!msg.seriesContinues;
+            s.series = msg.series || null;
             s.turn = s.pendingTurn = null;
-            for (const w of s.waiters.splice(0)) if (w.alive()) w(textResult(JSON.stringify(overResult(s))));
-            // The harness is told to stop, so it is no longer playing: the next arena waits
-            // for it to join again rather than showing the seat ready (asp67, 26 Oct).
-            s.joined = false;
-            log(s.token, 'match over');
+            const payload = overResult(s);
+            let delivered = false;
+            for (const w of s.waiters.splice(0)) if (w.alive()) { w(textResult(JSON.stringify(payload))); delivered = true; }
+            if (s.seriesContinues) {
+                // Keep joined for the next match in the series; once delivered without a pending final_word,
+                // clear s.over so the harness's next wait_for_turn enters the wait queue for the next match.
+                if (delivered && s.final == null) { s.over = null; s.seriesContinues = false; }
+                log(s.token, 'series round over (staying joined for next match)');
+            } else {
+                // The harness is told to stop, so it is no longer playing: the next arena waits
+                // for it to join again rather than showing the seat ready (asp67, 26 Oct).
+                s.joined = false;
+                log(s.token, 'match over');
+            }
+            break;
+        }
+        case 'series_next': {       // next match in an active Arena Series is starting
+            const s = seats.get(msg.token);
+            if (!s) return;
+            s.over = null;
+            s.final = null;
+            s.seriesContinues = false;
+            s.series = msg.series || null;
+            s.turn = null;
+            s.pendingTurn = null;
+            s.commands = 0;
+            s.closed = null;
+            s.rules = '';
+            if (msg.seat != null) s.seat = msg.seat;
+            s.joined = true;
+            log(s.token, `series next match${msg.series ? ` (${msg.series.round}/${msg.series.total})` : ''}, seat ${s.seat != null ? s.seat : '?'}`);
             break;
         }
         case 'watch':                  // the setup assistant follows the hub
@@ -264,15 +300,31 @@ function fromPage(msg, pg) {
     }
 }
 
-// The end of the match. With a closing message (the same one a library seat gets: the final
-// state, the match in numbers, the question), the harness answers it with final_word.
-const overResult = s => s.final
-    // Ends with how to answer: Sonnet 5.5 in Claude Code answered the first one in its chat,
-    // which the game cannot read (asp67, 27 Oct); OpenCode's DeepSeek used final_word.
-    ? { matchOver: true, result: s.over,
-        finalMessage: s.final + '\n\nANSWER BY CALLING final_word WITH YOUR TEXT. The game cannot read a reply in the chat.',
-        next: 'This is your final message. Answer it by calling final_word with your thoughts; nothing will be executed. Then stop playing.' }
-    : { matchOver: true, result: s.over, next: 'The match is over. Stop playing: there is nothing more to do.' };
+// The end of a match (or one round of a multi-match Arena Series).
+// CRITICAL: When `s.seriesContinues` is true, emit `roundOver: true, matchOver: false`
+// (NEVER `matchOver: true`!) so harnesses without /goal (like OpenCode, Codex, ChatGPT)
+// do not terminate their loop between series rounds.
+const overResult = s => {
+    const ser = s.seriesContinues && s.series ? s.series : null;
+    const tag = ser ? `Match ${ser.round}/${ser.total} ended; Match ${ser.nextRound || (ser.round + 1)}/${ser.total} starts next (rotated seat & civilization).` : 'This match ended; the next match in the series starts next.';
+    if (s.final) {
+        return {
+            ...(s.seriesContinues ? { roundOver: true, matchOver: false, seriesContinues: true, series: s.series || null } : { matchOver: true }),
+            result: s.over,
+            finalMessage: s.final + '\n\nANSWER BY CALLING final_word WITH YOUR TEXT. The game cannot read a reply in the chat.',
+            next: s.seriesContinues
+                ? `${tag} Answer this closing message by calling final_word, then DO NOT STOP — immediately call wait_for_turn for the next match.`
+                : 'This is your final message. Answer it by calling final_word with your thoughts; nothing will be executed. Then stop playing.'
+        };
+    }
+    return {
+        ...(s.seriesContinues ? { roundOver: true, matchOver: false, seriesContinues: true, series: s.series || null } : { matchOver: true }),
+        result: s.over,
+        next: s.seriesContinues
+            ? `${tag} DO NOT STOP — call wait_for_turn now to play the next match.`
+            : 'The match is over. Stop playing: there is nothing more to do.'
+    };
+};
 // A page let go of the seat (closed, reloaded, or a new arena without it). Its harness stays
 // joined, still in its wait_for_turn loop: when a page lists the seat again it is ready at once.
 function release(s) { s.listed = false; s.page = null; s.turn = s.pendingTurn = null; }
@@ -325,8 +377,11 @@ async function callTool(token, name, args, signal, ctx) {
             + 'Otherwise the user picks this seat in the WAR arena setup. Then call join again.', true);
         s.joined = true;
         toPage({ type: 'join', token, client: s.client || '' });
+        const seriesNote = s.seriesTotal > 1
+            ? ` for a ${s.seriesTotal}-match series. Play ALL ${s.seriesTotal} matches without stopping: between matches wait_for_turn returns roundOver (with matchOver: false, seriesContinues: true) — call final_word if asked, then immediately call wait_for_turn for the next match. Stop ONLY when wait_for_turn returns matchOver: true.\n`
+            : `. This is how you play, until the match is over:\n`;
         return textResult((s.rules ? s.rules + '\n\n' : '')
-            + `You have joined as seat ${s.seat != null ? s.seat : '?'}. This is how you play, until the match is over:\n`
+            + `You have joined as seat ${s.seat != null ? s.seat : '?'}${seriesNote}`
             + LOOP + '\nDo not stop to explain or to ask: keep calling the tools. ' + NEXT_WAIT);
     }
     // After the end every call hears it, joined or not: a harness busy when the match
@@ -346,13 +401,27 @@ async function callTool(token, name, args, signal, ctx) {
             + 'When the user starts a match, they will send you the message to play; until then, call no other WAR tool.');
     }
     if (name === 'final_word') {
-        if (s.final == null) return textResult('There is no final message to answer.' + (s.over ? ' The match is over: stop playing.' : ''));
+        if (s.final == null) return textResult('There is no final message to answer.' + (s.over ? (s.seriesContinues ? ' Call wait_for_turn for the next match.' : ' The match is over: stop playing.') : ''));
         toPage({ type: 'final_word', token, text: String((args && args.text) || '') });
         s.final = null;
         log(token, 'final word given');
+        if (s.seriesContinues) {
+            const ser = s.series;
+            s.over = null;
+            s.seriesContinues = false;
+            const nextLabel = ser ? `Match ${ser.nextRound || (ser.round + 1)}/${ser.total}` : 'the next match';
+            return textResult(`Thank you: your final word is recorded. ${nextLabel} of the series starts next — DO NOT STOP. ${NEXT_WAIT}`);
+        }
         return textResult('Thank you: your final word is recorded with the match. The match is over: stop playing.');
     }
-    if (s.over && name !== 'join' && name !== 'get_rules') return textResult(JSON.stringify(overResult(s)));
+    if (s.over && name !== 'join' && name !== 'get_rules') {
+        const res = overResult(s);
+        if (s.seriesContinues && !s.final && name === 'wait_for_turn') {
+            s.over = null;
+            s.seriesContinues = false;
+        }
+        return textResult(JSON.stringify(res));
+    }
     if (!s.joined) return textResult('Call join first.', true);
     if (name === 'wait_for_turn') {
         if (s.over) return textResult(JSON.stringify(overResult(s)));

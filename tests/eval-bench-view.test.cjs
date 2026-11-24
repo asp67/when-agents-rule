@@ -55,7 +55,7 @@ test('D2: the matrix shows the command-line scorer\'s values at match end', asyn
     assert.deepEqual(cells(right), want);
     assert.equal(want.length, 20);
     // Under each score, the raw measure and the count it rests on.
-    assert.match(right, /<small>99\.4 % · 350<\/small>/);              // Sonnet: valid commands of those rated (one wait left out)
+    assert.match(right, /<small>99\.7 % · 349<\/small>/);              // Sonnet: valid commands of those rated (one wait + stale drift left out)
     assert.match(right, /<small>90\.6 % bw · 0 pw<\/small>/);         // Sonnet: situational batching bandwidth & zero passive waits
     assert.match(right, /<small>46% · 3\/3<\/small>/);                 // Sonnet: map explored & all 3 rivals discovered
     // The leader of a row is marked, and a cell says how it moved over the last ten minutes.
@@ -66,7 +66,7 @@ test('D2: the matrix shows the command-line scorer\'s values at match end', asyn
     // Under the scored rows: WAR Score, action batching bar, range used, and duration-invariant cost.
     const index = [...right.matchAll(/class="bm-index[^"]*"[^>]*><b>([^<]*)<\/b><small>bench\.indexOf\{&quot;n&quot;:(\d)\}/g)].map(m => m[1] + '/' + m[2]);
     assert.deepEqual(index, scored.seats.map(s => Math.round(s.index.value) + '/' + s.index.of));
-    assert.deepEqual(index, ['48/5', '78/5', '70/5', '74/5']);
+    assert.deepEqual(index, ['50/5', '78/5', '72/5', '76/5']);
     assert.match(right, /bench\.range<small>bench\.rangeUnit<\/small><\/th>.*<b>11 · 10 · 13<\/b><\/td>/s);
     assert.match(right, /bench\.rangeTip\{&quot;units&quot;:&quot;archer, cavalry, champion/);
     assert.ok(right.indexOf('bm-indexrow') < right.indexOf('bench.b.batchShort<')
@@ -337,7 +337,7 @@ test('D7: a part is broadcast only when every model seat has had a handful of op
     const html = u.compareHtml(list[0]);
     assert.match(html, /^<div class="bcmp-head"><b>eval\.grounding<\/b><span>bench\.cmp\.grounding<\/span><em>eval\.provisional<\/em><\/div>/);
     assert.equal((html.match(/class="bcmp-seat/g) || []).length, 4);
-    assert.match(html, /class="bcmp-seat is-lead"[^>]*><span class="bcmp-name">O claude-sonnet-5\.5<\/span><span class="bcmp-val"><b>98<\/b><i class="bcmp-bar"><u style="width:98%"><\/u><\/i><small>99\.4 % · 350<\/small>/);
+    assert.match(html, /class="bcmp-seat is-lead"[^>]*><span class="bcmp-name">O claude-sonnet-5\.5<\/span><span class="bcmp-val"><b>99<\/b><i class="bcmp-bar"><u style="width:99%"><\/u><\/i><small>99\.7 % · 349<\/small>/);
     assert.equal((html.match(/is-lead/g) || []).length, 1);
     assert.doesNotMatch(u.compareHtml({ key: 'macro', seats: [{ id: 'a', name: 'A', score: 50, raw: '' }, { id: 'b', name: 'B', score: 50, raw: '' }] }), /is-lead/);
     // Warmup suppresses the lead highlight and labels the badge accordingly.

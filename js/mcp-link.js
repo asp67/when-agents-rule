@@ -112,11 +112,11 @@ class WarMcpLink {
         this._retry = setTimeout(() => this.connect(), 2000);
     }
     _send(obj) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(obj)); }
-    _sendArena() { this._send({ type: 'arena', seats: this.seats.map(s => ({ token: s.token, seat: s.seat, name: s.name })) }); }
+    _sendArena() { this._send({ type: 'arena', seats: this.seats.map(s => ({ token: s.token, seat: s.seat, name: s.name, ...(s.seriesTotal > 1 ? { seriesTotal: s.seriesTotal } : {}) })) }); }
 
     // The MCP seats the arena waits for. Re-sent whenever the hub (re)connects.
     setSeats(seats) {
-        this.seats = (seats || []).map(s => ({ token: s.token, seat: s.seat, name: s.name || '' }));
+        this.seats = (seats || []).map(s => ({ token: s.token, seat: s.seat, name: s.name || '', seriesTotal: s.seriesTotal > 1 ? s.seriesTotal : 1 }));
         for (const s of this.seats) if (!this.state.has(s.token)) this.state.set(s.token, { harness: false, joined: false });
         this._sendArena();
         this._changed();
@@ -194,7 +194,15 @@ class WarMcpLink {
             this.state.set(token, st);
             const first = !this.rulesSent.has(token);
             if (first) this.rulesSent.add(token);
-            const body = (first && rules ? 'RULES OF THE GAME (your system prompt; get_rules shows them again):\n\n' + rules + '\n\n---\n\n' : '') + text;
+            const bannerInfo = this._seriesBanner && this._seriesBanner.get(token);
+            if (bannerInfo) this._seriesBanner.delete(token);
+            const banner = bannerInfo
+                ? `=== NEW MATCH STARTED: MATCH ${bannerInfo.round} OF ${bannerInfo.total} ===\n`
+                  + `The previous match is completely over. This is a BRAND-NEW match on the same map seed with rotated seats and civilizations.\n`
+                  + `You are now Seat ${bannerInfo.seat}${bannerInfo.civ ? ` playing as ${bannerInfo.civ}` : ''}. `
+                  + `Disregard all units, buildings, coordinates, enemy IDs, and plans from the previous match.\n\n`
+                : '';
+            const body = banner + (first && rules ? 'RULES OF THE GAME (your system prompt; get_rules shows them again):\n\n' + rules + '\n\n---\n\n' : '') + text;
             // timing: { msLeft, roundMs } -- the hub tells the harness how long it has.
             this._send(Object.assign({ type: 'turn', token, turn, state: body, rules: rules || '' }, timing || {}));
             if (signal) {
@@ -219,24 +227,44 @@ class WarMcpLink {
         this._send({ type: 'paused', token, paused: !!paused });
     }
 
-    over(token, result) {
-        this._send({ type: 'over', token, result: result || {} });
-        const s = this.state.get(token);
-        if (s && s.joined) { s.joined = false; this._changed(token); }
+    over(token, result, opts = null) {
+        const cont = !!(opts && opts.seriesContinues);
+        this._send({ type: 'over', token, result: result || {}, seriesContinues: cont, series: (opts && opts.series) || null });
+        if (!cont) {
+            const s = this.state.get(token);
+            if (s && s.joined) { s.joined = false; this._changed(token); }
+        }
+    }
+
+    // Prepare a connected MCP seat for the next match in a multi-match Arena Series:
+    // clears rulesSent so Turn 1 brings the new civ & rules, prepends an unmistakable
+    // NEW MATCH banner, and keeps s.joined = true.
+    prepareNextMatch(token, seatNo, round, total, civ = null) {
+        this.rulesSent.delete(token);
+        this.turns.delete(token);
+        this.finals.delete(token);
+        this._seriesBanner = this._seriesBanner || new Map();
+        this._seriesBanner.set(token, { seat: seatNo, round, total, civ: civ || null });
+        const s = this.seats.find(x => x.token === token);
+        if (s && seatNo != null) s.seat = seatNo;
+        this._send({ type: 'series_next', token, seat: seatNo, series: { round, total } });
     }
 
     // The closing message at the end of a match -- the one a library seat is asked -- and
     // the harness's answer, given with its final_word tool. null if it gives none before
     // the signal (askFinalWord's own time limit) aborts.
-    finalWord(token, text, signal) {
+    finalWord(token, text, signal, opts = null) {
         return new Promise(resolve => {
             const prev = this.finals.get(token);
             if (prev) prev(null);
             this.finals.set(token, resolve);
             this.turns.delete(token);
-            this._send({ type: 'final', token, text: String(text || '') });
-            const s = this.state.get(token);
-            if (s && s.joined) { s.joined = false; this._changed(token); }
+            const cont = !!(opts && opts.seriesContinues);
+            this._send({ type: 'final', token, text: String(text || ''), seriesContinues: cont, series: (opts && opts.series) || null });
+            if (!cont) {
+                const s = this.state.get(token);
+                if (s && s.joined) { s.joined = false; this._changed(token); }
+            }
             if (signal) {
                 const stop = () => { if (this.finals.get(token) === resolve) { this.finals.delete(token); resolve(null); } };
                 if (signal.aborted) stop(); else signal.addEventListener('abort', stop, { once: true });
