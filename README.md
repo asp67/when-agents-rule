@@ -218,13 +218,13 @@ For left-button-only campaign navigation, open the minimap's camera-options chev
 
 | A Wonder held | A town at dusk |
 |:---:|:---:|
-| ![Broadcast mode with the overlays on: the Maya of qwen3.8-flash hold their Wonder with 4:13 to go, a trebuchet line before it, and DeepSeek V4.1's plan to raze it on the left](Screenshots/BenchWonder.jpg) | ![DeepSeek V4.1's Yamato town at dusk in broadcast mode, with the plan panel, the comparison card and the race chart on](Screenshots/BenchDusk.jpg) |
+| ![Broadcast mode with the overlays on: the Maya of qwen3.8-flash hold their Wonder with 4:13 to go and a trebuchet line before it](Screenshots/BenchWonder.jpg) | ![DeepSeek V4.1's Yamato town at dusk in broadcast mode, with the comparison card and the race chart on](Screenshots/BenchDusk.jpg) |
 
-<sub><i>A three-model match on 22 November 2026 (build 1228), in broadcast mode with the overlays on: the models' plans on the left, the comparison card top right, the race chart bottom right. Left: qwen3.8-flash's Maya hold their Wonder with 4:13 on its clock while DeepSeek V4.1's plan reads "raze maya-3's el_castillo wonder"; the Wonder held. Right: DeepSeek V4.1's Yamato town at dusk.</i></sub>
+<sub><i>A three-model match on 22 November 2026 (build 1228), in broadcast mode with overlays on (comparison card top right, race chart bottom right; the earlier left-side plan drawer shown in this capture was later retired in favor of the Comparison Board). Left: qwen3.8-flash's Maya hold their Wonder with 4:13 on its clock while DeepSeek V4.1's trebuchets push in; the Wonder held. Right: DeepSeek V4.1's Yamato town at dusk.</i></sub>
 
 </div>
 
-**Overlays** go on top of either mode, each off until you ask for it: the **Bench view** (**B**), the **race chart** of power over time (**R**), the **model's view**, the world as one seat knows it with its own fog (**V**), a **second camera** on a fight the main picture is not showing (**I**), and in broadcast mode a comparison lower-third strip rotating through the five Scale `v4` pillars plus **Action Bandwidth** and **Long-Horizon Drift** (**C**).
+**Overlays** go on top of either mode, each off until you ask for it: the **Bench view** (**B**), the **race chart** of power over time (**R**), the **model's view**, the world as one seat knows it with its own fog (**V**), a **second camera** on a fight the main picture is not showing (**I**), and in broadcast mode a comparison lower-third strip rotating through the five Scale `v4.1` pillars plus **Action Bandwidth** and **Long-Horizon Drift** (**C**).
 
 ## 🔧 Tool calls, and which stack served them
 
@@ -291,44 +291,45 @@ Nothing is interpolated between snapshots: every frame is a moment the file actu
 
 ## 🧮 How a model is scored
 
-The **evaluation profile (Scale `v4`)** scores five deterministic, transcript-only pillars combined into a fixed-weight **WAR Score (`0–100`)**. Programmatic grading of free-form plan prose is omitted (`plan` stays purely qualitative), and runtime cost/drift sit beside WAR Score rather than distorting capability:
+The **evaluation profile (Scale `v4.1`)** scores five deterministic, transcript-only pillars combined into a fixed-weight **WAR Score (`0–100`)**, with runtime cost and drift shown beside it rather than distorting capability:
 
 | Pillar | Weight | What it measures |
 | --- | :---: | --- |
-| **Grounding** (`G`) | **20 %** | Severity-weighted command validity (`1.0×` constraint, `2.5×` reference hallucination, `1.5×` repeat inside 2 decisions) with Bayesian smoothing (`K = 8`), excluding `wait` (wait-only scores `0`). |
-| **Macro & Agency** (`M`) | **25 %** | Scaled economy/tech/age milestones, operational hygiene (idle workers, pop-caps, non-banking float), situational 3-command batching (`openFronts`), and `passive` vs `justified` waits, gated by active development (`activityGate`). |
+| **Grounding** (`G`) | **20 %** | Severity-weighted command validity (`1.0×` constraint, `2.5×` reference hallucination, `1.5×` repeat inside 2 decisions) with Bayesian smoothing (`K = 8`), excluding `wait` (wait-only scores `0`). Snapshot-grounded verification classifies orders that were valid against the snapshot the model saw — before the world moved while thinking — as `contended` rather than penalizing them. |
+| **Macro & Agency** (`M`) | **25 %** | Scaled economy/tech/age milestones, operational hygiene (idle workers, pop-caps, non-banking float), situational 3-command batching (`openFronts`), and `passive` vs `justified` waits (including remnant-mode survival holds without a Town Center), gated by active development (`activityGate`). |
 | **Spatial & Fog** (`S`) | **15 %** | Map exploration progress, post-4-minute rival discovery, and grounding accuracy on coordinate/target commands. |
 | **Tactical & Combat** (`T`) | **15 %** | Value-weighted battle exchange (`lostValue` + razed buildings, fair multi-way splits) and response speed to home-radius threats and rival Wonders (`assign_workers` counts for worker raids). |
-| **Dominance** (`D`) | **25 %** | Time-weighted Bradley-Terry power trajectory dominance (more weight on mid/late-game standings, elimination-proof) blended `75/25` with final match placement. |
+| **Dominance** (`D`) | **25 %** | Time-weighted Bradley-Terry power trajectory dominance (more weight on mid/late-game standings, post-elimination capped at `300 s` so long survivor stalemates never distort defeated seats) blended `75/25` with final match placement. |
 
 - **Side diagnostics (never inside WAR Score):** **Action Bandwidth** (`3/2/1/Justified/Passive` distribution & parallelization `@2+ open fronts`), **Duration-Invariant Cognitive Cost** (`median/p90` latency, `tokens/decision`, `output tok / valid order`, `valid orders / think-min`, `WAR / 10k tok-dec`), and **Long-Horizon Context Drift** (first-half vs. second-half error delta, idle-worker delta, and latency ratio after 16+ decisions).
 - **Warmup guard:** Early snapshots (`< 5 min` and `< 15` rated commands) are badged `Early` (`warmup`) and never highlight a premature leader.
 
 <div align="center">
 
-<img src="Screenshots/ComparisonBoard.png" alt="Scale v4 Comparison Board comparing two raw models (DeepSeek V4.1, GLM-5.3-Flash) against two MCP agent harnesses (Claude Code, Antigravity) across the 5 capability curves, performance rates, WAR Score, bandwidth, duration-invariant cost and drift" width="840">
+<img src="Screenshots/ComparisonBoard.png" alt="Comparison Board comparing two raw models (DeepSeek V4.1, GLM-5.3-Flash) against two MCP agent harnesses (Claude Code, Antigravity) across the 5 capability curves, performance rates, WAR Score, bandwidth, duration-invariant cost and drift" width="840">
 
 <br>
 
-<sub><i><b>Comparison Board (Scale v4):</b> Two raw library models (DGX DeepSeek V4.1, O GLM-5.3-Flash) facing two MCP agent harnesses (Claude Code · Sonnet 5.5, Antigravity · Gemini 3.8 Flash) in a live real-time match — showing five capability curves, refusal/hallucination markers on the timeline, rolling rate telemetry, WAR Score, situational batching bandwidth, duration-invariant cognitive cost, and early-to-late drift side by side.</i></sub>
+<sub><i><b>Comparison Board:</b> Two raw library models (DGX DeepSeek V4.1, O GLM-5.3-Flash) facing two MCP agent harnesses (Claude Code · Sonnet 5.5, Antigravity · Gemini 3.8 Flash) in a live real-time match — showing five capability curves, refusal/hallucination markers on the timeline, rolling rate telemetry, WAR Score, situational batching bandwidth, duration-invariant cognitive cost, and early-to-late drift side by side.</i></sub>
 
 <br><br>
 
-<img src="Screenshots/BenchBroadcast.jpg" alt="Full live Broadcast Mode with Scale v4 overlays: mini Comparison card top-right, full Comparison Board center, Bradley-Terry Strategy lower-third bottom-left, Race chart and minimap bottom-right" width="840">
+<img src="Screenshots/BenchBroadcast.jpg" alt="Full live Broadcast Mode with overlays: mini Comparison card top-right, full Comparison Board center, Bradley-Terry Strategy lower-third bottom-left, Race chart and minimap bottom-right" width="840">
 
 <br>
 
-<sub><i><b>Live Broadcast Mode (build 1233):</b> The compact Comparison mini card sits top-right beside the scoreboard (2-line WAR/Dominance sparkline, 5 equalizer bars, batching strip), the Broadcast Compare lower-third cycles bottom-left, the power/plan race chart and minimap sit bottom-right, and clicking the mini card opens the full Comparison Board.</i></sub>
+<sub><i><b>Live Broadcast Mode (build 1233):</b> The compact Comparison mini card sits top-right beside the scoreboard (2-line WAR/Dominance sparkline, 5 equalizer bars, batching strip), the Broadcast Compare lower-third cycles bottom-left, the power race chart and minimap sit bottom-right, and clicking the mini card opens the full Comparison Board.</i></sub>
 
 </div>
 
 - **During a match** the Bench view (key **B**) opens the compact comparison card on the right; clicking it opens the **Comparison Board** with the five capabilities + dashed WAR Score line, inspector ticks (loops, awareness misses, constraint slips, passive stalls, unanswered threats), rolling rate charts, action bandwidth, duration-invariant cost, long-horizon drift, and **RAW MODEL** / **AGENT HARNESS** tags.
 - **After it** the results screen carries the **report card**: every metric opens the underlying transcript turns, and a downloadable **Pareto scatter chart** (default axis: `Output tokens per valid order` vs. `WAR Score`, with an efficiency sweet-spot quadrant and spatial order heatmaps; PNG or SVG). Transcript exports embed 17-field 30-second score history alongside `publicProfile`.
+- **Across a multi-match Arena Series** (`2–4` fixed-seed rounds with automatic seat & civilization rotation) sufficient statistics are pooled across every round into a pooled **WAR Score** alongside a deterministic **Plackett-Luce** rating, viewable in the **Series Comparison Board** live or later by opening any saved `war-series-*.json` report on the **Season table**.
 - **Across matches** the **Season table** adds a model's profiles up only under matching conditions and scale, showing mean intervals and min/median/max per seat, calibrated against five deterministic baseline anchors in [docs/SCORING.md](docs/SCORING.md).
 
 The profile is provisional. Full formulas, anchor scores and caveats are documented in [docs/SCORING.md](docs/SCORING.md).
 
-Results exports also keep full raw latency, token and error breakdowns. Harness faults and contended commands never penalize a model's Grounding rate, and the older 0–100 **match heuristic** remains tucked away as legacy context.
+Results exports also keep full raw latency, token and error breakdowns. Harness faults, snapshot-grounded stale-state drift and contended commands never penalize a model's Grounding rate, and the older 0–100 **match heuristic** remains tucked away as legacy context.
 
 ## 🛠️ How it works
 
