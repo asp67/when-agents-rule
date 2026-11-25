@@ -1730,6 +1730,10 @@
             const prev = this.units.indexOf(unit);
             if (prev > -1) this.units.splice(prev, 1);
             this.units.push(unit);
+            this._composeUnit(unit);
+        }
+
+        _composeUnit(unit) {
             if (unit.unitType === 'siege' && window.EngineBuildings) { this._addSiegeUnit(unit); return; }
             const engineType = unit.unitType === 'support' ? 'priest'
                 : (EngineUnits.META[unit.unitType] ? unit.unitType : 'infantry');
@@ -2164,6 +2168,60 @@
             if (idx > -1) this.buildings.splice(idx, 1);
             building._engine = null;
             building.mesh = null;
+        }
+
+        // Presentation-only 3D ghost proxies for Model View (V): reuses _composeUnit /
+        // _composeBuilding + _fade (0.4) (the same visual pipeline as the Transcript Viewer),
+        // without calling createUnit/createBuilding (which mint simulation handles/IDs) or
+        // touching this.units / this.buildings.
+        setSeatGhosts(specs) {
+            if (!specs || !specs.length) {
+                if (this._seatGhosts) this._seatGhosts.clear();
+                return;
+            }
+            const prev = this._seatGhosts || new Map();
+            const next = new Map();
+            for (const g of specs) {
+                if (!g || g.x == null || g.z == null) continue;
+                const ucTag = g.underConstruction ? '|uc' + Math.round(g.buildPct || 0) : '';
+                const key = g.kind + '|' + (g.owner || '') + '|' + (g.type || '') + '|' + Math.round(g.x) + ',' + Math.round(g.z) + ucTag;
+                if (prev.has(key)) { next.set(key, prev.get(key)); continue; }
+                const civId = g.civ || 'greek';
+                const civDef = typeof getCivilization === 'function' ? getCivilization(civId) : null;
+                const color = (civDef && civDef.color) || 0xffffff;
+                let ent = null;
+                if (g.kind === 'building') {
+                    const uc = !!g.underConstruction;
+                    const pct = Math.max(0, Math.min(1, (g.buildPct || 0) / 100));
+                    ent = {
+                        id: 'ghost_b_' + key, type: g.type, x: g.x, z: g.z,
+                        owner: g.owner, civilization: civId, seat: g.seat,
+                        age: g.age || 'stone', color, underConstruction: uc,
+                        buildTime: 10000, buildProgress: pct * 10000,
+                        isWonder: !!(civDef && civDef.wonder && civDef.wonder.id === g.type),
+                        _fade: 0.62
+                    };
+                    this._composeBuilding(ent);
+                    if (uc && ent._engine && ent._engine.shell) {
+                        const m3 = M();
+                        const hNow = Math.max(0.15, (ent._shellH || 4) * pct);
+                        ent._engine.shell.model = m3.multiply(ent._engine.world,
+                            m3.multiply(m3.translation(0, 0.5 + hNow / 2, 0), m3.scaling(1, hNow, 1)));
+                    }
+                } else {
+                    const uDef = typeof getUnitDefFor === 'function' ? getUnitDefFor(civId, g.type) : null;
+                    const unitType = (uDef && uDef.unitType) || (g.type === 'worker' ? 'worker' : 'infantry');
+                    ent = {
+                        id: 'ghost_u_' + key, type: g.type, unitType, x: g.x, z: g.z,
+                        owner: g.owner, civilization: civId, seat: g.seat,
+                        age: g.age || 'stone', color,
+                        _appearanceId: g.id || key, _fade: 0.62
+                    };
+                    this._composeUnit(ent);
+                }
+                if (ent && ent._engine) next.set(key, { kind: g.kind, ent });
+            }
+            this._seatGhosts = next;
         }
 
         // ---- presentation smoothing -------------------------------------------------
@@ -3026,7 +3084,8 @@
                     const cloth=this.graphicsQuality==='cinematic'?[flag[12],flag[14],flag[0]/(eb.bs||BSCALE),flag[2]/(eb.bs||BSCALE)]:null;
                     for(const p of eb.flagParts){p.entry.model=m3.multiply(flag,p.local);p.entry.cloth=cloth;}
                 }
-                if(this.graphicsQuality==='cinematic'&&detailFade>0&&!(b._fade!=null&&b._fade<1)) {
+                const bFade = b._fade != null ? b._fade : (this.entityFade ? this.entityFade(b, 'building') : null);
+                if(this.graphicsQuality==='cinematic'&&detailFade>0&&!(bFade!=null&&bFade<1)) {
                     if(eb.wear&&this._halfH<=EngineRenderer.FAR_UNIT_HALF_H)dl.blended.push({...eb.wear,alpha:eb.wear.alpha*detailFade});
                     if(eb.details&&courtyards++<24){
                         const lights=new Float32Array(12);let lightIndex=0;
@@ -3083,9 +3142,9 @@
                 // Same persistent fade as units: a remembered position renders
                 // translucent through the blended pass, since alpha in the opaque
                 // pass has nothing to blend against.
-                if (b._fade != null && b._fade < 1) {
-                    for (const en of eb.opaque) dl.blended.push({ ...en, alpha: b._fade });
-                    for (const en of eb.blended) dl.blended.push({ buf: en.buf, tex: en.tex, tint: en.tint, model: en.model, alpha: b._fade });
+                if (bFade != null && bFade < 1) {
+                    for (const en of eb.opaque) dl.blended.push({ ...en, alpha: bFade });
+                    for (const en of eb.blended) dl.blended.push({ buf: en.buf, tex: en.tex, tint: en.tint, model: en.model, alpha: bFade });
                 } else {
                 for (const en of eb.opaque) dl.opaque.push(flash ? { ...en, tint: FLASH } : en);
                 for (const en of eb.blended) dl.blended.push(en);
@@ -3095,16 +3154,18 @@
                 // Cinematic: a damaged building smokes, then burns, then blazes. Only
                 // where the viewer can see, and never more than twelve at once.
                 if (this.visualStyle === 'film' && !b.underConstruction && hpct < 0.7 && b._fireBox && burning < 12
-                    && !(b._fade != null && b._fade < 1)
+                    && !(bFade != null && bFade < 1)
                     && (!this._fow() || this._fow().isPositionVisible(b.x, b.z))) {
                     burning++;
                     const lights = EngineFx.burning(b, hpct, ambientTime, this._reducedMotion, { m3, bb, quad, ringBuf, tex: this.tex, dl, eye: this._cam && this._cam.eye });
                     if (lights) for (const en of eb.opaque) en.localLights = en.localLights ? EngineFx.mergeLights(en.localLights, lights) : lights;
                 }
                 const by = (b.isWonder ? 10 * WONDER_SCALE : 6) * BSCALE + 1.2;
-                if (!b.underConstruction && hpct < 0.999) pushBar(b.x, by, b.z, 4.6, hpct, this._barColor(hpct));
-                if (b.type === 'farm' && !b.underConstruction && b.maxFoodAmount > 0) {
-                    pushBar(b.x, 3.1, b.z, 3.4, b.foodAmount / b.maxFoodAmount, [0.85, 0.66, 0.2]);
+                if (!(bFade != null && bFade < 1)) {
+                    if (!b.underConstruction && hpct < 0.999) pushBar(b.x, by, b.z, 4.6, hpct, this._barColor(hpct));
+                    if (b.type === 'farm' && !b.underConstruction && b.maxFoodAmount > 0) {
+                        pushBar(b.x, 3.1, b.z, 3.4, b.foodAmount / b.maxFoodAmount, [0.85, 0.66, 0.2]);
+                    }
                 }
                 if (b.selected || (this.game && this.game.selectedBuilding === b)) {
                     dl.blended.push({
@@ -3326,6 +3387,32 @@
             }
 
             if (!inset) this._marching = onTheMove;
+
+            // Model View 3D ghosts (last-seen enemy units & fallen remembered buildings, _fade = 0.4)
+            if (this._seatGhosts && this._seatGhosts.size) {
+                for (const { kind, ent } of this._seatGhosts.values()) {
+                    const ge = ent && ent._engine;
+                    if (!ge || this._cull(ent.x, ent.z, kind === 'building' ? 12 : 4)) continue;
+                    const alpha = ent._fade != null ? ent._fade : 0.4;
+                    if (kind === 'building') {
+                        for (const en of ge.opaque) dl.blended.push({ ...en, alpha });
+                        for (const en of ge.blended) dl.blended.push({ buf: en.buf, tex: en.tex, tint: en.tint, model: en.model, alpha });
+                    } else {
+                        const pose = ge.static ? { mats: this._siegePose(ent, ge), bob: 0 } : EngineUnits.pose(ge.type, 'idle', 0, ge.phase || 0, { strike: null, stride: 0, m3: fm });
+                        const world = fm.translation(ent.x, pose.bob, ent.z);
+                        const parts = this._halfH > EngineRenderer.FAR_UNIT_HALF_H ? (ge.farEntries || (ge.farEntries = ge.far()))
+                            : (this.unitPalette && ge.mid && this._halfH > EngineRenderer.MID_UNIT_HALF_H) ? (ge.midEntries || (ge.midEntries = ge.mid()))
+                            : ge.entries;
+                        const bones = ge.boneMats, names = ge.boneNames;
+                        if (bones) for (let k = 0; k < names.length; k++) bones.set(pose.mats[names[k]] || this._one || (this._one = m3.identity()), (k + 1) * 16);
+                        for (const e of parts) {
+                            const rigged = e.skin ? bones : null;
+                            const model = rigged ? world : m3.multiplyInto(e.mOwn || (e.mOwn = new Float32Array(16)), world, e.base);
+                            dl.blended.push({ buf: e.buf, tex: e.tex, tint: e.tint, model, alpha, bones: rigged });
+                        }
+                    }
+                }
+            }
 
             // Buildings coming down (overhaul step A9): each chunk where its fall has taken it,
             // and dust when the walls go, when the roof lands and as the heap settles.

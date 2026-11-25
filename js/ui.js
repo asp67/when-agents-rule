@@ -3368,75 +3368,64 @@ class UIManager {
         if (seat !== this.seatView.seat) { this.seatView.set(seat); this.refreshSeatView(); }
         else this.seatView.refresh();
     }
-    // The badge that says whose eyes these are, so a fogged map is never mistaken for a fault.
-    // U3: Also maintains a companion #seatViewLens epistemic bar (explored %, stale ghosts,
-    // quick seat dots, and Reality Diff tether switch) in real DOM sessions.
+    // The badge that says whose eyes these are, mounted flush above the minimap so it stays
+    // anchored directly to the visibility toggle and never obscures the map.
     refreshSeatView() {
         let el = document.getElementById('seatViewBadge');
-        const lens = document.getElementById('seatViewLens');
         const eye = document.getElementById('mmEyeBtn');
-        if (eye) { eye.classList.toggle('on', this.seatViewOn()); eye.setAttribute('aria-pressed', this.seatViewOn() ? 'true' : 'false'); }
         if (!this.seatViewOn()) {
+            if (eye) {
+                eye.classList.remove('on');
+                eye.setAttribute('aria-pressed', 'false');
+                eye.style.removeProperty('--seat-bg');
+                eye.style.removeProperty('--seat-ink');
+            }
             if (el) el.remove();
-            if (lens) lens.remove();
             return;
         }
         const ai = this.seatView.ai(), ctrls = (this.game.openAIAIManager && this.game.openAIAIManager.aiControllers) || [];
         const ctrl = ai && ctrls.find(c => c.id === ai.id);
         const who = (ctrl && ctrl.model && ctrl.model.name) || this.anCivName(ai && ai.civilization);
+        const tb = (typeof getTeamBadge === 'function' && ai) ? getTeamBadge(ai.seat) : null;
+        const seatBg = (tb && tb.fill) || this.identityHex(ai.id, ai.civilization, ai.seat);
+        if (eye) {
+            const hex = String(seatBg || '').replace('#', '');
+            const lum = hex.length === 6 ? (0.2126 * parseInt(hex.slice(0, 2), 16) + 0.7152 * parseInt(hex.slice(2, 4), 16) + 0.0722 * parseInt(hex.slice(4, 6), 16)) : 128;
+            eye.classList.add('on');
+            eye.setAttribute('aria-pressed', 'true');
+            eye.style.setProperty('--seat-bg', seatBg);
+            eye.style.setProperty('--seat-ink', lum > 140 ? '#171a18' : '#f4f1e6');
+        }
+        const host = (typeof document.querySelector === 'function' && document.querySelector('.minimap')) || document.body;
         if (!el) {
             el = document.createElement('div');
             el.id = 'seatViewBadge'; el.className = 'seat-view-badge';
             el.setAttribute('role', 'status');
-            document.body.appendChild(el);
+            host.appendChild(el);
+        } else if (el.parentNode && el.parentNode !== host) {
+            host.appendChild(el);
         }
         el.style.setProperty('--seat', this.legibleColor(this.identityHex(ai.id, ai.civilization, ai.seat)));
+        el.style.setProperty('--seat-bg', seatBg);
         el.innerHTML = this.teamDotHtml(ai.seat, 10) + '<span>' + this.escapeHtml(t('view.badge', { who })) + '</span>';
-        // Companion epistemic lens (only when SeatView exposes stats())
-        if (typeof this.seatView.stats === 'function') {
-            const st = this.seatView.stats();
-            let panel = lens;
-            if (!panel) {
-                panel = document.createElement('div');
-                panel.id = 'seatViewLens'; panel.className = 'seat-view-lens';
-                document.body.appendChild(panel);
-            }
-            const diffOn = !!this._realityDiff;
-            const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
-            const dots = ais.map(a => `<button type="button" class="svl-dot${a.seat === ai.seat ? ' on' : ''}" onclick="game.ui.switchSeatView(${a.seat})" title="${this.escapeHtml(this.anCivName(a.civilization))}">${this.teamDotHtml(a.seat, 9)}</button>`).join('');
-            const ghostStat = st && st.staleCount
-                ? `<span class="svl-ghosts">${this.escapeHtml(t('view.staleGhosts', { n: st.staleCount, s: st.oldestSec }))}</span>`
-                : `<span class="svl-meta">${this.escapeHtml(t('view.noGhosts'))}</span>`;
-            panel.innerHTML = `<span class="svl-dots">${dots}</span>`
-                + (st ? `<span class="svl-meta">${this.escapeHtml(t('view.exploredPct', { pct: st.exploredPct }))}</span>` : '')
-                + ghostStat
-                + `<button type="button" class="svl-diff${diffOn ? ' on' : ''}" aria-pressed="${diffOn}" onclick="game.ui.toggleRealityDiff()" title="${this.escapeHtml(t('view.realityDiffTip'))}">${this.escapeHtml(t('view.realityDiff'))}</button>`
-                + `<button type="button" class="svl-close" onclick="game.ui.toggleSeatView(false)" title="${this.escapeHtml(t('mm.fogAll'))}">✕</button>`;
+        const st = typeof this.seatView.stats === 'function' ? this.seatView.stats() : null;
+        const tipParts = [who];
+        if (st) {
+            tipParts.push(t('view.exploredPct', { pct: st.exploredPct }));
+            tipParts.push(st.staleCount ? t('view.staleGhosts', { n: st.staleCount, s: st.oldestSec }) : t('view.noGhosts'));
         }
+        tipParts.push('V');
+        el.title = tipParts.join(' · ');
+        if (eye) eye.title = tipParts.join(' · ');
     }
-    switchSeatView(seat) {
-        if (!this.seatView) return;
-        this.game.minimapFogSeat = seat;
-        this.game._minimapFogManual = true;
-        this.seatView.set(seat);
-        this.refreshMinimapFogKnobs();
-        if (this.game.updateMinimap) this.game.updateMinimap();
-        this.refreshSeatView();
-    }
-    toggleRealityDiff(on = !this._realityDiff) {
-        this._realityDiff = !!on;
-        this.refreshSeatView();
-    }
-    // What the seat believes and cannot see, as hollow marks: a rival unit where it was
-    // last seen, a building that fell out of its sight. Drawn whether or not Intent is on:
-    // they are part of the view, not of the story layer.
-    // U3: When Reality Diff is ON, tags each stale ghost with its age and draws a dashed
-    // tether pointing to where that unit actually moved.
+    // U3: Model View renders remembered enemy units & buildings as 3D translucent ghosts
+    // (_fade = 0.4, matching the Transcript Viewer) with each unit's real-time last-seen age
+    // and steady observed travel heading (from sightedAt -> lastSeen, never leaking hidden motion).
     drawSeatGhosts(svg, NS) {
         if (!this.seatViewOn()) return;
         const r = this.game.renderer;
-        const diffOn = !!this._realityDiff && typeof this.seatView.realityGhosts === 'function';
-        const ghosts = diffOn ? this.seatView.realityGhosts() : this.seatView.ghosts();
+        if (typeof this.seatView.realityGhosts !== 'function') return;
+        const ghosts = this.seatView.realityGhosts();
         if (!ghosts.length) return;
         const g = document.createElementNS(NS, 'g');
         g.setAttribute('class', 'seat-ghosts');
@@ -3445,36 +3434,37 @@ class UIManager {
             const p = r.worldToScreen(q.x, 0, q.z);
             if (!p) continue;
             const owner = ais.find(a => a.id === q.owner);
-            const color = owner ? this.legibleColor(this.identityHex(owner.id, owner.civilization, owner.seat)) : '#cfd8e3';
-            const size = q.kind === 'building' ? 13 : 7;
-            if (diffOn && q.real) {
-                const rp = r.worldToScreen(q.real.x, 0, q.real.z);
-                if (rp && Math.hypot(rp.x - p.x, rp.y - p.y) > 8) {
-                    const ln = document.createElementNS(NS, 'line');
-                    ln.setAttribute('x1', p.x.toFixed(1)); ln.setAttribute('y1', p.y.toFixed(1));
-                    ln.setAttribute('x2', rp.x.toFixed(1)); ln.setAttribute('y2', rp.y.toFixed(1));
-                    ln.setAttribute('class', 'seat-ghost-tether');
-                    ln.setAttribute('stroke', color);
-                    g.appendChild(ln);
-                    const dot = document.createElementNS(NS, 'circle');
-                    dot.setAttribute('cx', rp.x.toFixed(1)); dot.setAttribute('cy', rp.y.toFixed(1)); dot.setAttribute('r', '3.5');
-                    dot.setAttribute('class', 'seat-ghost-real');
-                    dot.setAttribute('fill', color);
-                    g.appendChild(dot);
+            const tb = (owner && typeof getTeamBadge === 'function') ? getTeamBadge(owner.seat) : null;
+            const color = (tb && tb.fill) || (owner ? this.legibleColor(this.identityHex(owner.id, owner.civilization, owner.seat)) : '#cfd8e3');
+            if (q.heading) {
+                const tp = r.worldToScreen(q.x + q.heading.dx * 4.5, 0, q.z + q.heading.dz * 4.5);
+                if (tp) {
+                    const sdx = tp.x - p.x, sdy = tp.y - p.y, slen = Math.hypot(sdx, sdy);
+                    if (slen > 6) {
+                        const ux = sdx / slen, uy = sdy / slen;
+                        const len = Math.min(28, Math.max(14, slen));
+                        const x2 = p.x + ux * len, y2 = p.y + uy * len;
+                        const ln = document.createElementNS(NS, 'line');
+                        ln.setAttribute('x1', p.x.toFixed(1)); ln.setAttribute('y1', p.y.toFixed(1));
+                        ln.setAttribute('x2', x2.toFixed(1)); ln.setAttribute('y2', y2.toFixed(1));
+                        ln.setAttribute('class', 'seat-ghost-tether');
+                        ln.setAttribute('stroke', color);
+                        g.appendChild(ln);
+                        const ah = 5, aw = 3.5;
+                        const head = document.createElementNS(NS, 'polygon');
+                        head.setAttribute('points',
+                            `${x2.toFixed(1)},${y2.toFixed(1)} `
+                            + `${(x2 - ux * ah - uy * aw).toFixed(1)},${(y2 - uy * ah + ux * aw).toFixed(1)} `
+                            + `${(x2 - ux * ah + uy * aw).toFixed(1)},${(y2 - uy * ah - ux * aw).toFixed(1)}`);
+                        head.setAttribute('fill', color);
+                        head.setAttribute('class', 'seat-ghost-real');
+                        g.appendChild(head);
+                    }
                 }
             }
-            const mark = document.createElementNS(NS, q.kind === 'building' ? 'rect' : 'circle');
-            if (q.kind === 'building') { mark.setAttribute('x', (p.x - size).toFixed(1)); mark.setAttribute('y', (p.y - size).toFixed(1)); mark.setAttribute('width', size * 2); mark.setAttribute('height', size * 2); mark.setAttribute('rx', 3); }
-            else { mark.setAttribute('cx', p.x.toFixed(1)); mark.setAttribute('cy', p.y.toFixed(1)); mark.setAttribute('r', size); }
-            mark.setAttribute('class', 'seat-ghost is-' + q.kind);
-            mark.setAttribute('stroke', color);
-            const title = document.createElementNS(NS, 'title');
-            title.textContent = t(q.kind === 'building' ? 'view.ghostBuilding' : 'view.ghostUnit', { what: tg(String(q.type).replace(/_/g, ' ')) });
-            mark.appendChild(title);
-            g.appendChild(mark);
-            if (diffOn && q.ageSec != null) {
+            if (q.ageSec != null) {
                 const lbl = document.createElementNS(NS, 'text');
-                lbl.setAttribute('x', p.x.toFixed(1)); lbl.setAttribute('y', (p.y - size - 4).toFixed(1));
+                lbl.setAttribute('x', p.x.toFixed(1)); lbl.setAttribute('y', (p.y - 12).toFixed(1));
                 lbl.setAttribute('text-anchor', 'middle');
                 lbl.setAttribute('class', 'seat-ghost-age');
                 lbl.textContent = q.ageSec + 's';
@@ -4668,7 +4658,6 @@ class UIManager {
         { const sc = document.getElementById('secondCam'); if (sc) sc.style.display = 'none'; }
         if (this.seatView) this.seatView.set(null);          // the renderer gets its own fog and every entity back
         document.getElementById('seatViewBadge')?.remove();
-        document.getElementById('seatViewLens')?.remove();
         this._mmLensMode = 'fog';
         this.renderMinimapLens();
         this.stopIntentOverlay();
@@ -5828,12 +5817,16 @@ class UIManager {
                         <span class="lb-rank">${rank}</span>
                         ${this.teamDotHtml(ai.seat, 10)}
                         <span class="lb-model-name">${this.escapeHtml(r.modelName)}</span>
-                        <span class="lb-meta-civ">${this.escapeHtml(civShort)} · ${this.escapeHtml(ageShort)}</span>
-                        ${statusTag}
-                        <span class="lb-actions">
-                            ${r.isLLM ? `<button class="lb-spy${this._transcriptFor === ai.id ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer('${ai.id}')" title="${t('spec.transcript')}">🔎</button>` : ''}
-                            ${(r.isLLM && r.alive) ? `<button class="lb-adv-btn${showAdvice ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleLbAdvice('${ai.id}')" title="${t('spec.advicePlaceholder')}">💬${r.adviceCount ? `<b>${r.adviceCount}</b>` : ''}</button>` : ''}
-                            ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel('${ai.id}')" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
+                    </div>
+                    <div class="lb-sub-row">
+                        <span class="lb-meta-civ" title="${this.escapeHtml(civShort + ' · ' + ageShort)}">${this.escapeHtml(civShort)} · ${this.escapeHtml(ageShort)}</span>
+                        <span class="lb-sub-right">
+                            ${statusTag}
+                            <span class="lb-actions">
+                                ${r.isLLM ? `<button class="lb-spy${this._transcriptFor === ai.id ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer('${ai.id}')" title="${t('spec.transcript')}">🔎</button>` : ''}
+                                ${(r.isLLM && r.alive) ? `<button class="lb-adv-btn${showAdvice ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleLbAdvice('${ai.id}')" title="${t('spec.advicePlaceholder')}">💬${r.adviceCount ? `<b>${r.adviceCount}</b>` : ''}</button>` : ''}
+                                ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel('${ai.id}')" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
+                            </span>
                         </span>
                     </div>
                     ${profileBlock}

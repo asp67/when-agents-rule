@@ -110,23 +110,40 @@ test('U3: SeatView.stats and realityGhosts report explored %, stale age, and gro
     vm.runInContext(read('js/fogofwar.js') + '\n' + read('js/seat-view.js') + '\nthis.SeatView = SeatView;', ctx);
     const a = {
         id: 'a', seat: 0, units: [], buildings: [],
-        _unitMemory: new Map([['u1', { id: 'u1', owner: 'b', type: 'archer', x: 10, z: 10, visible: false, located: true, at: 5000 }]])
+        _unitMemory: new Map([['u1', { id: 'u1', owner: 'b', type: 'archer', sx: 0, sz: 10, x: 10, z: 10, visible: false, located: true, at: 5000 }]])
     };
     const realUnit = { id: 'u1', owner: 'b', type: 'archer', x: 40, z: -20, health: 30 };
     const grid = new Float32Array(100);
     for (let i = 0; i < 44; i++) grid[i] = 1;
     const sv = new ctx.SeatView({
-        simNow: () => 53000,
+        simNow: () => 250000,
+        realSecsSince: at => (25000 - at) / 1000,
         getAllUnits: () => [realUnit],
         aiManager: { aiPlayers: [a] }
     });
     sv.seat = 0;
     sv.fog = { fogGrid: grid, isPositionCurrentlyVisible: () => false };
+    const ownKill = { owner: 'b', health: 0, _lastAttacker: { owner: 'a' } };
+    const otherKill = { owner: 'b', health: 0, _lastAttacker: { owner: 'c' } };
+    const finishedInFog = { owner: 'b', health: 200, underConstruction: false, x: 16, z: 16 };
+    a._knownEnemyBuildings = new Set([finishedInFog]);
+    a._enemyBuildingSeen = new Map([
+        [ownKill, { type: 'house', x: 12, z: 12 }],
+        [otherKill, { type: 'tower', x: 14, z: 14 }],
+        [finishedInFog, { type: 'tower', x: 16, z: 16, state: 'under_construction', buildPct: 25 }]
+    ]);
     const st = sv.stats();
-    assert.deepEqual(JSON.parse(JSON.stringify(st)), { exploredPct: 44, staleCount: 1, oldestSec: 48 });
+    assert.deepEqual(JSON.parse(JSON.stringify(st)), { exploredPct: 44, staleCount: 2, oldestSec: 20 });
+    assert.equal(sv.hidden(finishedInFog, 'building'), true, 'live completed tower hidden when last seen under construction');
+    const specs = sv.ghostSpecs();
+    const ucGhost = specs.find(s => s.underConstruction);
+    assert.ok(ucGhost && ucGhost.type === 'tower' && ucGhost.buildPct === 25, 'renders last-seen scaffold snapshot');
     const rg = sv.realityGhosts();
-    assert.equal(rg.length, 1);
-    assert.equal(rg[0].ageSec, 48);
+    assert.equal(rg.length, 2);
+    assert.equal(rg.some(x => x.type === 'house'), false, 'building razed by this seat does not reappear as ghost');
+    assert.equal(rg.some(x => x.type === 'tower'), true, 'building destroyed out of sight by another seat stays ghosted');
+    assert.equal(rg[0].ageSec, 20);
+    assert.deepEqual(JSON.parse(JSON.stringify(rg[0].heading)), { dx: 1, dz: 0 });
     assert.deepEqual(JSON.parse(JSON.stringify(rg[0].real)), { x: 40, z: -20 });
 });
 
@@ -147,7 +164,7 @@ test('G2 & G4 runtime smoke: EngineRenderer._assembleFrame executes cleanly with
         TexGen: { TERRAIN_SEED: 1, TERRAIN_WORLD: 1000, TERRAIN_LAND: 400 }
     });
     ctx.window = ctx;
-    for (const f of ['js/engine/math3d.js', 'js/engine/mesh.js', 'js/engine/atmosphere.js', 'js/engine/fx.js', 'js/engine/gamerenderer.js']) {
+    for (const f of ['js/engine/math3d.js', 'js/engine/mesh.js', 'js/engine/units.js', 'js/engine/atmosphere.js', 'js/engine/fx.js', 'js/engine/gamerenderer.js']) {
         vm.runInContext(read(f), ctx);
     }
     const r = Object.create(ctx.EngineRenderer.prototype);
@@ -156,12 +173,24 @@ test('G2 & G4 runtime smoke: EngineRenderer._assembleFrame executes cleanly with
     const tower = { id: 'b_tw', type: 'tower', owner: 'p2', x: 25, z: 0, health: 200, maxHealth: 200, attackRange: 18 };
     const wonder = { id: 'b_w', type: 'wonder', isWonder: true, owner: 'p1', x: -20, z: 10, health: 1000, maxHealth: 1000 };
     const treb = { id: 'u_t', type: 'trebuchet', owner: 'p1', x: -10, z: -10, health: 100, range: 50 };
+    const ghostUnit = {
+        x: 12, z: -8, _fade: 0.4,
+        _engine: {
+            type: 'infantry', phase: 0, boneNames: [], boneMats: null,
+            entries: [{ buf: {}, tex: {}, tint: [1, 1, 1], base: ctx.M3D.identity(), skin: false }]
+        }
+    };
+    const ghostBld = {
+        x: -14, z: 18, _fade: 0.4,
+        _engine: { opaque: [{ buf: {}, tex: {}, tint: [1, 1, 1], model: ctx.M3D.identity() }], blended: [] }
+    };
     Object.assign(r, {
         gl: {}, graphicsQuality: 'cinematic', visualStyle: 'film', _reducedMotion: false,
         cloudShadows: true, weatherMotes: true, tcThinkingPulse: true,
         _theme: 'summer', _nightFactor: 0.1, _halfH: 34, cameraTarget: { x: 0, y: 0, z: 0 },
         _dl: { opaque: [], blended: [], bars: [], casters: [] },
         _geo: new Map(), _projectiles: [], _rings: [], _ghosts: [], _rubble: [], _breaks: [],
+        _seatGhosts: new Map([['u', { kind: 'unit', ent: ghostUnit }], ['b', { kind: 'building', ent: ghostBld }]]),
         tex: { white: {}, mote: {}, ring: {}, shadow: {}, rock: {} }, WHITE: [1, 1, 1],
         units: [], buildings: [tc, tower, wonder], selectedBuilding: tower, selectedUnits: [treb],
         entityHidden: () => false, _cull: () => false, _fow: () => null,

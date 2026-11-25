@@ -66,6 +66,8 @@ class SeatView {
         if (r) {
             r.fogView = this.on() ? this.fog : null;
             r.entityHidden = this.on() ? (e, kind) => this.hidden(e, kind) : null;
+            r.entityFade = this.on() ? (e, kind) => this.fadeOf(e, kind) : null;
+            if (!this.on() && typeof r.setSeatGhosts === 'function') r.setSeatGhosts(null);
         }
         if (this.on()) this.refresh();
         return this.on();
@@ -78,7 +80,18 @@ class SeatView {
         if (!grid || grid.length !== this.fog.fogGrid.length) return false;
         this.fog.fogGrid.set(grid);
         this.fog.updateFogTexture();
+        const r = this.game.renderer;
+        if (r && typeof r.setSeatGhosts === 'function') r.setSeatGhosts(this.ghostSpecs());
         return true;
+    }
+
+    // Translucent 0.62 fade for discovered enemy buildings out of current sight (reads as
+    // ~40% after the explored-fog veil is composited on top).
+    fadeOf(e, kind) {
+        const ai = this.ai();
+        if (!ai || !e || !this.on() || e.owner === ai.id) return null;
+        if (kind === 'building' && !e.isWonder && !this.fog.isPositionCurrentlyVisible(e.x, e.z)) return 0.62;
+        return null;
     }
 
     // Is this unit or building left out of the picture? Its own are never; a rival's
@@ -91,7 +104,13 @@ class SeatView {
             if (e.isWonder) return false;                                    // a Wonder is public, as in the model's state
             if (typeof Game !== 'undefined' && Game.hiddenSite && Game.hiddenSite(e)) return true;
             if (this.fog.isPositionCurrentlyVisible(e.x, e.z)) return false;
-            return !(ai._knownEnemyBuildings && ai._knownEnemyBuildings.has(e));
+            if (!(ai._knownEnemyBuildings && ai._knownEnemyBuildings.has(e))) return true;
+            // If last seen while under construction, hide the live building so a site that
+            // finished out of sight does not leak its completed state; ghostSpecs() renders
+            // the remembered scaffold at its last-seen buildPct instead.
+            const snap = ai._enemyBuildingSeen && ai._enemyBuildingSeen.get && ai._enemyBuildingSeen.get(e);
+            if (snap && snap.state === 'under_construction') return true;
+            return false;
         }
         return !this.fog.isPositionCurrentlyVisible(e.x, e.z);
     }
@@ -108,10 +127,45 @@ class SeatView {
             out.push({ kind: 'unit', type: r.type, x: r.x, z: r.z, owner: r.owner, at: r.at });
         });
         const seen = ai._enemyBuildingSeen;
+        const ais = (g && g.aiManager && g.aiManager.aiPlayers) || [];
+        const goneForSeat = b => {
+            if (b._lastAttacker && b._lastAttacker.owner === ai.id) return true;
+            const o = ais.find(p => p.id === b.owner);
+            return !!(o && o._eliminated);
+        };
         if (seen && seen.forEach) seen.forEach((snap, b) => {
-            if (!b || b.health > 0 || !snap || this.fog.isPositionCurrentlyVisible(snap.x, snap.z)) return;
+            if (!b || b.health > 0 || !snap || goneForSeat(b) || this.fog.isPositionCurrentlyVisible(snap.x, snap.z)) return;
             out.push({ kind: 'building', type: snap.type, x: snap.x, z: snap.z, owner: b.owner, fallen: true });
         });
+        return out;
+    }
+
+    // Read-only specs for EngineRenderer.setSeatGhosts: enriches ghosts() with owner civ/seat/age,
+    // plus remembered under-construction building snapshots so out-of-sight sites render in their
+    // last-seen scaffold state rather than leaking later completion.
+    ghostSpecs() {
+        const ai = this.ai();
+        const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        const enrich = q => {
+            const o = ais.find(a => a.id === q.owner);
+            return Object.assign({}, q, {
+                civ: (o && o.civilization) || 'greek',
+                seat: o ? o.seat : 0,
+                age: (o && o.age) || 'stone'
+            });
+        };
+        const out = this.ghosts().map(enrich);
+        if (ai && this.on() && ai._enemyBuildingSeen && ai._enemyBuildingSeen.forEach) {
+            ai._enemyBuildingSeen.forEach((snap, b) => {
+                if (!b || !(b.health > 0) || b.isWonder || !snap || snap.state !== 'under_construction') return;
+                if (!(ai._knownEnemyBuildings && ai._knownEnemyBuildings.has(b))) return;
+                if (this.fog.isPositionCurrentlyVisible(b.x, b.z)) return;
+                out.push(enrich({
+                    kind: 'building', type: snap.type, x: b.x, z: b.z, owner: b.owner,
+                    underConstruction: true, buildPct: snap.buildPct || 0
+                }));
+            });
+        }
         return out;
     }
 
@@ -124,15 +178,22 @@ class SeatView {
         for (let i = 0; i < grid.length; i++) if (grid[i] > 0) seen++;
         const exploredPct = grid.length ? Math.round((seen / grid.length) * 100) : 0;
         const ghosts = this.ghosts();
-        const now = (this.game && this.game.simNow) ? this.game.simNow() : Date.now();
+        const ageOf = at => {
+            if (at == null) return null;
+            if (this.game && typeof this.game.realSecsSince === 'function') return Math.max(0, Math.round(this.game.realSecsSince(at)));
+            const now = (this.game && this.game.simNow) ? this.game.simNow() : Date.now();
+            return now >= at ? Math.round((now - at) / 1000) : null;
+        };
         let oldestSec = 0;
         for (const q of ghosts) {
-            if (q.at != null && now >= q.at) oldestSec = Math.max(oldestSec, Math.round((now - q.at) / 1000));
+            const a = ageOf(q.at);
+            if (a != null) oldestSec = Math.max(oldestSec, a);
         }
         return { exploredPct, staleCount: ghosts.length, oldestSec };
     }
 
-    // U3: Read-only ground-truth lookup for Reality Diff tethers (where a remembered enemy unit actually went).
+    // U3: Read-only ghost telemetry for Model View: real-time secondsAgo (via game.realSecsSince),
+    // observed heading (from sightedAt -> lastSeen), plus ground-truth coordinates for tests/tools.
     realityGhosts() {
         const ai = this.ai(), g = this.game, out = [];
         if (!ai || !this.on()) return out;
@@ -141,17 +202,30 @@ class SeatView {
         const byId = new Map();
         for (const u of liveUnits) if (u && u.health > 0) byId.set(String(u.id), u);
         const now = g && g.simNow ? g.simNow() : Date.now();
+        const ageOf = at => {
+            if (at == null) return null;
+            if (g && typeof g.realSecsSince === 'function') return Math.max(0, Math.round(g.realSecsSince(at)));
+            return now >= at ? Math.round((now - at) / 1000) : null;
+        };
         if (mem && mem.forEach) mem.forEach((r, key) => {
             if (!r || r.visible || r.located === false || r.x == null || r.z == null) return;
             if (this.fog.isPositionCurrentlyVisible(r.x, r.z)) return;
             const real = byId.get(String(r.id != null ? r.id : key)) || null;
-            const ageSec = r.at != null && now >= r.at ? Math.round((now - r.at) / 1000) : null;
-            out.push({ kind: 'unit', type: r.type, x: r.x, z: r.z, owner: r.owner, at: r.at, ageSec,
+            const ageSec = ageOf(r.at);
+            const hdx = r.sx != null ? r.x - r.sx : 0, hdz = r.sz != null ? r.z - r.sz : 0;
+            const hlen = Math.hypot(hdx, hdz);
+            const heading = hlen >= 4 ? { dx: hdx / hlen, dz: hdz / hlen } : null;
+            out.push({ kind: 'unit', type: r.type, x: r.x, z: r.z, owner: r.owner, at: r.at, ageSec, heading,
                 real: real ? { x: real.x, z: real.z } : null });
         });
         const seen = ai._enemyBuildingSeen;
+        const ais = (g && g.aiManager && g.aiManager.aiPlayers) || [];
         if (seen && seen.forEach) seen.forEach((snap, b) => {
-            if (!b || b.health > 0 || !snap || this.fog.isPositionCurrentlyVisible(snap.x, snap.z)) return;
+            if (!b || b.health > 0 || !snap) return;
+            if (b._lastAttacker && b._lastAttacker.owner === ai.id) return;
+            const o = ais.find(p => p.id === b.owner);
+            if (o && o._eliminated) return;
+            if (this.fog.isPositionCurrentlyVisible(snap.x, snap.z)) return;
             out.push({ kind: 'building', type: snap.type, x: snap.x, z: snap.z, owner: b.owner, fallen: true, ageSec: null, real: null });
         });
         return out;
