@@ -3641,7 +3641,7 @@
                                 model: fm.multiply(fm.translation(b.x, 0.16, b.z), fm.scaling(10.5, 1, 10.5)) });
                         } else {
                             for (let k = 0; k < 2; k++) {
-                                const p = (tSec * 0.35 + k * 0.5) % 1;
+                                const p = (tSec * 0.175 + k * 0.5) % 1;
                                 const rad = 6.5 + p * 10.5;
                                 dl.blended.push({ buf: pulseBuf, tex: this.tex.white, tint: col, alpha: 0.38 * (1 - p) * (1 - p),
                                     model: fm.multiply(fm.translation(b.x, 0.16, b.z), fm.scaling(rad, 1, rad)) });
