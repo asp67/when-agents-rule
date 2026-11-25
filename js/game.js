@@ -403,13 +403,12 @@ class Game {
         const badgeEl = typeof document !== 'undefined' ? document.getElementById('arenaSeriesBadge') : null;
         if (badgeEl) {
             if (this.arenaSeries) {
-                badgeEl.textContent = typeof t === 'function'
-                    ? t('series.badge', { r: this.arenaSeries.round, n: this.arenaSeries.total })
-                    : `Match ${this.arenaSeries.round} / ${this.arenaSeries.total}`;
+                const lbl = typeof t === 'function' ? t('series.badgeLabel') : 'Match';
+                badgeEl.innerHTML = `<span class="sb-series-lbl">${lbl}</span><span class="sb-series-num">${this.arenaSeries.round} / ${this.arenaSeries.total}</span>`;
                 badgeEl.style.display = '';
             } else {
                 badgeEl.style.display = 'none';
-                badgeEl.textContent = '';
+                badgeEl.innerHTML = '';
             }
         }
         // Continuing an MCP series match: notify the hub before turns begin so each

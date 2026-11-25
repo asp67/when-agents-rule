@@ -3680,11 +3680,14 @@ body.race-view .second-cam { bottom: calc(var(--mm-bottom) + 212px); }
 
 /* --- Multi-match Arena Series badge & pooled scorecard --- */
 .sb-series {
-    display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px;
+    display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 3px 10px; border-radius: 10px; line-height: 1.15; gap: 1px;
     background: rgba(224, 180, 60, 0.16); border: 1px solid rgba(224, 180, 60, 0.45);
-    color: #f3d27a; font-size: 0.78em; font-weight: 700; letter-spacing: 0.04em;
-    font-variant-numeric: tabular-nums; margin-left: 6px;
+    color: #f3d27a; font-variant-numeric: tabular-nums; margin-left: 4px;
+    white-space: nowrap; flex: none;
 }
+.sb-series-lbl { font-size: 0.66em; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.88; }
+.sb-series-num { font-size: 0.84em; font-weight: 800; letter-spacing: 0.03em; }
 .summary-series {
     margin: 0 0 18px; padding: 14px 16px; border-radius: 12px;
     background: rgba(24, 30, 44, 0.88); border: 1px solid rgba(224, 180, 60, 0.35);
