@@ -5057,13 +5057,16 @@ class UIManager {
         else if (this.updateBenchView) { this._benchTop = null; this.updateBenchView(); }
         if (this.updateCompare) this.updateCompare();          // the lower third belongs to broadcast mode: it comes and goes with it
     }
-    // U1: Track per-seat thinking elapsed time and turn-based round readiness without touching harness code.
+    // U1: Track per-seat thinking elapsed time without touching harness code.
+    // Resets cleanly whenever pending drops OR turnLog.length advances (fast back-to-back turns).
     thinkElapsedMs(ctrl, now = Date.now()) {
         if (!ctrl || !ctrl.id) return 0;
         const map = this._thinkSince || (this._thinkSince = new Map());
         if (ctrl.pending && !ctrl.paused) {
-            if (!map.has(ctrl.id)) map.set(ctrl.id, now);
-            return Math.max(0, now - map.get(ctrl.id));
+            const turns = (ctrl.turnLog && ctrl.turnLog.length) || 0;
+            const prev = map.get(ctrl.id);
+            if (!prev || prev.turns !== turns) map.set(ctrl.id, { at: now, turns });
+            return Math.max(0, now - map.get(ctrl.id).at);
         }
         map.delete(ctrl.id);
         return 0;
@@ -5100,7 +5103,7 @@ class UIManager {
             }
             const fill = card.querySelector('.lb-edge-fill.is-thinking');
             if (fill) {
-                fill.style.width = Math.max(8, thinkPct) + '%';
+                fill.style.width = thinkPct + '%';
                 fill.classList.toggle('is-urgent', thinkUrg);
             }
         }
@@ -5168,7 +5171,7 @@ class UIManager {
             const tb = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
             const band = (tb && tb.fill) || this.identityHex(ai.id, ai.civilization, ai.seat);
             const thinkBar = ctrl && ctrl.pending
-                ? '<span class="bb-think-bar' + (thinkUrg ? ' is-urgent' : '') + (!mgr || !mgr.turnBased ? ' is-rt' : '') + '" style="width:' + Math.max(8, thinkPct) + '%"></span>'
+                ? '<span class="bb-think-bar' + (thinkUrg ? ' is-urgent' : '') + (!mgr || !mgr.turnBased ? ' is-rt' : '') + '" style="width:' + thinkPct + '%"></span>'
                 : '';
             return '<span class="bb-seat' + (out ? ' out' : '') + (ctrl && ctrl.pending ? ' is-thinking' : '') + '" style="--seat:' + band + '"><span class="bb-main">' + this.chronicleSeatHtml(ai.id)
                 + ' <span class="bb-age">' + this.escapeHtml(this.getAgeName(ai.age)) + '</span>'
@@ -5854,8 +5857,8 @@ class UIManager {
                             onkeydown="if(event.key==='Enter'){event.preventDefault();game.ui.sendAdvice('${ai.id}');}">
                         <button class="lb-advice-send" title="${t('spec.adviceSend')}" onclick="game.ui.sendAdvice('${ai.id}')">➤</button>
                     </div>` : ''}
-                    <div class="lb-edge-track" title="${r.thinking ? this.escapeHtml(t('spec.thinking')) : (r.alive ? String(r.score) : '')}">
-                        <div class="lb-edge-fill${r.thinking ? (' is-thinking' + (thinkUrg ? ' is-urgent' : '') + (!mgr || !mgr.turnBased ? ' is-rt' : '')) : ''}" style="width:${r.thinking ? Math.max(8, thinkPct) : pct}%"></div>
+                    <div class="lb-edge-track" title="${r.thinking ? this.escapeHtml(t('spec.thinking')) : ''}">
+                        <div class="lb-edge-fill${r.thinking ? (' is-thinking' + (thinkUrg ? ' is-urgent' : '') + (!mgr || !mgr.turnBased ? ' is-rt' : '')) : ''}" style="width:${r.thinking ? thinkPct : 0}%"></div>
                     </div>
                 </div>
             `;

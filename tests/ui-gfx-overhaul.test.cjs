@@ -101,8 +101,12 @@ test('U1: thinkElapsedMs and compactNum report live inference telemetry accurate
     const c1 = { id: 'a', pending: true, paused: false, turnLog: [{}, {}] };
     assert.equal(u.thinkElapsedMs(c1, 10000), 0);
     assert.equal(u.thinkElapsedMs(c1, 14500), 4500);
-    c1.pending = false;
+    // Back-to-back turn where pending stayed true between ticks resets cleanly to 0
+    c1.turnLog.push({});
     assert.equal(u.thinkElapsedMs(c1, 15000), 0);
+    assert.equal(u.thinkElapsedMs(c1, 17200), 2200);
+    c1.pending = false;
+    assert.equal(u.thinkElapsedMs(c1, 18000), 0);
 });
 
 test('U3: SeatView.stats and realityGhosts report explored %, stale age, and ground-truth coordinates', () => {
