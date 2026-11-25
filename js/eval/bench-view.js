@@ -33,8 +33,27 @@
         : key === 'tactical' ? (s.tactical.judged ? ((s.tactical.episodes || 0) + (s.tactical.wonders || 0) + (s.tactical.battles || 0)) : 0)
         : (s.strategy.samples || 0);
 
+    // U5: In Analyze mode when the leaderboard is visible (and expanded), each .lb-card
+    // already carries the 5 pillars, WAR score, batching bar, AND live sparkline — so the
+    // duplicate floating #benchMatrix mini-card stays hidden and B opens #benchFull directly.
+    // In Broadcast mode (where the leaderboard is hidden), #benchMatrix works as before.
+    P.benchMiniSuppressed = function () {
+        if (typeof document === 'undefined') return false;
+        const body = document.body;
+        if (body && body.classList && body.classList.contains('broadcast-mode')) return false;
+        const lb = document.getElementById('spectatorLeaderboard');
+        if (!lb || (lb.style && lb.style.display === 'none')) return false;
+        const list = document.getElementById('spectatorPlayerList');
+        if (list && list.classList && list.classList.contains('collapsed')) return false;
+        return true;
+    };
+
     P.benchOn = function () { return !!this.viewPreferences().bench; };
     P.toggleBenchView = function (on = !this.benchOn()) {
+        if (this.benchMiniSuppressed()) {
+            this.toggleBenchFull(!this._benchFull);
+            return;
+        }
         this.viewPreferences().bench = !!on;
         this.saveViewPreferences();
         this.refreshBenchView();
@@ -181,9 +200,14 @@
 
     P.refreshBenchView = function () {
         this.wireBenchKey();
-        const on = this.benchOn(), btn = document.getElementById('benchBtn');
+        const suppressed = this.benchMiniSuppressed();
+        const on = !suppressed && this.benchOn(), btn = document.getElementById('benchBtn');
         document.body.classList.toggle('bench-view', on);
-        if (btn) { btn.classList.toggle('sb-on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+        if (btn) {
+            const lit = suppressed ? !!this._benchFull : on;
+            btn.classList.toggle('sb-on', lit);
+            btn.setAttribute('aria-pressed', lit ? 'true' : 'false');
+        }
         const el = document.getElementById('benchMatrix');
         if (el) el.style.display = on ? '' : 'none';
         this._benchSig = null;
@@ -258,7 +282,9 @@
 
     P.updateBenchView = function () {
         const right = document.getElementById('benchMatrix'), full = document.getElementById('benchFull');
-        const panels = !!(right && this.benchOn() && !this.benchInAnalyzer()), open = !!(full && this._benchFull);
+        const suppressed = this.benchMiniSuppressed();
+        const panels = !!(right && !suppressed && this.benchOn() && !this.benchInAnalyzer()), open = !!(full && this._benchFull);
+        if (right && suppressed && right.style && right.style.display !== 'none') right.style.display = 'none';
         if (!panels && !open) {
             if (full && (full.innerHTML || full.style.display !== 'none')) { full.innerHTML = ''; full.style.display = 'none'; }
             return;
@@ -410,7 +436,27 @@
             this._benchFullKey = e => { if (e.key === 'Escape' && this._benchFull) this.toggleBenchFull(false); };
             document.addEventListener('keydown', this._benchFullKey);
         }
+        const btn = typeof document !== 'undefined' ? document.getElementById('benchBtn') : null;
+        if (btn && this.benchMiniSuppressed()) { btn.classList.toggle('sb-on', this._benchFull); btn.setAttribute('aria-pressed', this._benchFull ? 'true' : 'false'); }
         this.updateBenchView();
+    };
+
+    // U5: Compact 2-line WAR + Dominance sparkline for embedding directly inside Analyze .lb-card
+    P.benchSeatSparkSvg = function (seatId) {
+        const ledger = this.benchLedger ? this.benchLedger() : null;
+        if (!ledger || !seatId) return '';
+        const key = ledger.lines + '.' + ledger.rev;
+        if (this._lbSparkKey !== key) {
+            this._lbSparkKey = key;
+            this._lbSparkData = this.benchSeries(ledger);
+        }
+        const data = this._lbSparkData;
+        const s = data && data.seats && data.seats[seatId];
+        if (!s || !s.score || !s.score.t || s.score.t.length < 2) return '';
+        return linesSvg([
+            Object.assign(thin(s.score.t, s.score.index || [], 40), { ink: PART_INK.index, width: 1.6 }),
+            Object.assign(thin(s.score.t, s.score.strategy || [], 40), { ink: PART_INK.strategy, width: 1.0, dash: '3,2' })
+        ], { w: 58, h: 24, end: data.end, max: 100, cls: 'lb-spark-svg' });
     };
 
     P.toggleSeriesBoard = function (payload) {

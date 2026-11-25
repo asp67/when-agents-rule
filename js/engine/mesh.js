@@ -574,6 +574,28 @@
         return { positions, normals, uvs, indices };
     };
 
+    // Crisp hairline ring on y=0 facing up (dashed when gap > 0) — tactical range perimeters
+    // and subtle thinking-pulse halos without scaling up blurry textures into wide bands.
+    EngineMesh.thinRing = (innerR = 0.988, outerR = 1.0, segments = 64, dashed = false) => {
+        const positions = [], normals = [], uvs = [], indices = [];
+        const step = (Math.PI * 2) / segments;
+        for (let i = 0; i < segments; i++) {
+            if (dashed && (i & 1)) continue;
+            const a0 = i * step, a1 = (i + (dashed ? 0.62 : 1)) * step;
+            const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+            const base = positions.length / 3;
+            positions.push(
+                c0 * innerR, 0, s0 * innerR,
+                c0 * outerR, 0, s0 * outerR,
+                c1 * outerR, 0, s1 * outerR,
+                c1 * innerR, 0, s1 * innerR
+            );
+            for (let k = 0; k < 4; k++) { normals.push(0, 1, 0); uvs.push(0.5, 0.5); }
+            indices.push(base, base + 2, base + 1, base, base + 3, base + 2); // CCW seen from +Y
+        }
+        return { positions, normals, uvs, indices };
+    };
+
     // Single quad centred at the origin facing +Z — health bars and other
     // billboarded rectangles (pair with M3D.billboard so it faces the camera).
     // repU tiles the texture along the width (shoreline foam strips).

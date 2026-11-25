@@ -71,15 +71,23 @@
     GLCore.createInstances = (gl, mesh, data, stride = 4) => {
         const instance = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, instance);
-        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, data, stride === 8 ? gl.DYNAMIC_DRAW : gl.STATIC_DRAW);
         return { position: mesh.position, normal: mesh.normal, uv: mesh.uv, bone: null, index: mesh.index, count: mesh.count,
-            shared: true, instance, stride, instances: data.length / stride, capacity: data.length / stride };
+            shared: true, instance, stride, _bytes: data.byteLength || 0,
+            instances: data.length / stride, capacity: data.length / stride };
     };
-    // The same list, longer or changed: sent whole again.
+    // The same list, longer or changed: reuse GPU allocation with bufferSubData when it fits.
     GLCore.setInstances = (gl, buffers, data) => {
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.instance);
-        gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-        buffers.instances = buffers.capacity = data.length / (buffers.stride || 4);
+        const bytes = data.byteLength || 0;
+        if (bytes > 0 && buffers._bytes && bytes <= buffers._bytes && typeof gl.bufferSubData === 'function') {
+            gl.bufferSubData(gl.ARRAY_BUFFER, 0, data);
+        } else {
+            gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+            buffers._bytes = bytes;
+        }
+        buffers.instances = data.length / (buffers.stride || 4);
+        if (buffers.instances > buffers.capacity) buffers.capacity = buffers.instances;
     };
 
     GLCore.compileProgram = (gl, vsSource, fsSource) => {

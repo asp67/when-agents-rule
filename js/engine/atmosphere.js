@@ -255,6 +255,7 @@
         uniform vec2 uOcclMap;
         uniform vec2 uGroundVary;
         uniform vec4 uSoil;
+        uniform float uCloudShadow, uReliefStrength;
         varying vec3 vNormal, vWorld;
         varying vec2 vUv;
         varying float vDepth;
@@ -276,7 +277,9 @@
         }
         float shadowSample(vec2 uv, float depth) {
             vec2 enc = texture2D(uShadowMap, uv).rg;
-            return step(depth, dot(enc, vec2(1.0, 1.0 / 255.0)));
+            float d = dot(enc, vec2(1.0, 1.0 / 255.0));
+            float eps = max(0.00018, uShadowDepthPerTexel * 0.32);
+            return smoothstep(depth - eps, depth + eps, d);
         }
         float visibility(vec3 n) {
             if (uShadowStrength <= 0.0) return 1.0;
@@ -433,7 +436,23 @@
                     contact = 1.0 - ground.x*uOcclMap.y;
                 } else if (uMaterial < 0.5) {
                     contact = mix(1.0 - 0.55*uOcclMap.y, 1.0, smoothstep(0.0, 1.5, vWorld.y));
+                } else if (uMaterial > 2.5) {
+                    contact = mix(1.0 - 0.55*uOcclMap.y, 1.0, smoothstep(0.0, 1.5, vWorld.y));
                 }
+            }
+            // Procedural micro-cavity & sunlit sheen relief (G1): zero extra texture taps,
+            // uses already-sampled texel luminance so stone courses/roof tiles catch grazing sun at ~0 ms GPU cost.
+            if (uAtmosphere > 0.5 && uReliefStrength > 0.0 && uMaterial > 3.5 && uMaterial < 6.5) {
+                float lum = dot(t.rgb, vec3(0.299, 0.587, 0.114));
+                float cavity = clamp((lum - 0.52) * 0.48, -0.18, 0.18);
+                relief *= 1.0 + cavity * uReliefStrength;
+            }
+            // Drifting cloud shadows (G2): lightweight analytic 2-sine bands on ground only
+            // (~20x faster than waveField, 0 extra texture reads, modulates direct uKey only).
+            if (uAtmosphere > 0.5 && uCloudShadow > 0.0 && uMaterial > 0.5 && uMaterial < 1.5) {
+                vec2 cp = vWorld.xz * 0.014 + uTime * vec2(0.06, 0.035);
+                float cl = 0.5 + 0.28 * sin(cp.x + 0.6 * sin(cp.y * 0.8)) + 0.22 * sin(cp.y * 1.15 - cp.x * 0.55 + uTime * 0.025);
+                relief *= 1.0 - uCloudShadow * smoothstep(0.56, 0.90, cl);
             }
             vec3 light = mix(uFillLow,uFillHigh,n.y*0.5+0.5)*contact + uKey*sun*relief*visibility(n)*mix(1.0,contact,0.75);
             vec3 col = albedo*light + uSky*uSky*wetSand*0.07;
@@ -461,6 +480,17 @@
                 float spec=pow(max(dot(n,normalize(eye+uSunDir)),0.0),48.0);
                 float rim=pow(1.0-max(dot(n,eye),0.0),4.0);
                 col += specTint*uKey*spec*0.6 + uSky*uSky*rim*0.3;
+            } else if (uAtmosphere > 0.5 && uReliefStrength > 0.0 && uMaterial > 3.5 && uMaterial < 6.5) {
+                // Restrained material specular (G1): masonry mineral glint, ceramic roof tile sheen, satin wood.
+                float gloss = uMaterial < 4.5 ? 24.0 : (uMaterial < 5.5 ? 30.0 : 14.0);
+                float specK = uMaterial < 4.5 ? 0.11 : (uMaterial < 5.5 ? 0.20 : 0.08);
+                float spec = pow(max(dot(n, normalize(eye + uSunDir)), 0.0), gloss);
+                col += mix(vec3(1.0), base, 0.45) * uKey * spec * specK * uReliefStrength;
+            } else if (uAtmosphere > 0.5 && uReliefStrength > 0.0 && uMaterial > 6.5 && uMaterial < 7.5) {
+                // Backlit foliage translucency & soft wrap light (G1).
+                float back = pow(max(dot(-uSunDir, eye), 0.0), 3.0) * (1.0 - max(n.y, 0.0) * 0.45);
+                float wrap = max(0.0, (dot(n, uSunDir) + 0.35) / 1.35) * 0.16;
+                col += albedo * uKey * (back * 0.38 + wrap) * uReliefStrength;
             }
             if (water > 0.01) {
                 // World coordinates keep offshore and coastal waves continuous.

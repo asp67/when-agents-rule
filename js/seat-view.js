@@ -114,5 +114,47 @@ class SeatView {
         });
         return out;
     }
+
+    // U3: Read-only epistemic telemetry for the Model View lens banner (explored %, stale ghost count & max age).
+    stats() {
+        const ai = this.ai();
+        if (!ai || !this.on() || !this.fog) return null;
+        const grid = this.fog.fogGrid;
+        let seen = 0;
+        for (let i = 0; i < grid.length; i++) if (grid[i] > 0) seen++;
+        const exploredPct = grid.length ? Math.round((seen / grid.length) * 100) : 0;
+        const ghosts = this.ghosts();
+        const now = (this.game && this.game.simNow) ? this.game.simNow() : Date.now();
+        let oldestSec = 0;
+        for (const q of ghosts) {
+            if (q.at != null && now >= q.at) oldestSec = Math.max(oldestSec, Math.round((now - q.at) / 1000));
+        }
+        return { exploredPct, staleCount: ghosts.length, oldestSec };
+    }
+
+    // U3: Read-only ground-truth lookup for Reality Diff tethers (where a remembered enemy unit actually went).
+    realityGhosts() {
+        const ai = this.ai(), g = this.game, out = [];
+        if (!ai || !this.on()) return out;
+        const mem = ai._unitMemory;
+        const liveUnits = g && g.getAllUnits ? g.getAllUnits() : [];
+        const byId = new Map();
+        for (const u of liveUnits) if (u && u.health > 0) byId.set(String(u.id), u);
+        const now = g && g.simNow ? g.simNow() : Date.now();
+        if (mem && mem.forEach) mem.forEach((r, key) => {
+            if (!r || r.visible || r.located === false || r.x == null || r.z == null) return;
+            if (this.fog.isPositionCurrentlyVisible(r.x, r.z)) return;
+            const real = byId.get(String(r.id != null ? r.id : key)) || null;
+            const ageSec = r.at != null && now >= r.at ? Math.round((now - r.at) / 1000) : null;
+            out.push({ kind: 'unit', type: r.type, x: r.x, z: r.z, owner: r.owner, at: r.at, ageSec,
+                real: real ? { x: real.x, z: real.z } : null });
+        });
+        const seen = ai._enemyBuildingSeen;
+        if (seen && seen.forEach) seen.forEach((snap, b) => {
+            if (!b || b.health > 0 || !snap || this.fog.isPositionCurrentlyVisible(snap.x, snap.z)) return;
+            out.push({ kind: 'building', type: snap.type, x: snap.x, z: snap.z, owner: b.owner, fallen: true, ageSec: null, real: null });
+        });
+        return out;
+    }
 }
 if (typeof module !== 'undefined' && module.exports) module.exports = SeatView;

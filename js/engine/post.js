@@ -33,6 +33,7 @@
         uniform vec2 uTexel;
         uniform float uSharpen;
         uniform vec4 uFocus;
+        uniform float uVignette;
         varying vec2 vUv;
         void main() {
             // The scene's own alpha goes to the canvas with it: drawn straight into the
@@ -62,6 +63,10 @@
                 // Never past what the neighbourhood holds: an edge is made crisper, not ringed.
                 vec3 lo = min(c, n * 0.25) * 0.85, hi = max(c, n * 0.25) * 1.15 + 0.02;
                 c = clamp(c + (c * 4.0 - n) * k, lo, hi);
+            }
+            if (uVignette > 0.0) {
+                vec2 d = vUv - 0.5;
+                c *= 1.0 - uVignette * smoothstep(0.18, 0.56, dot(d, d));
             }
             gl_FragColor = vec4(clamp(c, 0.0, 1.0), here.a);
         }`;
@@ -151,6 +156,7 @@
                     gl.uniform1i(prog.uniforms.uSrc, 0);
                     gl.uniform2f(prog.uniforms.uTexel, 1 / w, 1 / h);
                     gl.uniform1f(prog.uniforms.uSharpen, o.sharpen > 0 ? o.sharpen : 0);
+                    if (o.vignette != null && prog.uniforms.uVignette) gl.uniform1f(prog.uniforms.uVignette, o.vignette > 0 ? o.vignette : 0);
                     const f = o.focus;
                     gl.uniform4f(prog.uniforms.uFocus, f ? f[0] : 0.5, f ? f[1] : 0.5, f ? f[2] : 0, f ? 1 : 0);
                     gl.bindBuffer(gl.ARRAY_BUFFER, quad);

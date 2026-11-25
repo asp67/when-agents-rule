@@ -76,7 +76,7 @@
             this._cameraMoveId = 0;
 
             this._yaw = Math.PI / 4;          // middle-drag horizontal turns the map
-            this._pitch = Math.atan(0.5);     // middle-drag vertical tilts (10°..89°)
+            this._pitch = Math.atan(0.5);     // middle-drag vertical tilts (5°..89°)
             this._panDrag = null;
             this._rotateDrag = null;
             this._projectiles = [];
@@ -137,6 +137,9 @@
             let style = null;
             try { style = localStorage.getItem('warLightStyle'); } catch (e) {}
             this.visualStyle = ['classic', 'cinematic', 'film'].includes(style) ? style : 'cinematic';
+            this.cloudShadows = true;
+            this.weatherMotes = true;
+            this.tcThinkingPulse = true;
             this._rubble = [];
             // A viewer who asked for less motion gets steady flames and no rising embers.
             this._reducedMotion = false;
@@ -374,6 +377,15 @@
                 ring: T(TexGen.ring(), { clamp: true }),
                 foam: T(TexGen.foam(199))
             };
+            // Material class tags for micro-relief, specular & backlit foliage (G1):
+            // 3 = metal, 4 = stone/masonry, 5 = terracotta/plaster, 6 = wood/bark/thatch, 7 = foliage.
+            for (const [mat, names] of [
+                [3, ['gold', 'iron', 'bronze']],
+                [4, ['masonry', 'limestone', 'rock', 'worldStone', 'worldOre']],
+                [5, ['rooftile', 'neutralRoof', 'plaster']],
+                [6, ['wood', 'bark', 'worldBark', 'thatch']],
+                [7, ['foliage', 'worldFoliage', 'berries']]
+            ]) for (const k of names) if (this.tex[k]) this.tex[k]._mat = mat;
             // Project the terrain colour onto its soil -> cover palette axis.
             // Keeping this in a uniform leaves the colour texture fully opaque.
             const palette=TexGen.TERRAIN_PALETTES[theme] || TexGen.TERRAIN_PALETTES.summer;
@@ -2626,7 +2638,7 @@
                 const dx=event.clientX-this._rotateDrag.x,dy=event.clientY-this._rotateDrag.y;
                 this._rotateDrag={x:event.clientX,y:event.clientY};
                 this._yaw-=dx*.006;
-                this._pitch=Math.max(10*Math.PI/180,Math.min(89*Math.PI/180,this._pitch+dy*.004));
+                this._pitch=Math.max(5*Math.PI/180,Math.min(89*Math.PI/180,this._pitch+dy*.004));
                 return;
             }
             const pd=this._panDrag;
@@ -2746,7 +2758,7 @@
                 now.tilt = p.tilt + dy;
                 now.tiltOn = p.tiltOn || Math.abs(now.tilt) > 18;        // pixels
                 if (now.tiltOn) {
-                    this._pitch = Math.max(10 * Math.PI / 180,
+                    this._pitch = Math.max(5 * Math.PI / 180,
                         Math.min(89 * Math.PI / 180, this._pitch + dy * 0.004));
                 }
                 this._pinch = now;
@@ -3404,45 +3416,203 @@
                 }
             }
 
-            // The particles: dust, sparks, chips, trails (EngineFx.Particles). Moved on once a
-            // frame, whichever picture is built first, and drawn in both: two draws.
+            // The particles: dust, sparks, chips, trails, biome weather motes (EngineFx.Particles).
+            // Moved on once a frame, whichever picture is built first, and drawn in both: two draws.
+            const weatherP = !inset && this.weatherMotes !== false && fxLevel >= 1 && !this.replayMode ? this._fx() : null;
+            if (weatherP && EngineFx.ambientWeather) {
+                EngineFx.ambientWeather(weatherP, this.cameraTarget, this._halfH, dt, {
+                    theme: this._theme, night: this._nightFactor || 0, level: fxLevel
+                });
+            }
             const particles = this._particles;
             if (particles) {
                 particles.update(once(particles));
                 for (const e of particles.entries(this, quad, fm, bb)) dl.blended.push(e);
             }
 
-            // Intent marks (review #11): what the models just ordered, laid on the ground in
-            // perspective like a selection ring -- a ring at each target, a dashed path from
-            // the units with an arrowhead, a cross over a refused one. The UI supplies them.
+            // Intent marks (review #11 + G4 diegetic 3D telemetry): only drawn when Intent is ON.
+            // Accepted orders get depth-tested 3D parabolic command arcs + traveling pulse orb;
+            // refused orders get semantic verdict color (amber contended, crimson hallucination/slip)
+            // with fractured ground dashes and a raised X decal.
             const marks = !inset && this.intentMarks ? this.intentMarks() : null;   // the orders are read in the main picture
             if (marks && marks.length) {
                 const bar = this._buf('box', [1, 1, 1]);
-                const flat = (x, z, yaw, len, wid, tint, alpha) => dl.blended.push({ buf: bar, tex: this.tex.white, tint, alpha,
-                    model: fm.multiply(fm.translation(x, 0.12, z), fm.multiply(fm.rotationY(yaw), fm.scaling(wid, 0.02, len))) });
+                const flat = (x, y, z, yaw, pitch, len, wid, tint, alpha, additive) => dl.blended.push({
+                    buf: bar, tex: this.tex.white, tint, alpha, additive: !!additive,
+                    model: fm.multiply(fm.translation(x, y, z), fm.multiply(fm.rotationY(yaw),
+                        pitch ? fm.multiply(fm.rotationX(pitch), fm.scaling(wid, 0.05, len)) : fm.scaling(wid, 0.03, len)))
+                });
+                const siegeTargets = [];
                 for (const mk of marks) {
-                    const tint = this._tintOf(parseInt(String(mk.color).slice(1), 16));
-                    const r = mk.marker ? 5 : 2.4, to = mk.to;
-                    dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint, alpha: mk.alpha,
-                        model: fm.multiply(fm.translation(to.x, 0.14, to.z), fm.scaling(r, 1, r)) });
-                    if (mk.refused) for (const yaw of [Math.PI / 4, -Math.PI / 4]) flat(to.x, to.z, yaw, r * 1.3, 0.3, tint, mk.alpha);
-                    if (!mk.from) continue;
-                    const dx = to.x - mk.from.x, dz = to.z - mk.from.z, dist = Math.hypot(dx, dz);
-                    if (dist < r + 2) continue;
-                    const ux = dx / dist, uz = dz / dist, yaw = Math.atan2(ux, uz);
-                    // The whole path, however long; only the dashes in view are drawn. A cap of
-                    // 90 dashes cut long paths off at ~200 units, which read as an arrow ending
-                    // in mid-field once the camera followed the unit along it.
-                    const start = 1.2, end = dist - r - 0.3, step = 2.3, dash = 1.4;
-                    for (let s = start; s + dash <= end; s += step) {
-                        const px = mk.from.x + ux * (s + dash / 2), pz = mk.from.z + uz * (s + dash / 2);
-                        if (!this._cull(px, pz, 2)) flat(px, pz, yaw, dash, 0.24, tint, mk.alpha);
+                    const tint = mk.refused
+                        ? (mk.verdict === 'contended' ? [0.92, 0.72, 0.34] : [0.90, 0.36, 0.30])
+                        : this._tintOf(parseInt(String(mk.color).slice(1), 16));
+                    const r = mk.marker ? 5 : 2.5;
+                    const stops = mk.waypoints && mk.waypoints.length ? [mk.to].concat(mk.waypoints) : [mk.to];
+                    const stopRad = idx => (stops.length > 1 && idx < stops.length - 1) ? r * 0.78 : r;
+                    for (let si = 0; si < stops.length; si++) {
+                        const pt = stops[si], sr = stopRad(si);
+                        const isLast = si === stops.length - 1;
+                        dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint, alpha: mk.alpha * (isLast ? 1 : 0.85),
+                            model: fm.multiply(fm.translation(pt.x, 0.14, pt.z), fm.scaling(sr, 1, sr)) });
+                        if (mk.refused) {
+                            if (si === 0) {
+                                // Fractured outer warning ring + crisp X decal on refused/hallucinated orders
+                                const pulse = this._reducedMotion ? 1.25 : 1.18 + 0.16 * Math.sin(tSec * 7);
+                                dl.blended.push({ buf: ringBuf, tex: this.tex.ring, tint, alpha: mk.alpha * 0.55, additive: true,
+                                    model: fm.multiply(fm.translation(pt.x, 0.16, pt.z), fm.scaling(sr * pulse, 1, sr * pulse)) });
+                                for (const yaw of [Math.PI / 4, -Math.PI / 4]) flat(pt.x, 0.22, pt.z, yaw, 0, sr * 1.45, 0.34, tint, mk.alpha, true);
+                            }
+                        } else {
+                            // Subtle inner additive reticle glow for accepted stop
+                            dl.blended.push({ buf: ringBuf, tex: this.tex.mote, tint, alpha: mk.alpha * (isLast ? 0.26 : 0.20), additive: true,
+                                model: fm.multiply(fm.translation(pt.x, 0.12, pt.z), fm.scaling(sr * 0.85, 1, sr * 0.85)) });
+                            if (!isLast) {
+                                // Crisp waypoint node diamond at intermediate stops
+                                flat(pt.x, 0.20, pt.z, Math.PI / 4, 0, sr * 0.55, sr * 0.55, tint, mk.alpha * 0.85, true);
+                            }
+                        }
                     }
-                    // The arrowhead, at the ring's edge, pointing in.
-                    const ex = mk.from.x + ux * end, ez = mk.from.z + uz * end;
-                    for (const side of [0.55, -0.55]) {
-                        const bx = -(ux * Math.cos(side) - uz * Math.sin(side)), bz = -(ux * Math.sin(side) + uz * Math.cos(side));
-                        flat(ex + bx * 0.65, ez + bz * 0.65, Math.atan2(bx, bz), 1.3, 0.24, tint, mk.alpha);
+                    if (!mk.refused && mk.action === 'attack_target' && mk.params && mk.params.targetId) {
+                        siegeTargets.push(String(mk.params.targetId));
+                    }
+                    // Build all route legs: (from -> stop0) if origin is known, plus (stop[k-1] -> stop[k]) for multi-waypoint routes.
+                    const legs = [];
+                    if (mk.from) legs.push({ a: mk.from, b: stops[0], padA: 1.2, padB: stopRad(0) + 0.3 });
+                    for (let si = 1; si < stops.length; si++) {
+                        legs.push({ a: stops[si - 1], b: stops[si], padA: stopRad(si - 1) + 0.3, padB: stopRad(si) + 0.3 });
+                    }
+                    if (!legs.length) continue;
+                    const pulsePhase = !mk.refused && !this._reducedMotion ? ((tSec * 0.55) % 1) * legs.length : -1;
+                    for (let li = 0; li < legs.length; li++) {
+                        const leg = legs[li];
+                        const dx = leg.b.x - leg.a.x, dz = leg.b.z - leg.a.z, dist = Math.hypot(dx, dz);
+                        if (dist < leg.padA + leg.padB + 0.8) continue;
+                        const ux = dx / dist, uz = dz / dist, yaw = Math.atan2(ux, uz);
+                        const start = leg.padA, end = dist - leg.padB, span = Math.max(1, end - start);
+                        const arcH = mk.refused ? 0 : Math.min(16, Math.max(1.8, dist * 0.13));
+                        const step = mk.refused ? 2.8 : 2.4, dash = mk.refused ? 1.15 : 1.5;
+                        for (let s = start; s + dash <= end; s += step) {
+                            const mid = s + dash * 0.5, u = (mid - start) / span;
+                            const px = leg.a.x + ux * mid, pz = leg.a.z + uz * mid;
+                            if (this._cull(px, pz, 3)) continue;
+                            const py = 0.16 + 4 * arcH * u * (1 - u);
+                            const dy = arcH > 0 ? 4 * arcH * (1 - 2 * u) / span : 0;
+                            const pitch = arcH > 0 ? -Math.atan(dy) : 0;
+                            flat(px, py, pz, yaw, pitch, dash, mk.refused ? 0.24 : 0.22, tint, mk.alpha * (mk.refused ? 0.82 : 0.9), !mk.refused);
+                        }
+                        // Continuous traveling pulse orb across the full leg chain
+                        if (pulsePhase >= li && pulsePhase < li + 1) {
+                            const u = pulsePhase - li;
+                            const s = start + u * span, px = leg.a.x + ux * s, pz = leg.a.z + uz * s;
+                            if (!this._cull(px, pz, 3)) {
+                                const py = 0.22 + 4 * arcH * u * (1 - u);
+                                dl.blended.push({ buf: quad, tex: this.tex.mote, tint: [Math.min(1, tint[0] + 0.3), Math.min(1, tint[1] + 0.3), Math.min(1, tint[2] + 0.3)],
+                                    alpha: mk.alpha * 0.9, additive: true,
+                                    model: fm.multiply(fm.multiply(fm.translation(px, py, pz), bb), fm.scaling(1.3, 1.3, 1)) });
+                            }
+                        }
+                        // Arrowhead at the receiving ring's edge, pointing in.
+                        const ex = leg.a.x + ux * end, ez = leg.a.z + uz * end;
+                        for (const side of [0.55, -0.55]) {
+                            const bx = -(ux * Math.cos(side) - uz * Math.sin(side)), bz = -(ux * Math.sin(side) + uz * Math.cos(side));
+                            flat(ex + bx * 0.65, 0.18, ez + bz * 0.65, Math.atan2(bx, bz), 0, 1.35, 0.26, tint, mk.alpha, !mk.refused);
+                        }
+                    }
+                }
+                // Context siege tower range ring when an accepted Intent order attacks a tower
+                if (siegeTargets.length && this.buildings) {
+                    const dashedBuf = this._buf('thinRing', [0.988, 1.0, 72, true]);
+                    for (const b of this.buildings) {
+                        if (!b || b.health <= 0 || b.type !== 'tower' || !siegeTargets.includes(String(b.id))) continue;
+                        if (this.entityHidden && this.entityHidden(b, 'building')) continue;
+                        const rr = b.attackRange || 18;
+                        dl.blended.push({ buf: dashedBuf, tex: this.tex.white, tint: [0.85, 0.38, 0.32], alpha: 0.42,
+                            model: fm.multiply(fm.translation(b.x, 0.15, b.z), fm.scaling(rr, 1, rr)) });
+                    }
+                }
+            }
+
+            // G4b: Subtle Town Center Thinking-Pulse Halo (crisp hairline ring, non-additive)
+            if (!inset && this.tcThinkingPulse !== false && this.game && this.game.spectatorMode && this.game.openAIAIManager) {
+                const ctrls = this.game.openAIAIManager.aiControllers || [];
+                const thinking = new Map();
+                for (const c of ctrls) if (c && c.pending && !c.paused && c.aiPlayer && !c.aiPlayer._eliminated) thinking.set(c.id, c.aiPlayer);
+                if (thinking.size && this.buildings) {
+                    const pulseBuf = this._buf('thinRing', [0.982, 1.0, 64, false]);
+                    for (const b of this.buildings) {
+                        if (!b || b.type !== 'town_center' || b.health <= 0 || b.underConstruction || !thinking.has(b.owner)) continue;
+                        if ((this.entityHidden && this.entityHidden(b, 'building')) || this._cull(b.x, b.z, 26)) continue;
+                        const ai = thinking.get(b.owner);
+                        const tb = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
+                        const hex = (tb && tb.fill) || '#dec594';
+                        const tint = this._tintOf(parseInt(String(hex).replace('#', ''), 16));
+                        const lum = 0.299 * tint[0] + 0.587 * tint[1] + 0.114 * tint[2];
+                        const col = lum < 0.28 ? [0.87, 0.77, 0.58] : tint;
+                        if (this._reducedMotion) {
+                            dl.blended.push({ buf: pulseBuf, tex: this.tex.white, tint: col, alpha: 0.30,
+                                model: fm.multiply(fm.translation(b.x, 0.16, b.z), fm.scaling(10.5, 1, 10.5)) });
+                        } else {
+                            for (let k = 0; k < 2; k++) {
+                                const p = (tSec * 0.35 + k * 0.5) % 1;
+                                const rad = 6.5 + p * 10.5;
+                                dl.blended.push({ buf: pulseBuf, tex: this.tex.white, tint: col, alpha: 0.38 * (1 - p) * (1 - p),
+                                    model: fm.multiply(fm.translation(b.x, 0.16, b.z), fm.scaling(rad, 1, rad)) });
+                            }
+                        }
+                    }
+                }
+            }
+
+            // G4c: Context-sensitive hairline range perimeter ONLY for an inspected Tower or Trebuchet
+            // (never stacked across box-selected archer/infantry armies, never thick glowing bands).
+            if (!inset) {
+                const sb = this.selectedBuilding;
+                const oneUnit = (this.selectedUnits && this.selectedUnits.length === 1) ? this.selectedUnits[0] : null;
+                let rangeTarget = null, rangeR = 0, rangeCol = null;
+                if (sb && sb.health > 0 && !sb.underConstruction && !(this.entityHidden && this.entityHidden(sb, 'building'))) {
+                    if (sb.type === 'tower') {
+                        rangeTarget = sb; rangeR = sb.attackRange || 18; rangeCol = [0.86, 0.42, 0.35];
+                    } else if (sb.type === 'trebuchet' || sb.type === 'trebuchet_advanced') {
+                        rangeTarget = sb; rangeR = sb.attackRange || sb.range || (sb.type === 'trebuchet_advanced' ? 60 : 50); rangeCol = [0.87, 0.77, 0.54];
+                    }
+                } else if (oneUnit && oneUnit.health > 0 && (oneUnit.type === 'trebuchet' || oneUnit.type === 'advanced_trebuchet') && !(this.entityHidden && this.entityHidden(oneUnit, 'unit'))) {
+                    rangeTarget = oneUnit; rangeR = oneUnit.range || 50; rangeCol = [0.87, 0.77, 0.54];
+                }
+                if (rangeTarget && rangeR > 0) {
+                    const inner = rangeR > 35 ? 0.994 : 0.988;
+                    const dashedBuf = this._buf('thinRing', [inner, 1.0, rangeR > 35 ? 96 : 64, true]);
+                    dl.blended.push({ buf: dashedBuf, tex: this.tex.white, tint: rangeCol, alpha: 0.44,
+                        model: fm.multiply(fm.translation(rangeTarget.x, 0.15, rangeTarget.z), fm.scaling(rangeR, 1, rangeR)) });
+                }
+            }
+
+            // G4d: Wonder Final-120s Golden Beacon & Rising Motes (Balanced/High)
+            if (!inset && this.graphicsQuality !== 'low' && this.game && this.game.aiManager && this.buildings) {
+                const pace = this.game.wonderPace || 1, reqMs = (this.game.wonderRequired || 600) * 1000;
+                const players = this.game.aiManager.aiPlayers || [];
+                const nearWin = new Map();
+                for (const ai of players) {
+                    if (!ai || ai._eliminated || !(ai._wonderHold > 0)) continue;
+                    const remSec = (reqMs - ai._wonderHold / pace) / 1000;
+                    if (remSec <= 120 && remSec > 0) nearWin.set(ai.id, 1 - remSec / 120);
+                }
+                if (nearWin.size) {
+                    const colBuf = this._buf('cylinder', [1, 1, 1, 12]);
+                    for (const b of this.buildings) {
+                        if (!b || !b.isWonder || b.underConstruction || b.health <= 0 || !nearWin.has(b.owner)) continue;
+                        if ((this.entityHidden && this.entityHidden(b, 'building')) || this._cull(b.x, b.z, 25)) continue;
+                        const urg = nearWin.get(b.owner);
+                        const shimmer = this._reducedMotion ? 1 : 0.85 + 0.15 * Math.sin(tSec * 2.6);
+                        dl.blended.push({ buf: colBuf, tex: this.tex.mote, tint: [1.0, 0.86, 0.46],
+                            alpha: (0.08 + 0.10 * urg) * shimmer, additive: true,
+                            model: fm.multiply(fm.translation(b.x, 22, b.z), fm.scaling(4.5 + urg * 2, 44, 4.5 + urg * 2)) });
+                        if (weatherP && !this._reducedMotion && Math.random() < 0.25 + 0.35 * urg) {
+                            const a = Math.random() * Math.PI * 2, d = Math.random() * 5.5;
+                            weatherP.emit({ x: b.x + Math.cos(a) * d, y: 2 + Math.random() * 6, z: b.z + Math.sin(a) * d,
+                                vx: 0, vy: 2.2 + Math.random() * 2.5, vz: 0, life: 2.4, size: 0.42, grow: 0.5,
+                                tint: [1.0, 0.88, 0.45], alpha: 0.78, additive: true });
+                        }
                     }
                 }
             }
@@ -3763,6 +3933,10 @@
                 : (EngineRenderer.GROUND_VARY[this._theme] || EngineRenderer.GROUND_VARY.summer);
             gl.uniform2f(this.prog.uniforms.uGroundVary, vary[0], vary[1]);
             gl.uniform4fv(this.prog.uniforms.uSoil, this._soil || [0.5, 0.45, 0.35, 0]);
+            this._nightFactor = atmosphere.night || 0;
+            const atmoActive = this.visualStyle !== 'classic' && this.graphicsQuality !== 'low';
+            gl.uniform1f(this.prog.uniforms.uCloudShadow, atmoActive && this.cloudShadows !== false ? (this.graphicsQuality === 'cinematic' ? 0.17 : 0.13) : 0);
+            gl.uniform1f(this.prog.uniforms.uReliefStrength, atmoActive ? (this.graphicsQuality === 'cinematic' ? 1.0 : 0.65) : 0);
             gl.uniform3fv(this.prog.uniforms.uSky, this._sky);
             gl.uniform2fv(this.prog.uniforms.uHaze, cam.haze);
             // The air between: its colour and amount at this hour, and the distance it is counted from.
@@ -3848,7 +4022,7 @@
                     if (v !== veg) { gl.uniform1f(U.uVegetation, v); veg = v; }
                     if (obj.tex !== tex) { gl.bindTexture(gl.TEXTURE_2D, obj.tex); tex = obj.tex; }
                     const metal = obj.tex === this.tex.gold || obj.tex === this.tex.iron || obj.tex === this.tex.bronze;
-                    const m = obj.material || (metal ? 3 : 0);
+                    const m = obj.material || (obj.tex && obj.tex._mat) || (metal ? 3 : 0);
                     if (m !== mat) { gl.uniform1f(U.uMaterial, m); mat = m; }
                     const t = obj.tint || this.WHITE;
                     if (t !== tint) { gl.uniform3fv(U.uTint, t); tint = t; }
@@ -3882,7 +4056,8 @@
             if (own) {
                 const F = EngineRenderer.FOCUS;
                 this._postFx.present(CW, CH, { sharpen: own.s < 1 ? EnginePost.SHARPEN : 0,
-                    focus: own.focus > 0 ? [this._focusNow == null ? F.line : this._focusNow, F.band, F.blur * own.focus * own.sh / 1080] : null });
+                    focus: own.focus > 0 ? [this._focusNow == null ? F.line : this._focusNow, F.band, F.blur * own.focus * own.sh / 1080] : null,
+                    vignette: this.visualStyle === 'film' ? 0.22 : 0 });
                 gl.useProgram(this.prog);
                 gl.enable(gl.BLEND);
                 gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);

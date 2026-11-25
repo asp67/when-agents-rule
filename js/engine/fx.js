@@ -369,6 +369,42 @@
         else fly(2, [0.42, 0.56, 0.26], 0.36);
     };
 
+    // Biome atmospheric micro-particles (G2): subtle natural weather riding the existing
+    // 2-draw instanced Particles pool (0 extra draw calls).
+    // - Winter: small crisp drifting snowflakes
+    // - Desert: faint low ground-skimming wind dust
+    // - Summer: clear by day; sparse tiny low-grass firefly pinpoints at night (non-blooming)
+    EngineFx.ambientWeather = (P, target, halfH, dt, o) => {
+        if (!P || !target || !(dt > 0) || !(o && o.level >= 1) || halfH > 95) return 0;
+        const theme = o.theme || 'summer', night = o.night || 0;
+        if (theme === 'summer' && night <= 0.35) return 0;
+        const baseRate = theme === 'winter' ? 22 : theme === 'desert' ? 16 : 3.2;
+        const rate = baseRate * (o.level > 1 ? 1 : 0.6);
+        P._weatherAcc = (P._weatherAcc || 0) + dt * rate;
+        const count = Math.min(8, Math.floor(P._weatherAcc));
+        if (count < 1) return 0;
+        P._weatherAcc -= count;
+        const span = Math.max(20, Math.min(75, halfH * 1.45));
+        let emitted = 0;
+        for (let i = 0; i < count; i++) {
+            const x = target.x + rand(-span, span), z = target.z + rand(-span, span);
+            if (theme === 'winter') {
+                // Fine crisp drifting snowflakes (mote sprite shows ~1/3 of quad width)
+                if (P.emit({ x, y: rand(9, 21), z, vx: rand(1.4, 2.8), vy: rand(-2.6, -1.4), vz: rand(0.5, 1.5),
+                    life: rand(3.2, 5.2), size: rand(0.24, 0.36), grow: 0.95, tint: [0.95, 0.98, 1.0], alpha: 0.62 })) emitted++;
+            } else if (theme === 'desert') {
+                // Continuous wind-blown sand wisps skimming low across the dunes (no drag stall)
+                if (P.emit({ x: x - 10, y: rand(0.25, 1.9), z: z - 4, vx: rand(6.8, 11.5), vy: rand(0.06, 0.36), vz: rand(1.8, 3.8),
+                    life: rand(1.8, 3.0), size: rand(0.60, 1.10), grow: 1.35, tint: [0.98, 0.91, 0.74], alpha: 0.30 })) emitted++;
+            } else {
+                // Summer night: small warm low-grass fireflies (non-additive so they stay crisp)
+                if (P.emit({ x, y: rand(0.35, 1.6), z, vx: rand(-0.4, 0.4), vy: rand(0.08, 0.28), vz: rand(-0.4, 0.4),
+                    life: rand(2.2, 3.8), size: rand(0.22, 0.32), grow: 0.75, tint: [0.96, 0.85, 0.36], alpha: 0.68 * Math.min(1, (night - 0.3) * 1.5) })) emitted++;
+            }
+        }
+        return emitted;
+    };
+
     // ---- a building collapses (overhaul step A9; build 1208, done over in build 1210) -----------
     // A building that fell sank into the ground as one flat thing. Build 1208 threw its
     // parts outward whole, which looked like a kicked-over box of wooden blocks: a roof

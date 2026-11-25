@@ -214,9 +214,8 @@ class UIManager {
             split: Number.isFinite(saved.split) ? Math.max(20, Math.min(80, saved.split)) : 52,
             text: saved.text === 'compact' ? 'compact' : 'comfortable',
             rate: [0.5, 1, 2, 4].includes(saved.rate) ? saved.rate : 1,
-            // One switch for the story layer (review #11): the intent marks with their
-            // reasons, and the chronicle captions. An older saved "captions off" is ignored.
-            intent: saved.intent !== false,
+            // One switch for the story layer (review #11 + U2): 'all' (true), 'key' (Tactics & Errors), or false.
+            intent: saved.intent === 'key' ? 'key' : (saved.intent !== false),
             // UI size (the graphics card at the minimap): the HUD at 100 / 85 / 72 %, for
             // small screens where it crowds the map.
             // 'auto' (build 1220): as large as the window allows, which is the regular size
@@ -365,8 +364,8 @@ class UIManager {
             const bar = document.getElementById('anTimelineBar');
             // Held while dragged (b1032): a replay redraws the panels every frame, and the
             // thumb was put back under the pointer each time.
-            if (bar) bar.innerHTML = `<label class="an-timeline-label">${esc(t('view.timelineAll'))}<input id="anTimeline" type="range" min="0" step="1"
-                onpointerdown="game.ui._anScrubbing = true" oninput="game.ui.anScrubPreview(this.value)" onchange="game.ui._anScrubbing = false; game.ui.anScrub(this.value)"></label>
+            if (bar) bar.innerHTML = `<label class="an-timeline-label">${esc(t('view.timelineAll'))}<span class="an-timeline-wrap"><input id="anTimeline" type="range" min="0" step="1"
+                onpointerdown="game.ui._anScrubbing = true" oninput="game.ui.anScrubPreview(this.value)" onchange="game.ui._anScrubbing = false; game.ui.anScrub(this.value)"><span id="anSwimlane" class="an-swimlane"></span></span></label>
                 <output id="anTimelinePosition" for="anTimeline"></output>`;
             if (!this._anScrubRelease) {
                 this._anScrubRelease = () => { this._anScrubbing = false; };
@@ -380,11 +379,63 @@ class UIManager {
         document.getElementById('anReplayRate').value = p.rate;
         const slider = document.getElementById('anTimeline');
         slider.max = a.order.length - 1;
+        this.anRenderSwimlane(a);
         if (this._anScrubbing) return;
         slider.value = a.cursor;
         const position = t('view.position', { n: a.cursor + 1, total: a.order.length });
         slider.setAttribute('aria-valuetext', position);
         document.getElementById('anTimelinePosition').textContent = position;
+    }
+
+    // U4: Clickable Event Swimlane ticks overlaid onto the Analyze Transcript scrubber
+    // (errors/hallucinations, battles, plan rewrites, age-ups, Wonders).
+    anRenderSwimlane(a) {
+        const host = document.getElementById('anSwimlane');
+        if (!host || !a || !a.order || a.order.length < 2) return;
+        const sig = (a.fileName || '') + ':' + a.order.length;
+        if (this._anSwimSig === sig) return;
+        this._anSwimSig = sig;
+        const total = a.order.length - 1, ticks = [];
+        const add = (idx, kind, label) => {
+            if (idx < 0 || idx > total) return;
+            ticks.push({ idx, pct: (idx / total) * 100, kind, label });
+        };
+        const nearestIdx = sec => {
+            let best = 0, diff = Infinity;
+            for (let i = 0; i < a.order.length; i++) {
+                const s = a.order[i]._sec;
+                if (s == null) continue;
+                const d = Math.abs(s - sec);
+                if (d < diff) { diff = d; best = i; }
+            }
+            return best;
+        };
+        // Entry-level errors & plan rewrites (thinned to <= 90 markers so scrubber stays crisp)
+        let lastErr = -99, lastPlan = -99;
+        for (let i = 0; i < a.order.length; i++) {
+            const r = a.order[i];
+            if (!r) continue;
+            const hasErr = (typeof Analyzer !== 'undefined' && Analyzer.hasError) ? Analyzer.hasError(r) : !!r._hasError;
+            if (hasErr && i - lastErr >= Math.max(1, Math.floor(total / 70))) {
+                lastErr = i;
+                add(i, 'error', `#${i + 1} · ${r.name || r.playerId || ''} (${t('log.rejected')})`);
+            } else if (r._planChanged && i - lastPlan >= Math.max(2, Math.floor(total / 50))) {
+                lastPlan = i;
+                add(i, 'plan', `#${i + 1} · ${r.name || r.playerId || ''} (${t('log.plan')})`);
+            }
+        }
+        // Chapter-level major milestones (battles, ages, wonders)
+        const chapters = typeof a.chapters === 'function' ? a.chapters() : (a._chapters || []);
+        for (const ch of chapters) {
+            if (!ch || ch.t == null) continue;
+            const k = ch.kind === 'wonder' || ch.kind === 'wonder-raised' || ch.kind === 'wonder-countdown' ? 'wonder'
+                : ch.kind === 'battle' ? 'battle'
+                : ch.kind === 'age' ? 'age' : null;
+            if (k) add(nearestIdx(ch.t), k, ch.text || k);
+        }
+        host.innerHTML = ticks.map(tk =>
+            `<button type="button" class="an-swim-tick is-${tk.kind}" style="left:${tk.pct.toFixed(2)}%" title="${this.escapeHtml(tk.label)}" onclick="event.preventDefault(); event.stopPropagation(); game.ui.anScrub(${tk.idx})"></button>`
+        ).join('');
     }
 
     renderCameraControls() {
@@ -432,7 +483,10 @@ class UIManager {
                 <div class="camera-popover"><div class="camera-secondary">${(watching?['reset','turnLeft','turnRight']:['pan','reset','turnLeft','turnRight']).map(button).join('')}</div>
                 <label title="${esc(t('art.qualityTip'))}">${esc(t('art.quality'))}<select onchange="game.ui.setGraphicsQuality(this.value)">${['auto','cinematic','balanced','low'].map(k=>`<option value="${k}">${esc(k==='auto'&&r0.qualityChoice==='auto'?t('art.autoNow',{tier:t('art.'+r0.graphicsQuality)}):t('art.'+k))}</option>`).join('')}</select></label>
                 <label title="${esc(t('art.lightTip'))}">${esc(t('art.light'))}<select onchange="game.renderer.setVisualStyle ? game.renderer.setVisualStyle(this.value) : (game.renderer.visualStyle=this.value)"><option value="film">${esc(t('art.film'))}</option><option value="cinematic">${esc(t('art.atmospheric'))}</option><option value="classic">${esc(t('art.simple'))}</option></select></label>
-                <label title="${esc(t('art.uiSizeTip'))}">${esc(t('art.uiSize'))}<select onchange="game.ui.setUiScale(this.value)">${['auto','regular','medium','small'].map(k=>`<option value="${k}">${esc(t('art.ui_'+k))}</option>`).join('')}</select></label></div></details>`;
+                <label title="${esc(t('art.uiSizeTip'))}">${esc(t('art.uiSize'))}<select onchange="game.ui.setUiScale(this.value)">${['auto','regular','medium','small'].map(k=>`<option value="${k}">${esc(t('art.ui_'+k))}</option>`).join('')}</select></label>
+                <label class="cam-chk">${esc(t('art.cloudShadows'))}<input type="checkbox" ${r0.cloudShadows!==false?'checked':''} onchange="game.renderer.cloudShadows=this.checked"></label>
+                <label class="cam-chk">${esc(t('art.weatherMotes'))}<input type="checkbox" ${r0.weatherMotes!==false?'checked':''} onchange="game.renderer.weatherMotes=this.checked"></label>
+                ${watching ? `<label class="cam-chk">${esc(t('art.thinkingPulse'))}<input type="checkbox" ${r0.tcThinkingPulse!==false?'checked':''} onchange="game.renderer.tcThinkingPulse=this.checked"></label>` : ''}</div></details>`;
         if(wasOpen) box.querySelector('details').open=true;
         box.querySelector('select').value = r0.qualityChoice || r0.graphicsQuality || 'balanced';
         box.querySelectorAll('select')[1].value = this.game.renderer.visualStyle || 'cinematic';
@@ -3003,22 +3057,34 @@ class UIManager {
     // entries (weight 2+) are shown one at a time, five seconds each, in the order they
     // happened; a backlog is thinned to the decisive ones rather than played late.
     captionsOn() { return this.intentOn(); }   // one button: Intent shows both
-    intentOn() { return this.viewPreferences().intent !== false; }
+    // U2: 3-state Intent filter: 'all' (default) -> 'key' (Tactics & Errors) -> 'off'
+    intentMode() {
+        const v = this.viewPreferences().intent;
+        if (v === false || v === 'off') return 'off';
+        if (v === 'key') return 'key';
+        return 'all';
+    }
+    intentOn() { return this.intentMode() !== 'off'; }
     // A bubble's point was in view within the last frames (see drawIntentOverlay).
     intentBubblesInView() { return this.intentOn() && Date.now() - (this._intentInViewAt || 0) < 400; }
     toggleIntentLayer() {
         const p = this.viewPreferences();
-        p.intent = !this.intentOn();
+        const cur = this.intentMode();
+        const next = cur === 'all' ? 'key' : cur === 'key' ? false : true;
+        p.intent = next;
         this.saveViewPreferences();
-        if (!p.intent) { this._chronicleQueue = []; clearTimeout(this._chronicleTimer); this._chronicleTimer = null; document.getElementById('chronicleCaption')?.remove(); }
+        if (!this.intentOn()) { this._chronicleQueue = []; clearTimeout(this._chronicleTimer); this._chronicleTimer = null; document.getElementById('chronicleCaption')?.remove(); }
         this.refreshIntentButton();
     }
     refreshIntentButton() {
         const btn = document.getElementById('intentBtn');
         if (!btn) return;
-        const on = this.intentOn();
-        btn.classList.toggle('sb-on', on);   // green while on, like Speed and Auto
+        const mode = this.intentMode(), on = mode !== 'off';
+        btn.classList.toggle('sb-on', on);
+        btn.classList.toggle('sb-key', mode === 'key');
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.textContent = mode === 'key' ? t('spec.intentKey') : t('spec.intent');
+        btn.title = mode === 'key' ? t('spec.intentKeyTitle') : t('spec.intentTitle');
     }
     // One overlay over the canvas, redrawn every frame while anything is showing: the
     // camera moves, so positions are projected fresh each time.
@@ -3050,13 +3116,18 @@ class UIManager {
         // only the bubbles are screen-space.
         // A point behind the camera still has a direction to pin its bubble to.
         const f = layer.frame((x, z) => r.worldToScreen(x, 0, z) || (r.offscreenDirection ? r.offscreenDirection(x, 0, z) : null), Date.now(),
-            { focus: r.cameraTarget, w: r.canvas.clientWidth, h: r.canvas.clientHeight });
-        // A seat's calls whose points are all out of view come as one card (b.lines), each
-        // call on its own line; the plans follow the bubbles, on the edges of the view.
-        box.innerHTML = f.bubbles.map(b => '<div class="intent-bubble' + (b.summary ? ' summary' : '') + (b.lines ? ' merged' : '') + '" style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
-            + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat)
-            + (b.lines ? b.lines.map(l => '<span class="intent-line' + (l.summary ? ' summary' : '') + '">' + this.intentBodyHtml(Object.assign({ seat: b.seat }, l)) + '</span>').join('') : this.intentBodyHtml(b))
-            + '</div>').join('')
+            { focus: r.cameraTarget, w: r.canvas.clientWidth, h: r.canvas.clientHeight, mode: this.intentMode() });
+        const canJump = !(this.broadcastOn && this.broadcastOn()) && typeof this.openTranscriptTurn === 'function';
+        box.innerHTML = f.bubbles.map(b => {
+            const vCls = b.refused ? (' is-refused' + (b.verdict ? ' is-' + b.verdict : '')) : '';
+            const jump = canJump && b.refused && b.turnNum != null
+                ? ` is-clickable" onclick="game.ui.openTranscriptTurn('${this.escapeHtml(b.seat)}', ${Number(b.turnNum)})" title="${this.escapeHtml(t('bench.open'))}"`
+                : '"';
+            return '<div class="intent-bubble' + (b.summary ? ' summary' : '') + (b.lines ? ' merged' : '') + vCls + jump + ' style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
+                + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat)
+                + (b.lines ? b.lines.map(l => '<span class="intent-line' + (l.summary ? ' summary' : '') + (l.refused ? ' is-refused' : '') + '">' + this.intentBodyHtml(Object.assign({ seat: b.seat }, l)) + '</span>').join('') : this.intentBodyHtml(b))
+                + '</div>';
+        }).join('')
             + (f.plans || []).map(q => '<div class="intent-bubble intent-plan" data-slot="' + q.slot + '" style="opacity:' + q.opacity.toFixed(2) + ';--seat:' + q.band + '">'
                 + this.chronicleSeatHtml(q.seat) + ' <span class="intent-call">' + this.escapeHtml(t('log.plan')) + '</span>'
                 + (q.objective ? '<span class="intent-objective">\u{1F3AF} ' + this.escapeHtml(q.objective) + '</span>' : '')
@@ -3192,9 +3263,18 @@ class UIManager {
     // and the reason. A command given without a reason is named by its call alone; the
     // old line repeated it ("Units moved (→ 120, -40)") under the chip.
     intentBodyHtml(b) {
-        return this.intentCallHtml(b)
-            + (b.refused ? ' <span class="intent-refused" title="' + this.escapeHtml(t('spec.intentRefused')) + '">✗</span>' : '')
-            + (b.summary && this.intentCallHtml(b) ? '' : ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span>');
+        let vBadge = '';
+        if (b.refused) {
+            const v = b.verdict || 'avoidable';
+            const key = v === 'invalid' ? 'intent.hallucination' : v === 'contended' ? 'intent.contended' : 'intent.constraint';
+            vBadge = ' <span class="intent-verdict is-' + this.escapeHtml(v) + '" title="' + this.escapeHtml(t('spec.intentRefused')) + '">' + this.escapeHtml(t(key)) + '</span>';
+        }
+        const errLine = b.refused && b.errorText
+            ? '<span class="intent-err-line">' + this.escapeHtml(b.errorText) + '</span>'
+            : '';
+        return this.intentCallHtml(b) + vBadge
+            + (b.summary && this.intentCallHtml(b) ? '' : ' <span class="intent-reason">' + this.escapeHtml(b.summary ? this.intentSummaryText(b) : b.text) + '</span>')
+            + errLine;
     }
     intentCallHtml(b) {
         if (!b || !b.action) return '';
@@ -3289,9 +3369,18 @@ class UIManager {
         else this.seatView.refresh();
     }
     // The badge that says whose eyes these are, so a fogged map is never mistaken for a fault.
+    // U3: Also maintains a companion #seatViewLens epistemic bar (explored %, stale ghosts,
+    // quick seat dots, and Reality Diff tether switch) in real DOM sessions.
     refreshSeatView() {
         let el = document.getElementById('seatViewBadge');
-        if (!this.seatViewOn()) { if (el) el.remove(); return; }
+        const lens = document.getElementById('seatViewLens');
+        const eye = document.getElementById('mmEyeBtn');
+        if (eye) { eye.classList.toggle('on', this.seatViewOn()); eye.setAttribute('aria-pressed', this.seatViewOn() ? 'true' : 'false'); }
+        if (!this.seatViewOn()) {
+            if (el) el.remove();
+            if (lens) lens.remove();
+            return;
+        }
         const ai = this.seatView.ai(), ctrls = (this.game.openAIAIManager && this.game.openAIAIManager.aiControllers) || [];
         const ctrl = ai && ctrls.find(c => c.id === ai.id);
         const who = (ctrl && ctrl.model && ctrl.model.name) || this.anCivName(ai && ai.civilization);
@@ -3303,13 +3392,51 @@ class UIManager {
         }
         el.style.setProperty('--seat', this.legibleColor(this.identityHex(ai.id, ai.civilization, ai.seat)));
         el.innerHTML = this.teamDotHtml(ai.seat, 10) + '<span>' + this.escapeHtml(t('view.badge', { who })) + '</span>';
+        // Companion epistemic lens (only when SeatView exposes stats())
+        if (typeof this.seatView.stats === 'function') {
+            const st = this.seatView.stats();
+            let panel = lens;
+            if (!panel) {
+                panel = document.createElement('div');
+                panel.id = 'seatViewLens'; panel.className = 'seat-view-lens';
+                document.body.appendChild(panel);
+            }
+            const diffOn = !!this._realityDiff;
+            const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+            const dots = ais.map(a => `<button type="button" class="svl-dot${a.seat === ai.seat ? ' on' : ''}" onclick="game.ui.switchSeatView(${a.seat})" title="${this.escapeHtml(this.anCivName(a.civilization))}">${this.teamDotHtml(a.seat, 9)}</button>`).join('');
+            const ghostStat = st && st.staleCount
+                ? `<span class="svl-ghosts">${this.escapeHtml(t('view.staleGhosts', { n: st.staleCount, s: st.oldestSec }))}</span>`
+                : `<span class="svl-meta">${this.escapeHtml(t('view.noGhosts'))}</span>`;
+            panel.innerHTML = `<span class="svl-dots">${dots}</span>`
+                + (st ? `<span class="svl-meta">${this.escapeHtml(t('view.exploredPct', { pct: st.exploredPct }))}</span>` : '')
+                + ghostStat
+                + `<button type="button" class="svl-diff${diffOn ? ' on' : ''}" aria-pressed="${diffOn}" onclick="game.ui.toggleRealityDiff()" title="${this.escapeHtml(t('view.realityDiffTip'))}">${this.escapeHtml(t('view.realityDiff'))}</button>`
+                + `<button type="button" class="svl-close" onclick="game.ui.toggleSeatView(false)" title="${this.escapeHtml(t('mm.fogAll'))}">✕</button>`;
+        }
+    }
+    switchSeatView(seat) {
+        if (!this.seatView) return;
+        this.game.minimapFogSeat = seat;
+        this.game._minimapFogManual = true;
+        this.seatView.set(seat);
+        this.refreshMinimapFogKnobs();
+        if (this.game.updateMinimap) this.game.updateMinimap();
+        this.refreshSeatView();
+    }
+    toggleRealityDiff(on = !this._realityDiff) {
+        this._realityDiff = !!on;
+        this.refreshSeatView();
     }
     // What the seat believes and cannot see, as hollow marks: a rival unit where it was
     // last seen, a building that fell out of its sight. Drawn whether or not Intent is on:
     // they are part of the view, not of the story layer.
+    // U3: When Reality Diff is ON, tags each stale ghost with its age and draws a dashed
+    // tether pointing to where that unit actually moved.
     drawSeatGhosts(svg, NS) {
         if (!this.seatViewOn()) return;
-        const r = this.game.renderer, ghosts = this.seatView.ghosts();
+        const r = this.game.renderer;
+        const diffOn = !!this._realityDiff && typeof this.seatView.realityGhosts === 'function';
+        const ghosts = diffOn ? this.seatView.realityGhosts() : this.seatView.ghosts();
         if (!ghosts.length) return;
         const g = document.createElementNS(NS, 'g');
         g.setAttribute('class', 'seat-ghosts');
@@ -3320,6 +3447,22 @@ class UIManager {
             const owner = ais.find(a => a.id === q.owner);
             const color = owner ? this.legibleColor(this.identityHex(owner.id, owner.civilization, owner.seat)) : '#cfd8e3';
             const size = q.kind === 'building' ? 13 : 7;
+            if (diffOn && q.real) {
+                const rp = r.worldToScreen(q.real.x, 0, q.real.z);
+                if (rp && Math.hypot(rp.x - p.x, rp.y - p.y) > 8) {
+                    const ln = document.createElementNS(NS, 'line');
+                    ln.setAttribute('x1', p.x.toFixed(1)); ln.setAttribute('y1', p.y.toFixed(1));
+                    ln.setAttribute('x2', rp.x.toFixed(1)); ln.setAttribute('y2', rp.y.toFixed(1));
+                    ln.setAttribute('class', 'seat-ghost-tether');
+                    ln.setAttribute('stroke', color);
+                    g.appendChild(ln);
+                    const dot = document.createElementNS(NS, 'circle');
+                    dot.setAttribute('cx', rp.x.toFixed(1)); dot.setAttribute('cy', rp.y.toFixed(1)); dot.setAttribute('r', '3.5');
+                    dot.setAttribute('class', 'seat-ghost-real');
+                    dot.setAttribute('fill', color);
+                    g.appendChild(dot);
+                }
+            }
             const mark = document.createElementNS(NS, q.kind === 'building' ? 'rect' : 'circle');
             if (q.kind === 'building') { mark.setAttribute('x', (p.x - size).toFixed(1)); mark.setAttribute('y', (p.y - size).toFixed(1)); mark.setAttribute('width', size * 2); mark.setAttribute('height', size * 2); mark.setAttribute('rx', 3); }
             else { mark.setAttribute('cx', p.x.toFixed(1)); mark.setAttribute('cy', p.y.toFixed(1)); mark.setAttribute('r', size); }
@@ -3329,6 +3472,14 @@ class UIManager {
             title.textContent = t(q.kind === 'building' ? 'view.ghostBuilding' : 'view.ghostUnit', { what: tg(String(q.type).replace(/_/g, ' ')) });
             mark.appendChild(title);
             g.appendChild(mark);
+            if (diffOn && q.ageSec != null) {
+                const lbl = document.createElementNS(NS, 'text');
+                lbl.setAttribute('x', p.x.toFixed(1)); lbl.setAttribute('y', (p.y - size - 4).toFixed(1));
+                lbl.setAttribute('text-anchor', 'middle');
+                lbl.setAttribute('class', 'seat-ghost-age');
+                lbl.textContent = q.ageSec + 's';
+                g.appendChild(lbl);
+            }
         }
         svg.appendChild(g);
     }
@@ -3797,10 +3948,10 @@ class UIManager {
                     <div class="menu-item" style="background: rgba(78, 204, 163, 0.2); border: 2px solid #4ecca3;">
                         <h4>🪶 ${tech ? tg(tech.name) : t('ui.researching')} (${this.getAgeName(tech?.requiredAge || '')})</h4>
                         <p>${tech ? tg(tech.description) : ''}</p>
-                        <div class="progress-bar" style="width: 100%; height: 20px; background: #1a1a2e; border: 2px solid #0f3460; border-radius: 10px; overflow: hidden; margin-top: 10px;">
-                            <div class="progress-fill" style="height: 100%; width: ${percentage}%; background: linear-gradient(90deg, #4ecca3, #0f3460); border-radius: 8px;"></div>
+                        <div class="progress-bar aq-progress">
+                            <div class="progress-fill aq-progress-fill" style="width: ${percentage}%;"></div>
                         </div>
-                        <p style="color: #4ecca3; font-weight: bold; margin-top: 5px;">${percentage}% ${t('ui.complete')}</p>
+                        <p class="aq-progress-text">${percentage}% ${t('ui.complete')}</p>
                     </div>
                 `;
             }
@@ -3921,10 +4072,10 @@ class UIManager {
                 <div class="menu-item" style="background: rgba(255, 215, 0, 0.2); border: 2px solid #ffd700;">
                     <h4>${t('menu.upgradeInProgress')}</h4>
                     <p>${targetAge?.name || '...'}</p>
-                    <div class="progress-bar" style="width: 100%; height: 20px; background: #1a1a2e; border: 2px solid #0f3460; border-radius: 10px; overflow: hidden; margin-top: 10px;">
-                        <div class="progress-fill" style="height: 100%; width: ${percentage}%; background: linear-gradient(90deg, #ffd700, #ff8c00); border-radius: 8px;"></div>
+                    <div class="progress-bar aq-progress">
+                        <div class="progress-fill aq-progress-fill is-gold" style="width: ${percentage}%;"></div>
                     </div>
-                    <p style="color: #ffd700; font-weight: bold; margin-top: 5px;">${percentage}% ${t('ui.complete')}</p>
+                    <p class="aq-progress-text is-gold">${percentage}% ${t('ui.complete')}</p>
                 </div>
             `;
         }
@@ -4280,7 +4431,7 @@ class UIManager {
         if (this.intentLayer) {
             this._spectatorIntervals.push(setInterval(() => { if (this.intentLayer && this.intentOn()) this.intentLayer.poll(); }, 250));
             this.startIntentOverlay();
-            if (this.game.renderer) this.game.renderer.intentMarks = () => (this.intentLayer && this.intentOn()) ? this.intentLayer.worldMarks() : null;
+            if (this.game.renderer) this.game.renderer.intentMarks = () => (this.intentLayer && this.intentOn()) ? this.intentLayer.worldMarks(Date.now(), this.intentMode()) : null;
         }
         this.refreshIntentButton();
         // The strategic zoom layer (review #12), regrouped four times a second.
@@ -4294,7 +4445,9 @@ class UIManager {
         }
         // The model's view (overhaul step B1): off at the start of every match.
         this.seatView = typeof SeatView === 'function' ? new SeatView(this.game) : null;
-        if (this.seatView) this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.updateSeatView(); }, SeatView.REFRESH_MS));
+        if (this.seatView) this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) { this.updateSeatView(); if (this.seatViewOn()) this.refreshSeatView(); } }, SeatView.REFRESH_MS));
+        this._mmLensMode = 'fog';
+        this._spectatorIntervals.push(setInterval(() => { if (!document.hidden) this.renderMinimapLens(); }, 600));
         // Evaluation marks (overhaul step B4): what the ledger has just judged, where it happened.
         this.evalMarks = typeof EvalMarks === 'function' ? new EvalMarks() : null;
         if (this.evalMarks) this._spectatorIntervals.push(setInterval(() => {
@@ -4367,11 +4520,95 @@ class UIManager {
         this.game._fogShotKey = undefined;
         this.game._fogShotSeat = undefined;
         this.game._minimapFogManual = false;
-        host.innerHTML = ais.map(ai =>
-            `<button type="button" class="mm-fog-knob" data-seat="${ai.seat}" aria-pressed="false"
-                onclick="game.ui.toggleMinimapFogSeat(${ai.seat})">${this.teamDotHtml(ai.seat, 8)}</button>`
-        ).join('');
+        const eyeSvg = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+        const heatSvg = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/></svg>';
+        host.innerHTML = `<button type="button" id="mmEyeBtn" class="mm-eye-btn" aria-pressed="false" title="${this.escapeHtml(t('view.eyeBtnTip'))}" onclick="game.ui.toggleSeatView()">${eyeSvg}</button>`
+            + ais.map(ai =>
+                `<button type="button" class="mm-fog-knob" data-seat="${ai.seat}" aria-pressed="false"
+                    onclick="game.ui.toggleMinimapFogSeat(${ai.seat})">${this.teamDotHtml(ai.seat, 8)}</button>`
+            ).join('')
+            + `<button type="button" id="mmLensBtn" class="mm-lens-btn" data-mode="fog" title="${this.escapeHtml(t('mm.lensTip'))}" onclick="game.ui.cycleMinimapLens()">${heatSvg}</button>`;
         this.refreshMinimapFogKnobs();
+    }
+    cycleMinimapLens() {
+        const order = ['fog', 'heat', 'gaps'];
+        const cur = this._mmLensMode || 'fog';
+        this._mmLensMode = order[(order.indexOf(cur) + 1) % order.length];
+        const btn = document.getElementById('mmLensBtn');
+        if (btn) {
+            btn.dataset.mode = this._mmLensMode;
+            btn.classList.toggle('on', this._mmLensMode !== 'fog');
+            btn.title = t('mm.lens_' + this._mmLensMode);
+        }
+        this.renderMinimapLens();
+    }
+    // U3: Transparent overlay canvas over #minimapCanvas (0 edits to rules file js/game.js).
+    // Draws Order Heatmap (spatial density of LLM orders) or Memory Gaps (stale ghosts vs reality).
+    renderMinimapLens() {
+        const canvas = document.getElementById('mmLensCanvas'), base = document.getElementById('minimapCanvas');
+        if (!canvas || !base) return;
+        const w = base.width || 180, h = base.height || 180;
+        if (canvas.width !== w) canvas.width = w;
+        if (canvas.height !== h) canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.clearRect(0, 0, w, h);
+        const mode = this._mmLensMode || 'fog';
+        if (mode === 'fog' || !this.game || !this.game.spectatorMode) return;
+        const size = (this.game.terrain && this.game.terrain.size) || 800;
+        const toPx = (x, z) => [((x / size) + 0.5) * w, ((z / size) + 0.5) * h];
+        const ais = (this.game.aiManager && this.game.aiManager.aiPlayers) || [];
+        const focusSeat = this.game.minimapFogSeat;
+        if (mode === 'heat') {
+            const ctrls = (this.game.openAIAIManager && this.game.openAIAIManager.aiControllers) || [];
+            const G = this.game.EXPLORE_TILES || 7, cell = size / G;
+            for (const c of ctrls) {
+                if (!c || !c.aiPlayer || (focusSeat != null && c.aiPlayer.seat !== focusSeat)) continue;
+                const col = this.legibleColor(this.identityHex(c.id, c.aiPlayer.civilization, c.aiPlayer.seat));
+                for (const turn of (c.turnLog || []).slice(-60)) {
+                    for (const call of (turn.toolCalls || [])) {
+                        let p = null; try { p = JSON.parse(call.args || '{}'); } catch (e) {}
+                        if (!p) continue;
+                        let wx = null, wz = null;
+                        if (Number.isFinite(Number(p.targetX)) && Number.isFinite(Number(p.targetZ)) && p.targetX !== '') {
+                            wx = Number(p.targetX); wz = Number(p.targetZ);
+                        } else if (p.tile) {
+                            const m = /^([A-Z])(\d{1,2})$/i.exec(String(p.tile).trim());
+                            if (m) { wx = -size / 2 + (m[1].toUpperCase().charCodeAt(0) - 65 + 0.5) * cell; wz = -size / 2 + (Number(m[2]) - 0.5) * cell; }
+                        }
+                        if (wx == null || wz == null) continue;
+                        const [px, py] = toPx(wx, wz);
+                        const grad = ctx.createRadialGradient(px, py, 1, px, py, 11);
+                        grad.addColorStop(0, col + '77');
+                        grad.addColorStop(1, col + '00');
+                        ctx.fillStyle = grad;
+                        ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.fill();
+                    }
+                }
+            }
+        } else if (mode === 'gaps') {
+            const liveUnits = this.game.getAllUnits ? this.game.getAllUnits() : [];
+            const byId = new Map();
+            for (const u of liveUnits) if (u && u.health > 0) byId.set(String(u.id), u);
+            for (const ai of ais) {
+                if (!ai || ai._eliminated || (focusSeat != null && ai.seat !== focusSeat) || !ai._unitMemory) continue;
+                ai._unitMemory.forEach((r, k) => {
+                    if (!r || r.visible || r.located === false || r.x == null || r.z == null) return;
+                    const [gx, gy] = toPx(r.x, r.z);
+                    const real = byId.get(String(r.id != null ? r.id : k));
+                    if (real) {
+                        const [rx, ry] = toPx(real.x, real.z);
+                        ctx.strokeStyle = 'rgba(240,160,142,0.75)';
+                        ctx.lineWidth = 1.2;
+                        ctx.setLineDash([2, 2]);
+                        ctx.beginPath(); ctx.moveTo(gx, gy); ctx.lineTo(rx, ry); ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+                    ctx.fillStyle = 'rgba(240,160,142,0.85)';
+                    ctx.beginPath(); ctx.arc(gx, gy, 2.8, 0, Math.PI * 2); ctx.fill();
+                });
+            }
+        }
     }
 
     toggleMinimapFogSeat(seat) {
@@ -4431,6 +4668,9 @@ class UIManager {
         { const sc = document.getElementById('secondCam'); if (sc) sc.style.display = 'none'; }
         if (this.seatView) this.seatView.set(null);          // the renderer gets its own fog and every entity back
         document.getElementById('seatViewBadge')?.remove();
+        document.getElementById('seatViewLens')?.remove();
+        this._mmLensMode = 'fog';
+        this.renderMinimapLens();
         this.stopIntentOverlay();
         if (this.game.renderer) this.game.renderer.intentMarks = null;
         if (this.broadcastOn()) this.toggleBroadcast(false, false);
@@ -4460,6 +4700,7 @@ class UIManager {
         list.classList.toggle('collapsed');
         const off = list.classList.contains('collapsed');
         if (toggle) toggle.textContent = off ? '▶' : '▼';
+        if (this.refreshBenchView) this.refreshBenchView();
     }
     toggleDecisionLog() {
         const entries = document.getElementById('aiLogEntries');
@@ -4704,6 +4945,7 @@ class UIManager {
         // Wonder progress: show the furthest-along held Wonder among the AIs.
         const wEl = document.getElementById('arenaWonder');
         if (this.broadcastOn()) this.renderBroadcast();
+        else this.tickLeaderboardTimers();
         if (wEl) {
             // One countdown per seat holding a Wonder, closest to winning first (b1101).
             const holds = this.wonderHolds();
@@ -4822,8 +5064,68 @@ class UIManager {
         }
         if (this.game.renderer && this.game.renderer.onWindowResize) this.game.renderer.onWindowResize();
         // The overlays stay through the switch and move to the new mode's places.
-        if (this.updateBenchView) { this._benchTop = null; this.updateBenchView(); }
+        if (this.refreshBenchView) { this._benchTop = null; this.refreshBenchView(); }
+        else if (this.updateBenchView) { this._benchTop = null; this.updateBenchView(); }
         if (this.updateCompare) this.updateCompare();          // the lower third belongs to broadcast mode: it comes and goes with it
+    }
+    // U1: Track per-seat thinking elapsed time and turn-based round readiness without touching harness code.
+    thinkElapsedMs(ctrl, now = Date.now()) {
+        if (!ctrl || !ctrl.id) return 0;
+        const map = this._thinkSince || (this._thinkSince = new Map());
+        if (ctrl.pending && !ctrl.paused) {
+            if (!map.has(ctrl.id)) map.set(ctrl.id, now);
+            return Math.max(0, now - map.get(ctrl.id));
+        }
+        map.delete(ctrl.id);
+        return 0;
+    }
+    compactNum(n) {
+        const v = Math.floor(Number(n) || 0);
+        if (v >= 10000) return Math.round(v / 1000) + 'k';
+        if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+        return String(v);
+    }
+    tickLeaderboardTimers() {
+        const listEl = document.getElementById('spectatorPlayerList');
+        const mgr = this.game && this.game.openAIAIManager;
+        if (!listEl || !mgr || !mgr.aiControllers) return;
+        const timeoutMs = (mgr.roundTimeoutMs && mgr.roundTimeoutMs()) || 90000;
+        const denom = mgr.turnBased ? timeoutMs : 30000;
+        let stateChanged = false;
+        for (const card of listEl.querySelectorAll('.lb-card[data-ai]')) {
+            const aiId = card.dataset.ai;
+            const ctrl = mgr.aiControllers.find(c => c.id === aiId);
+            if (!ctrl) continue;
+            const thinking = !!ctrl.pending && !ctrl.paused && !ctrl.defeated;
+            const hadThinking = card.classList.contains('is-thinking');
+            if (thinking !== hadThinking) { stateChanged = true; continue; }
+            if (!thinking) continue;
+            const thinkMs = this.thinkElapsedMs(ctrl);
+            const thinkPct = Math.min(100, Math.round((thinkMs / denom) * 100));
+            const thinkUrg = !!(mgr.turnBased && thinkPct >= 78);
+            const pill = card.querySelector('.lb-think');
+            if (pill) {
+                pill.classList.toggle('is-urgent', thinkUrg);
+                const secEl = pill.querySelector('.lb-think-sec');
+                if (secEl) secEl.textContent = Math.floor(thinkMs / 1000) + 's';
+            }
+            const fill = card.querySelector('.lb-edge-fill.is-thinking');
+            if (fill) {
+                fill.style.width = Math.max(8, thinkPct) + '%';
+                fill.classList.toggle('is-urgent', thinkUrg);
+            }
+        }
+        if (stateChanged) this.updateSpectatorPlayerList();
+    }
+    toggleLbAdvice(aiId) {
+        const open = this._adviceOpen || (this._adviceOpen = new Set());
+        if (open.has(aiId)) open.delete(aiId);
+        else open.add(aiId);
+        this.updateSpectatorPlayerList();
+        if (open.has(aiId)) {
+            const inp = document.querySelector(`.lb-advice-input[data-ai="${CSS.escape(aiId)}"]`);
+            if (inp) inp.focus();
+        }
     }
     // One pill per seat, in seat order: badge, name, age, army, workers, buildings, and
     // how often a spectator's advice reached that model -- a broadcast must not hide that
@@ -4849,45 +5151,44 @@ class UIManager {
         let clockEl = board.querySelector(':scope > .bb-clock'), cardsEl = board.querySelector(':scope > .bb-cards');
         if (!clockEl || !cardsEl) {
             board.innerHTML = '<span class="bb-clock"></span><span class="bb-cards"></span>';
-            clockEl = board.firstChild; cardsEl = board.lastChild;
+            clockEl = board.children[0]; cardsEl = board.children[1];
         }
         clockEl.textContent = clock ? clock.textContent : '';
         if (this._broadcastSpeed && clockEl.nextSibling !== this._broadcastSpeed.el) clockEl.after(this._broadcastSpeed.el);
         if (this._broadcastCtl && this._broadcastCtl.parentNode !== board) board.appendChild(this._broadcastCtl);
         if (this._broadcastQuit && board.firstChild !== this._broadcastQuit) board.prepend(this._broadcastQuit);
+        const mgr = g.openAIAIManager, timeoutMs = (mgr && mgr.roundTimeoutMs && mgr.roundTimeoutMs()) || 90000;
         cardsEl.innerHTML = ais.map(ai => {
             const ctrl = ctrls.find(c => c.id === ai.id);
             const advised = (ctrl && ctrl.stats && ctrl.stats.advisedTurns) || 0;
             const out = g.isPlayerEliminated(ai);
             const mil = ai.units.filter(u => u.type !== 'worker' && u.health > 0).length, wk = ai.units.filter(u => u.type === 'worker' && u.health > 0).length;
-            // Second line: the civilization and what is in the bank, with the icons the
-            // results screen uses.
             const r = ai.resources || {}, bank = k => Math.floor(r[k] || 0);
-            // The cards keep seat order; the place shows as the leaderboard's medallion.
             const rank = ranks.get(ai.id);
+            const thinkMs = this.thinkElapsedMs(ctrl);
+            const thinkPct = ctrl && ctrl.pending ? Math.min(100, Math.round((thinkMs / (mgr && mgr.turnBased ? timeoutMs : 30000)) * 100)) : 0;
+            const thinkUrg = mgr && mgr.turnBased && thinkPct >= 78;
+            const thinkSec = thinkMs >= 1000 ? Math.floor(thinkMs / 1000) + 's' : '';
             const sub = '<span class="bb-sub">' + (rank ? '<span class="lb-rank bb-rank rank-' + rank + '" title="' + this.escapeHtml(t('spec.bbRank', { n: rank })) + '">' + rank + '</span>' : '')
                 + '<span class="bb-civ">' + this.escapeHtml(this.anCivName(ai.civilization)) + '</span>'
                 + ' <span class="bb-n">\u{1F356} ' + bank('food') + '</span> <span class="bb-n">\u{1F332} ' + bank('wood') + '</span>'
                 + ' <span class="bb-n">\u{1FAA8} ' + bank('stone') + '</span> <span class="bb-n">\u{1F947} ' + bank('gold') + '</span>'
-                // Thinking: the leaderboard's pulsing dot, while this seat's model has a
-                // request in flight. Bottom right of the card. The board is rebuilt every
-                // tick, which would restart the pulse each time; a delay set from the clock
-                // puts every new dot at the phase the last one had reached.
-                + (ctrl && ctrl.pending ? '<span class="bb-think" title="' + this.escapeHtml(t('spec.thinking')) + '"><span class="dot" style="animation-delay:-'
-                    + (Date.now() % 1100) + 'ms"></span></span>' : '')
+                + (ctrl && ctrl.pending ? '<span class="bb-think' + (thinkUrg ? ' is-urgent' : '') + '" title="' + this.escapeHtml(t('spec.thinking')) + '"><span class="dot" style="animation-delay:-'
+                    + (Date.now() % 1100) + 'ms"></span>' + (thinkSec ? '<span class="bb-think-t">' + thinkSec + '</span>' : '') + '</span>' : '')
                 + '</span>';
-            // The seat's colour as a bar down the left, as the bubbles carry it.
             const tb = typeof getTeamBadge === 'function' ? getTeamBadge(ai.seat) : null;
             const band = (tb && tb.fill) || this.identityHex(ai.id, ai.civilization, ai.seat);
-            return '<span class="bb-seat' + (out ? ' out' : '') + '" style="--seat:' + band + '"><span class="bb-main">' + this.chronicleSeatHtml(ai.id)
+            const thinkBar = ctrl && ctrl.pending
+                ? '<span class="bb-think-bar' + (thinkUrg ? ' is-urgent' : '') + (!mgr || !mgr.turnBased ? ' is-rt' : '') + '" style="width:' + Math.max(8, thinkPct) + '%"></span>'
+                : '';
+            return '<span class="bb-seat' + (out ? ' out' : '') + (ctrl && ctrl.pending ? ' is-thinking' : '') + '" style="--seat:' + band + '"><span class="bb-main">' + this.chronicleSeatHtml(ai.id)
                 + ' <span class="bb-age">' + this.escapeHtml(this.getAgeName(ai.age)) + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbArmy')) + '">\u2694\uFE0F ' + mil + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbWorkers')) + '">\u{1F477} ' + wk + '</span>'
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbBuildings')) + '">\u{1F3DB}\uFE0F ' + ai.buildings.filter(b => b.health > 0).length + '</span>'
-                // Population slots: the cap the houses and Town Centers provide.
                 + ' <span class="bb-n" title="' + this.escapeHtml(t('spec.bbHousing', { used: Math.floor(r.population || 0), max: Math.floor(r.maxPopulation || 0) })) + '">\u{1F3E0} ' + Math.floor(r.maxPopulation || 0) + '</span>'
                 + (advised ? ' <span class="bb-advised" title="' + this.escapeHtml(t('sum.coachedTip')) + '">' + this.escapeHtml(t('spec.bbAdvised', { n: advised })) + '</span>' : '')
-                + '</span>' + sub + '</span>';
+                + '</span>' + sub + thinkBar + '</span>';
         }).join('');
         // The speed control rides beside the clock (moved there by toggleBroadcast); the
         // redraw above detached it, so it is put back each time, like the controls below.
@@ -5458,11 +5759,13 @@ class UIManager {
             let paused = false;
             let objective = '';
             let health = null;
+            let thinkMs = 0;
             if (this.game.openAIAIManager && this.game.openAIAIManager.aiControllers) {
                 const controller = this.game.openAIAIManager.aiControllers.find(c => c.id === ai.id);
                 if (controller && controller.model) {
                     modelName = controller.model.name;
                     thinking = !!controller.pending;
+                    thinkMs = this.thinkElapsedMs(controller);
                     isLLM = true;
                     adviceCount = (controller.pendingAdvice && controller.pendingAdvice.length) || 0;
                     paused = !!controller.paused;
@@ -5479,7 +5782,7 @@ class UIManager {
                 }
             }
 
-            return { ai, civ, colorHex, workers, military, alive, modelName, thinking, isLLM, adviceCount, paused, objective, health,
+            return { ai, civ, colorHex, workers, military, alive, modelName, thinking, thinkMs, isLLM, adviceCount, paused, objective, health,
                 profile: isLLM && profiles ? profiles[ai.id] : null, score: this.spectatorPowerScore(ai) };
         });
 
@@ -5498,50 +5801,57 @@ class UIManager {
             countEl.textContent = `${aliveN}/${rows.length}`;
         }
 
+        const mgr = this.game.openAIAIManager;
+        const timeoutMs = (mgr && mgr.roundTimeoutMs && mgr.roundTimeoutMs()) || 90000;
+        const adviceOpen = this._adviceOpen || (this._adviceOpen = new Set());
+
         let html = '';
         rows.forEach((r, idx) => {
             const rank = idx + 1;
             const ai = r.ai;
             const isLeader = r.alive && rank === 1 && rows.filter(x => x.alive).length > 1;
             const pct = r.alive ? Math.round((r.score / maxScore) * 100) : 0;
+            const thinkPct = r.thinking ? Math.min(100, Math.round((r.thinkMs / (mgr && mgr.turnBased ? timeoutMs : 30000)) * 100)) : 0;
+            const thinkUrg = !!(mgr && mgr.turnBased && thinkPct >= 78);
+            const showAdvice = adviceOpen.has(ai.id) || !!(this._adviceDrafts[ai.id]);
+            const civShort = civNames[ai.civilization] || ai.civilization;
+            const ageShort = ageNames[ai.age] || ai.age;
+            const statusTag = !r.alive ? `<span class="lb-tag-elim">${t('spec.defeated')}</span>`
+                : (r.paused ? `<span class="lb-tag-paused">${t('spec.paused')}</span>`
+                : (r.thinking ? `<span class="lb-think${thinkUrg ? ' is-urgent' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer('${ai.id}')" title="${this.escapeHtml(t('spec.transcript'))}"><span class="dot"></span><span class="lb-think-sec">${Math.floor(r.thinkMs / 1000)}s</span></span>` : ''));
+            const profileBlock = r.profile ? this.seatProfileHtml(r.profile, { health: r.health, paused: r.paused }) : ((r.isLLM && r.health && r.alive) ? this.seatHealthHtml(r.health, r.paused) : '');
 
             html += `
-                <div class="lb-card rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" data-ai="${ai.id}" onclick="game.focusCameraOnAI('${ai.id}')" title="${t('spec.cardHint')}">
+                <div class="lb-card is-compact rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}${r.thinking ? ' is-thinking' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" data-ai="${ai.id}" onclick="game.focusCameraOnAI('${ai.id}')" title="${t('spec.cardHint')}">
                     <div class="lb-fly-tab" title="${t('spec.flyTabTitle')}" onclick="event.stopPropagation(); game.ui.openLbFlyout('${ai.id}')">◀</div>
-                    <div class="lb-model-banner" title="${this.escapeHtml(r.modelName)}">
-                        ${r.isLLM ? `<button class="lb-spy${this._transcriptFor === ai.id ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer('${ai.id}')" title="${t('spec.transcript')}">🔎</button>` : ''}
-                        <span class="lb-model-name">${this.escapeHtml(r.modelName)}</span>
-                        ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel('${ai.id}')" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
-                    </div>
-                    <div class="lb-card-top">
+                    <div class="lb-head-row" title="${this.escapeHtml(r.modelName + ' · ' + civShort + ' · ' + ageShort)}">
                         <span class="lb-rank">${rank}</span>
                         ${this.teamDotHtml(ai.seat, 10)}
-                        <span class="lb-civ">${civNames[ai.civilization] || ai.civilization}</span>
-                        <span class="lb-age">${ageNames[ai.age] || ai.age}</span>
-                        ${!r.alive ? `<span class="lb-tag-elim">${t('spec.defeated')}</span>`
-                            : (r.paused ? `<span class="lb-tag-paused">${t('spec.paused')}</span>`
-                            : (r.thinking ? `<span class="lb-think"><span class="dot"></span>${t('spec.thinking')}</span>` : ''))}
+                        <span class="lb-model-name">${this.escapeHtml(r.modelName)}</span>
+                        <span class="lb-meta-civ">${this.escapeHtml(civShort)} · ${this.escapeHtml(ageShort)}</span>
+                        ${statusTag}
+                        <span class="lb-actions">
+                            ${r.isLLM ? `<button class="lb-spy${this._transcriptFor === ai.id ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer('${ai.id}')" title="${t('spec.transcript')}">🔎</button>` : ''}
+                            ${(r.isLLM && r.alive) ? `<button class="lb-adv-btn${showAdvice ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleLbAdvice('${ai.id}')" title="${t('spec.advicePlaceholder')}">💬${r.adviceCount ? `<b>${r.adviceCount}</b>` : ''}</button>` : ''}
+                            ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel('${ai.id}')" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
+                        </span>
                     </div>
-                    ${(r.isLLM && r.health && r.alive) ? this.seatHealthHtml(r.health, r.paused) : ''}
-                    ${(r.isLLM && r.objective) ? `<div class="lb-objective" title="${this.escapeHtml(r.objective)}"><span aria-hidden="true">\u{1F3AF}</span> ${this.escapeHtml(r.objective.length > 90 ? r.objective.slice(0, 89) + '\u2026' : r.objective)}</div>` : ''}
-                    ${r.profile ? this.seatProfileHtml(r.profile) : ''}
-                    <div class="lb-stats">
-                        <span class="lb-stat">\u{1F465} ${ai.resources.population}/${ai.resources.maxPopulation}</span>
-                        <span class="lb-stat">\u{1F477} ${r.workers}</span>
-                        <span class="lb-stat">⚔️ ${r.military}</span>
-                        <span class="lb-stat">\u{1F3DB}️ ${ai.buildings.length}</span>
+                    ${profileBlock}
+                    <div class="lb-empire">
+                        <div class="lb-emp-grp">
+                            <span class="lb-stat">\u{1F465} ${ai.resources.population}/${ai.resources.maxPopulation}</span>
+                            <span class="lb-stat" title="${this.escapeHtml(t('spec.bbWorkers'))}">\u{1F477} ${r.workers}</span>
+                            <span class="lb-stat" title="${this.escapeHtml(t('spec.bbArmy'))}">\u2694\uFE0F ${r.military}</span>
+                            <span class="lb-stat" title="${this.escapeHtml(t('spec.bbBuildings'))}">\u{1F3DB}\uFE0F ${ai.buildings.length}</span>
+                        </div>
+                        <div class="lb-emp-grp lb-emp-res">
+                            <span class="lb-stat">\u{1F356} ${this.compactNum(ai.resources.food)}</span>
+                            <span class="lb-stat">\u{1F332} ${this.compactNum(ai.resources.wood)}</span>
+                            <span class="lb-stat">\u{1FAA8} ${this.compactNum(ai.resources.stone)}</span>
+                            <span class="lb-stat">\u{1F947} ${this.compactNum(ai.resources.gold)}</span>
+                        </div>
                     </div>
-                    <div class="lb-stats">
-                        <span class="lb-stat">\u{1F356} ${Math.floor(ai.resources.food)}</span>
-                        <span class="lb-stat">\u{1F332} ${Math.floor(ai.resources.wood)}</span>
-                        <span class="lb-stat">\u{1FAA8} ${Math.floor(ai.resources.stone)}</span>
-                        <span class="lb-stat">\u{1F947} ${Math.floor(ai.resources.gold)}</span>
-                    </div>
-                    <div class="lb-power">
-                        <div class="lb-power-track"><div class="lb-power-fill" style="width: ${pct}%"></div></div>
-                        <span class="lb-power-val">${r.alive ? r.score : '—'}</span>
-                    </div>
-                    ${(r.isLLM && r.alive) ? `
+                    ${(r.isLLM && r.alive && showAdvice) ? `
                     <div class="lb-advice" onclick="event.stopPropagation()">
                         <input class="lb-advice-input" type="text" maxlength="400"
                             data-ai="${ai.id}"
@@ -5550,8 +5860,10 @@ class UIManager {
                             oninput="game.ui.onAdviceInput('${ai.id}', this.value)"
                             onkeydown="if(event.key==='Enter'){event.preventDefault();game.ui.sendAdvice('${ai.id}');}">
                         <button class="lb-advice-send" title="${t('spec.adviceSend')}" onclick="game.ui.sendAdvice('${ai.id}')">➤</button>
-                        ${r.adviceCount ? `<span class="lb-advice-badge" title="${t('spec.advicePending')}">✎ ${r.adviceCount}</span>` : ''}
                     </div>` : ''}
+                    <div class="lb-edge-track" title="${r.thinking ? this.escapeHtml(t('spec.thinking')) : (r.alive ? String(r.score) : '')}">
+                        <div class="lb-edge-fill${r.thinking ? (' is-thinking' + (thinkUrg ? ' is-urgent' : '') + (!mgr || !mgr.turnBased ? ' is-rt' : '')) : ''}" style="width:${r.thinking ? Math.max(8, thinkPct) : pct}%"></div>
+                    </div>
                 </div>
             `;
         });
@@ -5698,7 +6010,7 @@ class UIManager {
             + ` onclick="event.stopPropagation(); game.ui.setLbSort('${key}')">${this.escapeHtml(t(label))}</button>`).join('');
     }
 
-    seatProfileHtml(p) {
+    seatProfileHtml(p, opts = null) {
         if (!p || !p.decisions) return '';
         const esc = s => this.escapeHtml(String(s)), tips = this.evalTips(p);
         const dimsList = (typeof WarEval !== 'undefined' && WarEval.SCORED)
@@ -5710,6 +6022,10 @@ class UIManager {
                 + `<span class="lb-dim-track"><i style="width:${score == null ? 0 : Math.round(score)}%"></i></span>`
                 + `<b>${score == null ? '–' : Math.round(score)}</b></span>`;
         };
+        const spark = typeof this.benchSeatSparkSvg === 'function' ? this.benchSeatSparkSvg(p.id) : '';
+        const sparkHtml = spark
+            ? `<span class="lb-spark" role="button" tabindex="0" onclick="event.stopPropagation(); game.ui.toggleBenchFull(true)" title="${esc(t('bench.b.openTip'))}">${spark}</span>`
+            : '';
         const warVal = p.index && p.index.value != null ? Math.round(p.index.value) : '–';
         const index = `<span class="lb-dim lb-index${p.warmup ? ' is-warmup' : ''}" title="${esc(tips.index || '')}">`
             + `<span class="lb-dim-name">${esc(t('eval.indexShort'))}</span>`
@@ -5728,8 +6044,20 @@ class UIManager {
             ? (e.latencyMs.median >= 1000 ? (e.latencyMs.median / 1000).toFixed(1) + 's' : Math.round(e.latencyMs.median) + 'ms') : null;
         const outOk = e.outputPerValidOrder == null ? null : Math.round(e.outputPerValidOrder) + ' ' + t('bench.unitOutOk');
         const meta = [okD, lat, outOk].filter(Boolean).join(' · ');
-        const foot = (batchEl || meta) ? `<div class="lb-foot">${batchEl}${meta ? `<span>${esc(meta)}</span>` : ''}</div>` : '';
-        return `<div class="lb-profile">${dimsList.filter(k => p[k]).map(bar).join('')}${index}</div>${foot}`;
+        // Deduplicated health alerts folded into the footer so latency isn't repeated twice
+        const h = opts && opts.health, paused = !!(opts && opts.paused);
+        const warns = [];
+        if (h) {
+            if (h.roundsMissed) warns.push(`<span class="lb-warn warn" title="${esc(t('sh.missedTip'))}">${esc(t('sh.missed', { n: h.roundsMissed }))}</span>`);
+            if (h.timeouts || h.networkErrors) warns.push(`<span class="lb-warn bad" title="${esc(t('sh.errorsTip'))}">${esc(t('sh.errors', { n: h.timeouts + h.networkErrors }))}</span>`);
+            if (h.contextOverflows) warns.push(`<span class="lb-warn warn" title="${esc(t('sh.overflowTip'))}">${esc(t('sh.overflow', { n: h.contextOverflows }))}</span>`);
+            if (!paused && h.harnessIdleMs) warns.push(`<span class="lb-warn bad" title="${esc(t('sh.idleTip'))}">${esc(t('sh.idle', { n: Math.round(h.harnessIdleMs / 1000) }))}</span>`);
+            if (!paused && h.silentMs > 60000) warns.push(`<span class="lb-warn bad" title="${esc(t('sh.silentTip'))}">${esc(t('sh.silent', { n: Math.round(h.silentMs / 1000) }))}</span>`);
+        }
+        const foot = (batchEl || meta || warns.length)
+            ? `<div class="lb-foot">${batchEl}${meta ? `<span>${esc(meta)}</span>` : ''}${warns.join('')}</div>`
+            : '';
+        return `<div class="lb-profile${sparkHtml ? ' has-spark' : ''}" onclick="event.stopPropagation(); game.ui.toggleBenchFull && game.ui.toggleBenchFull(true)">${dimsList.filter(k => p[k]).map(bar).join('')}${sparkHtml}${index}</div>${foot}`;
     }
 
     // ---- Leaderboard achievement flyout --------------------------------------
@@ -5869,10 +6197,19 @@ class UIManager {
             `<span class="lb-fly-chip">${esc(t('res.' + k))} ×${known[k] || 0}</span>`).join('');
 
         const colorHex = ai ? this.identityHex(ai.id, ai.civilization, ai.seat) : '#' + ((civ && civ.color) || 0xffffff).toString(16).padStart(6, '0');
+        const obj = controller && String(controller.objective || '').trim();
+        const planArr = controller && Array.isArray(controller.plan) ? controller.plan.filter(Boolean) : [];
+        const planSec = (obj || planArr.length)
+            ? `<div class="lb-fly-sec"><div class="lb-fly-h">🎯 ${esc(t('log.plan'))}</div>`
+                + `<div class="lb-fly-body lb-fly-plan">${obj ? `<div class="lb-fly-obj">${esc(obj)}</div>` : ''}`
+                + (planArr.length ? `<ol class="lb-fly-steps">${planArr.slice(0, 6).map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '')
+                + `</div></div>`
+            : '';
         el.innerHTML = `
             <div class="lb-fly-head" style="--civ:${this.legibleColor(colorHex)}">
                 <b>${esc(model)}</b><span>${esc(civName)} · ${ageNames[ai.age] || ai.age}</span>
             </div>
+            ${planSec}
             <div class="lb-fly-sec"><div class="lb-fly-h">🪶 ${t('spec.flyResearch')}</div>
                 <div class="lb-fly-body">${researchChips || `<i>${t('spec.flyNone')}</i>`}</div></div>
             <div class="lb-fly-sec"><div class="lb-fly-h">👥 ${t('spec.flyUnits', { n: ai.units.length })}</div>

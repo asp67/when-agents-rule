@@ -47,10 +47,13 @@ button,input,select,textarea { font-family:inherit; }
     padding:clamp(16px,3vw,48px);
 }
 .arena-setup-content { max-width:1240px; padding:0; }
-.arena-setup-content > h2 {
-    font:400 clamp(2rem,4vw,3.5rem)/1.15 Georgia,serif;
+.arena-setup-content h2,.summary-head h2 {
+    font:400 clamp(2rem,4vw,3.2rem)/1.15 Georgia,"Times New Roman",serif;
     letter-spacing:-.025em; color:var(--text); text-align:left; margin:12px 0;
+    background:none; -webkit-text-fill-color:currentColor;
 }
+.setup-topbar-title h2 { font-size:clamp(1.85rem,3.2vw,2.7rem); margin:0 0 4px; }
+.summary-head h2 { text-align:center; font-size:clamp(1.7rem,3vw,2.4rem); }
 .arena-setup-subtitle { text-align:left; color:var(--muted); max-width:800px; line-height:1.65; font-size:1rem; }
 .quick-match-btn { display:block; min-width:0; margin:14px 0 4px; padding:10px 20px; font-size:.95rem; }
 .arena-setup-content > .lang-picker { border-bottom:1px solid var(--line); padding-bottom:20px; margin-bottom:28px; flex-wrap:wrap; }
@@ -379,3 +382,215 @@ body.broadcast-mode .arena-lineup.floating { bottom:calc(128px * var(--ui-scale,
 .bench-served { color:var(--muted); font-size:.88rem; margin:6px 0 0; min-height:1.2em; }
 .bench-served.bench-note { color:var(--text); }
 .bench-set-served { padding:2px 8px; font-size:.8rem; margin-left:6px; }
+
+/* ---- UI & GFX Benchmark Overhaul (U1–U5) ----------------------------------- */
+
+/* U4: Restrained Antiquity bronze active buttons instead of neon emerald */
+.spectator-statusbar .sb-on, .broadcast-ctls .sb-on, .broadcast-exit.sb-on {
+    background:#3d4935 !important; border-color:var(--gold) !important; color:var(--gold-2) !important; box-shadow:none !important;
+}
+.spectator-statusbar .sb-key, .broadcast-ctls .sb-key {
+    background:#4a3f28 !important; border-color:var(--gold-2) !important; color:var(--gold-2) !important;
+}
+.camera-popover label.cam-chk { justify-content:space-between; margin-top:6px; }
+.camera-popover label.cam-chk input[type="checkbox"] { width:16px; height:16px; accent-color:var(--gold); }
+.aq-progress { width:100%; height:14px; background:#151a15; border:1px solid var(--line); border-radius:4px; overflow:hidden; margin-top:8px; }
+.aq-progress-fill { height:100%; background:linear-gradient(90deg, var(--teal), #6f9473); border-radius:3px; }
+.aq-progress-fill.is-gold { background:linear-gradient(90deg, var(--gold), var(--gold-2)); }
+.aq-progress-text { color:var(--teal); font-weight:600; margin-top:5px; font-size:.85em; }
+.aq-progress-text.is-gold { color:var(--gold-2); }
+
+/* U1: Live Inference Progress Bars */
+.bb-seat { position:relative; overflow:hidden; }
+.bb-think { display:inline-flex; align-items:center; gap:4px; }
+.bb-think-t { font:600 .7rem/1 ui-monospace,Menlo,monospace; color:var(--gold-2); font-variant-numeric:tabular-nums; }
+.bb-think.is-urgent .bb-think-t { color:#f5b09e; }
+.bb-think-bar {
+    position:absolute; left:0; bottom:0; height:3px; background:var(--seat, var(--gold));
+    transition:width .4s linear; pointer-events:none;
+}
+.bb-think-bar.is-urgent { background:#e06c60; }
+.bb-think-bar.is-rt { animation:warThinkPulse 2.2s ease-in-out infinite; }
+@keyframes warThinkPulse { 0%,100% { opacity:.55; } 50% { opacity:1; } }
+
+/* U5: Compact 4-seat Analyze Leaderboard with inline WAR/Dominance sparkline */
+.lb-card.is-compact {
+    padding:5px 8px 7px 22px; border-radius:4px; border-color:var(--line);
+    background:rgba(24,29,24,.94); position:relative;
+}
+.lb-card.is-compact .lb-fly-tab { width:14px; font-size:8px; }
+.lb-head-row {
+    display:flex; align-items:center; gap:5px; min-width:0; margin-bottom:3px;
+}
+.lb-card.is-compact .lb-rank { width:18px; height:18px; font-size:.7rem; }
+.lb-card.is-compact .lb-model-name {
+    flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    font-size:.8rem; font-weight:600; color:var(--text);
+}
+.lb-meta-civ {
+    flex:0 1 auto; font-size:.68rem; color:var(--muted); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; max-width:78px;
+}
+.lb-card.is-compact .lb-think {
+    font:600 .68rem/1 ui-monospace,Menlo,monospace; color:var(--gold-2); cursor:pointer;
+    padding:2px 5px; border-radius:3px; background:rgba(188,154,98,.16); border:1px solid rgba(222,197,148,.28);
+    display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+}
+.lb-card.is-compact .lb-think.is-urgent { color:#f5b09e; background:rgba(188,112,96,.22); border-color:rgba(213,139,116,.5); }
+.lb-actions { display:inline-flex; align-items:center; gap:2px; flex:0 0 auto; }
+.lb-card.is-compact .lb-spy, .lb-card.is-compact .lb-pause, .lb-adv-btn {
+    width:20px; height:20px; padding:0; display:inline-flex; align-items:center; justify-content:center;
+    font-size:11px; border-radius:3px; border:1px solid var(--line); background:#252c24; color:var(--text); cursor:pointer;
+    position:relative;
+}
+.lb-adv-btn.is-on, .lb-card.is-compact .lb-spy.is-on { border-color:var(--gold); background:#3c4634; color:var(--gold-2); }
+.lb-adv-btn b {
+    position:absolute; top:-4px; right:-4px; min-width:12px; height:12px; padding:0 2px;
+    border-radius:6px; background:var(--gold); color:#171a18; font-size:9px; line-height:12px; text-align:center;
+}
+.lb-card.is-compact .lb-profile {
+    padding:2px 0 1px; gap:4px; cursor:pointer;
+}
+.lb-card.is-compact .lb-profile.has-spark {
+    grid-template-columns:repeat(5, minmax(0, 1fr)) 58px auto;
+}
+.lb-spark {
+    display:flex; align-items:center; justify-content:center; padding:1px 2px;
+    border-radius:3px; background:rgba(16,20,16,.65); border:1px solid rgba(221,211,180,.12);
+    cursor:pointer;
+}
+.lb-spark:hover { border-color:var(--gold); }
+.lb-spark-svg { display:block; width:56px; height:22px; overflow:visible; }
+.lb-card.is-compact .lb-foot {
+    margin-top:2px; gap:5px; font-size:.67rem; flex-wrap:wrap;
+}
+.lb-warn { padding:0 4px; border-radius:2px; font-weight:600; }
+.lb-warn.warn { color:#e6c27a; background:rgba(188,154,98,.16); }
+.lb-warn.bad { color:#f0a08e; background:rgba(188,112,96,.22); }
+.lb-empire {
+    display:flex; flex-direction:column; gap:3px;
+    margin-top:4px; font-size:.69rem; color:var(--muted); font-variant-numeric:tabular-nums;
+}
+.lb-emp-grp {
+    display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:3px;
+}
+.lb-card.is-compact .lb-stat {
+    padding:1px 4px; border-radius:3px; font-size:.68rem;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    background:rgba(255,255,255,.045); color:#c7cfde;
+}
+.lb-emp-res .lb-stat { color:#d2cdb8; }
+.lb-card.is-compact .lb-advice { margin-top:4px; }
+.lb-edge-track {
+    position:absolute; left:14px; right:0; bottom:0; height:3px; background:rgba(255,255,255,.06);
+}
+.lb-edge-fill {
+    height:100%; background:var(--civ, var(--gold)); opacity:.55; transition:width .4s ease;
+}
+.lb-edge-fill.is-thinking { opacity:1; }
+.lb-edge-fill.is-urgent { background:#e06c60; }
+.lb-edge-fill.is-rt { animation:warThinkPulse 2.2s ease-in-out infinite; }
+.lb-list.collapsed .lb-empire, .lb-list.collapsed .lb-edge-track { display:none; }
+.lb-fly-plan { flex-direction:column; gap:4px; font-size:.76rem; color:var(--text); }
+.lb-fly-obj { color:var(--gold-2); font-weight:500; line-height:1.35; }
+.lb-fly-steps { margin:2px 0 0 16px; padding:0; color:var(--muted); line-height:1.4; }
+
+@media (max-height: 820px) {
+    .lb-card.is-compact { padding:4px 7px 6px 20px; }
+    .lb-card.is-compact .lb-empire { gap:2px; margin-top:2px; }
+    .lb-card.is-compact .lb-stat { font-size:.63rem; padding:1px 3px; }
+    .lb-card.is-compact .lb-foot { font-size:.63rem; }
+}
+
+/* U2: Dark Antiquity Verdict-First Intent Cards */
+.intent-bubble {
+    background:rgba(24,29,24,.94) !important;
+    color:var(--text) !important;
+    border:1px solid rgba(221,211,180,.22) !important;
+    border-left:3px solid var(--seat, var(--gold)) !important;
+    box-shadow:0 8px 24px rgba(0,0,0,.45) !important;
+    border-radius:4px !important;
+}
+.intent-bubble .intent-call {
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-size:.72rem; color:var(--gold-2) !important;
+    background:rgba(222,197,148,.10); padding:1px 5px; border-radius:2px;
+}
+.intent-bubble .intent-reason { color:#d8d3c3 !important; }
+.intent-bubble.is-refused {
+    background:rgba(38,24,22,.96) !important;
+    border-color:rgba(213,139,116,.52) !important;
+}
+.intent-bubble.is-refused.is-contended {
+    background:rgba(37,33,23,.96) !important;
+    border-color:rgba(222,197,148,.52) !important;
+}
+.intent-bubble.is-clickable { pointer-events:auto !important; cursor:pointer; }
+.intent-bubble.is-clickable:hover { border-color:var(--gold-2) !important; }
+.intent-verdict {
+    display:inline-block; font:700 .65rem/1.2 ui-monospace,Menlo,monospace;
+    padding:1px 5px; border-radius:2px; letter-spacing:.03em; vertical-align:middle;
+}
+.intent-verdict.is-invalid { background:rgba(224,108,96,.28); color:#ffaea0; border:1px solid rgba(224,108,96,.5); }
+.intent-verdict.is-avoidable { background:rgba(213,139,116,.24); color:#f5b79f; border:1px solid rgba(213,139,116,.45); }
+.intent-verdict.is-contended { background:rgba(188,154,98,.26); color:#f2d699; border:1px solid rgba(222,197,148,.48); }
+.intent-err-line {
+    display:block; margin-top:4px; padding-top:3px; border-top:1px solid rgba(224,108,96,.25);
+    font:500 .68rem/1.3 ui-monospace,Menlo,monospace; color:#f0a08e;
+}
+
+/* U3: Model Mind vs. Reality Lens, Ghost Tethers & Minimap Benchmark Lens */
+.mm-lens-canvas {
+    position:absolute; left:var(--mm-gut, 14px); top:var(--mm-gut, 14px);
+    width:var(--mm-canvas, 200px); height:var(--mm-canvas, 200px);
+    pointer-events:none; z-index:2;
+}
+.mm-eye-btn, .mm-lens-btn {
+    width:24px; height:24px; display:grid; place-items:center; padding:0;
+    border-radius:3px; border:1px solid var(--line); background:rgba(24,30,24,.94);
+    color:var(--muted); cursor:pointer;
+}
+.mm-eye-btn:hover, .mm-lens-btn:hover { color:var(--gold-2); border-color:var(--gold); }
+.mm-eye-btn.on, .mm-lens-btn.on { background:#3d4935; color:var(--gold-2); border-color:var(--gold); }
+.seat-view-lens {
+    position:fixed; left:50%; top:96px; transform:translateX(-50%); z-index:1010;
+    display:flex; align-items:center; gap:8px; padding:4px 10px; border-radius:4px;
+    background:rgba(22,27,22,.94); border:1px solid rgba(222,197,148,.32); color:var(--text);
+    font-size:.74rem; box-shadow:0 6px 20px rgba(0,0,0,.4);
+}
+.svl-dots { display:inline-flex; gap:3px; }
+.svl-dot {
+    width:20px; height:20px; display:grid; place-items:center; padding:0;
+    border-radius:3px; border:1px solid var(--line); background:#1c221c; cursor:pointer;
+}
+.svl-dot.on { border-color:var(--gold); background:#353e2f; }
+.svl-meta { color:var(--muted); font-variant-numeric:tabular-nums; }
+.svl-ghosts {
+    font-family:ui-monospace,Menlo,monospace; font-size:.7rem; padding:1px 6px; border-radius:3px;
+    background:rgba(188,112,96,.22); color:#f0a08e; border:1px solid rgba(213,139,116,.4);
+}
+.svl-diff, .svl-close {
+    padding:2px 7px; border-radius:3px; border:1px solid var(--line); background:#2a3128;
+    color:var(--text); font-size:.72rem; cursor:pointer;
+}
+.svl-diff.on { background:#4a3f28; border-color:var(--gold); color:var(--gold-2); }
+.svl-close:hover, .svl-diff:hover { border-color:var(--gold); color:var(--gold-2); }
+.seat-ghost-tether { stroke-width:1.4; stroke-dasharray:4 3; opacity:.78; }
+.seat-ghost-real { opacity:.9; }
+.seat-ghost-age { font:700 10px/1 ui-monospace,Menlo,monospace; fill:#f0d6a0; paint-order:stroke; stroke:#141814; stroke-width:3px; }
+
+/* U4: Analyze Transcript Event Swimlane Ticks */
+.an-timeline-wrap { position:relative; flex:1 1 auto; display:flex; flex-direction:column; gap:2px; min-width:120px; }
+.an-timeline-wrap input[type="range"] { width:100%; margin:0; }
+.an-swimlane { position:relative; height:8px; width:100%; pointer-events:auto; }
+.an-swim-tick {
+    position:absolute; top:0; width:4px; height:8px; margin-left:-2px; padding:0; border:0;
+    border-radius:1px; cursor:pointer; opacity:.85; transition:transform .12s;
+}
+.an-swim-tick:hover { transform:scaleY(1.5) scaleX(1.3); opacity:1; z-index:2; }
+.an-swim-tick.is-error { background:#e06c60; }
+.an-swim-tick.is-battle { background:#e6c27a; }
+.an-swim-tick.is-plan { background:#91ad92; }
+.an-swim-tick.is-age { background:#5b9bd5; }
+.an-swim-tick.is-wonder { background:#f5d78e; }
+@media (prefers-reduced-motion: reduce) { .bb-think-bar.is-rt, .lb-edge-fill.is-rt { animation:none; } }

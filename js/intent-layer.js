@@ -110,6 +110,43 @@ class IntentLayer {
         const line = lines.length === 1 ? lines[0] : lines[i];
         return line == null ? null : String(line);
     }
+    // Scale v4.1 verdict for command `i`: 'ok' | 'invalid' | 'avoidable' | 'contended' | null.
+    static verdictOf(turn, i) {
+        const outs = turn && Array.isArray(turn.outcomes) ? turn.outcomes : null;
+        if (outs) {
+            const hit = outs.find(o => o && o.n === i + 1) || outs[i];
+            if (hit && hit.verdict) return hit.verdict;
+        }
+        const line = IntentLayer.outcomeLine(turn, i);
+        if (line == null) return null;
+        if (!line.startsWith('[ERROR]')) return 'ok';
+        const body = line.slice(7).trim().toLowerCase();
+        if (/not found|does not exist|unknown |invalid |no such|unrecognized/.test(body)) return 'invalid';
+        if (/out of sight|already |occupied|busy|moved|no longer|in progress|fog/.test(body)) return 'contended';
+        return 'avoidable';
+    }
+    static errorText(turn, i) {
+        const line = IntentLayer.outcomeLine(turn, i);
+        if (!line || !line.startsWith('[ERROR]')) return '';
+        const s = line.replace(/^\[ERROR\]\s*/i, '').replace(/\s+/g, ' ').trim();
+        return s.length > 96 ? s.slice(0, 95).trimEnd() + '…' : s;
+    }
+    // Tactics & Errors filter (U2): keeps strategic moves, combat, scouting, tech/age,
+    // military/wonder builds, and EVERY refused/failed command; mutes routine economy churn.
+    static isKeyOrder(action, params, refused) {
+        if (refused) return true;
+        if (!action) return true;
+        if (['attack_target', 'move_units', 'explore', 'upgrade_age', 'research_tech', 'destroy_building', 'delete_unit'].includes(action)) return true;
+        if (action === 'build_structure') {
+            const bt = params && params.buildingType;
+            return bt !== 'house' && bt !== 'farm';
+        }
+        if (action === 'train_unit') {
+            const ut = params && params.unitType;
+            return !!ut && ut !== 'worker';
+        }
+        return false;
+    }
 
     // Where an explore really goes. The model names a tile; the harness walks the scout
     // to the least-seen walkable part of it (pointInTile), which the viewer cannot work
@@ -131,6 +168,10 @@ class IntentLayer {
             i.from = { x: u.x, z: u.z }; i.marker = false;
             const b = this.bubbles.find(x => x.seat === i.seat && x.turn === i.turn && x.index === i.index);
             if (b) b.from = i.from;
+        }
+        if ((!i.waypoints || !i.waypoints.length) && u._route && Array.isArray(u._route.stops) && u._route.stops.length) {
+            const wps = u._route.stops.map(s => this.tileCentre(s && s.label)).filter(Boolean);
+            if (wps.length) i.waypoints = wps;
         }
     }
 
@@ -187,6 +228,29 @@ class IntentLayer {
         if (Number.isFinite(Number(p.targetX)) && Number.isFinite(Number(p.targetZ)) && p.targetX !== '' && p.targetZ !== '')
             return { x: Number(p.targetX), z: Number(p.targetZ) };
         return null;
+    }
+
+    waypoints(p) {
+        const raw = Array.isArray(p.then) ? p.then : (Array.isArray(p.waypoints) ? p.waypoints : null);
+        if (!raw || !raw.length) return [];
+        const out = [];
+        for (const item of raw) {
+            if (typeof item === 'string') {
+                const pt = this.tileCentre(item);
+                if (pt) out.push(pt);
+            } else if (item && typeof item === 'object') {
+                if (item.tile) {
+                    const pt = this.tileCentre(item.tile);
+                    if (pt) out.push(pt);
+                } else {
+                    const x = item.x != null ? item.x : item.targetX;
+                    const z = item.z != null ? item.z : item.targetZ;
+                    if (Number.isFinite(Number(x)) && Number.isFinite(Number(z)) && x !== '' && z !== '')
+                        out.push({ x: Number(x), z: Number(z) });
+                }
+            }
+        }
+        return out;
     }
 
     // Read every seat's newest turns. `stagger` spaces the bubbles of turns that landed
@@ -247,7 +311,8 @@ class IntentLayer {
                 return;
             }
             const reason = IntentLayer.reasonText(p.reason);
-            const name = String(call.name).replace(/_/g, ' ') + (p.tile ? ' ' + p.tile : '');
+            const routeTail = Array.isArray(p.then) && p.then.length ? ' → ' + p.then.filter(Boolean).join(' → ') : '';
+            const name = String(call.name).replace(/_/g, ' ') + (p.tile ? ' ' + p.tile + routeTail : '');
             const to = this.target(p);
             if (!to) {
                 const at = this.home(ai, call.name, p);
@@ -255,7 +320,8 @@ class IntentLayer {
                 return;
             }
             const from = this.origin(ai, call.name, p);
-            marks.push({ from, to, marker: !from, action: call.name, params: p, turn, index, text: reason || name, summary: !reason, tall: this.onStructure(call.name, p) });
+            const wps = this.waypoints(p);
+            marks.push({ from, to, waypoints: wps.length ? wps : null, marker: !from, action: call.name, params: p, turn, index, text: reason || name, summary: !reason, tall: this.onStructure(call.name, p) });
         });
         if (plan) this.addPlan(ai, plan, born, color, band);
         if (!marks.length && !quiet.length) return;   // nothing to show
@@ -321,13 +387,16 @@ class IntentLayer {
 
     // The marks as they sit in the world, for the renderer to lay on the ground: a ring
     // at each target (grey and crossed when refused), and a path from the units to it.
-    worldMarks(now = Date.now()) {
+    worldMarks(now = Date.now(), mode = 'all') {
         const out = [];
         for (const i of this.intents) {
             const alpha = IntentLayer.alpha(now, i.born, i.life);
             if (!(alpha > 0)) continue;
             const refused = IntentLayer.rejected(i.turn, i.index) === true;
-            out.push({ from: i.from, to: i.to, marker: i.marker, refused, alpha, color: refused ? '#9aa4b1' : i.color, action: i.action });
+            if (mode === 'key' && !IntentLayer.isKeyOrder(i.action, i.params, refused)) continue;
+            const verdict = IntentLayer.verdictOf(i.turn, i.index);
+            out.push({ from: i.from, to: i.to, waypoints: i.waypoints || null, marker: i.marker, refused, verdict, alpha,
+                color: refused ? '#9aa4b1' : i.color, action: i.action, params: i.params || null });
         }
         return out;
     }
@@ -372,7 +441,8 @@ class IntentLayer {
             // A refused order is still what the model asked for, drawn as refused: grey,
             // crossed out, never as a live move.
             const refused = IntentLayer.rejected(i.turn, i.index) === true;
-            shapes.push({ color: refused ? '#9aa4b1' : i.color, opacity, from, to, marker: i.marker, refused });
+            const waypoints = i.waypoints ? i.waypoints.map(w => project(w.x, w.z)).filter(Boolean) : null;
+            shapes.push({ color: refused ? '#9aa4b1' : i.color, opacity, from, to, waypoints: waypoints && waypoints.length ? waypoints : null, marker: i.marker, refused });
         }
         const inView = pt => !!(view && pt && pt.x >= 0 && pt.x <= view.w && pt.y >= 0 && pt.y <= view.h);
         // Its size estimated from its text (a name line, then the reason wrapped at about
@@ -390,9 +460,13 @@ class IntentLayer {
             // Lifted only while it stands on its own point: slid along a path or resting
             // on an edge, it covers nothing.
             const onPoint = !view || inView(project(b.anchor.x, b.anchor.z));
+            const refused = IntentLayer.rejected(b.turn, b.index) === true;
+            if (view && view.mode === 'key' && !IntentLayer.isKeyOrder(b.action, b.params, refused)) continue;
+            const verdict = IntentLayer.verdictOf(b.turn, b.index);
+            const errorText = refused ? IntentLayer.errorText(b.turn, b.index) : '';
             out.push({ seat: b.seat, text: b.text, color: b.color, band: b.band || b.color, x: at.x, y: at.y, ay: at.y, w: IntentLayer.BUBBLE_W, h, opacity, summary: !!b.summary,
                 action: b.action || null, params: b.params || null, lift: !!b.tall && onPoint, away: !!view && !inView(at),
-                refused: IntentLayer.rejected(b.turn, b.index) === true });
+                refused, verdict, errorText, turnNum: b.turn && b.turn.turn != null ? b.turn.turn : null });
         }
         const merged = new Set();
         for (const b of out) {
@@ -402,8 +476,8 @@ class IntentLayer {
             away.forEach(o => merged.add(o));
             bubbles.push({ seat: b.seat, text: away.map(o => o.text).join(' '), color: b.color, band: b.band, x: b.x, y: b.y, ay: b.ay,
                 w: IntentLayer.BUBBLE_W, h: 16 + 15 * away.reduce((n, o) => n + lines(o.text), 0), opacity: Math.max(...away.map(o => o.opacity)),
-                summary: false, action: null, params: null, lift: false, away: true, refused: false,
-                lines: away.map(o => ({ text: o.text, summary: o.summary, action: o.action, params: o.params, refused: o.refused })) });
+                summary: false, action: null, params: null, lift: false, away: true, refused: away.some(o => o.refused),
+                lines: away.map(o => ({ text: o.text, summary: o.summary, action: o.action, params: o.params, refused: o.refused, verdict: o.verdict, errorText: o.errorText, turnNum: o.turnNum })) });
         }
         IntentLayer.stack(bubbles.map(b => ({ x: b.x, y: b.ay - (b.lift ? b.h : 0), w: b.w, h: b.h }))).forEach((y, k) => { bubbles[k].y = y; });
         const plans = this.plans.map(q => ({ seat: q.seat, objective: q.objective, steps: q.steps, color: q.color, band: q.band || q.color,
