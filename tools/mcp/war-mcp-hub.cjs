@@ -25,7 +25,10 @@ const http = require('http'), crypto = require('crypto'), fs = require('fs'), pa
 // 0.3.2: the page hears when a turn is handed to the harness ("took").
 // 0.3.3: multi-match Arena Series continuity (seriesContinues / series_next keeps seats joined across matches).
 // 0.3.4: emit roundOver + matchOver:false between series matches so non-/goal harnesses never stop early.
-const VERSION = '0.3.4';
+// 0.3.5: a second page listing the same seats no longer takes them from the page playing them,
+//        a page that lets go hands its seats to another page still listing them, and a turn
+//        from a page lists its seat again. Harnesses hear when their page went away.
+const VERSION = '0.3.5';
 const PROTOCOLS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -115,8 +118,33 @@ const seats = new Map();         // token -> seat
 function seat(token) {
     let s = seats.get(token);
     if (!s) seats.set(token, s = { token, listed: false, seat: null, name: '', rules: '',
-        seen: false, joined: false, pendingTurn: null, turn: null, commands: 0, waiters: [], over: null });
+        seen: false, joined: false, pendingTurn: null, turn: null, commands: 0, waiters: [], over: null,
+        listers: new Set(), player: null, lost: null });
     return s;
+}
+// Who holds a seat (0.3.5). `listers` are the pages whose arena lists the seat; `player` the
+// page that sent its last turn -- the one running the match; `page` the one that hears about
+// it: the player while it is connected, else the newest lister. asp67, 25 Nov 2026: a match
+// ran in one tab, the same page opened in a second tab drew its arena setup -- the same saved
+// seats -- and the hub gave both seats to it; that tab's reload released them, and the hub
+// dropped every turn the first tab sent after. Both harnesses polled "no arena has this seat"
+// to the end of the match.
+const live = pg => !!pg && pages.has(pg);
+// A page no longer lists the seat (it closed, reloaded, or its arena dropped it). The seat
+// stays with the page playing it, or goes to another page still listing it; only with none
+// left is it released.
+function letGo(s, pg) {
+    s.listers.delete(pg);
+    const wasPlayer = s.player === pg;
+    if (wasPlayer) s.player = null;
+    if (s.page !== pg && !wasPlayer) return;
+    const next = live(s.player) ? s.player : [...s.listers].filter(live).pop();
+    if (wasPlayer) {                  // the match it was playing is gone with it
+        if (s.turn || s.pendingTurn) s.lost = { at: Date.now() };
+        s.turn = s.pendingTurn = null; s.closed = null;
+    }
+    if (next) { s.page = next; log(s.token, 'its page let go; another page that lists it has it now'); }
+    else { if (s.turn || s.pendingTurn) s.lost = { at: Date.now() }; release(s); log(s.token, 'released: no WAR page lists it any more'); }
 }
 const pendingActions = new Map();  // id -> { resolve, timer }
 let nextId = 1;
@@ -179,25 +207,34 @@ function fromPage(msg, pg) {
             // sent with its turns stay: a page reconnecting mid-match lists no rules.
             const listed = new Set();
             for (const p of msg.seats || []) {
-                if (!TOKEN_RE.test(p.token || '')) continue;
+                if (!TOKEN_RE.test(p.token || '')) { log(String(p.token || '?').slice(0, 20), 'not listed: not a seat code'); continue; }
                 const s = seat(p.token);
+                listed.add(p.token);
+                s.listers.add(pg);
+                // Another page is playing this seat: this one (a second tab, a preview) waits
+                // behind it, and takes it only once that page lets go (0.3.5).
+                if (live(s.player) && s.player !== pg) { log(s.token, 'listed by another page too; the page playing it keeps it'); continue; }
                 Object.assign(s, { listed: true, page: pg, seat: p.seat, name: p.name || '', rules: p.rules || s.rules || '',
                     seriesTotal: p.seriesTotal > 1 ? p.seriesTotal : (s.seriesTotal || 1), over: null });
-                listed.add(p.token);
                 if (s.seen) toPage({ type: 'harness', token: s.token, connected: true });
                 if (s.joined) toPage({ type: 'join', token: s.token });
             }
-            for (const s of seats.values()) if (s.page === pg && !listed.has(s.token)) release(s);
+            for (const s of seats.values()) if (s.listers.has(pg) && !listed.has(s.token)) letGo(s, pg);
             break;
         }
         case 'turn': {
             const s = seats.get(msg.token);
-            if (!s || !s.listed) return;
+            if (!s) return;
+            // A page sending a seat its turn is playing it: a seat released meanwhile (its
+            // listing lost to another page's reload) is listed again, not its turns thrown
+            // away for the rest of the match (0.3.5).
+            if (!s.listed) { s.listed = true; log(s.token, 'listed again by the page sending its turn'); }
+            s.listers.add(pg);
             // The page playing the seat owns it, whoever listed it last: a second WAR page
             // listing the same seats (an older tab, another setup) took them over, so the
             // harness's commands went to a page without the turn and its end_turn to nobody
             // -- every round missed (asp67, 27 Oct, ChatGPT and OpenCode "keep timing out").
-            s.page = pg;
+            s.page = pg; s.player = pg;
             if (msg.rules) s.rules = msg.rules;   // the seat's system prompt, for get_rules
             // msLeft/roundMs: how much of the round is left as the page sends the turn. Kept
             // against the hub's own clock (`at`), so the time told is what is left on delivery
@@ -294,7 +331,7 @@ function fromPage(msg, pg) {
             watchers.delete(pg);
             break;
         case 'close':
-            for (const s of seats.values()) if (s.page === pg) release(s);
+            for (const s of seats.values()) if (s.listers.has(pg) || s.page === pg || s.player === pg) letGo(s, pg);
             watchers.delete(pg);
             break;
     }
@@ -330,7 +367,7 @@ const overResult = s => {
 function release(s) { s.listed = false; s.page = null; s.turn = s.pendingTurn = null; }
 function deliverTurn(s) {
     const t = s.pendingTurn; s.pendingTurn = null;
-    s.turn = { turn: t.turn, deliveredAt: Date.now(), roundMs: t.roundMs }; s.commands = 0; s.closed = null;
+    s.turn = { turn: t.turn, deliveredAt: Date.now(), roundMs: t.roundMs }; s.commands = 0; s.closed = null; s.lost = null;
     const left = t.msLeft != null ? Math.max(0, Math.round((t.msLeft - (Date.now() - t.at)) / 1000)) : null;
     log(s.token, `turn ${t.turn} delivered` + (left != null ? `, ${left} s left` : ''));
     // The page tells a harness that is thinking over its turn from one that has stopped:
@@ -347,6 +384,10 @@ function deliverTurn(s) {
 // simply over -- and three error results in a row made Hermes pause the server for a
 // minute, so it missed the next turn too (asp67, 27 Oct).
 function noTurn(s) {
+    // The page holding the seat went away mid-turn (0.3.5): said as what it was, not as the
+    // harness speaking out of turn.
+    if (s.lost || !s.listed) return textResult('Your turn was lost: the WAR page that had your seat was closed or reloaded, so this was not run. '
+        + (s.listed ? NEXT_WAIT : 'Call wait_for_turn: it hands you the next turn as soon as a WAR page has your seat again.'));
     const c = s.closed;
     if (c) {
         const after = c.deliveredAt ? Math.round((Date.now() - c.deliveredAt) / 1000) : null;
@@ -396,6 +437,7 @@ async function callTool(token, name, args, signal, ctx) {
             + (s.turn ? ' and did not use one of your commands' : '') + '.';
         if (s.over) return textResult(`Connected. ${what} The match is over: stop playing.`);
         if (s.turn) return textResult(`Connected. ${what} It is still your turn: give your game commands, then call end_turn.`);
+        if (s.joined && !s.listed) return textResult(`Connected, but no WAR page has your seat right now (the page was closed or reloaded). ${what} Call wait_for_turn: it hands you the next turn as soon as a page has your seat again.`);
         if (s.joined) return textResult(`Connected. ${what} ${NEXT_WAIT}`);
         return textResult('Connected: WAR reaches this harness, and its tools work. Nothing more to do now: stop here. '
             + 'When the user starts a match, they will send you the message to play; until then, call no other WAR tool.');
@@ -562,6 +604,8 @@ const server = http.createServer((req, res) => {
     if (url.pathname === '/status' && req.method === 'GET')
         return json(res, 200, { hub: 'war-mcp-hub', version: VERSION, page: pages.size > 0, pages: pages.size,
             seats: [...seats.values()].filter(s => s.listed).map(s => ({ seat: s.seat, harness: s.seen, joined: s.joined })),
+            // Joined seats no page lists (0.3.5): a harness left waiting, which `seats` hid.
+            detached: [...seats.values()].filter(s => !s.listed && s.joined).map(s => ({ seat: s.seat, harness: s.seen, joined: true })),
             sessions: sessions.size, clients: [...clients.keys()] });
     const shared = url.pathname === '/mcp' || url.pathname === '/mcp/';
     const m = shared ? null : /^\/mcp\/([^/]+)\/?$/.exec(url.pathname);

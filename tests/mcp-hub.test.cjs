@@ -185,6 +185,72 @@ test('the page that sends a seat its turn gets its commands and end_turn, whoeve
     playing.ws.close(); other.ws.close();
 });
 
+// asp67, 25 Nov 2026: a match ran in one tab; the same page, opened in a second tab, drew its
+// arena setup with the same saved seats, and the hub gave both seats to it. Its reload then
+// released them, and the hub threw away every turn the playing tab sent after: both harnesses
+// polled "no WAR arena has this seat" to the end of the match.
+test('a second tab listing the seats of a running match, then reloading, leaves the match its seats', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-twotab01';
+    const playing = await fakePage(port);
+    playing.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });
+    await new Promise(r => setTimeout(r, 50));
+    await call(port, T, 'join');
+    playing.send({ type: 'turn', token: T, turn: 3, state: '{}' });
+    assert.match(said(await call(port, T, 'wait_for_turn')), /^IT IS YOUR TURN/);
+    const second = await fakePage(port);
+    second.send({ type: 'arena', seats: [{ token: T, seat: 1 }] });   // its setup, the same saved seats
+    await new Promise(r => setTimeout(r, 50));
+    second.ws.close();                                                // the reload
+    await new Promise(r => setTimeout(r, 100));
+    const sent = call(port, T, 'train_unit', { unitType: 'worker' });
+    const action = await playing.next(m => m.type === 'action');
+    assert.equal(action.turn, 3, 'the open turn survived, and its command reached the playing tab');
+    playing.send({ type: 'result', id: action.id, text: 'Queued (1/3)' });
+    assert.match(said(await sent), /Queued/);
+    await call(port, T, 'end_turn');
+    playing.send({ type: 'turn', token: T, turn: 4, state: '{}' });
+    assert.match(said(await call(port, T, 'wait_for_turn')), /^IT IS YOUR TURN/, 'and the next turn arrives');
+    const st = await (await fetch(`http://127.0.0.1:${port}/status`)).json();
+    assert.deepEqual([st.seats.length, st.detached.length], [1, 0]);
+    playing.ws.close();
+});
+
+test('a seat moves to another page still listing it; a released seat is listed again by its next turn', LIMIT, async t => {
+    const { p, port } = await startHub(); t.after(() => p.kill());
+    const T = 'seat-token-handoff1';
+    // Two setups list the seat, the newer one goes away: the older still has it.
+    const older = await fakePage(port), newer = await fakePage(port);
+    older.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
+    await new Promise(r => setTimeout(r, 50));
+    newer.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
+    await new Promise(r => setTimeout(r, 50));
+    newer.ws.close();
+    await new Promise(r => setTimeout(r, 100));
+    assert.match(said(await call(port, T, 'join')), /joined as seat 2/, 'not "the open arena does not use this seat"');
+    assert.equal((await older.next(m => m.type === 'join')).token, T, 'the older page hears the join');
+    // Mid-turn the page drops the seat from its list: the harness hears what happened.
+    older.send({ type: 'turn', token: T, turn: 8, state: '{}' });
+    await call(port, T, 'wait_for_turn');
+    older.send({ type: 'arena', seats: [] });
+    await new Promise(r => setTimeout(r, 50));
+    const cmd = await call(port, T, 'train_unit', { unitType: 'worker' });
+    assert.match(said(cmd), /^Your turn was lost: the WAR page that had your seat was closed or reloaded/);
+    assert.ok(!cmd.isError);
+    assert.match(said(await call(port, T, 'check_connection')), /no WAR page has your seat right now/);
+    const st = await (await fetch(`http://127.0.0.1:${port}/status`)).json();
+    assert.deepEqual([st.seats.length, st.detached], [0, [{ seat: 2, harness: true, joined: true }]], 'the waiting seat is shown, not hidden');
+    // The page sends the seat a turn after all: the seat is listed again and plays on.
+    older.send({ type: 'turn', token: T, turn: 9, state: '{}' });
+    assert.match(said(await call(port, T, 'wait_for_turn')), /^IT IS YOUR TURN/);
+    const sent = call(port, T, 'train_unit', { unitType: 'worker' });
+    const action = await older.next(m => m.type === 'action');
+    assert.equal(action.turn, 9);
+    older.send({ type: 'result', id: action.id, text: 'Queued (1/3)' });
+    await sent;
+    older.ws.close();
+});
+
 // asp67, 27 Oct: Antigravity, its config edited to a new seat address, kept calling the old
 // one and told the user the NEW address was refused. The refusal names the address called.
 // And every call is reported to the page, which marks a harness quiet for over a round idle.
@@ -247,7 +313,7 @@ const initShared = async (port, name) => (await shared(port, 'initialize', { pro
 test('the shared address: a session joins a seat by its code, and keeps it', LIMIT, async t => {
     const { p, port } = await startHub(); t.after(() => p.kill());
     const T = 'seat-token-shar0001';
-    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.4');
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.5');
     const pg = await fakePage(port);
     pg.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
     await new Promise(r => setTimeout(r, 50));
