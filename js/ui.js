@@ -6548,16 +6548,24 @@ class UIManager {
             const rng = sp && sp.n >= 2 ? `<small>${Math.round(sp.min)}–${Math.round(sp.max)}</small>` : '';
             const p = m.pooled || {};
             const pillars = [p.grounding, p.macro, p.spatial, p.tactical, p.strategy].map(fmt).join(' · ');
+            const pillarsTip = [
+                `${t('eval.grounding')}: ${fmt(p.grounding)}`,
+                `${t('eval.macro')}: ${fmt(p.macro)}`,
+                `${t('eval.spatial')}: ${fmt(p.spatial)}`,
+                `${t('eval.tactical')}: ${fmt(p.tactical)}`,
+                `${t('eval.strategy')}: ${fmt(p.strategy)}`
+            ].join(' · ');
             const places = (m.places || []).map(x => x.rank).join(' · ') || '–';
             const civs = (m.civs || []).map(c => (civNames[c] || c).slice(0, 3)).join(' · ') || '–';
+            const civsFull = (m.civs || []).map((c, i) => (civNames[c] || c) + (m.seats && m.seats[i] != null ? ` (#${m.seats[i] + 1})` : '')).join(' · ') || t('series.colCivsTip');
             return `<tr>
-                <th scope="row">${esc(m.name)}</th>
-                <td class="sr-war">${fmt(p.index)}${rng}</td>
-                <td class="sr-pillars">${pillars}</td>
-                <td class="sr-pl">${m.plRating}</td>
-                <td>${places}</td>
-                <td>${m.firsts}/${m.matches}</td>
-                <td>${esc(civs)}</td>
+                <th scope="row" title="${esc(m.model && m.model !== m.name ? m.name + ' · ' + m.model : t('series.colModelTip'))}">${esc(m.name)}</th>
+                <td class="sr-war" title="${esc(t('series.colPooledTip'))}">${fmt(p.index)}${rng}</td>
+                <td class="sr-pillars" title="${esc(pillarsTip)}">${pillars}</td>
+                <td class="sr-pl" title="${esc(t('series.colRatingTip'))}">${m.plRating}</td>
+                <td title="${esc(t('series.colPlacesTip'))}">${places}</td>
+                <td title="${esc(t('series.colFirstsTip'))}">${m.firsts}/${m.matches}</td>
+                <td title="${esc(civsFull)}">${esc(civs)}</td>
             </tr>`;
         }).join('');
 
@@ -6588,13 +6596,13 @@ class UIManager {
             <div class="series-table-wrap">
                 <table class="series-table">
                     <thead><tr>
-                        <th>${esc(t('series.colModel'))}</th>
-                        <th>${esc(t('series.colPooled'))}</th>
-                        <th>${esc(t('series.colPillars'))}</th>
-                        <th>${esc(t('series.colRating'))}</th>
-                        <th>${esc(t('series.colPlaces'))}</th>
-                        <th>${esc(t('series.colFirsts'))}</th>
-                        <th>${esc(t('series.colCivs'))}</th>
+                        <th title="${esc(t('series.colModelTip'))}">${esc(t('series.colModel'))}</th>
+                        <th title="${esc(t('series.colPooledTip'))}">${esc(t('series.colPooled'))}</th>
+                        <th title="${esc(t('series.colPillarsTip'))}">${esc(t('series.colPillars'))}</th>
+                        <th title="${esc(t('series.colRatingTip'))}">${esc(t('series.colRating'))}</th>
+                        <th title="${esc(t('series.colPlacesTip'))}">${esc(t('series.colPlaces'))}</th>
+                        <th title="${esc(t('series.colFirstsTip'))}">${esc(t('series.colFirsts'))}</th>
+                        <th title="${esc(t('series.colCivsTip'))}">${esc(t('series.colCivs'))}</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table>

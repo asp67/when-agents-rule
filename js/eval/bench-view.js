@@ -474,7 +474,7 @@
         const series = s => data.seats[s.id] || { score: { t: [] }, rates: { t: [], sec: [], tok: [], refused: [] } };
         const W = mini ? 100 : 320, most = mini ? 50 : 200;
         const cells = make => seats.map(s => `<div class="bb-col" style="--civ:${esc(ink(s))}">${make(s)}</div>`).join('');
-        const row = (cls, label, make) => `<div class="bb-row ${cls}">${mini ? '' : `<div class="bb-lab">${label}</div>`}${cells(make)}</div>`;
+        const row = (cls, label, make, rowTip) => `<div class="bb-row ${cls}"${rowTip ? ` title="${esc(rowTip)}"` : ''}>${mini ? '' : `<div class="bb-lab">${label}</div>`}${cells(make)}</div>`;
         const band = key => `<div class="bb-sec">${esc(t(key))}</div>`;
         const head = row('bb-head', '', s => `${dot(s)}<span title="${esc(name(s) + (s.model && s.model !== s.name ? ' · ' + s.model : ''))}">${esc(name(s))}</span>${mini ? '' : this.benchKindTag(s)}`);
         const axis = (label = '') => mini ? '' : row('bb-axis', label, () => `<span>0:00</span><span>${clock(data.end)}</span>`);
@@ -524,8 +524,8 @@
             return linesSvg(lines, { w: W, h: 108, end: data.end, max: 100, cls: 'bb-game' });
         };
         const keys = '<span class="bb-keys">'
-            + `<span><i style="background:${PART_INK.index}"></i>${esc(t('eval.index'))}</span>`
-            + DIMS.map(k => `<span><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</span>`).join('') + '</span>';
+            + `<span title="${esc(t('eval.indexDesc'))}"><i style="background:${PART_INK.index}"></i>${esc(t('eval.index'))}</span>`
+            + DIMS.map(k => `<span title="${esc(t('bench.cmp.' + k))}"><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</span>`).join('') + '</span>';
 
         const now = a => { for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return a[i]; return null; };
         const round = x => { const p = Math.pow(10, Math.floor(Math.log10(x))), n = x / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; };
@@ -552,33 +552,33 @@
         const valWithRaw = (score, raw) => score == null ? '–' : (raw ? `${Math.round(score)} (${raw})` : String(Math.round(score)));
 
         const ROWS = [
-            { label: t('eval.index'), val: s => s.index.value, text: (v, s) => v == null ? '–' : (v.toFixed ? v.toFixed(1) : String(v)) + (s.warmup ? ' · ' + t('bench.early') : ''), best: 1, cls: 'is-index', tip: s => this.evalTips(s).index },
-            ...DIMS.map(k => ({ label: t('eval.' + k), ink: PART_INK[k], val: s => s[k] && s[k].score, text: (v, s) => valWithRaw(v, rawOf(k, s)), best: 1, tip: s => this.evalTips(s)[k] })),
+            { label: t('eval.index'), rowTip: t('eval.indexDesc'), val: s => s.index.value, text: (v, s) => v == null ? '–' : (v.toFixed ? v.toFixed(1) : String(v)) + (s.warmup ? ' · ' + t('bench.early') : ''), best: 1, cls: 'is-index', tip: s => this.evalTips(s).index },
+            ...DIMS.map(k => ({ label: t('eval.' + k), rowTip: t('bench.cmp.' + k), ink: PART_INK[k], val: s => s[k] && s[k].score, text: (v, s) => valWithRaw(v, rawOf(k, s)), best: 1, tip: s => this.evalTips(s)[k] })),
             // Action Bandwidth & Initiative
-            { label: t('bench.b.batchDist'), first: true, val: s => s.macro && s.macro.bwUtil, html: s => {
+            { label: t('bench.b.batchDist'), rowTip: t('bench.b.batchDistTip'), first: true, val: s => s.macro && s.macro.bwUtil, html: s => {
                 const c = cost[s.id], m = s.macro || {};
                 const okD = m.okPerDecision == null ? '–' : m.okPerDecision.toFixed(1) + ' ok/d';
                 return batchBarHtml(c.batch, false) + `<small class="bb-sub">${esc(okD)}</small>`;
             }, tip: () => t('bench.b.batchDistTip') },
-            { label: t('bench.b.parallel'), val: s => s.macro && s.macro.parallelRate, text: pct, best: 1, tip: () => t('bench.b.parallelTip') },
-            { label: t('bench.b.passiveWaits'), val: s => s.macro && s.macro.passiveWaitRate, text: (v, s) => v == null ? '–' : `${share(v)} (${s.macro.passiveWaits}/${s.decisions})`, best: -1, tip: () => t('bench.b.passiveWaitsTip') },
+            { label: t('bench.b.parallel'), rowTip: t('bench.b.parallelTip'), val: s => s.macro && s.macro.parallelRate, text: pct, best: 1, tip: () => t('bench.b.parallelTip') },
+            { label: t('bench.b.passiveWaits'), rowTip: t('bench.b.passiveWaitsTip'), val: s => s.macro && s.macro.passiveWaitRate, text: (v, s) => v == null ? '–' : `${share(v)} (${s.macro.passiveWaits}/${s.decisions})`, best: -1, tip: () => t('bench.b.passiveWaitsTip') },
             // Cognitive Cost (Duration-Invariant)
-            { label: t('bench.b.latency'), first: true, val: s => cost[s.id].latMedian, text: (v, s) => { const c = cost[s.id]; return c.latMedian == null ? '–' : durText(c.latMedian) + (c.latP90 != null ? ' / ' + durText(c.latP90) : ''); }, best: -1, tip: () => t('bench.b.latencyTip') },
-            { label: t('bench.b.tokPerDec'), val: s => cost[s.id].tokPerDec, text: (v, s) => { const c = cost[s.id]; return v == null ? t('bench.b.noUsage') : `${tokText(v)} (${tokText(c.promptPerDec)}·${tokText(c.outPerDec)})`; }, best: -1, tip: () => t('bench.b.tokPerDecTip') },
-            { label: t('bench.b.outPerOk'), val: s => cost[s.id].outPerOk, text: ratio, best: -1, tip: () => t('bench.b.outPerOkTip') },
-            { label: t('bench.b.okPerMin'), val: s => cost[s.id].okPerMin, text: ratio, best: 1, tip: () => t('bench.b.okPerMinTip') },
-            { label: t('bench.b.scorePer10k'), val: s => cost[s.id].scorePer10k, text: ratio, best: 1, tip: () => t('bench.b.scorePer10kTip') },
+            { label: t('bench.b.latency'), rowTip: t('bench.b.latencyTip'), first: true, val: s => cost[s.id].latMedian, text: (v, s) => { const c = cost[s.id]; return c.latMedian == null ? '–' : durText(c.latMedian) + (c.latP90 != null ? ' / ' + durText(c.latP90) : ''); }, best: -1, tip: () => t('bench.b.latencyTip') },
+            { label: t('bench.b.tokPerDec'), rowTip: t('bench.b.tokPerDecTip'), val: s => cost[s.id].tokPerDec, text: (v, s) => { const c = cost[s.id]; return v == null ? t('bench.b.noUsage') : `${tokText(v)} (${tokText(c.promptPerDec)}·${tokText(c.outPerDec)})`; }, best: -1, tip: () => t('bench.b.tokPerDecTip') },
+            { label: t('bench.b.outPerOk'), rowTip: t('bench.b.outPerOkTip'), val: s => cost[s.id].outPerOk, text: ratio, best: -1, tip: () => t('bench.b.outPerOkTip') },
+            { label: t('bench.b.okPerMin'), rowTip: t('bench.b.okPerMinTip'), val: s => cost[s.id].okPerMin, text: ratio, best: 1, tip: () => t('bench.b.okPerMinTip') },
+            { label: t('bench.b.scorePer10k'), rowTip: t('bench.b.scorePer10kTip'), val: s => cost[s.id].scorePer10k, text: ratio, best: 1, tip: () => t('bench.b.scorePer10kTip') },
             // Long-Horizon Drift
-            { label: t('bench.b.errDrift'), first: true, val: s => { const d = cost[s.id].drift; return d ? d.errDeltaPp : null; }, text: (v, s) => cost[s.id].drift ? signedPp(v) : t('bench.b.noDrift'), best: -1, tip: () => t('bench.b.errDriftTip') },
-            { label: t('bench.b.idleDrift'), val: s => { const d = cost[s.id].drift; return d ? d.idleDeltaPp : null; }, text: (v, s) => cost[s.id].drift ? signedPp(v) : t('bench.b.noDrift'), best: -1, tip: () => t('bench.b.idleDriftTip') },
-            { label: t('bench.b.latRatio'), val: s => { const d = cost[s.id].drift; return d ? d.latencyRatio : null; }, text: (v, s) => !cost[s.id].drift ? t('bench.b.noDrift') : v == null ? '–' : v.toFixed(2) + '×', best: -1, tip: () => t('bench.b.latRatioTip') },
+            { label: t('bench.b.errDrift'), rowTip: t('bench.b.errDriftTip'), first: true, val: s => { const d = cost[s.id].drift; return d ? d.errDeltaPp : null; }, text: (v, s) => cost[s.id].drift ? signedPp(v) : t('bench.b.noDrift'), best: -1, tip: () => t('bench.b.errDriftTip') },
+            { label: t('bench.b.idleDrift'), rowTip: t('bench.b.idleDriftTip'), val: s => { const d = cost[s.id].drift; return d ? d.idleDeltaPp : null; }, text: (v, s) => cost[s.id].drift ? signedPp(v) : t('bench.b.noDrift'), best: -1, tip: () => t('bench.b.idleDriftTip') },
+            { label: t('bench.b.latRatio'), rowTip: t('bench.b.latRatioTip'), val: s => { const d = cost[s.id].drift; return d ? d.latencyRatio : null; }, text: (v, s) => !cost[s.id].drift ? t('bench.b.noDrift') : v == null ? '–' : v.toFixed(2) + '×', best: -1, tip: () => t('bench.b.latRatioTip') },
             // Discipline & Harness
-            { label: t('bench.b.hallucinations'), first: true, val: s => cost[s.id].hallucinationRate, text: pct, best: -1, tip: () => t('bench.b.hallucinationsTip') },
-            { label: t('bench.b.constraints'), val: s => cost[s.id].constraintRate, text: pct, best: -1, tip: () => t('bench.b.constraintsTip') },
-            { label: t('bench.b.recovery'), val: s => cost[s.id].recovery, text: pct, best: 1, tip: () => t('bench.b.recoveryTip') },
-            { label: t('bench.t.loops'), val: s => traces[s.id] && traces[s.id].judged ? traces[s.id].counts.loop : null, text: num0, best: -1, tip: () => t('bench.t.loopTip') },
-            { label: t('bench.b.lost'), val: s => cost[s.id].lost, text: num0, best: -1, tip: s => t('bench.b.lostTip', { failed: cost[s.id].failed, cancelled: cost[s.id].cancelled, missed: cost[s.id].missed }) },
-            { label: t('bench.h.help'), first: true, val: () => null, text: null, words: s => this.benchHelpText(s), tip: () => t('bench.h.helpTip') }
+            { label: t('bench.b.hallucinations'), rowTip: t('bench.b.hallucinationsTip'), first: true, val: s => cost[s.id].hallucinationRate, text: pct, best: -1, tip: () => t('bench.b.hallucinationsTip') },
+            { label: t('bench.b.constraints'), rowTip: t('bench.b.constraintsTip'), val: s => cost[s.id].constraintRate, text: pct, best: -1, tip: () => t('bench.b.constraintsTip') },
+            { label: t('bench.b.recovery'), rowTip: t('bench.b.recoveryTip'), val: s => cost[s.id].recovery, text: pct, best: 1, tip: () => t('bench.b.recoveryTip') },
+            { label: t('bench.t.loops'), rowTip: t('bench.t.loopTip'), val: s => traces[s.id] && traces[s.id].judged ? traces[s.id].counts.loop : null, text: num0, best: -1, tip: () => t('bench.t.loopTip') },
+            { label: t('bench.b.lost'), rowTip: t('bench.b.lostTip', { failed: 0, cancelled: 0, missed: 0 }), val: s => cost[s.id].lost, text: num0, best: -1, tip: s => t('bench.b.lostTip', { failed: cost[s.id].failed, cancelled: cost[s.id].cancelled, missed: cost[s.id].missed }) },
+            { label: t('bench.h.help'), rowTip: t('bench.h.helpTip'), first: true, val: () => null, text: null, words: s => this.benchHelpText(s), tip: () => t('bench.h.helpTip') }
         ];
 
         const table = ROWS.map(r => {
@@ -588,7 +588,7 @@
                 if (r.html) return `<span${r.tip ? ` title="${esc(r.tip(s))}"` : ''}>${r.html(s)}</span>`;
                 const v = r.val(s), text = r.words ? r.words(s) : r.text(v, s);
                 return `<span${allowLead && v != null && v === lead ? ' class="is-lead"' : ''}${r.tip ? ` title="${esc(r.tip(s))}"` : ''}>${esc(text)}</span>`;
-            });
+            }, r.rowTip);
         }).join('');
 
         return `<div class="bb" style="--n:${seats.length}">` + head
@@ -662,10 +662,10 @@
         const viaTag = via => {
             if (!via) return '';
             const str = String(via);
-            if (str === 'rule') return `<em class="bf-kind is-raw">${esc(t('spec.rulebased'))}</em>`;
+            if (str === 'rule') return `<em class="bf-kind is-raw" title="${esc(t('sum.ruleNote'))}">${esc(t('spec.rulebased'))}</em>`;
             const harness = str.startsWith('harness');
             const hName = harness ? str.split(':')[1] : '';
-            return `<em class="bf-kind ${harness ? 'is-harness' : 'is-raw'}">${esc(t(harness ? 'bench.h.harness' : 'bench.h.raw'))}${hName && hName !== 'other' ? ' · ' + esc(hName) : ''}</em>`;
+            return `<em class="bf-kind ${harness ? 'is-harness' : 'is-raw'}" title="${esc(t(harness ? 'bench.h.harnessTip' : 'bench.h.rawTip'))}">${esc(t(harness ? 'bench.h.harness' : 'bench.h.raw'))}${hName && hName !== 'other' ? ' · ' + esc(hName) : ''}</em>`;
         };
 
         // Gather per-round stats & efficiency per model key across all rounds.
@@ -757,7 +757,7 @@
         const nRounds = Math.max(1, matches.length);
         const W = 320;
         const cells = make => models.map(m => `<div class="bb-col" style="--civ:${esc(agg[m.key].ink)}">${make(m, agg[m.key])}</div>`).join('');
-        const row = (cls, label, make) => `<div class="bb-row ${cls}"><div class="bb-lab">${label}</div>${cells(make)}</div>`;
+        const row = (cls, label, make, rowTip) => `<div class="bb-row ${cls}"${rowTip ? ` title="${esc(rowTip)}"` : ''}><div class="bb-lab">${label}</div>${cells(make)}</div>`;
         const band = text => `<div class="bb-sec">${esc(text)}</div>`;
 
         const head = row('bb-head', '', (m, a) =>
@@ -771,28 +771,30 @@
             return roundLinesSvg(lines, { w: W, h: 108, n: nRounds, max: 100, cls: 'bb-game' });
         };
         const keys = '<span class="bb-keys">'
-            + `<span><i style="background:${PART_INK.index}"></i>${esc(t('eval.index'))}</span>`
-            + DIMS.map(k => `<span><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</span>`).join('') + '</span>';
+            + `<span title="${esc(t('eval.indexDesc'))}"><i style="background:${PART_INK.index}"></i>${esc(t('eval.index'))}</span>`
+            + DIMS.map(k => `<span title="${esc(t('bench.cmp.' + k))}"><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</span>`).join('') + '</span>';
 
         const roundAxis = row('bb-axis', esc(t('series.roundsAxis')), (m, a) =>
-            `<div class="bb-round-axis">${a.rounds.map(r =>
-                `<span>M${r.round}${r.civ ? ' ' + esc(civShort(r.civ)) : ''}${r.seat != null ? ' #' + (r.seat + 1) : ''}</span>`
-            ).join('')}</div>`);
+            `<div class="bb-round-axis">${a.rounds.map(r => {
+                const fullCiv = r.civ ? (civNames[r.civ] || r.civ) : '';
+                const tip = [t('series.matchLabel', { r: r.round }), fullCiv, r.seat != null ? '#' + (r.seat + 1) : ''].filter(Boolean).join(' · ');
+                return `<span title="${esc(tip)}">M${r.round}${r.civ ? ' ' + esc(civShort(r.civ)) : ''}${r.seat != null ? ' #' + (r.seat + 1) : ''}</span>`;
+            }).join('')}</div>`, t('series.roundsAxisTip'));
 
         // "Where it went wrong" summary chips across all rounds
         const wrongChips = (m, a) => {
             const chips = [];
             if (a.reference) chips.push(`<span class="bb-err-chip is-bad" title="${esc(t('bench.b.hallucinationsTip'))}">${esc(t('bench.b.hallucinations'))}: <b>${a.reference}</b></span>`);
             if (a.constraint) chips.push(`<span class="bb-err-chip is-warn" title="${esc(t('bench.b.constraintsTip'))}">${esc(t('bench.b.constraints'))}: <b>${a.constraint}</b></span>`);
-            if (a.repeated) chips.push(`<span class="bb-err-chip is-bad">${esc(t('series.errRepeated'))}: <b>${a.repeated}</b></span>`);
+            if (a.repeated) chips.push(`<span class="bb-err-chip is-bad" title="${esc(t('series.errRepeatedTip'))}">${esc(t('series.errRepeated'))}: <b>${a.repeated}</b></span>`);
             if (a.passiveWaits) chips.push(`<span class="bb-err-chip is-warn" title="${esc(t('bench.b.passiveWaitsTip'))}">${esc(t('bench.b.passiveWaits'))}: <b>${a.passiveWaits}</b></span>`);
-            if (a.hasLoops && a.loops) chips.push(`<span class="bb-err-chip is-bad">${esc(t('bench.t.loops'))}: <b>${a.loops}</b></span>`);
-            if (a.hasLost && a.lost) chips.push(`<span class="bb-err-chip is-bad">${esc(t('bench.b.lost'))}: <b>${a.lost}</b></span>`);
+            if (a.hasLoops && a.loops) chips.push(`<span class="bb-err-chip is-bad" title="${esc(t('bench.t.loopTip'))}">${esc(t('bench.t.loops'))}: <b>${a.loops}</b></span>`);
+            if (a.hasLost && a.lost) chips.push(`<span class="bb-err-chip is-bad" title="${esc(t('bench.b.lostTip', { failed: a.failed, cancelled: a.cancelled, missed: a.missed }))}">${esc(t('bench.b.lost'))}: <b>${a.lost}</b></span>`);
             if (a.stale) chips.push(`<span class="bb-err-chip is-good" title="${esc(t('series.staleTip'))}">${esc(t('series.staleRescued'))}: <b>${a.stale}</b></span>`);
-            if (a.contended) chips.push(`<span class="bb-err-chip">${esc(t('series.contended'))}: <b>${a.contended}</b></span>`);
+            if (a.contended) chips.push(`<span class="bb-err-chip" title="${esc(t('series.contendedTip'))}">${esc(t('series.contended'))}: <b>${a.contended}</b></span>`);
             const topCodes = Object.entries(a.errCodes).sort((x, y) => y[1] - x[1]).slice(0, 3);
-            for (const [code, cnt] of topCodes) chips.push(`<span class="bb-err-chip">${esc(code)} ×${cnt}</span>`);
-            if (!chips.length) chips.push(`<span class="bb-err-chip is-good">${esc(t('series.noMajorErrors'))}</span>`);
+            for (const [code, cnt] of topCodes) chips.push(`<span class="bb-err-chip" title="${esc(t('series.errCodeTip'))}">${esc(code)} ×${cnt}</span>`);
+            if (!chips.length) chips.push(`<span class="bb-err-chip is-good" title="${esc(t('series.noMajorErrorsTip'))}">${esc(t('series.noMajorErrors'))}</span>`);
             return `<div class="bb-s-errs">${chips.join('')}</div>`;
         };
 
@@ -800,9 +802,9 @@
         const roundScale = x => { const p = Math.pow(10, Math.floor(Math.log10(Math.max(1, x)))), n = x / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; };
         const maxOf = fn => { let top = 0; for (const m of models) for (const r of agg[m.key].rounds) { const v = fn(r); if (v != null && v > top) top = v; } return top; };
         const RATES = [
-            { key: 'latSec', label: 'bench.b.secPer', ink: '#f2c46a', top: roundScale(Math.max(1, maxOf(r => r.latSec))), text: v => v >= 10 ? Math.round(v) + ' s' : v.toFixed(1) + ' s' },
-            { key: 'refPct', label: 'bench.b.refusedNow', ink: '#ff8f7a', top: roundScale(Math.max(10, maxOf(r => r.refPct))), text: v => Math.round(v) + ' %' },
-            { key: 'pwPct', label: 'bench.b.passiveWaits', ink: '#60a5fa', top: roundScale(Math.max(10, maxOf(r => r.pwPct))), text: v => Math.round(v) + ' %' }
+            { key: 'latSec', label: 'bench.b.secPer', tip: 'bench.b.latencyTip', ink: '#f2c46a', top: roundScale(Math.max(1, maxOf(r => r.latSec))), text: v => v >= 10 ? Math.round(v) + ' s' : v.toFixed(1) + ' s' },
+            { key: 'refPct', label: 'bench.b.refusedNow', tip: 'series.refusedRateTip', ink: '#ff8f7a', top: roundScale(Math.max(10, maxOf(r => r.refPct))), text: v => Math.round(v) + ' %' },
+            { key: 'pwPct', label: 'bench.b.passiveWaits', tip: 'bench.b.passiveWaitsTip', ink: '#60a5fa', top: roundScale(Math.max(10, maxOf(r => r.pwPct))), text: v => Math.round(v) + ' %' }
         ];
         const rateGraph = (rk, m, a) => {
             const vals = a.rounds.map(r => r[rk.key]);
@@ -833,48 +835,57 @@
         };
 
         const ROWS = [
-            { label: t('series.colPooled'), val: m => m.pooled && m.pooled.index, text: (v, m) => fmtRange(v, m.spread && m.spread.index), best: 1, cls: 'is-index' },
-            { label: t('series.colRating'), val: m => m.plRating, text: v => v == null ? '–' : String(Math.round(v)), best: 1 },
-            { label: t('series.colPlaces'), val: m => m.matches ? m.firsts / m.matches : null, text: (v, m) => `${(m.places || []).map(x => '#' + x.rank).join(' · ') || '–'} (${m.firsts}/${m.matches})`, best: 1 },
-            { label: t('series.colCivs'), val: () => null, text: (v, m) => (m.civs || []).map((c, i) => civShort(c) + (m.seats && m.seats[i] != null ? ' #' + (m.seats[i] + 1) : '')).join(' · ') || '–' },
+            { label: t('series.colPooled'), tip: () => t('series.colPooledTip'), val: m => m.pooled && m.pooled.index, text: (v, m) => fmtRange(v, m.spread && m.spread.index), best: 1, cls: 'is-index' },
+            { label: t('series.colRating'), tip: () => t('series.colRatingTip'), val: m => m.plRating, text: v => v == null ? '–' : String(Math.round(v)), best: 1 },
+            { label: t('series.colPlaces'), tip: () => t('series.colPlacesTip'), val: m => m.matches ? m.firsts / m.matches : null, text: (v, m) => `${(m.places || []).map(x => '#' + x.rank).join(' · ') || '–'} (${m.firsts}/${m.matches})`, best: 1 },
+            { label: t('series.colCivs'), tip: () => t('series.colCivsTip'), val: () => null, text: (v, m) => (m.civs || []).map((c, i) => civShort(c) + (m.seats && m.seats[i] != null ? ' #' + (m.seats[i] + 1) : '')).join(' · ') || '–' },
             ...DIMS.map(k => ({
                 label: t('eval.' + k), ink: PART_INK[k],
+                rowTip: t('bench.cmp.' + k),
+                tip: (m, a) => {
+                    const desc = t('bench.cmp.' + k);
+                    const raw = pillarRaw(k, m, a);
+                    return raw ? `${desc} (${raw})` : desc;
+                },
                 val: m => m.pooled && m.pooled[k],
                 text: (v, m, a) => { const raw = pillarRaw(k, m, a); return v == null ? '–' : (raw ? `${fmt0(v)} (${raw})` : fmt0(v)); },
                 best: 1
             })),
             // Pooled Macro & Initiative
-            { label: t('series.bwUtil'), first: true, val: (m, a) => a.oppSum ? a.prodUsedSum / a.oppSum : null, text: pct, best: 1 },
-            { label: t('bench.b.passiveWaits'), val: (m, a) => a.turns ? a.passiveWaits / a.turns : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.passiveWaits}/${a.turns}${a.justifiedWaits ? ' · ' + a.justifiedWaits + ' jw' : ''})`, best: -1 },
-            { label: t('series.idleRate'), val: (m, a) => a.idleTurns ? a.idleSum / a.idleTurns : null, text: pct, best: -1 },
+            { label: t('series.bwUtil'), tip: () => t('series.bwUtilTip'), first: true, val: (m, a) => a.oppSum ? a.prodUsedSum / a.oppSum : null, text: pct, best: 1 },
+            { label: t('bench.b.passiveWaits'), tip: () => t('bench.b.passiveWaitsTip'), val: (m, a) => a.turns ? a.passiveWaits / a.turns : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.passiveWaits}/${a.turns}${a.justifiedWaits ? ' · ' + a.justifiedWaits + ' jw' : ''})`, best: -1 },
+            { label: t('series.idleRate'), tip: () => t('series.idleRateTip'), val: (m, a) => a.idleTurns ? a.idleSum / a.idleTurns : null, text: pct, best: -1 },
             // Latency & Token Cost
-            { label: t('bench.b.latency'), first: true, val: m => m.latencyMs, text: v => durText(v), best: -1 },
-            { label: t('bench.b.tokPerDec'), val: (m, a) => a.hasTok && a.decisions ? (a.promptTokens + a.completionTokens) / a.decisions : null,
+            { label: t('bench.b.latency'), tip: () => t('bench.b.latencyTip'), first: true, val: m => m.latencyMs, text: v => durText(v), best: -1 },
+            { label: t('bench.b.tokPerDec'), tip: () => t('bench.b.tokPerDecTip'), val: (m, a) => a.hasTok && a.decisions ? (a.promptTokens + a.completionTokens) / a.decisions : null,
                 text: (v, m, a) => !a.hasTok ? t('bench.b.noUsage') : v == null ? '–' : `${tokText(v)} (${tokText(a.promptTokens / Math.max(1, a.decisions))}·${tokText(a.completionTokens / Math.max(1, a.decisions))})`, best: -1 },
-            { label: t('bench.b.outPerOk'), val: (m, a) => a.hasTok && a.okNonWait ? a.completionTokens / a.okNonWait : null, text: ratio, best: -1 },
+            { label: t('bench.b.outPerOk'), tip: () => t('bench.b.outPerOkTip'), val: (m, a) => a.hasTok && a.okNonWait ? a.completionTokens / a.okNonWait : null, text: ratio, best: -1 },
             // Discipline & Grounding (v4.1)
-            { label: t('bench.b.hallucinations'), first: true, val: (m, a) => a.rated ? a.reference / a.rated : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.reference})`, best: -1 },
-            { label: t('bench.b.constraints'), val: (m, a) => a.rated ? a.constraint / a.rated : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.constraint})`, best: -1 },
-            { label: t('series.errRepeated'), val: (m, a) => a.rated ? a.repeated : null, text: fmt0, best: -1 },
-            { label: t('series.staleRescued'), val: (m, a) => a.rated ? a.stale : null, text: fmt0 },
-            { label: t('series.contended'), val: (m, a) => a.rated ? a.contended : null, text: fmt0 },
-            { label: t('bench.b.lost'), val: (m, a) => a.hasLost ? a.lost : null, text: fmt0, best: -1 }
+            { label: t('bench.b.hallucinations'), tip: () => t('bench.b.hallucinationsTip'), first: true, val: (m, a) => a.rated ? a.reference / a.rated : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.reference})`, best: -1 },
+            { label: t('bench.b.constraints'), tip: () => t('bench.b.constraintsTip'), val: (m, a) => a.rated ? a.constraint / a.rated : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.constraint})`, best: -1 },
+            { label: t('series.errRepeated'), tip: () => t('series.errRepeatedTip'), val: (m, a) => a.rated ? a.repeated : null, text: fmt0, best: -1 },
+            { label: t('series.staleRescued'), tip: () => t('series.staleTip'), val: (m, a) => a.rated ? a.stale : null, text: fmt0 },
+            { label: t('series.contended'), tip: () => t('series.contendedTip'), val: (m, a) => a.rated ? a.contended : null, text: fmt0 },
+            { label: t('bench.b.lost'), rowTip: t('bench.b.lostTip', { failed: 0, cancelled: 0, missed: 0 }), tip: (m, a) => t('bench.b.lostTip', { failed: a.failed, cancelled: a.cancelled, missed: a.missed }), val: (m, a) => a.hasLost ? a.lost : null, text: fmt0, best: -1 }
         ];
 
         const table = ROWS.map(r => {
             const vals = models.map(m => r.val(m, agg[m.key])).filter(v => v != null && isFinite(v));
             const lead = r.best && vals.length > 1 && Math.max(...vals) !== Math.min(...vals)
                 ? (r.best > 0 ? Math.max(...vals) : Math.min(...vals)) : null;
+            const labelTip = r.rowTip || (r.tip ? r.tip(models[0], agg[models[0].key]) : '');
             return row('bb-fig' + (r.first ? ' is-first' : '') + (r.cls ? ' ' + r.cls : ''),
                 (r.ink ? `<i style="background:${r.ink}"></i>` : '') + esc(r.label),
                 (m, a) => {
                     const v = r.val(m, a);
                     const text = r.text(v, m, a);
-                    return `<span${v != null && v === lead ? ' class="is-lead"' : ''}>${esc(text)}</span>`;
-                });
+                    const cellTip = r.tip ? r.tip(m, a) : labelTip;
+                    return `<span${v != null && v === lead ? ' class="is-lead"' : ''}${cellTip ? ` title="${esc(cellTip)}"` : ''}>${esc(text)}</span>`;
+                }, labelTip);
         }).join('');
 
         // Round-by-round breakdown rows
+        const pillarLegendTip = DIMS.map(k => t('eval.' + k)).join(' · ');
         const roundRows = matches.map((match, ri) => {
             const rNum = match.round != null ? match.round : (ri + 1);
             const meta = [match.duration, match.outcome].filter(Boolean).join(' · ');
@@ -883,11 +894,12 @@
                 if (!r) return '<span class="bb-round-cell">–</span>';
                 const sc = r.scores || {};
                 const pillars = DIMS.map(k => sc[k] == null ? '–' : Math.round(sc[k])).join('·');
-                return `<div class="bb-round-cell">`
+                const detailedTip = DIMS.map(k => `${t('eval.' + k)}: ${sc[k] == null ? '–' : Math.round(sc[k])}`).join(' · ');
+                return `<div class="bb-round-cell" title="${esc(detailedTip)}">`
                     + `<span><em class="bb-r-rank${r.rank === 1 ? ' is-win' : ''}">#${r.rank || '?'}</em> ${esc(civShort(r.civ))}${r.seat != null ? ' S' + (r.seat + 1) : ''}</span>`
-                    + `<b>${sc.index == null ? '–' : fmt1(sc.index)}</b>`
-                    + `<small title="G · M · S · T · D">${pillars}</small></div>`;
-            });
+                    + `<b title="${esc(t('eval.indexDesc'))}">${sc.index == null ? '–' : fmt1(sc.index)}</b>`
+                    + `<small title="${esc(pillarLegendTip)}">${pillars}</small></div>`;
+            }, t('series.roundRowTip'));
         }).join('');
 
         return `<div class="bb" style="--n:${models.length}">`
@@ -895,9 +907,9 @@
             + band(t('series.boardCapSec'))
             + row('bb-graph', keys, gameGraph)
             + roundAxis
-            + row('bb-marks', `<b>${esc(t('bench.t.title'))}</b>`, wrongChips)
+            + row('bb-marks', `<b title="${esc(t('bench.t.tip'))}">${esc(t('bench.t.title'))}</b>`, wrongChips, t('bench.t.tip'))
             + band(t('series.boardPerfSec'))
-            + RATES.map(rk => row('bb-graph', `<b>${esc(t(rk.label))}</b><small>0 – ${esc(rk.text(rk.top))}</small>`, (m, a) => rateGraph(rk, m, a))).join('')
+            + RATES.map(rk => row('bb-graph', `<b>${esc(t(rk.label))}</b><small>0 – ${esc(rk.text(rk.top))}</small>`, (m, a) => rateGraph(rk, m, a), t(rk.tip))).join('')
             + roundAxis
             + band(t('series.boardSummarySec'))
             + table
@@ -1025,7 +1037,7 @@
             const rows = DIMS.map(key => {
                 const scores = seats.map(s => s[key] && s[key].score).filter(v => v != null);
                 const best = !anyWarmup && scores.length > 1 ? Math.max(...scores) : null;
-                return `<tr><th scope="row">${esc(t('eval.' + key))}</th>` + seats.map(s => {
+                return `<tr><th scope="row" title="${esc(t('bench.cmp.' + key))}">${esc(t('eval.' + key))}</th>` + seats.map(s => {
                     const score = s[key].score, before = key === 'strategy' && s.strategy.final ? null : then(s.id, key);
                     const delta = score != null && before != null ? Math.round(score) - Math.round(before) : 0;
                     const trend = delta ? `<em class="${delta > 0 ? 'bm-up' : 'bm-down'}" title="${esc(t('bench.trendTip', { then: Math.round(before) }))}">${delta > 0 ? '▲' : '▼'}${Math.abs(delta)}</em>` : '';
@@ -1051,7 +1063,11 @@
             const bwCells = seats.map(s => {
                 const m = s.macro || {};
                 const okD = m.okPerDecision == null ? '–' : m.okPerDecision.toFixed(1) + ' ok/d';
-                return `<td class="bm-cost">${batchBarHtml(m.batch, true)}<small>${esc(okD)} · ${m.passiveWaits || 0} pw</small></td>`;
+                const b = m.batch || {};
+                const tip = b.shares
+                    ? t('bench.batchTip', { c3: b.three || 0, c2: b.two || 0, c1: b.one || 0, j0: b.justified0 || 0, p0: b.passive0 || 0 })
+                    : t('bench.b.batchDistTip');
+                return `<td class="bm-cost" title="${esc(tip)}">${batchBarHtml(m.batch, true)}<small>${esc(okD)} · ${m.passiveWaits || 0} pw</small></td>`;
             }).join('');
 
             const list = a => a.length ? a.join(', ') : '–';
@@ -1072,10 +1088,10 @@
             right = `<div class="bench-head">${esc(t('bench.matrix'))}<span>Scale ${esc((profile && profile.scale) || 'v4')}</span></div>`
                 + `<table class="bm"><thead><tr><th></th>` + seats.map(s =>
                     `<th scope="col" class="bm-seat" style="--civ:${esc(ink(s))}">${dot(s)}<span>${label(s)}</span></th>`).join('')
-                + `</tr></thead><tbody>${rows}<tr class="bm-indexrow"><th scope="row">${esc(t('eval.index'))}</th>${index}</tr>`
-                + `<tr class="bm-costrow"><th scope="row">${esc(t('bench.b.batchShort'))}</th>${bwCells}</tr>`
-                + `<tr class="bm-costrow"><th scope="row">${esc(t('bench.range'))}<small>${esc(t('bench.rangeUnit'))}</small></th>${range}</tr>`
-                + `<tr class="bm-costrow"><th scope="row">${esc(t('bench.eff'))}</th>${cost}</tr></tbody></table>`;
+                + `</tr></thead><tbody>${rows}<tr class="bm-indexrow"><th scope="row" title="${esc(t('eval.indexDesc'))}">${esc(t('eval.index'))}</th>${index}</tr>`
+                + `<tr class="bm-costrow"><th scope="row" title="${esc(t('bench.b.batchDistTip'))}">${esc(t('bench.b.batchShort'))}</th>${bwCells}</tr>`
+                + `<tr class="bm-costrow"><th scope="row" title="${esc(t('bench.rangeRowTip'))}">${esc(t('bench.range'))}<small>${esc(t('bench.rangeUnit'))}</small></th>${range}</tr>`
+                + `<tr class="bm-costrow"><th scope="row" title="${esc(t('bench.effRowTip'))}">${esc(t('bench.eff'))}</th>${cost}</tr></tbody></table>`;
 
             if (ev && seatOf(ev.id)) {
                 const s = seatOf(ev.id);

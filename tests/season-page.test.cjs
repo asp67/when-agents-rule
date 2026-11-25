@@ -61,7 +61,7 @@ test('the table marks a model ahead only where it is apart, and says in words wh
     assert.match(html, /<th scope="row" title="Alpha-model">Alpha<\/th><td>3<\/td><td>3<\/td><td class="sn-places" title="season\.placesTip">1 · 1 · 1<\/td><td class="sn-cell is-lead" title="season\.cellTip\{&quot;mean&quot;:&quot;90\.0&quot;,&quot;lo&quot;:&quot;85\.0&quot;,&quot;hi&quot;:&quot;95\.0&quot;,&quot;n&quot;:3\} season\.spreadTip\{&quot;min&quot;:&quot;88\.0&quot;,&quot;median&quot;:&quot;90\.0&quot;,&quot;max&quot;:&quot;92\.0&quot;,&quot;values&quot;:&quot;90, 88, 92&quot;\} season\.leadTip"><b>90 ★<\/b><small>85–95<\/small><small class="sn-spread">88 · 90 · 92<\/small>/);
     assert.match(html, /<i class="sn-range"><u style="left:85%;width:10%"><\/u><em style="left:90%"><\/em><em style="left:88%"><\/em><em style="left:92%"><\/em><s style="left:90%"><\/s><\/i>/);
     assert.match(html, /<th scope="row" title="Beta-model">Beta<\/th><td>3<\/td><td>0<\/td><td class="sn-places" title="season\.placesTip">2 · 2 · 2<\/td>/);
-    assert.match(html, /<tr><th>season\.model<\/th><th>season\.matches<\/th><th>season\.firsts<\/th><th title="season\.placesTip">season\.places<\/th>/);
+    assert.match(html, /<tr><th title="season\.modelTip">season\.model<\/th><th title="season\.matchesTip">season\.matches<\/th><th title="season\.firstsTip">season\.firsts<\/th><th title="season\.placesTip">season\.places<\/th>/);
     assert.doesNotMatch(html, /bf-kind|season\.mixed/, 'these entries do not say who played: no tag, no note');
     assert.match(html, /<p class="season-verdict">season\.someLead<\/p>/);
     assert.match(html, /season\.met\{&quot;a&quot;:&quot;Alpha&quot;,&quot;b&quot;:&quot;Beta&quot;,&quot;n&quot;:3,&quot;aAhead&quot;:3,&quot;bAhead&quot;:0\}/);
@@ -89,7 +89,7 @@ test('what cannot be compared is listed apart and labelled; swapped pairs and ke
     p.samples = [match([['Ancient', 0, 1, 77, null]], { id: 's1', source: 'sample' })];
     let html = p.html();
     assert.match(html, /season\.swaps<\/h4><ul class="season-list"><li>Alpha − Beta: season\.swap\{&quot;n&quot;:1\} season\.swapOne\{&quot;d&quot;:&quot;\+10\.0&quot;\}<\/li>/);
-    assert.match(html, /<summary>season\.alone\{&quot;n&quot;:1\}<\/summary>\s*<p class="season-verdict">season\.aloneNote<\/p>[\s\S]*<th scope="row">Solo<\/th><td><code>cond-solo<\/code><\/td>/);
+    assert.match(html, /<summary>season\.alone\{&quot;n&quot;:1\}<\/summary>\s*<p class="season-verdict">season\.aloneNote<\/p>[\s\S]*<th scope="row">Solo<\/th><td title="sum\.condTip"><code>cond-solo<\/code><\/td>/);
     assert.match(html, /<summary>season\.unrecorded\{&quot;n&quot;:1\}<\/summary>\s*<p class="season-verdict">season\.unrecordedNote<\/p>[\s\S]*<th scope="row">Ancient<\/th>/);
     assert.match(html, /<summary>season\.kept\{&quot;n&quot;:3\}<\/summary>/);
     assert.match(html, /<td>season\.srcImported<\/td><td>Solo<\/td>/);

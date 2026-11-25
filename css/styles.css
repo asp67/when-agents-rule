@@ -3791,3 +3791,11 @@ body.race-view .second-cam { bottom: calc(var(--mm-bottom) + 212px); }
     color: #ece5cc; font-size: 0.88rem;
 }
 .season-series-bar .menu-btn { margin: 0; padding: 6px 12px; min-height: 34px; font-size: 0.84em; }
+/* Subtle tooltip affordance on comparison/summary/season row & column headers */
+.bb-row[title] .bb-lab, .bm th[scope="row"][title], .series-table thead th[title], .season-table thead th[title] {
+    cursor: help;
+}
+.bm th[scope="row"][title]:hover, .series-table thead th[title]:hover, .season-table thead th[title]:hover {
+    text-decoration: underline dotted rgba(221, 211, 180, 0.55);
+    text-underline-offset: 3px;
+}

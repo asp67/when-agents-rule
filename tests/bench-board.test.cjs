@@ -180,7 +180,7 @@ test('at full size the models stand side by side, and the sections run gameplay,
     assert.deepEqual(inks(graphs[0]), partInks.concat('#ddd3b4'));
     assert.deepEqual(inks(graphs[1]), WarEval.SCORED.filter(k => b[k].score != null).map(k => ({ grounding: '#4ecdc4', macro: '#60a5fa', spatial: '#a78bfa', tactical: '#f59e0b', strategy: '#ec4899' })[k]).concat('#ddd3b4'));
     assert.match(graphs[0], /stroke="#ddd3b4" stroke-width="2\.2" stroke-dasharray="4,2"/);
-    assert.match(game, /<span class="bb-keys"><span><i style="background:#ddd3b4"><\/i>eval\.index<\/span>(<span><i style="background:#[0-9a-f]{6}"><\/i>eval\.(grounding|macro|spatial|tactical|strategy)<\/span>){5}<\/span>/);
+    assert.match(game, /<span class="bb-keys"><span title="eval\.indexDesc"><i style="background:#ddd3b4"><\/i>eval\.index<\/span>(<span title="bench\.cmp\.(grounding|macro|spatial|tactical|strategy)"><i style="background:#[0-9a-f]{6}"><\/i>eval\.(grounding|macro|spatial|tactical|strategy)<\/span>){5}<\/span>/);
     assert.doesNotMatch(html, /bench\.b\.power|bench\.b\.rank|bench\.b\.share/);
     // The clock under it: the whole match.
     assert.match(game, /<div class="bb-row bb-axis">.*?<span>0:00<\/span><span>10:00<\/span>/s);

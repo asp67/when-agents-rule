@@ -138,9 +138,10 @@ class SeasonPage {
         const harness = String(via).startsWith('harness'), name = harness ? String(via).split(':')[1] : '';
         return ` <em class="bf-kind ${harness ? 'is-harness' : 'is-raw'}" title="${this.esc(t(harness ? 'bench.h.harnessTip' : 'bench.h.rawTip'))}">${this.esc(t(harness ? 'bench.h.harness' : 'bench.h.raw'))}${name ? ' · ' + this.esc(name) : ''}</em>`;
     }
+    partTip(p) { return t(p === 'index' ? 'eval.indexDesc' : 'bench.cmp.' + p); }
     head() {
-        return `<tr><th>${this.esc(t('season.model'))}</th><th>${this.esc(t('season.matches'))}</th><th>${this.esc(t('season.firsts'))}</th><th title="${this.esc(t('season.placesTip'))}">${this.esc(t('season.places'))}</th>`
-            + WarSeason.PARTS.map(p => `<th>${this.esc(t('eval.' + p))}</th>`).join('') + '</tr>';
+        return `<tr><th title="${this.esc(t('season.modelTip'))}">${this.esc(t('season.model'))}</th><th title="${this.esc(t('season.matchesTip'))}">${this.esc(t('season.matches'))}</th><th title="${this.esc(t('season.firstsTip'))}">${this.esc(t('season.firsts'))}</th><th title="${this.esc(t('season.placesTip'))}">${this.esc(t('season.places'))}</th>`
+            + WarSeason.PARTS.map(p => `<th title="${this.esc(this.partTip(p))}">${this.esc(t('eval.' + p))}</th>`).join('') + '</tr>';
     }
     group(g) {
         const L = k => this.esc(WarSeason.label(k)), signed = v => (v > 0 ? '+' : '') + v.toFixed(1);
@@ -216,13 +217,13 @@ class SeasonPage {
     // Seats that stand alone, or whose conditions are unknown: listed, never added up.
     loose(key, rows, withCond) {
         if (!rows.length) return '';
-        const body = rows.map(u => `<tr><th scope="row">${this.esc(u.name || u.model || '?')}</th>${withCond ? `<td><code>${this.esc(u.cond)}</code></td>` : ''}<td>${u.build == null ? '–' : this.esc(u.build)}</td>`
-            + `<td>${u.rank == null ? '–' : this.esc(t('season.placed', { rank: u.rank, of: u.of }))}</td>`
-            + WarSeason.PARTS.map(p => `<td>${u.scores[p] == null ? '–' : Math.round(u.scores[p])}</td>`).join('') + '</tr>').join('');
+        const body = rows.map(u => `<tr><th scope="row">${this.esc(u.name || u.model || '?')}</th>${withCond ? `<td title="${this.esc(t('sum.condTip'))}"><code>${this.esc(u.cond)}</code></td>` : ''}<td title="${this.esc(t('season.buildTip'))}">${u.build == null ? '–' : this.esc(u.build)}</td>`
+            + `<td title="${this.esc(t('season.placeTip'))}">${u.rank == null ? '–' : this.esc(t('season.placed', { rank: u.rank, of: u.of }))}</td>`
+            + WarSeason.PARTS.map(p => `<td title="${this.esc(t('eval.' + p) + ': ' + this.partTip(p))}">${u.scores[p] == null ? '–' : Math.round(u.scores[p])}</td>`).join('') + '</tr>').join('');
         return `<details class="season-loose"><summary>${this.esc(t(key, { n: rows.length }))}</summary>
             <p class="season-verdict">${this.esc(t(key + 'Note'))}</p>
-            <div class="season-scroll"><table class="season-table is-plain"><thead><tr><th>${this.esc(t('season.model'))}</th>${withCond ? `<th>${this.esc(t('season.conditions'))}</th>` : ''}<th>${this.esc(t('season.build'))}</th><th>${this.esc(t('season.place'))}</th>`
-            + WarSeason.PARTS.map(p => `<th>${this.esc(t('eval.' + p))}</th>`).join('') + `</tr></thead><tbody>${body}</tbody></table></div></details>`;
+            <div class="season-scroll"><table class="season-table is-plain"><thead><tr><th title="${this.esc(t('season.modelTip'))}">${this.esc(t('season.model'))}</th>${withCond ? `<th title="${this.esc(t('sum.condTip'))}">${this.esc(t('season.conditions'))}</th>` : ''}<th title="${this.esc(t('season.buildTip'))}">${this.esc(t('season.build'))}</th><th title="${this.esc(t('season.placeTip'))}">${this.esc(t('season.place'))}</th>`
+            + WarSeason.PARTS.map(p => `<th title="${this.esc(this.partTip(p))}">${this.esc(t('eval.' + p))}</th>`).join('') + `</tr></thead><tbody>${body}</tbody></table></div></details>`;
     }
     kept() {
         const list = SeasonPage.load();

@@ -441,3 +441,61 @@ test('Arena Model Evaluation screen removes VTT export and organizes footer butt
         assert.ok(html.includes(`id="${id}"`), `retained essential summary button #${id}`);
     }
 });
+
+test('Every comparison, summary, series and season table carries localized tooltips in all 4 languages', () => {
+    const i18nCtx = vm.createContext({
+        window: {}, navigator: { language: 'en' },
+        localStorage: { getItem: () => null, setItem() {} },
+        document: { documentElement: {}, querySelectorAll: () => [], addEventListener() {} }
+    });
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'js/i18n.js'), 'utf8') + ';this.I = I18N;', i18nCtx);
+    const I = i18nCtx.I;
+    const tipKeys = [
+        'eval.indexDesc', 'bench.rangeRowTip', 'bench.effRowTip',
+        'bench.cmp.grounding', 'bench.cmp.macro', 'bench.cmp.spatial', 'bench.cmp.tactical', 'bench.cmp.strategy',
+        'series.colModelTip', 'series.colPooledTip', 'series.colPillarsTip', 'series.colRatingTip',
+        'series.colPlacesTip', 'series.colFirstsTip', 'series.colCivsTip',
+        'series.roundsAxisTip', 'series.errRepeatedTip', 'series.staleTip', 'series.contendedTip',
+        'series.noMajorErrorsTip', 'series.errCodeTip', 'series.refusedRateTip',
+        'series.bwUtilTip', 'series.idleRateTip', 'series.roundRowTip',
+        'season.modelTip', 'season.matchesTip', 'season.firstsTip', 'season.placesTip',
+        'season.buildTip', 'season.placeTip'
+    ];
+    for (const lang of ['en', 'de', 'es', 'zh']) {
+        for (const k of tipKeys) {
+            assert.ok(typeof I[lang][k] === 'string' && I[lang][k].trim().length > 0, `${lang} has non-empty tooltip ${k}`);
+        }
+    }
+
+    // Check rendered Series Summary table + Series Comparison Board rows all carry title attributes
+    const sumEl = { innerHTML: '', style: { display: 'none' } };
+    const fullEl = { innerHTML: '', style: { display: 'none' }, querySelector: () => null };
+    const sb2 = loadScripts(['js/bench-core.js', 'js/eval/marks.js', 'js/eval/ledger.js', 'js/eval/season.js'], {
+        document: { getElementById: id => ({ summarySeries: sumEl, benchFull: fullEl }[id] || null), querySelector: () => null, addEventListener: () => {} },
+        navigator: { platform: 'Win32' }, location: { origin: 'http://127.0.0.1:8000', href: 'http://127.0.0.1:8000/' },
+        localStorage: { getItem: () => null, setItem: () => {} }, t: k => k
+    });
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js/ui.js'), 'utf8') + '\n;this.UIManager = UIManager;', sb2, { filename: 'js/ui.js' });
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js/eval/bench-view.js'), 'utf8'), sb2, { filename: 'js/eval/bench-view.js' });
+    const ui = Object.create(sb2.UIManager.prototype);
+    ui.viewPreferences = () => ({ bench: false });
+    ui.evalLedger = () => null;
+    ui.civNames = () => ({ greek: 'Greeks', persian: 'Persians' });
+    const matches = [{
+        round: 1, matchId: 't-1', duration: '10:00', outcome: 'conquest',
+        seats: [
+            { seriesKey: 'A', name: 'Alpha', model: 'a', via: 'raw', seat: 0, civ: 'greek', rank: 1, of: 2, latencyMs: 5000, scores: { grounding: 90, macro: 80, spatial: 70, tactical: 60, strategy: 85, index: 78 }, stats: { rated: 20, okNonWait: 19, constraint: 1, reference: 0, repeated: 0, stale: 1, contended: 1, oppSum: 30, prodUsedSum: 25, passiveWaits: 1, turns: 10, idleSum: 1, idleTurns: 10 } },
+            { seriesKey: 'B', name: 'Beta', model: 'b', via: 'harness:hermes', seat: 1, civ: 'persian', rank: 2, of: 2, latencyMs: 8000, scores: { grounding: 70, macro: 60, spatial: 50, tactical: 40, strategy: 35, index: 51 }, stats: { rated: 20, okNonWait: 16, constraint: 2, reference: 2, repeated: 1, stale: 0, contended: 0, oppSum: 30, prodUsedSum: 18, passiveWaits: 3, turns: 10, idleSum: 3, idleTurns: 10 } }
+        ]
+    }];
+    ui.game = { spectatorMode: false, gameStarted: false, arenaSeries: { seed: 77, round: 1, total: 1, stopped: true, matches } };
+    ui.renderSeriesSummary();
+    const seriesThs = [...sumEl.innerHTML.matchAll(/<th\b[^>]*>/g)].map(m => m[0]);
+    assert.ok(seriesThs.length >= 9, 'series summary renders thead + tbody th elements');
+    for (const th of seriesThs) assert.match(th, /\btitle="[^"]+"/, `series summary header has tooltip: ${th}`);
+
+    const boardHtml = ui.benchSeriesBoardHtml(ui.buildSeriesReportPayload());
+    const figRows = [...boardHtml.matchAll(/<div class="bb-row bb-fig[^"]*"[^>]*>/g)].map(m => m[0]);
+    assert.ok(figRows.length >= 16, 'series comparison board renders all pooled figure rows');
+    for (const rowTag of figRows) assert.match(rowTag, /\btitle="[^"]+"/, `series board row has tooltip: ${rowTag}`);
+});
