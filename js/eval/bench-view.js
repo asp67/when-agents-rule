@@ -264,16 +264,19 @@
             return;
         }
         if (panels) this.benchPlace();
+        const seriesData = open ? this._benchSeries : null;
         const ledger = this.benchLedger(), link = this.benchLinkKey();
-        const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', open, panels, link].join(':');
+        const seriesKey = seriesData ? ('S:' + (seriesData.seed || '') + ':' + (seriesData.completedMatches || (seriesData.matches && seriesData.matches.length) || 0)) : '';
+        const sig = [ledger ? ledger.lines + '.' + ledger.rev : -1, typeof getUiLang === 'function' ? getUiLang() : '', open, panels, link, seriesKey].join(':');
         if (sig === this._benchSig) return;
         this._benchSig = sig;
-        const data = this.benchSeries(ledger);
+        const data = (panels || (open && !seriesData)) ? this.benchSeries(ledger) : null;
         if (panels) right.innerHTML = this.benchMiniHtml(ledger, data);
         if (full) {
             const body = open && full.querySelector ? full.querySelector('.bf-body') : null, at = body ? body.scrollTop : 0;
             full.style.display = open ? '' : 'none';
-            full.innerHTML = open ? this.benchFullHtml(ledger, data, link) : '';
+            if (open && !full._bfClickWired) { full._bfClickWired = true; full.onclick = () => this.toggleBenchFull(false); }
+            full.innerHTML = open ? (seriesData ? this.benchSeriesFullHtml(seriesData) : this.benchFullHtml(ledger, data, link)) : '';
             const again = at && full.querySelector ? full.querySelector('.bf-body') : null;
             if (again) again.scrollTop = at;
         }
@@ -401,8 +404,21 @@
 
     P.toggleBenchFull = function (on = !this._benchFull) {
         this._benchFull = !!on;
+        this._benchSeries = null;
         this._benchSig = null;
         if (on && !this._benchFullKey && typeof document !== 'undefined' && document.addEventListener) {
+            this._benchFullKey = e => { if (e.key === 'Escape' && this._benchFull) this.toggleBenchFull(false); };
+            document.addEventListener('keydown', this._benchFullKey);
+        }
+        this.updateBenchView();
+    };
+
+    P.toggleSeriesBoard = function (payload) {
+        if (!payload) return this.toggleBenchFull(false);
+        this._benchSeries = payload;
+        this._benchFull = true;
+        this._benchSig = null;
+        if (!this._benchFullKey && typeof document !== 'undefined' && document.addEventListener) {
             this._benchFullKey = e => { if (e.key === 'Escape' && this._benchFull) this.toggleBenchFull(false); };
             document.addEventListener('keydown', this._benchFullKey);
         }
@@ -603,6 +619,304 @@
             + (warmup ? `<span class="bf-pill is-warmup">${esc(t('bench.warmup'))}</span>` : '');
         return `<div class="bf-box" onclick="event.stopPropagation()"><div class="bf-head"><b>${esc(t('bench.matrix'))}</b>${pills}${close}</div>`
             + `<div class="bf-body">${this.benchBoardHtml(ledger, data, { link })}</div></div>`;
+    };
+
+    // ---- Multi-Match Series Comparison Board (renders into #benchFull) -----------
+    // Works on both a live Arena Series and any saved `war-series-*.json` report
+    // (`kind: 'war-series-report/1'`), including reports without `eff` token snapshots.
+    const SERIES_INKS = ['#5cc8ff', '#ffb454', '#9fd08a', '#ff6b6b', '#c59cf0', '#f2e06a'];
+    const roundLinesSvg = (lines, { w, h, n, min = 0, max, cls = '' }) => {
+        const top = max != null ? max : Math.max(1, ...lines.map(l => Math.max(0, ...l.v.filter(v => v != null))));
+        const pad = 10, span = Math.max(1, w - pad * 2);
+        const x = i => n <= 1 ? w / 2 : pad + (i / (n - 1)) * span;
+        const y = v => h - 6 - ((Math.min(top, v) - min) / ((top - min) || 1)) * (h - 12);
+        const draw = l => {
+            let d = '', pen = false, dots = '';
+            for (let i = 0; i < l.v.length; i++) {
+                if (l.v[i] == null) { pen = false; continue; }
+                const px = x(i).toFixed(1), py = y(l.v[i]).toFixed(1);
+                d += (pen ? 'L' : 'M') + px + ' ' + py;
+                pen = true;
+                dots += `<circle cx="${px}" cy="${py}" r="${l.r || 2.6}" fill="${l.ink}" stroke="rgba(16,20,25,0.85)" stroke-width="0.9"/>`;
+            }
+            const dash = l.dash ? ` stroke-dasharray="${l.dash}"` : '';
+            const path = d && l.v.filter(v => v != null).length > 1
+                ? `<path d="${d}" fill="none" stroke="${l.ink}" stroke-width="${l.width || 1.6}"${dash} vector-effect="non-scaling-stroke" stroke-linejoin="round"/>`
+                : '';
+            return path + dots;
+        };
+        return `<svg class="bg-chart ${cls}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">${lines.map(draw).join('')}</svg>`;
+    };
+
+    P.benchSeriesBoardHtml = function (payload) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x));
+        const matches = Array.isArray(payload && payload.matches) ? payload.matches.slice().sort((a, b) => (a.round || 0) - (b.round || 0)) : [];
+        const pooled = (payload && payload.pooled && Array.isArray(payload.pooled.models) && payload.pooled.models.length)
+            ? payload.pooled
+            : (typeof WarSeason !== 'undefined' ? WarSeason.poolSeries(matches) : null);
+        const models = (pooled && pooled.models) || [];
+        if (!models.length) return `<p class="bench-none">${esc(t('bench.none'))}</p>`;
+
+        const civNames = this.civNames ? this.civNames() : {};
+        const civShort = c => c ? (civNames[c] || c).slice(0, 3) : '–';
+        const viaTag = via => {
+            if (!via) return '';
+            const str = String(via);
+            if (str === 'rule') return `<em class="bf-kind is-raw">${esc(t('spec.rulebased'))}</em>`;
+            const harness = str.startsWith('harness');
+            const hName = harness ? str.split(':')[1] : '';
+            return `<em class="bf-kind ${harness ? 'is-harness' : 'is-raw'}">${esc(t(harness ? 'bench.h.harness' : 'bench.h.raw'))}${hName && hName !== 'other' ? ' · ' + esc(hName) : ''}</em>`;
+        };
+
+        // Gather per-round stats & efficiency per model key across all rounds.
+        const seatKey = s => s.seriesKey || (typeof WarSeason !== 'undefined' ? WarSeason.modelKey(s) : (s.name || s.model || '?'));
+        const agg = {};
+        for (let mi = 0; mi < models.length; mi++) {
+            const m = models[mi];
+            agg[m.key] = {
+                ink: SERIES_INKS[mi % SERIES_INKS.length],
+                rounds: [],
+                rated: 0, okNonWait: 0, constraint: 0, reference: 0, repeated: 0, contended: 0, stale: 0, avoidable: 0, invalid: 0,
+                oppSum: 0, prodUsedSum: 0, passiveWaits: 0, justifiedWaits: 0, turns: 0,
+                idleSum: 0, idleTurns: 0, popStalled: 0, popTurns: 0, floatSum: 0, resTurns: 0,
+                spatialOrders: 0, spatialErrors: 0,
+                destroyedEff: 0, lostEff: 0, atOnce: 0, wonderAnswered: 0, episodes: 0, wonders: 0,
+                // Efficiency (from `eff` when recorded)
+                decisions: 0, promptTokens: 0, completionTokens: 0, hasTok: false,
+                thinkingMsTotal: 0, lost: 0, failed: 0, cancelled: 0, missed: 0, hasLost: false,
+                loops: 0, hasLoops: false, errCodes: {}
+            };
+        }
+        for (let ri = 0; ri < matches.length; ri++) {
+            const match = matches[ri];
+            const rNum = match.round != null ? match.round : (ri + 1);
+            const byK = new Map();
+            for (const s of (match.seats || [])) byK.set(seatKey(s), s);
+            for (const m of models) {
+                const a = agg[m.key];
+                const s = byK.get(m.key) || null;
+                const st = (s && s.stats) || null;
+                const ef = (s && s.eff) || null;
+                const sc = (s && s.scores) || {};
+                const latSec = s && typeof s.latencyMs === 'number' && isFinite(s.latencyMs) ? s.latencyMs / 1000
+                    : (ef && ef.latMedian != null ? ef.latMedian / 1000 : null);
+                const bad = st ? ((st.avoidable || 0) + (st.invalid || 0) || ((st.constraint || 0) + (st.reference || 0))) : null;
+                const refPct = st && st.rated > 0 ? Math.min(100, 100 * bad / st.rated) : null;
+                const pwPct = st && st.turns > 0 ? Math.min(100, 100 * (st.passiveWaits || 0) / st.turns) : null;
+                a.rounds.push({
+                    round: rNum, seat: s ? s.seat : null, civ: s ? s.civ : null, rank: s ? s.rank : null,
+                    of: s ? (s.of || (match.seats && match.seats.length)) : null,
+                    duration: match.duration || null, outcome: match.outcome || null,
+                    scores: sc, latSec, refPct, pwPct
+                });
+                if (st) {
+                    a.rated += st.rated || 0; a.okNonWait += st.okNonWait || 0;
+                    a.constraint += st.constraint || 0; a.reference += st.reference || 0; a.repeated += st.repeated || 0;
+                    a.contended += st.contended || 0; a.stale += st.stale || 0;
+                    a.avoidable += st.avoidable || 0; a.invalid += st.invalid || 0;
+                    a.oppSum += st.oppSum || 0; a.prodUsedSum += st.prodUsedSum || 0;
+                    a.passiveWaits += st.passiveWaits || 0; a.justifiedWaits += st.justifiedWaits || 0; a.turns += st.turns || 0;
+                    a.idleSum += st.idleSum || 0; a.idleTurns += st.idleTurns || 0;
+                    a.popStalled += st.popStalled || 0; a.popTurns += st.popTurns || 0;
+                    a.floatSum += st.floatSum || 0; a.resTurns += st.resTurns || 0;
+                    a.spatialOrders += st.spatialOrders || 0; a.spatialErrors += st.spatialErrors || 0;
+                    a.destroyedEff += st.destroyedEff || 0; a.lostEff += st.lostEff || 0;
+                    a.atOnce += st.atOnce || 0; a.wonderAnswered += st.wonderAnswered || 0;
+                    a.episodes += st.episodes || 0; a.wonders += st.wonders || 0;
+                }
+                if (ef) {
+                    a.decisions += ef.decisions || 0;
+                    if (ef.promptTokens != null || ef.completionTokens != null) {
+                        a.hasTok = true;
+                        a.promptTokens += ef.promptTokens || 0;
+                        a.completionTokens += ef.completionTokens || 0;
+                    }
+                    a.thinkingMsTotal += ef.thinkingMsTotal || 0;
+                    if (ef.lost != null) {
+                        a.hasLost = true;
+                        a.lost += ef.lost || 0; a.failed += ef.failed || 0;
+                        a.cancelled += ef.cancelled || 0; a.missed += ef.missed || 0;
+                    }
+                    if (ef.loops != null) { a.hasLoops = true; a.loops += ef.loops || 0; }
+                    for (const te of (ef.topErrors || [])) {
+                        if (te && te.code) a.errCodes[te.code] = (a.errCodes[te.code] || 0) + (te.n || 1);
+                    }
+                }
+            }
+        }
+        // Fall back to pooled.counts when matches lacked stats
+        for (const m of models) {
+            const a = agg[m.key], c = m.counts || {};
+            if (!a.rated && c.rated) {
+                a.rated = c.rated || 0; a.okNonWait = c.okNonWait || 0;
+                a.avoidable = c.avoidable || 0; a.invalid = c.invalid || 0;
+                a.contended = c.contended || 0; a.stale = c.stale || 0; a.turns = c.turns || 0;
+            }
+        }
+
+        const nRounds = Math.max(1, matches.length);
+        const W = 320;
+        const cells = make => models.map(m => `<div class="bb-col" style="--civ:${esc(agg[m.key].ink)}">${make(m, agg[m.key])}</div>`).join('');
+        const row = (cls, label, make) => `<div class="bb-row ${cls}"><div class="bb-lab">${label}</div>${cells(make)}</div>`;
+        const band = text => `<div class="bb-sec">${esc(text)}</div>`;
+
+        const head = row('bb-head', '', (m, a) =>
+            `<span class="team-dot" style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${esc(a.ink)};margin-right:6px;flex:none;"></span>`
+            + `<span title="${esc(m.name + (m.model && m.model !== m.name ? ' · ' + m.model : ''))}">${esc(m.name)}</span>${viaTag(m.via)}`);
+
+        // Capability curves across rounds
+        const gameGraph = (m, a) => {
+            const lines = DIMS.map(k => ({ v: a.rounds.map(r => r.scores[k] != null ? r.scores[k] : null), ink: PART_INK[k], width: 1.6, r: 2.4 }));
+            lines.push({ v: a.rounds.map(r => r.scores.index != null ? r.scores.index : null), ink: PART_INK.index, width: 2.3, dash: '4,2', r: 3.1 });
+            return roundLinesSvg(lines, { w: W, h: 108, n: nRounds, max: 100, cls: 'bb-game' });
+        };
+        const keys = '<span class="bb-keys">'
+            + `<span><i style="background:${PART_INK.index}"></i>${esc(t('eval.index'))}</span>`
+            + DIMS.map(k => `<span><i style="background:${PART_INK[k]}"></i>${esc(t('eval.' + k))}</span>`).join('') + '</span>';
+
+        const roundAxis = row('bb-axis', esc(t('series.roundsAxis')), (m, a) =>
+            `<div class="bb-round-axis">${a.rounds.map(r =>
+                `<span>M${r.round}${r.civ ? ' ' + esc(civShort(r.civ)) : ''}${r.seat != null ? ' #' + (r.seat + 1) : ''}</span>`
+            ).join('')}</div>`);
+
+        // "Where it went wrong" summary chips across all rounds
+        const wrongChips = (m, a) => {
+            const chips = [];
+            if (a.reference) chips.push(`<span class="bb-err-chip is-bad" title="${esc(t('bench.b.hallucinationsTip'))}">${esc(t('bench.b.hallucinations'))}: <b>${a.reference}</b></span>`);
+            if (a.constraint) chips.push(`<span class="bb-err-chip is-warn" title="${esc(t('bench.b.constraintsTip'))}">${esc(t('bench.b.constraints'))}: <b>${a.constraint}</b></span>`);
+            if (a.repeated) chips.push(`<span class="bb-err-chip is-bad">${esc(t('series.errRepeated'))}: <b>${a.repeated}</b></span>`);
+            if (a.passiveWaits) chips.push(`<span class="bb-err-chip is-warn" title="${esc(t('bench.b.passiveWaitsTip'))}">${esc(t('bench.b.passiveWaits'))}: <b>${a.passiveWaits}</b></span>`);
+            if (a.hasLoops && a.loops) chips.push(`<span class="bb-err-chip is-bad">${esc(t('bench.t.loops'))}: <b>${a.loops}</b></span>`);
+            if (a.hasLost && a.lost) chips.push(`<span class="bb-err-chip is-bad">${esc(t('bench.b.lost'))}: <b>${a.lost}</b></span>`);
+            if (a.stale) chips.push(`<span class="bb-err-chip is-good" title="${esc(t('series.staleTip'))}">${esc(t('series.staleRescued'))}: <b>${a.stale}</b></span>`);
+            if (a.contended) chips.push(`<span class="bb-err-chip">${esc(t('series.contended'))}: <b>${a.contended}</b></span>`);
+            const topCodes = Object.entries(a.errCodes).sort((x, y) => y[1] - x[1]).slice(0, 3);
+            for (const [code, cnt] of topCodes) chips.push(`<span class="bb-err-chip">${esc(code)} ×${cnt}</span>`);
+            if (!chips.length) chips.push(`<span class="bb-err-chip is-good">${esc(t('series.noMajorErrors'))}</span>`);
+            return `<div class="bb-s-errs">${chips.join('')}</div>`;
+        };
+
+        // Per-round performance sparklines
+        const roundScale = x => { const p = Math.pow(10, Math.floor(Math.log10(Math.max(1, x)))), n = x / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p; };
+        const maxOf = fn => { let top = 0; for (const m of models) for (const r of agg[m.key].rounds) { const v = fn(r); if (v != null && v > top) top = v; } return top; };
+        const RATES = [
+            { key: 'latSec', label: 'bench.b.secPer', ink: '#f2c46a', top: roundScale(Math.max(1, maxOf(r => r.latSec))), text: v => v >= 10 ? Math.round(v) + ' s' : v.toFixed(1) + ' s' },
+            { key: 'refPct', label: 'bench.b.refusedNow', ink: '#ff8f7a', top: roundScale(Math.max(10, maxOf(r => r.refPct))), text: v => Math.round(v) + ' %' },
+            { key: 'pwPct', label: 'bench.b.passiveWaits', ink: '#60a5fa', top: roundScale(Math.max(10, maxOf(r => r.pwPct))), text: v => Math.round(v) + ' %' }
+        ];
+        const rateGraph = (rk, m, a) => {
+            const vals = a.rounds.map(r => r[rk.key]);
+            const valid = vals.filter(v => v != null);
+            const avg = valid.length ? valid.reduce((x, y) => x + y, 0) / valid.length : null;
+            return roundLinesSvg([{ v: vals, ink: rk.ink, width: 1.8, r: 2.6 }], { w: W, h: 38, n: nRounds, max: rk.top, cls: 'bb-rate' })
+                + `<b class="bb-now">${avg == null ? '–' : esc(rk.text(avg))}</b>`;
+        };
+
+        const pct = v => v == null ? '–' : share(v);
+        const fmt1 = v => v == null ? '–' : (Math.round(v * 10) / 10).toFixed(1);
+        const fmt0 = v => v == null ? '–' : String(Math.round(v));
+        const fmtRange = (val, sp) => {
+            if (val == null) return '–';
+            const rng = sp && sp.n >= 2 ? ` (${Math.round(sp.min)}–${Math.round(sp.max)})` : '';
+            return fmt1(val) + rng;
+        };
+        const pillarRaw = (k, m, a) => {
+            if (k === 'grounding') return a.rated ? share(a.okNonWait / a.rated) + ' · ' + a.rated : '';
+            if (k === 'macro') return (a.oppSum ? share(a.prodUsedSum / a.oppSum) + ' bw · ' : '') + (a.turns ? a.passiveWaits + ' pw' : '');
+            if (k === 'spatial') return a.spatialOrders ? `${a.spatialOrders} ord · ${a.spatialErrors} err` : '';
+            if (k === 'tactical') {
+                const thr = a.episodes + a.wonders;
+                return thr ? `${a.atOnce + a.wonderAnswered}/${thr} def` : (a.destroyedEff + a.lostEff > 0 ? `${Math.round(a.destroyedEff)}/${Math.round(a.lostEff)}` : '');
+            }
+            const sp = m.spread && m.spread.strategy;
+            return sp && sp.n >= 2 ? `${Math.round(sp.min)}–${Math.round(sp.max)}` : '';
+        };
+
+        const ROWS = [
+            { label: t('series.colPooled'), val: m => m.pooled && m.pooled.index, text: (v, m) => fmtRange(v, m.spread && m.spread.index), best: 1, cls: 'is-index' },
+            { label: t('series.colRating'), val: m => m.plRating, text: v => v == null ? '–' : String(Math.round(v)), best: 1 },
+            { label: t('series.colPlaces'), val: m => m.matches ? m.firsts / m.matches : null, text: (v, m) => `${(m.places || []).map(x => '#' + x.rank).join(' · ') || '–'} (${m.firsts}/${m.matches})`, best: 1 },
+            { label: t('series.colCivs'), val: () => null, text: (v, m) => (m.civs || []).map((c, i) => civShort(c) + (m.seats && m.seats[i] != null ? ' #' + (m.seats[i] + 1) : '')).join(' · ') || '–' },
+            ...DIMS.map(k => ({
+                label: t('eval.' + k), ink: PART_INK[k],
+                val: m => m.pooled && m.pooled[k],
+                text: (v, m, a) => { const raw = pillarRaw(k, m, a); return v == null ? '–' : (raw ? `${fmt0(v)} (${raw})` : fmt0(v)); },
+                best: 1
+            })),
+            // Pooled Macro & Initiative
+            { label: t('series.bwUtil'), first: true, val: (m, a) => a.oppSum ? a.prodUsedSum / a.oppSum : null, text: pct, best: 1 },
+            { label: t('bench.b.passiveWaits'), val: (m, a) => a.turns ? a.passiveWaits / a.turns : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.passiveWaits}/${a.turns}${a.justifiedWaits ? ' · ' + a.justifiedWaits + ' jw' : ''})`, best: -1 },
+            { label: t('series.idleRate'), val: (m, a) => a.idleTurns ? a.idleSum / a.idleTurns : null, text: pct, best: -1 },
+            // Latency & Token Cost
+            { label: t('bench.b.latency'), first: true, val: m => m.latencyMs, text: v => durText(v), best: -1 },
+            { label: t('bench.b.tokPerDec'), val: (m, a) => a.hasTok && a.decisions ? (a.promptTokens + a.completionTokens) / a.decisions : null,
+                text: (v, m, a) => !a.hasTok ? t('bench.b.noUsage') : v == null ? '–' : `${tokText(v)} (${tokText(a.promptTokens / Math.max(1, a.decisions))}·${tokText(a.completionTokens / Math.max(1, a.decisions))})`, best: -1 },
+            { label: t('bench.b.outPerOk'), val: (m, a) => a.hasTok && a.okNonWait ? a.completionTokens / a.okNonWait : null, text: ratio, best: -1 },
+            // Discipline & Grounding (v4.1)
+            { label: t('bench.b.hallucinations'), first: true, val: (m, a) => a.rated ? a.reference / a.rated : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.reference})`, best: -1 },
+            { label: t('bench.b.constraints'), val: (m, a) => a.rated ? a.constraint / a.rated : null, text: (v, m, a) => v == null ? '–' : `${share(v)} (${a.constraint})`, best: -1 },
+            { label: t('series.errRepeated'), val: (m, a) => a.rated ? a.repeated : null, text: fmt0, best: -1 },
+            { label: t('series.staleRescued'), val: (m, a) => a.rated ? a.stale : null, text: fmt0 },
+            { label: t('series.contended'), val: (m, a) => a.rated ? a.contended : null, text: fmt0 },
+            { label: t('bench.b.lost'), val: (m, a) => a.hasLost ? a.lost : null, text: fmt0, best: -1 }
+        ];
+
+        const table = ROWS.map(r => {
+            const vals = models.map(m => r.val(m, agg[m.key])).filter(v => v != null && isFinite(v));
+            const lead = r.best && vals.length > 1 && Math.max(...vals) !== Math.min(...vals)
+                ? (r.best > 0 ? Math.max(...vals) : Math.min(...vals)) : null;
+            return row('bb-fig' + (r.first ? ' is-first' : '') + (r.cls ? ' ' + r.cls : ''),
+                (r.ink ? `<i style="background:${r.ink}"></i>` : '') + esc(r.label),
+                (m, a) => {
+                    const v = r.val(m, a);
+                    const text = r.text(v, m, a);
+                    return `<span${v != null && v === lead ? ' class="is-lead"' : ''}>${esc(text)}</span>`;
+                });
+        }).join('');
+
+        // Round-by-round breakdown rows
+        const roundRows = matches.map((match, ri) => {
+            const rNum = match.round != null ? match.round : (ri + 1);
+            const meta = [match.duration, match.outcome].filter(Boolean).join(' · ');
+            return row('bb-round-row', `<b>${esc(t('series.matchLabel', { r: rNum }))}</b><small>${esc(meta)}</small>`, (m, a) => {
+                const r = a.rounds[ri];
+                if (!r) return '<span class="bb-round-cell">–</span>';
+                const sc = r.scores || {};
+                const pillars = DIMS.map(k => sc[k] == null ? '–' : Math.round(sc[k])).join('·');
+                return `<div class="bb-round-cell">`
+                    + `<span><em class="bb-r-rank${r.rank === 1 ? ' is-win' : ''}">#${r.rank || '?'}</em> ${esc(civShort(r.civ))}${r.seat != null ? ' S' + (r.seat + 1) : ''}</span>`
+                    + `<b>${sc.index == null ? '–' : fmt1(sc.index)}</b>`
+                    + `<small title="G · M · S · T · D">${pillars}</small></div>`;
+            });
+        }).join('');
+
+        return `<div class="bb" style="--n:${models.length}">`
+            + head
+            + band(t('series.boardCapSec'))
+            + row('bb-graph', keys, gameGraph)
+            + roundAxis
+            + row('bb-marks', `<b>${esc(t('bench.t.title'))}</b>`, wrongChips)
+            + band(t('series.boardPerfSec'))
+            + RATES.map(rk => row('bb-graph', `<b>${esc(t(rk.label))}</b><small>0 – ${esc(rk.text(rk.top))}</small>`, (m, a) => rateGraph(rk, m, a))).join('')
+            + roundAxis
+            + band(t('series.boardSummarySec'))
+            + table
+            + (roundRows ? band(t('series.boardRoundsSec')) + roundRows : '')
+            + '</div>';
+    };
+
+    P.benchSeriesFullHtml = function (payload) {
+        const esc = x => this.escapeHtml(String(x == null ? '' : x));
+        const done = (payload && payload.completedMatches) || (payload && Array.isArray(payload.matches) ? payload.matches.length : 0);
+        const total = (payload && payload.totalMatches) || done;
+        const seed = payload && payload.seed != null ? payload.seed : '–';
+        const scale = (payload && payload.scale) || (typeof WarEval !== 'undefined' && WarEval.SCALE) || 'v4.1';
+        const close = `<button type="button" class="bf-close" onclick="game.ui.toggleBenchFull(false)" title="${esc(t('bench.b.close'))}" aria-label="${esc(t('bench.b.close'))}">✕</button>`;
+        const pills = `<span class="bf-pill is-series">${esc(t('series.boardPill', { r: done, n: total }))}</span>`
+            + `<span class="bf-pill">Seed ${esc(seed)}</span>`
+            + `<span class="bf-pill">${esc(scale)}</span>`;
+        return `<div class="bf-box" onclick="event.stopPropagation()"><div class="bf-head"><b>${esc(t('series.boardTitle'))}</b>${pills}${close}</div>`
+            + `<div class="bf-body">${this.benchSeriesBoardHtml(payload)}</div></div>`;
     };
 
     const SOURCE = 'When Agents Rule · github.com/asp67/when-agents-rule';

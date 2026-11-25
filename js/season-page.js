@@ -72,20 +72,45 @@ class SeasonPage {
 
     setSamples(on) { this.showSamples = !!on; this.render(); }
     forget(matchId) { SeasonPage.forget(matchId); this.note = ''; this.render(); }
-    // Transcript files, scored here. A file that is not a match transcript is named, not skipped in silence.
+    // Transcript files (scored here) or saved Arena Series JSON reports (opened in the Series Comparison Board).
     async addFiles(files) {
-        const added = [], refused = [];
-        let full = false;
+        const added = [], refused = [], seriesLoaded = [];
+        let full = false, lastSeries = null;
         for (const f of Array.from(files || [])) {
+            let text = '';
+            try { text = await f.text(); } catch (e) { refused.push(f.name); continue; }
+            const trimmed = String(text || '').trim();
+            if (trimmed.startsWith('{')) {
+                let parsed = null;
+                try { parsed = JSON.parse(trimmed); } catch (e) { parsed = null; }
+                if (parsed && parsed.kind === 'war-series-report/1' && Array.isArray(parsed.matches)) {
+                    lastSeries = { file: f.name, payload: parsed };
+                    seriesLoaded.push(f.name);
+                    continue;
+                }
+            }
             let entry = null;
-            try { entry = WarSeason.entryOf(await f.text(), { evaluator: WarEval, conditions: WarConditions, source: 'imported', file: f.name }); }
+            try { entry = WarSeason.entryOf(text, { evaluator: WarEval, conditions: WarConditions, source: 'imported', file: f.name }); }
             catch (e) { entry = null; }
             if (!entry) { refused.push(f.name); continue; }
             if (SeasonPage.keep(entry)) added.push(f.name); else full = true;
         }
-        this.note = [added.length ? t('season.added', { n: added.length }) : '', refused.length ? t('season.refused', { files: refused.join(', ') }) : '',
-            full ? t('season.storeFailed') : ''].filter(Boolean).join(' ');
+        if (lastSeries) this.lastSeries = lastSeries;
+        this.note = [
+            added.length ? t('season.added', { n: added.length }) : '',
+            seriesLoaded.length ? t('season.seriesLoaded', { files: seriesLoaded.join(', ') }) : '',
+            refused.length ? t('season.refused', { files: refused.join(', ') }) : '',
+            full ? t('season.storeFailed') : ''
+        ].filter(Boolean).join(' ');
         this.render();
+        if (lastSeries && this.ui && typeof this.ui.toggleSeriesBoard === 'function') {
+            this.ui.toggleSeriesBoard(lastSeries.payload);
+        }
+    }
+    openLoadedSeries() {
+        if (this.lastSeries && this.ui && typeof this.ui.toggleSeriesBoard === 'function') {
+            this.ui.toggleSeriesBoard(this.lastSeries.payload);
+        }
     }
     onLanguageChanged() {
         if (this.el('seasonScreen') && this.el('seasonScreen').classList.contains('active')) this.render();
@@ -219,13 +244,18 @@ class SeasonPage {
         const bar = `<div class="season-bar">
             <button class="menu-btn back-btn" onclick="game.ui.seasonPage().close()">${this.esc(t('common.back'))}</button>
             <label class="menu-btn back-btn season-file">${this.esc(t('season.add'))}<input type="file" accept=".jsonl,.txt,.json" multiple hidden onchange="game.ui.seasonPage().addFiles(this.files); this.value = '';"></label>
+            <label class="menu-btn back-btn season-file">${this.esc(t('season.openSeries'))}<input type="file" accept=".json" hidden onchange="game.ui.seasonPage().addFiles(this.files); this.value = '';"></label>
             <label class="season-check"><input type="checkbox" ${this.showSamples ? 'checked' : ''} onchange="game.ui.seasonPage().setSamples(this.checked)"> ${this.esc(t('season.samples', { n: samples }))}</label>
             <span class="season-count">${this.esc(t('season.count', { n: table.matches, kept }))}</span>
         </div>`;
+        const seriesBanner = this.lastSeries
+            ? `<div class="season-series-bar"><span>📊 ${this.esc(this.lastSeries.file)} · ${this.esc(t('series.boardPill', { r: this.lastSeries.payload.completedMatches || (this.lastSeries.payload.matches || []).length, n: this.lastSeries.payload.totalMatches || (this.lastSeries.payload.matches || []).length }))} · Seed ${this.esc(this.lastSeries.payload.seed ?? '–')}</span>`
+              + `<button type="button" class="menu-btn" onclick="game.ui.seasonPage().openLoadedSeries()">${this.esc(t('series.openBoard'))}</button></div>`
+            : '';
         const note = this.note ? `<p class="season-note">${this.esc(this.note)}</p>` : '';
         const how = `<p class="season-how">${this.esc(t('season.how'))}</p>`;
-        if (!table.matches) return bar + note + how + `<p class="season-empty">${this.esc(t(this.samples ? 'season.empty' : 'season.loading'))}</p>`;
-        return bar + note + how
+        if (!table.matches) return bar + seriesBanner + note + how + `<p class="season-empty">${this.esc(t(this.samples ? 'season.empty' : 'season.loading'))}</p>`;
+        return bar + seriesBanner + note + how
             + (table.groups.length ? table.groups.map(g => this.group(g)).join('') : `<p class="season-empty">${this.esc(t('season.noGroups'))}</p>`)
             + this.loose('season.alone', table.alone, true) + this.loose('season.unrecorded', table.unrecorded, false) + this.kept();
     }

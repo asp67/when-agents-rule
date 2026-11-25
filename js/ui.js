@@ -6389,6 +6389,8 @@ class UIManager {
         if (newBtn) newBtn.style.display = snapshot ? 'none' : '';
         if (menuBtn) menuBtn.style.display = snapshot ? 'none' : '';
         if (saveBtn) saveBtn.style.display = snapshot ? 'none' : '';
+        const sumBar = document.getElementById('summaryButtons');
+        if (sumBar) sumBar.style.display = snapshot ? 'none' : '';
 
         // Snapshot: OVERLAY the running game — gameScreen stays active underneath
         // and the .snapshot variant has a translucent backdrop, so the live match
@@ -6448,22 +6450,57 @@ class UIManager {
         for (const s of (entry && entry.seats) || []) {
             if (s && s.seat != null) bySeat.set(s.seat, s);
         }
+        const profBySeat = new Map();
+        const ledger = this.evalLedger ? this.evalLedger() : null;
+        for (const ps of (profile && profile.seats) || []) {
+            if (ps && ps.seat != null) profBySeat.set(ps.seat, ps);
+        }
+        const effOf = ps => {
+            if (!ps) return null;
+            const e = ps.efficiency || {}, tok = e.tokens || null, g = ps.grounding || {}, m = ps.macro || {};
+            const tr = ledger && typeof ledger.trace === 'function' ? ledger.trace(ps.id) : null;
+            const errMap = {};
+            for (const x of (g.errors || [])) {
+                if (x && x.code) errMap[x.code] = (errMap[x.code] || 0) + 1;
+            }
+            const topErrors = Object.entries(errMap).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([code, n]) => ({ code, n }));
+            return {
+                decisions: ps.decisions || 0,
+                promptTokens: tok ? (tok.promptTotal || 0) : null,
+                completionTokens: tok ? (tok.completionTotal || 0) : null,
+                thinkingMsTotal: e.thinkingMsTotal || 0,
+                latMedian: e.latencyMs ? e.latencyMs.median : null,
+                latP90: e.latencyMs ? e.latencyMs.p90 : null,
+                tokPerDec: tok ? (e.tokensPerDecision != null ? e.tokensPerDecision : (ps.decisions ? (tok.promptTotal + tok.completionTotal) / ps.decisions : null)) : null,
+                outPerOk: tok ? (e.outputPerValidOrder != null ? e.outputPerValidOrder : tok.completionPerOk) : null,
+                okPerMin: e.effectiveOrdersPerMin != null ? e.effectiveOrdersPerMin : null,
+                okPerDecision: m.okPerDecision != null ? m.okPerDecision : null,
+                parallelRate: m.parallelRate != null ? m.parallelRate : null,
+                lost: (e.failedRequests || 0) + (e.cancelledRequests || 0) + (e.missedRounds || 0),
+                failed: e.failedRequests || 0, cancelled: e.cancelledRequests || 0, missed: e.missedRounds || 0,
+                loops: tr && tr.judged ? (tr.counts.loop || 0) : null,
+                topErrors
+            };
+        };
         const seats = (summary.reports || []).map((rep, idx) => {
             const seatIdx = rep.ai && rep.ai.seat != null ? rep.ai.seat : idx;
             const slot = setup[seatIdx] || {};
             const sKey = UIManager.seriesKeyOf(slot, seatIdx);
             const ev = bySeat.get(seatIdx);
+            const eff = effOf(profBySeat.get(seatIdx));
             if (ev) {
                 return Object.assign({}, ev, {
                     seriesKey: sKey, seat: seatIdx, civ: rep.ai ? rep.ai.civilization : slot.civ,
-                    rank: idx + 1, of: (summary.reports || []).length
+                    rank: idx + 1, of: (summary.reports || []).length,
+                    eff
                 });
             }
             return {
                 seriesKey: sKey, name: rep.model || '?', model: rep.isLLM ? (rep.modelConfig && rep.modelConfig.modelId) || rep.model : 'rule-based',
                 via: rep.isLLM ? 'raw' : 'rule', seat: seatIdx, civ: rep.ai ? rep.ai.civilization : slot.civ,
                 rank: idx + 1, of: (summary.reports || []).length, winner: !!rep.isWinner,
-                scores: { grounding: null, macro: null, spatial: null, tactical: null, strategy: null, index: null }
+                scores: { grounding: null, macro: null, spatial: null, tactical: null, strategy: null, index: null },
+                eff
             };
         });
         series.matches = (series.matches || []).filter(m => m.round !== series.round);
@@ -6533,12 +6570,15 @@ class UIManager {
         }).join('')}</div>` : '';
 
         const titleKey = more ? 'series.title' : 'series.complete';
+        const boardBtn = `<button type="button" class="menu-btn back-btn" id="seriesBoardBtn" onclick="game.ui.openLiveSeriesBoard()">${esc(t('series.openBoard'))}</button>`;
         const actions = more
             ? `<span class="series-countdown" id="seriesCountdown"></span>
                <button type="button" class="menu-btn" onclick="game.ui.startNextSeriesMatch()">${esc(t('series.nextNow', { next: series.round + 1, n: series.total }))}</button>
                <button type="button" class="menu-btn back-btn" id="seriesPauseBtn" onclick="game.ui.toggleSeriesAutoPause()">${esc(t(series.autoAdvance ? 'series.pause' : 'series.resume'))}</button>
+               ${boardBtn}
                <button type="button" class="menu-btn back-btn" onclick="game.ui.endSeriesEarly()">${esc(t('series.endEarly'))}</button>`
-            : `<button type="button" class="menu-btn" onclick="game.ui.downloadSeriesReport()">${esc(t('series.saveJson'))}</button>`;
+            : `${boardBtn}
+               <button type="button" class="menu-btn" onclick="game.ui.downloadSeriesReport()">${esc(t('series.saveJson'))}</button>`;
 
         el.innerHTML = `
             <div class="series-head">
@@ -6626,10 +6666,10 @@ class UIManager {
         }));
     }
 
-    downloadSeriesReport() {
+    buildSeriesReportPayload() {
         const series = this.game && this.game.arenaSeries;
-        if (!series || typeof WarSeason === 'undefined') return;
-        const payload = {
+        if (!series || typeof WarSeason === 'undefined') return null;
+        return {
             kind: 'war-series-report/1',
             scale: typeof WarEval !== 'undefined' ? WarEval.SCALE : null,
             seed: series.seed,
@@ -6638,6 +6678,17 @@ class UIManager {
             pooled: WarSeason.poolSeries(series.matches || []),
             matches: series.matches || []
         };
+    }
+
+    openLiveSeriesBoard() {
+        const payload = this.buildSeriesReportPayload();
+        if (payload && typeof this.toggleSeriesBoard === 'function') this.toggleSeriesBoard(payload);
+    }
+
+    downloadSeriesReport() {
+        const series = this.game && this.game.arenaSeries;
+        const payload = this.buildSeriesReportPayload();
+        if (!series || !payload) return;
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -7190,9 +7241,6 @@ class UIManager {
         if (btn) btn.style.display = show ? '' : 'none';
         const watch = document.getElementById('summaryAnalyzeBtn');
         if (watch) watch.style.display = show ? '' : 'none';
-        // Captions for a recording: whenever the chronicle told something worth a caption.
-        const vtt = document.getElementById('summaryVtt');
-        if (vtt) vtt.style.display = (!snapshot && this.chronicle && this.chronicle.entries.some(e => e.weight >= 2)) ? '' : 'none';
         if (note) {
             note.style.display = show ? '' : 'none';
             if (show) note.textContent = t('sum.transcriptNote', { turns: rec.turnsRecorded() });

@@ -2006,46 +2006,58 @@ body.spectator-mode #unitInfo.spectator-card {
 }
 
 .summary-content {
-    max-width: 1280px;
+    max-width: 1060px;
     width: 100%;
     margin: 0 auto;
+    padding-bottom: 36px;
 }
 
-.summary-head { text-align: center; margin-bottom: 16px; }
+.summary-head { text-align: center; margin-bottom: 18px; }
 .summary-head h2 {
-    font-size: 2.2em;
+    font-size: 2.05em;
     background: linear-gradient(90deg, #e94560, #f0a500);
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
 }
-.summary-sub { color: #aeb8cc; font-size: 1.02em; margin-top: 4px; }
+.summary-sub { color: #aeb8cc; font-size: 0.98em; margin-top: 4px; }
 
-/* Winner banner */
-.summary-winner { margin: 0 auto 22px; max-width: 560px; }
+/* Winner banner — aligned to the unified page column */
+.summary-winner { margin: 0 0 18px; width: 100%; }
 .winner-card {
     display: flex;
     align-items: center;
     gap: 16px;
-    padding: 16px 22px;
-    border-radius: 16px;
-    background: linear-gradient(145deg, rgba(240,165,0,0.16), rgba(13,17,33,0.92));
-    border: 1px solid rgba(255, 212, 94, 0.5);
+    padding: 15px 22px;
+    border-radius: 12px;
+    background: linear-gradient(145deg, rgba(240,165,0,0.14), rgba(18,22,30,0.92));
+    border: 1px solid rgba(255, 212, 94, 0.42);
     border-left: 6px solid var(--civ, #f0a500);
-    box-shadow: 0 10px 36px rgba(240, 165, 0, 0.22);
+    box-shadow: 0 8px 26px rgba(0, 0, 0, 0.35);
 }
-.winner-card.draw { border-color: rgba(255,255,255,0.15); background: rgba(13,17,33,0.92); }
-.winner-crown { font-size: 2.6em; filter: drop-shadow(0 0 10px rgba(255,212,94,0.6)); }
+.winner-card.draw { border-color: rgba(255,255,255,0.15); background: rgba(18,22,30,0.92); }
+.winner-crown { font-size: 2.3em; filter: drop-shadow(0 0 10px rgba(255,212,94,0.5)); }
 .winner-text { flex: 1; min-width: 0; }
-.winner-model { font-size: 1.5em; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; }
-.winner-civ { color: #cdd6e8; font-size: 0.95em; margin-top: 2px; }
-.winner-score { font-size: 2em; font-weight: 800; color: #ffd45e; text-align: right; line-height: 1; }
-.winner-score span { display: block; font-size: 0.34em; font-weight: 600; color: #aeb8cc; letter-spacing: 1px; }
+.winner-model { font-size: 1.42em; font-weight: 800; color: #fff; overflow: hidden; text-overflow: ellipsis; }
+.winner-civ { color: #cdd6e8; font-size: 0.92em; margin-top: 2px; }
+.winner-score { font-size: 1.9em; font-weight: 800; color: #ffd45e; text-align: right; line-height: 1; }
+.winner-score span { display: block; font-size: 0.35em; font-weight: 600; color: #aeb8cc; letter-spacing: 1px; }
+
+/* Section header divider inside the unified report column */
+.summary-section { margin: 0 0 18px; }
+.summary-sec-head {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 0 10px; font-size: 0.78rem; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #9aa7bf;
+}
+.summary-sec-head::after {
+    content: ''; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.08);
+}
 
 /* Model cards grid */
 .summary-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-    margin-bottom: 16px;
+    gap: 14px;
+    margin-bottom: 0;
 }
 @media (max-width: 880px) { .summary-grid { grid-template-columns: 1fr; } }
 
@@ -2096,9 +2108,6 @@ body.spectator-mode #unitInfo.spectator-card {
 .sum-tag.warn { color: #f0a500; background: rgba(240,165,0,0.12); border-color: rgba(240,165,0,0.35); }
 .sum-tag.bad { color: #ff6b81; background: rgba(233,69,96,0.14); border-color: rgba(233,69,96,0.4); }
 .sum-cond { font-size: 0.72rem; color: #aeb8cc; margin: 2px 0 6px; font-family: ui-monospace, Consolas, monospace; }
-.summary-conditions { margin: 10px 0; font-size: 0.8rem; color: #aeb8cc; }
-.summary-conditions summary { cursor: pointer; color: #dec594; }
-.summary-conditions p { margin: 6px 0; }
 .sum-cond-rows span { white-space: nowrap; }
 .sum-tag.neutral { color: #aeb8cc; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); }
 
@@ -2168,29 +2177,53 @@ body.spectator-mode #unitInfo.spectator-card {
 .season-list { margin: 0; padding-left: 18px; font-size: 0.86rem; color: #c9d3e2; }
 .season-list li { margin: 2px 0; }
 
-/* The report card: the Bench view's matrix at the width of the results screen. */
-.summary-profile { max-width: 760px; margin: 0 auto 22px; padding: 14px 18px 10px; border-radius: 8px; background: rgba(18, 22, 30, 0.72); border: 1px solid rgba(221, 211, 180, 0.16); font-size: 0.95rem; color: #dfe5ee; text-align: left; }
-.summary-profile .bm th[scope="row"] { width: 130px; }
+/* The report card: unified width matching the rest of the Arena evaluation screen. */
+.summary-profile { width: 100%; margin: 0 0 18px; padding: 14px 18px 14px; border-radius: 12px; background: rgba(18, 22, 30, 0.84); border: 1px solid rgba(221, 211, 180, 0.16); font-size: 0.95rem; color: #dfe5ee; text-align: left; }
+.summary-profile .bm th[scope="row"] { width: 150px; }
 .summary-profile .bench-evidence li { white-space: normal; }
 .summary-profile-note { margin: 10px 0 0; font-size: 0.8em; color: #8a93a8; }
-.summary-board-btn { display: block; margin: 12px 0 0; padding: 6px 14px; border-radius: 5px; border: 1px solid rgba(221, 211, 180, 0.36); background: rgba(221, 211, 180, 0.1); color: #ece5cc; font: inherit; cursor: pointer; }
-.summary-board-btn:hover { background: rgba(221, 211, 180, 0.2); }
-.summary-legacy { max-width: 760px; margin: 4px auto 14px; font-size: 0.85rem; color: #aeb8cc; text-align: left; }
-.summary-legacy > summary { cursor: pointer; color: #8a93a8; }
+.summary-board-btn { display: inline-flex; align-items: center; gap: 6px; margin: 12px 0 0; padding: 7px 14px; border-radius: 6px; border: 1px solid rgba(221, 211, 180, 0.36); background: rgba(221, 211, 180, 0.12); color: #ece5cc; font: inherit; font-weight: 600; cursor: pointer; }
+.summary-board-btn:hover { background: rgba(221, 211, 180, 0.22); }
+
+/* Collapsible technical details (Legacy heuristic + Declared conditions) */
+.summary-details { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; }
+.summary-legacy, .summary-conditions {
+    width: 100%; margin: 0; padding: 10px 16px; border-radius: 10px;
+    background: rgba(18, 22, 30, 0.62); border: 1px solid rgba(255, 255, 255, 0.08);
+    font-size: 0.84rem; color: #aeb8cc; text-align: left;
+}
+.summary-legacy > summary, .summary-conditions > summary { cursor: pointer; color: #c7d1e2; font-weight: 600; }
 .summary-legacy .sum-sound { margin: 8px 0 0; }
 .summary-legacy .summary-legend { text-align: left; margin: 10px 0 4px; }
+.summary-conditions p { margin: 6px 0 0; }
 .sum-sound-name { flex: 0 0 34%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--civ, #dfe5ee); }
-.summary-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; align-items: stretch;
-    max-width: 1180px; margin: 0 auto; padding-bottom: 30px; }
-/* One size for every action here. The menu styles they borrow were made for a column of
-   big menu entries: a 300px minimum, and a top margin on .back-btn that sat half the row
-   18px lower than the rest. */
-.summary-buttons .menu-btn { min-width: 0; margin: 0; flex: 0 1 220px; min-height: 48px; padding: 10px 16px;
-    font-size: .8em; letter-spacing: 1px; line-height: 1.25; display: inline-flex; align-items: center; justify-content: center; }
-/* The captions export is a field and a button; framed as one control of the same height. */
-.summary-buttons .sum-vtt { flex: 0 1 auto; min-height: 48px; padding: 0 0 0 12px; gap: 8px; border: 1px solid var(--line);
-    border-radius: 11px; background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03)); color: var(--muted); }
-.summary-buttons .sum-vtt .menu-btn { flex: 0 0 auto; min-height: 46px; border: none; border-left: 1px solid var(--line); border-radius: 0 10px 10px 0; }
+.summary-transcript-note { text-align: center; font-size: 0.82rem; color: #94a0b8; margin: 0 0 12px; }
+
+/* Organized 3-group bottom action bar */
+.summary-buttons {
+    display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+    gap: 14px 20px; width: 100%; margin: 4px 0 0; padding: 14px 16px;
+    border-radius: 12px; background: rgba(16, 20, 28, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+}
+.summary-btn-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.summary-btn-group.is-exit { margin-left: auto; }
+.summary-btn-label {
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #7f8ca4; padding-left: 2px;
+}
+.summary-btn-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.summary-buttons .menu-btn {
+    min-width: 0; margin: 0; flex: 0 0 auto; min-height: 38px; padding: 8px 14px;
+    font-size: 0.8em; letter-spacing: 0.4px; line-height: 1.2;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.summary-btn-group.is-exit .menu-btn { opacity: 0.85; }
+.summary-btn-group.is-exit .menu-btn:hover { opacity: 1; }
+@media (max-width: 780px) {
+    .summary-buttons { flex-direction: column; align-items: stretch; }
+    .summary-btn-group.is-exit { margin-left: 0; }
+}
 
 /* ======================================================================
    WONDER VICTORY COUNTDOWN + ANNOUNCEMENT
@@ -2460,12 +2493,12 @@ body.spectator-mode #unitInfo.spectator-card {
 
 /* ---- End-of-match graph (hand-rolled SVG, no chart library) -------------- */
 .summary-chart {
-    max-width: 980px;
-    margin: 6px auto 12px;
-    padding: 10px 12px 12px;
-    background: rgba(10, 13, 28, 0.55);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 11px;
+    width: 100%;
+    margin: 0 0 18px;
+    padding: 14px 16px 14px;
+    background: rgba(18, 22, 30, 0.84);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: 12px;
 }
 .chart-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .chart-title { font-size: 0.82em; font-weight: 700; color: #d8e0f0; letter-spacing: 0.2px; }
@@ -3504,8 +3537,6 @@ body.broadcast-mode .chronicle-caption[data-weight="3"] { border-left-color: #e9
     background: linear-gradient(90deg, rgba(233, 196, 106, 0.45), rgba(233, 196, 106, 0.22) 45%, transparent 85%); }
 .broadcast-slate.go { animation: slate 0.6s ease-out 1; }
 @keyframes slate { 0% { opacity: 0; } 30% { opacity: 1; } 100% { opacity: 0; } }
-.sum-vtt { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85em; }
-.sum-vtt input { width: 5em; }
 
 /* Moment links and chapters (review #11). */
 .an-ch-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 6px; }
@@ -3669,7 +3700,12 @@ body.race-view .second-cam { bottom: calc(var(--mm-bottom) + 212px); }
 .series-table td.sr-war small { font-weight: 400; color: #8c99b2; margin-left: 4px; }
 .series-table td.sr-pl { font-weight: 600; color: #8ad3ff; }
 .series-table td.sr-pillars { color: #d7e0f0; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.9em; }
-.series-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.series-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.series-actions .menu-btn {
+    margin: 0; min-width: 0; flex: 0 0 auto; min-height: 38px; padding: 8px 14px;
+    font-size: 0.8em; letter-spacing: 0.4px; line-height: 1.2;
+    display: inline-flex; align-items: center; justify-content: center;
+}
 .series-countdown { font-size: 0.86em; color: #f3d27a; font-variant-numeric: tabular-nums; margin-right: 4px; }
 .series-mcp-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
 .series-mcp-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 0.82em; border: 1px solid rgba(255,255,255,0.14); background: rgba(255,255,255,0.04); }
@@ -3728,3 +3764,30 @@ body.race-view .second-cam { bottom: calc(var(--mm-bottom) + 212px); }
 .arena-prompt-fold[open] .arena-prompt-caret { transform: rotate(180deg); }
 .arena-prompt-body { padding: 0 16px 16px; border-top: 1px solid rgba(255,255,255,0.07); }
 .arena-prompt-desc { margin: 10px 0 10px; font-size: 0.85em; color: #9aa6bd; line-height: 1.45; }
+
+/* --- Series Comparison Board inside #benchFull (b1237) --- */
+.bf-pill.is-series { color: #f3d27a; border-color: rgba(243, 210, 122, 0.45); background: rgba(243, 210, 122, 0.12); }
+.bb-s-errs { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px 0; align-items: center; }
+.bb-err-chip {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px;
+    font-size: 0.78em; font-variant-numeric: tabular-nums;
+    background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); color: #cfd6e4;
+}
+.bb-err-chip.is-bad { color: #ff9aa8; background: rgba(233, 69, 96, 0.14); border-color: rgba(233, 69, 96, 0.35); }
+.bb-err-chip.is-warn { color: #f5c96a; background: rgba(240, 165, 0, 0.14); border-color: rgba(240, 165, 0, 0.35); }
+.bb-err-chip.is-good { color: #7ee3bd; background: rgba(78, 204, 163, 0.12); border-color: rgba(78, 204, 163, 0.32); }
+.bb-round-axis { display: flex; justify-content: space-between; gap: 4px; font-size: 0.76em; color: #8c96a8; padding: 2px 0 4px; }
+.bb-round-axis span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bb-round-row .bb-col { padding: 4px 0; }
+.bb-round-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.bb-round-cell b { color: #fff; font-weight: 700; }
+.bb-round-cell .bb-r-rank { font-size: 0.82em; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: #cfd6e4; }
+.bb-round-cell .bb-r-rank.is-win { background: rgba(243, 210, 122, 0.22); color: #f3d27a; font-weight: 700; }
+.bb-round-cell small { color: #8c96a8; font-size: 0.8em; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.season-series-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin: 0 0 12px; padding: 10px 14px; border-radius: 8px;
+    background: rgba(243, 210, 122, 0.08); border: 1px solid rgba(243, 210, 122, 0.32);
+    color: #ece5cc; font-size: 0.88rem;
+}
+.season-series-bar .menu-btn { margin: 0; padding: 6px 12px; min-height: 34px; font-size: 0.84em; }

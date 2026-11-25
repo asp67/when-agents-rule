@@ -340,3 +340,104 @@ test('WarMcpLink stays joined on seriesContinues and resets rulesSent on prepare
     link.over('seat-test1234', { defeated: false }, { seriesContinues: false });
     assert.equal(link.status('seat-test1234').joined, false, 'seat unjoins when final match ends');
 });
+
+// ---------------------------------------------------------------------------
+// 5. Series Comparison Board, war-series-*.json loader & tidied Evaluation screen
+// ---------------------------------------------------------------------------
+test('Series Comparison Board renders war-series-report/1 payloads and SeasonPage loads them', async () => {
+    const fullEl = { innerHTML: '', style: { display: 'none' }, querySelector: () => null };
+    const els = { benchFull: fullEl, seasonBody: { innerHTML: '' } };
+    const store = new Map();
+    const viewSb = loadScripts(['js/bench-core.js', 'js/eval/marks.js', 'js/eval/ledger.js', 'js/eval/season.js'], {
+        document: {
+            getElementById: id => els[id] || null,
+            querySelector: () => null,
+            addEventListener: () => {}
+        },
+        navigator: { platform: 'Win32' },
+        location: { origin: 'http://127.0.0.1:8000', href: 'http://127.0.0.1:8000/' },
+        localStorage: { getItem: k => store.has(k) ? store.get(k) : null, setItem: (k, v) => store.set(k, v) },
+        t: (k, p) => p ? k + ':' + JSON.stringify(p) : k
+    });
+    vm.runInNewContext(
+        fs.readFileSync(path.join(__dirname, '..', 'js/ui.js'), 'utf8') + '\n;this.UIManager = UIManager;',
+        viewSb, { filename: 'js/ui.js' }
+    );
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', 'js/eval/bench-view.js'), 'utf8'), viewSb, { filename: 'js/eval/bench-view.js' });
+    vm.runInNewContext(
+        fs.readFileSync(path.join(__dirname, '..', 'js/season-page.js'), 'utf8') + '\n;this.SeasonPage = SeasonPage;',
+        viewSb, { filename: 'js/season-page.js' }
+    );
+
+    const ui = Object.create(viewSb.UIManager.prototype);
+    ui.game = { spectatorMode: false, gameStarted: false };
+    ui.viewPreferences = () => ({ bench: false });
+    ui.evalLedger = () => null;
+    ui.civNames = () => ({ greek: 'Greeks', persian: 'Persians' });
+
+    const matches = [
+        {
+            round: 1, matchId: 'ser-1', duration: '12:30', outcome: 'conquest',
+            seats: [
+                {
+                    seriesKey: 'A', name: 'Alpha', model: 'alpha', via: 'raw', seat: 0, civ: 'greek', rank: 1, of: 2, latencyMs: 12000,
+                    scores: { grounding: 95, macro: 82, spatial: 75, tactical: 70, strategy: 84, index: 81.4 },
+                    stats: { rated: 50, okNonWait: 48, constraint: 1, reference: 1, repeated: 0, stale: 3, contended: 1, avoidable: 1, invalid: 1, oppSum: 60, prodUsedSum: 51, passiveWaits: 1, justifiedWaits: 0, turns: 20, idleSum: 1, idleTurns: 20, spatialOrders: 10, spatialErrors: 0, destroyedEff: 900, lostEff: 300, atOnce: 2, wonderAnswered: 0, episodes: 2, wonders: 0 }
+                },
+                {
+                    seriesKey: 'B', name: 'Beta', model: 'beta', via: 'harness:hermes', seat: 1, civ: 'persian', rank: 2, of: 2, latencyMs: 18500,
+                    scores: { grounding: 80, macro: 64, spatial: 52, tactical: 45, strategy: 36, index: 55.4 },
+                    stats: { rated: 40, okNonWait: 34, constraint: 4, reference: 2, repeated: 1, stale: 2, contended: 0, avoidable: 4, invalid: 2, oppSum: 60, prodUsedSum: 36, passiveWaits: 4, justifiedWaits: 2, turns: 20, idleSum: 4, idleTurns: 20, spatialOrders: 8, spatialErrors: 1, destroyedEff: 300, lostEff: 900, atOnce: 1, wonderAnswered: 0, episodes: 3, wonders: 0 }
+                }
+            ]
+        },
+        {
+            round: 2, matchId: 'ser-2', duration: '14:10', outcome: 'conquest',
+            seats: [
+                {
+                    seriesKey: 'A', name: 'Alpha', model: 'alpha', via: 'raw', seat: 1, civ: 'persian', rank: 1, of: 2, latencyMs: 11200,
+                    scores: { grounding: 92, macro: 80, spatial: 78, tactical: 68, strategy: 80, index: 79.6 },
+                    stats: { rated: 45, okNonWait: 43, constraint: 2, reference: 0, repeated: 0, stale: 1, contended: 0, avoidable: 2, invalid: 0, oppSum: 55, prodUsedSum: 47, passiveWaits: 0, justifiedWaits: 0, turns: 18, idleSum: 1, idleTurns: 18, spatialOrders: 9, spatialErrors: 0, destroyedEff: 800, lostEff: 400, atOnce: 1, wonderAnswered: 0, episodes: 1, wonders: 0 }
+                },
+                {
+                    seriesKey: 'B', name: 'Beta', model: 'beta', via: 'harness:hermes', seat: 0, civ: 'greek', rank: 2, of: 2, latencyMs: 19400,
+                    scores: { grounding: 84, macro: 68, spatial: 60, tactical: 50, strategy: 40, index: 60.4 },
+                    stats: { rated: 42, okNonWait: 37, constraint: 3, reference: 2, repeated: 0, stale: 1, contended: 1, avoidable: 3, invalid: 2, oppSum: 55, prodUsedSum: 35, passiveWaits: 3, justifiedWaits: 1, turns: 18, idleSum: 3, idleTurns: 18, spatialOrders: 8, spatialErrors: 1, destroyedEff: 400, lostEff: 800, atOnce: 1, wonderAnswered: 0, episodes: 2, wonders: 0 }
+                }
+            ]
+        }
+    ];
+    const report = {
+        kind: 'war-series-report/1', scale: 'v4.1', seed: 4242, totalMatches: 2, completedMatches: 2,
+        pooled: viewSb.WarSeason.poolSeries(matches),
+        matches
+    };
+
+    const page = new viewSb.SeasonPage(ui);
+    await page.addFiles([{ name: 'war-series-4242-2of2.json', text: async () => JSON.stringify(report) }]);
+
+    assert.equal(fullEl.style.display, '', 'loading war-series-report/1 opens #benchFull automatically');
+    assert.ok(fullEl.innerHTML.includes('Seed 4242'), 'header shows series seed pill');
+    assert.ok(fullEl.innerHTML.includes('Alpha') && fullEl.innerHTML.includes('Beta'), 'renders both models side by side');
+    assert.ok(fullEl.innerHTML.includes('<svg class="bg-chart bb-game"'), 'renders multi-round capability SVG chart');
+    assert.ok(fullEl.innerHTML.includes('series.staleRescued'), 'displays v4.1 stale drift rescued chip');
+    assert.ok(fullEl.innerHTML.includes('bb-round-row'), 'renders round-by-round breakdown rows');
+    assert.ok(page.lastSeries && page.lastSeries.file === 'war-series-4242-2of2.json', 'SeasonPage remembers loaded series report');
+    assert.ok(page.note.includes('season.seriesLoaded'), 'SeasonPage reports series loaded instead of refusing file');
+
+    // Closing resets series mode cleanly
+    ui.toggleBenchFull(false);
+    assert.equal(fullEl.style.display, 'none');
+    assert.equal(ui._benchSeries, null);
+});
+
+test('Arena Model Evaluation screen removes VTT export and organizes footer buttons into 3 groups', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    assert.doesNotMatch(html, /id="summaryVtt"|id="vttOffset"|downloadChronicleVtt/, 'Video offset & Captions (.vtt) removed');
+    assert.match(html, /class="summary-btn-group is-play"/, 'Play next button group present');
+    assert.match(html, /class="summary-btn-group is-tools"/, 'Inspect & Export button group present');
+    assert.match(html, /class="summary-btn-group is-exit"/, 'Leave button group present');
+    for (const id of ['summaryRematchBtn', 'summaryRematchSwapBtn', 'summaryNewArenaBtn', 'summaryAnalyzeBtn', 'summarySeasonBtn', 'summarySaveBtn', 'summaryTranscriptBtn', 'summaryMenuBtn']) {
+        assert.ok(html.includes(`id="${id}"`), `retained essential summary button #${id}`);
+    }
+});
