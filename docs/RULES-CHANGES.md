@@ -77,6 +77,32 @@ An arena match plays as before: nothing here is on its path.
 - **Recorded matches:** the three samples of 25 November (build 1261) carry `simSpeed 4, wonderPace 4`. No Wonder stood in any of them, so their results are what they would have been; a replay reads the pace from the header and plays them as recorded.
 - **Tests:** `tests/wonder-pace.test.cjs` starts a match through the arena's own start path at each carried speed (fails on b1261). The older cases built a fixture and never took that path.
 
+## Build 1240: the series badge in two lines (25 November 2026)
+
+*Written on 27 November, from the commit (`a799582`); the build went out without an entry.*
+
+**The rules hash moves; no rule changed.** The badge that shows "Match 2 / 4" was laid out in two lines. Its markup is written in `js/game.js`, a rule file, so the edit moved the rules hash from `44b347915c94b08f` to `83a62683d96eada8`. The harness hash is unchanged (`519a35f9ec0f4fbd`). By the fingerprint's rule, matches from build 1240 on are not comparable with those of builds 1236 to 1239, although the game plays the same.
+
+`js/game.js` still holds a good deal of the page beside the rules: the minimap, the loading cover, the production bar, the series badge. Any edit to those moves the hash as this one did, until the file is split.
+
+## Build 1236: an arena series on one seed; speed carries over; verdicts read against the state shown (24 November 2026)
+
+*Written on 27 November, from the commit (`285a3b5`); the build went out without an entry.*
+
+**Rules change and harness change; both hashes move** (rules `d0304003cd0c489c` → `44b347915c94b08f`, harness `190f02de13942527` → `519a35f9ec0f4fbd`).
+
+**Rules:**
+- **Arena series.** A setup may ask for two to four matches. All are played on one map seed, with the seats and civilizations rotated from round to round; the scores are pooled (`docs/SCORING.md`).
+- **Speed carries over.** A match used to start at 1× whatever the match before was left at ("tempo is per match", the reasoning in the comment this build removed). It now starts at the speed of the match before: of the series round, the rematch, or the last arena match of this browser. A speed-up asks for no confirmation in a match that starts sped up.
+- **The Wonder's pace followed that speed.** This was a defect, not a decision, and is corrected in build 1262: see there for what it did to the countdown.
+
+**Harness:**
+- **Verdicts.** A refusal is read against the state the seat was shown, less what its own earlier commands of the same reply used up. One whose command was valid in that state is `contended` and carries `stale: true`: the world moved while the model thought. An order to units whose handles were never in that state is `avoidable`. The ledger applies the same reading to older transcripts.
+- **Closing message in a series.** Between rounds a seat is told that the next match follows and is asked for a short word on this one. The text names `final_word` and `wait_for_turn`, which only an MCP seat has; a library seat is sent the same words. That is a defect, open as of build 1270.
+- **MCP seats** stay joined from round to round and are sent the rules again with their new civilization.
+
+**Recorded matches:** the three samples of 25 November are of build 1261 and carry all of this.
+
 ## Build 1188: the art is out of the rule files (22 November 2026)
 
 **The rules hash moves, once; no rule changed.** The contract fingerprint hashes the files that decide what happens in a match (`js/manifest.js`). Two of them also held art. `js/engine/texgen.js` paints every texture, and was a rule file because it also held the island's size and where its shore runs. `js/fogofwar.js` holds what has been seen, and also drew the fog's picture. So repainting a roof, or softening the fog's edge, would have marked every earlier match as not comparable. Overhaul step A0 separates them before the look of the game is worked on.
