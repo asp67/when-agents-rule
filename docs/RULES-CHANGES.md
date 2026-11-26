@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1267: Pottery makes villagers build a quarter faster, once (26 November 2026)
+
+**Rules change; the rules hash moves.** Egypt's Pottery says "villagers build +25% faster". The research raised the owner's build bonus and also each worker's own build speed, and a site advances by the product of the two: 56% faster (a probe: a 5000 ms house in 3200 ms, where +25% is 4000 ms). No other bonus is read twice; a worker's harvest and walking bonuses each have one reader.
+
+**Now** the research raises the owner's bonus only. Egypt builds slower than it did; no other civilization has a build-speed tech.
+- **Tests:** `tests/pottery-once.test.cjs` (fails on b1266), for a worker who was there at the research and one trained after it.
+
 ## Build 1266: a unit in training holds its population slot (26 November 2026)
 
 **Rules change and harness change; both hashes move.** asp67, 26 November. The cap was compared with the units alive, and only when the order came. Production never looked again. A seat at 9 of 10 with three free trainers had three orders accepted and stood at 12 of 10 five seconds later; with three commands a turn a model's seat overshot by up to two every turn, the rule-based brain by one less than its free trainers, and both passed the ceiling of 100.

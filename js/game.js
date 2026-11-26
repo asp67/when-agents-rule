@@ -3569,7 +3569,9 @@ class Game {
         if (unit.type === 'worker' && appliesTo === 'worker') {
             if (bonus.speed) unit.speed *= (1 + bonus.speed);
             if (bonus.harvestRate) unit.harvestRate *= (1 + bonus.harvestRate);
-            if (bonus.buildSpeed) unit.buildSpeed *= (1 + bonus.buildSpeed);
+            // Not buildSpeed (b1267). A site advances by the worker's own speed times its
+            // owner's bonus (updateWorkerTasks), and the research already raises the
+            // owner's: raised here as well, Pottery's +25% built 56% faster.
         } else if (appliesTo === 'all_military' || appliesTo === unit.unitType) {
             if (bonus.attack) unit.attack += bonus.attack;
             if (bonus.health) {
