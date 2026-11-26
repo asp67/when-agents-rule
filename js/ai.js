@@ -557,15 +557,12 @@ class AIManager {
         // Declared here, not borrowed: ageOrder is a local inside maybeStartResearch,
         // so referencing it from another method throws at RUN time and passes a syntax
         // check clean.
-        const AGES = ['stone', 'neolithic', 'bronze', 'iron'];
         const has = (type) => ai.buildings.some(b => b.type === type);
+        // The gates themselves are buildStructure's since b1271 (mayBuild); asked here
+        // too, so the academy is not passed over for a temple it may not build yet.
         const canBuild = (type) => {
             const def = (typeof getBuildingDef === 'function') ? getBuildingDef(type) : null;
-            if (!def || has(type)) return false;
-            if (def.requiresTech && !ai.researchedTechs[def.requiresTech]) return false;
-            const need = (typeof effectiveBuildingAge === 'function')
-                ? effectiveBuildingAge(ai.civilization, def) : (def.requiredAge || 'stone');
-            return AGES.indexOf(ai.age) >= AGES.indexOf(need);
+            return !!def && !has(type) && this.mayBuild(ai, def);
         };
         // The academy first: it hosts far more techs than the temple, and the unlock is
         // already researched by the time it becomes legal.
@@ -912,9 +909,25 @@ class AIManager {
         return null;
     }
 
+    // The gates every seat meets before it may build: the tech that unlocks the building
+    // and the age it belongs to (the two a model's build_structure is refused on).
+    mayBuild(ai, def) {
+        if (def.requiresTech && !ai.researchedTechs[def.requiresTech]) return false;
+        const AGES = ['stone', 'neolithic', 'bronze', 'iron'];
+        const need = (typeof effectiveBuildingAge === 'function')
+            ? effectiveBuildingAge(ai.civilization, def) : (def.requiredAge || 'stone');
+        return AGES.indexOf(ai.age) >= AGES.indexOf(need);
+    }
+
     buildStructure(ai, buildingType) {
         const def = getBuildingDef(buildingType);
         if (!def) return;
+        // Asked here, for every caller (b1271, asp67 27 November). This checked cost and
+        // spacing only and left the gates to whoever called: the academy, the temple and
+        // the stable were asked for properly, the rest were not, and an anchor raised
+        // houses, farms and a barracks without the research a model's seat pays for
+        // first, and an archery range in the stone age.
+        if (!this.mayBuild(ai, def)) return;
         // Don't start a second of a one-per-build type already under construction.
         if (ai.buildings.some(b => b.type === buildingType && b.underConstruction)) return;
         if (!this.canAfford(ai, def.cost)) return;

@@ -6,6 +6,22 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1271: the rule-based seats build inside the research and age gates (27 November 2026)
+
+**Rules change; the rules hash moves.** asp67, 27 November. The rule-based brain's build function checked cost and spacing only and left the gates to whoever called it. The academy, the temple and the stable were asked for properly. The rest were not: an anchor raised farms and a barracks without the `farm` and `barracks` research a model's seat pays for first, and an archery range in the stone age, where it belongs to the next.
+
+**Now** the gate is in the build function itself (`AIManager.mayBuild`: the unlocking tech and the age), for every caller. Nothing else in the brain changes: it already buys unlocking research first, so it researches what it needs and builds on.
+
+**What it does to the anchors.** They are slower, by an amount that depends on the map. Standard style, the first finished barracks of each of 15 seats on nine maps, before and after:
+- where wood was near, 178 to 241 s before and 238 to 556 s after;
+- where the brain was short of wood anyway, 535 to 664 s before and 521 to 638 s after (some earlier: fewer farms were paid for in wood first);
+- one seat that had no barracks in twelve minutes before has one at 710 s;
+- the median of the other 14 goes from 237 s to 470 s, about 4 minutes to about 8. The first farm stands 35 to 90 s later.
+
+Results against rule-based seats from before and after are not comparable. The calibration in `docs/ANCHORS.md` is of build 944 and says so; a new one follows.
+- **Golden traces:** `opening-economy` is re-recorded (it diverged at 120 s, the first farm). `battle-40v40` and `wonder-siege` did not move.
+- **Tests:** `tests/brain-gates.test.cjs` watches every building two pairs of anchors stand in fifteen minutes (fails on b1270 at 64 s: a farm without the tech), and that each has its house, farm and barracks by then.
+
 ## Build 1270: the campaign's opponents get their bonus, and their Wonder wins (27 November 2026)
 
 **Rules change, campaign only; the rules hash moves.** Two things the arena's start and end did and the campaign's did not.
