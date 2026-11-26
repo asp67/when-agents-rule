@@ -4358,9 +4358,13 @@ class OpenAIAIManager {
             if (nb > pk.buildings) pk.buildings = nb;
             if (nu > pk.units) pk.units = nu;
             if ((wk.total || 0) > pk.workers) pk.workers = wk.total || 0;
-            if ((resourcesObj.population || 0) > pk.pop) {
-                pk.pop = resourcesObj.population;
-                pk.maxPop = resourcesObj.maxPopulation;
+            // Off the population block (b1278). This read resources.population, where the
+            // count stood until population became a block of its own; it has been
+            // undefined since, so the mark never rose and the closing message never
+            // named a population.
+            if ((populationObj.used || 0) > pk.pop) {
+                pk.pop = populationObj.used;
+                pk.maxPop = populationObj.capacityNow;
             }
         }
         const state = {

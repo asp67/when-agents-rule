@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1278: the closing message names the population a seat reached (27 November 2026)
+
+**Harness change; the harness hash moves.** The closing message tells a seat its high-water marks: "Peak: 12 buildings, 31 units, 14 workers, population 31/35, around 41:10." The population mark was read off `resources.population`, where the count stood until population became a block of its own. It has been undefined since, so the mark never rose and the clause was never written.
+
+**Now** the mark is read off `population.used` and `population.capacityNow`, the numbers the seat was shown. Only the closing message changes; no turn does.
+- **Tests:** `tests/closing-peak-population.test.cjs` (fails on b1277).
+
 ## Build 1277: a call to a tool that does not exist is answered as an unknown action (27 November 2026)
 
 **Harness change; the harness hash moves.** A tool call whose name is none of the game's was counted with the calls whose arguments would not parse. Alone, the seat read "[ERROR] No valid action data received."; in a batch, "One of your calls could not be parsed, so that action was skipped ... Send complete arguments per call." The arguments were complete. The name was wrong and was never mentioned.
