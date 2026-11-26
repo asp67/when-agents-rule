@@ -5287,6 +5287,12 @@ class Game {
         this.renderer.addUnit(unit);
         if (owner.resources) owner.resources.updatePopulation(Game.populationOf(owner.units));
         site._engine = unit;
+        // The site is gone, and "gone" is read off the health everywhere: by whoever was
+        // attacking it, by a stone in flight, and by every seat that remembers it. It
+        // kept its health (b1110-b1264), so attackers went on shooting the empty spot
+        // and its "death" was booked as a lost trebuchet. The engine has the damage; no
+        // loss is noted, because destroyTarget never runs for it.
+        site.health = 0;
         return true;
     }
 

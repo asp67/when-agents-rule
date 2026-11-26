@@ -167,6 +167,26 @@ test('a finished iron-age trebuchet becomes a unit on wheels where it stood, wit
     assert.equal(ev(m, 'Game').populationOf(a.units), a.units.filter(u => u.type !== 'advanced_trebuchet').length);
 });
 
+// The site left the scene and its owner's list but kept its health (b1265), and "gone" is
+// read off the health everywhere: archers ordered onto a site kept shooting the empty
+// spot beside the engine for half a minute, its "death" was booked as a lost trebuchet,
+// and the rule-based brain marched on a building it remembered and could never forget.
+test('a site that rolled off is gone for those attacking it and those who remember it', () => {
+    const b = ironBoard(), { m, a, g } = b;
+    const site = m.addBuilding(a, 'trebuchet_advanced', 0, 0, { underConstruction: true, health: 150, buildProgress: 20000 });
+    const archer = m.addUnit(b.b, 'archer', 10, 0);
+    archer.isAttacking = true; archer.attackTarget = site;
+    b.b._knownEnemyBuildings = new Set([site]);
+    g.completeConstruction(site);
+    const unit = a.units.find(u => u.type === 'advanced_trebuchet');
+    assert.equal(unit.health, 150, 'the engine has the damage the site took');
+    assert.ok(site.health <= 0, 'the site is gone as every reader checks it');
+    m.run(3000);
+    assert.notEqual(archer.attackTarget, site, 'nobody shoots at where it stood');
+    assert.ok(!Array.from(g.aiManager.visibleEnemyTargets(b.b)).includes(site), 'and the brain does not march on it');
+    assert.ok(!b.b._knownEnemyBuildings.has(site), 'nor remember it');
+});
+
 test('it throws only while it stands, at towers only, and never fights', () => {
     const b = ironBoard(), { m, a, g } = b;
     const { unit } = mobile(b);

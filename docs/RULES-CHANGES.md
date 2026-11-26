@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1265: a trebuchet site that rolled off is gone (26 November 2026)
+
+**Rules change; the rules hash moves.** A finished trebuchet site becomes a unit on wheels (build 1110): the site leaves its owner's list and the scene. It kept its health, and "gone" is read off the health everywhere. Units ordered onto a site kept shooting the empty spot beside the engine (a probe: two archers for more than 30 s, 200 → 47), the site's "death" was then booked as a lost trebuchet in its owner's battle report, and the rule-based brain marched on a building it remembered and could never forget.
+
+**Now** the site's health is 0 once the engine stands. Attackers drop it as they drop any target that is gone, and what they do next is the retaliation ladder's and the acquire scan's, as before; nothing is ordered onto the engine for them. The engine carries the damage the site took. No loss is noted.
+- **Tests:** `tests/trebuchet.test.cjs`, "a site that rolled off is gone for those attacking it and those who remember it" (fails on b1264).
+
 ## Build 1264: a seat's opening state counts its three workers (26 November 2026)
 
 **What a model is told on its first turn changes; the rules hash moves.** The population is derived by the rules step. The campaign's start has also derived it right after creating the workers; the arena's start never did. A model's opening state is built before the first step, so in every recorded arena match the first seat's turn 1 read `population.used: 0` beside `workers.total: 3`.
