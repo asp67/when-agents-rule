@@ -938,8 +938,9 @@ class AIManager {
         // Unique units (horse_carriage, hoplite, …) have no UNIT_DEFS entry.
         const unitDef = getUnitDefFor(ai.civilization, unitType);
         if (!unitDef || !unitDef.cost) return;
-        // Respect the population cap (build houses to raise it; never overflow).
-        if (ai.resources.population >= ai.resources.maxPopulation) return;
+        // Respect the population cap (build houses to raise it; never overflow): the
+        // living and those already in training, as for every seat (b1266).
+        if (Game.populationFull(ai)) return;
         if (!this.canAfford(ai, unitDef.cost)) return;
 
         this.spend(ai, unitDef.cost);

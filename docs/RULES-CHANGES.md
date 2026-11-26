@@ -6,6 +6,16 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1266: a unit in training holds its population slot (26 November 2026)
+
+**Rules change and harness change; both hashes move.** asp67, 26 November. The cap was compared with the units alive, and only when the order came. Production never looked again. A seat at 9 of 10 with three free trainers had three orders accepted and stood at 12 of 10 five seconds later; with three commands a turn a model's seat overshot by up to two every turn, the rule-based brain by one less than its free trainers, and both passed the ceiling of 100.
+
+**Now** an order to train is refused when the units alive and the units already in training fill the slots (`Game.populationFull`). It is one test for a model's seat, the rule-based brain and the human.
+- **What a model reads:** `population.used` is the slots occupied, as its description has always said: the living and those in training. It is the number the gate compares, so "No available population slots." never follows a state that showed a free one. `workers.total` and `friendlyUnits` still hold the living only; the unit in training is in `friendlyBuildings[].producing`. A unit list entry carries `blockedBy: ["pop"]` on the same test. The system prompt is unchanged, so the prompt version stays.
+- **Scoring:** nothing changes in the ledger. Its stale-state check already read a refusal against `population.used` plus the trains ordered earlier in the same reply.
+- **Not comparable:** an economy that trained past its houses was faster than one that cannot.
+- **Tests:** `tests/population-in-training.test.cjs` (three of its five fail on b1265).
+
 ## Build 1265: a trebuchet site that rolled off is gone (26 November 2026)
 
 **Rules change; the rules hash moves.** A finished trebuchet site becomes a unit on wheels (build 1110): the site leaves its owner's list and the scene. It kept its health, and "gone" is read off the health everywhere. Units ordered onto a site kept shooting the empty spot beside the engine (a probe: two archers for more than 30 s, 200 → 47), the site's "death" was then booked as a lost trebuchet in its owner's battle report, and the rule-based brain marched on a building it remembered and could never forget.

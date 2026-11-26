@@ -3276,8 +3276,11 @@ class OpenAIAIManager {
         // No "free" field. It was here (populationFree = capacity - used) and is gone on
         // purpose: subtracting two numbers that both stand right there is the model's
         // work, the same reason the undiscovered node count is not pre-computed either.
+        // "used" is the slots occupied, as the schema says: the living and, since b1266,
+        // those in training, who hold their slots from the order on. It is the number
+        // the train gate compares, so a refusal never disagrees with the state it follows.
         const populationObj = {
-            used: ai.resources.population,
+            used: ai.resources.population + ((typeof Game !== 'undefined' && Game.populationInTraining) ? Game.populationInTraining(ai) : 0),
             capacityNow: ai.resources.maxPopulation,
             capacityCeiling: (typeof MAX_POPULATION_CAP !== 'undefined') ? MAX_POPULATION_CAP : 100
         };
@@ -4036,7 +4039,8 @@ class OpenAIAIManager {
         // were added to prevent.
         const AGES = ['stone', 'neolithic', 'bronze', 'iron'];
         const ageReached = (need) => AGES.indexOf(ai.age) >= AGES.indexOf(need || 'stone');
-        const atPopCap = (ai.resources.population || 0) >= (ai.resources.maxPopulation || 0);
+        const atPopCap = (typeof Game !== 'undefined' && Game.populationFull) ? Game.populationFull(ai)
+            : (ai.resources.population || 0) >= (ai.resources.maxPopulation || 0);
 
         // --- Trainable units: the vocabulary for train_unit's "unitType" ---
         // Nested building → age → [{id, cost, blockedBy}]. The id stays a field of its
@@ -7364,8 +7368,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         }
 
         // 3) POPULATION (structural train-time gate).
-        if (ai.resources.population >= ai.resources.maxPopulation) {
-            console.log(`[OpenAIAI] ${ai.id}: Population limit reached (${ai.resources.population}/${ai.resources.maxPopulation})`);
+        // The living and those already in training (Game.populationFull, b1266).
+        if (Game.populationFull(ai)) {
+            console.log(`[OpenAIAI] ${ai.id}: Population limit reached (${ai.resources.population} + ${Game.populationInTraining(ai)} in training / ${ai.resources.maxPopulation})`);
             this.popCapOutcome(ai);
             // Two different situations, and the difference is the only thing worth
             // saying: below the cap more slots can be built, at it they cannot.

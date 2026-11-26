@@ -152,7 +152,7 @@
       "properties": {
         "used": {
           "type": "integer",
-          "description": "Slots occupied. Every unit takes one, villagers included."
+          "description": "Slots occupied. Every unit takes one, villagers included, from the moment its training starts: a unit in training is counted here and is not among your units yet."
         },
         "capacityNow": {
           "type": "integer",

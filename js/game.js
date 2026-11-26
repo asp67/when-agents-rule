@@ -3349,7 +3349,7 @@ class Game {
         if (!unitDef) return;
 
         // Check population limit
-        if (this.player.resources.population >= this.player.resources.maxPopulation) {
+        if (Game.populationFull(this.player)) {
             this.ui.showErrorMessage(t('msg.popLimit'));
             return;
         }
@@ -4265,6 +4265,25 @@ class Game {
         let n = 0;
         for (const u of units || []) if (u && u.unitType !== 'siege') n++;
         return n;
+    }
+    // The people on the way: one for every building of the owner that is training a unit
+    // that will take a slot. They hold their slots from the order on (b1266, asp67). The
+    // cap used to be checked against the living alone, and only when the order came: a
+    // seat at 9 of 10 with three free trainers stood at 12 of 10 a few seconds later.
+    static populationInTraining(owner) {
+        let n = 0;
+        for (const b of (owner && owner.buildings) || []) {
+            if (!b || !b.isProducing || !b.productionType) continue;
+            const def = getUnitDefFor(owner.civilization, b.productionType);
+            if (!def || def.unitType !== 'siege') n++;
+        }
+        return n;
+    }
+    // Is every slot taken, by somebody alive or somebody in training? The one test every
+    // order to train a unit meets: a model's, the rule-based brain's and the human's.
+    static populationFull(owner) {
+        const r = owner && owner.resources;
+        return !!r && (r.population || 0) + Game.populationInTraining(owner) >= (r.maxPopulation || 0);
     }
     // No tower within this of an enemy Town Center, on that Town Center's side of the
     // map (b1110, asp67). A chain of towers walked across a whole map and the last two
