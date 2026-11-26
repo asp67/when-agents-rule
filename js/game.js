@@ -318,7 +318,11 @@ class Game {
         try { savedSpeed = typeof localStorage !== 'undefined' ? validSpeed(localStorage.getItem('war.arenaSimSpeed')) : null; } catch (e) { /* private window */ }
         const carriedSpeed = validSpeed(spec && spec.simSpeed) || validSpeed(this._lastArenaSimSpeed) || savedSpeed || Game.NORMAL_SIM_SPEED;
         this.setSimSpeed(carriedSpeed);
-        this.wonderPace = carriedSpeed;
+        // The Wonder's pace is a rule, not a tempo (b1021): a countdown second is always
+        // a second at the 1x pace, whatever speed the match starts at. From b1236 to
+        // b1261 it took the carried speed, so a match started at 2x needed twenty real
+        // minutes and one started at 1/2x and set to 1x needed five.
+        this.wonderPace = Game.NORMAL_SIM_SPEED;
         this.pauseState = 'running';
         if (this.ui) {
             this.ui._simSpeedWarned = (carriedSpeed !== Game.NORMAL_SIM_SPEED);

@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1262: the Wonder's countdown no longer follows the speed a match starts at (26 November 2026)
+
+**Rules change; the rules hash moves.** Since build 1021 a Wonder must stand 1200 game seconds: its 600 countdown seconds are counted at the 1× pace (`wonderPace` 2), ten real minutes at 1×. Build 1236 let a new match start at the speed the match before was left at, and set the pace to that speed as well. A match started at 2× therefore needed 2400 game seconds, twenty real minutes at the 1× a standing Wonder holds the match to, while its seats were still told 600 seconds. A match started at ½× and then set to 1× needed five.
+
+**Now** the speed still carries over, and the pace is `Game.NORMAL_SIM_SPEED` at every start, as before build 1236.
+- **Recorded matches:** the three samples of 25 November (build 1261) carry `simSpeed 4, wonderPace 4`. No Wonder stood in any of them, so their results are what they would have been; a replay reads the pace from the header and plays them as recorded.
+- **Tests:** `tests/wonder-pace.test.cjs` starts a match through the arena's own start path at each carried speed (fails on b1261). The older cases built a fixture and never took that path.
+
 ## Build 1188: the art is out of the rule files (22 November 2026)
 
 **The rules hash moves, once; no rule changed.** The contract fingerprint hashes the files that decide what happens in a match (`js/manifest.js`). Two of them also held art. `js/engine/texgen.js` paints every texture, and was a rule file because it also held the island's size and where its shore runs. `js/fogofwar.js` holds what has been seen, and also drew the fog's picture. So repainting a roof, or softening the fog's edge, would have marked every earlier match as not comparable. Overhaul step A0 separates them before the look of the game is worked on.

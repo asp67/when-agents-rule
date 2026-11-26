@@ -42,3 +42,17 @@ test('at 1/2x a Wonder holds the pace where it is, and a countdown second takes 
     m.run(10200);
     assert.equal(g.gameStarted, false, 'twenty real seconds at 1/2x end it');
 });
+
+// Through the arena's own start path, which the fixtures above never take. From build
+// 1236 to 1261 that path set the pace to the speed carried over from the match before,
+// so the length of the countdown followed a tempo setting.
+test('a match started at a carried speed keeps the Wonder at the 1x pace', async () => {
+    for (const speed of [1, 2, 4]) {
+        const m = new Realm({ seed: 5, normalSpeed: 2 });
+        m.game._lastArenaSimSpeed = speed;
+        await m.startArena({ seats: ['egyptian', 'yamato'], seed: 'pace-' + speed });
+        assert.equal(m.game.simSpeed, speed, 'the tempo carries over');
+        assert.equal(m.game.wonderPace, 2, 'the pace does not: started at ' + speed);
+        assert.equal(m.game.wonderHoldMs(), 600 * 1000 * 2, 'ten real minutes at 1x: started at ' + speed);
+    }
+});
