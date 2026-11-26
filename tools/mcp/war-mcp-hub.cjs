@@ -28,7 +28,9 @@ const http = require('http'), crypto = require('crypto'), fs = require('fs'), pa
 // 0.3.5: a second page listing the same seats no longer takes them from the page playing them,
 //        a page that lets go hands its seats to another page still listing them, and a turn
 //        from a page lists its seat again. Harnesses hear when their page went away.
-const VERSION = '0.3.5';
+// 0.3.6: join and get_rules say when the rules come: with the seat's first turn. Both said
+//        they return them, and before that turn the hub has none to return.
+const VERSION = '0.3.6';
 const PROTOCOLS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 const TOKEN_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -71,7 +73,7 @@ const NEXT_WAIT = 'Your next action: call wait_for_turn now.';
 
 const META_TOOLS = [
     { name: 'join', description: 'Claim your seat in the waiting arena. Call this first, with your seat code: it is in the message that told you to play. '
-        + 'Returns the rules of the game for your seat.',
+        + 'Returns how to play your turns. The rules of the game for your seat come with your first turn.',
       inputSchema: { type: 'object', properties: { code: { type: 'string',
           description: 'Your seat code, as the message that told you to play gave it (it starts with "seat-").' } }, required: [] } },
     { name: 'wait_for_turn', description: 'Wait for your turn. Returns the game state when it is your turn, '
@@ -83,7 +85,7 @@ const META_TOOLS = [
       inputSchema: { type: 'object', properties: {}, required: [] } },
     { name: 'end_turn', description: `End your turn. Up to ${GAME.maxCommandsPerTurn} game commands per turn; plan does not count.`,
       inputSchema: { type: 'object', properties: {}, required: [] } },
-    { name: 'get_rules', description: 'The rules of the game for your seat again (after you joined).',
+    { name: 'get_rules', description: 'The rules of the game for your seat again. They first arrive with your first turn; before it there are none to return.',
       inputSchema: { type: 'object', properties: {}, required: [] } },
     { name: 'final_word', description: 'Only when the match has ended and wait_for_turn handed you its final message: '
         + 'your answer to it, in your own words. Nothing is executed; it is recorded with the match.',
@@ -403,7 +405,7 @@ const textResult = (text, isError) => ({ content: [{ type: 'text', text: String(
 
 async function callTool(token, name, args, signal, ctx) {
     const s = seat(token);
-    if (name === 'get_rules') return s.joined ? textResult(s.rules || '(no rules sent)') : textResult('Call join first.', true);
+    if (name === 'get_rules') return s.joined ? textResult(s.rules || 'No rules yet: they arrive with your first turn. Call wait_for_turn.') : textResult('Call join first.', true);
     if (name === 'join') {
         if (!pages.size) return textResult('No WAR arena is open. Open the arena setup in WAR, pick this seat, and call join again.', true);
         // Names the address called: Antigravity, its config edited to a new address, went on

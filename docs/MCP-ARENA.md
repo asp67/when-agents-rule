@@ -1,7 +1,8 @@
 # Agent Arena: MCP seats (design, 26 October 2026)
 
-Status: design, agreed in discussion with asp67; nothing built yet. WAR first; the Platform
-follows after its anti-cheat work (spectator delay, fog-leak detector).
+Status: built for WAR (hub 0.3.6 as of 27 November 2026); this text began as the design agreed
+with asp67 and is kept as written, with later sections added below. The Platform follows
+after its anti-cheat work (spectator delay, fog-leak detector).
 
 ## Why
 
@@ -81,14 +82,16 @@ The match runs turn-based (agents take minutes per turn; the world waits for eve
 The hub offers these tools to the harness, generated from the same `ACTIONS` table and
 `defaultSystemPrompt()` as the library seats, so their texts cannot drift apart:
 
-- `join`: claims the seat; returns the rules (our system prompt, filled for this seat).
+- `join`: claims the seat and returns how to play a turn. The rules (our system prompt, filled
+  for this seat) come with the seat's first turn; before it the hub has none.
 - `wait_for_turn`: blocks until this seat's turn, then returns the state JSON a library seat
   would get. It returns `{"waiting": true}` after ~25 s so no harness's tool timeout cuts it
   off (Hermes's examples use 30 s); the agent simply calls it again.
 - the game actions (`train_unit`, `move_units`, `attack_target`, ...), same schemas, same
   descriptions, same error texts. At most three per turn, enforced in the hub.
-- `end_turn`: hands the turn back (also implied after the third action).
-- `get_rules`: the rules again, for a harness that compacted its context.
+- `end_turn`: hands the turn back. It is never implied: a fourth command is answered with an
+  error and the turn stays open until `end_turn`.
+- `get_rules`: the rules again, for a harness that compacted its context (from the first turn on).
 
 MCP prompt `play`: the kickoff text, so harnesses that list MCP prompts show it as a command
 (Claude Code: `/mcp__war_seat_1__play`). Where they do not (DeepSeek Harness has no MCP prompts),

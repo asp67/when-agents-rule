@@ -60,13 +60,17 @@ test('a turn: join, wait, three commands and a plan, a fourth refused, end_turn;
     const T = 'seat-token-bbbb2222', OTHER = 'seat-token-cccc3333';
     const pg = await fakePage(port);
     assert.equal((await pg.next(m => m.type === 'hello')).maxCommandsPerTurn, 3);
-    pg.send({ type: 'arena', seats: [{ token: T, seat: 1, name: 'Claude Code', rules: 'RULES FOR SEAT 1' }] });
+    // As the page lists a seat (WarMcpLink._sendArena): no rules. They are the seat's system
+    // prompt and come with its first turn. This stand-in used to send them here, which the
+    // page never does, so join's promise to return them could not be seen to be empty.
+    pg.send({ type: 'arena', seats: [{ token: T, seat: 1, name: 'Claude Code' }] });
     await new Promise(r => setTimeout(r, 50));
     const notListed = await call(port, OTHER, 'join');
     assert.ok(notListed.isError && /does not use this seat/.test(said(notListed)));
     assert.ok((await call(port, T, 'wait_for_turn')).isError, 'join comes first');
     const j = await call(port, T, 'join');
-    assert.match(said(j), /RULES FOR SEAT 1[\s\S]*1\. Call wait_for_turn[\s\S]*3\. Call end_turn[\s\S]*Your next action: call wait_for_turn now\./, 'join tells the loop and the next call');
+    assert.match(said(j), /^You have joined as seat 1[\s\S]*1\. Call wait_for_turn[\s\S]*3\. Call end_turn[\s\S]*Your next action: call wait_for_turn now\./, 'join tells the loop and the next call');
+    assert.match(said(await call(port, T, 'get_rules')), /^No rules yet: they arrive with your first turn\./, 'and there are none before the first turn');
     assert.equal((await pg.next(m => m.type === 'harness')).token, T, 'the page sees the harness connect');
     assert.equal((await pg.next(m => m.type === 'join')).token, T, 'and join');
     // No turn yet: waiting, after --wait-ms.
@@ -74,10 +78,11 @@ test('a turn: join, wait, three commands and a plan, a fourth refused, end_turn;
     assert.equal(waiting.waiting, true); assert.match(waiting.next, /Call wait_for_turn again now/);
     // The turn arrives while the harness waits.
     const w = call(port, T, 'wait_for_turn');
-    setTimeout(() => pg.send({ type: 'turn', token: T, turn: 7, state: { you: 'state of turn 7' } }), 100);
+    setTimeout(() => pg.send({ type: 'turn', token: T, turn: 7, state: { you: 'state of turn 7' }, rules: 'RULES FOR SEAT 1' }), 100);
     const turn = said(await w);
     assert.match(turn, /^IT IS YOUR TURN\. [\s\S]*then call end_turn\.\n\n/, 'the turn says what to do');
     assert.deepEqual(JSON.parse(turn.slice(turn.indexOf('\n\n') + 2)), { you: 'state of turn 7' });
+    assert.equal(said(await call(port, T, 'get_rules')), 'RULES FOR SEAT 1', 'the rules came with the turn');
     assert.equal((await pg.next(m => m.type === 'took')).token, T, 'the page hears the harness took its turn');
     // Commands go to the page and its answer comes back.
     const answer = async () => { const a = await pg.next(m => m.type === 'action'); pg.send({ type: 'result', id: a.id, text: 'OK - ' + a.name }); return a; };
@@ -313,7 +318,7 @@ const initShared = async (port, name) => (await shared(port, 'initialize', { pro
 test('the shared address: a session joins a seat by its code, and keeps it', LIMIT, async t => {
     const { p, port } = await startHub(); t.after(() => p.kill());
     const T = 'seat-token-shar0001';
-    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.5');
+    assert.equal((await (await fetch(`http://127.0.0.1:${port}/status`)).json()).version, '0.3.6');
     const pg = await fakePage(port);
     pg.send({ type: 'arena', seats: [{ token: T, seat: 2 }] });
     await new Promise(r => setTimeout(r, 50));
