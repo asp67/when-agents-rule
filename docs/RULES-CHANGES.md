@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1272: a request's time limit covers the answer's body (27 November 2026)
+
+**Harness change; the harness hash moves.** The limit on a model's request (`requestTimeout`; in turn-based play the round's deadline plus 15 s) was a timer cleared the moment `fetch()` resolved, which is when the headers arrive. The body was read afterwards with nothing watching. An endpoint that answers 200 at once and stalls, as an aggregator does when its upstream dies, held the seat's lane busy from then on. Turn-based play was rescued by the round deadline; a real-time match has no other guard, and the seat was never asked again.
+
+**Now** the timer runs until the body is read, for the answer and for an error's text alike, and an abort while reading says what it is in the same words as one before the headers: the time limit, the round deadline, or the harness's own cancellation. The connection probes (`fetchWithTimeout`: the model list, the capability checks) keep their limit until the body is read as well.
+- **Tests:** `tests/request-timeout-body.test.cjs` (three of its four fail on b1271). `tests/lib/stub-seat.cjs` is new: a model's seat in a real match whose endpoint is a function of the test's.
+
 ## Build 1271: the rule-based seats build inside the research and age gates (27 November 2026)
 
 **Rules change; the rules hash moves.** asp67, 27 November. The rule-based brain's build function checked cost and spacing only and left the gates to whoever called it. The academy, the temple and the stable were asked for properly. The rest were not: an anchor raised farms and a barracks without the `farm` and `barracks` research a model's seat pays for first, and an archery range in the stone age, where it belongs to the next.

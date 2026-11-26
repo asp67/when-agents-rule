@@ -1498,11 +1498,22 @@ class OpenAIAIManager {
     static async fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), timeoutMs);
-        try {
-            return await fetch(url, { ...options, signal: ctrl.signal });
-        } finally {
-            clearTimeout(t);
+        // Never the thing that keeps a script alive (Node; a no-op in a page).
+        if (t && typeof t.unref === 'function') t.unref();
+        let res;
+        try { res = await fetch(url, { ...options, signal: ctrl.signal }); }
+        catch (e) { clearTimeout(t); throw e; }
+        // The limit holds until the body is read, not until the headers arrive (b1272):
+        // every caller reads the body next, and a server that answers and then stalls
+        // left a "testing connection..." that never ended. Whoever reads no body leaves
+        // the timer to run out, which aborts a request that is already over.
+        for (const k of ['json', 'text', 'arrayBuffer', 'blob']) {
+            if (!res || typeof res[k] !== 'function') continue;
+            const read = res[k].bind(res);
+            try { res[k] = async (...args) => { try { return await read(...args); } finally { clearTimeout(t); } }; }
+            catch (e) { /* a response that takes no new methods: the timer runs out instead */ }
         }
+        return res;
     }
 
     // ----------------------------------------------------------------
@@ -5354,6 +5365,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             // Tracked as booleans rather than by attempt number, so a 429 on the first
             // pass cannot eat the one chance to adapt a bad parameter.
             let rateRetried = false, adapted = false;
+            // Set by each attempt: what stops its clock, and what an abort of its handle
+            // means. Both are used again where the body is read, below the loop.
+            let stopClock = () => {}, abortedAs = err => err;
             for (let attempt = 0; attempt < 3; attempt++) {
                 const req = OpenAIAIManager.buildChatRequest(
                     provider, model.endpoint, model.model || 'default', systemPrompt, turns, reqOpts());
@@ -5370,6 +5384,35 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 controller._abortReason = null;      // ...and this only by the three harness aborts
                 const hardAbortMs = this.requestAbortMs();
                 const timeoutId = setTimeout(() => controllerAbort.abort(), hardAbortMs);
+                // The limit runs until the BODY is read, not until the headers arrive (b1272).
+                // fetch() resolves on the headers, and the timer was cleared right there: an
+                // endpoint that answers 200 at once and then stalls -- an aggregator whose
+                // upstream died -- held this lane busy for the rest of a real-time match,
+                // where this limit is the only guard there is.
+                stopClock = () => clearTimeout(timeoutId);
+                // What an abort of this handle means, wherever it lands: in fetch() or while
+                // the body is read.
+                abortedAs = (fetchErr) => {
+                    if (!fetchErr || fetchErr.name !== 'AbortError') return fetchErr;
+                    // Two very different aborts land here. Reporting the request
+                    // timeout for both produced "timed out after 180s" about a
+                    // request that was thirty seconds old, because the round
+                    // deadline — not this timeout — had fired.
+                    if (controller._deadlineAbort) {
+                        return new Error(`round deadline reached after ${Math.round(this.roundTimeoutMs() / 1000)}s — the harness cancelled the request`);
+                    }
+                    // Three other places abort this same handle — demoteToRuleBased,
+                    // markDefeated and stop() — and none of them is a timeout. Saying
+                    // so anyway put "timed out after 180s" on a request that had run
+                    // 87 s, in the transcript AND in the model's next prompt: the
+                    // harness blaming a model for its own bookkeeping.
+                    if (controller._abortReason) {
+                        const why = controller._abortReason;
+                        controller._abortReason = null;
+                        return new Error(`the harness cancelled this request (${why}) after ${Math.round((Date.now() - tStart) / 1000)}s — not a model timeout`);
+                    }
+                    return new Error(`timed out after ${Math.round(hardAbortMs / 1000)}s`);
+                };
                 try {
                     // An MCP seat (docs/MCP-ARENA.md): its harness plays it through the
                     // local hub, and its reply comes back in the shape an endpoint's
@@ -5384,33 +5427,15 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                         signal: controllerAbort.signal
                     });
                 } catch (fetchErr) {
-                    if (fetchErr.name === 'AbortError') {
-                        // Two very different aborts land here. Reporting the request
-                        // timeout for both produced "timed out after 180s" about a
-                        // request that was thirty seconds old, because the round
-                        // deadline — not this timeout — had fired.
-                        if (controller._deadlineAbort) {
-                            throw new Error(`round deadline reached after ${Math.round(this.roundTimeoutMs() / 1000)}s — the harness cancelled the request`);
-                        }
-                        // Three other places abort this same handle — demoteToRuleBased,
-                        // markDefeated and stop() — and none of them is a timeout. Saying
-                        // so anyway put "timed out after 180s" on a request that had run
-                        // 87 s, in the transcript AND in the model's next prompt: the
-                        // harness blaming a model for its own bookkeeping.
-                        if (controller._abortReason) {
-                            const why = controller._abortReason;
-                            controller._abortReason = null;
-                            throw new Error(`the harness cancelled this request (${why}) after ${Math.round((Date.now() - tStart) / 1000)}s — not a model timeout`);
-                        }
-                        throw new Error(`timed out after ${Math.round(hardAbortMs / 1000)}s`);
-                    }
-                    throw fetchErr;
-                } finally {
-                    clearTimeout(timeoutId);
+                    stopClock();
+                    throw abortedAs(fetchErr);
                 }
                 if (response.ok) break;
 
-                const errorText = await response.text();
+                let errorText;
+                try { errorText = await response.text(); }
+                catch (readErr) { throw abortedAs(readErr); }
+                finally { stopClock(); }
 
                 // RATE LIMIT. Not a broken endpoint and not a bad parameter — the
                 // account is simply going too fast, which is precisely what happens when
@@ -5461,7 +5486,10 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                     Object.keys(fix).join(', '));
             }
 
-            const data = await response.json();
+            let data;
+            try { data = await response.json(); }
+            catch (readErr) { throw abortedAs(readErr); }
+            finally { stopClock(); }
             // The endpoint failed, not the model: a request failure, with the provider's
             // own words on file. Not "API error (n)", so a provider having a bad hour does
             // not trip the self-heal, which is for a request the server cannot accept.
