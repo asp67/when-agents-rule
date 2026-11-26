@@ -5189,6 +5189,12 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 preface.push(closing ? `RESULT of your last action: ${prevResult}`
                     : `RESULT of your PREVIOUS action — learn from it; do NOT repeat a rejected action, fix the cause first: ${prevResult}`);
             }
+            // A round played without this seat, said on the turn after it (b1273): no
+            // reply arrived, so there is no past pair to carry it and no tool call it
+            // could answer. Kept until a reply to a request that carried it comes back.
+            const missed = !closing ? (controller.seat || controller)._roundMissedNote : null;
+            if (missed) preface.push(missed);
+            controller._missedNoteSent = missed || null;
             const currentUser = [...preface, ...tailNow].join('\n\n');
             const pairBudget = inputBudget - est(systemPrompt) - est(currentUser);
             const pastTurns = this.buildRollingTurns(controller, pairBudget, est);
@@ -5698,6 +5704,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                     outcome: null // filled by recordAction once this turn's action resolves
                 };
                 controller.turnLog.push(logTurn);
+                // The model has read the note of a missed round this request carried.
+                if (controller._missedNoteSent && controller.seat._roundMissedNote === controller._missedNoteSent) controller.seat._roundMissedNote = null;
+                controller._missedNoteSent = null;
                 // The lane keeps hold of the record it just wrote. Every outcome writer
                 // used to reach for turnLog[length - 1] -- "the newest" -- which is this
                 // turn's record only while one request exists at a time. With two lanes
@@ -10082,6 +10091,10 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         controller.conversationHistory.push({
             action: 'round_missed', reason: '', result: msg, failed: true
         });
+        // ...and held for the seat's next turn in the rolling conversation (b1273). The
+        // move history above is read by the token-saving mode alone; in the default mode
+        // nothing carried this, so "the model is TOLD" was true of one mode of two.
+        (controller.seat || controller)._roundMissedNote = msg;
         const civ = getCivilization(controller.aiPlayer.civilization);
         this.commitDecision({
             timestamp: Date.now(), playerId: controller.aiPlayer.id,

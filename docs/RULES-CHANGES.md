@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1273: a seat that missed a round is told so, in every history mode (27 November 2026)
+
+**Harness change; the harness hash moves.** A seat whose answer does not arrive by the round deadline is told "[TIMEOUT] Your answer did not arrive within 120s ..., so this round was played without you", and an MCP seat whose harness went quiet "[AWAY] ...". The note was written to the move history, which only the token-saving mode reads (one user message with the history embedded). In the default mode, a rolling conversation, nothing carried it: a model there missed round after round without once reading that the limit exists or that it had run past it. MCP seats play through the same conversation and never read "[AWAY]".
+
+**Now** the note stands at the head of the seat's next turn in the rolling conversation, once. It is kept until a reply to a request that carried it comes back, so a request that failed on the way does not use it up. The token-saving mode reads it in its move history as before. The words are unchanged.
+- **Not comparable:** a model that is told can decide to think less; one that was not told could not.
+- **Tests:** `tests/round-missed-told.test.cjs` (three of its four fail on b1272).
+
 ## Build 1272: a request's time limit covers the answer's body (27 November 2026)
 
 **Harness change; the harness hash moves.** The limit on a model's request (`requestTimeout`; in turn-based play the round's deadline plus 15 s) was a timer cleared the moment `fetch()` resolved, which is when the headers arrive. The body was read afterwards with nothing watching. An endpoint that answers 200 at once and stalls, as an aggregator does when its upstream dies, held the seat's lane busy from then on. Turn-based play was rescued by the round deadline; a real-time match has no other guard, and the seat was never asked again.
