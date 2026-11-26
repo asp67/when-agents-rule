@@ -47,15 +47,20 @@ test('the spec is model vs rule-based AI in real time, and the saved setup is un
     assert.equal(JSON.stringify(u._arenaConfig), before);
 });
 
-test('rematch replays the finished match spec after purging its transcripts', async () => {
+test('rematch replays the finished match spec at the current speed after purging its transcripts', async () => {
     const { u, started } = ui();
     let purged = 0;
     const spec = { setup: [{ civ: 'greek', type: 'ki' }, { civ: 'persian', type: 'ki' }], seed: 's1', turnBased: true };
     u.game.arenaSpec = spec;
+    u.game.simSpeed = 4;
     u.game.openAIAIManager = { transcripts: { purge: async () => { purged++; } } };
     await u.rematchArena();
     assert.equal(purged, 1);
-    assert.equal(started[0], spec);
+    assert.equal(started.length, 1);
+    // The started spec is a copy (b1236): the finished spec field for field, plus the speed
+    // the spectator had set. Spread out of the vm realm so deepEqual compares plain objects.
+    assert.deepEqual({ ...started[0] }, { setup: spec.setup, seed: 's1', turnBased: true, simSpeed: 4 });
+    assert.equal(started[0].setup, spec.setup);
 });
 
 test('the harness takes the round mode from the match spec, not the setup screen', () => {
