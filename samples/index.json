@@ -889,6 +889,110 @@
    ],
    "bytes": 2910697,
    "default": false
+  },
+  {
+   "file": "2026-11-25_qwen3.8-27b-inkling-2-mini_13min.jsonl",
+   "matchId": "match-20261125-194128",
+   "date": 1795632089416,
+   "duration": "12:31",
+   "turns": 182,
+   "outcome": "last_standing",
+   "seed": "rmwwgzdnd17qp",
+   "difficulty": "medium",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v113",
+   "build": 1261,
+   "winner": "O qwen3.8-27b",
+   "players": [
+    {
+     "seat": 0,
+     "name": "O qwen3.8-27b",
+     "model": "qwen/qwen3.8-27b",
+     "civ": "Greeks",
+     "power": 2040,
+     "winner": true
+    },
+    {
+     "seat": 1,
+     "name": "O inkling-2-mini",
+     "model": "thinkingmachines/inkling-2-mini",
+     "civ": "Maya",
+     "power": 8,
+     "winner": false
+    }
+   ],
+   "bytes": 3190665,
+   "default": false
+  },
+  {
+   "file": "2026-11-25_inkling-2-mini-qwen3.8-27b_6min.jsonl",
+   "matchId": "match-20261125-195412",
+   "date": 1795632853455,
+   "duration": "06:09",
+   "turns": 80,
+   "outcome": "last_standing",
+   "seed": "rmwwgzdnd17qp",
+   "difficulty": "medium",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v113",
+   "build": 1261,
+   "winner": "O qwen3.8-27b",
+   "players": [
+    {
+     "seat": 1,
+     "name": "O qwen3.8-27b",
+     "model": "qwen/qwen3.8-27b",
+     "civ": "Maya",
+     "power": 572,
+     "winner": true
+    },
+    {
+     "seat": 0,
+     "name": "O inkling-2-mini",
+     "model": "thinkingmachines/inkling-2-mini",
+     "civ": "Greeks",
+     "power": 2,
+     "winner": false
+    }
+   ],
+   "bytes": 1348210,
+   "default": false
+  },
+  {
+   "file": "2026-11-25_claude-code-opus5.5-antigravity-gemini4-neon_77min.jsonl",
+   "matchId": "match-20261125-202043",
+   "date": 1795634443537,
+   "duration": "77:02",
+   "turns": 295,
+   "outcome": "last_standing",
+   "seed": "rmwwidv3ytq8i",
+   "difficulty": "hard",
+   "turnBased": true,
+   "promptVersion": "agents-rule-v113",
+   "build": 1261,
+   "winner": "Antigravity Neon High",
+   "players": [
+    {
+     "seat": 1,
+     "name": "Antigravity Neon High",
+     "model": "gemini-4-neon",
+     "harness": "Antigravity",
+     "civ": "Persians",
+     "power": 2345,
+     "winner": true
+    },
+    {
+     "seat": 0,
+     "name": "ClaudeCode Opus 5.5",
+     "model": "claude-opus-5.5",
+     "harness": "Claude Code",
+     "civ": "Egyptians",
+     "power": 88,
+     "winner": false
+    }
+   ],
+   "bytes": 6293490,
+   "default": false
   }
  ]
 }

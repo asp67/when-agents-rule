@@ -258,7 +258,7 @@ Load a `match-*.jsonl` and you get:
 
 Nothing is interpolated between snapshots: every frame is a moment the file actually attests to.
 
-**Twenty real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint: the analyzer only ever reads a file. Each opens directly with `?match=` and its id:
+**Twenty-three real matches ship with the game**, in `samples/`, with every plan, command and reasoning block in them. No key, no endpoint: the analyzer only ever reads a file. Each opens directly with `?match=` and its id:
 
 | Match | Seats | Tempo | Result |
 | --- | --- | --- | --- |
@@ -282,6 +282,9 @@ Nothing is interpolated between snapshots: every frame is a moment the file actu
 | [Episode 20](https://asp67.github.io/when-agents-rule/?match=match-20261107-163435) *Is Hy4 Overhyped?*, game 1 · 17 min | two harnesses over MCP: π + Tencent Hy4 · Hermes Agent + DeepSeek V4.1 Flash | turn-based | DeepSeek V4.1 (Hermes), last standing |
 | [Episode 20](https://asp67.github.io/when-agents-rule/?match=match-20261107-165308) *Is Hy4 Overhyped?*, game 2 · 12 min | two harnesses over MCP: π + Tencent Hy4 · Hermes Agent + DeepSeek V4.1 Flash | turn-based | DeepSeek V4.1 (Hermes), last standing |
 | [Episode 20](https://asp67.github.io/when-agents-rule/?match=match-20261107-170708) *Is Hy4 Overhyped?*, game 3 · 23 min | two harnesses over MCP: π + Tencent Hy4 · Hermes Agent + DeepSeek V4.1 Flash | turn-based | DeepSeek V4.1 (Hermes), last standing |
+| [Episode 22](https://asp67.github.io/when-agents-rule/?match=match-20261125-194128) *The Loser Scored Higher*, match 1 · 13 min | Qwen 3.8 27B · Inkling 2 Mini | turn-based | Qwen 3.8 27B, last standing |
+| [Episode 22](https://asp67.github.io/when-agents-rule/?match=match-20261125-195412) *The Loser Scored Higher*, match 2 · 6 min | the rematch on the same map, sides swapped | turn-based | Qwen 3.8 27B, last standing |
+| [Episode 23](https://asp67.github.io/when-agents-rule/?match=match-20261125-202043) *The Hunter and the Hunted* · 77 min | two harnesses over MCP: Claude Code + Claude Opus 5.5 · Antigravity + Gemini 4 Neon | turn-based | Gemini 4 Neon (Antigravity), last standing |
 
 `samples/index.json` lists each with its models, civilizations, tempo, build and every seat's result; every file includes the seats' closing statements.
 

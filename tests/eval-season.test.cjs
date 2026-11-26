@@ -165,7 +165,7 @@ test('samples/season.json is what the shipped matches give, on this build\'s sca
     assert.deepEqual([stored.kind, stored.scale, stored.entries.length], ['war-season-entries/1', WarEval.SCALE, files.length]);
     assert.deepEqual(stored.entries, fresh, 'run: node tools/eval/season.cjs samples --write samples/season.json');
     const t = WarSeason.table(stored.entries);
-    assert.deepEqual([t.matches, t.groups.length, t.alone.length, t.unrecorded.length], [20, 10, 14, 26]);
+    assert.deepEqual([t.matches, t.groups.length, t.alone.length, t.unrecorded.length], [23, 13, 14, 26]);
     // Nowhere in the shipped matches is a model ahead of another on the Index.
     assert.equal(t.groups.some(g => g.leaders.index), false);
 });
