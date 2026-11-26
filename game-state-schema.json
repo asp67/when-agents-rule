@@ -41,9 +41,17 @@
     },
     "clock": {
       "type": "object",
-      "description": "What every other 'seconds' figure in this state is measured against. The match runs in real time and does NOT pause while you think, so durations elsewhere (buildSecondsRemaining, secondsUntilEnemyWins, secondsAgo, walk times) are wall-clock seconds, not turns.",
+      "description": "What every other 'seconds' figure in this state is measured against. The match runs in real time and does not pause while you think (a lockstep match is the exception: see worldSecondsPerRound), so durations elsewhere (buildSecondsRemaining, secondsUntilEnemyWins, secondsAgo, walk times) are wall-clock seconds, not turns.",
       "required": ["matchSeconds"],
       "properties": {
+        "secondsToAnswer": {
+          "type": "integer",
+          "description": "Turn-based matches only: how long every seat has to answer, counted from the moment its state is sent. An answer that arrives later is not played; the round goes on without that seat, and it is told so on its next turn."
+        },
+        "worldSecondsPerRound": {
+          "type": "number",
+          "description": "Lockstep matches only: the most the world plays, in match seconds, past the state you were sent. It runs while the seats think, a round ends as soon as every answer is in, and at this limit the world waits for the rest."
+        },
         "matchSeconds": {
           "type": "integer",
           "description": "Seconds since the match began."
@@ -178,15 +186,6 @@
         "harvest": {
           "type": "number"
         },
-        "attack": {
-          "type": "number"
-        },
-        "health": {
-          "type": "number"
-        },
-        "mining": {
-          "type": "number"
-        },
         "techCostMult": {
           "type": "number"
         }
@@ -261,7 +260,7 @@
         },
         "exploration": {
           "type": "object",
-          "description": "Percent (0-100) of each map tile you have ever seen, keyed by tile label: column letter running west to east, then row number running north to south (\"C5\" = third column, fifth row): A-G and 1-7 on the 800 map, A-K and 1-11 on the 1200 map. Pass one of these labels as explore's \"tile\". map.yourBaseTile tells you which one you start in. A tile is ~114 units across on either map and a scout sees ~15, so one pass raises a tile by only a few percent.",
+          "description": "Percent (0-100) of each map tile you have ever seen, keyed by tile label: column letter running west to east, then row number running north to south (\"C5\" = third column, fifth row): A-G and 1-7 on the 800 map, A-K and 1-11 on the 1200 map. Pass one of these labels as explore's \"tile\". map.yourBaseTiles tells you which ones your base stands in. A tile is ~114 units across on either map and a scout sees ~15, so one pass raises a tile by only a few percent.",
           "additionalProperties": {
             "type": "integer",
             "minimum": 0,
@@ -483,6 +482,10 @@
           "food": {
             "type": "integer",
             "description": "Farms only: food currently stocked in the farm."
+          },
+          "farmed": {
+            "type": "boolean",
+            "description": "Farms only: true while a worker of yours mans it. A farm regrows food only while it is manned; \"busy\" and \"activity\" say nothing about that."
           }
         }
       }
@@ -541,6 +544,14 @@
               "builtAs": {
                 "type": "string",
                 "description": "On the Wonder entry only: the civilization-specific building this type raises."
+              },
+              "becomesUnit": {
+                "type": "string",
+                "description": "Trebuchet sites only: the unit the finished site becomes."
+              },
+              "speed": {
+                "type": "number",
+                "description": "Trebuchet sites only: how fast that unit moves."
               }
             }
           }
@@ -592,6 +603,14 @@
               "builtAs": {
                 "type": "string",
                 "description": "On the Wonder entry only: the civilization-specific building this type raises."
+              },
+              "becomesUnit": {
+                "type": "string",
+                "description": "Trebuchet sites only: the unit the finished site becomes."
+              },
+              "speed": {
+                "type": "number",
+                "description": "Trebuchet sites only: how fast that unit moves."
               }
             }
           }
@@ -687,6 +706,10 @@
             "type": "number",
             "description": "How far this unit shoots (a priest: heals), research included. Only on units with a range of 3 or more."
           },
+          "id": {
+            "type": "integer",
+            "description": "The handle that addresses exactly this unit: pass it in unitIds. Never reused within a match."
+          },
           "type": {
             "type": "string"
           },
@@ -709,6 +732,7 @@
               "harvesting",
               "returning",
               "building",
+              "repairing",
               "farm_work",
               "moving"
             ]
@@ -732,7 +756,21 @@
           },
           "mode": {
             "type": "string",
-            "description": "Standing orders only: march, scout, guard or patrol."
+            "description": "Standing orders only: march, scout, guard, hold or patrol."
+          },
+          "besieging": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "[x, z] of an enemy tower this group, which has a trebuchet, took up on its way: it stands off while the trebuchet throws. Present only during such a siege."
+          },
+          "then": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "With \"besieging\": [x, z] the order goes on to once the tower is down."
           },
           "unitIds": {
             "type": "array",
@@ -819,7 +857,7 @@
         },
         "food": {
           "type": "integer",
-          "description": "Workers whose job is food, at ANY point of the cycle: walking out, gathering, or carrying home. Reassigning a worker who happens to be carrying a load destroys it — but which ones those are changes every few seconds, far faster than a turn, so it is not something to plan from here. assign_workers' allowSpill decides it at the moment the order runs."
+          "description": "Workers whose job is food, at ANY point of the cycle: walking out, gathering, or carrying home. Reassigning a worker who happens to be carrying a load destroys it — but which ones those are changes every few seconds, far faster than a turn, so it is not something to plan from here. assign_workers' whenCarrying decides it at the moment the order runs."
         },
         "wood": {
           "type": "integer"
@@ -867,6 +905,30 @@
           },
           "owner": {
             "type": "string"
+          },
+          "healthPct": {
+            "type": "integer",
+            "description": "Its health when you last saw it, in percent."
+          },
+          "carrying": {
+            "type": "string",
+            "enum": ["empty", "food", "wood", "stone", "gold", "unknown"],
+            "description": "Workers only: what it carried when you last saw it."
+          },
+          "visible": {
+            "type": "boolean",
+            "description": "True: in your sight now, and x/z is where it stands. False: remembered, and x/z is where you last saw it."
+          },
+          "secondsAgo": {
+            "type": "integer",
+            "description": "Remembered units only: how long ago you last saw it."
+          },
+          "sightedAt": {
+            "type": "array",
+            "items": { "type": "integer" },
+            "minItems": 2,
+            "maxItems": 2,
+            "description": "[x, z] where it first came into your sight, when it has moved a noticeable distance since: together with x/z, the way it was going."
           }
         }
       }
@@ -943,7 +1005,7 @@
     },
     "unlockedContent": {
       "type": "object",
-      "description": "Buildings whose unlock tech you have already researched. This is a HISTORY of what you unlocked, not a list of what you may build — for that use buildableStructures.",
+      "description": "Buildings whose unlock tech you have already researched. This is a HISTORY of what you unlocked, not a list of what you may build — for that use buildings.buildable.",
       "required": [
         "buildings"
       ],
@@ -1005,6 +1067,14 @@
                   },
                   "blockedBy": {
                     "$ref": "#/$defs/blockedBy"
+                  },
+                  "requiresTech": {
+                    "type": "string",
+                    "description": "A research of its own this unit needs before it can be trained. Absent when it needs none, or when you have it."
+                  },
+                  "role": {
+                    "type": "string",
+                    "description": "Engineer only: what it is for."
                   }
                 }
               }
@@ -1053,6 +1123,14 @@
                   },
                   "blockedBy": {
                     "$ref": "#/$defs/blockedBy"
+                  },
+                  "requiresTech": {
+                    "type": "string",
+                    "description": "A research of its own this unit needs before it can be trained. Absent when it needs none, or when you have it."
+                  },
+                  "role": {
+                    "type": "string",
+                    "description": "Engineer only: what it is for."
                   }
                 }
               }
@@ -1099,6 +1177,10 @@
               "attackerAt"
             ],
             "properties": {
+              "noDefenders": {
+                "type": "boolean",
+                "description": "True when nothing of yours is fighting back there. Absent otherwise."
+              },
               "kind": {
                 "type": "string",
                 "enum": [
@@ -1169,7 +1251,7 @@
         },
         "opponents": {
           "type": "array",
-          "description": "Every rival (rule-based ones and, in campaign, the human with id 'player'). civilization and age are ALWAYS present (epochs are public). units/buildings counts appear only once this player has DISCOVERED that rival (seen any of its units or buildings); until then discovered=false and the count fields are absent.",
+          "description": "Every rival (rule-based ones and, in campaign, the human with id 'player'). civilization and age are ALWAYS present (epochs are public). population and buildings counts (and seenAlive, seenSecondsAgo) appear only once this player has DISCOVERED that rival (seen any of its units or buildings); until then discovered=false and the count fields are absent.",
           "items": {
             "type": "object",
             "required": [
@@ -1191,11 +1273,29 @@
               "discovered": {
                 "type": "boolean"
               },
-              "units": {
-                "type": "integer"
+              "defeated": {
+                "type": "boolean",
+                "description": "Public match status, discovered or not: true once this rival is out of the match."
+              },
+              "population": {
+                "type": "integer",
+                "description": "Everything this rival owns that takes a population slot, villagers included: the same measure as your own population.used, not an army size."
               },
               "buildings": {
                 "type": "integer"
+              },
+              "seenAlive": {
+                "type": "object",
+                "description": "Units of this rival you have seen and not seen die, counted by type, whether or not you still know where they are.",
+                "additionalProperties": { "type": "integer" }
+              },
+              "seenSecondsAgo": {
+                "type": "object",
+                "description": "How old those sightings are: the newest and the oldest, in seconds.",
+                "properties": {
+                  "newest": { "type": "integer" },
+                  "oldest": { "type": "integer" }
+                }
               }
             }
           }
@@ -1238,7 +1338,7 @@
         },
         "lost": {
           "type": "object",
-          "description": "Units of yours (or theirs) that died here, by type. Absent if none.",
+          "description": "Units of yours (or theirs) that died here, by type. Empty if none.",
           "additionalProperties": {
             "type": "integer"
           }
@@ -1339,11 +1439,17 @@
             },
             "gold": {
               "type": "integer"
-            },
-            "population": {
+            }
+          }
+        },
+        "population": {
+          "type": "object",
+          "description": "Same keys as the live population block, without the ceiling.",
+          "properties": {
+            "used": {
               "type": "integer"
             },
-            "maxPopulation": {
+            "capacityNow": {
               "type": "integer"
             }
           }
@@ -1394,8 +1500,9 @@
         "enemySeen": {
           "type": "object",
           "properties": {
-            "units": {
-              "type": "integer"
+            "entitiesVisible": {
+              "type": "integer",
+              "description": "Rival units in sight that turn, fighters and villagers alike. Not the same number as gameStats.opponents[].population."
             },
             "buildings": {
               "type": "integer"

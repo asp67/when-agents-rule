@@ -3520,9 +3520,9 @@ class OpenAIAIManager {
         // --- Bonuses (only non-default) ---
         const bonusesObj = {};
         if (ai.workerHarvestBonus !== 1.0) bonusesObj.harvest = ai.workerHarvestBonus;
-        if (ai.attackBonus !== 1.0) bonusesObj.attack = ai.attackBonus;
-        if (ai.healthBonus !== 1.0) bonusesObj.health = ai.healthBonus;
-        if (ai.miningBonus !== 1.0) bonusesObj.mining = ai.miningBonus;
+        // attack, health and mining stood here (to b1279): three owner fields no rule ever
+        // sets, so each was undefined, never equal to 1, and written as a key with no
+        // value. JSON dropped them, which is why no model ever read one.
         if (ai.techCostMultiplier !== 1.0) bonusesObj.techCostMult = ai.techCostMultiplier;
 
         // --- Map summary (NO fog grid - too large) ---

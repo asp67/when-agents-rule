@@ -139,3 +139,44 @@ test('the nested shapes the schema promises hold in real records', () => {
   }
   assert.deepEqual(bad.slice(0, 12), [], `${bad.length} shape violations in ${newest}, first few:\n  ` + bad.slice(0, 12).join('\n  '));
 });
+
+// ---- Nested fields, checked in full (b1280) ---------------------------------------------
+// The tests above compare top-level keys and a handful of nested shapes by hand, and the
+// schema checker held an object to its property list only where the schema said
+// additionalProperties:false. Between them the state grew some twenty nested fields the
+// contract never described (enemyUnits[].visible, healthPct and secondsAgo, the id on every
+// one of a seat's units, opponents[].defeated and population, clock.secondsToAnswer ...)
+// while it still described ones that were gone. In strict mode every object the schema
+// describes by its properties is described in full.
+const { validate } = require('./lib/schema-check.cjs');
+
+test('the newest match carries no nested field the schema does not describe', () => {
+  const problems = new Map();
+  for (const st of states)
+    for (const e of validate(schema, st, { strict: true })) {
+      const key = e.split('[').map((part, i) => (i ? part.slice(part.indexOf(']')) : part)).join('[');
+      problems.set(key, (problems.get(key) || 0) + 1);
+    }
+  assert.equal(problems.size, 0, 'in ' + newest + ':\n  ' + [...problems].slice(0, 20).map(([k, n]) => `${k} (${n}x)`).join('\n  '));
+});
+
+test('the states this build writes, and its recaps of past turns, are described in full', async () => {
+  const { createMatch } = require('../tools/bench/realm.cjs');
+  const m = await createMatch({ kind: 'arena', seed: 'state-contract', seats: ['greek', 'persian', 'maya', 'viking'], mapSize: 800 });
+  const c = m.scripted(m.seats[0]), mgr = m.game.openAIAIManager;
+  const recapSchema = Object.assign({}, schema.$defs.pastTurnRecap, { $defs: schema.$defs });
+  const problems = new Set();
+  let seen = 0;
+  for (let t = 0; t < 24; t++) {
+    const st = JSON.parse(JSON.stringify(mgr.buildGameStateJSON(c)));   // as it is sent: undefined keys are not
+    for (const e of validate(schema, st, { strict: true })) problems.add('state ' + e);
+    const recap = JSON.parse(mgr.buildCompactState(st));
+    for (const e of validate(recapSchema, recap, { strict: true })) problems.add('recap ' + e);
+    seen += (st.friendlyUnits || []).length + (st.enemyUnits || []).length;
+    if (t === 1) { m.command(c, 'train_unit', { unitType: 'worker', reason: 'grow' }); m.command(c, 'explore', { tile: 'C3', then: ['D4'], reason: 'look' }); }
+    if (t === 3) m.command(c, 'assign_workers', { resourceType: 'wood', count: 2, reason: 'wood' });
+    m.advance(30000);
+  }
+  assert.ok(seen > 50, 'the match showed units to check: ' + seen);
+  assert.deepEqual([...problems].slice(0, 20), [], problems.size + ' kinds of undescribed or mistyped fields');
+});

@@ -6,6 +6,14 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1280: the state schema describes every nested field the state carries (27 November 2026)
+
+**The harness hash moves; nothing a model reads changes.** `game-state-schema.json` is the published contract of the state, and it is written by hand. Its tests compared top-level keys and a few nested shapes; the checker held an object to its property list only where the schema said `additionalProperties: false`. Between them the state had grown some twenty nested fields the contract never described, and the contract still described some that were gone.
+- **Described now:** `friendlyUnits[].id` and the action `repairing`; `enemyUnits[].healthPct`, `carrying`, `visible`, `secondsAgo`, `sightedAt`; `gameStats.opponents[].defeated`, `population`, `seenAlive`, `seenSecondsAgo`; `friendlyBuildings[].farmed`; `becomesUnit` and `speed` on a trebuchet site; `requiresTech` and `role` on a unit; `clock.secondsToAnswer` and `worldSecondsPerRound`; `threats.underAttack[].noDefenders`; `ordersInProgress[].besieging` and `then`; the recap's `population` block and `enemySeen.entitiesVisible`.
+- **Corrected:** `opponents[].units` (it is `population`), order mode `hold`, "does NOT pause while you think" (a lockstep match does), `map.yourBaseTile` (`yourBaseTiles`), `buildableStructures` (`buildings.buildable`), `allowSpill` (`whenCarrying`), a battle side's `lost` (empty, not absent, when none).
+- **Removed from the state builder:** `bonuses.attack`, `health` and `mining`. No rule sets the three owner fields they read, so each was written as a key with no value and dropped by JSON: no model ever read one. The schema no longer lists them. This is the only change to `js/openai-ai.js`.
+- **Tests:** `tests/lib/schema-check.cjs` has a strict mode in which every object described by its properties is described in full; `tests/state-contract.test.cjs` holds the newest shipped match and the states and recaps this build writes to it (both fail on the schema of b1279).
+
 ## Build 1279: assign_workers does for a farm what it says it does (27 November 2026)
 
 **Rules change and harness change; both hashes move. The system prompt is unchanged, so the prompt version stays.** The farm branch of `assign_workers` was written before `whenCarrying` and before workers who are building or fighting could be queued, and never learned either.

@@ -18,6 +18,14 @@ const typeMatches = (want, v) => {
     return want === t || (want === 'number' && t === 'integer');
 };
 
+// STRICT (b1280): an object the schema describes by its properties is described in full.
+// A property it does not list is reported, unless the schema opens the object itself
+// (additionalProperties true, or a schema for the rest). Without this only the objects
+// marked additionalProperties:false were held to their list, which was a handful: the
+// state grew twenty fields that the published contract never heard of, and the test that
+// compares them said nothing.
+let STRICT = false;
+
 function check(root, schema, value, at, errors) {
     for (const k of Object.keys(schema)) if (!KNOWN.has(k)) throw new Error(`schema keyword "${k}" at ${at} is not implemented`);
     if (schema.$ref) {
@@ -51,6 +59,7 @@ function check(root, schema, value, at, errors) {
             if (props[k]) check(root, props[k], v, at + '.' + k, errors);
             else if (schema.additionalProperties === false) errors.push(`${at}: undocumented property "${k}"`);
             else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') check(root, schema.additionalProperties, v, at + '.' + k, errors);
+            else if (STRICT && schema.properties && schema.additionalProperties !== true) errors.push(`${at}: undocumented property "${k}"`);
         }
     }
     if (typeOf(value) === 'array') {
@@ -66,7 +75,14 @@ function check(root, schema, value, at, errors) {
 }
 
 // Returns a list of problems; empty means the value conforms.
-function validate(schema, value) { const errors = []; check(schema, schema, value, '$', errors); return errors; }
+// { strict: true } also reports every property an object carries that its schema's
+// property list does not name (see STRICT above).
+function validate(schema, value, { strict = false } = {}) {
+    const errors = [], was = STRICT;
+    STRICT = strict;
+    try { check(schema, schema, value, '$', errors); } finally { STRICT = was; }
+    return errors;
+}
 // Top-level keys the state emits that the schema does not document at all.
 function undocumented(schema, value) { return Object.keys(value || {}).filter(k => !(schema.properties || {})[k]); }
 module.exports = { validate, undocumented };
