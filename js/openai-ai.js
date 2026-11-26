@@ -7087,7 +7087,12 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         const head = (kind === 'defeated')
             ? `${cont ? roundTag : 'THE MATCH'} IS OVER FOR YOU. You have been defeated as ${who}: nothing you have left can fight, build, or train a unit that could.`
             : `${cont ? roundTag : 'THE MATCH'} HAS ENDED. ${extra && extra.won ? `You WON as ${who}.` : `You did not win. ${extra && extra.winner ? `${extra.winner} took it.` : ''}`}`;
-        const ask = cont
+        // The series words are for a seat a harness plays (b1274): final_word and
+        // wait_for_turn are the hub's tools, and its harness stays joined for the next
+        // match. A model behind an endpoint has neither, and its next match is a new
+        // conversation: it reads which match ended, and the closing words of any match.
+        const viaHub = cont && OpenAIAIManager.resolveProvider(model) === 'mcp';
+        const ask = viaHub
             ? [head,
                 `DO NOT STOP PLAYING: ${nextTag} of this series starts next (with a rotated spawn seat and civilization).`,
                 `No game command from this message will execute for ${roundTag.toLowerCase()}.`,

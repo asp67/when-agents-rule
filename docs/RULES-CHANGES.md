@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1274: between the matches of a series, a library seat is not told to call tools it does not have (27 November 2026)
+
+**Harness change; the harness hash moves.** Since build 1236 the closing message between two matches of a series says "share your thoughts ... via final_word ... and then immediately call wait_for_turn". Those are the MCP hub's tools. A harness that plays a seat has them and stays joined for the next match. A model behind an endpoint was sent the same words with the game's twelve commands and `plan`; told to call a tool it was never given, a tool-trained model answers with a call to nothing, and the closing statement is filed as empty.
+
+**Now** the series words go to MCP seats only. A library seat reads which match ended ("MATCH 1 OF 3 HAS ENDED ...") and then the closing words of any match; its next match is a new conversation.
+- **Tests:** `tests/series-closing-message.test.cjs` (the first of its three fails on b1273).
+
 ## Build 1273: a seat that missed a round is told so, in every history mode (27 November 2026)
 
 **Harness change; the harness hash moves.** A seat whose answer does not arrive by the round deadline is told "[TIMEOUT] Your answer did not arrive within 120s ..., so this round was played without you", and an MCP seat whose harness went quiet "[AWAY] ...". The note was written to the move history, which only the token-saving mode reads (one user message with the history embedded). In the default mode, a rolling conversation, nothing carried it: a model there missed round after round without once reading that the limit exists or that it had run past it. MCP seats play through the same conversation and never read "[AWAY]".
@@ -129,7 +136,7 @@ An arena match plays as before: nothing here is on its path.
 
 **Harness:**
 - **Verdicts.** A refusal is read against the state the seat was shown, less what its own earlier commands of the same reply used up. One whose command was valid in that state is `contended` and carries `stale: true`: the world moved while the model thought. An order to units whose handles were never in that state is `avoidable`. The ledger applies the same reading to older transcripts.
-- **Closing message in a series.** Between rounds a seat is told that the next match follows and is asked for a short word on this one. The text names `final_word` and `wait_for_turn`, which only an MCP seat has; a library seat is sent the same words. That is a defect, open as of build 1270.
+- **Closing message in a series.** Between rounds a seat is told that the next match follows and is asked for a short word on this one. The text names `final_word` and `wait_for_turn`, which only an MCP seat has; a library seat is sent the same words. That was a defect, corrected in build 1274.
 - **MCP seats** stay joined from round to round and are sent the rules again with their new civilization.
 
 **Recorded matches:** the three samples of 25 November are of build 1261 and carry all of this.
