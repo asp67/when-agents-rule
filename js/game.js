@@ -617,6 +617,8 @@ class Game {
         this.player.attackBonus = 1.0;
         this.player.workerSpeedBonus = 1.0;
         this.player.workerBuildSpeedBonus = 1.0;
+        this.player.raidBonus = 0;            // the Viking's and the Maya's (b1270): they outlived
+        this.player.farmBonus = 0;            // their match, for whatever was played next
         this.player.unlockedBuildings = {};
         this.player.unlockedUnits = {};
         this.player.currentResearch = null;
@@ -722,6 +724,11 @@ class Game {
             // on the map under a population of 0 — and every model's opening snapshot
             // fell inside it.
             ai.resources.updatePopulation(Game.populationOf(ai.units));
+            // Its civilization's bonus, as the arena's start gives every seat (b1270).
+            // Only the human got one here, so a campaign Persian gathered, a Yamato
+            // researched and a Roman built at no bonus at all.
+            const civ = getCivilization(aiCiv);
+            if (civ && civ.bonus && civ.bonus.effect) civ.bonus.effect(ai);
         }
 
         // Initialize OpenAI-powered AI controllers for all AI players (async).
@@ -6650,6 +6657,22 @@ class Game {
         } else {
             this.wonderTimer = 0;
             if (this._wonderAnnounced) { this._wonderAnnounced = false; this.ui.hideWonderTimer(); }
+        }
+
+        // An opponent's Wonder wins the campaign for it, as it wins the arena (b1270): the
+        // same hold, counted on the same field. The count only ever ran in spectator
+        // mode, so an opponent that built and held one got nothing, and the
+        // secondsUntilYouWin its model read never moved.
+        const hold = this.wonderHoldMs();
+        for (const ai of this.aiManager.aiPlayers) {
+            const stands = !this.isPlayerEliminated(ai) && ai.buildings.some(b => b.isWonder && !b.underConstruction);
+            ai._wonderHold = stands ? (ai._wonderHold || 0) + deltaTime : 0;
+            if (ai._wonderHold >= hold) {
+                this.ui.hideWonderTimer();
+                this.ui.showDefeat();
+                this.gameStarted = false;
+                return;
+            }
         }
 
         // Check if all AI players are defeated — SAME elimination rule as the arena

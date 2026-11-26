@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1270: the campaign's opponents get their bonus, and their Wonder wins (27 November 2026)
+
+**Rules change, campaign only; the rules hash moves.** Two things the arena's start and end did and the campaign's did not.
+- **Bonus:** a civilization's bonus was applied to the human alone. A campaign Persian gathered, a Yamato researched, a Roman built, a Viking raided and a Maya farmed at no bonus; only Egypt and Greece had theirs, because building health is read from the data. Every opponent now gets its bonus at the start. The human's raid and farm bonuses are also reset there: they outlived their match, so a Maya played after a Viking raided at +25%.
+- **Wonder:** an opponent's Wonder was never counted outside spectator mode. A model that built and held one won nothing, and the `secondsUntilYouWin` it read never moved. The hold is now counted for every opponent as the arena counts it, and at its end the human is defeated.
+
+An arena match plays as before: nothing here is on its path.
+- **Tests:** `tests/campaign-opponents.test.cjs` (three of its four fail on b1269).
+
 ## Build 1269: a seat is not kept in by a unit it may not train (27 November 2026)
 
 **Rules change; the rules hash moves.** The elimination rule of 1 October keeps a seat in for "a finished building that can produce such a unit and pay for one now". It asked for the unit's price and its age, not for the research some units need of their own: the engineer behind Siege Engineering, the Maya's scout behind Scouting. A bronze-age seat left with an academy and a house, 60 food and 30 wood, was kept in: every order to train an engineer was refused for the research, the research could not be paid, and the match could not end by last standing until somebody found the academy.
