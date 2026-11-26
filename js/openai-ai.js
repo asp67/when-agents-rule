@@ -404,6 +404,12 @@ class OpenAIAIManager {
                 // {action, params} meant the same thing, and refusing it would fail a
                 // seat over a habit rather than over a decision.
                 cmds.push({ action: args.action, params: args.params || args });
+            } else if (name) {
+                // A tool that does not exist, called with arguments that parsed (b1277):
+                // an unknown action, and answered as one, by name. It was counted with
+                // the broken calls, so the seat read "send complete arguments" about
+                // arguments that were complete and never read the word that was wrong.
+                cmds.push({ action: name, params: args });
             } else {
                 broken++;
             }

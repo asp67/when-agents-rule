@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1277: a call to a tool that does not exist is answered as an unknown action (27 November 2026)
+
+**Harness change; the harness hash moves.** A tool call whose name is none of the game's was counted with the calls whose arguments would not parse. Alone, the seat read "[ERROR] No valid action data received."; in a batch, "One of your calls could not be parsed, so that action was skipped ... Send complete arguments per call." The arguments were complete. The name was wrong and was never mentioned.
+
+**Now** such a call is an unknown action: "[ERROR] Unknown action: gather_resources. Valid actions: ...", the answer a raw-JSON seat has always had for the same mistake. The verdict is `invalid` as before, and the transcript's outcome now carries the name that was called. A call whose arguments do not parse, or that has no name, is answered as before.
+- **Tests:** `tests/unknown-tool-name.test.cjs` (two of its three fail on b1276).
+
 ## Build 1276: what a seat is told about how to answer is true for that seat (27 November 2026)
 
 **Harness change; the harness hash moves. The default system prompt is unchanged, so the prompt version stays.** Models copy our notation back: a wrong form in a prompt or an error is a wrong form in the next reply. Two seats were told the other one's form.
