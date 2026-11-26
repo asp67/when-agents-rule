@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1269: a seat is not kept in by a unit it may not train (27 November 2026)
+
+**Rules change; the rules hash moves.** The elimination rule of 1 October keeps a seat in for "a finished building that can produce such a unit and pay for one now". It asked for the unit's price and its age, not for the research some units need of their own: the engineer behind Siege Engineering, the Maya's scout behind Scouting. A bronze-age seat left with an academy and a house, 60 food and 30 wood, was kept in: every order to train an engineer was refused for the research, the research could not be paid, and the match could not end by last standing until somebody found the academy.
+
+**Now** such a unit counts when its research is done, or is under way (and so paid), or can be started this moment and paid together with the unit (`researchPriceIfStartable`: its age, its prerequisites, its building standing finished, no other research running). A seat that can still research its way back stays in.
+- **Tests:** `tests/elimination-research-gate.test.cjs` (two of its four fail on b1268).
+
 ## Build 1268: a farmer whose farm is razed is idle (26 November 2026)
 
 **Rules change; the rules hash moves.** Two paths, two wrong ends.

@@ -6747,10 +6747,40 @@ class Game {
                 const def = (typeof getUnitDefFor === 'function') ? getUnitDefFor(ai.civilization, uid) : null;
                 if (!def) continue;
                 if (ageOrder.indexOf(def.tier || 'stone') > aIdx) continue; // not available at this age
-                if (ai.resources.hasResources(def.cost)) return true;
+                // A unit behind a research of its own (the engineer, the Maya's scout)
+                // may not be trained without it, so its price alone is not "can pay for
+                // one now" (b1269): the research is done, or under way and so paid, or
+                // can be started this moment and paid together with the unit.
+                const tech = (typeof unitTechMissing === 'function') ? unitTechMissing(ai, uid) : null;
+                if (!tech) { if (ai.resources.hasResources(def.cost)) return true; continue; }
+                if (ai.currentResearch && ai.currentResearch.techId === tech) { if (ai.resources.hasResources(def.cost)) return true; continue; }
+                const both = this.researchPriceIfStartable(ai, tech);
+                if (both && ai.resources.hasResources(Game.sumCosts(both, def.cost))) return true;
             }
         }
         return false;
+    }
+
+    // What a research would cost this owner if it could start it now, or null if it
+    // cannot: no such tech, an age or a prerequisite missing, its building not standing
+    // finished, or another research running (one at a time).
+    researchPriceIfStartable(ai, techId) {
+        const civ = (typeof getCivilization === 'function') ? getCivilization(ai.civilization) : null;
+        const tech = civ && civ.techTree && civ.techTree[techId];
+        if (!tech || ai.currentResearch) return null;
+        const ages = ['stone', 'neolithic', 'bronze', 'iron'];
+        if (tech.requiredAge && ages.indexOf(tech.requiredAge) > ages.indexOf(ai.age)) return null;
+        if ((tech.requires || []).some(req => !(ai.researchedTechs && ai.researchedTechs[req]))) return null;
+        const at = tech.researchAt || 'town_center';
+        if (!(ai.buildings || []).some(b => b.type === at && b.health > 0 && !b.underConstruction)) return null;
+        const mult = ai.techCostMultiplier || 1, price = {};
+        for (const k of ['food', 'wood', 'stone', 'gold']) price[k] = Math.floor(((tech.cost && tech.cost[k]) || 0) * mult);
+        return price;
+    }
+    static sumCosts(a, b) {
+        const out = {};
+        for (const k of ['food', 'wood', 'stone', 'gold']) out[k] = ((a && a[k]) || 0) + ((b && b[k]) || 0);
+        return out;
     }
 
     // Decide the arena: a held wonder, last player standing, or wipeout.
