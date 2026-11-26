@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1268: a farmer whose farm is razed is idle (26 November 2026)
+
+**Rules change; the rules hash moves.** Two paths, two wrong ends.
+- Standing at the farm, the farmer was sent to the nearest node of any kind within 50, whether its seat had discovered that node or not. It was the one place where the rules both chose for a seat and looked through the fog to do it; a worker whose node runs dry goes on to a node of the same kind its seat has discovered, or stands idle.
+- Carrying a load home at that moment, it was left without a task and still tied to the dead farm. It was idle for nobody who asked (`isIdleWorker`), its model read it under `workers.food` as a farmer, and no farm was ever given to it again (a probe: 150 s later, unchanged).
+
+**Now** the farmer is idle in both cases, with no tie to the farm and no node chosen for it; a load it carries is banked first. What it does next is its seat's decision. A seat sees it in `workers.idle`. `findNearestResourceNode`, which only this used, is gone.
+- **Tests:** `tests/razed-farm.test.cjs` (both fail on b1267).
+
 ## Build 1267: Pottery makes villagers build a quarter faster, once (26 November 2026)
 
 **Rules change; the rules hash moves.** Egypt's Pottery says "villagers build +25% faster". The research raised the owner's build bonus and also each worker's own build speed, and a site advances by the product of the two: 56% faster (a probe: a 5000 ms house in 3200 ms, where +25% is 4000 ms). No other bonus is read twice; a worker's harvest and walking bonuses each have one reader.

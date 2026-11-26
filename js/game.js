@@ -1302,47 +1302,6 @@ class Game {
         return nearest;
     }
     
-    findNearestResourceNode(x, z) {
-        let nearest = null;
-        let minDist = Infinity;
-        
-        // Check terrain resources (trees, animals, stone, gold)
-        if (this.terrain && this.terrain.resources) {
-            this.terrain.resources.forEach(resource => {
-                if (resource.amount <= 0) return;
-                const dx = resource.x - x;
-                const dz = resource.z - z;
-                const dist = Math.sqrt(dx*dx + dz*dz);
-                if (dist < minDist && dist < 50) {
-                    minDist = dist;
-                    nearest = resource;
-                }
-            });
-        }
-        
-        // Also check farms (only player-owned, they act like renewable food resources)
-        const farms = this.getAllBuildings().filter(b => b.type === 'farm' && b.foodAmount > 0 && b.owner === 'player' && !b.underConstruction);
-        farms.forEach(farm => {
-            const dx = farm.x - x;
-            const dz = farm.z - z;
-            const dist = Math.sqrt(dx*dx + dz*dz);
-            if (dist < minDist && dist < 50) {
-                minDist = dist;
-                // Create a resource-like object for the farm
-                nearest = {
-                    type: 'food',
-                    x: farm.x,
-                    z: farm.z,
-                    amount: farm.foodAmount,
-                    isFarm: true,
-                    farmRef: farm
-                };
-            }
-        });
-        
-        return nearest;
-    }
-    
     hasPendingBuildings() {
         return this.player.pendingBuildings && this.player.pendingBuildings.length > 0;
     }
@@ -5799,6 +5758,13 @@ class Game {
                         unit.harvestTarget = null;
                     }
                 }
+                // Its farm was razed while it carried the load home: it is no dead farm's
+                // farmer (b1268). The tie stayed, so it was idle for nobody who asked,
+                // was reported to its model as farming, and was never given a farm again.
+                if (unit.farmRef && !(unit.farmRef.health > 0)) {
+                    if (unit.farmRef.assignedWorker === unit) unit.farmRef.assignedWorker = null;
+                    unit.farmRef = null;
+                }
                 // If worker is assigned to a farm, return to it instead
                 if (unit.farmRef && unit.farmRef.assignedWorker === unit && unit.farmRef.health > 0) {
                     unit.task = 'farm_work';
@@ -5925,17 +5891,13 @@ class Game {
                     if (farm && farm.assignedWorker === unit) {
                         farm.assignedWorker = null;
                     }
+                    // Idle, and its seat decides what it does next (b1268). It used to be
+                    // sent to the nearest node of any kind within 50, discovered by its
+                    // seat or not: the rules chose for the seat and looked through the
+                    // fog to do it.
                     unit.task = null;
                     unit.farmRef = null;
-                    // Find new work
-                    const nearestResource = this.findNearestResourceNode(unit.x, unit.z);
-                    if (nearestResource) {
-                        unit.task = 'harvesting';
-                        unit.harvestTarget = nearestResource;
-                        unit.isMoving = true;
-                        unit.targetX = nearestResource.x;
-                        unit.targetZ = nearestResource.z;
-                    }
+                    unit.harvestTarget = null;
                     return;
                 }
                 
