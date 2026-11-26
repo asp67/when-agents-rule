@@ -110,6 +110,14 @@ class AIManager {
         this.openAIControlled.add(aiPlayerId);
     }
 
+    // A new match: no seats yet, and nobody a model's. The mark was kept for the life of
+    // the page, and seat ids are seeded, so on a seed played before a rule-based seat
+    // could stand where a model had stood and never be played (b1263).
+    resetSeats() {
+        this.aiPlayers = [];
+        this.openAIControlled.clear();
+    }
+
     addAIPlayer(civilization, difficulty = 'medium', profile = 'standard') {
         const resources = new ResourceManager();
         resources.food = 200;

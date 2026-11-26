@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1263: who plays a seat is decided anew at every start (26 November 2026)
+
+**Rules change; the rules hash moves.** The mark "a model plays this seat" was kept for the life of the page, and seat ids are seeded. On a seed played before (a series, a rematch), a rule-based seat could come to stand where a model had stood: its brain never ran and it discovered nothing. The campaign's start did not empty the seat list at all, so a campaign after another match kept that match's seats beside its own opponents, with units and buildings that are in no scene.
+
+**Now** both start paths empty the seats and the marks (`AIManager.resetSeats`) before they create the new ones.
+- **Tests:** `tests/match-carryover.test.cjs`: a seat a model played is the brain's again on the same seed, and a campaign after an arena match has only its own opponents (both fail on b1262). `tests/lib/campaign-realm.cjs` is new: the campaign's start path in a bare realm.
+
 ## Build 1262: the Wonder's countdown no longer follows the speed a match starts at (26 November 2026)
 
 **Rules change; the rules hash moves.** Since build 1021 a Wonder must stand 1200 game seconds: its 600 countdown seconds are counted at the 1× pace (`wonderPace` 2), ten real minutes at 1×. Build 1236 let a new match start at the speed the match before was left at, and set the pace to that speed as well. A match started at 2× therefore needed 2400 game seconds, twenty real minutes at the 1× a standing Wonder holds the match to, while its seats were still told 600 seconds. A match started at ½× and then set to 1× needed five.

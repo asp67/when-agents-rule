@@ -468,7 +468,7 @@ class Game {
         this.renderer.setTerrain(this.terrain);
 
         // Create AI players based on setup
-        this.aiManager.aiPlayers = [];
+        this.aiManager.resetSeats();
         for (let i = 0; i < numPlayers; i++) {
             // A rule-based seat plays the anchor style its slot names (AI_PROFILES).
             const ai = this.aiManager.addAIPlayer(setup[i].civ, 'medium', setup[i].type === 'ki' ? setup[i].profile : undefined);
@@ -588,6 +588,10 @@ class Game {
 
         // Clear scene
         this.renderer.clearScene();
+        // ...and the seats of the match before. This start never emptied the list: a
+        // campaign after another match kept that match's seats beside its own opponents,
+        // with units and buildings that are in no scene (b1263).
+        this.aiManager.resetSeats();
 
         // Reset player resources (still needed for UI, even in spectator mode)
         this.player.resources = new ResourceManager(() => {
