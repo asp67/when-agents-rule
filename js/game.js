@@ -493,6 +493,10 @@ class Game {
                     this.renderer.addUnit(worker);
                 }
             }
+            // The people standing there, counted now (b1264), as the campaign's start
+            // does: a model's opening state is built before the first step derives it,
+            // and read population 0 beside three workers.
+            ai.resources.updatePopulation(Game.populationOf(ai.units));
 
             // Apply civ bonus
             const civ = getCivilization(ai.civilization);

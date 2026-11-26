@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1264: a seat's opening state counts its three workers (26 November 2026)
+
+**What a model is told on its first turn changes; the rules hash moves.** The population is derived by the rules step. The campaign's start has also derived it right after creating the workers; the arena's start never did. A model's opening state is built before the first step, so in every recorded arena match the first seat's turn 1 read `population.used: 0` beside `workers.total: 3`.
+
+**Now** the arena's start counts the workers as soon as they stand there. Nothing a match does changes: the golden traces pass without being re-recorded.
+- **Tests:** `tests/opening-population.test.cjs` (fails on b1263).
+
 ## Build 1263: who plays a seat is decided anew at every start (26 November 2026)
 
 **Rules change; the rules hash moves.** The mark "a model plays this seat" was kept for the life of the page, and seat ids are seeded. On a seed played before (a series, a rematch), a rule-based seat could come to stand where a model had stood: its brain never ran and it discovered nothing. The campaign's start did not empty the seat list at all, so a campaign after another match kept that match's seats beside its own opponents, with units and buildings that are in no scene.
