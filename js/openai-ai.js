@@ -218,6 +218,23 @@ class OpenAIAIManager {
     // wrong is not cosmetic: small models copy our notation straight back, so an
     // error telling a tool seat to "reply with ONE raw JSON object and no tool call"
     // is a wrong answer we dictated ourselves.
+    // The sentence the system prompt opens its answer rules with, and what stands in its
+    // place for a seat whose endpoint takes no tool calls (buildSystemPrompt).
+    static get TOOLS_ONLY_LINE() { return 'ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.'; }
+    static get NO_TOOLS_LINE() { return 'ACT BY WRITING RAW JSON OBJECTS in your reply, one per line: this endpoint takes no tool calls, so wherever this text says to call a tool, write that call as an object instead (the shapes are under ACTIONS below). Anything else in the reply is a wasted turn.'; }
+    // Does this seat answer through tool calls? False once its endpoint has refused the
+    // tools array: it is sent none from then on.
+    static callsTools(controller) {
+        const m = (controller && controller.model) || {};
+        return OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(m)) && !(m._reqOpts && m._reqOpts.omitTools);
+    }
+    // The smallest valid answer, in the form THIS seat is read in (b1276). The advice to
+    // a seat out of output tokens showed raw JSON to every seat, and raw JSON is not
+    // read from a seat that calls tools.
+    static bareWait(controller) {
+        return OpenAIAIManager.callsTools(controller) ? 'a bare call of "wait" with {"reason":"thinking"}'
+            : 'a bare {"action":"wait","params":{"reason":"thinking"}}';
+    }
     static howToAnswer(controller) {
         const m = (controller && controller.model) || {};
         // ...and a model whose endpoint has REFUSED the tools array is in the same
@@ -226,7 +243,10 @@ class OpenAIAIManager {
         const tools = OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(m))
             && !(m._reqOpts && m._reqOpts.omitTools);
         const json = '{"action":"wait","params":{"reason":"..."}}';
-        if (!tools) return 'Reply with ONE raw JSON object, e.g. ' + json + '.';
+        // One object per action is read, up to the same number a tool seat may call
+        // (b1276): "ONE raw JSON object" was the single-action advice this text
+        // removed everywhere else.
+        if (!tools) return 'Reply with one raw JSON object per action, up to ' + OpenAIAIManager.MAX_COMMANDS_PER_TURN + ', e.g. ' + json + '.';
         // The "nothing worth doing" hole, closed. A 9B seat ended 28 of 53 turns with
         // finish_reason "stop" after a median of 162 output tokens: it was not running
         // out of room, it thought briefly, judged the turn not worth a move and said
@@ -4578,7 +4598,7 @@ The LAST message carries your CURRENT state as JSON; decide from it and issue on
 - "unlockedContent" lists the BUILDINGS you may now place; "research.researched" lists the TECHS you hold. They are not the same list and neither follows from the other by name: longbow unlocks the archery range, horseback unlocks the stable.
 - siege_engineering (academy) allows training engineers: light foot soldiers who march in a formation's rear and can build and repair trebuchets on site; only an engineer builds a trebuchet. A finished trebuchet is a weak UNIT on wheels: build trebuchet for a simple_trebuchet (speed 0.25, reach 50, sight 120), or from the iron age trebuchet_advanced for an advanced_trebuchet (speed 0.5, reach 60, sight 144). It throws stone only at enemy towers and tower sites, outranging a tower's 18, and only while it stands; it sees nothing but enemy towers, moves when you name it or as part of a formation and takes no population. Damaged trebuchets are repaired by engineers and villagers. build_structure sends your nearest free engineer from any distance; if a site's engineer falls, a free engineer within 40 of it takes over unasked. An engineer finishes its trebuchet before following orders, unless a unit hits it.
 
-ACT BY CALLING THE TOOLS. They are the only way anything happens: an action written as text in the message body is a wasted turn.
+${OpenAIAIManager.TOOLS_ONLY_LINE}
 
 IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_COMMANDS_PER_TURN} GAME COMMANDS. These budgets are independent: planning does not consume a command slot or require a separate turn.
   Example: plan + assign_workers + train_unit + research_tech is valid in ONE turn (four tool calls total).
@@ -4664,7 +4684,10 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         // none it can. Appended per seat rather than put in the shared template: for
         // everyone else the sentence would be a licence to ignore the contract, which
         // is exactly what cost the last match.
-        const fallbackHint = (controller && controller.model && controller.model.toolFallback)
+        // ...and not to a seat that is sent no tools at all (b1276): its endpoint refused
+        // the tools array, so "calling the tools is still the primary channel" is false
+        // for it, and the line saying they are the only way is swapped below.
+        const fallbackHint = (controller && controller.model && controller.model.toolFallback && OpenAIAIManager.callsTools(controller))
             ? '\n\nIF TOOL CALLING FAILS FOR YOU: this seat also accepts the same two shapes written as raw JSON objects in your reply text, one object per line — '
               + '{"action": "<ActionName>", "params": { … }} and {"objective": "<1 line>", "plan": ["<step>"]}. '
               + 'Calling the tools is still the primary channel; use this only when a call does not go through.'
@@ -4675,7 +4698,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         // copy in the prompt was a fifth of the prompt, paid on every turn.
         const m = (controller && controller.model) || {};
         const toolSeat = OpenAIAIManager.toolsSupported(OpenAIAIManager.resolveProvider(m)) && !(m._reqOpts && m._reqOpts.omitTools);
-        return base
+        return (toolSeat ? base : base.split(OpenAIAIManager.TOOLS_ONLY_LINE).join(OpenAIAIManager.NO_TOOLS_LINE))
             .replace(/\{\{actions\}\}/g, toolSeat ? '' : '\n\n' + OpenAIAIManager.actionReference())
             .replace(/\{\{civilization\}\}/g, ai.civilization)
             .replace(/\{\{bonus\}\}/g, intoModelLang(civ?.bonus?.description) || 'None')
@@ -5804,7 +5827,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 controller.seat.lastActionResult = rawReply.trim()
                     ? `[ERROR] Your last reply could not be parsed, so nothing was executed. ${OpenAIAIManager.howToAnswer(controller)}`
                     : (cappedOut
-                        ? `[ERROR] You returned NOTHING: your reply hit the output limit of ${askedMax} tokens before a single character of answer was written, so nothing was executed. Your thinking is spent from that same budget. Decide faster and keep "reason", "objective" and "plan" to one short sentence each — a bare {"action":"wait","params":{"reason":"thinking"}} beats an empty turn.`
+                        ? `[ERROR] You returned NOTHING: your reply hit the output limit of ${askedMax} tokens before a single character of answer was written, so nothing was executed. Your thinking is spent from that same budget. Decide faster and keep "reason", "objective" and "plan" to one short sentence each — ${OpenAIAIManager.bareWait(controller)} beats an empty turn.`
                         : `[ERROR] You returned an EMPTY reply, so nothing was executed. ${OpenAIAIManager.howToAnswer(controller)}`);
                 const lastTurn = this.logTurnFor(controller);
                 if (lastTurn && lastTurn.outcome == null) lastTurn.outcome = controller.lastActionResult;

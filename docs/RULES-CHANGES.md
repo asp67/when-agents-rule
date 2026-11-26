@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1276: what a seat is told about how to answer is true for that seat (27 November 2026)
+
+**Harness change; the harness hash moves. The default system prompt is unchanged, so the prompt version stays.** Models copy our notation back: a wrong form in a prompt or an error is a wrong form in the next reply. Two seats were told the other one's form.
+- **A seat whose endpoint refused the tools array** (possible only with the tool fallback switched on) is sent no tools from then on. Its prompt still said "ACT BY CALLING THE TOOLS. They are the only way anything happens" and "Calling the tools is still the primary channel", and its errors said "Reply with ONE raw JSON object" where one object per action is read. It now reads "ACT BY WRITING RAW JSON OBJECTS ... this endpoint takes no tool calls" in place of the first, no "tools first" hint, and "Reply with one raw JSON object per action, up to 3".
+- **A seat that calls tools**, cut at its output limit before a character of answer, was told that "a bare {"action":"wait","params":{"reason":"thinking"}} beats an empty turn". Raw JSON is not read from such a seat at all. It now reads `a bare call of "wait" with {"reason":"thinking"}`; a seat without tools keeps the JSON form.
+- **Tests:** `tests/answer-format-texts.test.cjs` (all three fail on b1275); `tests/prompt-version.test.cjs` holds the default prompt where it was.
+
 ## Build 1275: a seat that answered has not missed the round, however many lanes it runs (27 November 2026)
 
 **Harness change; the harness hash moves.** Turn-based play with more than one lane a seat (the experimental pipeline). At the round deadline every seat with a request out was recorded as missing the round. A seat with two lanes that has answered nearly always has its next request out already: whenever another seat ran late, it was booked a missed round, read "[TIMEOUT] ... this round was played without you" about a round it had played, and had that request cut. Its move still ran.
