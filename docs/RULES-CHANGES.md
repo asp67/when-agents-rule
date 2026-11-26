@@ -6,6 +6,13 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1275: a seat that answered has not missed the round, however many lanes it runs (27 November 2026)
+
+**Harness change; the harness hash moves.** Turn-based play with more than one lane a seat (the experimental pipeline). At the round deadline every seat with a request out was recorded as missing the round. A seat with two lanes that has answered nearly always has its next request out already: whenever another seat ran late, it was booked a missed round, read "[TIMEOUT] ... this round was played without you" about a round it had played, and had that request cut. Its move still ran.
+
+**Now** the deadline notes a seat only if it has a request out and has not answered the round. With one lane a seat, the two tests are the same and nothing changes.
+- **Tests:** `tests/round-missed-lanes.test.cjs` (the first of its three fails on b1274).
+
 ## Build 1274: between the matches of a series, a library seat is not told to call tools it does not have (27 November 2026)
 
 **Harness change; the harness hash moves.** Since build 1236 the closing message between two matches of a series says "share your thoughts ... via final_word ... and then immediately call wait_for_turn". Those are the MCP hub's tools. A harness that plays a seat has them and stays joined for the next match. A model behind an endpoint was sent the same words with the game's twelve commands and `plan`; told to call a tool it was never given, a tool-trained model answers with a call to nothing, and the closing statement is filed as empty.

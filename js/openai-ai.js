@@ -10334,7 +10334,11 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
                 // them, let the round resolve, and the slow seat simply misses it.
                 // Missing seats are told so on their next turn — a deadline enforced
                 // in silence is one a model cannot budget against.
-                live.filter(c => this.seatBusy(c)).forEach(c => this.noteRoundMissed(c));
+                // "Has not answered", not only "has a request out" (b1275): with more
+                // than one lane a seat that answered nearly always has the next request
+                // out already, and it was booked a missed round, told so, and had that
+                // request cut, whenever another seat ran late.
+                live.filter(c => this.seatBusy(c) && !this.seatAnswered(c)).forEach(c => this.noteRoundMissed(c));
                 // Only the lanes that owed THIS round are released; noteRoundMissed has
                 // just cut them. A lane still working an earlier round's question is
                 // mid-pipeline and is left alone -- releasing it would free a slot the
