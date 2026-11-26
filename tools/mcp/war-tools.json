@@ -107,7 +107,7 @@
           },
           "count": {
             "type": "integer",
-            "description": "How many. Default 3, max 20."
+            "description": "How many. Default 3, max 20; for \"farm\", every unmanned farm."
           },
           "from": {
             "type": "string",

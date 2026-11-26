@@ -109,7 +109,7 @@ class OpenAIAIManager {
              Object.assign({ buildingType: S('Building type from buildings.buildable.') }, XZ), ['buildingType']],
             ['assign_workers', 'Move workers onto a resource.',
              Object.assign({ resourceType: S('food|wood|stone|gold|farm. May omit only when targetX/targetZ identify a known node or your farm unambiguously; the reason text never selects it.'),
-                             count: I('How many. Default 3, max 20.'),
+                             count: I('How many. Default 3, max 20; for "farm", every unmanned farm.'),
                              from: S('Any key from "workers" — where to TAKE them. "building" and "fighting" are taken when that ends. Omit to take idle first, then your largest stockpile.'),
                              whenCarrying: S('spillLoad|deliverLoad|skipAssignment — what a chosen worker does if it is carrying. Default spillLoad: move now, the load is lost.') }, XZ), []],
             ['repair_building', 'Send workers to repair a damaged building or trebuchet; for a trebuchet free engineers go too. At the coordinates of your trebuchet site, free engineers go to build it. Omit the coordinates to repair the most damaged one.',
@@ -3417,10 +3417,14 @@ class OpenAIAIManager {
         const queuedBy = new Map();
         ai.units.forEach(u => {
             const q = u._queuedAssign;
-            if (!q || !q.node || u.health <= 0 || q.token !== u._orderToken) return;
-            const row = queuedBy.get(q.token)
+            // Where it is going: a node, or since b1279 a farm to man. One row a place, so
+            // two farms of one order are two rows and neither reads as a point between them.
+            const at = q && (q.node || q.farm);
+            if (!at || u.health <= 0 || q.token !== u._orderToken) return;
+            const key = q.farm ? q.token + ':' + Math.round(at.x) + ',' + Math.round(at.z) : q.token;
+            const row = queuedBy.get(key)
                      || { n: 0, sx: 0, sz: 0, eta: 0, timed: false, order: 'assign_workers' };
-            row.n++; row.sx += q.node.x; row.sz += q.node.z;
+            row.n++; row.sx += at.x; row.sz += at.z;
             const site = u.buildTarget;
             if (site) {
                 row.timed = true;
@@ -3437,7 +3441,7 @@ class OpenAIAIManager {
                     }, null);
                 if (tc) { row.timed = true; row.eta = Math.max(row.eta, this.travelEtaSec(u, tc.b.x, tc.b.z)); }
             }
-            queuedBy.set(q.token, row);
+            queuedBy.set(key, row);
         });
 
         const ordersInProgress = [...marchBy.values(), ...queuedBy.values()].map(r => ({
@@ -9158,11 +9162,42 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
     // worker who built one, or by the idle-worker sweep — which never fires while
     // every hand is busy. Same pull triage as the resource path, so a rescue
     // disturbs the economy exactly as predictably as any other reassignment.
+    // What a chosen worker does if it is carrying: the one question of assign_workers
+    // with three answers, read here for every resource and for farms (b1279).
+    // { value } or { error }; the outcome is noted for an error.
+    readWhenCarrying(params) {
+        const CARRY = ['spillLoad', 'deliverLoad', 'skipAssignment'];
+        let whenCarrying = 'spillLoad';
+        if (OpenAIAIManager.given(params.whenCarrying)) {
+            const v = String(params.whenCarrying).trim();
+            const hit = CARRY.find(k => k.toLowerCase() === v.toLowerCase());
+            if (!hit) {
+                this.outcome('log.out.assignBadCarry', {});
+                return { error: `[ERROR] assign_workers "whenCarrying": expected ${CARRY.join('|')}. Got ${JSON.stringify(params.whenCarrying)}.` };
+            }
+            whenCarrying = hit;
+        } else if (OpenAIAIManager.given(params.allowSpill)) {
+            const v = typeof params.allowSpill === 'string'
+                ? params.allowSpill.trim().toLowerCase() : params.allowSpill;
+            if (v === true || v === 'true') whenCarrying = 'spillLoad';
+            else if (v === false || v === 'false') whenCarrying = 'skipAssignment';
+            else {
+                this.outcome('log.out.assignBadSpill', {});
+                return { error: `[ERROR] assign_workers "allowSpill": expected true or false. Got ${JSON.stringify(params.allowSpill)}.` };
+            }
+        }
+        return { value: whenCarrying };
+    }
+
     executeAssignFarmers(ai, game, params) {
         const from = OpenAIAIManager.workerSource(params.from);
         if (from === undefined) return '[ERROR] assign_workers: invalid "from" worker pool.';
         const noTC = this.noTownCenterAdvice(ai);
         if (noTC) return noTC;
+        const carry = this.readWhenCarrying(params);
+        if (carry.error) return carry.error;
+        const whenCarrying = carry.value;
+        const carrying = u => !!(u.carryingResource || u.task === 'carrying');
 
         const farms = ai.buildings.filter(b => b.type === 'farm' && !b.underConstruction && b.health > 0);
         if (farms.length === 0) {
@@ -9186,7 +9221,7 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             const tx = Number(params.targetX), tz = Number(params.targetZ);
             if (!gaveX || !gaveZ || !Number.isFinite(tx) || !Number.isFinite(tz)) {
                 this.outcome('log.out.farmNeedsCoords', {});
-                return `[ERROR] assign_workers to "farm" takes BOTH numeric "targetX" and "targetZ" (one of your farms in "buildings"), or neither — then your unmanned farms are staffed nearest-Town-Center first.`;
+                return `[ERROR] assign_workers to "farm" takes BOTH numeric "targetX" and "targetZ" (one of your farms in "friendlyBuildings"), or neither — then your unmanned farms are staffed nearest-Town-Center first.`;
             }
             open.sort((a, b) => WarMath.hypot(a.x - tx, a.z - tz) - WarMath.hypot(b.x - tx, b.z - tz));
         } else {
@@ -9195,6 +9230,32 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             open.sort((a, b) => dTC(a) - dTC(b));
         }
         const want = Math.max(1, Math.min(params.count || open.length, open.length));
+
+        // Workers who are building or fighting, named as the source, are taken when that
+        // ends: held on the worker and fired at game.applyQueuedAssign, as for every
+        // resource (b1279). This branch answered "neither is ever pulled".
+        if (from === 'building' || from === 'fighting') {
+            const pool = ai.units.filter(u => u.type === 'worker' && u.health > 0 && this.workerSourceMatches(ai, u, from));
+            if (!pool.length) {
+                this.outcome('log.out.assignFromEmpty', { from, field: from });
+                return `[ERROR] assign_workers "${from}": empty (workers.${from} is 0).`;
+            }
+            const take = pool.slice(0, want), token = ++this._orderSeq;
+            let secs = 0;
+            take.forEach((w, i) => {
+                w._orderToken = token; w._queuedAssign = { token, farm: open[i] };
+                const b = w.buildTarget;
+                if (b) secs = Math.max(secs, this.secsLeft(b.buildProgress, b.buildTime));
+                const liveJob = OpenAIAIManager.workerJob(game, w);
+                if (liveJob !== 'building' && liveJob !== 'fighting') game.applyQueuedAssign(w);
+            });
+            const waiting = take.filter(w => w._queuedAssign).length;
+            const when = !waiting ? ' Their previous task has finished, so they go now.' : (from === 'building' && secs > 0)
+                ? ` They finish building in ~${secs}s and go then.`
+                : ` They go when the ${from === 'building' ? 'build' : 'fight'} ends.`;
+            this.outcome('log.out.assignQueued', { count: take.length, res: 'farm', from, secs: secs || 0 });
+            return `OK - ${take.length} worker(s) queued for a farm at ${take.map((w, i) => `(${Math.round(open[i].x)}, ${Math.round(open[i].z)})`).join(', ')}.${when}`;
+        }
 
         // Never cannibalize a farm to feed a farm, and never take a builder or a
         // fighter — the same exclusions the resource path applies.
@@ -9215,21 +9276,52 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
             this.outcome('log.out.noWorkersForFarms', { open: open.length });
             return `[ERROR] No workers can be spared for your ${open.length} unmanned farm(s): ${building} are constructing, ${fighting} are fighting (neither is ever pulled), and the rest already man farms.`;
         }
+        let chosen = candidates;
+        if (whenCarrying === 'skipAssignment') {
+            chosen = candidates.filter(u => !carrying(u));
+            if (!chosen.length) {
+                this.outcome('log.out.assignAllCarrying', { n: candidates.length, res: 'farm' });
+                return `[ERROR] All ${candidates.length} available worker(s) are carrying a load.`;
+            }
+        }
+        // Within a tier the empty-handed first, as for every resource: taking a loaded
+        // worker destroys the load.
         const rank = u => game.workerPullRank(ai, u);
-        candidates.sort((a, b) => rank(a) - rank(b));
+        chosen.sort((a, b) => (rank(a) - rank(b)) || ((carrying(a) ? 1 : 0) - (carrying(b) ? 1 : 0)));
 
-        let manned = 0;
+        let manned = 0, deferred = 0, deferSecs = 0;
+        const deferToken = ++this._orderSeq;
+        const spilled = {};      // resource -> amount destroyed by pulling a loaded worker
         const pulledFrom = {};
         for (const f of open.slice(0, want)) {
-            const w = candidates[manned];
+            const w = chosen[manned];
             if (!w) break;
             const r = rank(w);
             const label = r === 0 ? 'idle' : r === 5 ? 'repairing' : r === 6 ? 'farming'
                 : r === 7 ? 'scouting'
                 : (w.harvestTarget ? `from ${w.harvestTarget.type}` : 'spare');
             pulledFrom[label] = (pulledFrom[label] || 0) + 1;
+            // deliverLoad: it walks on to the drop-off and mans the farm once the load is
+            // banked (game.applyQueuedAssign). It counts: the model asked for N farmers
+            // and is getting N, some of them a walk later.
+            if (whenCarrying === 'deliverLoad' && carrying(w)) {
+                w._orderToken = deferToken;
+                w._queuedAssign = { token: deferToken, farm: f };
+                const tc = ai.buildings.filter(b => b.type === 'town_center' && !b.underConstruction)
+                    .reduce((best, b) => { const d = WarMath.hypot(b.x - w.x, b.z - w.z);
+                                           return (!best || d < best.d) ? { b, d } : best; }, null);
+                if (tc) deferSecs = Math.max(deferSecs, this.travelEtaSec(w, tc.b.x, tc.b.z));
+                deferred++; manned++;
+                continue;
+            }
+            // Taken now, and what it carried is destroyed: said in the reply, as for every
+            // resource. It used to go without a word.
+            if (carrying(w) && w.harvestAmount > 0) {
+                const rt = w.carryingResourceType || (w.harvestTarget && w.harvestTarget.type) || 'resources';
+                spilled[rt] = (spilled[rt] || 0) + w.harvestAmount;
+            }
             w._formerTask = null;
-            w._orderToken = ++this._orderSeq;
+            w._orderToken = deferToken;
             w._queuedAssign = null;
             w.task = 'farm_work';
             w.farmRef = f;
@@ -9251,7 +9343,13 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         const left = open.length - manned;
         const short = left > 0 ? ` ${left} farm(s) still stand unmanned — you ran out of spare workers.` : '';
         this.outcome('log.out.farmManned', { count: manned, pulled: this.pulledCounts(pulledFrom), left: Math.max(0, open.length - manned) });
-        return `OK - Sent ${manned} worker(s) to man ${manned} farm(s) — pulled: ${src}. Each regrows food only while its worker stays on it.${short}`;
+        const spillTxt = Object.keys(spilled).length
+            ? ` Returning workers spilled ${Object.entries(spilled).map(([r, n]) => `${n} ${r}`).join(', ')} they were carrying.`
+            : '';
+        const deferTxt = deferred
+            ? ` ${deferred} of them ${deferred === 1 ? 'is' : 'are'} carrying and ${deferred === 1 ? 'goes' : 'go'} after the drop-off (~${deferSecs}s).`
+            : '';
+        return `OK - Sent ${manned} worker(s) to man ${manned} farm(s) — pulled: ${src}. Each regrows food only while its worker stays on it.${deferTxt}${spillTxt}${short}`;
     }
 
     inferWorkerResource(ai, game, params) {
@@ -9546,26 +9644,9 @@ IN ONE RESPONSE you may call "plan" ONCE AND issue up to ${OpenAIAIManager.MAX_C
         //
         // allowSpill stays as a silent alias. It is the spelling every model has seen
         // so far, and breaking it buys nothing.
-        const CARRY = ['spillLoad', 'deliverLoad', 'skipAssignment'];
-        let whenCarrying = 'spillLoad';
-        if (OpenAIAIManager.given(params.whenCarrying)) {
-            const v = String(params.whenCarrying).trim();
-            const hit = CARRY.find(k => k.toLowerCase() === v.toLowerCase());
-            if (!hit) {
-                this.outcome('log.out.assignBadCarry', {});
-                return `[ERROR] assign_workers "whenCarrying": expected ${CARRY.join('|')}. Got ${JSON.stringify(params.whenCarrying)}.`;
-            }
-            whenCarrying = hit;
-        } else if (OpenAIAIManager.given(params.allowSpill)) {
-            const v = typeof params.allowSpill === 'string'
-                ? params.allowSpill.trim().toLowerCase() : params.allowSpill;
-            if (v === true || v === 'true') whenCarrying = 'spillLoad';
-            else if (v === false || v === 'false') whenCarrying = 'skipAssignment';
-            else {
-                this.outcome('log.out.assignBadSpill', {});
-                return `[ERROR] assign_workers "allowSpill": expected true or false. Got ${JSON.stringify(params.allowSpill)}.`;
-            }
-        }
+        const carry = this.readWhenCarrying(params);
+        if (carry.error) return carry.error;
+        const whenCarrying = carry.value;
         if (whenCarrying === 'skipAssignment') {
             const free = candidates.filter(u => !carrying(u));
             if (!free.length) {

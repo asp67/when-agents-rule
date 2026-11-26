@@ -2218,6 +2218,28 @@ class Game {
         if (!q) return false;
         unit._queuedAssign = null;
         if (q.token !== unit._orderToken) return false;
+        // A farm to man (b1279): assign_workers "farm" for a worker that was building,
+        // fighting or carrying a load home. Not if the farm fell meanwhile, or somebody
+        // else stands on it by now: then there is nothing to walk to, as with a dry node.
+        if (q.farm) {
+            const f = q.farm, farmer = this.farmFarmer(f);
+            if (!(f.health > 0) || f.underConstruction || (farmer && farmer !== unit)) return false;
+            if (unit.farmRef && unit.farmRef !== f && unit.farmRef.assignedWorker === unit) unit.farmRef.assignedWorker = null;
+            unit._formerTask = null;
+            unit.task = 'farm_work';
+            unit.farmRef = f;
+            f.assignedWorker = unit;
+            unit.harvestTarget = null;
+            unit.buildTarget = null;
+            unit.repairTarget = null;
+            unit.isHarvesting = false;
+            unit.carryingResource = false;
+            unit.harvestAmount = 0;
+            unit.isMoving = true;
+            unit.targetX = f.x + (this.rand(unit, 'farm-spot') - 0.5) * 3;
+            unit.targetZ = f.z + (this.rand(unit, 'farm-spot') - 0.5) * 3;
+            return true;
+        }
         // The node can run dry while the worker is busy. Then there is nowhere to walk
         // to, so let the normal restore have it and the idle pass find it a job.
         if (!q.node || q.node.amount <= 0) return false;

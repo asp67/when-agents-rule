@@ -6,6 +6,15 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1279: assign_workers does for a farm what it says it does (27 November 2026)
+
+**Rules change and harness change; both hashes move. The system prompt is unchanged, so the prompt version stays.** The farm branch of `assign_workers` was written before `whenCarrying` and before workers who are building or fighting could be queued, and never learned either.
+- **`whenCarrying` was not read.** A carried load was destroyed whatever the model asked for, with `skipAssignment` and `deliverLoad` too, and the reply did not mention it. Now `skipAssignment` takes no carrying worker, `deliverLoad` lets it bank the load and man the farm after, and the default (`spillLoad`) says what was destroyed: "Returning workers spilled 10 wood they were carrying." Within a tier the empty-handed are taken first, as for every resource.
+- **`from: "building"` or `"fighting"`** was answered "neither is ever pulled", where the description says such workers "are taken when that ends". They are now queued for the farm and go when the build or the fight ends, as for every resource; the reply says when, and `ordersInProgress` shows the order. A farm that falls meanwhile, or that somebody else mans first, drops the job (`Game.applyQueuedAssign`, the rules side of this).
+- **`count`** is described as "Default 3"; for a farm the default has always been every unmanned farm. The description now says so: `Default 3, max 20; for "farm", every unmanned farm.` The behaviour is unchanged.
+- One error named the wrong list (`one of your farms in "buildings"`; they are in `friendlyBuildings`).
+- **Tests:** `tests/assign-workers-farm.test.cjs` (six of its seven fail on b1278). `tools/mcp/war-tools.json` is rebuilt for the description.
+
 ## Build 1278: the closing message names the population a seat reached (27 November 2026)
 
 **Harness change; the harness hash moves.** The closing message tells a seat its high-water marks: "Peak: 12 buildings, 31 units, 14 workers, population 31/35, around 41:10." The population mark was read off `resources.population`, where the count stood until population became a block of its own. It has been undefined since, so the mark never rose and the clause was never written.
