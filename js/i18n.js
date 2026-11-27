@@ -4650,14 +4650,14 @@ const I18N_ART = {
 };
 Object.keys(I18N_ART).forEach(l=>Object.assign(I18N[l],I18N_ART[l]));
 
-// Scale v4 benchmark vocabulary & redesigned UI labels across all four locales.
+// Scale v4.1 benchmark vocabulary & redesigned UI labels across all four locales.
 const I18N_V4 = {
     "en": {
         "eval.macro": "Macro & Agency",
         "eval.spatial": "Spatial",
         "eval.index": "WAR Score",
         "eval.indexShort": "WAR",
-        "eval.provisional": "Scale v4",
+        "eval.provisional": "Scale v4.1",
         "eval.short.grounding": "Grd",
         "eval.short.macro": "Mac",
         "eval.short.spatial": "Spa",
@@ -4703,7 +4703,7 @@ const I18N_V4 = {
         "bench.cmp.strategy": "sustained Bradley-Terry power dominance over time",
         "bench.cmp.bandwidth": "situational parallel commands per turn vs passive waits",
         "bench.cmp.drift": "early-to-late consistency across long match contexts",
-        "bench.b.gameFull": "Gameplay capabilities (Scale v4)",
+        "bench.b.gameFull": "Gameplay capabilities (Scale v4.1)",
         "bench.b.batchDist": "Action bandwidth",
         "bench.b.batchDistTip": "Share of decisions sending 3, 2, 1 commands vs justified or passive waits",
         "bench.b.batchShort": "Batching",
@@ -4741,14 +4741,14 @@ const I18N_V4 = {
         "share.footSeason": "Scale {scale} · same declared conditions only",
         "spec.sortIndex": "WAR",
         "spec.benchTitle": "Bench panels: 5-pillar gameplay profile, action bandwidth, cognitive cost & drift (B)",
-        "sum.profileNote": "Scale v4 evaluation profile read strictly from this match transcript. Click any pillar cell for underlying turn evidence. Methodology: docs/SCORING.md."
+        "sum.profileNote": "Scale v4.1 evaluation profile read strictly from this match transcript. Click any pillar cell for underlying turn evidence. Methodology: docs/SCORING.md."
     },
     "de": {
         "eval.macro": "Makro & Initiative",
         "eval.spatial": "Raum & Nebel",
         "eval.index": "WAR-Score",
         "eval.indexShort": "WAR",
-        "eval.provisional": "Skala v4",
+        "eval.provisional": "Skala v4.1",
         "eval.short.grounding": "Reg",
         "eval.short.macro": "Mak",
         "eval.short.spatial": "Rau",
@@ -4794,7 +4794,7 @@ const I18N_V4 = {
         "bench.cmp.strategy": "zeitgewichtete Bradley-Terry-Machtdominanz über das Spiel",
         "bench.cmp.bandwidth": "situative Mehrfachbefehle pro Zug vs. passives Warten",
         "bench.cmp.drift": "Stabilität zwischen früher und später Spielhälfte",
-        "bench.b.gameFull": "Spielfähigkeiten (Skala v4)",
+        "bench.b.gameFull": "Spielfähigkeiten (Skala v4.1)",
         "bench.b.batchDist": "Aktionsbandbreite",
         "bench.b.batchDistTip": "Verteilung der Züge auf 3, 2, 1 Befehle sowie begründetes und passives Warten",
         "bench.b.batchShort": "Bündelung",
@@ -4832,14 +4832,14 @@ const I18N_V4 = {
         "share.footSeason": "Skala {scale} · nur gleiche erklärte Bedingungen",
         "spec.sortIndex": "WAR",
         "spec.benchTitle": "Vergleichspanels: 5-Säulen-Profil, Aktionsbandbreite, Tokenkosten & Langzeit-Drift (B)",
-        "sum.profileNote": "Auswertungsprofil (Skala v4) rein aus dem Spieltranskript berechnet. Klick auf eine Säulenzelle zeigt die zugehörigen Züge. Methodik: docs/SCORING.md."
+        "sum.profileNote": "Auswertungsprofil (Skala v4.1) rein aus dem Spieltranskript berechnet. Klick auf eine Säulenzelle zeigt die zugehörigen Züge. Methodik: docs/SCORING.md."
     },
     "es": {
         "eval.macro": "Macro e Iniciativa",
         "eval.spatial": "Espacial",
         "eval.index": "WAR Score",
         "eval.indexShort": "WAR",
-        "eval.provisional": "Escala v4",
+        "eval.provisional": "Escala v4.1",
         "eval.short.grounding": "Reg",
         "eval.short.macro": "Mac",
         "eval.short.spatial": "Esp",
@@ -4885,7 +4885,7 @@ const I18N_V4 = {
         "bench.cmp.strategy": "dominio sostenido de poder Bradley-Terry a lo largo del tiempo",
         "bench.cmp.bandwidth": "órdenes paralelas situacionales por turno vs esperas pasivas",
         "bench.cmp.drift": "consistencia temprano-a-tardío en contextos largos",
-        "bench.b.gameFull": "Capacidades de juego (Escala v4)",
+        "bench.b.gameFull": "Capacidades de juego (Escala v4.1)",
         "bench.b.batchDist": "Ancho de acción",
         "bench.b.batchDistTip": "Proporción de turnos con 3, 2, 1 órdenes vs esperas justificadas o pasivas",
         "bench.b.batchShort": "Lotes",
@@ -4923,14 +4923,14 @@ const I18N_V4 = {
         "share.footSeason": "Escala {scale} · solo mismas condiciones declaradas",
         "spec.sortIndex": "WAR",
         "spec.benchTitle": "Paneles comparativos: 5 pilares de juego, ancho de acción, coste cognitivo y deriva (B)",
-        "sum.profileNote": "Perfil de evaluación Escala v4 calculado solo desde la transcripción. Haz clic en un pilar para ver las decisiones que lo sustentan. Metodología: docs/SCORING.md."
+        "sum.profileNote": "Perfil de evaluación Escala v4.1 calculado solo desde la transcripción. Haz clic en un pilar para ver las decisiones que lo sustentan. Metodología: docs/SCORING.md."
     },
     "zh": {
         "eval.macro": "运营与能动",
         "eval.spatial": "空间与视野",
         "eval.index": "WAR 评分",
         "eval.indexShort": "WAR",
-        "eval.provisional": "v4 量表",
+        "eval.provisional": "v4.1 量表",
         "eval.short.grounding": "规则",
         "eval.short.macro": "运营",
         "eval.short.spatial": "空间",
@@ -4976,7 +4976,7 @@ const I18N_V4 = {
         "bench.cmp.strategy": "时间加权 Bradley-Terry 实力统治力",
         "bench.cmp.bandwidth": "高并发需求下的多指令下达 vs 消极等待",
         "bench.cmp.drift": "长上下文下从前期到后期的表现退化幅度",
-        "bench.b.gameFull": "核心博弈能力（v4 量表）",
+        "bench.b.gameFull": "核心博弈能力（v4.1 量表）",
         "bench.b.batchDist": "行动带宽分布",
         "bench.b.batchDistTip": "各回合发出 3/2/1 条指令与合理/消极等待的占比分布",
         "bench.b.batchShort": "并发度",
@@ -5014,7 +5014,7 @@ const I18N_V4 = {
         "share.footSeason": "量表 {scale} · 仅比较相同声明条件",
         "spec.sortIndex": "WAR",
         "spec.benchTitle": "对比面板：五维博弈能力、行动带宽、认知开销与长程退化（B）",
-        "sum.profileNote": "基于本局记录计算的 Scale v4 评估概况。点击任意能力单元格可追溯具体决策。评分说明见 docs/SCORING.md。"
+        "sum.profileNote": "基于本局记录计算的 Scale v4.1 评估概况。点击任意能力单元格可追溯具体决策。评分说明见 docs/SCORING.md。"
     }
 };
 Object.keys(I18N_V4).forEach(l=>Object.assign(I18N[l],I18N_V4[l]));
