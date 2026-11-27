@@ -53,3 +53,55 @@ test('an unchanged file revalidates with 304', () => withServer(async origin => 
     assert.equal(again.status, 304);
     assert.equal(first.headers.get('cache-control'), 'no-cache');
 }));
+
+// A hidden folder by another name (b1284). The check read the path as it was spelled, and a
+// path can be spelled so that no part of it starts with a dot and it still ends in .git:
+// Windows keeps a short name for every folder (GIT~1 for .git), a link or junction may
+// point into one, and "file::$DATA" is the file by its stream. With --host 0.0.0.0 that
+// handed .git/config and .claude to anyone on the network.
+test('a hidden folder is not served under another name', async () => {
+    const fs = require('node:fs'), os = require('node:os'), { execFileSync } = require('node:child_process');
+    const base = fs.mkdtempSync(path.join(os.tmpdir(), 'war-serve-')), root = path.join(base, 'site');
+    fs.mkdirSync(path.join(root, '.git'), { recursive: true }); fs.mkdirSync(path.join(base, 'outside'));
+    fs.writeFileSync(path.join(root, 'index.html'), 'ok'); fs.writeFileSync(path.join(root, '.git', 'config'), 'secret');
+    fs.writeFileSync(path.join(base, 'outside', 'secret.txt'), 'secret');
+    const targets = ['/index.html::$DATA', '/index.html:x'];
+    // A junction (a symlink elsewhere) from a harmless name into the hidden folder, and one out of the root.
+    let linked = false;
+    try {
+        fs.symlinkSync(path.join(root, '.git'), path.join(root, 'visible'), 'junction');
+        fs.symlinkSync(path.join(base, 'outside'), path.join(root, 'out'), 'junction');
+        linked = true; targets.push('/visible/config', '/out/secret.txt');
+    } catch (e) { /* no right to make links here: the short name below still tests the rule */ }
+    // The short name Windows gave ".git", if this volume gives them.
+    let short = null;
+    if (process.platform === 'win32') {
+        try { const m = execFileSync('cmd', ['/c', 'dir', '/x', '/ad', root], { encoding: 'utf8' }).split(/\r?\n/).map(l => l.match(/\s([A-Z0-9_~]+~\d)\s+\.git\s*$/i)).find(Boolean); short = m && m[1]; }
+        catch (e) { /* no listing: nothing to add */ }
+        if (short) targets.push('/' + short + '/config', '/' + short.toLowerCase() + '/config');
+    }
+    const server = createServer(root);
+    await new Promise(r => server.listen(0, '127.0.0.1', r));
+    const port = server.address().port;
+    try {
+        assert.equal(await raw(port, '/index.html'), 200);
+        assert.ok(linked || short, 'this machine offers a second name for the hidden folder to test with');
+        for (const t of targets) assert.equal(await raw(port, t), 404, t);
+    } finally { await new Promise(r => server.close(r)); fs.rmSync(base, { recursive: true, force: true }); }
+});
+
+// Bound to this computer, the server answers to this computer's names only: a page on
+// another site that points a name of its own at 127.0.0.1 reads nothing through a browser.
+test('a server for this computer only answers to its own names', async () => {
+    const server = createServer(path.resolve(__dirname, '..'), { hosts: ['localhost', '127.0.0.1', '[::1]'] });
+    await new Promise(r => server.listen(0, '127.0.0.1', r));
+    const port = server.address().port;
+    const ask = host => new Promise((resolve, reject) => {
+        const s = net.connect(port, '127.0.0.1', () => s.write(`GET /index.html HTTP/1.1\r\nHost: ${host}\r\nConnection: close\r\n\r\n`));
+        let data = ''; s.on('data', d => data += d); s.on('end', () => resolve(Number(data.split(' ')[1]))); s.on('error', reject);
+    });
+    try {
+        for (const h of ['localhost:' + port, '127.0.0.1:' + port, 'LOCALHOST', '[::1]:' + port]) assert.equal(await ask(h), 200, h);
+        for (const h of ['evil.example:' + port, 'localhost.evil.example', '127.0.0.1.evil.example:' + port, 'x']) assert.equal(await ask(h), 403, h);
+    } finally { await new Promise(r => server.close(r)); }
+});

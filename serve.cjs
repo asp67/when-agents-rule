@@ -21,22 +21,45 @@ const MIME = {
     '.png': 'image/png', '.gif': 'image/gif', '.ico': 'image/x-icon', '.mp4': 'video/mp4', '.webm': 'video/webm',
 };
 
-function createServer(root = ROOT) {
+// Is this path inside the folder, and in no hidden part of it? Asked of the path as it was
+// spelled and, by whoever calls, of the place it really leads to.
+const hiddenPart = rel => rel.split(/[\\/]/).some(part => part.startsWith('.') && part !== '.');
+const within = (file, root) => file === root || file.startsWith(root + path.sep);
+
+// `hosts`: the names this server answers to (lower case, a bracketed IPv6 literal as
+// written in a Host header); null answers to any. main() passes the names of this computer
+// when it binds to it alone: a page on another site that points a name of its own at
+// 127.0.0.1 then gets a 403 through the visitor's browser and reads nothing.
+function createServer(root = ROOT, { hosts = null } = {}) {
     root = path.resolve(root);
+    let realRoot = root;
+    try { realRoot = fs.realpathSync.native(root); } catch (e) { /* served as given */ }
     return http.createServer((req, res) => {
         if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
+        if (hosts) {
+            const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+            if (!hosts.includes(host)) { res.writeHead(403); return res.end(); }
+        }
         let rel;
         try { rel = decodeURIComponent(new URL(req.url, 'http://localhost').pathname); }
         catch (e) { res.writeHead(400); return res.end(); }
         rel = rel.replace(/^\/+/, '') || 'index.html';
         const file = path.resolve(root, rel);
-        // Nothing outside this folder, however the path is spelled.
-        if (!file.startsWith(root + path.sep) || rel.split(/[\\/]/).some(p => p.startsWith('.') && p !== '.')) {
+        // Nothing outside this folder, however the path is spelled. A colon is no part of
+        // a file's name here: on Windows "index.html::$DATA" is the file by its stream.
+        if (!within(file, root) || hiddenPart(rel) || rel.includes(':')) {
             res.writeHead(404); return res.end();
         }
         let stat;
         try { stat = fs.statSync(file); } catch (e) { res.writeHead(404); return res.end(); }
         if (!stat.isFile()) { res.writeHead(404); return res.end(); }
+        // ...and wherever it really leads (b1284). A path can be spelled with no dot in it
+        // and still end in a hidden folder: Windows keeps a short name for every folder
+        // (GIT~1 for .git), and a link or junction may point into one or out of the root.
+        // The real path has none of that left in it.
+        let real;
+        try { real = fs.realpathSync.native(file); } catch (e) { res.writeHead(404); return res.end(); }
+        if (!within(real, realRoot) || hiddenPart(path.relative(realRoot, real))) { res.writeHead(404); return res.end(); }
         // Revalidate on every load: an updated game is picked up at once, an unchanged
         // one costs a 304. Asset URLs carry ?v= cache-busters as well.
         const modified = stat.mtime.toUTCString();
@@ -62,7 +85,9 @@ function main(argv) {
         else if (argv[i] === '--help' || argv[i] === '-h') { console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 8).join('\n')); return; }
     }
     if (!Number.isInteger(opt.port) || opt.port < 0 || opt.port > 65535) { console.error('--port must be 0-65535'); process.exit(2); }
-    const server = createServer();
+    // Bound to this computer alone, it answers to this computer's names alone.
+    const loopback = opt.host === '127.0.0.1' || opt.host === 'localhost' || opt.host === '::1';
+    const server = createServer(ROOT, { hosts: loopback ? ['localhost', '127.0.0.1', '[::1]'] : null });
     server.on('error', e => {
         if (e.code === 'EADDRINUSE') console.error(`Port ${opt.port} is already in use (a model server?). Try: node serve.cjs --port ${opt.port + 1}`);
         else console.error(e.message);
