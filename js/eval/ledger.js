@@ -1351,7 +1351,12 @@
             let samples;
             if (!live) {
                 samples = grid.map(sample);
-                if (end > 0) samples.push(sample(end));
+                // The last point is the profile itself, as on the live board below (b1285).
+                // It was the blend "as of the last second" like every point before it,
+                // without the placement only the result brings: each curve ended about
+                // three points off the final score printed beside it, and the exported
+                // history contradicted the profile of the same file.
+                if (end > 0) samples.push({ t: end, v: rows(this.profile(), null) });
             } else {
                 const clock = () => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
                 const started = clock();
