@@ -88,6 +88,7 @@
                 turns: (m.batch && m.batch.total) || p.decisions || 0,
                 spatialOrders: sp.spatialOrders || 0, spatialErrors: sp.spatialErrors || 0,
                 expScore: sp.expScore == null ? null : sp.expScore, discScore: sp.discScore == null ? null : sp.discScore,
+                discTerm: sp.discTerm == null ? null : sp.discTerm,
                 destroyedEff: ta.destroyedEff || 0, lostEff: ta.lostEff || 0, valueWeighted: !!ta.valueWeighted,
                 atOnce: ta.atOnce || 0, wonderAnswered: ta.wonderAnswered || 0,
                 episodes: ta.episodes || 0, wonders: ta.wonders || 0, tacJudged: !!ta.judged,
@@ -348,7 +349,7 @@
                         rated: 0, okNonWait: 0, constraint: 0, reference: 0, repeated: 0, contended: 0, stale: 0, avoidable: 0, invalid: 0,
                         devScores: [], idleSum: 0, idleTurns: 0, popStalled: 0, popTurns: 0, floatSum: 0, resTurns: 0,
                         oppSum: 0, prodUsedSum: 0, passiveWaits: 0, justifiedWaits: 0, turns: 0,
-                        spatialOrders: 0, spatialErrors: 0, expScores: [], discScores: [],
+                        spatialOrders: 0, spatialErrors: 0, expScores: [], discScores: [], discTerms: [],
                         destroyedEff: 0, lostEff: 0, valueWeighted: false, atOnce: 0, wonderAnswered: 0, episodes: 0, wonders: 0, tacJudged: false,
                         strategyScores: []
                     };
@@ -394,6 +395,9 @@
                     acc.spatialErrors += st.spatialErrors || 0;
                     if (st.expScore != null) acc.expScores.push(st.expScore);
                     if (st.discScore != null) acc.discScores.push(st.discScore);
+                    // The discovery share as the match scored it (b1286); a match kept before
+                    // this build has only the bare discScore, pooled as it was then.
+                    if (st.discTerm != null) acc.discTerms.push(st.discTerm); else if (st.discScore != null) acc.discTerms.push(st.discScore);
                     acc.destroyedEff += st.destroyedEff || 0;
                     acc.lostEff += st.lostEff || 0;
                     if (st.valueWeighted) acc.valueWeighted = true;
@@ -442,7 +446,7 @@
             let spatial = null;
             if (a.expScores.length) {
                 const expS = meanOf(a.expScores);
-                const discS = a.discScores.length ? meanOf(a.discScores) : expS;
+                const discS = a.discTerms.length ? meanOf(a.discTerms) : expS;
                 const spG = a.spatialOrders ? 100 * Math.exp(-5 * a.spatialErrors / (a.spatialOrders + 6)) : 0;
                 spatial = round1(0.55 * expS + 0.25 * discS + 0.20 * spG);
             } else if (a.perMatch.spatial.length) {

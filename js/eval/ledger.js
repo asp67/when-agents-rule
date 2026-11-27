@@ -861,7 +861,7 @@
             const turns = seat.turns;
             if (!turns.length) return {
                 score: null, maxExplored: null, discovered: 0, opponents: 0,
-                spatialOrders: 0, spatialErrors: 0, expScore: null, discScore: null, spatialGround: null
+                spatialOrders: 0, spatialErrors: 0, expScore: null, discScore: null, discTerm: null, spatialGround: null
             };
             let maxTurnSec = 0, maxEmpireSec = 0, remnantTurns = 0, maxExplored = null, discovered = 0, opponents = 0, spatialOrders = 0, spatialErrors = 0;
             for (const t of turns) {
@@ -886,10 +886,15 @@
             const discWeight = clamp01((activeMin - 4) / 12);
             const discScore = opponents ? 100 * (discovered / opponents) : 50;
             const spatialGround = spatialOrders ? 100 * Math.exp(-5 * spatialErrors / (spatialOrders + 6)) : 0;
-            const score = round1(0.55 * expScore + 0.25 * (discWeight * discScore + (1 - discWeight) * expScore) + 0.20 * spatialGround);
+            // The discovery share as it enters the score: the rivals found, counted in only
+            // as the match gets long, and exploration's own score before that. Exported
+            // (b1286) because a series pools it: pooling the bare discScore paid a seat that
+            // met its rival in a six-minute round the full share.
+            const discTerm = discWeight * discScore + (1 - discWeight) * expScore;
+            const score = round1(0.55 * expScore + 0.25 * discTerm + 0.20 * spatialGround);
             return {
                 score, maxExplored, discovered, opponents, spatialOrders, spatialErrors,
-                expScore: round1(expScore), discScore: round1(discScore), spatialGround: round1(spatialGround)
+                expScore: round1(expScore), discScore: round1(discScore), discTerm: round1(discTerm), spatialGround: round1(spatialGround)
             };
         }
 
