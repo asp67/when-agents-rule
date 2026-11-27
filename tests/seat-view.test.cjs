@@ -108,6 +108,38 @@ test('its ghosts are the seat\'s own memory: where a rival was last seen, and a 
     assert.deepEqual(Array.from(v.ghosts()), []);
 });
 
+// asp67, 27 November 2026: "everything changes to the known assets except resource nodes, they
+// show all known resource nodes from both models". A node's own show/hide flag is set by the
+// spectator's fog, which is every seat's put together; the view asked nothing more of it.
+test('it shows the resource nodes this seat has found, not the ones another seat found', () => {
+    const { View, game, a, b } = world();
+    const v = new View(game);
+    const nodes = [{ type: 'wood', x: west, z: 0 }, { type: 'gold', x: strip, z: 0 }, { type: 'stone', x: east, z: 0 }, { type: 'food', x: east, z: 6 }];
+    assert.equal(game.renderer.nodeHidden, undefined);                              // no view: the renderer asks nobody
+    v.set(0);
+    const hide = game.renderer.nodeHidden;
+    assert.equal(typeof hide, 'function');
+    // The seat's own memory, by node index: what its state lists. The rival found the other two.
+    a._knownResIdx = new Set([0, 1]);
+    b._knownResIdx = new Set([2, 3]);
+    assert.deepEqual(nodes.map((n, i) => hide(n, i)), [false, false, true, true]);
+    // A node it found stays known on ground it no longer sees, and one it finds now shows at once.
+    a._knownResIdx.add(3);
+    assert.deepEqual(nodes.map((n, i) => hide(n, i)), [false, false, true, false]);
+    // The other seat's view is the other seat's memory.
+    v.set(1);
+    assert.deepEqual(nodes.map((n, i) => game.renderer.nodeHidden(n, i)), [true, true, false, false]);
+    // A seat that keeps no such memory: the ground it has explored decides, as on the minimap.
+    v.set(0);
+    delete a._knownResIdx;
+    assert.deepEqual(nodes.map((n, i) => game.renderer.nodeHidden(n, i)), [false, false, true, true]);
+    // Everything again: the hook is taken away.
+    v.set(null);
+    assert.equal(game.renderer.nodeHidden, null);
+    // And the renderer asks it for every node it is about to show.
+    assert.match(read('js/engine/gamerenderer.js'), /&& !\(this\.nodeHidden && this\.nodeHidden\(res, mb\.i\)\)/);
+});
+
 // The switch, on the page class with a stand-in for the view.
 function page() {
     const els = {}, made = [];

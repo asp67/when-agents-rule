@@ -175,9 +175,11 @@
             this._theme = null;
             this._fogTex = null;              // GL texture wrapping the fog canvas
             // The model's view (js/seat-view.js): one seat's fog in place of the match's, and
-            // a filter for the units and buildings that seat cannot see. Both null: everything.
+            // filters for the units, buildings and resource nodes that seat cannot see or has
+            // not found. All null: everything.
             this.fogView = null;
             this.entityHidden = null;
+            this.nodeHidden = null;
             // A second picture of the same world at the same moment (js/second-camera.js):
             // someone names a place and a 2-D canvas to put it in. Null: one picture.
             this.secondView = null;
@@ -1498,7 +1500,10 @@
                 let want = 0;
                 for (const mb of c.members) {
                     const res = rs[mb.i];
-                    const vis = !!(res.mesh && res.amount > 0 && (res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible));
+                    // The node's own flag is the spectator's fog; the model's view (js/seat-view.js)
+                    // also leaves out what its seat has not found.
+                    const vis = !!(res.mesh && res.amount > 0 && (res.mesh.trunk ? res.mesh.trunk.visible : res.mesh.visible))
+                        && !(this.nodeHidden && this.nodeHidden(res, mb.i));
                     mb.want = vis;
                     mb.wantScale = vis ? this._resourceScale(res) : 1;
                     if (vis) want++;

@@ -8,13 +8,14 @@
 //            the minimap's seat knob already draws (game.seatDiscoveryGrid)
 //   rivals   a rival's unit is drawn only while it is in the seat's sight; a rival's
 //            building once discovered stays, under the haze, as buildings do
+//   nodes    a tree, a mine or a herd is drawn once the seat itself has found it
 //   ghosts   what the seat still believes but cannot see: a rival unit where it was
 //            last seen, and a building that has fallen out of sight since. These are
 //            the seat's own memory (unit memory, last-seen buildings), the same its
 //            state is built from at every decision.
 //
-// A viewing aid and nothing else. It reads the match and writes one thing: two hooks
-// on the renderer (fogView, entityHidden). No seat's state changes and no transcript
+// A viewing aid and nothing else. It reads the match and writes one thing: its hooks
+// on the renderer (fogView, entityHidden, entityFade, nodeHidden). No seat's state changes and no transcript
 // records that anybody looked.
 //
 // The fog picture is drawn by the fog manager's own code on a second set of canvases:
@@ -67,6 +68,7 @@ class SeatView {
             r.fogView = this.on() ? this.fog : null;
             r.entityHidden = this.on() ? (e, kind) => this.hidden(e, kind) : null;
             r.entityFade = this.on() ? (e, kind) => this.fadeOf(e, kind) : null;
+            r.nodeHidden = this.on() ? (res, idx) => this.nodeHidden(res, idx) : null;
             if (!this.on() && typeof r.setSeatGhosts === 'function') r.setSeatGhosts(null);
         }
         if (this.on()) this.refresh();
@@ -113,6 +115,18 @@ class SeatView {
             return false;
         }
         return !this.fog.isPositionCurrentlyVisible(e.x, e.z);
+    }
+
+    // Is this resource node left out? One the seat has not found is. A node's own show/hide
+    // flag is set by the spectator's fog, which is every seat's put together, so without
+    // this the view drew the forests and mines the rivals had found as well (build 1309).
+    // Asked of the seat's own memory by node index, the list its state is built from; a
+    // seat that keeps none is answered by the ground it has explored, as the minimap does.
+    nodeHidden(res, idx) {
+        const ai = this.ai();
+        if (!ai || !res) return false;
+        if (ai._knownResIdx && ai._knownResIdx.has) return !ai._knownResIdx.has(idx);
+        return !this.fog.isPositionVisible(res.x, res.z);
     }
 
     // What the seat believes and cannot see: where the model's state still lists a
