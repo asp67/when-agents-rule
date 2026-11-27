@@ -156,8 +156,7 @@ test('the seat cards can be ordered by the Index, and the choice is kept', () =>
     vm.runInContext(fs.readFileSync(path.join(root, 'js/i18n.js'), 'utf8') + ';this.I = I18N;', ctx);
     for (const key of ['log.tagAnswers', 'log.tagAnswersTip', 'log.tagAnswersWonderTip', 'log.chipAnswers',
         'spec.sortPower', 'spec.sortIndex', 'spec.sortTip',
-        'eval.short.grounding', 'eval.short.macro', 'eval.short.spatial', 'eval.short.tactical', 'eval.short.strategy',
-        'bench.planQual', 'bench.planRevs'])
+        'eval.short.grounding', 'eval.short.macro', 'eval.short.spatial', 'eval.short.tactical', 'eval.short.strategy'])   // the two plan columns' texts went with b1298: nothing read them
         for (const lang of ['en', 'de', 'es', 'zh']) assert.ok(key in ctx.I[lang], lang + ' lacks ' + key);
 });
 
