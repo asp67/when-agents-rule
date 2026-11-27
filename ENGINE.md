@@ -1,10 +1,14 @@
-# In-house engine (branch `engine`)
+# In-house engine
 
-Goal: replace the Three.js CDN dependency with a small engine of our own —
-**graphics only** — and use the switch to restyle the game toward the classic
-isometric-RTS look ("original Age of Empires charm"), with enough deviation to
-stay clearly our own thing. When this branch lands, the README's
-dependency-free claim becomes literally true.
+The game draws with a small engine of its own, **graphics only**, in `js/engine/`.
+It replaced a Three.js CDN dependency in September 2026 and was used to restyle the
+game toward the classic isometric-RTS look, with enough deviation to stay clearly our
+own thing. Nothing is downloaded to draw a frame: the README's dependency-free claim
+is literally true.
+
+The first three sections say how the engine is today (checked against the code on
+27 November 2026, build 1299). The last is the log of how it was built, kept as it
+was written, with a list of what has changed since.
 
 ## Art direction
 
@@ -12,18 +16,22 @@ dependency-free claim becomes literally true.
   out along the view ray — reads like the dimetric classics but with real
   depth (pure ortho made the far map edge LOOK wider than the near one when
   zoomed out; a gentle perspective kills that illusion). Middle-drag turns
-  (yaw, free) and tilts (pitch, 10°–89°; default atan ½ ≈ 26.57°). The
-  materials are view-agnostic by construction (radial shadows, vertical AO
-  gradients, world-fixed sun), so the art holds at any heading and tilt.
+  (yaw, free) and tilts (pitch, 5°–89°; default atan ½ ≈ 26.57°). The
+  materials are view-agnostic by construction (vertical AO gradients, light
+  that belongs to the world and not to the camera), so the art holds at any
+  heading and tilt.
 - **Procedural textures, no assets**: all materials are painted into offscreen
   canvases at load (wood grain, mudbrick, stone masonry, thatch, roof tiles,
   terrain splats) and uploaded as GPU textures. No downloads, no copyright
   surface, seeded and theme-aware.
 - **Light model**: warm directional sun + cool ambient (hemisphere feel),
-  Lambert diffuse over textures. Grounding comes from **baked ambient
-  occlusion painted into textures** (edge darkening, under-eave shade) plus
-  cheap **blob shadows**; a single ortho shadow map may come later (the fixed
-  camera makes one tight frustum enough — no cascades).
+  Lambert diffuse over textures. The sun travels through a cosmetic 12-minute
+  day and the shadows with it. Grounding comes from **baked ambient occlusion
+  painted into textures** (edge darkening, under-eave shade) and from **one
+  shadow map** (no cascades; 1024 or 2048 by quality tier, off in the Simple
+  lighting style and faded out when the camera is far). The old **blob
+  shadows** remain as the Simple and far-view shadow and fade out under the
+  real one.
 - Units stay composed 3D primitives (small on screen — silhouette, palette
   and team color carry them); buildings and terrain get the texture budget.
 
@@ -31,25 +39,48 @@ dependency-free claim becomes literally true.
 
 | file | exports (window.*) | responsibility |
 |---|---|---|
-| js/engine/math3d.js | `M3D` | vec3 ops, column-major mat4 (ortho, lookAt, TRS, multiply) |
-| js/engine/glcore.js | `GLCore` | context, program compile/link, mesh→buffers, canvas→texture, draw |
-| js/engine/texgen.js | `TexGen` | seeded rng/value-noise + material painters (canvas 2D) |
-| js/engine/mesh.js | `EngineMesh` | UV'd primitive builders: plane grid, box, cylinder (positions/normals/uvs/indices) |
+| js/engine/math3d.js | `M3D` | vec3 ops, column-major mat4 (perspective, ortho, lookAt, TRS, multiply), per-frame scratch matrices |
+| js/engine/glcore.js | `GLCore` | context, program compile/link, mesh→buffers, canvas→texture, draw, instancing |
+| js/engine/texgen.js | `TexGen` | material painters (canvas 2D). Its random numbers and the coast are the simulation's: it needs `js/simulation/rng.js` (`WarRng`) and `js/simulation/island.js` (`WarIsland`) loaded first |
+| js/engine/mesh.js | `EngineMesh` | UV'd primitive builders: plane grid, box, cylinder, roofs, crops (positions/normals/uvs/indices), merging |
 | js/engine/buildings.js | `EngineBuildings` | building compositions: parts as {primitive, material, transform} |
 | js/engine/units.js | `EngineUnits` | unit compositions (team-color + bone tags) and the cosmetic pose system |
-| js/engine/gamerenderer.js | `EngineRenderer` | GameRenderer's full public surface on the new pipeline (M4) |
-| engine-test.html | — | standalone pipeline demo + `window.__engineStats` for programmatic verification |
+| js/engine/atmosphere.js | `EngineAtmosphere` | the shaders, the day and night, the sun's path, the shadow map's target and camera |
+| js/engine/post.js | `EnginePost` | the scaled scene target and what is done to the finished picture (sharpen, tilt-shift) |
+| js/engine/bloom.js | `EngineBloom` | bloom, in the Cinematic lighting style |
+| js/engine/fx.js | `EngineFx` | fires, rubble, sparks and dust as instanced particles |
+| js/engine/grass.js | `EngineGrass` | instanced grass tufts, on the tiers that have grass |
+| js/engine/occlusion.js | `EngineOcclusion` | contact shading and worn ground around what stands on it |
+| js/engine/perf.js | `EnginePerf` | what a frame costs, and the governor that picks a quality tier |
+| js/engine/gamerenderer.js | `EngineRenderer` | the renderer the game talks to: scene, camera, picking, effects, the frame |
+| engine-test.html | — | standalone pipeline demo (a village from six engine files and the two simulation files the painters need) + `window.__engineStats` for programmatic verification; `tests/engine-test-page.test.cjs` holds its script list to what it calls |
 
-## Migration contract
+## The line between game and renderer
 
 The game talks to the renderer through a narrow API (`addUnit`, `addBuilding`,
-`updateUnitPosition`, effects pools, fog canvas texture, ground-plane picking,
-minimap is separate Canvas2D). That API is the freeze line: the new engine is
-built behind it, `main` stays on Three.js until the swap milestone.
+effects pools, ground picking by a ray from the eye; the minimap is separate
+Canvas2D). The renderer moves nothing: where a unit stands is the simulation's, and
+the renderer reads it each frame. Fog reaches it as a display canvas
+(`js/fog-display.js`) and a `fogDirty` flag it consumes.
 
-## Milestones
+The engine was built behind the API of the Three.js renderer it replaced, and a few
+stand-ins from that time remain so that game code written against the old shapes
+still runs. They are inert, and this is the list `js/engine/gamerenderer.js` points to:
 
-- **M0 — foundation (this commit)**: math + GL core + texture painters +
+- `renderer` (`domElement`, `setSize`, `setPixelRatio`, `render`), `scene` (`add`,
+  `remove`) and `camera` (`position.set`, `lookAt`, `updateProjectionMatrix`): a
+  camera intent becomes a look-at target and a zoom.
+- Entity handles shaped like the old ones: `mesh.visible`, `mesh.children`,
+  `healthBar.material.color.setHex`, `unit.body.material.emissive.setHex`.
+- `updateUnitPosition`: still called by the game, and empty.
+
+## How it was built (September 2026)
+
+The milestones as they were written when each was done. Read them as history;
+where one says how the engine *is*, the sections above are the ones to trust.
+What has changed since is listed after them.
+
+- **M0 — foundation**: math + GL core + texture painters +
   UV'd primitives + locked-camera demo scene, verified end to end.
 - **M1 — terrain**: splatted ground (grass/dirt/sand by noise + theme),
   shorelines, resource-node meshes, per-theme palettes.
@@ -106,3 +137,26 @@ built behind it, `main` stays on Three.js until the swap milestone.
   into the terrain mega-texture as painted flecks — same charm, zero draw
   calls. `grep THREE js/` outside js/engine returns nothing; the README's
   dependency-free claim is literally true.
+
+### What has changed since
+
+- **The camera** is not locked and not orthographic: free yaw, pitch from 5° to
+  89°, a 20° perspective. Picking is a ray from the eye, zoom is the half-height
+  of the frame, and at a low pitch the camera sees a horizon: a sky colour, and
+  open water running out to it.
+- **The renderer moves nothing** (M4's "embedded sim duties"): all of it is in the
+  simulation step.
+- **The fog's canvases** moved from `fogofwar.js` to `js/fog-display.js` (build
+  1188), which raises `fogDirty`. There is no `fogTexture.needsUpdate`.
+- **The scatter is meshes again**: bushes, pebbles, flowers, ground scatter and
+  reeds are drawn in chunks, grass as instanced tufts, and the ground texture has
+  no painted flecks. Since build 1295 the scatter follows the map's size.
+- **Dust** is instanced particles (build 1206), not pooled billboards. **Town
+  Center banners** are cached per civilization and seat.
+- **The winding audit** still passes for every part but the Maya farm's maize,
+  whose blades are two-sided.
+- `grep THREE js/` outside js/engine finds one line, a comment in
+  `js/openai-ai.js` with the word in capitals.
+- **engine-test.html** did not run from 26 September to 27 November 2026 (the
+  painters had come to need the simulation's generator and island, which the page
+  did not load). It runs again.

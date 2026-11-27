@@ -18,6 +18,10 @@
         <a href="?theme=summer">summer</a> · <a href="?theme=winter">winter</a> · <a href="?theme=desert">desert</a></div>
     <script src="js/engine/math3d.js"></script>
     <script src="js/engine/glcore.js"></script>
+    <!-- The painters draw their numbers from the simulation's generator and the coast from
+         its island (since 26 September 2026); without these two the first texture threw. -->
+    <script src="js/simulation/rng.js"></script>
+    <script src="js/simulation/island.js"></script>
     <script src="js/engine/texgen.js"></script>
     <script src="js/engine/mesh.js"></script>
     <script src="js/engine/buildings.js"></script>
@@ -82,6 +86,7 @@
             rooftile: GLCore.createTextureFromCanvas(gl, TexGen.rooftile(122)),
             awning: GLCore.createTextureFromCanvas(gl, TexGen.awning(133)),
             field: GLCore.createTextureFromCanvas(gl, TexGen.field(144)),
+            field_dirt: GLCore.createTextureFromCanvas(gl, TexGen.field(144, 128, 'dirt')),   // the farm's and the market's bare ground
             shadow: GLCore.createTextureFromCanvas(gl, TexGen.shadowBlob(), { clamp: true }),
             cloth: GLCore.createTextureFromCanvas(gl, TexGen.cloth(155)),
             skin: GLCore.createTextureFromCanvas(gl, TexGen.skin(166)),
