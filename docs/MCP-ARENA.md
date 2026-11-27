@@ -1,8 +1,13 @@
 # Agent Arena: MCP seats (design, 26 October 2026)
 
-Status: built for WAR (hub 0.3.6 as of 27 November 2026); this text began as the design agreed
-with asp67 and is kept as written, with later sections added below. The Platform follows
-after its anti-cheat work (spectator delay, fog-leak detector).
+Status: built for WAR (hub 0.3.6 as of 27 November 2026). The Platform follows after its
+anti-cheat work (spectator delay, fog-leak detector).
+
+How to read this file: it began as the design agreed with asp67 on 26 October, and dated
+sections were added below as the hub grew. "Architecture", "How a harness plays", the
+harness table and "Records and results" were brought up to the hub as it is on 27 November
+2026 (they still described a server per seat and left out series and `final_word`).
+"Decisions", "Risks" and "Phases" are the design as written.
 
 ## Why
 
@@ -40,35 +45,45 @@ fixed harness. The comparison is that fixed loop against agent loops.
 harness A (Claude Code) ──MCP over HTTP──┐
 harness B (OpenCode)    ──MCP over HTTP──┤
 harness C (stdio only)  ──stdio shim─────┤   WAR MCP hub  (one process, 127.0.0.1:8765)
-                                         │     /mcp/<seat-token>   one address per seat
+                                         │     /mcp                one address for every harness
+                                         │     /mcp/<seat-code>    a seat's own address (fallback)
 WAR arena page (browser) ──WebSocket─────┘     /page               the running arena
 ```
 
-- **One hub, many seats.** A single process serves every MCP seat of every arena. Each
-  library entry has its own address, `http://127.0.0.1:8765/mcp/<seat-token>`. The token
-  binds a connection to that one seat; two Claude Code windows with two tokens are two seats.
+- **One hub, many seats.** A single process serves every MCP seat of every arena, at one
+  address, `http://127.0.0.1:8765/mcp`. A harness names its seat by the code it passes to
+  `join` (the library entry's code, given in the start message), and the MCP session carries
+  the seat from then on; two Claude Code windows with two codes are two seats. Each entry
+  also has an address of its own, `/mcp/<seat-code>`, for a harness that sends no session id
+  (see the last section, hub 0.3.0).
 - **The page stays the match.** The arena runs, renders and records in the browser as
   today. The hub only relays: the seat's fogged state out, its commands in. A transcript
   replays the same way whatever sent the commands.
-- **stdio fallback.** `node war-mcp-hub.cjs --stdio --token <seat-token>` speaks MCP on
+- **stdio fallback.** `node war-mcp-hub.cjs --stdio --token <seat-code>` speaks MCP on
   stdio and forwards to the running hub. For harnesses that only launch servers themselves.
-- **The seat token travels in the URL** (HTTP) or as an argument (stdio), never as an environment
-  variable: DeepSeek Harness strips variables named like `TOKEN` from the servers it starts.
-- **Names.** Servers are named with underscores (`war_seat_1`): harnesses build tool names
-  from them (`mcp__war_seat_1__join`, `mcp_war_seat_1_join`), and hyphens are not safe everywhere.
-- **Dependency-free.** The hub is one file with a minimal MCP server written by hand
-  (JSON-RPC: tools/list, tools/call, prompts/list, prompts/get; the stateless 2026-07-28
-  revision needs no session handshake), a small HTTP server and a WebSocket endpoint.
-- **Node.** The hub needs Node. For beginners it ships as a zip with a portable node.exe
-  and a start script, built the way the Platform connector already is
-  (`platform/connector/build-portable.ps1`).
+- **The seat code travels in the start message** (as `join`'s `code`), in the URL of a seat's
+  own address, or as an argument (stdio), never as an environment variable: DeepSeek Harness
+  strips variables named like `TOKEN` from the servers it starts.
+- **Names.** The server is named `war`: harnesses build tool names from it (`mcp__war__join`,
+  `mcp_war_join`). No hyphens, which are not safe everywhere. Until hub 0.3.0 each seat had
+  a server of its own (`war_seat_N`); the self-setup message asks a harness to remove those.
+- **Dependency-free.** The hub is one program, `war-mcp-hub.cjs`, with a minimal MCP server
+  written by hand (JSON-RPC: tools/list, tools/call, prompts/list, prompts/get), a small HTTP
+  server and a WebSocket endpoint, and beside it the tool list it reads at start,
+  `war-tools.json` (written by `build-tools.cjs` from the game's own tables). A seat's own
+  address is stateless (the 2026-07-28 revision needs no session handshake); the shared
+  address hands out an `Mcp-Session-Id` and goes by it.
+- **Node.** The hub needs Node 18 or newer, installed. The library gives the PowerShell and
+  bash lines that fetch the two files and start it. (A zip with a portable node.exe, as the
+  Platform connector has, was planned here and is not built.)
 - **Localhost only, and Chrome asks once.** The hub binds 127.0.0.1. Tested 26 October in asp67's
   Chrome: from https://asp67.github.io the status fetch and the WebSocket both work once the user
   allows Chrome's "wants to use local services / devices on your local network" prompt (Local
   Network Access); from a local page (http://localhost) there is no prompt. The hub answers
   preflights with `Access-Control-Allow-Private-Network: true`. The arena setup must say before
-  the first contact that Chrome will ask, and to click Allow; a refused prompt shows the MCP
-  seat's dot red with "hub not reachable: allow local network access for this site".
+  the first contact that Chrome will ask, and to click Allow; after a refused prompt the MCP
+  seat's dot is red and says "hub not running" (for a page the hub refuses: "hub not running,
+  or it refuses this page's address"), and a line beside it explains Chrome's prompt.
   (Claude's embedded browser blocks the request outright, ERR_BLOCKED_BY_CLIENT: not a user path.)
 - The library checks run when the arena setup opens and again when a seat's entry changes.
 - An MCP seat's line also shows its start line for this match (step 3), with a copy button.
@@ -82,48 +97,78 @@ The match runs turn-based (agents take minutes per turn; the world waits for eve
 The hub offers these tools to the harness, generated from the same `ACTIONS` table and
 `defaultSystemPrompt()` as the library seats, so their texts cannot drift apart:
 
-- `join`: claims the seat and returns how to play a turn. The rules (our system prompt, filled
-  for this seat) come with the seat's first turn; before it the hub has none.
+- `join`: claims the seat, by the seat code in the start message, and returns how to play a
+  turn. The rules (our system prompt, filled for this seat) come with the seat's first turn;
+  before it the hub has none. (A harness that joins again later gets them with `join`.)
 - `wait_for_turn`: blocks until this seat's turn, then returns the state JSON a library seat
   would get. It returns `{"waiting": true}` after ~25 s so no harness's tool timeout cuts it
-  off (Hermes's examples use 30 s); the agent simply calls it again.
-- the game actions (`train_unit`, `move_units`, `attack_target`, ...), same schemas, same
-  descriptions, same error texts. At most three per turn, enforced in the hub.
-- `end_turn`: hands the turn back. It is never implied: a fourth command is answered with an
-  error and the turn stays open until `end_turn`.
+  off (Hermes's examples use 30 s); the agent simply calls it again. Called while the seat's
+  turn is open, it ends that turn.
+- the game actions, same schemas, same descriptions, same error texts as a library seat's:
+  `train_unit`, `research_tech`, `upgrade_age`, `build_structure`, `assign_workers`,
+  `repair_building`, `explore`, `move_units`, `attack_target`, `delete_unit`,
+  `destroy_building`, `wait`. At most three per turn, enforced in the hub: a fourth is
+  answered with an error that names `end_turn`. `plan` is free and does not count. The
+  commands of a turn are carried out when the round closes, and their results come with the
+  next turn.
+- `end_turn`: hands the turn back. A turn also ends when the round runs out, and when the
+  harness calls `wait_for_turn` instead.
 - `get_rules`: the rules again, for a harness that compacted its context (from the first turn on).
+- `final_word`: when the match has ended and `wait_for_turn` handed over its closing message,
+  the agent's answer to it. Nothing is executed; it is recorded with the match.
+- `check_connection`: for setting up only (see the setup assistant below). In a match it does
+  nothing and uses no command.
+
+**A series of matches** (hub 0.3.3 and later). The arena can play several matches in a row
+with the same seats. Between two of them `wait_for_turn` returns
+`{"roundOver": true, "matchOver": false, "seriesContinues": true}`: the seat stays joined,
+the agent answers the closing message with `final_word` if it was given one, and calls
+`wait_for_turn` again for the next match, whose first turn brings the rules for its new
+civilization. `{"matchOver": true}` comes only when the single match, or the whole series,
+has ended.
 
 MCP prompt `play`: the kickoff text, so harnesses that list MCP prompts show it as a command
-(Claude Code: `/mcp__war_seat_1__play`). Where they do not (DeepSeek Harness has no MCP prompts),
-the start line is the kickoff text to paste.
+(Claude Code: `/mcp__war__play`). Where they do not (DeepSeek Harness has no MCP prompts),
+the start message is the text to paste.
 
-The kickoff says, in short: you are seat N in a WAR match; call join, then loop wait_for_turn,
-up to three actions, end_turn, until wait_for_turn reports the match over; do not stop.
+The start message is in the seat's row of the arena setup, with a copy button. It says, in
+short: play WAR with the MCP server war, seat code seat-…; call join with that code, then
+loop wait_for_turn, up to three actions, end_turn, until wait_for_turn reports the match (or
+the series) over; do not stop. For harnesses with a `/goal` command (Claude Code, Hermes,
+OpenClaw) it is given as a goal, "keep playing until wait_for_turn reports that the match is
+over": without it Hermes stopped at its tool-call limit and Claude Code stopped to ask.
 
 ## Supported harnesses (all confirmed calling MCP tools, 26 October 2026)
 
+`<url>` is the one address, `http://127.0.0.1:8765/mcp`, and the server's name is `war` (the
+table named a server per seat until hub 0.3.0). Since 27 October the library offers the
+self-setup prompt first; these lines are what a harness does with it, or the way by hand.
+
 | Harness | Connects to | Setup | Notes |
 |---|---|---|---|
-| Claude Code | HTTP | `claude mcp add --transport http war_seat_1 <url>`; headless: `claude -p "<kickoff>" --allowedTools "mcp__war_seat_1__*"` | MCP prompts appear as slash commands |
-| ChatGPT (desktop harness) | Streamable HTTP or STDIO | settings, "connect to a custom MCP": name `war_seat_1`; Streamable HTTP with the seat's URL, or STDIO with command `node`, argument `war-mcp-hub.cjs --stdio --token <seat-token>` (working directory: where the hub file is) | seen in asp67's install (26 Oct): the local form takes both types, so no tunnel is needed. ChatGPT's web connectors are another matter: they reach only public HTTPS servers |
-| Codex CLI | HTTP | `[mcp_servers.war_seat_1]` with `url` in `~/.codex/config.toml`; headless `codex exec` | |
+| Claude Code | HTTP | `claude mcp add --transport http war <url>`; then start it with `claude --allowedTools "mcp__war__*"` and send the start message | MCP prompts appear as slash commands |
+| ChatGPT (desktop harness) | Streamable HTTP or STDIO | settings, "connect to a custom MCP": name `war`; Streamable HTTP with `<url>`, or STDIO with command `node`, argument `war-mcp-hub.cjs --stdio --token <seat-code>` (working directory: where the hub file is) | seen in asp67's install (26 Oct): the local form takes both types, so no tunnel is needed. ChatGPT's web connectors are another matter: they reach only public HTTPS servers |
+| Codex CLI | HTTP | `[mcp_servers.war]` with `url` in `~/.codex/config.toml`; headless `codex exec` | |
 | Google Antigravity | HTTP | `mcpServers` entry with `serverUrl` in `~/.gemini/config/mcp_config.json` (older builds: `~/.gemini/antigravity/`), then Refresh in Customizations | path differs between builds |
-| ZCode | HTTP or stdio | Settings > MCP (writes the file and shows the connection), or add a sibling `"mcp": { "servers": { "war_seat_1": { "type": "http", "url": <url> } } }` next to the existing `plugins` key in `~/.zcode/cli/config.json`; never replace the file. Then restart the session | confirmed by ZCode itself in asp67's install (26 Oct), which offered to add the entry: the self-setup prompt works. Tools appear as `mcp__war_seat_1__<tool>`. **The schema is strict**: an unknown key silently drops the whole server, so the snippet uses only `type`, `url`, `enabled`. Its usual permission prompts apply to MCP tools; how to pre-allow ours is still to find. stdio `timeoutMs` defaults to 30 s |
-| DeepSeek Harness (dsh) | streamable HTTP or stdio | built-in client `@deepseek-ai/dsh-mcp-client`, nothing to install: append to the profile's `cordis.patch.yml` `- insert: [{ id: war-seat-1, name: '@deepseek-ai/dsh-mcp-client', config: { serverName: war_seat_1, transport: streamable-http, url: <url> } }]`; HMR applies it live (else restart the app) | confirmed by DSH itself in asp67's install (26 Oct), which also offered to add the entry: the self-setup prompt works. Tools appear as `mcp__war_seat_1__<tool>`. Tool timeout 60 s by default (`toolCallTimeoutMs`). **No MCP prompts**: the kickoff is pasted. It scrubs `KEY|PASSWORD|SECRET|TOKEN` variables from a stdio server's environment, so the seat token stays in the URL or argument, never in an env variable. `serverName` must match `[A-Za-z0-9_-]{1,32}` |
-| Hermes Agent | HTTP or stdio | `hermes mcp add war_seat_1 --url <url>` (connects, lists the tools, lets the user pick them); or `mcp_servers` with `url` and `timeout` in `config.yaml` (Windows desktop: `%LOCALAPPDATA%\hermes\config.yaml`). Activate with `/reload-mcp` in the chat, check with `hermes mcp test war_seat_1` or `/mcp` | told asp67 (26 Oct) how to do all three and offered to add a server itself: the self-setup prompt works here. Tools appear as `mcp_war_seat_1_<tool>`. Its examples use `timeout: 30`, hence the 25 s wait below |
+| ZCode | HTTP or stdio | Settings > MCP (writes the file and shows the connection), or add a sibling `"mcp": { "servers": { "war": { "type": "http", "url": <url> } } }` next to the existing `plugins` key in `~/.zcode/cli/config.json`; never replace the file. Then restart the session | confirmed by ZCode itself in asp67's install (26 Oct), which offered to add the entry: the self-setup prompt works. Tools appear as `mcp__war__<tool>`. **The schema is strict**: an unknown key silently drops the whole server, so the snippet uses only `type`, `url`, `enabled`. Its usual permission prompts apply to MCP tools; how to pre-allow ours is still to find. stdio `timeoutMs` defaults to 30 s |
+| DeepSeek Harness (dsh) | streamable HTTP or stdio | built-in client `@deepseek-ai/dsh-mcp-client`, nothing to install: append to the profile's `cordis.patch.yml` `- insert: [{ id: war, name: '@deepseek-ai/dsh-mcp-client', config: { serverName: war, transport: streamable-http, url: <url> } }]`; HMR applies it live (else restart the app) | confirmed by DSH itself in asp67's install (26 Oct), which also offered to add the entry: the self-setup prompt works. Tools appear as `mcp__war__<tool>`. Tool timeout 60 s by default (`toolCallTimeoutMs`). **No MCP prompts**: the kickoff is pasted. It scrubs `KEY|PASSWORD|SECRET|TOKEN` variables from a stdio server's environment, so the seat code stays in the start message, the URL or the argument, never in an env variable. `serverName` must match `[A-Za-z0-9_-]{1,32}` |
+| Hermes Agent | HTTP or stdio | `hermes mcp add war --url <url>` (connects, lists the tools, lets the user pick them); or `mcp_servers` with `url` and `timeout` in `config.yaml` (Windows desktop: `%LOCALAPPDATA%\hermes\config.yaml`). Activate with `/reload-mcp` in the chat, check with `hermes mcp test war` or `/mcp` | told asp67 (26 Oct) how to do all three and offered to add a server itself: the self-setup prompt works here. Tools appear as `mcp_war_<tool>`. Its examples use `timeout: 30`, hence the 25 s wait below |
 | OpenClaw | streamable HTTP or stdio | `openclaw mcp add`, or Settings > MCP; `openclaw mcp doctor <name> --probe` | gateway may need a restart |
-| OpenCode | HTTP or stdio | `"mcp": { "war_seat_1": { "type": "remote", "url": "<url>" } }` in `opencode.json` | good for the same-local-model test |
+| OpenCode | HTTP or stdio | `"mcp": { "war": { "type": "remote", "url": "<url>" } }` in `opencode.json` | good for the same-local-model test |
 
 **Self-setup prompt.** Most of these harnesses can edit their own configuration or run their
-own CLI. The library offers, per harness, a prompt to paste into it: "Add an MCP server named
-war_seat_1 at <url> to your configuration [harness-specific: command or file], allow its
-tools, then tell me to restart you." After the restart the play prompt starts the match.
+own CLI. The library offers a prompt to paste into it: add an MCP server named `war`, Streamable
+HTTP, at `<url>` to your own configuration; remove any older WAR servers at that hub (named
+`war_seat_…`); allow all of its tools without asking each time; check that its tools appear;
+and say whether a reload or restart is needed. After that the start message starts the match.
 
 ## Records and results
 
-- The transcript header records MCP seats as `harness: <name> (external)`, with the model as
-  stated by the user and the hub version. The contract fingerprint marks the harness as
-  external, so these matches never compare as plain library matches.
+- The transcript header records an MCP seat with `harness: <id>` and `harnessExternal: true`
+  in its settings, the model as stated by the user, and `servedBy: war-mcp-hub`. (The hub's
+  version is shown in the setup and is not written to the transcript.) The seat's contract
+  differs from a library seat's through its dialect, `mcp`, so the fingerprints differ, and
+  the results go by `harnessExternal`: these matches never compare as plain library matches.
 - Results: MCP seats are their own category. Matches with library seats are fine for content
   and comparison, never pooled into the same scores.
 - The storybook and analyzer see the tool calls and their `reason` fields, not the agent's
@@ -155,7 +200,7 @@ tools, then tell me to restart you." After the restart the play prompt starts th
 An MCP entry in the model library offers "Start an assistant that leads me through setting up the MCP server". It is optional; the card's three manual steps stay for anyone who knows the way. The assistant checks each step by itself and has **no time limit**: a harness took up to five minutes to add the server to itself (Hermes first worked out what an MCP server is).
 
 1. **Start the hub.** The PowerShell or bash lines, with the Node.js hint. The page asks the hub's `/status` every 2 s; a hub older than 0.2.0 (no `check_connection`) is to be restarted.
-2. **Let the harness add the server.** Only the self-setup message, no config snippets to patch by hand (asp67: the harness's own setup worked for every harness). Green at the harness's first call to the seat's address. After six minutes, hints: the address the harness should list, a full restart.
+2. **Let the harness add the server.** Only the self-setup message, no config snippets to patch by hand (asp67: the harness's own setup worked for every harness). Green when a harness connects to the hub (it names itself as it does). After six minutes, hints: the address the harness should list, a full restart.
 3. **A first test call.** The harness calls `check_connection` once. It starts nothing: `join` would set a harness polling for turns, spending tokens until a match begins. In a match the tool answers that it is not a game command, changed nothing, used no command, and what to do next.
 4. **Done**, with how a match is started.
 
