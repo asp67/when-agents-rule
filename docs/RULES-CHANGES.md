@@ -6,6 +6,10 @@ Most entries come from the determinism work: making a match replay exactly from 
 
 Newest first. The build is the `?v=` number on `js/game.js` in `index.html`.
 
+## Build 1304: the harness file's comments say what it does (27 November 2026)
+
+**The harness hash moves; nothing a seat is sent or how a reply is read has changed.** Comments only, in `js/openai-ai.js`: its head still said one action a reply, the tool list was introduced as "two tools", a note said tools were not yet offered to Anthropic, Google and Ollama seats, and another that Anthropic's tool turns were flattened to prose. All four described the harness of months ago. A comment is part of the file the hash is taken of, so the hash moves with it; the prompt version is the same (`tests/prompt-version.test.cjs`).
+
 ## Build 1302: a parameter refused with HTTP 422 is dropped as one refused with 400 (27 November 2026)
 
 **The harness hash moves; a seat that no server refused plays as before.** When a server refuses a request because of a parameter it does not take (`min_p`, `top_k`, a reasoning setting), the harness leaves that parameter out and sends the request again, once, and notes the adaptation in the transcript. It did so for HTTP 400 only. Servers that validate the request body themselves, the FastAPI-based ones among them, answer 422 in the same words ("Extra inputs are not permitted"), and a seat on such a server lost every turn to the same refusal. 422 is now read as 400 is. What is dropped is still decided by the error's text, so a 422 that names no parameter remains an error, sent once. `tests/adapt-on-422.test.cjs`.

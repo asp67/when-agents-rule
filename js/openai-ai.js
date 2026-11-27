@@ -1,6 +1,7 @@
 // LLM harness for non-human players: builds each model's per-turn game-state JSON,
 // shapes provider-specific requests (OpenAI / Anthropic / Ollama / Google), parses
-// the ONE action per reply, executes it, and feeds the outcome back next turn.
+// the reply (up to MAX_COMMANDS_PER_TURN commands and a plan, as tool calls or as JSON),
+// executes them, and feeds the outcomes back next turn.
 // Controllers come from the setup screen via initFromSetup (Arena and Campaign).
 
 class OpenAIAIManager {
@@ -74,13 +75,13 @@ class OpenAIAIManager {
     // Stone and gold ignore it — they are scarce enough to list whole.
     static get NEAREST_PER_ANCHOR() { return 10; }
 
-    // The tool surface. Two tools, because a turn is two different things: up to
-    // MAX_COMMANDS_PER_TURN actions, and at most one standing plan.
+    // The tool surface: one tool for each action, and `plan`. A turn is two different
+    // things, up to MAX_COMMANDS_PER_TURN actions and at most one standing plan, and the
+    // plan does not count as an action. (There were two tools once, one for the actions
+    // and one for the plan, the vocabulary in the prompt alone; since the actions became tools of their
+    // own the list below is the one place they are written, and the tools, the prompt's
+    // list and the MCP hub's tools are all made from it.)
     //
-    // The action VOCABULARY is not repeated here. It lives in the system prompt and
-    // nowhere else, because a second copy is a second thing to forget -- the same
-    // drift that cost us "pop" in blockedBy this morning. The schema says what shape
-    // a call has; the prompt says which actions exist.
     // Every action the dispatcher accepts, with its parameters. THE source: the tool
     // schemas below are generated from it, and a test holds it against the switch in
     // executeAction, so a case added there without an entry here fails loudly instead
@@ -209,10 +210,6 @@ class OpenAIAIManager {
         return tools;
     }
 
-    // Which protocols this harness can offer tools on TODAY. Anthropic, Google and
-    // Ollama all support tool calling in their own shapes; until those shapes are
-    // built, a seat there keeps answering in the prompt's JSON and is not judged
-    // against a contract it was never offered.
     // How THIS seat is supposed to answer, in one sentence, for use inside error
     // messages. Three different seats need three different answers, and getting it
     // wrong is not cosmetic: small models copy our notation straight back, so an
@@ -263,13 +260,16 @@ class OpenAIAIManager {
             : call;
     }
 
+    // Which protocols this harness offers tools on: all of them, each in its own shape
+    // (toolsFor). A seat whose endpoint refuses the tools array is another matter: it is
+    // sent none from then on and answers in the prompt's JSON (callsTools).
     static toolsSupported(provider) {
         return provider === 'openai' || provider === 'ollama'
             || provider === 'anthropic' || provider === 'google'
             || provider === 'mcp';   // an MCP seat's harness calls the hub's tools (docs/MCP-ARENA.md)
     }
 
-    // The same two tools in each provider's dialect, all derived from TOOLS so the
+    // The same tools in each provider's dialect, all derived from TOOLS so the
     // schema exists once. Anthropic calls the schema input_schema; Google wraps
     // everything in functionDeclarations and wants no "type: function"; Ollama takes
     // the OpenAI shape unchanged.
@@ -2350,14 +2350,13 @@ class OpenAIAIManager {
                         model, max_tokens: maxTokens,
                         system: systemPrompt,
                         // Anthropic carries tool results as a tool_result BLOCK inside a
-                        // user message, not as its own role. That dialect is not written
-                        // here because it cannot be tested from this machine, and an
-                        // unverified wire format in a benchmark is worse than an honest
-                        // older one — so the turns are flattened to the prose form every
-                        // provider was served before the tool channel existed. Worth
-                        // noting the gap is smaller than it looks: Anthropic's results
-                        // ARE user-turn content, so prose-in-a-user-turn is already close
-                        // to native for it, and OpenAI-style was the one being mistreated.
+                        // user message, not as its own role, and its calls as tool_use
+                        // blocks in the assistant's: toolTurnsForAnthropic writes both.
+                        // (The turns were flattened to prose here until that dialect
+                        // could be tried against a server.) Open, and not yet tried against
+                        // the API: only the text of a turn's thinking is kept, so an
+                        // earlier turn's thinking blocks are not sent back with its tool
+                        // calls, which a seat with thinking switched on may be held to.
                         messages: OpenAIAIManager.toolTurnsForAnthropic(turns)
                     };
                     if (!opts.omitTools) b.tools = OpenAIAIManager.toolsFor('anthropic');
