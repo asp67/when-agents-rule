@@ -930,6 +930,39 @@ class UIManager {
     // Arena model-library config
     // ----------------------------------------------------------------
     nextArenaModelId() { this._arenaModelSeq = (this._arenaModelSeq || 0) + 1; return this._arenaModelSeq; }
+    // Gives the models their list ids for this session, and returns the way from the id
+    // each was SAVED under to its new one. A seat names its model by id, the ids are list
+    // positions counted anew on every load, and nothing led from the old ones to the new
+    // (to b1281): after one model was deleted, every later one moved into the seat of the
+    // model before it at the next reload. Seats set to D and C came back as B and D.
+    rekeyArenaModels(models) {
+        const was = new Map();
+        models.forEach(m => {
+            const saved = m.id;
+            m.id = this.nextArenaModelId();
+            if (saved != null && !was.has(saved)) was.set(saved, m.id);
+            this.normalizeArenaModel(m);
+        });
+        return was;
+    }
+    // Which model a saved seat means: by the model's own uid where the seat carries one
+    // (every save since b1282 writes it), else by the id it was saved under. A seat whose
+    // model is gone is rule-based -- never the model that happens to stand in its place.
+    resolveSlotControl(slot, models, was) {
+        if (!slot || slot.control === 'ki' || slot.control == null) return 'ki';
+        if (typeof slot.controlUid === 'string' && slot.controlUid) {
+            const m = models.find(x => x.uid === slot.controlUid);
+            return m ? m.id : 'ki';
+        }
+        return was && was.has(slot.control) ? was.get(slot.control) : 'ki';
+    }
+    // Written with every save: the uid of each seat's model beside its id.
+    stampSlotUids(slots, models) {
+        (slots || []).forEach(sl => {
+            const m = sl.control === 'ki' ? null : (models || []).find(x => x.id === sl.control);
+            if (m && m.uid) sl.controlUid = m.uid; else delete sl.controlUid;
+        });
+    }
     // `id` is a list position, re-keyed on every load; `uid` (b1092) is the entry's own,
     // kept with it for good, so what is recorded against a model -- its benchmark
     // results -- still finds it after the list changes or travels in an export.
@@ -1152,6 +1185,7 @@ class UIManager {
 
     async loadArenaConfig() {
         this._arenaModelSeq = 0;
+        this._arenaIdWas = null;
         let cfg = null;
         try {
             const s = localStorage.getItem('arenaConfigV2');
@@ -1168,8 +1202,9 @@ class UIManager {
                 prompt: this.getArenaDefaultPrompt()
             };
         } else {
-            // Re-key ids deterministically and normalize.
-            cfg.models.forEach(m => { m.id = this.nextArenaModelId(); this.normalizeArenaModel(m); });
+            // Re-key ids deterministically and normalize; the way back is kept for the
+            // seats below and for the campaign's opponents (loadCampaignConfig).
+            this._arenaIdWas = this.rekeyArenaModels(cfg.models);
         }
 
         // Shared template saved under an older default: replace it with the
@@ -1188,10 +1223,10 @@ class UIManager {
         } else {
             cfg.slots.forEach((s, i) => {
                 if (!s.civ) s.civ = civs[i];
-                // saved control ids no longer match the re-keyed ids → map by position
-                if (s.control !== 'ki' && !ids.includes(s.control)) {
-                    s.control = cfg.models[i] ? cfg.models[i].id : 'ki';
-                }
+                // The model this seat was saved with, wherever it stands in the list now.
+                // (A first-run setup made above has no way back and keeps its ids.)
+                if (this._arenaIdWas) s.control = this.resolveSlotControl(s, cfg.models, this._arenaIdWas);
+                else if (s.control !== 'ki' && !ids.includes(s.control)) s.control = 'ki';
                 // DERIVE-unless-edited: null means the slot follows the shared
                 // template (always the current one). A stored prompt that merely
                 // equals the template — including the OLD template it was copied
@@ -1215,6 +1250,7 @@ class UIManager {
     serializeArenaConfig() {
         const clone = JSON.parse(JSON.stringify(this._arenaConfig));
         clone.models.forEach(m => { if (m.auth) { delete m.auth._token; delete m.auth._tokenExp; } m._status = null; delete m._expanded; delete m.availableModelContext; });
+        this.stampSlotUids(clone.slots, clone.models);
         return clone;
     }
 
@@ -1249,11 +1285,11 @@ class UIManager {
         cc.playerCiv = cc.playerCiv || 'egyptian';
         cc.count = Math.min(5, Math.max(1, parseInt(cc.count, 10) || 3));
         cc.seed = typeof cc.seed === 'string' ? cc.seed : '';
-        // Drop control ids that no longer match a model in the (shared) library.
-        const ids = (this._arenaConfig ? this._arenaConfig.models : []).map(m => m.id);
+        // The model each opponent was saved with, in the (shared) library as it is now.
+        const lib = this._arenaConfig ? this._arenaConfig.models : [];
         cc.slots.forEach(s => {
             if (!s.civ) s.civ = 'greek';
-            if (s.control !== 'ki' && !ids.includes(s.control)) s.control = 'ki';
+            s.control = this.resolveSlotControl(s, lib, this._arenaIdWas);
             s._collapsed = true; // start collapsed for a clean overview
         });
         return cc;
@@ -1264,6 +1300,7 @@ class UIManager {
         try {
             const clone = JSON.parse(JSON.stringify(this._campaignConfig));
             clone.slots.forEach(s => { delete s._collapsed; });
+            this.stampSlotUids(clone.slots, this._arenaConfig ? this._arenaConfig.models : []);
             localStorage.setItem('campaignConfigV1', JSON.stringify(clone));
         } catch (e) {}
     }
@@ -1346,7 +1383,7 @@ class UIManager {
             // Re-key ids and normalise the imported models, then rebuild a valid config.
             this._arenaModelSeq = 0;
             const cfg = { models: data.models, slots: data.slots, prompt: data.prompt };
-            cfg.models.forEach(m => { m.id = this.nextArenaModelId(); this.normalizeArenaModel(m); });
+            const was = this.rekeyArenaModels(cfg.models);
             if (typeof cfg.prompt !== 'string' || !cfg.prompt.trim()) cfg.prompt = this.getArenaDefaultPrompt();
             const civs = UIManager.civIds().slice(0, 4);
             const ids = cfg.models.map(m => m.id);
@@ -1355,7 +1392,7 @@ class UIManager {
             } else {
                 cfg.slots.forEach((s, i) => {
                     if (!s.civ) s.civ = civs[i];
-                    if (s.control !== 'ki' && !ids.includes(s.control)) s.control = cfg.models[i] ? cfg.models[i].id : 'ki';
+                    s.control = this.resolveSlotControl(s, cfg.models, was);
                     // DERIVE-unless-edited (mirrors loadArenaConfig): catalogues
                     // exported under the old copy-in model carry template copies —
                     // re-derive those; only genuine per-slot edits stay stored.
@@ -1363,8 +1400,16 @@ class UIManager {
                         s.prompt === cfg.prompt || s.prompt === this.getArenaDefaultPrompt()) s.prompt = null;
                 });
             }
+            // The campaign's opponents name models of the library that is being replaced.
+            // Each keeps its model if the imported catalogue holds it (by uid) and is
+            // rule-based otherwise: its id would mean whatever now stands at that place.
+            if (this._campaignConfig) {
+                this.stampSlotUids(this._campaignConfig.slots, (this._arenaConfig && this._arenaConfig.models) || []);
+                this._campaignConfig.slots.forEach(sl => { sl.control = sl.controlUid ? this.resolveSlotControl(sl, cfg.models, null) : 'ki'; });
+            }
             this._arenaConfig = cfg;
             this.saveArenaConfig();
+            this.saveCampaignConfig();
             this.renderArenaLibrary();
             this.renderArenaSlots();
             this.updateLibrarySummary();
