@@ -177,7 +177,7 @@ function season() {
         localStorage: { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } },
         document: { getElementById: id => els[id] || null, querySelector: () => ({ id: 'startScreen' }) }, fetch: async () => ({ ok: true, json: async () => ({ entries: [] }) }) });
     vm.runInContext(fs.readFileSync(path.join(root, 'js/season-page.js'), 'utf8') + '\nthis.Page = SeasonPage;', context);
-    const ui = { escapeHtml: s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'), showScreen() {},
+    const ui = { escapeHtml: s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'), jsArg: v => JSON.stringify(String(v)).replace(/&/g, '&amp;').replace(/"/g, '&quot;'), showScreen() {},
         shareSave: (svg, name, kind) => { saved.push([svg.slice(0, 4), name, kind]); return Promise.resolve(true); } };
     return { Page: context.Page, p: new context.Page(ui), els, saved };
 }

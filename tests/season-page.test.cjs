@@ -17,7 +17,7 @@ function page({ failing = false } = {}) {
         document: { getElementById: id => els[id] || null, querySelector: () => ({ id: 'startScreen' }) },
         fetch: async () => ({ ok: true, json: async () => ({ entries: [] }) }) });
     vm.runInContext(fs.readFileSync(path.join(root, 'js/season-page.js'), 'utf8') + '\nthis.Page = SeasonPage;', context);
-    const ui = { escapeHtml: s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'), showScreen: id => shown.push(id) };
+    const ui = { escapeHtml: s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'), jsArg: v => JSON.stringify(String(v)).replace(/&/g, '&amp;').replace(/"/g, '&quot;'), showScreen: id => shown.push(id) };
     return { Page: context.Page, p: new context.Page(ui), store, els, shown };
 }
 let serial = 0;

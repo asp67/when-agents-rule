@@ -113,11 +113,14 @@ class InputManager {
                 const k = 'civ.' + civ + '.name';
                 return (typeof t === 'function' && t(k) !== k) ? t(k) : civ;
             };
+            // What a recorded match says is here is a line of a file in the analyzer: its
+            // civilization and resource names are shown as text, whatever they hold (b1281).
+            const safe = v => (ui && ui.escapeHtml) ? ui.escapeHtml(v) : String(v == null ? '' : v).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
             // discoveryAt reports WHAT is here (kind + resource type); the wording is
             // the UI's job, in the UI language — this flag is spectator furniture, not
             // part of the model-facing log.
             const whatLabel = (d && d.kind === 'node')
-                ? t('cf.node', { res: t('res.' + d.res) })
+                ? t('cf.node', { res: safe(t('res.' + d.res)) })
                 : t('cf.ground');
             // Both coordinate systems on one line: the tile is what explore() takes
             // and what map.exploration is keyed by, the raw position is what every
@@ -129,7 +132,7 @@ class InputManager {
                 if (d.knowers.length) {
                     html += `<span class="cf-head">${whatLabel} — ${t('cf.discoveredBy')}</span>`;
                     html += d.knowers.map(k =>
-                        `<span class="cf-row">${(ui && ui.teamDotHtml) ? ui.teamDotHtml(k.seat, 11) : ''}${civLabel(k.civ)}</span>`
+                        `<span class="cf-row">${(ui && ui.teamDotHtml) ? ui.teamDotHtml(k.seat, 11) : ''}${safe(civLabel(k.civ))}</span>`
                     ).join('');
                 } else {
                     html += `<span class="cf-head">${whatLabel} — ${t('cf.undiscovered')}</span>`;

@@ -188,7 +188,7 @@ test('the view is off until asked for, B switches it, and it redraws only when a
     assert.notEqual(els.benchMatrix.innerHTML, 'untouched');
     // A cell opens the decisions behind it, and each of those opens in the transcript.
     u.benchShowEvidence('grounding', 'a');
-    assert.match(matrix(), /bench-evidence.*benchOpenTurn\('a', 1\)" title="bench\.open".*#1 0:10<\/span> c · bench\.b\.constraints<\/li>/s);
+    assert.match(matrix(), /bench-evidence.*benchOpenTurn\(&quot;a&quot;, 1\)" title="bench\.open".*#1 0:10<\/span> c · bench\.b\.constraints<\/li>/s);
     u.benchOpenTurn('a', 1);
     assert.deepEqual([u._transcriptFor, u._tvPinned, opened.join()], ['a', 1, '1']);
     u.benchShowEvidence('macro', 'a');
@@ -226,7 +226,7 @@ test('D8: the results screen shows the same matrix, and a decision opens where i
     const card = els.summaryProfile.innerHTML;
     assert.ok(card.startsWith(u.benchHtml(ledger).right), 'the card is the matrix the Bench view draws');
     assert.match(card, /<p class="summary-profile-note">sum\.profileNote<\/p>$/);
-    assert.match(card, /benchOpenTurn\('a', 1\)" title="bench\.open"/);
+    assert.match(card, /benchOpenTurn\(&quot;a&quot;, 1\)" title="bench\.open"/);
     // The card is redrawn every second while it is up; nothing is rebuilt unless something changed.
     els.summaryProfile.innerHTML = 'untouched';
     u.updateSummaryProfile();
@@ -243,7 +243,7 @@ test('D8: the results screen shows the same matrix, and a decision opens where i
     u.watchInAnalyzer = async () => { calls.push('analyzer'); };
     u.anApplyMoment = m => { calls.push('moment ' + m.seat + '/' + m.turn); };
     u.updateSummaryProfile();
-    assert.match(els.summaryProfile.innerHTML, /benchOpenTurn\('a', 1\)" title="sum\.openAnalyzer"/);
+    assert.match(els.summaryProfile.innerHTML, /benchOpenTurn\(&quot;a&quot;, 1\)" title="sum\.openAnalyzer"/);
     await u.benchOpenTurn('a', 1);
     assert.deepEqual(calls.slice(1), ['analyzer', 'moment 1/1']);
     // Once the transcript is gone there is nothing to open, and nothing offers to.

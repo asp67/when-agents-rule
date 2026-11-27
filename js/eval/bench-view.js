@@ -504,7 +504,7 @@
         return `<div class="bt-strip"${tr.marks.length ? '' : ` title="${esc(t('bench.t.none'))}"`}>` + tr.marks.map(m => {
             const left = at(m.sec);
             const width = (m.kind === 'loop' || (m.kind === 'passive' && m.upToSec != null)) ? Math.max(0, at(m.upToSec) - left) : 0;
-            const open = m.turn == null || !link ? '' : ` onclick="event.stopPropagation(); game.ui.benchOpenTurn('${esc(s.id)}', ${Number(m.turn)})"`;
+            const open = m.turn == null || !link ? '' : ` onclick="event.stopPropagation(); game.ui.benchOpenTurn(${this.jsArg(s.id)}, ${Number(m.turn)})"`;
             return `<i class="is-${m.kind}" style="left:${left.toFixed(1)}%${width ? ';width:' + width.toFixed(1) + '%' : ''}"${open} title="#${m.turn} ${clock(m.sec)} · ${esc(t('bench.t.' + m.kind))}: ${esc(line(m))}"></i>`;
         }).join('') + '</div>';
     };
@@ -824,7 +824,7 @@
             `<div class="bb-round-axis">${a.rounds.map(r => {
                 const fullCiv = r.civ ? (civNames[r.civ] || r.civ) : '';
                 const tip = [t('series.matchLabel', { r: r.round }), fullCiv, r.seat != null ? '#' + (r.seat + 1) : ''].filter(Boolean).join(' · ');
-                return `<span title="${esc(tip)}">M${r.round}${r.civ ? ' ' + esc(civShort(r.civ)) : ''}${r.seat != null ? ' #' + (r.seat + 1) : ''}</span>`;
+                return `<span title="${esc(tip)}">M${esc(r.round)}${r.civ ? ' ' + esc(civShort(r.civ)) : ''}${r.seat != null ? ' #' + esc(Number(r.seat) + 1) : ''}</span>`;
             }).join('')}</div>`, t('series.roundsAxisTip'));
 
         // "Where it went wrong" summary chips across all rounds
@@ -1074,7 +1074,7 @@
         const ink = s => this.legibleColor ? this.legibleColor(this.identityHex ? this.identityHex(s.id, s.civ, s.seat) : '#cccccc') : '#cccccc';
         const dot = s => this.teamDotHtml ? this.teamDotHtml(s.seat, 10) : '';
         const label = s => esc(s.name || s.model || s.id);
-        const open = (s, turn) => turn == null || !link ? '' : ` onclick="event.stopPropagation(); game.ui.benchOpenTurn('${esc(s.id)}', ${Number(turn)})" title="${esc(t(link))}"`;
+        const open = (s, turn) => turn == null || !link ? '' : ` onclick="event.stopPropagation(); game.ui.benchOpenTurn(${this.jsArg(s.id)}, ${Number(turn)})" title="${esc(t(link))}"`;
         const seatOf = id => seats.find(s => s.id === id);
         let right = '';
 
@@ -1089,7 +1089,7 @@
                     const trend = delta ? `<em class="${delta > 0 ? 'bm-up' : 'bm-down'}" title="${esc(t('bench.trendTip', { then: Math.round(before) }))}">${delta > 0 ? '▲' : '▼'}${Math.abs(delta)}</em>` : '';
                     const tip = this.evalTips(s)[key] + (score != null ? ' — ' + t('bench.cellTip') : '');
                     const picked = ev && ev.key === key && ev.id === s.id ? ' is-picked' : '';
-                    const click = score == null ? '' : ` onclick="game.ui.benchShowEvidence('${key}', '${esc(s.id)}')"`;
+                    const click = score == null ? '' : ` onclick="game.ui.benchShowEvidence('${key}', ${this.jsArg(s.id)})"`;
                     const lead = best != null && score === best ? ' is-lead' : '';
                     return `<td class="bm-cell${score == null ? ' is-empty' : ''}${lead}${picked}" title="${esc(tip)}"${click}>`
                         + `<div class="bm-top"><b>${score == null ? '–' : Math.round(score)}</b>${trend}</div>`

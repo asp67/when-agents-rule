@@ -146,7 +146,7 @@ class SeasonPage {
     group(g) {
         const L = k => this.esc(WarSeason.label(k)), signed = v => (v > 0 ? '+' : '') + v.toFixed(1);
         // Every placement, oldest first; a long history shows its newest twelve.
-        const places = m => { const a = m.places || []; return a.length ? (a.length > 12 ? '… ' : '') + a.slice(-12).map(x => x.rank).join(' · ') : '–'; };
+        const places = m => { const a = m.places || []; return a.length ? (a.length > 12 ? '… ' : '') + a.slice(-12).map(x => this.esc(x.rank)).join(' · ') : '–'; };
         const rows = g.models.map(m => `<tr><th scope="row" title="${this.esc(m.model || '')}">${this.esc(m.name || m.model || '?')}${this.viaTag(m.via)}</th><td>${m.matches}</td><td>${m.firsts}</td>`
             + `<td class="sn-places" title="${this.esc(t('season.placesTip'))}">${places(m)}</td>`
             + WarSeason.PARTS.map(p => this.cell(m.parts[p], g.leaders[p] === m.key, m.spread && m.spread[p])).join('') + '</tr>').join('');
@@ -233,7 +233,7 @@ class SeasonPage {
             const key = e.matchId || e.file;
             return `<tr><td>${this.esc(when(e.at))}</td><td>${this.esc(t(e.source === 'imported' ? 'season.srcImported' : 'season.srcPlayed'))}</td>`
                 + `<td>${this.esc(e.seats.map(s => s.name || s.model || '?').join(' · '))}</td><td>${this.esc(e.duration || '–')}</td>`
-                + `<td><button class="test-btn" onclick="game.ui.seasonPage().forget('${this.esc(String(key).replace(/['\\]/g, ''))}')">${this.esc(t('season.forget'))}</button></td></tr>`;
+                + `<td><button class="test-btn" onclick="game.ui.seasonPage().forget(${this.ui.jsArg(key)})">${this.esc(t('season.forget'))}</button></td></tr>`;
         }).join('');
         return `<details class="season-loose"><summary>${this.esc(t('season.kept', { n: list.length }))}</summary>
             <p class="season-verdict">${this.esc(t('season.keptNote'))}</p>

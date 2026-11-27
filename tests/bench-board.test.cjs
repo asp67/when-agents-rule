@@ -380,7 +380,7 @@ test('the inspector on the board: marks on the match’s clock under the gamepla
         const strips = [...game.matchAll(/<div class="bt-strip[^"]*"(?: title="([^"]*)")?>(.*?)<\/div>/g)];
         assert.equal(strips.length, 2);
         // The match is 14 minutes; the loop spans decisions 5 to 8, every other mark stands at its second.
-        assert.deepEqual([...strips[0][2].matchAll(/<i class="is-(\w+)" style="left:([\d.]+)%(?:;width:([\d.]+)%)?" onclick="event\.stopPropagation\(\); game\.ui\.benchOpenTurn\('a', (\d+)\)" title="#\d+ [\d:]+ · bench\.t\.\w+: [^"]*">/g)]
+        assert.deepEqual([...strips[0][2].matchAll(/<i class="is-(\w+)" style="left:([\d.]+)%(?:;width:([\d.]+)%)?" onclick="event\.stopPropagation\(\); game\.ui\.benchOpenTurn\(&quot;a&quot;, (\d+)\)" title="#\d+ [\d:]+ · bench\.t\.\w+: [^"]*">/g)]
             .map(m => [m[1], m[2], m[3] || '', m[4]].join(' ')),
             ['constraint 14.3  2', 'awareness 21.4  3', 'loop 35.7 21.4 5', 'awareness 64.3  9', 'refused 71.4  10', 'threat 78.6  11']);
         assert.match(strips[0][2], /title="#5 5:00 · bench\.t\.loop: bench\.t\.loopLine\{&quot;order&quot;:&quot;train unit · populationLimit&quot;,&quot;n&quot;:4,&quot;upTo&quot;:8\}"/);
@@ -491,7 +491,7 @@ test('the board opens without the Bench panels: from the results screen and in t
         assert.doesNotMatch(els.benchFull.innerHTML, /bf-share|<svg xmlns/, 'the chart to share is not on the board');
         assert.equal(els.benchMatrix.innerHTML, '', 'the panels stay as they were: off');
         // After the end a decision opens in the analyzer; once the transcript is gone a mark is only a mark.
-        assert.match(els.benchFull.innerHTML, /<i class="is-loop" style="[^"]*" onclick="event\.stopPropagation\(\); game\.ui\.benchOpenTurn\('a', 5\)"/);
+        assert.match(els.benchFull.innerHTML, /<i class="is-loop" style="[^"]*" onclick="event\.stopPropagation\(\); game\.ui\.benchOpenTurn\(&quot;a&quot;, 5\)"/);
         const went = [];
         u.watchInAnalyzer = () => Promise.resolve(); u.anApplyMoment = m => went.push(m);
         return u.benchOpenTurn('a', 5).then(() => {

@@ -55,10 +55,10 @@ test('the strip shows answer time, success, missed rounds, errors, overflows and
     assert.match(html, /31\.0s/);
     assert.match(html, /warn[^>]*>[^<]*31/, 'a slow answer is marked');
     assert.match(html, /67%/);
-    assert.match(html, /sh\.missed\{"n":2\}/);
-    assert.match(html, /sh\.errors\{"n":1\}/);
-    assert.match(html, /sh\.overflow\{"n":1\}/);
-    assert.match(html, /sh\.silent\{"n":90\}/);
+    assert.match(html, /sh\.missed\{&quot;n&quot;:2\}/);
+    assert.match(html, /sh\.errors\{&quot;n&quot;:1\}/);
+    assert.match(html, /sh\.overflow\{&quot;n&quot;:1\}/);
+    assert.match(html, /sh\.silent\{&quot;n&quot;:90\}/);
     // A seat a spectator paused is silent on purpose.
     assert.doesNotMatch(u.seatHealthHtml(m, true), /sh\.silent/);
 });

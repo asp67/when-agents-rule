@@ -254,7 +254,7 @@ class BenchPage {
             const all = list.every(s => chosen.has(s.id));
             return `<fieldset class="bench-family">
                 <legend><label><input type="checkbox" data-family="${this.esc(f)}" ${all ? 'checked' : ''} onchange="game.ui.benchPage().toggleFamily(this)"> ${this.esc(t('bench.family.' + f))}</label></legend>
-                ${list.map(s => `<label class="bench-scn"><input type="checkbox" data-scenario="${this.esc(s.id)}" data-of="${this.esc(f)}" ${chosen.has(s.id) ? 'checked' : ''} onchange="game.ui.benchPage().syncFamily('${this.esc(f)}')">
+                ${list.map(s => `<label class="bench-scn"><input type="checkbox" data-scenario="${this.esc(s.id)}" data-of="${this.esc(f)}" ${chosen.has(s.id) ? 'checked' : ''} onchange="game.ui.benchPage().syncFamily(${this.ui.jsArg(f)})">
                     <span class="bench-scn-title">${this.esc(s.title)}</span>
                     <span class="bench-scn-meta">${this.esc(s.id)} · ${this.esc(t('bench.scnRounds', { n: s.rounds, s: s.rounds * WarBench.ROUND_MS / 1000 }))}${s.partial ? ' · ' + this.esc(t('bench.scnPartial')) : ''}${s.graded ? ' · ' + this.esc(t('bench.scnGraded')) : ''}</span>
                     <span class="bench-scn-obj">${this.esc(s.objective.replace(/\{\{[^}]+\}\}/g, '…'))}</span></label>`).join('')}
@@ -322,7 +322,7 @@ class BenchPage {
     afterSetup(key) { if (key) this.showServed(key); }
     historyLink(key, n) {
         if (!key || !n) return '';
-        return `<button class="lib-io-btn" onclick="game.ui.benchPage().renderHistory('${this.esc(key)}')">${this.esc(t('bench.openHistory', { n }))}</button>`;
+        return `<button class="lib-io-btn" onclick="game.ui.benchPage().renderHistory(${this.ui.jsArg(key)})">${this.esc(t('bench.openHistory', { n }))}</button>`;
     }
     onModelPicked() {
         const key = this.el('benchModel').value;

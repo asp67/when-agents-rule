@@ -111,8 +111,8 @@ test('in the snapshots, a jump to an event says what it shows and offers the nex
     const cur = a.current();
     assert.equal(cur._sec, 120);
     const note = ui.anEventNoteHtml(cur);
-    assert.match(note, /an\.evNote\{"t":"2:10","d":"2:00"\}/);
-    assert.match(note, /an\.evNext\{"d":"3:00"\}/);
+    assert.match(note, /an\.evNote\{&quot;t&quot;:&quot;2:10&quot;,&quot;d&quot;:&quot;2:00&quot;\}/);
+    assert.match(note, /an\.evNext\{&quot;d&quot;:&quot;3:00&quot;\}/);
     assert.match(note, /game\.ui\.anSeek\(\d+\)/);
     assert.doesNotMatch(note, /evPlay/, 'no replay offered where there is none');
     a.seek(a.cursor + 1);

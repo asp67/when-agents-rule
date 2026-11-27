@@ -1468,7 +1468,7 @@ class UIManager {
     // The card's way to this model's benchmark results: enabled once it has any (b1092).
     benchButton(m) {
         const n = typeof BenchPage === 'undefined' ? 0 : this.benchPage().countFor(m.uid);
-        return `<button class="test-btn bench-lib-btn" ${n ? '' : 'disabled'} onclick="game.ui.benchPage().open({ history: '${m.uid}' })"
+        return `<button class="test-btn bench-lib-btn" ${n ? '' : 'disabled'} onclick="game.ui.benchPage().open({ history: ${this.jsArg(m.uid)} })"
             title="${this.escapeHtml(t(n ? 'bench.libTip' : 'bench.libNone'))}">${this.escapeHtml(t('bench.libBtn', { n }))}</button>`;
     }
 
@@ -3121,7 +3121,7 @@ class UIManager {
         box.innerHTML = f.bubbles.map(b => {
             const vCls = b.refused ? (' is-refused' + (b.verdict ? ' is-' + b.verdict : '')) : '';
             const jump = canJump && b.refused && b.turnNum != null
-                ? ` is-clickable" onclick="game.ui.openTranscriptTurn('${this.escapeHtml(b.seat)}', ${Number(b.turnNum)})" title="${this.escapeHtml(t('bench.open'))}"`
+                ? ` is-clickable" onclick="game.ui.openTranscriptTurn(${this.jsArg(b.seat)}, ${Number(b.turnNum)})" title="${this.escapeHtml(t('bench.open'))}"`
                 : '"';
             return '<div class="intent-bubble' + (b.summary ? ' summary' : '') + (b.lines ? ' merged' : '') + vCls + jump + ' style="left:' + Math.round(b.x) + 'px;top:' + Math.round(b.y) + 'px;opacity:'
                 + b.opacity.toFixed(2) + ';--seat:' + b.band + '">' + this.chronicleSeatHtml(b.seat)
@@ -3686,20 +3686,23 @@ class UIManager {
             return this.escapeHtml(d && d.name ? tg(d.name) : String(type || ''));
         };
         const by = e.by ? seat(e.by) : null;
-        const sides = () => e.seats.map(id => t('chr.battleSide', { who: seat(id), lost: (e.sides[id] || {}).lost || 0, of: (e.sides[id] || {}).involved || 0 })).join(' · ');
+        // Every value of the record goes in escaped (b1281): t() fills its words in as they
+        // are, and in the analyzer the record is a line of somebody's file.
+        const val = v => this.escapeHtml(v == null ? '' : v);
+        const sides = () => (e.seats || []).map(id => t('chr.battleSide', { who: seat(id), lost: val(((e.sides || {})[id] || {}).lost || 0), of: val(((e.sides || {})[id] || {}).involved || 0) })).join(' · ');
         switch (e.kind) {
             case 'contact': return t('chr.contact', { a: who, b: seat(e.seats[1]) });
-            case 'clash': return t('chr.clash', { who: e.seats.map(id => seat(id)).join(' · ') });
-            case 'battle': return t('chr.battle', { s: e.seconds, lines: sides() });
+            case 'clash': return t('chr.clash', { who: (e.seats || []).map(id => seat(id)).join(' · ') });
+            case 'battle': return t('chr.battle', { s: val(e.seconds), lines: sides() });
             // The analyzer lists a fight at its start, so it is not "over after".
-            case 'battle-start': return t('an.chFight', { s: e.seconds, lines: sides() });
+            case 'battle-start': return t('an.chFight', { s: val(e.seconds), lines: sides() });
             case 'building-lost': case 'town-center-lost': case 'wonder-lost':
                 return t(by ? 'chr.lostBy' : 'chr.lost', { who, what: bname(e.building), by });
             case 'age': return t('chr.age', { who, age: this.escapeHtml(this.getAgeName(e.age)) });
-            case 'wonder-raised': return t('chr.wonderRaised', { who, what: bname(e.building), n: e.required });
-            case 'wonder-countdown': return t('chr.wonderCountdown', { who, n: e.seconds });
+            case 'wonder-raised': return t('chr.wonderRaised', { who, what: bname(e.building), n: val(e.required) });
+            case 'wonder-countdown': return t('chr.wonderCountdown', { who, n: val(e.seconds) });
             case 'elimination': return t('chr.elimination', { who });
-            case 'speed': return t('chr.speed', { n: this.simSpeedLabel(e.speed) });
+            case 'speed': return t('chr.speed', { n: val(this.simSpeedLabel(e.speed)) });
             case 'pause': return t('chr.pause');
             case 'resume': return t('chr.resume');
             default: return this.escapeHtml(e.kind);
@@ -4862,7 +4865,7 @@ class UIManager {
             // aria-pressed, not aria-checked: these are independent toggles, not a
             // radio group, and a screen reader should say so.
             return `<button class="ai-log-chip${isOn ? ' is-on' : ''}" data-player="${this.escapeHtml(p.id)}"
-                        onclick="game.ui.setLogPlayerFilter('${this.escapeHtml(p.id)}')"
+                        onclick="game.ui.setLogPlayerFilter(${this.jsArg(p.id)})"
                         aria-pressed="${isOn}" aria-label="${civ}" title="${civ}">${this.teamDotHtml(p.seat, 9)}<span class="ai-log-chip-icon">${icon || civ}</span></button>`;
         }).join('');
     }
@@ -5657,12 +5660,26 @@ class UIManager {
         if (entriesEl) entriesEl.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
+    // Text from anywhere, safe as text AND inside a quoted attribute. It left quotes alone
+    // (to b1280) while standing guard in some sixty attribute values, so a model name, a
+    // seat id or a line of a transcript that held a quote closed the attribute it was put
+    // in and wrote the next one itself.
     escapeHtml(str) {
         if (str === null || str === undefined) return '';
         return String(str)
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+    // A value as ONE string argument of an inline handler: onclick="f(${this.jsArg(v)})".
+    // Escaping for HTML is not enough there, because the parser undoes it before the code
+    // runs: f('&#39;);evil();(&#39;') is f('');evil();('') by the time it is a script. So
+    // the value is first written as a string of the language (quotes, backslashes and line
+    // ends escaped), and only then made safe for the attribute it stands in.
+    jsArg(value) {
+        return this.escapeHtml(JSON.stringify(String(value == null ? '' : value)));
     }
 
     // Compact token counts for the summary: 830 -> "830", 12480 -> "12.5k", 1.2M.
@@ -5810,12 +5827,12 @@ class UIManager {
             const ageShort = ageNames[ai.age] || ai.age;
             const statusTag = !r.alive ? `<span class="lb-tag-elim">${t('spec.defeated')}</span>`
                 : (r.paused ? `<span class="lb-tag-paused">${t('spec.paused')}</span>`
-                : (r.thinking ? `<span class="lb-think${thinkUrg ? ' is-urgent' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer('${ai.id}')" title="${this.escapeHtml(t('spec.transcript'))}"><span class="dot"></span><span class="lb-think-sec">${Math.floor(r.thinkMs / 1000)}s</span></span>` : ''));
+                : (r.thinking ? `<span class="lb-think${thinkUrg ? ' is-urgent' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer(${this.jsArg(ai.id)})" title="${this.escapeHtml(t('spec.transcript'))}"><span class="dot"></span><span class="lb-think-sec">${Math.floor(r.thinkMs / 1000)}s</span></span>` : ''));
             const profileBlock = r.profile ? this.seatProfileHtml(r.profile, { health: r.health, paused: r.paused }) : ((r.isLLM && r.health && r.alive) ? this.seatHealthHtml(r.health, r.paused) : '');
 
             html += `
-                <div class="lb-card is-compact rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}${r.thinking ? ' is-thinking' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" data-ai="${ai.id}" onclick="game.focusCameraOnAI('${ai.id}')" title="${t('spec.cardHint')}">
-                    <div class="lb-fly-tab" title="${t('spec.flyTabTitle')}" onclick="event.stopPropagation(); game.ui.openLbFlyout('${ai.id}')">◀</div>
+                <div class="lb-card is-compact rank-${rank}${isLeader ? ' leader' : ''}${r.alive ? '' : ' eliminated'}${r.paused ? ' paused' : ''}${r.thinking ? ' is-thinking' : ''}" style="--civ: ${this.legibleColor(r.colorHex)}" data-ai="${ai.id}" onclick="game.focusCameraOnAI(${this.jsArg(ai.id)})" title="${t('spec.cardHint')}">
+                    <div class="lb-fly-tab" title="${t('spec.flyTabTitle')}" onclick="event.stopPropagation(); game.ui.openLbFlyout(${this.jsArg(ai.id)})">◀</div>
                     <div class="lb-head-row" title="${this.escapeHtml(r.modelName + ' · ' + civShort + ' · ' + ageShort)}">
                         <span class="lb-rank">${rank}</span>
                         ${this.teamDotHtml(ai.seat, 10)}
@@ -5826,9 +5843,9 @@ class UIManager {
                         <span class="lb-sub-right">
                             ${statusTag}
                             <span class="lb-actions">
-                                ${r.isLLM ? `<button class="lb-spy${this._transcriptFor === ai.id ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer('${ai.id}')" title="${t('spec.transcript')}">🔎</button>` : ''}
-                                ${(r.isLLM && r.alive) ? `<button class="lb-adv-btn${showAdvice ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleLbAdvice('${ai.id}')" title="${t('spec.advicePlaceholder')}">💬${r.adviceCount ? `<b>${r.adviceCount}</b>` : ''}</button>` : ''}
-                                ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel('${ai.id}')" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
+                                ${r.isLLM ? `<button class="lb-spy${this._transcriptFor === ai.id ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleTranscriptViewer(${this.jsArg(ai.id)})" title="${t('spec.transcript')}">🔎</button>` : ''}
+                                ${(r.isLLM && r.alive) ? `<button class="lb-adv-btn${showAdvice ? ' is-on' : ''}" onclick="event.stopPropagation(); game.ui.toggleLbAdvice(${this.jsArg(ai.id)})" title="${t('spec.advicePlaceholder')}">💬${r.adviceCount ? `<b>${r.adviceCount}</b>` : ''}</button>` : ''}
+                                ${(r.isLLM && r.alive) ? `<button class="lb-pause${r.paused ? ' is-paused' : ''}" onclick="event.stopPropagation(); game.ui.togglePauseModel(${this.jsArg(ai.id)})" title="${r.paused ? t('spec.resume') : t('spec.pause')}">${r.paused ? '▶' : '⏸'}</button>` : ''}
                             </span>
                         </span>
                     </div>
@@ -5850,12 +5867,12 @@ class UIManager {
                     ${(r.isLLM && r.alive && showAdvice) ? `
                     <div class="lb-advice" onclick="event.stopPropagation()">
                         <input class="lb-advice-input" type="text" maxlength="400"
-                            data-ai="${ai.id}"
+                            data-ai="${this.escapeHtml(ai.id)}"
                             placeholder="${t('spec.advicePlaceholder')}"
                             value="${this.escapeHtml(this._adviceDrafts[ai.id] || '')}"
-                            oninput="game.ui.onAdviceInput('${ai.id}', this.value)"
-                            onkeydown="if(event.key==='Enter'){event.preventDefault();game.ui.sendAdvice('${ai.id}');}">
-                        <button class="lb-advice-send" title="${t('spec.adviceSend')}" onclick="game.ui.sendAdvice('${ai.id}')">➤</button>
+                            oninput="game.ui.onAdviceInput(${this.jsArg(ai.id)}, this.value)"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();game.ui.sendAdvice(${this.jsArg(ai.id)});}">
+                        <button class="lb-advice-send" title="${t('spec.adviceSend')}" onclick="game.ui.sendAdvice(${this.jsArg(ai.id)})">➤</button>
                     </div>` : ''}
                     <div class="lb-edge-track" title="${r.thinking ? this.escapeHtml(t('spec.thinking')) : ''}">
                         <div class="lb-edge-fill${r.thinking ? (' is-thinking' + (thinkUrg ? ' is-urgent' : '') + (!mgr || !mgr.turnBased ? ' is-rt' : '')) : ''}" style="width:${r.thinking ? thinkPct : 0}%"></div>
@@ -6596,7 +6613,7 @@ class UIManager {
             const condId = cond ? WarConditions.id(cond.seat(r.ai.id)) : null;
             const condHtml = cond ? `<div class="sum-cond" title="${this.escapeHtml(t('sum.condTip'))}">${t('sum.condId', { id: condId || t('sum.condNone') })} · ${t('sum.exploratory')}</div>` : '';
             const topActions = Object.entries(m.actionCounts).sort((a, b) => b[1] - a[1]).slice(0, 6)
-                .map(([k, v]) => `<span class="sum-chip">${k.replace(/_/g, ' ')}·${v}</span>`).join('');
+                .map(([k, v]) => `<span class="sum-chip">${this.escapeHtml(String(k).replace(/_/g, ' '))}·${this.escapeHtml(v)}</span>`).join('');
             html += `
                 <div class="sum-card${r.isWinner ? ' winner' : ''}${r.alive ? '' : ' dead'}" style="--civ:${r.color}">
                     <div class="sum-card-head">
@@ -9214,7 +9231,7 @@ class UIManager {
         if (h.simSpeed) bits.push(this.simSpeedLabel(h.simSpeed) + '×');
         if (h.promptVersion) bits.push(esc(h.promptVersion));
         const build = h.build || (a.results && a.results.build);
-        if (build) bits.push('build ' + build);
+        if (build) bits.push('build ' + esc(build));
         // A human played in a Campaign match, so it is never a record of models alone.
         if (h.mode === 'campaign') bits.push('<b>' + esc(t('an.campaignMode')) + '</b>');
         // The seats' conditions ids, as the results screen showed them. A file from before
@@ -9274,7 +9291,7 @@ class UIManager {
             const on = a.seatFilter === sm.id;
             return '<button type="button" role="option" aria-selected="' + on
                 + '" class="an-seat-opt' + (on ? ' is-on' : '')
-                + '" onclick="game.ui.anSetSeat(\'' + esc(sm.id) + '\')">'
+                + '" onclick="game.ui.anSetSeat(' + this.jsArg(sm.id) + ')">'
                 + this.teamDotHtml(sm.seat, 8)
                 + '<span class="an-seat-label">' + seatLabel(sm) + '</span>'
                 // The civ is what tells two seats on one model apart on the board.
@@ -9407,7 +9424,7 @@ class UIManager {
             '<button type="button" class="an-chip' + (k === f ? ' is-on' : '') + '" aria-pressed="' + (k === f) + '" onclick="game.ui.anSetChFilter(\'' + k + '\')"'
             + (k === 'key' ? ' title="' + esc(t('an.chKeyTip')) + '"' : '') + '>'
             + esc(t('an.ch_' + k)) + ' <span class="an-ch-n">' + a.chapters.filter(c => this.anChapterShown(c, k)).length + '</span></button>').join('') + '</div>' : '';
-        const ch = shown.map(c => '<button class="an-chapter an-ch-' + esc(c.kind) + '" onclick="game.ui.anJumpEvent(' + c.t + ')">'
+        const ch = shown.map(c => '<button class="an-chapter an-ch-' + esc(c.kind) + '" onclick="game.ui.anJumpEvent(' + Number(c.t) + ')">'
             + '<span class="an-t">' + esc(mmss(c.t)) + '</span>' + esc(c.icon) + ' <span class="an-ch-txt">' + this.anChapterHtml(c) + '</span>'
             + '</button>').join('') || (a.chapters.length ? '<div class="an-none">' + esc(t('an.noneMatch')) + '</div>' : '');
         const link = this.anMomentLink();
