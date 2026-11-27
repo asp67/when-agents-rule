@@ -96,3 +96,28 @@ test('the picker is emptied once its file is read, so the same file can be picke
     assert.equal(loaded[1], 'error T:an.badFile');
 });
 
+test('a series waits while its last match is read in the analyzer, and counts down anew on the way back', () => {
+    const { u } = page();
+    const calls = [];
+    Object.assign(u, { showScreen: id => calls.push('screen ' + id), anLoadSampleIndex() {}, anRender() {}, anStopPlay() {}, anResimStop() {}, anUnmountStage() {},
+        anBackLabel() {}, renderSeriesSummary: () => calls.push('series summary'), startNextSeriesMatch: () => calls.push('NEXT MATCH') });
+    u.analyzer = {};
+    // The countdown as renderSeriesSummary leaves it running.
+    u._seriesCountdown = 12;
+    u._seriesTimer = setInterval(() => { u.startNextSeriesMatch(); }, 5);
+    u.anOpen();
+    assert.equal(u._seriesTimer, null, 'stopped on the way in');
+    assert.equal(u._seriesCountdown, null);
+    return new Promise(resolve => setTimeout(resolve, 40)).then(() => {
+        assert.ok(!calls.includes('NEXT MATCH'), 'no match starts under the reader');
+        // Opened from the menu: Back leads to the game modes, and no series is asked about.
+        u.anClose();
+        assert.deepEqual(calls, ['screen analyzeScreen', 'screen gameModeScreen']);
+        // Opened from the results: Back leads there, and the series' summary is drawn again,
+        // which is what starts its countdown.
+        calls.length = 0;
+        u._anFromSummary = true;
+        u.anClose();
+        assert.deepEqual(calls, ['screen arenaSummaryScreen', 'series summary']);
+    });
+});

@@ -8011,6 +8011,10 @@ class UIManager {
     anOpen() {
         this.anLoadSampleIndex();
         this.analyzer = this.analyzer || new TranscriptAnalyzer(this);
+        // A series counting down to its next match waits while its last one is read: the
+        // countdown ran on under the analyzer, and the next match started beneath it.
+        // Back at the results it starts over (anClose).
+        this.clearSeriesTimer();
         this._anFromSummary = false;         // opened from the menu, unless watchInAnalyzer says otherwise
         this.anBackLabel();
         this.showScreen('analyzeScreen');
@@ -8029,6 +8033,7 @@ class UIManager {
         this._anFromSummary = false;
         this.anBackLabel();
         this.showScreen(toResults ? 'arenaSummaryScreen' : 'gameModeScreen');
+        if (toResults) this.renderSeriesSummary();   // a series' countdown, from its start
     }
     // The Back button says where it leads.
     anBackLabel() {
