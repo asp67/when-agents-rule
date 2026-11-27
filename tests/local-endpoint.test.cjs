@@ -16,18 +16,18 @@ const response = (status, data = {data:[{id:'local-model'}]}) => ({ok:status===2
 
 test('normalizes private addresses and preserves explicit schemes and custom paths',()=>{
     const {manager:m}=setup();
-    for(const address of ['192.168.8.144:8888/v1','localhost:11434','10.0.0.5:1234','172.16.0.1:8080','127.0.0.1:8000','[::1]:8000','[fd00::1]:8000'])
+    for(const address of ['192.168.1.50:8888/v1','localhost:11434','10.0.0.5:1234','172.16.0.1:8080','127.0.0.1:8000','[::1]:8000','[fd00::1]:8000'])
         assert.equal(m.normalizeLocalEndpoint(' '+address+' '),'http://'+address);
-    for(const address of ['https://192.168.8.144:8888/custom','example.com:8000','8.8.8.8:8000','172.32.0.1:8000','192.168.1.999:8000','user:secret@192.168.1.1:8000','ftp://localhost:8000'])
+    for(const address of ['https://192.168.1.50:8888/custom','example.com:8000','8.8.8.8:8000','172.32.0.1:8000','192.168.1.999:8000','user:secret@192.168.1.1:8000','ftp://localhost:8000'])
         assert.equal(m.normalizeLocalEndpoint(address),address);
 });
 
 test('bare local endpoint retries only /v1 on 404 and returns the verified base',async()=>{
     const {manager:m}=setup();const urls=[];
     m.fetchWithTimeout=async(url,opts)=>{urls.push(url);assert.equal(opts.headers.Authorization,'Bearer test-only');return response(urls.length===1?404:200);};
-    const result=await m.testConnection('192.168.8.144:8888',{},'openai');
-    assert.deepEqual(urls,['http://192.168.8.144:8888/models','http://192.168.8.144:8888/v1/models']);
-    assert.equal(result.endpoint,'http://192.168.8.144:8888/v1');assert.equal(result.ok,true);
+    const result=await m.testConnection('192.168.1.50:8888',{},'openai');
+    assert.deepEqual(urls,['http://192.168.1.50:8888/models','http://192.168.1.50:8888/v1/models']);
+    assert.equal(result.endpoint,'http://192.168.1.50:8888/v1');assert.equal(result.ok,true);
 });
 
 test('existing paths, public hosts and explicit providers never get path guesses',async()=>{
@@ -66,14 +66,14 @@ test('CORS diagnosis stays on the original route without attempting /v1',async()
 });
 
 test('library saves the verified endpoint before probing and rendering',async()=>{
-    const {manager:m,scope}=setup();const model={endpoint:'192.168.8.144:8888',provider:'openai'};
+    const {manager:m,scope}=setup();const model={endpoint:'192.168.1.50:8888',provider:'openai'};
     const ui=Object.create(scope.UI.prototype);ui.getArenaModel=()=>model;ui.cleanAuth=()=>({});
     m.fetchWithTimeout=async url=>response(url.endsWith('/v1/models')?200:404);
     let probe,saved,rendered;
     m.probeCapabilities=async conn=>{probe=conn.endpoint;return null;};
     ui.saveArenaConfig=()=>{saved=model.endpoint;};ui.renderArenaLibrary=()=>{rendered=model.endpoint;};
     await ui.testArenaModel(1);
-    assert.equal(saved,'http://192.168.8.144:8888/v1');assert.equal(probe,saved);assert.equal(rendered,saved);
+    assert.equal(saved,'http://192.168.1.50:8888/v1');assert.equal(probe,saved);assert.equal(rendered,saved);
 });
 
 

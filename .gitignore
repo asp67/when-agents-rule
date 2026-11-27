@@ -36,3 +36,14 @@ arenaConfig*.json
 
 # Local agent skill mirror (private production procedure — never publish)
 .agents/
+
+# Left out on purpose, and listed so that `git add -A` cannot publish them (sweep of
+# 26 November 2026): generated pictures, a probe's output, raw screen captures (the
+# pictures the README shows are named and tracked), and planning and upload copy
+# written for asp67.
+output/
+paired-*.jsonl
+Screenshots/Screenshot *.png
+docs/BENCHMARK_PROPOSAL.md
+docs/FULL_MATCH_UPLOAD_COPY.md
+docs/overhaul/
