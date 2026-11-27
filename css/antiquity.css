@@ -31,10 +31,10 @@ button,input,select,textarea { font-family:inherit; }
 .lang-select,.lang-select option { background:var(--bg-0); border-color:var(--line); border-radius:3px; }
 .start-inscription { position:absolute; right:6vw; bottom:18vh; display:flex; gap:clamp(18px,4vw,60px);
     font:clamp(5rem,13vw,14rem)/1 Georgia,serif; color:rgba(222,197,148,.075); pointer-events:none; }
-.selection-content h2,.arena-section-head h3,.arena-title { font-family:Georgia,serif; font-weight:400; color:var(--text); }
-.mode-card,.civ-card,.model-card,.arena-section { border-radius:4px; background:var(--bg-1); box-shadow:none; }
-.mode-card:hover,.civ-card:hover { transform:translateY(-2px); border-color:var(--gold); box-shadow:none; }
-.mode-card::before,.civ-card::before { display:none; }
+.selection-content h2,.arena-section-head h3 { font-family:Georgia,serif; font-weight:400; color:var(--text); }
+.mode-card,.model-card,.arena-section { border-radius:4px; background:var(--bg-1); box-shadow:none; }
+.mode-card:hover { transform:translateY(-2px); border-color:var(--gold); box-shadow:none; }
+.mode-card::before { display:none; }
 .model-card { border-left-width:2px; border-left-color:var(--gold); }
 .model-card-header,.model-card-body,.model-section,.model-advanced { color:var(--text); }
 .arena-field input,.arena-field select,.arena-field textarea,.mdl-pop { background:#181d18; color:var(--text); border-color:var(--line); border-radius:3px; }
@@ -61,12 +61,10 @@ button,input,select,textarea { font-family:inherit; }
 .arena-section-head { gap:16px; margin-bottom:22px; }
 .arena-step { background:transparent; color:var(--gold-2); border:1px solid var(--gold); border-radius:3px; font-weight:500; }
 .arena-section-head h3 { font-size:1.4rem; }
-.arena-section-head p,.lib-empty,.lib-summary-count,.arena-slot-summary,.arena-slot-caret,
-.auth-divider,.auth-hint,.arena-hint,.mc-toggle,.mdl-note,.mdl-none,.mdl-v { color:var(--muted); }
+.arena-section-head p,.lib-empty,.lib-summary-count,.arena-slot-summary,.arena-slot-caret,.auth-hint,.arena-hint,.mc-toggle,.mdl-note,.mdl-none,.mdl-v { color:var(--muted); }
 .arena-section-head p { max-width:850px; line-height:1.6; }
-.arena-player-config,.arena-slot { background:#1b201b; border-color:var(--line); border-radius:3px; }
+.arena-slot { background:#1b201b; border-color:var(--line); border-radius:3px; }
 .arena-slot { border-left:3px solid var(--civ,var(--gold)); padding:16px; }
-.arena-player-header { background:#2a3128; }
 .arena-slot-title,.mc-name,.model-section h3,.ctx-mini-toggle { color:var(--text); font-weight:600; }
 .campaign-setup-row { background:#272e25; border-color:var(--line); border-radius:3px; padding:18px; gap:20px; }
 .arena-field label { color:var(--gold-2); text-transform:none; letter-spacing:.015em; font-weight:500; }
@@ -117,7 +115,7 @@ button,input,select,textarea { font-family:inherit; }
     .arena-section-head { gap:10px; }
     .campaign-setup-row { padding:12px; }
     .campaign-setup-row .f-turnbased { min-width:0; flex-basis:100%; }
-    .auth-grid,.arena-slots,.arena-players-grid { grid-template-columns:minmax(0,1fr); }
+    .auth-grid,.arena-slots { grid-template-columns:minmax(0,1fr); }
     .arena-field-row,.model-card-top,.header-row { flex-wrap:wrap; }
     .arena-field-row > .arena-field { min-width:0; flex-basis:100%; }
     .lib-sortbar { margin-left:0; flex-wrap:wrap; }
@@ -127,17 +125,17 @@ button,input,select,textarea { font-family:inherit; }
 /* The world supplies colour. The furniture uses one neutral surface and one accent. */
 #gameCanvas canvas { filter:none; }
 #gameScreen::after { background:radial-gradient(ellipse at center,transparent 60%,rgba(18,20,16,.14)); }
-.hud,.spectator-statusbar,.lb-header,.ai-log-header,.an-topbar {
+.hud,.spectator-statusbar,.lb-header,.ai-log-header {
     background:rgba(25,30,25,.95); border-color:var(--line); box-shadow:none; backdrop-filter:blur(8px);
 }
 .spectator-statusbar { border-radius:4px; gap:12px; padding:10px 16px; }
 .sb-brand { font-family:Georgia,serif; font-weight:400; letter-spacing:.14em; background:none; -webkit-text-fill-color:var(--gold-2); }
-.sb-time { color:var(--text); font-variant-numeric:tabular-nums; }
-.sb-end,.sb-auto,.sb-speed,.sb-pause,.quit-game-btn,.action-btn,.an-chip,.an-seat-btn {
+
+.sb-end,.sb-speed,.quit-game-btn,.action-btn,.an-chip,.an-seat-btn {
     border-radius:3px; background:#30372d; color:var(--text); border:1px solid var(--line); box-shadow:none;
 }
-.sb-end:hover,.sb-auto:hover,.action-btn:hover,.an-chip:hover { background:#424b3b; border-color:var(--gold); transform:none; box-shadow:none; }
-.an-chip.is-on,.sb-auto.active { background:#4c5943; border-color:#738465; }
+.sb-end:hover,.action-btn:hover,.an-chip:hover { background:#424b3b; border-color:var(--gold); transform:none; box-shadow:none; }
+.an-chip.is-on { background:#4c5943; border-color:#738465; }
 #topHUD { padding:12px 20px; }
 #bottomHUD { border-top:1px solid var(--line); }
 .ai-decision-log,.spectator-leaderboard { border-radius:4px; }
@@ -145,8 +143,6 @@ button,input,select,textarea { font-family:inherit; }
 .ai-log-entry,.lb-card { background:rgba(27,33,27,.93); border-radius:3px; box-shadow:none; }
 .ai-log-entry { border-left-width:2px; line-height:1.5; }
 .lb-card { border-color:var(--line); }
-.lb-model-banner { background:rgba(0,0,0,.2); border-radius:2px; font-family:inherit; }
-.lb-name,.lb-rankline { color:var(--text); }
 .lb-advice-input,.ai-log-search { background:#151a15; border-color:var(--line); border-radius:3px; }
 .an-body,.an-lower { background:#191e19; }
 .an-workspace-tools,.an-bar,.an-detail,.an-graph { background:var(--bg-0); border-color:var(--line); }
@@ -214,7 +210,7 @@ body.spectator-mode .mm-fog { bottom:calc(var(--mm-bottom) + 42px); }
     .an-stage-hud { left:6px; bottom:51px; max-width:calc(100% - 12px); }
     .visual-showcase-label { top:100px; left:12px; max-width:210px; }
 }
-@media(prefers-reduced-motion:reduce) { .mode-card:hover,.civ-card:hover { transform:none; } }
+@media(prefers-reduced-motion:reduce) { .mode-card:hover { transform:none; } }
 
 .camera-controls button[aria-pressed="true"] { background:#4a5038; color:var(--gold-2); border-color:var(--gold); }
 
